@@ -301,25 +301,72 @@ class PacientesParityService
     private function getDocumentosDescargables(string $hcNumber): array
     {
         $stmt1 = $this->db->prepare(
-            'SELECT form_id, hc_number, membrete, fecha_inicio FROM protocolo_data WHERE hc_number = ? AND status = 1'
+            <<<'SQL'
+            SELECT
+                pd.form_id,
+                pd.hc_number,
+                COALESCE(NULLIF(pd.membrete, ''), pp.procedimiento_proyectado, 'Procedimiento quirúrgico') AS membrete,
+                COALESCE(pd.fecha_inicio, pp.fecha) AS fecha_inicio
+            FROM protocolo_data pd
+            LEFT JOIN (
+                SELECT
+                    hc_number,
+                    form_id,
+                    MAX(procedimiento_proyectado) AS procedimiento_proyectado,
+                    MAX(fecha) AS fecha
+                FROM procedimiento_proyectado
+                GROUP BY hc_number, form_id
+            ) pp
+              ON pp.hc_number = pd.hc_number
+             AND pp.form_id = pd.form_id
+            WHERE pd.hc_number = ?
+            SQL
         );
         $stmt1->execute([$hcNumber]);
         $protocolos = $stmt1->fetchAll(PDO::FETCH_ASSOC);
 
         $stmt2 = $this->db->prepare(
             <<<'SQL'
-            SELECT form_id, hc_number, procedimiento, created_at
-            FROM solicitud_procedimiento
-            WHERE hc_number = ?
-              AND procedimiento IS NOT NULL
-              AND procedimiento != ''
-              AND procedimiento != 'SELECCIONE'
+            SELECT
+                pp.form_id,
+                pp.hc_number,
+                MAX(pp.procedimiento_proyectado) AS procedimiento,
+                MAX(pp.fecha) AS created_at
+            FROM procedimiento_proyectado pp
+            WHERE pp.hc_number = ?
+              AND pp.form_id IS NOT NULL
+              AND TRIM(pp.form_id) <> ''
+              AND pp.procedimiento_proyectado IS NOT NULL
+              AND TRIM(pp.procedimiento_proyectado) <> ''
+              AND UPPER(TRIM(pp.procedimiento_proyectado)) <> 'SELECCIONE'
+              AND (
+                  UPPER(TRIM(pp.procedimiento_proyectado)) LIKE 'PNI%'
+                  OR UPPER(TRIM(pp.procedimiento_proyectado)) LIKE 'CIRUGIAS%'
+              )
+            GROUP BY pp.hc_number, pp.form_id
             SQL
         );
         $stmt2->execute([$hcNumber]);
-        $solicitudes = $stmt2->fetchAll(PDO::FETCH_ASSOC);
+        $procedimientos = $stmt2->fetchAll(PDO::FETCH_ASSOC);
 
-        $documentos = array_merge($protocolos, $solicitudes);
+        $documentosByForm = [];
+        foreach ($procedimientos as $documento) {
+            if (!$this->esProcedimientoPniOCirugia($documento['procedimiento'] ?? null)) {
+                continue;
+            }
+            $formId = trim((string) ($documento['form_id'] ?? ''));
+            $key = $formId !== '' ? 'form:' . $formId : 'proc:' . md5(json_encode($documento));
+            $documentosByForm[$key] = $documento;
+        }
+
+        foreach ($protocolos as $documento) {
+            $formId = trim((string) ($documento['form_id'] ?? ''));
+            $key = $formId !== '' ? 'form:' . $formId : 'proto:' . md5(json_encode($documento));
+            // Si existe mismo form_id, priorizar protocolo.
+            $documentosByForm[$key] = $documento;
+        }
+
+        $documentos = array_values($documentosByForm);
         usort($documentos, static function (array $a, array $b): int {
             $fechaA = $a['fecha_inicio'] ?? $a['created_at'] ?? null;
             $fechaB = $b['fecha_inicio'] ?? $b['created_at'] ?? null;
@@ -327,6 +374,16 @@ class PacientesParityService
         });
 
         return $documentos;
+    }
+
+    private function esProcedimientoPniOCirugia(mixed $procedimiento): bool
+    {
+        $texto = strtoupper(trim((string) $procedimiento));
+        if ($texto === '') {
+            return false;
+        }
+
+        return str_starts_with($texto, 'PNI') || str_starts_with($texto, 'CIRUGIAS');
     }
 
     private function getPatientDetails(string $hcNumber): array
@@ -343,7 +400,11 @@ class PacientesParityService
             <<<'SQL'
             SELECT pp.procedimiento_proyectado, pp.form_id, pp.hc_number,
                    COALESCE(cd.fecha, pr.fecha_inicio) AS fecha,
-                   COALESCE(cd.examen_fisico, pr.membrete) AS contenido
+                   cd.motivo_consulta,
+                   cd.enfermedad_actual,
+                   cd.plan,
+                   cd.examen_fisico,
+                   pr.membrete
             FROM procedimiento_proyectado pp
             LEFT JOIN consulta_data cd ON pp.hc_number = cd.hc_number AND pp.form_id = cd.form_id
             LEFT JOIN protocolo_data pr ON pp.hc_number = pr.hc_number AND pp.form_id = pr.form_id
@@ -356,6 +417,30 @@ class PacientesParityService
         $eventos = [];
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
             if (!empty($row['fecha']) && strtotime((string) $row['fecha'])) {
+                $motivo = trim((string) ($row['motivo_consulta'] ?? ''));
+                $enfermedad = trim((string) ($row['enfermedad_actual'] ?? ''));
+                $plan = trim((string) ($row['plan'] ?? ''));
+                $examenFisico = trim((string) ($row['examen_fisico'] ?? ''));
+                $fallback = $examenFisico;
+                if ($fallback === '') {
+                    $fallback = trim((string) ($row['membrete'] ?? ''));
+                }
+
+                $contenido = $fallback;
+                if ($motivo !== '' || $enfermedad !== '' || $plan !== '' || $examenFisico !== '') {
+                    $contenido = trim(implode("\n\n", [
+                        'Motivo: ' . ($motivo !== '' ? $motivo : '—'),
+                        'Enfermedad Actual: ' . ($enfermedad !== '' ? $enfermedad : '—'),
+                        'Examen Físico: ' . ($examenFisico !== '' ? $examenFisico : '—'),
+                        'Plan: ' . ($plan !== '' ? $plan : '—'),
+                    ]));
+                }
+
+                $row['motivo_consulta'] = $motivo;
+                $row['enfermedad_actual'] = $enfermedad;
+                $row['examen_fisico'] = $examenFisico;
+                $row['plan'] = $plan;
+                $row['contenido'] = $contenido;
                 $eventos[] = $row;
             }
         }

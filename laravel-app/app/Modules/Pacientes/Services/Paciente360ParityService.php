@@ -91,7 +91,12 @@ class Paciente360ParityService
 
         return [
             'solicitudes' => $this->safeCount(
-                'SELECT COUNT(*) FROM solicitud_procedimiento WHERE hc_number = :hc',
+                'SELECT COUNT(*)
+                 FROM solicitud_procedimiento
+                 WHERE hc_number = :hc
+                   AND procedimiento IS NOT NULL
+                   AND TRIM(procedimiento) <> \'\'
+                   AND UPPER(TRIM(procedimiento)) <> \'SELECCIONE\'',
                 [':hc' => $hcNumber]
             ),
             'examenes' => $this->safeCount(
@@ -156,6 +161,9 @@ class Paciente360ParityService
                 sp.ojo
             FROM solicitud_procedimiento sp
             WHERE sp.hc_number = :hc
+              AND sp.procedimiento IS NOT NULL
+              AND TRIM(sp.procedimiento) <> ''
+              AND UPPER(TRIM(sp.procedimiento)) <> 'SELECCIONE'
             ORDER BY sp.created_at DESC, sp.id DESC
             LIMIT :limit
         SQL;
@@ -250,7 +258,21 @@ class Paciente360ParityService
                 pp.sede_departamento,
                 pp.id_sede,
                 v.fecha_visita,
-                v.hora_llegada
+                v.hora_llegada,
+                (
+                    SELECT u.profile_photo
+                    FROM users u
+                    WHERE u.profile_photo IS NOT NULL
+                      AND u.profile_photo <> ''
+                      AND (
+                        LOWER(TRIM(u.nombre)) = LOWER(TRIM(pp.doctor))
+                        OR LOWER(TRIM(pp.doctor)) LIKE CONCAT('%', LOWER(TRIM(u.nombre)), '%')
+                        OR LOWER(TRIM(u.username)) = LOWER(TRIM(pp.doctor))
+                        OR LOWER(TRIM(u.email)) = LOWER(TRIM(pp.doctor))
+                      )
+                    ORDER BY u.id ASC
+                    LIMIT 1
+                ) AS doctor_avatar
             FROM procedimiento_proyectado pp
             LEFT JOIN visitas v ON v.id = pp.visita_id
             WHERE pp.hc_number = :hc
@@ -271,7 +293,7 @@ class Paciente360ParityService
         $historialByForm = $this->fetchAgendaStatusHistory(array_column($rows, 'form_id'));
 
         return array_map(
-            static function (array $row) use ($historialByForm): array {
+            function (array $row) use ($historialByForm): array {
                 $formId = (string)($row['form_id'] ?? '');
 
                 return [
@@ -281,6 +303,7 @@ class Paciente360ParityService
                     'estado' => (string)($row['estado_agenda'] ?? ''),
                     'procedimiento' => (string)($row['procedimiento'] ?? ''),
                     'doctor' => (string)($row['doctor'] ?? ''),
+                    'doctor_avatar' => $this->formatProfilePhoto($row['doctor_avatar'] ?? null),
                     'sede' => (string)($row['sede_departamento'] ?? ($row['id_sede'] ?? '')),
                     'historial_estados' => $historialByForm[$formId] ?? [],
                 ];
@@ -587,6 +610,7 @@ class Paciente360ParityService
                 'fecha' => (string)($row['created_at'] ?? ($row['updated_at'] ?? '')),
                 'producto' => (string)($row['producto'] ?? ''),
                 'dosis' => (string)($row['dosis'] ?? ($row['pauta'] ?? '')),
+                'pauta' => (string)($row['pauta'] ?? ''),
                 'cantidad' => (string)($row['cantidad'] ?? ''),
                 'total_farmacia' => (string)($row['total_farmacia'] ?? ''),
                 'estado' => (string)($row['estado_receta'] ?? ''),
@@ -890,11 +914,16 @@ class Paciente360ParityService
             $links['modulo'] = '/examenes';
             if ($formId !== '') {
                 $links['derivacion'] = '/examenes/derivacion?hc_number=' . rawurlencode($hcNumber) . '&form_id=' . rawurlencode($formId);
+                $links['imagenes'] = '/imagenes/examenes-realizados?hc_number=' . rawurlencode($hcNumber) . '&form_id=' . rawurlencode($formId);
+                $links['nas_list'] = '/imagenes/examenes-realizados/nas/list?hc_number=' . rawurlencode($hcNumber) . '&form_id=' . rawurlencode($formId);
             }
         } elseif ($section === 'agenda') {
             $links['modulo'] = '/agenda';
         } elseif ($section === 'derivaciones') {
             $links['modulo'] = '/derivaciones';
+            if ($formId !== '') {
+                $links['detalle'] = '/solicitudes/derivacion?hc_number=' . rawurlencode($hcNumber) . '&form_id=' . rawurlencode($formId);
+            }
             if ($recordId !== '') {
                 $links['archivo'] = '/derivaciones/archivo/' . rawurlencode($recordId);
             }
@@ -964,5 +993,19 @@ class Paciente360ParityService
     private function normalizeHcNumber(string $value): string
     {
         return strtoupper(trim($value));
+    }
+
+    private function formatProfilePhoto(mixed $path): ?string
+    {
+        $path = trim((string) $path);
+        if ($path === '') {
+            return null;
+        }
+
+        if (preg_match('~^(?:https?:)?//~i', $path) === 1) {
+            return $path;
+        }
+
+        return '/' . ltrim($path, '/');
     }
 }

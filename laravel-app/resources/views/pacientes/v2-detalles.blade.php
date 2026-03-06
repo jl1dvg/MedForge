@@ -4,7 +4,7 @@
     $patient = is_array($patientData ?? null) ? $patientData : [];
     $afiliaciones = is_array($afiliacionesDisponibles ?? null) ? $afiliacionesDisponibles : [];
     $diagnosticosRows = is_array($diagnosticos ?? null) ? $diagnosticos : [];
-    $timelineRows = is_array($timelineItems ?? null) ? $timelineItems : [];
+    $eventosRows = is_array($eventos ?? null) ? $eventos : [];
     $documentRows = is_array($documentos ?? null) ? $documentos : [];
     $statsRows = is_array($estadisticas ?? null) ? $estadisticas : [];
     $edadPaciente = isset($patientAge) ? $patientAge : null;
@@ -15,13 +15,6 @@
         (string) ($patient['lname'] ?? ''),
         (string) ($patient['lname2'] ?? ''),
     ])));
-
-    $timelineColorMap = [
-        'solicitud' => 'bg-primary',
-        'prefactura' => 'bg-info',
-        'cirugia' => 'bg-danger',
-        'interconsulta' => 'bg-warning',
-    ];
 
     $formatDate = static function ($value, string $format = 'd/m/Y'): string {
         if ($value === null || trim((string) $value) === '') {
@@ -72,6 +65,65 @@
     $solicitudPdfBaseUrl = '/views/reports/solicitud_quirurgica/solicitud_qx_pdf.php';
 @endphp
 
+@push('styles')
+    <style>
+        .patient-box-header {
+            border-bottom: 0 !important;
+            display: flex;
+            align-items: center;
+            min-height: 56px;
+            padding: 12px 20px !important;
+        }
+
+        .patient-box-header .box-title {
+            color: #fff;
+            margin: 0;
+            line-height: 1.25;
+            white-space: normal;
+        }
+
+        .patient-box-header-agenda {
+            background: linear-gradient(90deg, #2563eb 0%, #1d4ed8 100%);
+        }
+
+        .patient-box-header-antecedentes {
+            background: linear-gradient(90deg, #7c3aed 0%, #6d28d9 100%);
+        }
+
+        .patient-box-header-solicitudes {
+            background: linear-gradient(90deg, #d97706 0%, #b45309 100%);
+        }
+
+        .patient-box-header-derivaciones {
+            background: linear-gradient(90deg, #059669 0%, #047857 100%);
+        }
+
+        .patient-box-header-recetas {
+            background: linear-gradient(90deg, #dc2626 0%, #b91c1c 100%);
+        }
+
+        .patient-box-header-cirugias {
+            background: linear-gradient(90deg, #0f766e 0%, #115e59 100%);
+        }
+
+        .patient-box-header-estadisticas {
+            background: linear-gradient(90deg, #7e22ce 0%, #6b21a8 100%);
+        }
+
+        .patient-details-page .patient-scroll-box .patient-scroll-body,
+        .patient-details-page .patient-scroll-self {
+            max-height: 560px;
+            overflow-y: auto;
+            overflow-x: hidden;
+            scrollbar-gutter: stable;
+        }
+
+        .patient-scroll-inner {
+            padding-right: 6px;
+        }
+    </style>
+@endpush
+
 @section('content')
     <div class="content-header">
         <div class="d-flex align-items-center">
@@ -90,24 +142,25 @@
         </div>
     </div>
 
-    <section class="content">
+    <section class="content patient-details-page">
         <div class="row">
             <div class="col-xl-4 col-12">
-                <div class="box">
-                    <div class="box-body box-profile">
-                        <p>Nombre completo: <span class="text-gray ps-10">{{ $fullName !== '' ? $fullName : '—' }}</span></p>
-                        <p>Fecha de nacimiento: <span class="text-gray ps-10">{{ $formatDate($patient['fecha_nacimiento'] ?? null) }}</span></p>
-                        <p>Edad: <span class="text-gray ps-10">{{ $edadPaciente !== null ? $edadPaciente . ' años' : '—' }}</span></p>
-                        <p>Celular: <span class="text-gray ps-10">{{ trim((string) ($patient['celular'] ?? '')) !== '' ? $patient['celular'] : '—' }}</span></p>
-                        <p>Afiliación: <span class="text-gray ps-10">{{ trim((string) ($patient['afiliacion'] ?? '')) !== '' ? $patient['afiliacion'] : '—' }}</span></p>
+                <div class="box patient-scroll-box">
+                    <div class="box-header with-border patient-box-header patient-box-header-agenda">
+                        <h4 class="box-title">Agenda</h4>
+                    </div>
+                    <div class="box-body patient-scroll-body">
+                        <div id="paciente360-panel-agenda" class="table-responsive">
+                            <p class="text-muted mb-0">Cargando...</p>
+                        </div>
                     </div>
                 </div>
 
-                <div class="box">
-                    <div class="box-header border-0 pb-0">
+                <div class="box patient-scroll-box">
+                    <div class="box-header with-border patient-box-header patient-box-header-antecedentes">
                         <h4 class="box-title">Antecedentes Patológicos</h4>
                     </div>
-                    <div class="box-body">
+                    <div class="box-body patient-scroll-body">
                         <div class="widget-timeline-icon">
                             <ul>
                                 @forelse($diagnosticosRows as $diagnosis)
@@ -126,62 +179,35 @@
                     </div>
                 </div>
 
-                <div class="box">
-                    <div class="box-header with-border">
+                <div class="box patient-scroll-box">
+                    <div class="box-header with-border patient-box-header patient-box-header-solicitudes">
                         <h4 class="box-title">Solicitudes</h4>
                     </div>
-                    <div class="box-body">
-                        @forelse($timelineRows as $procedimientoData)
-                            @php
-                                $origen = strtolower((string) ($procedimientoData['origen'] ?? ''));
-                                $tipo = strtolower((string) ($procedimientoData['tipo'] ?? ''));
-                                $bulletColor = $timelineColorMap[$tipo]
-                                    ?? $timelineColorMap[$origen]
-                                    ?? 'bg-secondary';
-                            @endphp
-                            <div class="d-flex align-items-center mb-25">
-                                <span class="bullet bullet-bar {{ $bulletColor }} align-self-stretch"></span>
-                                <div class="h-20 mx-20 flex-shrink-0">
-                                    <input type="checkbox" id="timeline_{{ md5((string) (($procedimientoData['form_id'] ?? '') . ($procedimientoData['fecha'] ?? '') . ($procedimientoData['nombre'] ?? ''))) }}"
-                                           class="filled-in">
-                                    <label for="timeline_{{ md5((string) (($procedimientoData['form_id'] ?? '') . ($procedimientoData['fecha'] ?? '') . ($procedimientoData['nombre'] ?? ''))) }}"
-                                           class="h-20 p-10 mb-0"></label>
-                                </div>
-                                <div class="d-flex flex-column flex-grow-1">
-                                    <a href="#" class="text-dark fw-500 fs-16">{{ $procedimientoData['nombre'] ?? '' }}</a>
-                                    <span class="text-fade fw-500">
-                                        {{ ucfirst(strtolower((string) ($procedimientoData['origen'] ?? 'registro'))) }} creado el {{ $formatDate($procedimientoData['fecha'] ?? null) }}
-                                    </span>
-                                </div>
-                                @if(($procedimientoData['origen'] ?? '') === 'Solicitud')
-                                    <div class="dropdown">
-                                        <a class="px-10 pt-5" href="#" data-bs-toggle="dropdown"><i class="ti-more-alt"></i></a>
-                                        <div class="dropdown-menu dropdown-menu-end">
-                                            <a class="dropdown-item flexbox"
-                                               href="#"
-                                               data-bs-toggle="modal"
-                                               data-bs-target="#modalSolicitud"
-                                               data-form-id="{{ (string) ($procedimientoData['form_id'] ?? '') }}"
-                                               data-hc="{{ $hc_number }}">
-                                                <span>Ver detalles</span>
-                                            </a>
-                                        </div>
-                                    </div>
-                                @endif
-                            </div>
-                        @empty
-                            <p class="text-muted mb-0">Sin solicitudes registradas.</p>
-                        @endforelse
+                    <div class="box-body patient-scroll-body">
+                        <div id="patient-solicitudes-panel" class="table-responsive">
+                            <p class="text-muted mb-0">Cargando solicitudes...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="box patient-scroll-box">
+                    <div class="box-header with-border patient-box-header patient-box-header-derivaciones">
+                        <h4 class="box-title">Derivaciones</h4>
+                    </div>
+                    <div class="box-body patient-scroll-body">
+                        <div id="paciente360-panel-derivaciones">
+                            <p class="text-muted mb-0">Cargando...</p>
+                        </div>
                     </div>
                 </div>
             </div>
 
             <div class="col-xl-8 col-12">
-                <div class="box">
-                    <div class="box-body text-end min-h-150"
+                <div class="box patient-scroll-box">
+                    <div class="box-body patient-scroll-body text-end min-h-150"
                          style="background-image:url('{{ $backgroundImage }}'); background-repeat:no-repeat; background-position:center; background-size:cover;">
                     </div>
-                    <div class="box-body wed-up position-relative">
+                    <div class="box-body patient-scroll-body wed-up position-relative">
                         <button class="btn btn-warning mb-3" data-bs-toggle="modal" data-bs-target="#modalEditarPaciente">Editar datos</button>
                         <div class="d-md-flex align-items-center">
                             <div class="me-20 text-center text-md-start">
@@ -195,52 +221,123 @@
                                 <h4 class="fw-600 mb-5">{{ $fullName !== '' ? $fullName : 'Paciente sin nombre' }}</h4>
                                 <h5 class="fw-500 mb-5">HC: {{ $patient['hc_number'] ?? $hc_number }}</h5>
                                 <p><i class="fa fa-clock-o"></i> Edad: {{ $edadPaciente !== null ? $edadPaciente . ' años' : '—' }}</p>
+                                <p><i class="fa fa-calendar"></i> Fecha de nacimiento: {{ $formatDate($patient['fecha_nacimiento'] ?? null) }}</p>
+                                <p><i class="fa fa-phone"></i> Celular: {{ trim((string) ($patient['celular'] ?? '')) !== '' ? $patient['celular'] : '—' }}</p>
                             </div>
                         </div>
                     </div>
+                    <div class="box-body patient-scroll-body pt-0">
+                        @if(!empty($eventosRows))
+                            <section class="cd-horizontal-timeline">
+                                <div class="timeline">
+                                    <div class="events-wrapper">
+                                        <div class="events">
+                                            <ol style="white-space: nowrap; overflow-x: auto; display: flex; gap: 1rem;">
+                                                @foreach($eventosRows as $index => $row)
+                                                    @php
+                                                        $fechaRaw = (string) ($row['fecha'] ?? '');
+                                                        $timestamp = strtotime($fechaRaw);
+                                                        $syntheticTimestamp = $timestamp ? ($timestamp + ($index * 86400)) : (946684800 + ($index * 86400));
+                                                        $dataDate = date('d/m/Y', $syntheticTimestamp);
+                                                        $fechaCorta = $timestamp ? date('d M', $timestamp) : '01 Jan';
+                                                    @endphp
+                                                    <li style="min-width: 80px; text-align: center;">
+                                                        <a href="#0"
+                                                           style="display: inline-block; padding: 6px 10px;"
+                                                           data-date="{{ $dataDate }}"
+                                                           class="{{ $index === 0 ? 'selected' : '' }}">
+                                                            {{ $fechaCorta }}
+                                                        </a>
+                                                    </li>
+                                                @endforeach
+                                            </ol>
+                                            <span class="filling-line" aria-hidden="true"></span>
+                                        </div>
+                                    </div>
+                                    <ul class="cd-timeline-navigation">
+                                        <li><a href="#0" class="prev inactive">Prev</a></li>
+                                        <li><a href="#0" class="next">Next</a></li>
+                                    </ul>
+                                </div>
+                                <div class="events-content">
+                                    <ol>
+                                        @foreach($eventosRows as $index => $row)
+                                            @php
+                                                $fechaRaw = (string) ($row['fecha'] ?? '');
+                                                $timestamp = strtotime($fechaRaw);
+                                                $syntheticTimestamp = $timestamp ? ($timestamp + ($index * 86400)) : (946684800 + ($index * 86400));
+                                                $dataDate = date('d/m/Y', $syntheticTimestamp);
+                                                $fechaLarga = $timestamp ? date('F jS, Y', $timestamp) : 'Fecha no disponible';
+                                                $procedimiento = (string) ($row['procedimiento_proyectado'] ?? '');
+                                                $parts = explode(' - ', $procedimiento);
+                                                $nombreProcedimiento = trim(implode(' - ', array_slice($parts, 2)));
+                                                if ($nombreProcedimiento === '') {
+                                                    $nombreProcedimiento = trim($procedimiento) !== '' ? $procedimiento : 'Encuentro';
+                                                }
+                                                $motivoConsulta = trim((string) ($row['motivo_consulta'] ?? ''));
+                                                $enfermedadActual = trim((string) ($row['enfermedad_actual'] ?? ''));
+                                                $examenFisico = trim((string) ($row['examen_fisico'] ?? ''));
+                                                $planConsulta = trim((string) ($row['plan'] ?? ''));
+                                                $contenido = trim((string) ($row['contenido'] ?? ''));
+                                                $hasStructuredContent = $motivoConsulta !== '' || $enfermedadActual !== '' || $examenFisico !== '' || $planConsulta !== '';
+                                            @endphp
+                                            <li data-date="{{ $dataDate }}" class="{{ $index === 0 ? 'selected' : '' }}">
+                                                <h2>{{ $nombreProcedimiento }}</h2>
+                                                <small>{{ $fechaLarga }}</small>
+                                                <hr class="my-30">
+                                                @if($hasStructuredContent)
+                                                    <div class="pb-30">
+                                                        <p class="mb-10"><strong>Motivo:</strong><br>{!! nl2br(e($motivoConsulta !== '' ? $motivoConsulta : '—')) !!}</p>
+                                                        <p class="mb-10"><strong>Enfermedad Actual:</strong><br>{!! nl2br(e($enfermedadActual !== '' ? $enfermedadActual : '—')) !!}</p>
+                                                        <p class="mb-10"><strong>Examen Físico:</strong><br>{!! nl2br(e($examenFisico !== '' ? $examenFisico : '—')) !!}</p>
+                                                        <p class="mb-0"><strong>Plan:</strong><br>{!! nl2br(e($planConsulta !== '' ? $planConsulta : '—')) !!}</p>
+                                                    </div>
+                                                @else
+                                                    <p class="pb-30">{!! nl2br(e($contenido !== '' ? $contenido : 'Sin contenido clínico registrado.')) !!}</p>
+                                                @endif
+                                            </li>
+                                        @endforeach
+                                    </ol>
+                                </div>
+                            </section>
+                        @else
+                            <p class="text-muted mb-0">No hay datos disponibles para mostrar en el timeline.</p>
+                        @endif
+                    </div>
                 </div>
 
-                <div class="box" id="paciente360" data-hc="{{ $hc_number }}" data-sections="solicitudes,examenes,agenda,consultas,protocolos,prefacturas,derivaciones,recetas,crm">
-                    <div class="box-header with-border">
-                        <h4 class="box-title">Paciente 360</h4>
-                    </div>
-                    <div class="box-body">
-                        <div class="mb-20 d-flex flex-wrap gap-10" id="paciente360Summary">
-                            <span class="badge bg-light text-dark">Cargando resumen...</span>
+                <div id="patient-sections" data-hc="{{ $hc_number }}" data-sections="examenes,agenda,derivaciones,recetas">
+                    <div class="row">
+                        <div class="col-xl-6 col-12">
+                            <div class="box box-body px-35 bg-lightgray patient-scroll-self">
+                                <div class="d-flex justify-content-between align-items-center mb-15">
+                                    <h4 class="m-0">Imágenes</h4>
+                                    <span class="float-end"><a class="btn btn-rounded btn-light fw-500 w-90" href="/imagenes/examenes-realizados" target="_blank" rel="noopener noreferrer">Todas</a></span>
+                                </div>
+                                <div id="paciente360-panel-examenes"><p class="text-muted mb-0">Cargando...</p></div>
+                            </div>
                         </div>
-                        <ul class="nav nav-tabs mb-15" role="tablist">
-                            <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#paciente360-tab-solicitudes" type="button">Solicitudes</button></li>
-                            <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#paciente360-tab-examenes" type="button">Exámenes</button></li>
-                            <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#paciente360-tab-agenda" type="button">Agenda</button></li>
-                            <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#paciente360-tab-consultas" type="button">Consultas</button></li>
-                            <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#paciente360-tab-protocolos" type="button">Protocolos</button></li>
-                            <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#paciente360-tab-prefacturas" type="button">Prefacturas</button></li>
-                            <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#paciente360-tab-derivaciones" type="button">Derivaciones</button></li>
-                            <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#paciente360-tab-recetas" type="button">Recetas</button></li>
-                            <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#paciente360-tab-crm" type="button">CRM</button></li>
-                        </ul>
 
-                        <div class="tab-content">
-                            <div class="tab-pane fade show active" id="paciente360-tab-solicitudes"><div id="paciente360-panel-solicitudes" class="table-responsive"></div></div>
-                            <div class="tab-pane fade" id="paciente360-tab-examenes"><div id="paciente360-panel-examenes" class="table-responsive"></div></div>
-                            <div class="tab-pane fade" id="paciente360-tab-agenda"><div id="paciente360-panel-agenda" class="table-responsive"></div></div>
-                            <div class="tab-pane fade" id="paciente360-tab-consultas"><div id="paciente360-panel-consultas" class="table-responsive"></div></div>
-                            <div class="tab-pane fade" id="paciente360-tab-protocolos"><div id="paciente360-panel-protocolos" class="table-responsive"></div></div>
-                            <div class="tab-pane fade" id="paciente360-tab-prefacturas"><div id="paciente360-panel-prefacturas" class="table-responsive"></div></div>
-                            <div class="tab-pane fade" id="paciente360-tab-derivaciones"><div id="paciente360-panel-derivaciones" class="table-responsive"></div></div>
-                            <div class="tab-pane fade" id="paciente360-tab-recetas"><div id="paciente360-panel-recetas" class="table-responsive"></div></div>
-                            <div class="tab-pane fade" id="paciente360-tab-crm"><div id="paciente360-panel-crm" class="table-responsive"></div></div>
+                        <div class="col-xl-6 col-12">
+                            <div class="box patient-scroll-box">
+                                <div class="box-header with-border patient-box-header patient-box-header-recetas">
+                                    <h4 class="box-title">Recetas</h4>
+                                </div>
+                                <div class="box-body patient-scroll-body">
+                                    <div id="paciente360-panel-recetas"><p class="text-muted mb-0">Cargando...</p></div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
 
                 <div class="row">
                     <div class="col-xl-6 col-12">
-                        <div class="box">
-                            <div class="box-header with-border">
-                                <h4 class="box-title">Descargar archivos</h4>
+                        <div class="box patient-scroll-box">
+                            <div class="box-header with-border patient-box-header patient-box-header-cirugias">
+                                <h4 class="box-title">Cirugías y PNI</h4>
                             </div>
-                            <div class="box-body">
+                            <div class="box-body patient-scroll-body">
                                 <div class="media-list media-list-divided">
                                     @forelse($documentRows as $documento)
                                         @php
@@ -278,11 +375,11 @@
                         </div>
                     </div>
                     <div class="col-xl-6 col-12">
-                        <div class="box">
-                            <div class="box-header no-border">
+                        <div class="box patient-scroll-box">
+                            <div class="box-header no-border patient-box-header patient-box-header-estadisticas">
                                 <h4 class="box-title">Estadísticas de citas</h4>
                             </div>
-                            <div class="box-body">
+                            <div class="box-body patient-scroll-body">
                                 <div id="chart123"></div>
                             </div>
                         </div>
@@ -385,10 +482,31 @@
             </div>
         </div>
     </div>
+
+    <div class="modal fade" id="modalReceta" tabindex="-1" aria-labelledby="modalRecetaLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalRecetaLabel">Detalle de receta</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body" id="recetaModalContent">
+                    <p class="text-muted mb-0">Cargando detalle de receta...</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+                    <button type="button" class="btn btn-primary" id="btnPrintReceta">
+                        <i class="fa fa-print me-5"></i>Imprimir receta
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @push('scripts')
     <script src="/assets/vendor_components/apexcharts-bundle/dist/apexcharts.js"></script>
+    <script src="/assets/vendor_components/horizontal-timeline/js/horizontal-timeline.js"></script>
     <script src="/js/pages/patient-detail.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function () {
