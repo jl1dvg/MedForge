@@ -2,7 +2,9 @@
 
 namespace App\Modules\Reporting\Services;
 
-use App\Modules\Reporting\Support\LegacyReportingRuntime;
+use App\Modules\Reporting\Services\Definitions\PdfTemplateRegistry;
+use App\Modules\Reporting\Services\Definitions\SolicitudTemplateRegistry;
+use App\Modules\Reporting\Support\SolicitudDataFormatter;
 use Mpdf\HTMLParserMode;
 use Mpdf\Mpdf;
 use RuntimeException;
@@ -26,9 +28,9 @@ class ReportPdfService
     private PostSurgeryRestReportDataService $postSurgeryRestDataService;
     private ImagenesReportDataService $imagenesDataService;
 
-    private string $legacyBasePath = '';
-    private mixed $reportService = null;
-    private mixed $solicitudTemplateRegistry = null;
+    private string $moduleBasePath;
+    private ?ReportService $reportService = null;
+    private ?SolicitudTemplateRegistry $solicitudTemplateRegistry = null;
 
     public function __construct()
     {
@@ -37,6 +39,7 @@ class ReportPdfService
         $this->consultaDataService = new ConsultaReportDataService();
         $this->postSurgeryRestDataService = new PostSurgeryRestReportDataService();
         $this->imagenesDataService = new ImagenesReportDataService();
+        $this->moduleBasePath = dirname(__DIR__);
     }
 
     /**
@@ -55,7 +58,7 @@ class ReportPdfService
 
         $safeFormId = $this->safeFilePart($formId);
         $safeHcNumber = $this->safeFilePart($hcNumber);
-        $cssPath = $this->legacyBasePath() . '/modules/Reporting/Templates/assets/pdf.css';
+        $cssPath = $this->moduleBasePath() . '/Templates/assets/pdf.css';
 
         $mode = strtolower(trim($mode));
         if ($mode === 'separado' && is_string($requestedPage) && trim($requestedPage) !== '') {
@@ -229,39 +232,21 @@ class ReportPdfService
         ];
     }
 
-    private function bootstrapLegacy(): void
+    private function reportService(): ReportService
     {
-        if ($this->legacyBasePath !== '') {
-            return;
-        }
-
-        $this->legacyBasePath = LegacyReportingRuntime::bootstrap();
-    }
-
-    private function legacyBasePath(): string
-    {
-        $this->bootstrapLegacy();
-
-        return $this->legacyBasePath;
-    }
-
-    private function reportService(): mixed
-    {
-        $this->bootstrapLegacy();
-
         if ($this->reportService !== null) {
             return $this->reportService;
         }
 
-        $templatesPath = $this->legacyBasePath() . '/modules/Reporting/Templates/reports';
-        $pdfTemplatesPath = $this->legacyBasePath() . '/storage/reporting/templates';
-        $pdfTemplateConfigPath = $this->legacyBasePath() . '/modules/Reporting/Services/Definitions/pdf-templates.php';
+        $templatesPath = $this->moduleBasePath() . '/Templates/reports';
+        $pdfTemplatesPath = $this->storageTemplatesPath();
+        $pdfTemplateConfigPath = $this->moduleBasePath() . '/Services/Definitions/pdf-templates.php';
 
-        $pdfRenderer = new \Modules\Reporting\Services\PdfRenderer($this->legacyBasePath());
-        $pdfTemplateRegistry = \Modules\Reporting\Services\Definitions\PdfTemplateRegistry::fromConfig($pdfTemplateConfigPath);
-        $pdfTemplateRenderer = new \Modules\Reporting\Services\PdfTemplateRenderer($pdfTemplatesPath);
+        $pdfRenderer = new PdfRenderer($this->appBasePath());
+        $pdfTemplateRegistry = PdfTemplateRegistry::fromConfig($pdfTemplateConfigPath);
+        $pdfTemplateRenderer = new PdfTemplateRenderer($pdfTemplatesPath);
 
-        $this->reportService = new \Modules\Reporting\Services\ReportService(
+        $this->reportService = new ReportService(
             $templatesPath,
             $pdfRenderer,
             $pdfTemplateRegistry,
@@ -271,16 +256,14 @@ class ReportPdfService
         return $this->reportService;
     }
 
-    private function solicitudTemplateRegistry(): mixed
+    private function solicitudTemplateRegistry(): SolicitudTemplateRegistry
     {
-        $this->bootstrapLegacy();
-
         if ($this->solicitudTemplateRegistry !== null) {
             return $this->solicitudTemplateRegistry;
         }
 
-        $configPath = $this->legacyBasePath() . '/modules/Reporting/Services/Definitions/solicitud-templates.php';
-        $this->solicitudTemplateRegistry = \Modules\Reporting\Services\Definitions\SolicitudTemplateRegistry::fromConfig($configPath);
+        $configPath = $this->moduleBasePath() . '/Services/Definitions/solicitud-templates.php';
+        $this->solicitudTemplateRegistry = SolicitudTemplateRegistry::fromConfig($configPath);
 
         return $this->solicitudTemplateRegistry;
     }
@@ -291,13 +274,7 @@ class ReportPdfService
      */
     private function enrichSolicitudData(array $data, string $formId, string $hcNumber): array
     {
-        $this->bootstrapLegacy();
-
-        if (!class_exists(\Modules\Reporting\Support\SolicitudDataFormatter::class)) {
-            return $data;
-        }
-
-        return \Modules\Reporting\Support\SolicitudDataFormatter::enrich($data, $formId, $hcNumber);
+        return SolicitudDataFormatter::enrich($data, $formId, $hcNumber);
     }
 
     private function normalizeCoberturaVariant(string $variant): string
@@ -558,8 +535,6 @@ class ReportPdfService
      */
     private function appendHtmlToPdf(string $basePdf, string $html, array $options): string
     {
-        $this->bootstrapLegacy();
-
         $orientation = strtoupper((string) ($options['orientation'] ?? 'P'));
         if ($orientation !== 'P' && $orientation !== 'L') {
             $orientation = 'P';
@@ -640,7 +615,7 @@ class ReportPdfService
             $options['orientation'] = $orientation;
         }
 
-        $content = (string) (new \Modules\Reporting\Services\PdfRenderer($this->legacyBasePath()))
+        $content = (string) (new PdfRenderer($this->appBasePath()))
             ->renderHtml($html, [
                 'css' => $cssPath,
                 'mpdf' => $options,
@@ -651,6 +626,29 @@ class ReportPdfService
         $this->assertPdf($content, 'html_render');
 
         return $content;
+    }
+
+    private function moduleBasePath(): string
+    {
+        return rtrim($this->moduleBasePath, '/\\');
+    }
+
+    private function storageTemplatesPath(): string
+    {
+        if (function_exists('storage_path')) {
+            return storage_path('reporting/templates');
+        }
+
+        return $this->appBasePath() . '/storage/reporting/templates';
+    }
+
+    private function appBasePath(): string
+    {
+        if (function_exists('base_path')) {
+            return rtrim(base_path(), '/\\');
+        }
+
+        return dirname(__DIR__, 4);
     }
 
     private function buildCoberturaAppendixFilename(string $filename): string

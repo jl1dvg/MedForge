@@ -2695,6 +2695,46 @@ class ExamenController extends BaseController
      */
     private function renderInforme012B(string $formId, string $hcNumber): array
     {
+        if ($this->isReportingV2Imagenes012BDataEnabled()) {
+            // Evita lock de sesión cuando legacy llama a /v2 dentro del mismo request.
+            if (session_status() === PHP_SESSION_ACTIVE) {
+                @session_write_close();
+            }
+
+            $remoteData = $this->fetchV2Informe012BDataPayload($formId, $hcNumber);
+            $remoteReportPayload = is_array($remoteData['report'] ?? null) ? $remoteData['report'] : null;
+            if (is_array($remoteReportPayload) && $remoteReportPayload !== []) {
+                $reportService = new ReportService();
+                $resolvedHc = trim((string)($remoteData['hc_number'] ?? $hcNumber));
+                if ($resolvedHc === '') {
+                    $resolvedHc = $hcNumber;
+                }
+                $filename = '012B_' . $resolvedHc . '_' . date('Ymd_His') . '.pdf';
+
+                try {
+                    $pdf = $reportService->renderPdf('012B', $remoteReportPayload, [
+                        'destination' => 'S',
+                        'filename' => $filename,
+                    ]);
+
+                    if (strncmp($pdf, '%PDF-', 5) === 0) {
+                        $tipoExamenRemote = trim((string)($remoteData['tipo_examen'] ?? ''));
+                        $fechaRemote = trim((string)($remoteData['fecha'] ?? ''));
+
+                        return [
+                            'pdf' => $pdf,
+                            'filename' => $filename,
+                            'fecha' => $fechaRemote !== '' ? $fechaRemote : null,
+                            'hc_number' => $resolvedHc,
+                            'tipo_examen' => $tipoExamenRemote,
+                        ];
+                    }
+                } catch (Throwable) {
+                    // Fallback al builder legacy.
+                }
+            }
+        }
+
         $procedimiento = $this->examenModel->obtenerProcedimientoProyectadoPorFormHc($formId, $hcNumber);
         if (!$procedimiento) {
             throw new RuntimeException('No se encontró el procedimiento solicitado.');
@@ -6611,6 +6651,27 @@ class ExamenController extends BaseController
             return null;
         }
 
+        if ($this->isReportingV2Imagenes012ADataEnabled()) {
+            // Evita lock de sesión cuando legacy llama a /v2 dentro del mismo request.
+            if (session_status() === PHP_SESSION_ACTIVE) {
+                @session_write_close();
+            }
+
+            $remotePayload = $this->fetchV2Cobertura012ADataPayload($formId, $hcNumber, $examenId, $selectedItems);
+            if (is_array($remotePayload) && $remotePayload !== []) {
+                $resolvedHc = trim((string)($remotePayload['paciente']['hc_number'] ?? $hcNumber));
+                if ($resolvedHc === '') {
+                    $resolvedHc = $hcNumber;
+                }
+
+                $filename = '012A_' . $resolvedHc . '_' . date('Ymd_His') . '.pdf';
+                $attachment = $this->createPdfAttachmentFromReportPayload('012A', $remotePayload, $filename);
+                if (is_array($attachment) && !empty($attachment['path'])) {
+                    return $attachment;
+                }
+            }
+        }
+
         $contextoOrigen = $this->resolveSolicitudOrigenContextFor012A($formId, $hcNumber);
         if ($selectedItems !== []) {
             $contextoOrigen = $this->resolverMejorContextoClinico012A($contextoOrigen, $selectedItems);
@@ -6806,6 +6867,305 @@ class ExamenController extends BaseController
             'type' => 'application/pdf',
             'size' => strlen($pdf),
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     * @return array{path: string, name?: string, type?: string, size?: int}|null
+     */
+    private function createPdfAttachmentFromReportPayload(string $reportSlug, array $payload, string $filename): ?array
+    {
+        $reportService = new ReportService();
+
+        try {
+            $pdf = $reportService->renderPdf($reportSlug, $payload, [
+                'destination' => 'S',
+                'filename' => $filename,
+            ]);
+        } catch (Throwable) {
+            return null;
+        }
+
+        if (strncmp($pdf, '%PDF-', 5) !== 0) {
+            return null;
+        }
+
+        $tmpBase = tempnam(sys_get_temp_dir(), 'mf_' . strtolower($reportSlug) . '_');
+        if ($tmpBase === false) {
+            return null;
+        }
+
+        $tmpPath = $tmpBase;
+        if (!str_ends_with($tmpBase, '.pdf')) {
+            $candidate = $tmpBase . '.pdf';
+            if (@rename($tmpBase, $candidate)) {
+                $tmpPath = $candidate;
+            }
+        }
+
+        if (@file_put_contents($tmpPath, $pdf) === false) {
+            @unlink($tmpPath);
+            return null;
+        }
+
+        return [
+            'path' => $tmpPath,
+            'name' => $filename,
+            'type' => 'application/pdf',
+            'size' => strlen($pdf),
+        ];
+    }
+
+    private function isReportingV2Imagenes012ADataEnabled(): bool
+    {
+        $raw = $_ENV['REPORTING_V2_IMAGENES_012A_DATA_ENABLED']
+            ?? getenv('REPORTING_V2_IMAGENES_012A_DATA_ENABLED')
+            ?? null;
+        if ($raw === null || trim((string)$raw) === '') {
+            $raw = $this->readEnvFileValue('REPORTING_V2_IMAGENES_012A_DATA_ENABLED');
+        }
+
+        return filter_var((string)($raw ?? '0'), FILTER_VALIDATE_BOOLEAN);
+    }
+
+    private function isReportingV2Imagenes012BDataEnabled(): bool
+    {
+        $raw = $_ENV['REPORTING_V2_IMAGENES_012B_DATA_ENABLED']
+            ?? getenv('REPORTING_V2_IMAGENES_012B_DATA_ENABLED')
+            ?? null;
+        if ($raw === null || trim((string)$raw) === '') {
+            $raw = $this->readEnvFileValue('REPORTING_V2_IMAGENES_012B_DATA_ENABLED');
+        }
+
+        return filter_var((string)($raw ?? '0'), FILTER_VALIDATE_BOOLEAN);
+    }
+
+    private function readEnvFileValue(string $key): ?string
+    {
+        $basePath = defined('BASE_PATH') ? BASE_PATH : dirname(__DIR__, 3);
+        $envPath = rtrim($basePath, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . '.env';
+        if (!is_readable($envPath)) {
+            return null;
+        }
+
+        $lines = file($envPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [];
+        foreach ($lines as $line) {
+            $line = trim((string)$line);
+            if ($line === '' || str_starts_with($line, '#')) {
+                continue;
+            }
+
+            [$lineKey, $value] = array_pad(explode('=', $line, 2), 2, '');
+            if (trim((string)$lineKey) !== $key) {
+                continue;
+            }
+
+            return trim((string)$value, " \t\n\r\0\x0B\"'");
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function fetchV2Informe012BDataPayload(string $formId, string $hcNumber): ?array
+    {
+        $sessionId = (string)session_id();
+        if ($sessionId === '') {
+            return null;
+        }
+
+        $baseUrl = $this->resolveCurrentBaseUrl();
+        if ($baseUrl === '') {
+            return null;
+        }
+
+        $query = http_build_query([
+            'form_id' => $formId,
+            'hc_number' => $hcNumber,
+        ], '', '&', PHP_QUERY_RFC3986);
+
+        try {
+            $requestToken = bin2hex(random_bytes(6));
+        } catch (Throwable) {
+            $requestToken = (string)mt_rand(100000, 999999);
+        }
+
+        $headers = [
+            'Accept: application/json',
+            'Cookie: PHPSESSID=' . $sessionId,
+            'X-Request-Id: legacy-reporting-' . $requestToken,
+        ];
+
+        [$status, $body] = $this->httpRequest(
+            'GET',
+            rtrim($baseUrl, '/') . '/v2/reports/imagenes/012b/data?' . $query,
+            $headers,
+            null,
+            10
+        );
+
+        if ($status !== 200 || $body === '') {
+            return null;
+        }
+
+        $payload = json_decode($body, true);
+        if (!is_array($payload)) {
+            return null;
+        }
+
+        $data = $payload['data'] ?? null;
+        return is_array($data) ? $data : null;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $selectedItems
+     * @return array<string, mixed>|null
+     */
+    private function fetchV2Cobertura012ADataPayload(
+        string $formId,
+        string $hcNumber,
+        ?int $examenId,
+        array $selectedItems
+    ): ?array {
+        $sessionId = (string)session_id();
+        if ($sessionId === '') {
+            return null;
+        }
+
+        $baseUrl = $this->resolveCurrentBaseUrl();
+        if ($baseUrl === '') {
+            return null;
+        }
+
+        $bodyPayload = [
+            'form_id' => $formId,
+            'hc_number' => $hcNumber,
+            'examen_id' => $examenId,
+            'selected_items' => $selectedItems,
+        ];
+        $body = json_encode($bodyPayload, JSON_UNESCAPED_UNICODE);
+        if (!is_string($body) || $body === '') {
+            return null;
+        }
+
+        try {
+            $requestToken = bin2hex(random_bytes(6));
+        } catch (Throwable) {
+            $requestToken = (string)mt_rand(100000, 999999);
+        }
+
+        $headers = [
+            'Accept: application/json',
+            'Content-Type: application/json',
+            'Cookie: PHPSESSID=' . $sessionId,
+            'X-Request-Id: legacy-reporting-' . $requestToken,
+        ];
+
+        [$status, $responseBody] = $this->httpRequest(
+            'POST',
+            rtrim($baseUrl, '/') . '/v2/reports/imagenes/012a/data',
+            $headers,
+            $body,
+            12
+        );
+
+        if ($status !== 200 || $responseBody === '') {
+            return null;
+        }
+
+        $payload = json_decode($responseBody, true);
+        if (!is_array($payload)) {
+            return null;
+        }
+
+        $data = $payload['data'] ?? null;
+        return is_array($data) ? $data : null;
+    }
+
+    /**
+     * @param array<int, string> $headers
+     * @return array{0:int,1:string}
+     */
+    private function httpRequest(string $method, string $url, array $headers, ?string $body, int $timeoutSeconds): array
+    {
+        $method = strtoupper(trim($method));
+        if ($method === '') {
+            $method = 'GET';
+        }
+
+        if (function_exists('curl_init')) {
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_HTTPHEADER => $headers,
+                CURLOPT_TIMEOUT => $timeoutSeconds,
+                CURLOPT_CONNECTTIMEOUT => $timeoutSeconds,
+                CURLOPT_FOLLOWLOCATION => false,
+                CURLOPT_SSL_VERIFYPEER => true,
+                CURLOPT_SSL_VERIFYHOST => 2,
+                CURLOPT_CUSTOMREQUEST => $method,
+            ]);
+            if ($method !== 'GET' && $body !== null) {
+                curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
+            }
+
+            $raw = curl_exec($ch);
+            $status = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+            curl_close($ch);
+
+            return [$status, is_string($raw) ? $raw : ''];
+        }
+
+        $headerText = implode("\r\n", $headers);
+        $httpOptions = [
+            'method' => $method,
+            'header' => $headerText,
+            'timeout' => $timeoutSeconds,
+            'ignore_errors' => true,
+        ];
+        if ($method !== 'GET' && $body !== null) {
+            $httpOptions['content'] = $body;
+        }
+
+        $context = stream_context_create([
+            'http' => $httpOptions,
+        ]);
+
+        $responseBody = @file_get_contents($url, false, $context);
+        $status = 0;
+        foreach (($http_response_header ?? []) as $line) {
+            if (preg_match('#^HTTP/\S+\s+(\d{3})#', (string)$line, $matches)) {
+                $status = (int)($matches[1] ?? 0);
+                break;
+            }
+        }
+
+        return [$status, is_string($responseBody) ? $responseBody : ''];
+    }
+
+    private function resolveCurrentBaseUrl(): string
+    {
+        if (defined('BASE_URL')) {
+            $base = trim((string)BASE_URL);
+            if ($base !== '') {
+                return rtrim($base, '/');
+            }
+        }
+
+        $hostHeader = (string)($_SERVER['HTTP_X_FORWARDED_HOST'] ?? $_SERVER['HTTP_HOST'] ?? '');
+        $host = trim((string)(explode(',', $hostHeader)[0] ?? ''));
+        if ($host === '') {
+            return '';
+        }
+
+        $proto = (string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '');
+        if ($proto === '') {
+            $proto = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        }
+
+        return $proto . '://' . $host;
     }
 
     /**
