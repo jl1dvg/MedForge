@@ -10,6 +10,31 @@ if (class_exists(OpenAIHelper::class)) {
 $AI_DEBUG = isset($_GET['debug_ai']) && $_GET['debug_ai'] === '1';
 
 $layout = __DIR__ . '/../layouts/base.php';
+$toText = static function (mixed $value): string {
+    if ($value === null) {
+        return '';
+    }
+
+    if (is_string($value)) {
+        return $value;
+    }
+
+    if (is_int($value) || is_float($value) || is_bool($value)) {
+        return (string) $value;
+    }
+
+    if (is_array($value)) {
+        return trim((string) json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+    }
+
+    return is_object($value) && method_exists($value, '__toString') ? (string) $value : '';
+};
+
+$paciente = is_array($paciente ?? null) ? $paciente : [];
+$consulta = is_array($consulta ?? null) ? $consulta : [];
+$solicitud = is_array($solicitud ?? null) ? $solicitud : [];
+$diagnostico = is_array($diagnostico ?? null) ? $diagnostico : [];
+
 $patient = [
         'afiliacion' => $paciente['afiliacion'] ?? '',
         'hc_number' => $paciente['hc_number'] ?? '',
@@ -50,8 +75,8 @@ ob_start();
         </tr>
         <tr>
             <td colspan="71" class="blanco_left"><?php
-                $motivoConsulta = $consulta['motivo_consulta'] ?? '';
-                $enfermedadActual = $consulta['enfermedad_actual'] ?? '';
+                $motivoConsulta = $toText($consulta['motivo_consulta'] ?? '');
+                $enfermedadActual = $toText($consulta['enfermedad_actual'] ?? '');
                 $reason = trim($motivoConsulta . ' ' . $enfermedadActual);
                 $reasonAI = '';
                 $reasonAI_error = null;
@@ -64,7 +89,7 @@ ob_start();
                     }
                 }
                 if (trim($reasonAI) !== '') {
-                    echo wordwrap($reasonAI, 150, "</td></tr><tr><td colspan=\"71\" class=\"blanco_left\">");
+                    echo wordwrap($toText($reasonAI), 150, "</td></tr><tr><td colspan=\"71\" class=\"blanco_left\">");
                 } else {
                     // fallback: no AI output
                     echo wordwrap('[AI sin salida para criterio clínico]', 150, "</td></tr><tr><td colspan=\"71\" class=\"blanco_left\">");
@@ -93,7 +118,7 @@ ob_start();
         <tr>
             <td class="blanco_left">
                 <?php
-                $examenFisico = $consulta['examen_fisico'] ?? '';
+                $examenFisico = $toText($consulta['examen_fisico'] ?? '');
                 $examenAI = '';
                 $examenAI_error = null;
                 if (isset($ai)) {
@@ -105,7 +130,7 @@ ob_start();
                     }
                 }
                 if (trim($examenAI) !== '') {
-                    echo wordwrap($examenAI, 150, "</TD></TR><TR><TD class='blanco_left'>");
+                    echo wordwrap($toText($examenAI), 150, "</TD></TR><TR><TD class='blanco_left'>");
                 } else {
                     // fallback: no AI output
                     echo wordwrap('[AI sin salida para criterio clínico]', 150, "</TD></TR><TR><TD class='blanco_left'>");
@@ -128,7 +153,7 @@ ob_start();
 <?php
 // Generar la tabla con el nuevo formato para imprimir diagnósticos
 // Inicializar variables de control
-$totalItems = count($diagnostico);
+$totalItems = is_array($diagnostico) ? count($diagnostico) : 0;
 $rows = max(ceil($totalItems / 2), 3); // Asegurarse de que haya al menos 3 filas por columna
 
 // Crear la tabla HTML
@@ -198,7 +223,7 @@ echo "</table>";
             <td class="blanco" style="border-right: none; text-align: left">
                 <?php
                 // Texto base para diagnóstico (prioriza un campo específico si existiera)
-                $textoDiag = $consulta['diagnostico_plan'] ?? ($consulta['plan'] ?? '');
+                $textoDiag = $toText($consulta['diagnostico_plan'] ?? ($consulta['plan'] ?? ''));
 
                 $estudiosExplicitos = null;
                 if (isset($solicitud['examenes_list']) && is_array($solicitud['examenes_list'])) {
@@ -239,6 +264,9 @@ echo "</table>";
                 }
 
                 // Fallback: si no hay salida IA, usa el listado explícito o el texto base
+                if (!is_string($planDiagAI)) {
+                    $planDiagAI = $toText($planDiagAI);
+                }
                 if (trim($planDiagAI) === '') {
                     if (!empty($estudiosExplicitos)) {
                         $fallbackLines = ["Plan de diagnóstico propuesto:"];
@@ -251,7 +279,7 @@ echo "</table>";
                     }
                 }
 
-                echo wordwrap($planDiagAI, 150, "</TD></TR><TR><TD class='blanco_left'>");
+                echo wordwrap($toText($planDiagAI), 150, "</TD></TR><TR><TD class='blanco_left'>");
 
                 // Bloque de depuración opcional en el propio PDF/HTML
                 if (!empty($AI_DEBUG)) {
@@ -285,7 +313,9 @@ echo "</table>";
         <tr>
             <td colspan="71" class="blanco_left">
                 <?php
-                $eye = $solicitud['ojo'] ?? '';
+                $eye = $toText($solicitud['ojo'] ?? '');
+                $planAI = '';
+                $planAI_error = null;
                 // Normaliza a texto legible sin punto final para pasarlo a IA
                 if ($eye === 'D') {
                     $eye = 'ojo derecho';
@@ -295,9 +325,9 @@ echo "</table>";
                     $eye = 'ambos ojos';
                 }
 
-                $procedimiento = $solicitud['procedimiento'] ?? '';
-                $promptPlan = $consulta['plan'] ?? '';
-                $insurance = $paciente['afiliacion'] ?? '';
+                $procedimiento = $toText($solicitud['procedimiento'] ?? '');
+                $promptPlan = $toText($consulta['plan'] ?? '');
+                $insurance = $toText($paciente['afiliacion'] ?? '');
 
                 try {
                     if (isset($ai)) {
@@ -312,11 +342,14 @@ echo "</table>";
                 }
 
                 // Fallback: si por cualquier motivo no se obtuvo texto de la IA, usamos el plan crudo
+                if (!is_string($planAI)) {
+                    $planAI = $toText($planAI);
+                }
                 if (trim($planAI) === '') {
                     $planAI = trim($promptPlan);
                 }
 
-                echo wordwrap($planAI, 150, "</TD></TR><TR><TD colspan=71 class='blanco_left'>");
+                echo wordwrap($toText($planAI), 150, "</TD></TR><TR><TD colspan=71 class='blanco_left'>");
 
                 // Bloque de depuración opcional en el propio PDF/HTML
                 if (!empty($AI_DEBUG)) {
@@ -370,9 +403,10 @@ echo "</table>";
         </tr>
         <tr>
             <td colspan="8" class="blanco"><?php
-                $fechaCompleta = $solicitud['created_at'];
-                $fecha = date('Y-m-d', strtotime($fechaCompleta));
-                $hora = date('H:i', strtotime($fechaCompleta));
+                $fechaCompleta = $toText($solicitud['created_at'] ?? '');
+                $timestamp = $fechaCompleta !== '' ? strtotime($fechaCompleta) : false;
+                $fecha = $timestamp !== false ? date('Y-m-d', $timestamp) : '';
+                $hora = $timestamp !== false ? date('H:i', $timestamp) : '';
                 echo $fecha ?></td>
             <td colspan="7" class="blanco"><?php echo $hora; ?></td>
             <td colspan="21" class="blanco"><?php echo htmlspecialchars($doctorFirstNameDisplay); ?></td>

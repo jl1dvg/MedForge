@@ -2,12 +2,14 @@
 
 namespace App\Modules\Reporting\Services;
 
+use App\Modules\Examenes\Services\NasImagenesService;
 use App\Modules\Reporting\Services\Definitions\PdfTemplateRegistry;
 use App\Modules\Reporting\Services\Definitions\SolicitudTemplateRegistry;
 use App\Modules\Reporting\Support\SolicitudDataFormatter;
 use Mpdf\HTMLParserMode;
 use Mpdf\Mpdf;
 use RuntimeException;
+use setasign\Fpdi\Tcpdf\Fpdi;
 
 class ReportPdfService
 {
@@ -31,6 +33,7 @@ class ReportPdfService
     private string $moduleBasePath;
     private ?ReportService $reportService = null;
     private ?SolicitudTemplateRegistry $solicitudTemplateRegistry = null;
+    private ?NasImagenesService $nasImagenesService = null;
 
     public function __construct()
     {
@@ -230,6 +233,122 @@ class ReportPdfService
             'content' => $content,
             'filename' => $filename,
         ];
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $items
+     * @return array{content:string,filename:string}|null
+     */
+    public function generateInforme012BPackagePdf(array $items): ?array
+    {
+        $normalized = $this->normalizePackageItems($items);
+        if ($normalized === []) {
+            return null;
+        }
+
+        $hcBase = (string) ($normalized[0]['hc_number'] ?? '');
+        if ($hcBase === '') {
+            return null;
+        }
+
+        foreach ($normalized as $item) {
+            if (($item['hc_number'] ?? '') !== $hcBase) {
+                throw new RuntimeException('Los exámenes seleccionados deben pertenecer al mismo paciente.');
+            }
+        }
+
+        $pdf = new Fpdi();
+        $pdf->SetAutoPageBreak(false, 0);
+        $pdf->setPrintHeader(false);
+        $pdf->setPrintFooter(false);
+
+        $tempFiles = [];
+        $hasPages = false;
+
+        try {
+            $baseItem = $normalized[0];
+            $cobertura012A = $this->generateCobertura012APdf(
+                (string) $baseItem['form_id'],
+                $hcBase,
+                null,
+                $normalized
+            );
+            if (is_array($cobertura012A) && isset($cobertura012A['content'])) {
+                $tmp012A = $this->writeTempFile((string) $cobertura012A['content'], 'pdf');
+                $tempFiles[] = $tmp012A;
+                $this->appendPdfFile($pdf, $tmp012A);
+                $hasPages = true;
+            }
+
+            foreach ($normalized as $item) {
+                $formId = (string) ($item['form_id'] ?? '');
+                $hcNumber = (string) ($item['hc_number'] ?? '');
+                if ($formId === '' || $hcNumber === '') {
+                    continue;
+                }
+
+                $informe012B = $this->generateInforme012BPdf($formId, $hcNumber);
+                if (is_array($informe012B) && isset($informe012B['content'])) {
+                    $tmp012B = $this->writeTempFile((string) $informe012B['content'], 'pdf');
+                    $tempFiles[] = $tmp012B;
+                    $this->appendPdfFile($pdf, $tmp012B);
+                    $hasPages = true;
+                }
+
+                $files = $this->nasImagenesService()->listFiles($hcNumber, $formId);
+                if ($this->isAngiografiaRetinal((string) ($item['tipo_examen'] ?? null)) && count($files) > 2) {
+                    $files = array_slice($files, 0, 2);
+                }
+
+                foreach ($files as $file) {
+                    $name = is_array($file) ? trim((string) ($file['name'] ?? '')) : '';
+                    if ($name === '') {
+                        continue;
+                    }
+
+                    $prepared = $this->prepareNasFileForPackage($hcNumber, $formId, $name);
+                    if (!is_array($prepared)) {
+                        continue;
+                    }
+
+                    $tmpPath = (string) ($prepared['path'] ?? '');
+                    $ext = strtolower((string) ($prepared['ext'] ?? ''));
+                    if ($tmpPath === '' || !is_file($tmpPath)) {
+                        continue;
+                    }
+
+                    $tempFiles[] = $tmpPath;
+
+                    if ($ext === 'pdf') {
+                        $this->appendPdfFile($pdf, $tmpPath);
+                        $hasPages = true;
+                        continue;
+                    }
+
+                    $this->appendImageFile($pdf, $tmpPath);
+                    $hasPages = true;
+                }
+            }
+
+            if (!$hasPages) {
+                throw new RuntimeException('No se encontraron documentos para generar el paquete 012B.');
+            }
+
+            $filename = $this->buildPaqueteFilename($hcBase);
+            $content = (string) $pdf->Output($filename, 'S');
+            $this->assertPdf($content, '012B_package');
+
+            return [
+                'content' => $content,
+                'filename' => $filename,
+            ];
+        } finally {
+            foreach ($tempFiles as $tmp) {
+                if (is_string($tmp) && $tmp !== '' && is_file($tmp)) {
+                    @unlink($tmp);
+                }
+            }
+        }
     }
 
     private function reportService(): ReportService
@@ -649,6 +768,198 @@ class ReportPdfService
         }
 
         return dirname(__DIR__, 4);
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $items
+     * @return array<int, array<string, mixed>>
+     */
+    private function normalizePackageItems(array $items): array
+    {
+        $normalized = [];
+
+        foreach ($items as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $formId = trim((string) ($item['form_id'] ?? ''));
+            $hcNumber = trim((string) ($item['hc_number'] ?? ''));
+            if ($formId === '' || $hcNumber === '') {
+                continue;
+            }
+
+            $key = $formId . '|' . $hcNumber;
+            $normalized[$key] = [
+                'id' => isset($item['id']) ? (int) $item['id'] : null,
+                'form_id' => $formId,
+                'hc_number' => $hcNumber,
+                'fecha_examen' => trim((string) ($item['fecha_examen'] ?? '')),
+                'estado_agenda' => trim((string) ($item['estado_agenda'] ?? '')),
+                'tipo_examen' => trim((string) ($item['tipo_examen'] ?? $item['examen_nombre'] ?? '')),
+                'codigo' => trim((string) ($item['codigo'] ?? $item['examen_codigo'] ?? '')),
+            ];
+        }
+
+        return array_values($normalized);
+    }
+
+    private function nasImagenesService(): NasImagenesService
+    {
+        if ($this->nasImagenesService === null) {
+            $this->nasImagenesService = new NasImagenesService();
+        }
+
+        return $this->nasImagenesService;
+    }
+
+    /**
+     * @return array{path:string,ext:string}|null
+     */
+    private function prepareNasFileForPackage(string $hcNumber, string $formId, string $filename): ?array
+    {
+        $opened = $this->nasImagenesService()->openFile($hcNumber, $formId, $filename);
+        if (!is_array($opened) || empty($opened['stream'])) {
+            return null;
+        }
+
+        $ext = strtolower((string) ($opened['ext'] ?? pathinfo($filename, PATHINFO_EXTENSION)));
+        if ($ext === '') {
+            $ext = 'bin';
+        }
+
+        $tmpPath = $this->writeTempStream($opened['stream'], $ext);
+        fclose($opened['stream']);
+
+        return [
+            'path' => $tmpPath,
+            'ext' => $ext,
+        ];
+    }
+
+    private function writeTempFile(string $content, string $ext): string
+    {
+        $base = tempnam(sys_get_temp_dir(), 'imgpdf_');
+        if ($base === false) {
+            throw new RuntimeException('No se pudo crear archivo temporal.');
+        }
+
+        $ext = strtolower(trim($ext));
+        if ($ext === '' || preg_match('/^[a-z0-9]+$/', $ext) !== 1) {
+            $ext = 'bin';
+        }
+
+        $path = $base . '.' . $ext;
+        @rename($base, $path);
+        file_put_contents($path, $content);
+
+        return $path;
+    }
+
+    /**
+     * @param resource $stream
+     */
+    private function writeTempStream($stream, string $ext): string
+    {
+        $base = tempnam(sys_get_temp_dir(), 'imgpdf_');
+        if ($base === false) {
+            throw new RuntimeException('No se pudo crear archivo temporal.');
+        }
+
+        $ext = strtolower(trim($ext));
+        if ($ext === '' || preg_match('/^[a-z0-9]+$/', $ext) !== 1) {
+            $ext = 'bin';
+        }
+
+        $path = $base . '.' . $ext;
+        @rename($base, $path);
+
+        $dest = fopen($path, 'wb');
+        if ($dest === false) {
+            throw new RuntimeException('No se pudo escribir archivo temporal.');
+        }
+
+        stream_copy_to_stream($stream, $dest);
+        fclose($dest);
+
+        return $path;
+    }
+
+    private function appendPdfFile(Fpdi $pdf, string $path): void
+    {
+        $pageCount = $pdf->setSourceFile($path);
+        for ($pageNo = 1; $pageNo <= $pageCount; $pageNo++) {
+            $tplId = $pdf->importPage($pageNo);
+            $size = $pdf->getTemplateSize($tplId);
+            $pdf->AddPage($size['orientation'], [$size['width'], $size['height']]);
+            $pdf->useTemplate($tplId);
+        }
+    }
+
+    private function appendImageFile(Fpdi $pdf, string $path): void
+    {
+        $info = @getimagesize($path);
+        $width = (int) ($info[0] ?? 0);
+        $height = (int) ($info[1] ?? 0);
+        $orientation = ($width > $height) ? 'L' : 'P';
+
+        $pdf->AddPage($orientation);
+        $pageWidth = $pdf->getPageWidth();
+        $pageHeight = $pdf->getPageHeight();
+
+        if ($width > 0 && $height > 0) {
+            $ratio = min($pageWidth / $width, $pageHeight / $height);
+            $renderWidth = $width * $ratio;
+            $renderHeight = $height * $ratio;
+            $x = ($pageWidth - $renderWidth) / 2;
+            $y = ($pageHeight - $renderHeight) / 2;
+            $pdf->Image($path, $x, $y, $renderWidth, $renderHeight);
+            return;
+        }
+
+        $pdf->Image($path, 0, 0, $pageWidth, $pageHeight);
+    }
+
+    private function isAngiografiaRetinal(?string $tipoExamen): bool
+    {
+        $texto = $this->normalizeSearchText((string) ($tipoExamen ?? ''));
+        if ($texto === '') {
+            return false;
+        }
+
+        if (preg_match('/\b281021\b/', $texto) === 1) {
+            return true;
+        }
+
+        return str_contains($texto, 'angiografia retinal');
+    }
+
+    private function normalizeSearchText(string $value): string
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return '';
+        }
+
+        if (function_exists('mb_strtolower')) {
+            $value = mb_strtolower($value, 'UTF-8');
+        } else {
+            $value = strtolower($value);
+        }
+
+        $value = strtr($value, [
+            'á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u', 'ü' => 'u', 'ñ' => 'n',
+        ]);
+        $value = preg_replace('/\s+/', ' ', $value) ?? $value;
+
+        return trim($value);
+    }
+
+    private function buildPaqueteFilename(string $hcNumber): string
+    {
+        $safeHc = $this->safeFilePart($hcNumber);
+
+        return 'IMAGENES_' . $safeHc . '_' . date('m-Y') . '.pdf';
     }
 
     private function buildCoberturaAppendixFilename(string $filename): string

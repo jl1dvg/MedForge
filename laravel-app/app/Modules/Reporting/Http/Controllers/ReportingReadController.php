@@ -750,6 +750,113 @@ class ReportingReadController
         return $this->pdfResponse((string) $pdf['content'], (string) $pdf['filename'], $requestId);
     }
 
+    public function informe012BPackagePdf(Request $request): Response|JsonResponse|RedirectResponse
+    {
+        $requestId = $this->requestId($request);
+
+        if (!LegacySessionAuth::isAuthenticated($request)) {
+            if ($request->expectsJson()) {
+                return response()->json(['error' => 'Sesión expirada'], 401)->header('X-Request-Id', $requestId);
+            }
+
+            return redirect('/auth/login?auth_required=1')->header('X-Request-Id', $requestId);
+        }
+
+        $formId = trim((string) $request->input('form_id', $request->query('form_id', '')));
+        $hcNumber = trim((string) $request->input('hc_number', $request->query('hc_number', '')));
+
+        if ($formId === '' || $hcNumber === '') {
+            return response()
+                ->json([
+                    'error' => 'Faltan parámetros obligatorios.',
+                    'required' => ['form_id', 'hc_number'],
+                ], 422)
+                ->header('X-Request-Id', $requestId);
+        }
+
+        try {
+            $pdf = $this->reportPdfService()->generateInforme012BPackagePdf([[
+                'form_id' => $formId,
+                'hc_number' => $hcNumber,
+            ]]);
+        } catch (\Throwable $e) {
+            Log::error('reporting.read.imagenes_012b_package_pdf.error', [
+                'request_id' => $requestId,
+                'form_id' => $formId,
+                'hc_number' => $hcNumber,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()
+                ->json(['error' => 'No se pudo generar el paquete 012B.'], 500)
+                ->header('X-Request-Id', $requestId);
+        }
+
+        if (!is_array($pdf) || !isset($pdf['content'], $pdf['filename'])) {
+            return response()
+                ->json(['error' => 'No se encontró información para generar el paquete 012B.'], 404)
+                ->header('X-Request-Id', $requestId);
+        }
+
+        Log::info('reporting.read.imagenes_012b_package_pdf', [
+            'request_id' => $requestId,
+            'user_id' => LegacySessionAuth::userId($request),
+            'form_id' => $formId,
+            'hc_number' => $hcNumber,
+            'items' => 1,
+        ]);
+
+        return $this->pdfResponse((string) $pdf['content'], (string) $pdf['filename'], $requestId, false);
+    }
+
+    public function informe012BPackageSelectionPdf(Request $request): Response|JsonResponse|RedirectResponse
+    {
+        $requestId = $this->requestId($request);
+
+        if (!LegacySessionAuth::isAuthenticated($request)) {
+            if ($request->expectsJson()) {
+                return response()->json(['error' => 'Sesión expirada'], 401)->header('X-Request-Id', $requestId);
+            }
+
+            return redirect('/auth/login?auth_required=1')->header('X-Request-Id', $requestId);
+        }
+
+        $items = $this->parseSelectedItems($request->input('items', $request->query('items', [])));
+        if ($items === []) {
+            return response()
+                ->json(['error' => 'No se recibieron exámenes para el paquete.'], 422)
+                ->header('X-Request-Id', $requestId);
+        }
+
+        try {
+            $pdf = $this->reportPdfService()->generateInforme012BPackagePdf($items);
+        } catch (\Throwable $e) {
+            Log::error('reporting.read.imagenes_012b_package_selection_pdf.error', [
+                'request_id' => $requestId,
+                'items' => count($items),
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()
+                ->json(['error' => 'No se pudo generar el paquete 012B.'], 500)
+                ->header('X-Request-Id', $requestId);
+        }
+
+        if (!is_array($pdf) || !isset($pdf['content'], $pdf['filename'])) {
+            return response()
+                ->json(['error' => 'No se encontró información para generar el paquete 012B.'], 404)
+                ->header('X-Request-Id', $requestId);
+        }
+
+        Log::info('reporting.read.imagenes_012b_package_selection_pdf', [
+            'request_id' => $requestId,
+            'user_id' => LegacySessionAuth::userId($request),
+            'items' => count($items),
+        ]);
+
+        return $this->pdfResponse((string) $pdf['content'], (string) $pdf['filename'], $requestId, false);
+    }
+
     public function cobertura012APdf(Request $request): Response|JsonResponse|RedirectResponse
     {
         $requestId = $this->requestId($request);
@@ -843,11 +950,13 @@ class ReportingReadController
         return 'v2-reporting-' . bin2hex(random_bytes(8));
     }
 
-    private function pdfResponse(string $content, string $filename, string $requestId): Response
+    private function pdfResponse(string $content, string $filename, string $requestId, bool $inline = true): Response
     {
+        $disposition = ($inline ? 'inline' : 'attachment') . '; filename="' . $filename . '"';
+
         return response($content, 200, [
             'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'inline; filename="' . $filename . '"',
+            'Content-Disposition' => $disposition,
             'Content-Length' => (string) strlen($content),
             'X-Content-Type-Options' => 'nosniff',
             'X-Request-Id' => $requestId,

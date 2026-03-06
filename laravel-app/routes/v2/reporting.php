@@ -9,6 +9,8 @@ Route::middleware('legacy.auth')->group(function (): void {
     Route::get('/reports/imagenes/012b/data', [ReportingReadController::class, 'informe012BData']);
     Route::match(['GET', 'POST'], '/reports/imagenes/012a/data', [ReportingReadController::class, 'cobertura012AData']);
     Route::get('/reports/imagenes/012b/pdf', [ReportingReadController::class, 'informe012BPdf']);
+    Route::get('/reports/imagenes/012b/paquete', [ReportingReadController::class, 'informe012BPackagePdf']);
+    Route::match(['GET', 'POST'], '/reports/imagenes/012b/paquete/seleccion', [ReportingReadController::class, 'informe012BPackageSelectionPdf']);
     Route::match(['GET', 'POST'], '/reports/imagenes/012a/pdf', [ReportingReadController::class, 'cobertura012APdf']);
     Route::get('/reports/cobertura/data', [ReportingReadController::class, 'coberturaData']);
     Route::get('/reports/consulta/data', [ReportingReadController::class, 'consultaData']);

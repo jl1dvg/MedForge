@@ -17,6 +17,9 @@ $options = getopt('', [
     'solicitud-id::',
     'billing-form-id::',
     'billing-hc-number::',
+    'report-form-id::',
+    'report-hc-number::',
+    'report-dias-descanso::',
     'help',
 ]);
 
@@ -26,6 +29,7 @@ if (isset($options['help'])) {
     echo "       [--legacy-base=http://127.0.0.1:8080] [--v2-base=http://127.0.0.1:8081] [--timeout=20]\n";
     echo "       [--cookie='PHPSESSID=...'] [--hc-number=HC-REAL-001] [--solicitud-id=123]\n";
     echo "       [--allow-destructive] [--billing-form-id=123] [--billing-hc-number=HC123]\n";
+    echo "       [--report-form-id=123] [--report-hc-number=HC123] [--report-dias-descanso=5]\n";
     exit(0);
 }
 
@@ -44,6 +48,9 @@ $fixtures = [
     'SOLICITUD_ID' => trim((string) ($options['solicitud-id'] ?? $contract['fixtures']['SOLICITUD_ID'] ?? '')),
     'BILLING_FORM_ID' => trim((string) ($options['billing-form-id'] ?? $contract['fixtures']['BILLING_FORM_ID'] ?? '')),
     'BILLING_HC_NUMBER' => trim((string) ($options['billing-hc-number'] ?? $contract['fixtures']['BILLING_HC_NUMBER'] ?? '')),
+    'REPORT_FORM_ID' => trim((string) ($options['report-form-id'] ?? $contract['fixtures']['REPORT_FORM_ID'] ?? '')),
+    'REPORT_HC_NUMBER' => trim((string) ($options['report-hc-number'] ?? $contract['fixtures']['REPORT_HC_NUMBER'] ?? '')),
+    'REPORT_DIAS_DESCANSO' => trim((string) ($options['report-dias-descanso'] ?? $contract['fixtures']['REPORT_DIAS_DESCANSO'] ?? '5')),
 ];
 
 $tests = [];
@@ -143,6 +150,13 @@ foreach ($tests as $test) {
     if ((bool) ($test['requires_dynamic_fixture'] ?? false) && ($fixtures['BILLING_FORM_ID'] === '' || $fixtures['BILLING_HC_NUMBER'] === '')) {
         echo "  SKIP\n";
         echo "  note: Dynamic billing fixture unavailable. Provide --billing-form-id/--billing-hc-number or ensure /v2/api/billing/no-facturados has data.\n";
+        $skipped++;
+        continue;
+    }
+
+    if ((bool) ($test['requires_reporting_fixture'] ?? false) && ($fixtures['REPORT_FORM_ID'] === '' || $fixtures['REPORT_HC_NUMBER'] === '')) {
+        echo "  SKIP\n";
+        echo "  note: Reporting fixture unavailable. Provide --report-form-id and --report-hc-number.\n";
         $skipped++;
         continue;
     }

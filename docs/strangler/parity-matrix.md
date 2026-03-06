@@ -36,6 +36,8 @@ Current auth parity policy:
 
 - `POST /pacientes/datatable` -> `POST /v2/pacientes/datatable`
 - `GET|POST /pacientes/detalles` -> `GET|POST /v2/pacientes/detalles`
+- `GET /pacientes/detalles/solicitud` -> `GET /v2/pacientes/detalles/solicitud`
+- `GET /pacientes/detalles/section` -> `GET /v2/pacientes/detalles/section`
 - `GET /pacientes/flujo` -> `GET /v2/pacientes/flujo`
 - `POST /pacientes/detalles?actualizar_paciente=1` -> `POST /v2/pacientes/detalles?actualizar_paciente=1`
 
@@ -51,13 +53,34 @@ Current auth parity policy:
 
 ### Auth (deferred)
 
-- `GET /auth/login` -> `GET /v2/auth/migration-status` (placeholder 501)
+- `GET /auth/login` -> `GET /v2/auth/migration-status` (operational 200)
 - `GET /auth/logout` <-> `GET /v2/auth/logout` (logout unificado legacy+v2)
 
 Logout unificado:
 
 - Si cierras en legacy (`/auth/logout`), se destruye `PHPSESSID` y se expiran cookies Laravel (`laravel-session`, `XSRF-TOKEN`).
 - Si cierras en v2 (`/v2/auth/logout`), se destruye sesión legacy (`PHPSESSID`) y se invalida la sesión Laravel.
+
+### Reporting (PDF cutover)
+
+Cutover status:
+
+- Phase 3 completed on March 6, 2026.
+- Legacy PDF routes now work as compatibility shims (`302`/`307`) to `/v2/reports/*`.
+- Legacy cobertura queue no longer generates PDFs in legacy runtime; queue endpoints return a v2 shim payload that resolves to `/v2/reports/cobertura/pdf`.
+
+Endpoints covered:
+
+- `GET /reports/protocolo/pdf` -> `GET /v2/reports/protocolo/pdf`
+- `GET /reports/cobertura/pdf` -> `GET /v2/reports/cobertura/pdf`
+- `GET /reports/cobertura/pdf-template` -> `GET /v2/reports/cobertura/pdf?variant=template`
+- `GET /reports/cobertura/pdf-html` -> `GET /v2/reports/cobertura/pdf?variant=appendix`
+- `GET /reports/consulta/pdf` -> `GET /v2/reports/consulta/pdf`
+- `GET|POST /reports/cirugias/descanso/pdf` -> `GET|POST /v2/reports/cirugias/descanso/pdf`
+- `GET /imagenes/informes/012b/pdf` -> `GET /v2/reports/imagenes/012b/pdf`
+- `GET /imagenes/informes/012b/paquete` -> `GET /v2/reports/imagenes/012b/paquete`
+- `GET|POST /imagenes/informes/012b/paquete/seleccion` -> `GET|POST /v2/reports/imagenes/012b/paquete/seleccion`
+- `GET /examenes/cobertura-012a/pdf` -> `GET /v2/reports/imagenes/012a/pdf`
 
 ## Fixture dataset
 
@@ -82,7 +105,11 @@ php tools/tests/http_smoke.php --endpoint=dashboard_summary
 php tools/tests/http_smoke.php --endpoint=dashboard_summary --cookie='PHPSESSID=...'
 php tools/tests/http_smoke.php --module=dashboard_cutover
 php tools/tests/http_smoke.php --module=dashboard_cutover --cookie='PHPSESSID=...'
+php tools/tests/http_smoke.php --module=reporting_cutover
+php tools/tests/http_smoke.php --module=reporting_cutover --cookie='PHPSESSID=...' --report-form-id='249878' --report-hc-number='0300263803' --report-dias-descanso='5'
 php tools/tests/http_smoke.php --endpoint=pacientes_datatable
+php tools/tests/http_smoke.php --endpoint=pacientes_detalles_solicitud
+php tools/tests/http_smoke.php --endpoint=pacientes_detalles_section
 php tools/tests/http_smoke.php --endpoint=pacientes_flujo
 php tools/tests/http_smoke.php --endpoint=pacientes_detalles_update
 php tools/tests/http_smoke.php --fail-fast
@@ -100,6 +127,7 @@ php tools/tests/http_smoke.php --module=pacientes --cookie='PHPSESSID=...' --hc-
 /usr/bin/php8.1-cli tools/tests/http_smoke.php --module=billing --cookie='PHPSESSID=...'
 /usr/bin/php8.1-cli tools/tests/http_smoke.php --endpoint=dashboard_ui --cookie='PHPSESSID=...'
 /usr/bin/php8.1-cli tools/tests/http_smoke.php --module=dashboard_cutover --cookie='PHPSESSID=...'
+/usr/bin/php8.1-cli tools/tests/http_smoke.php --module=reporting_cutover --cookie='PHPSESSID=...' --report-form-id='249878' --report-hc-number='0300263803' --report-dias-descanso='5'
 /usr/bin/php8.1-cli tools/tests/http_smoke.php --endpoint=auth_logout_unified --cookie='PHPSESSID=...' --allow-destructive
 ```
 

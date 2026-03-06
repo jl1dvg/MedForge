@@ -3,9 +3,7 @@
 require_once __DIR__ . '/Support/LegacyLoader.php';
 
 use Core\Router;
-use Controllers\PdfController;
 use Modules\Reporting\Controllers\ReportController;
-use Modules\Reporting\Services\AsyncReportQueueService;
 use Modules\Reporting\Services\ReportService;
 
 reporting_bootstrap_legacy();
@@ -22,85 +20,41 @@ return static function (Router $router, \PDO $pdo): void {
     });
 
     $router->get('/reports/protocolo/pdf', static function (\PDO $pdo): void {
-        $formId = $_GET['form_id'] ?? null;
-        $hcNumber = $_GET['hc_number'] ?? null;
-        $mode = $_GET['modo'] ?? 'completo';
-
-        if (!$formId || !$hcNumber) {
-            http_response_code(400);
-            header('Content-Type: application/json');
-            echo json_encode([
-                'error' => 'Faltan parámetros obligatorios.',
-                'required' => ['form_id', 'hc_number'],
-            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-            return;
-        }
-
-        $controller = new PdfController($pdo);
-        $controller->generarProtocolo($formId, $hcNumber, false, $mode);
+        $query = trim((string) ($_SERVER['QUERY_STRING'] ?? ''));
+        $target = '/v2/reports/protocolo/pdf' . ($query !== '' ? ('?' . $query) : '');
+        header('Location: ' . $target, true, 302);
     });
 
     $router->get('/reports/cobertura/pdf', static function (\PDO $pdo): void {
-        $formId = $_GET['form_id'] ?? null;
-        $hcNumber = $_GET['hc_number'] ?? null;
-
-        if (!$formId || !$hcNumber) {
-            http_response_code(400);
-            header('Content-Type: application/json');
-            echo json_encode([
-                'error' => 'Faltan parámetros obligatorios.',
-                'required' => ['form_id', 'hc_number'],
-            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-            return;
-        }
-
-        $controller = new PdfController($pdo);
-        $controller->generateCobertura($formId, $hcNumber);
+        $query = trim((string) ($_SERVER['QUERY_STRING'] ?? ''));
+        $target = '/v2/reports/cobertura/pdf' . ($query !== '' ? ('?' . $query) : '');
+        header('Location: ' . $target, true, 302);
     });
 
     $router->get('/reports/cobertura/pdf-template', static function (\PDO $pdo): void {
-        $formId = $_GET['form_id'] ?? null;
-        $hcNumber = $_GET['hc_number'] ?? null;
-
-        if (!$formId || !$hcNumber) {
-            http_response_code(400);
-            header('Content-Type: application/json');
-            echo json_encode([
-                'error' => 'Faltan parámetros obligatorios.',
-                'required' => ['form_id', 'hc_number'],
-            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-            return;
-        }
-
-        $controller = new PdfController($pdo);
-        $controller->generateCobertura($formId, $hcNumber, 'template');
+        $query = trim((string) ($_SERVER['QUERY_STRING'] ?? ''));
+        $separator = $query !== '' ? '&' : '?';
+        $target = '/v2/reports/cobertura/pdf' . ($query !== '' ? ('?' . $query) : '') . $separator . 'variant=template';
+        header('Location: ' . $target, true, 302);
     });
 
     $router->get('/reports/cobertura/pdf-html', static function (\PDO $pdo): void {
-        $formId = $_GET['form_id'] ?? null;
-        $hcNumber = $_GET['hc_number'] ?? null;
-
-        if (!$formId || !$hcNumber) {
-            http_response_code(400);
-            header('Content-Type: application/json');
-            echo json_encode([
-                'error' => 'Faltan parámetros obligatorios.',
-                'required' => ['form_id', 'hc_number'],
-            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-            return;
-        }
-
-        $controller = new PdfController($pdo);
-        $controller->generateCobertura($formId, $hcNumber, 'appendix');
+        $query = trim((string) ($_SERVER['QUERY_STRING'] ?? ''));
+        $separator = $query !== '' ? '&' : '?';
+        $target = '/v2/reports/cobertura/pdf' . ($query !== '' ? ('?' . $query) : '') . $separator . 'variant=appendix';
+        header('Location: ' . $target, true, 302);
     });
 
 
     $router->get('/reports/cobertura/pdf-queue', static function (\PDO $pdo): void {
-        $formId = $_GET['form_id'] ?? null;
-        $hcNumber = $_GET['hc_number'] ?? null;
-        $variant = $_GET['variant'] ?? 'template';
+        $formId = trim((string) ($_GET['form_id'] ?? ''));
+        $hcNumber = trim((string) ($_GET['hc_number'] ?? ''));
+        $variant = trim((string) ($_GET['variant'] ?? 'template'));
+        if ($variant === '') {
+            $variant = 'template';
+        }
 
-        if (!$formId || !$hcNumber) {
+        if ($formId === '' || $hcNumber === '') {
             http_response_code(400);
             header('Content-Type: application/json');
             echo json_encode([
@@ -110,21 +64,33 @@ return static function (Router $router, \PDO $pdo): void {
             return;
         }
 
-        $service = new AsyncReportQueueService($pdo);
-        $jobId = $service->enqueueCobertura((string) $formId, (string) $hcNumber, (string) $variant);
+        $target = '/v2/reports/cobertura/pdf?' . http_build_query([
+            'form_id' => $formId,
+            'hc_number' => $hcNumber,
+            'variant' => $variant,
+        ], '', '&', PHP_QUERY_RFC3986);
+
+        $jobId = 'v2-' . bin2hex(random_bytes(8));
+        $statusUrl = '/reports/cobertura/pdf-queue/status?' . http_build_query([
+            'id' => $jobId,
+            'target' => $target,
+        ], '', '&', PHP_QUERY_RFC3986);
 
         http_response_code(202);
         header('Content-Type: application/json');
         echo json_encode([
             'ok' => true,
+            'strategy' => 'strangler-v2',
             'job_id' => $jobId,
-            'status_url' => '/reports/cobertura/pdf-queue/status?id=' . $jobId,
+            'status_url' => $statusUrl,
         ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     });
 
     $router->get('/reports/cobertura/pdf-queue/status', static function (\PDO $pdo): void {
-        $id = (int) ($_GET['id'] ?? 0);
-        if ($id <= 0) {
+        $id = trim((string) ($_GET['id'] ?? ''));
+        $target = trim((string) ($_GET['target'] ?? ''));
+
+        if ($id === '') {
             http_response_code(400);
             header('Content-Type: application/json');
             echo json_encode([
@@ -133,15 +99,12 @@ return static function (Router $router, \PDO $pdo): void {
             return;
         }
 
-        $service = new AsyncReportQueueService($pdo);
-        $job = $service->getJob($id);
-
-        if ($job === null) {
-            http_response_code(404);
+        if ($target === '' || !str_starts_with($target, '/v2/reports/cobertura/pdf')) {
+            http_response_code(400);
             header('Content-Type: application/json');
             echo json_encode([
-                'error' => 'Job no encontrado.',
-                'id' => $id,
+                'error' => 'Parámetro target inválido.',
+                'required' => ['target'],
             ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
             return;
         }
@@ -149,68 +112,25 @@ return static function (Router $router, \PDO $pdo): void {
         header('Content-Type: application/json');
         echo json_encode([
             'ok' => true,
-            'job' => $job,
+            'job' => [
+                'id' => $id,
+                'status' => 'completed',
+                'strategy' => 'strangler-v2',
+                'progress' => 100,
+                'download_url' => $target,
+            ],
         ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     });
 
     $router->get('/reports/consulta/pdf', static function (\PDO $pdo): void {
-        $formId = $_GET['form_id'] ?? null;
-        $hcNumber = $_GET['hc_number'] ?? null;
-
-        if (!$formId || !$hcNumber) {
-            http_response_code(400);
-            header('Content-Type: application/json');
-            echo json_encode([
-                'error' => 'Faltan parámetros obligatorios.',
-                'required' => ['form_id', 'hc_number'],
-            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-            return;
-        }
-
-        $controller = new PdfController($pdo);
-        $controller->generateConsultaIess($formId, $hcNumber);
+        $query = trim((string) ($_SERVER['QUERY_STRING'] ?? ''));
+        $target = '/v2/reports/consulta/pdf' . ($query !== '' ? ('?' . $query) : '');
+        header('Location: ' . $target, true, 302);
     });
 
     $router->get('/reports/cirugias/descanso/pdf', static function (\PDO $pdo): void {
-        $formId = $_GET['form_id'] ?? null;
-        $hcNumber = $_GET['hc_number'] ?? null;
-
-        if (!$formId || !$hcNumber) {
-            http_response_code(400);
-            header('Content-Type: application/json');
-            echo json_encode([
-                'error' => 'Faltan parametros obligatorios.',
-                'required' => ['form_id', 'hc_number'],
-            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-            return;
-        }
-
-        $restDays = null;
-        if (isset($_GET['dias_descanso']) && $_GET['dias_descanso'] !== '') {
-            $restDays = (int) $_GET['dias_descanso'];
-        }
-
-        $restStartDate = isset($_GET['fecha_inicio_descanso']) && is_string($_GET['fecha_inicio_descanso'])
-            ? trim($_GET['fecha_inicio_descanso'])
-            : null;
-        if ($restStartDate === '') {
-            $restStartDate = null;
-        }
-
-        $observaciones = isset($_GET['observaciones']) && is_string($_GET['observaciones'])
-            ? trim($_GET['observaciones'])
-            : null;
-        if ($observaciones === '') {
-            $observaciones = null;
-        }
-
-        $controller = new PdfController($pdo);
-        $controller->generatePostSurgeryRestCertificate(
-            (string) $formId,
-            (string) $hcNumber,
-            $restDays,
-            $restStartDate,
-            $observaciones
-        );
+        $query = trim((string) ($_SERVER['QUERY_STRING'] ?? ''));
+        $target = '/v2/reports/cirugias/descanso/pdf' . ($query !== '' ? ('?' . $query) : '');
+        header('Location: ' . $target, true, 302);
     });
 };

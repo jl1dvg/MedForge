@@ -82,8 +82,14 @@ class PdfRenderer
         extract($data, EXTR_SKIP);
 
         ob_start();
-        include $path;
-        return (string)ob_get_clean();
+        try {
+            include $path;
+
+            return (string) ob_get_clean();
+        } catch (\Throwable $e) {
+            ob_end_clean();
+            throw $e;
+        }
     }
 
     private function resolveTemplate(string $template): string

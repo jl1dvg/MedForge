@@ -261,8 +261,13 @@ class ReportService
         extract($data, EXTR_SKIP);
 
         ob_start();
-        include $template;
+        try {
+            include $template;
 
-        return (string) ob_get_clean();
+            return (string) ob_get_clean();
+        } catch (\Throwable $e) {
+            ob_end_clean();
+            throw $e;
+        }
     }
 }
