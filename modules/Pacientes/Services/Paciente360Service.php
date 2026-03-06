@@ -25,11 +25,12 @@ class Paciente360Service
      * @return array{
      *     section:string,
      *     summary:array<string,int>,
+     *     filters:array<string,string>,
      *     total_rows:int,
      *     rows:array<int,array<string,mixed>>
      * }
      */
-    public function getSection(string $hcNumber, string $section, int $limit = 25): array
+    public function getSection(string $hcNumber, string $section, int $limit = 25, array $filters = []): array
     {
         $hcNumber = $this->normalizeHcNumber($hcNumber);
         if ($hcNumber === '') {
@@ -38,28 +39,40 @@ class Paciente360Service
 
         $section = strtolower(trim($section));
         $limit = max(1, min(100, $limit));
+        $filters = $this->normalizeFilters($filters);
+        $hasActiveFilters = $this->hasActiveFilters($filters);
+        $queryLimit = $hasActiveFilters ? max(150, $limit * 10) : $limit;
 
         $rows = match ($section) {
-            'solicitudes' => $this->fetchSolicitudes($hcNumber, $limit),
-            'examenes' => $this->fetchExamenes($hcNumber, $limit),
-            'agenda' => $this->fetchAgenda($hcNumber, $limit),
-            'consultas' => $this->fetchConsultas($hcNumber, $limit),
-            'protocolos' => $this->fetchProtocolos($hcNumber, $limit),
-            'prefacturas' => $this->fetchPrefacturas($hcNumber, $limit),
-            'derivaciones' => $this->fetchDerivaciones($hcNumber, $limit),
-            'recetas' => $this->fetchRecetas($hcNumber, $limit),
-            'crm' => $this->fetchCrm($hcNumber, $limit),
+            'solicitudes' => $this->fetchSolicitudes($hcNumber, $queryLimit),
+            'examenes' => $this->fetchExamenes($hcNumber, $queryLimit),
+            'agenda' => $this->fetchAgenda($hcNumber, $queryLimit),
+            'consultas' => $this->fetchConsultas($hcNumber, $queryLimit),
+            'protocolos' => $this->fetchProtocolos($hcNumber, $queryLimit),
+            'prefacturas' => $this->fetchPrefacturas($hcNumber, $queryLimit),
+            'derivaciones' => $this->fetchDerivaciones($hcNumber, $queryLimit),
+            'recetas' => $this->fetchRecetas($hcNumber, $queryLimit),
+            'crm' => $this->fetchCrm($hcNumber, $queryLimit),
             default => throw new InvalidArgumentException(
                 'Sección no soportada. Usa: solicitudes, examenes, agenda, consultas, protocolos, prefacturas, derivaciones, recetas o crm.'
             ),
         };
+
+        $rows = $this->applyFiltersToRows($rows, $filters);
+        $filteredTotalRows = count($rows);
+        $rows = array_slice($rows, 0, $limit);
+
+        $rows = array_map(function (array $row) use ($section, $hcNumber): array {
+            return $this->decorateRow($section, $hcNumber, $row);
+        }, $rows);
 
         $summary = $this->buildSummary($hcNumber);
 
         return [
             'section' => $section,
             'summary' => $summary,
-            'total_rows' => $summary[$section] ?? count($rows),
+            'filters' => $filters,
+            'total_rows' => $hasActiveFilters ? $filteredTotalRows : ($summary[$section] ?? count($rows)),
             'rows' => $rows,
         ];
     }
@@ -360,6 +373,7 @@ class Paciente360Service
 
         $sqlModern = <<<'SQL'
             SELECT
+                f.id,
                 f.iess_form_id AS form_id,
                 f.hc_number,
                 COALESCE(r.referral_code, '') AS cod_derivacion,
@@ -386,6 +400,7 @@ class Paciente360Service
 
             foreach ($modernRows as $row) {
                 $rows[] = [
+                    'id' => (int)($row['id'] ?? 0),
                     'form_id' => (string)($row['form_id'] ?? ''),
                     'codigo' => (string)($row['cod_derivacion'] ?? ''),
                     'fecha' => (string)($row['fecha_evento'] ?? ''),
@@ -403,6 +418,7 @@ class Paciente360Service
 
         $sqlLegacy = <<<'SQL'
             SELECT
+                id,
                 form_id,
                 cod_derivacion,
                 COALESCE(fecha_creacion, fecha_registro) AS fecha_evento,
@@ -426,6 +442,7 @@ class Paciente360Service
 
             foreach ($legacyRows as $row) {
                 $rows[] = [
+                    'id' => (int)($row['id'] ?? 0),
                     'form_id' => (string)($row['form_id'] ?? ''),
                     'codigo' => (string)($row['cod_derivacion'] ?? ''),
                     'fecha' => (string)($row['fecha_evento'] ?? ''),
@@ -689,6 +706,173 @@ class Paciente360Service
         });
 
         return array_slice($rows, 0, $limit);
+    }
+
+    /**
+     * @param array<string,mixed> $filters
+     * @return array{date_from:string,date_to:string,estado:string,search:string}
+     */
+    private function normalizeFilters(array $filters): array
+    {
+        return [
+            'date_from' => trim((string)($filters['date_from'] ?? '')),
+            'date_to' => trim((string)($filters['date_to'] ?? '')),
+            'estado' => trim((string)($filters['estado'] ?? '')),
+            'search' => trim((string)($filters['search'] ?? '')),
+        ];
+    }
+
+    /**
+     * @param array{date_from:string,date_to:string,estado:string,search:string} $filters
+     */
+    private function hasActiveFilters(array $filters): bool
+    {
+        return $filters['date_from'] !== ''
+            || $filters['date_to'] !== ''
+            || $filters['estado'] !== ''
+            || $filters['search'] !== '';
+    }
+
+    /**
+     * @param array<int,array<string,mixed>> $rows
+     * @param array{date_from:string,date_to:string,estado:string,search:string} $filters
+     * @return array<int,array<string,mixed>>
+     */
+    private function applyFiltersToRows(array $rows, array $filters): array
+    {
+        if (!$this->hasActiveFilters($filters)) {
+            return $rows;
+        }
+
+        $dateFromTs = $filters['date_from'] !== '' ? strtotime($filters['date_from'] . ' 00:00:00') : null;
+        $dateToTs = $filters['date_to'] !== '' ? strtotime($filters['date_to'] . ' 23:59:59') : null;
+        $estadoNeedle = strtolower($filters['estado']);
+        $searchNeedle = strtolower($filters['search']);
+
+        $filtered = [];
+        foreach ($rows as $row) {
+            if ($estadoNeedle !== '') {
+                $estadoCandidates = [
+                    strtolower(trim((string)($row['estado'] ?? ''))),
+                    strtolower(trim((string)($row['status'] ?? ''))),
+                ];
+                if (!in_array($estadoNeedle, $estadoCandidates, true)) {
+                    continue;
+                }
+            }
+
+            if ($searchNeedle !== '') {
+                $haystackParts = [];
+                foreach ($row as $value) {
+                    if (is_scalar($value)) {
+                        $haystackParts[] = strtolower(trim((string)$value));
+                    }
+                }
+                $haystack = implode(' | ', array_filter($haystackParts, static fn(string $part): bool => $part !== ''));
+                if ($haystack === '' || strpos($haystack, $searchNeedle) === false) {
+                    continue;
+                }
+            }
+
+            if ($dateFromTs !== null || $dateToTs !== null) {
+                $rowDate = $this->resolveRowDate($row);
+                if ($rowDate === null) {
+                    continue;
+                }
+
+                if ($dateFromTs !== null && $rowDate < $dateFromTs) {
+                    continue;
+                }
+                if ($dateToTs !== null && $rowDate > $dateToTs) {
+                    continue;
+                }
+            }
+
+            $filtered[] = $row;
+        }
+
+        return $filtered;
+    }
+
+    /**
+     * @param array<string,mixed> $row
+     */
+    private function resolveRowDate(array $row): ?int
+    {
+        $dateCandidates = [
+            $row['fecha'] ?? null,
+            $row['fecha_inicio'] ?? null,
+            $row['fecha_creacion'] ?? null,
+            $row['fecha_evento'] ?? null,
+            $row['updated_at'] ?? null,
+            $row['created_at'] ?? null,
+        ];
+
+        foreach ($dateCandidates as $candidate) {
+            $value = trim((string)$candidate);
+            if ($value === '') {
+                continue;
+            }
+
+            $timestamp = strtotime($value);
+            if ($timestamp !== false) {
+                return $timestamp;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<string,mixed> $row
+     * @return array<string,mixed>
+     */
+    private function decorateRow(string $section, string $hcNumber, array $row): array
+    {
+        $formId = trim((string)($row['form_id'] ?? ''));
+        $recordId = isset($row['id']) ? trim((string)$row['id']) : '';
+
+        $row['section'] = $section;
+        $row['hc_number'] = $hcNumber;
+        $row['record_id'] = $recordId;
+        $row['links'] = $this->buildLinks($section, $hcNumber, $formId, $recordId);
+
+        return $row;
+    }
+
+    /**
+     * @return array<string,string>
+     */
+    private function buildLinks(string $section, string $hcNumber, string $formId, string $recordId): array
+    {
+        $links = [
+            'paciente' => '/pacientes/detalles?hc_number=' . rawurlencode($hcNumber),
+        ];
+
+        if (in_array($section, ['solicitudes', 'prefacturas'], true)) {
+            $links['modulo'] = '/solicitudes';
+            if ($formId !== '') {
+                $links['derivacion'] = '/solicitudes/derivacion?hc_number=' . rawurlencode($hcNumber) . '&form_id=' . rawurlencode($formId);
+            }
+        } elseif ($section === 'examenes') {
+            $links['modulo'] = '/examenes';
+            if ($formId !== '') {
+                $links['derivacion'] = '/examenes/derivacion?hc_number=' . rawurlencode($hcNumber) . '&form_id=' . rawurlencode($formId);
+            }
+        } elseif ($section === 'agenda') {
+            $links['modulo'] = '/agenda';
+        } elseif ($section === 'derivaciones') {
+            $links['modulo'] = '/derivaciones';
+            if ($recordId !== '') {
+                $links['archivo'] = '/derivaciones/archivo/' . rawurlencode($recordId);
+            }
+        } elseif ($section === 'recetas') {
+            $links['modulo'] = '/farmacia';
+        } elseif ($section === 'crm') {
+            $links['modulo'] = '/crm';
+        }
+
+        return $links;
     }
 
     /**

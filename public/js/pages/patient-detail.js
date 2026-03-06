@@ -306,6 +306,21 @@
         panel.innerHTML = '<p class="text-danger mb-0">' + escapeHtml(message || 'No se pudo cargar la sección.') + '</p>';
     }
 
+    function readPaciente360FiltersFromUrl() {
+        var params = new URLSearchParams(window.location.search || '');
+        var dateFrom = (params.get('p360_date_from') || params.get('date_from') || '').trim();
+        var dateTo = (params.get('p360_date_to') || params.get('date_to') || '').trim();
+        var estado = (params.get('p360_estado') || params.get('estado') || '').trim();
+        var search = (params.get('p360_search') || params.get('search') || '').trim();
+
+        return {
+            date_from: dateFrom,
+            date_to: dateTo,
+            estado: estado,
+            search: search
+        };
+    }
+
     function loadPaciente360() {
         var container = document.getElementById('paciente360');
         if (!container) {
@@ -331,6 +346,8 @@
             return;
         }
 
+        var filters = readPaciente360FiltersFromUrl();
+
         sections.forEach(function (section) {
             var panel = document.getElementById('paciente360-panel-' + section);
             if (panel) {
@@ -341,9 +358,25 @@
         var lastSummary = null;
 
         Promise.all(sections.map(function (section) {
-            var url = '/pacientes/detalles/section?hc_number=' + encodeURIComponent(hcNumber)
-                + '&section=' + encodeURIComponent(section)
-                + '&limit=15';
+            var query = new URLSearchParams();
+            query.set('hc_number', hcNumber);
+            query.set('section', section);
+            query.set('limit', '15');
+
+            if (filters.date_from) {
+                query.set('date_from', filters.date_from);
+            }
+            if (filters.date_to) {
+                query.set('date_to', filters.date_to);
+            }
+            if (filters.estado) {
+                query.set('estado', filters.estado);
+            }
+            if (filters.search) {
+                query.set('search', filters.search);
+            }
+
+            var url = '/pacientes/detalles/section?' + query.toString();
 
             return fetchJson(url)
                 .then(function (payload) {
@@ -414,7 +447,7 @@
             }
 
             var pagina = paginas[index];
-            var url = '/reports/protocolo/pdf?form_id=' + encodeURIComponent(formId)
+            var url = '/v2/reports/protocolo/pdf?form_id=' + encodeURIComponent(formId)
                 + '&hc_number=' + encodeURIComponent(hcNumber)
                 + '&modo=separado&pagina=' + encodeURIComponent(pagina);
 

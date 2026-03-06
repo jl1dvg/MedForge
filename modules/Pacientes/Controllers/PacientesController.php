@@ -173,6 +173,12 @@ class PacientesController extends BaseController
         $hcNumber = trim((string)($_GET['hc_number'] ?? ''));
         $section = trim((string)($_GET['section'] ?? ''));
         $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 25;
+        $filters = [
+            'date_from' => trim((string)($_GET['date_from'] ?? '')),
+            'date_to' => trim((string)($_GET['date_to'] ?? '')),
+            'estado' => trim((string)($_GET['estado'] ?? '')),
+            'search' => trim((string)($_GET['search'] ?? '')),
+        ];
 
         if ($hcNumber === '' || $section === '') {
             $this->json(['error' => 'hc_number y section son obligatorios'], 422);
@@ -180,12 +186,13 @@ class PacientesController extends BaseController
         }
 
         try {
-            $payload = $this->paciente360Service->getSection($hcNumber, $section, $limit);
+            $payload = $this->paciente360Service->getSection($hcNumber, $section, $limit, $filters);
             $this->json([
                 'data' => $payload['rows'],
                 'meta' => [
                     'section' => $payload['section'],
                     'summary' => $payload['summary'],
+                    'filters' => $payload['filters'],
                     'total_rows' => $payload['total_rows'],
                 ],
             ]);
