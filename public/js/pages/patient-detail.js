@@ -376,7 +376,7 @@
                 query.set('search', filters.search);
             }
 
-            var url = '/pacientes/detalles/section?' + query.toString();
+            var url = '/v2/pacientes/detalles/section?' + query.toString();
 
             return fetchJson(url)
                 .then(function (payload) {
@@ -488,7 +488,7 @@
                 return;
             }
 
-            var endpoint = '/pacientes/detalles/solicitud?hc_number=' + encodeURIComponent(hcNumber)
+            var endpoint = '/v2/pacientes/detalles/solicitud?hc_number=' + encodeURIComponent(hcNumber)
                 + '&form_id=' + encodeURIComponent(formId);
 
             fetchJson(endpoint)

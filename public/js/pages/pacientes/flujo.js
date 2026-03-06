@@ -493,7 +493,7 @@ document.addEventListener('visibilitychange', function () {
 });
 
 function verificarCambiosRecientes() {
-    const url = new URL('/public/ajax/flujo_recientes.php', window.location.origin);
+    const url = new URL('/v2/pacientes/flujo/recientes', window.location.origin);
     if (ultimoTimestamp) {
         url.searchParams.set('desde', ultimoTimestamp);
     }
@@ -506,7 +506,7 @@ function verificarCambiosRecientes() {
                 // Data nueva, refrescamos el flujo completo (no borramos DOM todavía)
                 const today = moment().format('YYYY-MM-DD');
                 // 🚩 No borres columnas hasta tener los datos:
-                fetch(`/public/ajax/flujo?fecha=${today}&modo=visita`)
+                fetch(`/v2/pacientes/flujo/tablero?fecha=${today}&modo=visita`)
                     .then(response => response.json())
                     .then(flujo => {
                         // 1. Compara la data anterior con la nueva para detectar movimientos de estado (opcional)
@@ -578,7 +578,7 @@ $(document).ready(function () {
         dateInput.value = today;
     }
     showLoader();
-    fetch(`/public/ajax/flujo?fecha=${today}&modo=visita`)
+    fetch(`/v2/pacientes/flujo/tablero?fecha=${today}&modo=visita`)
         .then(response => response.json())
         .then(data => {
             allSolicitudes = data;
@@ -612,7 +612,7 @@ $(document).ready(function () {
             }
             renderColumnasVisita(); // <- ¡Agregado aquí para resetear columnas antes de recargar!
             showLoader();
-            fetch(`/public/ajax/flujo?fecha=${selected}&modo=visita`)
+            fetch(`/v2/pacientes/flujo/tablero?fecha=${selected}&modo=visita`)
                 .then(response => response.json())
                 .then(data => {
                     allSolicitudes = data;

@@ -701,7 +701,7 @@ class PacienteService
                 'ultima_fecha' => $ultimaFecha,
                 'full_name' => $row['full_name'],
                 'afiliacion' => $row['afiliacion'],
-                'acciones_html' => "<a href='/pacientes/detalles?hc_number=" . urlencode($row['hc_number']) . "' class='btn btn-sm btn-primary'>Ver</a>",
+                'acciones_html' => "<a href='/v2/pacientes/detalles?hc_number=" . urlencode($row['hc_number']) . "' class='btn btn-sm btn-primary'>Ver</a>",
             ];
         }
 

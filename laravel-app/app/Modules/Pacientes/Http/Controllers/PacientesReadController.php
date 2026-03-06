@@ -4,11 +4,14 @@ namespace App\Modules\Pacientes\Http\Controllers;
 
 use App\Modules\Pacientes\Services\Paciente360ParityService;
 use App\Modules\Pacientes\Services\PacientesParityService;
+use App\Modules\Shared\Support\LegacyCurrentUser;
 use App\Modules\Shared\Support\LegacySessionAuth;
+use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use PDO;
 
 class PacientesReadController
@@ -24,10 +27,22 @@ class PacientesReadController
         $this->paciente360Service = new Paciente360ParityService($pdo);
     }
 
-    public function index(Request $request): JsonResponse
+    public function index(Request $request): JsonResponse|RedirectResponse|View
     {
         if (!$this->isLegacyAuthenticated($request)) {
-            return $this->unauthenticatedJson(1);
+            if ($request->expectsJson()) {
+                return $this->unauthenticatedJson(1);
+            }
+
+            return redirect('/auth/login?auth_required=1');
+        }
+
+        if (!$request->expectsJson()) {
+            return view('pacientes.v2-index', [
+                'pageTitle' => 'Pacientes',
+                'currentUser' => LegacyCurrentUser::resolve($request),
+                'showNotFoundAlert' => $request->boolean('not_found'),
+            ]);
         }
 
         $limit = min(max((int) $request->query('limit', 20), 1), 100);
@@ -82,7 +97,7 @@ class PacientesReadController
         ]);
     }
 
-    public function detalles(Request $request): JsonResponse|RedirectResponse
+    public function detalles(Request $request): JsonResponse|RedirectResponse|View
     {
         if (!$this->isLegacyAuthenticated($request)) {
             if ($request->expectsJson()) {
@@ -115,15 +130,37 @@ class PacientesReadController
             return redirect('/v2/pacientes?not_found=1');
         }
 
+        if (!$request->expectsJson()) {
+            return view('pacientes.v2-detalles', array_merge(
+                [
+                    'pageTitle' => 'Paciente ' . $hcNumber,
+                    'currentUser' => LegacyCurrentUser::resolve($request),
+                    'hc_number' => $hcNumber,
+                ],
+                $context
+            ));
+        }
+
         return response()->json([
             'data' => $context,
         ]);
     }
 
-    public function flujo(Request $request): JsonResponse
+    public function flujo(Request $request): JsonResponse|RedirectResponse|View
     {
         if (!$this->isLegacyAuthenticated($request)) {
-            return response()->json(['error' => 'Sesión expirada'], 401);
+            if ($request->expectsJson()) {
+                return response()->json(['error' => 'Sesión expirada'], 401);
+            }
+
+            return redirect('/auth/login?auth_required=1');
+        }
+
+        if (!$request->expectsJson()) {
+            return view('pacientes.v2-flujo', [
+                'pageTitle' => 'Flujo de Pacientes',
+                'currentUser' => LegacyCurrentUser::resolve($request),
+            ]);
         }
 
         $hcNumber = trim((string) $request->query('hc_number', ''));
@@ -200,6 +237,38 @@ class PacientesReadController
         } catch (\Throwable) {
             return response()->json(['error' => 'No se pudo recuperar el detalle de la solicitud'], 500);
         }
+    }
+
+    public function flujoTablero(Request $request): JsonResponse
+    {
+        if (!$this->isLegacyAuthenticated($request)) {
+            return response()->json(['error' => 'Sesión expirada'], 401);
+        }
+
+        $fecha = trim((string) $request->query('fecha', date('Y-m-d')));
+        if ($fecha === '') {
+            $fecha = date('Y-m-d');
+        }
+
+        $modo = trim((string) $request->query('modo', 'visita'));
+        if ($modo === '') {
+            $modo = 'visita';
+        }
+
+        return $this->proxyLegacyJson(
+            $request,
+            '/public/ajax/flujo.php',
+            ['fecha' => $fecha, 'modo' => $modo]
+        );
+    }
+
+    public function flujoRecientes(Request $request): JsonResponse
+    {
+        if (!$this->isLegacyAuthenticated($request)) {
+            return response()->json(['error' => 'Sesión expirada'], 401);
+        }
+
+        return $this->proxyLegacyJson($request, '/public/ajax/flujo_recientes.php');
     }
 
     public function detallesSection(Request $request): JsonResponse
@@ -290,5 +359,33 @@ class PacientesReadController
     private function readLegacyPhpSession(Request $request): array
     {
         return LegacySessionAuth::readSession($request);
+    }
+
+    /**
+     * @param array<string, mixed> $query
+     */
+    private function proxyLegacyJson(Request $request, string $path, array $query = []): JsonResponse
+    {
+        $baseUrl = rtrim($request->getSchemeAndHttpHost(), '/');
+        $url = $baseUrl . $path;
+        $sessionId = LegacySessionAuth::sessionId($request);
+
+        try {
+            $client = Http::acceptJson()->timeout(20);
+            if ($sessionId !== '') {
+                $client = $client->withHeaders(['Cookie' => 'PHPSESSID=' . $sessionId]);
+            }
+
+            $upstream = $client->get($url, $query);
+        } catch (\Throwable) {
+            return response()->json(['error' => 'No se pudo consultar el origen legacy'], 502);
+        }
+
+        $decoded = json_decode((string) $upstream->body(), true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            return response()->json(['error' => 'Respuesta inválida del origen legacy'], 502);
+        }
+
+        return response()->json($decoded, $upstream->status());
     }
 }

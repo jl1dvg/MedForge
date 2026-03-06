@@ -6,7 +6,7 @@ $(function () {
         serverSide: true,
         processing: true,
         ajax: {
-            url: '/pacientes/datatable',
+            url: '/v2/pacientes/datatable',
             type: 'POST'
         },
         columns: [
