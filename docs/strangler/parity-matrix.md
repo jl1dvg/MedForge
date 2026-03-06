@@ -25,6 +25,9 @@ Current auth parity policy:
 
 ### Billing
 
+- `GET /billing` -> `GET /v2/billing` (UI cutover por flag)
+- `GET /billing/no-facturados` -> `GET /v2/billing/no-facturados` (UI cutover por flag)
+- `GET /billing/detalle` -> `GET /v2/billing/detalle` (UI cutover por flag)
 - `GET /api/billing/no-facturados` -> `GET /v2/api/billing/no-facturados`
 - `GET /api/billing/afiliaciones` -> `GET /v2/api/billing/afiliaciones`
 - `POST /billing/no-facturados/crear` -> `POST /v2/billing/no-facturados/crear` (`/v2/api/billing/no-facturados/crear`)
@@ -40,8 +43,8 @@ Current auth parity policy:
 - `GET /pacientes/detalles/solicitud` -> `GET /v2/pacientes/detalles/solicitud`
 - `GET /pacientes/detalles/section` -> `GET /v2/pacientes/detalles/section`
 - `GET /pacientes/flujo` -> `GET /v2/pacientes/flujo`
-- `GET /public/ajax/flujo.php` -> `GET /v2/pacientes/flujo/tablero` (shim para frontend v2)
-- `GET /public/ajax/flujo_recientes.php` -> `GET /v2/pacientes/flujo/recientes` (shim para frontend v2)
+- `GET /public/ajax/flujo.php` -> `GET /v2/pacientes/flujo/tablero` (implementación nativa Laravel)
+- `GET /public/ajax/flujo_recientes.php` -> `GET /v2/pacientes/flujo/recientes` (implementación nativa Laravel)
 - `POST /pacientes/detalles?actualizar_paciente=1` -> `POST /v2/pacientes/detalles?actualizar_paciente=1`
 
 Current auth parity policy:
@@ -54,6 +57,8 @@ Current auth parity policy:
 - `detalles/solicitud`: auth parity for validation flow (`422` when missing `form_id`) + guest `401`.
 - `detalles/section`: status parity (`200` both sides) + v2 JSON required fields.
 - `flujo`: status parity (`200` both sides) + v2 JSON required fields.
+- `flujo_tablero`: validación `v2_only` (`401` guest, `200` auth) para endpoint nativo `/v2/pacientes/flujo/tablero`.
+- `flujo_recientes`: validación `v2_only` (`401` guest, `200` auth) + shape mínima (`pacientes`, `timestamp`) en `/v2/pacientes/flujo/recientes`.
 - `detalles_update`: status parity (`302` both sides) + v2 post-check de persistencia.
 - Con `PACIENTES_V2_UI_ENABLED=1`, legacy `/pacientes*` redirige a `/v2/pacientes*`; por eso los checks de redirect viven en módulo smoke dedicado `pacientes_cutover`.
 
@@ -74,6 +79,7 @@ Cutover status:
 - Phase 3 completed on March 6, 2026.
 - Legacy PDF routes now work as compatibility shims (`302`/`307`) to `/v2/reports/*`.
 - Legacy cobertura queue no longer generates PDFs in legacy runtime; queue endpoints return a v2 shim payload that resolves to `/v2/reports/cobertura/pdf`.
+- Operational checklist: `docs/strangler/reporting-phase3-runbook.md`.
 
 Endpoints covered:
 
@@ -104,6 +110,7 @@ Use stable fixture records in DB:
 php tools/tests/http_smoke.php --module=billing
 php tools/tests/http_smoke.php --module=billing --cookie='PHPSESSID=...'
 php tools/tests/http_smoke.php --module=billing --cookie='PHPSESSID=...' --allow-destructive
+php tools/tests/http_smoke.php --module=billing_cutover --cookie='PHPSESSID=...'
 php tools/tests/http_smoke.php --endpoint=auth_logout_unified --cookie='PHPSESSID=...' --allow-destructive
 php tools/tests/http_smoke.php --endpoint=dashboard_ui
 php tools/tests/http_smoke.php --endpoint=dashboard_ui --cookie='PHPSESSID=...'
@@ -119,6 +126,8 @@ php tools/tests/http_smoke.php --endpoint=pacientes_datatable
 php tools/tests/http_smoke.php --endpoint=pacientes_detalles_solicitud
 php tools/tests/http_smoke.php --endpoint=pacientes_detalles_section
 php tools/tests/http_smoke.php --endpoint=pacientes_flujo
+php tools/tests/http_smoke.php --endpoint=pacientes_flujo_tablero
+php tools/tests/http_smoke.php --endpoint=pacientes_flujo_recientes
 php tools/tests/http_smoke.php --endpoint=pacientes_detalles_update
 php tools/tests/http_smoke.php --module=pacientes_cutover
 php tools/tests/http_smoke.php --module=pacientes_cutover --cookie='PHPSESSID=...'
@@ -135,6 +144,7 @@ php tools/tests/http_smoke.php --module=pacientes --cookie='PHPSESSID=...' --hc-
 
 ```bash
 /usr/bin/php8.1-cli tools/tests/http_smoke.php --module=billing --cookie='PHPSESSID=...'
+/usr/bin/php8.1-cli tools/tests/http_smoke.php --module=billing_cutover --cookie='PHPSESSID=...'
 /usr/bin/php8.1-cli tools/tests/http_smoke.php --endpoint=dashboard_ui --cookie='PHPSESSID=...'
 /usr/bin/php8.1-cli tools/tests/http_smoke.php --module=dashboard_cutover --cookie='PHPSESSID=...'
 /usr/bin/php8.1-cli tools/tests/http_smoke.php --module=solicitudes_cutover --cookie='PHPSESSID=...'
@@ -155,6 +165,31 @@ BILLING_V2_WRITES_ENABLED=1
 
 ```bash
 BILLING_V2_WRITES_ENABLED=0
+```
+
+## Billing UI Cutover Flag
+
+- Legacy runtime puede redirigir UI de Billing a Laravel `/v2/billing*` con:
+
+```bash
+BILLING_V2_UI_ENABLED=1
+```
+
+- Validación cuando está habilitado:
+
+```bash
+/usr/bin/php8.1-cli tools/tests/http_smoke.php --module=billing_cutover --cookie='PHPSESSID=...'
+```
+
+- Esperado:
+- `billing_ui_cutover_redirect` devuelve `302` con `Location: /v2/billing`.
+- `billing_no_facturados_ui_cutover_redirect` devuelve `302` con `Location: /v2/billing/no-facturados`.
+- `billing_detalle_ui_cutover_redirect` devuelve `302` con `Location: /v2/billing/detalle?...`.
+
+- Rollback rápido:
+
+```bash
+BILLING_V2_UI_ENABLED=0
 ```
 
 ## Dashboard UI Cutover Flag

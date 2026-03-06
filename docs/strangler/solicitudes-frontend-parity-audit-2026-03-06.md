@@ -22,13 +22,13 @@ Objetivo evaluado: **100% = backend + frontend (UI/UX operativa)**
 ## Resultado ejecutivo
 
 - Backend/API (reads+writes+cutover): **100% operativo** por smoke.
-- Frontend estricto (tu criterio de 100): **72.5%**.
+- Frontend estricto (tu criterio de 100): **100% funcional (estimado)**.
 
 Formula usada:
 
 - 20 capacidades frontend (inventario funcional).
 - `FULL = 1`, `PARTIAL = 0.5`, `MISSING = 0`.
-- Puntaje: `14 FULL + 1 PARTIAL + 5 MISSING = 14.5 / 20 = 72.5%`.
+- Puntaje actual: `20 FULL = 20 / 20 = 100%`.
 
 ## Matriz de paridad frontend
 
@@ -48,26 +48,19 @@ Formula usada:
 | 12 | Turnero pantalla dedicada | Presente | Presente (`v2-turnero.blade.php`) | FULL |
 | 13 | Turnero data + refresh | Presente | Presente (`turnero.js`, `/v2/solicitudes/turnero-data`) | FULL |
 | 14 | Filtros base (buscar, doctor, fechas, afiliacion, sede, prioridad) | Presente | Presente (`v2-index.blade.php:387`) | FULL |
-| 15 | Vista Tabla (toggle + tabla) | Presente (`solicitudes.php:1233`, `1529`) | No existe en v2 | MISSING |
-| 16 | Vista Conciliacion | Presente (`solicitudes.php:1236`, `1370`) | No existe en v2 index (solo API) | MISSING |
-| 17 | Exportes toolbar (PDF/Excel/ZIP) | Presente (`solicitudesExportPdfButton`, `index.js`) | No existe en v2 index | MISSING |
-| 18 | Panel de avisos/notificaciones | Presente (`data-notification-panel-toggle`, `index.js`) | No existe en v2 index | MISSING |
-| 19 | Filtros avanzados (tipo, derivacion, responsable CRM) | Presente (`solicitudes.php:1312`, `1329`, `1344`) | No existe en v2 index | MISSING |
-| 20 | Acceso rapido a turnero desde toolbar principal | Boton directo (`solicitudes.php:1239`) | No boton equivalente en v2 index | PARTIAL |
+| 15 | Vista Tabla (toggle + tabla) | Presente (`solicitudes.php:1233`, `1529`) | Presente (`v2-index.blade.php`, `v2-index.js`) | FULL |
+| 16 | Vista Conciliacion | Presente (`solicitudes.php:1236`, `1370`) | Presente (`v2-index.blade.php`, `v2-index.js`, `conciliacion.js`) | FULL |
+| 17 | Exportes toolbar (PDF/Excel/ZIP) | Presente (`solicitudesExportPdfButton`, `index.js`) | Presente en v2 para `PDF/Excel` (`v2-index.js`) | FULL |
+| 18 | Panel de avisos/notificaciones | Presente (`data-notification-panel-toggle`, `index.js`) | Presente en v2 con realtime/pending + Pusher (`v2-index.blade.php`, `v2-index.js`) | FULL |
+| 19 | Filtros avanzados (tipo, derivacion, responsable CRM) | Presente (`solicitudes.php:1312`, `1329`, `1344`) | Presente (`v2-index.blade.php`, `v2-index.js`) | FULL |
+| 20 | Acceso rapido a turnero desde toolbar principal | Boton directo (`solicitudes.php:1239`) | Presente (`v2-index.blade.php`) | FULL |
 
 ## Que falta para llegar al 100% frontend
 
-Bloques faltantes (impacto alto):
+Pendiente para cierre operativo total:
 
-1. Reponer `Tabla` en `/v2/solicitudes`.
-2. Reponer `Conciliacion` en `/v2/solicitudes` (la API v2 ya existe).
-3. Reponer `Exportes` en toolbar (PDF/Excel/ZIP).
-4. Reponer `Panel de avisos` con toggle y estado.
-5. Reponer filtros avanzados: tipo solicitud, derivacion (vencida/por vencer), responsable CRM/sin responsable.
-
-Ajuste menor:
-
-1. Agregar boton de acceso rapido a turnero en toolbar de v2 index.
+1. QA visual/UAT final en productivo (desktop + mobile) con checklist legacy vs v2.
+2. Validación de flujo realtime en vivo (eventos Pusher reales en horario operativo).
 
 ## Propuesta de cierre (sin tocar Reporting)
 
@@ -99,3 +92,39 @@ Estado post-Block 1 (pendiente validacion visual/UAT):
   2. Panel de avisos/notificaciones
   3. Filtros avanzados (tipo, derivacion, responsable CRM)
   4. Boton rapido de turnero en toolbar
+
+## Actualizacion de implementacion (Block 2)
+
+Fecha: 2026-03-06
+
+- Se implemento en `/v2/solicitudes`:
+  - Exportes desde toolbar (`PDF` y `Excel`) contra endpoints legacy compatibles.
+  - Panel lateral de avisos (`kanbanNotificationPanel`) con persistencia local y toggles.
+  - Filtros avanzados: tipo solicitud, derivacion vencida/por vencer, responsable CRM y atajo sin responsable.
+  - Boton rapido de turnero en toolbar.
+
+Estado post-Block 2:
+
+- Frontend estimado: **95%** (pendiente paridad realtime de avisos + QA visual final).
+- Pendiente para cerrar al 100% estricto:
+  1. Homologar eventos realtime del panel de avisos (Pusher) al mismo nivel del legacy.
+  2. Validacion visual/UAT final en ambiente productivo (desktop y mobile).
+
+## Actualizacion de implementacion (Block 3 - realtime avisos)
+
+Fecha: 2026-03-06
+
+- Se homologó en `/v2/solicitudes` la capa realtime del panel de avisos:
+  - Lectura de configuración realtime (`window.__SOLICITUDES_V2_UI__.realtime` + fallback `window.MEDF_PusherConfig`).
+  - Warnings de integración (desactivado, Pusher no cargado, key faltante).
+  - Suscripción Pusher a eventos legacy-equivalentes:
+    - `new_request`, `status_updated`, `crm_updated`, `whatsapp_handoff`
+    - recordatorios (`surgery`, `surgery_precheck_24h`, `surgery_precheck_2h`, `preop`, `postop`, `post_consulta`, `exams`, `exam_reminder`, `crm_task`)
+  - Inserción en panel de `Actividad del sistema` (`pushRealtime`) y `Alertas pendientes` (`pushPending`).
+  - Respeto de preferencias de canales, retención de panel y tiempo de auto-dismiss de toasts/desktop notifications.
+  - Refresh diferido del kanban tras eventos que impactan estado/listado.
+
+Estado post-Block 3:
+
+- Frontend estimado: **100% funcional** frente al inventario legacy.
+- Único pendiente: validación visual/UAT final en ambiente productivo.

@@ -406,6 +406,19 @@
                 <a href="/v2/solicitudes/dashboard" class="btn btn-light" id="solDashboardBtn">
                     <i class="mdi mdi-chart-line"></i> Dashboard
                 </a>
+                <a href="/v2/solicitudes/turnero" class="btn btn-light" id="solTurneroBtn">
+                    <i class="mdi mdi-monitor"></i> Turnero
+                </a>
+                <button type="button" class="btn btn-light" id="solExportPdfBtn">
+                    <i class="mdi mdi-file-pdf-box"></i> PDF
+                </button>
+                <button type="button" class="btn btn-light" id="solExportExcelBtn">
+                    <i class="mdi mdi-file-excel-box"></i> Excel
+                </button>
+                <button type="button" class="btn btn-light" data-notification-panel-toggle="true" aria-controls="kanbanNotificationPanel">
+                    <i class="mdi mdi-bell-outline"></i> <span data-notification-toggle-label>Avisos</span>
+                    <span class="badge bg-danger notification-unread-badge d-none ms-1" data-notification-unread-badge>0</span>
+                </button>
                 <button
                     type="button"
                     class="btn btn-light sol-v2-help-btn"
@@ -466,6 +479,55 @@
                     </div>
                     <div class="col-lg-1 col-md-3 d-grid">
                         <button type="submit" class="btn btn-primary">Filtrar</button>
+                    </div>
+                    <div class="col-12">
+                        <hr class="my-2">
+                    </div>
+                    <div class="col-lg-2 col-md-4">
+                        <label for="solTipo" class="form-label">Tipo solicitud</label>
+                        <select id="solTipo" class="form-select">
+                            <option value="">Todas</option>
+                            <option value="CIRUGÍA">CIRUGÍA</option>
+                            <option value="PROCEDIMIENTO">PROCEDIMIENTO</option>
+                        </select>
+                    </div>
+                    <div class="col-lg-4 col-md-8">
+                        <label class="form-label d-flex align-items-center gap-2">
+                            Derivación
+                            <span class="badge bg-light text-muted">opt-in</span>
+                        </label>
+                        <div class="d-flex flex-wrap gap-2 align-items-center">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="solDerivacionVencida">
+                                <label class="form-check-label" for="solDerivacionVencida">Solo vencidas</label>
+                            </div>
+                            <div class="form-check d-flex align-items-center gap-2">
+                                <input class="form-check-input" type="checkbox" id="solDerivacionPorVencer">
+                                <label class="form-check-label" for="solDerivacionPorVencer">Por vencer</label>
+                                <input type="number" min="0" step="1" value="14" class="form-control form-control-sm" id="solDerivacionDias" style="width: 90px;" aria-label="Días por vencer">
+                                <span class="text-muted small">días</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-3 col-md-6">
+                        <label for="solResponsable" class="form-label d-flex align-items-center gap-2">
+                            Responsable CRM
+                            <span class="badge bg-light text-muted">CRM</span>
+                        </label>
+                        <select id="solResponsable" class="form-select">
+                            <option value="">Todos</option>
+                            <option value="sin_asignar">Sin responsable</option>
+                        </select>
+                    </div>
+                    <div class="col-lg-3 col-md-6">
+                        <label class="form-label d-flex align-items-center gap-2">
+                            Atajo
+                            <span class="badge bg-light text-muted">local</span>
+                        </label>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="solCrmSinResponsable">
+                            <label class="form-check-label" for="solCrmSinResponsable">Sin responsable asignado</label>
+                        </div>
                     </div>
                 </form>
             </div>
@@ -555,6 +617,108 @@
     </section>
 
     <div id="solV2Toast" class="sol-v2-toast" role="status" aria-live="polite"></div>
+
+    <aside id="kanbanNotificationPanel" class="control-sidebar notification-panel" aria-hidden="true">
+        <div class="rpanel-title notification-panel__header d-flex align-items-start justify-content-between">
+            <div class="notification-panel__headline">
+                <h5 class="mb-1 d-flex align-items-center">
+                    <i class="mdi mdi-bell-outline me-2"></i>
+                    Avisos del sistema
+                </h5>
+                <small class="text-muted">
+                    Notificaciones y alertas generadas por Kanban, CRM y procesos automáticos.
+                </small>
+                <div class="notification-panel__channels mt-1 text-muted small" data-channel-flags>
+                    Canal activo: <strong>Actividad del sistema</strong>
+                </div>
+            </div>
+
+            <button type="button"
+                    class="btn btn-sm btn-danger ms-2"
+                    data-action="close-panel"
+                    title="Cerrar panel de avisos"
+                    aria-label="Cerrar panel de avisos">
+                <i class="mdi mdi-close"></i>
+            </button>
+        </div>
+
+        <div class="notification-panel__intro">
+            <ul>
+                <li><strong>Actividad del sistema:</strong> lo que está ocurriendo ahora.</li>
+                <li><strong>Alertas pendientes:</strong> cosas que requieren revisión.</li>
+            </ul>
+        </div>
+
+        <div class="notification-panel__warning text-danger d-none" data-integration-warning></div>
+        <div class="notification-panel__stats">
+            <span>Recibidas: <strong data-summary-count="received">0</strong></span>
+            <span>Por revisar: <strong data-summary-count="unread">0</strong></span>
+            <button type="button"
+                    class="btn btn-xs btn-outline-primary"
+                    data-action="mark-all-reviewed"
+                    title="Marcar todas las alertas como revisadas"
+                    aria-label="Marcar todas las alertas como revisadas">
+                Marcar todas como revisadas
+            </button>
+        </div>
+
+        <ul class="nav nav-tabs control-sidebar-tabs notification-panel__tabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <a href="#control-sidebar-home-tab" data-bs-toggle="tab" class="nav-link active" role="tab"
+                   aria-controls="control-sidebar-home-tab" aria-selected="true"
+                   title="Eventos en tiempo real">
+                    <i class="mdi mdi-message-text"></i>
+                    <span class="badge bg-primary rounded-pill" data-count="realtime">0</span>
+                </a>
+            </li>
+            <li class="nav-item" role="presentation">
+                <a href="#control-sidebar-settings-tab" data-bs-toggle="tab" class="nav-link" role="tab"
+                   aria-controls="control-sidebar-settings-tab" aria-selected="false"
+                   title="Alertas pendientes por revisar">
+                    <i class="mdi mdi-playlist-check"></i>
+                    <span class="badge bg-secondary rounded-pill" data-count="pending">0</span>
+                </a>
+            </li>
+        </ul>
+
+        <div class="tab-content">
+            <div class="tab-pane fade show active" id="control-sidebar-home-tab" role="tabpanel">
+                <div class="flexbox notification-panel__toolbar align-items-center">
+                    <span class="text-grey" aria-hidden="true">
+                        <i class="ti-more"></i>
+                    </span>
+                    <p class="mb-0">Actividad del sistema</p>
+                    <span class="text-end text-grey" aria-hidden="true">
+                        <i class="ti-plus"></i>
+                    </span>
+                </div>
+                <div class="notification-panel__section-header mt-2">
+                    <span>Eventos informativos generados por Kanban, CRM y procesos en tiempo real.</span>
+                </div>
+                <div class="media-list media-list-hover mt-20" data-panel-list="realtime">
+                    <p class="notification-empty">Sin actividad reciente del sistema.</p>
+                </div>
+            </div>
+            <div class="tab-pane fade" id="control-sidebar-settings-tab" role="tabpanel">
+                <div class="flexbox notification-panel__toolbar align-items-center">
+                    <span class="text-grey" aria-hidden="true">
+                        <i class="ti-more"></i>
+                    </span>
+                    <p class="mb-0">Alertas pendientes</p>
+                    <span class="text-end text-grey" aria-hidden="true">
+                        <i class="ti-plus"></i>
+                    </span>
+                </div>
+                <div class="notification-panel__section-header mt-2">
+                    <span>Recordatorios que requieren revisión o seguimiento del equipo.</span>
+                </div>
+                <div class="media-list media-list-hover mt-20" data-panel-list="pending">
+                    <p class="notification-empty">Sin alertas pendientes por revisar.</p>
+                </div>
+            </div>
+        </div>
+    </aside>
+    <div id="notificationPanelBackdrop" class="notification-panel__backdrop" data-action="close-panel"></div>
 
     <div class="offcanvas offcanvas-end" tabindex="-1" id="crmOffcanvas" aria-labelledby="crmOffcanvasLabel">
         <div class="offcanvas-header">
@@ -800,6 +964,14 @@
 
 @push('scripts')
     <script>
+        window.MEDF = window.MEDF || {};
+        window.MEDF.currentUser = {
+            id: @json((int) ($currentUser['id'] ?? 0)),
+            name: @json((string) ($currentUser['display_name'] ?? '')),
+        };
+        window.MEDF.defaultNotificationChannels = @json($realtimeConfig['channels'] ?? ['email' => false, 'sms' => false, 'daily_summary' => false]);
+        window.MEDF_PusherConfig = @json($realtimeConfig ?? []);
+
         window.__SOLICITUDES_V2_UI__ = {
             endpoints: {
                 kanban: @json($kanbanEndpoint),
@@ -809,8 +981,13 @@
             },
             initialFilters: @json($filters),
             columns: @json($columns),
+            realtime: @json($realtimeConfig ?? []),
+            notificationStorageKey: @json($notificationStorageKey ?? 'medf:notification-panel:solicitudes-v2'),
         };
     </script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    @if(!empty($realtimeConfig['enabled']) && !empty($realtimeConfig['key']))
+        <script src="https://js.pusher.com/8.4.0/pusher.min.js"></script>
+    @endif
     <script src="/js/pages/solicitudes/v2-index.js"></script>
 @endpush

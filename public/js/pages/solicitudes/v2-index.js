@@ -3,6 +3,44 @@
     const endpoints = config.endpoints || {};
     const columns = Array.isArray(config.columns) ? config.columns : [];
     const initialFilters = config.initialFilters || {};
+    const rawRealtimeConfig = config.realtime && typeof config.realtime === 'object'
+        ? config.realtime
+        : {};
+    const fallbackRealtimeConfig = window.MEDF_PusherConfig && typeof window.MEDF_PusherConfig === 'object'
+        ? window.MEDF_PusherConfig
+        : {};
+    const realtimeConfig = {
+        ...fallbackRealtimeConfig,
+        ...rawRealtimeConfig,
+        events: {
+            ...(fallbackRealtimeConfig.events && typeof fallbackRealtimeConfig.events === 'object' ? fallbackRealtimeConfig.events : {}),
+            ...(rawRealtimeConfig.events && typeof rawRealtimeConfig.events === 'object' ? rawRealtimeConfig.events : {}),
+        },
+        channels: {
+            ...(fallbackRealtimeConfig.channels && typeof fallbackRealtimeConfig.channels === 'object' ? fallbackRealtimeConfig.channels : {}),
+            ...(rawRealtimeConfig.channels && typeof rawRealtimeConfig.channels === 'object' ? rawRealtimeConfig.channels : {}),
+        },
+    };
+
+    const rawToastDismiss = Number(realtimeConfig.toast_auto_dismiss_seconds);
+    const toastDurationMs = Number.isFinite(rawToastDismiss)
+        ? (rawToastDismiss <= 0 ? 0 : rawToastDismiss * 1000)
+        : 4000;
+    const rawDesktopDismiss = Number(realtimeConfig.auto_dismiss_seconds);
+    const desktopDismissSeconds = Number.isFinite(rawDesktopDismiss) && rawDesktopDismiss > 0
+        ? rawDesktopDismiss
+        : 0;
+    const rawRetentionDays = Number(realtimeConfig.panel_retention_days);
+    const panelRetentionDays = Number.isFinite(rawRetentionDays) && rawRetentionDays >= 0
+        ? rawRetentionDays
+        : 7;
+    const notificationStorageKey = String(config.notificationStorageKey || 'medf:notification-panel:solicitudes-v2').trim()
+        || 'medf:notification-panel:solicitudes-v2';
+    const defaultChannels = {
+        email: Boolean((window.MEDF && window.MEDF.defaultNotificationChannels && window.MEDF.defaultNotificationChannels.email) || realtimeConfig.channels.email),
+        sms: Boolean((window.MEDF && window.MEDF.defaultNotificationChannels && window.MEDF.defaultNotificationChannels.sms) || realtimeConfig.channels.sms),
+        daily_summary: Boolean((window.MEDF && window.MEDF.defaultNotificationChannels && window.MEDF.defaultNotificationChannels.daily_summary) || realtimeConfig.channels.daily_summary),
+    };
 
     const kanbanEndpoint = String(endpoints.kanban || '').trim();
     const actualizarEstadoEndpoint = String(endpoints.actualizarEstado || '').trim();
@@ -23,6 +61,14 @@
     const searchInput = document.getElementById('solSearch');
     const dateFromInput = document.getElementById('solDateFrom');
     const dateToInput = document.getElementById('solDateTo');
+    const tipoSelect = document.getElementById('solTipo');
+    const responsableSelect = document.getElementById('solResponsable');
+    const sinResponsableCheckbox = document.getElementById('solCrmSinResponsable');
+    const derivacionVencidaCheckbox = document.getElementById('solDerivacionVencida');
+    const derivacionPorVencerCheckbox = document.getElementById('solDerivacionPorVencer');
+    const derivacionDiasInput = document.getElementById('solDerivacionDias');
+    const exportPdfButton = document.getElementById('solExportPdfBtn');
+    const exportExcelButton = document.getElementById('solExportExcelBtn');
     const toolbarBox = document.getElementById('solV2ToolbarBox');
     const metricsBox = document.getElementById('solV2Metrics');
     const kanbanView = document.getElementById('solV2ViewKanban');
@@ -44,6 +90,7 @@
 
     const state = {
         rows: [],
+        filteredRows: [],
         options: {
             afiliaciones: [],
             sedes: [],
@@ -52,6 +99,8 @@
             crm: {},
         },
         loading: false,
+        exporting: false,
+        notificationPanel: null,
         crmPanel: {
             api: null,
             loadingPromise: null,
@@ -67,7 +116,20 @@
             loadingPromise: null,
             failed: false,
         },
+        realtime: {
+            bound: false,
+            pusher: null,
+            channel: null,
+            refreshTimer: null,
+        },
         view: VIEW_ALLOWED.has(storedView) ? storedView : VIEW_DEFAULT,
+    };
+
+    window.MEDF = window.MEDF || {};
+    window.MEDF.defaultNotificationChannels = defaultChannels;
+    window.MEDF.pusherIntegration = {
+        enabled: Boolean(realtimeConfig.enabled),
+        hasKey: Boolean(realtimeConfig.key),
     };
 
     const labelByColumn = columns.reduce((acc, col) => {
@@ -87,7 +149,7 @@
         'completado': 'dark',
     };
 
-    const showToast = (message, ok) => {
+    const showToast = (message, ok, durationMs = toastDurationMs) => {
         if (!toast) {
             return;
         }
@@ -96,9 +158,12 @@
         toast.classList.add(ok ? 'ok' : 'err');
         toast.style.display = 'block';
         window.clearTimeout(showToast._timer);
-        showToast._timer = window.setTimeout(() => {
-            toast.style.display = 'none';
-        }, 3400);
+        const normalizedDuration = Number.isFinite(durationMs) ? durationMs : toastDurationMs;
+        if (normalizedDuration > 0) {
+            showToast._timer = window.setTimeout(() => {
+                toast.style.display = 'none';
+            }, normalizedDuration);
+        }
     };
 
     const initTooltips = () => {
@@ -139,6 +204,66 @@
         return `sol-v2-${Date.now()}-${Math.floor(Math.random() * 99999)}`;
     };
 
+    const mapChannels = (channels = {}) => {
+        const merged = {
+            email: channels && Object.prototype.hasOwnProperty.call(channels, 'email')
+                ? Boolean(channels.email)
+                : defaultChannels.email,
+            sms: channels && Object.prototype.hasOwnProperty.call(channels, 'sms')
+                ? Boolean(channels.sms)
+                : defaultChannels.sms,
+            daily_summary: channels && Object.prototype.hasOwnProperty.call(channels, 'daily_summary')
+                ? Boolean(channels.daily_summary)
+                : defaultChannels.daily_summary,
+        };
+
+        const labels = [];
+        if (merged.email) {
+            labels.push('Correo');
+        }
+        if (merged.sms) {
+            labels.push('SMS');
+        }
+        if (merged.daily_summary) {
+            labels.push('Resumen diario');
+        }
+        return labels;
+    };
+
+    const parseUserId = (value) => {
+        const parsed = Number.parseInt(String(value ?? '').trim(), 10);
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+    };
+
+    const maybeShowDesktopNotification = (title, body) => {
+        if (!realtimeConfig.desktop_notifications || typeof window === 'undefined' || !('Notification' in window)) {
+            return;
+        }
+
+        if (Notification.permission === 'default') {
+            Notification.requestPermission().catch(() => {});
+        }
+
+        if (Notification.permission !== 'granted') {
+            return;
+        }
+
+        const notification = new Notification(title, {body});
+        if (desktopDismissSeconds > 0) {
+            window.setTimeout(() => notification.close(), desktopDismissSeconds * 1000);
+        }
+    };
+
+    const scheduleRealtimeReload = (delayMs = 550) => {
+        if (state.realtime.refreshTimer) {
+            window.clearTimeout(state.realtime.refreshTimer);
+        }
+        state.realtime.refreshTimer = window.setTimeout(() => {
+            state.realtime.refreshTimer = null;
+            loadKanban();
+        }, Math.max(150, delayMs));
+    };
+
     const getFilters = () => ({
         search: searchInput ? searchInput.value.trim() : '',
         afiliacion: afiliacionSelect ? afiliacionSelect.value.trim() : '',
@@ -169,6 +294,122 @@
             return filters.date_to;
         }
         return '';
+    };
+
+    const parseLocalDate = (value) => {
+        if (!value) {
+            return null;
+        }
+        if (value instanceof Date) {
+            return Number.isNaN(value.getTime()) ? null : value;
+        }
+        const raw = typeof value === 'string' ? value.trim() : String(value);
+        if (!raw) {
+            return null;
+        }
+        const normalized = raw.includes(' ') ? raw.replace(' ', 'T') : raw;
+        const parsed = new Date(normalized);
+        return Number.isNaN(parsed.getTime()) ? null : parsed;
+    };
+
+    const normalizeUpper = (value) => String(value || '').trim().toUpperCase();
+
+    const syncResponsableOptions = (responsables, rows) => {
+        if (!responsableSelect) {
+            return;
+        }
+
+        const selectedValue = String(responsableSelect.value || '').trim();
+        const map = new Map();
+
+        (Array.isArray(responsables) ? responsables : []).forEach((item) => {
+            const id = item?.id ?? item?.responsable_id ?? null;
+            if (id == null) {
+                return;
+            }
+            const name = String(item?.name ?? item?.nombre ?? item?.responsable_nombre ?? '').trim();
+            if (!name) {
+                return;
+            }
+            map.set(String(id), name);
+        });
+
+        if (map.size === 0) {
+            (Array.isArray(rows) ? rows : []).forEach((row) => {
+                const id = row?.crm_responsable_id;
+                if (!id) {
+                    return;
+                }
+                const name = String(row?.crm_responsable_nombre || `ID ${id}`).trim();
+                map.set(String(id), name);
+            });
+        }
+
+        const sorted = Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1], 'es', {sensitivity: 'base'}));
+        responsableSelect.innerHTML = '<option value="">Todos</option><option value="sin_asignar">Sin responsable</option>';
+
+        sorted.forEach(([id, name]) => {
+            const option = document.createElement('option');
+            option.value = id;
+            option.textContent = name;
+            responsableSelect.appendChild(option);
+        });
+
+        if (selectedValue && Array.from(responsableSelect.options).some((opt) => opt.value === selectedValue)) {
+            responsableSelect.value = selectedValue;
+        }
+    };
+
+    const applyLocalFilters = (rows) => {
+        const items = Array.isArray(rows) ? rows : [];
+        const tipoSeleccionado = normalizeUpper(tipoSelect ? tipoSelect.value : '');
+        const filtrarDerivacionVencida = Boolean(derivacionVencidaCheckbox && derivacionVencidaCheckbox.checked);
+        const filtrarDerivacionPorVencer = Boolean(derivacionPorVencerCheckbox && derivacionPorVencerCheckbox.checked);
+        const derivacionDiasRaw = Number.parseInt(derivacionDiasInput ? derivacionDiasInput.value : '', 10);
+        const diasPorVencer = Number.isFinite(derivacionDiasRaw) ? Math.max(0, derivacionDiasRaw) : 0;
+        const filtrarSinResponsable = Boolean(sinResponsableCheckbox && sinResponsableCheckbox.checked);
+        const responsableSeleccionado = String(responsableSelect ? responsableSelect.value : '').trim();
+
+        const today = new Date();
+        const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        const msPerDay = 24 * 60 * 60 * 1000;
+
+        return items.filter((item) => {
+            if (tipoSeleccionado && normalizeUpper(item?.tipo) !== tipoSeleccionado) {
+                return false;
+            }
+
+            if (responsableSeleccionado) {
+                const responsableId = item?.crm_responsable_id ? String(item.crm_responsable_id) : '';
+                if (responsableSeleccionado === 'sin_asignar' && responsableId !== '') {
+                    return false;
+                }
+                if (responsableSeleccionado !== 'sin_asignar' && responsableId !== responsableSeleccionado) {
+                    return false;
+                }
+            }
+
+            if (filtrarSinResponsable && item?.crm_responsable_id) {
+                return false;
+            }
+
+            if (filtrarDerivacionVencida || filtrarDerivacionPorVencer) {
+                const fechaDerivacion = parseLocalDate(item?.derivacion_fecha_vigencia);
+                if (!fechaDerivacion) {
+                    return false;
+                }
+                const diffDays = Math.ceil((fechaDerivacion - todayStart) / msPerDay);
+                const vencida = diffDays < 0;
+                const porVencer = diffDays >= 0 && diffDays <= diasPorVencer;
+                const matchDerivacion = (filtrarDerivacionVencida && vencida)
+                    || (filtrarDerivacionPorVencer && porVencer);
+                if (!matchDerivacion) {
+                    return false;
+                }
+            }
+
+            return true;
+        });
     };
 
     const applyInitialFilters = () => {
@@ -293,7 +534,7 @@
     const renderMetrics = (metrics) => {
         const sla = (metrics && metrics.sla) || {};
         const alerts = (metrics && metrics.alerts) || {};
-        const total = Array.isArray(state.rows) ? state.rows.length : 0;
+        const total = Array.isArray(state.filteredRows) ? state.filteredRows.length : (Array.isArray(state.rows) ? state.rows.length : 0);
 
         const map = {
             mTotal: total,
@@ -547,7 +788,7 @@
             return;
         }
 
-        const grouped = groupRowsByColumn(state.rows);
+        const grouped = groupRowsByColumn(state.filteredRows);
 
         columns.forEach((column) => {
             const slug = String(column.slug || '');
@@ -722,6 +963,504 @@
         }
     };
 
+    const ensureNotificationPanel = async () => {
+        if (state.notificationPanel) {
+            return state.notificationPanel;
+        }
+
+        try {
+            const module = await import('/js/pages/solicitudes/notifications/panel.js');
+            if (!module || typeof module.createNotificationPanel !== 'function') {
+                return null;
+            }
+
+            state.notificationPanel = module.createNotificationPanel({
+                panelId: 'kanbanNotificationPanel',
+                backdropId: 'notificationPanelBackdrop',
+                toggleSelector: '[data-notification-panel-toggle]',
+                storageKey: notificationStorageKey,
+                retentionDays: panelRetentionDays,
+            });
+
+            if (state.notificationPanel && typeof state.notificationPanel.setChannelPreferences === 'function') {
+                state.notificationPanel.setChannelPreferences(defaultChannels);
+            }
+
+            return state.notificationPanel;
+        } catch (error) {
+            console.error('No se pudo inicializar el panel de avisos', error);
+            return null;
+        }
+    };
+
+    const initRealtimeNotifications = async () => {
+        if (state.realtime.bound) {
+            return;
+        }
+        state.realtime.bound = true;
+
+        const panel = await ensureNotificationPanel();
+        if (!panel) {
+            return;
+        }
+
+        if (!realtimeConfig.enabled) {
+            if (typeof panel.setIntegrationWarning === 'function') {
+                panel.setIntegrationWarning('Las notificaciones en tiempo real están desactivadas en Configuración → Notificaciones.');
+            }
+            return;
+        }
+
+        if (typeof window.Pusher === 'undefined') {
+            if (typeof panel.setIntegrationWarning === 'function') {
+                panel.setIntegrationWarning('Pusher no está disponible. Verifica que el script se haya cargado correctamente.');
+            }
+            console.warn('Pusher no está disponible. Verifica que el script se haya cargado correctamente.');
+            return;
+        }
+
+        const realtimeKey = String(realtimeConfig.key || '').trim();
+        if (!realtimeKey) {
+            if (typeof panel.setIntegrationWarning === 'function') {
+                panel.setIntegrationWarning('No se configuró la APP Key de Pusher en los ajustes.');
+            }
+            console.warn('No se configuró la APP Key de Pusher.');
+            return;
+        }
+
+        const options = {forceTLS: true};
+        const realtimeCluster = String(realtimeConfig.cluster || '').trim();
+        if (realtimeCluster) {
+            options.cluster = realtimeCluster;
+        }
+
+        const pusher = new window.Pusher(realtimeKey, options);
+        const channelName = String(realtimeConfig.channel || '').trim() || 'solicitudes-kanban';
+        const channel = pusher.subscribe(channelName);
+
+        state.realtime.pusher = pusher;
+        state.realtime.channel = channel;
+
+        if (typeof panel.setIntegrationWarning === 'function') {
+            panel.setIntegrationWarning('');
+        }
+
+        const events = realtimeConfig.events && typeof realtimeConfig.events === 'object'
+            ? realtimeConfig.events
+            : {};
+        const newEventName = String(events.new_request || realtimeConfig.event || 'kanban.nueva-solicitud').trim();
+        const statusEventName = String(events.status_updated || 'kanban.estado-actualizado').trim();
+        const crmEventName = String(events.crm_updated || 'crm.detalles-actualizados').trim();
+        const whatsappHandoffEventName = String(events.whatsapp_handoff || 'whatsapp.handoff').trim();
+        const reminderEvents = [
+            {
+                key: 'surgery',
+                eventName: String(events.surgery_reminder || 'recordatorio-cirugia').trim(),
+                defaultLabel: 'Recordatorio de cirugía',
+                icon: 'mdi mdi-alarm-check',
+                tone: 'primary',
+            },
+            {
+                key: 'surgery_24h',
+                eventName: String(events.surgery_precheck_24h || 'recordatorio-cirugia-24h').trim(),
+                defaultLabel: 'Checklist 24h prequirúrgico',
+                icon: 'mdi mdi-timer-sand',
+                tone: 'info',
+            },
+            {
+                key: 'surgery_2h',
+                eventName: String(events.surgery_precheck_2h || 'recordatorio-cirugia-2h').trim(),
+                defaultLabel: 'Checklist 2h prequirúrgico',
+                icon: 'mdi mdi-timer-alert-outline',
+                tone: 'warning',
+            },
+            {
+                key: 'preop',
+                eventName: String(events.preop_reminder || 'recordatorio-preop').trim(),
+                defaultLabel: 'Preparación preoperatoria',
+                icon: 'mdi mdi-clipboard-check-outline',
+                tone: 'info',
+            },
+            {
+                key: 'postop',
+                eventName: String(events.postop_reminder || 'recordatorio-postop').trim(),
+                defaultLabel: 'Control postoperatorio',
+                icon: 'mdi mdi-heart-pulse',
+                tone: 'success',
+            },
+            {
+                key: 'post_consulta',
+                eventName: String(events.post_consulta || 'postconsulta').trim(),
+                defaultLabel: 'Seguimiento postconsulta',
+                icon: 'mdi mdi-stethoscope',
+                tone: 'primary',
+            },
+            {
+                key: 'exams',
+                eventName: String(events.exams_expiring || 'alerta-examenes-por-vencer').trim(),
+                defaultLabel: 'Exámenes por vencer',
+                icon: 'mdi mdi-file-alert-outline',
+                tone: 'warning',
+            },
+            {
+                key: 'exam_reminder',
+                eventName: String(events.exam_reminder || 'recordatorio-examen').trim(),
+                defaultLabel: 'Recordatorio de examen',
+                icon: 'mdi mdi-file-check-outline',
+                tone: 'info',
+            },
+            {
+                key: 'crm_task',
+                eventName: String(events.crm_task_reminder || 'crm.task-reminder').trim(),
+                defaultLabel: 'Recordatorio de tarea CRM',
+                icon: 'mdi mdi-format-list-checks',
+                tone: 'warning',
+            },
+        ];
+
+        if (newEventName) {
+            channel.bind(newEventName, (data) => {
+                const nombre = data?.full_name || data?.nombre || (data?.hc_number ? `HC ${data.hc_number}` : 'Paciente sin nombre');
+                const prioridad = String(data?.prioridad || '').toUpperCase().trim();
+                const urgente = prioridad === 'SI' || prioridad === 'SÍ' || prioridad === 'URGENTE' || prioridad === 'ALTA';
+                const mensaje = `Nueva solicitud: ${nombre}`;
+
+                panel.pushRealtime({
+                    dedupeKey: `new-${data?.form_id ?? data?.secuencia ?? Date.now()}`,
+                    title: nombre,
+                    message: data?.procedimiento || data?.tipo || 'Nueva solicitud registrada',
+                    meta: [
+                        data?.doctor ? `Dr(a). ${data.doctor}` : '',
+                        data?.afiliacion ? `Afiliación: ${data.afiliacion}` : '',
+                    ].filter(Boolean),
+                    badges: [
+                        data?.tipo ? {label: data.tipo, variant: 'bg-primary text-white'} : null,
+                        prioridad ? {label: `Prioridad ${prioridad}`, variant: urgente ? 'bg-danger text-white' : 'bg-success text-white'} : null,
+                    ].filter(Boolean),
+                    icon: urgente ? 'mdi mdi-alert-decagram-outline' : 'mdi mdi-flash',
+                    tone: urgente ? 'danger' : 'info',
+                    timestamp: new Date(),
+                    channels: mapChannels(data?.channels),
+                });
+
+                showToast(mensaje, true, toastDurationMs);
+                maybeShowDesktopNotification('Nueva solicitud', mensaje);
+                scheduleRealtimeReload();
+            });
+        }
+
+        if (statusEventName) {
+            channel.bind(statusEventName, (data) => {
+                const paciente = data?.full_name || (data?.hc_number ? `HC ${data.hc_number}` : `Solicitud #${data?.id ?? ''}`);
+                const nuevoEstado = data?.estado || 'Actualizada';
+                const estadoAnterior = data?.estado_anterior || 'Sin estado previo';
+                const solicitudId = data?.id ?? data?.solicitud_id ?? '';
+
+                panel.pushRealtime({
+                    dedupeKey: `estado-${solicitudId || Date.now()}-${nuevoEstado}`,
+                    title: paciente,
+                    message: `Estado actualizado: ${estadoAnterior} → ${nuevoEstado}`,
+                    meta: [
+                        data?.procedimiento || '',
+                        data?.doctor ? `Dr(a). ${data.doctor}` : '',
+                        data?.afiliacion ? `Afiliación: ${data.afiliacion}` : '',
+                    ].filter(Boolean),
+                    badges: [
+                        data?.prioridad ? {label: `Prioridad ${String(data.prioridad).toUpperCase()}`, variant: 'bg-secondary text-white'} : null,
+                        nuevoEstado ? {label: nuevoEstado, variant: 'bg-warning text-dark'} : null,
+                    ].filter(Boolean),
+                    icon: 'mdi mdi-view-kanban',
+                    tone: 'warning',
+                    timestamp: new Date(),
+                    channels: mapChannels(data?.channels),
+                });
+
+                const toastMessage = `${paciente}: ahora está en ${nuevoEstado}`;
+                showToast(toastMessage, true, toastDurationMs);
+                maybeShowDesktopNotification('Estado de solicitud', `${paciente} pasó a ${nuevoEstado}`);
+                scheduleRealtimeReload();
+            });
+        }
+
+        if (crmEventName) {
+            channel.bind(crmEventName, (data) => {
+                const paciente = data?.paciente_nombre || `Solicitud #${data?.solicitud_id ?? ''}`;
+                const etapa = data?.pipeline_stage || 'Etapa actualizada';
+                const responsable = data?.responsable_nombre || '';
+
+                panel.pushRealtime({
+                    dedupeKey: `crm-${data?.solicitud_id ?? Date.now()}-${etapa}-${responsable}`,
+                    title: paciente,
+                    message: `CRM actualizado · ${etapa}`,
+                    meta: [
+                        data?.procedimiento || '',
+                        data?.doctor ? `Dr(a). ${data.doctor}` : '',
+                        responsable ? `Responsable: ${responsable}` : '',
+                        data?.fuente ? `Fuente: ${data.fuente}` : '',
+                    ].filter(Boolean),
+                    badges: etapa ? [{label: etapa, variant: 'bg-info text-white'}] : [],
+                    icon: 'mdi mdi-account-cog-outline',
+                    tone: 'info',
+                    timestamp: new Date(),
+                    channels: mapChannels(data?.channels),
+                });
+
+                showToast(`${paciente}: CRM actualizado`, true, toastDurationMs);
+            });
+        }
+
+        if (whatsappHandoffEventName) {
+            channel.bind(whatsappHandoffEventName, (data) => {
+                const action = String(data?.handoff_action || 'requested').toLowerCase().trim();
+                const contactName = data?.display_name || data?.patient_full_name || data?.wa_number || 'Contacto';
+                const targetName = data?.target_user_name || data?.assigned_user_name || 'agente';
+                const occurredAt = data?.occurred_at || data?.last_message_at || null;
+                const messageByAction = {
+                    assigned: `Asignado a ${targetName}`,
+                    transferred: `Derivado a ${targetName}`,
+                    requeued: 'Handoff reencolado',
+                    resolved: 'Handoff resuelto',
+                    requested: 'Se solicitó atención humana',
+                };
+                const badgeByAction = {
+                    assigned: {label: 'Asignado', variant: 'bg-success text-white'},
+                    transferred: {label: 'Derivado', variant: 'bg-info text-white'},
+                    requeued: {label: 'Reencolado', variant: 'bg-warning text-dark'},
+                    resolved: {label: 'Resuelto', variant: 'bg-primary text-white'},
+                    requested: {label: 'Derivación', variant: 'bg-warning text-dark'},
+                };
+
+                panel.pushRealtime({
+                    dedupeKey: `wa-handoff-${action}-${data?.conversation_id ?? '0'}-${data?.assigned_user_id ?? data?.target_user_id ?? '0'}-${occurredAt ?? Date.now()}`,
+                    title: contactName,
+                    message: messageByAction[action] || messageByAction.requested,
+                    meta: [
+                        data?.handoff_role_name ? `Equipo: ${data.handoff_role_name}` : '',
+                        data?.actor_user_name ? `Acción por: ${data.actor_user_name}` : '',
+                        data?.handoff_notes ? `Nota: ${String(data.handoff_notes).slice(0, 120)}` : '',
+                    ].filter(Boolean),
+                    badges: [badgeByAction[action] || badgeByAction.requested],
+                    icon: 'mdi mdi-whatsapp',
+                    tone: action === 'assigned'
+                        ? 'success'
+                        : action === 'resolved'
+                            ? 'primary'
+                            : action === 'transferred'
+                                ? 'info'
+                                : 'warning',
+                    timestamp: occurredAt ? new Date(occurredAt) : new Date(),
+                    channels: mapChannels(data?.channels),
+                });
+            });
+        }
+
+        const currentUserId = parseUserId(window?.MEDF?.currentUser?.id);
+        const reminderBindings = new Set();
+        reminderEvents.forEach((eventConfig) => {
+            if (!eventConfig.eventName || reminderBindings.has(eventConfig.eventName)) {
+                return;
+            }
+            reminderBindings.add(eventConfig.eventName);
+
+            channel.bind(eventConfig.eventName, (rawData) => {
+                const data = rawData || {};
+                const assignedTo = parseUserId(data?.assigned_to);
+                const audienceUserIds = Array.isArray(data?.audience_user_ids)
+                    ? data.audience_user_ids.map((value) => parseUserId(value)).filter((value) => value !== null)
+                    : [];
+                const isAudienceUser = currentUserId !== null && audienceUserIds.includes(currentUserId);
+
+                if (
+                    eventConfig.key === 'crm_task'
+                    && currentUserId !== null
+                    && !isAudienceUser
+                    && (assignedTo === null || assignedTo !== currentUserId)
+                ) {
+                    return;
+                }
+
+                const paciente = eventConfig.key === 'crm_task'
+                    ? (data.assigned_name || data.full_name || 'Tarea CRM')
+                    : (data.full_name || `Solicitud #${data.id ?? ''}`);
+                const reminderLabel = data.reminder_label || eventConfig.defaultLabel;
+                const reminderContext = data.reminder_context || '';
+                const dueIso = data.remind_at || data.due_at || data.fecha_programada || null;
+                const dueDate = parseLocalDate(dueIso);
+                const dueLabel = dueDate ? dueDate.toLocaleString() : '';
+                const fechaProgramada = parseLocalDate(data.fecha_programada);
+                const examExpiry = parseLocalDate(data.exam_expires_at);
+                const examLabel = examExpiry ? examExpiry.toLocaleDateString() : '';
+
+                const meta = eventConfig.key === 'crm_task'
+                    ? [
+                        data.title ? `Tarea: ${data.title}` : '',
+                        data.source_module ? `Módulo: ${String(data.source_module).toUpperCase()}` : '',
+                        data.source_ref_id ? `Referencia: ${data.source_ref_id}` : '',
+                        data.assigned_name ? `Responsable: ${data.assigned_name}` : '',
+                        data.escalated ? 'Escalada a supervisión' : '',
+                        data.task_url ? `Acceso: ${data.task_url}` : '',
+                        reminderContext,
+                    ].filter(Boolean)
+                    : [
+                        data.procedimiento || '',
+                        data.doctor ? `Dr(a). ${data.doctor}` : '',
+                        data.quirofano ? `Quirófano: ${data.quirofano}` : '',
+                        data.prioridad ? `Prioridad: ${String(data.prioridad).toUpperCase()}` : '',
+                        reminderContext,
+                    ].filter(Boolean);
+
+                if (eventConfig.key === 'exams' && examLabel) {
+                    meta.push(`Vencen: ${examLabel}`);
+                }
+
+                panel.pushPending({
+                    dedupeKey: `recordatorio-${eventConfig.key}-${data.task_id ?? data.id ?? Date.now()}-${data.reminder_id ?? dueIso ?? data.fecha_programada ?? ''}`,
+                    title: paciente,
+                    message: eventConfig.key === 'crm_task'
+                        ? `${reminderLabel}${data.title ? ` · ${data.title}` : ''}`
+                        : reminderLabel,
+                    meta,
+                    badges: dueLabel ? [{label: dueLabel, variant: 'bg-primary text-white'}] : [],
+                    icon: eventConfig.icon,
+                    tone: eventConfig.tone,
+                    timestamp: new Date(),
+                    dueAt: dueDate || fechaProgramada,
+                    channels: mapChannels(data?.channels),
+                });
+
+                const toastLabel = reminderLabel || 'Recordatorio';
+                const toastMessage = eventConfig.key === 'crm_task'
+                    ? `${toastLabel}: ${data.title || 'Tarea CRM'}${dueLabel ? ` · ${dueLabel}` : ''}`
+                    : (dueLabel
+                        ? `${toastLabel}: ${paciente} · ${dueLabel}`
+                        : `${toastLabel}: ${paciente}`);
+                showToast(toastMessage, true, toastDurationMs);
+                maybeShowDesktopNotification(toastLabel, toastMessage);
+            });
+        });
+    };
+
+    const parseDateRangeForReports = (filters) => {
+        const from = String(filters.date_from || '').trim();
+        const to = String(filters.date_to || '').trim();
+        if (from && to) {
+            return {from, to};
+        }
+        if (from) {
+            return {from, to: from};
+        }
+        if (to) {
+            return {from: to, to};
+        }
+        return {from: '', to: ''};
+    };
+
+    const buildReportPayload = (format) => {
+        const filters = getFilters();
+        const range = parseDateRangeForReports(filters);
+
+        return {
+            filters: {
+                search: filters.search,
+                doctor: filters.doctor,
+                afiliacion: filters.afiliacion,
+                sede: filters.sede,
+                responsable_id: responsableSelect ? String(responsableSelect.value || '').trim() : '',
+                date_from: range.from,
+                date_to: range.to,
+            },
+            quickMetric: null,
+            format,
+        };
+    };
+
+    const extractFilename = (contentDisposition, fallbackName) => {
+        if (!contentDisposition) {
+            return fallbackName;
+        }
+        const match = contentDisposition.match(/filename="([^"]+)"/i);
+        return match && match[1] ? match[1] : fallbackName;
+    };
+
+    const exportSolicitudes = async (format) => {
+        if (state.exporting) {
+            return;
+        }
+
+        const endpoint = format === 'excel' ? '/solicitudes/reportes/excel' : '/solicitudes/reportes/pdf';
+        const expectedContentType = format === 'excel'
+            ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            : 'application/pdf';
+
+        state.exporting = true;
+        try {
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': '*/*',
+                },
+                credentials: 'same-origin',
+                body: JSON.stringify(buildReportPayload(format)),
+            });
+
+            const contentType = response.headers.get('content-type') || '';
+            if (!response.ok || !contentType.includes(expectedContentType)) {
+                let message = 'No se pudo generar el reporte.';
+                try {
+                    if (contentType.includes('application/json')) {
+                        const payload = await response.json();
+                        message = payload && payload.error ? payload.error : message;
+                    } else {
+                        const text = await response.text();
+                        if (text) {
+                            message = text;
+                        }
+                    }
+                } catch (error) {
+                    // Keep default message.
+                }
+                throw new Error(message);
+            }
+
+            const blob = await response.blob();
+            const blobUrl = window.URL.createObjectURL(blob);
+
+            if (format === 'pdf') {
+                const opened = window.open(blobUrl, '_blank', 'noopener,noreferrer');
+                if (!opened) {
+                    const link = document.createElement('a');
+                    link.href = blobUrl;
+                    link.download = 'reporte_solicitudes.pdf';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                }
+            } else {
+                const filename = extractFilename(
+                    response.headers.get('content-disposition'),
+                    'reporte_solicitudes.xlsx'
+                );
+                const link = document.createElement('a');
+                link.href = blobUrl;
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }
+
+            window.setTimeout(() => {
+                window.URL.revokeObjectURL(blobUrl);
+            }, 10000);
+
+            showToast(format === 'excel' ? 'Reporte Excel generado.' : 'Reporte PDF generado.', true);
+        } catch (error) {
+            showToast(error && error.message ? error.message : 'No se pudo exportar el reporte', false);
+        } finally {
+            state.exporting = false;
+        }
+    };
+
     const ensureConciliacionPanel = async () => {
         if (state.conciliacionPanel.failed) {
             return null;
@@ -841,9 +1580,11 @@
             renderSelectOptions(afiliacionSelect, state.options.afiliaciones || [], filters.afiliacion);
             renderSelectOptions(sedeSelect, state.options.sedes || ['MATRIZ', 'CEIBOS'], filters.sede);
             renderSelectOptions(doctorSelect, state.options.doctores || [], filters.doctor);
+            syncResponsableOptions((state.options.crm && state.options.crm.responsables) || [], state.rows);
+            state.filteredRows = applyLocalFilters(state.rows);
             renderMetrics((state.options.metrics || {}));
             renderBoard();
-            renderTable(state.rows);
+            renderTable(state.filteredRows);
             initTooltips();
             await syncCrmPanel();
 
@@ -854,11 +1595,19 @@
                 }
             }
         } catch (error) {
+            state.filteredRows = [];
             renderTable([]);
             showToast(`No se pudo cargar solicitudes: ${error.message || error}`, false);
         } finally {
             state.loading = false;
         }
+    };
+
+    const rerenderFromLocalFilters = () => {
+        state.filteredRows = applyLocalFilters(state.rows);
+        renderMetrics((state.options.metrics || {}));
+        renderBoard();
+        renderTable(state.filteredRows);
     };
 
     const advanceSolicitud = async (solicitudId, nextSlug) => {
@@ -880,6 +1629,18 @@
             }
 
             showToast('Estado actualizado', true);
+            const panel = await ensureNotificationPanel();
+            if (panel && typeof panel.pushRealtime === 'function') {
+                panel.pushRealtime({
+                    dedupeKey: `estado-${solicitudId}-${nextSlug}-${Date.now()}`,
+                    title: 'Solicitud actualizada',
+                    message: `Estado cambiado a ${nextSlug}`,
+                    meta: [`Solicitud #${solicitudId}`],
+                    icon: 'mdi mdi-view-kanban',
+                    tone: 'success',
+                    timestamp: new Date(),
+                });
+            }
             await loadKanban();
         } catch (error) {
             showToast(error.message || 'No se pudo actualizar estado', false);
@@ -1004,6 +1765,39 @@
         });
     }
 
+    if (exportPdfButton) {
+        exportPdfButton.addEventListener('click', () => {
+            exportSolicitudes('pdf');
+        });
+    }
+
+    if (exportExcelButton) {
+        exportExcelButton.addEventListener('click', () => {
+            exportSolicitudes('excel');
+        });
+    }
+
+    [
+        tipoSelect,
+        responsableSelect,
+        sinResponsableCheckbox,
+        derivacionVencidaCheckbox,
+        derivacionPorVencerCheckbox,
+    ].forEach((element) => {
+        if (!element) {
+            return;
+        }
+        element.addEventListener('change', () => {
+            rerenderFromLocalFilters();
+        });
+    });
+
+    if (derivacionDiasInput) {
+        derivacionDiasInput.addEventListener('input', () => {
+            rerenderFromLocalFilters();
+        });
+    }
+
     if (board) {
         board.addEventListener('click', (event) => {
             const target = event.target.closest('[data-action]');
@@ -1050,6 +1844,7 @@
     applyInitialFilters();
     syncLegacyKanbanBridge();
     initTooltips();
+    initRealtimeNotifications();
     switchView(state.view, false);
     loadKanban();
 })();
