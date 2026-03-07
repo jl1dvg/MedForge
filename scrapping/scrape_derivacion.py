@@ -14,8 +14,8 @@ os.environ.setdefault("OMP_NUM_THREADS", "1")
 modo_quieto = "--quiet" in sys.argv
 ocr_habilitado = "--ocr" in sys.argv
 
-USERNAME = "jdevera"
-PASSWORD = "0925619736"
+USERNAME = "calvarado"
+PASSWORD = "0923013940"
 LOGIN_URL = "https://cive.ddns.net:8085/site/login"
 LOG_URL = f"https://cive.ddns.net:8085/documentacion/doc-solicitud-procedimientos/view?id={sys.argv[1]}"
 

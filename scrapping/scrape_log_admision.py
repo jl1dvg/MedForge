@@ -6,8 +6,8 @@ import re
 
 modo_quieto = "--quiet" in sys.argv
 
-USERNAME = "jdevera"
-PASSWORD = "0925619736"
+USERNAME = "calvarado"
+PASSWORD = "0923013940"
 LOGIN_URL = "https://cive.ddns.net:8085/site/login"
 
 headers = {'User-Agent': 'Mozilla/5.0'}
