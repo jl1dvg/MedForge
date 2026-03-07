@@ -358,13 +358,46 @@ class BillingUiService
                 );
 
                 if ($row !== null) {
-                    return [
+                    $current = [
                         'cod_derivacion' => (string) ($row->cod_derivacion ?? ''),
                         'referido' => (string) ($row->referido ?? ''),
                         'fecha_registro' => (string) ($row->fecha_registro ?? ''),
                         'fecha_vigencia' => (string) ($row->fecha_vigencia ?? ''),
                         'diagnostico' => (string) ($row->diagnostico ?? ''),
                     ];
+                    if ($current['cod_derivacion'] !== '') {
+                        return $current;
+                    }
+
+                    // Si existe fila en tablas nuevas pero sin código aún, probar fallback legacy.
+                    if ($this->tableExists('derivaciones_form_id')) {
+                        try {
+                            $legacyRow = DB::selectOne(
+                                'SELECT cod_derivacion, referido, fecha_registro, fecha_vigencia, diagnostico FROM derivaciones_form_id WHERE form_id = ? LIMIT 1',
+                                [$formId]
+                            );
+                        } catch (\Throwable) {
+                            $legacyRow = null;
+                        }
+
+                        if ($legacyRow !== null && !empty($legacyRow->cod_derivacion)) {
+                            $current['cod_derivacion'] = (string) ($legacyRow->cod_derivacion ?? '');
+                            if ($current['referido'] === '') {
+                                $current['referido'] = (string) ($legacyRow->referido ?? '');
+                            }
+                            if ($current['fecha_registro'] === '') {
+                                $current['fecha_registro'] = (string) ($legacyRow->fecha_registro ?? '');
+                            }
+                            if ($current['fecha_vigencia'] === '') {
+                                $current['fecha_vigencia'] = (string) ($legacyRow->fecha_vigencia ?? '');
+                            }
+                            if ($current['diagnostico'] === '') {
+                                $current['diagnostico'] = (string) ($legacyRow->diagnostico ?? '');
+                            }
+                        }
+                    }
+
+                    return $current;
                 }
             } catch (\Throwable) {
                 // fallback legacy table

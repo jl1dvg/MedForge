@@ -173,20 +173,86 @@ class BillingInformeDataService
             if (empty($row['fecha_vigencia']) && !empty($row['valid_until'])) {
                 $row['fecha_vigencia'] = $row['valid_until'];
             }
+            if (!$this->hasCodigoDerivacion($row)) {
+                $legacy = $this->obtenerDerivacionLegacyPorFormId($formId);
+                if ($legacy !== []) {
+                    $row = $this->mergeDerivacionRows($row, $legacy);
+                }
+            }
             $this->derivacionCache[$formId] = $row;
             return $row;
         }
 
-        try {
-            $stmt = $this->db->prepare('SELECT * FROM derivaciones_form_id WHERE form_id = ? LIMIT 1');
-            $stmt->execute([$formId]);
-            $fallback = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
-        } catch (\Throwable) {
-            $fallback = [];
-        }
+        $fallback = $this->obtenerDerivacionLegacyPorFormId($formId);
 
         $this->derivacionCache[$formId] = $fallback;
         return $fallback;
+    }
+
+    /**
+     * @param array<string,mixed> $row
+     */
+    private function hasCodigoDerivacion(array $row): bool
+    {
+        $codigo = trim((string) ($row['cod_derivacion'] ?? $row['codigo_derivacion'] ?? ''));
+        return $codigo !== '';
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private function obtenerDerivacionLegacyPorFormId(string $formId): array
+    {
+        try {
+            $stmt = $this->db->prepare('SELECT * FROM derivaciones_form_id WHERE form_id = ? LIMIT 1');
+            $stmt->execute([$formId]);
+            return $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+        } catch (\Throwable) {
+            return [];
+        }
+    }
+
+    /**
+     * @param array<string,mixed> $primary
+     * @param array<string,mixed> $legacy
+     * @return array<string,mixed>
+     */
+    private function mergeDerivacionRows(array $primary, array $legacy): array
+    {
+        $merged = $primary;
+
+        foreach ([
+            'cod_derivacion',
+            'codigo_derivacion',
+            'referido',
+            'fecha_registro',
+            'fecha_vigencia',
+            'diagnostico',
+            'sede',
+            'parentesco',
+            'archivo_derivacion_path',
+            'payer',
+            'afiliacion_raw',
+        ] as $key) {
+            $current = trim((string) ($merged[$key] ?? ''));
+            if ($current !== '') {
+                continue;
+            }
+
+            $legacyValue = $legacy[$key] ?? null;
+            if ($legacyValue !== null && trim((string) $legacyValue) !== '') {
+                $merged[$key] = $legacyValue;
+            }
+        }
+
+        if (trim((string) ($merged['cod_derivacion'] ?? '')) === '' && !empty($merged['codigo_derivacion'])) {
+            $merged['cod_derivacion'] = $merged['codigo_derivacion'];
+        }
+        if (trim((string) ($merged['codigo_derivacion'] ?? '')) === '' && !empty($merged['cod_derivacion'])) {
+            $merged['codigo_derivacion'] = $merged['cod_derivacion'];
+        }
+
+        return $merged;
     }
 
     public function obtenerBillingIdPorFormId(string $formId): ?int

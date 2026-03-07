@@ -692,7 +692,7 @@ class BillingUiController
         }
 
         if ($request->isMethod('post') && $request->has('scrape_derivacion') && $formIdsScrape && $hcNumbersScrape) {
-            $script = base_path('../scrapping/scrape_log_admision.py');
+            $script = base_path('../scrapping/scrape_derivacion.py');
             $outputs = [];
 
             if (count($hcNumbersScrape) === 1 && count($formIdsScrape) > 1) {
@@ -992,6 +992,8 @@ class BillingUiController
         } catch (\Throwable $exception) {
             Log::error('No se pudo generar consolidado IESS SOAM v2', [
                 'error' => $exception->getMessage(),
+                'file' => $exception->getFile(),
+                'line' => $exception->getLine(),
             ]);
 
             if ($request->expectsJson() || $request->boolean('debug')) {

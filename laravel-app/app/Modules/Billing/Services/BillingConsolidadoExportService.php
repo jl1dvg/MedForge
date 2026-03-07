@@ -3,9 +3,9 @@
 namespace App\Modules\Billing\Services;
 
 use App\Modules\Billing\Support\InformesHelper;
+use App\Modules\Reporting\Services\ReportService;
+use App\Modules\Reporting\Support\SolicitudDataFormatter;
 use Modules\Consulta\Services\ConsultaReportService;
-use Modules\Reporting\Services\ReportService;
-use Modules\Reporting\Support\SolicitudDataFormatter;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use PDO;
@@ -245,19 +245,36 @@ class BillingConsolidadoExportService
      */
     private function buildIessSoamSpreadsheet(array $formIds): Spreadsheet
     {
-        $generatorPath = base_path('../views/billing/generar_excel_iess_soam.php');
+        $generatorPath = base_path('../modules/Billing/views/informes/generar_excel_iess_soam.php');
         if (!is_file($generatorPath)) {
             throw new \RuntimeException('No se encontró el generador SOAM.');
         }
 
         $prevGet = $_GET;
+        $prevPdo = $GLOBALS['pdo'] ?? null;
+        $prevErrorReporting = error_reporting();
+        $errorHandler = static function (int $severity, string $message, string $file, int $line): bool {
+            // El generador legacy emite warnings/notices que no deben abortar el export en v2.
+            $softSeverities = [E_WARNING, E_NOTICE, E_USER_WARNING, E_USER_NOTICE, E_DEPRECATED, E_USER_DEPRECATED];
+            if (in_array($severity, $softSeverities, true)) {
+                return true;
+            }
+
+            return false;
+        };
         try {
             $_GET['form_id'] = implode(',', $formIds);
+            $GLOBALS['pdo'] = $this->resolvePdo();
             $GLOBALS['spreadsheet'] = null;
+            error_reporting($prevErrorReporting & ~E_WARNING & ~E_NOTICE & ~E_DEPRECATED);
+            set_error_handler($errorHandler);
             include $generatorPath;
             $spreadsheet = $GLOBALS['spreadsheet'] ?? null;
         } finally {
+            restore_error_handler();
+            error_reporting($prevErrorReporting);
             $_GET = $prevGet;
+            $GLOBALS['pdo'] = $prevPdo;
         }
 
         if (!($spreadsheet instanceof Spreadsheet)) {

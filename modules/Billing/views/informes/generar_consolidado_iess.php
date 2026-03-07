@@ -115,7 +115,7 @@ if ($esFormatoSoam) {
 
     $_GET['form_id'] = implode(',', $formIdsConsolidado);
     $GLOBALS['controller'] = $billingController;
-    include BASE_PATH . '/views/billing/generar_excel_iess_soam.php';
+    include BASE_PATH . '/modules/Billing/views/informes/generar_excel_iess_soam.php';
 
     $spreadsheet = $GLOBALS['spreadsheet'] ?? null;
     if (!($spreadsheet instanceof Spreadsheet)) {

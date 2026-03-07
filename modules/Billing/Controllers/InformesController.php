@@ -262,7 +262,7 @@ class InformesController extends BaseController
         }
 
         if (isset($_POST['scrape_derivacion']) && $formIdsScrape && $hcNumbersScrape) {
-            $script = BASE_PATH . '/scrapping/scrape_log_admision.py';
+            $script = BASE_PATH . '/scrapping/scrape_derivacion.py';
             $outputs = [];
 
             // Alinear hc_numbers con form_ids en caso de envío por lotes
