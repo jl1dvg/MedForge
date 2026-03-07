@@ -86,8 +86,9 @@ paths:
       deprecated: true
       summary: Guardar consulta clínica
       description: >-
-        Endpoint legacy. Actualmente funciona como puente hacia
-        `/v2/api/consultas/guardar.php`.
+        Endpoint legacy. Con `CONSULTAS_V2_WRITES_ENABLED=1` funciona como
+        puente (`307`) hacia `/v2/api/consultas/guardar.php`; con el flag en
+        `0` mantiene ejecución legacy.
       operationId: guardarConsulta
       requestBody:
         required: true
@@ -102,6 +103,110 @@ paths:
           description: Datos inválidos
         '401':
           description: Falta o es inválida la credencial de API
+  /api/consultas/anterior.php:
+    get:
+      deprecated: true
+      summary: Obtener consulta anterior (legacy bridge)
+      description: >-
+        Endpoint legacy. Con `CONSULTAS_V2_READS_ENABLED=1` redirige (`307`)
+        hacia `/v2/api/consultas/anterior.php`; con el flag en `0` usa lógica
+        legacy.
+      operationId: obtenerConsultaAnteriorLegacy
+      parameters:
+        - in: query
+          name: hcNumber
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: form_id
+          required: false
+          schema:
+            type: string
+        - in: query
+          name: procedimiento
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Resultado de consulta (con o sin datos)
+        '307':
+          description: Redirección a endpoint v2 cuando cutover de reads está activo
+        '500':
+          description: Error interno
+  /api/consultas/plan.php:
+    get:
+      deprecated: true
+      summary: Obtener plan de consulta (legacy bridge)
+      description: >-
+        Endpoint legacy. Con `CONSULTAS_V2_READS_ENABLED=1` redirige (`307`)
+        hacia `/v2/api/consultas/plan.php`; con el flag en `0` usa lógica
+        legacy.
+      operationId: obtenerPlanConsultaLegacy
+      parameters:
+        - in: query
+          name: form_id
+          required: false
+          schema:
+            type: string
+        - in: query
+          name: formId
+          required: false
+          schema:
+            type: string
+        - in: query
+          name: hcNumber
+          required: false
+          schema:
+            type: string
+        - in: query
+          name: hc_number
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Plan encontrado o mensaje de no encontrado
+        '307':
+          description: Redirección a endpoint v2 cuando cutover de reads está activo
+        '400':
+          description: Parámetros faltantes
+        '500':
+          description: Error interno
+    post:
+      deprecated: true
+      summary: Actualizar plan de consulta (legacy bridge)
+      description: >-
+        Endpoint legacy. Con `CONSULTAS_V2_WRITES_ENABLED=1` redirige (`307`)
+        hacia `/v2/api/consultas/plan.php`; con el flag en `0` usa lógica
+        legacy.
+      operationId: actualizarPlanConsultaLegacy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - form_id
+                - hcNumber
+              properties:
+                form_id:
+                  type: string
+                hcNumber:
+                  type: string
+                plan:
+                  type: string
+      responses:
+        '200':
+          description: Plan actualizado
+        '307':
+          description: Redirección a endpoint v2 cuando cutover de writes está activo
+        '400':
+          description: Datos inválidos
+        '500':
+          description: Error interno
   /v2/api/consultas/guardar.php:
     post:
       summary: Guardar consulta clínica (v2)

@@ -54,6 +54,87 @@ function findRows(selectors, fallbackSelector = '.multiple-input-list__item') {
     return document.querySelectorAll(fallbackSelector);
 }
 
+function resolveV2ApiUrl(path) {
+    const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+    const cleanPath = normalizedPath.replace(/^\/+/, '/');
+    const suffix = cleanPath.startsWith('/v2/') ? cleanPath : `/v2${cleanPath}`;
+
+    const fromClient = (
+        window.CiveApiClient &&
+        typeof window.CiveApiClient.apiOrigin === 'function'
+    ) ? String(window.CiveApiClient.apiOrigin() || '').replace(/\/+$/, '') : '';
+    if (fromClient) {
+        return `${fromClient}${suffix}`;
+    }
+
+    if (window.location && window.location.origin) {
+        return `${window.location.origin}${suffix}`;
+    }
+
+    return null;
+}
+
+function parseFlag(value, fallback = false) {
+    if (value === undefined || value === null || value === '') {
+        return fallback;
+    }
+    if (typeof value === 'boolean') {
+        return value;
+    }
+    if (typeof value === 'number') {
+        return value !== 0;
+    }
+
+    const normalized = String(value).trim().toLowerCase();
+    if (['1', 'true', 'yes', 'on'].includes(normalized)) {
+        return true;
+    }
+    if (['0', 'false', 'no', 'off'].includes(normalized)) {
+        return false;
+    }
+
+    return fallback;
+}
+
+function consultasWritesV2Enabled() {
+    if (!window.configCIVE || typeof window.configCIVE.get !== 'function') {
+        return false;
+    }
+
+    const umbrella = parseFlag(window.configCIVE.get('consultasV2ApiEnabled'), false);
+    return parseFlag(window.configCIVE.get('consultasV2WritesEnabled'), umbrella);
+}
+
+async function postConsultaConFallback(data) {
+    await (window.configCIVE ? window.configCIVE.ready : Promise.resolve());
+    const writesV2Enabled = consultasWritesV2Enabled();
+    const endpoints = [];
+    const v2Endpoint = resolveV2ApiUrl('/api/consultas/guardar');
+
+    if (writesV2Enabled && v2Endpoint) {
+        endpoints.push(v2Endpoint);
+    }
+
+    endpoints.push('/consultas/guardar');
+    endpoints.push('/consultas/guardar.php');
+
+    if (!writesV2Enabled && v2Endpoint) {
+        endpoints.push(v2Endpoint);
+    }
+
+    let lastError = null;
+
+    for (const endpoint of endpoints) {
+        try {
+            return await window.CiveApiClient.post(endpoint, {body: data});
+        } catch (error) {
+            lastError = error;
+        }
+    }
+
+    throw (lastError || new Error('No se pudo comunicar con el API de consultas.'));
+}
+
 
 // ==== Notificación no intrusiva (evita solaparse con los flujos de paciente.js) ====
 function notifySwal({icon = 'info', title = '', text = '', timer = 2000}) {
@@ -97,9 +178,8 @@ async function extraerDatosYEnviar() {
     // Inicializar el objeto data
     const data = {};
 
-    // Determinar el URL según el tipo de formato
+    // Determinar el flujo según el tipo de formato
     const isProtocoloQuirurgico = document.querySelector('#consultasubsecuente-membrete') !== null;
-    const apiPath = isProtocoloQuirurgico ? '/protocolos/guardar.php' : '/consultas/guardar.php';
 
     if (isProtocoloQuirurgico) {
         // Extraer datos para protocolo quirúrgico
@@ -459,9 +539,9 @@ async function extraerDatosYEnviar() {
     // Enviar los datos al backend
     console.log('Datos a enviar:', data);
     try {
-        const resultado = await window.CiveApiClient.post(apiPath, {
-            body: data,
-        });
+        const resultado = isProtocoloQuirurgico
+            ? await window.CiveApiClient.post('/protocolos/guardar.php', {body: data})
+            : await postConsultaConFallback(data);
 
         console.group('%c📤 Envío a API', 'color: green; font-weight: bold;');
         console.log('✅ Datos enviados:', data);

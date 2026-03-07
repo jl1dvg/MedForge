@@ -22,6 +22,47 @@
         ES_LOCAL: 'esLocal',
         EXTENSION_ID: 'extensionId',
     };
+    const MODULE_FLAG_KEY_MAP = {
+        consultasV2ApiEnabled: 'consultasV2ApiEnabled',
+        consultasV2ReadsEnabled: 'consultasV2ReadsEnabled',
+        consultasV2WritesEnabled: 'consultasV2WritesEnabled',
+        CONSULTAS_V2_API_ENABLED: 'consultasV2ApiEnabled',
+        CONSULTAS_V2_READS_ENABLED: 'consultasV2ReadsEnabled',
+        CONSULTAS_V2_WRITES_ENABLED: 'consultasV2WritesEnabled',
+    };
+
+    function readBooleanFlag(source, keys) {
+        if (!source || typeof source !== 'object') {
+            return undefined;
+        }
+
+        for (const key of keys) {
+            if (!Object.prototype.hasOwnProperty.call(source, key)) {
+                continue;
+            }
+
+            const value = source[key];
+            if (typeof value === 'boolean') {
+                return value;
+            }
+
+            if (typeof value === 'string') {
+                const normalized = value.trim().toLowerCase();
+                if (normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on') {
+                    return true;
+                }
+                if (normalized === '0' || normalized === 'false' || normalized === 'no' || normalized === 'off') {
+                    return false;
+                }
+            }
+
+            if (typeof value === 'number') {
+                return value !== 0;
+            }
+        }
+
+        return undefined;
+    }
 
     function detectLocalEnvironment() {
         try {
@@ -103,6 +144,9 @@
         },
         esLocal: defaultLocal,
         extensionId: defaultLocal ? 'JORGE' : 'CIVE',
+        consultasV2ApiEnabled: false,
+        consultasV2ReadsEnabled: false,
+        consultasV2WritesEnabled: false,
     };
 
     let current = {...DEFAULT_STATE};
@@ -142,6 +186,8 @@
                 next.esLocal = Boolean(value);
             } else if (key === 'extensionId') {
                 next.extensionId = typeof value === 'string' ? value : next.extensionId;
+            } else if (key === 'consultasV2ApiEnabled' || key === 'consultasV2ReadsEnabled' || key === 'consultasV2WritesEnabled') {
+                next[key] = Boolean(value);
             } else if (key === 'apiBaseUrl') {
                 next.apiBaseUrl = normalizeApiBaseUrl(value, next.apiBaseUrl || DEFAULT_API_BASE_URL);
             } else if (key === 'apiCredentialsMode') {
@@ -169,6 +215,12 @@
         const extensionIdFlag = Object.prototype.hasOwnProperty.call(bootstrap, 'extensionId')
             ? bootstrap.extensionId
             : (Object.prototype.hasOwnProperty.call(flags, 'extensionId') ? flags.extensionId : undefined);
+        const consultasV2ApiEnabled = readBooleanFlag(bootstrap, ['consultasV2ApiEnabled', 'CONSULTAS_V2_API_ENABLED'])
+            ?? readBooleanFlag(flags, ['consultasV2ApiEnabled', 'CONSULTAS_V2_API_ENABLED']);
+        const consultasV2ReadsEnabled = readBooleanFlag(bootstrap, ['consultasV2ReadsEnabled', 'CONSULTAS_V2_READS_ENABLED'])
+            ?? readBooleanFlag(flags, ['consultasV2ReadsEnabled', 'CONSULTAS_V2_READS_ENABLED']);
+        const consultasV2WritesEnabled = readBooleanFlag(bootstrap, ['consultasV2WritesEnabled', 'CONSULTAS_V2_WRITES_ENABLED'])
+            ?? readBooleanFlag(flags, ['consultasV2WritesEnabled', 'CONSULTAS_V2_WRITES_ENABLED']);
         const credentialsMode = bootstrap.api?.credentialsMode
             ?? bootstrap.apiCredentialsMode
             ?? flags.apiCredentialsMode;
@@ -193,6 +245,9 @@
             healthMaxAgeMinutes: typeof (bootstrap.health?.maxAgeMinutes ?? bootstrap.healthMaxAgeMinutes) === 'number' ? (bootstrap.health?.maxAgeMinutes ?? bootstrap.healthMaxAgeMinutes) : DEFAULT_STATE.healthMaxAgeMinutes,
             esLocal: typeof esLocalFlag === 'boolean' ? esLocalFlag : current.esLocal,
             extensionId: typeof extensionIdFlag === 'string' && extensionIdFlag !== '' ? extensionIdFlag : current.extensionId,
+            consultasV2ApiEnabled: typeof consultasV2ApiEnabled === 'boolean' ? consultasV2ApiEnabled : current.consultasV2ApiEnabled,
+            consultasV2ReadsEnabled: typeof consultasV2ReadsEnabled === 'boolean' ? consultasV2ReadsEnabled : current.consultasV2ReadsEnabled,
+            consultasV2WritesEnabled: typeof consultasV2WritesEnabled === 'boolean' ? consultasV2WritesEnabled : current.consultasV2WritesEnabled,
         };
     }
 
@@ -202,6 +257,12 @@
         }
 
         const flags = config.flags || {};
+        const consultasV2ApiEnabled = readBooleanFlag(config, ['consultasV2ApiEnabled', 'CONSULTAS_V2_API_ENABLED'])
+            ?? readBooleanFlag(flags, ['consultasV2ApiEnabled', 'CONSULTAS_V2_API_ENABLED']);
+        const consultasV2ReadsEnabled = readBooleanFlag(config, ['consultasV2ReadsEnabled', 'CONSULTAS_V2_READS_ENABLED'])
+            ?? readBooleanFlag(flags, ['consultasV2ReadsEnabled', 'CONSULTAS_V2_READS_ENABLED']);
+        const consultasV2WritesEnabled = readBooleanFlag(config, ['consultasV2WritesEnabled', 'CONSULTAS_V2_WRITES_ENABLED'])
+            ?? readBooleanFlag(flags, ['consultasV2WritesEnabled', 'CONSULTAS_V2_WRITES_ENABLED']);
         const credentialsMode = config.api?.credentialsMode
             ?? config.apiCredentialsMode
             ?? flags.apiCredentialsMode;
@@ -221,6 +282,9 @@
             apiCredentialsMode: normalizeCredentialsMode(credentialsMode, current.apiCredentialsMode || DEFAULT_STATE.apiCredentialsMode),
             esLocal: typeof flags.esLocal === 'boolean' ? flags.esLocal : current.esLocal,
             extensionId: typeof flags.extensionId === 'string' && flags.extensionId !== '' ? flags.extensionId : current.extensionId,
+            consultasV2ApiEnabled: typeof consultasV2ApiEnabled === 'boolean' ? consultasV2ApiEnabled : current.consultasV2ApiEnabled,
+            consultasV2ReadsEnabled: typeof consultasV2ReadsEnabled === 'boolean' ? consultasV2ReadsEnabled : current.consultasV2ReadsEnabled,
+            consultasV2WritesEnabled: typeof consultasV2WritesEnabled === 'boolean' ? consultasV2WritesEnabled : current.consultasV2WritesEnabled,
         };
     }
 
@@ -280,7 +344,7 @@
             if (!key) {
                 return cloneState();
             }
-            const normalizedKey = LEGACY_KEY_MAP[key] || key;
+            const normalizedKey = MODULE_FLAG_KEY_MAP[key] || LEGACY_KEY_MAP[key] || key;
             return Object.prototype.hasOwnProperty.call(current, normalizedKey)
                 ? current[normalizedKey]
                 : fallback;

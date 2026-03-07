@@ -144,6 +144,91 @@
     return { formId, hcNumber, procedimiento };
   }
 
+  function resolveV2ApiUrl(path) {
+    const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+    const cleanPath = normalizedPath.replace(/^\/+/, "/");
+    const suffix = cleanPath.startsWith("/v2/") ? cleanPath : `/v2${cleanPath}`;
+
+    const fromClient =
+      window.CiveApiClient &&
+      typeof window.CiveApiClient.apiOrigin === "function"
+        ? String(window.CiveApiClient.apiOrigin() || "").replace(/\/+$/, "")
+        : "";
+
+    if (fromClient) {
+      return `${fromClient}${suffix}`;
+    }
+
+    if (window.location && window.location.origin) {
+      return `${window.location.origin}${suffix}`;
+    }
+
+    return null;
+  }
+
+  function parseFlag(value, fallback = false) {
+    if (value === undefined || value === null || value === "") {
+      return fallback;
+    }
+    if (typeof value === "boolean") {
+      return value;
+    }
+    if (typeof value === "number") {
+      return value !== 0;
+    }
+    const normalized = String(value).trim().toLowerCase();
+    if (["1", "true", "yes", "on"].includes(normalized)) {
+      return true;
+    }
+    if (["0", "false", "no", "off"].includes(normalized)) {
+      return false;
+    }
+    return fallback;
+  }
+
+  function consultasReadsV2Enabled() {
+    if (!window.configCIVE || typeof window.configCIVE.get !== "function") {
+      return false;
+    }
+
+    const umbrella = parseFlag(window.configCIVE.get("consultasV2ApiEnabled"), false);
+    return parseFlag(window.configCIVE.get("consultasV2ReadsEnabled"), umbrella);
+  }
+
+  async function getConsultaAnteriorConFallback(query) {
+    await (window.configCIVE ? window.configCIVE.ready : Promise.resolve());
+    const readsV2Enabled = consultasReadsV2Enabled();
+    const endpoints = [];
+    const v2Endpoint = resolveV2ApiUrl("/api/consultas/anterior");
+
+    if (readsV2Enabled && v2Endpoint) {
+      endpoints.push(v2Endpoint);
+    }
+
+    endpoints.push("/consultas/anterior");
+    endpoints.push("/consultas/anterior.php");
+
+    if (!readsV2Enabled && v2Endpoint) {
+      endpoints.push(v2Endpoint);
+    }
+
+    let lastError = null;
+
+    for (const endpoint of endpoints) {
+      try {
+        return await window.CiveApiClient.get(endpoint, {
+          query,
+          retries: 1,
+          retryDelayMs: 500,
+        });
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    throw lastError || new Error("No se pudo consultar consulta anterior.");
+  }
+
   function setIfEmpty(selector, value) {
     if (!value) return false;
     const field = document.querySelector(selector);
@@ -687,11 +772,7 @@
     }
 
     try {
-      const resp = await window.CiveApiClient.get("/consultas/anterior.php", {
-        query,
-        retries: 1,
-        retryDelayMs: 500,
-      });
+      const resp = await getConsultaAnteriorConFallback(query);
       //console.log(
       //"CIVE Extension: respuesta cruda de /consultas/anterior.php",
       //resp

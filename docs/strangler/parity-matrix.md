@@ -79,6 +79,7 @@ Current parity policy:
 - Con `CONSULTAS_V2_READS_ENABLED=1`, los reads (`anterior`, `plan` GET) redirigen con `307` a `/v2`.
 - Con `CONSULTAS_V2_WRITES_ENABLED=1`, los writes (`guardar`, `plan` POST) redirigen con `307` a `/v2`.
 - `CONSULTAS_V2_API_ENABLED` actúa como fallback umbrella cuando `READS/WRITES` no están definidos.
+- La extensión CIVE respeta esos flags para decidir orden de fallback (`v2` primero solo cuando el flag correspondiente está activo).
 
 ### Auth (deferred)
 
