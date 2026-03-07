@@ -1,7 +1,5 @@
 <?php
 
-use Helpers\InformesHelper;
-
 $facturas = $facturas ?? [];
 $grupos = $grupos ?? [];
 $cachePorMes = $cachePorMes ?? [];
@@ -43,6 +41,7 @@ $orderMap = [
 $defaultOrderColumn = $orderMap[$defaultOrder]['column'] ?? 6;
 $defaultOrderDir = $orderMap[$defaultOrder]['dir'] ?? 'desc';
 $afiliacionesPermitidas = $grupoConfig['afiliaciones'] ?? [];
+$informesHelperClass = '\\App\\Modules\\Billing\\Support\\InformesHelper';
 if (empty($afiliacionesPermitidas)) {
     $afiliacionesPermitidas = [
             'contribuyente voluntario',
@@ -59,11 +58,11 @@ if (empty($afiliacionesPermitidas)) {
     ];
 }
 $afiliacionesPermitidas = array_map(
-        fn($afiliacion) => InformesHelper::normalizarAfiliacion($afiliacion),
+        fn($afiliacion) => $informesHelperClass::normalizarAfiliacion($afiliacion),
         $afiliacionesPermitidas
 );
-$afiliacionSeleccionada = InformesHelper::normalizarAfiliacion($filtros['afiliacion'] ?? '');
-$sedeSeleccionada = InformesHelper::normalizarSede($filtros['sede'] ?? '');
+$afiliacionSeleccionada = $informesHelperClass::normalizarAfiliacion($filtros['afiliacion'] ?? '');
+$sedeSeleccionada = $informesHelperClass::normalizarSede($filtros['sede'] ?? '');
 
 ?>
 <style>
@@ -137,7 +136,7 @@ $sedeSeleccionada = InformesHelper::normalizarSede($filtros['sede'] ?? '');
                                                 $cachePorMes[$mes]['pacientes'][$hc] = $pacientesCache[$hc];
                                             }
                                         }
-                                        $afiliacion = InformesHelper::normalizarAfiliacion($cachePorMes[$mes]['pacientes'][$hc]['afiliacion'] ?? '');
+                                        $afiliacion = $informesHelperClass::normalizarAfiliacion($cachePorMes[$mes]['pacientes'][$hc]['afiliacion'] ?? '');
                                         if ($afiliacionSeleccionada && $afiliacionSeleccionada !== $afiliacion) {
                                             continue;
                                         }
@@ -147,7 +146,7 @@ $sedeSeleccionada = InformesHelper::normalizarSede($filtros['sede'] ?? '');
                                                 continue;
                                             }
                                             if (!isset($sedesCache[$formIdMes])) {
-                                                $sedesCache[$formIdMes] = InformesHelper::normalizarSede(
+                                                $sedesCache[$formIdMes] = $informesHelperClass::normalizarSede(
                                                     $billingController ? $billingController->obtenerSedePorFormId($formIdMes) : ''
                                                 );
                                             }
@@ -210,7 +209,7 @@ $sedeSeleccionada = InformesHelper::normalizarSede($filtros['sede'] ?? '');
                                     $afiliacionesDisponibles = array_unique($afiliacionesPermitidas);
                                     sort($afiliacionesDisponibles);
                                     foreach ($afiliacionesDisponibles as $afiliacionOption):
-                                        $normalizedOption = InformesHelper::normalizarAfiliacion($afiliacionOption);
+                                        $normalizedOption = $informesHelperClass::normalizarAfiliacion($afiliacionOption);
                                         $selected = $afiliacionSeleccionada === $normalizedOption ? 'selected' : '';
                                         $label = ucwords($afiliacionOption);
                                         echo "<option value='{$normalizedOption}' {$selected}>{$label}</option>";
@@ -364,7 +363,7 @@ $sedeSeleccionada = InformesHelper::normalizarSede($filtros['sede'] ?? '');
                         </div>
                     <?php endif; ?>
                 <?php
-                $consolidado = InformesHelper::obtenerConsolidadoFiltrado(
+                $consolidado = $informesHelperClass::obtenerConsolidadoFiltrado(
                         $facturas,
                         array_merge($filtros, ['vista' => $vista]),
                         $billingController,
@@ -398,7 +397,7 @@ $sedeSeleccionada = InformesHelper::normalizarSede($filtros['sede'] ?? '');
                     }
                 }
 
-                $consolidadoAgrupadoPorCategoria = InformesHelper::agruparConsolidadoPorPaciente(
+                $consolidadoAgrupadoPorCategoria = $informesHelperClass::agruparConsolidadoPorPaciente(
                         $consolidadoPorCategoria,
                         $pacientesCache,
                         $datosCache,
@@ -577,7 +576,7 @@ $sedeSeleccionada = InformesHelper::normalizarSede($filtros['sede'] ?? '');
                                                     $edad = $pacienteService->calcularEdad($pacienteInfo['fecha_nacimiento'] ?? null, $info['paciente']['fecha_ordenada'] ?? null);
                                                     $genero = strtoupper(substr($pacienteInfo['sexo'] ?? '--', 0, 1));
                                                     $cie10 = implode('; ', array_unique(array_map('trim', $info['cie10'])));
-                                                    $cie10 = InformesHelper::extraerCie10($cie10);
+                                                    $cie10 = $informesHelperClass::extraerCie10($cie10);
                                                     $codigoDerivacion = implode('; ', array_unique($info['cod_derivacion'] ?? []));
                                                     $nombre = trim(($pacienteInfo['fname'] ?? '') . ' ' . ($pacienteInfo['mname'] ?? ''));
                                                     $apellido = trim(($pacienteInfo['lname'] ?? '') . ' ' . ($pacienteInfo['lname2'] ?? ''));

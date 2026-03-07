@@ -109,23 +109,36 @@ return function (Router $router) {
         (new BillingController($pdo))->crearDesdeNoFacturado();
     });
 
-    $router->match(['GET', 'POST'], '/informes/iess', function (\PDO $pdo) {
+    $router->match(['GET', 'POST'], '/informes/iess', function (\PDO $pdo) use ($redirectToV2IfEnabled) {
+        if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) === 'GET') {
+            $redirectToV2IfEnabled('/v2/informes/iess');
+        }
         (new InformesController($pdo))->informeIess();
     });
 
-    $router->match(['GET', 'POST'], '/informes/isspol', function (\PDO $pdo) {
+    $router->match(['GET', 'POST'], '/informes/isspol', function (\PDO $pdo) use ($redirectToV2IfEnabled) {
+        if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) === 'GET') {
+            $redirectToV2IfEnabled('/v2/informes/isspol');
+        }
         (new InformesController($pdo))->informeIsspol();
     });
 
-    $router->match(['GET', 'POST'], '/informes/issfa', function (\PDO $pdo) {
+    $router->match(['GET', 'POST'], '/informes/issfa', function (\PDO $pdo) use ($redirectToV2IfEnabled) {
+        if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) === 'GET') {
+            $redirectToV2IfEnabled('/v2/informes/issfa');
+        }
         (new InformesController($pdo))->informeIssfa();
     });
 
-    $router->match(['GET', 'POST'], '/informes/msp', function (\PDO $pdo) {
+    $router->match(['GET', 'POST'], '/informes/msp', function (\PDO $pdo) use ($redirectToV2IfEnabled) {
+        if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) === 'GET') {
+            $redirectToV2IfEnabled('/v2/informes/msp');
+        }
         (new InformesController($pdo))->informeMsp();
     });
 
-    $router->match(['GET', 'POST'], '/informes/particulares', function (\PDO $pdo) {
+    $router->match(['GET', 'POST'], '/informes/particulares', function (\PDO $pdo) use ($redirectToV2IfEnabled) {
+        $redirectToV2IfEnabled('/v2/informes/particulares');
         (new InformesController($pdo))->informeParticulares();
     });
 

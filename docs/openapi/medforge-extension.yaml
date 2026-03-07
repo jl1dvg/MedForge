@@ -83,10 +83,11 @@ paths:
           description: Falta o es inválida la credencial de API
   /api/consultas/guardar.php:
     post:
+      deprecated: true
       summary: Guardar consulta clínica
       description: >-
-        Persiste la información clínica detallada de una consulta externa,
-        incluyendo diagnósticos, examen físico y hallazgos oftalmológicos.
+        Endpoint legacy. Actualmente funciona como puente hacia
+        `/v2/api/consultas/guardar.php`.
       operationId: guardarConsulta
       requestBody:
         required: true
@@ -101,6 +102,112 @@ paths:
           description: Datos inválidos
         '401':
           description: Falta o es inválida la credencial de API
+  /v2/api/consultas/guardar.php:
+    post:
+      summary: Guardar consulta clínica (v2)
+      description: >-
+        Endpoint canónico de Laravel v2 para persistir la información clínica
+        detallada de una consulta externa.
+      operationId: guardarConsultaV2
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConsultaClinicaRequest'
+      responses:
+        '200':
+          description: Consulta almacenada o validada con error de negocio
+        '400':
+          description: Datos inválidos
+        '500':
+          description: Error interno
+  /v2/api/consultas/anterior.php:
+    get:
+      summary: Obtener consulta anterior (v2)
+      description: >-
+        Devuelve el último examen físico previo para el paciente, opcionalmente
+        filtrado por familia de procedimiento y form_id actual.
+      operationId: obtenerConsultaAnteriorV2
+      parameters:
+        - in: query
+          name: hcNumber
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: form_id
+          required: false
+          schema:
+            type: string
+        - in: query
+          name: procedimiento
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Resultado de consulta (con o sin datos)
+        '500':
+          description: Error interno
+  /v2/api/consultas/plan.php:
+    get:
+      summary: Obtener plan de consulta (v2)
+      operationId: obtenerPlanConsultaV2
+      parameters:
+        - in: query
+          name: form_id
+          required: false
+          schema:
+            type: string
+        - in: query
+          name: formId
+          required: false
+          schema:
+            type: string
+        - in: query
+          name: hcNumber
+          required: false
+          schema:
+            type: string
+        - in: query
+          name: hc_number
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Plan encontrado o mensaje de no encontrado
+        '400':
+          description: Parámetros faltantes
+        '500':
+          description: Error interno
+    post:
+      summary: Actualizar plan de consulta (v2)
+      operationId: actualizarPlanConsultaV2
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - form_id
+                - hcNumber
+              properties:
+                form_id:
+                  type: string
+                hcNumber:
+                  type: string
+                plan:
+                  type: string
+      responses:
+        '200':
+          description: Plan actualizado
+        '400':
+          description: Datos inválidos
+        '500':
+          description: Error interno
 components:
   securitySchemes:
     ApiKeyAuth:

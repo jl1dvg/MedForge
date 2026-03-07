@@ -2,150 +2,123 @@
 
 namespace App\Modules\Billing\Http\Controllers;
 
+use App\Modules\Billing\Services\BillingPreviewService;
+use App\Modules\Billing\Services\NoFacturadosQueryService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class BillingReadController
 {
-    private function baseSql(): string
+    private NoFacturadosQueryService $service;
+    private BillingPreviewService $previewService;
+
+    public function __construct()
     {
-        return <<<'SQL'
-            SELECT
-                base.form_id,
-                base.hc_number,
-                base.fecha,
-                base.afiliacion,
-                base.paciente,
-                base.procedimiento,
-                base.tipo,
-                base.estado_revision,
-                base.estado_agenda,
-                base.valor_estimado
-            FROM (
-                SELECT
-                    pr.form_id,
-                    pr.hc_number,
-                    pr.fecha AS fecha,
-                    pa.afiliacion,
-                    CONCAT_WS(' ', pa.lname, pa.lname2, pa.fname, pa.mname) AS paciente,
-                    pr.procedimiento_proyectado AS procedimiento,
-                    CASE
-                        WHEN pr.procedimiento_proyectado LIKE 'Imagenes%' THEN 'imagen'
-                        WHEN pr.procedimiento_proyectado LIKE 'Servicios oftalmologicos generales%' THEN 'consulta'
-                        ELSE 'no_quirurgico'
-                    END AS tipo,
-                    NULL AS estado_revision,
-                    pr.estado_agenda AS estado_agenda,
-                    0 AS valor_estimado
-                FROM procedimiento_proyectado pr
-                INNER JOIN patient_data pa ON pa.hc_number = pr.hc_number
-                LEFT JOIN protocolo_data pd ON pd.form_id = pr.form_id
-                WHERE pd.form_id IS NULL
-                  AND NOT EXISTS (SELECT 1 FROM billing_main bm WHERE bm.form_id = pr.form_id)
-
-                UNION ALL
-
-                SELECT
-                    pd.form_id,
-                    pd.hc_number,
-                    pd.fecha_inicio AS fecha,
-                    pa.afiliacion,
-                    CONCAT_WS(' ', pa.lname, pa.lname2, pa.fname, pa.mname) AS paciente,
-                    TRIM(CONCAT(pd.membrete, ' ', pd.lateralidad)) AS procedimiento,
-                    CASE
-                        WHEN TRIM(CONCAT(pd.membrete, ' ', pd.lateralidad)) LIKE 'Imagenes%' THEN 'imagen'
-                        WHEN TRIM(CONCAT(pd.membrete, ' ', pd.lateralidad)) LIKE 'Servicios oftalmologicos generales%' THEN 'consulta'
-                        ELSE 'quirurgico'
-                    END AS tipo,
-                    pd.status AS estado_revision,
-                    pr.estado_agenda AS estado_agenda,
-                    0 AS valor_estimado
-                FROM protocolo_data pd
-                INNER JOIN procedimiento_proyectado pr ON pr.form_id = pd.form_id
-                INNER JOIN patient_data pa ON pa.hc_number = pd.hc_number
-                WHERE NOT EXISTS (SELECT 1 FROM billing_main bm WHERE bm.form_id = pd.form_id)
-            ) AS base
-        SQL;
+        $pdo = DB::connection()->getPdo();
+        $this->service = new NoFacturadosQueryService($pdo);
+        $this->previewService = new BillingPreviewService($pdo);
     }
 
     public function noFacturados(Request $request): JsonResponse
     {
+        $draw = (int) $request->query('draw', 0);
         $start = max((int) $request->query('start', 0), 0);
-        $length = min(max((int) $request->query('length', 25), 1), 200);
-        $filters = $this->buildFilters($request);
+        $length = min(max((int) $request->query('length', 25), 1), 500);
 
-        $baseSql = $this->baseSql();
-        $fromSql = ' FROM (' . $baseSql . ') AS base';
-        $whereSql = $filters['sql'] !== '' ? ' WHERE ' . $filters['sql'] : '';
+        $afiliacion = $request->query('afiliacion', []);
+        $afiliaciones = is_array($afiliacion) ? $afiliacion : [$afiliacion];
 
-        $recordsTotal = (int) (DB::selectOne('SELECT COUNT(*) AS total' . $fromSql)->total ?? 0);
-        $recordsFiltered = $recordsTotal;
-        if ($whereSql !== '') {
-            $recordsFiltered = (int) (DB::selectOne(
-                'SELECT COUNT(*) AS total' . $fromSql . $whereSql,
-                $filters['params']
-            )->total ?? 0);
-        }
+        $estadoAgenda = $request->query('estado_agenda', []);
+        $estadosAgenda = is_array($estadoAgenda) ? $estadoAgenda : [$estadoAgenda];
 
-        $rows = DB::select(
-            'SELECT base.*' . $fromSql . $whereSql . ' ORDER BY base.paciente ASC, base.fecha DESC, base.form_id DESC LIMIT ' . $start . ', ' . $length,
-            $filters['params']
-        );
+        $filters = [
+            'fecha_desde' => $request->query('fecha_desde'),
+            'fecha_hasta' => $request->query('fecha_hasta'),
+            'form_id' => $request->query('form_id'),
+            'hc_number' => $request->query('hc_number'),
+            'afiliacion' => $afiliaciones,
+            'sede' => $request->query('sede'),
+            'estado_revision' => $request->query('estado_revision'),
+            'informado' => $request->query('informado'),
+            'estado_agenda' => $estadosAgenda,
+            'tipo' => $request->query('tipo'),
+            'busqueda' => $request->query('busqueda'),
+            'procedimiento' => $request->query('procedimiento'),
+            'valor_min' => $request->query('valor_min'),
+            'valor_max' => $request->query('valor_max'),
+        ];
+
+        $resultado = $this->service->listar($filters, $start, $length);
 
         return response()->json([
-            'recordsTotal' => $recordsTotal,
-            'recordsFiltered' => $recordsFiltered,
-            'data' => $rows,
-            'summary' => [
-                'total' => $recordsFiltered,
-                'monto' => 0,
-                'quirurgicos' => ['cantidad' => 0, 'monto' => 0],
-                'no_quirurgicos' => ['cantidad' => 0, 'monto' => 0],
-            ],
+            'draw' => $draw,
+            'recordsTotal' => $resultado['recordsTotal'],
+            'recordsFiltered' => $resultado['recordsFiltered'],
+            'data' => $resultado['data'],
+            'summary' => $resultado['summary'],
         ]);
     }
 
     public function afiliaciones(): JsonResponse
     {
-        $baseSql = $this->baseSql();
-        $rows = DB::select(
-            'SELECT DISTINCT TRIM(base.afiliacion) AS afiliacion
-             FROM (' . $baseSql . ') AS base
-             WHERE base.afiliacion IS NOT NULL AND TRIM(base.afiliacion) <> ""
-             ORDER BY afiliacion'
-        );
-
-        return response()->json(array_map(static fn ($row) => $row->afiliacion, $rows));
+        return response()->json(array_values($this->service->listarAfiliaciones()));
     }
 
-    /**
-     * @return array{sql:string,params:array<int,string>}
-     */
-    private function buildFilters(Request $request): array
+    public function sedes(): JsonResponse
     {
-        $where = [];
-        $params = [];
-
-        $busqueda = trim((string) $request->query('busqueda', ''));
-        if ($busqueda !== '') {
-            $where[] = '(CAST(base.form_id AS CHAR) LIKE ? OR base.hc_number LIKE ? OR base.paciente LIKE ? OR base.procedimiento LIKE ?)';
-            $needle = '%' . $busqueda . '%';
-            $params[] = $needle;
-            $params[] = $needle;
-            $params[] = $needle;
-            $params[] = $needle;
+        $sedes = $this->service->listarSedes();
+        if (!in_array('MATRIZ', $sedes, true)) {
+            $sedes[] = 'MATRIZ';
+        }
+        if (!in_array('CEIBOS', $sedes, true)) {
+            $sedes[] = 'CEIBOS';
         }
 
+        usort($sedes, static function (string $a, string $b): int {
+            $order = ['MATRIZ' => 1, 'CEIBOS' => 2];
+            $oa = $order[$a] ?? 99;
+            $ob = $order[$b] ?? 99;
+            if ($oa === $ob) {
+                return strcasecmp($a, $b);
+            }
+            return $oa <=> $ob;
+        });
+
+        return response()->json([
+            'data' => array_values(array_unique(array_filter(array_map('trim', $sedes)))),
+        ]);
+    }
+
+    public function billingPreview(Request $request): JsonResponse
+    {
         $formId = trim((string) $request->query('form_id', ''));
-        if ($formId !== '') {
-            $where[] = 'CAST(base.form_id AS CHAR) = ?';
-            $params[] = $formId;
+        $hcNumber = trim((string) $request->query('hc_number', ''));
+
+        if ($formId === '' || $hcNumber === '') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Parámetros faltantes',
+            ]);
         }
 
-        return [
-            'sql' => implode(' AND ', $where),
-            'params' => $params,
-        ];
+        try {
+            $preview = $this->previewService->prepararPreviewFacturacion($formId, $hcNumber);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error: ' . $e->getMessage(),
+            ], 500);
+        }
+
+        return response()->json([
+            'success' => true,
+            'procedimientos' => $preview['procedimientos'] ?? [],
+            'insumos' => $preview['insumos'] ?? [],
+            'derechos' => $preview['derechos'] ?? [],
+            'oxigeno' => $preview['oxigeno'] ?? [],
+            'anestesia' => $preview['anestesia'] ?? [],
+            'reglas' => $preview['reglas'] ?? [],
+        ]);
     }
 }

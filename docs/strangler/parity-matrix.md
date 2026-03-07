@@ -67,6 +67,19 @@ Current auth parity policy:
 - `detalles_update`: status parity (`302` both sides) + v2 post-check de persistencia.
 - Con `PACIENTES_V2_UI_ENABLED=1`, legacy `/pacientes*` redirige a `/v2/pacientes*`; por eso los checks de redirect viven en módulo smoke dedicado `pacientes_cutover`.
 
+### Consultas
+
+- `POST /api/consultas/guardar.php` -> `POST /v2/api/consultas/guardar.php` (write cutover por flag)
+- `GET /api/consultas/anterior.php` -> `GET /v2/api/consultas/anterior.php` (read cutover por flag)
+- `GET|POST /api/consultas/plan.php` -> `GET|POST /v2/api/consultas/plan.php` (read/write cutover por flag)
+
+Current parity policy:
+
+- Los endpoints legacy mantienen ejecución legacy cuando los flags están en `0`.
+- Con `CONSULTAS_V2_READS_ENABLED=1`, los reads (`anterior`, `plan` GET) redirigen con `307` a `/v2`.
+- Con `CONSULTAS_V2_WRITES_ENABLED=1`, los writes (`guardar`, `plan` POST) redirigen con `307` a `/v2`.
+- `CONSULTAS_V2_API_ENABLED` actúa como fallback umbrella cuando `READS/WRITES` no están definidos.
+
 ### Auth (deferred)
 
 - `GET /auth/login` -> `GET /v2/auth/migration-status` (operational 200)
@@ -125,6 +138,9 @@ php tools/tests/http_smoke.php --module=dashboard_cutover
 php tools/tests/http_smoke.php --module=dashboard_cutover --cookie='PHPSESSID=...'
 php tools/tests/http_smoke.php --module=solicitudes_cutover
 php tools/tests/http_smoke.php --module=solicitudes_cutover --cookie='PHPSESSID=...'
+php tools/tests/http_smoke.php --module=consultas
+php tools/tests/http_smoke.php --module=consultas_cutover
+php tools/tests/http_smoke.php --module=consultas_cutover --cookie='PHPSESSID=...'
 php tools/tests/http_smoke.php --module=reporting_cutover
 php tools/tests/http_smoke.php --module=reporting_cutover --cookie='PHPSESSID=...' --report-form-id='249878' --report-hc-number='0300263803' --report-dias-descanso='5'
 php tools/tests/http_smoke.php --endpoint=pacientes_datatable
@@ -153,6 +169,7 @@ php tools/tests/http_smoke.php --module=pacientes --cookie='PHPSESSID=...' --hc-
 /usr/bin/php8.1-cli tools/tests/http_smoke.php --endpoint=dashboard_ui --cookie='PHPSESSID=...'
 /usr/bin/php8.1-cli tools/tests/http_smoke.php --module=dashboard_cutover --cookie='PHPSESSID=...'
 /usr/bin/php8.1-cli tools/tests/http_smoke.php --module=solicitudes_cutover --cookie='PHPSESSID=...'
+/usr/bin/php8.1-cli tools/tests/http_smoke.php --module=consultas_cutover --cookie='PHPSESSID=...'
 /usr/bin/php8.1-cli tools/tests/http_smoke.php --module=pacientes_cutover --cookie='PHPSESSID=...'
 /usr/bin/php8.1-cli tools/tests/http_smoke.php --module=reporting_cutover --cookie='PHPSESSID=...' --report-form-id='249878' --report-hc-number='0300263803' --report-dias-descanso='5'
 /usr/bin/php8.1-cli tools/tests/http_smoke.php --endpoint=auth_logout_unified --cookie='PHPSESSID=...' --allow-destructive
@@ -269,6 +286,41 @@ SOLICITUDES_V2_WRITES_ENABLED=1
 SOLICITUDES_V2_UI_ENABLED=0
 SOLICITUDES_V2_READS_ENABLED=0
 SOLICITUDES_V2_WRITES_ENABLED=0
+```
+
+## Consultas Cutover Flags
+
+- Legacy runtime puede cambiar reads/writes de Consultas a Laravel `/v2/api/consultas/*` con:
+
+```bash
+CONSULTAS_V2_READS_ENABLED=1
+CONSULTAS_V2_WRITES_ENABLED=1
+```
+
+- Fallback umbrella opcional (si no defines `READS/WRITES` explícitos):
+
+```bash
+CONSULTAS_V2_API_ENABLED=1
+```
+
+- Validación cuando está habilitado:
+
+```bash
+/usr/bin/php8.1-cli tools/tests/http_smoke.php --module=consultas_cutover --cookie='PHPSESSID=...'
+```
+
+- Esperado:
+- `consultas_guardar_cutover_redirect` devuelve `307` con `Location: /v2/api/consultas/guardar.php`.
+- `consultas_anterior_cutover_redirect` devuelve `307` con `Location: /v2/api/consultas/anterior.php?...`.
+- `consultas_plan_get_cutover_redirect` devuelve `307` con `Location: /v2/api/consultas/plan.php?...`.
+- `consultas_plan_post_cutover_redirect` devuelve `307` con `Location: /v2/api/consultas/plan.php`.
+
+- Rollback rápido:
+
+```bash
+CONSULTAS_V2_READS_ENABLED=0
+CONSULTAS_V2_WRITES_ENABLED=0
+CONSULTAS_V2_API_ENABLED=0
 ```
 
 ## Pacientes UI Cutover Flag

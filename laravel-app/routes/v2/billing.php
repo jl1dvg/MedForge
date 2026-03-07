@@ -13,10 +13,20 @@ Route::get('/billing/dashboard', [BillingUiController::class, 'dashboard']);
 Route::post('/billing/dashboard-data', [BillingUiController::class, 'dashboardData']);
 Route::get('/billing/honorarios', [BillingUiController::class, 'honorarios']);
 Route::post('/billing/honorarios-data', [BillingUiController::class, 'honorariosData']);
+Route::get('/informes/particulares', [BillingUiController::class, 'informeParticulares']);
+Route::match(['GET', 'POST'], '/informes/iess', [BillingUiController::class, 'informeIess']);
+Route::match(['GET', 'POST'], '/informes/isspol', [BillingUiController::class, 'informeIsspol']);
+Route::match(['GET', 'POST'], '/informes/issfa', [BillingUiController::class, 'informeIssfa']);
+Route::match(['GET', 'POST'], '/informes/msp', [BillingUiController::class, 'informeMsp']);
+Route::get('/informes/iess/consolidado', [BillingUiController::class, 'informeIessConsolidado']);
+Route::get('/informes/isspol/consolidado', [BillingUiController::class, 'informeIsspolConsolidado']);
+Route::get('/informes/issfa/consolidado', [BillingUiController::class, 'informeIssfaConsolidado']);
 Route::get('/api/billing/kpis_procedimientos.php', [BillingUiController::class, 'kpisProcedimientos']);
 
 Route::get('/api/billing/no-facturados', [BillingReadController::class, 'noFacturados']);
 Route::get('/api/billing/afiliaciones', [BillingReadController::class, 'afiliaciones']);
+Route::get('/api/billing/sedes', [BillingReadController::class, 'sedes']);
+Route::get('/api/billing/billing_preview.php', [BillingReadController::class, 'billingPreview']);
 
 // Write endpoints (legacy path mirror)
 Route::post('/billing/no-facturados/crear', [BillingWriteController::class, 'crearDesdeNoFacturado']);
