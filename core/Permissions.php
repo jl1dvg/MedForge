@@ -27,6 +27,9 @@ class Permissions
         'ai.manage' => ['ai.consultas.enfermedad', 'ai.consultas.plan'],
         'protocolos.manage' => ['protocolos.templates.view', 'protocolos.templates.manage'],
         'protocolos.templates.manage' => ['protocolos.templates.view'],
+        'doctores.manage' => ['doctores.view'],
+        'solicitudes.manage' => ['solicitudes.view', 'solicitudes.update', 'solicitudes.turnero', 'solicitudes.dashboard.view', 'solicitudes.checklist.override'],
+        'examenes.manage' => ['examenes.view', 'examenes.checklist.override'],
     ];
 
     /**

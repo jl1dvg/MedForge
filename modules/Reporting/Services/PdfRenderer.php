@@ -27,7 +27,7 @@ class PdfRenderer
 
     public function __construct(private ?string $basePath = null)
     {
-        $this->basePath = $basePath ?? BASE_PATH;
+        $this->basePath = $basePath ?? $this->resolveBasePath();
     }
 
     public function render(string $template, array $data, array $options = []): string
@@ -92,11 +92,22 @@ class PdfRenderer
             throw new InvalidArgumentException('La plantilla no puede estar vacía.');
         }
 
-        if ($template[0] === '/' || str_starts_with($template, BASE_PATH)) {
+        $legacyBasePath = defined('BASE_PATH') ? (string) BASE_PATH : null;
+        if ($template[0] === '/' || ($legacyBasePath !== null && str_starts_with($template, $legacyBasePath))) {
             return $template;
         }
 
         return rtrim($this->basePath, '/\\') . '/' . ltrim($template, '/');
+    }
+
+    private function resolveBasePath(): string
+    {
+        if (defined('BASE_PATH')) {
+            return (string) BASE_PATH;
+        }
+
+        // Fallback para contexto Laravel/sin bootstrap legacy.
+        return dirname(__DIR__, 3);
     }
 
     private function outputPdf(string $html, array $options): string

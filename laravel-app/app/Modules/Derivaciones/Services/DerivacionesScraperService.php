@@ -17,26 +17,26 @@ class DerivacionesScraperService
      */
     public function ejecutar(string $formId, string $hcNumber): array
     {
-        $script = $this->projectRoot . '/scrapping/scrape_derivacion.py';
-        if (!is_file($script)) {
-            throw new RuntimeException('No se encontró el script de scraping.');
+        [$payload, $rawOutput, $exitCode, $mensaje] = $this->runDerivacionScraper($formId, $hcNumber);
+
+        if (!is_array($payload) && $this->shouldRetryWithLookup($mensaje)) {
+            $lookupFormId = $this->resolveLookupFormIdFromAdmisiones($formId, $hcNumber);
+            if ($lookupFormId !== null && $this->normalizeComparableId($lookupFormId) !== $this->normalizeComparableId($formId)) {
+                [$retryPayload, $retryRaw, $retryCode, $retryMensaje] = $this->runDerivacionScraper($lookupFormId, $hcNumber);
+                if (is_array($retryPayload)) {
+                    $retryPayload['_lookup_form_id'] = $lookupFormId;
+                    return [
+                        'payload' => $retryPayload,
+                        'raw_output' => $retryRaw,
+                        'exit_code' => $retryCode,
+                    ];
+                }
+
+                throw new RuntimeException($retryMensaje . ' (fallback pedido_id=' . $lookupFormId . ')');
+            }
         }
 
-        $python = is_file($this->pythonPath) ? $this->pythonPath : 'python3';
-        $command = sprintf(
-            '%s %s %s %s --quiet 2>&1',
-            escapeshellcmd($python),
-            escapeshellarg($script),
-            escapeshellarg($formId),
-            escapeshellarg($hcNumber)
-        );
-
-        [$outputLines, $exitCode] = $this->runCommand($command);
-        $rawOutput = trim(implode("\n", $outputLines));
-        $payload = $this->parseJsonPayload($outputLines, $rawOutput);
-
         if (!is_array($payload)) {
-            $mensaje = $this->resolveScraperErrorMessage($rawOutput, $exitCode);
             throw new RuntimeException($mensaje);
         }
 
@@ -45,6 +45,119 @@ class DerivacionesScraperService
             'raw_output' => $rawOutput,
             'exit_code' => $exitCode,
         ];
+    }
+
+    /**
+     * @return array{0:array<string,mixed>|null,1:string,2:int,3:string}
+     */
+    private function runDerivacionScraper(string $formId, string $hcNumber): array
+    {
+        $command = $this->buildDerivacionScraperCommand($formId, $hcNumber);
+        [$outputLines, $exitCode] = $this->runCommand($command);
+        $rawOutput = trim(implode("\n", $outputLines));
+        $payload = $this->parseJsonPayload($outputLines, $rawOutput);
+        $mensaje = $this->resolveScraperErrorMessage($rawOutput, $exitCode);
+
+        return [$payload, $rawOutput, $exitCode, $mensaje];
+    }
+
+    private function buildDerivacionScraperCommand(string $formId, string $hcNumber): string
+    {
+        $script = $this->projectRoot . '/scrapping/scrape_derivacion.py';
+        if (!is_file($script)) {
+            throw new RuntimeException('No se encontró el script de scraping.');
+        }
+
+        $python = is_file($this->pythonPath) ? $this->pythonPath : 'python3';
+
+        return sprintf(
+            '%s %s %s %s --quiet 2>&1',
+            escapeshellcmd($python),
+            escapeshellarg($script),
+            escapeshellarg($formId),
+            escapeshellarg($hcNumber)
+        );
+    }
+
+    private function shouldRetryWithLookup(string $mensaje): bool
+    {
+        $needle = strtolower(trim($mensaje));
+        if ($needle === '') {
+            return false;
+        }
+
+        return str_contains($needle, 'update-solicitud')
+            || str_contains($needle, 'enlace de actualización');
+    }
+
+    private function resolveLookupFormIdFromAdmisiones(string $formId, string $hcNumber): ?string
+    {
+        $script = $this->projectRoot . '/scrapping/scrape_index_admisiones_hc.py';
+        if (!is_file($script)) {
+            return null;
+        }
+
+        $python = is_file($this->pythonPath) ? $this->pythonPath : 'python3';
+        $command = sprintf(
+            '%s %s %s --group --quiet 2>&1',
+            escapeshellcmd($python),
+            escapeshellarg($script),
+            escapeshellarg($hcNumber)
+        );
+        [$outputLines, $exitCode] = $this->runCommand($command);
+        if ($exitCode !== 0) {
+            return null;
+        }
+
+        $rawOutput = trim(implode("\n", $outputLines));
+        $parsed = $this->parseJsonPayload($outputLines, $rawOutput);
+        if (!is_array($parsed)) {
+            return null;
+        }
+
+        $grouped = $parsed['grouped'] ?? null;
+        if (!is_array($grouped)) {
+            return null;
+        }
+
+        $targetForm = $this->normalizeComparableId($formId);
+        if ($targetForm === '') {
+            return null;
+        }
+
+        foreach ($grouped as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $pedido = trim((string) ($item['pedido_id_mas_antiguo'] ?? ''));
+            if ($pedido === '') {
+                continue;
+            }
+
+            $data = is_array($item['data'] ?? null) ? $item['data'] : [];
+            $prefactura = trim((string) ($data['prefactura'] ?? $item['prefactura'] ?? ''));
+
+            if ($this->normalizeComparableId($prefactura) === $targetForm) {
+                return $pedido;
+            }
+        }
+
+        return null;
+    }
+
+    private function normalizeComparableId(string $value): string
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return '';
+        }
+
+        if (preg_match('/\d+/', $value, $matches) === 1) {
+            return ltrim((string) $matches[0], '0') ?: '0';
+        }
+
+        return $value;
     }
 
     /**

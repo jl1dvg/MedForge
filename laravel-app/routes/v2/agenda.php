@@ -4,7 +4,10 @@ use App\Modules\Agenda\Http\Controllers\AgendaReadController;
 use App\Modules\Agenda\Http\Controllers\AgendaWriteController;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware('legacy.auth')->group(function (): void {
+Route::middleware([
+    'legacy.auth',
+    'legacy.permission:administrativo,agenda.view,pacientes.view,solicitudes.view,examenes.view',
+])->group(function (): void {
     Route::get('/agenda', [AgendaReadController::class, 'index']);
     Route::get('/agenda/visitas/{id}', [AgendaReadController::class, 'visita'])->whereNumber('id');
     Route::post('/agenda/estado', [AgendaWriteController::class, 'actualizarEstado']);

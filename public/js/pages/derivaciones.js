@@ -1,11 +1,14 @@
 $(function () {
     'use strict';
 
+    const path = String(window.location.pathname || '');
+    const derivacionesBase = path.startsWith('/v2/') ? '/v2/derivaciones' : '/derivaciones';
+
     const table = $('#derivaciones-table').DataTable({
         serverSide: true,
         processing: true,
         ajax: {
-            url: '/derivaciones/datatable',
+            url: derivacionesBase + '/datatable',
             type: 'POST'
         },
         columns: [
@@ -59,7 +62,7 @@ $(function () {
         }
         btn.prop('disabled', true).text('Actualizando...');
         try {
-            const resp = await fetch('/derivaciones/scrap', {
+            const resp = await fetch(derivacionesBase + '/scrap', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/x-www-form-urlencoded'},
                 body: new URLSearchParams({form_id: formId, hc_number: hc}).toString()

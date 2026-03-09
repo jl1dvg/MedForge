@@ -692,7 +692,7 @@ class BillingUiController
         }
 
         if ($request->isMethod('post') && $request->has('scrape_derivacion') && $formIdsScrape && $hcNumbersScrape) {
-            $script = base_path('../scrapping/scrape_derivacion.py');
+            $script = base_path('../scrapping/scrape_log_admision.py');
             $outputs = [];
 
             if (count($hcNumbersScrape) === 1 && count($formIdsScrape) > 1) {

@@ -5,6 +5,10 @@ use App\Modules\Solicitudes\Http\Controllers\SolicitudesPrefacturaController;
 use App\Modules\Solicitudes\Http\Controllers\SolicitudesWriteController;
 use Illuminate\Support\Facades\Route;
 
+Route::middleware([
+    'legacy.auth',
+    'legacy.permission:administrativo,solicitudes.view,solicitudes.update,solicitudes.turnero,solicitudes.dashboard.view,solicitudes.manage',
+])->group(function (): void {
 // Legacy mirror paths (reads)
 Route::match(['GET', 'POST'], '/solicitudes/kanban-data', [SolicitudesReadController::class, 'kanbanData']);
 Route::post('/solicitudes/dashboard-data', [SolicitudesReadController::class, 'dashboardData']);
@@ -65,3 +69,4 @@ Route::post('/api/solicitudes/{id}/crm/tareas/estado', [SolicitudesWriteControll
 Route::post('/api/solicitudes/{id}/crm/bloqueo', [SolicitudesWriteController::class, 'crmRegistrarBloqueo'])->whereNumber('id');
 Route::post('/api/solicitudes/{id}/crm/adjuntos', [SolicitudesWriteController::class, 'crmSubirAdjunto'])->whereNumber('id');
 Route::post('/api/solicitudes/{id}/conciliacion-cirugia/confirmar', [SolicitudesWriteController::class, 'confirmarConciliacionCirugia'])->whereNumber('id');
+});
