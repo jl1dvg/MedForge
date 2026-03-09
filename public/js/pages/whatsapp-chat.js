@@ -128,6 +128,10 @@
         var currentUserId = parseInt(root.getAttribute('data-current-user-id'), 10) || 0;
         var currentRoleId = parseInt(root.getAttribute('data-current-role-id'), 10) || 0;
         var canAssign = root.getAttribute('data-can-assign') === '1';
+        var canSupervise = root.getAttribute('data-can-supervise') === '1';
+        if (!canAssign && state.queueFilter === 'mine') {
+            state.queueFilter = 'all';
+        }
         var templateQueueDays = parseInt(root.getAttribute('data-template-queue-days'), 10);
         if (isNaN(templateQueueDays) || templateQueueDays < 0) {
             templateQueueDays = 30;
@@ -136,6 +140,7 @@
         if (isNaN(chatGroupGapMinutes) || chatGroupGapMinutes < 0) {
             chatGroupGapMinutes = 8;
         }
+        var requireAssignmentToReply = root.getAttribute('data-require-assignment-to-reply') !== '0';
 
         var listContainer = root.querySelector('[data-conversation-list]');
         var emptyListState = root.querySelector('[data-empty-state]');
@@ -970,7 +975,7 @@
             var assignedName = conversation.assigned_user_name || 'otro agente';
             var needsHuman = Boolean(conversation.needs_human);
 
-            if (needsHuman && assignedId <= 0) {
+            if (assignedId <= 0 && (needsHuman || requireAssignmentToReply)) {
                 return {
                     canWrite: false,
                     reason: 'Debes tomar esta conversación antes de responder.'
@@ -1145,7 +1150,7 @@
             }
 
             if (handoffQueue) {
-                var queueText = roleName ? ('Equipo: ' + roleName) : 'Equipo: General';
+                var queueText = 'Equipo: ' + (roleName || 'Sin equipo');
                 if (assignedId && assignedName) {
                     queueText += ' · ' + assignedName;
                 }
@@ -1153,15 +1158,15 @@
             }
 
             if (takeConversationButton) {
-                var canTake = canAssign && needsHuman && !assignedId;
-                if (conversation && conversation.handoff_role_id && currentRoleId && Number(conversation.handoff_role_id) !== currentRoleId) {
+                var canTake = canAssign && needsHuman && (!assignedId || (canSupervise && assignedId !== currentUserId));
+                if (!canSupervise && conversation && conversation.handoff_role_id && currentRoleId && Number(conversation.handoff_role_id) !== currentRoleId) {
                     canTake = false;
                 }
                 takeConversationButton.classList.toggle('d-none', !canTake);
             }
 
             if (transferSelect && transferButton) {
-                var canTransfer = canAssign && assignedId === currentUserId;
+                var canTransfer = canAssign && (assignedId === currentUserId || canSupervise);
                 transferSelect.disabled = !canTransfer;
                 transferButton.disabled = !canTransfer;
                 if (transferNoteInput) {
@@ -1182,12 +1187,13 @@
             transferSelect.appendChild(placeholder);
 
             var roleFilter = conversation && conversation.handoff_role_id ? Number(conversation.handoff_role_id) : 0;
+            var enforceRoleFilter = roleFilter > 0 && !canSupervise;
 
             state.agents.forEach(function (agent) {
                 if (!agent || !agent.id) {
                     return;
                 }
-                if (roleFilter && agent.role_id && Number(agent.role_id) !== roleFilter) {
+                if (enforceRoleFilter && agent.role_id && Number(agent.role_id) !== roleFilter) {
                     return;
                 }
                 var presence = String(agent.presence_status || 'available');
@@ -1676,8 +1682,8 @@
             }
 
             var meta = [];
-            if (data && data.handoff_role_name) {
-                meta.push('Equipo: ' + data.handoff_role_name);
+            if (data) {
+                meta.push('Equipo: ' + (data.handoff_role_name || 'Sin equipo'));
             }
             if (details && details.actorName) {
                 meta.push('Acción por: ' + details.actorName);
@@ -2382,8 +2388,8 @@
             }
 
             if (teamCompact) {
-                if (conversation.handoff_role_name) {
-                    teamCompact.textContent = 'Equipo: ' + conversation.handoff_role_name;
+                if (conversation.handoff_role_name || conversation.needs_human || conversation.assigned_user_id) {
+                    teamCompact.textContent = 'Equipo: ' + (conversation.handoff_role_name || 'Sin equipo');
                     teamCompact.classList.remove('d-none');
                 } else {
                     teamCompact.textContent = '';
@@ -2449,8 +2455,8 @@
                 if (conversation.assigned_user_name) {
                     detailHandoff.textContent = 'Asignado a ' + conversation.assigned_user_name;
                 } else if (conversation.needs_human) {
-                    var roleLabel = conversation.handoff_role_name ? (' · ' + conversation.handoff_role_name) : '';
-                    detailHandoff.textContent = 'Pendiente de agente' + roleLabel;
+                    var roleLabel = conversation.handoff_role_name || 'Sin equipo';
+                    detailHandoff.textContent = 'Pendiente de agente · ' + roleLabel;
                 } else {
                     detailHandoff.textContent = 'Automático';
                 }

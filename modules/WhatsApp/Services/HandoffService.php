@@ -47,9 +47,13 @@ class HandoffService
         $notes = $this->sanitizeNotes($notes);
         $conversationId = $this->conversations->upsertConversation($normalized);
         $active = $this->handoffs->findActiveByConversation($conversationId);
+        $defaultRoleId = $this->resolveDefaultHandoffRoleId();
         $resolvedRoleId = $roleId;
         if ($resolvedRoleId === null && $active !== null && isset($active['handoff_role_id'])) {
             $resolvedRoleId = (int) $active['handoff_role_id'];
+        }
+        if ($resolvedRoleId === null) {
+            $resolvedRoleId = $defaultRoleId;
         }
         if ($resolvedRoleId !== null && $resolvedRoleId <= 0) {
             $resolvedRoleId = null;
@@ -63,6 +67,14 @@ class HandoffService
             }
             if ($roleId !== null && $roleId > 0) {
                 $updates['handoff_role_id'] = $roleId;
+            }
+            if (!isset($updates['handoff_role_id']) && $resolvedRoleId !== null) {
+                $activeRoleId = isset($active['handoff_role_id']) && is_numeric($active['handoff_role_id'])
+                    ? (int) $active['handoff_role_id']
+                    : 0;
+                if ($activeRoleId <= 0) {
+                    $updates['handoff_role_id'] = $resolvedRoleId;
+                }
             }
             if ($topic !== null && trim($topic) !== '') {
                 $updates['topic'] = trim($topic);
@@ -111,6 +123,14 @@ class HandoffService
         $this->dispatchHandoffNotifications($conversationId, $normalized, $handoffId, $resolvedRoleId, $notes);
 
         return $handoffId;
+    }
+
+    private function resolveDefaultHandoffRoleId(): ?int
+    {
+        $config = $this->settings->get();
+        $roleId = isset($config['handoff_default_role_id']) ? (int) $config['handoff_default_role_id'] : 0;
+
+        return $roleId > 0 ? $roleId : null;
     }
 
     private function dispatchHandoffNotifications(int $conversationId, string $waNumber, int $handoffId, ?int $roleId, ?string $notes): void

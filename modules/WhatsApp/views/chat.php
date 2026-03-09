@@ -7,6 +7,7 @@ $currentUser = $currentUser ?? null;
 $currentUserId = is_array($currentUser) ? (int)($currentUser['id'] ?? 0) : 0;
 $currentRoleId = is_array($currentUser) ? (int)($currentUser['role_id'] ?? 0) : 0;
 $canAssign = !empty($canAssign);
+$canSupervise = !empty($canSupervise);
 $realtime = $realtime ?? null;
 $phoneNumber = $config['phone_number_id'] ?? '';
 
@@ -424,9 +425,11 @@ foreach ($whatsappChatGuide as $key => $meta) {
             data-brand="<?= htmlspecialchars($brand, ENT_QUOTES, 'UTF-8'); ?>"
             data-template-queue-days="<?= isset($config['template_queue_days']) ? (int) $config['template_queue_days'] : 30; ?>"
             data-chat-group-gap-minutes="<?= isset($config['chat_group_gap_minutes']) ? (int) $config['chat_group_gap_minutes'] : 8; ?>"
+            data-require-assignment-to-reply="<?= !isset($config['chat_require_assignment_to_reply']) || !empty($config['chat_require_assignment_to_reply']) ? '1' : '0'; ?>"
             data-current-user-id="<?= $currentUserId; ?>"
             data-current-role-id="<?= $currentRoleId; ?>"
             data-can-assign="<?= $canAssign ? '1' : '0'; ?>"
+            data-can-supervise="<?= !empty($canSupervise) ? '1' : '0'; ?>"
     >
         <div class="col-lg-3 col-12">
             <div class="box">

@@ -1176,6 +1176,21 @@ class SettingsHelper
                                 ['min' => 0, 'max' => 120]
                             ),
                             self::checkboxField(
+                                'whatsapp_chat_require_assignment_to_reply',
+                                'Exigir toma previa para responder',
+                                true,
+                                'Si está activo, ningún agente podrá responder desde el chat si primero no toma la conversación.'
+                            ),
+                            array_merge(
+                                self::numberField(
+                                    'whatsapp_handoff_default_role_id',
+                                    'Rol por defecto para handoff',
+                                    0,
+                                    'Se usa cuando un escenario deriva a agente sin especificar equipo. Usa 0 para dejarlo sin equipo.'
+                                ),
+                                ['min' => 0]
+                            ),
+                            self::checkboxField(
                                 'whatsapp_handoff_escalation_enabled',
                                 'Escalar handoffs en cola',
                                 true,

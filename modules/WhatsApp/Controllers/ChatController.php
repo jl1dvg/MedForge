@@ -41,6 +41,7 @@ class ChatController extends BaseController
         $authUser = Auth::user();
         $permissions = $authUser['permisos'] ?? [];
         $canAssign = Permissions::containsAny($permissions, ['whatsapp.chat.assign', 'whatsapp.chat.supervise', 'whatsapp.manage', 'administrativo']);
+        $canSupervise = Permissions::containsAny($permissions, ['whatsapp.chat.supervise', 'whatsapp.manage', 'administrativo']);
         $pusher = new PusherConfigService($this->pdo);
 
         $this->render(BASE_PATH . '/modules/WhatsApp/views/chat.php', [
@@ -49,6 +50,7 @@ class ChatController extends BaseController
             'isIntegrationEnabled' => $isEnabled,
             'currentUser' => $authUser,
             'canAssign' => $canAssign,
+            'canSupervise' => $canSupervise,
             'realtime' => $pusher->getPublicConfig(),
             'scripts' => ['js/pages/whatsapp-chat.js'],
         ]);
@@ -203,7 +205,7 @@ class ChatController extends BaseController
                 ? (int) $activeHandoff['assigned_agent_id']
                 : 0;
 
-            if ($summaryAssignedUserId > 0 && $summaryAssignedUserId !== $targetUserId) {
+            if ($summaryAssignedUserId > 0 && $summaryAssignedUserId !== $targetUserId && !$canSupervise) {
                 $recoverableLegacyMismatch = $activeStatus === 'queued'
                     || ($activeStatus === 'assigned' && $activeAssignedUserId === $targetUserId);
 
@@ -215,6 +217,20 @@ class ChatController extends BaseController
             }
 
             if ($summaryAssignedUserId > 0 && $summaryAssignedUserId === $targetUserId) {
+                $conversation = $this->conversations->getConversationWithMessages($conversationId, 150);
+                $this->json(['ok' => true, 'data' => $conversation]);
+
+                return;
+            }
+
+            if ($summaryAssignedUserId > 0 && $summaryAssignedUserId !== $targetUserId && $canSupervise) {
+                $transferred = $this->conversations->transferConversation($conversationId, $targetUserId, 'Reasignado por supervisor');
+                if (!$transferred) {
+                    $this->json(['ok' => false, 'error' => 'No fue posible reasignar la conversación.'], 409);
+
+                    return;
+                }
+
                 $conversation = $this->conversations->getConversationWithMessages($conversationId, 150);
                 $this->json(['ok' => true, 'data' => $conversation]);
 
@@ -442,8 +458,9 @@ class ChatController extends BaseController
         $conversationSummary = null;
         $waNumber = null;
         $displayName = null;
+        $isConversationReply = !empty($payload['conversation_id']);
 
-        if (!empty($payload['conversation_id'])) {
+        if ($isConversationReply) {
             $conversationId = (int) $payload['conversation_id'];
             $conversationSummary = $this->conversations->getConversationSummary($conversationId);
             if ($conversationSummary === null) {
@@ -491,8 +508,10 @@ class ChatController extends BaseController
             $assignedUserId = isset($conversationSummary['assigned_user_id']) ? (int) $conversationSummary['assigned_user_id'] : 0;
             $assignedUserName = trim((string) ($conversationSummary['assigned_user_name'] ?? ''));
             $needsHuman = !empty($conversationSummary['needs_human']);
+            $chatConfig = $this->settings->get();
+            $requireAssignmentToReply = !isset($chatConfig['chat_require_assignment_to_reply']) || !empty($chatConfig['chat_require_assignment_to_reply']);
 
-            if ($needsHuman && $assignedUserId <= 0) {
+            if ($isConversationReply && $assignedUserId <= 0 && ($needsHuman || $requireAssignmentToReply)) {
                 $this->json([
                     'ok' => false,
                     'error' => 'Debes tomar esta conversación antes de responder.',

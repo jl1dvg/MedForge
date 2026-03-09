@@ -49,7 +49,9 @@ class WhatsAppSettings
      *     template_languages: string,
      *     template_queue_days: int,
      *     chat_group_gap_minutes: int,
+     *     chat_require_assignment_to_reply: bool,
      *     handoff_ttl_hours: int,
+     *     handoff_default_role_id: int,
      *     handoff_sla_target_minutes: int,
      *     handoff_notify_in_app: bool,
      *     handoff_notify_agents: bool,
@@ -91,7 +93,9 @@ class WhatsAppSettings
             'template_languages' => '',
             'template_queue_days' => 30,
             'chat_group_gap_minutes' => 8,
+            'chat_require_assignment_to_reply' => true,
             'handoff_ttl_hours' => 24,
+            'handoff_default_role_id' => 0,
             'handoff_sla_target_minutes' => 15,
             'handoff_notify_in_app' => true,
             'handoff_notify_agents' => false,
@@ -126,7 +130,9 @@ class WhatsAppSettings
                     'whatsapp_template_languages',
                     'whatsapp_chat_template_queue_days',
                     'whatsapp_chat_group_gap_minutes',
+                    'whatsapp_chat_require_assignment_to_reply',
                     'whatsapp_handoff_ttl_hours',
+                    'whatsapp_handoff_default_role_id',
                     'whatsapp_handoff_sla_target_minutes',
                     'whatsapp_handoff_notify_in_app',
                     'whatsapp_handoff_notify_agents',
@@ -204,11 +210,14 @@ class WhatsAppSettings
 
                 $chatGroupGapMinutes = (int) ($options['whatsapp_chat_group_gap_minutes'] ?? 8);
                 $config['chat_group_gap_minutes'] = max(0, min(120, $chatGroupGapMinutes));
+                $config['chat_require_assignment_to_reply'] = ($options['whatsapp_chat_require_assignment_to_reply'] ?? '1') === '1';
 
                 $ttl = (int) ($options['whatsapp_handoff_ttl_hours'] ?? 24);
                 if ($ttl > 0) {
                     $config['handoff_ttl_hours'] = $ttl;
                 }
+                $handoffDefaultRoleId = (int) ($options['whatsapp_handoff_default_role_id'] ?? 0);
+                $config['handoff_default_role_id'] = max(0, $handoffDefaultRoleId);
 
                 $slaTarget = (int) ($options['whatsapp_handoff_sla_target_minutes'] ?? 15);
                 if ($slaTarget > 0) {
