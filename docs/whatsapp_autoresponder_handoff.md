@@ -87,10 +87,12 @@ flowchart TD
 ## Configuración en Settings (WhatsApp → Handoff)
 
 - `whatsapp_handoff_ttl_hours` (default 24)
+- `whatsapp_handoff_default_role_id` (rol por defecto cuando no se especifica rol)
 - `whatsapp_handoff_notify_agents` (on/off)
 - `whatsapp_handoff_agent_message` (template)
 - `whatsapp_handoff_button_take_label`
 - `whatsapp_handoff_button_ignore_label`
+- `whatsapp_chat_require_assignment_to_reply` (exigir toma para responder por conversación)
 
 ---
 

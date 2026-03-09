@@ -87,6 +87,11 @@ En Settings (persistido por `SettingsModel`) deben existir:
 - opcional: `whatsapp_cloud_api_version` (default `v17.0`)
 - `whatsapp_webhook_verify_token` (si falta, usa env/fallback)
 
+Ajustes operativos nuevos (handoff/chat):
+
+- `whatsapp_chat_require_assignment_to_reply` (default `1`): exige tomar el chat antes de responder desde conversación existente.
+- `whatsapp_handoff_default_role_id` (default `0`): rol por defecto cuando un handoff se crea sin rol explícito.
+
 Si faltan `phone_number_id` o `access_token`, el módulo se considera **disabled**.
 
 ---
@@ -107,8 +112,11 @@ Si faltan `phone_number_id` o `access_token`, el módulo se considera **disabled
 ## 5) Reglas operativas importantes
 
 - Solo el agente asignado puede responder una conversación tomada.
+- Si `whatsapp_chat_require_assignment_to_reply = 1`, también se bloquea responder conversaciones no tomadas (aunque no estén en handoff explícito).
+- Usuarios con permiso `whatsapp.chat.supervise` (o `whatsapp.manage`) pueden **reasignar** conversaciones ya tomadas por otro agente.
 - Si el contacto no ha iniciado conversación (sin inbound), se exige plantilla para abrir ventana.
 - Handoff usa TTL (default 24h) y puede reencolarse por tarea programada.
+- Si un handoff no trae rol, puede aplicar `whatsapp_handoff_default_role_id` automáticamente.
 - Notificación de handoff puede ir por in-app (Pusher) y/o WhatsApp a agentes según settings.
 
 ---

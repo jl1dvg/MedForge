@@ -37,7 +37,11 @@ En Configuración > WhatsApp:
 2. Guardar `phone_number_id` y `access_token`.
 3. Definir versión API (si no, usa `v17.0`).
 4. Configurar token de verificación de webhook.
-5. Confirmar URL webhook esperada:
+5. Definir política de respuesta:
+   - `whatsapp_chat_require_assignment_to_reply = 1` (recomendado en operación multiagente)
+6. Definir rol default para handoff (opcional):
+   - `whatsapp_handoff_default_role_id = <id_rol>`
+7. Confirmar URL webhook esperada:
    - `https://<tu-dominio>/whatsapp/webhook`
 
 > Internamente lo resuelve `Config/WhatsAppSettings.php`.
@@ -76,9 +80,10 @@ La app:
 - Cuando un caso está en handoff, usa **Tomar**.
 - Solo el agente asignado podrá responder luego.
 
-### 4.3 Transferir
-- La conversación debe estar tomada por ti.
-- Transferir reasigna al nuevo agente.
+### 4.3 Reasignar/transferir
+- Sin permisos de supervisión, la conversación debe estar tomada por ti para transferir.
+- Con `whatsapp.chat.supervise` (o `whatsapp.manage`), puedes reasignar aunque esté tomada por otro agente.
+- Transferir/reasignar mueve la conversación al nuevo agente.
 
 ### 4.4 Cerrar
 - Cierra handoff activo.
@@ -100,8 +105,9 @@ Campos clave:
 - `message` (opcional si hay template/adjunto)
 - `template` (JSON con `name`, `language`, `components` opcionales)
 
-Regla importante:
+Reglas importantes:
 - Si el contacto no tiene inbound previo, debes abrir con **template aprobada**.
+- Si envías por `conversation_id` y `whatsapp_chat_require_assignment_to_reply = 1`, debes tener la conversación tomada para responder.
 
 ---
 
