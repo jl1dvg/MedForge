@@ -1182,7 +1182,6 @@ class BillingUiController
         $prefixes = [
             'Modules\\' => $baseDir . '/modules/',
             'Core\\' => $baseDir . '/core/',
-            'Controllers\\' => $baseDir . '/controllers/',
             'Models\\' => $baseDir . '/models/',
             'Helpers\\' => $baseDir . '/helpers/',
             'Services\\' => $baseDir . '/controllers/Services/',

@@ -3,9 +3,9 @@
 namespace App\Modules\Billing\Services;
 
 use App\Modules\Billing\Support\InformesHelper;
+use App\Modules\Reporting\Services\ConsultaReportDataService;
 use App\Modules\Reporting\Services\ReportService;
 use App\Modules\Reporting\Support\SolicitudDataFormatter;
-use Modules\Consulta\Services\ConsultaReportService;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use PDO;
@@ -319,7 +319,7 @@ class BillingConsolidadoExportService
 
         $zip->addFile($excelPath, $excelName);
 
-        $consultaReportService = new ConsultaReportService($this->resolvePdo());
+        $consultaReportService = new ConsultaReportDataService($this->resolvePdo());
         $reportService = new ReportService();
         $pairs = [];
 
@@ -337,7 +337,7 @@ class BillingConsolidadoExportService
                 }
                 $pairs[$pairKey] = true;
 
-                $data = $consultaReportService->buildConsultaReportData($hcNumber, $formId);
+                $data = $consultaReportService->buildConsultaReportData($formId, $hcNumber);
                 if ($data === []) {
                     continue;
                 }
