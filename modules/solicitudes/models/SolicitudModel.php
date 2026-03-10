@@ -178,6 +178,70 @@ class SolicitudModel
         ];
     }
 
+    public function marcarChecklistAptoOftalmologo(int $id): bool
+    {
+        $slug = 'apto-oftalmologo';
+        $now = date('Y-m-d H:i:s');
+
+        try {
+            $this->db->beginTransaction();
+
+            $stmtOld = $this->db->prepare(
+                "SELECT completado_at
+                 FROM solicitud_checklist
+                 WHERE solicitud_id = :id AND etapa_slug = :slug
+                 LIMIT 1"
+            );
+            $stmtOld->execute([
+                ':id' => $id,
+                ':slug' => $slug,
+            ]);
+            $oldCompletadoAt = $stmtOld->fetchColumn() ?: null;
+
+            $stmt = $this->db->prepare(
+                "INSERT INTO solicitud_checklist
+                    (solicitud_id, etapa_slug, checked, completado_at, completado_por, nota)
+                 VALUES
+                    (:id, :slug, 1, :completado_at, NULL, :nota)
+                 ON DUPLICATE KEY UPDATE
+                    checked = 1,
+                    completado_at = VALUES(completado_at),
+                    completado_por = NULL,
+                    nota = VALUES(nota)"
+            );
+            $stmt->execute([
+                ':id' => $id,
+                ':slug' => $slug,
+                ':completado_at' => $now,
+                ':nota' => 'Actualización automática (apto oftalmólogo)',
+            ]);
+
+            $log = $this->db->prepare(
+                "INSERT INTO solicitud_checklist_log
+                    (solicitud_id, etapa_slug, accion, actor_id, nota, old_completado_at, new_completado_at)
+                 VALUES
+                    (:id, :slug, :accion, NULL, :nota, :old, :new)"
+            );
+            $log->execute([
+                ':id' => $id,
+                ':slug' => $slug,
+                ':accion' => 'completar',
+                ':nota' => 'Marcado desde actualización de solicitud',
+                ':old' => $oldCompletadoAt ?: null,
+                ':new' => $now,
+            ]);
+
+            $this->db->commit();
+            return true;
+        } catch (\Throwable $e) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            error_log('Error marcando checklist apto oftalmologo: ' . $e->getMessage());
+            return false;
+        }
+    }
+
     public function fetchSolicitudesConDetallesFiltrado(array $filtros = []): array
     {
         $pedidoOrigenIdExpr = $this->selectSolicitudColumn('pedido_origen_id');
