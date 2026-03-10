@@ -1,5 +1,4 @@
-### Que hace?
-Activa el envio por plantilla oficial.
+### Enviar plantilla oficial
+Activa el modo de envío por plantilla (requerido fuera de 24h o primer contacto sin ventana abierta).
 
-### Cuando usar
-Contacto fuera de ventana 24h o inicio de conversacion formal.
+Si está desactivado, solo podrás enviar texto normal en conversaciones habilitadas.

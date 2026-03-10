@@ -1,8 +1,7 @@
-### Que hace?
-Abre el numero en WhatsApp Web.
+### Abrir en WhatsApp (wa.me)
+Abre el contacto en WhatsApp Web/App para soporte externo.
 
-### Ruta
-`https://wa.me/{numero}`
-
-### Uso recomendado
-Solo como apoyo externo; la trazabilidad principal queda en el panel.
+Útil cuando necesitas:
+- verificar estado en cliente oficial
+- validar formato del número
+- continuidad fuera del panel

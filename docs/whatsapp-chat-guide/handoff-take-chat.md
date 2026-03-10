@@ -1,8 +1,8 @@
-### Que hace?
-Asigna el chat pendiente al agente actual.
+### Tomar chat
+Te asigna la conversación para gestión directa.
 
-### Endpoint
-`POST /whatsapp/api/conversations/{conversationId}/assign`
+Úsalo cuando:
+- el bot escaló a humano
+- hay caso clínico/administrativo que requiere seguimiento personal
 
-### Resultado esperado
-Queda habilitada la respuesta desde tu sesion.
+Después de tomar, ya puedes responder según permisos.

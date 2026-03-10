@@ -1,5 +1,9 @@
-### Que hace?
-Adjunta imagen, audio o documento al mensaje.
+### Adjuntar archivo
+Envía imagen, audio o documento como soporte.
 
-### Uso recomendado
-Verifica archivo antes de enviar. Clic en preview para quitar adjunto.
+Recomendado para:
+- órdenes/indicaciones
+- evidencias clínicas permitidas
+- documentos administrativos
+
+Verifica el archivo antes de enviar para evitar re-trabajo.

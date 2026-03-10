@@ -1,8 +1,7 @@
-### Que hace?
-Abre historial, badges y acciones del contacto seleccionado.
+### Lista de conversaciones
+Al seleccionar una conversación se habilita:
+- historial de mensajes
+- datos de contacto
+- acciones rápidas (abrir, copiar, cerrar, derivar)
 
-### Endpoint
-`GET /whatsapp/api/conversations/{conversationId}`
-
-### Recomendacion
-Siempre valida estado y ultimo mensaje antes de responder.
+Prioriza por antigüedad/urgencia para no dejar casos sin respuesta.

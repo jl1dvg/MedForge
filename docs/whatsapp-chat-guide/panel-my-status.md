@@ -1,8 +1,8 @@
-### Que hace?
-Actualiza tu disponibilidad para asignacion de conversaciones.
+### Mi estado
+Define tu disponibilidad para handoff automático y asignaciones.
 
-### Label operativo
-Actualizar mi estado operativo.
+- **Disponible**: puedes recibir/tomar casos.
+- **Ausente**: pausas nuevas asignaciones.
+- **Desconectado**: fuera de operación.
 
-### Endpoint
-`GET/POST /whatsapp/api/agent-presence`
+**Recomendación:** cambia estado al iniciar/cerrar turno para evitar reasignaciones erróneas.

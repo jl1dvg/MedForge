@@ -1,8 +1,7 @@
-### Que hace?
-Filtra la lista por nombre, HC, numero o texto del ultimo mensaje.
+### Buscar conversación
+Filtra rápido por:
+- nombre del contacto
+- número de WhatsApp
+- identificador clínico (si aplica)
 
-### Label operativo
-Buscar por nombre, HC o numero.
-
-### Endpoint
-`GET /whatsapp/api/conversations?search=...`
+Úsalo para retomar seguimiento sin recorrer toda la bandeja.

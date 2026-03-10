@@ -1,8 +1,8 @@
-### Que hace?
-Envia el primer mensaje (texto o plantilla) al numero indicado.
+### Enviar mensaje inicial
+Crea o reutiliza la conversación y envía el primer mensaje.
 
-### Endpoint
-`POST /whatsapp/api/messages`
-
-### Validacion minima
-Numero destino + mensaje o plantilla completa.
+Flujo recomendado:
+1. Buscar paciente/contacto.
+2. Si aplica, activar plantilla oficial.
+3. Completar contenido.
+4. Enviar y validar que aparezca en historial.

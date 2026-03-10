@@ -1,5 +1,8 @@
-### Que hace?
-Permite elegir plantilla, completar variables y revisar vista previa.
+### Seleccionar plantilla
+Elige una plantilla aprobada y completa variables dinámicas.
 
-### Endpoint
-`GET /whatsapp/api/chat-templates?limit=250`
+Checklist:
+- plantilla correcta para el caso
+- idioma correcto
+- variables completas y sin placeholders vacíos
+- vista previa validada

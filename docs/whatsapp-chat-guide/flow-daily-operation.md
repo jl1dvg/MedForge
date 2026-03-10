@@ -1,10 +1,10 @@
-### Objetivo
-Operar la bandeja sin perder casos.
+### Flujo diario recomendado (según tutoriales)
+1. **Define tu estado** (Disponible/Ausente/Desconectado).
+2. **Elige cola**: Mis activas, Ventana 24h, Plantilla, Handoff o Todas.
+3. **Abre conversación** y revisa contexto (último mensaje, asignación, estado bot/humano).
+4. **Responde** con texto/adjunto si hay ventana de 24h activa.
+5. Si está fuera de ventana, usa **Nuevo + Plantilla oficial**.
+6. Si requiere humano, **Tomar** o **Derivar** con nota clara.
+7. Cuando quede resuelto, **Cerrar conversación**.
 
-### Orden recomendado
-1. Definir tu estado.
-2. Elegir filtro de cola.
-3. Abrir chat y revisar contexto.
-4. Responder o enviar plantilla.
-5. Tomar o derivar si requiere agente.
-6. Cerrar cuando quede atendido.
+> Meta operativa: cero chats críticos sin dueño + cierre de pendientes del turno.

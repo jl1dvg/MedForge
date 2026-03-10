@@ -1,5 +1,7 @@
-### Que hace?
-Busca pacientes y autocompleta numero/nombre en nuevo chat.
+### Buscar paciente (Nuevo chat)
+Autocompleta datos para iniciar conversación correcta.
 
-### Endpoint
-`GET /whatsapp/api/patients?search=...`
+Valida:
+- nombre
+- número WhatsApp
+- coincidencia del paciente antes de enviar

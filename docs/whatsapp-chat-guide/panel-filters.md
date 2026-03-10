@@ -1,10 +1,10 @@
-### Que hace?
-Segmenta la cola para priorizar atencion.
+### Filtros de cola
+Colas operativas recomendadas:
 
-### Filtros
-- Mis activas: solo chats asignados a ti.
-- Ventana 24h: permite mensaje libre.
-- Requiere plantilla: fuera de ventana.
-- Esperando respuesta: ya se envio plantilla.
-- Requieren agente: escalados a humano.
-- Todas: vista completa.
+- **Mis activas**: tus conversaciones asignadas.
+- **Ventana 24h**: se puede responder libremente.
+- **Plantilla**: requiere plantilla aprobada para iniciar/reabrir.
+- **Handoff**: pendientes de tomar/derivar.
+- **Todas**: vista global de supervisión.
+
+Empieza por **Mis activas** y luego limpia **Handoff**.

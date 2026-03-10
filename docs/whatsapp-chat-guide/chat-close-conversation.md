@@ -1,8 +1,8 @@
-### Que hace?
-Marca el chat como atendido y limpia asignacion.
+### Cerrar conversación
+Marca el caso como atendido y lo saca de atención activa.
 
-### Endpoint
-`POST /whatsapp/api/conversations/{conversationId}/close`
+Efecto operativo:
+- limpia estado de trabajo
+- evita que siga apareciendo como pendiente
 
-### Precaucion
-Cerrar solo cuando no haya pendiente operativo.
+Cierra solo cuando exista resolución o próximo paso claro.

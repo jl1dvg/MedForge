@@ -1,8 +1,9 @@
-### Que hace?
-Transfiere el chat a otro agente con nota opcional.
+### Derivar chat
+Transfiere la conversación a otro agente/equipo con nota operativa.
 
-### Endpoint
-`POST /whatsapp/api/conversations/{conversationId}/transfer`
+Incluye siempre:
+- motivo de derivación
+- contexto breve
+- acción esperada del receptor
 
-### Recomendacion
-Escribe nota breve con contexto para evitar reprocesos.
+Con eso evitas pérdida de continuidad.

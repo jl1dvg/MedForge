@@ -1,8 +1,5 @@
-### Que hace?
-Elimina la conversacion y su historial.
+### Eliminar conversación
+Elimina historial del chat.
 
-### Endpoint
-`POST /whatsapp/api/conversations/{conversationId}/delete`
-
-### Precaucion
-No se puede deshacer.
+⚠️ Acción sensible e irreversible.
+Úsala solo para casos administrativos autorizados (duplicados, pruebas, error evidente).

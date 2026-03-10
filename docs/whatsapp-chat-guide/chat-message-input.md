@@ -1,6 +1,10 @@
-### Que hace?
-Permite redactar respuesta en el chat activo.
+### Caja de mensaje
+Redacta la respuesta al paciente.
 
-### Atajo
-`Enter` envia.
-`Shift + Enter` agrega salto de linea.
+Atajos:
+- **Enter**: enviar
+- **Shift + Enter**: salto de línea
+
+Buenas prácticas:
+- mensaje corto y claro
+- confirmar siguiente paso/tiempo estimado
