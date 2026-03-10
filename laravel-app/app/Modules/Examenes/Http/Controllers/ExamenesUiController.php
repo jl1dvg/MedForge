@@ -66,8 +66,9 @@ class ExamenesUiController
                 'formats' => ['pdf', 'excel'],
                 'quickMetrics' => [],
             ],
-            'forceV2ReadsEnabled' => true,
-            'forceV2WritesEnabled' => true,
+            'forceV2ReadsEnabled' => $this->isV2ReadsEnabled(),
+            'forceV2WritesEnabled' => $this->isV2WritesEnabled(),
+            'frontendMode' => $this->frontendMode(),
         ]);
     }
 
@@ -82,8 +83,9 @@ class ExamenesUiController
             'currentUser' => LegacyCurrentUser::resolve($request),
             'turneroContext' => 'Coordinación de Exámenes',
             'turneroEmptyMessage' => 'No hay pacientes en cola para coordinación de exámenes.',
-            'forceV2ReadsEnabled' => true,
-            'forceV2WritesEnabled' => true,
+            'forceV2ReadsEnabled' => $this->isV2ReadsEnabled(),
+            'forceV2WritesEnabled' => $this->isV2WritesEnabled(),
+            'frontendMode' => $this->frontendMode(),
         ]);
     }
 
@@ -175,5 +177,43 @@ class ExamenesUiController
         }
 
         return $options;
+    }
+
+    private function isV2ReadsEnabled(): bool
+    {
+        return $this->readBooleanFlag('EXAMENES_V2_READS_ENABLED', true);
+    }
+
+    private function isV2WritesEnabled(): bool
+    {
+        return $this->readBooleanFlag('EXAMENES_V2_WRITES_ENABLED', true);
+    }
+
+    private function frontendMode(): string
+    {
+        $mode = strtolower(trim((string) ($this->readFlagFromEnvFiles('EXAMENES_V2_FRONTEND_MODE')
+            ?? env('EXAMENES_V2_FRONTEND_MODE')
+            ?? getenv('EXAMENES_V2_FRONTEND_MODE')
+            ?? 'legacy')));
+
+        return in_array($mode, ['legacy', 'native'], true) ? $mode : 'legacy';
+    }
+
+    private function readBooleanFlag(string $key, bool $default): bool
+    {
+        $raw = $this->readFlagFromEnvFiles($key);
+        if ($raw === null || trim($raw) === '') {
+            $env = env($key);
+            if ($env === null) {
+                $env = getenv($key);
+            }
+            $raw = $env !== false && $env !== null ? (string) $env : null;
+        }
+
+        if ($raw === null || trim($raw) === '') {
+            return $default;
+        }
+
+        return filter_var($raw, FILTER_VALIDATE_BOOLEAN);
     }
 }
