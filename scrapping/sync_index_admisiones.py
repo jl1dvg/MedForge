@@ -90,6 +90,8 @@ def build_payload(row: Dict) -> Dict:
         "afiliacion": row.get("afiliacion", "").strip(),
         "telefono": row.get("telefono", "").strip(),
         "sede_departamento": sede_departamento,
+        "referido_prefactura_por": row.get("referido_prefactura_por", "").strip(),
+        "especificar_referido_prefactura": row.get("especificar_referido_prefactura", "").strip(),
     }
 
     fecha = normalize_fecha_grupo(row.get("fecha_grupo", ""))

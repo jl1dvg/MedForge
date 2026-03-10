@@ -69,6 +69,33 @@ def infer_sede_from_agenda_dpto(value: str) -> str:
     return "MATRIZ"
 
 
+
+
+def build_colseq_title_map(table) -> dict:
+    mapping = {}
+    for th in table.select('thead th[data-col-seq]'):
+        col_seq = th.get('data-col-seq')
+        try:
+            k = int(col_seq)
+        except Exception:
+            continue
+        title = clean_text(th).lower()
+        if title:
+            mapping[k] = title
+    return mapping
+
+
+def find_colseq_by_title(col_map: dict, candidates: list[str], fallback: Optional[int] = None) -> Optional[int]:
+    if not col_map:
+        return fallback
+    normalized_candidates = [re.sub(r"\s+", " ", c.strip().lower()) for c in candidates if c and c.strip()]
+    for seq, title in col_map.items():
+        normalized_title = re.sub(r"\s+", " ", title)
+        for candidate in normalized_candidates:
+            if candidate in normalized_title:
+                return seq
+    return fallback
+
 def parse_row_cells_by_colseq(tr):
     """Devuelve dict {col_seq:int -> text:str} para una fila de datos.
     Ignora filas agrupadas (fecha) y filas sin celdas."""
@@ -152,6 +179,17 @@ def scrape_index_admisiones(fecha_inicio: str, fecha_fin: str):
                 raise RuntimeError("No se encontró <tbody>")
 
             rows = tbody.find_all("tr", recursive=False)
+            col_title_map = build_colseq_title_map(table)
+            col_referido_prefactura_por = find_colseq_by_title(
+                col_title_map,
+                ["referido prefactura por", "prefactura por", "referido por"],
+                fallback=44,
+            )
+            col_especificar_referido_prefactura = find_colseq_by_title(
+                col_title_map,
+                ["especificar referido prefactura", "especificar referido", "detalle referido prefactura"],
+                fallback=45,
+            )
 
             current_group_date = ""
 
@@ -205,6 +243,8 @@ def scrape_index_admisiones(fecha_inicio: str, fecha_fin: str):
                     # Derivación
                     "codigo_derivacion": c(42),
                     "num_secuencial_derivacion": c(43),
+                    "referido_prefactura_por": c(col_referido_prefactura_por) if col_referido_prefactura_por is not None else "",
+                    "especificar_referido_prefactura": c(col_especificar_referido_prefactura) if col_especificar_referido_prefactura is not None else "",
                 }
 
                 paciente_full = c(13)
