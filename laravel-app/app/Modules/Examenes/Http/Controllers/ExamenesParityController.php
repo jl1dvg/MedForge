@@ -65,12 +65,20 @@ class ExamenesParityController
 
     public function derivacionPreseleccion(Request $request): Response
     {
-        return $this->relayJson($request, 'derivacionPreseleccion');
+        return $this->relayNativeJson(
+            $request,
+            'derivacionPreseleccion',
+            fn(): array => $this->native->derivacionPreseleccion($request->all())
+        );
     }
 
     public function guardarDerivacionPreseleccion(Request $request): Response
     {
-        return $this->relayJson($request, 'guardarDerivacionPreseleccion');
+        return $this->relayNativeJson(
+            $request,
+            'guardarDerivacionPreseleccion',
+            fn(): array => $this->native->guardarDerivacionPreseleccion($request->all())
+        );
     }
 
     public function apiEstadoGet(Request $request): Response
@@ -104,7 +112,20 @@ class ExamenesParityController
 
     public function derivacionDetalle(Request $request): Response
     {
-        return $this->relayJson($request, 'derivacionDetalle');
+        $hcNumber = $request->query('hc_number');
+        $formId = $request->query('form_id');
+        $examenId = $request->query('examen_id');
+
+        return $this->relayNativeJson(
+            $request,
+            'derivacionDetalle',
+            fn(): array => $this->native->derivacionDetalle(
+                is_scalar($hcNumber) ? (string) $hcNumber : null,
+                is_scalar($formId) ? (string) $formId : null,
+                is_scalar($examenId) ? (int) $examenId : null,
+                LegacySessionAuth::userId($request)
+            )
+        );
     }
 
     public function turneroLlamar(Request $request): Response
