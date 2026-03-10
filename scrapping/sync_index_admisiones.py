@@ -79,6 +79,8 @@ def build_payload(row: Dict) -> Dict:
         "estado": row.get("estado", "").strip(),
         "codigo_derivacion": row.get("codigo_derivacion", "").strip(),
         "num_secuencial_derivacion": row.get("num_secuencial_derivacion", "").strip(),
+        "referido_prefactura_por": row.get("referido_prefactura_por", "").strip(),
+        "especificar_referido_prefactura": row.get("especificar_referido_prefactura", "").strip(),
         "fname": row.get("fname", "").strip(),
         "mname": row.get("mname", "").strip(),
         "lname": row.get("lname", "").strip(),

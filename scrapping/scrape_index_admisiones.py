@@ -203,6 +203,8 @@ def scrape_index_admisiones(fecha_inicio: str, fecha_fin: str):
                     "estado": c(33),
 
                     # Derivación
+                    "referido_prefactura_por": c(36),
+                    "especificar_referido_prefactura": c(37),
                     "codigo_derivacion": c(42),
                     "num_secuencial_derivacion": c(43),
                 }
