@@ -58,8 +58,10 @@ class ProposalModel
         }
 
         if (!empty($filters['search'])) {
-            $where[] = '(p.title LIKE :search OR p.proposal_number LIKE :search)';
-            $params[':search'] = '%' . $filters['search'] . '%';
+            $where[] = '(p.title LIKE :search_title OR p.proposal_number LIKE :search_number)';
+            $searchTerm = '%' . $filters['search'] . '%';
+            $params[':search_title'] = $searchTerm;
+            $params[':search_number'] = $searchTerm;
         }
 
         $sql = "
@@ -111,8 +113,10 @@ class ProposalModel
         }
 
         if (!empty($filters['search'])) {
-            $where[] = '(p.title LIKE :search OR p.proposal_number LIKE :search)';
-            $params[':search'] = '%' . $filters['search'] . '%';
+            $where[] = '(p.title LIKE :search_title OR p.proposal_number LIKE :search_number)';
+            $searchTerm = '%' . $filters['search'] . '%';
+            $params[':search_title'] = $searchTerm;
+            $params[':search_number'] = $searchTerm;
         }
 
         $stmt = $this->pdo->prepare('SELECT COUNT(*) AS total FROM crm_proposals p WHERE ' . implode(' AND ', $where));

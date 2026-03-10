@@ -151,8 +151,9 @@ class TaskModel
         }
 
         if (!$isAdmin && $viewerId) {
-            $sql .= ' AND (t.assigned_to = :viewer_id OR t.created_by = :viewer_id)';
-            $params[':viewer_id'] = $viewerId;
+            $sql .= ' AND (t.assigned_to = :viewer_assigned_id OR t.created_by = :viewer_created_id)';
+            $params[':viewer_assigned_id'] = $viewerId;
+            $params[':viewer_created_id'] = $viewerId;
         }
 
         if (!empty($filters['due'])) {
@@ -299,8 +300,9 @@ class TaskModel
         }
 
         if (!$isAdmin && $viewerId) {
-            $sql .= ' AND (t.assigned_to = :viewer_id OR t.created_by = :viewer_id)';
-            $params[':viewer_id'] = $viewerId;
+            $sql .= ' AND (t.assigned_to = :viewer_assigned_id OR t.created_by = :viewer_created_id)';
+            $params[':viewer_assigned_id'] = $viewerId;
+            $params[':viewer_created_id'] = $viewerId;
         }
 
         if (!empty($filters['due'])) {
@@ -790,8 +792,9 @@ class TaskModel
         $params = [':company_id' => $companyId];
 
         if (!$isAdmin && $viewerId) {
-            $baseWhere .= ' AND (assigned_to = :viewer_id OR created_by = :viewer_id)';
-            $params[':viewer_id'] = $viewerId;
+            $baseWhere .= ' AND (assigned_to = :viewer_assigned_id OR created_by = :viewer_created_id)';
+            $params[':viewer_assigned_id'] = $viewerId;
+            $params[':viewer_created_id'] = $viewerId;
         }
 
         $summarySql = "

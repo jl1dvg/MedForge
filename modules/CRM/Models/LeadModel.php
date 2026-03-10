@@ -102,8 +102,13 @@ class LeadModel
         }
 
         if (!empty($filters['search'])) {
-            $sql .= " AND (l.name LIKE :search OR l.email LIKE :search OR l.phone LIKE :search OR l.hc_number LIKE :search OR c.name LIKE :search)";
-            $params[':search'] = '%' . $filters['search'] . '%';
+            $sql .= " AND (l.name LIKE :search_name OR l.email LIKE :search_email OR l.phone LIKE :search_phone OR l.hc_number LIKE :search_hc OR c.name LIKE :search_customer)";
+            $searchTerm = '%' . $filters['search'] . '%';
+            $params[':search_name'] = $searchTerm;
+            $params[':search_email'] = $searchTerm;
+            $params[':search_phone'] = $searchTerm;
+            $params[':search_hc'] = $searchTerm;
+            $params[':search_customer'] = $searchTerm;
         }
 
         if (!empty($filters['source'])) {
@@ -173,8 +178,13 @@ class LeadModel
         }
 
         if (!empty($filters['search'])) {
-            $sql .= " AND (l.name LIKE :search OR l.email LIKE :search OR l.phone LIKE :search OR l.hc_number LIKE :search OR c.name LIKE :search)";
-            $params[':search'] = '%' . $filters['search'] . '%';
+            $sql .= " AND (l.name LIKE :search_name OR l.email LIKE :search_email OR l.phone LIKE :search_phone OR l.hc_number LIKE :search_hc OR c.name LIKE :search_customer)";
+            $searchTerm = '%' . $filters['search'] . '%';
+            $params[':search_name'] = $searchTerm;
+            $params[':search_email'] = $searchTerm;
+            $params[':search_phone'] = $searchTerm;
+            $params[':search_hc'] = $searchTerm;
+            $params[':search_customer'] = $searchTerm;
         }
 
         if (!empty($filters['source'])) {
