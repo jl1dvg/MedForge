@@ -177,8 +177,8 @@
     $informesIssfaLink = $isV2Shell ? '/v2/informes/issfa' : '/informes/issfa';
     $informesMspLink = $isV2Shell ? '/v2/informes/msp' : '/informes/msp';
     $informesParticularesLink = $isV2Shell ? '/v2/informes/particulares' : '/informes/particulares';
-    $usersLink = $isV2Shell ? '/v2/usuarios' : '/usuarios';
-    $rolesLink = $isV2Shell ? '/v2/roles' : '/roles';
+    $usersLink = '/usuarios';
+    $rolesLink = '/roles';
 @endphp
 <aside class="main-sidebar">
     <section class="sidebar position-relative">

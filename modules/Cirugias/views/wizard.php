@@ -11,6 +11,22 @@ $scripts = array_merge($scripts ?? [], [
     'js/pages/steps.js',
     'js/modules/cirugias_wizard.js',
 ]);
+
+$cirugiasV2WritesEnabled = isset($forceV2WritesEnabled)
+    ? (bool) $forceV2WritesEnabled
+    : filter_var(
+        $_ENV['CIRUGIAS_V2_WRITES_ENABLED'] ?? getenv('CIRUGIAS_V2_WRITES_ENABLED') ?? '0',
+        FILTER_VALIDATE_BOOLEAN
+    );
+$cirugiasV2ReadsEnabled = isset($forceV2ReadsEnabled)
+    ? (bool) $forceV2ReadsEnabled
+    : filter_var(
+        $_ENV['CIRUGIAS_V2_READS_ENABLED'] ?? getenv('CIRUGIAS_V2_READS_ENABLED') ?? '0',
+        FILTER_VALIDATE_BOOLEAN
+    );
+$cirugiasReadPrefix = $cirugiasV2ReadsEnabled ? '/v2' : '';
+$cirugiasWritePrefix = $cirugiasV2WritesEnabled ? '/v2' : '';
+$guardarEndpoint = $cirugiasWritePrefix . '/cirugias/wizard/guardar';
 ?>
 <div class="content-header">
     <div class="d-flex align-items-center">
@@ -35,7 +51,7 @@ $scripts = array_merge($scripts ?? [], [
             <h4 class="box-title">Modificar información del procedimiento</h4>
         </div>
         <div class="box-body wizard-content">
-            <form action="/cirugias/wizard/guardar" method="POST" class="tab-wizard vertical wizard-circle">
+            <form action="<?= htmlspecialchars($guardarEndpoint, ENT_QUOTES, 'UTF-8') ?>" method="POST" class="tab-wizard vertical wizard-circle">
                 <input type="hidden" name="form_id" value="<?= htmlspecialchars($cirugia->form_id) ?>">
                 <input type="hidden" name="hc_number" value="<?= htmlspecialchars($cirugia->hc_number) ?>">
 
@@ -53,6 +69,17 @@ $scripts = array_merge($scripts ?? [], [
 </section>
 
 <script>
+    window.cirugiasEndpoints = {
+        datatable: <?= json_encode($cirugiasReadPrefix . '/cirugias/datatable', JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>,
+        wizard: <?= json_encode($cirugiasReadPrefix . '/cirugias/wizard', JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>,
+        protocolo: <?= json_encode($cirugiasReadPrefix . '/cirugias/protocolo', JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>,
+        printed: <?= json_encode($cirugiasWritePrefix . '/cirugias/protocolo/printed', JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>,
+        status: <?= json_encode($cirugiasWritePrefix . '/cirugias/protocolo/status', JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>,
+        guardar: <?= json_encode($cirugiasWritePrefix . '/cirugias/wizard/guardar', JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>,
+        autosave: <?= json_encode($cirugiasWritePrefix . '/cirugias/wizard/autosave', JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>,
+        scrapeDerivacion: <?= json_encode($cirugiasWritePrefix . '/cirugias/wizard/scrape-derivacion', JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>,
+    };
+
     const afiliacionCirugia = "<?= addslashes(strtolower($cirugia->afiliacion ?? '')) ?>";
     const insumosDisponiblesJSON = <?= json_encode($insumosDisponibles, JSON_UNESCAPED_UNICODE) ?>;
     const categoriasInsumos = <?= json_encode($categoriasInsumos, JSON_UNESCAPED_UNICODE) ?>;
@@ -67,4 +94,3 @@ $scripts = array_merge($scripts ?? [], [
 </script>
 
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-

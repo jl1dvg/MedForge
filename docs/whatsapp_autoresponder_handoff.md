@@ -87,10 +87,12 @@ flowchart TD
 ## Configuración en Settings (WhatsApp → Handoff)
 
 - `whatsapp_handoff_ttl_hours` (default 24)
+- `whatsapp_handoff_default_role_id` (rol por defecto cuando no se especifica rol)
 - `whatsapp_handoff_notify_agents` (on/off)
 - `whatsapp_handoff_agent_message` (template)
 - `whatsapp_handoff_button_take_label`
 - `whatsapp_handoff_button_ignore_label`
+- `whatsapp_chat_require_assignment_to_reply` (exigir toma para responder por conversación)
 
 ---
 
@@ -129,12 +131,23 @@ Nota: {{notes}}
 
 ---
 
-## Archivos relevantes
+## Archivos relevantes (ruta en este repo)
 
-- `/Users/jorgeluisdevera/PhpstormProjects/MedForge/modules/WhatsApp/Controllers/WebhookController.php`
-- `/Users/jorgeluisdevera/PhpstormProjects/MedForge/modules/Autoresponder/Services/ScenarioEngine.php`
-- `/Users/jorgeluisdevera/PhpstormProjects/MedForge/modules/WhatsApp/Services/HandoffService.php`
-- `/Users/jorgeluisdevera/PhpstormProjects/MedForge/modules/WhatsApp/Repositories/HandoffRepository.php`
-- `/Users/jorgeluisdevera/PhpstormProjects/MedForge/modules/WhatsApp/Services/ConversationService.php`
-- `/Users/jorgeluisdevera/PhpstormProjects/MedForge/helpers/SettingsHelper.php`
+- `modules/WhatsApp/Controllers/WebhookController.php`
+- `modules/Autoresponder/Services/ScenarioEngine.php`
+- `modules/WhatsApp/Services/HandoffService.php`
+- `modules/WhatsApp/Repositories/HandoffRepository.php`
+- `modules/WhatsApp/Services/ConversationService.php`
+- `modules/WhatsApp/Config/WhatsAppSettings.php`
+
+## Estado actual verificado
+
+- El webhook procesa tanto `messages` como `statuses` y actualiza estados de entrega/lectura.
+- Si una conversación está asignada (`assigned_user_id`), el bot no responde automáticamente.
+- El handoff soporta:
+  - cola (`queued`),
+  - asignación (`assigned`),
+  - resolución (`resolved`),
+  - vencimiento/reencolado (`expired`/`requeued`).
+- Existe tarea de cron en `CronRunner` para reencolar handoffs vencidos (`whatsapp-handoff-requeue`).
 

@@ -15,6 +15,8 @@ import {
     resolveId,
     getTableBodySelector,
     getRealtimeConfig,
+    resolveReadPath,
+    resolveWritePath,
 } from './kanban/config.js';
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -22,6 +24,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const normalizedBasePath = config.basePath && config.basePath !== '/'
         ? config.basePath.replace(/\/+$/, '')
         : '';
+    const normalizedReadBasePath = resolveReadPath(normalizedBasePath || '/examenes');
+    const normalizedWriteBasePath = resolveWritePath(normalizedBasePath || '/examenes');
     const realtimeConfig = getRealtimeConfig();
     const reportingConfig = getReportingConfig();
     const rawDesktopDismiss = Number(realtimeConfig.auto_dismiss_seconds);
@@ -581,7 +585,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const exportExamenesPdf = async ({ quickMetric = '' } = {}) => {
         const payload = buildReportPayload({ quickMetric, format: 'pdf' });
-        const reportBasePath = normalizedBasePath || '/examenes';
+        const reportBasePath = normalizedWriteBasePath || '/examenes';
         const response = await fetch(`${reportBasePath}/reportes/pdf`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -633,7 +637,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const exportExamenesExcel = async ({ quickMetric = '' } = {}) => {
         const payload = buildReportPayload({ quickMetric, format: 'excel' });
-        const reportBasePath = normalizedBasePath || '/examenes';
+        const reportBasePath = normalizedWriteBasePath || '/examenes';
         const response = await fetch(`${reportBasePath}/reportes/excel`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -780,7 +784,7 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log(filtros);
         console.groupEnd();
 
-        return fetch('/examenes/kanban-data', {
+        return fetch(resolveReadPath(`${normalizedReadBasePath}/kanban-data`), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(filtros),

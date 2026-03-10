@@ -1,4 +1,5 @@
 import { showToast } from './toast.js';
+import { resolveWritePath } from './config.js';
 
 const PREQUIRURGICO_DEBOUNCE_MS = 900;
 let lastPrequirurgicoOpenAt = 0;
@@ -307,7 +308,7 @@ function ensureCoberturaMailModal() {
             if (editor) {
                 formData.append("is_html", "1");
             }
-            const response = await request("/examenes/cobertura-mail", {
+            const response = await request(resolveWritePath('/examenes/cobertura-mail'), {
                 method: "POST",
                 body: formData,
             });

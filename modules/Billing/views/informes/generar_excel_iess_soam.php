@@ -6,10 +6,14 @@ if (!function_exists('asset')) {
 /** @var PDO $pdo */
 global $pdo;
 
-use Controllers\ReglaController;
-use Controllers\BillingController;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+
+$billingAdapterClass = \App\Modules\Billing\Services\BillingSoamAdapter::class;
+$rulesAdapterClass = \App\Modules\Billing\Services\BillingSoamRuleAdapter::class;
+if (!class_exists($billingAdapterClass) || !class_exists($rulesAdapterClass)) {
+    throw new RuntimeException('SOAM adapters no disponibles en App\\Modules\\Billing\\Services.');
+}
 
 // Obtener form_id
 $formIds = isset($_GET['form_id']) ? explode(',', $_GET['form_id']) : [];
@@ -18,7 +22,8 @@ if (empty($formIds)) {
 }
 
 // Obtener datos desde variables globales
-$billingController = new BillingController($pdo);
+$billingController = new $billingAdapterClass($pdo);
+$reglaController = new $rulesAdapterClass($pdo);
 $datosFacturacionLote = [];
 
 foreach ($formIds as $fid) {
@@ -132,10 +137,6 @@ foreach ($datosFacturacionLote as $bloque) {
     $formDetails['diagnostico1'] = $formDetails['diagnosticos'][0]['idDiagnostico'] ?? '';
 
     $formDetails['diagnostico2'] = $formDetails['diagnosticos'][1]['idDiagnostico'] ?? '';
-
-// Inicializar controlador de reglas clínicas
-    $reglaController = new ReglaController($pdo);
-    $billingController = new BillingController($pdo);
 
 // Preparar contexto para evaluación
     $contexto = [
@@ -347,9 +348,8 @@ foreach ($datosFacturacionLote as $bloque) {
 
 // -- Anestesia por procedimiento principal (si aplica) --
     $codigoAnestesia = $data['procedimientos'][0]['proc_codigo'] ?? '';
-    $controllerRef = $GLOBALS['controller'] ?? $billingController ?? null;
-    $precioReal = ($codigoAnestesia && $controllerRef !== null && method_exists($controllerRef, 'obtenerValorAnestesia'))
-        ? $controllerRef->obtenerValorAnestesia($codigoAnestesia)
+    $precioReal = ($codigoAnestesia !== '' && method_exists($billingController, 'obtenerValorAnestesia'))
+        ? $billingController->obtenerValorAnestesia($codigoAnestesia)
         : null;
     $esCirugia = $billingController->esCirugiaPorFormId($formId);
 

@@ -9,14 +9,19 @@ class PermissionRegistry
         return [
             'General' => [
                 'dashboard.view' => 'Acceder al panel principal',
+                'agenda.view' => 'Agenda - Acceder',
             ],
             'Pacientes' => [
                 'pacientes.view' => 'Pacientes - Ver',
                 'pacientes.create' => 'Pacientes - Crear',
                 'pacientes.edit' => 'Pacientes - Editar',
                 'pacientes.delete' => 'Pacientes - Eliminar',
+                'pacientes.flujo.view' => 'Flujo de pacientes - Ver',
                 'pacientes.verification.view' => 'Certificación biométrica - Ver',
                 'pacientes.verification.manage' => 'Certificación biométrica - Gestionar',
+            ],
+            'Derivaciones' => [
+                'derivaciones.view' => 'Derivaciones - Ver',
             ],
             'Cirugías' => [
                 'cirugias.view' => 'Cirugías - Ver',
@@ -24,12 +29,14 @@ class PermissionRegistry
                 'cirugias.create' => 'Cirugías - Registrar',
                 'cirugias.edit' => 'Cirugías - Editar',
                 'cirugias.delete' => 'Cirugías - Anular',
+                'ipl.view' => 'Planificador IPL - Ver',
             ],
             'Insumos' => [
                 'insumos.view' => 'Insumos - Ver',
                 'insumos.create' => 'Insumos - Crear',
                 'insumos.edit' => 'Insumos - Editar',
                 'insumos.delete' => 'Insumos - Eliminar',
+                'farmacia.view' => 'Farmacia - Dashboard',
             ],
             'CRM' => [
                 'crm.view' => 'CRM - Acceder y consultar',
@@ -53,6 +60,19 @@ class PermissionRegistry
                 'ai.consultas.plan' => 'IA - Generar plan de tratamiento',
                 'ai.manage' => 'IA - Acceso total (atajo)',
             ],
+            'Solicitudes' => [
+                'solicitudes.view' => 'Solicitudes - Ver',
+                'solicitudes.update' => 'Solicitudes - Actualizar etapas',
+                'solicitudes.turnero' => 'Solicitudes - Usar turnero',
+                'solicitudes.dashboard.view' => 'Solicitudes - Ver dashboard',
+                'solicitudes.checklist.override' => 'Solicitudes - Forzar checklist',
+                'solicitudes.manage' => 'Solicitudes - Acceso total (atajo)',
+            ],
+            'Exámenes' => [
+                'examenes.view' => 'Exámenes - Ver y exportar',
+                'examenes.checklist.override' => 'Exámenes - Forzar checklist',
+                'examenes.manage' => 'Exámenes - Acceso total (atajo)',
+            ],
             'Protocolos' => [
                 'protocolos.templates.view' => 'Plantillas de protocolos - Ver',
                 'protocolos.templates.manage' => 'Plantillas de protocolos - Crear y editar',
@@ -61,6 +81,10 @@ class PermissionRegistry
             'Reportes' => [
                 'reportes.view' => 'Visualizar reportes e informes',
                 'reportes.export' => 'Exportar reportes',
+            ],
+            'Doctores' => [
+                'doctores.view' => 'Doctores - Ver',
+                'doctores.manage' => 'Doctores - Gestionar',
             ],
             'Administración' => [
                 'admin.usuarios.view' => 'Usuarios - Ver',

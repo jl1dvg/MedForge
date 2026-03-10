@@ -1,5 +1,9 @@
 # Dependencias entre los módulos de WhatsApp y Autoresponder
 
+> Referencia operativa complementaria:
+> - `modules/WhatsApp/README.md`
+> - `modules/WhatsApp/TUTORIAL.md`
+
 El flujo de autorespuesta ahora se divide entre dos módulos coordinados:
 
 - `modules/Autoresponder` contiene los controladores de UI (páginas de Flowmaker y edición de flujo), los repositorios del flujo (`AutoresponderFlowRepository`, `AutoresponderSessionRepository`) y los servicios de escenario. Estos componentes leen y persisten la definición del flujo usando los servicios compartidos de `Modules\WhatsApp\Support`.

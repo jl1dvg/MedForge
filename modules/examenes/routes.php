@@ -4,12 +4,22 @@ use Controllers\ExamenController;
 use Core\Router;
 
 return function (Router $router) {
-    $router->get('/examenes', function (\PDO $pdo) {
-        (new ExamenController($pdo))->index();
+    $redirectToV2 = static function (string $target): void {
+        $queryString = trim((string) ($_SERVER['QUERY_STRING'] ?? ''));
+        if ($queryString !== '') {
+            $target .= '?' . $queryString;
+        }
+
+        header('Location: ' . $target, true, 302);
+        exit;
+    };
+
+    $router->get('/examenes', function (\PDO $pdo) use ($redirectToV2) {
+        $redirectToV2('/v2/examenes');
     });
 
-    $router->get('/examenes/turnero', function (\PDO $pdo) {
-        (new ExamenController($pdo))->turnero();
+    $router->get('/examenes/turnero', function (\PDO $pdo) use ($redirectToV2) {
+        $redirectToV2('/v2/examenes/turnero');
     });
 
     $router->get('/examenes/prefactura', function (\PDO $pdo) {

@@ -1,6 +1,9 @@
 $(function () {
     "use strict";
 
+    const endpoints = window.cirugiasEndpoints || {};
+    const autosaveEndpoint = endpoints.autosave || '/cirugias/wizard/autosave';
+
     // === Helpers & Styles ===
     const normalizar = s => (s || '')
         .normalize('NFD').replace(/\p{Diacritic}/gu, '')
@@ -120,7 +123,7 @@ $(function () {
         if ($badge.length) $badge.text('Guardando…');
         for (let intento = 1; intento <= 3; intento++) {
             try {
-                const resp = await fetch('/cirugias/wizard/autosave', {
+                const resp = await fetch(autosaveEndpoint, {
                     method: 'POST',
                     body: payload,
                     headers: {'X-Requested-With': 'XMLHttpRequest'}

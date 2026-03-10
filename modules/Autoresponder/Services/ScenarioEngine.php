@@ -524,9 +524,13 @@ class ScenarioEngine
                 $context['handoff_requested'] = true;
                 if (isset($action['role_id']) && is_numeric($action['role_id'])) {
                     $context['handoff_role_id'] = (int) $action['role_id'];
+                } else {
+                    unset($context['handoff_role_id']);
                 }
                 if (isset($action['note']) && is_string($action['note'])) {
                     $context['handoff_note'] = $this->renderPlaceholders($action['note'], $context);
+                } else {
+                    unset($context['handoff_note']);
                 }
                 continue;
             }

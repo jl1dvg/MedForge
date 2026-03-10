@@ -452,8 +452,8 @@ return [
                 'assert_v2_header_contains_auth' => [
                     'location' => '/v2/solicitudes',
                 ],
-                'notes' => 'Use this only when SOLICITUDES_V2_UI_ENABLED=1 to verify /solicitudes redirect to /v2/solicitudes.',
-                'notes_auth' => 'Authenticated mode also expects /solicitudes redirecting to /v2/solicitudes when UI cutover is enabled.',
+                'notes' => 'Always-on cutover: verify /solicitudes redirects to /v2/solicitudes.',
+                'notes_auth' => 'Authenticated mode also expects /solicitudes redirecting to /v2/solicitudes.',
             ],
             [
                 'id' => 'solicitudes_dashboard_ui_cutover_redirect',
@@ -471,7 +471,7 @@ return [
                 'assert_v2_header_contains_auth' => [
                     'location' => '/v2/solicitudes/dashboard',
                 ],
-                'notes' => 'Use this only when SOLICITUDES_V2_UI_ENABLED=1 to verify /solicitudes/dashboard redirect to /v2/solicitudes/dashboard.',
+                'notes' => 'Always-on cutover: verify /solicitudes/dashboard redirects to /v2/solicitudes/dashboard.',
                 'notes_auth' => 'Authenticated mode also expects /solicitudes/dashboard redirecting to /v2/solicitudes/dashboard.',
             ],
             [
@@ -490,7 +490,7 @@ return [
                 'assert_v2_header_contains_auth' => [
                     'location' => '/v2/solicitudes/turnero',
                 ],
-                'notes' => 'Use this only when SOLICITUDES_V2_UI_ENABLED=1 to verify /solicitudes/turnero redirect to /v2/solicitudes/turnero.',
+                'notes' => 'Always-on cutover: verify /solicitudes/turnero redirects to /v2/solicitudes/turnero.',
                 'notes_auth' => 'Authenticated mode also expects /solicitudes/turnero redirecting to /v2/solicitudes/turnero.',
             ],
         ],

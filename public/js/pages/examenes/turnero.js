@@ -1,4 +1,6 @@
-const ENDPOINT = '/examenes/turnero-data';
+import { getKanbanConfig, resolveReadPath } from './kanban/config.js';
+
+const ENDPOINT = resolveReadPath(`${getKanbanConfig().basePath}/turnero-data`);
 const REFRESH_INTERVAL = 30000;
 
 const elements = {

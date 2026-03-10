@@ -226,7 +226,10 @@ class ExamenesParityController
                 'error' => $e->getMessage(),
             ]);
 
-            return $this->dispatch($request, $legacyMethod, [], true);
+            return response()->json([
+                'success' => false,
+                'error' => 'No se pudo procesar la solicitud en v2.',
+            ], 500);
         }
     }
 

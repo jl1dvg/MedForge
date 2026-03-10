@@ -1,4 +1,4 @@
-import { getKanbanConfig, getDataStore } from "../config.js";
+import { getKanbanConfig, getDataStore, resolveReadPath } from "../config.js";
 import { findExamenById } from "./store.js";
 
 const examenDetalleCache = new Map();
@@ -54,13 +54,13 @@ export function buildEstadoApiCandidates() {
     const apiBase = resolveApiBasePath();
 
     const orderedCandidates = [
-        "/examenes/api/estado",
-        `${apiBase}/examenes/estado`,
-        "/api/examenes/estado",
+        resolveReadPath('/examenes/api/estado'),
+        resolveReadPath(`${apiBase}/examenes/estado`),
+        resolveReadPath('/api/examenes/estado'),
     ];
 
     if (normalizedBase) {
-        orderedCandidates.push(`${normalizedBase}/api/estado`);
+        orderedCandidates.push(resolveReadPath(`${normalizedBase}/api/estado`));
     }
 
     const expanded = [];
@@ -169,7 +169,8 @@ export async function hydrateExamenFromDetalle({ examenId, formId, hcNumber }) {
 
 export async function loadExamenCore({ hc, formId, examenId }) {
     const { basePath } = getKanbanConfig();
-    const prefacturaUrl = `${basePath}/prefactura?hc_number=${encodeURIComponent(
+    const prefacturaBasePath = resolveReadPath(`${basePath}/prefactura`);
+    const prefacturaUrl = `${prefacturaBasePath}?hc_number=${encodeURIComponent(
         hc
     )}&form_id=${encodeURIComponent(formId)}&examen_id=${encodeURIComponent(
         examenId

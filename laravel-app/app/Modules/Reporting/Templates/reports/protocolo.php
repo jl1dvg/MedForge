@@ -257,12 +257,19 @@ ob_start();
             <td class='blanco' height='100px'>
                 <?php
                 $imagenSrc = $imagen_link ?? '';
+                $baseUrl = defined('BASE_URL') ? trim((string) BASE_URL) : '/';
+                if ($baseUrl === '') {
+                    $baseUrl = '/';
+                }
                 if (
                         $imagenSrc !== ''
                         && !preg_match('#^https?://#i', $imagenSrc)
                         && strpos($imagenSrc, 'data:') !== 0
                 ) {
-                    $imagenSrc = rtrim(BASE_URL, '/') . '/' . ltrim($imagenSrc, '/');
+                    $normalizedPath = ltrim($imagenSrc, '/');
+                    $imagenSrc = $baseUrl === '/'
+                        ? '/' . $normalizedPath
+                        : rtrim($baseUrl, '/') . '/' . $normalizedPath;
                 }
                 echo "<img src='" . htmlspecialchars($imagenSrc) . "' alt='Imagen del Procedimiento' style='max-height: 140px;'>";
                 ?>

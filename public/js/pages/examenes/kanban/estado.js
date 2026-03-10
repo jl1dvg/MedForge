@@ -1,4 +1,5 @@
 import { showToast } from './toast.js';
+import { resolveWritePath } from './config.js';
 
 const slugifyEstado = value => {
     const raw = (value ?? '')
@@ -67,7 +68,7 @@ export function actualizarEstadoExamen(
         payload.nota = options.nota;
     }
 
-    return fetch('/examenes/actualizar-estado', {
+    return fetch(resolveWritePath('/examenes/actualizar-estado'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),

@@ -59,6 +59,6 @@ Route::middleware(['legacy.auth', 'legacy.permission:administrativo,admin.roles.
     Route::post('/v2/roles/{id}/delete', [RolesUiController::class, 'destroy'])->whereNumber('id');
 });
 
-Route::middleware('legacy.auth')->get('/usuarios', static fn() => redirect('/v2/usuarios'));
-Route::middleware('legacy.auth')->get('/roles', static fn() => redirect('/v2/roles'));
+//Route::middleware('legacy.auth')->get('/usuarios', static fn() => redirect('/v2/usuarios'));
+//Route::middleware('legacy.auth')->get('/roles', static fn() => redirect('/v2/roles'));
 Route::get('/v2/auth/logout', [UnifiedLogoutController::class, 'logout']);

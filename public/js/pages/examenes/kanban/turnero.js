@@ -1,4 +1,6 @@
-const ENDPOINT = '/examenes/turnero-llamar';
+import { resolveWritePath } from './config.js';
+
+const ENDPOINT = resolveWritePath('/examenes/turnero-llamar');
 
 const parseEntero = valor => {
     const numero = Number.parseInt(valor, 10);

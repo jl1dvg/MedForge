@@ -42,6 +42,21 @@ $reporting = array_merge(
     ],
     $reporting ?? []
 );
+
+$examenesV2WritesEnabled = isset($forceV2WritesEnabled)
+    ? (bool) $forceV2WritesEnabled
+    : filter_var(
+        $_ENV['EXAMENES_V2_WRITES_ENABLED'] ?? getenv('EXAMENES_V2_WRITES_ENABLED') ?? '0',
+        FILTER_VALIDATE_BOOLEAN
+    );
+$examenesV2ReadsEnabled = isset($forceV2ReadsEnabled)
+    ? (bool) $forceV2ReadsEnabled
+    : filter_var(
+        $_ENV['EXAMENES_V2_READS_ENABLED'] ?? getenv('EXAMENES_V2_READS_ENABLED') ?? '0',
+        FILTER_VALIDATE_BOOLEAN
+    );
+$examenesReadPrefix = $examenesV2ReadsEnabled ? '/v2' : '';
+$examenesWritePrefix = $examenesV2WritesEnabled ? '/v2' : '';
 ?>
 <div class="content-header">
     <div class="d-flex align-items-center">
@@ -720,6 +735,10 @@ $reporting = array_merge(
         window.__KANBAN_MODULE__ = {
             key: 'examenes',
             basePath: '/examenes',
+            v2ReadsEnabled: <?= json_encode($examenesV2ReadsEnabled); ?>,
+            readPrefix: <?= json_encode($examenesReadPrefix, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); ?>,
+            v2WritesEnabled: <?= json_encode($examenesV2WritesEnabled); ?>,
+            writePrefix: <?= json_encode($examenesWritePrefix, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); ?>,
             storageKeyView: 'examenes:view-mode',
             dataKey: '__examenesKanban',
             estadosMetaKey: '__examenesEstadosMeta',

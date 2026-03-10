@@ -3,6 +3,10 @@
 use App\Modules\Examenes\Http\Controllers\ExamenesParityController;
 use Illuminate\Support\Facades\Route;
 
+Route::middleware([
+    'legacy.auth',
+    'legacy.permission:administrativo,examenes.view,examenes.manage',
+])->group(function (): void {
 // Legacy mirror paths (reads)
 Route::match(['GET', 'POST'], '/examenes/kanban-data', [ExamenesParityController::class, 'kanbanData']);
 Route::get('/examenes/turnero-data', [ExamenesParityController::class, 'turneroData']);
@@ -53,3 +57,4 @@ Route::post('/api/examenes/{id}/crm/tareas', [ExamenesParityController::class, '
 Route::post('/api/examenes/{id}/crm/tareas/estado', [ExamenesParityController::class, 'crmActualizarTarea'])->whereNumber('id');
 Route::post('/api/examenes/{id}/crm/bloqueo', [ExamenesParityController::class, 'crmRegistrarBloqueo'])->whereNumber('id');
 Route::post('/api/examenes/{id}/crm/adjuntos', [ExamenesParityController::class, 'crmSubirAdjunto'])->whereNumber('id');
+});

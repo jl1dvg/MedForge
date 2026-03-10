@@ -4,7 +4,10 @@ use App\Modules\CRM\Http\Controllers\CrmReadController;
 use App\Modules\CRM\Http\Controllers\CrmWriteController;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware('legacy.auth')->group(function (): void {
+Route::middleware([
+    'legacy.auth',
+    'legacy.permission:administrativo,crm.view,crm.manage',
+])->group(function (): void {
     Route::get('/crm/leads', [CrmReadController::class, 'leads']);
     Route::get('/crm/leads/meta', [CrmReadController::class, 'meta']);
     Route::get('/crm/leads/metrics', [CrmReadController::class, 'metrics']);

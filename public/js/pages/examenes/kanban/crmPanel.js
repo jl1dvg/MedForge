@@ -1,5 +1,6 @@
 import { showToast } from './toast.js';
 import { createCrmPanel } from '../../shared/crmPanelFactory.js';
+import { resolveReadPath, resolveWritePath } from './config.js';
 
 const {
     setCrmOptions,
@@ -9,6 +10,8 @@ const {
 } = createCrmPanel({
     showToast,
     getBasePath: () => '/examenes',
+    resolveReadPath,
+    resolveWritePath,
     entityLabel: 'examen',
     entityArticle: 'el',
     entitySelectionSuffix: 'seleccionado',

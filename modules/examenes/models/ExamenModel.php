@@ -650,11 +650,43 @@ class ExamenModel
 
         $variantes = [$base];
 
-        // En procedimiento_proyectado hay casos con token "SNS" en medio del nombre.
-        $sinSns = preg_replace('/\bSNS\b/u', ' ', $base) ?? $base;
-        $sinSns = trim(preg_replace('/\s+/', ' ', $sinSns) ?? $sinSns);
-        if ($sinSns !== '' && $sinSns !== $base) {
-            $variantes[] = $sinSns;
+        // Casos reales: "SNS" puede venir como token suelto, con puntuación o prefijo de token.
+        // Ejemplos: "... SNS ...", "SNS-DR", "(SNS)", "SNSDR".
+        $tokens = preg_split('/\s+/', $base) ?: [];
+        $tokensLimpios = [];
+        foreach ($tokens as $token) {
+            $token = trim($token);
+            if ($token === '') {
+                continue;
+            }
+
+            // Eliminar adornos de puntuación al inicio/fin para evaluar marcador SNS.
+            $plain = preg_replace('/^[^A-Z0-9]+|[^A-Z0-9]+$/u', '', $token) ?? $token;
+            if ($plain === 'SNS') {
+                continue;
+            }
+
+            // Si el token inicia con SNS y luego trae el nombre (SNSDR, SNS-JUAN), quitar prefijo.
+            $withoutPrefix = preg_replace('/^SNS[-_.]*/u', '', $plain) ?? $plain;
+            if ($withoutPrefix === '') {
+                continue;
+            }
+
+            $tokensLimpios[] = $withoutPrefix;
+        }
+
+        if ($tokensLimpios !== []) {
+            $sinSns = trim(preg_replace('/\s+/', ' ', implode(' ', $tokensLimpios)) ?? implode(' ', $tokensLimpios));
+            if ($sinSns !== '' && $sinSns !== $base) {
+                $variantes[] = $sinSns;
+            }
+        }
+
+        // Variante adicional: remover SNS como palabra delimitada por no alfanuméricos.
+        $sinSnsRegex = preg_replace('/(^|[^A-Z0-9])SNS([^A-Z0-9]|$)/u', ' ', $base) ?? $base;
+        $sinSnsRegex = trim(preg_replace('/\s+/', ' ', $sinSnsRegex) ?? $sinSnsRegex);
+        if ($sinSnsRegex !== '' && $sinSnsRegex !== $base) {
+            $variantes[] = $sinSnsRegex;
         }
 
         return array_values(array_unique($variantes));

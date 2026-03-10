@@ -64,6 +64,7 @@ class LegacyPermissionCatalog
                 'cirugias.create' => 'Cirugías - Registrar',
                 'cirugias.edit' => 'Cirugías - Editar',
                 'cirugias.delete' => 'Cirugías - Anular',
+                'ipl.view' => 'Planificador IPL - Ver',
                 'cirugias.manage' => 'Cirugías - Acceso total (atajo)',
             ],
             'Insumos' => [
@@ -71,6 +72,7 @@ class LegacyPermissionCatalog
                 'insumos.create' => 'Insumos - Crear',
                 'insumos.edit' => 'Insumos - Editar',
                 'insumos.delete' => 'Insumos - Eliminar',
+                'farmacia.view' => 'Farmacia - Dashboard',
                 'insumos.manage' => 'Insumos - Acceso total (atajo)',
             ],
             'CRM' => [

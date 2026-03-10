@@ -1,6 +1,9 @@
 $(function () {
     "use strict";
 
+    const endpoints = window.cirugiasEndpoints || {};
+    const datatableEndpoint = endpoints.datatable || "/cirugias/datatable";
+
     const $filterForm = $("#filtrosCirugias");
     const $fechaInicio = $("#filtroFechaInicio");
     const $fechaFin = $("#filtroFechaFin");
@@ -28,7 +31,7 @@ $(function () {
         autoWidth: false,
         order: [[4, "desc"]],
         ajax: {
-            url: "/cirugias/datatable",
+            url: datatableEndpoint,
             type: "POST",
             data: function (d) {
                 d.fecha_inicio = $fechaInicio.val();

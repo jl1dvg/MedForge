@@ -85,6 +85,10 @@ class ConfigService
             ? ($extensionIdLocal !== '' ? $extensionIdLocal : self::DEFAULTS['extension_id_local'])
             : ($extensionIdRemote !== '' ? $extensionIdRemote : self::DEFAULTS['extension_id_remote']);
 
+        $consultasV2ApiEnabled = $this->resolveEnvBoolFlag('CONSULTAS_V2_API_ENABLED', false);
+        $consultasV2ReadsEnabled = $this->resolveEnvBoolFlag('CONSULTAS_V2_READS_ENABLED', $consultasV2ApiEnabled);
+        $consultasV2WritesEnabled = $this->resolveEnvBoolFlag('CONSULTAS_V2_WRITES_ENABLED', $consultasV2ApiEnabled);
+
         $openAiKey = trim((string)($options['cive_extension_openai_api_key'] ?? ''));
         $openAiModel = trim((string)($options['cive_extension_openai_model'] ?? self::DEFAULTS['openai_model']));
 
@@ -110,6 +114,9 @@ class ConfigService
             'flags' => [
                 'esLocal' => $localMode,
                 'extensionId' => $extensionId,
+                'consultasV2ApiEnabled' => $consultasV2ApiEnabled,
+                'consultasV2ReadsEnabled' => $consultasV2ReadsEnabled,
+                'consultasV2WritesEnabled' => $consultasV2WritesEnabled,
             ],
             'controlBaseUrl' => $controlBaseUrl,
         ];
@@ -292,5 +299,48 @@ class ConfigService
     private function resolveDefaultApiBaseUrl(string $controlBaseUrl): string
     {
         return self::DEFAULTS['api_base_url'];
+    }
+
+    private function resolveEnvBoolFlag(string $flag, bool $default = false): bool
+    {
+        static $dotenvFlags = null;
+
+        if ($dotenvFlags === null) {
+            $dotenvFlags = [];
+
+            $basePath = defined('BASE_PATH')
+                ? rtrim((string) BASE_PATH, DIRECTORY_SEPARATOR)
+                : dirname(__DIR__, 3);
+            $envPath = $basePath . DIRECTORY_SEPARATOR . '.env';
+
+            if (is_readable($envPath)) {
+                $lines = file($envPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [];
+                foreach ($lines as $line) {
+                    $line = trim((string) $line);
+                    if ($line === '' || str_starts_with($line, '#')) {
+                        continue;
+                    }
+
+                    [$key, $value] = array_pad(explode('=', $line, 2), 2, '');
+                    $key = trim($key);
+                    if ($key === '') {
+                        continue;
+                    }
+
+                    $dotenvFlags[$key] = trim($value, " \t\n\r\0\x0B\"'");
+                }
+            }
+        }
+
+        $rawFlag = $dotenvFlags[$flag] ?? null;
+        if ($rawFlag === null || trim((string) $rawFlag) === '') {
+            $rawFlag = $_ENV[$flag] ?? getenv($flag) ?? null;
+        }
+
+        if ($rawFlag === null || trim((string) $rawFlag) === '') {
+            return $default;
+        }
+
+        return filter_var((string) $rawFlag, FILTER_VALIDATE_BOOLEAN);
     }
 }

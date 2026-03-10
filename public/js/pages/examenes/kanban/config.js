@@ -8,6 +8,23 @@ const DEFAULT_STRINGS = {
     articleSingularShort: 'el',
 };
 
+function normalizePath(pathname) {
+    const raw = (pathname ?? '').toString().trim();
+    if (raw === '' || raw === '/') {
+        return '/';
+    }
+    return raw.startsWith('/') ? raw : `/${raw}`;
+}
+
+function normalizePrefix(prefix) {
+    const raw = (prefix ?? '').toString().trim();
+    if (raw === '' || raw === '/') {
+        return '';
+    }
+    const cleaned = raw.replace(/^\/+|\/+$/g, '');
+    return cleaned ? `/${cleaned}` : '';
+}
+
 function computeIds(key, rawSelectors = {}) {
     const prefix = rawSelectors.prefix || key;
     const defaults = {
@@ -32,6 +49,12 @@ function computeConfig() {
     const key = (raw.key || 'examenes').toString();
     const selectors = raw.selectors || {};
     const ids = computeIds(key, selectors);
+    const normalizedReadPrefix = normalizePrefix(
+        raw.readPrefix || (raw.v2ReadsEnabled ? '/v2' : '')
+    );
+    const normalizedWritePrefix = normalizePrefix(
+        raw.writePrefix || (raw.v2WritesEnabled ? '/v2' : '')
+    );
 
     const globalRealtime = (() => {
         if (typeof window === 'undefined') {
@@ -53,10 +76,15 @@ function computeConfig() {
         key,
         basePath: raw.basePath || '/examenes',
         apiBasePath: raw.apiBasePath || '/api',
+        v2ReadsEnabled: Boolean(raw.v2ReadsEnabled),
+        readPrefix: normalizedReadPrefix,
+        v2WritesEnabled: Boolean(raw.v2WritesEnabled),
+        writePrefix: normalizedWritePrefix,
         storageKeyView: raw.storageKeyView || `${key}:view-mode`,
         dataKey: raw.dataKey || `__${key}Kanban`,
         estadosMetaKey: raw.estadosMetaKey || `__${key}EstadosMeta`,
         reporting: raw.reporting || {},
+        turnero: raw.turnero || {},
         selectors: {
             prefix: selectors.prefix || key,
             viewAttr: selectors.viewAttr || `data-${key}-view`,
@@ -144,8 +172,93 @@ export function getReportingConfig() {
     return config.reporting || {};
 }
 
+export function getTurneroConfig() {
+    const config = ensureConfig();
+    return config.turnero || {};
+}
+
 export function setEstadosMeta(meta) {
     const config = ensureConfig();
     window[config.estadosMetaKey] = meta;
     return window[config.estadosMetaKey];
+}
+
+export function getWritePrefix() {
+    return ensureConfig().writePrefix || '';
+}
+
+export function getReadPrefix() {
+    return ensureConfig().readPrefix || '';
+}
+
+export function resolveWritePath(pathname) {
+    const path = normalizePath(pathname);
+    const writePrefix = getWritePrefix();
+
+    if (!writePrefix) {
+        return path;
+    }
+
+    if (path === writePrefix || path.startsWith(`${writePrefix}/`)) {
+        return path;
+    }
+
+    if (
+        path.includes(`${writePrefix}/examenes`)
+        || path.includes(`${writePrefix}/api/examenes`)
+    ) {
+        return path;
+    }
+
+    const moduleMarkerIndex = path.indexOf('/examenes');
+    if (moduleMarkerIndex >= 0) {
+        const rootPrefix = path.slice(0, moduleMarkerIndex);
+        const moduleSuffix = path.slice(moduleMarkerIndex);
+        return `${rootPrefix}${writePrefix}${moduleSuffix}`;
+    }
+
+    const apiMarkerIndex = path.indexOf('/api/examenes');
+    if (apiMarkerIndex >= 0) {
+        const rootPrefix = path.slice(0, apiMarkerIndex);
+        const apiSuffix = path.slice(apiMarkerIndex);
+        return `${rootPrefix}${writePrefix}${apiSuffix}`;
+    }
+
+    return `${writePrefix}${path === '/' ? '' : path}`;
+}
+
+export function resolveReadPath(pathname) {
+    const path = normalizePath(pathname);
+    const readPrefix = getReadPrefix();
+
+    if (!readPrefix) {
+        return path;
+    }
+
+    if (path === readPrefix || path.startsWith(`${readPrefix}/`)) {
+        return path;
+    }
+
+    if (
+        path.includes(`${readPrefix}/examenes`)
+        || path.includes(`${readPrefix}/api/examenes`)
+    ) {
+        return path;
+    }
+
+    const moduleMarkerIndex = path.indexOf('/examenes');
+    if (moduleMarkerIndex >= 0) {
+        const rootPrefix = path.slice(0, moduleMarkerIndex);
+        const moduleSuffix = path.slice(moduleMarkerIndex);
+        return `${rootPrefix}${readPrefix}${moduleSuffix}`;
+    }
+
+    const apiMarkerIndex = path.indexOf('/api/examenes');
+    if (apiMarkerIndex >= 0) {
+        const rootPrefix = path.slice(0, apiMarkerIndex);
+        const apiSuffix = path.slice(apiMarkerIndex);
+        return `${rootPrefix}${readPrefix}${apiSuffix}`;
+    }
+
+    return `${readPrefix}${path === '/' ? '' : path}`;
 }

@@ -8,6 +8,20 @@
 /** @var string $fechaFinDefault */
 $fechaInicioDefaultValue = htmlspecialchars((string)($fechaInicioDefault ?? ''), ENT_QUOTES, 'UTF-8');
 $fechaFinDefaultValue = htmlspecialchars((string)($fechaFinDefault ?? ''), ENT_QUOTES, 'UTF-8');
+$cirugiasV2WritesEnabled = isset($forceV2WritesEnabled)
+    ? (bool) $forceV2WritesEnabled
+    : filter_var(
+        $_ENV['CIRUGIAS_V2_WRITES_ENABLED'] ?? getenv('CIRUGIAS_V2_WRITES_ENABLED') ?? '0',
+        FILTER_VALIDATE_BOOLEAN
+    );
+$cirugiasV2ReadsEnabled = isset($forceV2ReadsEnabled)
+    ? (bool) $forceV2ReadsEnabled
+    : filter_var(
+        $_ENV['CIRUGIAS_V2_READS_ENABLED'] ?? getenv('CIRUGIAS_V2_READS_ENABLED') ?? '0',
+        FILTER_VALIDATE_BOOLEAN
+    );
+$cirugiasReadPrefix = $cirugiasV2ReadsEnabled ? '/v2' : '';
+$cirugiasWritePrefix = $cirugiasV2WritesEnabled ? '/v2' : '';
 $scripts = array_merge($scripts ?? [], [
     'assets/vendor_components/datatable/datatables.min.js',
     'js/pages/cirugias.js',
@@ -126,6 +140,17 @@ $scripts = array_merge($scripts ?? [], [
 <?php include __DIR__ . '/components/modal_protocolo.php'; ?>
 
 <script>
+    window.cirugiasEndpoints = {
+        datatable: <?= json_encode($cirugiasReadPrefix . '/cirugias/datatable', JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>,
+        wizard: <?= json_encode($cirugiasReadPrefix . '/cirugias/wizard', JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>,
+        protocolo: <?= json_encode($cirugiasReadPrefix . '/cirugias/protocolo', JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>,
+        printed: <?= json_encode($cirugiasWritePrefix . '/cirugias/protocolo/printed', JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>,
+        status: <?= json_encode($cirugiasWritePrefix . '/cirugias/protocolo/status', JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>,
+        guardar: <?= json_encode($cirugiasWritePrefix . '/cirugias/wizard/guardar', JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>,
+        autosave: <?= json_encode($cirugiasWritePrefix . '/cirugias/wizard/autosave', JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>,
+        scrapeDerivacion: <?= json_encode($cirugiasWritePrefix . '/cirugias/wizard/scrape-derivacion', JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>,
+    };
+
     function emitirCertificadoDescanso(formId, hcNumber) {
         const value = window.prompt('Ingrese los dias de descanso postquirurgico', '5');
         if (value === null) {
@@ -152,6 +177,8 @@ $scripts = array_merge($scripts ?? [], [
     }
 
     function togglePrintStatus(form_id, hc_number, button, currentStatus) {
+        const endpoints = window.cirugiasEndpoints || {};
+        const printedEndpoint = endpoints.printed || '/cirugias/protocolo/printed';
         const isActive = button.classList.contains('active');
         const newStatus = isActive ? 0 : 1;
 
@@ -162,7 +189,7 @@ $scripts = array_merge($scripts ?? [], [
         button.classList.toggle('active');
         button.setAttribute('aria-pressed', button.classList.contains('active'));
 
-        fetch('/cirugias/protocolo/printed', {
+        fetch(printedEndpoint, {
             method: 'POST',
             headers: {'Content-Type': 'application/x-www-form-urlencoded'},
             body: new URLSearchParams({form_id, hc_number, printed: button.classList.contains('active') ? 1 : 0})
@@ -186,19 +213,23 @@ $scripts = array_merge($scripts ?? [], [
     let currentHcNumber;
 
     function redirectToEditProtocol() {
+        const endpoints = window.cirugiasEndpoints || {};
+        const wizardEndpoint = endpoints.wizard || '/cirugias/wizard';
         if (!currentFormId || !currentHcNumber) {
             return;
         }
-        window.location.href = `/cirugias/wizard?form_id=${encodeURIComponent(currentFormId)}&hc_number=${encodeURIComponent(currentHcNumber)}`;
+        window.location.href = `${wizardEndpoint}?form_id=${encodeURIComponent(currentFormId)}&hc_number=${encodeURIComponent(currentHcNumber)}`;
     }
 
     function loadProtocolData(button) {
+        const endpoints = window.cirugiasEndpoints || {};
+        const protocoloEndpoint = endpoints.protocolo || '/cirugias/protocolo';
         const formId = button.getAttribute('data-form-id');
         const hcNumber = button.getAttribute('data-hc-number');
         currentFormId = formId;
         currentHcNumber = hcNumber;
 
-        fetch(`/cirugias/protocolo?form_id=${formId}&hc_number=${hcNumber}`)
+        fetch(`${protocoloEndpoint}?form_id=${formId}&hc_number=${hcNumber}`)
             .then(response => response.json())
             .then(data => {
                 if (data.error) {

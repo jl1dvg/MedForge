@@ -258,6 +258,7 @@ class ReportService
             throw new InvalidArgumentException(sprintf('La plantilla %s no existe.', $template));
         }
 
+        $this->defineLegacyBaseUrlConstant();
         extract($data, EXTR_SKIP);
 
         ob_start();
@@ -269,5 +270,23 @@ class ReportService
             ob_end_clean();
             throw $e;
         }
+    }
+
+    private function defineLegacyBaseUrlConstant(): void
+    {
+        if (defined('BASE_URL')) {
+            return;
+        }
+
+        $baseUrl = '';
+        if (function_exists('config')) {
+            $baseUrl = trim((string) config('app.url', ''));
+        }
+
+        if ($baseUrl === '') {
+            $baseUrl = '/';
+        }
+
+        define('BASE_URL', $baseUrl);
     }
 }

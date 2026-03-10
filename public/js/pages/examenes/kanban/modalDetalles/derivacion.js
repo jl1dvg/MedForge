@@ -1,4 +1,4 @@
-import { getKanbanConfig } from "../config.js";
+import { getKanbanConfig, resolveReadPath, resolveWritePath } from "../config.js";
 import { escapeHtml, formatDerivacionVigencia } from "./utils.js";
 
 export function buildDerivacionMissingHtml(
@@ -140,7 +140,8 @@ export function renderDerivacionContent(container, payload) {
 
 export async function loadDerivacion({ hc, formId, examenId }) {
     const { basePath } = getKanbanConfig();
-    const derivacionUrl = `${basePath}/derivacion?hc_number=${encodeURIComponent(
+    const derivacionBasePath = resolveReadPath(`${basePath}/derivacion`);
+    const derivacionUrl = `${derivacionBasePath}?hc_number=${encodeURIComponent(
         hc
     )}&form_id=${encodeURIComponent(formId)}&examen_id=${encodeURIComponent(
         examenId || ""
@@ -168,7 +169,7 @@ export async function loadDerivacion({ hc, formId, examenId }) {
 }
 
 async function guardarPreseleccionDerivacion(payload) {
-    const response = await fetch("/examenes/derivacion-preseleccion/guardar", {
+    const response = await fetch(resolveWritePath('/examenes/derivacion-preseleccion/guardar'), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -223,7 +224,7 @@ export async function asegurarPreseleccionDerivacion({ hc, formId, examenId }) {
         return null;
     }
 
-    const response = await fetch("/examenes/derivacion-preseleccion", {
+    const response = await fetch(resolveWritePath('/examenes/derivacion-preseleccion'), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
