@@ -257,11 +257,16 @@ class BillingUiController
             return redirect('/auth/login?auth_required=1');
         }
 
-        $range = $this->particularesReportService->resolveDateRange((string) $request->query('mes', ''));
+        $range = $this->particularesReportService->resolveDateRange(
+            (string) $request->query('date_from', ''),
+            (string) $request->query('date_to', '')
+        );
         $filters = [
-            'mes' => $range['mes'],
-            'semana' => (string) $request->query('semana', ''),
+            'date_from' => $range['date_from'],
+            'date_to' => $range['date_to'],
             'afiliacion' => (string) $request->query('afiliacion', ''),
+            'sede' => $this->normalizeSedeFilter((string) $request->query('sede', '')),
+            'categoria_cliente' => (string) $request->query('categoria_cliente', ''),
             'tipo' => (string) $request->query('tipo', ''),
             'procedimiento' => (string) $request->query('procedimiento', ''),
         ];
@@ -270,7 +275,6 @@ class BillingUiController
             $baseRows = $this->particularesReportService->obtenerAtencionesParticulares($range['from'], $range['to']);
             $rows = $this->particularesReportService->aplicarFiltros($baseRows, $filters);
             $catalogos = $this->particularesReportService->catalogos($baseRows);
-            $groupedRows = $this->particularesReportService->agruparPorMes($rows);
             $summary = $this->particularesReportService->resumen($rows);
         } catch (\Throwable) {
             if ($request->expectsJson()) {
@@ -291,6 +295,7 @@ class BillingUiController
                     'total' => $summary['total'],
                 ],
                 'catalogos' => $catalogos,
+                'summary' => $summary,
                 'data' => $rows,
             ]);
         }
@@ -299,7 +304,7 @@ class BillingUiController
             'pageTitle' => 'Informe de Atenciones Particulares',
             'currentUser' => LegacyCurrentUser::resolve($request),
             'filters' => $filters,
-            'groupedRows' => $groupedRows,
+            'rows' => $rows,
             'summary' => $summary,
             'catalogos' => $catalogos,
         ]);

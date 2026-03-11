@@ -2,30 +2,19 @@
 
 namespace App\Modules\Billing\Services;
 
-use DateInterval;
 use DateTimeImmutable;
 use PDO;
 
 class BillingParticularesReportService
 {
     private PDO $db;
-
+    /** @var array<string, bool> */
+    private array $columnExistsCache = [];
+    /** @var array<string, array{categoria:string,afiliacion_raw:string}>|null */
+    private ?array $afiliacionCategoriaMapCache = null;
     /** @var array<int, string> */
-    private const EXCLUDED_AFFILIATIONS = [
-        'isspol',
-        'issfa',
-        'iess',
-        'msp',
-        'contribuyente voluntario',
-        'conyuge',
-        'conyuge pensionista',
-        'seguro campesino',
-        'seguro campesino jubilado',
-        'seguro general',
-        'seguro general jubilado',
-        'seguro general por montepío',
-        'seguro general por montepio',
-        'seguro general tiempo parcial',
+    private const EXCLUDED_ATTENTION_TYPES = [
+        'consulta optometria',
     ];
 
     /** @var array<int, string> */
@@ -50,31 +39,45 @@ class BillingParticularesReportService
     }
 
     /**
-     * @return array{from:string,to:string,mes:string}
+     * @return array{from:string,to:string,date_from:string,date_to:string}
      */
-    public function resolveDateRange(?string $mes): array
+    public function resolveDateRange(?string $dateFrom = null, ?string $dateTo = null): array
     {
-        $mes = trim((string) $mes);
-        if ($mes !== '' && preg_match('/^\d{4}-\d{2}$/', $mes) === 1) {
-            $start = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $mes . '-01 00:00:00');
-            if ($start instanceof DateTimeImmutable) {
-                $end = $start->modify('last day of this month')->setTime(23, 59, 59);
+        $dateFrom = trim((string) $dateFrom);
+        $dateTo = trim((string) $dateTo);
+
+        $start = $this->parseDateInput($dateFrom, false);
+        $end = $this->parseDateInput($dateTo, true);
+
+        if ($start instanceof DateTimeImmutable || $end instanceof DateTimeImmutable) {
+            if (!($start instanceof DateTimeImmutable) && $end instanceof DateTimeImmutable) {
+                $start = $end->setTime(0, 0, 0);
+            }
+            if (!($end instanceof DateTimeImmutable) && $start instanceof DateTimeImmutable) {
+                $end = $start->setTime(23, 59, 59);
+            }
+            if ($start instanceof DateTimeImmutable && $end instanceof DateTimeImmutable) {
+                if ($start > $end) {
+                    [$start, $end] = [$end->setTime(0, 0, 0), $start->setTime(23, 59, 59)];
+                }
 
                 return [
                     'from' => $start->format('Y-m-d H:i:s'),
                     'to' => $end->format('Y-m-d H:i:s'),
-                    'mes' => $mes,
+                    'date_from' => $start->format('Y-m-d'),
+                    'date_to' => $end->format('Y-m-d'),
                 ];
             }
         }
 
-        $now = new DateTimeImmutable('now');
-        $start = $now->sub(new DateInterval('P5M'))->modify('first day of this month')->setTime(0, 0, 0);
+        $end = (new DateTimeImmutable('now'))->setTime(23, 59, 59);
+        $start = $end->modify('-29 days')->setTime(0, 0, 0);
 
         return [
             'from' => $start->format('Y-m-d H:i:s'),
-            'to' => $now->setTime(23, 59, 59)->format('Y-m-d H:i:s'),
-            'mes' => '',
+            'to' => $end->format('Y-m-d H:i:s'),
+            'date_from' => $start->format('Y-m-d'),
+            'date_to' => $end->format('Y-m-d'),
         ];
     }
 
@@ -83,7 +86,11 @@ class BillingParticularesReportService
      */
     public function obtenerAtencionesParticulares(string $fechaInicio, string $fechaFin): array
     {
-        $excludedPlaceholders = implode(',', array_fill(0, count(self::EXCLUDED_AFFILIATIONS), '?'));
+        $sedeExpr = $this->sedeExpression('pp');
+        $estadoExpr = $this->encuentroEstadoExpression('pp');
+        $atendidoCondition = $this->attendedEncounterCondition('pp');
+        $referidoPrefacturaExpr = $this->referidoPrefacturaExpression('pp');
+        $especificarReferidoExpr = $this->especificarReferidoPrefacturaExpression('pp');
 
         $sql = <<<SQL
             SELECT *
@@ -95,13 +102,17 @@ class BillingParticularesReportService
                     cd.form_id,
                     cd.fecha AS fecha,
                     p.afiliacion,
+                    %SEDE_EXPR% AS sede,
+                    %ESTADO_EXPR% AS estado_encuentro,
                     pp.procedimiento_proyectado,
-                    pp.doctor
+                    pp.doctor,
+                    %REFERIDO_PREFACTURA_EXPR% AS referido_prefactura_por,
+                    %ESPECIFICAR_REFERIDO_EXPR% AS especificar_referido_prefactura
                 FROM patient_data p
                 INNER JOIN consulta_data cd ON cd.hc_number = p.hc_number
                 INNER JOIN procedimiento_proyectado pp ON pp.hc_number = p.hc_number AND pp.form_id = cd.form_id
                 WHERE cd.fecha BETWEEN ? AND ?
-                  AND LOWER(TRIM(COALESCE(p.afiliacion, ''))) NOT IN ($excludedPlaceholders)
+                  AND %ATENDIDO_WHERE%
 
                 UNION ALL
 
@@ -112,30 +123,66 @@ class BillingParticularesReportService
                     pd.form_id,
                     pd.fecha_inicio AS fecha,
                     p.afiliacion,
+                    %SEDE_EXPR% AS sede,
+                    %ESTADO_EXPR% AS estado_encuentro,
                     pp.procedimiento_proyectado,
-                    pp.doctor
+                    pp.doctor,
+                    %REFERIDO_PREFACTURA_EXPR% AS referido_prefactura_por,
+                    %ESPECIFICAR_REFERIDO_EXPR% AS especificar_referido_prefactura
                 FROM patient_data p
                 INNER JOIN protocolo_data pd ON pd.hc_number = p.hc_number
                 INNER JOIN procedimiento_proyectado pp ON pp.hc_number = p.hc_number AND pp.form_id = pd.form_id
                 WHERE pd.fecha_inicio BETWEEN ? AND ?
-                  AND LOWER(TRIM(COALESCE(p.afiliacion, ''))) NOT IN ($excludedPlaceholders)
+                  AND %ATENDIDO_WHERE%
             ) AS atenciones
             WHERE atenciones.fecha IS NOT NULL
               AND atenciones.fecha NOT IN ('', '0000-00-00', '0000-00-00 00:00:00')
             ORDER BY atenciones.fecha DESC, atenciones.form_id DESC
         SQL;
+        $sql = str_replace('%SEDE_EXPR%', $sedeExpr, $sql);
+        $sql = str_replace('%ESTADO_EXPR%', $estadoExpr, $sql);
+        $sql = str_replace('%ATENDIDO_WHERE%', $atendidoCondition, $sql);
+        $sql = str_replace('%REFERIDO_PREFACTURA_EXPR%', $referidoPrefacturaExpr, $sql);
+        $sql = str_replace('%ESPECIFICAR_REFERIDO_EXPR%', $especificarReferidoExpr, $sql);
 
-        $params = array_merge(
-            [$fechaInicio, $fechaFin],
-            self::EXCLUDED_AFFILIATIONS,
-            [$fechaInicio, $fechaFin],
-            self::EXCLUDED_AFFILIATIONS
-        );
+        $params = [$fechaInicio, $fechaFin, $fechaInicio, $fechaFin];
 
         $stmt = $this->db->prepare($sql);
         $stmt->execute($params);
 
-        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        if (empty($rows)) {
+            return [];
+        }
+
+        $enrichedRows = [];
+        foreach ($rows as $row) {
+            $mappedAffiliation = $this->resolveMappedAffiliation((string) ($row['afiliacion'] ?? ''));
+            if ($mappedAffiliation === null) {
+                continue;
+            }
+
+            $categoriaCliente = strtolower(trim((string) ($mappedAffiliation['categoria'] ?? '')));
+            if (!$this->isParticularReportCategory($categoriaCliente)) {
+                continue;
+            }
+
+            $mappedRawAffiliation = trim((string) ($mappedAffiliation['afiliacion_raw'] ?? ''));
+            $row['afiliacion_original'] = $row['afiliacion'] ?? null;
+            if ($mappedRawAffiliation !== '') {
+                $row['afiliacion'] = $mappedRawAffiliation;
+            }
+            $row['categoria_cliente'] = $categoriaCliente;
+            $tipoAtencion = $this->resolveAttentionType((string) ($row['procedimiento_proyectado'] ?? ''));
+            if ($this->isExcludedAttentionType($tipoAtencion)) {
+                continue;
+            }
+
+            $row['tipo_atencion'] = $tipoAtencion;
+            $enrichedRows[] = $row;
+        }
+
+        return $enrichedRows;
     }
 
     /**
@@ -145,20 +192,16 @@ class BillingParticularesReportService
      */
     public function aplicarFiltros(array $rows, array $filters): array
     {
-        $mes = trim((string) ($filters['mes'] ?? ''));
-        $semana = (int) ($filters['semana'] ?? 0);
         $afiliacion = strtolower(trim((string) ($filters['afiliacion'] ?? '')));
-        $tipo = strtolower(trim((string) ($filters['tipo'] ?? '')));
+        $sede = $this->normalizeSedeFilter($filters['sede'] ?? null);
+        $tipoAtencion = strtoupper(trim((string) ($filters['tipo'] ?? '')));
         $procedimiento = strtolower(trim((string) ($filters['procedimiento'] ?? '')));
+        $categoriaCliente = strtolower(trim((string) ($filters['categoria_cliente'] ?? '')));
+        $dateFromTs = $this->parseDateTimestamp((string) ($filters['date_from'] ?? ''), false);
+        $dateToTs = $this->parseDateTimestamp((string) ($filters['date_to'] ?? ''), true);
 
-        if (!in_array($tipo, ['', 'consulta', 'protocolo'], true)) {
-            $tipo = '';
-        }
-        if (!preg_match('/^\d{4}-\d{2}$/', $mes)) {
-            $mes = '';
-        }
-        if ($semana < 1 || $semana > 5) {
-            $semana = 0;
+        if ($categoriaCliente !== '' && !$this->isParticularReportCategory($categoriaCliente)) {
+            $categoriaCliente = '';
         }
 
         $resultado = [];
@@ -168,22 +211,32 @@ class BillingParticularesReportService
                 continue;
             }
 
-            $mesRow = date('Y-m', $timestamp);
-            $dia = (int) date('j', $timestamp);
             $afiliacionRow = strtolower(trim((string) ($row['afiliacion'] ?? '')));
-            $tipoRow = strtolower(trim((string) ($row['tipo'] ?? '')));
+            $sedeRow = $this->normalizeSedeFilter($row['sede'] ?? null);
+            $tipoAtencionRow = strtoupper(trim((string) ($row['tipo_atencion'] ?? '')));
             $procedimientoRow = strtolower((string) ($row['procedimiento_proyectado'] ?? ''));
+            $categoriaRow = strtolower(trim((string) ($row['categoria_cliente'] ?? '')));
+            $estadoEncuentro = (string) ($row['estado_encuentro'] ?? '');
 
-            if ($mes !== '' && $mesRow !== $mes) {
+            if ($dateFromTs !== null && $timestamp < $dateFromTs) {
                 continue;
             }
-            if ($semana > 0 && !$this->matchesWeekBucket($dia, $semana)) {
+            if ($dateToTs !== null && $timestamp > $dateToTs) {
+                continue;
+            }
+            if (!$this->isEncounterAttended($estadoEncuentro)) {
                 continue;
             }
             if ($afiliacion !== '' && $afiliacionRow !== $afiliacion) {
                 continue;
             }
-            if ($tipo !== '' && $tipoRow !== $tipo) {
+            if ($sede !== '' && $sedeRow !== $sede) {
+                continue;
+            }
+            if ($tipoAtencion !== '' && $tipoAtencionRow !== $tipoAtencion) {
+                continue;
+            }
+            if ($categoriaCliente !== '' && $categoriaRow !== $categoriaCliente) {
                 continue;
             }
             if ($procedimiento !== '' && !str_contains($procedimientoRow, $procedimiento)) {
@@ -223,13 +276,70 @@ class BillingParticularesReportService
 
     /**
      * @param array<int, array<string, mixed>> $rows
-     * @return array{total:int,top_afiliaciones:array<int, array{afiliacion:string,cantidad:int}>}
+     * @return array{
+     *     total:int,
+     *     total_consultas:int,
+     *     total_protocolos:int,
+     *     pacientes_unicos:int,
+     *     categoria_counts:array{particular:int,privado:int},
+     *     categoria_share:array{particular:float,privado:float},
+     *     top_afiliaciones:array<int, array{afiliacion:string,cantidad:int}>,
+     *     referido_prefactura:array{
+     *         with_value:int,
+     *         without_value:int,
+     *         top_values:array<int, array{valor:string,cantidad:int,porcentaje:float}>,
+     *         values:array<int, array{valor:string,cantidad:int,porcentaje:float}>
+     *     },
+     *     especificar_referido_prefactura:array{
+     *         with_value:int,
+     *         without_value:int,
+     *         top_values:array<int, array{valor:string,cantidad:int,porcentaje:float}>,
+     *         values:array<int, array{valor:string,cantidad:int,porcentaje:float}>
+     *     },
+     *     hierarquia_referidos:array{
+     *         categorias:array<int, array{
+     *             categoria:string,
+     *             cantidad:int,
+     *             porcentaje_total:float,
+     *             subcategorias:array<int, array{
+     *                 subcategoria:string,
+     *                 cantidad:int,
+     *                 porcentaje_en_categoria:float,
+     *                 porcentaje_total:float
+     *             }>
+     *         }>,
+     *         pares:array<int, array{
+     *             categoria:string,
+     *             categoria_total:int,
+     *             subcategoria:string,
+     *             cantidad:int,
+     *             porcentaje_en_categoria:float,
+     *             porcentaje_total:float
+     *         }>
+     *     }
+     * }
      */
     public function resumen(array $rows): array
     {
         $conteoAfiliacion = [];
+        $pacientesUnicos = [];
+        $totalConsultas = 0;
+        $totalProtocolos = 0;
+        $categoriaCounts = [
+            'particular' => 0,
+            'privado' => 0,
+        ];
+        $referidoCounts = [];
+        $referidoWithValue = 0;
+        $referidoWithoutValue = 0;
+        $especificarCounts = [];
+        $especificarWithValue = 0;
+        $especificarWithoutValue = 0;
+        $hierarchy = [];
+
         foreach ($rows as $row) {
             $afiliacion = strtoupper(trim((string) ($row['afiliacion'] ?? '')));
+            $afiliacionRaw = trim((string) ($row['afiliacion'] ?? ''));
             if ($afiliacion === '') {
                 $afiliacion = 'SIN AFILIACION';
             }
@@ -237,6 +347,62 @@ class BillingParticularesReportService
                 $conteoAfiliacion[$afiliacion] = 0;
             }
             $conteoAfiliacion[$afiliacion]++;
+
+            $hcNumber = trim((string) ($row['hc_number'] ?? ''));
+            if ($hcNumber !== '') {
+                $pacientesUnicos[$hcNumber] = true;
+            }
+
+            $tipo = strtolower(trim((string) ($row['tipo'] ?? '')));
+            if ($tipo === 'consulta') {
+                $totalConsultas++;
+            } elseif ($tipo === 'protocolo') {
+                $totalProtocolos++;
+            }
+
+            $categoria = strtolower(trim((string) ($row['categoria_cliente'] ?? '')));
+            if ($this->isParticularReportCategory($categoria)) {
+                $categoriaCounts[$categoria] = (int) ($categoriaCounts[$categoria] ?? 0) + 1;
+            }
+
+            $referidoValue = $this->normalizeReferralValue($row['referido_prefactura_por'] ?? null);
+            if ($referidoValue === '') {
+                $referidoWithoutValue++;
+            } else {
+                $referidoWithValue++;
+                if (!isset($referidoCounts[$referidoValue])) {
+                    $referidoCounts[$referidoValue] = 0;
+                }
+                $referidoCounts[$referidoValue]++;
+            }
+
+            $especificarValue = $this->normalizeReferralValue($row['especificar_referido_prefactura'] ?? null);
+            if ($especificarValue === '') {
+                $especificarWithoutValue++;
+            } else {
+                $especificarWithValue++;
+                if (!isset($especificarCounts[$especificarValue])) {
+                    $especificarCounts[$especificarValue] = 0;
+                }
+                $especificarCounts[$especificarValue]++;
+            }
+
+            $hierarchyCategory = $referidoValue !== '' ? $referidoValue : 'SIN CATEGORIA';
+            $hierarchySubcategory = $especificarValue !== '' ? $especificarValue : 'SIN SUBCATEGORIA';
+
+            if (!isset($hierarchy[$hierarchyCategory])) {
+                $hierarchy[$hierarchyCategory] = [
+                    'cantidad' => 0,
+                    'subcategorias' => [],
+                ];
+            }
+
+            $hierarchy[$hierarchyCategory]['cantidad']++;
+
+            if (!isset($hierarchy[$hierarchyCategory]['subcategorias'][$hierarchySubcategory])) {
+                $hierarchy[$hierarchyCategory]['subcategorias'][$hierarchySubcategory] = 0;
+            }
+            $hierarchy[$hierarchyCategory]['subcategorias'][$hierarchySubcategory]++;
         }
 
         arsort($conteoAfiliacion);
@@ -250,20 +416,124 @@ class BillingParticularesReportService
             ];
         }
 
+        $totalRows = count($rows);
+        $categoriaShare = [
+            'particular' => $totalRows > 0 ? round(($categoriaCounts['particular'] / $totalRows) * 100, 2) : 0.0,
+            'privado' => $totalRows > 0 ? round(($categoriaCounts['privado'] / $totalRows) * 100, 2) : 0.0,
+        ];
+
+        $hierarchyCategories = [];
+        $hierarchyPairs = [];
+
+        foreach ($hierarchy as $category => $meta) {
+            $categoryTotal = (int) ($meta['cantidad'] ?? 0);
+            $children = is_array($meta['subcategorias'] ?? null) ? $meta['subcategorias'] : [];
+            arsort($children);
+
+            $childrenPayload = [];
+            foreach ($children as $subcategory => $count) {
+                $countInt = (int) $count;
+                $pctInCategory = $categoryTotal > 0 ? round(($countInt / $categoryTotal) * 100, 2) : 0.0;
+                $pctTotal = $totalRows > 0 ? round(($countInt / $totalRows) * 100, 2) : 0.0;
+
+                $childItem = [
+                    'subcategoria' => (string) $subcategory,
+                    'cantidad' => $countInt,
+                    'porcentaje_en_categoria' => $pctInCategory,
+                    'porcentaje_total' => $pctTotal,
+                ];
+
+                $childrenPayload[] = $childItem;
+                $hierarchyPairs[] = [
+                    'categoria' => (string) $category,
+                    'categoria_total' => $categoryTotal,
+                    'subcategoria' => (string) $subcategory,
+                    'cantidad' => $countInt,
+                    'porcentaje_en_categoria' => $pctInCategory,
+                    'porcentaje_total' => $pctTotal,
+                ];
+            }
+
+            $hierarchyCategories[] = [
+                'categoria' => (string) $category,
+                'cantidad' => $categoryTotal,
+                'porcentaje_total' => $totalRows > 0 ? round(($categoryTotal / $totalRows) * 100, 2) : 0.0,
+                'subcategorias' => $childrenPayload,
+            ];
+        }
+
+        usort($hierarchyCategories, static function (array $a, array $b): int {
+            $countCmp = ((int) ($b['cantidad'] ?? 0)) <=> ((int) ($a['cantidad'] ?? 0));
+            if ($countCmp !== 0) {
+                return $countCmp;
+            }
+
+            return strcmp((string) ($a['categoria'] ?? ''), (string) ($b['categoria'] ?? ''));
+        });
+
+        usort($hierarchyPairs, static function (array $a, array $b): int {
+            $categoryTotalCmp = ((int) ($b['categoria_total'] ?? 0)) <=> ((int) ($a['categoria_total'] ?? 0));
+            if ($categoryTotalCmp !== 0) {
+                return $categoryTotalCmp;
+            }
+
+            $categoryCmp = strcmp((string) ($a['categoria'] ?? ''), (string) ($b['categoria'] ?? ''));
+            if ($categoryCmp !== 0) {
+                return $categoryCmp;
+            }
+
+            $countCmp = ((int) ($b['cantidad'] ?? 0)) <=> ((int) ($a['cantidad'] ?? 0));
+            if ($countCmp !== 0) {
+                return $countCmp;
+            }
+
+            return strcmp((string) ($a['subcategoria'] ?? ''), (string) ($b['subcategoria'] ?? ''));
+        });
+
         return [
-            'total' => count($rows),
+            'total' => $totalRows,
+            'total_consultas' => $totalConsultas,
+            'total_protocolos' => $totalProtocolos,
+            'pacientes_unicos' => count($pacientesUnicos),
+            'categoria_counts' => $categoriaCounts,
+            'categoria_share' => $categoriaShare,
             'top_afiliaciones' => $topAfiliaciones,
+            'referido_prefactura' => [
+                'with_value' => $referidoWithValue,
+                'without_value' => $referidoWithoutValue,
+                'top_values' => $this->metricValues($referidoCounts, 5, $referidoWithValue),
+                'values' => $this->metricValues($referidoCounts, null, $referidoWithValue),
+            ],
+            'especificar_referido_prefactura' => [
+                'with_value' => $especificarWithValue,
+                'without_value' => $especificarWithoutValue,
+                'top_values' => $this->metricValues($especificarCounts, 5, $especificarWithValue),
+                'values' => $this->metricValues($especificarCounts, null, $especificarWithValue),
+            ],
+            'hierarquia_referidos' => [
+                'categorias' => $hierarchyCategories,
+                'pares' => $hierarchyPairs,
+            ],
         ];
     }
 
     /**
      * @param array<int, array<string, mixed>> $rows
-     * @return array{meses:array<int, array{value:string,label:string}>,afiliaciones:array<int, string>}
+     * @return array{
+     *     meses:array<int, array{value:string,label:string}>,
+     *     afiliaciones:array<int, string>,
+     *     tipos_atencion:array<int, string>,
+     *     sedes:array<int, string>,
+     *     categorias:array<int, array{value:string,label:string}>
+     * }
      */
     public function catalogos(array $rows): array
     {
         $meses = [];
         $afiliaciones = [];
+        $tiposAtencion = [];
+        $sedes = [];
+        $categorias = [];
 
         foreach ($rows as $row) {
             $timestamp = strtotime((string) ($row['fecha'] ?? ''));
@@ -279,14 +549,52 @@ class BillingParticularesReportService
             if ($afiliacion !== '') {
                 $afiliaciones[$afiliacion] = $afiliacion;
             }
+
+            $tipoAtencion = strtoupper(trim((string) ($row['tipo_atencion'] ?? '')));
+            if ($tipoAtencion !== '') {
+                $tiposAtencion[$tipoAtencion] = $tipoAtencion;
+            }
+
+            $categoria = strtolower(trim((string) ($row['categoria_cliente'] ?? '')));
+            if ($this->isParticularReportCategory($categoria)) {
+                $categorias[$categoria] = $categoria;
+            }
+
+            $sede = $this->normalizeSedeFilter($row['sede'] ?? null);
+            if ($sede !== '') {
+                $sedes[$sede] = $sede;
+            }
         }
 
         krsort($meses);
         ksort($afiliaciones);
+        ksort($tiposAtencion);
+        uksort($categorias, static function (string $a, string $b): int {
+            $order = ['particular' => 1, 'privado' => 2];
+            return ($order[$a] ?? 99) <=> ($order[$b] ?? 99) ?: strcmp($a, $b);
+        });
+        if (!isset($sedes['MATRIZ'])) {
+            $sedes['MATRIZ'] = 'MATRIZ';
+        }
+        if (!isset($sedes['CEIBOS'])) {
+            $sedes['CEIBOS'] = 'CEIBOS';
+        }
+        uksort($sedes, static function (string $a, string $b): int {
+            $order = ['MATRIZ' => 1, 'CEIBOS' => 2];
+            return ($order[$a] ?? 99) <=> ($order[$b] ?? 99) ?: strcmp($a, $b);
+        });
 
         return [
             'meses' => array_values($meses),
             'afiliaciones' => array_values($afiliaciones),
+            'tipos_atencion' => array_values($tiposAtencion),
+            'sedes' => array_values($sedes),
+            'categorias' => array_map(static function (string $categoria): array {
+                return [
+                    'value' => $categoria,
+                    'label' => ucfirst($categoria),
+                ];
+            }, array_values($categorias)),
         ];
     }
 
@@ -303,15 +611,323 @@ class BillingParticularesReportService
         return $label . ' ' . $year;
     }
 
-    private function matchesWeekBucket(int $dayOfMonth, int $bucket): bool
+    private function parseDateInput(string $date, bool $endOfDay): ?DateTimeImmutable
     {
-        return match ($bucket) {
-            1 => $dayOfMonth >= 1 && $dayOfMonth <= 7,
-            2 => $dayOfMonth >= 8 && $dayOfMonth <= 14,
-            3 => $dayOfMonth >= 15 && $dayOfMonth <= 21,
-            4 => $dayOfMonth >= 22 && $dayOfMonth <= 28,
-            5 => $dayOfMonth >= 29,
-            default => true,
-        };
+        $date = trim($date);
+        if ($date === '' || preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) !== 1) {
+            return null;
+        }
+
+        $parsed = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $date . ' 00:00:00');
+        if (!($parsed instanceof DateTimeImmutable)) {
+            return null;
+        }
+
+        return $endOfDay ? $parsed->setTime(23, 59, 59) : $parsed->setTime(0, 0, 0);
+    }
+
+    private function parseDateTimestamp(string $date, bool $endOfDay): ?int
+    {
+        $parsed = $this->parseDateInput($date, $endOfDay);
+        return $parsed instanceof DateTimeImmutable ? $parsed->getTimestamp() : null;
+    }
+
+    /**
+     * @return array{categoria:string,afiliacion_raw:string}|null
+     */
+    private function resolveMappedAffiliation(string $afiliacion): ?array
+    {
+        $key = $this->normalizeAffiliationKey($afiliacion);
+        if ($key === '') {
+            return null;
+        }
+
+        $map = $this->afiliacionCategoriaMap();
+        if (!isset($map[$key])) {
+            return null;
+        }
+
+        return $map[$key];
+    }
+
+    /**
+     * @return array<string, array{categoria:string,afiliacion_raw:string}>
+     */
+    private function afiliacionCategoriaMap(): array
+    {
+        if (is_array($this->afiliacionCategoriaMapCache)) {
+            return $this->afiliacionCategoriaMapCache;
+        }
+
+        if (
+            !$this->columnExists('afiliacion_categoria_map', 'afiliacion_norm')
+            || !$this->columnExists('afiliacion_categoria_map', 'categoria')
+            || !$this->columnExists('afiliacion_categoria_map', 'afiliacion_raw')
+        ) {
+            $this->afiliacionCategoriaMapCache = [];
+            return $this->afiliacionCategoriaMapCache;
+        }
+
+        $stmt = $this->db->query(
+            "SELECT afiliacion_norm, categoria, afiliacion_raw
+             FROM afiliacion_categoria_map
+             WHERE TRIM(COALESCE(afiliacion_norm, '')) <> ''"
+        );
+        $rows = $stmt ? ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
+
+        $map = [];
+        foreach ($rows as $row) {
+            $key = $this->normalizeAffiliationKey((string) ($row['afiliacion_norm'] ?? ''));
+            if ($key === '') {
+                continue;
+            }
+
+            $map[$key] = [
+                'categoria' => $this->normalizeClientCategory((string) ($row['categoria'] ?? '')),
+                'afiliacion_raw' => trim((string) ($row['afiliacion_raw'] ?? '')),
+            ];
+        }
+
+        $this->afiliacionCategoriaMapCache = $map;
+
+        return $this->afiliacionCategoriaMapCache;
+    }
+
+    private function normalizeClientCategory(string $category): string
+    {
+        return strtolower(trim($category));
+    }
+
+    private function isParticularReportCategory(string $category): bool
+    {
+        return in_array(strtolower(trim($category)), ['particular', 'privado'], true);
+    }
+
+    private function normalizeAffiliationKey(string $value): string
+    {
+        $value = $this->normalizeAffiliationText($value);
+        if ($value === '') {
+            return '';
+        }
+
+        return str_replace([' ', '-'], '_', $value);
+    }
+
+    private function normalizeAffiliationText(string $value): string
+    {
+        $value = strtolower(trim($value));
+        if ($value === '') {
+            return '';
+        }
+
+        $value = strtr($value, [
+            'á' => 'a',
+            'é' => 'e',
+            'í' => 'i',
+            'ó' => 'o',
+            'ú' => 'u',
+            'ü' => 'u',
+            'ñ' => 'n',
+        ]);
+        $value = preg_replace('/\s+/', ' ', $value) ?? $value;
+
+        return trim($value);
+    }
+
+    private function resolveAttentionType(string $procedimientoProyectado): string
+    {
+        $raw = trim($procedimientoProyectado);
+        if ($raw === '') {
+            return 'SIN TIPO';
+        }
+
+        $parts = preg_split('/\s*-\s*/', $raw, 2);
+        $type = strtoupper(trim((string) ($parts[0] ?? '')));
+
+        return $type !== '' ? $type : 'SIN TIPO';
+    }
+
+    private function isExcludedAttentionType(string $type): bool
+    {
+        $normalized = $this->normalizeAffiliationText($type);
+        return in_array($normalized, self::EXCLUDED_ATTENTION_TYPES, true);
+    }
+
+    private function normalizeSedeFilter(mixed $value): string
+    {
+        $raw = strtolower(trim((string) $value));
+        if ($raw === '') {
+            return '';
+        }
+
+        if (str_contains($raw, 'ceib')) {
+            return 'CEIBOS';
+        }
+        if (str_contains($raw, 'matriz') || str_contains($raw, 'villa')) {
+            return 'MATRIZ';
+        }
+
+        return '';
+    }
+
+    private function sedeExpression(string $alias): string
+    {
+        $parts = [];
+        if ($this->columnExists('procedimiento_proyectado', 'sede_departamento')) {
+            $parts[] = "NULLIF(TRIM({$alias}.sede_departamento), '')";
+        }
+        if ($this->columnExists('procedimiento_proyectado', 'id_sede')) {
+            $parts[] = "NULLIF(TRIM({$alias}.id_sede), '')";
+        }
+
+        $rawExpr = "''";
+        if (!empty($parts)) {
+            $rawExpr = 'COALESCE(' . implode(', ', $parts) . ", '')";
+        }
+        $normalized = "LOWER(TRIM({$rawExpr}))";
+
+        return "CASE
+            WHEN {$normalized} LIKE '%ceib%' THEN 'CEIBOS'
+            WHEN {$normalized} LIKE '%matriz%' OR {$normalized} LIKE '%villa%' THEN 'MATRIZ'
+            ELSE ''
+        END";
+    }
+
+    private function columnExists(string $table, string $column): bool
+    {
+        $key = $table . '.' . $column;
+        if (array_key_exists($key, $this->columnExistsCache)) {
+            return $this->columnExistsCache[$key];
+        }
+
+        $stmt = $this->db->prepare(
+            'SELECT COUNT(*) FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :table AND COLUMN_NAME = :column'
+        );
+        $stmt->execute([
+            ':table' => $table,
+            ':column' => $column,
+        ]);
+
+        $exists = ((int) $stmt->fetchColumn()) > 0;
+        $this->columnExistsCache[$key] = $exists;
+
+        return $exists;
+    }
+
+    private function encuentroEstadoExpression(string $alias): string
+    {
+        if ($this->columnExists('procedimiento_proyectado', 'estado_agenda')) {
+            return "TRIM(COALESCE({$alias}.estado_agenda, ''))";
+        }
+
+        return "''";
+    }
+
+    private function attendedEncounterCondition(string $alias): string
+    {
+        if (!$this->columnExists('procedimiento_proyectado', 'estado_agenda')) {
+            return '1=1';
+        }
+
+        $estadoExpr = "UPPER(TRIM(COALESCE({$alias}.estado_agenda, '')))";
+        return "($estadoExpr LIKE 'ATENDID%' OR $estadoExpr LIKE 'PAGAD%' OR $estadoExpr LIKE 'TERMINAD%')";
+    }
+
+    private function isEncounterAttended(string $status): bool
+    {
+        $status = strtoupper(trim($status));
+        if ($status === '') {
+            return false;
+        }
+
+        return str_starts_with($status, 'ATENDID')
+            || str_starts_with($status, 'PAGAD')
+            || str_starts_with($status, 'TERMINAD');
+    }
+
+    private function referidoPrefacturaExpression(string $alias): string
+    {
+        $parts = [];
+        if ($this->columnExists('procedimiento_proyectado', 'referido_prefactura_por')) {
+            $parts[] = "NULLIF(TRIM({$alias}.referido_prefactura_por), '')";
+        }
+        if ($this->columnExists('procedimiento_proyectado', 'id_procedencia')) {
+            $parts[] = "NULLIF(TRIM({$alias}.id_procedencia), '')";
+        }
+
+        if (empty($parts)) {
+            return "''";
+        }
+
+        return 'COALESCE(' . implode(', ', $parts) . ", '')";
+    }
+
+    private function especificarReferidoPrefacturaExpression(string $alias): string
+    {
+        $parts = [];
+        if ($this->columnExists('procedimiento_proyectado', 'especificar_referido_prefactura')) {
+            $parts[] = "NULLIF(TRIM({$alias}.especificar_referido_prefactura), '')";
+        }
+        if ($this->columnExists('procedimiento_proyectado', 'especificar_por')) {
+            $parts[] = "NULLIF(TRIM({$alias}.especificar_por), '')";
+        }
+        if ($this->columnExists('procedimiento_proyectado', 'especificarpor')) {
+            $parts[] = "NULLIF(TRIM({$alias}.especificarpor), '')";
+        }
+
+        if (empty($parts)) {
+            return "''";
+        }
+
+        return 'COALESCE(' . implode(', ', $parts) . ", '')";
+    }
+
+    private function normalizeReferralValue(mixed $value): string
+    {
+        $normalized = preg_replace('/\s+/', ' ', trim((string) $value)) ?? '';
+        if ($normalized === '') {
+            return '';
+        }
+
+        $upper = strtoupper($normalized);
+        $emptyTokens = ['(NO DEFINIDO)', 'NO DEFINIDO', 'N/A', 'NA', 'NULL', '-', '—'];
+        if (in_array($upper, $emptyTokens, true)) {
+            return '';
+        }
+
+        return $upper;
+    }
+
+    /**
+     * @param array<string, int> $counts
+     * @return array<int, array{valor:string,cantidad:int,porcentaje:float}>
+     */
+    private function metricValues(array $counts, ?int $limit = null, ?int $totalForShare = null): array
+    {
+        if (empty($counts)) {
+            return [];
+        }
+
+        arsort($counts);
+        if ($limit !== null && $limit > 0) {
+            $counts = array_slice($counts, 0, $limit, true);
+        }
+
+        $total = $totalForShare ?? array_sum($counts);
+        if ($total < 1) {
+            $total = 0;
+        }
+
+        $result = [];
+        foreach ($counts as $valor => $cantidad) {
+            $result[] = [
+                'valor' => (string) $valor,
+                'cantidad' => (int) $cantidad,
+                'porcentaje' => $total > 0 ? round((((int) $cantidad) / $total) * 100, 2) : 0.0,
+            ];
+        }
+
+        return $result;
     }
 }
