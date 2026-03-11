@@ -247,7 +247,7 @@ class BillingUiController
         return $this->exportConsolidadoSimple($request, 'issfa');
     }
 
-    public function informeParticulares(Request $request): JsonResponse|RedirectResponse|View
+    public function informeParticulares(Request $request): JsonResponse|RedirectResponse|View|Response
     {
         if (!$this->isLegacyAuthenticated($request)) {
             if ($request->expectsJson()) {
@@ -267,6 +267,7 @@ class BillingUiController
             'afiliacion' => (string) $request->query('afiliacion', ''),
             'sede' => $this->normalizeSedeFilter((string) $request->query('sede', '')),
             'categoria_cliente' => (string) $request->query('categoria_cliente', ''),
+            'categoria_madre_referido' => (string) $request->query('categoria_madre_referido', ''),
             'tipo' => (string) $request->query('tipo', ''),
             'procedimiento' => (string) $request->query('procedimiento', ''),
         ];
@@ -282,6 +283,11 @@ class BillingUiController
             }
 
             return redirect('/v2/billing')->with('error', 'No se pudo cargar el informe de particulares.');
+        }
+
+        $export = strtolower(trim((string) $request->query('export', '')));
+        if (in_array($export, ['csv', 'excel'], true)) {
+            return $this->exportInformeParticularesCsv($rows, $filters);
         }
 
         if ($request->expectsJson()) {
@@ -1261,5 +1267,71 @@ class BillingUiController
         }
 
         return '';
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $rows
+     * @param array<string, mixed> $filters
+     */
+    private function exportInformeParticularesCsv(array $rows, array $filters): Response
+    {
+        $from = trim((string) ($filters['date_from'] ?? ''));
+        $to = trim((string) ($filters['date_to'] ?? ''));
+        $suffix = date('Ymd_His');
+        if ($from !== '' && $to !== '') {
+            $suffix = str_replace('-', '', $from) . '_' . str_replace('-', '', $to);
+        }
+        $filename = 'informe_particulares_' . $suffix . '.csv';
+
+        $handle = fopen('php://temp', 'r+');
+        if ($handle === false) {
+            return response('No se pudo generar el archivo CSV.', 500);
+        }
+
+        fputcsv($handle, [
+            'Fecha',
+            'HC',
+            'Nombre',
+            'Afiliacion',
+            'Categoria cliente',
+            'Sede',
+            'Estado encuentro',
+            'Tipo atencion',
+            'Procedimiento proyectado',
+            'Doctor',
+            'Referido prefactura por',
+            'Especificar referido prefactura',
+        ]);
+
+        foreach ($rows as $row) {
+            $fechaRaw = trim((string) ($row['fecha'] ?? ''));
+            $fecha = $fechaRaw !== '' && strtotime($fechaRaw) !== false ? date('d/m/Y H:i', strtotime($fechaRaw)) : '';
+
+            fputcsv($handle, [
+                $fecha,
+                (string) ($row['hc_number'] ?? ''),
+                trim((string) ($row['nombre_completo'] ?? '')),
+                trim((string) ($row['afiliacion'] ?? '')),
+                trim((string) ($row['categoria_cliente'] ?? '')),
+                trim((string) ($row['sede'] ?? '')),
+                trim((string) ($row['estado_encuentro'] ?? '')),
+                trim((string) ($row['tipo_atencion'] ?? '')),
+                trim((string) ($row['procedimiento_proyectado'] ?? '')),
+                trim((string) ($row['doctor'] ?? '')),
+                trim((string) ($row['referido_prefactura_por'] ?? '')),
+                trim((string) ($row['especificar_referido_prefactura'] ?? '')),
+            ]);
+        }
+
+        rewind($handle);
+        $csvContent = stream_get_contents($handle);
+        fclose($handle);
+
+        $csvBody = "\xEF\xBB\xBF" . ($csvContent !== false ? $csvContent : '');
+
+        return response($csvBody, 200, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+        ]);
     }
 }

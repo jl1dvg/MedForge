@@ -2,7 +2,7 @@
 
 @php
     $filters = is_array($filters ?? null) ? $filters : [];
-    $catalogos = is_array($catalogos ?? null) ? $catalogos : ['afiliaciones' => [], 'tipos_atencion' => [], 'sedes' => [], 'categorias' => []];
+    $catalogos = is_array($catalogos ?? null) ? $catalogos : ['afiliaciones' => [], 'tipos_atencion' => [], 'sedes' => [], 'categorias' => [], 'categorias_madre_referido' => []];
     $rows = is_array($rows ?? null) ? $rows : [];
     $summary = is_array($summary ?? null) ? $summary : [
         'total' => 0,
@@ -13,8 +13,28 @@
         'categoria_share' => ['particular' => 0, 'privado' => 0],
         'top_afiliaciones' => [],
         'referido_prefactura' => ['with_value' => 0, 'without_value' => 0, 'top_values' => [], 'values' => []],
+        'referido_prefactura_pacientes_unicos' => ['with_value' => 0, 'without_value' => 0, 'top_values' => [], 'values' => []],
+        'referido_prefactura_consulta_nuevo_paciente' => ['with_value' => 0, 'without_value' => 0, 'top_values' => [], 'values' => []],
         'especificar_referido_prefactura' => ['with_value' => 0, 'without_value' => 0, 'top_values' => [], 'values' => []],
         'hierarquia_referidos' => ['categorias' => [], 'pares' => []],
+        'temporal' => [
+            'current_month_label' => 'N/D',
+            'current_month_count' => 0,
+            'previous_month_label' => 'N/D',
+            'previous_month_count' => 0,
+            'same_month_last_year_label' => 'N/D',
+            'same_month_last_year_count' => 0,
+            'vs_previous_pct' => null,
+            'vs_same_month_last_year_pct' => null,
+            'trend' => ['labels' => [], 'counts' => []],
+        ],
+        'procedimientos_volumen' => [
+            'top_10' => [],
+            'concentracion' => ['top_3_pct' => 0, 'top_5_pct' => 0, 'top_3_count' => 0, 'top_5_count' => 0],
+        ],
+        'desglose_gerencial' => ['sedes' => [], 'doctores' => [], 'afiliaciones' => [], 'categorias' => []],
+        'picos' => ['dias' => [], 'horas' => [], 'peak_day' => ['valor' => 'N/D', 'cantidad' => 0], 'peak_hour' => ['valor' => 'N/D', 'cantidad' => 0]],
+        'pacientes_frecuencia' => ['nuevos' => 0, 'recurrentes' => 0, 'nuevos_pct' => 0, 'recurrentes_pct' => 0],
     ];
 
     $dateFromSeleccionado = trim((string) ($filters['date_from'] ?? ''));
@@ -22,8 +42,21 @@
     $afiliacionSeleccionada = strtolower(trim((string) ($filters['afiliacion'] ?? '')));
     $sedeSeleccionada = strtoupper(trim((string) ($filters['sede'] ?? '')));
     $categoriaClienteSeleccionada = strtolower(trim((string) ($filters['categoria_cliente'] ?? '')));
+    $categoriaMadreReferidoSeleccionada = strtoupper(trim((string) ($filters['categoria_madre_referido'] ?? '')));
     $tipoSeleccionado = strtoupper(trim((string) ($filters['tipo'] ?? '')));
     $procedimientoSeleccionado = trim((string) ($filters['procedimiento'] ?? ''));
+    $exportParticularesQuery = array_filter([
+        'date_from' => $dateFromSeleccionado,
+        'date_to' => $dateToSeleccionado,
+        'categoria_cliente' => $categoriaClienteSeleccionada,
+        'categoria_madre_referido' => $categoriaMadreReferidoSeleccionada,
+        'tipo' => $tipoSeleccionado,
+        'sede' => $sedeSeleccionada,
+        'afiliacion' => $afiliacionSeleccionada,
+        'procedimiento' => $procedimientoSeleccionado,
+        'export' => 'excel',
+    ], static fn($value): bool => trim((string) $value) !== '');
+    $exportParticularesUrl = '/v2/informes/particulares?' . http_build_query($exportParticularesQuery);
 
     $procedimientoLegible = static function (string $texto): string {
         $texto = trim($texto);
@@ -56,8 +89,11 @@
                     </nav>
                 </div>
             </div>
-            <div class="ms-auto">
+            <div class="ms-auto text-end">
                 <span class="badge bg-light text-primary">Fuente: LARAVEL V2</span>
+                <div class="text-muted fs-12 mt-5">
+                    Última actualización: {{ now()->setTimezone(config('app.timezone', 'America/Guayaquil'))->format('d/m/Y H:i') }}
+                </div>
             </div>
         </div>
     </div>
@@ -93,6 +129,19 @@
                         </select>
                     </div>
                     <div class="col-md-3">
+                        <label for="categoria_madre_referido" class="form-label">Categoría madre referido</label>
+                        <select name="categoria_madre_referido" id="categoria_madre_referido" class="form-select">
+                            <option value="">Todas</option>
+                            @foreach(($catalogos['categorias_madre_referido'] ?? []) as $categoriaMadreReferido)
+                                @php $categoriaMadreReferidoValue = strtoupper(trim((string) $categoriaMadreReferido)); @endphp
+                                <option
+                                    value="{{ $categoriaMadreReferidoValue }}" {{ $categoriaMadreReferidoSeleccionada === $categoriaMadreReferidoValue ? 'selected' : '' }}>
+                                    {{ $categoriaMadreReferidoValue }}
+                                </option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="col-md-3">
                         <label for="tipo" class="form-label">Tipo de atención</label>
                         <select name="tipo" id="tipo" class="form-select">
                             <option value="">Todos</option>
@@ -105,7 +154,7 @@
                             @endforeach
                         </select>
                     </div>
-                    <div class="col-md-2">
+                    <div class="col-md-3">
                         <label for="sede" class="form-label">Sede</label>
                         <select name="sede" id="sede" class="form-select">
                             <option value="">Todas</option>
@@ -146,6 +195,10 @@
                         <button type="submit" class="btn btn-primary">
                             <i class="mdi mdi-magnify me-5"></i>
                         </button>
+                        <a href="{{ $exportParticularesUrl }}" class="btn btn-success">
+                            <i class="mdi mdi-file-excel me-5"></i>
+                            Excel
+                        </a>
                         <a href="/v2/informes/particulares" class="btn btn-light">
                             <i class="mdi mdi-filter-remove me-5"></i>
                         </a>
@@ -180,13 +233,21 @@
                 $referidoTopLabel = 'Sin datos';
             }
 
+            $referidoUniquePatientsSummary = is_array($summary['referido_prefactura_pacientes_unicos'] ?? null) ? $summary['referido_prefactura_pacientes_unicos'] : [];
+            $referidoUniquePatientsValues = is_array($referidoUniquePatientsSummary['values'] ?? null) ? $referidoUniquePatientsSummary['values'] : [];
+            $referidoUniquePatientsWithValue = (int) ($referidoUniquePatientsSummary['with_value'] ?? 0);
+            $referidoUniquePatientsWithoutValue = (int) ($referidoUniquePatientsSummary['without_value'] ?? 0);
+
+            $referidoNuevoPacienteSummary = is_array($summary['referido_prefactura_consulta_nuevo_paciente'] ?? null) ? $summary['referido_prefactura_consulta_nuevo_paciente'] : [];
+            $referidoNuevoPacienteValues = is_array($referidoNuevoPacienteSummary['values'] ?? null) ? $referidoNuevoPacienteSummary['values'] : [];
+            $referidoNuevoPacienteWithValue = (int) ($referidoNuevoPacienteSummary['with_value'] ?? 0);
+            $referidoNuevoPacienteWithoutValue = (int) ($referidoNuevoPacienteSummary['without_value'] ?? 0);
+
             $especificarSummary = is_array($summary['especificar_referido_prefactura'] ?? null) ? $summary['especificar_referido_prefactura'] : [];
             $especificarTop = is_array(($especificarSummary['top_values'] ?? null)) && isset($especificarSummary['top_values'][0])
                 ? (array) $especificarSummary['top_values'][0]
                 : [];
-            $especificarValues = is_array($especificarSummary['values'] ?? null) ? $especificarSummary['values'] : [];
             $especificarWithValue = (int) ($especificarSummary['with_value'] ?? 0);
-            $especificarWithoutValue = (int) ($especificarSummary['without_value'] ?? 0);
             $especificarTopLabel = trim((string) ($especificarTop['valor'] ?? ''));
             $especificarTopCount = (int) ($especificarTop['cantidad'] ?? 0);
             if ($especificarTopLabel === '') {
@@ -197,15 +258,6 @@
             $hierarquiaCategorias = is_array($hierarquiaReferidos['categorias'] ?? null) ? $hierarquiaReferidos['categorias'] : [];
             $hierarquiaPares = is_array($hierarquiaReferidos['pares'] ?? null) ? $hierarquiaReferidos['pares'] : [];
 
-            $especificarTopTenValues = array_values(array_filter($especificarValues, static function ($item): bool {
-                $valor = strtoupper(trim((string) ($item['valor'] ?? '')));
-                return $valor !== '' && $valor !== 'SIN SUBCATEGORIA';
-            }));
-            $especificarTopTenValues = array_slice($especificarTopTenValues, 0, 10);
-            if (empty($especificarTopTenValues)) {
-                $especificarTopTenValues = array_slice($especificarValues, 0, 10);
-            }
-
             $hierarquiaCategoriasGraficas = array_values(array_filter($hierarquiaCategorias, static function ($item): bool {
                 $categoria = strtoupper(trim((string) ($item['categoria'] ?? '')));
                 return $categoria !== '' && $categoria !== 'SIN CATEGORIA';
@@ -213,6 +265,85 @@
             if (empty($hierarquiaCategoriasGraficas)) {
                 $hierarquiaCategoriasGraficas = $hierarquiaCategorias;
             }
+
+            $temporalSummary = is_array($summary['temporal'] ?? null) ? $summary['temporal'] : [];
+            $currentMonthLabel = (string) ($temporalSummary['current_month_label'] ?? 'N/D');
+            $currentMonthCount = (int) ($temporalSummary['current_month_count'] ?? 0);
+            $previousMonthLabel = (string) ($temporalSummary['previous_month_label'] ?? 'N/D');
+            $previousMonthCount = (int) ($temporalSummary['previous_month_count'] ?? 0);
+            $sameMonthLastYearLabel = (string) ($temporalSummary['same_month_last_year_label'] ?? 'N/D');
+            $sameMonthLastYearCount = (int) ($temporalSummary['same_month_last_year_count'] ?? 0);
+            $vsPreviousPct = is_numeric($temporalSummary['vs_previous_pct'] ?? null) ? (float) $temporalSummary['vs_previous_pct'] : null;
+            $vsLastYearPct = is_numeric($temporalSummary['vs_same_month_last_year_pct'] ?? null) ? (float) $temporalSummary['vs_same_month_last_year_pct'] : null;
+            $temporalTrend = is_array($temporalSummary['trend'] ?? null) ? $temporalSummary['trend'] : ['labels' => [], 'counts' => []];
+            $temporalTrendLabels = is_array($temporalTrend['labels'] ?? null) ? $temporalTrend['labels'] : [];
+            $temporalTrendCounts = is_array($temporalTrend['counts'] ?? null) ? $temporalTrend['counts'] : [];
+
+            $procedimientosVolumen = is_array($summary['procedimientos_volumen'] ?? null) ? $summary['procedimientos_volumen'] : [];
+            $topProcedimientosVolumen = is_array($procedimientosVolumen['top_10'] ?? null) ? $procedimientosVolumen['top_10'] : [];
+            $concentracionVolumen = is_array($procedimientosVolumen['concentracion'] ?? null) ? $procedimientosVolumen['concentracion'] : [];
+            $top3ConcentracionPct = (float) ($concentracionVolumen['top_3_pct'] ?? 0);
+            $top5ConcentracionPct = (float) ($concentracionVolumen['top_5_pct'] ?? 0);
+            $top3ConcentracionCount = (int) ($concentracionVolumen['top_3_count'] ?? 0);
+            $top5ConcentracionCount = (int) ($concentracionVolumen['top_5_count'] ?? 0);
+
+            $desgloseGerencial = is_array($summary['desglose_gerencial'] ?? null) ? $summary['desglose_gerencial'] : [];
+            $desgloseSedes = is_array($desgloseGerencial['sedes'] ?? null) ? $desgloseGerencial['sedes'] : [];
+            $desgloseDoctores = is_array($desgloseGerencial['doctores'] ?? null) ? $desgloseGerencial['doctores'] : [];
+
+            $picosSummary = is_array($summary['picos'] ?? null) ? $summary['picos'] : [];
+            $picosDias = is_array($picosSummary['dias'] ?? null) ? $picosSummary['dias'] : [];
+            $peakDay = is_array($picosSummary['peak_day'] ?? null) ? $picosSummary['peak_day'] : ['valor' => 'N/D', 'cantidad' => 0];
+
+            $pacientesFrecuencia = is_array($summary['pacientes_frecuencia'] ?? null) ? $summary['pacientes_frecuencia'] : [];
+            $pacientesNuevos = (int) ($pacientesFrecuencia['nuevos'] ?? 0);
+            $pacientesRecurrentes = (int) ($pacientesFrecuencia['recurrentes'] ?? 0);
+            $pacientesNuevosPct = (float) ($pacientesFrecuencia['nuevos_pct'] ?? 0);
+            $pacientesRecurrentesPct = (float) ($pacientesFrecuencia['recurrentes_pct'] ?? 0);
+
+            $categoriaLiderLabel = $particularCount >= $privadoCount ? 'PARTICULAR' : 'PRIVADO';
+            $categoriaLiderCount = $particularCount >= $privadoCount ? $particularCount : $privadoCount;
+            $categoriaLiderPct = $particularCount >= $privadoCount ? $particularShare : $privadoShare;
+
+            $topProcedimientoLider = is_array($topProcedimientosVolumen[0] ?? null) ? $topProcedimientosVolumen[0] : [];
+            $topProcedimientoLabel = strtoupper(trim((string) ($topProcedimientoLider['valor'] ?? '')));
+            $topProcedimientoCount = (int) ($topProcedimientoLider['cantidad'] ?? 0);
+            $topProcedimientoPct = (float) ($topProcedimientoLider['porcentaje'] ?? 0);
+
+            $hallazgosClave = [];
+            if ($totalAtenciones > 0) {
+                $hallazgosClave[] = sprintf(
+                    'La categoría líder fue %s con %d atenciones (%.2f%% del total).',
+                    $categoriaLiderLabel,
+                    $categoriaLiderCount,
+                    $categoriaLiderPct
+                );
+            }
+            if ($topProcedimientoLabel !== '' && $topProcedimientoCount > 0) {
+                $hallazgosClave[] = sprintf(
+                    'El procedimiento más frecuente fue %s con %d atenciones (%.2f%%).',
+                    $topProcedimientoLabel,
+                    $topProcedimientoCount,
+                    $topProcedimientoPct
+                );
+            }
+            if ($top3ConcentracionCount > 0 || $top5ConcentracionCount > 0) {
+                $hallazgosClave[] = sprintf(
+                    'Concentración de volumen: Top 3 = %.2f%% (%d), Top 5 = %.2f%% (%d).',
+                    $top3ConcentracionPct,
+                    $top3ConcentracionCount,
+                    $top5ConcentracionPct,
+                    $top5ConcentracionCount
+                );
+            }
+            if (($peakDay['cantidad'] ?? 0) > 0) {
+                $hallazgosClave[] = sprintf(
+                    'Pico operativo por día: %s (%d).',
+                    strtoupper((string) ($peakDay['valor'] ?? 'N/D')),
+                    (int) ($peakDay['cantidad'] ?? 0)
+                );
+            }
+            $hallazgosClave = array_slice($hallazgosClave, 0, 3);
         @endphp
 
         <div class="row">
@@ -227,7 +358,7 @@
             <div class="col-xl-2 col-md-4 col-6">
                 <div class="box">
                     <div class="box-body text-center">
-                        <h6 class="mb-5">Origen: Consulta</h6>
+                        <h6 class="mb-5">Atenciones No Quirúrgicas</h6>
                         <div class="fs-30 fw-700 text-primary">{{ $totalConsultas }}</div>
                     </div>
                 </div>
@@ -235,7 +366,7 @@
             <div class="col-xl-2 col-md-4 col-6">
                 <div class="box">
                     <div class="box-body text-center">
-                        <h6 class="mb-5">Origen: Protocolo</h6>
+                        <h6 class="mb-5">Cirugías</h6>
                         <div class="fs-30 fw-700 text-info">{{ $totalProtocolos }}</div>
                     </div>
                 </div>
@@ -251,7 +382,7 @@
             <div class="col-xl-2 col-md-4 col-6">
                 <div class="box">
                     <div class="box-body text-center">
-                        <h6 class="mb-5">Particular</h6>
+                        <h6 class="mb-5">Atenciones Particularer</h6>
                         <div class="fs-30 fw-700 text-success">{{ $particularCount }}</div>
                     </div>
                 </div>
@@ -259,12 +390,136 @@
             <div class="col-xl-2 col-md-4 col-6">
                 <div class="box">
                     <div class="box-body text-center">
-                        <h6 class="mb-5">Privado</h6>
+                        <h6 class="mb-5">Atenciones Privadas</h6>
                         <div class="fs-30 fw-700 text-danger">{{ $privadoCount }}</div>
                     </div>
                 </div>
             </div>
         </div>
+
+
+        <div class="row">
+            <div class="col-xl-6 col-12">
+                <div class="box">
+                    <div class="box-header with-border">
+                        <h5 class="box-title mb-0">Tendencia mensual de volumen (últimos 12 meses)</h5>
+                    </div>
+                    <div class="box-body">
+                        <div id="tendenciaVolumenChart" style="min-height: 320px;"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-xl-6 col-12">
+                <div class="box">
+                    <div class="box-header with-border d-flex justify-content-between align-items-center">
+                        <h5 class="box-title mb-0">Picos por día</h5>
+                        <span class="badge bg-info-light text-info">Pico: {{ strtoupper((string) ($peakDay['valor'] ?? 'N/D')) }}
+                            ({{ (int) ($peakDay['cantidad'] ?? 0) }})</span>
+                    </div>
+                    <div class="box-body">
+                        <div id="picosDiasChart" style="min-height: 320px;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-xl-3 col-md-6 col-12">
+                <div class="box">
+                    <div class="box-body">
+                        <h6 class="text-muted mb-5">Volumen mes actual</h6>
+                        <div class="fs-24 fw-700 text-primary">{{ $currentMonthCount }}</div>
+                        <small class="text-muted">{{ $currentMonthLabel }}</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-xl-3 col-md-6 col-12">
+                <div class="box">
+                    <div class="box-body">
+                        <h6 class="text-muted mb-5">Vs mes anterior</h6>
+                        <div
+                            class="fs-24 fw-700 {{ $vsPreviousPct !== null && $vsPreviousPct >= 0 ? 'text-success' : 'text-danger' }}">
+                            @if($vsPreviousPct === null)
+                                N/D
+                            @else
+                                {{ $vsPreviousPct >= 0 ? '↑' : '↓' }} {{ number_format(abs($vsPreviousPct), 2) }}%
+                            @endif
+                        </div>
+                        <small class="text-muted">{{ $currentMonthCount }} vs {{ $previousMonthCount }}
+                            ({{ $previousMonthLabel }})</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-xl-3 col-md-6 col-12">
+                <div class="box">
+                    <div class="box-body">
+                        <h6 class="text-muted mb-5">Vs mismo mes año pasado</h6>
+                        <div
+                            class="fs-24 fw-700 {{ $vsLastYearPct !== null && $vsLastYearPct >= 0 ? 'text-success' : 'text-danger' }}">
+                            @if($vsLastYearPct === null)
+                                N/D
+                            @else
+                                {{ $vsLastYearPct >= 0 ? '↑' : '↓' }} {{ number_format(abs($vsLastYearPct), 2) }}%
+                            @endif
+                        </div>
+                        <small class="text-muted">{{ $currentMonthCount }} vs {{ $sameMonthLastYearCount }}
+                            ({{ $sameMonthLastYearLabel }})</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-xl-3 col-md-6 col-12">
+                <div class="box">
+                    <div class="box-body">
+                        <h6 class="text-muted mb-5">Nuevos vs recurrentes</h6>
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <div class="fs-24 fw-700 text-success">{{ $pacientesNuevos }}</div>
+                                <small class="text-muted">Nuevos ({{ number_format($pacientesNuevosPct, 2) }}%)</small>
+                            </div>
+                            <div class="text-end">
+                                <div class="fs-24 fw-700 text-warning">{{ $pacientesRecurrentes }}</div>
+                                <small class="text-muted">Recurrentes ({{ number_format($pacientesRecurrentesPct, 2) }}
+                                    %)</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-xl-4 col-12">
+                <div class="box">
+                    <div class="box-header with-border">
+                        <h5 class="box-title mb-0">Desglose por sede (Top)</h5>
+                    </div>
+                    <div class="box-body">
+                        <div id="desgloseSedeChart" style="min-height: 320px;"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-xl-4 col-12">
+                <div class="box">
+                    <div class="box-header with-border">
+                        <h5 class="box-title mb-0">Desglose por médico (Top 10)</h5>
+                    </div>
+                    <div class="box-body">
+                        <div id="desgloseDoctorChart" style="min-height: 320px;"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-xl-4 col-12">
+                <div class="box">
+                    <div class="box-header with-border d-flex justify-content-between align-items-center">
+                        <h5 class="box-title mb-0">Concentración de procedimientos</h5>
+                        <span class="badge bg-primary-light text-primary">{{ count($topProcedimientosVolumen) }} valores</span>
+                    </div>
+                    <div class="box-body">
+                        <div id="topProcedimientosVolumenChart" style="min-height: 260px;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="row">
             <div class="col-xl-6 col-12">
                 <div class="box">
@@ -338,33 +593,12 @@
                 </div>
             </div>
         </div>
+
         <div class="row">
-            <div class="col-xl-6 col-md-6 col-12">
-                <div class="box">
-                    <div class="box-body text-center">
-                        <h6 class="mb-5">Categorías madre de referencia</h6>
-                        <div class="fs-30 fw-700 text-primary">{{ $referidoWithValue }}</div>
-                        <small class="text-muted">Principal: {{ strtoupper($referidoTopLabel) }}({{ $referidoTopCount }}
-                            )</small>
-                    </div>
-                </div>
-            </div>
-            <div class="col-xl-6 col-md-6 col-12">
-                <div class="box">
-                    <div class="box-body text-center">
-                        <h6 class="mb-5">Subcategorías de referencia</h6>
-                        <div class="fs-30 fw-700 text-info">{{ $especificarWithValue }}</div>
-                        <small class="text-muted">Principal: {{ strtoupper($especificarTopLabel) }}
-                            ({{ $especificarTopCount }})</small>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="row">
-            <div class="col-xl-6 col-12">
+            <div class="col-xl-4 col-12">
                 <div class="box">
                     <div class="box-header with-border d-flex justify-content-between align-items-center">
-                        <h5 class="box-title mb-0">Distribución completa de categorías madre</h5>
+                        <h5 class="box-title mb-0">Origen de referencia: Total de Atenciones</h5>
                         <span class="badge bg-primary-light text-primary">{{ count($referidoValues) }} valores</span>
                     </div>
                     <div class="box-body">
@@ -406,15 +640,55 @@
                     </div>
                 </div>
             </div>
-            <div class="col-xl-6 col-12">
+            <div class="col-xl-4 col-12">
                 <div class="box">
                     <div class="box-header with-border d-flex justify-content-between align-items-center">
-                        <h5 class="box-title mb-0">Distribución completa de subcategorías</h5>
-                        <span
-                            class="badge bg-info-light text-info">Top 10 de {{ count($especificarValues) }} valores</span>
+                        <h5 class="box-title mb-0">Origen de referencia: Pacientes únicos</h5>
+                        <span class="badge bg-primary-light text-primary">{{ count($referidoUniquePatientsValues) }} valores</span>
                     </div>
                     <div class="box-body">
-                        <div id="especificarReferidoChart" style="min-height: 300px;"></div>
+                        <div id="referidoPrefacturaPacientesUnicosChart" style="min-height: 320px;"></div>
+                        <div class="table-responsive mt-15" style="max-height: 320px;">
+                            <table class="table table-sm table-striped mb-0">
+                                <thead class="table-light">
+                                <tr>
+                                    <th>Valor</th>
+                                    <th class="text-end">Pacientes únicos</th>
+                                    <th class="text-end">%</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                @forelse($referidoUniquePatientsValues as $item)
+                                    @php
+                                        $valor = trim((string) ($item['valor'] ?? ''));
+                                        if ($valor === '') {
+                                            $valor = 'SIN DATO';
+                                        }
+                                    @endphp
+                                    <tr>
+                                        <td>{{ strtoupper($valor) }}</td>
+                                        <td class="text-end">{{ (int) ($item['cantidad'] ?? 0) }}</td>
+                                        <td class="text-end">{{ number_format((float) ($item['porcentaje'] ?? 0), 2) }}%</td>
+                                    </tr>
+                                @empty
+                                    <tr>
+                                        <td colspan="3" class="text-center text-muted">Sin datos para el rango seleccionado.</td>
+                                    </tr>
+                                @endforelse
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-xl-4 col-12">
+                <div class="box">
+                    <div class="box-header with-border d-flex justify-content-between align-items-center">
+                        <h5 class="box-title mb-0">Origen de referencia: Nuevo paciente</h5>
+                        <span class="badge bg-primary-light text-primary">{{ count($referidoNuevoPacienteValues) }} valores</span>
+                    </div>
+                    <div class="box-body">
+                        <div id="referidoPrefacturaNuevoPacienteChart" style="min-height: 320px;"></div>
                         <div class="table-responsive mt-15" style="max-height: 320px;">
                             <table class="table table-sm table-striped mb-0">
                                 <thead class="table-light">
@@ -425,7 +699,7 @@
                                 </tr>
                                 </thead>
                                 <tbody>
-                                @forelse($especificarTopTenValues as $item)
+                                @forelse($referidoNuevoPacienteValues as $item)
                                     @php
                                         $valor = trim((string) ($item['valor'] ?? ''));
                                         if ($valor === '') {
@@ -435,15 +709,11 @@
                                     <tr>
                                         <td>{{ strtoupper($valor) }}</td>
                                         <td class="text-end">{{ (int) ($item['cantidad'] ?? 0) }}</td>
-                                        <td class="text-end">{{ number_format((float) ($item['porcentaje'] ?? 0), 2) }}
-                                            %
-                                        </td>
+                                        <td class="text-end">{{ number_format((float) ($item['porcentaje'] ?? 0), 2) }}%</td>
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="3" class="text-center text-muted">Sin datos para el rango
-                                            seleccionado.
-                                        </td>
+                                        <td colspan="3" class="text-center text-muted">Sin datos para el rango seleccionado.</td>
                                     </tr>
                                 @endforelse
                                 </tbody>
@@ -459,7 +729,7 @@
                 <div class="box">
                     <div
                         class="box-header with-border d-flex flex-wrap justify-content-between align-items-center gap-2">
-                        <h5 class="box-title mb-0">Relación madre -> subcategoría (% dentro de cada categoría
+                        <h5 class="box-title mb-0">Jerarquía de referencias (% dentro de cada categoría
                             madre)</h5>
                         <span class="badge bg-dark-light text-dark">{{ count($hierarquiaCategoriasGraficas) }} categorías</span>
                     </div>
@@ -601,15 +871,24 @@
     <script>
         (function () {
             const referidoValues = @json($referidoValues);
-            const especificarValues = @json($especificarTopTenValues);
+            const referidoUniquePatientValues = @json($referidoUniquePatientsValues);
+            const referidoNuevoPacienteValues = @json($referidoNuevoPacienteValues);
             const referidoWithValue = @json($referidoWithValue);
             const referidoWithoutValue = @json($referidoWithoutValue);
-            const especificarWithValue = @json($especificarWithValue);
-            const especificarWithoutValue = @json($especificarWithoutValue);
+            const referidoUniquePatientsWithValue = @json($referidoUniquePatientsWithValue);
+            const referidoUniquePatientsWithoutValue = @json($referidoUniquePatientsWithoutValue);
+            const referidoNuevoPacienteWithValue = @json($referidoNuevoPacienteWithValue);
+            const referidoNuevoPacienteWithoutValue = @json($referidoNuevoPacienteWithoutValue);
             const particularCount = @json($particularCount);
             const privadoCount = @json($privadoCount);
             const topAfiliaciones = @json($topAfiliaciones);
             const hierarquiaCategorias = @json($hierarquiaCategoriasGraficas);
+            const temporalTrendLabels = @json($temporalTrendLabels);
+            const temporalTrendCounts = @json($temporalTrendCounts);
+            const topProcedimientosVolumen = @json($topProcedimientosVolumen);
+            const desgloseSedes = @json($desgloseSedes);
+            const desgloseDoctores = @json($desgloseDoctores);
+            const picosDias = @json($picosDias);
 
             if (typeof ApexCharts === 'undefined') {
                 return;
@@ -697,6 +976,125 @@
 
                 chart.render();
             };
+
+            const buildHorizontalChart = function (selector, title, values, color) {
+                const container = document.querySelector(selector);
+                if (!container) {
+                    return;
+                }
+
+                const categories = values.map(function (item) {
+                    const raw = (item && item.valor ? String(item.valor) : '').trim();
+                    return raw !== '' ? raw.toUpperCase() : 'SIN DATO';
+                });
+                const counts = values.map(function (item) {
+                    const qty = Number(item && item.cantidad ? item.cantidad : 0);
+                    return Number.isFinite(qty) ? qty : 0;
+                });
+
+                if (counts.length === 0) {
+                    container.innerHTML = '<div class="text-muted text-center py-30">Sin datos para graficar.</div>';
+                    return;
+                }
+
+                const dynamicHeight = Math.max(320, (counts.length * 28) + 90);
+                container.style.minHeight = dynamicHeight + 'px';
+
+                const chart = new ApexCharts(container, {
+                    chart: {
+                        type: 'bar',
+                        height: dynamicHeight,
+                        toolbar: {show: false},
+                    },
+                    series: [{
+                        name: 'Cantidad',
+                        data: counts,
+                    }],
+                    xaxis: {
+                        categories: categories,
+                    },
+                    plotOptions: {
+                        bar: {
+                            horizontal: true,
+                            borderRadius: 4,
+                        },
+                    },
+                    colors: [color],
+                    title: {
+                        text: title,
+                        align: 'left',
+                        style: {fontSize: '13px'},
+                    },
+                    dataLabels: {
+                        enabled: true,
+                    },
+                    tooltip: {
+                        y: {
+                            formatter: function (value) {
+                                return value + ' registros';
+                            }
+                        }
+                    },
+                    grid: {
+                        borderColor: '#eef1f4',
+                    },
+                });
+
+                chart.render();
+            };
+
+            const tendenciaVolumenContainer = document.querySelector('#tendenciaVolumenChart');
+            if (tendenciaVolumenContainer) {
+                if (!Array.isArray(temporalTrendCounts) || temporalTrendCounts.length === 0) {
+                    tendenciaVolumenContainer.innerHTML = '<div class="text-muted text-center py-30">Sin datos para graficar.</div>';
+                } else {
+                    const tendenciaVolumenChart = new ApexCharts(tendenciaVolumenContainer, {
+                        chart: {
+                            type: 'line',
+                            height: 320,
+                            toolbar: {show: false},
+                        },
+                        series: [{
+                            name: 'Atenciones',
+                            data: temporalTrendCounts.map(function (item) {
+                                const value = Number(item);
+                                return Number.isFinite(value) ? value : 0;
+                            }),
+                        }],
+                        xaxis: {
+                            categories: Array.isArray(temporalTrendLabels) ? temporalTrendLabels : [],
+                        },
+                        stroke: {
+                            curve: 'smooth',
+                            width: 3,
+                        },
+                        markers: {
+                            size: 4,
+                        },
+                        colors: ['#2563eb'],
+                        dataLabels: {
+                            enabled: false,
+                        },
+                        grid: {
+                            borderColor: '#eef1f4',
+                        },
+                    });
+
+                    tendenciaVolumenChart.render();
+                }
+            }
+
+            buildHorizontalChart(
+                '#topProcedimientosVolumenChart',
+                'Top 10 procedimientos por volumen',
+                Array.isArray(topProcedimientosVolumen) ? topProcedimientosVolumen : [],
+                '#0ea5e9'
+            );
+
+            buildHorizontalChart('#desgloseSedeChart', 'Participación por sede', Array.isArray(desgloseSedes) ? desgloseSedes : [], '#0891b2');
+            buildHorizontalChart('#desgloseDoctorChart', 'Participación por médico', Array.isArray(desgloseDoctores) ? desgloseDoctores : [], '#3b82f6');
+
+            buildVerticalChart('#picosDiasChart', 'Atenciones por día', Array.isArray(picosDias) ? picosDias : [], '#8b5cf6');
 
             const mixCategoriaContainer = document.querySelector('#mixCategoriaClienteChart');
             if (mixCategoriaContainer) {
@@ -798,10 +1196,17 @@
             );
 
             buildVerticalChart(
-                '#especificarReferidoChart',
-                'Subcategorías globales (con valor: ' + especificarWithValue + ', sin valor: ' + especificarWithoutValue + ')',
-                especificarValues,
-                '#06b6d4'
+                '#referidoPrefacturaPacientesUnicosChart',
+                'Categorías madre por pacientes únicos (con valor: ' + referidoUniquePatientsWithValue + ', sin valor: ' + referidoUniquePatientsWithoutValue + ')',
+                referidoUniquePatientValues,
+                '#1d4ed8'
+            );
+
+            buildVerticalChart(
+                '#referidoPrefacturaNuevoPacienteChart',
+                'Categorías madre en consulta oftalmológica nuevo paciente (con valor: ' + referidoNuevoPacienteWithValue + ', sin valor: ' + referidoNuevoPacienteWithoutValue + ')',
+                referidoNuevoPacienteValues,
+                '#2563eb'
             );
 
             const hierarchyDonutContainer = document.querySelector('#hierarquiaCategoriasChart');

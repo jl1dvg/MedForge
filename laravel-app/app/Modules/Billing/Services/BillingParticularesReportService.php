@@ -197,6 +197,7 @@ class BillingParticularesReportService
         $tipoAtencion = strtoupper(trim((string) ($filters['tipo'] ?? '')));
         $procedimiento = strtolower(trim((string) ($filters['procedimiento'] ?? '')));
         $categoriaCliente = strtolower(trim((string) ($filters['categoria_cliente'] ?? '')));
+        $categoriaMadreReferido = $this->normalizeReferralValue($filters['categoria_madre_referido'] ?? null);
         $dateFromTs = $this->parseDateTimestamp((string) ($filters['date_from'] ?? ''), false);
         $dateToTs = $this->parseDateTimestamp((string) ($filters['date_to'] ?? ''), true);
 
@@ -216,6 +217,7 @@ class BillingParticularesReportService
             $tipoAtencionRow = strtoupper(trim((string) ($row['tipo_atencion'] ?? '')));
             $procedimientoRow = strtolower((string) ($row['procedimiento_proyectado'] ?? ''));
             $categoriaRow = strtolower(trim((string) ($row['categoria_cliente'] ?? '')));
+            $categoriaMadreReferidoRow = $this->normalizeReferralValue($row['referido_prefactura_por'] ?? null);
             $estadoEncuentro = (string) ($row['estado_encuentro'] ?? '');
 
             if ($dateFromTs !== null && $timestamp < $dateFromTs) {
@@ -237,6 +239,9 @@ class BillingParticularesReportService
                 continue;
             }
             if ($categoriaCliente !== '' && $categoriaRow !== $categoriaCliente) {
+                continue;
+            }
+            if ($categoriaMadreReferido !== '' && $categoriaMadreReferidoRow !== $categoriaMadreReferido) {
                 continue;
             }
             if ($procedimiento !== '' && !str_contains($procedimientoRow, $procedimiento)) {
@@ -290,6 +295,18 @@ class BillingParticularesReportService
      *         top_values:array<int, array{valor:string,cantidad:int,porcentaje:float}>,
      *         values:array<int, array{valor:string,cantidad:int,porcentaje:float}>
      *     },
+     *     referido_prefactura_pacientes_unicos:array{
+     *         with_value:int,
+     *         without_value:int,
+     *         top_values:array<int, array{valor:string,cantidad:int,porcentaje:float}>,
+     *         values:array<int, array{valor:string,cantidad:int,porcentaje:float}>
+     *     },
+     *     referido_prefactura_consulta_nuevo_paciente:array{
+     *         with_value:int,
+     *         without_value:int,
+     *         top_values:array<int, array{valor:string,cantidad:int,porcentaje:float}>,
+     *         values:array<int, array{valor:string,cantidad:int,porcentaje:float}>
+     *     },
      *     especificar_referido_prefactura:array{
      *         with_value:int,
      *         without_value:int,
@@ -316,6 +333,47 @@ class BillingParticularesReportService
      *             porcentaje_en_categoria:float,
      *             porcentaje_total:float
      *         }>
+     *     },
+     *     temporal:array{
+     *         current_month_label:string,
+     *         current_month_count:int,
+     *         previous_month_label:string,
+     *         previous_month_count:int,
+     *         same_month_last_year_label:string,
+     *         same_month_last_year_count:int,
+     *         vs_previous_pct:float|null,
+     *         vs_same_month_last_year_pct:float|null,
+     *         trend:array{
+     *             labels:array<int, string>,
+     *             counts:array<int, int>
+     *         }
+     *     },
+     *     procedimientos_volumen:array{
+     *         top_10:array<int, array{valor:string,cantidad:int,porcentaje:float}>,
+     *         concentracion:array{
+     *             top_3_pct:float,
+     *             top_5_pct:float,
+     *             top_3_count:int,
+     *             top_5_count:int
+     *         }
+     *     },
+     *     desglose_gerencial:array{
+     *         sedes:array<int, array{valor:string,cantidad:int,porcentaje:float}>,
+     *         doctores:array<int, array{valor:string,cantidad:int,porcentaje:float}>,
+     *         afiliaciones:array<int, array{valor:string,cantidad:int,porcentaje:float}>,
+     *         categorias:array<int, array{valor:string,cantidad:int,porcentaje:float}>
+     *     },
+     *     picos:array{
+     *         dias:array<int, array{valor:string,cantidad:int,porcentaje:float}>,
+     *         horas:array<int, array{valor:string,cantidad:int,porcentaje:float}>,
+     *         peak_day:array{valor:string,cantidad:int},
+     *         peak_hour:array{valor:string,cantidad:int}
+     *     },
+     *     pacientes_frecuencia:array{
+     *         nuevos:int,
+     *         recurrentes:int,
+     *         nuevos_pct:float,
+     *         recurrentes_pct:float
      *     }
      * }
      */
@@ -323,23 +381,44 @@ class BillingParticularesReportService
     {
         $conteoAfiliacion = [];
         $pacientesUnicos = [];
+        $pacienteAtenciones = [];
         $totalConsultas = 0;
         $totalProtocolos = 0;
         $categoriaCounts = [
             'particular' => 0,
             'privado' => 0,
         ];
+        $monthCounts = [];
+        $procedureCounts = [];
+        $sedeCounts = [];
+        $doctorCounts = [];
+        $categoriaGerencialCounts = [];
         $referidoCounts = [];
         $referidoWithValue = 0;
         $referidoWithoutValue = 0;
+        $referidoUniquePatientsByCategory = [];
+        $referidoUniquePatientsWithValue = [];
+        $referidoUniquePatientsWithoutValue = [];
+        $referidoNewPatientConsultationCounts = [];
+        $referidoNewPatientConsultationWithValue = 0;
+        $referidoNewPatientConsultationWithoutValue = 0;
         $especificarCounts = [];
         $especificarWithValue = 0;
         $especificarWithoutValue = 0;
         $hierarchy = [];
+        $dayCounts = [
+            'LUNES' => 0,
+            'MARTES' => 0,
+            'MIERCOLES' => 0,
+            'JUEVES' => 0,
+            'VIERNES' => 0,
+            'SABADO' => 0,
+            'DOMINGO' => 0,
+        ];
+        $hourCounts = array_fill(0, 24, 0);
 
         foreach ($rows as $row) {
             $afiliacion = strtoupper(trim((string) ($row['afiliacion'] ?? '')));
-            $afiliacionRaw = trim((string) ($row['afiliacion'] ?? ''));
             if ($afiliacion === '') {
                 $afiliacion = 'SIN AFILIACION';
             }
@@ -351,6 +430,10 @@ class BillingParticularesReportService
             $hcNumber = trim((string) ($row['hc_number'] ?? ''));
             if ($hcNumber !== '') {
                 $pacientesUnicos[$hcNumber] = true;
+                if (!isset($pacienteAtenciones[$hcNumber])) {
+                    $pacienteAtenciones[$hcNumber] = 0;
+                }
+                $pacienteAtenciones[$hcNumber]++;
             }
 
             $tipo = strtolower(trim((string) ($row['tipo'] ?? '')));
@@ -363,6 +446,55 @@ class BillingParticularesReportService
             $categoria = strtolower(trim((string) ($row['categoria_cliente'] ?? '')));
             if ($this->isParticularReportCategory($categoria)) {
                 $categoriaCounts[$categoria] = (int) ($categoriaCounts[$categoria] ?? 0) + 1;
+                $categoriaGerencial = strtoupper($categoria);
+                if (!isset($categoriaGerencialCounts[$categoriaGerencial])) {
+                    $categoriaGerencialCounts[$categoriaGerencial] = 0;
+                }
+                $categoriaGerencialCounts[$categoriaGerencial]++;
+            }
+
+            $sede = strtoupper(trim((string) ($row['sede'] ?? '')));
+            if ($sede === '') {
+                $sede = 'SIN SEDE';
+            }
+            if (!isset($sedeCounts[$sede])) {
+                $sedeCounts[$sede] = 0;
+            }
+            $sedeCounts[$sede]++;
+
+            $doctor = strtoupper(trim((string) ($row['doctor'] ?? '')));
+            if ($doctor === '') {
+                $doctor = 'SIN DOCTOR';
+            }
+            if (!isset($doctorCounts[$doctor])) {
+                $doctorCounts[$doctor] = 0;
+            }
+            $doctorCounts[$doctor]++;
+
+            $procedure = $this->resolveProcedureVolumeLabel((string) ($row['procedimiento_proyectado'] ?? ''));
+            if (!isset($procedureCounts[$procedure])) {
+                $procedureCounts[$procedure] = 0;
+            }
+            $procedureCounts[$procedure]++;
+
+            $timestamp = strtotime((string) ($row['fecha'] ?? ''));
+            if ($timestamp !== false) {
+                $monthKey = date('Y-m', $timestamp);
+                if (!isset($monthCounts[$monthKey])) {
+                    $monthCounts[$monthKey] = 0;
+                }
+                $monthCounts[$monthKey]++;
+
+                $dayName = $this->weekdayName((int) date('N', $timestamp));
+                if (!isset($dayCounts[$dayName])) {
+                    $dayCounts[$dayName] = 0;
+                }
+                $dayCounts[$dayName]++;
+
+                $hour = (int) date('G', $timestamp);
+                if (isset($hourCounts[$hour])) {
+                    $hourCounts[$hour]++;
+                }
             }
 
             $referidoValue = $this->normalizeReferralValue($row['referido_prefactura_por'] ?? null);
@@ -374,6 +506,28 @@ class BillingParticularesReportService
                     $referidoCounts[$referidoValue] = 0;
                 }
                 $referidoCounts[$referidoValue]++;
+            }
+            if ($hcNumber !== '') {
+                if ($referidoValue === '') {
+                    $referidoUniquePatientsWithoutValue[$hcNumber] = true;
+                } else {
+                    if (!isset($referidoUniquePatientsByCategory[$referidoValue])) {
+                        $referidoUniquePatientsByCategory[$referidoValue] = [];
+                    }
+                    $referidoUniquePatientsByCategory[$referidoValue][$hcNumber] = true;
+                    $referidoUniquePatientsWithValue[$hcNumber] = true;
+                }
+            }
+            if ($this->isNewPatientConsultationProcedure($procedure)) {
+                if ($referidoValue === '') {
+                    $referidoNewPatientConsultationWithoutValue++;
+                } else {
+                    $referidoNewPatientConsultationWithValue++;
+                    if (!isset($referidoNewPatientConsultationCounts[$referidoValue])) {
+                        $referidoNewPatientConsultationCounts[$referidoValue] = 0;
+                    }
+                    $referidoNewPatientConsultationCounts[$referidoValue]++;
+                }
             }
 
             $especificarValue = $this->normalizeReferralValue($row['especificar_referido_prefactura'] ?? null);
@@ -421,6 +575,68 @@ class BillingParticularesReportService
             'particular' => $totalRows > 0 ? round(($categoriaCounts['particular'] / $totalRows) * 100, 2) : 0.0,
             'privado' => $totalRows > 0 ? round(($categoriaCounts['privado'] / $totalRows) * 100, 2) : 0.0,
         ];
+        ksort($monthCounts);
+        $trendMonthCounts = array_slice($monthCounts, -12, null, true);
+
+        $trendLabels = [];
+        foreach (array_keys($trendMonthCounts) as $monthKey) {
+            $trendLabels[] = $this->monthLabel($monthKey);
+        }
+
+        $monthKeys = array_keys($monthCounts);
+        $currentMonthKey = !empty($monthKeys) ? (string) end($monthKeys) : '';
+        $currentMonthCount = $currentMonthKey !== '' ? (int) ($monthCounts[$currentMonthKey] ?? 0) : 0;
+        $previousMonthKey = $currentMonthKey !== '' ? date('Y-m', strtotime($currentMonthKey . '-01 -1 month')) : '';
+        $previousMonthCount = $previousMonthKey !== '' ? (int) ($monthCounts[$previousMonthKey] ?? 0) : 0;
+        $lastYearMonthKey = $currentMonthKey !== '' ? date('Y-m', strtotime($currentMonthKey . '-01 -1 year')) : '';
+        $lastYearMonthCount = $lastYearMonthKey !== '' ? (int) ($monthCounts[$lastYearMonthKey] ?? 0) : 0;
+
+        $sortedProcedureCounts = $procedureCounts;
+        arsort($sortedProcedureCounts);
+
+        $top3Procedures = array_slice($sortedProcedureCounts, 0, 3, true);
+        $top5Procedures = array_slice($sortedProcedureCounts, 0, 5, true);
+        $top3ProcedureCount = array_sum($top3Procedures);
+        $top5ProcedureCount = array_sum($top5Procedures);
+
+        $pacientesUnicosCount = count($pacienteAtenciones);
+        $pacientesNuevos = 0;
+        $pacientesRecurrentes = 0;
+        foreach ($pacienteAtenciones as $attentions) {
+            if ((int) $attentions <= 1) {
+                $pacientesNuevos++;
+            } else {
+                $pacientesRecurrentes++;
+            }
+        }
+
+        $hourRows = [];
+        foreach ($hourCounts as $hour => $count) {
+            $hourRows[] = [
+                'valor' => sprintf('%02d:00', (int) $hour),
+                'cantidad' => (int) $count,
+                'porcentaje' => $totalRows > 0 ? round((((int) $count) / $totalRows) * 100, 2) : 0.0,
+            ];
+        }
+
+        $peakDay = 'LUNES';
+        $peakDayCount = 0;
+        foreach ($dayCounts as $day => $count) {
+            if ((int) $count > $peakDayCount) {
+                $peakDay = $day;
+                $peakDayCount = (int) $count;
+            }
+        }
+
+        $peakHour = '00:00';
+        $peakHourCount = 0;
+        foreach ($hourRows as $item) {
+            $count = (int) ($item['cantidad'] ?? 0);
+            if ($count > $peakHourCount) {
+                $peakHour = (string) ($item['valor'] ?? '00:00');
+                $peakHourCount = $count;
+            }
+        }
 
         $hierarchyCategories = [];
         $hierarchyPairs = [];
@@ -490,6 +706,13 @@ class BillingParticularesReportService
             return strcmp((string) ($a['subcategoria'] ?? ''), (string) ($b['subcategoria'] ?? ''));
         });
 
+        $referidoUniquePatientCounts = [];
+        foreach ($referidoUniquePatientsByCategory as $category => $patients) {
+            $referidoUniquePatientCounts[(string) $category] = count($patients);
+        }
+        $referidoUniquePatientsWithValueCount = count($referidoUniquePatientsWithValue);
+        $referidoUniquePatientsWithoutValueCount = count($referidoUniquePatientsWithoutValue);
+
         return [
             'total' => $totalRows,
             'total_consultas' => $totalConsultas,
@@ -504,6 +727,18 @@ class BillingParticularesReportService
                 'top_values' => $this->metricValues($referidoCounts, 5, $referidoWithValue),
                 'values' => $this->metricValues($referidoCounts, null, $referidoWithValue),
             ],
+            'referido_prefactura_pacientes_unicos' => [
+                'with_value' => $referidoUniquePatientsWithValueCount,
+                'without_value' => $referidoUniquePatientsWithoutValueCount,
+                'top_values' => $this->metricValues($referidoUniquePatientCounts, 5, $referidoUniquePatientsWithValueCount),
+                'values' => $this->metricValues($referidoUniquePatientCounts, null, $referidoUniquePatientsWithValueCount),
+            ],
+            'referido_prefactura_consulta_nuevo_paciente' => [
+                'with_value' => $referidoNewPatientConsultationWithValue,
+                'without_value' => $referidoNewPatientConsultationWithoutValue,
+                'top_values' => $this->metricValues($referidoNewPatientConsultationCounts, 5, $referidoNewPatientConsultationWithValue),
+                'values' => $this->metricValues($referidoNewPatientConsultationCounts, null, $referidoNewPatientConsultationWithValue),
+            ],
             'especificar_referido_prefactura' => [
                 'with_value' => $especificarWithValue,
                 'without_value' => $especificarWithoutValue,
@@ -513,6 +748,53 @@ class BillingParticularesReportService
             'hierarquia_referidos' => [
                 'categorias' => $hierarchyCategories,
                 'pares' => $hierarchyPairs,
+            ],
+            'temporal' => [
+                'current_month_label' => $currentMonthKey !== '' ? $this->monthLabel($currentMonthKey) : 'N/D',
+                'current_month_count' => $currentMonthCount,
+                'previous_month_label' => $previousMonthKey !== '' ? $this->monthLabel($previousMonthKey) : 'N/D',
+                'previous_month_count' => $previousMonthCount,
+                'same_month_last_year_label' => $lastYearMonthKey !== '' ? $this->monthLabel($lastYearMonthKey) : 'N/D',
+                'same_month_last_year_count' => $lastYearMonthCount,
+                'vs_previous_pct' => $this->percentageChange($currentMonthCount, $previousMonthCount),
+                'vs_same_month_last_year_pct' => $this->percentageChange($currentMonthCount, $lastYearMonthCount),
+                'trend' => [
+                    'labels' => $trendLabels,
+                    'counts' => array_values($trendMonthCounts),
+                ],
+            ],
+            'procedimientos_volumen' => [
+                'top_10' => $this->metricValues($sortedProcedureCounts, 10, $totalRows),
+                'concentracion' => [
+                    'top_3_pct' => $totalRows > 0 ? round(($top3ProcedureCount / $totalRows) * 100, 2) : 0.0,
+                    'top_5_pct' => $totalRows > 0 ? round(($top5ProcedureCount / $totalRows) * 100, 2) : 0.0,
+                    'top_3_count' => (int) $top3ProcedureCount,
+                    'top_5_count' => (int) $top5ProcedureCount,
+                ],
+            ],
+            'desglose_gerencial' => [
+                'sedes' => $this->metricValues($sedeCounts, 10, $totalRows),
+                'doctores' => $this->metricValues($doctorCounts, 10, $totalRows),
+                'afiliaciones' => $this->metricValues($conteoAfiliacion, 10, $totalRows),
+                'categorias' => $this->metricValues($categoriaGerencialCounts, null, $totalRows),
+            ],
+            'picos' => [
+                'dias' => $this->metricValues($dayCounts, null, $totalRows),
+                'horas' => $hourRows,
+                'peak_day' => [
+                    'valor' => $peakDay,
+                    'cantidad' => $peakDayCount,
+                ],
+                'peak_hour' => [
+                    'valor' => $peakHour,
+                    'cantidad' => $peakHourCount,
+                ],
+            ],
+            'pacientes_frecuencia' => [
+                'nuevos' => $pacientesNuevos,
+                'recurrentes' => $pacientesRecurrentes,
+                'nuevos_pct' => $pacientesUnicosCount > 0 ? round(($pacientesNuevos / $pacientesUnicosCount) * 100, 2) : 0.0,
+                'recurrentes_pct' => $pacientesUnicosCount > 0 ? round(($pacientesRecurrentes / $pacientesUnicosCount) * 100, 2) : 0.0,
             ],
         ];
     }
@@ -524,7 +806,8 @@ class BillingParticularesReportService
      *     afiliaciones:array<int, string>,
      *     tipos_atencion:array<int, string>,
      *     sedes:array<int, string>,
-     *     categorias:array<int, array{value:string,label:string}>
+     *     categorias:array<int, array{value:string,label:string}>,
+     *     categorias_madre_referido:array<int, string>
      * }
      */
     public function catalogos(array $rows): array
@@ -534,6 +817,7 @@ class BillingParticularesReportService
         $tiposAtencion = [];
         $sedes = [];
         $categorias = [];
+        $categoriasMadreReferido = [];
 
         foreach ($rows as $row) {
             $timestamp = strtotime((string) ($row['fecha'] ?? ''));
@@ -560,6 +844,11 @@ class BillingParticularesReportService
                 $categorias[$categoria] = $categoria;
             }
 
+            $categoriaMadreReferido = $this->normalizeReferralValue($row['referido_prefactura_por'] ?? null);
+            if ($categoriaMadreReferido !== '') {
+                $categoriasMadreReferido[$categoriaMadreReferido] = $categoriaMadreReferido;
+            }
+
             $sede = $this->normalizeSedeFilter($row['sede'] ?? null);
             if ($sede !== '') {
                 $sedes[$sede] = $sede;
@@ -569,6 +858,7 @@ class BillingParticularesReportService
         krsort($meses);
         ksort($afiliaciones);
         ksort($tiposAtencion);
+        ksort($categoriasMadreReferido);
         uksort($categorias, static function (string $a, string $b): int {
             $order = ['particular' => 1, 'privado' => 2];
             return ($order[$a] ?? 99) <=> ($order[$b] ?? 99) ?: strcmp($a, $b);
@@ -595,6 +885,7 @@ class BillingParticularesReportService
                     'label' => ucfirst($categoria),
                 ];
             }, array_values($categorias)),
+            'categorias_madre_referido' => array_values($categoriasMadreReferido),
         ];
     }
 
@@ -732,6 +1023,54 @@ class BillingParticularesReportService
         $value = preg_replace('/\s+/', ' ', $value) ?? $value;
 
         return trim($value);
+    }
+
+    private function percentageChange(int $current, int $base): ?float
+    {
+        if ($base <= 0) {
+            return null;
+        }
+
+        return round((($current - $base) / $base) * 100, 2);
+    }
+
+    private function weekdayName(int $isoDay): string
+    {
+        return match ($isoDay) {
+            1 => 'LUNES',
+            2 => 'MARTES',
+            3 => 'MIERCOLES',
+            4 => 'JUEVES',
+            5 => 'VIERNES',
+            6 => 'SABADO',
+            7 => 'DOMINGO',
+            default => 'LUNES',
+        };
+    }
+
+    private function resolveProcedureVolumeLabel(string $procedimientoProyectado): string
+    {
+        $raw = trim($procedimientoProyectado);
+        if ($raw === '') {
+            return 'SIN PROCEDIMIENTO';
+        }
+
+        $parts = explode(' - ', $raw);
+        $detail = count($parts) > 2 ? trim(implode(' - ', array_slice($parts, 2))) : $raw;
+        $detail = preg_replace('/ - (AO|OD|OI|AMBOS OJOS|OJO DERECHO|OJO IZQUIERDO)$/i', '', $detail) ?? $detail;
+        $detail = strtoupper(trim($detail));
+
+        return $detail !== '' ? $detail : 'SIN PROCEDIMIENTO';
+    }
+
+    private function isNewPatientConsultationProcedure(string $procedureLabel): bool
+    {
+        $normalized = $this->normalizeAffiliationText($procedureLabel);
+        if ($normalized === '') {
+            return false;
+        }
+
+        return str_contains($normalized, 'consulta oftalmologica nuevo paciente');
     }
 
     private function resolveAttentionType(string $procedimientoProyectado): string
