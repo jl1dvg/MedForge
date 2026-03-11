@@ -6,16 +6,20 @@ namespace App\Modules\Examenes\Services;
 
 use DateTimeImmutable;
 use DateTimeInterface;
+use Illuminate\Http\UploadedFile;
 use Modules\CRM\Services\LeadConfigurationService;
 use Modules\Examenes\Models\ExamenModel;
+use Modules\Examenes\Services\ExamenCrmService;
 use Modules\Examenes\Services\ExamenEstadoService;
 use Modules\Notifications\Services\PusherConfigService;
 use PDO;
+use RuntimeException;
 use Throwable;
 
 class ExamenesParityService
 {
     private const PUSHER_CHANNEL = 'examenes-kanban';
+    private const STORAGE_PATH = 'uploads/examenes';
 
     private static bool $legacyAutoloaderRegistered = false;
 
@@ -26,6 +30,7 @@ class ExamenesParityService
     private LeadConfigurationService $leadConfig;
 
     private PusherConfigService $pusherConfig;
+    private ExamenCrmService $crmService;
 
     public function __construct(private readonly PDO $db)
     {
@@ -35,6 +40,7 @@ class ExamenesParityService
         $this->estadoService = new ExamenEstadoService();
         $this->leadConfig = new LeadConfigurationService($this->db);
         $this->pusherConfig = new PusherConfigService($this->db);
+        $this->crmService = new ExamenCrmService($this->db);
     }
 
     /**
@@ -298,6 +304,463 @@ class ExamenesParityService
             'payload' => [
                 'success' => true,
                 'data' => $registro,
+            ],
+        ];
+    }
+
+    /**
+     * @return array{status:int,payload:array<string,mixed>}
+     */
+    public function crmResumen(int $examenId): array
+    {
+        try {
+            $resumen = $this->crmService->obtenerResumen($examenId);
+        } catch (Throwable) {
+            return [
+                'status' => 500,
+                'payload' => [
+                    'success' => false,
+                    'error' => 'No se pudo cargar el detalle CRM',
+                ],
+            ];
+        }
+
+        return [
+            'status' => 200,
+            'payload' => [
+                'success' => true,
+                'data' => $resumen,
+            ],
+        ];
+    }
+
+    /**
+     * @param array<string,mixed> $payload
+     * @param array<int,string> $permissions
+     * @return array{status:int,payload:array<string,mixed>}
+     */
+    public function crmBootstrap(int $examenId, array $payload, ?int $userId, array $permissions = []): array
+    {
+        try {
+            $resultado = $this->crmService->bootstrapChecklist(
+                $examenId,
+                $payload,
+                $userId,
+                $permissions
+            );
+        } catch (RuntimeException $e) {
+            $status = (int) ($e->getCode() ?: 422);
+            if ($status < 400 || $status >= 500) {
+                $status = 422;
+            }
+
+            return [
+                'status' => $status,
+                'payload' => [
+                    'success' => false,
+                    'error' => $e->getMessage(),
+                ],
+            ];
+        } catch (Throwable) {
+            return [
+                'status' => 500,
+                'payload' => [
+                    'success' => false,
+                    'error' => 'No se pudo sincronizar el checklist con CRM',
+                ],
+            ];
+        }
+
+        return [
+            'status' => 200,
+            'payload' => ['success' => true] + $resultado,
+        ];
+    }
+
+    /**
+     * @param array<int,string> $permissions
+     * @return array{status:int,payload:array<string,mixed>}
+     */
+    public function crmChecklistState(int $examenId, array $permissions = []): array
+    {
+        try {
+            $resultado = $this->crmService->checklistState($examenId, $permissions);
+        } catch (RuntimeException $e) {
+            $status = (int) ($e->getCode() ?: 422);
+            if ($status < 400 || $status >= 500) {
+                $status = 422;
+            }
+
+            return [
+                'status' => $status,
+                'payload' => [
+                    'success' => false,
+                    'error' => $e->getMessage(),
+                ],
+            ];
+        } catch (Throwable) {
+            return [
+                'status' => 500,
+                'payload' => [
+                    'success' => false,
+                    'error' => 'No se pudo cargar el checklist',
+                ],
+            ];
+        }
+
+        return [
+            'status' => 200,
+            'payload' => ['success' => true] + $resultado,
+        ];
+    }
+
+    /**
+     * @param array<string,mixed> $payload
+     * @param array<int,string> $permissions
+     * @return array{status:int,payload:array<string,mixed>}
+     */
+    public function crmActualizarChecklist(int $examenId, array $payload, ?int $userId, array $permissions = []): array
+    {
+        $etapa = trim((string) ($payload['etapa_slug'] ?? $payload['etapa'] ?? ''));
+        $completado = isset($payload['completado']) ? (bool) $payload['completado'] : true;
+
+        if ($etapa === '') {
+            return [
+                'status' => 422,
+                'payload' => [
+                    'success' => false,
+                    'error' => 'Etapa requerida',
+                ],
+            ];
+        }
+
+        try {
+            $resultado = $this->crmService->syncChecklistStage(
+                $examenId,
+                $etapa,
+                $completado,
+                $userId,
+                $permissions
+            );
+        } catch (RuntimeException $e) {
+            return [
+                'status' => 422,
+                'payload' => [
+                    'success' => false,
+                    'error' => $e->getMessage(),
+                ],
+            ];
+        } catch (Throwable) {
+            return [
+                'status' => 500,
+                'payload' => [
+                    'success' => false,
+                    'error' => 'No se pudo sincronizar el checklist con CRM',
+                ],
+            ];
+        }
+
+        return [
+            'status' => 200,
+            'payload' => [
+                'success' => true,
+                'checklist' => $resultado['checklist'] ?? [],
+                'checklist_progress' => $resultado['checklist_progress'] ?? [],
+                'tasks' => $resultado['tasks'] ?? [],
+                'lead_id' => $resultado['lead_id'] ?? null,
+                'project_id' => $resultado['project_id'] ?? null,
+                'kanban_estado' => $resultado['kanban_estado'] ?? null,
+                'kanban_estado_label' => $resultado['kanban_estado_label'] ?? null,
+            ],
+        ];
+    }
+
+    /**
+     * @param array<string,mixed> $payload
+     * @return array{status:int,payload:array<string,mixed>}
+     */
+    public function crmRegistrarBloqueo(int $examenId, array $payload, ?int $userId): array
+    {
+        try {
+            $resultado = $this->crmService->registrarBloqueoAgenda($examenId, $payload, $userId);
+        } catch (Throwable $e) {
+            return [
+                'status' => 500,
+                'payload' => [
+                    'success' => false,
+                    'error' => $e->getMessage() !== '' ? $e->getMessage() : 'No se pudo registrar el bloqueo de agenda',
+                ],
+            ];
+        }
+
+        return [
+            'status' => 200,
+            'payload' => [
+                'success' => true,
+                'data' => $resultado,
+            ],
+        ];
+    }
+
+    /**
+     * @param array<string,mixed> $payload
+     * @return array{status:int,payload:array<string,mixed>}
+     */
+    public function crmGuardarDetalles(int $examenId, array $payload, ?int $userId): array
+    {
+        try {
+            $this->crmService->guardarDetalles($examenId, $payload, $userId);
+            $resumen = $this->crmService->obtenerResumen($examenId);
+            $detalle = is_array($resumen['detalle'] ?? null) ? $resumen['detalle'] : [];
+
+            $this->pusherConfig->trigger(
+                [
+                    'examen_id' => $examenId,
+                    'crm_lead_id' => $detalle['crm_lead_id'] ?? null,
+                    'pipeline_stage' => $detalle['crm_pipeline_stage'] ?? null,
+                    'responsable_id' => $detalle['crm_responsable_id'] ?? null,
+                    'responsable_nombre' => $detalle['crm_responsable_nombre'] ?? null,
+                    'fuente' => $detalle['crm_fuente'] ?? null,
+                    'contacto_email' => $detalle['crm_contacto_email'] ?? null,
+                    'contacto_telefono' => $detalle['crm_contacto_telefono'] ?? null,
+                    'paciente_nombre' => $detalle['paciente_nombre'] ?? null,
+                    'examen_nombre' => $detalle['examen_nombre'] ?? null,
+                    'doctor' => $detalle['doctor'] ?? null,
+                    'prioridad' => $detalle['prioridad'] ?? null,
+                    'kanban_estado' => $detalle['estado'] ?? null,
+                    'channels' => $this->pusherConfig->getNotificationChannels(),
+                ],
+                self::PUSHER_CHANNEL,
+                PusherConfigService::EVENT_CRM_UPDATED
+            );
+        } catch (Throwable) {
+            return [
+                'status' => 500,
+                'payload' => [
+                    'success' => false,
+                    'error' => 'No se pudieron guardar los cambios',
+                ],
+            ];
+        }
+
+        return [
+            'status' => 200,
+            'payload' => [
+                'success' => true,
+                'data' => $resumen,
+            ],
+        ];
+    }
+
+    /**
+     * @param array<string,mixed> $payload
+     * @return array{status:int,payload:array<string,mixed>}
+     */
+    public function crmAgregarNota(int $examenId, array $payload, ?int $userId): array
+    {
+        $nota = trim((string) ($payload['nota'] ?? ''));
+        if ($nota === '') {
+            return [
+                'status' => 422,
+                'payload' => [
+                    'success' => false,
+                    'error' => 'La nota no puede estar vacía',
+                ],
+            ];
+        }
+
+        try {
+            $this->crmService->registrarNota($examenId, $nota, $userId);
+            $resumen = $this->crmService->obtenerResumen($examenId);
+        } catch (Throwable) {
+            return [
+                'status' => 500,
+                'payload' => [
+                    'success' => false,
+                    'error' => 'No se pudo registrar la nota',
+                ],
+            ];
+        }
+
+        return [
+            'status' => 200,
+            'payload' => [
+                'success' => true,
+                'data' => $resumen,
+            ],
+        ];
+    }
+
+    /**
+     * @param array<string,mixed> $payload
+     * @return array{status:int,payload:array<string,mixed>}
+     */
+    public function crmGuardarTarea(int $examenId, array $payload, ?int $userId): array
+    {
+        try {
+            $this->crmService->registrarTarea($examenId, $payload, $userId);
+            $resumen = $this->crmService->obtenerResumen($examenId);
+        } catch (Throwable $e) {
+            return [
+                'status' => 500,
+                'payload' => [
+                    'success' => false,
+                    'error' => $e->getMessage() !== '' ? $e->getMessage() : 'No se pudo crear la tarea',
+                ],
+            ];
+        }
+
+        return [
+            'status' => 200,
+            'payload' => [
+                'success' => true,
+                'data' => $resumen,
+            ],
+        ];
+    }
+
+    /**
+     * @param array<string,mixed> $payload
+     * @return array{status:int,payload:array<string,mixed>}
+     */
+    public function crmActualizarTarea(int $examenId, array $payload): array
+    {
+        $tareaId = isset($payload['tarea_id']) ? (int) $payload['tarea_id'] : 0;
+        $estado = isset($payload['estado']) ? (string) $payload['estado'] : '';
+
+        if ($tareaId <= 0 || $estado === '') {
+            return [
+                'status' => 422,
+                'payload' => [
+                    'success' => false,
+                    'error' => 'Datos incompletos',
+                ],
+            ];
+        }
+
+        try {
+            $this->crmService->actualizarEstadoTarea($examenId, $tareaId, $estado);
+            $resumen = $this->crmService->obtenerResumen($examenId);
+        } catch (Throwable) {
+            return [
+                'status' => 500,
+                'payload' => [
+                    'success' => false,
+                    'error' => 'No se pudo actualizar la tarea',
+                ],
+            ];
+        }
+
+        return [
+            'status' => 200,
+            'payload' => [
+                'success' => true,
+                'data' => $resumen,
+            ],
+        ];
+    }
+
+    /**
+     * @return array{status:int,payload:array<string,mixed>}
+     */
+    public function crmSubirAdjunto(
+        int $examenId,
+        ?UploadedFile $archivo,
+        ?string $descripcion,
+        ?int $userId
+    ): array {
+        if (!$archivo instanceof UploadedFile) {
+            return [
+                'status' => 422,
+                'payload' => [
+                    'success' => false,
+                    'error' => 'No se recibió el archivo',
+                ],
+            ];
+        }
+
+        if (!$archivo->isValid()) {
+            return [
+                'status' => 422,
+                'payload' => [
+                    'success' => false,
+                    'error' => 'El archivo es inválido',
+                ],
+            ];
+        }
+
+        $nombreOriginal = trim((string) $archivo->getClientOriginalName());
+        if ($nombreOriginal === '') {
+            $nombreOriginal = 'adjunto';
+        }
+
+        $mimeType = $archivo->getClientMimeType();
+        $tamano = $archivo->getSize();
+
+        $carpetaBase = rtrim((string) public_path(self::STORAGE_PATH . '/' . $examenId), DIRECTORY_SEPARATOR);
+        if (!is_dir($carpetaBase) && !mkdir($carpetaBase, 0775, true) && !is_dir($carpetaBase)) {
+            return [
+                'status' => 500,
+                'payload' => [
+                    'success' => false,
+                    'error' => 'No se pudo preparar la carpeta de adjuntos',
+                ],
+            ];
+        }
+
+        $nombreLimpio = preg_replace('/[^A-Za-z0-9_\\.-]+/', '_', $nombreOriginal) ?? '';
+        $nombreLimpio = trim($nombreLimpio, '_');
+        if ($nombreLimpio === '') {
+            $nombreLimpio = 'adjunto';
+        }
+
+        $destinoNombre = uniqid('crm_', true) . '_' . $nombreLimpio;
+        $destinoRuta = $carpetaBase . DIRECTORY_SEPARATOR . $destinoNombre;
+
+        try {
+            $archivo->move($carpetaBase, $destinoNombre);
+        } catch (Throwable) {
+            return [
+                'status' => 500,
+                'payload' => [
+                    'success' => false,
+                    'error' => 'No se pudo guardar el archivo',
+                ],
+            ];
+        }
+
+        $rutaRelativa = self::STORAGE_PATH . '/' . $examenId . '/' . $destinoNombre;
+        $descripcion = $descripcion !== null ? trim($descripcion) : null;
+
+        try {
+            $this->crmService->registrarAdjunto(
+                $examenId,
+                $nombreOriginal,
+                $rutaRelativa,
+                is_string($mimeType) ? $mimeType : null,
+                is_numeric($tamano) ? (int) $tamano : null,
+                $userId,
+                ($descripcion !== null && $descripcion !== '') ? $descripcion : null
+            );
+
+            $resumen = $this->crmService->obtenerResumen($examenId);
+        } catch (Throwable) {
+            @unlink($destinoRuta);
+
+            return [
+                'status' => 500,
+                'payload' => [
+                    'success' => false,
+                    'error' => 'No se pudo registrar el adjunto',
+                ],
+            ];
+        }
+
+        return [
+            'status' => 200,
+            'payload' => [
+                'success' => true,
+                'data' => $resumen,
             ],
         ];
     }

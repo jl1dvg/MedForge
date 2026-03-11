@@ -139,52 +139,117 @@ class ExamenesParityController
 
     public function crmResumen(Request $request, int $id): Response
     {
-        return $this->relayJson($request, 'crmResumen', [$id]);
+        return $this->relayNativeJson(
+            $request,
+            'crmResumen',
+            fn(): array => $this->native->crmResumen($id),
+            [$id]
+        );
     }
 
     public function crmGuardarDetalles(Request $request, int $id): Response
     {
-        return $this->relayJson($request, 'crmGuardarDetalles', [$id]);
+        return $this->relayNativeJson(
+            $request,
+            'crmGuardarDetalles',
+            fn(): array => $this->native->crmGuardarDetalles($id, $request->all(), LegacySessionAuth::userId($request)),
+            [$id]
+        );
     }
 
     public function crmBootstrap(Request $request, int $id): Response
     {
-        return $this->relayJson($request, 'crmBootstrap', [$id]);
+        return $this->relayNativeJson(
+            $request,
+            'crmBootstrap',
+            fn(): array => $this->native->crmBootstrap(
+                $id,
+                $request->all(),
+                LegacySessionAuth::userId($request),
+                $this->sessionPermissions($request)
+            ),
+            [$id]
+        );
     }
 
     public function crmChecklistState(Request $request, int $id): Response
     {
-        return $this->relayJson($request, 'crmChecklistState', [$id]);
+        return $this->relayNativeJson(
+            $request,
+            'crmChecklistState',
+            fn(): array => $this->native->crmChecklistState($id, $this->sessionPermissions($request)),
+            [$id]
+        );
     }
 
     public function crmActualizarChecklist(Request $request, int $id): Response
     {
-        return $this->relayJson($request, 'crmActualizarChecklist', [$id]);
+        return $this->relayNativeJson(
+            $request,
+            'crmActualizarChecklist',
+            fn(): array => $this->native->crmActualizarChecklist(
+                $id,
+                $request->all(),
+                LegacySessionAuth::userId($request),
+                $this->sessionPermissions($request)
+            ),
+            [$id]
+        );
     }
 
     public function crmAgregarNota(Request $request, int $id): Response
     {
-        return $this->relayJson($request, 'crmAgregarNota', [$id]);
+        return $this->relayNativeJson(
+            $request,
+            'crmAgregarNota',
+            fn(): array => $this->native->crmAgregarNota($id, $request->all(), LegacySessionAuth::userId($request)),
+            [$id]
+        );
     }
 
     public function crmRegistrarBloqueo(Request $request, int $id): Response
     {
-        return $this->relayJson($request, 'crmRegistrarBloqueo', [$id]);
+        return $this->relayNativeJson(
+            $request,
+            'crmRegistrarBloqueo',
+            fn(): array => $this->native->crmRegistrarBloqueo($id, $request->all(), LegacySessionAuth::userId($request)),
+            [$id]
+        );
     }
 
     public function crmGuardarTarea(Request $request, int $id): Response
     {
-        return $this->relayJson($request, 'crmGuardarTarea', [$id]);
+        return $this->relayNativeJson(
+            $request,
+            'crmGuardarTarea',
+            fn(): array => $this->native->crmGuardarTarea($id, $request->all(), LegacySessionAuth::userId($request)),
+            [$id]
+        );
     }
 
     public function crmActualizarTarea(Request $request, int $id): Response
     {
-        return $this->relayJson($request, 'crmActualizarTarea', [$id]);
+        return $this->relayNativeJson(
+            $request,
+            'crmActualizarTarea',
+            fn(): array => $this->native->crmActualizarTarea($id, $request->all()),
+            [$id]
+        );
     }
 
     public function crmSubirAdjunto(Request $request, int $id): Response
     {
-        return $this->relayJson($request, 'crmSubirAdjunto', [$id]);
+        return $this->relayNativeJson(
+            $request,
+            'crmSubirAdjunto',
+            fn(): array => $this->native->crmSubirAdjunto(
+                $id,
+                $request->file('archivo'),
+                is_scalar($request->input('descripcion')) ? (string) $request->input('descripcion') : null,
+                LegacySessionAuth::userId($request)
+            ),
+            [$id]
+        );
     }
 
     public function prefactura(Request $request): Response|RedirectResponse
@@ -222,7 +287,12 @@ class ExamenesParityController
     /**
      * @param callable():array{status:int,payload:array<string,mixed>} $nativeResolver
      */
-    private function relayNativeJson(Request $request, string $legacyMethod, callable $nativeResolver): Response
+    private function relayNativeJson(
+        Request $request,
+        string $legacyMethod,
+        callable $nativeResolver,
+        array $legacyArgs = []
+    ): Response
     {
         if (!LegacySessionAuth::isAuthenticated($request)) {
             return response()->json([
@@ -247,11 +317,47 @@ class ExamenesParityController
                 'error' => $e->getMessage(),
             ]);
 
-            return response()->json([
-                'success' => false,
-                'error' => 'No se pudo procesar la solicitud en v2.',
-            ], 500);
+            return $this->dispatch($request, $legacyMethod, $legacyArgs, true);
         }
+    }
+
+    /**
+     * @return array<int,string>
+     */
+    private function sessionPermissions(Request $request): array
+    {
+        $session = LegacySessionAuth::readSession($request);
+        $raw = $session['permisos'] ?? [];
+
+        if (is_string($raw)) {
+            $decoded = json_decode($raw, true);
+            if (is_array($decoded)) {
+                $raw = $decoded;
+            } else {
+                $split = array_map('trim', explode(',', $raw));
+                $raw = array_values(array_filter($split, static fn(string $item): bool => $item !== ''));
+            }
+        }
+
+        if (!is_array($raw)) {
+            return [];
+        }
+
+        $permissions = [];
+        array_walk_recursive($raw, static function (mixed $value) use (&$permissions): void {
+            if (!is_string($value)) {
+                return;
+            }
+
+            $permission = trim($value);
+            if ($permission === '') {
+                return;
+            }
+
+            $permissions[] = $permission;
+        });
+
+        return array_values(array_unique($permissions));
     }
 
     /**

@@ -143,13 +143,11 @@
                         >
                     </div>
                     <div class="col-md-2">
-                        <button type="submit" class="btn btn-primary w-100">
-                            <i class="mdi mdi-magnify me-5"></i>Aplicar filtros
+                        <button type="submit" class="btn btn-primary">
+                            <i class="mdi mdi-magnify me-5"></i>
                         </button>
-                    </div>
-                    <div class="col-md-2">
-                        <a href="/v2/informes/particulares" class="btn btn-light w-100">
-                            <i class="mdi mdi-filter-remove me-5"></i>Limpiar
+                        <a href="/v2/informes/particulares" class="btn btn-light">
+                            <i class="mdi mdi-filter-remove me-5"></i>
                         </a>
                     </div>
                 </form>
