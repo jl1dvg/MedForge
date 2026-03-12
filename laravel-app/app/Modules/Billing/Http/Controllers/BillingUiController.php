@@ -289,6 +289,9 @@ class BillingUiController
         if (in_array($export, ['csv', 'excel'], true)) {
             return $this->exportInformeParticularesCsv($rows, $filters);
         }
+        if ($export === 'pdf') {
+            return $this->exportInformeParticularesPdf($summary, $filters);
+        }
 
         if ($request->expectsJson()) {
             return response()->json([
@@ -1270,6 +1273,123 @@ class BillingUiController
     }
 
     /**
+     * @param array<string, mixed> $summary
+     * @param array<string, mixed> $filters
+     */
+    private function exportInformeParticularesPdf(array $summary, array $filters): Response|RedirectResponse
+    {
+        $economico = is_array($summary['economico'] ?? null) ? $summary['economico'] : [];
+        $totalAtenciones = (int) ($summary['total'] ?? 0);
+        $produccionTotal = (float) ($economico['total_produccion'] ?? 0);
+        $ticketPromedioFacturado = (float) ($economico['ticket_promedio_facturado'] ?? 0);
+        $produccionPromedioAtencion = (float) ($economico['produccion_promedio_por_atencion'] ?? 0);
+        $atencionesFacturadas = (int) ($economico['atenciones_facturadas'] ?? 0);
+        $procedimientosFacturados = (int) ($economico['procedimientos_facturados'] ?? 0);
+        $facturacionRate = (float) ($economico['facturacion_rate'] ?? 0);
+
+        $dateFrom = trim((string) ($filters['date_from'] ?? ''));
+        $dateTo = trim((string) ($filters['date_to'] ?? ''));
+        $queryWithoutExport = array_filter([
+            'date_from' => $dateFrom,
+            'date_to' => $dateTo,
+            'categoria_cliente' => trim((string) ($filters['categoria_cliente'] ?? '')),
+            'categoria_madre_referido' => trim((string) ($filters['categoria_madre_referido'] ?? '')),
+            'tipo' => trim((string) ($filters['tipo'] ?? '')),
+            'sede' => trim((string) ($filters['sede'] ?? '')),
+            'afiliacion' => trim((string) ($filters['afiliacion'] ?? '')),
+            'procedimiento' => trim((string) ($filters['procedimiento'] ?? '')),
+        ], static fn($value): bool => trim((string) $value) !== '');
+
+        $filterSummary = [
+            ['label' => 'Rango de fechas', 'value' => $dateFrom . ' a ' . $dateTo],
+            ['label' => 'Sede', 'value' => strtoupper(trim((string) ($filters['sede'] ?? ''))) ?: 'Todas'],
+            ['label' => 'Afiliación', 'value' => strtoupper(trim((string) ($filters['afiliacion'] ?? ''))) ?: 'Todas'],
+            ['label' => 'Categoría cliente', 'value' => ucfirst(strtolower(trim((string) ($filters['categoria_cliente'] ?? '')))) ?: 'Todas'],
+            ['label' => 'Tipo de atención', 'value' => strtoupper(trim((string) ($filters['tipo'] ?? ''))) ?: 'Todos'],
+            ['label' => 'Procedimiento', 'value' => trim((string) ($filters['procedimiento'] ?? '')) ?: 'Todos'],
+        ];
+
+        $kpis = [
+            [
+                'label' => 'Producción facturada',
+                'value' => '$' . number_format($produccionTotal, 2),
+                'meaning' => 'Monto total en USD facturado para las atenciones filtradas.',
+                'formula' => 'Suma de valores de procedimientos facturados por atención (billing_main + billing_procedimientos).',
+            ],
+            [
+                'label' => 'Ticket promedio facturado',
+                'value' => '$' . number_format($ticketPromedioFacturado, 2),
+                'meaning' => 'Ingreso promedio por cada atención que sí quedó facturada.',
+                'formula' => 'Producción facturada / Atenciones facturadas.',
+            ],
+            [
+                'label' => 'Atenciones facturadas',
+                'value' => number_format($atencionesFacturadas) . ' (' . number_format($facturacionRate, 2) . '% del total)',
+                'meaning' => 'Número de atenciones con facturación confirmada dentro del período filtrado.',
+                'formula' => 'Conteo de atenciones con billing_id o monto de producción mayor a 0.',
+            ],
+            [
+                'label' => 'Procedimientos facturados',
+                'value' => number_format($procedimientosFacturados) . ' ($' . number_format($produccionPromedioAtencion, 2) . ' promedio por atención)',
+                'meaning' => 'Cantidad total de procedimientos registrados en la facturación del período.',
+                'formula' => 'Suma de procedimientos facturados en las atenciones filtradas.',
+            ],
+        ];
+
+        $filename = 'kpi_particulares_' . ($dateFrom !== '' ? str_replace('-', '', $dateFrom) : date('Ymd')) . '_' .
+            ($dateTo !== '' ? str_replace('-', '', $dateTo) : date('Ymd')) . '.pdf';
+
+        try {
+            if (!class_exists(\Mpdf\Mpdf::class)) {
+                throw new RuntimeException('La librería mPDF no está disponible en el entorno.');
+            }
+
+            $html = view('billing.pdf.particulares-kpi', [
+                'generatedAt' => (new DateTimeImmutable('now'))->format('d/m/Y H:i'),
+                'filterSummary' => $filterSummary,
+                'kpis' => $kpis,
+                'totalAtenciones' => $totalAtenciones,
+            ])->render();
+
+            $pdf = new \Mpdf\Mpdf([
+                'mode' => 'utf-8',
+                'format' => 'A4',
+                'orientation' => 'P',
+                'margin_left' => 10,
+                'margin_right' => 10,
+                'margin_top' => 10,
+                'margin_bottom' => 10,
+            ]);
+
+            $pdf->SetTitle('KPI Informe Particulares');
+            $pdf->WriteHTML($html);
+            $content = (string) $pdf->Output('', 'S');
+
+            if (strncmp($content, '%PDF-', 5) !== 0) {
+                throw new RuntimeException('El contenido generado no es un PDF válido.');
+            }
+
+            return response($content, 200, [
+                'Content-Type' => 'application/pdf',
+                'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+                'X-Content-Type-Options' => 'nosniff',
+                'Content-Length' => (string) strlen($content),
+            ]);
+        } catch (\Throwable $exception) {
+            Log::error('billing.particulares.export_pdf.error', [
+                'error' => $exception->getMessage(),
+            ]);
+
+            $redirect = '/v2/informes/particulares';
+            if (!empty($queryWithoutExport)) {
+                $redirect .= '?' . http_build_query($queryWithoutExport);
+            }
+
+            return redirect($redirect)->with('error', 'No se pudo generar el PDF de KPI de particulares.');
+        }
+    }
+
+    /**
      * @param array<int, array<string, mixed>> $rows
      * @param array<string, mixed> $filters
      */
@@ -1299,6 +1419,11 @@ class BillingUiController
             'Tipo atencion',
             'Procedimiento proyectado',
             'Doctor',
+            'Facturacion',
+            'Produccion',
+            'Procedimientos facturados',
+            'Billing ID',
+            'Fecha facturacion',
             'Referido prefactura por',
             'Especificar referido prefactura',
         ]);
@@ -1306,6 +1431,11 @@ class BillingUiController
         foreach ($rows as $row) {
             $fechaRaw = trim((string) ($row['fecha'] ?? ''));
             $fecha = $fechaRaw !== '' && strtotime($fechaRaw) !== false ? date('d/m/Y H:i', strtotime($fechaRaw)) : '';
+            $fechaFacturacionRaw = trim((string) ($row['fecha_facturacion'] ?? ''));
+            $fechaFacturacion = $fechaFacturacionRaw !== '' && strtotime($fechaFacturacionRaw) !== false
+                ? date('d/m/Y H:i', strtotime($fechaFacturacionRaw))
+                : '';
+            $facturado = (bool) ($row['facturado'] ?? false);
 
             fputcsv($handle, [
                 $fecha,
@@ -1318,6 +1448,11 @@ class BillingUiController
                 trim((string) ($row['tipo_atencion'] ?? '')),
                 trim((string) ($row['procedimiento_proyectado'] ?? '')),
                 trim((string) ($row['doctor'] ?? '')),
+                $facturado ? 'FACTURADO' : 'PENDIENTE',
+                number_format((float) ($row['total_produccion'] ?? 0), 2, '.', ''),
+                (int) ($row['procedimientos_facturados'] ?? 0),
+                (string) ($row['billing_id'] ?? ''),
+                $fechaFacturacion,
                 trim((string) ($row['referido_prefactura_por'] ?? '')),
                 trim((string) ($row['especificar_referido_prefactura'] ?? '')),
             ]);

@@ -93,7 +93,23 @@ class BillingParticularesReportService
         $especificarReferidoExpr = $this->especificarReferidoPrefacturaExpression('pp');
 
         $sql = <<<SQL
-            SELECT *
+            SELECT
+                atenciones.hc_number,
+                atenciones.nombre_completo,
+                atenciones.tipo,
+                atenciones.form_id,
+                atenciones.fecha,
+                atenciones.afiliacion,
+                atenciones.sede,
+                atenciones.estado_encuentro,
+                atenciones.procedimiento_proyectado,
+                atenciones.doctor,
+                atenciones.referido_prefactura_por,
+                atenciones.especificar_referido_prefactura,
+                econ.billing_id,
+                econ.fecha_facturacion,
+                COALESCE(econ.total_produccion, 0) AS total_produccion,
+                COALESCE(econ.procedimientos_facturados, 0) AS procedimientos_facturados
             FROM (
                 SELECT
                     p.hc_number,
@@ -135,6 +151,25 @@ class BillingParticularesReportService
                 WHERE pd.fecha_inicio BETWEEN ? AND ?
                   AND %ATENDIDO_WHERE%
             ) AS atenciones
+            LEFT JOIN (
+                SELECT
+                    bm.form_id,
+                    bm.hc_number,
+                    MAX(bm.id) AS billing_id,
+                    MAX(
+                        CASE
+                            WHEN CAST(bm.created_at AS CHAR) IN ('', '0000-00-00', '0000-00-00 00:00:00') THEN NULL
+                            ELSE bm.created_at
+                        END
+                    ) AS fecha_facturacion,
+                    COALESCE(SUM(bp.proc_precio), 0) AS total_produccion,
+                    COUNT(bp.id) AS procedimientos_facturados
+                FROM billing_main bm
+                LEFT JOIN billing_procedimientos bp ON bp.billing_id = bm.id
+                GROUP BY bm.form_id, bm.hc_number
+            ) AS econ
+              ON econ.form_id = atenciones.form_id
+             AND econ.hc_number = atenciones.hc_number
             WHERE atenciones.fecha IS NOT NULL
               AND atenciones.fecha NOT IN ('', '0000-00-00', '0000-00-00 00:00:00')
             ORDER BY atenciones.fecha DESC, atenciones.form_id DESC
@@ -179,6 +214,9 @@ class BillingParticularesReportService
             }
 
             $row['tipo_atencion'] = $tipoAtencion;
+            $row['total_produccion'] = round((float) ($row['total_produccion'] ?? 0), 2);
+            $row['procedimientos_facturados'] = (int) ($row['procedimientos_facturados'] ?? 0);
+            $row['facturado'] = ((int) ($row['billing_id'] ?? 0) > 0) || ((float) ($row['total_produccion'] ?? 0) > 0);
             $enrichedRows[] = $row;
         }
 
@@ -285,6 +323,17 @@ class BillingParticularesReportService
      *     total:int,
      *     total_consultas:int,
      *     total_protocolos:int,
+     *     economico:array{
+     *         total_produccion:float,
+     *         ticket_promedio_facturado:float,
+     *         produccion_promedio_por_atencion:float,
+     *         atenciones_facturadas:int,
+     *         atenciones_no_facturadas:int,
+     *         facturacion_rate:float,
+     *         procedimientos_facturados:int,
+     *         produccion_por_categoria:array{particular:float,privado:float},
+     *         trend:array{labels:array<int,string>,totals:array<int,float>}
+     *     },
      *     pacientes_unicos:int,
      *     categoria_counts:array{particular:int,privado:int},
      *     categoria_share:array{particular:float,privado:float},
@@ -382,6 +431,13 @@ class BillingParticularesReportService
         $conteoAfiliacion = [];
         $pacientesUnicos = [];
         $pacienteAtenciones = [];
+        $produccionTotal = 0.0;
+        $atencionesFacturadas = 0;
+        $procedimientosFacturados = 0;
+        $produccionPorCategoria = [
+            'particular' => 0.0,
+            'privado' => 0.0,
+        ];
         $totalConsultas = 0;
         $totalProtocolos = 0;
         $categoriaCounts = [
@@ -389,6 +445,7 @@ class BillingParticularesReportService
             'privado' => 0,
         ];
         $monthCounts = [];
+        $monthProduccion = [];
         $procedureCounts = [];
         $sedeCounts = [];
         $doctorCounts = [];
@@ -443,9 +500,18 @@ class BillingParticularesReportService
                 $totalProtocolos++;
             }
 
+            $produccionRow = (float) ($row['total_produccion'] ?? 0);
+            $produccionTotal += $produccionRow;
+            $procedimientosFacturados += (int) ($row['procedimientos_facturados'] ?? 0);
+            $facturadoRow = (bool) ($row['facturado'] ?? false);
+            if ($facturadoRow) {
+                $atencionesFacturadas++;
+            }
+
             $categoria = strtolower(trim((string) ($row['categoria_cliente'] ?? '')));
             if ($this->isParticularReportCategory($categoria)) {
                 $categoriaCounts[$categoria] = (int) ($categoriaCounts[$categoria] ?? 0) + 1;
+                $produccionPorCategoria[$categoria] = (float) ($produccionPorCategoria[$categoria] ?? 0) + $produccionRow;
                 $categoriaGerencial = strtoupper($categoria);
                 if (!isset($categoriaGerencialCounts[$categoriaGerencial])) {
                     $categoriaGerencialCounts[$categoriaGerencial] = 0;
@@ -484,6 +550,10 @@ class BillingParticularesReportService
                     $monthCounts[$monthKey] = 0;
                 }
                 $monthCounts[$monthKey]++;
+                if (!isset($monthProduccion[$monthKey])) {
+                    $monthProduccion[$monthKey] = 0.0;
+                }
+                $monthProduccion[$monthKey] += $produccionRow;
 
                 $dayName = $this->weekdayName((int) date('N', $timestamp));
                 if (!isset($dayCounts[$dayName])) {
@@ -571,12 +641,15 @@ class BillingParticularesReportService
         }
 
         $totalRows = count($rows);
+        $atencionesNoFacturadas = max($totalRows - $atencionesFacturadas, 0);
         $categoriaShare = [
             'particular' => $totalRows > 0 ? round(($categoriaCounts['particular'] / $totalRows) * 100, 2) : 0.0,
             'privado' => $totalRows > 0 ? round(($categoriaCounts['privado'] / $totalRows) * 100, 2) : 0.0,
         ];
         ksort($monthCounts);
+        ksort($monthProduccion);
         $trendMonthCounts = array_slice($monthCounts, -12, null, true);
+        $trendMonthProduccion = array_slice($monthProduccion, -12, null, true);
 
         $trendLabels = [];
         foreach (array_keys($trendMonthCounts) as $monthKey) {
@@ -717,6 +790,23 @@ class BillingParticularesReportService
             'total' => $totalRows,
             'total_consultas' => $totalConsultas,
             'total_protocolos' => $totalProtocolos,
+            'economico' => [
+                'total_produccion' => round($produccionTotal, 2),
+                'ticket_promedio_facturado' => $atencionesFacturadas > 0 ? round($produccionTotal / $atencionesFacturadas, 2) : 0.0,
+                'produccion_promedio_por_atencion' => $totalRows > 0 ? round($produccionTotal / $totalRows, 2) : 0.0,
+                'atenciones_facturadas' => $atencionesFacturadas,
+                'atenciones_no_facturadas' => $atencionesNoFacturadas,
+                'facturacion_rate' => $totalRows > 0 ? round(($atencionesFacturadas / $totalRows) * 100, 2) : 0.0,
+                'procedimientos_facturados' => $procedimientosFacturados,
+                'produccion_por_categoria' => [
+                    'particular' => round((float) ($produccionPorCategoria['particular'] ?? 0), 2),
+                    'privado' => round((float) ($produccionPorCategoria['privado'] ?? 0), 2),
+                ],
+                'trend' => [
+                    'labels' => array_map(fn(string $monthKey): string => $this->monthLabel($monthKey), array_keys($trendMonthProduccion)),
+                    'totals' => array_map(static fn($value) => round((float) $value, 2), array_values($trendMonthProduccion)),
+                ],
+            ],
             'pacientes_unicos' => count($pacientesUnicos),
             'categoria_counts' => $categoriaCounts,
             'categoria_share' => $categoriaShare,

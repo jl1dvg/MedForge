@@ -8,6 +8,17 @@
         'total' => 0,
         'total_consultas' => 0,
         'total_protocolos' => 0,
+        'economico' => [
+            'total_produccion' => 0,
+            'ticket_promedio_facturado' => 0,
+            'produccion_promedio_por_atencion' => 0,
+            'atenciones_facturadas' => 0,
+            'atenciones_no_facturadas' => 0,
+            'facturacion_rate' => 0,
+            'procedimientos_facturados' => 0,
+            'produccion_por_categoria' => ['particular' => 0, 'privado' => 0],
+            'trend' => ['labels' => [], 'totals' => []],
+        ],
         'pacientes_unicos' => 0,
         'categoria_counts' => ['particular' => 0, 'privado' => 0],
         'categoria_share' => ['particular' => 0, 'privado' => 0],
@@ -57,6 +68,9 @@
         'export' => 'excel',
     ], static fn($value): bool => trim((string) $value) !== '');
     $exportParticularesUrl = '/v2/informes/particulares?' . http_build_query($exportParticularesQuery);
+    $exportParticularesPdfQuery = $exportParticularesQuery;
+    $exportParticularesPdfQuery['export'] = 'pdf';
+    $exportParticularesPdfUrl = '/v2/informes/particulares?' . http_build_query($exportParticularesPdfQuery);
 
     $procedimientoLegible = static function (string $texto): string {
         $texto = trim($texto);
@@ -199,6 +213,10 @@
                             <i class="mdi mdi-file-excel me-5"></i>
                             Excel
                         </a>
+                        <a href="{{ $exportParticularesPdfUrl }}" class="btn btn-danger">
+                            <i class="mdi mdi-file-pdf-box me-5"></i>
+                            PDF KPI
+                        </a>
                         <a href="/v2/informes/particulares" class="btn btn-light">
                             <i class="mdi mdi-filter-remove me-5"></i>
                         </a>
@@ -211,6 +229,20 @@
             $totalAtenciones = (int) ($summary['total'] ?? 0);
             $totalConsultas = (int) ($summary['total_consultas'] ?? 0);
             $totalProtocolos = (int) ($summary['total_protocolos'] ?? 0);
+            $economico = is_array($summary['economico'] ?? null) ? $summary['economico'] : [];
+            $produccionTotal = (float) ($economico['total_produccion'] ?? 0);
+            $ticketPromedioFacturado = (float) ($economico['ticket_promedio_facturado'] ?? 0);
+            $produccionPromedioAtencion = (float) ($economico['produccion_promedio_por_atencion'] ?? 0);
+            $atencionesFacturadas = (int) ($economico['atenciones_facturadas'] ?? 0);
+            $atencionesNoFacturadas = (int) ($economico['atenciones_no_facturadas'] ?? 0);
+            $facturacionRate = (float) ($economico['facturacion_rate'] ?? 0);
+            $procedimientosFacturados = (int) ($economico['procedimientos_facturados'] ?? 0);
+            $produccionPorCategoria = is_array($economico['produccion_por_categoria'] ?? null) ? $economico['produccion_por_categoria'] : ['particular' => 0, 'privado' => 0];
+            $produccionParticular = (float) ($produccionPorCategoria['particular'] ?? 0);
+            $produccionPrivado = (float) ($produccionPorCategoria['privado'] ?? 0);
+            $economicoTrend = is_array($economico['trend'] ?? null) ? $economico['trend'] : ['labels' => [], 'totals' => []];
+            $economicoTrendLabels = is_array($economicoTrend['labels'] ?? null) ? $economicoTrend['labels'] : [];
+            $economicoTrendTotals = is_array($economicoTrend['totals'] ?? null) ? $economicoTrend['totals'] : [];
             $pacientesUnicos = (int) ($summary['pacientes_unicos'] ?? 0);
             $categoriaCounts = is_array($summary['categoria_counts'] ?? null) ? $summary['categoria_counts'] : ['particular' => 0, 'privado' => 0];
             $categoriaShare = is_array($summary['categoria_share'] ?? null) ? $summary['categoria_share'] : ['particular' => 0, 'privado' => 0];
@@ -401,6 +433,54 @@
         <div class="row">
             <div class="col-xl-6 col-12">
                 <div class="box">
+                    <div class="box-header with-border d-flex justify-content-between align-items-center">
+                        <h5 class="box-title mb-0">Tendencia mensual de producción (USD)</h5>
+                        <span class="badge bg-success-light text-success">${{ number_format($produccionTotal, 2) }}</span>
+                    </div>
+                    <div class="box-body">
+                        <div id="tendenciaProduccionChart" style="min-height: 320px;"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-xl-6 col-12">
+                <div class="box">
+                    <div class="box-header with-border d-flex justify-content-between align-items-center">
+                        <h5 class="box-title mb-0">Producción por categoría cliente (USD)</h5>
+                        <span class="badge bg-primary-light text-primary">{{ $atencionesFacturadas }} facturadas / {{ $atencionesNoFacturadas }} pendientes</span>
+                    </div>
+                    <div class="box-body">
+                        <div class="table-responsive">
+                            <table class="table table-sm table-striped mb-0">
+                                <thead class="table-light">
+                                <tr>
+                                    <th>Categoría</th>
+                                    <th class="text-end">Producción</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                <tr>
+                                    <td>PARTICULAR</td>
+                                    <td class="text-end">${{ number_format($produccionParticular, 2) }}</td>
+                                </tr>
+                                <tr>
+                                    <td>PRIVADO</td>
+                                    <td class="text-end">${{ number_format($produccionPrivado, 2) }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-600">TOTAL</td>
+                                    <td class="text-end fw-700">${{ number_format($produccionTotal, 2) }}</td>
+                                </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-xl-6 col-12">
+                <div class="box">
                     <div class="box-header with-border">
                         <h5 class="box-title mb-0">Tendencia mensual de volumen (últimos 12 meses)</h5>
                     </div>
@@ -515,6 +595,43 @@
                     </div>
                     <div class="box-body">
                         <div id="topProcedimientosVolumenChart" style="min-height: 260px;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-xl-3 col-md-6 col-12">
+                <div class="box">
+                    <div class="box-body text-center">
+                        <h6 class="mb-5">Producción facturada</h6>
+                        <div class="fs-28 fw-700 text-success">${{ number_format($produccionTotal, 2) }}</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-xl-3 col-md-6 col-12">
+                <div class="box">
+                    <div class="box-body text-center">
+                        <h6 class="mb-5">Ticket promedio facturado</h6>
+                        <div class="fs-28 fw-700 text-primary">${{ number_format($ticketPromedioFacturado, 2) }}</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-xl-3 col-md-6 col-12">
+                <div class="box">
+                    <div class="box-body text-center">
+                        <h6 class="mb-5">Atenciones facturadas</h6>
+                        <div class="fs-28 fw-700 text-info">{{ $atencionesFacturadas }}</div>
+                        <small class="text-muted">{{ number_format($facturacionRate, 2) }}% del total</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-xl-3 col-md-6 col-12">
+                <div class="box">
+                    <div class="box-body text-center">
+                        <h6 class="mb-5">Procedimientos facturados</h6>
+                        <div class="fs-28 fw-700 text-warning">{{ $procedimientosFacturados }}</div>
+                        <small class="text-muted">${{ number_format($produccionPromedioAtencion, 2) }} promedio por atención</small>
                     </div>
                 </div>
             </div>
@@ -781,6 +898,9 @@
                                     <th>Fecha</th>
                                     <th>Procedimiento</th>
                                     <th>Doctor</th>
+                                    <th>Facturación</th>
+                                    <th>Producción</th>
+                                    <th>Proc. facturados</th>
                                 </tr>
                                 </thead>
                                 <tbody>
@@ -817,6 +937,9 @@
                                         };
                                         $fecha = trim((string) ($row['fecha'] ?? ''));
                                         $fechaFmt = $fecha !== '' && strtotime($fecha) !== false ? date('d/m/Y', strtotime($fecha)) : '—';
+                                        $facturado = (bool) ($row['facturado'] ?? false);
+                                        $produccionRow = (float) ($row['total_produccion'] ?? 0);
+                                        $procedimientosFacturadosRow = (int) ($row['procedimientos_facturados'] ?? 0);
                                     @endphp
                                     <tr>
                                         <td>{{ $index + 1 }}</td>
@@ -847,10 +970,17 @@
                                         <td>{{ $fechaFmt }}</td>
                                         <td>{{ $procedimientoLegible((string) ($row['procedimiento_proyectado'] ?? '')) }}</td>
                                         <td>{{ trim((string) ($row['doctor'] ?? '')) !== '' ? ucwords(strtolower((string) $row['doctor'])) : '—' }}</td>
+                                        <td>
+                                                <span class="badge {{ $facturado ? 'bg-success' : 'bg-warning' }}">
+                                                    {{ $facturado ? 'FACTURADO' : 'PENDIENTE' }}
+                                                </span>
+                                        </td>
+                                        <td class="text-end">${{ number_format($produccionRow, 2) }}</td>
+                                        <td class="text-end">{{ $procedimientosFacturadosRow }}</td>
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="11" class="text-center text-muted py-30">No hay atenciones
+                                        <td colspan="14" class="text-center text-muted py-30">No hay atenciones
                                             particulares para los filtros seleccionados.
                                         </td>
                                     </tr>
@@ -885,6 +1015,8 @@
             const hierarquiaCategorias = @json($hierarquiaCategoriasGraficas);
             const temporalTrendLabels = @json($temporalTrendLabels);
             const temporalTrendCounts = @json($temporalTrendCounts);
+            const economicoTrendLabels = @json($economicoTrendLabels);
+            const economicoTrendTotals = @json($economicoTrendTotals);
             const topProcedimientosVolumen = @json($topProcedimientosVolumen);
             const desgloseSedes = @json($desgloseSedes);
             const desgloseDoctores = @json($desgloseDoctores);
@@ -1081,6 +1213,61 @@
                     });
 
                     tendenciaVolumenChart.render();
+                }
+            }
+
+            const tendenciaProduccionContainer = document.querySelector('#tendenciaProduccionChart');
+            if (tendenciaProduccionContainer) {
+                if (!Array.isArray(economicoTrendTotals) || economicoTrendTotals.length === 0) {
+                    tendenciaProduccionContainer.innerHTML = '<div class="text-muted text-center py-30">Sin datos de producción para graficar.</div>';
+                } else {
+                    const tendenciaProduccionChart = new ApexCharts(tendenciaProduccionContainer, {
+                        chart: {
+                            type: 'area',
+                            height: 320,
+                            toolbar: {show: false},
+                        },
+                        series: [{
+                            name: 'Producción USD',
+                            data: economicoTrendTotals.map(function (item) {
+                                const value = Number(item);
+                                return Number.isFinite(value) ? Number(value.toFixed(2)) : 0;
+                            }),
+                        }],
+                        xaxis: {
+                            categories: Array.isArray(economicoTrendLabels) ? economicoTrendLabels : [],
+                        },
+                        yaxis: {
+                            labels: {
+                                formatter: function (value) {
+                                    return '$' + Number(value || 0).toFixed(0);
+                                }
+                            }
+                        },
+                        stroke: {
+                            curve: 'smooth',
+                            width: 3,
+                        },
+                        markers: {
+                            size: 4,
+                        },
+                        colors: ['#16a34a'],
+                        dataLabels: {
+                            enabled: false,
+                        },
+                        tooltip: {
+                            y: {
+                                formatter: function (value) {
+                                    return '$' + Number(value || 0).toFixed(2);
+                                },
+                            },
+                        },
+                        grid: {
+                            borderColor: '#eef1f4',
+                        },
+                    });
+
+                    tendenciaProduccionChart.render();
                 }
             }
 
