@@ -84,22 +84,130 @@ try {
         return trim($value, '_');
     };
 
-    $extractProcedureCode = static function (?string $procedimiento): ?string {
+    $splitProcedureSegments = static function (string $procedimiento): array {
+        $parts = preg_split('/\s+-\s+/u', trim($procedimiento));
+        if (!is_array($parts)) {
+            return [];
+        }
+
+        return array_values(array_filter(array_map(
+            static fn($value): string => trim((string) $value),
+            $parts
+        ), static fn(string $value): bool => $value !== ''));
+    };
+
+    $extractProcedureCode = static function (?string $procedimiento) use ($splitProcedureSegments): ?string {
         $procedimiento = trim((string) ($procedimiento ?? ''));
         if ($procedimiento === '') {
             return null;
         }
 
-        $parts = preg_split('/\s*-\s*/u', $procedimiento);
-        if (is_array($parts) && count($parts) >= 2) {
-            $candidate = strtoupper(trim((string) ($parts[1] ?? '')));
-            if ($candidate !== '' && preg_match('/^[A-Z0-9]+(?:-[A-Z0-9]+)+$/', $candidate)) {
-                return $candidate;
+        $parts = $splitProcedureSegments($procedimiento);
+        if (count($parts) < 2) {
+            return null;
+        }
+
+        $normalizeCandidate = static function (?string $value): string {
+            return strtoupper(trim((string) ($value ?? '')));
+        };
+
+        $isLikelyCode = static function (string $value): bool {
+            if ($value === '' || str_contains($value, ' ')) {
+                return false;
+            }
+            return (bool) preg_match('/^[A-Z0-9][A-Z0-9._-]*$/', $value);
+        };
+
+        $tipoAtencion = $normalizeCandidate($parts[0] ?? '');
+
+        if (str_contains($tipoAtencion, 'IMAGEN') && array_key_exists(2, $parts)) {
+            $thirdRaw = trim((string) ($parts[2] ?? ''));
+            $thirdNorm = $normalizeCandidate($thirdRaw);
+
+            if (preg_match('/^([A-Z0-9]{3,})\s*-\s*(.+)$/u', $thirdNorm, $matches)) {
+                return trim((string) ($matches[1] ?? '')) ?: null;
+            }
+
+            if ($isLikelyCode($thirdNorm)) {
+                return $thirdNorm;
             }
         }
 
-        if (preg_match('/-\s*([A-Z0-9]+(?:-[A-Z0-9]+)+)\s*-/u', strtoupper($procedimiento), $matches)) {
-            return trim((string) ($matches[1] ?? '')) ?: null;
+        $second = $normalizeCandidate($parts[1] ?? '');
+        if ($isLikelyCode($second)) {
+            return $second;
+        }
+
+        if (array_key_exists(2, $parts)) {
+            $third = $normalizeCandidate($parts[2] ?? '');
+            if (preg_match('/^([A-Z0-9][A-Z0-9._-]*)\s*-\s*/u', $third, $matches)) {
+                return trim((string) ($matches[1] ?? '')) ?: null;
+            }
+            if ($isLikelyCode($third)) {
+                return $third;
+            }
+        }
+
+        return null;
+    };
+
+    $extractProcedureDetail = static function (?string $procedimiento, ?string $codigo) use ($splitProcedureSegments): ?string {
+        $procedimiento = trim((string) ($procedimiento ?? ''));
+        $codigo = strtoupper(trim((string) ($codigo ?? '')));
+
+        if ($procedimiento === '' || $codigo === '') {
+            return null;
+        }
+
+        $parts = $splitProcedureSegments($procedimiento);
+        if (empty($parts)) {
+            return null;
+        }
+
+        $tipoAtencion = strtoupper((string) ($parts[0] ?? ''));
+        $detailParts = [];
+
+        if (str_contains($tipoAtencion, 'IMAGEN') && array_key_exists(2, $parts)) {
+            $thirdRaw = trim((string) ($parts[2] ?? ''));
+            $thirdNorm = strtoupper($thirdRaw);
+
+            if (preg_match('/^([A-Z0-9]{3,})\s*-\s*(.+)$/u', $thirdNorm, $matches)) {
+                $imageCode = trim((string) ($matches[1] ?? ''));
+                if ($imageCode === $codigo) {
+                    $firstDetailChunk = trim((string) ($matches[2] ?? ''));
+                    if ($firstDetailChunk !== '') {
+                        $detailParts[] = $firstDetailChunk;
+                    }
+                    $detailParts = array_merge($detailParts, array_slice($parts, 3));
+                }
+            } elseif ($thirdNorm === $codigo) {
+                $detailParts = array_slice($parts, 3);
+            }
+        }
+
+        if (empty($detailParts)) {
+            foreach ($parts as $index => $part) {
+                if (strtoupper(trim((string) $part)) !== $codigo) {
+                    continue;
+                }
+                $detailParts = array_slice($parts, $index + 1);
+                break;
+            }
+        }
+
+        $detailParts = array_values(array_filter(array_map(
+            static fn($value): string => trim((string) $value),
+            $detailParts
+        ), static fn(string $value): bool => $value !== ''));
+
+        if (!empty($detailParts)) {
+            return implode(' - ', $detailParts);
+        }
+
+        $escapedCode = preg_quote($codigo, '/');
+        if (preg_match('/\b' . $escapedCode . '\b\s*-\s*(.+)$/u', $procedimiento, $matches)) {
+            $detail = trim((string) ($matches[1] ?? ''));
+            return $detail !== '' ? $detail : null;
         }
 
         return null;
@@ -133,7 +241,15 @@ try {
                 $normalized = str_replace(',', '', $normalized);
             }
         } elseif ($hasComma) {
-            if (preg_match('/,\d{1,2}$/', $normalized)) {
+            $commaCount = substr_count($normalized, ',');
+            if (
+                $commaCount === 1
+                && (
+                    preg_match('/^-?\d+,\d+$/', $normalized)
+                    || preg_match('/^-?\d{1,3}(?:\.\d{3})+,\d+$/', $normalized)
+                )
+            ) {
+                // Formato esperado del scrape: 32,0000 / 1.234,5000
                 $normalized = str_replace('.', '', $normalized);
                 $normalized = str_replace(',', '.', $normalized);
             } else {
@@ -507,7 +623,13 @@ try {
                 }
 
                 if (!empty($billingId)) {
-                    $detalleProcedimiento = trim((string) ($item['procedimiento_proyectado'] ?? ''));
+                    $detalleProcedimiento = $extractProcedureDetail(
+                        $item['procedimiento_proyectado'] ?? null,
+                        $codigoProcedimiento
+                    );
+                    if ($detalleProcedimiento === null || $detalleProcedimiento === '') {
+                        $detalleProcedimiento = $codigoProcedimiento;
+                    }
                     $stmtBillingProcByCode->execute([
                         ':billing_id' => $billingId,
                         ':proc_codigo' => $codigoProcedimiento,
