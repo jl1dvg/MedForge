@@ -41,7 +41,7 @@ class ChatController extends BaseController
         $authUser = Auth::user();
         $permissions = $authUser['permisos'] ?? [];
         $canAssign = Permissions::containsAny($permissions, ['whatsapp.chat.assign', 'whatsapp.chat.supervise', 'whatsapp.manage', 'administrativo']);
-        $canSupervise = Permissions::containsAny($permissions, ['whatsapp.chat.supervise', 'whatsapp.manage', 'administrativo']);
+        $canSupervise = $this->canSuperviseUser($authUser);
         $pusher = new PusherConfigService($this->pdo);
 
         $this->render(BASE_PATH . '/modules/WhatsApp/views/chat.php', [
@@ -62,6 +62,10 @@ class ChatController extends BaseController
         $this->requirePermission(['whatsapp.chat.view', 'whatsapp.manage', 'settings.manage', 'administrativo']);
         $this->preventCaching();
 
+        $authUser = Auth::user();
+        $currentUserId = isset($authUser['id']) ? (int) $authUser['id'] : 0;
+        $canViewAssignedOthers = $this->canSuperviseUser($authUser);
+
         $search = $this->getQuery('search');
         $limit = $this->getQueryInt('limit');
         if ($limit !== null) {
@@ -72,7 +76,7 @@ class ChatController extends BaseController
             }
         }
 
-        $data = $this->conversations->listConversations($search ?? '', $limit);
+        $data = $this->conversations->listConversations($search ?? '', $limit, $currentUserId, $canViewAssignedOthers);
         $this->json(['ok' => true, 'data' => $data]);
     }
 
@@ -82,9 +86,20 @@ class ChatController extends BaseController
         $this->requirePermission(['whatsapp.chat.view', 'whatsapp.manage', 'settings.manage', 'administrativo']);
         $this->preventCaching();
 
+        $authUser = Auth::user();
+        $currentUserId = isset($authUser['id']) ? (int) $authUser['id'] : 0;
+        $canViewAssignedOthers = $this->canSuperviseUser($authUser);
+
         $conversation = $this->conversations->getConversationWithMessages($conversationId, 150);
         if ($conversation === null) {
             $this->json(['ok' => false, 'error' => 'Conversación no encontrada'], 404);
+
+            return;
+        }
+
+        $assignedUserId = isset($conversation['assigned_user_id']) ? (int) $conversation['assigned_user_id'] : 0;
+        if (!$canViewAssignedOthers && $assignedUserId > 0 && $assignedUserId !== $currentUserId) {
+            $this->json(['ok' => false, 'error' => 'No tienes acceso a esta conversación porque está asignada a otro agente.'], 403);
 
             return;
         }
@@ -183,7 +198,7 @@ class ChatController extends BaseController
         try {
             $payload = $this->getBody();
             $targetUserId = isset($payload['user_id']) ? (int) $payload['user_id'] : $currentUserId;
-            $canSupervise = Permissions::containsAny($authUser['permisos'] ?? [], ['whatsapp.chat.supervise', 'whatsapp.manage']);
+            $canSupervise = $this->canSuperviseUser($authUser);
 
             if ($targetUserId !== $currentUserId && !$canSupervise) {
                 $this->json(['ok' => false, 'error' => 'No tienes permisos para asignar a otro agente'], 403);
@@ -293,7 +308,7 @@ class ChatController extends BaseController
 
         $authUser = Auth::user();
         $currentUserId = isset($authUser['id']) ? (int) $authUser['id'] : 0;
-        $canSupervise = Permissions::containsAny($authUser['permisos'] ?? [], ['whatsapp.chat.supervise', 'whatsapp.manage']);
+        $canSupervise = $this->canSuperviseUser($authUser);
         if ($currentUserId <= 0) {
             $this->json(['ok' => false, 'error' => 'Usuario no válido'], 401);
 
@@ -362,7 +377,7 @@ class ChatController extends BaseController
 
         $authUser = Auth::user();
         $currentUserId = isset($authUser['id']) ? (int) $authUser['id'] : 0;
-        $canSupervise = Permissions::containsAny($authUser['permisos'] ?? [], ['whatsapp.chat.supervise', 'whatsapp.manage']);
+        $canSupervise = $this->canSuperviseUser($authUser);
         if ($currentUserId <= 0) {
             $this->json(['ok' => false, 'error' => 'Usuario no válido'], 401);
 
@@ -741,6 +756,109 @@ class ChatController extends BaseController
         } catch (Throwable $exception) {
             $this->json(['ok' => false, 'error' => $exception->getMessage()], 500);
         }
+    }
+
+    /**
+     * Evalúa supervisión solo con permisos explícitos guardados en DB (sin expansión por mapa legacy).
+     *
+     * @param array<string, mixed> $authUser
+     */
+    private function canSuperviseUser(array $authUser): bool
+    {
+        $userId = isset($authUser['id']) ? (int) $authUser['id'] : 0;
+        if ($userId <= 0) {
+            return false;
+        }
+
+        $permissions = $this->loadExplicitPermissions($userId);
+
+        return in_array(Permissions::SUPERUSER, $permissions, true)
+            || in_array('administrativo', $permissions, true)
+            || in_array('whatsapp.chat.supervise', $permissions, true);
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function loadExplicitPermissions(int $userId): array
+    {
+        if ($userId <= 0) {
+            return [];
+        }
+
+        try {
+            $stmt = $this->pdo->prepare(
+                'SELECT u.permisos, r.permissions AS role_permissions
+                 FROM users u
+                 LEFT JOIN roles r ON r.id = u.role_id
+                 WHERE u.id = :id
+                 LIMIT 1'
+            );
+            $stmt->execute([':id' => $userId]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!is_array($row)) {
+                return [];
+            }
+
+            return $this->mergeRawPermissionLists(
+                $this->parseRawPermissionList($row['permisos'] ?? null),
+                $this->parseRawPermissionList($row['role_permissions'] ?? null)
+            );
+        } catch (Throwable $exception) {
+            return [];
+        }
+    }
+
+    /**
+     * @param mixed $value
+     * @return array<int, string>
+     */
+    private function parseRawPermissionList($value): array
+    {
+        if (is_array($value)) {
+            $list = $value;
+        } elseif (is_string($value) && trim($value) !== '') {
+            $decoded = json_decode($value, true);
+            if (is_array($decoded)) {
+                $list = $decoded;
+            } else {
+                $list = [$value];
+            }
+        } else {
+            return [];
+        }
+
+        $result = [];
+        foreach ($list as $permission) {
+            if (!is_string($permission)) {
+                continue;
+            }
+            $permission = trim($permission);
+            if ($permission === '' || in_array($permission, $result, true)) {
+                continue;
+            }
+            $result[] = $permission;
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param array<int, string> ...$groups
+     * @return array<int, string>
+     */
+    private function mergeRawPermissionLists(array ...$groups): array
+    {
+        $merged = [];
+        foreach ($groups as $group) {
+            foreach ($group as $permission) {
+                if (!in_array($permission, $merged, true)) {
+                    $merged[] = $permission;
+                }
+            }
+        }
+
+        return $merged;
     }
 
     private function preventCaching(): void
