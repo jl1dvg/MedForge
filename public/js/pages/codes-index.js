@@ -8,6 +8,8 @@
         return;
     }
 
+    const datatableUrl = $table.data('datatable-url') || '/codes/datatable';
+    const indexUrl = $table.data('index-url') || '/codes';
     const filterForm = document.getElementById('codes-filter-form');
     const refreshButton = document.getElementById('codes-refresh-btn');
 
@@ -30,10 +32,8 @@
         searching: false,
         pageLength: 25,
         lengthMenu: [10, 25, 50, 100],
-        scrollY: '60vh',
-        scrollCollapse: true,
         ajax: {
-            url: '/codes/datatable',
+            url: datatableUrl,
             type: 'GET',
             data: function (d) {
                 d.q = getFormValue('q');
@@ -60,15 +60,17 @@
             { data: 'valor3', className: 'text-end' },
             { data: 'acciones', orderable: false, searchable: false },
         ],
+        columnDefs: [
+            { targets: '_all', defaultContent: '—' },
+        ],
         order: [[0, 'asc']],
-        rowGroup: { dataSrc: 3 },
     });
 
     if (filterForm) {
         filterForm.addEventListener('submit', function (event) {
             event.preventDefault();
             const params = new URLSearchParams(new FormData(filterForm));
-            const url = params.toString() ? `/codes?${params.toString()}` : '/codes';
+            const url = params.toString() ? `${indexUrl}?${params.toString()}` : indexUrl;
             window.history.replaceState({}, document.title, url);
             dataTable.ajax.reload();
         });

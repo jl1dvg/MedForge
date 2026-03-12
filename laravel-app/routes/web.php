@@ -3,6 +3,8 @@
 use App\Modules\Dashboard\Http\Controllers\DashboardUiController;
 use App\Modules\Examenes\Http\Controllers\ExamenesUiController;
 use App\Modules\Auth\Http\Controllers\UnifiedLogoutController;
+use App\Modules\Codes\Http\Controllers\CodesUiController;
+use App\Modules\Codes\Http\Controllers\CodesWriteController;
 use App\Modules\Derivaciones\Http\Controllers\DerivacionesUiController;
 use App\Modules\Solicitudes\Http\Controllers\SolicitudesUiController;
 use App\Modules\Usuarios\Http\Controllers\RolesUiController;
@@ -57,6 +59,22 @@ Route::middleware(['legacy.auth', 'legacy.permission:administrativo,admin.roles.
     Route::get('/v2/roles/{id}/edit', [RolesUiController::class, 'edit'])->whereNumber('id');
     Route::post('/v2/roles/{id}', [RolesUiController::class, 'update'])->whereNumber('id');
     Route::post('/v2/roles/{id}/delete', [RolesUiController::class, 'destroy'])->whereNumber('id');
+});
+
+Route::middleware(['legacy.auth', 'legacy.permission:administrativo,codes.view,codes.manage'])->group(function (): void {
+    Route::get('/v2/codes', [CodesUiController::class, 'index']);
+});
+
+Route::middleware(['legacy.auth', 'legacy.permission:administrativo,codes.manage'])->group(function (): void {
+    Route::get('/v2/codes/create', [CodesUiController::class, 'create']);
+    Route::post('/v2/codes', [CodesWriteController::class, 'store']);
+    Route::get('/v2/codes/{id}/edit', [CodesUiController::class, 'edit'])->whereNumber('id');
+    Route::post('/v2/codes/{id}', [CodesWriteController::class, 'update'])->whereNumber('id');
+    Route::post('/v2/codes/{id}/delete', [CodesWriteController::class, 'destroy'])->whereNumber('id');
+    Route::post('/v2/codes/{id}/toggle', [CodesWriteController::class, 'toggleActive'])->whereNumber('id');
+    Route::post('/v2/codes/{id}/relate', [CodesWriteController::class, 'addRelation'])->whereNumber('id');
+    Route::post('/v2/codes/{id}/relate/del', [CodesWriteController::class, 'removeRelation'])->whereNumber('id');
+    Route::get('/v2/codes/packages', [CodesUiController::class, 'packages']);
 });
 
 //Route::middleware('legacy.auth')->get('/usuarios', static fn() => redirect('/v2/usuarios'));
