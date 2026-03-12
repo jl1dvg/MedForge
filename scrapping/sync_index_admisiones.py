@@ -73,6 +73,7 @@ def build_payload(row: Dict) -> Dict:
         "hcNumber": row.get("hc_number", "").strip(),
         "form_id": row.get("pedido_id", "").strip(),
         "procedimiento_proyectado": row.get("procedimiento", "").strip(),
+        "precio": row.get("precio", "").strip(),
         "doctor": row.get("doctor_agenda", "").strip(),
         "cie10": row.get("cie10", "").strip(),
         "estado_agenda": row.get("estado_agenda", "").strip(),

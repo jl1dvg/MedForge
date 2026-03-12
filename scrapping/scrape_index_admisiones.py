@@ -183,6 +183,7 @@ def scrape_index_admisiones(fecha_inicio: str, fecha_fin: str):
                 data = {
                     "fecha_grupo": fecha_grupo,  # e.g. "19-12-2025"
                     "pedido_id": pedido_id,
+                    "precio": c(7),
                     "codigo_examen": c(8),
 
                     "hc_number": c(16),

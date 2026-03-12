@@ -1158,7 +1158,7 @@
             }
 
             if (takeConversationButton) {
-                var canTake = canAssign && needsHuman && (!assignedId || (canSupervise && assignedId !== currentUserId));
+                var canTake = canAssign && !assignedId && (needsHuman || requireAssignmentToReply);
                 if (!canSupervise && conversation && conversation.handoff_role_id && currentRoleId && Number(conversation.handoff_role_id) !== currentRoleId) {
                     canTake = false;
                 }
