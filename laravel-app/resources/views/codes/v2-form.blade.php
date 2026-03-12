@@ -12,12 +12,20 @@
     $action = $isEdit ? '/v2/codes/' . $codeId : '/v2/codes';
     $title = $isEdit ? 'Editar código' : 'Nuevo código';
     $hasAffiliationLevels = false;
+    $priceLevelCategories = [];
     foreach ($priceLevels as $level) {
+        $categoryValue = trim((string) ($level['category'] ?? ''));
+        $categoryKey = $categoryValue !== '' ? strtolower($categoryValue) : '__sin_categoria__';
+        $categoryLabel = $categoryValue !== '' ? strtoupper($categoryValue) : 'SIN CATEGORÍA';
+        if (!array_key_exists($categoryKey, $priceLevelCategories)) {
+            $priceLevelCategories[$categoryKey] = $categoryLabel;
+        }
+
         if (($level['source'] ?? '') === 'afiliacion_categoria_map') {
             $hasAffiliationLevels = true;
-            break;
         }
     }
+    ksort($priceLevelCategories);
 @endphp
 
 @section('content')
@@ -190,6 +198,18 @@
                                 </div>
                             </div>
                             <div class="col-12">
+                                <div class="d-flex flex-wrap align-items-end gap-2 mb-2">
+                                    <div>
+                                        <label class="form-label mb-1" for="pricelevel-category-filter">Filtrar afiliaciones por categoría</label>
+                                        <select id="pricelevel-category-filter" class="form-select form-select-sm">
+                                            <option value="">— Todas —</option>
+                                            @foreach($priceLevelCategories as $categoryKey => $categoryLabel)
+                                                <option value="{{ $categoryKey }}">{{ $categoryLabel }}</option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                    <small id="pricelevel-visible-counter" class="text-muted">Mostrando 0 afiliaciones</small>
+                                </div>
                                 <div class="table-responsive border rounded" style="max-height: 360px;">
                                     <table class="table table-sm mb-0 align-middle">
                                         <thead class="table-light sticky-top">
@@ -210,9 +230,10 @@
                                                     $value = $oldPrices[$key];
                                                 }
                                                 $category = (string) ($level['category'] ?? '');
+                                                $categoryFilterKey = $category !== '' ? strtolower($category) : '__sin_categoria__';
                                             @endphp
                                             @if($key !== '')
-                                                <tr>
+                                                <tr data-pricelevel-row="1" data-pricelevel-category="{{ $categoryFilterKey }}">
                                                     <td>{{ (string) ($level['title'] ?? $key) }}</td>
                                                     <td>
                                                         @if($category !== '')
@@ -335,3 +356,39 @@
         @endif
     </section>
 @endsection
+
+@push('scripts')
+    <script>
+        (function () {
+            const filter = document.getElementById('pricelevel-category-filter');
+            if (!filter) {
+                return;
+            }
+
+            const rows = Array.from(document.querySelectorAll('[data-pricelevel-row="1"]'));
+            const counter = document.getElementById('pricelevel-visible-counter');
+            const total = rows.length;
+
+            function applyFilter() {
+                const selected = filter.value;
+                let visible = 0;
+
+                rows.forEach(function (row) {
+                    const rowCategory = row.getAttribute('data-pricelevel-category') || '';
+                    const show = selected === '' || rowCategory === selected;
+                    row.classList.toggle('d-none', !show);
+                    if (show) {
+                        visible += 1;
+                    }
+                });
+
+                if (counter) {
+                    counter.textContent = 'Mostrando ' + visible + ' de ' + total + ' afiliaciones';
+                }
+            }
+
+            filter.addEventListener('change', applyFilter);
+            applyFilter();
+        })();
+    </script>
+@endpush
