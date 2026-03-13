@@ -70,6 +70,7 @@ class CodesUiController
             'currentUser' => LegacyCurrentUser::resolve($request),
             'status' => session('status'),
             'importSummary' => session('import_summary'),
+            'dedupeSummary' => session('dedupe_summary'),
             'importFiles' => $this->bulkImport->availableImportFiles(),
         ]);
     }

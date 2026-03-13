@@ -10,14 +10,21 @@
         'total_protocolos' => 0,
         'economico' => [
             'total_produccion' => 0,
-            'ticket_promedio_facturado' => 0,
+            'total_honorario_real' => 0,
+            'ticket_promedio_honorario' => 0,
             'produccion_promedio_por_atencion' => 0,
             'atenciones_facturadas' => 0,
+            'atenciones_con_honorario' => 0,
             'atenciones_no_facturadas' => 0,
             'facturacion_rate' => 0,
+            'cobertura_honorario_rate' => 0,
             'procedimientos_facturados' => 0,
+            'facturas_emitidas' => 0,
             'produccion_por_categoria' => ['particular' => 0, 'privado' => 0],
-            'trend' => ['labels' => [], 'totals' => []],
+            'honorario_por_categoria' => ['particular' => 0, 'privado' => 0],
+            'formas_pago' => ['values' => []],
+            'doctores_top' => [],
+            'areas_top' => [],
         ],
         'pacientes_unicos' => 0,
         'categoria_counts' => ['particular' => 0, 'privado' => 0],
@@ -106,7 +113,8 @@
             <div class="ms-auto text-end">
                 <span class="badge bg-light text-primary">Fuente: LARAVEL V2</span>
                 <div class="text-muted fs-12 mt-5">
-                    Última actualización: {{ now()->setTimezone(config('app.timezone', 'America/Guayaquil'))->format('d/m/Y H:i') }}
+                    Última
+                    actualización: {{ now()->setTimezone(config('app.timezone', 'America/Guayaquil'))->format('d/m/Y H:i') }}
                 </div>
             </div>
         </div>
@@ -231,18 +239,23 @@
             $totalProtocolos = (int) ($summary['total_protocolos'] ?? 0);
             $economico = is_array($summary['economico'] ?? null) ? $summary['economico'] : [];
             $produccionTotal = (float) ($economico['total_produccion'] ?? 0);
-            $ticketPromedioFacturado = (float) ($economico['ticket_promedio_facturado'] ?? 0);
+            $totalHonorarioReal = (float) ($economico['total_honorario_real'] ?? $produccionTotal);
+            $ticketPromedioHonorario = (float) ($economico['ticket_promedio_honorario'] ?? $economico['produccion_promedio_por_atencion'] ?? 0);
             $produccionPromedioAtencion = (float) ($economico['produccion_promedio_por_atencion'] ?? 0);
             $atencionesFacturadas = (int) ($economico['atenciones_facturadas'] ?? 0);
+            $atencionesConHonorario = (int) ($economico['atenciones_con_honorario'] ?? 0);
             $atencionesNoFacturadas = (int) ($economico['atenciones_no_facturadas'] ?? 0);
             $facturacionRate = (float) ($economico['facturacion_rate'] ?? 0);
+            $coberturaHonorarioRate = (float) ($economico['cobertura_honorario_rate'] ?? 0);
             $procedimientosFacturados = (int) ($economico['procedimientos_facturados'] ?? 0);
-            $produccionPorCategoria = is_array($economico['produccion_por_categoria'] ?? null) ? $economico['produccion_por_categoria'] : ['particular' => 0, 'privado' => 0];
-            $produccionParticular = (float) ($produccionPorCategoria['particular'] ?? 0);
-            $produccionPrivado = (float) ($produccionPorCategoria['privado'] ?? 0);
-            $economicoTrend = is_array($economico['trend'] ?? null) ? $economico['trend'] : ['labels' => [], 'totals' => []];
-            $economicoTrendLabels = is_array($economicoTrend['labels'] ?? null) ? $economicoTrend['labels'] : [];
-            $economicoTrendTotals = is_array($economicoTrend['totals'] ?? null) ? $economicoTrend['totals'] : [];
+            $facturasEmitidas = (int) ($economico['facturas_emitidas'] ?? 0);
+            $honorarioPorCategoria = is_array($economico['honorario_por_categoria'] ?? null) ? $economico['honorario_por_categoria'] : (is_array($economico['produccion_por_categoria'] ?? null) ? $economico['produccion_por_categoria'] : ['particular' => 0, 'privado' => 0]);
+            $honorarioParticular = (float) ($honorarioPorCategoria['particular'] ?? 0);
+            $honorarioPrivado = (float) ($honorarioPorCategoria['privado'] ?? 0);
+            $formasPagoSummary = is_array($economico['formas_pago'] ?? null) ? $economico['formas_pago'] : ['values' => []];
+            $formasPagoValues = is_array($formasPagoSummary['values'] ?? null) ? $formasPagoSummary['values'] : [];
+            $doctoresHonorarioTop = is_array($economico['doctores_top'] ?? null) ? $economico['doctores_top'] : [];
+            $areasTop = is_array($economico['areas_top'] ?? null) ? $economico['areas_top'] : [];
             $pacientesUnicos = (int) ($summary['pacientes_unicos'] ?? 0);
             $categoriaCounts = is_array($summary['categoria_counts'] ?? null) ? $summary['categoria_counts'] : ['particular' => 0, 'privado' => 0];
             $categoriaShare = is_array($summary['categoria_share'] ?? null) ? $summary['categoria_share'] : ['particular' => 0, 'privado' => 0];
@@ -414,7 +427,7 @@
             <div class="col-xl-2 col-md-4 col-6">
                 <div class="box">
                     <div class="box-body text-center">
-                        <h6 class="mb-5">Atenciones Particularer</h6>
+                        <h6 class="mb-5">Atenciones Particulares</h6>
                         <div class="fs-30 fw-700 text-success">{{ $particularCount }}</div>
                     </div>
                 </div>
@@ -434,42 +447,82 @@
             <div class="col-xl-6 col-12">
                 <div class="box">
                     <div class="box-header with-border d-flex justify-content-between align-items-center">
-                        <h5 class="box-title mb-0">Tendencia mensual de producción (USD)</h5>
-                        <span class="badge bg-success-light text-success">${{ number_format($produccionTotal, 2) }}</span>
+                        <h5 class="box-title mb-0">Categoría cliente: volumen + honorario</h5>
+                        <div class="d-flex flex-wrap gap-2">
+                            <span
+                                class="badge bg-primary-light text-primary">{{ $atencionesFacturadas }} con factura</span>
+                            <span
+                                class="badge bg-warning-light text-warning">{{ $atencionesNoFacturadas }} sin factura</span>
+                        </div>
                     </div>
                     <div class="box-body">
-                        <div id="tendenciaProduccionChart" style="min-height: 320px;"></div>
+                        <div id="categoriaClienteResumenChart" style="min-height: 320px;"></div>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-striped mb-0 mt-15">
+                                <thead class="table-light">
+                                <tr>
+                                    <th>Categoría</th>
+                                    <th class="text-end">Atenciones</th>
+                                    <th class="text-end">% mix</th>
+                                    <th class="text-end">Honorario real</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                <tr>
+                                    <td>PARTICULAR</td>
+                                    <td class="text-end">{{ $particularCount }}</td>
+                                    <td class="text-end">{{ number_format($particularShare, 2) }}%</td>
+                                    <td class="text-end">${{ number_format($honorarioParticular, 2) }}</td>
+                                </tr>
+                                <tr>
+                                    <td>PRIVADO</td>
+                                    <td class="text-end">{{ $privadoCount }}</td>
+                                    <td class="text-end">{{ number_format($privadoShare, 2) }}%</td>
+                                    <td class="text-end">${{ number_format($honorarioPrivado, 2) }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-600">TOTAL</td>
+                                    <td class="text-end fw-700">{{ $totalAtenciones }}</td>
+                                    <td class="text-end fw-700">100.00%</td>
+                                    <td class="text-end fw-700">${{ number_format($totalHonorarioReal, 2) }}</td>
+                                </tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>
             <div class="col-xl-6 col-12">
                 <div class="box">
                     <div class="box-header with-border d-flex justify-content-between align-items-center">
-                        <h5 class="box-title mb-0">Producción por categoría cliente (USD)</h5>
-                        <span class="badge bg-primary-light text-primary">{{ $atencionesFacturadas }} facturadas / {{ $atencionesNoFacturadas }} pendientes</span>
+                        <h5 class="box-title mb-0">Top afiliaciones (Polar)</h5>
+                        <span class="badge bg-primary-light text-primary">{{ count($topAfiliaciones) }} valores</span>
                     </div>
                     <div class="box-body">
-                        <div class="table-responsive">
+                        <div id="topAfiliacionesChart" style="min-height: 320px;"></div>
+                        <div class="table-responsive mt-15" style="max-height: 240px;">
                             <table class="table table-sm table-striped mb-0">
                                 <thead class="table-light">
                                 <tr>
-                                    <th>Categoría</th>
-                                    <th class="text-end">Producción</th>
+                                    <th>Afiliación</th>
+                                    <th class="text-end">Cantidad</th>
                                 </tr>
                                 </thead>
                                 <tbody>
-                                <tr>
-                                    <td>PARTICULAR</td>
-                                    <td class="text-end">${{ number_format($produccionParticular, 2) }}</td>
-                                </tr>
-                                <tr>
-                                    <td>PRIVADO</td>
-                                    <td class="text-end">${{ number_format($produccionPrivado, 2) }}</td>
-                                </tr>
-                                <tr>
-                                    <td class="fw-600">TOTAL</td>
-                                    <td class="text-end fw-700">${{ number_format($produccionTotal, 2) }}</td>
-                                </tr>
+                                @forelse($topAfiliaciones as $item)
+                                    @php
+                                        $cantidad = (int) ($item['cantidad'] ?? 0);
+                                        $afiliacion = strtoupper(trim((string) ($item['afiliacion'] ?? 'SIN AFILIACION')));
+                                    @endphp
+                                    <tr>
+                                        <td>{{ $afiliacion !== '' ? $afiliacion : 'SIN AFILIACION' }}</td>
+                                        <td class="text-end">{{ $cantidad }}</td>
+                                    </tr>
+                                @empty
+                                    <tr>
+                                        <td colspan="2" class="text-center text-muted">Sin datos disponibles.</td>
+                                    </tr>
+                                @endforelse
                                 </tbody>
                             </table>
                         </div>
@@ -579,137 +632,125 @@
             </div>
             <div class="col-xl-4 col-12">
                 <div class="box">
-                    <div class="box-header with-border">
-                        <h5 class="box-title mb-0">Desglose por médico (Top 10)</h5>
-                    </div>
-                    <div class="box-body">
-                        <div id="desgloseDoctorChart" style="min-height: 320px;"></div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-xl-4 col-12">
-                <div class="box">
                     <div class="box-header with-border d-flex justify-content-between align-items-center">
-                        <h5 class="box-title mb-0">Concentración de procedimientos</h5>
-                        <span class="badge bg-primary-light text-primary">{{ count($topProcedimientosVolumen) }} valores</span>
+                        <h5 class="box-title mb-0">Top procedimientos por volumen</h5>
+                        <span
+                            class="badge bg-primary-light text-primary">{{ count($topProcedimientosVolumen) }} valores</span>
                     </div>
                     <div class="box-body">
                         <div id="topProcedimientosVolumenChart" style="min-height: 260px;"></div>
                     </div>
                 </div>
             </div>
+            <div class="col-xl-4 col-12">
+                <div class="box">
+                    <div class="box-header with-border d-flex justify-content-between align-items-center">
+                        <h5 class="box-title mb-0">Médicos: volumen + honorario</h5>
+                        <div class="d-flex flex-wrap gap-2 align-items-center">
+                            <span class="badge bg-success-light text-success">${{ number_format($totalHonorarioReal, 2) }} honorario total</span>
+                            <div class="btn-group btn-group-sm" role="group" aria-label="Modo médico">
+                                <button type="button" class="btn btn-outline-primary active" data-doctor-mode="ambos">
+                                    Ambos
+                                </button>
+                                <button type="button" class="btn btn-outline-primary" data-doctor-mode="volumen">
+                                    Volumen
+                                </button>
+                                <button type="button" class="btn btn-outline-primary" data-doctor-mode="honorario">
+                                    Honorario
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="box-body">
+                        <div id="doctorPerformanceChart" style="min-height: 360px;"></div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <div class="row">
-            <div class="col-xl-3 col-md-6 col-12">
+            <div class="col-xl-6 col-12">
                 <div class="box">
-                    <div class="box-body text-center">
-                        <h6 class="mb-5">Producción facturada</h6>
-                        <div class="fs-28 fw-700 text-success">${{ number_format($produccionTotal, 2) }}</div>
+                    <div class="box-header with-border d-flex justify-content-between align-items-center">
+                        <h5 class="box-title mb-0">Formas de pago (Top)</h5>
+                        <span class="badge bg-success-light text-success">{{ count($formasPagoValues) }} valores</span>
+                    </div>
+                    <div class="box-body">
+                        <div id="formasPagoChart" style="min-height: 320px;"></div>
                     </div>
                 </div>
             </div>
-            <div class="col-xl-3 col-md-6 col-12">
+            <div class="col-xl-6 col-12">
                 <div class="box">
-                    <div class="box-body text-center">
-                        <h6 class="mb-5">Ticket promedio facturado</h6>
-                        <div class="fs-28 fw-700 text-primary">${{ number_format($ticketPromedioFacturado, 2) }}</div>
+                    <div class="box-header with-border d-flex justify-content-between align-items-center">
+                        <h5 class="box-title mb-0">Áreas con mayor honorario real</h5>
+                        <span class="badge bg-info-light text-info">{{ count($areasTop) }} valores</span>
+                    </div>
+                    <div class="box-body">
+                        <div id="areasHonorarioChart" style="min-height: 320px;"></div>
                     </div>
                 </div>
             </div>
-            <div class="col-xl-3 col-md-6 col-12">
+        </div>
+
+        <div class="row">
+            <div class="col-xl-2 col-md-6 col-12">
                 <div class="box">
                     <div class="box-body text-center">
-                        <h6 class="mb-5">Atenciones facturadas</h6>
+                        <h6 class="mb-5">Honorario real acumulado</h6>
+                        <div class="fs-28 fw-700 text-success">${{ number_format($totalHonorarioReal, 2) }}</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-xl-2 col-md-6 col-12">
+                <div class="box">
+                    <div class="box-body text-center">
+                        <h6 class="mb-5">Ticket promedio honorario</h6>
+                        <div class="fs-28 fw-700 text-primary">${{ number_format($ticketPromedioHonorario, 2) }}</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-xl-2 col-md-6 col-12">
+                <div class="box">
+                    <div class="box-body text-center">
+                        <h6 class="mb-5">Atenciones con factura</h6>
                         <div class="fs-28 fw-700 text-info">{{ $atencionesFacturadas }}</div>
-                        <small class="text-muted">{{ number_format($facturacionRate, 2) }}% del total</small>
+                        <small class="text-muted">{{ number_format($facturacionRate, 2) }}% con factura
+                            registrada</small>
                     </div>
                 </div>
             </div>
-            <div class="col-xl-3 col-md-6 col-12">
+            <div class="col-xl-2 col-md-6 col-12">
+                <div class="box">
+                    <div class="box-body text-center">
+                        <h6 class="mb-5">Facturas emitidas</h6>
+                        <div class="fs-28 fw-700 text-dark">{{ $facturasEmitidas }}</div>
+                        <small class="text-muted">{{ $procedimientosFacturados }} registros económicos asociados</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-xl-2 col-md-6 col-12">
+                <div class="box">
+                    <div class="box-body text-center">
+                        <h6 class="mb-5">Atenciones con valor real</h6>
+                        <div class="fs-28 fw-700 text-warning">{{ $atencionesConHonorario }}</div>
+                        <small class="text-muted">{{ number_format($coberturaHonorarioRate, 2) }}% con
+                            monto_honorario</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-xl-2 col-md-6 col-12">
                 <div class="box">
                     <div class="box-body text-center">
                         <h6 class="mb-5">Procedimientos facturados</h6>
-                        <div class="fs-28 fw-700 text-warning">{{ $procedimientosFacturados }}</div>
-                        <small class="text-muted">${{ number_format($produccionPromedioAtencion, 2) }} promedio por atención</small>
+                        <div class="fs-28 fw-700 text-secondary">{{ $procedimientosFacturados }}</div>
+                        <small class="text-muted">${{ number_format($produccionPromedioAtencion, 2) }} promedio por
+                            atención total</small>
                     </div>
                 </div>
             </div>
         </div>
 
-        <div class="row">
-            <div class="col-xl-6 col-12">
-                <div class="box">
-                    <div class="box-header with-border d-flex justify-content-between align-items-center">
-                        <h5 class="box-title mb-0">Mix categoría cliente (Pie)</h5>
-                        <span class="badge bg-success-light text-success">{{ $totalAtenciones }} registros</span>
-                    </div>
-                    <div class="box-body">
-                        <div id="mixCategoriaClienteChart" style="min-height: 320px;"></div>
-                        <div class="table-responsive mt-15">
-                            <table class="table table-sm table-striped mb-0">
-                                <thead class="table-light">
-                                <tr>
-                                    <th>Categoría</th>
-                                    <th class="text-end">Cantidad</th>
-                                    <th class="text-end">%</th>
-                                </tr>
-                                </thead>
-                                <tbody>
-                                <tr>
-                                    <td>PARTICULAR</td>
-                                    <td class="text-end">{{ $particularCount }}</td>
-                                    <td class="text-end">{{ number_format($particularShare, 2) }}%</td>
-                                </tr>
-                                <tr>
-                                    <td>PRIVADO</td>
-                                    <td class="text-end">{{ $privadoCount }}</td>
-                                    <td class="text-end">{{ number_format($privadoShare, 2) }}%</td>
-                                </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-xl-6 col-12">
-                <div class="box">
-                    <div class="box-header with-border d-flex justify-content-between align-items-center">
-                        <h5 class="box-title mb-0">Top afiliaciones (Polar)</h5>
-                        <span class="badge bg-primary-light text-primary">{{ count($topAfiliaciones) }} valores</span>
-                    </div>
-                    <div class="box-body">
-                        <div id="topAfiliacionesChart" style="min-height: 320px;"></div>
-                        <div class="table-responsive mt-15" style="max-height: 240px;">
-                            <table class="table table-sm table-striped mb-0">
-                                <thead class="table-light">
-                                <tr>
-                                    <th>Afiliación</th>
-                                    <th class="text-end">Cantidad</th>
-                                </tr>
-                                </thead>
-                                <tbody>
-                                @forelse($topAfiliaciones as $item)
-                                    @php
-                                        $cantidad = (int) ($item['cantidad'] ?? 0);
-                                        $afiliacion = strtoupper(trim((string) ($item['afiliacion'] ?? 'SIN AFILIACION')));
-                                    @endphp
-                                    <tr>
-                                        <td>{{ $afiliacion !== '' ? $afiliacion : 'SIN AFILIACION' }}</td>
-                                        <td class="text-end">{{ $cantidad }}</td>
-                                    </tr>
-                                @empty
-                                    <tr>
-                                        <td colspan="2" class="text-center text-muted">Sin datos disponibles.</td>
-                                    </tr>
-                                @endforelse
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
 
         <div class="row">
             <div class="col-xl-4 col-12">
@@ -785,11 +826,15 @@
                                     <tr>
                                         <td>{{ strtoupper($valor) }}</td>
                                         <td class="text-end">{{ (int) ($item['cantidad'] ?? 0) }}</td>
-                                        <td class="text-end">{{ number_format((float) ($item['porcentaje'] ?? 0), 2) }}%</td>
+                                        <td class="text-end">{{ number_format((float) ($item['porcentaje'] ?? 0), 2) }}
+                                            %
+                                        </td>
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="3" class="text-center text-muted">Sin datos para el rango seleccionado.</td>
+                                        <td colspan="3" class="text-center text-muted">Sin datos para el rango
+                                            seleccionado.
+                                        </td>
                                     </tr>
                                 @endforelse
                                 </tbody>
@@ -826,11 +871,15 @@
                                     <tr>
                                         <td>{{ strtoupper($valor) }}</td>
                                         <td class="text-end">{{ (int) ($item['cantidad'] ?? 0) }}</td>
-                                        <td class="text-end">{{ number_format((float) ($item['porcentaje'] ?? 0), 2) }}%</td>
+                                        <td class="text-end">{{ number_format((float) ($item['porcentaje'] ?? 0), 2) }}
+                                            %
+                                        </td>
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="3" class="text-center text-muted">Sin datos para el rango seleccionado.</td>
+                                        <td colspan="3" class="text-center text-muted">Sin datos para el rango
+                                            seleccionado.
+                                        </td>
                                     </tr>
                                 @endforelse
                                 </tbody>
@@ -899,8 +948,12 @@
                                     <th>Procedimiento</th>
                                     <th>Doctor</th>
                                     <th>Facturación</th>
-                                    <th>Producción</th>
-                                    <th>Proc. facturados</th>
+                                    <th>Honorario real</th>
+                                    <th>Fecha fact.</th>
+                                    <th>Factura</th>
+                                    <th>Forma pago</th>
+                                    <th>Cliente</th>
+                                    <th>Área</th>
                                 </tr>
                                 </thead>
                                 <tbody>
@@ -937,9 +990,17 @@
                                         };
                                         $fecha = trim((string) ($row['fecha'] ?? ''));
                                         $fechaFmt = $fecha !== '' && strtotime($fecha) !== false ? date('d/m/Y', strtotime($fecha)) : '—';
+                                        $fechaFacturacion = trim((string) ($row['fecha_facturacion'] ?? ''));
+                                        $fechaFacturacionFmt = $fechaFacturacion !== '' && strtotime($fechaFacturacion) !== false ? date('d/m/Y', strtotime($fechaFacturacion)) : '—';
                                         $facturado = (bool) ($row['facturado'] ?? false);
-                                        $produccionRow = (float) ($row['total_produccion'] ?? 0);
-                                        $procedimientosFacturadosRow = (int) ($row['procedimientos_facturados'] ?? 0);
+                                        $honorarioRealRow = (float) ($row['monto_honorario_real'] ?? $row['total_produccion'] ?? 0);
+                                        $facturaRef = trim((string) ($row['numero_factura'] ?? ''));
+                                        if ($facturaRef === '') {
+                                            $facturaRef = trim((string) ($row['factura_id'] ?? ''));
+                                        }
+                                        $formasPagoRow = trim((string) ($row['formas_pago'] ?? ''));
+                                        $clienteFacturacionRow = trim((string) ($row['cliente_facturacion'] ?? ''));
+                                        $areaFacturacionRow = trim((string) ($row['area_facturacion'] ?? ''));
                                     @endphp
                                     <tr>
                                         <td>{{ $index + 1 }}</td>
@@ -975,12 +1036,16 @@
                                                     {{ $facturado ? 'FACTURADO' : 'PENDIENTE' }}
                                                 </span>
                                         </td>
-                                        <td class="text-end">${{ number_format($produccionRow, 2) }}</td>
-                                        <td class="text-end">{{ $procedimientosFacturadosRow }}</td>
+                                        <td class="text-end">${{ number_format($honorarioRealRow, 2) }}</td>
+                                        <td>{{ $fechaFacturacionFmt }}</td>
+                                        <td>{{ $facturaRef !== '' ? $facturaRef : '—' }}</td>
+                                        <td>{{ $formasPagoRow !== '' ? strtoupper($formasPagoRow) : '—' }}</td>
+                                        <td>{{ $clienteFacturacionRow !== '' ? strtoupper($clienteFacturacionRow) : '—' }}</td>
+                                        <td>{{ $areaFacturacionRow !== '' ? strtoupper($areaFacturacionRow) : '—' }}</td>
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="14" class="text-center text-muted py-30">No hay atenciones
+                                        <td colspan="18" class="text-center text-muted py-30">No hay atenciones
                                             particulares para los filtros seleccionados.
                                         </td>
                                     </tr>
@@ -1015,16 +1080,26 @@
             const hierarquiaCategorias = @json($hierarquiaCategoriasGraficas);
             const temporalTrendLabels = @json($temporalTrendLabels);
             const temporalTrendCounts = @json($temporalTrendCounts);
-            const economicoTrendLabels = @json($economicoTrendLabels);
-            const economicoTrendTotals = @json($economicoTrendTotals);
             const topProcedimientosVolumen = @json($topProcedimientosVolumen);
             const desgloseSedes = @json($desgloseSedes);
             const desgloseDoctores = @json($desgloseDoctores);
+            const doctoresHonorarioTop = @json($doctoresHonorarioTop);
+            const formasPagoValues = @json($formasPagoValues);
+            const areasTop = @json($areasTop);
             const picosDias = @json($picosDias);
 
             if (typeof ApexCharts === 'undefined') {
                 return;
             }
+
+            const truncateLabel = function (value, maxLength) {
+                const text = String(value || '').trim();
+                if (text === '') {
+                    return 'SIN DATO';
+                }
+
+                return text.length > maxLength ? text.slice(0, maxLength) + '...' : text;
+            };
 
             const buildVerticalChart = function (selector, title, values, color) {
                 const container = document.querySelector(selector);
@@ -1175,6 +1250,502 @@
                 chart.render();
             };
 
+            const buildHorizontalPercentageChart = function (selector, values, config) {
+                const container = document.querySelector(selector);
+                if (!container) {
+                    return;
+                }
+
+                const rows = (Array.isArray(values) ? values : []).map(function (item) {
+                    const label = String(item && item.valor ? item.valor : 'SIN DATO').trim().toUpperCase() || 'SIN DATO';
+                    const count = Number(item && item.cantidad ? item.cantidad : 0);
+                    const percent = Number(item && item.porcentaje ? item.porcentaje : 0);
+
+                    return {
+                        label: label,
+                        count: Number.isFinite(count) ? count : 0,
+                        percent: Number.isFinite(percent) ? Number(percent.toFixed(2)) : 0,
+                    };
+                }).filter(function (item) {
+                    return item.count > 0;
+                });
+
+                if (rows.length === 0) {
+                    container.innerHTML = '<div class="text-muted text-center py-30">Sin datos para graficar.</div>';
+                    return;
+                }
+
+                const dynamicHeight = Math.max(320, (rows.length * 42) + 70);
+                container.style.minHeight = dynamicHeight + 'px';
+
+                const chart = new ApexCharts(container, {
+                    chart: {
+                        type: 'bar',
+                        height: dynamicHeight,
+                        toolbar: {show: false},
+                    },
+                    series: [{
+                        name: config && config.seriesName ? config.seriesName : 'Cantidad',
+                        data: rows.map(function (item) {
+                            return item.count;
+                        }),
+                    }],
+                    xaxis: {
+                        categories: rows.map(function (item) {
+                            return truncateLabel(item.label, 34);
+                        }),
+                        title: {
+                            text: config && config.xTitle ? config.xTitle : '',
+                        },
+                    },
+                    yaxis: {
+                        labels: {
+                            maxWidth: 260,
+                        },
+                    },
+                    plotOptions: {
+                        bar: {
+                            horizontal: true,
+                            borderRadius: 5,
+                            barHeight: '68%',
+                            distributed: false,
+                        },
+                    },
+                    colors: [config && config.color ? config.color : '#16a34a'],
+                    dataLabels: {
+                        enabled: true,
+                        textAnchor: 'start',
+                        offsetX: 6,
+                        formatter: function (value, opts) {
+                            const row = rows[opts.dataPointIndex] || {percent: 0};
+                            return value + ' (' + row.percent.toFixed(2) + '%)';
+                        },
+                        style: {
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            colors: ['#334155'],
+                        },
+                    },
+                    tooltip: {
+                        y: {
+                            formatter: function (value, opts) {
+                                const row = rows[opts.dataPointIndex] || {percent: 0};
+                                return value + ' atenciones | ' + row.percent.toFixed(2) + '%';
+                            },
+                        },
+                    },
+                    grid: {
+                        borderColor: '#eef1f4',
+                    },
+                });
+
+                chart.render();
+            };
+
+            const buildHorizontalMoneyChart = function (selector, values, config) {
+                const container = document.querySelector(selector);
+                if (!container) {
+                    return;
+                }
+
+                const rows = (Array.isArray(values) ? values : []).map(function (item) {
+                    const label = String(item && item.valor ? item.valor : 'SIN DATO').trim().toUpperCase() || 'SIN DATO';
+                    const amount = Number(item && item.monto ? item.monto : 0);
+                    const percent = Number(item && item.porcentaje ? item.porcentaje : 0);
+
+                    return {
+                        label: label,
+                        amount: Number.isFinite(amount) ? Number(amount.toFixed(2)) : 0,
+                        percent: Number.isFinite(percent) ? Number(percent.toFixed(2)) : 0,
+                    };
+                }).filter(function (item) {
+                    return item.amount > 0;
+                });
+
+                if (rows.length === 0) {
+                    container.innerHTML = '<div class="text-muted text-center py-30">Sin datos para graficar.</div>';
+                    return;
+                }
+
+                const dynamicHeight = Math.max(320, (rows.length * 42) + 70);
+                container.style.minHeight = dynamicHeight + 'px';
+
+                const chart = new ApexCharts(container, {
+                    chart: {
+                        type: 'bar',
+                        height: dynamicHeight,
+                        toolbar: {show: false},
+                    },
+                    series: [{
+                        name: config && config.seriesName ? config.seriesName : 'Honorario real',
+                        data: rows.map(function (item) {
+                            return item.amount;
+                        }),
+                    }],
+                    xaxis: {
+                        categories: rows.map(function (item) {
+                            return truncateLabel(item.label, 32);
+                        }),
+                        labels: {
+                            formatter: function (value) {
+                                return '$' + Number(value || 0).toFixed(0);
+                            },
+                        },
+                        title: {
+                            text: config && config.xTitle ? config.xTitle : '',
+                        },
+                    },
+                    yaxis: {
+                        labels: {
+                            maxWidth: 260,
+                        },
+                    },
+                    plotOptions: {
+                        bar: {
+                            horizontal: true,
+                            borderRadius: 5,
+                            barHeight: '68%',
+                        },
+                    },
+                    colors: [config && config.color ? config.color : '#0f766e'],
+                    dataLabels: {
+                        enabled: true,
+                        textAnchor: 'start',
+                        offsetX: 6,
+                        formatter: function (value, opts) {
+                            const row = rows[opts.dataPointIndex] || {percent: 0};
+                            return '$' + Number(value || 0).toFixed(2) + ' (' + row.percent.toFixed(2) + '%)';
+                        },
+                        style: {
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            colors: ['#334155'],
+                        },
+                    },
+                    tooltip: {
+                        y: {
+                            formatter: function (value, opts) {
+                                const row = rows[opts.dataPointIndex] || {percent: 0};
+                                return '$' + Number(value || 0).toFixed(2) + ' | ' + row.percent.toFixed(2) + '% del honorario';
+                            },
+                        },
+                    },
+                    grid: {
+                        borderColor: '#eef1f4',
+                    },
+                });
+
+                chart.render();
+            };
+
+            const buildDoctorPerformanceRows = function () {
+                const order = [];
+                const countsMap = new Map();
+                const moneyMap = new Map();
+
+                (Array.isArray(doctoresHonorarioTop) ? doctoresHonorarioTop : []).forEach(function (item) {
+                    const label = String(item && item.valor ? item.valor : 'SIN DOCTOR').trim().toUpperCase() || 'SIN DOCTOR';
+                    if (!order.includes(label)) {
+                        order.push(label);
+                    }
+                    const amount = Number(item && item.monto ? item.monto : 0);
+                    const percent = Number(item && item.porcentaje ? item.porcentaje : 0);
+                    moneyMap.set(label, {
+                        amount: Number.isFinite(amount) ? Number(amount.toFixed(2)) : 0,
+                        percent: Number.isFinite(percent) ? Number(percent.toFixed(2)) : 0,
+                    });
+                });
+
+                (Array.isArray(desgloseDoctores) ? desgloseDoctores : []).forEach(function (item) {
+                    const label = String(item && item.valor ? item.valor : 'SIN DOCTOR').trim().toUpperCase() || 'SIN DOCTOR';
+                    if (!order.includes(label)) {
+                        order.push(label);
+                    }
+                    const count = Number(item && item.cantidad ? item.cantidad : 0);
+                    const percent = Number(item && item.porcentaje ? item.porcentaje : 0);
+                    countsMap.set(label, {
+                        count: Number.isFinite(count) ? count : 0,
+                        percent: Number.isFinite(percent) ? Number(percent.toFixed(2)) : 0,
+                    });
+                });
+
+                return order.slice(0, 10).map(function (label) {
+                    const countMeta = countsMap.get(label) || {count: 0, percent: 0};
+                    const moneyMeta = moneyMap.get(label) || {amount: 0, percent: 0};
+
+                    return {
+                        label: label,
+                        count: countMeta.count,
+                        countPercent: countMeta.percent,
+                        amount: moneyMeta.amount,
+                        amountPercent: moneyMeta.percent,
+                    };
+                });
+            };
+
+            const doctorChartContainer = document.querySelector('#doctorPerformanceChart');
+            const doctorModeButtons = Array.from(document.querySelectorAll('[data-doctor-mode]'));
+            const doctorPerformanceRows = buildDoctorPerformanceRows();
+            let doctorPerformanceChart = null;
+
+            const renderDoctorPerformanceChart = function (mode) {
+                if (!doctorChartContainer) {
+                    return;
+                }
+
+                if (!Array.isArray(doctorPerformanceRows) || doctorPerformanceRows.length === 0) {
+                    doctorChartContainer.innerHTML = '<div class="text-muted text-center py-30">Sin datos de médicos para graficar.</div>';
+                    return;
+                }
+
+                const categories = doctorPerformanceRows.map(function (item) {
+                    const text = String(item.label || 'SIN DOCTOR');
+                    return text.length > 18 ? text.slice(0, 18) + '...' : text;
+                });
+                const counts = doctorPerformanceRows.map(function (item) {
+                    return Number(item.count || 0);
+                });
+                const amounts = doctorPerformanceRows.map(function (item) {
+                    return Number(item.amount || 0);
+                });
+
+                if (doctorPerformanceChart) {
+                    doctorPerformanceChart.destroy();
+                    doctorPerformanceChart = null;
+                }
+
+                const options = {
+                    chart: {
+                        height: 360,
+                        toolbar: {show: false},
+                    },
+                    xaxis: {
+                        categories: categories,
+                        labels: {
+                            rotate: -35,
+                            hideOverlappingLabels: false,
+                            trim: true,
+                        },
+                    },
+                    grid: {
+                        borderColor: '#eef1f4',
+                    },
+                    dataLabels: {
+                        enabled: false,
+                    },
+                    legend: {
+                        position: 'top',
+                    },
+                    tooltip: {
+                        shared: true,
+                        intersect: false,
+                    },
+                };
+
+                if (mode === 'volumen') {
+                    doctorPerformanceChart = new ApexCharts(doctorChartContainer, Object.assign({}, options, {
+                        chart: Object.assign({}, options.chart, {type: 'bar'}),
+                        series: [{
+                            name: 'Atenciones',
+                            data: counts,
+                        }],
+                        colors: ['#2563eb'],
+                        yaxis: {
+                            title: {text: 'Atenciones'},
+                        },
+                        plotOptions: {
+                            bar: {
+                                borderRadius: 4,
+                                columnWidth: '55%',
+                            },
+                        },
+                    }));
+                } else if (mode === 'honorario') {
+                    doctorPerformanceChart = new ApexCharts(doctorChartContainer, Object.assign({}, options, {
+                        chart: Object.assign({}, options.chart, {type: 'bar'}),
+                        series: [{
+                            name: 'Honorario real',
+                            data: amounts,
+                        }],
+                        colors: ['#0f766e'],
+                        yaxis: {
+                            title: {text: 'Honorario real'},
+                            labels: {
+                                formatter: function (value) {
+                                    return '$' + Number(value || 0).toFixed(0);
+                                }
+                            }
+                        },
+                        plotOptions: {
+                            bar: {
+                                borderRadius: 4,
+                                columnWidth: '55%',
+                            },
+                        },
+                        tooltip: {
+                            y: {
+                                formatter: function (value) {
+                                    return '$' + Number(value || 0).toFixed(2);
+                                }
+                            }
+                        },
+                    }));
+                } else {
+                    doctorPerformanceChart = new ApexCharts(doctorChartContainer, Object.assign({}, options, {
+                        chart: Object.assign({}, options.chart, {type: 'line'}),
+                        series: [{
+                            name: 'Atenciones',
+                            type: 'column',
+                            data: counts,
+                        }, {
+                            name: 'Honorario real',
+                            type: 'line',
+                            data: amounts,
+                        }],
+                        colors: ['#2563eb', '#0f766e'],
+                        stroke: {
+                            width: [0, 3],
+                            curve: 'smooth',
+                        },
+                        markers: {
+                            size: [0, 4],
+                        },
+                        plotOptions: {
+                            bar: {
+                                borderRadius: 4,
+                                columnWidth: '52%',
+                            },
+                        },
+                        yaxis: [{
+                            title: {text: 'Atenciones'},
+                        }, {
+                            opposite: true,
+                            title: {text: 'Honorario real'},
+                            labels: {
+                                formatter: function (value) {
+                                    return '$' + Number(value || 0).toFixed(0);
+                                }
+                            }
+                        }],
+                        tooltip: {
+                            shared: true,
+                            intersect: false,
+                            y: [{
+                                formatter: function (value) {
+                                    return Number(value || 0) + ' atenciones';
+                                }
+                            }, {
+                                formatter: function (value) {
+                                    return '$' + Number(value || 0).toFixed(2);
+                                }
+                            }]
+                        },
+                    }));
+                }
+
+                doctorPerformanceChart.render();
+            };
+
+            doctorModeButtons.forEach(function (button) {
+                button.addEventListener('click', function () {
+                    doctorModeButtons.forEach(function (item) {
+                        item.classList.remove('active');
+                    });
+                    button.classList.add('active');
+                    renderDoctorPerformanceChart(String(button.getAttribute('data-doctor-mode') || 'ambos'));
+                });
+            });
+
+            renderDoctorPerformanceChart('ambos');
+
+            const categoriaClienteResumenContainer = document.querySelector('#categoriaClienteResumenChart');
+            if (categoriaClienteResumenContainer) {
+                const categoryCounts = [
+                    Number.isFinite(Number(particularCount)) ? Number(particularCount) : 0,
+                    Number.isFinite(Number(privadoCount)) ? Number(privadoCount) : 0,
+                ];
+                const categoryHonorarios = [
+                    {{ json_encode(round($honorarioParticular, 2)) }},
+                    {{ json_encode(round($honorarioPrivado, 2)) }},
+                ].map(function (item) {
+                    const value = Number(item);
+                    return Number.isFinite(value) ? Number(value.toFixed(2)) : 0;
+                });
+
+                if ((categoryCounts[0] + categoryCounts[1]) === 0) {
+                    categoriaClienteResumenContainer.innerHTML = '<div class="text-muted text-center py-30">Sin datos de categoría para graficar.</div>';
+                } else {
+                    const categoriaClienteResumenChart = new ApexCharts(categoriaClienteResumenContainer, {
+                        chart: {
+                            type: 'line',
+                            height: 320,
+                            toolbar: {show: false},
+                        },
+                        series: [{
+                            name: 'Atenciones',
+                            type: 'column',
+                            data: categoryCounts,
+                        }, {
+                            name: 'Honorario real',
+                            type: 'line',
+                            data: categoryHonorarios,
+                        }],
+                        xaxis: {
+                            categories: ['PARTICULAR', 'PRIVADO'],
+                        },
+                        colors: ['#2563eb', '#0f766e'],
+                        stroke: {
+                            width: [0, 3],
+                            curve: 'smooth',
+                        },
+                        markers: {
+                            size: [0, 4],
+                        },
+                        plotOptions: {
+                            bar: {
+                                borderRadius: 4,
+                                columnWidth: '45%',
+                            },
+                        },
+                        yaxis: [{
+                            title: {text: 'Atenciones'},
+                        }, {
+                            opposite: true,
+                            title: {text: 'Honorario real'},
+                            labels: {
+                                formatter: function (value) {
+                                    return '$' + Number(value || 0).toFixed(0);
+                                }
+                            }
+                        }],
+                        tooltip: {
+                            shared: true,
+                            intersect: false,
+                            y: [{
+                                formatter: function (value) {
+                                    return Number(value || 0) + ' atenciones';
+                                }
+                            }, {
+                                formatter: function (value) {
+                                    return '$' + Number(value || 0).toFixed(2);
+                                }
+                            }]
+                        },
+                        grid: {
+                            borderColor: '#eef1f4',
+                        },
+                        dataLabels: {
+                            enabled: false,
+                        },
+                        legend: {
+                            position: 'top',
+                        },
+                    });
+
+                    categoriaClienteResumenChart.render();
+                }
+            }
+
             const tendenciaVolumenContainer = document.querySelector('#tendenciaVolumenChart');
             if (tendenciaVolumenContainer) {
                 if (!Array.isArray(temporalTrendCounts) || temporalTrendCounts.length === 0) {
@@ -1216,61 +1787,6 @@
                 }
             }
 
-            const tendenciaProduccionContainer = document.querySelector('#tendenciaProduccionChart');
-            if (tendenciaProduccionContainer) {
-                if (!Array.isArray(economicoTrendTotals) || economicoTrendTotals.length === 0) {
-                    tendenciaProduccionContainer.innerHTML = '<div class="text-muted text-center py-30">Sin datos de producción para graficar.</div>';
-                } else {
-                    const tendenciaProduccionChart = new ApexCharts(tendenciaProduccionContainer, {
-                        chart: {
-                            type: 'area',
-                            height: 320,
-                            toolbar: {show: false},
-                        },
-                        series: [{
-                            name: 'Producción USD',
-                            data: economicoTrendTotals.map(function (item) {
-                                const value = Number(item);
-                                return Number.isFinite(value) ? Number(value.toFixed(2)) : 0;
-                            }),
-                        }],
-                        xaxis: {
-                            categories: Array.isArray(economicoTrendLabels) ? economicoTrendLabels : [],
-                        },
-                        yaxis: {
-                            labels: {
-                                formatter: function (value) {
-                                    return '$' + Number(value || 0).toFixed(0);
-                                }
-                            }
-                        },
-                        stroke: {
-                            curve: 'smooth',
-                            width: 3,
-                        },
-                        markers: {
-                            size: 4,
-                        },
-                        colors: ['#16a34a'],
-                        dataLabels: {
-                            enabled: false,
-                        },
-                        tooltip: {
-                            y: {
-                                formatter: function (value) {
-                                    return '$' + Number(value || 0).toFixed(2);
-                                },
-                            },
-                        },
-                        grid: {
-                            borderColor: '#eef1f4',
-                        },
-                    });
-
-                    tendenciaProduccionChart.render();
-                }
-            }
-
             buildHorizontalChart(
                 '#topProcedimientosVolumenChart',
                 'Top 10 procedimientos por volumen',
@@ -1279,53 +1795,18 @@
             );
 
             buildHorizontalChart('#desgloseSedeChart', 'Participación por sede', Array.isArray(desgloseSedes) ? desgloseSedes : [], '#0891b2');
-            buildHorizontalChart('#desgloseDoctorChart', 'Participación por médico', Array.isArray(desgloseDoctores) ? desgloseDoctores : [], '#3b82f6');
+            buildHorizontalPercentageChart('#formasPagoChart', formasPagoValues, {
+                seriesName: 'Atenciones',
+                xTitle: 'Atenciones',
+                color: '#16a34a',
+            });
+            buildHorizontalMoneyChart('#areasHonorarioChart', areasTop, {
+                seriesName: 'Honorario real',
+                xTitle: 'Honorario real',
+                color: '#f8d830',
+            });
 
             buildVerticalChart('#picosDiasChart', 'Atenciones por día', Array.isArray(picosDias) ? picosDias : [], '#8b5cf6');
-
-            const mixCategoriaContainer = document.querySelector('#mixCategoriaClienteChart');
-            if (mixCategoriaContainer) {
-                const mixSeries = [
-                    Number.isFinite(Number(particularCount)) ? Number(particularCount) : 0,
-                    Number.isFinite(Number(privadoCount)) ? Number(privadoCount) : 0,
-                ];
-                const mixTotal = mixSeries.reduce(function (acc, item) {
-                    return acc + item;
-                }, 0);
-
-                if (mixTotal === 0) {
-                    mixCategoriaContainer.innerHTML = '<div class="text-muted text-center py-30">Sin datos para graficar.</div>';
-                } else {
-                    const mixChart = new ApexCharts(mixCategoriaContainer, {
-                        chart: {
-                            type: 'pie',
-                            height: 320,
-                        },
-                        labels: ['PARTICULAR', 'PRIVADO'],
-                        series: mixSeries,
-                        colors: ['#22c55e', '#ef4444'],
-                        legend: {
-                            position: 'bottom',
-                        },
-                        dataLabels: {
-                            enabled: true,
-                            formatter: function (value) {
-                                return value.toFixed(1) + '%';
-                            },
-                        },
-                        tooltip: {
-                            y: {
-                                formatter: function (value) {
-                                    const percent = mixTotal > 0 ? ((value / mixTotal) * 100).toFixed(2) : '0.00';
-                                    return value + ' registros (' + percent + '%)';
-                                },
-                            },
-                        },
-                    });
-
-                    mixChart.render();
-                }
-            }
 
             const topAfiliacionesContainer = document.querySelector('#topAfiliacionesChart');
             if (topAfiliacionesContainer) {

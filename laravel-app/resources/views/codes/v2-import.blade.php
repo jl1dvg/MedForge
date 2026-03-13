@@ -2,10 +2,15 @@
 
 @php
     $summary = is_array($importSummary ?? null) ? $importSummary : [];
+    $dedupe = is_array($dedupeSummary ?? null) ? $dedupeSummary : [];
     $issues = is_array($summary['issues'] ?? null) ? $summary['issues'] : [];
+    $dedupeIssues = is_array($dedupe['issues'] ?? null) ? $dedupe['issues'] : [];
+    $dedupeTables = is_array($dedupe['tables_updated'] ?? null) ? $dedupe['tables_updated'] : [];
+    $dedupeCleanup = is_array($dedupe['cleanup'] ?? null) ? $dedupe['cleanup'] : [];
     $importFiles = is_array($importFiles ?? null) ? $importFiles : [];
     $createMissingChecked = old('create_missing', '1') === '1';
     $dryRunChecked = old('dry_run', '1') === '1';
+    $dedupeDryRunChecked = old('dedupe_dry_run', '1') === '1';
 @endphp
 
 @section('content')
@@ -34,11 +39,15 @@
             <div class="alert alert-success">Importación ejecutada. Revisa el resumen para confirmar códigos y precios cargados.</div>
         @elseif(($status ?? null) === 'validated')
             <div class="alert alert-info">Validación completada. No se guardó información porque activaste "Solo validar".</div>
+        @elseif(($status ?? null) === 'deduped')
+            <div class="alert alert-success">Depuración ejecutada. Los duplicados se consolidaron usando el menor ID por código.</div>
+        @elseif(($status ?? null) === 'dedupe_validated')
+            <div class="alert alert-info">Análisis de duplicados completado. No se borró información porque activaste "Solo vista previa".</div>
         @endif
 
         @if($errors->any())
             <div class="alert alert-danger">
-                <strong>No se pudo procesar el archivo.</strong>
+                <strong>No se pudo completar la operación.</strong>
                 <ul class="mb-0 mt-2">
                     @foreach($errors->all() as $error)
                         <li>{{ $error }}</li>
@@ -171,6 +180,39 @@
                 </div>
             </div>
 
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <strong>Depuración de duplicados</strong>
+                    </div>
+                    <div class="card-body">
+                        <form method="post" action="/v2/codes/deduplicate" class="row g-3">
+                            @csrf
+                            <div class="col-lg-8">
+                                <div class="alert alert-warning mb-0">
+                                    Esta acción busca códigos repetidos en `tarifario_2014`, conserva el <strong>ID menor</strong>,
+                                    reapunta referencias (`prices`, `related_codes`, `code_external_map`, `code_tax_rate`,
+                                    `crm_package_items`, `crm_proposal_items`, `codes_history`) y luego elimina los duplicados.
+                                </div>
+                            </div>
+                            <div class="col-lg-4">
+                                <input type="hidden" name="dedupe_dry_run" value="0">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="dedupe-dry-run" name="dedupe_dry_run" value="1" @checked($dedupeDryRunChecked)>
+                                    <label class="form-check-label" for="dedupe-dry-run">Solo vista previa</label>
+                                </div>
+                                <small class="text-muted">Déjalo activo primero para revisar cuántos IDs se van a consolidar.</small>
+                            </div>
+                            <div class="col-12">
+                                <button class="btn btn-outline-danger" type="submit">
+                                    <i class="mdi mdi-database-remove"></i> Revisar / depurar duplicados
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
             @if($summary !== [])
                 <div class="col-12">
                     <div class="card">
@@ -256,6 +298,126 @@
                                 @if(((int) ($summary['warnings_count'] ?? 0)) > count($issues))
                                     <p class="text-muted small mt-2 mb-0">
                                         Se muestran solo las primeras {{ count($issues) }} incidencias para mantener el resumen legible.
+                                    </p>
+                                @endif
+                            @endif
+                        </div>
+                    </div>
+                </div>
+            @endif
+
+            @if($dedupe !== [])
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header d-flex flex-wrap gap-2 align-items-center">
+                            <strong>Resumen de deduplicación</strong>
+                            <span class="badge {{ !empty($dedupe['dry_run']) ? 'bg-info' : 'bg-danger' }}">
+                                {{ !empty($dedupe['dry_run']) ? 'Solo vista previa' : 'Cambios aplicados' }}
+                            </span>
+                        </div>
+                        <div class="card-body">
+                            <div class="row g-3 mb-3">
+                                <div class="col-md-3 col-6">
+                                    <div class="border rounded p-3 h-100">
+                                        <div class="text-muted small">Códigos duplicados</div>
+                                        <div class="fs-4 fw-bold">{{ (int) ($dedupe['groups_total'] ?? 0) }}</div>
+                                        <div class="small text-muted">Grupos con más de un ID</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-3 col-6">
+                                    <div class="border rounded p-3 h-100">
+                                        <div class="text-muted small">IDs canónicos</div>
+                                        <div class="fs-4 fw-bold text-primary">{{ (int) ($dedupe['canonical_codes'] ?? 0) }}</div>
+                                        <div class="small text-muted">Se conserva el menor ID por código</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-3 col-6">
+                                    <div class="border rounded p-3 h-100">
+                                        <div class="text-muted small">IDs repetidos</div>
+                                        <div class="fs-4 fw-bold text-warning">{{ (int) ($dedupe['duplicate_rows'] ?? 0) }}</div>
+                                        <div class="small text-muted">Filas sobrantes detectadas</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-3 col-6">
+                                    <div class="border rounded p-3 h-100">
+                                        <div class="text-muted small">Eliminados</div>
+                                        <div class="fs-4 fw-bold text-danger">{{ (int) ($dedupe['deleted_codes'] ?? 0) }}</div>
+                                        <div class="small text-muted">Solo se llena cuando ejecutas la depuración</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            @if($dedupeTables !== [])
+                                <h5 class="mb-3">Referencias reapuntadas</h5>
+                                <div class="table-responsive mb-3">
+                                    <table class="table table-sm table-striped align-middle mb-0">
+                                        <thead>
+                                        <tr>
+                                            <th>Tabla</th>
+                                            <th class="text-end">Filas afectadas</th>
+                                        </tr>
+                                        </thead>
+                                        <tbody>
+                                        @foreach($dedupeTables as $item)
+                                            <tr>
+                                                <td>{{ (string) ($item['label'] ?? '') }}</td>
+                                                <td class="text-end">{{ (int) ($item['affected'] ?? 0) }}</td>
+                                            </tr>
+                                        @endforeach
+                                        </tbody>
+                                    </table>
+                                </div>
+                            @endif
+
+                            @if($dedupeCleanup !== [])
+                                <h5 class="mb-3">Limpieza posterior</h5>
+                                <div class="table-responsive mb-3">
+                                    <table class="table table-sm table-striped align-middle mb-0">
+                                        <thead>
+                                        <tr>
+                                            <th>Acción</th>
+                                            <th class="text-end">Filas afectadas</th>
+                                        </tr>
+                                        </thead>
+                                        <tbody>
+                                        @foreach($dedupeCleanup as $item)
+                                            <tr>
+                                                <td>{{ (string) ($item['label'] ?? '') }}</td>
+                                                <td class="text-end">{{ (int) ($item['affected'] ?? 0) }}</td>
+                                            </tr>
+                                        @endforeach
+                                        </tbody>
+                                    </table>
+                                </div>
+                            @endif
+
+                            <hr>
+
+                            <h5 class="mb-3">Decisiones detectadas</h5>
+                            @if($dedupeIssues === [])
+                                <p class="text-muted mb-0">No se detectaron duplicados en el resumen guardado.</p>
+                            @else
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-striped align-middle mb-0">
+                                        <thead>
+                                        <tr>
+                                            <th style="width: 120px;">Fila</th>
+                                            <th>Detalle</th>
+                                        </tr>
+                                        </thead>
+                                        <tbody>
+                                        @foreach($dedupeIssues as $issue)
+                                            <tr>
+                                                <td>{{ $issue['row'] !== null ? (int) $issue['row'] : '—' }}</td>
+                                                <td>{{ (string) ($issue['message'] ?? '') }}</td>
+                                            </tr>
+                                        @endforeach
+                                        </tbody>
+                                    </table>
+                                </div>
+                                @if(((int) ($dedupe['issues_count'] ?? 0)) > count($dedupeIssues))
+                                    <p class="text-muted small mt-2 mb-0">
+                                        Se muestran solo las primeras {{ count($dedupeIssues) }} decisiones para mantener el resumen legible.
                                     </p>
                                 @endif
                             @endif

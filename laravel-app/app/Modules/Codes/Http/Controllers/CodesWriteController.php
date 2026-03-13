@@ -8,6 +8,7 @@ use App\Modules\Codes\Services\CodesBulkImportService;
 use App\Modules\Codes\Services\CodeHistoryService;
 use App\Modules\Codes\Services\CodePriceService;
 use App\Modules\Codes\Services\CodesCatalogService;
+use App\Modules\Codes\Services\CodesDeduplicationService;
 use App\Modules\Shared\Support\LegacyCurrentUser;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -20,6 +21,7 @@ class CodesWriteController
     private CodePriceService $priceService;
     private CodeHistoryService $history;
     private CodesBulkImportService $bulkImport;
+    private CodesDeduplicationService $deduplication;
 
     public function __construct()
     {
@@ -27,6 +29,7 @@ class CodesWriteController
         $this->priceService = new CodePriceService();
         $this->history = new CodeHistoryService();
         $this->bulkImport = new CodesBulkImportService();
+        $this->deduplication = new CodesDeduplicationService();
     }
 
     public function store(Request $request): RedirectResponse
@@ -272,6 +275,24 @@ class CodesWriteController
             return redirect('/v2/codes/import')
                 ->withInput()
                 ->withErrors(['general' => 'Error en la importación: ' . $exception->getMessage()]);
+        }
+    }
+
+    public function deduplicate(Request $request): RedirectResponse
+    {
+        $request->validate([
+            'dedupe_dry_run' => ['nullable', 'boolean'],
+        ]);
+
+        try {
+            $summary = $this->deduplication->run($request->boolean('dedupe_dry_run', true));
+
+            return redirect('/v2/codes/import')
+                ->with('status', $summary['dry_run'] ? 'dedupe_validated' : 'deduped')
+                ->with('dedupe_summary', $summary);
+        } catch (Throwable $exception) {
+            return redirect('/v2/codes/import')
+                ->withErrors(['general' => 'Error en la depuración: ' . $exception->getMessage()]);
         }
     }
 

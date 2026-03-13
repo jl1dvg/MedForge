@@ -22,13 +22,21 @@
             font-size: 10px;
         }
 
+        .notice {
+            border-radius: 6px;
+            padding: 8px 10px;
+            font-size: 11px;
+            margin-bottom: 12px;
+        }
+
         .scope {
             background: #eff6ff;
             border: 1px solid #bfdbfe;
-            border-radius: 6px;
-            padding: 8px 10px;
-            margin-bottom: 12px;
-            font-size: 11px;
+        }
+
+        .methodology {
+            background: #f0fdf4;
+            border: 1px solid #bbf7d0;
         }
 
         table {
@@ -53,11 +61,71 @@
             margin: 14px 0 8px 0;
             font-size: 14px;
             font-weight: 700;
+            color: #0f172a;
         }
 
         .value {
             font-weight: 700;
             color: #0f766e;
+        }
+
+        .muted {
+            color: #64748b;
+        }
+
+        .list {
+            margin: 0;
+            padding-left: 16px;
+        }
+
+        .list li {
+            margin-bottom: 4px;
+        }
+
+        .kpi-grid {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 8px;
+        }
+
+        .kpi-card {
+            border: 1px solid #dbe4ea;
+            border-radius: 8px;
+            padding: 10px;
+            background: #f8fafc;
+            height: 86px;
+            vertical-align: top;
+        }
+
+        .kpi-label {
+            display: block;
+            font-size: 10px;
+            color: #475569;
+            margin-bottom: 6px;
+        }
+
+        .kpi-value {
+            display: block;
+            font-size: 18px;
+            font-weight: 700;
+            color: #0f766e;
+            margin-bottom: 5px;
+        }
+
+        .kpi-note {
+            display: block;
+            font-size: 10px;
+            color: #64748b;
+        }
+
+        .section {
+            page-break-inside: avoid;
+        }
+
+        .subtitle {
+            margin: -3px 0 8px 0;
+            font-size: 10px;
+            color: #64748b;
         }
     </style>
 </head>
@@ -66,15 +134,29 @@
     $generatedAt = trim((string) ($generatedAt ?? ''));
     $totalAtenciones = (int) ($totalAtenciones ?? 0);
     $filterSummary = is_array($filterSummary ?? null) ? $filterSummary : [];
-    $kpis = is_array($kpis ?? null) ? $kpis : [];
+    $hallazgosClave = is_array($hallazgosClave ?? null) ? $hallazgosClave : [];
+    $methodology = is_array($methodology ?? null) ? $methodology : [];
+    $generalKpis = is_array($generalKpis ?? null) ? $generalKpis : [];
+    $temporalKpis = is_array($temporalKpis ?? null) ? $temporalKpis : [];
+    $economicKpis = is_array($economicKpis ?? null) ? $economicKpis : [];
+    $tables = is_array($tables ?? null) ? $tables : [];
 @endphp
 
-<h1>Informe de Atenciones Particulares - KPI Económicos</h1>
+<h1>Informe de Atenciones Particulares - Resumen KPI</h1>
 <p class="meta">Generado: {{ $generatedAt }} | Total de atenciones analizadas: {{ number_format($totalAtenciones) }}</p>
 
-<div class="scope">
+<div class="notice scope">
     Este reporte considera únicamente atenciones con <strong>estado de encuentro atendido</strong> y categoría cliente
     <strong>Particular</strong> o <strong>Privado</strong>.
+</div>
+
+<div class="notice methodology">
+    <strong>Metodología económica:</strong>
+    <ul class="list">
+        @foreach($methodology as $item)
+            <li>{{ trim((string) $item) }}</li>
+        @endforeach
+    </ul>
 </div>
 
 <h2 class="section-title">Filtros aplicados</h2>
@@ -99,7 +181,61 @@
     </tbody>
 </table>
 
-<h2 class="section-title">Definición de KPI</h2>
+<div class="section">
+    <h2 class="section-title">Hallazgos clave</h2>
+    @if(!empty($hallazgosClave))
+        <ul class="list">
+            @foreach($hallazgosClave as $hallazgo)
+                <li>{{ trim((string) $hallazgo) }}</li>
+            @endforeach
+        </ul>
+    @else
+        <p class="muted">No hubo suficientes datos para generar hallazgos destacados en el rango seleccionado.</p>
+    @endif
+</div>
+
+<div class="section">
+    <h2 class="section-title">KPI Generales</h2>
+    <table class="kpi-grid">
+        @foreach(array_chunk($generalKpis, 3) as $chunk)
+            <tr>
+                @foreach($chunk as $kpi)
+                    <td class="kpi-card" style="width: 33.33%;">
+                        <span class="kpi-label">{{ trim((string) ($kpi['label'] ?? 'KPI')) }}</span>
+                        <span class="kpi-value">{{ trim((string) ($kpi['value'] ?? '0')) }}</span>
+                        <span class="kpi-note">{{ trim((string) ($kpi['note'] ?? '')) }}</span>
+                    </td>
+                @endforeach
+                @for($index = count($chunk); $index < 3; $index++)
+                    <td></td>
+                @endfor
+            </tr>
+        @endforeach
+    </table>
+</div>
+
+<div class="section">
+    <h2 class="section-title">KPI Temporales</h2>
+    <table class="kpi-grid">
+        @foreach(array_chunk($temporalKpis, 3) as $chunk)
+            <tr>
+                @foreach($chunk as $kpi)
+                    <td class="kpi-card" style="width: 33.33%;">
+                        <span class="kpi-label">{{ trim((string) ($kpi['label'] ?? 'KPI')) }}</span>
+                        <span class="kpi-value">{{ trim((string) ($kpi['value'] ?? '0')) }}</span>
+                        <span class="kpi-note">{{ trim((string) ($kpi['note'] ?? '')) }}</span>
+                    </td>
+                @endforeach
+                @for($index = count($chunk); $index < 3; $index++)
+                    <td></td>
+                @endfor
+            </tr>
+        @endforeach
+    </table>
+</div>
+
+<div class="section">
+<h2 class="section-title">KPI Económicos</h2>
 <table class="table">
     <thead>
     <tr>
@@ -110,7 +246,7 @@
     </tr>
     </thead>
     <tbody>
-    @foreach($kpis as $kpi)
+    @foreach($economicKpis as $kpi)
         @php
             $label = trim((string) ($kpi['label'] ?? 'KPI'));
             $value = trim((string) ($kpi['value'] ?? '0'));
@@ -126,5 +262,44 @@
     @endforeach
     </tbody>
 </table>
+</div>
+
+@foreach($tables as $section)
+    @php
+        $title = trim((string) ($section['title'] ?? 'Resumen'));
+        $subtitle = trim((string) ($section['subtitle'] ?? ''));
+        $columns = is_array($section['columns'] ?? null) ? $section['columns'] : [];
+        $rows = is_array($section['rows'] ?? null) ? $section['rows'] : [];
+        $emptyMessage = trim((string) ($section['empty_message'] ?? 'Sin datos para esta sección.'));
+    @endphp
+    <div class="section">
+        <h2 class="section-title">{{ $title }}</h2>
+        @if($subtitle !== '')
+            <p class="subtitle">{{ $subtitle }}</p>
+        @endif
+        <table class="table">
+            <thead>
+            <tr>
+                @foreach($columns as $column)
+                    <th>{{ trim((string) $column) }}</th>
+                @endforeach
+            </tr>
+            </thead>
+            <tbody>
+            @forelse($rows as $row)
+                <tr>
+                    @foreach((array) $row as $cell)
+                        <td>{{ trim((string) $cell) !== '' ? trim((string) $cell) : '—' }}</td>
+                    @endforeach
+                </tr>
+            @empty
+                <tr>
+                    <td colspan="{{ max(count($columns), 1) }}" class="muted">{{ $emptyMessage }}</td>
+                </tr>
+            @endforelse
+            </tbody>
+        </table>
+    </div>
+@endforeach
 </body>
 </html>

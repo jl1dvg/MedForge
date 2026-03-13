@@ -110,10 +110,14 @@ class BillingParticularesReportService
                 econ.billing_id,
                 econ.fecha_facturacion,
                 COALESCE(econ.total_produccion, 0) AS total_produccion,
+                COALESCE(econ.monto_honorario_real, 0) AS monto_honorario_real,
+                COALESCE(econ.monto_facturado_real, 0) AS monto_facturado_real,
                 COALESCE(econ.procedimientos_facturados, 0) AS procedimientos_facturados,
                 econ.formas_pago,
                 econ.numero_factura,
-                econ.factura_id
+                econ.factura_id,
+                econ.cliente_facturacion,
+                econ.area_facturacion
             FROM (
                 SELECT
                     p.hc_number,
@@ -201,9 +205,16 @@ class BillingParticularesReportService
             }
 
             $row['tipo_atencion'] = $tipoAtencion;
+            $row['monto_honorario_real'] = round((float) ($row['monto_honorario_real'] ?? 0), 2);
+            $row['monto_facturado_real'] = round((float) ($row['monto_facturado_real'] ?? 0), 2);
             $row['total_produccion'] = round((float) ($row['total_produccion'] ?? 0), 2);
             $row['procedimientos_facturados'] = (int) ($row['procedimientos_facturados'] ?? 0);
-            $row['facturado'] = ((int) ($row['billing_id'] ?? 0) > 0) || ((float) ($row['total_produccion'] ?? 0) > 0);
+            $billingId = trim((string) ($row['billing_id'] ?? ''));
+            $facturaId = trim((string) ($row['factura_id'] ?? ''));
+            $numeroFactura = trim((string) ($row['numero_factura'] ?? ''));
+            $row['facturado'] = $billingId !== ''
+                || $facturaId !== ''
+                || $numeroFactura !== '';
             $enrichedRows[] = $row;
         }
 
@@ -419,7 +430,9 @@ class BillingParticularesReportService
         $pacientesUnicos = [];
         $pacienteAtenciones = [];
         $produccionTotal = 0.0;
+        $honorarioRealTotal = 0.0;
         $atencionesFacturadas = 0;
+        $atencionesConHonorario = 0;
         $procedimientosFacturados = 0;
         $produccionPorCategoria = [
             'particular' => 0.0,
@@ -432,11 +445,16 @@ class BillingParticularesReportService
             'privado' => 0,
         ];
         $monthCounts = [];
-        $monthProduccion = [];
+        $monthHonorarios = [];
         $procedureCounts = [];
         $sedeCounts = [];
         $doctorCounts = [];
+        $doctorHonorario = [];
         $categoriaGerencialCounts = [];
+        $formasPagoCounts = [];
+        $clienteHonorario = [];
+        $areaHonorario = [];
+        $facturasEmitidas = [];
         $referidoCounts = [];
         $referidoWithValue = 0;
         $referidoWithoutValue = 0;
@@ -488,17 +506,23 @@ class BillingParticularesReportService
             }
 
             $produccionRow = (float) ($row['total_produccion'] ?? 0);
-            $produccionTotal += $produccionRow;
+            $honorarioRealRow = (float) ($row['monto_honorario_real'] ?? 0);
+            $produccionBaseRow = $honorarioRealRow > 0 ? $honorarioRealRow : $produccionRow;
+            $produccionTotal += $produccionBaseRow;
+            $honorarioRealTotal += $produccionBaseRow;
             $procedimientosFacturados += (int) ($row['procedimientos_facturados'] ?? 0);
             $facturadoRow = (bool) ($row['facturado'] ?? false);
             if ($facturadoRow) {
                 $atencionesFacturadas++;
             }
+            if ($produccionBaseRow > 0) {
+                $atencionesConHonorario++;
+            }
 
             $categoria = strtolower(trim((string) ($row['categoria_cliente'] ?? '')));
             if ($this->isParticularReportCategory($categoria)) {
                 $categoriaCounts[$categoria] = (int) ($categoriaCounts[$categoria] ?? 0) + 1;
-                $produccionPorCategoria[$categoria] = (float) ($produccionPorCategoria[$categoria] ?? 0) + $produccionRow;
+                $produccionPorCategoria[$categoria] = (float) ($produccionPorCategoria[$categoria] ?? 0) + $produccionBaseRow;
                 $categoriaGerencial = strtoupper($categoria);
                 if (!isset($categoriaGerencialCounts[$categoriaGerencial])) {
                     $categoriaGerencialCounts[$categoriaGerencial] = 0;
@@ -537,10 +561,6 @@ class BillingParticularesReportService
                     $monthCounts[$monthKey] = 0;
                 }
                 $monthCounts[$monthKey]++;
-                if (!isset($monthProduccion[$monthKey])) {
-                    $monthProduccion[$monthKey] = 0.0;
-                }
-                $monthProduccion[$monthKey] += $produccionRow;
 
                 $dayName = $this->weekdayName((int) date('N', $timestamp));
                 if (!isset($dayCounts[$dayName])) {
@@ -551,6 +571,59 @@ class BillingParticularesReportService
                 $hour = (int) date('G', $timestamp);
                 if (isset($hourCounts[$hour])) {
                     $hourCounts[$hour]++;
+                }
+            }
+
+            $economicoTimestamp = strtotime((string) ($row['fecha_facturacion'] ?? ''));
+            if ($economicoTimestamp === false) {
+                $economicoTimestamp = $timestamp;
+            }
+            if ($economicoTimestamp !== false) {
+                $economicoMonthKey = date('Y-m', $economicoTimestamp);
+                if (!isset($monthHonorarios[$economicoMonthKey])) {
+                    $monthHonorarios[$economicoMonthKey] = 0.0;
+                }
+                $monthHonorarios[$economicoMonthKey] += $produccionBaseRow;
+            }
+
+            if ($facturadoRow || $produccionBaseRow > 0) {
+                $formasPagoRaw = trim((string) ($row['formas_pago'] ?? ''));
+                foreach ($this->explodePipeValues($formasPagoRaw) as $formaPago) {
+                    if (!isset($formasPagoCounts[$formaPago])) {
+                        $formasPagoCounts[$formaPago] = 0;
+                    }
+                    $formasPagoCounts[$formaPago]++;
+                }
+
+                $cliente = strtoupper(trim((string) ($row['cliente_facturacion'] ?? '')));
+                if ($cliente === '') {
+                    $cliente = 'SIN CLIENTE';
+                }
+                if (!isset($clienteHonorario[$cliente])) {
+                    $clienteHonorario[$cliente] = 0.0;
+                }
+                $clienteHonorario[$cliente] += $produccionBaseRow;
+
+                $area = strtoupper(trim((string) ($row['area_facturacion'] ?? '')));
+                if ($area === '') {
+                    $area = 'SIN AREA';
+                }
+                if (!isset($areaHonorario[$area])) {
+                    $areaHonorario[$area] = 0.0;
+                }
+                $areaHonorario[$area] += $produccionBaseRow;
+
+                if (!isset($doctorHonorario[$doctor])) {
+                    $doctorHonorario[$doctor] = 0.0;
+                }
+                $doctorHonorario[$doctor] += $produccionBaseRow;
+
+                $facturaKey = trim((string) ($row['factura_id'] ?? ''));
+                if ($facturaKey === '') {
+                    $facturaKey = trim((string) ($row['numero_factura'] ?? ''));
+                }
+                if ($facturaKey !== '') {
+                    $facturasEmitidas[$facturaKey] = true;
                 }
             }
 
@@ -634,13 +707,21 @@ class BillingParticularesReportService
             'privado' => $totalRows > 0 ? round(($categoriaCounts['privado'] / $totalRows) * 100, 2) : 0.0,
         ];
         ksort($monthCounts);
-        ksort($monthProduccion);
+        ksort($monthHonorarios);
         $trendMonthCounts = array_slice($monthCounts, -12, null, true);
-        $trendMonthProduccion = array_slice($monthProduccion, -12, null, true);
 
         $trendLabels = [];
         foreach (array_keys($trendMonthCounts) as $monthKey) {
             $trendLabels[] = $this->monthLabel($monthKey);
+        }
+
+        $economicMonthKeys = array_values(array_unique(array_keys($monthHonorarios)));
+        sort($economicMonthKeys);
+        $economicMonthKeys = array_slice($economicMonthKeys, -12);
+        $economicTrendLabels = array_map(fn(string $monthKey): string => $this->monthLabel($monthKey), $economicMonthKeys);
+        $economicTrendHonorarios = [];
+        foreach ($economicMonthKeys as $monthKey) {
+            $economicTrendHonorarios[] = round((float) ($monthHonorarios[$monthKey] ?? 0), 2);
         }
 
         $monthKeys = array_keys($monthCounts);
@@ -779,19 +860,34 @@ class BillingParticularesReportService
             'total_protocolos' => $totalProtocolos,
             'economico' => [
                 'total_produccion' => round($produccionTotal, 2),
-                'ticket_promedio_facturado' => $atencionesFacturadas > 0 ? round($produccionTotal / $atencionesFacturadas, 2) : 0.0,
-                'produccion_promedio_por_atencion' => $totalRows > 0 ? round($produccionTotal / $totalRows, 2) : 0.0,
+                'total_honorario_real' => round($honorarioRealTotal, 2),
+                'ticket_promedio_honorario' => $atencionesConHonorario > 0 ? round($honorarioRealTotal / $atencionesConHonorario, 2) : 0.0,
+                'produccion_promedio_por_atencion' => $totalRows > 0 ? round($honorarioRealTotal / $totalRows, 2) : 0.0,
                 'atenciones_facturadas' => $atencionesFacturadas,
+                'atenciones_con_honorario' => $atencionesConHonorario,
                 'atenciones_no_facturadas' => $atencionesNoFacturadas,
                 'facturacion_rate' => $totalRows > 0 ? round(($atencionesFacturadas / $totalRows) * 100, 2) : 0.0,
+                'cobertura_honorario_rate' => $totalRows > 0 ? round(($atencionesConHonorario / $totalRows) * 100, 2) : 0.0,
                 'procedimientos_facturados' => $procedimientosFacturados,
+                'facturas_emitidas' => count($facturasEmitidas),
                 'produccion_por_categoria' => [
                     'particular' => round((float) ($produccionPorCategoria['particular'] ?? 0), 2),
                     'privado' => round((float) ($produccionPorCategoria['privado'] ?? 0), 2),
                 ],
+                'honorario_por_categoria' => [
+                    'particular' => round((float) ($produccionPorCategoria['particular'] ?? 0), 2),
+                    'privado' => round((float) ($produccionPorCategoria['privado'] ?? 0), 2),
+                ],
+                'formas_pago' => [
+                    'values' => $this->metricValues($formasPagoCounts, 8, $atencionesFacturadas),
+                ],
+                'doctores_top' => $this->moneyMetricValues($doctorHonorario, 10, $honorarioRealTotal),
+                'clientes_top' => $this->moneyMetricValues($clienteHonorario, 8, $honorarioRealTotal),
+                'areas_top' => $this->moneyMetricValues($areaHonorario, 8, $honorarioRealTotal),
                 'trend' => [
-                    'labels' => array_map(fn(string $monthKey): string => $this->monthLabel($monthKey), array_keys($trendMonthProduccion)),
-                    'totals' => array_map(static fn($value) => round((float) $value, 2), array_values($trendMonthProduccion)),
+                    'labels' => $economicTrendLabels,
+                    'totals' => $economicTrendHonorarios,
+                    'honorarios' => $economicTrendHonorarios,
                 ],
             ],
             'pacientes_unicos' => count($pacientesUnicos),
@@ -1227,10 +1323,14 @@ class BillingParticularesReportService
                             END
                         ) AS fecha_facturacion,
                         COALESCE(SUM(bfr.monto_honorario), 0) AS total_produccion,
+                        COALESCE(SUM(bfr.monto_honorario), 0) AS monto_honorario_real,
+                        COALESCE(SUM(bfr.monto_facturado), 0) AS monto_facturado_real,
                         COUNT(*) AS procedimientos_facturados,
                         GROUP_CONCAT(DISTINCT NULLIF(TRIM(COALESCE(bfr.formas_pago, '')), '') SEPARATOR ' | ') AS formas_pago,
                         GROUP_CONCAT(DISTINCT NULLIF(TRIM(COALESCE(bfr.numero_factura, '')), '') SEPARATOR ' | ') AS numero_factura,
-                        GROUP_CONCAT(DISTINCT NULLIF(TRIM(COALESCE(bfr.factura_id, '')), '') SEPARATOR ' | ') AS factura_id
+                        GROUP_CONCAT(DISTINCT NULLIF(TRIM(COALESCE(bfr.factura_id, '')), '') SEPARATOR ' | ') AS factura_id,
+                        MAX(NULLIF(TRIM(COALESCE(bfr.cliente, '')), '')) AS cliente_facturacion,
+                        MAX(NULLIF(TRIM(COALESCE(bfr.area, '')), '')) AS area_facturacion
                     FROM billing_facturacion_real bfr
                     GROUP BY bfr.form_id
                 ) AS econ
@@ -1241,26 +1341,21 @@ class BillingParticularesReportService
         return <<<SQL
             LEFT JOIN (
                 SELECT
-                    bm.form_id,
-                    bm.hc_number,
-                    MAX(bm.id) AS billing_id,
-                    MAX(
-                        CASE
-                            WHEN CAST(bm.created_at AS CHAR) IN ('', '0000-00-00', '0000-00-00 00:00:00') THEN NULL
-                            ELSE bm.created_at
-                        END
-                    ) AS fecha_facturacion,
-                    COALESCE(SUM(bp.proc_precio), 0) AS total_produccion,
-                    COUNT(bp.id) AS procedimientos_facturados,
-                    NULL AS formas_pago,
-                    NULL AS numero_factura,
-                    NULL AS factura_id
-                FROM billing_main bm
-                LEFT JOIN billing_procedimientos bp ON bp.billing_id = bm.id
-                GROUP BY bm.form_id, bm.hc_number
+                    CAST(NULL AS CHAR(50)) AS form_id,
+                    CAST(NULL AS CHAR(50)) AS billing_id,
+                    CAST(NULL AS DATETIME) AS fecha_facturacion,
+                    0 AS total_produccion,
+                    0 AS monto_honorario_real,
+                    0 AS monto_facturado_real,
+                    0 AS procedimientos_facturados,
+                    CAST(NULL AS CHAR(255)) AS formas_pago,
+                    CAST(NULL AS CHAR(50)) AS numero_factura,
+                    CAST(NULL AS CHAR(50)) AS factura_id,
+                    CAST(NULL AS CHAR(255)) AS cliente_facturacion,
+                    CAST(NULL AS CHAR(255)) AS area_facturacion
+                WHERE 1 = 0
             ) AS econ
               ON econ.form_id = atenciones.form_id
-             AND econ.hc_number = atenciones.hc_number
         SQL;
     }
 
@@ -1400,5 +1495,61 @@ class BillingParticularesReportService
         }
 
         return $result;
+    }
+
+    /**
+     * @param array<string, float> $amounts
+     * @return array<int, array{valor:string,monto:float,porcentaje:float}>
+     */
+    private function moneyMetricValues(array $amounts, ?int $limit = null, ?float $totalForShare = null): array
+    {
+        if (empty($amounts)) {
+            return [];
+        }
+
+        arsort($amounts);
+        if ($limit !== null && $limit > 0) {
+            $amounts = array_slice($amounts, 0, $limit, true);
+        }
+
+        $total = $totalForShare ?? array_sum($amounts);
+        if ($total < 0.0001) {
+            $total = 0.0;
+        }
+
+        $result = [];
+        foreach ($amounts as $valor => $monto) {
+            $amount = round((float) $monto, 2);
+            $result[] = [
+                'valor' => (string) $valor,
+                'monto' => $amount,
+                'porcentaje' => $total > 0 ? round(($amount / $total) * 100, 2) : 0.0,
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function explodePipeValues(string $value): array
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return [];
+        }
+
+        $parts = preg_split('/\s*\|\s*/', $value) ?: [];
+        $result = [];
+        foreach ($parts as $part) {
+            $normalized = strtoupper(trim((string) $part));
+            if ($normalized === '') {
+                continue;
+            }
+            $result[$normalized] = $normalized;
+        }
+
+        return array_values($result);
     }
 }
