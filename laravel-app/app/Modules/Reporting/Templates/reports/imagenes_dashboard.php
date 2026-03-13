@@ -106,13 +106,16 @@ ob_start();
         <th>Realizado</th>
         <th>Informado</th>
         <th>Facturado</th>
+        <th>Producción USD</th>
+        <th>Proc. facturados</th>
+        <th>Fecha facturación</th>
         <th>Examen</th>
     </tr>
     </thead>
     <tbody>
     <?php if (empty($rows)): ?>
         <tr>
-            <td colspan="12" class="text-muted">Sin registros para exportar.</td>
+            <td colspan="15" class="text-muted">Sin registros para exportar.</td>
         </tr>
     <?php else: ?>
         <?php foreach ($rows as $index => $row): ?>
@@ -128,6 +131,9 @@ ob_start();
                 <td><?= !empty($row['examen_realizado']) ? 'SI' : 'NO' ?></td>
                 <td><?= !empty($row['informado']) ? 'SI' : 'NO' ?></td>
                 <td><?= !empty($row['facturado']) ? 'SI' : 'NO' ?></td>
+                <td><?= htmlspecialchars(number_format((float)($row['produccion'] ?? 0), 2), ENT_QUOTES, 'UTF-8') ?></td>
+                <td><?= htmlspecialchars((string)($row['procedimientos_facturados'] ?? 0), ENT_QUOTES, 'UTF-8') ?></td>
+                <td><?= htmlspecialchars((string)($row['fecha_facturacion'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></td>
                 <td><?= htmlspecialchars((string)($row['examen'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
             </tr>
         <?php endforeach; ?>

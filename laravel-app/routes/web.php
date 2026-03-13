@@ -67,6 +67,8 @@ Route::middleware(['legacy.auth', 'legacy.permission:administrativo,codes.view,c
 
 Route::middleware(['legacy.auth', 'legacy.permission:administrativo,codes.manage'])->group(function (): void {
     Route::get('/v2/codes/create', [CodesUiController::class, 'create']);
+    Route::get('/v2/codes/import', [CodesUiController::class, 'import']);
+    Route::post('/v2/codes/import', [CodesWriteController::class, 'import']);
     Route::post('/v2/codes', [CodesWriteController::class, 'store']);
     Route::get('/v2/codes/{id}/edit', [CodesUiController::class, 'edit'])->whereNumber('id');
     Route::post('/v2/codes/{id}', [CodesWriteController::class, 'update'])->whereNumber('id');

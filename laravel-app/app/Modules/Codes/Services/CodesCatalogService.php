@@ -29,6 +29,11 @@ class CodesCatalogService
     ];
 
     /**
+     * @var array<int, array<string, mixed>>|null
+     */
+    private ?array $allCategoriesCache = null;
+
+    /**
      * @return array<int, array<string, mixed>>
      */
     public function listTypes(): array
@@ -129,6 +134,23 @@ class CodesCatalogService
         return Tarifario2014::query()->find($id);
     }
 
+    /**
+     * @return array<int, Tarifario2014>
+     */
+    public function findByCodigo(string $codigo): array
+    {
+        $codigo = trim($codigo);
+        if ($codigo === '') {
+            return [];
+        }
+
+        return Tarifario2014::query()
+            ->where('codigo', $codigo)
+            ->orderBy('id')
+            ->get()
+            ->all();
+    }
+
     public function isDuplicate(string $codigo, ?string $codeType, ?string $modifier, ?int $excludeId = null): bool
     {
         $query = DB::table('tarifario_2014')
@@ -226,6 +248,43 @@ class CodesCatalogService
         DB::table('related_codes')
             ->where('code_id', $codeId)
             ->delete();
+    }
+
+    public function matchCategorySlug(?string $value): ?string
+    {
+        $normalizedNeedle = $this->normalizeLookupText($value);
+        if ($normalizedNeedle === '') {
+            return null;
+        }
+
+        foreach ($this->allCategories() as $category) {
+            $slug = trim((string) ($category['slug'] ?? ''));
+            if ($slug === '') {
+                continue;
+            }
+
+            $title = trim((string) ($category['title'] ?? ''));
+            if (
+                $this->normalizeLookupText($slug) === $normalizedNeedle
+                || $this->normalizeLookupText($title) === $normalizedNeedle
+            ) {
+                return $slug;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function allCategories(): array
+    {
+        if ($this->allCategoriesCache === null) {
+            $this->allCategoriesCache = $this->listCategories(false);
+        }
+
+        return $this->allCategoriesCache;
     }
 
     /**
@@ -358,5 +417,23 @@ class CodesCatalogService
 
         return (float) $value;
     }
-}
 
+    private function normalizeLookupText(?string $value): string
+    {
+        $value = trim((string) $value);
+        if ($value === '') {
+            return '';
+        }
+
+        $normalized = mb_strtolower($value, 'UTF-8');
+        $transliterated = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $normalized);
+        if (is_string($transliterated) && $transliterated !== '') {
+            $normalized = $transliterated;
+        }
+
+        $normalized = preg_replace('/[^a-z0-9]+/i', ' ', $normalized) ?? '';
+        $normalized = trim(preg_replace('/\s+/', ' ', $normalized) ?? '');
+
+        return $normalized;
+    }
+}

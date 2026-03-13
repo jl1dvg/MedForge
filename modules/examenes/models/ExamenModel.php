@@ -1423,16 +1423,41 @@ class ExamenModel
         $afiliacionKeyExpr = $this->afiliacionGroupKeyExpr($rawAfiliacionExpr);
         $categoriaContext = $this->resolveAfiliacionCategoriaContext($rawAfiliacionExpr, 'iacm');
         $sedeExpr = $this->imagenesSedeExpr();
+        $patientHcExpr = "COALESCE(NULLIF(TRIM(pd.hc_number), ''), pp.hc_number)";
 
         $facturadoSelect = $includeFacturado
-            ? "CASE WHEN bm.form_id IS NULL THEN 0 ELSE 1 END AS facturado"
-            : "0 AS facturado";
+            ? "CASE
+                    WHEN bm.billing_id IS NULL AND COALESCE(bm.total_produccion, 0) <= 0 THEN 0
+                    ELSE 1
+               END AS facturado,
+               bm.billing_id,
+               bm.fecha_facturacion,
+               COALESCE(bm.total_produccion, 0) AS total_produccion,
+               COALESCE(bm.procedimientos_facturados, 0) AS procedimientos_facturados"
+            : "0 AS facturado,
+               NULL AS billing_id,
+               NULL AS fecha_facturacion,
+               0 AS total_produccion,
+               0 AS procedimientos_facturados";
         $facturadoJoin = $includeFacturado
             ? "LEFT JOIN (
-                SELECT DISTINCT form_id
-                FROM billing_main
-                WHERE form_id IS NOT NULL AND TRIM(form_id) <> ''
-            ) bm ON bm.form_id = pp.form_id"
+                SELECT
+                    bm.form_id,
+                    bm.hc_number,
+                    MAX(bm.id) AS billing_id,
+                    MAX(
+                        CASE
+                            WHEN CAST(bm.created_at AS CHAR) IN ('', '0000-00-00', '0000-00-00 00:00:00') THEN NULL
+                            ELSE bm.created_at
+                        END
+                    ) AS fecha_facturacion,
+                    COALESCE(SUM(bp.proc_precio), 0) AS total_produccion,
+                    COUNT(bp.id) AS procedimientos_facturados
+                FROM billing_main bm
+                LEFT JOIN billing_procedimientos bp ON bp.billing_id = bm.id
+                WHERE bm.form_id IS NOT NULL AND TRIM(bm.form_id) <> ''
+                GROUP BY bm.form_id, bm.hc_number
+            ) bm ON bm.form_id = pp.form_id AND bm.hc_number = {$patientHcExpr}"
             : '';
 
         $sql = "SELECT

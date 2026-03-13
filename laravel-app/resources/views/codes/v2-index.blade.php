@@ -23,7 +23,10 @@
                     </nav>
                 </div>
             </div>
-            <div>
+            <div class="d-flex gap-2">
+                <a href="/v2/codes/import" class="btn btn-outline-primary btn-sm">
+                    <i class="mdi mdi-file-excel"></i> Carga masiva
+                </a>
                 <a href="/v2/codes/create" class="btn btn-primary btn-sm">
                     <i class="mdi mdi-plus"></i> Nuevo código
                 </a>
@@ -159,4 +162,3 @@
     <script src="https://cdn.datatables.net/rowgroup/1.3.1/js/dataTables.rowGroup.min.js"></script>
     <script src="/js/pages/codes-index.js"></script>
 @endpush
-

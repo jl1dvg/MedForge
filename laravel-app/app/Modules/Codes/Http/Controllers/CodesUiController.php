@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Codes\Http\Controllers;
 
 use App\Modules\Codes\Services\CodePriceService;
+use App\Modules\Codes\Services\CodesBulkImportService;
 use App\Modules\Codes\Services\CodesCatalogService;
 use App\Modules\Codes\Services\CodesPackageService;
 use App\Modules\Shared\Support\LegacyCurrentUser;
@@ -18,12 +19,14 @@ class CodesUiController
 {
     private CodesCatalogService $catalog;
     private CodePriceService $priceService;
+    private CodesBulkImportService $bulkImport;
     private CodesPackageService $packages;
 
     public function __construct()
     {
         $this->catalog = new CodesCatalogService();
         $this->priceService = new CodePriceService();
+        $this->bulkImport = new CodesBulkImportService();
 
         /** @var PDO $pdo */
         $pdo = DB::connection()->getPdo();
@@ -57,6 +60,17 @@ class CodesUiController
             'rels' => [],
             'code' => null,
             'status' => session('status'),
+        ]);
+    }
+
+    public function import(Request $request): View
+    {
+        return view('codes.v2-import', [
+            'pageTitle' => 'Carga masiva de códigos',
+            'currentUser' => LegacyCurrentUser::resolve($request),
+            'status' => session('status'),
+            'importSummary' => session('import_summary'),
+            'importFiles' => $this->bulkImport->availableImportFiles(),
         ]);
     }
 

@@ -81,6 +81,34 @@ class CodePriceService
 
     /**
      * @param array<int, array{level_key:string,storage_key:string,title:string,category:string,source:string}> $levels
+     */
+    public function resolveLevelKey(string $affiliation, array $levels = []): ?string
+    {
+        $normalizedAffiliation = $this->normalizeLookupText($affiliation);
+        if ($normalizedAffiliation === '') {
+            return null;
+        }
+
+        foreach ($levels as $level) {
+            $canonicalKey = trim((string) ($level['level_key'] ?? ''));
+            if ($canonicalKey === '') {
+                continue;
+            }
+
+            $title = trim((string) ($level['title'] ?? ''));
+            $titleMatch = $title !== '' && $this->normalizeLookupText($title) === $normalizedAffiliation;
+            $keyMatch = $this->normalizeLookupText($canonicalKey) === $normalizedAffiliation;
+
+            if ($titleMatch || $keyMatch) {
+                return $canonicalKey;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<int, array{level_key:string,storage_key:string,title:string,category:string,source:string}> $levels
      * @return array<string, float>
      */
     public function pricesForCode(int $codeId, array $levels = []): array
@@ -238,5 +266,24 @@ class CodePriceService
         }
 
         return $this->levelKeyMaxLength;
+    }
+
+    private function normalizeLookupText(?string $value): string
+    {
+        $value = trim((string) $value);
+        if ($value === '') {
+            return '';
+        }
+
+        $normalized = mb_strtolower($value, 'UTF-8');
+        $transliterated = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $normalized);
+        if (is_string($transliterated) && $transliterated !== '') {
+            $normalized = $transliterated;
+        }
+
+        $normalized = preg_replace('/[^a-z0-9]+/i', ' ', $normalized) ?? '';
+        $normalized = trim(preg_replace('/\s+/', ' ', $normalized) ?? '');
+
+        return $normalized;
     }
 }

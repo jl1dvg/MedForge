@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Codes\Http\Controllers;
 
+use App\Modules\Codes\Services\CodesBulkImportService;
 use App\Modules\Codes\Services\CodeHistoryService;
 use App\Modules\Codes\Services\CodePriceService;
 use App\Modules\Codes\Services\CodesCatalogService;
@@ -18,12 +19,14 @@ class CodesWriteController
     private CodesCatalogService $catalog;
     private CodePriceService $priceService;
     private CodeHistoryService $history;
+    private CodesBulkImportService $bulkImport;
 
     public function __construct()
     {
         $this->catalog = new CodesCatalogService();
         $this->priceService = new CodePriceService();
         $this->history = new CodeHistoryService();
+        $this->bulkImport = new CodesBulkImportService();
     }
 
     public function store(Request $request): RedirectResponse
@@ -217,6 +220,58 @@ class CodesWriteController
         } catch (Throwable $exception) {
             return redirect('/v2/codes/' . $id . '/edit')
                 ->withErrors(['general' => 'Error al quitar relación: ' . $exception->getMessage()]);
+        }
+    }
+
+    public function import(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'file' => ['nullable', 'file', 'extensions:xlsx,xls,csv,txt,html,htm', 'max:20480'],
+            'stored_file' => ['nullable', 'string', 'max:255'],
+            'dry_run' => ['nullable', 'boolean'],
+            'create_missing' => ['nullable', 'boolean'],
+        ]);
+
+        $file = $request->file('file');
+        $storedFile = trim((string) ($validated['stored_file'] ?? ''));
+
+        if ($file === null && $storedFile === '') {
+            return redirect('/v2/codes/import')
+                ->withInput()
+                ->withErrors(['file' => 'Debes seleccionar un archivo o elegir uno desde storage/imports/codes.']);
+        }
+
+        try {
+            $options = [
+                'dry_run' => $request->boolean('dry_run'),
+                'create_missing' => $request->boolean('create_missing', true),
+            ];
+
+            if ($file !== null) {
+                $summary = $this->bulkImport->import($file, $this->currentUserName($request), $options);
+            } else {
+                $storedPath = $this->bulkImport->resolveStoredImportPath($storedFile);
+                if ($storedPath === null) {
+                    return redirect('/v2/codes/import')
+                        ->withInput()
+                        ->withErrors(['stored_file' => 'El archivo seleccionado no existe en storage/imports/codes.']);
+                }
+
+                $summary = $this->bulkImport->importFromPath(
+                    $storedPath,
+                    $this->currentUserName($request),
+                    $options,
+                    basename($storedPath)
+                );
+            }
+
+            return redirect('/v2/codes/import')
+                ->with('status', $summary['dry_run'] ? 'validated' : 'imported')
+                ->with('import_summary', $summary);
+        } catch (Throwable $exception) {
+            return redirect('/v2/codes/import')
+                ->withInput()
+                ->withErrors(['general' => 'Error en la importación: ' . $exception->getMessage()]);
         }
     }
 

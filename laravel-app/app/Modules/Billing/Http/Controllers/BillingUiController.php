@@ -1424,6 +1424,9 @@ class BillingUiController
             'Procedimientos facturados',
             'Billing ID',
             'Fecha facturacion',
+            'Numero factura',
+            'Factura ID',
+            'Formas pago',
             'Referido prefactura por',
             'Especificar referido prefactura',
         ]);
@@ -1453,6 +1456,9 @@ class BillingUiController
                 (int) ($row['procedimientos_facturados'] ?? 0),
                 (string) ($row['billing_id'] ?? ''),
                 $fechaFacturacion,
+                trim((string) ($row['numero_factura'] ?? '')),
+                trim((string) ($row['factura_id'] ?? '')),
+                trim((string) ($row['formas_pago'] ?? '')),
                 trim((string) ($row['referido_prefactura_por'] ?? '')),
                 trim((string) ($row['especificar_referido_prefactura'] ?? '')),
             ]);

@@ -4091,6 +4091,9 @@ class ExamenController extends BaseController
                 'Examen realizado',
                 'Informado',
                 'Facturado',
+                'Producción USD',
+                'Proc. facturados',
+                'Fecha facturación',
                 'Código',
                 'Examen',
             ];
@@ -4100,8 +4103,8 @@ class ExamenController extends BaseController
                 $column = $this->excelColumnByIndex($idx);
                 $detailSheet->setCellValue("{$column}{$detailRow}", $label);
             }
-            $detailSheet->getStyle("A1:M1")->getFont()->setBold(true);
-            $detailSheet->setAutoFilter("A1:M1");
+            $detailSheet->getStyle("A1:P1")->getFont()->setBold(true);
+            $detailSheet->setAutoFilter("A1:P1");
 
             foreach ($detailRows as $index => $item) {
                 $detailRow++;
@@ -4117,6 +4120,9 @@ class ExamenController extends BaseController
                     !empty($item['examen_realizado']) ? 'SI' : 'NO',
                     !empty($item['informado']) ? 'SI' : 'NO',
                     !empty($item['facturado']) ? 'SI' : 'NO',
+                    number_format((float)($item['produccion'] ?? 0), 2, '.', ''),
+                    (string)($item['procedimientos_facturados'] ?? 0),
+                    (string)($item['fecha_facturacion'] ?? '—'),
                     (string)($item['codigo'] ?? ''),
                     (string)($item['examen'] ?? ''),
                 ];
@@ -4139,11 +4145,14 @@ class ExamenController extends BaseController
             $detailSheet->getColumnDimension('I')->setWidth(16);
             $detailSheet->getColumnDimension('J')->setWidth(12);
             $detailSheet->getColumnDimension('K')->setWidth(12);
-            $detailSheet->getColumnDimension('L')->setWidth(10);
-            $detailSheet->getColumnDimension('M')->setWidth(62);
+            $detailSheet->getColumnDimension('L')->setWidth(14);
+            $detailSheet->getColumnDimension('M')->setWidth(16);
+            $detailSheet->getColumnDimension('N')->setWidth(20);
+            $detailSheet->getColumnDimension('O')->setWidth(10);
+            $detailSheet->getColumnDimension('P')->setWidth(62);
 
             if ($detailRow > 1) {
-                $detailSheet->getStyle("M2:M{$detailRow}")
+                $detailSheet->getStyle("P2:P{$detailRow}")
                     ->getAlignment()
                     ->setWrapText(true);
             }
@@ -4852,6 +4861,7 @@ class ExamenController extends BaseController
             $estadoAgenda = trim((string)($row['estado_agenda'] ?? ''));
 
             $informado = !empty($row['informe_id']);
+            $totalProduccion = round((float)($row['total_produccion'] ?? 0), 2);
             $output[] = [
                 'id' => isset($row['id']) ? (int)$row['id'] : 0,
                 'form_id' => trim((string)($row['form_id'] ?? '')),
@@ -4864,6 +4874,9 @@ class ExamenController extends BaseController
                 'examen_realizado' => $this->isImagenExamenRealizado($estadoAgenda),
                 'informado' => $informado,
                 'facturado' => (int)($row['facturado'] ?? 0) === 1,
+                'produccion' => $totalProduccion,
+                'procedimientos_facturados' => (int)($row['procedimientos_facturados'] ?? 0),
+                'fecha_facturacion' => $this->formatDashboardDate((string)($row['fecha_facturacion'] ?? '')),
                 'codigo' => $codigo,
                 'examen' => $examen,
             ];
@@ -4948,6 +4961,8 @@ class ExamenController extends BaseController
         $informadosSinFacturar = 0;
         $citasGeneradas = 0;
         $examenesRealizados = 0;
+        $produccionFacturada = 0.0;
+        $procedimientosFacturados = 0;
 
         $tatHoras = [];
         $sla48Cumple = 0;
@@ -5021,6 +5036,9 @@ class ExamenController extends BaseController
             if ($facturado) {
                 $facturados++;
             }
+
+            $produccionFacturada += max(0.0, (float)($row['total_produccion'] ?? 0));
+            $procedimientosFacturados += max(0, (int)($row['procedimientos_facturados'] ?? 0));
 
             if ($informado && $facturado) {
                 $facturadosEInformados++;
@@ -5118,6 +5136,8 @@ class ExamenController extends BaseController
         $tatP90 = $this->calcularPercentil($tatHoras, 0.90);
         $sla48Pct = $sla48Total > 0 ? ($sla48Cumple * 100 / $sla48Total) : null;
         $cumplimientoCitaPct = $citasGeneradas > 0 ? ($examenesRealizados * 100 / $citasGeneradas) : null;
+        $ticketPromedioFacturado = $facturados > 0 ? ($produccionFacturada / $facturados) : 0.0;
+        $produccionPromedioPorEstudio = $total > 0 ? ($produccionFacturada / $total) : 0.0;
         $maxTraficoValor = !empty($traficoSemana) ? max($traficoSemana) : 0;
         $maxTraficoDiaNum = 0;
         if ($maxTraficoValor > 0) {
@@ -5154,6 +5174,21 @@ class ExamenController extends BaseController
                     'label' => 'Facturados',
                     'value' => $facturados,
                     'hint' => $total > 0 ? (number_format(($facturados * 100) / $total, 1) . '% del total') : '0.0% del total',
+                ],
+                [
+                    'label' => 'Producción facturada',
+                    'value' => '$' . number_format($produccionFacturada, 2),
+                    'hint' => 'Monto real facturado en el rango.',
+                ],
+                [
+                    'label' => 'Ticket promedio facturado',
+                    'value' => '$' . number_format($ticketPromedioFacturado, 2),
+                    'hint' => $facturados > 0 ? ('Promedio por ' . $facturados . ' estudios facturados') : 'Sin estudios facturados',
+                ],
+                [
+                    'label' => 'Procedimientos facturados',
+                    'value' => $procedimientosFacturados,
+                    'hint' => '$' . number_format($produccionPromedioPorEstudio, 2) . ' promedio por estudio',
                 ],
                 [
                     'label' => 'Día pico de tráfico',
@@ -5200,6 +5235,10 @@ class ExamenController extends BaseController
                 'tat_promedio_horas' => $tatPromedio !== null ? round($tatPromedio, 2) : null,
                 'tat_mediana_horas' => $tatMediana !== null ? round($tatMediana, 2) : null,
                 'tat_p90_horas' => $tatP90 !== null ? round($tatP90, 2) : null,
+                'produccion_facturada' => round($produccionFacturada, 2),
+                'ticket_promedio_facturado' => round($ticketPromedioFacturado, 2),
+                'procedimientos_facturados' => $procedimientosFacturados,
+                'produccion_promedio_por_estudio' => round($produccionPromedioPorEstudio, 2),
             ],
             'charts' => [
                 'serie_diaria' => [

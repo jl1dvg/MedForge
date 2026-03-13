@@ -66,216 +66,6 @@ try {
         return null;
     };
 
-    $normalizeAffiliationKey = static function (?string $value): string {
-        $value = trim((string) ($value ?? ''));
-        if ($value === '') {
-            return '';
-        }
-
-        $value = function_exists('mb_strtolower') ? mb_strtolower($value, 'UTF-8') : strtolower($value);
-        $value = str_replace(
-            ['á', 'é', 'í', 'ó', 'ú', 'ü', 'ñ', 'Á', 'É', 'Í', 'Ó', 'Ú', 'Ü', 'Ñ'],
-            ['a', 'e', 'i', 'o', 'u', 'u', 'n', 'a', 'e', 'i', 'o', 'u', 'u', 'n'],
-            $value
-        );
-        $value = str_replace([' ', '-'], '_', $value);
-        $value = preg_replace('/_+/u', '_', $value) ?: $value;
-
-        return trim($value, '_');
-    };
-
-    $splitProcedureSegments = static function (string $procedimiento): array {
-        $parts = preg_split('/\s+-\s+/u', trim($procedimiento));
-        if (!is_array($parts)) {
-            return [];
-        }
-
-        return array_values(array_filter(array_map(
-            static fn($value): string => trim((string) $value),
-            $parts
-        ), static fn(string $value): bool => $value !== ''));
-    };
-
-    $extractProcedureCode = static function (?string $procedimiento) use ($splitProcedureSegments): ?string {
-        $procedimiento = trim((string) ($procedimiento ?? ''));
-        if ($procedimiento === '') {
-            return null;
-        }
-
-        $parts = $splitProcedureSegments($procedimiento);
-        if (count($parts) < 2) {
-            return null;
-        }
-
-        $normalizeCandidate = static function (?string $value): string {
-            return strtoupper(trim((string) ($value ?? '')));
-        };
-
-        $isLikelyCode = static function (string $value): bool {
-            if ($value === '' || str_contains($value, ' ')) {
-                return false;
-            }
-            return (bool) preg_match('/^[A-Z0-9][A-Z0-9._-]*$/', $value);
-        };
-
-        $tipoAtencion = $normalizeCandidate($parts[0] ?? '');
-
-        if (str_contains($tipoAtencion, 'IMAGEN') && array_key_exists(2, $parts)) {
-            $thirdRaw = trim((string) ($parts[2] ?? ''));
-            $thirdNorm = $normalizeCandidate($thirdRaw);
-
-            if (preg_match('/^([A-Z0-9]{3,})\s*-\s*(.+)$/u', $thirdNorm, $matches)) {
-                return trim((string) ($matches[1] ?? '')) ?: null;
-            }
-
-            if ($isLikelyCode($thirdNorm)) {
-                return $thirdNorm;
-            }
-        }
-
-        $second = $normalizeCandidate($parts[1] ?? '');
-        if ($isLikelyCode($second)) {
-            return $second;
-        }
-
-        if (array_key_exists(2, $parts)) {
-            $third = $normalizeCandidate($parts[2] ?? '');
-            if (preg_match('/^([A-Z0-9][A-Z0-9._-]*)\s*-\s*/u', $third, $matches)) {
-                return trim((string) ($matches[1] ?? '')) ?: null;
-            }
-            if ($isLikelyCode($third)) {
-                return $third;
-            }
-        }
-
-        return null;
-    };
-
-    $extractProcedureDetail = static function (?string $procedimiento, ?string $codigo) use ($splitProcedureSegments): ?string {
-        $procedimiento = trim((string) ($procedimiento ?? ''));
-        $codigo = strtoupper(trim((string) ($codigo ?? '')));
-
-        if ($procedimiento === '' || $codigo === '') {
-            return null;
-        }
-
-        $parts = $splitProcedureSegments($procedimiento);
-        if (empty($parts)) {
-            return null;
-        }
-
-        $tipoAtencion = strtoupper((string) ($parts[0] ?? ''));
-        $detailParts = [];
-
-        if (str_contains($tipoAtencion, 'IMAGEN') && array_key_exists(2, $parts)) {
-            $thirdRaw = trim((string) ($parts[2] ?? ''));
-            $thirdNorm = strtoupper($thirdRaw);
-
-            if (preg_match('/^([A-Z0-9]{3,})\s*-\s*(.+)$/u', $thirdNorm, $matches)) {
-                $imageCode = trim((string) ($matches[1] ?? ''));
-                if ($imageCode === $codigo) {
-                    $firstDetailChunk = trim((string) ($matches[2] ?? ''));
-                    if ($firstDetailChunk !== '') {
-                        $detailParts[] = $firstDetailChunk;
-                    }
-                    $detailParts = array_merge($detailParts, array_slice($parts, 3));
-                }
-            } elseif ($thirdNorm === $codigo) {
-                $detailParts = array_slice($parts, 3);
-            }
-        }
-
-        if (empty($detailParts)) {
-            foreach ($parts as $index => $part) {
-                if (strtoupper(trim((string) $part)) !== $codigo) {
-                    continue;
-                }
-                $detailParts = array_slice($parts, $index + 1);
-                break;
-            }
-        }
-
-        $detailParts = array_values(array_filter(array_map(
-            static fn($value): string => trim((string) $value),
-            $detailParts
-        ), static fn(string $value): bool => $value !== ''));
-
-        if (!empty($detailParts)) {
-            return implode(' - ', $detailParts);
-        }
-
-        $escapedCode = preg_quote($codigo, '/');
-        if (preg_match('/\b' . $escapedCode . '\b\s*-\s*(.+)$/u', $procedimiento, $matches)) {
-            $detail = trim((string) ($matches[1] ?? ''));
-            return $detail !== '' ? $detail : null;
-        }
-
-        return null;
-    };
-
-    $parsePriceValue = static function ($value): ?float {
-        if ($value === null) {
-            return null;
-        }
-
-        $raw = trim((string) $value);
-        if ($raw === '') {
-            return null;
-        }
-
-        $normalized = preg_replace('/[^\d,.\-]/u', '', $raw);
-        if ($normalized === null || $normalized === '' || $normalized === '-' || $normalized === '.' || $normalized === ',') {
-            return null;
-        }
-
-        $hasComma = strpos($normalized, ',') !== false;
-        $hasDot = strpos($normalized, '.') !== false;
-
-        if ($hasComma && $hasDot) {
-            $lastComma = strrpos($normalized, ',');
-            $lastDot = strrpos($normalized, '.');
-            if ($lastComma !== false && $lastDot !== false && $lastComma > $lastDot) {
-                $normalized = str_replace('.', '', $normalized);
-                $normalized = str_replace(',', '.', $normalized);
-            } else {
-                $normalized = str_replace(',', '', $normalized);
-            }
-        } elseif ($hasComma) {
-            $commaCount = substr_count($normalized, ',');
-            if (
-                $commaCount === 1
-                && (
-                    preg_match('/^-?\d+,\d+$/', $normalized)
-                    || preg_match('/^-?\d{1,3}(?:\.\d{3})+,\d+$/', $normalized)
-                )
-            ) {
-                // Formato esperado del scrape: 32,0000 / 1.234,5000
-                $normalized = str_replace('.', '', $normalized);
-                $normalized = str_replace(',', '.', $normalized);
-            } else {
-                $normalized = str_replace(',', '', $normalized);
-            }
-        } elseif ($hasDot && substr_count($normalized, '.') > 1) {
-            $lastDot = strrpos($normalized, '.');
-            if ($lastDot !== false) {
-                $decimals = strlen($normalized) - $lastDot - 1;
-                if ($decimals > 0 && $decimals <= 2) {
-                    $intPart = str_replace('.', '', substr($normalized, 0, $lastDot));
-                    $decPart = substr($normalized, $lastDot + 1);
-                    $normalized = $intPart . '.' . $decPart;
-                } else {
-                    $normalized = str_replace('.', '', $normalized);
-                }
-            }
-        }
-
-        if (!is_numeric($normalized)) {
-            return null;
-        }
-
-        return round((float) $normalized, 2);
-    };
-
     $quoteIdentifier = static function (string $identifier): string {
         if (!preg_match('/^[A-Za-z0-9_]+$/', $identifier)) {
             throw new RuntimeException("Identificador SQL inválido: {$identifier}");
@@ -313,65 +103,6 @@ try {
         return null;
     };
 
-    $afiliacionMapColumns = [];
-    try {
-        $afiliacionMapColumns = $fetchTableColumns($pdo, 'afiliacion_categoria_map');
-    } catch (Throwable $schemaError) {
-        $log('WARN no se pudo inspeccionar schema afiliacion_categoria_map: ' . $schemaError->getMessage());
-    }
-
-    $hasAfiliacionMap = isset($afiliacionMapColumns['afiliacion_norm'], $afiliacionMapColumns['categoria']);
-    $stmtCategoriaAfiliacion = null;
-    if ($hasAfiliacionMap) {
-        $stmtCategoriaAfiliacion = $pdo->prepare(
-            "SELECT LOWER(TRIM(categoria))
-               FROM afiliacion_categoria_map
-              WHERE afiliacion_norm = :afiliacion_norm
-              LIMIT 1"
-        );
-    }
-
-    $resolveClienteCategory = static function (?string $afiliacionRaw) use ($normalizeAffiliationKey, $hasAfiliacionMap, $stmtCategoriaAfiliacion): string {
-        static $categoryCache = [];
-
-        $afiliacionNorm = $normalizeAffiliationKey($afiliacionRaw);
-        if (isset($categoryCache[$afiliacionNorm])) {
-            return $categoryCache[$afiliacionNorm];
-        }
-
-        if ($hasAfiliacionMap && $stmtCategoriaAfiliacion !== null && $afiliacionNorm !== '') {
-            $stmtCategoriaAfiliacion->execute([':afiliacion_norm' => $afiliacionNorm]);
-            $categoriaMap = $stmtCategoriaAfiliacion->fetchColumn();
-            if ($categoriaMap !== false) {
-                $categoriaMap = trim((string) $categoriaMap);
-                if ($categoriaMap !== '') {
-                    $categoryCache[$afiliacionNorm] = strtolower($categoriaMap);
-                    return $categoryCache[$afiliacionNorm];
-                }
-            }
-        }
-
-        if ($afiliacionNorm === '') {
-            $categoryCache[$afiliacionNorm] = 'otros';
-            return $categoryCache[$afiliacionNorm];
-        }
-        if (str_contains($afiliacionNorm, 'particular')) {
-            $categoryCache[$afiliacionNorm] = 'particular';
-            return $categoryCache[$afiliacionNorm];
-        }
-        if (str_contains($afiliacionNorm, 'fundacion') || str_contains($afiliacionNorm, 'fundacional')) {
-            $categoryCache[$afiliacionNorm] = 'fundacional';
-            return $categoryCache[$afiliacionNorm];
-        }
-        if (preg_match('/iess|issfa|isspol|seguro_general|seguro_campesino|jubilado|montepio|contribuyente|voluntario/', $afiliacionNorm)) {
-            $categoryCache[$afiliacionNorm] = 'publico';
-            return $categoryCache[$afiliacionNorm];
-        }
-
-        $categoryCache[$afiliacionNorm] = 'privado';
-        return $categoryCache[$afiliacionNorm];
-    };
-
     $referidoPrefacturaColumn = $resolveColumn(['referido_prefactura_por', 'id_procedencia']);
     $especificarReferidoColumn = $resolveColumn(['especificar_referido_prefactura', 'especificar_por', 'especificarpor']);
 
@@ -379,7 +110,7 @@ try {
         'hcNumber', 'form_id', 'procedimiento_proyectado', 'doctor', 'cie10', 'estado_agenda', 'estado',
         'codigo_derivacion', 'num_secuencial_derivacion', 'fname', 'mname', 'lname', 'lname2', 'email',
         'fecha_nacimiento', 'sexo', 'ciudad', 'afiliacion', 'telefono', 'fecha', 'hora', 'nombre_completo',
-        'sede_departamento', 'id_sede', 'referido_prefactura_por', 'especificar_referido_prefactura', 'precio',
+        'sede_departamento', 'id_sede', 'referido_prefactura_por', 'especificar_referido_prefactura',
     ];
     $dateKeys = ['fecha', 'fecha_nacimiento', 'fechaCaducidad', 'fecha_caducidad', 'fecha_nac'];
 
@@ -423,27 +154,6 @@ try {
         implode(",\n                    ", $procedimientoUpdateClauses)
     );
     $stmtProc = $pdo->prepare($sqlProcedimiento);
-
-    $stmtBillingMainByForm = $pdo->prepare("SELECT id, hc_number FROM billing_main WHERE form_id = :form_id LIMIT 1");
-    $stmtInsertBillingMain = $pdo->prepare(
-        "INSERT INTO billing_main (hc_number, form_id) VALUES (:hc_number, :form_id)"
-    );
-    $stmtUpdateBillingMainHc = $pdo->prepare(
-        "UPDATE billing_main SET hc_number = :hc_number, updated_at = CURRENT_TIMESTAMP WHERE id = :id"
-    );
-    $stmtBillingProcByCode = $pdo->prepare(
-        "SELECT id FROM billing_procedimientos WHERE billing_id = :billing_id AND proc_codigo = :proc_codigo LIMIT 1"
-    );
-    $stmtInsertBillingProc = $pdo->prepare(
-        "INSERT INTO billing_procedimientos (billing_id, proc_codigo, proc_detalle, proc_precio)
-              VALUES (:billing_id, :proc_codigo, :proc_detalle, :proc_precio)"
-    );
-    $stmtUpdateBillingProc = $pdo->prepare(
-        "UPDATE billing_procedimientos
-            SET proc_detalle = :proc_detalle,
-                proc_precio = :proc_precio
-          WHERE id = :id"
-    );
 
     $respuestas = [];
     $erroresBatch = [];
@@ -595,79 +305,14 @@ try {
 
             $stmtProc->execute($procedimientoParams);
 
-            $categoriaCliente = $resolveClienteCategory($item['afiliacion'] ?? null);
-            $esCategoriaNoPublica = $categoriaCliente !== 'publico';
-            $precioScrape = $parsePriceValue($item['precio'] ?? null);
-            $codigoProcedimiento = $extractProcedureCode($item['procedimiento_proyectado'] ?? null);
-            $billingSincronizado = false;
-
-            if ($esCategoriaNoPublica && $precioScrape !== null && $precioScrape > 0 && $codigoProcedimiento !== null) {
-                $stmtBillingMainByForm->execute([':form_id' => $item['form_id']]);
-                $billingMain = $stmtBillingMainByForm->fetch(PDO::FETCH_ASSOC) ?: null;
-
-                if ($billingMain) {
-                    $billingId = (int) ($billingMain['id'] ?? 0);
-                    $hcNumberActual = trim((string) ($billingMain['hc_number'] ?? ''));
-                    if ($billingId > 0 && $item['hcNumber'] !== '' && $hcNumberActual !== (string) $item['hcNumber']) {
-                        $stmtUpdateBillingMainHc->execute([
-                            ':hc_number' => $item['hcNumber'],
-                            ':id' => $billingId,
-                        ]);
-                    }
-                } else {
-                    $stmtInsertBillingMain->execute([
-                        ':hc_number' => $item['hcNumber'],
-                        ':form_id' => $item['form_id'],
-                    ]);
-                    $billingId = (int) $pdo->lastInsertId();
-                }
-
-                if (!empty($billingId)) {
-                    $detalleProcedimiento = $extractProcedureDetail(
-                        $item['procedimiento_proyectado'] ?? null,
-                        $codigoProcedimiento
-                    );
-                    if ($detalleProcedimiento === null || $detalleProcedimiento === '') {
-                        $detalleProcedimiento = $codigoProcedimiento;
-                    }
-                    $stmtBillingProcByCode->execute([
-                        ':billing_id' => $billingId,
-                        ':proc_codigo' => $codigoProcedimiento,
-                    ]);
-                    $billingProcId = $stmtBillingProcByCode->fetchColumn();
-
-                    if ($billingProcId !== false) {
-                        $stmtUpdateBillingProc->execute([
-                            ':proc_detalle' => $detalleProcedimiento,
-                            ':proc_precio' => $precioScrape,
-                            ':id' => (int) $billingProcId,
-                        ]);
-                    } else {
-                        $stmtInsertBillingProc->execute([
-                            ':billing_id' => $billingId,
-                            ':proc_codigo' => $codigoProcedimiento,
-                            ':proc_detalle' => $detalleProcedimiento,
-                            ':proc_precio' => $precioScrape,
-                        ]);
-                    }
-                    $billingSincronizado = true;
-                }
-            } elseif ($esCategoriaNoPublica && $precioScrape !== null && $precioScrape > 0 && $codigoProcedimiento === null) {
-                $log("WARN index={$index} form_id={$item['form_id']} no se pudo extraer codigo de procedimiento para facturación");
-            }
-
             $respuesta = [
                 'success' => true,
                 'message' => 'Registro actualizado o insertado.',
                 'id' => $item['form_id'],
                 'form_id' => $item['form_id'],
                 'afiliacion' => $item['afiliacion'] ?? null,
-                'categoria_cliente' => $categoriaCliente,
                 'estado' => $procedimientoParams[':estado_agenda'] ?? null,
                 'hc_number' => $item['hcNumber'],
-                'precio_scrape' => $precioScrape,
-                'codigo_procedimiento' => $codigoProcedimiento,
-                'billing_sync' => $billingSincronizado,
                 'visita_id' => null,
             ];
             $respuestas[] = [
@@ -677,12 +322,8 @@ try {
                 'id' => $respuesta['id'] ?? $item['form_id'],
                 'form_id' => $respuesta['form_id'] ?? $item['form_id'],
                 'afiliacion' => $respuesta['afiliacion'] ?? ($item['afiliacion'] ?? null),
-                'categoria_cliente' => $respuesta['categoria_cliente'] ?? null,
                 'estado' => $respuesta['estado'] ?? null,
                 'hc_number' => $respuesta['hc_number'] ?? ($item['hcNumber'] ?? null),
-                'precio_scrape' => $respuesta['precio_scrape'] ?? null,
-                'codigo_procedimiento' => $respuesta['codigo_procedimiento'] ?? null,
-                'billing_sync' => $respuesta['billing_sync'] ?? false,
                 'visita_id' => $respuesta['visita_id'] ?? null,
             ];
         } catch (Throwable $e) {

@@ -91,6 +91,7 @@ class BillingParticularesReportService
         $atendidoCondition = $this->attendedEncounterCondition('pp');
         $referidoPrefacturaExpr = $this->referidoPrefacturaExpression('pp');
         $especificarReferidoExpr = $this->especificarReferidoPrefacturaExpression('pp');
+        $economicsJoin = $this->economicsJoinDefinition();
 
         $sql = <<<SQL
             SELECT
@@ -109,7 +110,10 @@ class BillingParticularesReportService
                 econ.billing_id,
                 econ.fecha_facturacion,
                 COALESCE(econ.total_produccion, 0) AS total_produccion,
-                COALESCE(econ.procedimientos_facturados, 0) AS procedimientos_facturados
+                COALESCE(econ.procedimientos_facturados, 0) AS procedimientos_facturados,
+                econ.formas_pago,
+                econ.numero_factura,
+                econ.factura_id
             FROM (
                 SELECT
                     p.hc_number,
@@ -151,25 +155,7 @@ class BillingParticularesReportService
                 WHERE pd.fecha_inicio BETWEEN ? AND ?
                   AND %ATENDIDO_WHERE%
             ) AS atenciones
-            LEFT JOIN (
-                SELECT
-                    bm.form_id,
-                    bm.hc_number,
-                    MAX(bm.id) AS billing_id,
-                    MAX(
-                        CASE
-                            WHEN CAST(bm.created_at AS CHAR) IN ('', '0000-00-00', '0000-00-00 00:00:00') THEN NULL
-                            ELSE bm.created_at
-                        END
-                    ) AS fecha_facturacion,
-                    COALESCE(SUM(bp.proc_precio), 0) AS total_produccion,
-                    COUNT(bp.id) AS procedimientos_facturados
-                FROM billing_main bm
-                LEFT JOIN billing_procedimientos bp ON bp.billing_id = bm.id
-                GROUP BY bm.form_id, bm.hc_number
-            ) AS econ
-              ON econ.form_id = atenciones.form_id
-             AND econ.hc_number = atenciones.hc_number
+            %ECON_JOIN_SQL%
             WHERE atenciones.fecha IS NOT NULL
               AND atenciones.fecha NOT IN ('', '0000-00-00', '0000-00-00 00:00:00')
             ORDER BY atenciones.fecha DESC, atenciones.form_id DESC
@@ -179,6 +165,7 @@ class BillingParticularesReportService
         $sql = str_replace('%ATENDIDO_WHERE%', $atendidoCondition, $sql);
         $sql = str_replace('%REFERIDO_PREFACTURA_EXPR%', $referidoPrefacturaExpr, $sql);
         $sql = str_replace('%ESPECIFICAR_REFERIDO_EXPR%', $especificarReferidoExpr, $sql);
+        $sql = str_replace('%ECON_JOIN_SQL%', $economicsJoin, $sql);
 
         $params = [$fechaInicio, $fechaFin, $fechaInicio, $fechaFin];
 
@@ -1220,6 +1207,61 @@ class BillingParticularesReportService
             WHEN {$normalized} LIKE '%matriz%' OR {$normalized} LIKE '%villa%' THEN 'MATRIZ'
             ELSE ''
         END";
+    }
+
+    private function economicsJoinDefinition(): string
+    {
+        if (
+            $this->columnExists('billing_facturacion_real', 'form_id')
+            && $this->columnExists('billing_facturacion_real', 'monto_honorario')
+        ) {
+            return <<<SQL
+                LEFT JOIN (
+                    SELECT
+                        bfr.form_id,
+                        MAX(NULLIF(TRIM(COALESCE(bfr.factura_id, '')), '')) AS billing_id,
+                        MAX(
+                            CASE
+                                WHEN CAST(bfr.fecha_facturacion AS CHAR) IN ('', '0000-00-00', '0000-00-00 00:00:00') THEN NULL
+                                ELSE bfr.fecha_facturacion
+                            END
+                        ) AS fecha_facturacion,
+                        COALESCE(SUM(bfr.monto_honorario), 0) AS total_produccion,
+                        COUNT(*) AS procedimientos_facturados,
+                        GROUP_CONCAT(DISTINCT NULLIF(TRIM(COALESCE(bfr.formas_pago, '')), '') SEPARATOR ' | ') AS formas_pago,
+                        GROUP_CONCAT(DISTINCT NULLIF(TRIM(COALESCE(bfr.numero_factura, '')), '') SEPARATOR ' | ') AS numero_factura,
+                        GROUP_CONCAT(DISTINCT NULLIF(TRIM(COALESCE(bfr.factura_id, '')), '') SEPARATOR ' | ') AS factura_id
+                    FROM billing_facturacion_real bfr
+                    GROUP BY bfr.form_id
+                ) AS econ
+                  ON econ.form_id = atenciones.form_id
+            SQL;
+        }
+
+        return <<<SQL
+            LEFT JOIN (
+                SELECT
+                    bm.form_id,
+                    bm.hc_number,
+                    MAX(bm.id) AS billing_id,
+                    MAX(
+                        CASE
+                            WHEN CAST(bm.created_at AS CHAR) IN ('', '0000-00-00', '0000-00-00 00:00:00') THEN NULL
+                            ELSE bm.created_at
+                        END
+                    ) AS fecha_facturacion,
+                    COALESCE(SUM(bp.proc_precio), 0) AS total_produccion,
+                    COUNT(bp.id) AS procedimientos_facturados,
+                    NULL AS formas_pago,
+                    NULL AS numero_factura,
+                    NULL AS factura_id
+                FROM billing_main bm
+                LEFT JOIN billing_procedimientos bp ON bp.billing_id = bm.id
+                GROUP BY bm.form_id, bm.hc_number
+            ) AS econ
+              ON econ.form_id = atenciones.form_id
+             AND econ.hc_number = atenciones.hc_number
+        SQL;
     }
 
     private function columnExists(string $table, string $column): bool
