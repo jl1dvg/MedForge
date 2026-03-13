@@ -2,16 +2,26 @@
 
 namespace App\Modules\Billing\Services;
 
+use App\Models\Tarifario2014;
+use App\Modules\Codes\Services\CodePriceService;
 use DateTimeImmutable;
 use PDO;
+use Throwable;
 
 class BillingParticularesReportService
 {
     private PDO $db;
     /** @var array<string, bool> */
     private array $columnExistsCache = [];
+    /** @var array<string, float> */
+    private array $tarifaLookupCache = [];
+    /** @var array<string, array{id:int,codigo:string,descripcion:string}> */
+    private array $tarifaCodeCache = [];
     /** @var array<string, array{categoria:string,afiliacion_raw:string}>|null */
     private ?array $afiliacionCategoriaMapCache = null;
+    /** @var array<int, array{level_key:string,storage_key:string,title:string,category:string,source:string}>|null */
+    private ?array $codePriceLevelsCache = null;
+    private ?CodePriceService $codePriceService = null;
     /** @var array<int, string> */
     private const EXCLUDED_ATTENTION_TYPES = [
         'consulta optometria',
@@ -98,6 +108,7 @@ class BillingParticularesReportService
                 atenciones.hc_number,
                 atenciones.nombre_completo,
                 atenciones.tipo,
+                atenciones.fuente_atencion,
                 atenciones.form_id,
                 atenciones.fecha,
                 atenciones.afiliacion,
@@ -107,8 +118,16 @@ class BillingParticularesReportService
                 atenciones.doctor,
                 atenciones.referido_prefactura_por,
                 atenciones.especificar_referido_prefactura,
+                atenciones.protocolo_id,
+                atenciones.protocolo_status_ok,
+                atenciones.protocolo_firmado,
+                atenciones.fecha_firma,
+                atenciones.protocolo_firmado_por,
+                atenciones.consulta_fecha,
+                atenciones.consulta_diagnosticos,
                 econ.billing_id,
                 econ.fecha_facturacion,
+                econ.fecha_atencion,
                 COALESCE(econ.total_produccion, 0) AS total_produccion,
                 COALESCE(econ.monto_honorario_real, 0) AS monto_honorario_real,
                 COALESCE(econ.monto_facturado_real, 0) AS monto_facturado_real,
@@ -117,12 +136,14 @@ class BillingParticularesReportService
                 econ.numero_factura,
                 econ.factura_id,
                 econ.cliente_facturacion,
-                econ.area_facturacion
+                econ.area_facturacion,
+                econ.estado_facturacion_raw
             FROM (
                 SELECT
                     p.hc_number,
                     CONCAT_WS(' ', p.fname, p.lname, p.lname2) AS nombre_completo,
                     'consulta' AS tipo,
+                    'consulta' AS fuente_atencion,
                     cd.form_id,
                     cd.fecha AS fecha,
                     p.afiliacion,
@@ -131,7 +152,14 @@ class BillingParticularesReportService
                     pp.procedimiento_proyectado,
                     pp.doctor,
                     %REFERIDO_PREFACTURA_EXPR% AS referido_prefactura_por,
-                    %ESPECIFICAR_REFERIDO_EXPR% AS especificar_referido_prefactura
+                    %ESPECIFICAR_REFERIDO_EXPR% AS especificar_referido_prefactura,
+                    NULL AS protocolo_id,
+                    0 AS protocolo_status_ok,
+                    0 AS protocolo_firmado,
+                    NULL AS fecha_firma,
+                    NULL AS protocolo_firmado_por,
+                    cd.fecha AS consulta_fecha,
+                    NULLIF(TRIM(COALESCE(cd.diagnosticos, '')), '') AS consulta_diagnosticos
                 FROM patient_data p
                 INNER JOIN consulta_data cd ON cd.hc_number = p.hc_number
                 INNER JOIN procedimiento_proyectado pp ON pp.hc_number = p.hc_number AND pp.form_id = cd.form_id
@@ -144,6 +172,7 @@ class BillingParticularesReportService
                     p.hc_number,
                     CONCAT_WS(' ', p.fname, p.lname, p.lname2) AS nombre_completo,
                     'protocolo' AS tipo,
+                    'protocolo' AS fuente_atencion,
                     pd.form_id,
                     pd.fecha_inicio AS fecha,
                     p.afiliacion,
@@ -152,12 +181,119 @@ class BillingParticularesReportService
                     pp.procedimiento_proyectado,
                     pp.doctor,
                     %REFERIDO_PREFACTURA_EXPR% AS referido_prefactura_por,
-                    %ESPECIFICAR_REFERIDO_EXPR% AS especificar_referido_prefactura
+                    %ESPECIFICAR_REFERIDO_EXPR% AS especificar_referido_prefactura,
+                    pd.procedimiento_id AS protocolo_id,
+                    CASE WHEN COALESCE(pd.status, 0) = 1 THEN 1 ELSE 0 END AS protocolo_status_ok,
+                    CASE
+                        WHEN NULLIF(TRIM(COALESCE(pd.fecha_firma, '')), '') IS NOT NULL
+                          OR NULLIF(TRIM(COALESCE(pd.protocolo_firmado_por, '')), '') IS NOT NULL
+                        THEN 1 ELSE 0
+                    END AS protocolo_firmado,
+                    pd.fecha_firma,
+                    pd.protocolo_firmado_por,
+                    NULL AS consulta_fecha,
+                    NULL AS consulta_diagnosticos
                 FROM patient_data p
                 INNER JOIN protocolo_data pd ON pd.hc_number = p.hc_number
                 INNER JOIN procedimiento_proyectado pp ON pp.hc_number = p.hc_number AND pp.form_id = pd.form_id
                 WHERE pd.fecha_inicio BETWEEN ? AND ?
-                  AND %ATENDIDO_WHERE%
+                  AND (%ATENDIDO_WHERE% OR %SURGERY_WHERE%)
+
+                UNION ALL
+
+                SELECT
+                    p.hc_number,
+                    CONCAT_WS(' ', p.fname, p.lname, p.lname2) AS nombre_completo,
+                    'agenda_cirugia' AS tipo,
+                    'agenda_cirugia' AS fuente_atencion,
+                    pp.form_id,
+                    pp.fecha AS fecha,
+                    p.afiliacion,
+                    %SEDE_EXPR% AS sede,
+                    %ESTADO_EXPR% AS estado_encuentro,
+                    pp.procedimiento_proyectado,
+                    pp.doctor,
+                    %REFERIDO_PREFACTURA_EXPR% AS referido_prefactura_por,
+                    %ESPECIFICAR_REFERIDO_EXPR% AS especificar_referido_prefactura,
+                    NULL AS protocolo_id,
+                    0 AS protocolo_status_ok,
+                    0 AS protocolo_firmado,
+                    NULL AS fecha_firma,
+                    NULL AS protocolo_firmado_por,
+                    NULL AS consulta_fecha,
+                    NULL AS consulta_diagnosticos
+                FROM patient_data p
+                INNER JOIN procedimiento_proyectado pp ON pp.hc_number = p.hc_number
+                LEFT JOIN protocolo_data pd ON pd.hc_number = p.hc_number AND pd.form_id = pp.form_id
+                WHERE pp.fecha BETWEEN ? AND ?
+                  AND %SURGERY_WHERE%
+                  AND pd.form_id IS NULL
+
+                UNION ALL
+
+                SELECT
+                    p.hc_number,
+                    CONCAT_WS(' ', p.fname, p.lname, p.lname2) AS nombre_completo,
+                    'agenda_pni' AS tipo,
+                    'agenda_pni' AS fuente_atencion,
+                    pp.form_id,
+                    pp.fecha AS fecha,
+                    p.afiliacion,
+                    %SEDE_EXPR% AS sede,
+                    %ESTADO_EXPR% AS estado_encuentro,
+                    pp.procedimiento_proyectado,
+                    pp.doctor,
+                    %REFERIDO_PREFACTURA_EXPR% AS referido_prefactura_por,
+                    %ESPECIFICAR_REFERIDO_EXPR% AS especificar_referido_prefactura,
+                    NULL AS protocolo_id,
+                    0 AS protocolo_status_ok,
+                    0 AS protocolo_firmado,
+                    NULL AS fecha_firma,
+                    NULL AS protocolo_firmado_por,
+                    cd.fecha AS consulta_fecha,
+                    NULLIF(TRIM(COALESCE(cd.diagnosticos, '')), '') AS consulta_diagnosticos
+                FROM patient_data p
+                INNER JOIN procedimiento_proyectado pp ON pp.hc_number = p.hc_number
+                LEFT JOIN consulta_data cd ON cd.hc_number = p.hc_number AND cd.form_id = pp.form_id
+                WHERE pp.fecha BETWEEN ? AND ?
+                  AND %PNI_WHERE%
+                  AND NOT (
+                    cd.form_id IS NOT NULL
+                    AND %ATENDIDO_WHERE%
+                  )
+
+                UNION ALL
+
+                SELECT
+                    p.hc_number,
+                    CONCAT_WS(' ', p.fname, p.lname, p.lname2) AS nombre_completo,
+                    'agenda_servicio_oftalmo' AS tipo,
+                    'agenda_servicio_oftalmo' AS fuente_atencion,
+                    pp.form_id,
+                    pp.fecha AS fecha,
+                    p.afiliacion,
+                    %SEDE_EXPR% AS sede,
+                    %ESTADO_EXPR% AS estado_encuentro,
+                    pp.procedimiento_proyectado,
+                    pp.doctor,
+                    %REFERIDO_PREFACTURA_EXPR% AS referido_prefactura_por,
+                    %ESPECIFICAR_REFERIDO_EXPR% AS especificar_referido_prefactura,
+                    NULL AS protocolo_id,
+                    0 AS protocolo_status_ok,
+                    0 AS protocolo_firmado,
+                    NULL AS fecha_firma,
+                    NULL AS protocolo_firmado_por,
+                    cd.fecha AS consulta_fecha,
+                    NULLIF(TRIM(COALESCE(cd.diagnosticos, '')), '') AS consulta_diagnosticos
+                FROM patient_data p
+                INNER JOIN procedimiento_proyectado pp ON pp.hc_number = p.hc_number
+                LEFT JOIN consulta_data cd ON cd.hc_number = p.hc_number AND cd.form_id = pp.form_id
+                WHERE pp.fecha BETWEEN ? AND ?
+                  AND %SERVICIO_OFTALMO_WHERE%
+                  AND NOT (
+                    cd.form_id IS NOT NULL
+                    AND %ATENDIDO_WHERE%
+                  )
             ) AS atenciones
             %ECON_JOIN_SQL%
             WHERE atenciones.fecha IS NOT NULL
@@ -167,11 +303,14 @@ class BillingParticularesReportService
         $sql = str_replace('%SEDE_EXPR%', $sedeExpr, $sql);
         $sql = str_replace('%ESTADO_EXPR%', $estadoExpr, $sql);
         $sql = str_replace('%ATENDIDO_WHERE%', $atendidoCondition, $sql);
+        $sql = str_replace('%SURGERY_WHERE%', $this->surgeryAttentionCondition('pp'), $sql);
+        $sql = str_replace('%PNI_WHERE%', $this->pniAttentionCondition('pp'), $sql);
+        $sql = str_replace('%SERVICIO_OFTALMO_WHERE%', $this->ophthalmologyServiceAttentionCondition('pp'), $sql);
         $sql = str_replace('%REFERIDO_PREFACTURA_EXPR%', $referidoPrefacturaExpr, $sql);
         $sql = str_replace('%ESPECIFICAR_REFERIDO_EXPR%', $especificarReferidoExpr, $sql);
         $sql = str_replace('%ECON_JOIN_SQL%', $economicsJoin, $sql);
 
-        $params = [$fechaInicio, $fechaFin, $fechaInicio, $fechaFin];
+        $params = [$fechaInicio, $fechaFin, $fechaInicio, $fechaFin, $fechaInicio, $fechaFin, $fechaInicio, $fechaFin, $fechaInicio, $fechaFin];
 
         $stmt = $this->db->prepare($sql);
         $stmt->execute($params);
@@ -203,6 +342,12 @@ class BillingParticularesReportService
             if ($this->isExcludedAttentionType($tipoAtencion)) {
                 continue;
             }
+            if (
+                $this->isOphthalmologyServiceAttentionType($tipoAtencion)
+                && !$this->isAllowedOphthalmologyServiceProcedure((string) ($row['procedimiento_proyectado'] ?? ''))
+            ) {
+                continue;
+            }
 
             $row['tipo_atencion'] = $tipoAtencion;
             $row['monto_honorario_real'] = round((float) ($row['monto_honorario_real'] ?? 0), 2);
@@ -212,9 +357,125 @@ class BillingParticularesReportService
             $billingId = trim((string) ($row['billing_id'] ?? ''));
             $facturaId = trim((string) ($row['factura_id'] ?? ''));
             $numeroFactura = trim((string) ($row['numero_factura'] ?? ''));
-            $row['facturado'] = $billingId !== ''
-                || $facturaId !== ''
-                || $numeroFactura !== '';
+            $hasBillingEvidence = $this->hasBillingEvidence($row);
+            $row['facturado'] = $hasBillingEvidence;
+            $row['estado_realizacion'] = 'ATENDIDA';
+            $row['estado_facturacion_operativa'] = $hasBillingEvidence ? 'FACTURADA' : 'SIN_FACTURACION';
+            $row['alerta_revision'] = null;
+            $row['tarifa_codigo'] = '';
+            $row['tarifa_detalle'] = '';
+            $row['monto_estimado_tarifario'] = 0.0;
+            $row['monto_por_cobrar_estimado'] = 0.0;
+            $row['monto_perdida_estimada'] = 0.0;
+            $row['sin_tarifa_estimable'] = false;
+            $row['cirugia_realizada'] = false;
+            $row['cirugia_perdida'] = false;
+            $row['pni_realizada'] = false;
+            $row['pni_perdida'] = false;
+            $row['servicio_oftalmologico_realizada'] = false;
+            $row['servicio_oftalmologico_perdida'] = false;
+
+            if ($this->isPniAttentionType($tipoAtencion)) {
+                [$codigoTarifario, $detalleTarifario] = $this->parseProcedureCodeDetail((string) ($row['procedimiento_proyectado'] ?? ''));
+                $montoTarifario = $codigoTarifario !== '' ? $this->lookupTarifa($codigoTarifario, $row) : 0.0;
+                $estadoRealizacion = $this->resolvePniRealizationState($row, $hasBillingEvidence);
+                $estadoFacturacion = $this->resolvePniBillingState($estadoRealizacion);
+                $alertaRevision = $this->resolvePniReviewAlert($row, $estadoRealizacion, $hasBillingEvidence);
+
+                $row['estado_realizacion'] = $estadoRealizacion;
+                $row['estado_facturacion_operativa'] = $estadoFacturacion;
+                $row['alerta_revision'] = $alertaRevision;
+                $row['tarifa_codigo'] = $codigoTarifario;
+                $row['tarifa_detalle'] = $detalleTarifario;
+                $row['monto_estimado_tarifario'] = round($montoTarifario, 2);
+                $row['pni_realizada'] = in_array($estadoRealizacion, ['FACTURADA', 'REALIZADA_CONSULTA'], true);
+                $row['pni_perdida'] = in_array($estadoRealizacion, ['CANCELADA', 'AUSENTE'], true);
+
+                if ($estadoFacturacion === 'PENDIENTE_FACTURAR') {
+                    $row['monto_por_cobrar_estimado'] = round($montoTarifario, 2);
+                }
+                if ($row['pni_perdida']) {
+                    $row['monto_perdida_estimada'] = round($montoTarifario, 2);
+                }
+                if (
+                    $montoTarifario <= 0
+                    && (
+                        $row['monto_por_cobrar_estimado'] > 0
+                        || $row['monto_perdida_estimada'] > 0
+                        || $estadoFacturacion === 'PENDIENTE_FACTURAR'
+                        || $row['pni_perdida']
+                    )
+                ) {
+                    $row['sin_tarifa_estimable'] = true;
+                }
+            }
+
+            if ($this->isOphthalmologyServiceAttentionType($tipoAtencion)) {
+                [$codigoTarifario, $detalleTarifario] = $this->parseProcedureCodeDetail((string) ($row['procedimiento_proyectado'] ?? ''));
+                $montoTarifario = $codigoTarifario !== '' ? $this->lookupTarifa($codigoTarifario, $row) : 0.0;
+                $estadoRealizacion = $this->resolveOphthalmologyServiceRealizationState($row, $hasBillingEvidence);
+                $estadoFacturacion = $this->resolveOphthalmologyServiceBillingState($estadoRealizacion);
+                $alertaRevision = $this->resolveOphthalmologyServiceReviewAlert($row, $estadoRealizacion, $hasBillingEvidence);
+
+                $row['estado_realizacion'] = $estadoRealizacion;
+                $row['estado_facturacion_operativa'] = $estadoFacturacion;
+                $row['alerta_revision'] = $alertaRevision;
+                $row['tarifa_codigo'] = $codigoTarifario;
+                $row['tarifa_detalle'] = $detalleTarifario;
+                $row['monto_estimado_tarifario'] = round($montoTarifario, 2);
+                $row['servicio_oftalmologico_realizada'] = in_array($estadoRealizacion, ['FACTURADA', 'REALIZADA_CONSULTA'], true);
+                $row['servicio_oftalmologico_perdida'] = in_array($estadoRealizacion, ['CANCELADA', 'AUSENTE'], true);
+
+                if ($estadoFacturacion === 'PENDIENTE_FACTURAR') {
+                    $row['monto_por_cobrar_estimado'] = round($montoTarifario, 2);
+                }
+                if ($row['servicio_oftalmologico_perdida']) {
+                    $row['monto_perdida_estimada'] = round($montoTarifario, 2);
+                }
+                if (
+                    $montoTarifario <= 0
+                    && (
+                        $row['monto_por_cobrar_estimado'] > 0
+                        || $row['monto_perdida_estimada'] > 0
+                        || $estadoFacturacion === 'PENDIENTE_FACTURAR'
+                        || $row['servicio_oftalmologico_perdida']
+                    )
+                ) {
+                    $row['sin_tarifa_estimable'] = true;
+                }
+            }
+
+            if ($this->isSurgeryAttentionType($tipoAtencion)) {
+                [$codigoTarifario, $detalleTarifario] = $this->parseProcedureCodeDetail((string) ($row['procedimiento_proyectado'] ?? ''));
+                $montoTarifario = $codigoTarifario !== '' ? $this->lookupTarifa($codigoTarifario, $row) : 0.0;
+                $estadoRealizacion = $this->resolveSurgeryRealizationState($row, $hasBillingEvidence);
+                $estadoFacturacion = $this->resolveSurgeryBillingState($estadoRealizacion, $hasBillingEvidence);
+                $alertaRevision = $this->resolveSurgeryReviewAlert($row, $estadoRealizacion, $estadoFacturacion);
+
+                $row['estado_realizacion'] = $estadoRealizacion;
+                $row['estado_facturacion_operativa'] = $estadoFacturacion;
+                $row['alerta_revision'] = $alertaRevision;
+                $row['tarifa_codigo'] = $codigoTarifario;
+                $row['tarifa_detalle'] = $detalleTarifario;
+                $row['monto_estimado_tarifario'] = round($montoTarifario, 2);
+                $row['cirugia_realizada'] = in_array($estadoRealizacion, ['OPERADA_CONFIRMADA', 'OPERADA_CON_PROTOCOLO', 'OPERADA_OTRO_CENTRO'], true);
+                $row['cirugia_perdida'] = in_array($estadoRealizacion, ['CANCELADA', 'SIN_CIERRE_OPERATIVO'], true);
+
+                if ($estadoFacturacion === 'PENDIENTE_FACTURAR') {
+                    $row['monto_por_cobrar_estimado'] = round($montoTarifario, 2);
+                }
+                if ($row['cirugia_perdida']) {
+                    $row['monto_perdida_estimada'] = round($montoTarifario, 2);
+                }
+                if (
+                    $montoTarifario <= 0
+                    && ($row['monto_por_cobrar_estimado'] > 0 || $row['monto_perdida_estimada'] > 0
+                        || in_array($estadoFacturacion, ['PENDIENTE_FACTURAR'], true)
+                        || $row['cirugia_perdida'])
+                ) {
+                    $row['sin_tarifa_estimable'] = true;
+                }
+            }
             $enrichedRows[] = $row;
         }
 
@@ -262,7 +523,7 @@ class BillingParticularesReportService
             if ($dateToTs !== null && $timestamp > $dateToTs) {
                 continue;
             }
-            if (!$this->isEncounterAttended($estadoEncuentro)) {
+            if (!$this->shouldIncludeRowForReport($row)) {
                 continue;
             }
             if ($afiliacion !== '' && $afiliacionRow !== $afiliacion) {
@@ -450,6 +711,50 @@ class BillingParticularesReportService
         $sedeCounts = [];
         $doctorCounts = [];
         $doctorHonorario = [];
+        $pniEstadoCounts = [
+            'FACTURADA' => 0,
+            'REALIZADA_CONSULTA' => 0,
+            'CANCELADA' => 0,
+            'AUSENTE' => 0,
+        ];
+        $pniPorCobrarDoctor = [];
+        $pniPerdidaDoctor = [];
+        $pniHonorarioReal = 0.0;
+        $pniPorCobrarEstimado = 0.0;
+        $pniPerdidaEstimada = 0.0;
+        $pniPendientesFacturar = 0;
+        $pniFacturadas = 0;
+        $pniSinTarifaEstimable = 0;
+        $serviciosOftalmologicosEstadoCounts = [
+            'FACTURADA' => 0,
+            'REALIZADA_CONSULTA' => 0,
+            'CANCELADA' => 0,
+            'AUSENTE' => 0,
+        ];
+        $serviciosOftalmologicosPorCobrarDoctor = [];
+        $serviciosOftalmologicosPerdidaDoctor = [];
+        $serviciosOftalmologicosHonorarioReal = 0.0;
+        $serviciosOftalmologicosPorCobrarEstimado = 0.0;
+        $serviciosOftalmologicosPerdidaEstimada = 0.0;
+        $serviciosOftalmologicosPendientesFacturar = 0;
+        $serviciosOftalmologicosFacturadas = 0;
+        $serviciosOftalmologicosSinTarifaEstimable = 0;
+        $cirugiasEstadoCounts = [
+            'OPERADA_CONFIRMADA' => 0,
+            'OPERADA_CON_PROTOCOLO' => 0,
+            'OPERADA_OTRO_CENTRO' => 0,
+            'CANCELADA' => 0,
+            'SIN_CIERRE_OPERATIVO' => 0,
+        ];
+        $cirugiasPorCobrarDoctor = [];
+        $cirugiasPerdidaDoctor = [];
+        $cirugiasHonorarioReal = 0.0;
+        $cirugiasPorCobrarEstimado = 0.0;
+        $cirugiasPerdidaEstimada = 0.0;
+        $cirugiasPendientesFacturar = 0;
+        $cirugiasFacturadasLocales = 0;
+        $cirugiasFacturadasExternas = 0;
+        $cirugiasSinTarifaEstimable = 0;
         $categoriaGerencialCounts = [];
         $formasPagoCounts = [];
         $clienteHonorario = [];
@@ -553,6 +858,119 @@ class BillingParticularesReportService
                 $procedureCounts[$procedure] = 0;
             }
             $procedureCounts[$procedure]++;
+
+            if ($this->isPniAttentionType((string) ($row['tipo_atencion'] ?? ''))) {
+                $estadoRealizacionPni = strtoupper(trim((string) ($row['estado_realizacion'] ?? '')));
+                if ($estadoRealizacionPni === '') {
+                    $estadoRealizacionPni = 'AUSENTE';
+                }
+                if (!isset($pniEstadoCounts[$estadoRealizacionPni])) {
+                    $pniEstadoCounts[$estadoRealizacionPni] = 0;
+                }
+                $pniEstadoCounts[$estadoRealizacionPni]++;
+
+                $estadoFacturacionPni = strtoupper(trim((string) ($row['estado_facturacion_operativa'] ?? '')));
+                $montoPorCobrarPniRow = round((float) ($row['monto_por_cobrar_estimado'] ?? 0), 2);
+                $montoPerdidaPniRow = round((float) ($row['monto_perdida_estimada'] ?? 0), 2);
+                $sinTarifaEstimablePni = (bool) ($row['sin_tarifa_estimable'] ?? false);
+
+                if ($estadoRealizacionPni === 'FACTURADA') {
+                    $pniHonorarioReal += $produccionBaseRow;
+                    $pniFacturadas++;
+                }
+
+                if ($estadoFacturacionPni === 'PENDIENTE_FACTURAR') {
+                    $pniPendientesFacturar++;
+                    $pniPorCobrarEstimado += $montoPorCobrarPniRow;
+                    $pniPorCobrarDoctor[$doctor] = ($pniPorCobrarDoctor[$doctor] ?? 0.0) + $montoPorCobrarPniRow;
+                }
+
+                if (in_array($estadoRealizacionPni, ['CANCELADA', 'AUSENTE'], true)) {
+                    $pniPerdidaEstimada += $montoPerdidaPniRow;
+                    $pniPerdidaDoctor[$doctor] = ($pniPerdidaDoctor[$doctor] ?? 0.0) + $montoPerdidaPniRow;
+                }
+
+                if ($sinTarifaEstimablePni) {
+                    $pniSinTarifaEstimable++;
+                }
+            }
+
+            if ($this->isOphthalmologyServiceAttentionType((string) ($row['tipo_atencion'] ?? ''))) {
+                $estadoRealizacionServicio = strtoupper(trim((string) ($row['estado_realizacion'] ?? '')));
+                if ($estadoRealizacionServicio === '') {
+                    $estadoRealizacionServicio = 'AUSENTE';
+                }
+                if (!isset($serviciosOftalmologicosEstadoCounts[$estadoRealizacionServicio])) {
+                    $serviciosOftalmologicosEstadoCounts[$estadoRealizacionServicio] = 0;
+                }
+                $serviciosOftalmologicosEstadoCounts[$estadoRealizacionServicio]++;
+
+                $estadoFacturacionServicio = strtoupper(trim((string) ($row['estado_facturacion_operativa'] ?? '')));
+                $montoPorCobrarServicioRow = round((float) ($row['monto_por_cobrar_estimado'] ?? 0), 2);
+                $montoPerdidaServicioRow = round((float) ($row['monto_perdida_estimada'] ?? 0), 2);
+                $sinTarifaEstimableServicio = (bool) ($row['sin_tarifa_estimable'] ?? false);
+
+                if ($estadoRealizacionServicio === 'FACTURADA') {
+                    $serviciosOftalmologicosHonorarioReal += $produccionBaseRow;
+                    $serviciosOftalmologicosFacturadas++;
+                }
+
+                if ($estadoFacturacionServicio === 'PENDIENTE_FACTURAR') {
+                    $serviciosOftalmologicosPendientesFacturar++;
+                    $serviciosOftalmologicosPorCobrarEstimado += $montoPorCobrarServicioRow;
+                    $serviciosOftalmologicosPorCobrarDoctor[$doctor] = ($serviciosOftalmologicosPorCobrarDoctor[$doctor] ?? 0.0) + $montoPorCobrarServicioRow;
+                }
+
+                if (in_array($estadoRealizacionServicio, ['CANCELADA', 'AUSENTE'], true)) {
+                    $serviciosOftalmologicosPerdidaEstimada += $montoPerdidaServicioRow;
+                    $serviciosOftalmologicosPerdidaDoctor[$doctor] = ($serviciosOftalmologicosPerdidaDoctor[$doctor] ?? 0.0) + $montoPerdidaServicioRow;
+                }
+
+                if ($sinTarifaEstimableServicio) {
+                    $serviciosOftalmologicosSinTarifaEstimable++;
+                }
+            }
+
+            if ($this->isSurgeryAttentionType((string) ($row['tipo_atencion'] ?? ''))) {
+                $estadoRealizacion = strtoupper(trim((string) ($row['estado_realizacion'] ?? '')));
+                if ($estadoRealizacion === '') {
+                    $estadoRealizacion = 'SIN_CIERRE_OPERATIVO';
+                }
+                if (!isset($cirugiasEstadoCounts[$estadoRealizacion])) {
+                    $cirugiasEstadoCounts[$estadoRealizacion] = 0;
+                }
+                $cirugiasEstadoCounts[$estadoRealizacion]++;
+
+                $estadoFacturacionCirugia = strtoupper(trim((string) ($row['estado_facturacion_operativa'] ?? '')));
+                $montoPorCobrarRow = round((float) ($row['monto_por_cobrar_estimado'] ?? 0), 2);
+                $montoPerdidaRow = round((float) ($row['monto_perdida_estimada'] ?? 0), 2);
+                $sinTarifaEstimable = (bool) ($row['sin_tarifa_estimable'] ?? false);
+
+                if ($estadoRealizacion === 'OPERADA_CONFIRMADA' || $estadoRealizacion === 'OPERADA_CON_PROTOCOLO') {
+                    $cirugiasHonorarioReal += $produccionBaseRow;
+                } elseif ($estadoRealizacion === 'OPERADA_OTRO_CENTRO') {
+                    $cirugiasHonorarioReal += $produccionBaseRow;
+                }
+
+                if ($estadoFacturacionCirugia === 'PENDIENTE_FACTURAR') {
+                    $cirugiasPendientesFacturar++;
+                    $cirugiasPorCobrarEstimado += $montoPorCobrarRow;
+                    $cirugiasPorCobrarDoctor[$doctor] = ($cirugiasPorCobrarDoctor[$doctor] ?? 0.0) + $montoPorCobrarRow;
+                } elseif ($estadoFacturacionCirugia === 'FACTURADA') {
+                    $cirugiasFacturadasLocales++;
+                } elseif ($estadoFacturacionCirugia === 'FACTURADA_EXTERNA') {
+                    $cirugiasFacturadasExternas++;
+                }
+
+                if (in_array($estadoRealizacion, ['CANCELADA', 'SIN_CIERRE_OPERATIVO'], true)) {
+                    $cirugiasPerdidaEstimada += $montoPerdidaRow;
+                    $cirugiasPerdidaDoctor[$doctor] = ($cirugiasPerdidaDoctor[$doctor] ?? 0.0) + $montoPerdidaRow;
+                }
+
+                if ($sinTarifaEstimable) {
+                    $cirugiasSinTarifaEstimable++;
+                }
+            }
 
             $timestamp = strtotime((string) ($row['fecha'] ?? ''));
             if ($timestamp !== false) {
@@ -853,6 +1271,22 @@ class BillingParticularesReportService
         }
         $referidoUniquePatientsWithValueCount = count($referidoUniquePatientsWithValue);
         $referidoUniquePatientsWithoutValueCount = count($referidoUniquePatientsWithoutValue);
+        $pniRealizadas = (int) ($pniEstadoCounts['FACTURADA'] ?? 0)
+            + (int) ($pniEstadoCounts['REALIZADA_CONSULTA'] ?? 0);
+        $pniCanceladas = (int) ($pniEstadoCounts['CANCELADA'] ?? 0);
+        $pniAusentes = (int) ($pniEstadoCounts['AUSENTE'] ?? 0);
+        $pniTotal = array_sum($pniEstadoCounts);
+        $serviciosOftalmologicosRealizadas = (int) ($serviciosOftalmologicosEstadoCounts['FACTURADA'] ?? 0)
+            + (int) ($serviciosOftalmologicosEstadoCounts['REALIZADA_CONSULTA'] ?? 0);
+        $serviciosOftalmologicosCanceladas = (int) ($serviciosOftalmologicosEstadoCounts['CANCELADA'] ?? 0);
+        $serviciosOftalmologicosAusentes = (int) ($serviciosOftalmologicosEstadoCounts['AUSENTE'] ?? 0);
+        $serviciosOftalmologicosTotal = array_sum($serviciosOftalmologicosEstadoCounts);
+        $cirugiasRealizadas = (int) ($cirugiasEstadoCounts['OPERADA_CONFIRMADA'] ?? 0)
+            + (int) ($cirugiasEstadoCounts['OPERADA_CON_PROTOCOLO'] ?? 0)
+            + (int) ($cirugiasEstadoCounts['OPERADA_OTRO_CENTRO'] ?? 0);
+        $cirugiasCanceladas = (int) ($cirugiasEstadoCounts['CANCELADA'] ?? 0);
+        $cirugiasSinCierre = (int) ($cirugiasEstadoCounts['SIN_CIERRE_OPERATIVO'] ?? 0);
+        $cirugiasTotal = array_sum($cirugiasEstadoCounts);
 
         return [
             'total' => $totalRows,
@@ -968,6 +1402,57 @@ class BillingParticularesReportService
                 'recurrentes' => $pacientesRecurrentes,
                 'nuevos_pct' => $pacientesUnicosCount > 0 ? round(($pacientesNuevos / $pacientesUnicosCount) * 100, 2) : 0.0,
                 'recurrentes_pct' => $pacientesUnicosCount > 0 ? round(($pacientesRecurrentes / $pacientesUnicosCount) * 100, 2) : 0.0,
+            ],
+            'pni' => [
+                'total' => $pniTotal,
+                'realizadas' => $pniRealizadas,
+                'facturadas' => (int) ($pniEstadoCounts['FACTURADA'] ?? 0),
+                'realizada_consulta' => (int) ($pniEstadoCounts['REALIZADA_CONSULTA'] ?? 0),
+                'canceladas' => $pniCanceladas,
+                'ausentes' => $pniAusentes,
+                'pendientes_facturar' => $pniPendientesFacturar,
+                'honorario_real' => round($pniHonorarioReal, 2),
+                'por_cobrar_estimado' => round($pniPorCobrarEstimado, 2),
+                'perdida_estimada' => round($pniPerdidaEstimada, 2),
+                'sin_tarifa_estimable' => $pniSinTarifaEstimable,
+                'estados' => $this->metricValues($pniEstadoCounts, null, $pniTotal),
+                'doctores_por_cobrar' => $this->moneyMetricValues($pniPorCobrarDoctor, 8, $pniPorCobrarEstimado),
+                'doctores_perdida' => $this->moneyMetricValues($pniPerdidaDoctor, 8, $pniPerdidaEstimada),
+            ],
+            'servicios_oftalmologicos' => [
+                'total' => $serviciosOftalmologicosTotal,
+                'realizadas' => $serviciosOftalmologicosRealizadas,
+                'facturadas' => (int) ($serviciosOftalmologicosEstadoCounts['FACTURADA'] ?? 0),
+                'realizada_consulta' => (int) ($serviciosOftalmologicosEstadoCounts['REALIZADA_CONSULTA'] ?? 0),
+                'canceladas' => $serviciosOftalmologicosCanceladas,
+                'ausentes' => $serviciosOftalmologicosAusentes,
+                'pendientes_facturar' => $serviciosOftalmologicosPendientesFacturar,
+                'honorario_real' => round($serviciosOftalmologicosHonorarioReal, 2),
+                'por_cobrar_estimado' => round($serviciosOftalmologicosPorCobrarEstimado, 2),
+                'perdida_estimada' => round($serviciosOftalmologicosPerdidaEstimada, 2),
+                'sin_tarifa_estimable' => $serviciosOftalmologicosSinTarifaEstimable,
+                'estados' => $this->metricValues($serviciosOftalmologicosEstadoCounts, null, $serviciosOftalmologicosTotal),
+                'doctores_por_cobrar' => $this->moneyMetricValues($serviciosOftalmologicosPorCobrarDoctor, 8, $serviciosOftalmologicosPorCobrarEstimado),
+                'doctores_perdida' => $this->moneyMetricValues($serviciosOftalmologicosPerdidaDoctor, 8, $serviciosOftalmologicosPerdidaEstimada),
+            ],
+            'cirugias' => [
+                'total' => $cirugiasTotal,
+                'realizadas' => $cirugiasRealizadas,
+                'operada_confirmada' => (int) ($cirugiasEstadoCounts['OPERADA_CONFIRMADA'] ?? 0),
+                'operada_con_protocolo' => (int) ($cirugiasEstadoCounts['OPERADA_CON_PROTOCOLO'] ?? 0),
+                'operada_otro_centro' => (int) ($cirugiasEstadoCounts['OPERADA_OTRO_CENTRO'] ?? 0),
+                'canceladas' => $cirugiasCanceladas,
+                'sin_cierre' => $cirugiasSinCierre,
+                'pendientes_facturar' => $cirugiasPendientesFacturar,
+                'facturadas_locales' => $cirugiasFacturadasLocales,
+                'facturadas_externas' => $cirugiasFacturadasExternas,
+                'honorario_real' => round($cirugiasHonorarioReal, 2),
+                'por_cobrar_estimado' => round($cirugiasPorCobrarEstimado, 2),
+                'perdida_estimada' => round($cirugiasPerdidaEstimada, 2),
+                'sin_tarifa_estimable' => $cirugiasSinTarifaEstimable,
+                'estados' => $this->metricValues($cirugiasEstadoCounts, null, $cirugiasTotal),
+                'doctores_por_cobrar' => $this->moneyMetricValues($cirugiasPorCobrarDoctor, 8, $cirugiasPorCobrarEstimado),
+                'doctores_perdida' => $this->moneyMetricValues($cirugiasPerdidaDoctor, 8, $cirugiasPerdidaEstimada),
             ],
         ];
     }
@@ -1322,6 +1807,12 @@ class BillingParticularesReportService
                                 ELSE bfr.fecha_facturacion
                             END
                         ) AS fecha_facturacion,
+                        MAX(
+                            CASE
+                                WHEN CAST(bfr.fecha_atencion AS CHAR) IN ('', '0000-00-00', '0000-00-00 00:00:00') THEN NULL
+                                ELSE bfr.fecha_atencion
+                            END
+                        ) AS fecha_atencion,
                         COALESCE(SUM(bfr.monto_honorario), 0) AS total_produccion,
                         COALESCE(SUM(bfr.monto_honorario), 0) AS monto_honorario_real,
                         COALESCE(SUM(bfr.monto_facturado), 0) AS monto_facturado_real,
@@ -1330,7 +1821,8 @@ class BillingParticularesReportService
                         GROUP_CONCAT(DISTINCT NULLIF(TRIM(COALESCE(bfr.numero_factura, '')), '') SEPARATOR ' | ') AS numero_factura,
                         GROUP_CONCAT(DISTINCT NULLIF(TRIM(COALESCE(bfr.factura_id, '')), '') SEPARATOR ' | ') AS factura_id,
                         MAX(NULLIF(TRIM(COALESCE(bfr.cliente, '')), '')) AS cliente_facturacion,
-                        MAX(NULLIF(TRIM(COALESCE(bfr.area, '')), '')) AS area_facturacion
+                        MAX(NULLIF(TRIM(COALESCE(bfr.area, '')), '')) AS area_facturacion,
+                        MAX(NULLIF(TRIM(COALESCE(bfr.estado, '')), '')) AS estado_facturacion_raw
                     FROM billing_facturacion_real bfr
                     GROUP BY bfr.form_id
                 ) AS econ
@@ -1344,6 +1836,7 @@ class BillingParticularesReportService
                     CAST(NULL AS CHAR(50)) AS form_id,
                     CAST(NULL AS CHAR(50)) AS billing_id,
                     CAST(NULL AS DATETIME) AS fecha_facturacion,
+                    CAST(NULL AS DATETIME) AS fecha_atencion,
                     0 AS total_produccion,
                     0 AS monto_honorario_real,
                     0 AS monto_facturado_real,
@@ -1352,7 +1845,8 @@ class BillingParticularesReportService
                     CAST(NULL AS CHAR(50)) AS numero_factura,
                     CAST(NULL AS CHAR(50)) AS factura_id,
                     CAST(NULL AS CHAR(255)) AS cliente_facturacion,
-                    CAST(NULL AS CHAR(255)) AS area_facturacion
+                    CAST(NULL AS CHAR(255)) AS area_facturacion,
+                    CAST(NULL AS CHAR(100)) AS estado_facturacion_raw
                 WHERE 1 = 0
             ) AS econ
               ON econ.form_id = atenciones.form_id
@@ -1410,6 +1904,458 @@ class BillingParticularesReportService
         return str_starts_with($status, 'ATENDID')
             || str_starts_with($status, 'PAGAD')
             || str_starts_with($status, 'TERMINAD');
+    }
+
+    private function surgeryAttentionCondition(string $alias): string
+    {
+        $procedureExpr = "UPPER(TRIM(COALESCE({$alias}.procedimiento_proyectado, '')))";
+        return "{$procedureExpr} LIKE 'CIRUGIAS%'";
+    }
+
+    private function pniAttentionCondition(string $alias): string
+    {
+        $procedureExpr = "UPPER(TRIM(COALESCE({$alias}.procedimiento_proyectado, '')))";
+        return "{$procedureExpr} LIKE '%PNI%'";
+    }
+
+    private function ophthalmologyServiceAttentionCondition(string $alias): string
+    {
+        $procedureExpr = "UPPER(TRIM(COALESCE({$alias}.procedimiento_proyectado, '')))";
+
+        return '('
+            . "{$procedureExpr} LIKE 'SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-003 - CONSULTA OFTALMOLOGICA NUEVO PACIENTE%'"
+            . " OR {$procedureExpr} LIKE 'SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-004 - CONSULTA OFTALMOLOGICA CITA MEDICA%'"
+            . " OR {$procedureExpr} LIKE 'SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-005 - CONSULTA OFTALMOLOGICA DE CONTROL%'"
+            . " OR {$procedureExpr} LIKE 'SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-006 - CONSULTA OFTALMOLOGICA INTERCONSULTA%'"
+            . " OR {$procedureExpr} LIKE 'SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-007 - REVISION DE EXAMENES%'"
+            . ')';
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    private function shouldIncludeRowForReport(array $row): bool
+    {
+        $tipoAtencion = (string) ($row['tipo_atencion'] ?? '');
+        if (
+            $this->isSurgeryAttentionType($tipoAtencion)
+            || $this->isPniAttentionType($tipoAtencion)
+            || $this->isOphthalmologyServiceAttentionType($tipoAtencion)
+        ) {
+            $estadoRealizacion = strtoupper(trim((string) ($row['estado_realizacion'] ?? '')));
+            return $estadoRealizacion !== '';
+        }
+
+        return $this->isEncounterAttended((string) ($row['estado_encuentro'] ?? ''));
+    }
+
+    private function isSurgeryAttentionType(string $type): bool
+    {
+        return strtoupper(trim($type)) === 'CIRUGIAS';
+    }
+
+    private function isPniAttentionType(string $type): bool
+    {
+        return strtoupper(trim($type)) === 'PNI';
+    }
+
+    private function isOphthalmologyServiceAttentionType(string $type): bool
+    {
+        return strtoupper(trim($type)) === 'SERVICIOS OFTALMOLOGICOS GENERALES';
+    }
+
+    private function isAllowedOphthalmologyServiceProcedure(string $procedure): bool
+    {
+        $normalized = strtoupper(trim(preg_replace('/\s+/', ' ', $procedure) ?? $procedure));
+        if ($normalized === '') {
+            return false;
+        }
+
+        return str_starts_with($normalized, 'SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-003 - CONSULTA OFTALMOLOGICA NUEVO PACIENTE')
+            || str_starts_with($normalized, 'SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-004 - CONSULTA OFTALMOLOGICA CITA MEDICA')
+            || str_starts_with($normalized, 'SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-005 - CONSULTA OFTALMOLOGICA DE CONTROL')
+            || str_starts_with($normalized, 'SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-006 - CONSULTA OFTALMOLOGICA INTERCONSULTA')
+            || str_starts_with($normalized, 'SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-007 - REVISION DE EXAMENES');
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    private function hasBillingEvidence(array $row): bool
+    {
+        $billingId = trim((string) ($row['billing_id'] ?? ''));
+        $facturaId = trim((string) ($row['factura_id'] ?? ''));
+        $numeroFactura = trim((string) ($row['numero_factura'] ?? ''));
+        $fechaFacturacion = trim((string) ($row['fecha_facturacion'] ?? ''));
+        $fechaAtencion = trim((string) ($row['fecha_atencion'] ?? ''));
+        $procedimientosFacturados = (int) ($row['procedimientos_facturados'] ?? 0);
+        $honorarioReal = (float) ($row['monto_honorario_real'] ?? 0);
+
+        return $billingId !== ''
+            || $facturaId !== ''
+            || $numeroFactura !== ''
+            || $fechaFacturacion !== ''
+            || $fechaAtencion !== ''
+            || $procedimientosFacturados > 0
+            || $honorarioReal > 0;
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    private function hasConsultaUtil(array $row): bool
+    {
+        $consultaFecha = trim((string) ($row['consulta_fecha'] ?? ''));
+        $consultaDiagnosticos = trim((string) ($row['consulta_diagnosticos'] ?? ''));
+
+        return $consultaFecha !== '' || $consultaDiagnosticos !== '';
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    private function resolvePniRealizationState(array $row, bool $hasBillingEvidence): string
+    {
+        if ($hasBillingEvidence) {
+            return 'FACTURADA';
+        }
+
+        $estadoEncuentro = strtoupper(trim((string) ($row['estado_encuentro'] ?? '')));
+
+        if ($this->hasConsultaUtil($row) && $this->isEncounterAttended($estadoEncuentro)) {
+            return 'REALIZADA_CONSULTA';
+        }
+
+        if ($estadoEncuentro === 'CANCELADO' || $estadoEncuentro === 'CANCELADA') {
+            return 'CANCELADA';
+        }
+
+        return 'AUSENTE';
+    }
+
+    private function resolvePniBillingState(string $estadoRealizacion): string
+    {
+        if ($estadoRealizacion === 'FACTURADA') {
+            return 'FACTURADA';
+        }
+
+        if ($estadoRealizacion === 'REALIZADA_CONSULTA') {
+            return 'PENDIENTE_FACTURAR';
+        }
+
+        return 'SIN_FACTURACION';
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    private function resolveOphthalmologyServiceRealizationState(array $row, bool $hasBillingEvidence): string
+    {
+        return $this->resolvePniRealizationState($row, $hasBillingEvidence);
+    }
+
+    private function resolveOphthalmologyServiceBillingState(string $estadoRealizacion): string
+    {
+        return $this->resolvePniBillingState($estadoRealizacion);
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    private function resolvePniReviewAlert(array $row, string $estadoRealizacion, bool $hasBillingEvidence): ?string
+    {
+        $estadoEncuentro = strtoupper(trim((string) ($row['estado_encuentro'] ?? '')));
+        $fechaAtencion = trim((string) ($row['fecha_atencion'] ?? ''));
+        $fechaProgramada = trim((string) ($row['fecha'] ?? ''));
+        $honorarioReal = (float) ($row['monto_honorario_real'] ?? 0);
+
+        if ($estadoRealizacion === 'FACTURADA') {
+            if ($fechaAtencion === '') {
+                return 'FACTURADA_SIN_FECHA_ATENCION';
+            }
+
+            if ($honorarioReal <= 0) {
+                return 'FACTURADA_SIN_HONORARIO';
+            }
+
+            $fechaAtencionTs = strtotime($fechaAtencion);
+            $fechaProgramadaTs = strtotime($fechaProgramada);
+            if ($fechaAtencionTs !== false && $fechaProgramadaTs !== false && date('Y-m-d', $fechaAtencionTs) > date('Y-m-d', $fechaProgramadaTs)) {
+                return 'ATENCION_POSTERIOR_A_FECHA_PROGRAMADA';
+            }
+
+            return null;
+        }
+
+        if ($estadoRealizacion === 'REALIZADA_CONSULTA') {
+            if (in_array($estadoEncuentro, ['CONFIRMADO', 'AGENDADO', 'LLEGADO'], true)) {
+                return 'AGENDA_DESACTUALIZADA';
+            }
+
+            return 'PENDIENTE_FACTURAR';
+        }
+
+        if ($estadoRealizacion === 'AUSENTE' && !$hasBillingEvidence) {
+            return 'SIN_CIERRE';
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    private function resolveOphthalmologyServiceReviewAlert(array $row, string $estadoRealizacion, bool $hasBillingEvidence): ?string
+    {
+        return $this->resolvePniReviewAlert($row, $estadoRealizacion, $hasBillingEvidence);
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    private function resolveSurgeryRealizationState(array $row, bool $hasBillingEvidence): string
+    {
+        $hasProtocol = trim((string) ($row['fuente_atencion'] ?? '')) === 'protocolo'
+            || trim((string) ($row['protocolo_id'] ?? '')) !== ''
+            || (int) ($row['protocolo_status_ok'] ?? 0) === 1
+            || (int) ($row['protocolo_firmado'] ?? 0) === 1;
+
+        if ($hasProtocol) {
+            if ((int) ($row['protocolo_status_ok'] ?? 0) === 1 || (int) ($row['protocolo_firmado'] ?? 0) === 1) {
+                return 'OPERADA_CONFIRMADA';
+            }
+
+            return 'OPERADA_CON_PROTOCOLO';
+        }
+
+        if ($hasBillingEvidence) {
+            return 'OPERADA_OTRO_CENTRO';
+        }
+
+        $estadoEncuentro = strtoupper(trim((string) ($row['estado_encuentro'] ?? '')));
+        if ($estadoEncuentro === 'CANCELADO' || $estadoEncuentro === 'CANCELADA') {
+            return 'CANCELADA';
+        }
+
+        return 'SIN_CIERRE_OPERATIVO';
+    }
+
+    private function resolveSurgeryBillingState(string $estadoRealizacion, bool $hasBillingEvidence): string
+    {
+        if ($estadoRealizacion === 'OPERADA_OTRO_CENTRO') {
+            return 'FACTURADA_EXTERNA';
+        }
+
+        if (in_array($estadoRealizacion, ['OPERADA_CONFIRMADA', 'OPERADA_CON_PROTOCOLO'], true)) {
+            return $hasBillingEvidence ? 'FACTURADA' : 'PENDIENTE_FACTURAR';
+        }
+
+        return 'SIN_FACTURACION';
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    private function resolveSurgeryReviewAlert(array $row, string $estadoRealizacion, string $estadoFacturacion): ?string
+    {
+        $estadoEncuentro = strtoupper(trim((string) ($row['estado_encuentro'] ?? '')));
+        if (
+            in_array($estadoRealizacion, ['OPERADA_CONFIRMADA', 'OPERADA_CON_PROTOCOLO'], true)
+            && in_array($estadoEncuentro, ['CONFIRMADO', 'AGENDADO', 'LLEGADO'], true)
+        ) {
+            return 'AGENDA_DESACTUALIZADA';
+        }
+
+        if ($estadoFacturacion === 'PENDIENTE_FACTURAR') {
+            return 'PENDIENTE_FACTURAR';
+        }
+
+        if ($estadoRealizacion === 'OPERADA_OTRO_CENTRO') {
+            return 'FACTURADA_SIN_PROTOCOLO_LOCAL';
+        }
+
+        if ($estadoRealizacion === 'SIN_CIERRE_OPERATIVO') {
+            return 'SIN_CIERRE';
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{0:string,1:string}
+     */
+    private function parseProcedureCodeDetail(string $raw): array
+    {
+        $text = trim(preg_replace('/\s+/', ' ', $raw) ?? $raw);
+        if ($text === '') {
+            return ['', ''];
+        }
+
+        if (
+            preg_match(
+                '/^\s*[^-]+?\s*-\s*([A-Z]{2,5}(?:-[A-Z0-9]{2,10}){1,3}|\d{5,6})\s*-\s*(.+)$/i',
+                $text,
+                $matches
+            ) === 1
+        ) {
+            return [strtoupper(trim((string) $matches[1])), trim((string) $matches[2])];
+        }
+
+        if (preg_match('/-\s*(\d{5,6})\s*-\s*(.+)$/', $text, $matches) === 1) {
+            return [trim((string) $matches[1]), trim((string) $matches[2])];
+        }
+
+        return ['', $text];
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    private function lookupTarifa(string $codigo, array $row = []): float
+    {
+        $codigo = strtoupper(trim($codigo));
+        if ($codigo === '') {
+            return 0.0;
+        }
+
+        $levelKey = $this->resolveTarifaLevelKey($row);
+        $cacheKey = $codigo . '|' . ($levelKey ?? '__sin_nivel__');
+        if (array_key_exists($cacheKey, $this->tarifaLookupCache)) {
+            return $this->tarifaLookupCache[$cacheKey];
+        }
+
+        if ($levelKey === null) {
+            $this->tarifaLookupCache[$cacheKey] = 0.0;
+            return 0.0;
+        }
+
+        try {
+            $codeRow = $this->findTarifaCode($codigo);
+            if ($codeRow === null) {
+                $this->tarifaLookupCache[$cacheKey] = 0.0;
+                return 0.0;
+            }
+
+            $prices = $this->codePriceService()->pricesForCode((int) $codeRow['id'], $this->codePriceLevels());
+            $price = round((float) ($prices[$levelKey] ?? 0), 2);
+            $this->tarifaLookupCache[$cacheKey] = $price;
+
+            return $price;
+        } catch (Throwable) {
+            $this->tarifaLookupCache[$cacheKey] = 0.0;
+            return 0.0;
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    private function resolveTarifaLevelKey(array $row): ?string
+    {
+        $levels = $this->codePriceLevels();
+        if ($levels === []) {
+            return null;
+        }
+
+        $candidates = [];
+        foreach ([
+            (string) ($row['afiliacion_original'] ?? ''),
+            (string) ($row['afiliacion'] ?? ''),
+        ] as $candidate) {
+            $candidate = trim($candidate);
+            if ($candidate === '') {
+                continue;
+            }
+
+            $candidates[] = $candidate;
+
+            $mapped = $this->resolveMappedAffiliation($candidate);
+            if ($mapped !== null) {
+                $mappedRaw = trim((string) ($mapped['afiliacion_raw'] ?? ''));
+                if ($mappedRaw !== '') {
+                    $candidates[] = $mappedRaw;
+                }
+            }
+        }
+
+        $candidates = array_values(array_unique($candidates));
+        foreach ($candidates as $candidate) {
+            $levelKey = $this->codePriceService()->resolveLevelKey($candidate, $levels);
+            if ($levelKey !== null) {
+                return $levelKey;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{id:int,codigo:string,descripcion:string}|null
+     */
+    private function findTarifaCode(string $codigo): ?array
+    {
+        $codigo = strtoupper(trim($codigo));
+        if ($codigo === '') {
+            return null;
+        }
+
+        if (array_key_exists($codigo, $this->tarifaCodeCache)) {
+            return $this->tarifaCodeCache[$codigo];
+        }
+
+        $codigoSinCeros = ltrim($codigo, '0');
+        $query = Tarifario2014::query()
+            ->select(['id', 'codigo', 'descripcion'])
+            ->where(function ($builder) use ($codigo, $codigoSinCeros): void {
+                $builder->where('codigo', $codigo);
+                if ($codigoSinCeros !== '' && $codigoSinCeros !== $codigo) {
+                    $builder->orWhere('codigo', $codigoSinCeros);
+                }
+            });
+
+        $code = $query->orderByRaw('CASE WHEN codigo = ? THEN 0 ELSE 1 END', [$codigo])->first();
+        if ($code === null) {
+            return null;
+        }
+
+        $resolved = [
+            'id' => (int) $code->id,
+            'codigo' => trim((string) ($code->codigo ?? '')),
+            'descripcion' => trim((string) ($code->descripcion ?? '')),
+        ];
+
+        $this->tarifaCodeCache[$codigo] = $resolved;
+
+        return $resolved;
+    }
+
+    private function codePriceService(): CodePriceService
+    {
+        if ($this->codePriceService instanceof CodePriceService) {
+            return $this->codePriceService;
+        }
+
+        $this->codePriceService = new CodePriceService();
+
+        return $this->codePriceService;
+    }
+
+    /**
+     * @return array<int, array{level_key:string,storage_key:string,title:string,category:string,source:string}>
+     */
+    private function codePriceLevels(): array
+    {
+        if (is_array($this->codePriceLevelsCache)) {
+            return $this->codePriceLevelsCache;
+        }
+
+        try {
+            $this->codePriceLevelsCache = $this->codePriceService()->levels();
+        } catch (Throwable) {
+            $this->codePriceLevelsCache = [];
+        }
+
+        return $this->codePriceLevelsCache;
     }
 
     private function referidoPrefacturaExpression(string $alias): string

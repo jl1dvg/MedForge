@@ -3888,6 +3888,7 @@ class ExamenController extends BaseController
         $this->requireAuth();
 
         $filters = $this->buildImagenesRealizadasFilters();
+        $filters['afiliacion_match_mode'] = 'exact';
         $rows = $this->examenModel->fetchImagenesRealizadas($filters, false);
 
         $this->render(
@@ -3905,6 +3906,7 @@ class ExamenController extends BaseController
         $this->requireAuth();
 
         $filters = $this->buildImagenesRealizadasFilters();
+        $filters['afiliacion_match_mode'] = 'grouped';
         $rows = $this->examenModel->fetchImagenesRealizadas($filters, true);
         $dashboard = $this->buildImagenesDashboardSummary($rows, $filters);
         [$afiliacionOptions, $afiliacionCategoriaOptions, $sedeOptions] = $this->resolveImagenesDashboardAffiliationOptions($filters);
@@ -3928,6 +3930,7 @@ class ExamenController extends BaseController
         $this->requireAuth();
 
         $filters = $this->buildImagenesRealizadasFilters();
+        $filters['afiliacion_match_mode'] = 'grouped';
         $rows = $this->examenModel->fetchImagenesRealizadas($filters, true);
         $dashboard = $this->buildImagenesDashboardSummary($rows, $filters);
         $detailRows = $this->buildImagenesDashboardDetailRows($rows);
@@ -3996,6 +3999,7 @@ class ExamenController extends BaseController
         $this->requireAuth();
 
         $filters = $this->buildImagenesRealizadasFilters();
+        $filters['afiliacion_match_mode'] = 'grouped';
         $rows = $this->examenModel->fetchImagenesRealizadas($filters, true);
         $dashboard = $this->buildImagenesDashboardSummary($rows, $filters);
         $detailRows = $this->buildImagenesDashboardDetailRows($rows);
@@ -4650,8 +4654,40 @@ class ExamenController extends BaseController
     private function normalizeImagenesAfiliacionFilter(string $value): string
     {
         $value = strtolower(trim($value));
-        if ($value === 'sin convenio') {
+        if ($value === '') {
+            return '';
+        }
+
+        $comparisonValue = strtr($value, [
+            'á' => 'a',
+            'é' => 'e',
+            'í' => 'i',
+            'ó' => 'o',
+            'ú' => 'u',
+            'ñ' => 'n',
+        ]);
+        $comparisonValue = trim(preg_replace('/\s+/', ' ', str_replace('_', ' ', $comparisonValue)) ?? $comparisonValue);
+
+        if (in_array($comparisonValue, ['sin convenio', 'sin afiliacion'], true) || $value === 'sin_convenio') {
             return 'sin_convenio';
+        }
+        if (
+            $comparisonValue === 'iess'
+            || in_array($comparisonValue, [
+                'contribuyente voluntario',
+                'conyuge',
+                'conyuge pensionista',
+                'seguro campesino',
+                'seguro campesino jubilado',
+                'seguro general',
+                'seguro general jubilado',
+                'seguro general por montepio',
+                'seguro general tiempo parcial',
+                'hijos dependientes',
+                'sin cobertura',
+            ], true)
+        ) {
+            return 'iess';
         }
 
         return $value;

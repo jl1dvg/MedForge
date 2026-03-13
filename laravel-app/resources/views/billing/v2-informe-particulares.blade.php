@@ -256,6 +256,54 @@
             $formasPagoValues = is_array($formasPagoSummary['values'] ?? null) ? $formasPagoSummary['values'] : [];
             $doctoresHonorarioTop = is_array($economico['doctores_top'] ?? null) ? $economico['doctores_top'] : [];
             $areasTop = is_array($economico['areas_top'] ?? null) ? $economico['areas_top'] : [];
+            $pniSummary = is_array($summary['pni'] ?? null) ? $summary['pni'] : [];
+            $pniTotal = (int) ($pniSummary['total'] ?? 0);
+            $pniRealizadas = (int) ($pniSummary['realizadas'] ?? 0);
+            $pniFacturadas = (int) ($pniSummary['facturadas'] ?? 0);
+            $pniRealizadaConsulta = (int) ($pniSummary['realizada_consulta'] ?? 0);
+            $pniCanceladas = (int) ($pniSummary['canceladas'] ?? 0);
+            $pniAusentes = (int) ($pniSummary['ausentes'] ?? 0);
+            $pniPendientesFacturar = (int) ($pniSummary['pendientes_facturar'] ?? 0);
+            $pniHonorarioReal = (float) ($pniSummary['honorario_real'] ?? 0);
+            $pniPorCobrarEstimado = (float) ($pniSummary['por_cobrar_estimado'] ?? 0);
+            $pniPerdidaEstimada = (float) ($pniSummary['perdida_estimada'] ?? 0);
+            $pniSinTarifaEstimable = (int) ($pniSummary['sin_tarifa_estimable'] ?? 0);
+            $pniEstados = is_array($pniSummary['estados'] ?? null) ? $pniSummary['estados'] : [];
+            $pniDoctoresPorCobrar = is_array($pniSummary['doctores_por_cobrar'] ?? null) ? $pniSummary['doctores_por_cobrar'] : [];
+            $pniDoctoresPerdida = is_array($pniSummary['doctores_perdida'] ?? null) ? $pniSummary['doctores_perdida'] : [];
+            $serviciosOftalmologicosSummary = is_array($summary['servicios_oftalmologicos'] ?? null) ? $summary['servicios_oftalmologicos'] : [];
+            $serviciosOftalmologicosTotal = (int) ($serviciosOftalmologicosSummary['total'] ?? 0);
+            $serviciosOftalmologicosRealizadas = (int) ($serviciosOftalmologicosSummary['realizadas'] ?? 0);
+            $serviciosOftalmologicosFacturadas = (int) ($serviciosOftalmologicosSummary['facturadas'] ?? 0);
+            $serviciosOftalmologicosRealizadaConsulta = (int) ($serviciosOftalmologicosSummary['realizada_consulta'] ?? 0);
+            $serviciosOftalmologicosCanceladas = (int) ($serviciosOftalmologicosSummary['canceladas'] ?? 0);
+            $serviciosOftalmologicosAusentes = (int) ($serviciosOftalmologicosSummary['ausentes'] ?? 0);
+            $serviciosOftalmologicosPendientesFacturar = (int) ($serviciosOftalmologicosSummary['pendientes_facturar'] ?? 0);
+            $serviciosOftalmologicosHonorarioReal = (float) ($serviciosOftalmologicosSummary['honorario_real'] ?? 0);
+            $serviciosOftalmologicosPorCobrarEstimado = (float) ($serviciosOftalmologicosSummary['por_cobrar_estimado'] ?? 0);
+            $serviciosOftalmologicosPerdidaEstimada = (float) ($serviciosOftalmologicosSummary['perdida_estimada'] ?? 0);
+            $serviciosOftalmologicosSinTarifaEstimable = (int) ($serviciosOftalmologicosSummary['sin_tarifa_estimable'] ?? 0);
+            $serviciosOftalmologicosEstados = is_array($serviciosOftalmologicosSummary['estados'] ?? null) ? $serviciosOftalmologicosSummary['estados'] : [];
+            $serviciosOftalmologicosDoctoresPorCobrar = is_array($serviciosOftalmologicosSummary['doctores_por_cobrar'] ?? null) ? $serviciosOftalmologicosSummary['doctores_por_cobrar'] : [];
+            $serviciosOftalmologicosDoctoresPerdida = is_array($serviciosOftalmologicosSummary['doctores_perdida'] ?? null) ? $serviciosOftalmologicosSummary['doctores_perdida'] : [];
+            $cirugiasSummary = is_array($summary['cirugias'] ?? null) ? $summary['cirugias'] : [];
+            $cirugiasTotal = (int) ($cirugiasSummary['total'] ?? 0);
+            $cirugiasRealizadas = (int) ($cirugiasSummary['realizadas'] ?? 0);
+            $cirugiasConfirmadas = (int) ($cirugiasSummary['operada_confirmada'] ?? 0);
+            $cirugiasConProtocolo = (int) ($cirugiasSummary['operada_con_protocolo'] ?? 0);
+            $cirugiasOtroCentro = (int) ($cirugiasSummary['operada_otro_centro'] ?? 0);
+            $cirugiasCanceladas = (int) ($cirugiasSummary['canceladas'] ?? 0);
+            $cirugiasSinCierre = (int) ($cirugiasSummary['sin_cierre'] ?? 0);
+            $cirugiasPendientesFacturar = (int) ($cirugiasSummary['pendientes_facturar'] ?? 0);
+            $cirugiasFacturadasLocales = (int) ($cirugiasSummary['facturadas_locales'] ?? 0);
+            $cirugiasFacturadasExternas = (int) ($cirugiasSummary['facturadas_externas'] ?? 0);
+            $cirugiasHonorarioReal = (float) ($cirugiasSummary['honorario_real'] ?? 0);
+            $cirugiasPorCobrarEstimado = (float) ($cirugiasSummary['por_cobrar_estimado'] ?? 0);
+            $cirugiasPerdidaEstimada = (float) ($cirugiasSummary['perdida_estimada'] ?? 0);
+            $cirugiasSinTarifaEstimable = (int) ($cirugiasSummary['sin_tarifa_estimable'] ?? 0);
+            $cirugiasEstados = is_array($cirugiasSummary['estados'] ?? null) ? $cirugiasSummary['estados'] : [];
+            $cirugiasDoctoresPorCobrar = is_array($cirugiasSummary['doctores_por_cobrar'] ?? null) ? $cirugiasSummary['doctores_por_cobrar'] : [];
+            $cirugiasDoctoresPerdida = is_array($cirugiasSummary['doctores_perdida'] ?? null) ? $cirugiasSummary['doctores_perdida'] : [];
             $pacientesUnicos = (int) ($summary['pacientes_unicos'] ?? 0);
             $categoriaCounts = is_array($summary['categoria_counts'] ?? null) ? $summary['categoria_counts'] : ['particular' => 0, 'privado' => 0];
             $categoriaShare = is_array($summary['categoria_share'] ?? null) ? $summary['categoria_share'] : ['particular' => 0, 'privado' => 0];
@@ -441,6 +489,379 @@
                 </div>
             </div>
         </div>
+
+        @if($cirugiasTotal > 0)
+            <div class="row">
+                <div class="col-12">
+                    <div class="box bg-lightest">
+                        <div class="box-body py-15">
+                            <div class="d-flex flex-wrap justify-content-between align-items-center gap-10">
+                                <div>
+                                    <h5 class="mb-0">Cirugías: realizado, por cobrar y pérdida</h5>
+                                    <small class="text-muted">Esta capa usa protocolo, billing real y fallback de
+                                        tarifario solo para cirugías.</small>
+                                </div>
+                                <div class="d-flex flex-wrap gap-2">
+                                    <span class="badge bg-success-light text-success">{{ $cirugiasRealizadas }} realizadas</span>
+                                    <span class="badge bg-warning-light text-warning">{{ $cirugiasPendientesFacturar }} pendientes de facturar</span>
+                                    <span class="badge bg-danger-light text-danger">{{ $cirugiasCanceladas + $cirugiasSinCierre }} pérdida / sin cierre</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-xl-3 col-md-6 col-12">
+                    <div class="box">
+                        <div class="box-body text-center">
+                            <h6 class="mb-5">Cirugías realizadas</h6>
+                            <div class="fs-28 fw-700 text-success">{{ $cirugiasRealizadas }}</div>
+                            <small class="text-muted">{{ $cirugiasConfirmadas }}
+                                confirmadas, {{ $cirugiasConProtocolo }} con protocolo, {{ $cirugiasOtroCentro }}
+                                externas</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-xl-3 col-md-6 col-12">
+                    <div class="box">
+                        <div class="box-body text-center">
+                            <h6 class="mb-5">Pendiente de facturar</h6>
+                            <div class="fs-28 fw-700 text-warning">{{ $cirugiasPendientesFacturar }}</div>
+                            <small class="text-muted">{{ $cirugiasFacturadasLocales }} locales
+                                facturadas, {{ $cirugiasFacturadasExternas }} externas</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-xl-3 col-md-6 col-12">
+                    <div class="box">
+                        <div class="box-body text-center">
+                            <h6 class="mb-5">Canceladas</h6>
+                            <div class="fs-28 fw-700 text-danger">{{ $cirugiasCanceladas }}</div>
+                            <small class="text-muted">{{ $cirugiasSinCierre }} sin cierre operativo</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-xl-3 col-md-6 col-12">
+                    <div class="box">
+                        <div class="box-body text-center">
+                            <h6 class="mb-5">Sin tarifa estimable</h6>
+                            <div class="fs-28 fw-700 text-dark">{{ $cirugiasSinTarifaEstimable }}</div>
+                            <small class="text-muted">Casos quirúrgicos sin match en tarifario para estimación</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-xl-4 col-md-6 col-12">
+                    <div class="box">
+                        <div class="box-body text-center">
+                            <h6 class="mb-5">Honorario real cirugía</h6>
+                            <div class="fs-28 fw-700 text-success">${{ number_format($cirugiasHonorarioReal, 2) }}</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-xl-4 col-md-6 col-12">
+                    <div class="box">
+                        <div class="box-body text-center">
+                            <h6 class="mb-5">Por cobrar estimado</h6>
+                            <div class="fs-28 fw-700 text-warning">
+                                ${{ number_format($cirugiasPorCobrarEstimado, 2) }}</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-xl-4 col-md-12 col-12">
+                    <div class="box">
+                        <div class="box-body text-center">
+                            <h6 class="mb-5">Pérdida estimada</h6>
+                            <div class="fs-28 fw-700 text-danger">
+                                ${{ number_format($cirugiasPerdidaEstimada, 2) }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-xl-4 col-12">
+                    <div class="box">
+                        <div class="box-header with-border">
+                            <h5 class="box-title mb-0">Estado real de cirugías</h5>
+                        </div>
+                        <div class="box-body">
+                            <div id="cirugiasEstadoChart" style="min-height: 320px;"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-xl-4 col-12">
+                    <div class="box">
+                        <div class="box-header with-border">
+                            <h5 class="box-title mb-0">Cirujanos con mayor por cobrar</h5>
+                        </div>
+                        <div class="box-body">
+                            <div id="cirugiasPorCobrarDoctorChart" style="min-height: 320px;"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-xl-4 col-12">
+                    <div class="box">
+                        <div class="box-header with-border">
+                            <h5 class="box-title mb-0">Cirujanos con mayor pérdida estimada</h5>
+                        </div>
+                        <div class="box-body">
+                            <div id="cirugiasPerdidaDoctorChart" style="min-height: 320px;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        @endif
+
+        @if($pniTotal > 0)
+            <div class="row">
+                <div class="col-12">
+                    <div class="box bg-lightest">
+                        <div class="box-body py-15">
+                            <div class="d-flex flex-wrap justify-content-between align-items-center gap-10">
+                                <div>
+                                    <h5 class="mb-0">PNI: realizado, por cobrar y pérdida</h5>
+                                    <small class="text-muted">Esta capa usa consulta_data como evidencia clínica y
+                                        billing real para cierres económicos.</small>
+                                </div>
+                                <div class="d-flex flex-wrap gap-2">
+                                    <span
+                                        class="badge bg-success-light text-success">{{ $pniRealizadas }} realizadas</span>
+                                    <span class="badge bg-warning-light text-warning">{{ $pniPendientesFacturar }} pendientes de facturar</span>
+                                    <span class="badge bg-danger-light text-danger">{{ $pniCanceladas + $pniAusentes }} pérdida</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-xl-3 col-md-6 col-12">
+                    <div class="box">
+                        <div class="box-body text-center">
+                            <h6 class="mb-5">PNI realizadas</h6>
+                            <div class="fs-28 fw-700 text-success">{{ $pniRealizadas }}</div>
+                            <small class="text-muted">{{ $pniFacturadas }} facturadas, {{ $pniRealizadaConsulta }} con
+                                consulta</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-xl-3 col-md-6 col-12">
+                    <div class="box">
+                        <div class="box-body text-center">
+                            <h6 class="mb-5">Pendiente de facturar</h6>
+                            <div class="fs-28 fw-700 text-warning">{{ $pniPendientesFacturar }}</div>
+                            <small class="text-muted">Atenciones PNI con respaldo clínico aún sin billing real</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-xl-3 col-md-6 col-12">
+                    <div class="box">
+                        <div class="box-body text-center">
+                            <h6 class="mb-5">Canceladas</h6>
+                            <div class="fs-28 fw-700 text-danger">{{ $pniCanceladas }}</div>
+                            <small class="text-muted">{{ $pniAusentes }} ausentes / sin atención</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-xl-3 col-md-6 col-12">
+                    <div class="box">
+                        <div class="box-body text-center">
+                            <h6 class="mb-5">Sin tarifa estimable</h6>
+                            <div class="fs-28 fw-700 text-dark">{{ $pniSinTarifaEstimable }}</div>
+                            <small class="text-muted">Casos PNI sin match en pricing del módulo codes</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-xl-4 col-md-6 col-12">
+                    <div class="box">
+                        <div class="box-body text-center">
+                            <h6 class="mb-5">Honorario real PNI</h6>
+                            <div class="fs-28 fw-700 text-success">${{ number_format($pniHonorarioReal, 2) }}</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-xl-4 col-md-6 col-12">
+                    <div class="box">
+                        <div class="box-body text-center">
+                            <h6 class="mb-5">Por cobrar estimado</h6>
+                            <div class="fs-28 fw-700 text-warning">${{ number_format($pniPorCobrarEstimado, 2) }}</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-xl-4 col-md-12 col-12">
+                    <div class="box">
+                        <div class="box-body text-center">
+                            <h6 class="mb-5">Pérdida estimada</h6>
+                            <div class="fs-28 fw-700 text-danger">${{ number_format($pniPerdidaEstimada, 2) }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-xl-4 col-12">
+                    <div class="box">
+                        <div class="box-header with-border">
+                            <h5 class="box-title mb-0">PNI por estado real</h5>
+                        </div>
+                        <div class="box-body">
+                            <div id="pniEstadoChart" style="min-height: 320px;"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-xl-4 col-12">
+                    <div class="box">
+                        <div class="box-header with-border">
+                            <h5 class="box-title mb-0">PNI con mayor por cobrar</h5>
+                        </div>
+                        <div class="box-body">
+                            <div id="pniPorCobrarDoctorChart" style="min-height: 320px;"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-xl-4 col-12">
+                    <div class="box">
+                        <div class="box-header with-border">
+                            <h5 class="box-title mb-0">PNI con mayor pérdida estimada</h5>
+                        </div>
+                        <div class="box-body">
+                            <div id="pniPerdidaDoctorChart" style="min-height: 320px;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        @endif
+
+        @if($serviciosOftalmologicosTotal > 0)
+            <div class="row">
+                <div class="col-12">
+                    <div class="box bg-lightest">
+                        <div class="box-body py-15">
+                            <div class="d-flex flex-wrap justify-content-between align-items-center gap-10">
+                                <div>
+                                    <h5 class="mb-0">Servicios oftalmológicos: realizado, por cobrar y pérdida</h5>
+                                    <small class="text-muted">Esta capa usa consulta_data como respaldo clínico,
+                                        billing real para cierres y excluye optometría.</small>
+                                </div>
+                                <div class="d-flex flex-wrap gap-2">
+                                    <span class="badge bg-success-light text-success">{{ $serviciosOftalmologicosRealizadas }} realizadas</span>
+                                    <span class="badge bg-warning-light text-warning">{{ $serviciosOftalmologicosPendientesFacturar }} pendientes de facturar</span>
+                                    <span class="badge bg-danger-light text-danger">{{ $serviciosOftalmologicosCanceladas + $serviciosOftalmologicosAusentes }} pérdida</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-xl-3 col-md-6 col-12">
+                    <div class="box">
+                        <div class="box-body text-center">
+                            <h6 class="mb-5">Servicios realizados</h6>
+                            <div class="fs-28 fw-700 text-success">{{ $serviciosOftalmologicosRealizadas }}</div>
+                            <small class="text-muted">{{ $serviciosOftalmologicosFacturadas }} facturadas, {{ $serviciosOftalmologicosRealizadaConsulta }} con consulta</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-xl-3 col-md-6 col-12">
+                    <div class="box">
+                        <div class="box-body text-center">
+                            <h6 class="mb-5">Pendiente de facturar</h6>
+                            <div class="fs-28 fw-700 text-warning">{{ $serviciosOftalmologicosPendientesFacturar }}</div>
+                            <small class="text-muted">Atenciones con respaldo clínico aún sin billing real</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-xl-3 col-md-6 col-12">
+                    <div class="box">
+                        <div class="box-body text-center">
+                            <h6 class="mb-5">Canceladas</h6>
+                            <div class="fs-28 fw-700 text-danger">{{ $serviciosOftalmologicosCanceladas }}</div>
+                            <small class="text-muted">{{ $serviciosOftalmologicosAusentes }} ausentes / sin atención</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-xl-3 col-md-6 col-12">
+                    <div class="box">
+                        <div class="box-body text-center">
+                            <h6 class="mb-5">Sin tarifa estimable</h6>
+                            <div class="fs-28 fw-700 text-dark">{{ $serviciosOftalmologicosSinTarifaEstimable }}</div>
+                            <small class="text-muted">Casos sin match en pricing del módulo codes</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-xl-4 col-md-6 col-12">
+                    <div class="box">
+                        <div class="box-body text-center">
+                            <h6 class="mb-5">Honorario real servicios</h6>
+                            <div class="fs-28 fw-700 text-success">${{ number_format($serviciosOftalmologicosHonorarioReal, 2) }}</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-xl-4 col-md-6 col-12">
+                    <div class="box">
+                        <div class="box-body text-center">
+                            <h6 class="mb-5">Por cobrar estimado</h6>
+                            <div class="fs-28 fw-700 text-warning">${{ number_format($serviciosOftalmologicosPorCobrarEstimado, 2) }}</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-xl-4 col-md-12 col-12">
+                    <div class="box">
+                        <div class="box-body text-center">
+                            <h6 class="mb-5">Pérdida estimada</h6>
+                            <div class="fs-28 fw-700 text-danger">${{ number_format($serviciosOftalmologicosPerdidaEstimada, 2) }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-xl-4 col-12">
+                    <div class="box">
+                        <div class="box-header with-border">
+                            <h5 class="box-title mb-0">Servicios por estado real</h5>
+                        </div>
+                        <div class="box-body">
+                            <div id="serviciosOftalmologicosEstadoChart" style="min-height: 320px;"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-xl-4 col-12">
+                    <div class="box">
+                        <div class="box-header with-border">
+                            <h5 class="box-title mb-0">Servicios con mayor por cobrar</h5>
+                        </div>
+                        <div class="box-body">
+                            <div id="serviciosOftalmologicosPorCobrarDoctorChart" style="min-height: 320px;"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-xl-4 col-12">
+                    <div class="box">
+                        <div class="box-header with-border">
+                            <h5 class="box-title mb-0">Servicios con mayor pérdida estimada</h5>
+                        </div>
+                        <div class="box-body">
+                            <div id="serviciosOftalmologicosPerdidaDoctorChart" style="min-height: 320px;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        @endif
 
 
         <div class="row">
@@ -943,11 +1364,13 @@
                                     <th>Sede</th>
                                     <th>Categoría</th>
                                     <th>Estado encuentro</th>
+                                    <th>Estado caso</th>
                                     <th>Tipo atención</th>
                                     <th>Fecha</th>
                                     <th>Procedimiento</th>
                                     <th>Doctor</th>
                                     <th>Facturación</th>
+                                    <th>Estimado</th>
                                     <th>Honorario real</th>
                                     <th>Fecha fact.</th>
                                     <th>Factura</th>
@@ -998,6 +1421,18 @@
                                         if ($facturaRef === '') {
                                             $facturaRef = trim((string) ($row['factura_id'] ?? ''));
                                         }
+                                        $estadoRealizacion = strtoupper(trim((string) ($row['estado_realizacion'] ?? '')));
+                                        if ($estadoRealizacion === '') {
+                                            $estadoRealizacion = '—';
+                                        }
+                                        $estadoFacturacionOperativa = strtoupper(trim((string) ($row['estado_facturacion_operativa'] ?? '')));
+                                        if ($estadoFacturacionOperativa === '') {
+                                            $estadoFacturacionOperativa = $facturado ? 'FACTURADA' : 'SIN FACTURACION';
+                                        }
+                                        $montoEstimadoRow = (float) ($row['monto_por_cobrar_estimado'] ?? 0);
+                                        if ($montoEstimadoRow <= 0) {
+                                            $montoEstimadoRow = (float) ($row['monto_perdida_estimada'] ?? 0);
+                                        }
                                         $formasPagoRow = trim((string) ($row['formas_pago'] ?? ''));
                                         $clienteFacturacionRow = trim((string) ($row['cliente_facturacion'] ?? ''));
                                         $areaFacturacionRow = trim((string) ($row['area_facturacion'] ?? ''));
@@ -1023,6 +1458,15 @@
                                             <span class="badge bg-success">{{ strtoupper($estadoEncuentro) }}</span>
                                         </td>
                                         <td>
+                                                <span class="badge {{
+                                                    str_contains($estadoRealizacion, 'OPERADA') ? 'bg-success' :
+                                                    ($estadoRealizacion === 'CANCELADA' ? 'bg-danger' :
+                                                    ($estadoRealizacion === 'SIN_CIERRE_OPERATIVO' ? 'bg-warning' : 'bg-secondary'))
+                                                }}">
+                                                    {{ str_replace('_', ' ', $estadoRealizacion) }}
+                                                </span>
+                                        </td>
+                                        <td>
                                                 <span
                                                     class="badge {{ $tipoAtencionBadge }}">
                                                     {{ $tipoAtencion }}
@@ -1032,10 +1476,14 @@
                                         <td>{{ $procedimientoLegible((string) ($row['procedimiento_proyectado'] ?? '')) }}</td>
                                         <td>{{ trim((string) ($row['doctor'] ?? '')) !== '' ? ucwords(strtolower((string) $row['doctor'])) : '—' }}</td>
                                         <td>
-                                                <span class="badge {{ $facturado ? 'bg-success' : 'bg-warning' }}">
-                                                    {{ $facturado ? 'FACTURADO' : 'PENDIENTE' }}
+                                                <span class="badge {{
+                                                    str_contains($estadoFacturacionOperativa, 'FACTURADA') ? 'bg-success' :
+                                                    ($estadoFacturacionOperativa === 'PENDIENTE_FACTURAR' ? 'bg-warning' : 'bg-secondary')
+                                                }}">
+                                                    {{ str_replace('_', ' ', $estadoFacturacionOperativa) }}
                                                 </span>
                                         </td>
+                                        <td class="text-end">{{ $montoEstimadoRow > 0 ? '$' . number_format($montoEstimadoRow, 2) : '—' }}</td>
                                         <td class="text-end">${{ number_format($honorarioRealRow, 2) }}</td>
                                         <td>{{ $fechaFacturacionFmt }}</td>
                                         <td>{{ $facturaRef !== '' ? $facturaRef : '—' }}</td>
@@ -1045,7 +1493,7 @@
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="18" class="text-center text-muted py-30">No hay atenciones
+                                        <td colspan="20" class="text-center text-muted py-30">No hay atenciones
                                             particulares para los filtros seleccionados.
                                         </td>
                                     </tr>
@@ -1087,6 +1535,15 @@
             const formasPagoValues = @json($formasPagoValues);
             const areasTop = @json($areasTop);
             const picosDias = @json($picosDias);
+            const pniEstados = @json($pniEstados);
+            const pniDoctoresPorCobrar = @json($pniDoctoresPorCobrar);
+            const pniDoctoresPerdida = @json($pniDoctoresPerdida);
+            const serviciosOftalmologicosEstados = @json($serviciosOftalmologicosEstados);
+            const serviciosOftalmologicosDoctoresPorCobrar = @json($serviciosOftalmologicosDoctoresPorCobrar);
+            const serviciosOftalmologicosDoctoresPerdida = @json($serviciosOftalmologicosDoctoresPerdida);
+            const cirugiasEstados = @json($cirugiasEstados);
+            const cirugiasDoctoresPorCobrar = @json($cirugiasDoctoresPorCobrar);
+            const cirugiasDoctoresPerdida = @json($cirugiasDoctoresPerdida);
 
             if (typeof ApexCharts === 'undefined') {
                 return;
@@ -1807,6 +2264,54 @@
             });
 
             buildVerticalChart('#picosDiasChart', 'Atenciones por día', Array.isArray(picosDias) ? picosDias : [], '#8b5cf6');
+            buildHorizontalChart(
+                '#pniEstadoChart',
+                'PNI por estado real',
+                Array.isArray(pniEstados) ? pniEstados : [],
+                '#10b981'
+            );
+            buildHorizontalMoneyChart('#pniPorCobrarDoctorChart', pniDoctoresPorCobrar, {
+                seriesName: 'Por cobrar estimado',
+                xTitle: 'Por cobrar estimado',
+                color: '#f59e0b',
+            });
+            buildHorizontalMoneyChart('#pniPerdidaDoctorChart', pniDoctoresPerdida, {
+                seriesName: 'Pérdida estimada',
+                xTitle: 'Pérdida estimada',
+                color: '#dc2626',
+            });
+            buildHorizontalChart(
+                '#serviciosOftalmologicosEstadoChart',
+                'Servicios oftalmológicos por estado real',
+                Array.isArray(serviciosOftalmologicosEstados) ? serviciosOftalmologicosEstados : [],
+                '#2563eb'
+            );
+            buildHorizontalMoneyChart('#serviciosOftalmologicosPorCobrarDoctorChart', serviciosOftalmologicosDoctoresPorCobrar, {
+                seriesName: 'Por cobrar estimado',
+                xTitle: 'Por cobrar estimado',
+                color: '#f59e0b',
+            });
+            buildHorizontalMoneyChart('#serviciosOftalmologicosPerdidaDoctorChart', serviciosOftalmologicosDoctoresPerdida, {
+                seriesName: 'Pérdida estimada',
+                xTitle: 'Pérdida estimada',
+                color: '#dc2626',
+            });
+            buildHorizontalChart(
+                '#cirugiasEstadoChart',
+                'Cirugías por estado real',
+                Array.isArray(cirugiasEstados) ? cirugiasEstados : [],
+                '#ef4444'
+            );
+            buildHorizontalMoneyChart('#cirugiasPorCobrarDoctorChart', cirugiasDoctoresPorCobrar, {
+                seriesName: 'Por cobrar estimado',
+                xTitle: 'Por cobrar estimado',
+                color: '#f59e0b',
+            });
+            buildHorizontalMoneyChart('#cirugiasPerdidaDoctorChart', cirugiasDoctoresPerdida, {
+                seriesName: 'Pérdida estimada',
+                xTitle: 'Pérdida estimada',
+                color: '#dc2626',
+            });
 
             const topAfiliacionesContainer = document.querySelector('#topAfiliacionesChart');
             if (topAfiliacionesContainer) {

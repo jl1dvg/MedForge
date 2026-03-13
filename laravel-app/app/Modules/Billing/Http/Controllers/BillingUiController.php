@@ -1855,10 +1855,13 @@ class BillingUiController
             'Categoria cliente',
             'Sede',
             'Estado encuentro',
+            'Estado realizacion',
             'Tipo atencion',
             'Procedimiento proyectado',
             'Doctor',
             'Facturacion',
+            'Estado facturacion operativa',
+            'Monto estimado',
             'Honorario real',
             'Billing ID',
             'Fecha facturacion',
@@ -1879,6 +1882,12 @@ class BillingUiController
                 ? date('d/m/Y H:i', strtotime($fechaFacturacionRaw))
                 : '';
             $facturado = (bool) ($row['facturado'] ?? false);
+            $estadoRealizacion = trim((string) ($row['estado_realizacion'] ?? ''));
+            $estadoFacturacionOperativa = trim((string) ($row['estado_facturacion_operativa'] ?? ''));
+            $montoEstimado = (float) ($row['monto_por_cobrar_estimado'] ?? 0);
+            if ($montoEstimado <= 0) {
+                $montoEstimado = (float) ($row['monto_perdida_estimada'] ?? 0);
+            }
 
             fputcsv($handle, [
                 $fecha,
@@ -1888,10 +1897,13 @@ class BillingUiController
                 trim((string) ($row['categoria_cliente'] ?? '')),
                 trim((string) ($row['sede'] ?? '')),
                 trim((string) ($row['estado_encuentro'] ?? '')),
+                $estadoRealizacion,
                 trim((string) ($row['tipo_atencion'] ?? '')),
                 trim((string) ($row['procedimiento_proyectado'] ?? '')),
                 trim((string) ($row['doctor'] ?? '')),
                 $facturado ? 'FACTURADO' : 'PENDIENTE',
+                $estadoFacturacionOperativa,
+                number_format($montoEstimado, 2, '.', ''),
                 number_format((float) ($row['monto_honorario_real'] ?? $row['total_produccion'] ?? 0), 2, '.', ''),
                 (string) ($row['billing_id'] ?? ''),
                 $fechaFacturacion,

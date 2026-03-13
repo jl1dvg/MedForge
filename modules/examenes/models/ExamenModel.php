@@ -1410,6 +1410,7 @@ class ExamenModel
      *     fecha_inicio?: string,
      *     fecha_fin?: string,
      *     afiliacion?: string,
+     *     afiliacion_match_mode?: string,
      *     afiliacion_categoria?: string,
      *     sede?: string,
      *     tipo_examen?: string,
@@ -1420,7 +1421,9 @@ class ExamenModel
     public function fetchImagenesRealizadas(array $filters = [], bool $includeFacturado = false): array
     {
         $rawAfiliacionExpr = "COALESCE(NULLIF(TRIM(pp.afiliacion), ''), NULLIF(TRIM(pd.afiliacion), ''), '')";
+        $displayAfiliacionExpr = "COALESCE(NULLIF(TRIM(pp.afiliacion), ''), NULLIF(TRIM(pd.afiliacion), ''), 'Sin afiliación')";
         $afiliacionKeyExpr = $this->afiliacionGroupKeyExpr($rawAfiliacionExpr);
+        $afiliacionExactExpr = "TRIM(" . $this->normalizeSqlText($displayAfiliacionExpr) . ")";
         $categoriaContext = $this->resolveAfiliacionCategoriaContext($rawAfiliacionExpr, 'iacm');
         $sedeExpr = $this->imagenesSedeExpr();
         $patientHcExpr = "COALESCE(NULLIF(TRIM(pd.hc_number), ''), pp.hc_number)";
@@ -1471,7 +1474,7 @@ class ExamenModel
                         THEN pp.fecha
                     ELSE NULL
                 END AS fecha_examen,
-                COALESCE(NULLIF(TRIM(pp.afiliacion), ''), NULLIF(TRIM(pd.afiliacion), ''), 'Sin afiliación') AS afiliacion,
+                {$displayAfiliacionExpr} AS afiliacion,
                 {$afiliacionKeyExpr} AS afiliacion_key,
                 {$categoriaContext['expr']} AS afiliacion_categoria,
                 CONCAT_WS(' ', TRIM(pd.lname), TRIM(pd.lname2), TRIM(pd.fname), TRIM(pd.mname)) AS full_name,
@@ -1504,10 +1507,19 @@ class ExamenModel
             $params[':fecha_fin'] = $filters['fecha_fin'];
         }
 
-        $afiliacionFilter = $this->normalizeAfiliacionFilter((string)($filters['afiliacion'] ?? ''));
-        if ($afiliacionFilter !== '') {
-            $sql .= " AND {$afiliacionKeyExpr} = :afiliacion_filter_match";
-            $params[':afiliacion_filter_match'] = $afiliacionFilter;
+        $afiliacionFilterRaw = trim((string)($filters['afiliacion'] ?? ''));
+        $afiliacionMatchMode = trim((string)($filters['afiliacion_match_mode'] ?? 'grouped'));
+        if ($afiliacionFilterRaw !== '') {
+            if ($afiliacionMatchMode === 'exact') {
+                $sql .= " AND {$afiliacionExactExpr} = :afiliacion_filter_match";
+                $params[':afiliacion_filter_match'] = $this->normalizeAfiliacionExactFilter($afiliacionFilterRaw);
+            } else {
+                $afiliacionFilter = $this->normalizeAfiliacionFilter($afiliacionFilterRaw);
+                if ($afiliacionFilter !== '') {
+                    $sql .= " AND {$afiliacionKeyExpr} = :afiliacion_filter_match";
+                    $params[':afiliacion_filter_match'] = $afiliacionFilter;
+                }
+            }
         }
 
         $afiliacionCategoriaFilter = $this->normalizeAfiliacionCategoriaFilter((string)($filters['afiliacion_categoria'] ?? ''));
@@ -1665,11 +1677,45 @@ class ExamenModel
     private function normalizeAfiliacionFilter(string $afiliacionFilter): string
     {
         $value = strtolower(trim($afiliacionFilter));
-        if ($value === 'sin convenio') {
+        if ($value === '') {
+            return '';
+        }
+
+        $comparisonValue = strtr($value, [
+            'á' => 'a',
+            'é' => 'e',
+            'í' => 'i',
+            'ó' => 'o',
+            'ú' => 'u',
+            'ñ' => 'n',
+        ]);
+        $comparisonValue = trim(preg_replace('/\s+/', ' ', str_replace('_', ' ', $comparisonValue)) ?? $comparisonValue);
+
+        if (in_array($comparisonValue, ['sin convenio', 'sin afiliacion'], true) || $value === 'sin_convenio') {
             return 'sin_convenio';
+        }
+        if ($comparisonValue === 'iess' || in_array($comparisonValue, self::IESS_AFFILIATIONS, true)) {
+            return 'iess';
         }
 
         return $value;
+    }
+
+    private function normalizeAfiliacionExactFilter(string $afiliacionFilter): string
+    {
+        $value = strtolower(trim($afiliacionFilter));
+        if ($value === '') {
+            return '';
+        }
+
+        return strtr($value, [
+            'á' => 'a',
+            'é' => 'e',
+            'í' => 'i',
+            'ó' => 'o',
+            'ú' => 'u',
+            'ñ' => 'n',
+        ]);
     }
 
     private function normalizeAfiliacionCategoriaFilter(string $categoryFilter): string
