@@ -15,6 +15,8 @@ class BillingParticularesReportService
     private array $columnExistsCache = [];
     /** @var array<string, float> */
     private array $tarifaLookupCache = [];
+    /** @var array<string, array{amount:float,status:string,reason:string,level_key:string,level_title:string,matched_codigo:string,matched_descripcion:string}> */
+    private array $tarifaDiagnosticCache = [];
     /** @var array<string, array{id:int,codigo:string,descripcion:string}> */
     private array $tarifaCodeCache = [];
     /** @var array<string, array{categoria:string,afiliacion_raw:string}>|null */
@@ -101,6 +103,7 @@ class BillingParticularesReportService
         $atendidoCondition = $this->attendedEncounterCondition('pp');
         $referidoPrefacturaExpr = $this->referidoPrefacturaExpression('pp');
         $especificarReferidoExpr = $this->especificarReferidoPrefacturaExpression('pp');
+        $imageEvidenceJoin = $this->imageEvidenceJoinDefinition();
         $economicsJoin = $this->economicsJoinDefinition();
 
         $sql = <<<SQL
@@ -125,6 +128,14 @@ class BillingParticularesReportService
                 atenciones.protocolo_firmado_por,
                 atenciones.consulta_fecha,
                 atenciones.consulta_diagnosticos,
+                imginfo.imagen_informe_id,
+                imginfo.imagen_informe_actualizado,
+                imginfo.imagen_informe_firmado_por,
+                imginfo.imagen_informes_total,
+                COALESCE(imgnas.imagen_nas_has_files, 0) AS imagen_nas_has_files,
+                COALESCE(imgnas.imagen_nas_files_count, 0) AS imagen_nas_files_count,
+                imgnas.nas_scan_status,
+                imgnas.nas_last_scanned_at,
                 econ.billing_id,
                 econ.fecha_facturacion,
                 econ.fecha_atencion,
@@ -294,7 +305,41 @@ class BillingParticularesReportService
                     cd.form_id IS NOT NULL
                     AND %ATENDIDO_WHERE%
                   )
+
+                UNION ALL
+
+                SELECT
+                    p.hc_number,
+                    CONCAT_WS(' ', p.fname, p.lname, p.lname2) AS nombre_completo,
+                    'agenda_imagenes' AS tipo,
+                    'agenda_imagenes' AS fuente_atencion,
+                    pp.form_id,
+                    pp.fecha AS fecha,
+                    p.afiliacion,
+                    %SEDE_EXPR% AS sede,
+                    %ESTADO_EXPR% AS estado_encuentro,
+                    pp.procedimiento_proyectado,
+                    pp.doctor,
+                    %REFERIDO_PREFACTURA_EXPR% AS referido_prefactura_por,
+                    %ESPECIFICAR_REFERIDO_EXPR% AS especificar_referido_prefactura,
+                    NULL AS protocolo_id,
+                    0 AS protocolo_status_ok,
+                    0 AS protocolo_firmado,
+                    NULL AS fecha_firma,
+                    NULL AS protocolo_firmado_por,
+                    cd.fecha AS consulta_fecha,
+                    NULLIF(TRIM(COALESCE(cd.diagnosticos, '')), '') AS consulta_diagnosticos
+                FROM patient_data p
+                INNER JOIN procedimiento_proyectado pp ON pp.hc_number = p.hc_number
+                LEFT JOIN consulta_data cd ON cd.hc_number = p.hc_number AND cd.form_id = pp.form_id
+                WHERE pp.fecha BETWEEN ? AND ?
+                  AND %IMAGENES_WHERE%
+                  AND NOT (
+                    cd.form_id IS NOT NULL
+                    AND %ATENDIDO_WHERE%
+                  )
             ) AS atenciones
+            %IMAGE_EVIDENCE_JOIN_SQL%
             %ECON_JOIN_SQL%
             WHERE atenciones.fecha IS NOT NULL
               AND atenciones.fecha NOT IN ('', '0000-00-00', '0000-00-00 00:00:00')
@@ -306,11 +351,20 @@ class BillingParticularesReportService
         $sql = str_replace('%SURGERY_WHERE%', $this->surgeryAttentionCondition('pp'), $sql);
         $sql = str_replace('%PNI_WHERE%', $this->pniAttentionCondition('pp'), $sql);
         $sql = str_replace('%SERVICIO_OFTALMO_WHERE%', $this->ophthalmologyServiceAttentionCondition('pp'), $sql);
+        $sql = str_replace('%IMAGENES_WHERE%', $this->imagesAttentionCondition('pp'), $sql);
         $sql = str_replace('%REFERIDO_PREFACTURA_EXPR%', $referidoPrefacturaExpr, $sql);
         $sql = str_replace('%ESPECIFICAR_REFERIDO_EXPR%', $especificarReferidoExpr, $sql);
+        $sql = str_replace('%IMAGE_EVIDENCE_JOIN_SQL%', $imageEvidenceJoin, $sql);
         $sql = str_replace('%ECON_JOIN_SQL%', $economicsJoin, $sql);
 
-        $params = [$fechaInicio, $fechaFin, $fechaInicio, $fechaFin, $fechaInicio, $fechaFin, $fechaInicio, $fechaFin, $fechaInicio, $fechaFin];
+        $params = [
+            $fechaInicio, $fechaFin,
+            $fechaInicio, $fechaFin,
+            $fechaInicio, $fechaFin,
+            $fechaInicio, $fechaFin,
+            $fechaInicio, $fechaFin,
+            $fechaInicio, $fechaFin,
+        ];
 
         $stmt = $this->db->prepare($sql);
         $stmt->execute($params);
@@ -364,20 +418,32 @@ class BillingParticularesReportService
             $row['alerta_revision'] = null;
             $row['tarifa_codigo'] = '';
             $row['tarifa_detalle'] = '';
+            $row['tarifa_lookup_status'] = '';
+            $row['tarifa_lookup_reason'] = '';
+            $row['tarifa_level_key'] = '';
+            $row['tarifa_level_title'] = '';
+            $row['tarifa_codigo_match'] = '';
+            $row['tarifa_descripcion_match'] = '';
             $row['monto_estimado_tarifario'] = 0.0;
             $row['monto_por_cobrar_estimado'] = 0.0;
             $row['monto_perdida_estimada'] = 0.0;
             $row['sin_tarifa_estimable'] = false;
+            $row['tarifa_sin_costo_configurado'] = false;
             $row['cirugia_realizada'] = false;
             $row['cirugia_perdida'] = false;
             $row['pni_realizada'] = false;
             $row['pni_perdida'] = false;
             $row['servicio_oftalmologico_realizada'] = false;
             $row['servicio_oftalmologico_perdida'] = false;
+            $row['imagen_realizada'] = false;
+            $row['imagen_perdida'] = false;
+            $row['imagen_pendiente_informar'] = false;
+            $row['estado_informe_operativo'] = '';
 
             if ($this->isPniAttentionType($tipoAtencion)) {
                 [$codigoTarifario, $detalleTarifario] = $this->parseProcedureCodeDetail((string) ($row['procedimiento_proyectado'] ?? ''));
-                $montoTarifario = $codigoTarifario !== '' ? $this->lookupTarifa($codigoTarifario, $row) : 0.0;
+                $tarifaDiagnostic = $this->resolveTarifaDiagnostic($codigoTarifario, $row);
+                $montoTarifario = (float) ($tarifaDiagnostic['amount'] ?? 0.0);
                 $estadoRealizacion = $this->resolvePniRealizationState($row, $hasBillingEvidence);
                 $estadoFacturacion = $this->resolvePniBillingState($estadoRealizacion);
                 $alertaRevision = $this->resolvePniReviewAlert($row, $estadoRealizacion, $hasBillingEvidence);
@@ -387,6 +453,13 @@ class BillingParticularesReportService
                 $row['alerta_revision'] = $alertaRevision;
                 $row['tarifa_codigo'] = $codigoTarifario;
                 $row['tarifa_detalle'] = $detalleTarifario;
+                $row['tarifa_lookup_status'] = (string) ($tarifaDiagnostic['status'] ?? '');
+                $row['tarifa_lookup_reason'] = (string) ($tarifaDiagnostic['reason'] ?? '');
+                $row['tarifa_level_key'] = (string) ($tarifaDiagnostic['level_key'] ?? '');
+                $row['tarifa_level_title'] = (string) ($tarifaDiagnostic['level_title'] ?? '');
+                $row['tarifa_codigo_match'] = (string) ($tarifaDiagnostic['matched_codigo'] ?? '');
+                $row['tarifa_descripcion_match'] = (string) ($tarifaDiagnostic['matched_descripcion'] ?? '');
+                $row['tarifa_sin_costo_configurado'] = $this->isZeroCostTarifaDiagnostic($tarifaDiagnostic);
                 $row['monto_estimado_tarifario'] = round($montoTarifario, 2);
                 $row['pni_realizada'] = in_array($estadoRealizacion, ['FACTURADA', 'REALIZADA_CONSULTA'], true);
                 $row['pni_perdida'] = in_array($estadoRealizacion, ['CANCELADA', 'AUSENTE'], true);
@@ -398,7 +471,7 @@ class BillingParticularesReportService
                     $row['monto_perdida_estimada'] = round($montoTarifario, 2);
                 }
                 if (
-                    $montoTarifario <= 0
+                    $this->isNonEstimableTarifaDiagnostic($tarifaDiagnostic)
                     && (
                         $row['monto_por_cobrar_estimado'] > 0
                         || $row['monto_perdida_estimada'] > 0
@@ -412,7 +485,8 @@ class BillingParticularesReportService
 
             if ($this->isOphthalmologyServiceAttentionType($tipoAtencion)) {
                 [$codigoTarifario, $detalleTarifario] = $this->parseProcedureCodeDetail((string) ($row['procedimiento_proyectado'] ?? ''));
-                $montoTarifario = $codigoTarifario !== '' ? $this->lookupTarifa($codigoTarifario, $row) : 0.0;
+                $tarifaDiagnostic = $this->resolveTarifaDiagnostic($codigoTarifario, $row);
+                $montoTarifario = (float) ($tarifaDiagnostic['amount'] ?? 0.0);
                 $estadoRealizacion = $this->resolveOphthalmologyServiceRealizationState($row, $hasBillingEvidence);
                 $estadoFacturacion = $this->resolveOphthalmologyServiceBillingState($estadoRealizacion);
                 $alertaRevision = $this->resolveOphthalmologyServiceReviewAlert($row, $estadoRealizacion, $hasBillingEvidence);
@@ -422,6 +496,13 @@ class BillingParticularesReportService
                 $row['alerta_revision'] = $alertaRevision;
                 $row['tarifa_codigo'] = $codigoTarifario;
                 $row['tarifa_detalle'] = $detalleTarifario;
+                $row['tarifa_lookup_status'] = (string) ($tarifaDiagnostic['status'] ?? '');
+                $row['tarifa_lookup_reason'] = (string) ($tarifaDiagnostic['reason'] ?? '');
+                $row['tarifa_level_key'] = (string) ($tarifaDiagnostic['level_key'] ?? '');
+                $row['tarifa_level_title'] = (string) ($tarifaDiagnostic['level_title'] ?? '');
+                $row['tarifa_codigo_match'] = (string) ($tarifaDiagnostic['matched_codigo'] ?? '');
+                $row['tarifa_descripcion_match'] = (string) ($tarifaDiagnostic['matched_descripcion'] ?? '');
+                $row['tarifa_sin_costo_configurado'] = $this->isZeroCostTarifaDiagnostic($tarifaDiagnostic);
                 $row['monto_estimado_tarifario'] = round($montoTarifario, 2);
                 $row['servicio_oftalmologico_realizada'] = in_array($estadoRealizacion, ['FACTURADA', 'REALIZADA_CONSULTA'], true);
                 $row['servicio_oftalmologico_perdida'] = in_array($estadoRealizacion, ['CANCELADA', 'AUSENTE'], true);
@@ -433,7 +514,7 @@ class BillingParticularesReportService
                     $row['monto_perdida_estimada'] = round($montoTarifario, 2);
                 }
                 if (
-                    $montoTarifario <= 0
+                    $this->isNonEstimableTarifaDiagnostic($tarifaDiagnostic)
                     && (
                         $row['monto_por_cobrar_estimado'] > 0
                         || $row['monto_perdida_estimada'] > 0
@@ -445,9 +526,56 @@ class BillingParticularesReportService
                 }
             }
 
+            if ($this->isImageAttentionType($tipoAtencion)) {
+                [$codigoTarifario, $detalleTarifario] = $this->parseProcedureCodeDetail((string) ($row['procedimiento_proyectado'] ?? ''));
+                $tarifaDiagnostic = $this->resolveTarifaDiagnostic($codigoTarifario, $row);
+                $montoTarifario = (float) ($tarifaDiagnostic['amount'] ?? 0.0);
+                $estadoRealizacion = $this->resolveImageRealizationState($row, $hasBillingEvidence);
+                $estadoFacturacion = $this->resolveImageBillingState($estadoRealizacion);
+                $estadoInforme = $this->resolveImageReportState($row);
+                $alertaRevision = $this->resolveImageReviewAlert($row, $estadoRealizacion, $estadoInforme, $hasBillingEvidence);
+
+                $row['estado_realizacion'] = $estadoRealizacion;
+                $row['estado_facturacion_operativa'] = $estadoFacturacion;
+                $row['estado_informe_operativo'] = $estadoInforme;
+                $row['alerta_revision'] = $alertaRevision;
+                $row['tarifa_codigo'] = $codigoTarifario;
+                $row['tarifa_detalle'] = $detalleTarifario;
+                $row['tarifa_lookup_status'] = (string) ($tarifaDiagnostic['status'] ?? '');
+                $row['tarifa_lookup_reason'] = (string) ($tarifaDiagnostic['reason'] ?? '');
+                $row['tarifa_level_key'] = (string) ($tarifaDiagnostic['level_key'] ?? '');
+                $row['tarifa_level_title'] = (string) ($tarifaDiagnostic['level_title'] ?? '');
+                $row['tarifa_codigo_match'] = (string) ($tarifaDiagnostic['matched_codigo'] ?? '');
+                $row['tarifa_descripcion_match'] = (string) ($tarifaDiagnostic['matched_descripcion'] ?? '');
+                $row['tarifa_sin_costo_configurado'] = $this->isZeroCostTarifaDiagnostic($tarifaDiagnostic);
+                $row['monto_estimado_tarifario'] = round($montoTarifario, 2);
+                $row['imagen_realizada'] = in_array($estadoRealizacion, ['FACTURADA', 'REALIZADA_CON_ARCHIVOS', 'REALIZADA_INFORMADA'], true);
+                $row['imagen_perdida'] = in_array($estadoRealizacion, ['CANCELADA', 'AUSENTE', 'SIN_CIERRE_OPERATIVO'], true);
+                $row['imagen_pendiente_informar'] = $estadoInforme === 'PENDIENTE_INFORMAR';
+
+                if ($estadoFacturacion === 'PENDIENTE_FACTURAR') {
+                    $row['monto_por_cobrar_estimado'] = round($montoTarifario, 2);
+                }
+                if ($row['imagen_perdida']) {
+                    $row['monto_perdida_estimada'] = round($montoTarifario, 2);
+                }
+                if (
+                    $this->isNonEstimableTarifaDiagnostic($tarifaDiagnostic)
+                    && (
+                        $row['monto_por_cobrar_estimado'] > 0
+                        || $row['monto_perdida_estimada'] > 0
+                        || $estadoFacturacion === 'PENDIENTE_FACTURAR'
+                        || $row['imagen_perdida']
+                    )
+                ) {
+                    $row['sin_tarifa_estimable'] = true;
+                }
+            }
+
             if ($this->isSurgeryAttentionType($tipoAtencion)) {
                 [$codigoTarifario, $detalleTarifario] = $this->parseProcedureCodeDetail((string) ($row['procedimiento_proyectado'] ?? ''));
-                $montoTarifario = $codigoTarifario !== '' ? $this->lookupTarifa($codigoTarifario, $row) : 0.0;
+                $tarifaDiagnostic = $this->resolveTarifaDiagnostic($codigoTarifario, $row);
+                $montoTarifario = (float) ($tarifaDiagnostic['amount'] ?? 0.0);
                 $estadoRealizacion = $this->resolveSurgeryRealizationState($row, $hasBillingEvidence);
                 $estadoFacturacion = $this->resolveSurgeryBillingState($estadoRealizacion, $hasBillingEvidence);
                 $alertaRevision = $this->resolveSurgeryReviewAlert($row, $estadoRealizacion, $estadoFacturacion);
@@ -457,6 +585,13 @@ class BillingParticularesReportService
                 $row['alerta_revision'] = $alertaRevision;
                 $row['tarifa_codigo'] = $codigoTarifario;
                 $row['tarifa_detalle'] = $detalleTarifario;
+                $row['tarifa_lookup_status'] = (string) ($tarifaDiagnostic['status'] ?? '');
+                $row['tarifa_lookup_reason'] = (string) ($tarifaDiagnostic['reason'] ?? '');
+                $row['tarifa_level_key'] = (string) ($tarifaDiagnostic['level_key'] ?? '');
+                $row['tarifa_level_title'] = (string) ($tarifaDiagnostic['level_title'] ?? '');
+                $row['tarifa_codigo_match'] = (string) ($tarifaDiagnostic['matched_codigo'] ?? '');
+                $row['tarifa_descripcion_match'] = (string) ($tarifaDiagnostic['matched_descripcion'] ?? '');
+                $row['tarifa_sin_costo_configurado'] = $this->isZeroCostTarifaDiagnostic($tarifaDiagnostic);
                 $row['monto_estimado_tarifario'] = round($montoTarifario, 2);
                 $row['cirugia_realizada'] = in_array($estadoRealizacion, ['OPERADA_CONFIRMADA', 'OPERADA_CON_PROTOCOLO', 'OPERADA_OTRO_CENTRO'], true);
                 $row['cirugia_perdida'] = in_array($estadoRealizacion, ['CANCELADA', 'SIN_CIERRE_OPERATIVO'], true);
@@ -468,7 +603,7 @@ class BillingParticularesReportService
                     $row['monto_perdida_estimada'] = round($montoTarifario, 2);
                 }
                 if (
-                    $montoTarifario <= 0
+                    $this->isNonEstimableTarifaDiagnostic($tarifaDiagnostic)
                     && ($row['monto_por_cobrar_estimado'] > 0 || $row['monto_perdida_estimada'] > 0
                         || in_array($estadoFacturacion, ['PENDIENTE_FACTURAR'], true)
                         || $row['cirugia_perdida'])
@@ -725,6 +860,30 @@ class BillingParticularesReportService
         $pniPendientesFacturar = 0;
         $pniFacturadas = 0;
         $pniSinTarifaEstimable = 0;
+        $pniSinCostoConfigurado = 0;
+        $imagenesEstadoCounts = [
+            'FACTURADA' => 0,
+            'REALIZADA_CON_ARCHIVOS' => 0,
+            'REALIZADA_INFORMADA' => 0,
+            'CANCELADA' => 0,
+            'AUSENTE' => 0,
+            'SIN_CIERRE_OPERATIVO' => 0,
+        ];
+        $imagenesInformeEstadoCounts = [
+            'INFORMADA' => 0,
+            'PENDIENTE_INFORMAR' => 0,
+            'SIN_EVIDENCIA_TECNICA' => 0,
+        ];
+        $imagenesPorCobrarDoctor = [];
+        $imagenesPerdidaDoctor = [];
+        $imagenesHonorarioReal = 0.0;
+        $imagenesPorCobrarEstimado = 0.0;
+        $imagenesPerdidaEstimada = 0.0;
+        $imagenesPendientesFacturar = 0;
+        $imagenesFacturadas = 0;
+        $imagenesPendientesInformar = 0;
+        $imagenesSinTarifaEstimable = 0;
+        $imagenesSinCostoConfigurado = 0;
         $serviciosOftalmologicosEstadoCounts = [
             'FACTURADA' => 0,
             'REALIZADA_CONSULTA' => 0,
@@ -739,6 +898,7 @@ class BillingParticularesReportService
         $serviciosOftalmologicosPendientesFacturar = 0;
         $serviciosOftalmologicosFacturadas = 0;
         $serviciosOftalmologicosSinTarifaEstimable = 0;
+        $serviciosOftalmologicosSinCostoConfigurado = 0;
         $cirugiasEstadoCounts = [
             'OPERADA_CONFIRMADA' => 0,
             'OPERADA_CON_PROTOCOLO' => 0,
@@ -755,6 +915,7 @@ class BillingParticularesReportService
         $cirugiasFacturadasLocales = 0;
         $cirugiasFacturadasExternas = 0;
         $cirugiasSinTarifaEstimable = 0;
+        $cirugiasSinCostoConfigurado = 0;
         $categoriaGerencialCounts = [];
         $formasPagoCounts = [];
         $clienteHonorario = [];
@@ -783,6 +944,13 @@ class BillingParticularesReportService
             'DOMINGO' => 0,
         ];
         $hourCounts = array_fill(0, 24, 0);
+        $operativoRealizadas = 0;
+        $operativoFacturadas = 0;
+        $operativoPendientesFacturar = 0;
+        $operativoPerdidas = 0;
+        $operativoSinCierre = 0;
+        $operativoPorCobrarEstimado = 0.0;
+        $operativoPerdidaEstimada = 0.0;
 
         foreach ($rows as $row) {
             $afiliacion = strtoupper(trim((string) ($row['afiliacion'] ?? '')));
@@ -873,6 +1041,7 @@ class BillingParticularesReportService
                 $montoPorCobrarPniRow = round((float) ($row['monto_por_cobrar_estimado'] ?? 0), 2);
                 $montoPerdidaPniRow = round((float) ($row['monto_perdida_estimada'] ?? 0), 2);
                 $sinTarifaEstimablePni = (bool) ($row['sin_tarifa_estimable'] ?? false);
+                $sinCostoConfiguradoPni = (bool) ($row['tarifa_sin_costo_configurado'] ?? false);
 
                 if ($estadoRealizacionPni === 'FACTURADA') {
                     $pniHonorarioReal += $produccionBaseRow;
@@ -893,6 +1062,62 @@ class BillingParticularesReportService
                 if ($sinTarifaEstimablePni) {
                     $pniSinTarifaEstimable++;
                 }
+                if ($sinCostoConfiguradoPni) {
+                    $pniSinCostoConfigurado++;
+                }
+            }
+
+            if ($this->isImageAttentionType((string) ($row['tipo_atencion'] ?? ''))) {
+                $estadoRealizacionImagen = strtoupper(trim((string) ($row['estado_realizacion'] ?? '')));
+                if ($estadoRealizacionImagen === '') {
+                    $estadoRealizacionImagen = 'SIN_CIERRE_OPERATIVO';
+                }
+                if (!isset($imagenesEstadoCounts[$estadoRealizacionImagen])) {
+                    $imagenesEstadoCounts[$estadoRealizacionImagen] = 0;
+                }
+                $imagenesEstadoCounts[$estadoRealizacionImagen]++;
+
+                $estadoInformeImagen = strtoupper(trim((string) ($row['estado_informe_operativo'] ?? '')));
+                if ($estadoInformeImagen === '') {
+                    $estadoInformeImagen = 'SIN_EVIDENCIA_TECNICA';
+                }
+                if (!isset($imagenesInformeEstadoCounts[$estadoInformeImagen])) {
+                    $imagenesInformeEstadoCounts[$estadoInformeImagen] = 0;
+                }
+                $imagenesInformeEstadoCounts[$estadoInformeImagen]++;
+
+                $estadoFacturacionImagen = strtoupper(trim((string) ($row['estado_facturacion_operativa'] ?? '')));
+                $montoPorCobrarImagenRow = round((float) ($row['monto_por_cobrar_estimado'] ?? 0), 2);
+                $montoPerdidaImagenRow = round((float) ($row['monto_perdida_estimada'] ?? 0), 2);
+                $sinTarifaEstimableImagen = (bool) ($row['sin_tarifa_estimable'] ?? false);
+                $sinCostoConfiguradoImagen = (bool) ($row['tarifa_sin_costo_configurado'] ?? false);
+
+                if ($estadoRealizacionImagen === 'FACTURADA') {
+                    $imagenesHonorarioReal += $produccionBaseRow;
+                    $imagenesFacturadas++;
+                }
+
+                if ($estadoFacturacionImagen === 'PENDIENTE_FACTURAR') {
+                    $imagenesPendientesFacturar++;
+                    $imagenesPorCobrarEstimado += $montoPorCobrarImagenRow;
+                    $imagenesPorCobrarDoctor[$doctor] = ($imagenesPorCobrarDoctor[$doctor] ?? 0.0) + $montoPorCobrarImagenRow;
+                }
+
+                if (in_array($estadoRealizacionImagen, ['CANCELADA', 'AUSENTE', 'SIN_CIERRE_OPERATIVO'], true)) {
+                    $imagenesPerdidaEstimada += $montoPerdidaImagenRow;
+                    $imagenesPerdidaDoctor[$doctor] = ($imagenesPerdidaDoctor[$doctor] ?? 0.0) + $montoPerdidaImagenRow;
+                }
+
+                if ($estadoInformeImagen === 'PENDIENTE_INFORMAR') {
+                    $imagenesPendientesInformar++;
+                }
+
+                if ($sinTarifaEstimableImagen) {
+                    $imagenesSinTarifaEstimable++;
+                }
+                if ($sinCostoConfiguradoImagen) {
+                    $imagenesSinCostoConfigurado++;
+                }
             }
 
             if ($this->isOphthalmologyServiceAttentionType((string) ($row['tipo_atencion'] ?? ''))) {
@@ -909,6 +1134,7 @@ class BillingParticularesReportService
                 $montoPorCobrarServicioRow = round((float) ($row['monto_por_cobrar_estimado'] ?? 0), 2);
                 $montoPerdidaServicioRow = round((float) ($row['monto_perdida_estimada'] ?? 0), 2);
                 $sinTarifaEstimableServicio = (bool) ($row['sin_tarifa_estimable'] ?? false);
+                $sinCostoConfiguradoServicio = (bool) ($row['tarifa_sin_costo_configurado'] ?? false);
 
                 if ($estadoRealizacionServicio === 'FACTURADA') {
                     $serviciosOftalmologicosHonorarioReal += $produccionBaseRow;
@@ -929,6 +1155,9 @@ class BillingParticularesReportService
                 if ($sinTarifaEstimableServicio) {
                     $serviciosOftalmologicosSinTarifaEstimable++;
                 }
+                if ($sinCostoConfiguradoServicio) {
+                    $serviciosOftalmologicosSinCostoConfigurado++;
+                }
             }
 
             if ($this->isSurgeryAttentionType((string) ($row['tipo_atencion'] ?? ''))) {
@@ -945,6 +1174,7 @@ class BillingParticularesReportService
                 $montoPorCobrarRow = round((float) ($row['monto_por_cobrar_estimado'] ?? 0), 2);
                 $montoPerdidaRow = round((float) ($row['monto_perdida_estimada'] ?? 0), 2);
                 $sinTarifaEstimable = (bool) ($row['sin_tarifa_estimable'] ?? false);
+                $sinCostoConfiguradoCirugia = (bool) ($row['tarifa_sin_costo_configurado'] ?? false);
 
                 if ($estadoRealizacion === 'OPERADA_CONFIRMADA' || $estadoRealizacion === 'OPERADA_CON_PROTOCOLO') {
                     $cirugiasHonorarioReal += $produccionBaseRow;
@@ -970,6 +1200,59 @@ class BillingParticularesReportService
                 if ($sinTarifaEstimable) {
                     $cirugiasSinTarifaEstimable++;
                 }
+                if ($sinCostoConfiguradoCirugia) {
+                    $cirugiasSinCostoConfigurado++;
+                }
+            }
+
+            $estadoRealizacionGlobal = strtoupper(trim((string) ($row['estado_realizacion'] ?? '')));
+            $estadoFacturacionGlobal = strtoupper(trim((string) ($row['estado_facturacion_operativa'] ?? '')));
+            $tipoAtencionGlobal = (string) ($row['tipo_atencion'] ?? '');
+            $montoPorCobrarGlobal = round((float) ($row['monto_por_cobrar_estimado'] ?? 0), 2);
+            $montoPerdidaGlobal = round((float) ($row['monto_perdida_estimada'] ?? 0), 2);
+
+            $esRealizada = false;
+            $esPerdida = false;
+            $esSinCierre = false;
+            $esPendienteFacturar = $estadoFacturacionGlobal === 'PENDIENTE_FACTURAR';
+            $esFacturada = $facturadoRow || in_array($estadoFacturacionGlobal, ['FACTURADA', 'FACTURADA_EXTERNA'], true);
+
+            if ($this->isPniAttentionType($tipoAtencionGlobal)) {
+                $esRealizada = in_array($estadoRealizacionGlobal, ['FACTURADA', 'REALIZADA_CONSULTA'], true);
+                $esPerdida = in_array($estadoRealizacionGlobal, ['CANCELADA', 'AUSENTE'], true);
+            } elseif ($this->isOphthalmologyServiceAttentionType($tipoAtencionGlobal)) {
+                $esRealizada = in_array($estadoRealizacionGlobal, ['FACTURADA', 'REALIZADA_CONSULTA'], true);
+                $esPerdida = in_array($estadoRealizacionGlobal, ['CANCELADA', 'AUSENTE'], true);
+            } elseif ($this->isImageAttentionType($tipoAtencionGlobal)) {
+                $esRealizada = in_array($estadoRealizacionGlobal, ['FACTURADA', 'REALIZADA_CON_ARCHIVOS', 'REALIZADA_INFORMADA'], true);
+                $esPerdida = in_array($estadoRealizacionGlobal, ['CANCELADA', 'AUSENTE', 'SIN_CIERRE_OPERATIVO'], true);
+                $esSinCierre = $estadoRealizacionGlobal === 'SIN_CIERRE_OPERATIVO';
+            } elseif ($this->isSurgeryAttentionType($tipoAtencionGlobal)) {
+                $esRealizada = in_array($estadoRealizacionGlobal, ['OPERADA_CONFIRMADA', 'OPERADA_CON_PROTOCOLO', 'OPERADA_OTRO_CENTRO'], true);
+                $esPerdida = in_array($estadoRealizacionGlobal, ['CANCELADA', 'SIN_CIERRE_OPERATIVO'], true);
+                $esSinCierre = $estadoRealizacionGlobal === 'SIN_CIERRE_OPERATIVO';
+            } else {
+                $esRealizada = $this->isEncounterAttended((string) ($row['estado_encuentro'] ?? '')) || $esFacturada || $produccionBaseRow > 0;
+                $esPerdida = $this->isEncounterCancelled((string) ($row['estado_encuentro'] ?? ''))
+                    || $this->isEncounterAbsent((string) ($row['estado_encuentro'] ?? ''));
+            }
+
+            if ($esRealizada) {
+                $operativoRealizadas++;
+            }
+            if ($esFacturada) {
+                $operativoFacturadas++;
+            }
+            if ($esPendienteFacturar) {
+                $operativoPendientesFacturar++;
+                $operativoPorCobrarEstimado += $montoPorCobrarGlobal;
+            }
+            if ($esPerdida) {
+                $operativoPerdidas++;
+                $operativoPerdidaEstimada += $montoPerdidaGlobal;
+            }
+            if ($esSinCierre) {
+                $operativoSinCierre++;
             }
 
             $timestamp = strtotime((string) ($row['fecha'] ?? ''));
@@ -1276,6 +1559,16 @@ class BillingParticularesReportService
         $pniCanceladas = (int) ($pniEstadoCounts['CANCELADA'] ?? 0);
         $pniAusentes = (int) ($pniEstadoCounts['AUSENTE'] ?? 0);
         $pniTotal = array_sum($pniEstadoCounts);
+        $imagenesRealizadas = (int) ($imagenesEstadoCounts['FACTURADA'] ?? 0)
+            + (int) ($imagenesEstadoCounts['REALIZADA_CON_ARCHIVOS'] ?? 0)
+            + (int) ($imagenesEstadoCounts['REALIZADA_INFORMADA'] ?? 0);
+        $imagenesCanceladas = (int) ($imagenesEstadoCounts['CANCELADA'] ?? 0);
+        $imagenesAusentes = (int) ($imagenesEstadoCounts['AUSENTE'] ?? 0);
+        $imagenesSinCierre = (int) ($imagenesEstadoCounts['SIN_CIERRE_OPERATIVO'] ?? 0);
+        $imagenesConArchivos = (int) ($imagenesEstadoCounts['REALIZADA_CON_ARCHIVOS'] ?? 0);
+        $imagenesRealizadaInformada = (int) ($imagenesEstadoCounts['REALIZADA_INFORMADA'] ?? 0);
+        $imagenesInformadas = (int) ($imagenesInformeEstadoCounts['INFORMADA'] ?? 0);
+        $imagenesTotal = array_sum($imagenesEstadoCounts);
         $serviciosOftalmologicosRealizadas = (int) ($serviciosOftalmologicosEstadoCounts['FACTURADA'] ?? 0)
             + (int) ($serviciosOftalmologicosEstadoCounts['REALIZADA_CONSULTA'] ?? 0);
         $serviciosOftalmologicosCanceladas = (int) ($serviciosOftalmologicosEstadoCounts['CANCELADA'] ?? 0);
@@ -1287,6 +1580,9 @@ class BillingParticularesReportService
         $cirugiasCanceladas = (int) ($cirugiasEstadoCounts['CANCELADA'] ?? 0);
         $cirugiasSinCierre = (int) ($cirugiasEstadoCounts['SIN_CIERRE_OPERATIVO'] ?? 0);
         $cirugiasTotal = array_sum($cirugiasEstadoCounts);
+        $operativoPotencialCapturable = $honorarioRealTotal + $operativoPorCobrarEstimado;
+        $ticketPromedioFacturadoReal = $operativoFacturadas > 0 ? round($honorarioRealTotal / $operativoFacturadas, 2) : 0.0;
+        $ticketPromedioPendiente = $operativoPendientesFacturar > 0 ? round($operativoPorCobrarEstimado / $operativoPendientesFacturar, 2) : 0.0;
 
         return [
             'total' => $totalRows,
@@ -1295,7 +1591,12 @@ class BillingParticularesReportService
             'economico' => [
                 'total_produccion' => round($produccionTotal, 2),
                 'total_honorario_real' => round($honorarioRealTotal, 2),
+                'total_por_cobrar_estimado' => round($operativoPorCobrarEstimado, 2),
+                'total_perdida_estimada' => round($operativoPerdidaEstimada, 2),
+                'potencial_capturable' => round($operativoPotencialCapturable, 2),
                 'ticket_promedio_honorario' => $atencionesConHonorario > 0 ? round($honorarioRealTotal / $atencionesConHonorario, 2) : 0.0,
+                'ticket_promedio_facturado_real' => $ticketPromedioFacturadoReal,
+                'ticket_promedio_pendiente' => $ticketPromedioPendiente,
                 'produccion_promedio_por_atencion' => $totalRows > 0 ? round($honorarioRealTotal / $totalRows, 2) : 0.0,
                 'atenciones_facturadas' => $atencionesFacturadas,
                 'atenciones_con_honorario' => $atencionesConHonorario,
@@ -1323,6 +1624,24 @@ class BillingParticularesReportService
                     'totals' => $economicTrendHonorarios,
                     'honorarios' => $economicTrendHonorarios,
                 ],
+            ],
+            'operativo' => [
+                'evaluadas' => $totalRows,
+                'realizadas' => $operativoRealizadas,
+                'facturadas' => $operativoFacturadas,
+                'pendientes_facturar' => $operativoPendientesFacturar,
+                'perdidas' => $operativoPerdidas,
+                'sin_cierre' => $operativoSinCierre,
+                'realizacion_rate' => $totalRows > 0 ? round(($operativoRealizadas / $totalRows) * 100, 2) : 0.0,
+                'facturacion_sobre_realizadas_rate' => $operativoRealizadas > 0 ? round(($operativoFacturadas / $operativoRealizadas) * 100, 2) : 0.0,
+                'pendiente_sobre_realizadas_rate' => $operativoRealizadas > 0 ? round(($operativoPendientesFacturar / $operativoRealizadas) * 100, 2) : 0.0,
+                'perdida_rate' => $totalRows > 0 ? round(($operativoPerdidas / $totalRows) * 100, 2) : 0.0,
+                'honorario_real' => round($honorarioRealTotal, 2),
+                'por_cobrar_estimado' => round($operativoPorCobrarEstimado, 2),
+                'perdida_estimada' => round($operativoPerdidaEstimada, 2),
+                'potencial_capturable' => round($operativoPotencialCapturable, 2),
+                'ticket_facturado_real' => $ticketPromedioFacturadoReal,
+                'ticket_pendiente' => $ticketPromedioPendiente,
             ],
             'pacientes_unicos' => count($pacientesUnicos),
             'categoria_counts' => $categoriaCounts,
@@ -1415,9 +1734,32 @@ class BillingParticularesReportService
                 'por_cobrar_estimado' => round($pniPorCobrarEstimado, 2),
                 'perdida_estimada' => round($pniPerdidaEstimada, 2),
                 'sin_tarifa_estimable' => $pniSinTarifaEstimable,
+                'sin_costo_configurado' => $pniSinCostoConfigurado,
                 'estados' => $this->metricValues($pniEstadoCounts, null, $pniTotal),
                 'doctores_por_cobrar' => $this->moneyMetricValues($pniPorCobrarDoctor, 8, $pniPorCobrarEstimado),
                 'doctores_perdida' => $this->moneyMetricValues($pniPerdidaDoctor, 8, $pniPerdidaEstimada),
+            ],
+            'imagenes' => [
+                'total' => $imagenesTotal,
+                'realizadas' => $imagenesRealizadas,
+                'facturadas' => $imagenesFacturadas,
+                'realizada_con_archivos' => $imagenesConArchivos,
+                'realizada_informada' => $imagenesRealizadaInformada,
+                'informadas' => $imagenesInformadas,
+                'pendientes_informar' => $imagenesPendientesInformar,
+                'canceladas' => $imagenesCanceladas,
+                'ausentes' => $imagenesAusentes,
+                'sin_cierre' => $imagenesSinCierre,
+                'pendientes_facturar' => $imagenesPendientesFacturar,
+                'honorario_real' => round($imagenesHonorarioReal, 2),
+                'por_cobrar_estimado' => round($imagenesPorCobrarEstimado, 2),
+                'perdida_estimada' => round($imagenesPerdidaEstimada, 2),
+                'sin_tarifa_estimable' => $imagenesSinTarifaEstimable,
+                'sin_costo_configurado' => $imagenesSinCostoConfigurado,
+                'estados' => $this->metricValues($imagenesEstadoCounts, null, $imagenesTotal),
+                'estados_informe' => $this->metricValues($imagenesInformeEstadoCounts, null, $imagenesTotal),
+                'doctores_por_cobrar' => $this->moneyMetricValues($imagenesPorCobrarDoctor, 8, $imagenesPorCobrarEstimado),
+                'doctores_perdida' => $this->moneyMetricValues($imagenesPerdidaDoctor, 8, $imagenesPerdidaEstimada),
             ],
             'servicios_oftalmologicos' => [
                 'total' => $serviciosOftalmologicosTotal,
@@ -1431,6 +1773,7 @@ class BillingParticularesReportService
                 'por_cobrar_estimado' => round($serviciosOftalmologicosPorCobrarEstimado, 2),
                 'perdida_estimada' => round($serviciosOftalmologicosPerdidaEstimada, 2),
                 'sin_tarifa_estimable' => $serviciosOftalmologicosSinTarifaEstimable,
+                'sin_costo_configurado' => $serviciosOftalmologicosSinCostoConfigurado,
                 'estados' => $this->metricValues($serviciosOftalmologicosEstadoCounts, null, $serviciosOftalmologicosTotal),
                 'doctores_por_cobrar' => $this->moneyMetricValues($serviciosOftalmologicosPorCobrarDoctor, 8, $serviciosOftalmologicosPorCobrarEstimado),
                 'doctores_perdida' => $this->moneyMetricValues($serviciosOftalmologicosPerdidaDoctor, 8, $serviciosOftalmologicosPerdidaEstimada),
@@ -1450,6 +1793,7 @@ class BillingParticularesReportService
                 'por_cobrar_estimado' => round($cirugiasPorCobrarEstimado, 2),
                 'perdida_estimada' => round($cirugiasPerdidaEstimada, 2),
                 'sin_tarifa_estimable' => $cirugiasSinTarifaEstimable,
+                'sin_costo_configurado' => $cirugiasSinCostoConfigurado,
                 'estados' => $this->metricValues($cirugiasEstadoCounts, null, $cirugiasTotal),
                 'doctores_por_cobrar' => $this->moneyMetricValues($cirugiasPorCobrarDoctor, 8, $cirugiasPorCobrarEstimado),
                 'doctores_perdida' => $this->moneyMetricValues($cirugiasPerdidaDoctor, 8, $cirugiasPerdidaEstimada),
@@ -1931,6 +2275,12 @@ class BillingParticularesReportService
             . ')';
     }
 
+    private function imagesAttentionCondition(string $alias): string
+    {
+        $procedureExpr = "UPPER(TRIM(COALESCE({$alias}.procedimiento_proyectado, '')))";
+        return "{$procedureExpr} LIKE 'IMAGENES%'";
+    }
+
     /**
      * @param array<string, mixed> $row
      */
@@ -1941,6 +2291,7 @@ class BillingParticularesReportService
             $this->isSurgeryAttentionType($tipoAtencion)
             || $this->isPniAttentionType($tipoAtencion)
             || $this->isOphthalmologyServiceAttentionType($tipoAtencion)
+            || $this->isImageAttentionType($tipoAtencion)
         ) {
             $estadoRealizacion = strtoupper(trim((string) ($row['estado_realizacion'] ?? '')));
             return $estadoRealizacion !== '';
@@ -1962,6 +2313,11 @@ class BillingParticularesReportService
     private function isOphthalmologyServiceAttentionType(string $type): bool
     {
         return strtoupper(trim($type)) === 'SERVICIOS OFTALMOLOGICOS GENERALES';
+    }
+
+    private function isImageAttentionType(string $type): bool
+    {
+        return strtoupper(trim($type)) === 'IMAGENES';
     }
 
     private function isAllowedOphthalmologyServiceProcedure(string $procedure): bool
@@ -2009,6 +2365,24 @@ class BillingParticularesReportService
         $consultaDiagnosticos = trim((string) ($row['consulta_diagnosticos'] ?? ''));
 
         return $consultaFecha !== '' || $consultaDiagnosticos !== '';
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    private function hasImageNasFiles(array $row): bool
+    {
+        return (int) ($row['imagen_nas_has_files'] ?? 0) === 1
+            || (int) ($row['imagen_nas_files_count'] ?? 0) > 0;
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    private function hasImageReport(array $row): bool
+    {
+        return trim((string) ($row['imagen_informe_id'] ?? '')) !== ''
+            || (int) ($row['imagen_informes_total'] ?? 0) > 0;
     }
 
     /**
@@ -2062,6 +2436,68 @@ class BillingParticularesReportService
     /**
      * @param array<string, mixed> $row
      */
+    private function resolveImageRealizationState(array $row, bool $hasBillingEvidence): string
+    {
+        if ($hasBillingEvidence) {
+            return 'FACTURADA';
+        }
+
+        if ($this->hasImageNasFiles($row)) {
+            return 'REALIZADA_CON_ARCHIVOS';
+        }
+
+        if ($this->hasImageReport($row)) {
+            return 'REALIZADA_INFORMADA';
+        }
+
+        $estadoEncuentro = (string) ($row['estado_encuentro'] ?? '');
+        if ($this->isEncounterCancelled($estadoEncuentro)) {
+            return 'CANCELADA';
+        }
+
+        if ($this->isEncounterAbsent($estadoEncuentro)) {
+            return 'AUSENTE';
+        }
+
+        if ($this->isImageOperationalAbsence($estadoEncuentro)) {
+            return 'AUSENTE';
+        }
+
+        return 'SIN_CIERRE_OPERATIVO';
+    }
+
+    private function resolveImageBillingState(string $estadoRealizacion): string
+    {
+        if ($estadoRealizacion === 'FACTURADA') {
+            return 'FACTURADA';
+        }
+
+        if (in_array($estadoRealizacion, ['REALIZADA_CON_ARCHIVOS', 'REALIZADA_INFORMADA'], true)) {
+            return 'PENDIENTE_FACTURAR';
+        }
+
+        return 'SIN_FACTURACION';
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    private function resolveImageReportState(array $row): string
+    {
+        if ($this->hasImageReport($row)) {
+            return 'INFORMADA';
+        }
+
+        if ($this->hasImageNasFiles($row)) {
+            return 'PENDIENTE_INFORMAR';
+        }
+
+        return 'SIN_EVIDENCIA_TECNICA';
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
     private function resolvePniReviewAlert(array $row, string $estadoRealizacion, bool $hasBillingEvidence): ?string
     {
         $estadoEncuentro = strtoupper(trim((string) ($row['estado_encuentro'] ?? '')));
@@ -2108,6 +2544,34 @@ class BillingParticularesReportService
     private function resolveOphthalmologyServiceReviewAlert(array $row, string $estadoRealizacion, bool $hasBillingEvidence): ?string
     {
         return $this->resolvePniReviewAlert($row, $estadoRealizacion, $hasBillingEvidence);
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    private function resolveImageReviewAlert(array $row, string $estadoRealizacion, string $estadoInforme, bool $hasBillingEvidence): ?string
+    {
+        if ($estadoRealizacion === 'FACTURADA') {
+            if (!$this->hasImageNasFiles($row) && !$this->hasImageReport($row)) {
+                return 'FACTURADA_SIN_ARCHIVOS_NI_INFORME';
+            }
+
+            return null;
+        }
+
+        if ($estadoRealizacion === 'REALIZADA_CON_ARCHIVOS' && $estadoInforme === 'PENDIENTE_INFORMAR') {
+            return 'ARCHIVOS_SIN_INFORME';
+        }
+
+        if ($estadoRealizacion === 'REALIZADA_INFORMADA' && !$this->hasImageNasFiles($row)) {
+            return 'INFORMADA_SIN_ARCHIVOS_NAS';
+        }
+
+        if ($estadoRealizacion === 'SIN_CIERRE_OPERATIVO' && !$hasBillingEvidence) {
+            return 'SIN_CIERRE';
+        }
+
+        return null;
     }
 
     /**
@@ -2181,6 +2645,38 @@ class BillingParticularesReportService
         return null;
     }
 
+    private function normalizeEncounterStatus(string $status): string
+    {
+        return $this->normalizeAffiliationText($status);
+    }
+
+    private function isEncounterCancelled(string $status): bool
+    {
+        $normalized = $this->normalizeEncounterStatus($status);
+        return $normalized !== '' && (str_contains($normalized, 'cancel') || str_contains($normalized, 'anul'));
+    }
+
+    private function isEncounterAbsent(string $status): bool
+    {
+        $normalized = $this->normalizeEncounterStatus($status);
+        if ($normalized === '') {
+            return false;
+        }
+
+        return str_contains($normalized, 'ausent')
+            || str_contains($normalized, 'no asiste')
+            || str_contains($normalized, 'no asistio')
+            || str_contains($normalized, 'no show')
+            || str_contains($normalized, 'inasistente');
+    }
+
+    private function isImageOperationalAbsence(string $status): bool
+    {
+        $normalized = $this->normalizeEncounterStatus($status);
+
+        return in_array($normalized, ['confirmado', 'agendado', 'llegado'], true);
+    }
+
     /**
      * @return array{0:string,1:string}
      */
@@ -2208,43 +2704,215 @@ class BillingParticularesReportService
         return ['', $text];
     }
 
+    private function imageEvidenceJoinDefinition(): string
+    {
+        $joins = [];
+
+        if ($this->columnExists('imagenes_informes', 'form_id')) {
+            $joins[] = <<<SQL
+                LEFT JOIN (
+                    SELECT
+                        ii.form_id,
+                        MAX(ii.id) AS imagen_informe_id,
+                        MAX(ii.updated_at) AS imagen_informe_actualizado,
+                        MAX(NULLIF(TRIM(COALESCE(ii.firmado_por, '')), '')) AS imagen_informe_firmado_por,
+                        COUNT(*) AS imagen_informes_total
+                    FROM imagenes_informes ii
+                    WHERE TRIM(COALESCE(ii.form_id, '')) <> ''
+                    GROUP BY ii.form_id
+                ) AS imginfo
+                  ON imginfo.form_id = atenciones.form_id
+            SQL;
+        } else {
+            $joins[] = <<<SQL
+                LEFT JOIN (
+                    SELECT
+                        CAST(NULL AS CHAR(50)) AS form_id,
+                        CAST(NULL AS UNSIGNED) AS imagen_informe_id,
+                        CAST(NULL AS DATETIME) AS imagen_informe_actualizado,
+                        CAST(NULL AS CHAR(255)) AS imagen_informe_firmado_por,
+                        0 AS imagen_informes_total
+                    WHERE 1 = 0
+                ) AS imginfo
+                  ON imginfo.form_id = atenciones.form_id
+            SQL;
+        }
+
+        if ($this->columnExists('imagenes_nas_index', 'form_id')) {
+            $joins[] = <<<SQL
+                LEFT JOIN (
+                    SELECT
+                        ini.form_id,
+                        COALESCE(MAX(ini.has_files), 0) AS imagen_nas_has_files,
+                        COALESCE(MAX(ini.files_count), 0) AS imagen_nas_files_count,
+                        MAX(NULLIF(TRIM(COALESCE(ini.scan_status, '')), '')) AS nas_scan_status,
+                        MAX(ini.last_scanned_at) AS nas_last_scanned_at
+                    FROM imagenes_nas_index ini
+                    WHERE TRIM(COALESCE(ini.form_id, '')) <> ''
+                    GROUP BY ini.form_id
+                ) AS imgnas
+                  ON imgnas.form_id = atenciones.form_id
+            SQL;
+        } else {
+            $joins[] = <<<SQL
+                LEFT JOIN (
+                    SELECT
+                        CAST(NULL AS CHAR(50)) AS form_id,
+                        0 AS imagen_nas_has_files,
+                        0 AS imagen_nas_files_count,
+                        CAST(NULL AS CHAR(30)) AS nas_scan_status,
+                        CAST(NULL AS DATETIME) AS nas_last_scanned_at
+                    WHERE 1 = 0
+                ) AS imgnas
+                  ON imgnas.form_id = atenciones.form_id
+            SQL;
+        }
+
+        return implode("\n", $joins);
+    }
+
     /**
      * @param array<string, mixed> $row
      */
     private function lookupTarifa(string $codigo, array $row = []): float
     {
+        return (float) ($this->resolveTarifaDiagnostic($codigo, $row)['amount'] ?? 0.0);
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @return array{amount:float,status:string,reason:string,level_key:string,level_title:string,matched_codigo:string,matched_descripcion:string}
+     */
+    private function resolveTarifaDiagnostic(string $codigo, array $row = []): array
+    {
         $codigo = strtoupper(trim($codigo));
         if ($codigo === '') {
-            return 0.0;
+            return [
+                'amount' => 0.0,
+                'status' => 'SIN_CODIGO',
+                'reason' => 'No se pudo extraer un codigo del procedimiento proyectado.',
+                'level_key' => '',
+                'level_title' => '',
+                'matched_codigo' => '',
+                'matched_descripcion' => '',
+            ];
         }
 
         $levelKey = $this->resolveTarifaLevelKey($row);
+        $levelTitle = $levelKey !== null ? $this->resolveTarifaLevelTitle($levelKey) : '';
         $cacheKey = $codigo . '|' . ($levelKey ?? '__sin_nivel__');
-        if (array_key_exists($cacheKey, $this->tarifaLookupCache)) {
-            return $this->tarifaLookupCache[$cacheKey];
+        if (array_key_exists($cacheKey, $this->tarifaDiagnosticCache)) {
+            return $this->tarifaDiagnosticCache[$cacheKey];
         }
 
         if ($levelKey === null) {
-            $this->tarifaLookupCache[$cacheKey] = 0.0;
-            return 0.0;
+            return $this->tarifaDiagnosticCache[$cacheKey] = [
+                'amount' => 0.0,
+                'status' => 'SIN_NIVEL_AFILIACION',
+                'reason' => 'La afiliacion no resolvio un nivel de pricing en el modulo codes.',
+                'level_key' => '',
+                'level_title' => '',
+                'matched_codigo' => '',
+                'matched_descripcion' => '',
+            ];
         }
 
         try {
             $codeRow = $this->findTarifaCode($codigo);
             if ($codeRow === null) {
-                $this->tarifaLookupCache[$cacheKey] = 0.0;
-                return 0.0;
+                return $this->tarifaDiagnosticCache[$cacheKey] = [
+                    'amount' => 0.0,
+                    'status' => 'CODIGO_SIN_MATCH',
+                    'reason' => 'El codigo no existe en el catalogo de codes/tarifario.',
+                    'level_key' => $levelKey,
+                    'level_title' => $levelTitle,
+                    'matched_codigo' => '',
+                    'matched_descripcion' => '',
+                ];
             }
 
             $prices = $this->codePriceService()->pricesForCode((int) $codeRow['id'], $this->codePriceLevels());
-            $price = round((float) ($prices[$levelKey] ?? 0), 2);
-            $this->tarifaLookupCache[$cacheKey] = $price;
+            if (!array_key_exists($levelKey, $prices)) {
+                return $this->tarifaDiagnosticCache[$cacheKey] = [
+                    'amount' => 0.0,
+                    'status' => 'SIN_PRECIO_AFILIACION',
+                    'reason' => 'El codigo existe, pero no tiene precio configurado para la afiliacion/nivel resuelto.',
+                    'level_key' => $levelKey,
+                    'level_title' => $levelTitle,
+                    'matched_codigo' => (string) ($codeRow['codigo'] ?? ''),
+                    'matched_descripcion' => (string) ($codeRow['descripcion'] ?? ''),
+                ];
+            }
 
-            return $price;
+            $price = round((float) $prices[$levelKey], 2);
+
+            if ($price === 0.0) {
+                return $this->tarifaDiagnosticCache[$cacheKey] = [
+                    'amount' => 0.0,
+                    'status' => 'PRECIO_CERO',
+                    'reason' => 'El codigo existe y tiene precio 0 configurado para la afiliacion/nivel resuelto.',
+                    'level_key' => $levelKey,
+                    'level_title' => $levelTitle,
+                    'matched_codigo' => (string) ($codeRow['codigo'] ?? ''),
+                    'matched_descripcion' => (string) ($codeRow['descripcion'] ?? ''),
+                ];
+            }
+
+            return $this->tarifaDiagnosticCache[$cacheKey] = [
+                'amount' => $price,
+                'status' => 'OK',
+                'reason' => 'Codigo y precio resueltos correctamente.',
+                'level_key' => $levelKey,
+                'level_title' => $levelTitle,
+                'matched_codigo' => (string) ($codeRow['codigo'] ?? ''),
+                'matched_descripcion' => (string) ($codeRow['descripcion'] ?? ''),
+            ];
         } catch (Throwable) {
-            $this->tarifaLookupCache[$cacheKey] = 0.0;
-            return 0.0;
+            return $this->tarifaDiagnosticCache[$cacheKey] = [
+                'amount' => 0.0,
+                'status' => 'ERROR_LOOKUP',
+                'reason' => 'Ocurrio un error al consultar el pricing del modulo codes.',
+                'level_key' => $levelKey,
+                'level_title' => $levelTitle,
+                'matched_codigo' => '',
+                'matched_descripcion' => '',
+            ];
         }
+    }
+
+    private function resolveTarifaLevelTitle(string $levelKey): string
+    {
+        foreach ($this->codePriceLevels() as $level) {
+            if (trim((string) ($level['level_key'] ?? '')) === $levelKey) {
+                return trim((string) ($level['title'] ?? $levelKey));
+            }
+        }
+
+        return $levelKey;
+    }
+
+    /**
+     * @param array{status?:string} $tarifaDiagnostic
+     */
+    private function isNonEstimableTarifaDiagnostic(array $tarifaDiagnostic): bool
+    {
+        $status = strtoupper(trim((string) ($tarifaDiagnostic['status'] ?? '')));
+
+        return in_array($status, [
+            'SIN_CODIGO',
+            'SIN_NIVEL_AFILIACION',
+            'CODIGO_SIN_MATCH',
+            'SIN_PRECIO_AFILIACION',
+            'ERROR_LOOKUP',
+        ], true);
+    }
+
+    /**
+     * @param array{status?:string} $tarifaDiagnostic
+     */
+    private function isZeroCostTarifaDiagnostic(array $tarifaDiagnostic): bool
+    {
+        return strtoupper(trim((string) ($tarifaDiagnostic['status'] ?? ''))) === 'PRECIO_CERO';
     }
 
     /**

@@ -321,7 +321,7 @@
                     @endif
 
                     @if($showImagenesTree)
-                        <li class="treeview{{ $isTreeOpen(['/examenes', '/v2/examenes', '/imagenes/examenes-realizados', '/imagenes/dashboard']) }}">
+                        <li class="treeview{{ $isTreeOpen(['/examenes', '/v2/examenes', '/imagenes/examenes-realizados', '/imagenes/dashboard', '/v2/imagenes/examenes-realizados', '/v2/imagenes/dashboard']) }}">
                             <a href="#">
                                 <i class="mdi mdi-image-multiple"><span class="path1"></span><span class="path2"></span></i>
                                 <span>Imágenes</span>
@@ -332,10 +332,10 @@
                                     <li class="{{ $isActive('/examenes') }}{{ $isActive('/v2/examenes') }}"><a href="{{ $examenesLink }}"><i class="mdi mdi-eyedropper"></i>Exámenes (Kanban)</a></li>
                                 @endif
                                 @if($canAccessExamenesRealizados)
-                                    <li class="{{ $isActive('/imagenes/examenes-realizados') }}"><a href="/imagenes/examenes-realizados"><i class="mdi mdi-file-image"></i>Exámenes realizados</a></li>
+                                    <li class="{{ $isActive('/imagenes/examenes-realizados') || $isActive('/v2/imagenes/examenes-realizados') }}"><a href="/v2/imagenes/examenes-realizados"><i class="mdi mdi-file-image"></i>Exámenes realizados</a></li>
                                 @endif
                                 @if($canAccessImagenesDashboard)
-                                    <li class="{{ $isActive('/imagenes/dashboard') }}"><a href="/imagenes/dashboard"><i class="mdi mdi-chart-line"></i>Dashboard imágenes</a></li>
+                                    <li class="{{ $isActive('/imagenes/dashboard') || $isActive('/v2/imagenes/dashboard') }}"><a href="/v2/imagenes/dashboard"><i class="mdi mdi-chart-line"></i>Dashboard imágenes</a></li>
                                 @endif
                             </ul>
                         </li>

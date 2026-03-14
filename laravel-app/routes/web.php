@@ -2,6 +2,7 @@
 
 use App\Modules\Dashboard\Http\Controllers\DashboardUiController;
 use App\Modules\Examenes\Http\Controllers\ExamenesUiController;
+use App\Modules\Examenes\Http\Controllers\ImagenesUiController;
 use App\Modules\Auth\Http\Controllers\UnifiedLogoutController;
 use App\Modules\Codes\Http\Controllers\CodesUiController;
 use App\Modules\Codes\Http\Controllers\CodesWriteController;
@@ -38,6 +39,8 @@ Route::middleware(['legacy.auth', 'legacy.permission:administrativo,solicitudes.
 Route::middleware(['legacy.auth', 'legacy.permission:administrativo,examenes.view,examenes.manage'])->group(function (): void {
     Route::get('/v2/examenes', [ExamenesUiController::class, 'index']);
     Route::get('/v2/examenes/turnero', [ExamenesUiController::class, 'turnero']);
+    Route::get('/v2/imagenes/examenes-realizados', [ImagenesUiController::class, 'realizadas']);
+    Route::get('/v2/imagenes/dashboard', [ImagenesUiController::class, 'dashboard']);
 });
 
 Route::middleware(['legacy.auth', 'legacy.permission:administrativo,admin.usuarios.view,admin.usuarios.manage,admin.usuarios'])->group(function (): void {

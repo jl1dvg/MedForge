@@ -1292,7 +1292,7 @@ sort($estadoOpciones);
                         }
                         setImagenesStatus(files.length
                             ? (files.length + ' archivo(s) encontrado(s)')
-                            : 'Sin archivos en el NAS');
+                            : (res.message || 'Sin archivos en el NAS'));
                     })
                     .catch(function () {
                         renderImagenesNas([]);

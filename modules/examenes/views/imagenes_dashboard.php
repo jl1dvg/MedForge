@@ -192,7 +192,7 @@ sort($estadoOpciones);
         </div>
         <div class="col-12 col-xl-6">
             <div class="imagenes-chart-card">
-                <h6 class="imagenes-chart-title">Trazabilidad facturación</h6>
+                <h6 class="imagenes-chart-title">Estado real del estudio</h6>
                 <div class="imagenes-chart-wrap">
                     <canvas id="chartImagenesTrazabilidad"></canvas>
                 </div>
@@ -200,7 +200,7 @@ sort($estadoOpciones);
         </div>
         <div class="col-12 col-xl-6">
             <div class="imagenes-chart-card">
-                <h6 class="imagenes-chart-title">Citas generadas vs exámenes realizados</h6>
+                <h6 class="imagenes-chart-title">Citas generadas, realizadas y pérdida</h6>
                 <div class="imagenes-chart-wrap">
                     <canvas id="chartImagenesCitasRealizados"></canvas>
                 </div>
@@ -224,7 +224,7 @@ sort($estadoOpciones);
         </div>
         <div class="col-12 col-xl-6">
             <div class="imagenes-chart-card">
-                <h6 class="imagenes-chart-title">Aging de no informados</h6>
+                <h6 class="imagenes-chart-title">Aging de pendiente de informar</h6>
                 <div class="imagenes-chart-wrap">
                     <canvas id="chartImagenesAging"></canvas>
                 </div>

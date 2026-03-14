@@ -1279,6 +1279,7 @@ class BillingUiController
     private function exportInformeParticularesPdf(array $summary, array $filters): Response|RedirectResponse
     {
         $economico = is_array($summary['economico'] ?? null) ? $summary['economico'] : [];
+        $operativo = is_array($summary['operativo'] ?? null) ? $summary['operativo'] : [];
         $temporal = is_array($summary['temporal'] ?? null) ? $summary['temporal'] : [];
         $procedimientosVolumen = is_array($summary['procedimientos_volumen'] ?? null) ? $summary['procedimientos_volumen'] : [];
         $desgloseGerencial = is_array($summary['desglose_gerencial'] ?? null) ? $summary['desglose_gerencial'] : [];
@@ -1296,15 +1297,21 @@ class BillingUiController
         $totalProtocolos = (int) ($summary['total_protocolos'] ?? 0);
         $pacientesUnicos = (int) ($summary['pacientes_unicos'] ?? 0);
         $honorarioRealTotal = (float) ($economico['total_honorario_real'] ?? $economico['total_produccion'] ?? 0);
-        $ticketPromedioHonorario = (float) ($economico['ticket_promedio_honorario'] ?? $economico['produccion_promedio_por_atencion'] ?? 0);
-        $produccionPromedioAtencion = (float) ($economico['produccion_promedio_por_atencion'] ?? 0);
-        $atencionesFacturadas = (int) ($economico['atenciones_facturadas'] ?? 0);
-        $atencionesConHonorario = (int) ($economico['atenciones_con_honorario'] ?? 0);
-        $atencionesNoFacturadas = (int) ($economico['atenciones_no_facturadas'] ?? 0);
-        $procedimientosFacturados = (int) ($economico['procedimientos_facturados'] ?? 0);
-        $facturasEmitidas = (int) ($economico['facturas_emitidas'] ?? 0);
-        $facturacionRate = (float) ($economico['facturacion_rate'] ?? 0);
-        $coberturaHonorarioRate = (float) ($economico['cobertura_honorario_rate'] ?? 0);
+        $operativoEvaluadas = (int) ($operativo['evaluadas'] ?? $totalAtenciones);
+        $operativoRealizadas = (int) ($operativo['realizadas'] ?? 0);
+        $operativoFacturadas = (int) ($operativo['facturadas'] ?? 0);
+        $operativoPendientesFacturar = (int) ($operativo['pendientes_facturar'] ?? 0);
+        $operativoPerdidas = (int) ($operativo['perdidas'] ?? 0);
+        $operativoSinCierre = (int) ($operativo['sin_cierre'] ?? 0);
+        $operativoRealizacionRate = (float) ($operativo['realizacion_rate'] ?? 0);
+        $operativoFacturacionRate = (float) ($operativo['facturacion_sobre_realizadas_rate'] ?? 0);
+        $operativoPendienteRate = (float) ($operativo['pendiente_sobre_realizadas_rate'] ?? 0);
+        $operativoPerdidaRate = (float) ($operativo['perdida_rate'] ?? 0);
+        $operativoPorCobrarEstimado = (float) ($operativo['por_cobrar_estimado'] ?? 0);
+        $operativoPerdidaEstimada = (float) ($operativo['perdida_estimada'] ?? 0);
+        $operativoPotencialCapturable = (float) ($operativo['potencial_capturable'] ?? ($honorarioRealTotal + $operativoPorCobrarEstimado));
+        $operativoTicketFacturadoReal = (float) ($operativo['ticket_facturado_real'] ?? 0);
+        $operativoTicketPendiente = (float) ($operativo['ticket_pendiente'] ?? 0);
         $honorarioPorCategoria = is_array($economico['honorario_por_categoria'] ?? null)
             ? $economico['honorario_por_categoria']
             : (is_array($economico['produccion_por_categoria'] ?? null) ? $economico['produccion_por_categoria'] : []);
@@ -1508,12 +1515,25 @@ class BillingUiController
         $topProcedimientoPct = (float) ($topProcedimientoLider['porcentaje'] ?? 0);
 
         $hallazgosClave = [];
-        if ($totalAtenciones > 0) {
+        if ($operativoEvaluadas > 0) {
             $hallazgosClave[] = sprintf(
-                'La categoría líder fue %s con %d atenciones (%s del total).',
-                $categoriaLiderLabel,
-                $categoriaLiderCount,
-                $formatPercent($categoriaLiderPct)
+                'Se realizaron %d de %d atenciones evaluadas (%s).',
+                $operativoRealizadas,
+                $operativoEvaluadas,
+                $formatPercent($operativoRealizacionRate)
+            );
+            $hallazgosClave[] = sprintf(
+                'Se facturaron %d de las realizadas (%s) y %d quedaron pendientes de cobro (%s).',
+                $operativoFacturadas,
+                $formatPercent($operativoFacturacionRate),
+                $operativoPendientesFacturar,
+                $formatPercent($operativoPendienteRate)
+            );
+            $hallazgosClave[] = sprintf(
+                'La pérdida operativa fue de %d casos (%s) con una pérdida estimada de %s.',
+                $operativoPerdidas,
+                $formatPercent($operativoPerdidaRate),
+                $formatCurrency($operativoPerdidaEstimada)
             );
         }
         if ($topProcedimientoLabel !== '' && $topProcedimientoCount > 0) {
@@ -1535,34 +1555,34 @@ class BillingUiController
 
         $generalKpis = [
             [
-                'label' => 'Total de atenciones',
-                'value' => $formatCount($totalAtenciones),
-                'note' => 'Atenciones atendidas dentro del rango y filtros aplicados.',
+                'label' => 'Atenciones evaluadas',
+                'value' => $formatCount($operativoEvaluadas),
+                'note' => 'Universo auditado con la lógica real por categoría de servicio.',
             ],
             [
-                'label' => 'Atenciones no quirúrgicas',
-                'value' => $formatCount($totalConsultas),
-                'note' => 'Casos clasificados como atención no quirúrgica.',
+                'label' => 'Realizadas',
+                'value' => $formatCount($operativoRealizadas) . ' (' . $formatPercent($operativoRealizacionRate) . ')',
+                'note' => 'Atenciones con evidencia real de servicio realizado.',
             ],
             [
-                'label' => 'Cirugías',
-                'value' => $formatCount($totalProtocolos),
-                'note' => 'Casos clasificados como atención quirúrgica.',
+                'label' => 'Facturadas',
+                'value' => $formatCount($operativoFacturadas) . ' (' . $formatPercent($operativoFacturacionRate) . ')',
+                'note' => 'Atenciones realizadas que ya tienen billing real asociado.',
+            ],
+            [
+                'label' => 'Pendientes de facturar',
+                'value' => $formatCount($operativoPendientesFacturar) . ' (' . $formatPercent($operativoPendienteRate) . ')',
+                'note' => 'Atenciones realizadas con respaldo operativo o clínico aún sin billing real.',
+            ],
+            [
+                'label' => 'Pérdida operativa',
+                'value' => $formatCount($operativoPerdidas) . ' (' . $formatPercent($operativoPerdidaRate) . ')',
+                'note' => 'Atenciones no realizadas o perdidas según la lógica real por servicio.',
             ],
             [
                 'label' => 'Pacientes únicos',
                 'value' => $formatCount($pacientesUnicos),
-                'note' => 'Pacientes distintos incluidos en el rango.',
-            ],
-            [
-                'label' => 'Atenciones Particulares',
-                'value' => $formatCount($particularCount) . ' (' . $formatPercent($particularShare) . ')',
-                'note' => 'Participación de la categoría cliente Particular.',
-            ],
-            [
-                'label' => 'Atenciones Privadas',
-                'value' => $formatCount($privadoCount) . ' (' . $formatPercent($privadoShare) . ')',
-                'note' => 'Participación de la categoría cliente Privado.',
+                'note' => 'Pacientes distintos incluidos en el rango filtrado.',
             ],
         ];
 
@@ -1602,40 +1622,40 @@ class BillingUiController
                 'formula' => 'SUM(billing_facturacion_real.monto_honorario) sobre las atenciones filtradas.',
             ],
             [
-                'label' => 'Ticket promedio honorario',
-                'value' => $formatCurrency($ticketPromedioHonorario),
-                'meaning' => 'Honorario real promedio por atención con valor económico registrado.',
-                'formula' => 'Honorario real acumulado / Atenciones con honorario real.',
+                'label' => 'Por cobrar estimado',
+                'value' => $formatCurrency($operativoPorCobrarEstimado),
+                'meaning' => 'Monto estimado pendiente de cobrar en atenciones realizadas sin billing real.',
+                'formula' => 'SUM(monto_por_cobrar_estimado) para estados operativos PENDIENTE_FACTURAR.',
             ],
             [
-                'label' => 'Atenciones con factura registrada',
-                'value' => $formatCount($atencionesFacturadas) . ' (' . $formatPercent($facturacionRate) . ' del total)',
-                'meaning' => 'Atenciones cuyo form_id ya tiene una referencia de factura o billing registrada.',
-                'formula' => 'Conteo de form_id con billing_id, factura_id o numero_factura informado.',
+                'label' => 'Pérdida estimada',
+                'value' => $formatCurrency($operativoPerdidaEstimada),
+                'meaning' => 'Monto estimado de producción perdida por cancelación, ausentismo o pérdida operativa.',
+                'formula' => 'SUM(monto_perdida_estimada) según la lógica real por categoría de servicio.',
             ],
             [
-                'label' => 'Atenciones con valor económico real',
-                'value' => $formatCount($atencionesConHonorario) . ' (' . $formatPercent($coberturaHonorarioRate) . ' del total)',
-                'meaning' => 'Atenciones cuyo procedimiento sí tiene monto_honorario individual en facturación real.',
-                'formula' => 'Conteo de filas con monto_honorario > 0 asociado al form_id.',
+                'label' => 'Potencial capturable',
+                'value' => $formatCurrency($operativoPotencialCapturable),
+                'meaning' => 'Suma de honorario real ya capturado más el valor estimado todavía pendiente de cobro.',
+                'formula' => 'Honorario real acumulado + por cobrar estimado.',
             ],
             [
-                'label' => 'Facturas emitidas',
-                'value' => $formatCount($facturasEmitidas),
-                'meaning' => 'Cantidad de facturas distintas detectadas en las atenciones del rango filtrado.',
-                'formula' => 'Conteo distinto de factura_id o numero_factura en billing_facturacion_real.',
+                'label' => 'Cobro sobre realizadas',
+                'value' => $formatPercent($operativoFacturacionRate),
+                'meaning' => 'Cobertura de facturación real sobre las atenciones efectivamente realizadas.',
+                'formula' => 'Atenciones facturadas / Atenciones realizadas.',
             ],
             [
-                'label' => 'Honorario promedio por atención total',
-                'value' => $formatCurrency($produccionPromedioAtencion),
-                'meaning' => 'Valor promedio de honorario real por atención dentro del rango filtrado, incluyendo atenciones sin valor.',
-                'formula' => 'Honorario real acumulado / Total de atenciones del informe.',
+                'label' => 'Ticket facturado real',
+                'value' => $formatCurrency($operativoTicketFacturadoReal),
+                'meaning' => 'Honorario real promedio por atención con billing real.',
+                'formula' => 'Honorario real acumulado / Atenciones facturadas.',
             ],
             [
-                'label' => 'Procedimientos facturados',
-                'value' => $formatCount($procedimientosFacturados),
-                'meaning' => 'Cantidad de registros de procedimiento con honorario real asociado.',
-                'formula' => 'Conteo de registros con monto_honorario > 0 en billing_facturacion_real para los form_id filtrados.',
+                'label' => 'Ticket pendiente',
+                'value' => $formatCurrency($operativoTicketPendiente),
+                'meaning' => 'Valor estimado promedio por cada atención pendiente de facturar.',
+                'formula' => 'Por cobrar estimado / Atenciones pendientes de facturar.',
             ],
             [
                 'label' => 'Honorario Particular',
@@ -1763,7 +1783,8 @@ class BillingUiController
         ];
 
         $methodology = [
-            'El universo del informe considera únicamente atenciones con estado de encuentro atendido y categoría cliente Particular o Privado.',
+            'El universo del informe considera atenciones de categoría cliente Particular o Privado dentro del rango filtrado y aplica una lógica real específica por categoría de servicio.',
+            'Cirugías, PNI, servicios oftalmológicos e imágenes se clasifican en realizadas, pendientes de facturar o pérdida según evidencia clínica, operativa, técnica y económica disponible.',
             'La fuente económica del PDF es exclusivamente billing_facturacion_real, unida por form_id.',
             'Se analiza únicamente billing_facturacion_real.monto_honorario como valor económico único por procedimiento/form_id.',
             'billing_facturacion_real.monto_facturado no se usa en KPI ni totales porque puede repetir el total diario en múltiples form_id y sobrestimar la producción.',
@@ -1872,6 +1893,15 @@ class BillingUiController
             'Area facturacion',
             'Referido prefactura por',
             'Especificar referido prefactura',
+            'Sin tarifa estimable',
+            'Sin costo configurado',
+            'Codigo tarifario',
+            'Detalle tarifario',
+            'Estado tarifa',
+            'Motivo tarifa',
+            'Nivel tarifa',
+            'Codigo match',
+            'Descripcion match',
         ]);
 
         foreach ($rows as $row) {
@@ -1914,6 +1944,15 @@ class BillingUiController
                 trim((string) ($row['area_facturacion'] ?? '')),
                 trim((string) ($row['referido_prefactura_por'] ?? '')),
                 trim((string) ($row['especificar_referido_prefactura'] ?? '')),
+                (bool) ($row['sin_tarifa_estimable'] ?? false) ? 'SI' : 'NO',
+                (bool) ($row['tarifa_sin_costo_configurado'] ?? false) ? 'SI' : 'NO',
+                trim((string) ($row['tarifa_codigo'] ?? '')),
+                trim((string) ($row['tarifa_detalle'] ?? '')),
+                trim((string) ($row['tarifa_lookup_status'] ?? '')),
+                trim((string) ($row['tarifa_lookup_reason'] ?? '')),
+                trim((string) ($row['tarifa_level_title'] ?? $row['tarifa_level_key'] ?? '')),
+                trim((string) ($row['tarifa_codigo_match'] ?? '')),
+                trim((string) ($row['tarifa_descripcion_match'] ?? '')),
             ]);
         }
 

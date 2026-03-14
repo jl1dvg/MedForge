@@ -17,7 +17,7 @@ class BillingParticularesReportServiceTest extends TestCase
             'afiliacion' => 'PARTICULAR',
         ]);
 
-        $this->assertSame('OK', $diagnostic['status']);
+        $this->assertSame('PRECIO_CERO', $diagnostic['status']);
         $this->assertSame(0.0, $diagnostic['amount']);
         $this->assertSame('123', $diagnostic['matched_codigo']);
     }
@@ -32,6 +32,19 @@ class BillingParticularesReportServiceTest extends TestCase
 
         $this->assertSame('SIN_PRECIO_AFILIACION', $diagnostic['status']);
         $this->assertSame(0.0, $diagnostic['amount']);
+    }
+
+    public function test_zero_price_is_not_classified_as_non_estimable_tariff(): void
+    {
+        $service = new BillingParticularesReportService(new PDO('sqlite::memory:'));
+
+        $this->assertFalse($this->invokeIsNonEstimableTarifaDiagnostic($service, [
+            'status' => 'PRECIO_CERO',
+        ]));
+
+        $this->assertTrue($this->invokeIsNonEstimableTarifaDiagnostic($service, [
+            'status' => 'SIN_PRECIO_AFILIACION',
+        ]));
     }
 
     /**
@@ -106,5 +119,23 @@ class BillingParticularesReportServiceTest extends TestCase
         );
 
         $setter($property, $value);
+    }
+
+    /**
+     * @param array{status?:string} $tarifaDiagnostic
+     */
+    private function invokeIsNonEstimableTarifaDiagnostic(
+        BillingParticularesReportService $service,
+        array $tarifaDiagnostic
+    ): bool {
+        $resolver = \Closure::bind(
+            function (array $tarifaDiagnostic): bool {
+                return $this->isNonEstimableTarifaDiagnostic($tarifaDiagnostic);
+            },
+            $service,
+            BillingParticularesReportService::class
+        );
+
+        return $resolver($tarifaDiagnostic);
     }
 }

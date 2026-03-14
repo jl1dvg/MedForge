@@ -146,8 +146,9 @@
 <p class="meta">Generado: {{ $generatedAt }} | Total de atenciones analizadas: {{ number_format($totalAtenciones) }}</p>
 
 <div class="notice scope">
-    Este reporte considera únicamente atenciones con <strong>estado de encuentro atendido</strong> y categoría cliente
-    <strong>Particular</strong> o <strong>Privado</strong>.
+    Este reporte considera atenciones de categoría cliente <strong>Particular</strong> o <strong>Privado</strong>
+    dentro del rango filtrado y aplica la lógica real por categoría de servicio para separar
+    <strong>realizadas</strong>, <strong>pendientes de facturar</strong> y <strong>pérdidas</strong>.
 </div>
 
 <div class="notice methodology">

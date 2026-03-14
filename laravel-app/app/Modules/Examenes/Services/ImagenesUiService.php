@@ -1043,10 +1043,8 @@ class ImagenesUiService
                 ['label' => 'Total estudios', 'value' => $total, 'hint' => $rangeLabel !== '' ? ('Rango: ' . $rangeLabel) : 'Sin rango'],
                 ['label' => 'Realizadas', 'value' => $examenesRealizados, 'hint' => $total > 0 ? (number_format(($examenesRealizados * 100) / $total, 1) . '% del total') : '0.0% del total'],
                 ['label' => 'Facturadas', 'value' => $facturados, 'hint' => $examenesRealizados > 0 ? (number_format(($facturados * 100) / $examenesRealizados, 1) . '% de realizadas') : '0.0% de realizadas'],
-                ['label' => 'Pendiente de informar', 'value' => $pendientesInformar, 'hint' => $examenesRealizados > 0 ? (number_format(($pendientesInformar * 100) / $examenesRealizados, 1) . '% de realizadas') : '0.0% de realizadas'],
                 ['label' => 'Pendiente de facturar', 'value' => $pendientesFacturar, 'hint' => 'Realizadas con evidencia técnica aún sin billing real'],
                 ['label' => 'Pérdida', 'value' => $perdidas, 'hint' => $canceladas . ' canceladas, ' . $ausentes . ' ausentes'],
-                ['label' => 'Sin cierre operativo', 'value' => $sinCierre, 'hint' => 'Sin NAS, sin informe y sin billing'],
                 ['label' => 'Producción facturada', 'value' => '$' . number_format($produccionFacturada, 2), 'hint' => 'Monto real facturado en el rango.'],
                 ['label' => 'Ticket promedio facturado', 'value' => '$' . number_format($ticketPromedioFacturado, 2), 'hint' => $facturados > 0 ? ('Promedio por ' . $facturados . ' estudios facturados') : 'Sin estudios facturados'],
                 ['label' => 'Procedimientos facturados', 'value' => $procedimientosFacturados, 'hint' => '$' . number_format($produccionPromedioPorEstudio, 2) . ' promedio por estudio'],
@@ -1086,12 +1084,11 @@ class ImagenesUiService
                     'values' => array_values($aging),
                 ],
                 'trazabilidad' => [
-                    'labels' => ['Facturada', 'Realizada con archivos', 'Realizada informada', 'Sin cierre operativo'],
+                    'labels' => ['Facturada', 'Realizada con archivos', 'Realizada informada'],
                     'values' => [
                         (int) ($estadoRealCounts['FACTURADA'] ?? 0),
                         (int) ($estadoRealCounts['REALIZADA_CON_ARCHIVOS'] ?? 0),
                         (int) ($estadoRealCounts['REALIZADA_INFORMADA'] ?? 0),
-                        (int) ($estadoRealCounts['SIN_CIERRE_OPERATIVO'] ?? 0),
                     ],
                 ],
                 'citas_vs_realizados' => [

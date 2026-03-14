@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Examenes\Http\Controllers;
 
+use App\Modules\Examenes\Services\ExamenesReportingService;
 use App\Modules\Shared\Support\LegacyCurrentUser;
 use App\Modules\Shared\Support\LegacySessionAuth;
 use Illuminate\Contracts\View\View;
@@ -14,6 +15,8 @@ use Throwable;
 
 class ExamenesUiController
 {
+    private ExamenesReportingService $reportingService;
+
     /**
      * @var array<string,array{label:string,color:string}>
      */
@@ -50,6 +53,11 @@ class ExamenesUiController
         'turnero_updated' => 'turnero.turno-actualizado',
     ];
 
+    public function __construct()
+    {
+        $this->reportingService = new ExamenesReportingService();
+    }
+
     public function index(Request $request): View|RedirectResponse
     {
         if (!LegacySessionAuth::isAuthenticated($request)) {
@@ -62,10 +70,7 @@ class ExamenesUiController
             'kanbanColumns' => self::KANBAN_COLUMNS,
             'kanbanStages' => self::KANBAN_STAGES,
             'realtime' => $this->buildRealtimeConfig(),
-            'reporting' => [
-                'formats' => ['pdf', 'excel'],
-                'quickMetrics' => [],
-            ],
+            'reporting' => $this->reportingService->reportingConfig(),
             'forceV2ReadsEnabled' => true,
             'forceV2WritesEnabled' => true,
         ]);
@@ -80,6 +85,7 @@ class ExamenesUiController
         return view('examenes.v2-turnero', [
             'pageTitle' => 'Turnero de Exámenes',
             'currentUser' => LegacyCurrentUser::resolve($request),
+            'realtime' => $this->buildRealtimeConfig(),
             'turneroContext' => 'Coordinación de Exámenes',
             'turneroEmptyMessage' => 'No hay pacientes en cola para coordinación de exámenes.',
             'forceV2ReadsEnabled' => true,

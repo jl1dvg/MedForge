@@ -27,11 +27,11 @@ return function (Router $router) {
     });
 
     $router->get('/imagenes/examenes-realizados', function (\PDO $pdo) {
-        (new ExamenController($pdo))->imagenesRealizadas();
+        $redirectToV2('/v2/imagenes/examenes-realizados');
     });
 
     $router->get('/imagenes/dashboard', function (\PDO $pdo) {
-        (new ExamenController($pdo))->imagenesDashboard();
+        $redirectToV2('/v2/imagenes/dashboard');
     });
 
     $router->get('/imagenes/dashboard/export/pdf', function (\PDO $pdo) {

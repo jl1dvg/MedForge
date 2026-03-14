@@ -11,7 +11,12 @@
         'economico' => [
             'total_produccion' => 0,
             'total_honorario_real' => 0,
+            'total_por_cobrar_estimado' => 0,
+            'total_perdida_estimada' => 0,
+            'potencial_capturable' => 0,
             'ticket_promedio_honorario' => 0,
+            'ticket_promedio_facturado_real' => 0,
+            'ticket_promedio_pendiente' => 0,
             'produccion_promedio_por_atencion' => 0,
             'atenciones_facturadas' => 0,
             'atenciones_con_honorario' => 0,
@@ -25,6 +30,24 @@
             'formas_pago' => ['values' => []],
             'doctores_top' => [],
             'areas_top' => [],
+        ],
+        'operativo' => [
+            'evaluadas' => 0,
+            'realizadas' => 0,
+            'facturadas' => 0,
+            'pendientes_facturar' => 0,
+            'perdidas' => 0,
+            'sin_cierre' => 0,
+            'realizacion_rate' => 0,
+            'facturacion_sobre_realizadas_rate' => 0,
+            'pendiente_sobre_realizadas_rate' => 0,
+            'perdida_rate' => 0,
+            'honorario_real' => 0,
+            'por_cobrar_estimado' => 0,
+            'perdida_estimada' => 0,
+            'potencial_capturable' => 0,
+            'ticket_facturado_real' => 0,
+            'ticket_pendiente' => 0,
         ],
         'pacientes_unicos' => 0,
         'categoria_counts' => ['particular' => 0, 'privado' => 0],
@@ -256,6 +279,40 @@
             $formasPagoValues = is_array($formasPagoSummary['values'] ?? null) ? $formasPagoSummary['values'] : [];
             $doctoresHonorarioTop = is_array($economico['doctores_top'] ?? null) ? $economico['doctores_top'] : [];
             $areasTop = is_array($economico['areas_top'] ?? null) ? $economico['areas_top'] : [];
+            $operativo = is_array($summary['operativo'] ?? null) ? $summary['operativo'] : [];
+            $operativoEvaluadas = (int) ($operativo['evaluadas'] ?? $totalAtenciones);
+            $operativoRealizadas = (int) ($operativo['realizadas'] ?? 0);
+            $operativoFacturadas = (int) ($operativo['facturadas'] ?? 0);
+            $operativoPendientesFacturar = (int) ($operativo['pendientes_facturar'] ?? 0);
+            $operativoPerdidas = (int) ($operativo['perdidas'] ?? 0);
+            $operativoSinCierre = (int) ($operativo['sin_cierre'] ?? 0);
+            $operativoRealizacionRate = (float) ($operativo['realizacion_rate'] ?? 0);
+            $operativoFacturacionRate = (float) ($operativo['facturacion_sobre_realizadas_rate'] ?? 0);
+            $operativoPendienteRate = (float) ($operativo['pendiente_sobre_realizadas_rate'] ?? 0);
+            $operativoPerdidaRate = (float) ($operativo['perdida_rate'] ?? 0);
+            $operativoHonorarioReal = (float) ($operativo['honorario_real'] ?? $totalHonorarioReal);
+            $operativoPorCobrarEstimado = (float) ($operativo['por_cobrar_estimado'] ?? 0);
+            $operativoPerdidaEstimada = (float) ($operativo['perdida_estimada'] ?? 0);
+            $operativoPotencialCapturable = (float) ($operativo['potencial_capturable'] ?? ($operativoHonorarioReal + $operativoPorCobrarEstimado));
+            $operativoTicketFacturadoReal = (float) ($operativo['ticket_facturado_real'] ?? 0);
+            $operativoTicketPendiente = (float) ($operativo['ticket_pendiente'] ?? 0);
+            $sinCostoConfiguradoRows = array_values(array_filter($rows, static function (array $row): bool {
+                return (bool) ($row['tarifa_sin_costo_configurado'] ?? false);
+            }));
+            $sinCostoConfiguradoPreviewRows = array_slice($sinCostoConfiguradoRows, 0, 100);
+            $sinTarifaRows = array_values(array_filter($rows, static function (array $row): bool {
+                return (bool) ($row['sin_tarifa_estimable'] ?? false);
+            }));
+            $sinTarifaPreviewRows = array_slice($sinTarifaRows, 0, 100);
+            $sinTarifaStatusCounts = [];
+            foreach ($sinTarifaRows as $sinTarifaRow) {
+                $status = strtoupper(trim((string) ($sinTarifaRow['tarifa_lookup_status'] ?? 'SIN_DIAGNOSTICO')));
+                if ($status === '') {
+                    $status = 'SIN_DIAGNOSTICO';
+                }
+                $sinTarifaStatusCounts[$status] = (int) ($sinTarifaStatusCounts[$status] ?? 0) + 1;
+            }
+            arsort($sinTarifaStatusCounts);
             $pniSummary = is_array($summary['pni'] ?? null) ? $summary['pni'] : [];
             $pniTotal = (int) ($pniSummary['total'] ?? 0);
             $pniRealizadas = (int) ($pniSummary['realizadas'] ?? 0);
@@ -268,9 +325,31 @@
             $pniPorCobrarEstimado = (float) ($pniSummary['por_cobrar_estimado'] ?? 0);
             $pniPerdidaEstimada = (float) ($pniSummary['perdida_estimada'] ?? 0);
             $pniSinTarifaEstimable = (int) ($pniSummary['sin_tarifa_estimable'] ?? 0);
+            $pniSinCostoConfigurado = (int) ($pniSummary['sin_costo_configurado'] ?? 0);
             $pniEstados = is_array($pniSummary['estados'] ?? null) ? $pniSummary['estados'] : [];
             $pniDoctoresPorCobrar = is_array($pniSummary['doctores_por_cobrar'] ?? null) ? $pniSummary['doctores_por_cobrar'] : [];
             $pniDoctoresPerdida = is_array($pniSummary['doctores_perdida'] ?? null) ? $pniSummary['doctores_perdida'] : [];
+            $imagenesSummary = is_array($summary['imagenes'] ?? null) ? $summary['imagenes'] : [];
+            $imagenesTotal = (int) ($imagenesSummary['total'] ?? 0);
+            $imagenesRealizadas = (int) ($imagenesSummary['realizadas'] ?? 0);
+            $imagenesFacturadas = (int) ($imagenesSummary['facturadas'] ?? 0);
+            $imagenesConArchivos = (int) ($imagenesSummary['realizada_con_archivos'] ?? 0);
+            $imagenesRealizadaInformada = (int) ($imagenesSummary['realizada_informada'] ?? 0);
+            $imagenesInformadas = (int) ($imagenesSummary['informadas'] ?? 0);
+            $imagenesPendientesInformar = (int) ($imagenesSummary['pendientes_informar'] ?? 0);
+            $imagenesCanceladas = (int) ($imagenesSummary['canceladas'] ?? 0);
+            $imagenesAusentes = (int) ($imagenesSummary['ausentes'] ?? 0);
+            $imagenesSinCierre = (int) ($imagenesSummary['sin_cierre'] ?? 0);
+            $imagenesPendientesFacturar = (int) ($imagenesSummary['pendientes_facturar'] ?? 0);
+            $imagenesHonorarioReal = (float) ($imagenesSummary['honorario_real'] ?? 0);
+            $imagenesPorCobrarEstimado = (float) ($imagenesSummary['por_cobrar_estimado'] ?? 0);
+            $imagenesPerdidaEstimada = (float) ($imagenesSummary['perdida_estimada'] ?? 0);
+            $imagenesSinTarifaEstimable = (int) ($imagenesSummary['sin_tarifa_estimable'] ?? 0);
+            $imagenesSinCostoConfigurado = (int) ($imagenesSummary['sin_costo_configurado'] ?? 0);
+            $imagenesEstados = is_array($imagenesSummary['estados'] ?? null) ? $imagenesSummary['estados'] : [];
+            $imagenesEstadosInforme = is_array($imagenesSummary['estados_informe'] ?? null) ? $imagenesSummary['estados_informe'] : [];
+            $imagenesDoctoresPorCobrar = is_array($imagenesSummary['doctores_por_cobrar'] ?? null) ? $imagenesSummary['doctores_por_cobrar'] : [];
+            $imagenesDoctoresPerdida = is_array($imagenesSummary['doctores_perdida'] ?? null) ? $imagenesSummary['doctores_perdida'] : [];
             $serviciosOftalmologicosSummary = is_array($summary['servicios_oftalmologicos'] ?? null) ? $summary['servicios_oftalmologicos'] : [];
             $serviciosOftalmologicosTotal = (int) ($serviciosOftalmologicosSummary['total'] ?? 0);
             $serviciosOftalmologicosRealizadas = (int) ($serviciosOftalmologicosSummary['realizadas'] ?? 0);
@@ -283,6 +362,7 @@
             $serviciosOftalmologicosPorCobrarEstimado = (float) ($serviciosOftalmologicosSummary['por_cobrar_estimado'] ?? 0);
             $serviciosOftalmologicosPerdidaEstimada = (float) ($serviciosOftalmologicosSummary['perdida_estimada'] ?? 0);
             $serviciosOftalmologicosSinTarifaEstimable = (int) ($serviciosOftalmologicosSummary['sin_tarifa_estimable'] ?? 0);
+            $serviciosOftalmologicosSinCostoConfigurado = (int) ($serviciosOftalmologicosSummary['sin_costo_configurado'] ?? 0);
             $serviciosOftalmologicosEstados = is_array($serviciosOftalmologicosSummary['estados'] ?? null) ? $serviciosOftalmologicosSummary['estados'] : [];
             $serviciosOftalmologicosDoctoresPorCobrar = is_array($serviciosOftalmologicosSummary['doctores_por_cobrar'] ?? null) ? $serviciosOftalmologicosSummary['doctores_por_cobrar'] : [];
             $serviciosOftalmologicosDoctoresPerdida = is_array($serviciosOftalmologicosSummary['doctores_perdida'] ?? null) ? $serviciosOftalmologicosSummary['doctores_perdida'] : [];
@@ -301,6 +381,7 @@
             $cirugiasPorCobrarEstimado = (float) ($cirugiasSummary['por_cobrar_estimado'] ?? 0);
             $cirugiasPerdidaEstimada = (float) ($cirugiasSummary['perdida_estimada'] ?? 0);
             $cirugiasSinTarifaEstimable = (int) ($cirugiasSummary['sin_tarifa_estimable'] ?? 0);
+            $cirugiasSinCostoConfigurado = (int) ($cirugiasSummary['sin_costo_configurado'] ?? 0);
             $cirugiasEstados = is_array($cirugiasSummary['estados'] ?? null) ? $cirugiasSummary['estados'] : [];
             $cirugiasDoctoresPorCobrar = is_array($cirugiasSummary['doctores_por_cobrar'] ?? null) ? $cirugiasSummary['doctores_por_cobrar'] : [];
             $cirugiasDoctoresPerdida = is_array($cirugiasSummary['doctores_perdida'] ?? null) ? $cirugiasSummary['doctores_perdida'] : [];
@@ -404,12 +485,26 @@
             $topProcedimientoPct = (float) ($topProcedimientoLider['porcentaje'] ?? 0);
 
             $hallazgosClave = [];
-            if ($totalAtenciones > 0) {
+            if ($operativoEvaluadas > 0) {
                 $hallazgosClave[] = sprintf(
-                    'La categoría líder fue %s con %d atenciones (%.2f%% del total).',
-                    $categoriaLiderLabel,
-                    $categoriaLiderCount,
-                    $categoriaLiderPct
+                    'Se realizaron %d de %d atenciones evaluadas (%.2f%%).',
+                    $operativoRealizadas,
+                    $operativoEvaluadas,
+                    $operativoRealizacionRate
+                );
+                $hallazgosClave[] = sprintf(
+                    'Se facturaron %d de las %d realizadas (%.2f%%) y %d quedaron pendientes de cobro (%.2f%%).',
+                    $operativoFacturadas,
+                    max($operativoRealizadas, 0),
+                    $operativoFacturacionRate,
+                    $operativoPendientesFacturar,
+                    $operativoPendienteRate
+                );
+                $hallazgosClave[] = sprintf(
+                    'La pérdida operativa fue de %d casos (%.2f%% del total) con una pérdida estimada de $%s.',
+                    $operativoPerdidas,
+                    $operativoPerdidaRate,
+                    number_format($operativoPerdidaEstimada, 2)
                 );
             }
             if ($topProcedimientoLabel !== '' && $topProcedimientoCount > 0) {
@@ -420,47 +515,51 @@
                     $topProcedimientoPct
                 );
             }
-            if ($top3ConcentracionCount > 0 || $top5ConcentracionCount > 0) {
-                $hallazgosClave[] = sprintf(
-                    'Concentración de volumen: Top 3 = %.2f%% (%d), Top 5 = %.2f%% (%d).',
-                    $top3ConcentracionPct,
-                    $top3ConcentracionCount,
-                    $top5ConcentracionPct,
-                    $top5ConcentracionCount
-                );
-            }
-            if (($peakDay['cantidad'] ?? 0) > 0) {
-                $hallazgosClave[] = sprintf(
-                    'Pico operativo por día: %s (%d).',
-                    strtoupper((string) ($peakDay['valor'] ?? 'N/D')),
-                    (int) ($peakDay['cantidad'] ?? 0)
-                );
-            }
-            $hallazgosClave = array_slice($hallazgosClave, 0, 3);
+            $hallazgosClave = array_slice($hallazgosClave, 0, 4);
         @endphp
 
         <div class="row">
             <div class="col-xl-2 col-md-4 col-6">
                 <div class="box box-inverse box-success">
                     <div class="box-body text-center">
-                        <h6 class="mb-5">Total</h6>
-                        <div class="fs-32 fw-700">{{ $totalAtenciones }}</div>
+                        <h6 class="mb-5">Evaluadas</h6>
+                        <div class="fs-32 fw-700">{{ $operativoEvaluadas }}</div>
                     </div>
                 </div>
             </div>
             <div class="col-xl-2 col-md-4 col-6">
                 <div class="box">
                     <div class="box-body text-center">
-                        <h6 class="mb-5">Atenciones No Quirúrgicas</h6>
-                        <div class="fs-30 fw-700 text-primary">{{ $totalConsultas }}</div>
+                        <h6 class="mb-5">Realizadas</h6>
+                        <div class="fs-30 fw-700 text-success">{{ $operativoRealizadas }}</div>
+                        <small class="text-muted">{{ number_format($operativoRealizacionRate, 2) }}% del total evaluado</small>
                     </div>
                 </div>
             </div>
             <div class="col-xl-2 col-md-4 col-6">
                 <div class="box">
                     <div class="box-body text-center">
-                        <h6 class="mb-5">Cirugías</h6>
-                        <div class="fs-30 fw-700 text-info">{{ $totalProtocolos }}</div>
+                        <h6 class="mb-5">Facturadas</h6>
+                        <div class="fs-30 fw-700 text-info">{{ $operativoFacturadas }}</div>
+                        <small class="text-muted">{{ number_format($operativoFacturacionRate, 2) }}% de las realizadas</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-xl-2 col-md-4 col-6">
+                <div class="box">
+                    <div class="box-body text-center">
+                        <h6 class="mb-5">Pendientes</h6>
+                        <div class="fs-30 fw-700 text-warning">{{ $operativoPendientesFacturar }}</div>
+                        <small class="text-muted">{{ number_format($operativoPendienteRate, 2) }}% de las realizadas</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-xl-2 col-md-4 col-6">
+                <div class="box">
+                    <div class="box-body text-center">
+                        <h6 class="mb-5">Pérdida</h6>
+                        <div class="fs-30 fw-700 text-danger">{{ $operativoPerdidas }}</div>
+                        <small class="text-muted">{{ number_format($operativoPerdidaRate, 2) }}% del total evaluado</small>
                     </div>
                 </div>
             </div>
@@ -468,23 +567,8 @@
                 <div class="box">
                     <div class="box-body text-center">
                         <h6 class="mb-5">Pacientes únicos</h6>
-                        <div class="fs-30 fw-700 text-warning">{{ $pacientesUnicos }}</div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-xl-2 col-md-4 col-6">
-                <div class="box">
-                    <div class="box-body text-center">
-                        <h6 class="mb-5">Atenciones Particulares</h6>
-                        <div class="fs-30 fw-700 text-success">{{ $particularCount }}</div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-xl-2 col-md-4 col-6">
-                <div class="box">
-                    <div class="box-body text-center">
-                        <h6 class="mb-5">Atenciones Privadas</h6>
-                        <div class="fs-30 fw-700 text-danger">{{ $privadoCount }}</div>
+                        <div class="fs-30 fw-700 text-primary">{{ $pacientesUnicos }}</div>
+                        <small class="text-muted">{{ $particularCount }} particulares / {{ $privadoCount }} privadas</small>
                     </div>
                 </div>
             </div>
@@ -548,7 +632,7 @@
                         <div class="box-body text-center">
                             <h6 class="mb-5">Sin tarifa estimable</h6>
                             <div class="fs-28 fw-700 text-dark">{{ $cirugiasSinTarifaEstimable }}</div>
-                            <small class="text-muted">Casos quirúrgicos sin match en tarifario para estimación</small>
+                            <small class="text-muted">Solo faltantes reales de pricing. {{ $cirugiasSinCostoConfigurado }} con precio 0 van aparte.</small>
                         </div>
                     </div>
                 </div>
@@ -674,7 +758,7 @@
                         <div class="box-body text-center">
                             <h6 class="mb-5">Sin tarifa estimable</h6>
                             <div class="fs-28 fw-700 text-dark">{{ $pniSinTarifaEstimable }}</div>
-                            <small class="text-muted">Casos PNI sin match en pricing del módulo codes</small>
+                            <small class="text-muted">Solo faltantes reales de pricing. {{ $pniSinCostoConfigurado }} con precio 0 van aparte.</small>
                         </div>
                     </div>
                 </div>
@@ -741,6 +825,129 @@
             </div>
         @endif
 
+        @if($imagenesTotal > 0)
+            <div class="row">
+                <div class="col-12">
+                    <div class="box bg-lightest">
+                        <div class="box-body py-15">
+                            <div class="d-flex flex-wrap justify-content-between align-items-center gap-10">
+                                <div>
+                                    <h5 class="mb-0">Imágenes: realizado, por cobrar y pérdida</h5>
+                                    <small class="text-muted">Esta capa usa NAS, informes de imágenes y billing real;
+                                        el estado de agenda solo define canceladas, ausentes y sin cierre.</small>
+                                </div>
+                                <div class="d-flex flex-wrap gap-2">
+                                    <span class="badge bg-success-light text-success">{{ $imagenesRealizadas }} realizadas</span>
+                                    <span class="badge bg-warning-light text-warning">{{ $imagenesPendientesFacturar }} pendientes de facturar</span>
+                                    <span class="badge bg-info-light text-info">{{ $imagenesPendientesInformar }} pendientes de informar</span>
+                                    <span class="badge bg-danger-light text-danger">{{ $imagenesCanceladas + $imagenesAusentes }} pérdida</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-xl-3 col-md-6 col-12">
+                    <div class="box">
+                        <div class="box-body text-center">
+                            <h6 class="mb-5">Imágenes realizadas</h6>
+                            <div class="fs-28 fw-700 text-success">{{ $imagenesRealizadas }}</div>
+                            <small class="text-muted">{{ $imagenesFacturadas }} facturadas, {{ $imagenesConArchivos }} con archivos, {{ $imagenesRealizadaInformada }} informadas</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-xl-3 col-md-6 col-12">
+                    <div class="box">
+                        <div class="box-body text-center">
+                            <h6 class="mb-5">Pendiente de facturar</h6>
+                            <div class="fs-28 fw-700 text-warning">{{ $imagenesPendientesFacturar }}</div>
+                            <small class="text-muted">Realizadas con evidencia técnica aún sin billing real</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-xl-3 col-md-6 col-12">
+                    <div class="box">
+                        <div class="box-body text-center">
+                            <h6 class="mb-5">Pérdida</h6>
+                            <div class="fs-28 fw-700 text-danger">{{ $imagenesCanceladas + $imagenesAusentes + $imagenesSinCierre }}</div>
+                            <small class="text-muted">{{ $imagenesCanceladas }} canceladas, {{ $imagenesAusentes }} ausentes, {{ $imagenesSinCierre }} sin cierre</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-xl-3 col-md-6 col-12">
+                    <div class="box">
+                        <div class="box-body text-center">
+                            <h6 class="mb-5">Honorario real imágenes</h6>
+                            <div class="fs-28 fw-700 text-success">${{ number_format($imagenesHonorarioReal, 2) }}</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-xl-3 col-md-6 col-12">
+                    <div class="box">
+                        <div class="box-body text-center">
+                            <h6 class="mb-5">Por cobrar estimado</h6>
+                            <div class="fs-28 fw-700 text-warning">${{ number_format($imagenesPorCobrarEstimado, 2) }}</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-xl-3 col-md-6 col-12">
+                    <div class="box">
+                        <div class="box-body text-center">
+                            <h6 class="mb-5">Pérdida estimada</h6>
+                            <div class="fs-28 fw-700 text-danger">${{ number_format($imagenesPerdidaEstimada, 2) }}</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-xl-3 col-md-6 col-12">
+                    <div class="box">
+                        <div class="box-body text-center">
+                            <h6 class="mb-5">Sin tarifa estimable</h6>
+                            <div class="fs-28 fw-700 text-dark">{{ $imagenesSinTarifaEstimable }}</div>
+                            <small class="text-muted">Solo faltantes reales de pricing. {{ $imagenesSinCostoConfigurado }} con precio 0 van aparte.</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-xl-4 col-12">
+                    <div class="box">
+                        <div class="box-header with-border">
+                            <h5 class="box-title mb-0">Imágenes por estado real</h5>
+                        </div>
+                        <div class="box-body">
+                            <div id="imagenesEstadoChart" style="min-height: 320px;"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-xl-4 col-12">
+                    <div class="box">
+                        <div class="box-header with-border">
+                            <h5 class="box-title mb-0">Imágenes con mayor por cobrar</h5>
+                        </div>
+                        <div class="box-body">
+                            <div id="imagenesPorCobrarDoctorChart" style="min-height: 320px;"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-xl-4 col-12">
+                    <div class="box">
+                        <div class="box-header with-border">
+                            <h5 class="box-title mb-0">Imágenes con mayor pérdida estimada</h5>
+                        </div>
+                        <div class="box-body">
+                            <div id="imagenesPerdidaDoctorChart" style="min-height: 320px;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        @endif
+
         @if($serviciosOftalmologicosTotal > 0)
             <div class="row">
                 <div class="col-12">
@@ -796,7 +1003,7 @@
                         <div class="box-body text-center">
                             <h6 class="mb-5">Sin tarifa estimable</h6>
                             <div class="fs-28 fw-700 text-dark">{{ $serviciosOftalmologicosSinTarifaEstimable }}</div>
-                            <small class="text-muted">Casos sin match en pricing del módulo codes</small>
+                            <small class="text-muted">Solo faltantes reales de pricing. {{ $serviciosOftalmologicosSinCostoConfigurado }} con precio 0 van aparte.</small>
                         </div>
                     </div>
                 </div>
@@ -870,10 +1077,9 @@
                     <div class="box-header with-border d-flex justify-content-between align-items-center">
                         <h5 class="box-title mb-0">Categoría cliente: volumen + honorario</h5>
                         <div class="d-flex flex-wrap gap-2">
-                            <span
-                                class="badge bg-primary-light text-primary">{{ $atencionesFacturadas }} con factura</span>
-                            <span
-                                class="badge bg-warning-light text-warning">{{ $atencionesNoFacturadas }} sin factura</span>
+                            <span class="badge bg-primary-light text-primary">{{ $operativoFacturadas }} facturadas</span>
+                            <span class="badge bg-warning-light text-warning">{{ $operativoPendientesFacturar }} pendientes</span>
+                            <span class="badge bg-danger-light text-danger">{{ $operativoPerdidas }} pérdida</span>
                         </div>
                     </div>
                     <div class="box-body">
@@ -1119,54 +1325,52 @@
                 <div class="box">
                     <div class="box-body text-center">
                         <h6 class="mb-5">Honorario real acumulado</h6>
-                        <div class="fs-28 fw-700 text-success">${{ number_format($totalHonorarioReal, 2) }}</div>
+                        <div class="fs-28 fw-700 text-success">${{ number_format($operativoHonorarioReal, 2) }}</div>
                     </div>
                 </div>
             </div>
             <div class="col-xl-2 col-md-6 col-12">
                 <div class="box">
                     <div class="box-body text-center">
-                        <h6 class="mb-5">Ticket promedio honorario</h6>
-                        <div class="fs-28 fw-700 text-primary">${{ number_format($ticketPromedioHonorario, 2) }}</div>
+                        <h6 class="mb-5">Por cobrar estimado</h6>
+                        <div class="fs-28 fw-700 text-warning">${{ number_format($operativoPorCobrarEstimado, 2) }}</div>
+                        <small class="text-muted">{{ $operativoPendientesFacturar }} casos pendientes</small>
                     </div>
                 </div>
             </div>
             <div class="col-xl-2 col-md-6 col-12">
                 <div class="box">
                     <div class="box-body text-center">
-                        <h6 class="mb-5">Atenciones con factura</h6>
-                        <div class="fs-28 fw-700 text-info">{{ $atencionesFacturadas }}</div>
-                        <small class="text-muted">{{ number_format($facturacionRate, 2) }}% con factura
-                            registrada</small>
+                        <h6 class="mb-5">Pérdida estimada</h6>
+                        <div class="fs-28 fw-700 text-danger">${{ number_format($operativoPerdidaEstimada, 2) }}</div>
+                        <small class="text-muted">{{ $operativoPerdidas }} casos perdidos</small>
                     </div>
                 </div>
             </div>
             <div class="col-xl-2 col-md-6 col-12">
                 <div class="box">
                     <div class="box-body text-center">
-                        <h6 class="mb-5">Facturas emitidas</h6>
-                        <div class="fs-28 fw-700 text-dark">{{ $facturasEmitidas }}</div>
-                        <small class="text-muted">{{ $procedimientosFacturados }} registros económicos asociados</small>
+                        <h6 class="mb-5">Potencial capturable</h6>
+                        <div class="fs-28 fw-700 text-dark">${{ number_format($operativoPotencialCapturable, 2) }}</div>
+                        <small class="text-muted">Honorario real + por cobrar estimado</small>
                     </div>
                 </div>
             </div>
             <div class="col-xl-2 col-md-6 col-12">
                 <div class="box">
                     <div class="box-body text-center">
-                        <h6 class="mb-5">Atenciones con valor real</h6>
-                        <div class="fs-28 fw-700 text-warning">{{ $atencionesConHonorario }}</div>
-                        <small class="text-muted">{{ number_format($coberturaHonorarioRate, 2) }}% con
-                            monto_honorario</small>
+                        <h6 class="mb-5">Cobro sobre realizadas</h6>
+                        <div class="fs-28 fw-700 text-info">{{ number_format($operativoFacturacionRate, 2) }}%</div>
+                        <small class="text-muted">{{ $operativoFacturadas }} facturadas de {{ $operativoRealizadas }} realizadas</small>
                     </div>
                 </div>
             </div>
             <div class="col-xl-2 col-md-6 col-12">
                 <div class="box">
                     <div class="box-body text-center">
-                        <h6 class="mb-5">Procedimientos facturados</h6>
-                        <div class="fs-28 fw-700 text-secondary">{{ $procedimientosFacturados }}</div>
-                        <small class="text-muted">${{ number_format($produccionPromedioAtencion, 2) }} promedio por
-                            atención total</small>
+                        <h6 class="mb-5">Ticket pendiente</h6>
+                        <div class="fs-28 fw-700 text-secondary">${{ number_format($operativoTicketPendiente, 2) }}</div>
+                        <small class="text-muted">${{ number_format($operativoTicketFacturadoReal, 2) }} ticket facturado real</small>
                     </div>
                 </div>
             </div>
@@ -1349,6 +1553,175 @@
             </div>
         </div>
 
+        @if(!empty($sinCostoConfiguradoRows))
+            <div class="row">
+                <div class="col-12">
+                    <div class="box">
+                        <div class="box-header with-border d-flex flex-wrap justify-content-between align-items-center gap-2">
+                            <div>
+                                <h5 class="box-title mb-0">Casos con costo 0 configurado</h5>
+                                <small class="text-muted">Estos casos sí tienen match en codes y nivel resuelto. No cuentan como "Sin tarifa estimable" porque el precio configurado es 0.</small>
+                            </div>
+                            <span class="badge bg-info-light text-info">{{ count($sinCostoConfiguradoRows) }} casos</span>
+                        </div>
+                        <div class="box-body">
+                            <div class="table-responsive">
+                                <table class="table table-sm table-striped table-hover mb-0">
+                                    <thead class="table-light">
+                                    <tr>
+                                        <th>Fecha</th>
+                                        <th>HC</th>
+                                        <th>Paciente</th>
+                                        <th>Tipo</th>
+                                        <th>Afiliación</th>
+                                        <th>Procedimiento</th>
+                                        <th>Código extraído</th>
+                                        <th>Nivel pricing</th>
+                                        <th>Diagnóstico</th>
+                                        <th>Código match</th>
+                                        <th>Detalle match</th>
+                                        <th class="text-end">Tarifa</th>
+                                    </tr>
+                                    </thead>
+                                    <tbody>
+                                    @foreach($sinCostoConfiguradoPreviewRows as $row)
+                                        @php
+                                            $fecha = trim((string) ($row['fecha'] ?? ''));
+                                            $fechaFmt = $fecha !== '' && strtotime($fecha) !== false ? date('d/m/Y', strtotime($fecha)) : '—';
+                                            $afiliacion = strtoupper(trim((string) ($row['afiliacion'] ?? '')));
+                                            if ($afiliacion === '') {
+                                                $afiliacion = '—';
+                                            }
+                                            $tipoAtencion = strtoupper(trim((string) ($row['tipo_atencion'] ?? 'SIN TIPO')));
+                                            $tarifaStatus = strtoupper(trim((string) ($row['tarifa_lookup_status'] ?? 'SIN_DIAGNOSTICO')));
+                                            $tarifaReason = trim((string) ($row['tarifa_lookup_reason'] ?? ''));
+                                            $tarifaLevelTitle = trim((string) ($row['tarifa_level_title'] ?? ''));
+                                            $tarifaLevelKey = trim((string) ($row['tarifa_level_key'] ?? ''));
+                                            $tarifaCodigo = trim((string) ($row['tarifa_codigo'] ?? ''));
+                                            $tarifaCodigoMatch = trim((string) ($row['tarifa_codigo_match'] ?? ''));
+                                            $tarifaDescripcionMatch = trim((string) ($row['tarifa_descripcion_match'] ?? ''));
+                                            $montoTarifa = (float) ($row['monto_estimado_tarifario'] ?? 0);
+                                        @endphp
+                                        <tr>
+                                            <td>{{ $fechaFmt }}</td>
+                                            <td>{{ (string) ($row['hc_number'] ?? '—') }}</td>
+                                            <td>{{ ucwords(strtolower(trim((string) ($row['nombre_completo'] ?? '—')))) }}</td>
+                                            <td>{{ $tipoAtencion }}</td>
+                                            <td>{{ $afiliacion }}</td>
+                                            <td>{{ $procedimientoLegible((string) ($row['procedimiento_proyectado'] ?? '')) }}</td>
+                                            <td>{{ $tarifaCodigo !== '' ? $tarifaCodigo : '—' }}</td>
+                                            <td>{{ $tarifaLevelTitle !== '' ? strtoupper($tarifaLevelTitle) : ($tarifaLevelKey !== '' ? strtoupper($tarifaLevelKey) : '—') }}</td>
+                                            <td>
+                                                <div class="fw-600">{{ $tarifaStatus }}</div>
+                                                <small class="text-muted">{{ $tarifaReason !== '' ? $tarifaReason : '—' }}</small>
+                                            </td>
+                                            <td>{{ $tarifaCodigoMatch !== '' ? $tarifaCodigoMatch : '—' }}</td>
+                                            <td>{{ $tarifaDescripcionMatch !== '' ? strtoupper($tarifaDescripcionMatch) : '—' }}</td>
+                                            <td class="text-end">${{ number_format($montoTarifa, 2) }}</td>
+                                        </tr>
+                                    @endforeach
+                                    </tbody>
+                                </table>
+                            </div>
+                            @if(count($sinCostoConfiguradoRows) > count($sinCostoConfiguradoPreviewRows))
+                                <div class="text-muted mt-10">
+                                    Mostrando {{ count($sinCostoConfiguradoPreviewRows) }} de {{ count($sinCostoConfiguradoRows) }} casos. Usa el Excel para revisar el detalle completo.
+                                </div>
+                            @endif
+                        </div>
+                    </div>
+                </div>
+            </div>
+        @endif
+
+        @if(!empty($sinTarifaRows))
+            <div class="row">
+                <div class="col-12">
+                    <div class="box">
+                        <div class="box-header with-border d-flex flex-wrap justify-content-between align-items-center gap-2">
+                            <div>
+                                <h5 class="box-title mb-0">Casos sin tarifa estimable</h5>
+                                <small class="text-muted">Estos son los casos que explican el KPI de "Sin tarifa estimable". El Excel del informe ahora también trae este diagnóstico.</small>
+                            </div>
+                            <div class="d-flex flex-wrap gap-2">
+                                @foreach($sinTarifaStatusCounts as $status => $count)
+                                    <span class="badge bg-danger-light text-danger">{{ $status }}: {{ $count }}</span>
+                                @endforeach
+                            </div>
+                        </div>
+                        <div class="box-body">
+                            <div class="table-responsive">
+                                <table class="table table-sm table-striped table-hover mb-0">
+                                    <thead class="table-light">
+                                    <tr>
+                                        <th>Fecha</th>
+                                        <th>HC</th>
+                                        <th>Paciente</th>
+                                        <th>Tipo</th>
+                                        <th>Afiliación</th>
+                                        <th>Procedimiento</th>
+                                        <th>Código extraído</th>
+                                        <th>Nivel pricing</th>
+                                        <th>Diagnóstico</th>
+                                        <th>Código match</th>
+                                        <th>Detalle match</th>
+                                        <th class="text-end">Estimado</th>
+                                    </tr>
+                                    </thead>
+                                    <tbody>
+                                    @foreach($sinTarifaPreviewRows as $row)
+                                        @php
+                                            $fecha = trim((string) ($row['fecha'] ?? ''));
+                                            $fechaFmt = $fecha !== '' && strtotime($fecha) !== false ? date('d/m/Y', strtotime($fecha)) : '—';
+                                            $afiliacion = strtoupper(trim((string) ($row['afiliacion'] ?? '')));
+                                            if ($afiliacion === '') {
+                                                $afiliacion = '—';
+                                            }
+                                            $tipoAtencion = strtoupper(trim((string) ($row['tipo_atencion'] ?? 'SIN TIPO')));
+                                            $tarifaStatus = strtoupper(trim((string) ($row['tarifa_lookup_status'] ?? 'SIN_DIAGNOSTICO')));
+                                            $tarifaReason = trim((string) ($row['tarifa_lookup_reason'] ?? ''));
+                                            $tarifaLevelTitle = trim((string) ($row['tarifa_level_title'] ?? ''));
+                                            $tarifaLevelKey = trim((string) ($row['tarifa_level_key'] ?? ''));
+                                            $tarifaCodigo = trim((string) ($row['tarifa_codigo'] ?? ''));
+                                            $tarifaCodigoMatch = trim((string) ($row['tarifa_codigo_match'] ?? ''));
+                                            $tarifaDescripcionMatch = trim((string) ($row['tarifa_descripcion_match'] ?? ''));
+                                            $montoEstimado = (float) ($row['monto_por_cobrar_estimado'] ?? 0);
+                                            if ($montoEstimado <= 0) {
+                                                $montoEstimado = (float) ($row['monto_perdida_estimada'] ?? 0);
+                                            }
+                                        @endphp
+                                        <tr>
+                                            <td>{{ $fechaFmt }}</td>
+                                            <td>{{ (string) ($row['hc_number'] ?? '—') }}</td>
+                                            <td>{{ ucwords(strtolower(trim((string) ($row['nombre_completo'] ?? '—')))) }}</td>
+                                            <td>{{ $tipoAtencion }}</td>
+                                            <td>{{ $afiliacion }}</td>
+                                            <td>{{ $procedimientoLegible((string) ($row['procedimiento_proyectado'] ?? '')) }}</td>
+                                            <td>{{ $tarifaCodigo !== '' ? $tarifaCodigo : '—' }}</td>
+                                            <td>{{ $tarifaLevelTitle !== '' ? strtoupper($tarifaLevelTitle) : ($tarifaLevelKey !== '' ? strtoupper($tarifaLevelKey) : '—') }}</td>
+                                            <td>
+                                                <div class="fw-600">{{ $tarifaStatus }}</div>
+                                                <small class="text-muted">{{ $tarifaReason !== '' ? $tarifaReason : '—' }}</small>
+                                            </td>
+                                            <td>{{ $tarifaCodigoMatch !== '' ? $tarifaCodigoMatch : '—' }}</td>
+                                            <td>{{ $tarifaDescripcionMatch !== '' ? strtoupper($tarifaDescripcionMatch) : '—' }}</td>
+                                            <td class="text-end">{{ $montoEstimado > 0 ? '$' . number_format($montoEstimado, 2) : '—' }}</td>
+                                        </tr>
+                                    @endforeach
+                                    </tbody>
+                                </table>
+                            </div>
+                            @if(count($sinTarifaRows) > count($sinTarifaPreviewRows))
+                                <div class="text-muted mt-10">
+                                    Mostrando {{ count($sinTarifaPreviewRows) }} de {{ count($sinTarifaRows) }} casos. Usa el Excel para revisar el detalle completo.
+                                </div>
+                            @endif
+                        </div>
+                    </div>
+                </div>
+            </div>
+        @endif
+
         <div class="row">
             <div class="col-xl-12 col-12">
                 <div class="box">
@@ -1425,6 +1798,12 @@
                                         if ($estadoRealizacion === '') {
                                             $estadoRealizacion = '—';
                                         }
+                                        $estadoRealizacionBadge = in_array($estadoRealizacion, ['FACTURADA', 'REALIZADA_CONSULTA', 'REALIZADA_CON_ARCHIVOS', 'REALIZADA_INFORMADA'], true)
+                                            || str_contains($estadoRealizacion, 'OPERADA')
+                                            ? 'bg-success'
+                                            : (in_array($estadoRealizacion, ['CANCELADA', 'AUSENTE'], true)
+                                                ? 'bg-danger'
+                                                : ($estadoRealizacion === 'SIN_CIERRE_OPERATIVO' ? 'bg-warning' : 'bg-secondary'));
                                         $estadoFacturacionOperativa = strtoupper(trim((string) ($row['estado_facturacion_operativa'] ?? '')));
                                         if ($estadoFacturacionOperativa === '') {
                                             $estadoFacturacionOperativa = $facturado ? 'FACTURADA' : 'SIN FACTURACION';
@@ -1458,11 +1837,7 @@
                                             <span class="badge bg-success">{{ strtoupper($estadoEncuentro) }}</span>
                                         </td>
                                         <td>
-                                                <span class="badge {{
-                                                    str_contains($estadoRealizacion, 'OPERADA') ? 'bg-success' :
-                                                    ($estadoRealizacion === 'CANCELADA' ? 'bg-danger' :
-                                                    ($estadoRealizacion === 'SIN_CIERRE_OPERATIVO' ? 'bg-warning' : 'bg-secondary'))
-                                                }}">
+                                                <span class="badge {{ $estadoRealizacionBadge }}">
                                                     {{ str_replace('_', ' ', $estadoRealizacion) }}
                                                 </span>
                                         </td>
@@ -1538,6 +1913,10 @@
             const pniEstados = @json($pniEstados);
             const pniDoctoresPorCobrar = @json($pniDoctoresPorCobrar);
             const pniDoctoresPerdida = @json($pniDoctoresPerdida);
+            const imagenesEstados = @json($imagenesEstados);
+            const imagenesEstadosInforme = @json($imagenesEstadosInforme);
+            const imagenesDoctoresPorCobrar = @json($imagenesDoctoresPorCobrar);
+            const imagenesDoctoresPerdida = @json($imagenesDoctoresPerdida);
             const serviciosOftalmologicosEstados = @json($serviciosOftalmologicosEstados);
             const serviciosOftalmologicosDoctoresPorCobrar = @json($serviciosOftalmologicosDoctoresPorCobrar);
             const serviciosOftalmologicosDoctoresPerdida = @json($serviciosOftalmologicosDoctoresPerdida);
@@ -2276,6 +2655,22 @@
                 color: '#f59e0b',
             });
             buildHorizontalMoneyChart('#pniPerdidaDoctorChart', pniDoctoresPerdida, {
+                seriesName: 'Pérdida estimada',
+                xTitle: 'Pérdida estimada',
+                color: '#dc2626',
+            });
+            buildHorizontalChart(
+                '#imagenesEstadoChart',
+                'Imágenes por estado real',
+                Array.isArray(imagenesEstados) ? imagenesEstados : [],
+                '#06b6d4'
+            );
+            buildHorizontalMoneyChart('#imagenesPorCobrarDoctorChart', imagenesDoctoresPorCobrar, {
+                seriesName: 'Por cobrar estimado',
+                xTitle: 'Por cobrar estimado',
+                color: '#f59e0b',
+            });
+            buildHorizontalMoneyChart('#imagenesPerdidaDoctorChart', imagenesDoctoresPerdida, {
                 seriesName: 'Pérdida estimada',
                 xTitle: 'Pérdida estimada',
                 color: '#dc2626',

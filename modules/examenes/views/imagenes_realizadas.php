@@ -141,8 +141,15 @@ sort($estadoOpciones);
             $totalSinNas = 0;
             foreach ($imagenesRealizadas as $row) {
                 $informado = !empty($row['informe_id']);
+                $nasHasFiles = (int)($row['nas_has_files'] ?? 0) === 1 || (int)($row['nas_files_count'] ?? 0) > 0;
+                $nasScanStatus = trim((string)($row['nas_scan_status'] ?? ''));
+                $nasStatus = $nasHasFiles
+                    ? 'con-archivos'
+                    : (in_array($nasScanStatus, ['empty', 'missing_dir'], true) ? 'sin-archivos' : 'pendiente');
                 if ($informado) {
                     $totalInformados++;
+                } elseif ($nasStatus === 'sin-archivos') {
+                    $totalSinNas++;
                 } else {
                     $totalNoInformados++;
                 }
@@ -258,6 +265,12 @@ sort($estadoOpciones);
                         $tipoParsed = $parseProcedimiento($tipoExamenRaw);
                         $tipoExamen = $tipoParsed['texto'];
                         $ojoExamen = $tipoParsed['ojo'];
+                        $nasHasFiles = (int)($row['nas_has_files'] ?? 0) === 1 || (int)($row['nas_files_count'] ?? 0) > 0;
+                        $nasFilesCount = (int)($row['nas_files_count'] ?? 0);
+                        $nasScanStatus = trim((string)($row['nas_scan_status'] ?? ''));
+                        $nasStatus = $nasHasFiles
+                            ? 'con-archivos'
+                            : (in_array($nasScanStatus, ['empty', 'missing_dir'], true) ? 'sin-archivos' : 'pendiente');
                         ?>
                         <?php $informado = !empty($row['informe_id']); ?>
                         <tr data-id="<?= (int)($row['id'] ?? 0) ?>"
@@ -269,7 +282,8 @@ sort($estadoOpciones);
                             data-paciente="<?= htmlspecialchars((string)($row['full_name'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                             data-examen="<?= htmlspecialchars($tipoExamen, ENT_QUOTES, 'UTF-8') ?>"
                             data-tipo-raw="<?= htmlspecialchars($tipoExamenRaw, ENT_QUOTES, 'UTF-8') ?>"
-                            data-nas-status="pendiente"
+                            data-nas-status="<?= htmlspecialchars($nasStatus, ENT_QUOTES, 'UTF-8') ?>"
+                            data-pendiente-informar="<?= (!$informado && $nasHasFiles) ? '1' : '0' ?>"
                             data-informado="<?= $informado ? '1' : '0' ?>">
                             <td class="text-center select-cell">
                                 <input type="checkbox" class="form-check-input row-select"
@@ -292,6 +306,15 @@ sort($estadoOpciones);
                                 <button type="button" class="btn btn-sm btn-outline-info btn-view-nas">
                                     <i class="mdi mdi-folder-image"></i> Ver imágenes
                                 </button>
+                                <div class="small mt-5">
+                                    <?php if ($nasHasFiles): ?>
+                                        <span class="badge badge-success-light">Con NAS (<?= $nasFilesCount ?>)</span>
+                                    <?php elseif ($nasStatus === 'sin-archivos'): ?>
+                                        <span class="badge badge-warning-light">Sin NAS</span>
+                                    <?php else: ?>
+                                        <span class="badge badge-secondary-light">NAS pendiente</span>
+                                    <?php endif; ?>
+                                </div>
                             </td>
                             <td>
                                 <?php

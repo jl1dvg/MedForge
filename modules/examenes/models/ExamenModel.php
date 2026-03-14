@@ -1426,41 +1426,83 @@ class ExamenModel
         $afiliacionExactExpr = "TRIM(" . $this->normalizeSqlText($displayAfiliacionExpr) . ")";
         $categoriaContext = $this->resolveAfiliacionCategoriaContext($rawAfiliacionExpr, 'iacm');
         $sedeExpr = $this->imagenesSedeExpr();
-        $patientHcExpr = "COALESCE(NULLIF(TRIM(pd.hc_number), ''), pp.hc_number)";
-
+        $imagenInformeJoin = "LEFT JOIN (
+                SELECT
+                    ii.form_id,
+                    MAX(ii.id) AS informe_id,
+                    MAX(ii.firmado_por) AS informe_firmado_por,
+                    MAX(ii.updated_at) AS informe_actualizado,
+                    COUNT(*) AS informes_total
+                FROM imagenes_informes ii
+                WHERE ii.form_id IS NOT NULL AND TRIM(ii.form_id) <> ''
+                GROUP BY ii.form_id
+            ) ii ON ii.form_id = pp.form_id";
+        $nasSelect = ($this->tableExists('imagenes_nas_index') && $this->columnExists('imagenes_nas_index', 'form_id'))
+            ? "COALESCE(ini.has_files, 0) AS nas_has_files,
+               COALESCE(ini.files_count, 0) AS nas_files_count,
+               COALESCE(ini.image_count, 0) AS nas_image_count,
+               COALESCE(ini.pdf_count, 0) AS nas_pdf_count,
+               COALESCE(NULLIF(TRIM(ini.scan_status), ''), '') AS nas_scan_status,
+               ini.last_scanned_at AS nas_last_scanned_at"
+            : "0 AS nas_has_files,
+               0 AS nas_files_count,
+               0 AS nas_image_count,
+               0 AS nas_pdf_count,
+               '' AS nas_scan_status,
+               NULL AS nas_last_scanned_at";
+        $nasJoin = ($this->tableExists('imagenes_nas_index') && $this->columnExists('imagenes_nas_index', 'form_id'))
+            ? "LEFT JOIN imagenes_nas_index ini ON ini.form_id = pp.form_id"
+            : '';
+        $hasFacturacionReal = $this->tableExists('billing_facturacion_real')
+            && $this->columnExists('billing_facturacion_real', 'form_id')
+            && $this->columnExists('billing_facturacion_real', 'monto_honorario');
         $facturadoSelect = $includeFacturado
+            && $hasFacturacionReal
             ? "CASE
-                    WHEN bm.billing_id IS NULL AND COALESCE(bm.total_produccion, 0) <= 0 THEN 0
+                    WHEN bfr.billing_id IS NULL AND COALESCE(bfr.total_produccion, 0) <= 0 THEN 0
                     ELSE 1
                END AS facturado,
-               bm.billing_id,
-               bm.fecha_facturacion,
-               COALESCE(bm.total_produccion, 0) AS total_produccion,
-               COALESCE(bm.procedimientos_facturados, 0) AS procedimientos_facturados"
+               bfr.billing_id,
+               bfr.fecha_facturacion,
+               bfr.fecha_atencion,
+               COALESCE(bfr.total_produccion, 0) AS total_produccion,
+               COALESCE(bfr.procedimientos_facturados, 0) AS procedimientos_facturados,
+               bfr.numero_factura,
+               bfr.factura_id"
             : "0 AS facturado,
                NULL AS billing_id,
                NULL AS fecha_facturacion,
+               NULL AS fecha_atencion,
                0 AS total_produccion,
-               0 AS procedimientos_facturados";
+               0 AS procedimientos_facturados,
+               NULL AS numero_factura,
+               NULL AS factura_id";
         $facturadoJoin = $includeFacturado
+            && $hasFacturacionReal
             ? "LEFT JOIN (
                 SELECT
-                    bm.form_id,
-                    bm.hc_number,
-                    MAX(bm.id) AS billing_id,
+                    bfr.form_id,
+                    MAX(NULLIF(TRIM(COALESCE(bfr.factura_id, '')), '')) AS billing_id,
                     MAX(
                         CASE
-                            WHEN CAST(bm.created_at AS CHAR) IN ('', '0000-00-00', '0000-00-00 00:00:00') THEN NULL
-                            ELSE bm.created_at
+                            WHEN CAST(bfr.fecha_facturacion AS CHAR) IN ('', '0000-00-00', '0000-00-00 00:00:00') THEN NULL
+                            ELSE bfr.fecha_facturacion
                         END
                     ) AS fecha_facturacion,
-                    COALESCE(SUM(bp.proc_precio), 0) AS total_produccion,
-                    COUNT(bp.id) AS procedimientos_facturados
-                FROM billing_main bm
-                LEFT JOIN billing_procedimientos bp ON bp.billing_id = bm.id
-                WHERE bm.form_id IS NOT NULL AND TRIM(bm.form_id) <> ''
-                GROUP BY bm.form_id, bm.hc_number
-            ) bm ON bm.form_id = pp.form_id AND bm.hc_number = {$patientHcExpr}"
+                    MAX(
+                        CASE
+                            WHEN CAST(bfr.fecha_atencion AS CHAR) IN ('', '0000-00-00', '0000-00-00 00:00:00') THEN NULL
+                            ELSE bfr.fecha_atencion
+                        END
+                    ) AS fecha_atencion,
+                    MAX(NULLIF(TRIM(COALESCE(bfr.numero_factura, '')), '')) AS numero_factura,
+                    MAX(NULLIF(TRIM(COALESCE(bfr.factura_id, '')), '')) AS factura_id,
+                    COALESCE(SUM(bfr.monto_honorario), 0) AS total_produccion,
+                    COUNT(*) AS procedimientos_facturados
+                FROM billing_facturacion_real bfr
+                WHERE bfr.form_id IS NOT NULL AND TRIM(bfr.form_id) <> ''
+                GROUP BY bfr.form_id
+            ) bfr ON bfr.form_id = pp.form_id"
             : '';
 
         $sql = "SELECT
@@ -1486,13 +1528,16 @@ class ExamenModel
                 NULL AS imagen_nombre,
                 {$sedeExpr} AS sede,
                 pp.estado_agenda,
-                ii.id AS informe_id,
-                ii.firmado_por AS informe_firmado_por,
-                ii.updated_at AS informe_actualizado,
+                ii.informe_id AS informe_id,
+                ii.informe_firmado_por AS informe_firmado_por,
+                ii.informe_actualizado AS informe_actualizado,
+                COALESCE(ii.informes_total, 0) AS informes_total,
+                {$nasSelect},
                 {$facturadoSelect}
             FROM procedimiento_proyectado pp
             LEFT JOIN patient_data pd ON pd.hc_number = pp.hc_number
-            LEFT JOIN imagenes_informes ii ON ii.form_id = pp.form_id
+            {$imagenInformeJoin}
+            {$nasJoin}
             {$categoriaContext['join']}
             {$facturadoJoin}
             WHERE pp.estado_agenda IS NOT NULL
@@ -1961,6 +2006,109 @@ class ExamenModel
         $stmt->execute($params);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
         return $row ?: null;
+    }
+
+    public function buscarProcedimientoImagenOrigen(
+        string $hcNumber,
+        ?string $examenCodigo = null,
+        ?string $fechaReferencia = null,
+        ?string $nombreLike = null
+    ): ?array {
+        $hcNumber = trim($hcNumber);
+        if ($hcNumber === '') {
+            return null;
+        }
+
+        $codigo = trim((string)$examenCodigo);
+        $nombre = trim((string)$nombreLike);
+        $fecha = trim((string)$fechaReferencia);
+
+        $baseSql = 'SELECT
+                pp.id,
+                pp.form_id,
+                pp.hc_number,
+                pp.procedimiento_proyectado,
+                pp.fecha,
+                pp.hora,
+                pp.afiliacion,
+                pp.estado_agenda
+            FROM procedimiento_proyectado pp
+            WHERE pp.hc_number = :hc_number
+              AND UPPER(TRIM(COALESCE(pp.procedimiento_proyectado, \'\'))) LIKE \'IMAGENES%\'';
+
+        $buildAndFetch = function (bool $useCodigo, bool $useNombre, bool $useFecha) use ($baseSql, $hcNumber, $codigo, $nombre, $fecha): ?array {
+            $sql = $baseSql;
+            $params = [':hc_number' => $hcNumber];
+
+            if ($useCodigo && $codigo !== '') {
+                $sql .= ' AND pp.procedimiento_proyectado LIKE :codigo_like';
+                $params[':codigo_like'] = '%' . $codigo . '%';
+            }
+
+            if ($useNombre && $nombre !== '') {
+                $nombreUpper = function_exists('mb_strtoupper') ? mb_strtoupper($nombre, 'UTF-8') : strtoupper($nombre);
+                $sql .= ' AND UPPER(TRIM(pp.procedimiento_proyectado)) LIKE :nombre_like';
+                $params[':nombre_like'] = '%' . $nombreUpper . '%';
+            }
+
+            if ($useFecha && $fecha !== '') {
+                $sql .= "
+                    AND (
+                        CASE
+                            WHEN pp.fecha IS NOT NULL AND pp.hora IS NOT NULL AND TRIM(pp.hora) <> ''
+                                THEN CONCAT(pp.fecha, ' ', pp.hora, ':00')
+                            WHEN pp.fecha IS NOT NULL
+                                THEN CONCAT(pp.fecha, ' 23:59:59')
+                            ELSE NULL
+                        END
+                    ) <= :fecha_ref";
+                $params[':fecha_ref'] = $fecha;
+            }
+
+            $sql .= '
+                ORDER BY
+                    CASE
+                        WHEN pp.fecha IS NULL OR pp.fecha = \'\' THEN \'0000-00-00 00:00:00\'
+                        WHEN pp.hora IS NULL OR TRIM(pp.hora) = \'\' THEN CONCAT(pp.fecha, \' 23:59:59\')
+                        ELSE CONCAT(pp.fecha, \' \', pp.hora, \':00\')
+                    END DESC,
+                    pp.id DESC
+                LIMIT 1';
+
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute($params);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            return $row ?: null;
+        };
+
+        foreach (
+            [
+                [true, false, true],
+                [false, true, true],
+                [true, false, false],
+                [false, true, false],
+                [false, false, true],
+                [false, false, false],
+            ] as [$useCodigo, $useNombre, $useFecha]
+        ) {
+            if ($useCodigo && $codigo === '') {
+                continue;
+            }
+            if ($useNombre && $nombre === '') {
+                continue;
+            }
+            if ($useFecha && $fecha === '') {
+                continue;
+            }
+
+            $row = $buildAndFetch($useCodigo, $useNombre, $useFecha);
+            if (is_array($row) && !empty($row)) {
+                return $row;
+            }
+        }
+
+        return null;
     }
 
     public function obtenerInformeImagen(string $formId): ?array
