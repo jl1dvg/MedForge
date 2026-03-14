@@ -11,6 +11,7 @@
         "laravel/tinker": "^2.10.1",
         "mpdf/mpdf": "^8.2",
         "phpoffice/phpspreadsheet": "^2.1",
+        "phpseclib/phpseclib": "^3.0",
         "setasign/fpdi-tcpdf": "^2.3",
         "tecnickcom/tcpdf": "^6.11"
     },
