@@ -19,7 +19,7 @@ class ImagenesNasIndexService
     /**
      * @param array{
      *   days?:int,
-     *   limit?:int,
+     *   limit?:int|null,
      *   stale_hours?:int,
      *   form_id?:string|null,
      *   force?:bool
@@ -30,7 +30,11 @@ class ImagenesNasIndexService
     public function scan(array $options = [], ?callable $progress = null): array
     {
         $days = max(1, (int) ($options['days'] ?? 7));
-        $limit = max(1, min(5000, (int) ($options['limit'] ?? 200)));
+        $rawLimit = $options['limit'] ?? null;
+        $limit = null;
+        if ($rawLimit !== null && $rawLimit !== '' && (int) $rawLimit > 0) {
+            $limit = max(1, (int) $rawLimit);
+        }
         $staleHours = max(1, (int) ($options['stale_hours'] ?? 6));
         $formId = trim((string) ($options['form_id'] ?? ''));
         $force = (bool) ($options['force'] ?? false);
@@ -45,7 +49,7 @@ class ImagenesNasIndexService
         }
 
         $lockKey = 'imagenes-nas-index-scan';
-        $lock = Cache::lock($lockKey, 1800);
+        $lock = Cache::lock($lockKey, 14400);
         if (!$lock->get()) {
             return [
                 'success' => false,
@@ -57,9 +61,11 @@ class ImagenesNasIndexService
 
         try {
             $startedAt = microtime(true);
-            $candidates = $this->candidateQuery($days, $staleHours, $formId, $force)
-                ->limit($limit)
-                ->get();
+            $query = $this->candidateQuery($days, $staleHours, $formId, $force);
+            if ($limit !== null) {
+                $query->limit($limit);
+            }
+            $candidates = $query->get();
 
             $result = [
                 'success' => true,

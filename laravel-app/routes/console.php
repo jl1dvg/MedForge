@@ -10,7 +10,7 @@ Artisan::command('inspire', function () {
 
 Artisan::command('imagenes:nas-index
     {--days=7 : Dias hacia atras para buscar candidatos}
-    {--limit=200 : Maximo de form_id a escanear}
+    {--limit= : Maximo de form_id a escanear; vacio o 0 = sin limite}
     {--stale-hours=6 : Solo reescanea filas mas viejas que este umbral}
     {--form-id= : Escanea un form_id puntual}
     {--force : Ignora antiguedad del cache}', function (): int {
@@ -19,9 +19,11 @@ Artisan::command('imagenes:nas-index
 
     $this->components->info('Iniciando indexacion NAS de imagenes...');
 
+    $limitOption = $this->option('limit');
+
     $result = $service->scan([
         'days' => (int) $this->option('days'),
-        'limit' => (int) $this->option('limit'),
+        'limit' => $limitOption === null || $limitOption === '' ? null : (int) $limitOption,
         'stale_hours' => (int) $this->option('stale-hours'),
         'form_id' => $this->option('form-id'),
         'force' => (bool) $this->option('force'),
