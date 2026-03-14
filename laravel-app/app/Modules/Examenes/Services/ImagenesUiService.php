@@ -240,7 +240,8 @@ class ImagenesUiService
                COALESCE(bfr.total_produccion, 0) AS total_produccion,
                COALESCE(bfr.procedimientos_facturados, 0) AS procedimientos_facturados,
                bfr.numero_factura,
-               bfr.factura_id"
+               bfr.factura_id,
+               bfr.estado_facturacion_raw"
             : "0 AS facturado,
                NULL AS billing_id,
                NULL AS fecha_facturacion,
@@ -248,7 +249,8 @@ class ImagenesUiService
                0 AS total_produccion,
                0 AS procedimientos_facturados,
                NULL AS numero_factura,
-               NULL AS factura_id";
+               NULL AS factura_id,
+               NULL AS estado_facturacion_raw";
         $facturadoJoin = $includeFacturado && $hasFacturacionReal
             ? "LEFT JOIN (
                 SELECT
@@ -268,6 +270,7 @@ class ImagenesUiService
                     ) AS fecha_atencion,
                     MAX(NULLIF(TRIM(COALESCE(bfr.numero_factura, '')), '')) AS numero_factura,
                     MAX(NULLIF(TRIM(COALESCE(bfr.factura_id, '')), '')) AS factura_id,
+                    MAX(NULLIF(TRIM(COALESCE(bfr.estado, '')), '')) AS estado_facturacion_raw,
                     COALESCE(SUM(bfr.monto_honorario), 0) AS total_produccion,
                     COUNT(*) AS procedimientos_facturados
                 FROM billing_facturacion_real bfr
@@ -482,7 +485,11 @@ class ImagenesUiService
     {
         $estadoAgenda = trim((string) ($row['estado_agenda'] ?? ''));
         $estadoRealizacion = $this->resolveImagenRealizationState($row);
-        $estadoFacturacion = $this->resolveImagenBillingState($estadoRealizacion, (int) ($row['facturado'] ?? 0) === 1);
+        $estadoFacturacion = $this->resolveImagenBillingState(
+            $estadoRealizacion,
+            (int) ($row['facturado'] ?? 0) === 1,
+            (string) ($row['estado_facturacion_raw'] ?? '')
+        );
         $estadoInforme = $this->resolveImagenInformeState($row);
 
         $row['estado_realizacion'] = $estadoRealizacion;
@@ -526,8 +533,24 @@ class ImagenesUiService
         return 'SIN_CIERRE_OPERATIVO';
     }
 
-    private function resolveImagenBillingState(string $estadoRealizacion, bool $facturado): string
+    private function resolveImagenBillingState(string $estadoRealizacion, bool $facturado, string $estadoFacturacionRaw = ''): string
     {
+        $estadoFacturacionRawNorm = $this->normalizarTexto($estadoFacturacionRaw);
+
+        if ($estadoFacturacionRawNorm !== '') {
+            if (str_contains($estadoFacturacionRawNorm, 'cancel') || str_contains($estadoFacturacionRawNorm, 'anul')) {
+                return 'CANCELADA';
+            }
+
+            if (
+                str_contains($estadoFacturacionRawNorm, 'pend')
+                || str_contains($estadoFacturacionRawNorm, 'credito')
+                || str_contains($estadoFacturacionRawNorm, 'cartera')
+            ) {
+                return 'PENDIENTE_PAGO';
+            }
+        }
+
         if ($facturado || $estadoRealizacion === 'FACTURADA') {
             return 'FACTURADA';
         }
@@ -760,7 +783,11 @@ class ImagenesUiService
 
             $estadoAgenda = trim((string) ($row['estado_agenda'] ?? ''));
             $estadoRealizacion = (string) ($row['estado_realizacion'] ?? $this->resolveImagenRealizationState($row));
-            $estadoFacturacion = (string) ($row['estado_facturacion'] ?? $this->resolveImagenBillingState($estadoRealizacion, (int) ($row['facturado'] ?? 0) === 1));
+            $estadoFacturacion = (string) ($row['estado_facturacion'] ?? $this->resolveImagenBillingState(
+                $estadoRealizacion,
+                (int) ($row['facturado'] ?? 0) === 1,
+                (string) ($row['estado_facturacion_raw'] ?? '')
+            ));
             $estadoInforme = (string) ($row['estado_informe'] ?? $this->resolveImagenInformeState($row));
             $informado = $estadoInforme === 'INFORMADA';
             $pendienteInformar = $estadoInforme === 'PENDIENTE_INFORMAR';
@@ -778,6 +805,7 @@ class ImagenesUiService
                 'examen_realizado' => $this->isImagenEstadoRealizado($estadoRealizacion),
                 'estado_realizacion' => $estadoRealizacion,
                 'estado_facturacion' => $estadoFacturacion,
+                'estado_facturacion_raw' => trim((string) ($row['estado_facturacion_raw'] ?? '')),
                 'estado_informe' => $estadoInforme,
                 'informado' => $informado,
                 'pendiente_informar' => $pendienteInformar,
@@ -827,6 +855,8 @@ class ImagenesUiService
         $pendientesInformar = 0;
         $facturados = 0;
         $pendientesFacturar = 0;
+        $pendientesPago = 0;
+        $facturacionCancelada = 0;
         $facturadosEInformados = 0;
         $facturadosSinInformar = 0;
         $informadosSinFacturar = 0;
@@ -858,6 +888,11 @@ class ImagenesUiService
         foreach ($rows as $row) {
             $estadoAgenda = trim((string) ($row['estado_agenda'] ?? ''));
             $estadoRealizacion = (string) ($row['estado_realizacion'] ?? $this->resolveImagenRealizationState($row));
+            $estadoFacturacion = (string) ($row['estado_facturacion'] ?? $this->resolveImagenBillingState(
+                $estadoRealizacion,
+                (int) ($row['facturado'] ?? 0) === 1,
+                (string) ($row['estado_facturacion_raw'] ?? '')
+            ));
             $estadoInforme = (string) ($row['estado_informe'] ?? $this->resolveImagenInformeState($row));
             $informado = $estadoInforme === 'INFORMADA';
             $facturado = (int) ($row['facturado'] ?? 0) === 1;
@@ -903,8 +938,14 @@ class ImagenesUiService
                 $noInformados++;
             }
 
-            if ($facturado) {
+            if ($facturado || $estadoFacturacion === 'FACTURADA') {
                 $facturados++;
+            }
+            if ($estadoFacturacion === 'PENDIENTE_PAGO') {
+                $pendientesPago++;
+            }
+            if ($estadoFacturacion === 'CANCELADA') {
+                $facturacionCancelada++;
             }
 
             $produccionFacturada += max(0.0, (float) ($row['total_produccion'] ?? 0));
@@ -1041,9 +1082,12 @@ class ImagenesUiService
         return [
             'cards' => [
                 ['label' => 'Total estudios', 'value' => $total, 'hint' => $rangeLabel !== '' ? ('Rango: ' . $rangeLabel) : 'Sin rango'],
-                ['label' => 'Realizadas', 'value' => $examenesRealizados, 'hint' => $total > 0 ? (number_format(($examenesRealizados * 100) / $total, 1) . '% del total') : '0.0% del total'],
-                ['label' => 'Facturadas', 'value' => $facturados, 'hint' => $examenesRealizados > 0 ? (number_format(($facturados * 100) / $examenesRealizados, 1) . '% de realizadas') : '0.0% de realizadas'],
+                ['label' => 'Atendidos', 'value' => $examenesRealizados, 'hint' => $total > 0 ? (number_format(($examenesRealizados * 100) / $total, 1) . '% del total') : '0.0% del total'],
+                ['label' => 'Facturados', 'value' => $facturados, 'hint' => $examenesRealizados > 0 ? (number_format(($facturados * 100) / $examenesRealizados, 1) . '% de atendidos') : '0.0% de atendidos'],
+                ['label' => 'Pendiente de pago', 'value' => $pendientesPago, 'hint' => 'Estado en facturación real marcado como pendiente/cartera'],
+                ['label' => 'Cancelados', 'value' => $canceladas, 'hint' => 'Cierre operativo cancelado en agenda'],
                 ['label' => 'Pendiente de facturar', 'value' => $pendientesFacturar, 'hint' => 'Realizadas con evidencia técnica aún sin billing real'],
+                ['label' => 'Facturación cancelada', 'value' => $facturacionCancelada, 'hint' => 'Registros con estado cancelado/anulado en facturación'],
                 ['label' => 'Pérdida', 'value' => $perdidas, 'hint' => $canceladas . ' canceladas, ' . $ausentes . ' ausentes'],
                 ['label' => 'Producción facturada', 'value' => '$' . number_format($produccionFacturada, 2), 'hint' => 'Monto real facturado en el rango.'],
                 ['label' => 'Ticket promedio facturado', 'value' => '$' . number_format($ticketPromedioFacturado, 2), 'hint' => $facturados > 0 ? ('Promedio por ' . $facturados . ' estudios facturados') : 'Sin estudios facturados'],
@@ -1066,6 +1110,9 @@ class ImagenesUiService
                 'produccion_promedio_por_estudio' => round($produccionPromedioPorEstudio, 2),
                 'pendientes_informar' => $pendientesInformar,
                 'pendientes_facturar' => $pendientesFacturar,
+                'pendientes_pago' => $pendientesPago,
+                'cancelados' => $canceladas,
+                'facturacion_cancelada' => $facturacionCancelada,
                 'perdidas' => $perdidas,
                 'sin_cierre_operativo' => $sinCierre,
             ],
@@ -1084,11 +1131,12 @@ class ImagenesUiService
                     'values' => array_values($aging),
                 ],
                 'trazabilidad' => [
-                    'labels' => ['Facturada', 'Realizada con archivos', 'Realizada informada'],
+                    'labels' => ['Atendidos', 'Facturados', 'Pendiente de pago', 'Cancelados'],
                     'values' => [
-                        (int) ($estadoRealCounts['FACTURADA'] ?? 0),
-                        (int) ($estadoRealCounts['REALIZADA_CON_ARCHIVOS'] ?? 0),
-                        (int) ($estadoRealCounts['REALIZADA_INFORMADA'] ?? 0),
+                        $examenesRealizados,
+                        $facturados,
+                        $pendientesPago,
+                        $canceladas,
                     ],
                 ],
                 'citas_vs_realizados' => [

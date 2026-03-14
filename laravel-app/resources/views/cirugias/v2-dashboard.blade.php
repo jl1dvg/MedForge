@@ -16,6 +16,7 @@
     $cirugias_sin_solicitud_previa = is_array($cirugias_sin_solicitud_previa ?? null) ? $cirugias_sin_solicitud_previa : [];
     $tat_revision_protocolos = is_array($tat_revision_protocolos ?? null) ? $tat_revision_protocolos : [];
     $kpi_cards = is_array($kpi_cards ?? null) ? $kpi_cards : [];
+    $facturacion_trazabilidad = is_array($facturacion_trazabilidad ?? null) ? $facturacion_trazabilidad : [];
     $afiliacion_filter = (string) ($afiliacion_filter ?? '');
     $afiliacion_options = is_array($afiliacion_options ?? null) ? $afiliacion_options : [];
     $afiliacion_categoria_filter = (string) ($afiliacion_categoria_filter ?? '');
@@ -30,6 +31,7 @@
         'topDoctoresSolicitudesRealizadas' => $top_doctores_solicitudes_realizadas,
         'estadoProtocolos' => $estado_protocolos,
         'cirugiasPorConvenio' => $cirugias_por_convenio,
+        'facturacionTrazabilidad' => $facturacion_trazabilidad,
     ], JSON_UNESCAPED_UNICODE);
 
     $exportQuery = http_build_query([
@@ -271,7 +273,7 @@
             </div>
             <div class="col-xl-4">
                 <div class="box">
-                    <div class="box-header"><h4 class="box-title">Estado de protocolos</h4></div>
+                    <div class="box-header"><h4 class="box-title">Trazabilidad facturación</h4></div>
                     <div class="box-body"><div id="estado-protocolos" style="height: 300px;"></div></div>
                 </div>
             </div>

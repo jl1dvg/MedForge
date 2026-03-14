@@ -24,15 +24,30 @@ window.initCirugiasDashboard = function (data) {
 
     var estadoEl = document.querySelector('#estado-protocolos');
     if (estadoEl) {
-        var estadoSeries = [
-            data.estadoProtocolos.revisado || 0,
-            data.estadoProtocolos['no revisado'] || 0,
-            data.estadoProtocolos.incompleto || 0
-        ];
+        var trazabilidad = data.facturacionTrazabilidad || {};
+        var hasTrazabilidad = Object.keys(trazabilidad).length > 0;
+
+        var estadoSeries = hasTrazabilidad
+            ? [
+                Number(trazabilidad.atendidos || 0),
+                Number(trazabilidad.facturados || 0),
+                Number(trazabilidad.pendiente_pago || 0),
+                Number(trazabilidad.cancelados || 0)
+            ]
+            : [
+                Number(data.estadoProtocolos.revisado || 0),
+                Number(data.estadoProtocolos['no revisado'] || 0),
+                Number(data.estadoProtocolos.incompleto || 0)
+            ];
+
         var estadoOptions = {
             series: estadoSeries,
-            labels: ['Revisado', 'No revisado', 'Incompleto'],
-            colors: ['#2e7d32', '#ff9800', '#ef5350'],
+            labels: hasTrazabilidad
+                ? ['Atendidos', 'Facturados', 'Pendiente de pago', 'Cancelados']
+                : ['Revisado', 'No revisado', 'Incompleto'],
+            colors: hasTrazabilidad
+                ? ['#1e88e5', '#2e7d32', '#ffb300', '#ef5350']
+                : ['#2e7d32', '#ff9800', '#ef5350'],
             chart: Object.assign({}, chartDefaults.chart, { type: 'donut', height: 300 })
         };
         new ApexCharts(estadoEl, estadoOptions).render();

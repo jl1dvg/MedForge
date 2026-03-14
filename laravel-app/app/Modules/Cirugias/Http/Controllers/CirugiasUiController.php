@@ -359,6 +359,7 @@ class CirugiasUiController
         $topDoctoresSolicitudesRealizadas = $this->dashboardService->getTopDoctoresSolicitudesRealizadas($startSql, $endSql, 10, $afiliacionFilter, $afiliacionCategoriaFilter, $sedeFilter);
         $cirugiasPorConvenio = $this->dashboardService->getCirugiasPorConvenio($startSql, $endSql, $afiliacionFilter, $afiliacionCategoriaFilter, $sedeFilter);
         $programacionKpis = $this->dashboardService->getProgramacionKpis($startSql, $endSql, $afiliacionFilter, $afiliacionCategoriaFilter, $sedeFilter);
+        $facturacionTrazabilidad = $this->dashboardService->getCirugiasFacturacionTrazabilidad($startSql, $endSql, $afiliacionFilter, $afiliacionCategoriaFilter, $sedeFilter);
         $reingresoMismoDiagnostico = $this->dashboardService->getReingresoMismoDiagnostico($startSql, $endSql);
         $cirugiasSinSolicitudPrevia = $this->dashboardService->getCirugiasSinSolicitudPrevia($startSql, $endSql, $afiliacionFilter, $afiliacionCategoriaFilter, $sedeFilter);
         $tatRevisionProtocolos = $this->dashboardService->getTatRevisionProtocolos($startSql, $endSql, $afiliacionFilter, $afiliacionCategoriaFilter, $sedeFilter);
@@ -375,6 +376,7 @@ class CirugiasUiController
             'top_doctores_solicitudes_realizadas' => $topDoctoresSolicitudesRealizadas,
             'cirugias_por_convenio' => $cirugiasPorConvenio,
             'programacion_kpis' => $programacionKpis,
+            'facturacion_trazabilidad' => $facturacionTrazabilidad,
             'reingreso_mismo_diagnostico' => $reingresoMismoDiagnostico,
             'cirugias_sin_solicitud_previa' => $cirugiasSinSolicitudPrevia,
             'tat_revision_protocolos' => $tatRevisionProtocolos,
@@ -390,6 +392,7 @@ class CirugiasUiController
                 $duracionPromedio,
                 $estadoProtocolos,
                 $programacionKpis,
+                $facturacionTrazabilidad,
                 $reingresoMismoDiagnostico,
                 $cirugiasSinSolicitudPrevia,
                 $tatRevisionProtocolos
@@ -460,6 +463,7 @@ class CirugiasUiController
     /**
      * @param array<string, mixed> $estadoProtocolos
      * @param array<string, mixed> $programacionKpis
+     * @param array<string, mixed> $facturacionTrazabilidad
      * @param array<string, mixed> $reingresoMismoDiagnostico
      * @param array<string, mixed> $cirugiasSinSolicitudPrevia
      * @param array<string, mixed> $tatRevisionProtocolos
@@ -471,6 +475,7 @@ class CirugiasUiController
         string $duracionPromedio,
         array $estadoProtocolos,
         array $programacionKpis,
+        array $facturacionTrazabilidad,
         array $reingresoMismoDiagnostico,
         array $cirugiasSinSolicitudPrevia,
         array $tatRevisionProtocolos
@@ -479,6 +484,10 @@ class CirugiasUiController
         $realizadas = (int) ($programacionKpis['realizadas'] ?? 0);
         $suspendidas = (int) ($programacionKpis['suspendidas'] ?? 0);
         $reprogramadas = (int) ($programacionKpis['reprogramadas'] ?? 0);
+        $atendidos = (int) ($facturacionTrazabilidad['atendidos'] ?? $totalCirugias);
+        $facturados = (int) ($facturacionTrazabilidad['facturados'] ?? 0);
+        $pendientePago = (int) ($facturacionTrazabilidad['pendiente_pago'] ?? 0);
+        $cancelados = (int) ($facturacionTrazabilidad['cancelados'] ?? 0);
         $cumplimiento = (float) ($programacionKpis['cumplimiento'] ?? 0);
         $tasaSuspendidas = (float) ($programacionKpis['tasa_suspendidas'] ?? 0);
         $tasaReprogramacion = (float) ($programacionKpis['tasa_reprogramacion'] ?? 0);
@@ -503,6 +512,10 @@ class CirugiasUiController
 
         return [
             ['label' => 'Cirugías en el periodo', 'value' => (string) $totalCirugias, 'hint' => 'Total de protocolos quirúrgicos en el rango'],
+            ['label' => 'Atendidos', 'value' => (string) $atendidos, 'hint' => $atendidos > 0 ? ('Base quirúrgica del período') : 'Sin atenciones en el rango'],
+            ['label' => 'Facturados', 'value' => (string) $facturados, 'hint' => $atendidos > 0 ? ($this->formatPercent(($facturados * 100) / max(1, $atendidos)) . ' de atendidos') : '0.0% de atendidos'],
+            ['label' => 'Pendiente de pago', 'value' => (string) $pendientePago, 'hint' => 'Facturación en estado pendiente/cartera/crédito'],
+            ['label' => 'Cancelados', 'value' => (string) $cancelados, 'hint' => 'Solicitudes suspendidas/canceladas en programación'],
             ['label' => 'Protocolos revisados', 'value' => (string) ((int) ($estadoProtocolos['revisado'] ?? 0)), 'hint' => 'Protocolos completos y validados'],
             ['label' => 'Cirugías sin facturar', 'value' => (string) $sinFacturar, 'hint' => 'Protocolos sin registro en facturación'],
             ['label' => 'Duración promedio', 'value' => $duracionPromedio, 'hint' => 'Tiempo quirúrgico promedio por protocolo'],

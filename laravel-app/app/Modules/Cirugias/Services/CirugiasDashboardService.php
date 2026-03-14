@@ -260,6 +260,95 @@ class CirugiasDashboardService
         return (int) $stmt->fetchColumn();
     }
 
+    /**
+     * Trazabilidad operativa de cirugías, alineada al enfoque de Informe Particulares.
+     *
+     * - atendidos: protocolos quirúrgicos en el rango (base = protocolo_data)
+     * - facturados: protocolos con evidencia en billing_facturacion_real
+     * - pendiente_pago: facturados con estado de cartera/pendiente/crédito
+     * - cancelados: solicitudes quirúrgicas canceladas/suspendidas en programación
+     */
+    public function getCirugiasFacturacionTrazabilidad(
+        string $start,
+        string $end,
+        string $afiliacionFilter = '',
+        string $afiliacionCategoriaFilter = '',
+        string $sedeFilter = ''
+    ): array {
+        $afiliacionKeyExpr = $this->afiliacionGroupKeyExpr('p');
+        $afiliacionFilterValue = $this->normalizeAfiliacionFilter($afiliacionFilter);
+        $afiliacionCategoriaFilterValue = $this->normalizeAfiliacionCategoriaFilter($afiliacionCategoriaFilter);
+        $sedeFilterValue = $this->normalizeSedeFilter($sedeFilter);
+        $sedeExpr = $this->sedeExpr('pp');
+        $categoriaContext = $this->resolveAfiliacionCategoriaContext("COALESCE(p.afiliacion, '')", 'acm');
+
+        $hasFacturacionReal = $this->tableExists('billing_facturacion_real')
+            && $this->columnExists('billing_facturacion_real', 'form_id')
+            && $this->columnExists('billing_facturacion_real', 'estado');
+
+        $facturacionJoin = $hasFacturacionReal
+            ? "LEFT JOIN (
+                    SELECT
+                        bfr.form_id,
+                        MAX(NULLIF(TRIM(COALESCE(bfr.estado, '')), '')) AS estado_facturacion_raw,
+                        COUNT(*) AS rows_count
+                    FROM billing_facturacion_real bfr
+                    WHERE bfr.form_id IS NOT NULL
+                      AND TRIM(bfr.form_id) <> ''
+                    GROUP BY bfr.form_id
+                ) bfr ON bfr.form_id = pr.form_id"
+            : "LEFT JOIN (
+                    SELECT
+                        CAST(NULL AS CHAR(100)) AS form_id,
+                        CAST(NULL AS CHAR(100)) AS estado_facturacion_raw,
+                        0 AS rows_count
+                ) bfr ON 1 = 0";
+
+        $sql = "SELECT
+                    COUNT(*) AS atendidos,
+                    SUM(CASE WHEN COALESCE(bfr.rows_count, 0) > 0 THEN 1 ELSE 0 END) AS facturados,
+                    SUM(CASE
+                        WHEN LOWER(TRIM(COALESCE(bfr.estado_facturacion_raw, ''))) LIKE '%pend%'
+                          OR LOWER(TRIM(COALESCE(bfr.estado_facturacion_raw, ''))) LIKE '%cartera%'
+                          OR LOWER(TRIM(COALESCE(bfr.estado_facturacion_raw, ''))) LIKE '%credito%'
+                        THEN 1 ELSE 0 END) AS pendiente_pago
+                FROM protocolo_data pr
+                LEFT JOIN patient_data p
+                    ON CONVERT(p.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                     = CONVERT(pr.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                LEFT JOIN procedimiento_proyectado pp
+                    ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number
+                {$categoriaContext['join']}
+                {$facturacionJoin}
+                WHERE pr.fecha_inicio BETWEEN :inicio AND :fin
+                  AND (:afiliacion_filter = '' OR {$afiliacionKeyExpr} = :afiliacion_filter_match)
+                  AND (:afiliacion_categoria_filter = '' OR {$categoriaContext['expr']} = :afiliacion_categoria_filter_match)
+                  AND (:sede_filter = '' OR {$sedeExpr} = :sede_filter_match)";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([
+            ':inicio' => $start,
+            ':fin' => $end,
+            ':afiliacion_filter' => $afiliacionFilterValue,
+            ':afiliacion_filter_match' => $afiliacionFilterValue,
+            ':afiliacion_categoria_filter' => $afiliacionCategoriaFilterValue,
+            ':afiliacion_categoria_filter_match' => $afiliacionCategoriaFilterValue,
+            ':sede_filter' => $sedeFilterValue,
+            ':sede_filter_match' => $sedeFilterValue,
+        ]);
+
+        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+        $programacion = $this->getProgramacionKpis($start, $end, $afiliacionFilter, $afiliacionCategoriaFilter, $sedeFilter);
+        $cancelados = (int) ($programacion['suspendidas'] ?? 0);
+
+        return [
+            'atendidos' => (int) ($row['atendidos'] ?? 0),
+            'facturados' => (int) ($row['facturados'] ?? 0),
+            'pendiente_pago' => (int) ($row['pendiente_pago'] ?? 0),
+            'cancelados' => max(0, $cancelados),
+        ];
+    }
+
     public function getDuracionPromedioMinutos(
         string $start,
         string $end,
