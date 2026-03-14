@@ -3888,6 +3888,7 @@ class ExamenController extends BaseController
         $this->requireAuth();
 
         $filters = $this->buildImagenesRealizadasFilters();
+        $filters['afiliacion_match_mode'] = 'exact';
         $rows = $this->examenModel->fetchImagenesRealizadas($filters, false);
 
         $this->render(
@@ -3905,6 +3906,7 @@ class ExamenController extends BaseController
         $this->requireAuth();
 
         $filters = $this->buildImagenesRealizadasFilters();
+        $filters['afiliacion_match_mode'] = 'grouped';
         $rows = $this->examenModel->fetchImagenesRealizadas($filters, true);
         $dashboard = $this->buildImagenesDashboardSummary($rows, $filters);
         [$afiliacionOptions, $afiliacionCategoriaOptions, $sedeOptions] = $this->resolveImagenesDashboardAffiliationOptions($filters);
@@ -3928,6 +3930,7 @@ class ExamenController extends BaseController
         $this->requireAuth();
 
         $filters = $this->buildImagenesRealizadasFilters();
+        $filters['afiliacion_match_mode'] = 'grouped';
         $rows = $this->examenModel->fetchImagenesRealizadas($filters, true);
         $dashboard = $this->buildImagenesDashboardSummary($rows, $filters);
         $detailRows = $this->buildImagenesDashboardDetailRows($rows);
@@ -3996,6 +3999,7 @@ class ExamenController extends BaseController
         $this->requireAuth();
 
         $filters = $this->buildImagenesRealizadasFilters();
+        $filters['afiliacion_match_mode'] = 'grouped';
         $rows = $this->examenModel->fetchImagenesRealizadas($filters, true);
         $dashboard = $this->buildImagenesDashboardSummary($rows, $filters);
         $detailRows = $this->buildImagenesDashboardDetailRows($rows);
@@ -4087,10 +4091,16 @@ class ExamenController extends BaseController
                 'Paciente',
                 'Afiliación',
                 'Estado agenda',
+                'Estado real',
+                'Estado informe',
                 'Cita generada',
                 'Examen realizado',
                 'Informado',
                 'Facturado',
+                'Archivos NAS',
+                'Producción USD',
+                'Proc. facturados',
+                'Fecha facturación',
                 'Código',
                 'Examen',
             ];
@@ -4100,8 +4110,8 @@ class ExamenController extends BaseController
                 $column = $this->excelColumnByIndex($idx);
                 $detailSheet->setCellValue("{$column}{$detailRow}", $label);
             }
-            $detailSheet->getStyle("A1:M1")->getFont()->setBold(true);
-            $detailSheet->setAutoFilter("A1:M1");
+            $detailSheet->getStyle("A1:R1")->getFont()->setBold(true);
+            $detailSheet->setAutoFilter("A1:R1");
 
             foreach ($detailRows as $index => $item) {
                 $detailRow++;
@@ -4113,10 +4123,16 @@ class ExamenController extends BaseController
                     (string)($item['paciente'] ?? ''),
                     (string)($item['afiliacion'] ?? ''),
                     (string)($item['estado_agenda'] ?? ''),
+                    (string)($item['estado_realizacion'] ?? ''),
+                    (string)($item['estado_informe'] ?? ''),
                     !empty($item['cita_generada']) ? 'SI' : 'NO',
                     !empty($item['examen_realizado']) ? 'SI' : 'NO',
                     !empty($item['informado']) ? 'SI' : 'NO',
                     !empty($item['facturado']) ? 'SI' : 'NO',
+                    !empty($item['nas_has_files']) ? ((string)($item['nas_files_count'] ?? 0) . ' archivo(s)') : 'NO',
+                    number_format((float)($item['produccion'] ?? 0), 2, '.', ''),
+                    (string)($item['procedimientos_facturados'] ?? 0),
+                    (string)($item['fecha_facturacion'] ?? '—'),
                     (string)($item['codigo'] ?? ''),
                     (string)($item['examen'] ?? ''),
                 ];
@@ -4135,15 +4151,20 @@ class ExamenController extends BaseController
             $detailSheet->getColumnDimension('E')->setWidth(36);
             $detailSheet->getColumnDimension('F')->setWidth(24);
             $detailSheet->getColumnDimension('G')->setWidth(20);
-            $detailSheet->getColumnDimension('H')->setWidth(14);
-            $detailSheet->getColumnDimension('I')->setWidth(16);
-            $detailSheet->getColumnDimension('J')->setWidth(12);
-            $detailSheet->getColumnDimension('K')->setWidth(12);
-            $detailSheet->getColumnDimension('L')->setWidth(10);
-            $detailSheet->getColumnDimension('M')->setWidth(62);
+            $detailSheet->getColumnDimension('H')->setWidth(18);
+            $detailSheet->getColumnDimension('I')->setWidth(18);
+            $detailSheet->getColumnDimension('J')->setWidth(14);
+            $detailSheet->getColumnDimension('K')->setWidth(16);
+            $detailSheet->getColumnDimension('L')->setWidth(12);
+            $detailSheet->getColumnDimension('M')->setWidth(12);
+            $detailSheet->getColumnDimension('N')->setWidth(18);
+            $detailSheet->getColumnDimension('O')->setWidth(14);
+            $detailSheet->getColumnDimension('P')->setWidth(16);
+            $detailSheet->getColumnDimension('Q')->setWidth(10);
+            $detailSheet->getColumnDimension('R')->setWidth(62);
 
             if ($detailRow > 1) {
-                $detailSheet->getStyle("M2:M{$detailRow}")
+                $detailSheet->getStyle("R2:R{$detailRow}")
                     ->getAlignment()
                     ->setWrapText(true);
             }
@@ -4641,8 +4662,40 @@ class ExamenController extends BaseController
     private function normalizeImagenesAfiliacionFilter(string $value): string
     {
         $value = strtolower(trim($value));
-        if ($value === 'sin convenio') {
+        if ($value === '') {
+            return '';
+        }
+
+        $comparisonValue = strtr($value, [
+            'á' => 'a',
+            'é' => 'e',
+            'í' => 'i',
+            'ó' => 'o',
+            'ú' => 'u',
+            'ñ' => 'n',
+        ]);
+        $comparisonValue = trim(preg_replace('/\s+/', ' ', str_replace('_', ' ', $comparisonValue)) ?? $comparisonValue);
+
+        if (in_array($comparisonValue, ['sin convenio', 'sin afiliacion'], true) || $value === 'sin_convenio') {
             return 'sin_convenio';
+        }
+        if (
+            $comparisonValue === 'iess'
+            || in_array($comparisonValue, [
+                'contribuyente voluntario',
+                'conyuge',
+                'conyuge pensionista',
+                'seguro campesino',
+                'seguro campesino jubilado',
+                'seguro general',
+                'seguro general jubilado',
+                'seguro general por montepio',
+                'seguro general tiempo parcial',
+                'hijos dependientes',
+                'sin cobertura',
+            ], true)
+        ) {
+            return 'iess';
         }
 
         return $value;
@@ -4850,8 +4903,12 @@ class ExamenController extends BaseController
             }
 
             $estadoAgenda = trim((string)($row['estado_agenda'] ?? ''));
-
-            $informado = !empty($row['informe_id']);
+            $estadoRealizacion = $this->resolveImagenRealizationState($row);
+            $estadoFacturacion = $this->resolveImagenBillingState($estadoRealizacion, (int)($row['facturado'] ?? 0) === 1);
+            $estadoInforme = $this->resolveImagenInformeState($row);
+            $informado = $estadoInforme === 'INFORMADA';
+            $pendienteInformar = $estadoInforme === 'PENDIENTE_INFORMAR';
+            $totalProduccion = round((float)($row['total_produccion'] ?? 0), 2);
             $output[] = [
                 'id' => isset($row['id']) ? (int)$row['id'] : 0,
                 'form_id' => trim((string)($row['form_id'] ?? '')),
@@ -4861,9 +4918,20 @@ class ExamenController extends BaseController
                 'afiliacion' => trim((string)($row['afiliacion'] ?? '')),
                 'estado_agenda' => $estadoAgenda,
                 'cita_generada' => $this->isImagenCitaGeneradaEstado($estadoAgenda),
-                'examen_realizado' => $this->isImagenExamenRealizado($estadoAgenda),
+                'examen_realizado' => $this->isImagenEstadoRealizado($estadoRealizacion),
+                'estado_realizacion' => $estadoRealizacion,
+                'estado_facturacion' => $estadoFacturacion,
+                'estado_informe' => $estadoInforme,
                 'informado' => $informado,
+                'pendiente_informar' => $pendienteInformar,
+                'nas_has_files' => (int)($row['nas_has_files'] ?? 0) === 1,
+                'nas_files_count' => (int)($row['nas_files_count'] ?? 0),
+                'nas_scan_status' => trim((string)($row['nas_scan_status'] ?? '')),
+                'nas_last_scanned_at' => $this->formatDashboardDate((string)($row['nas_last_scanned_at'] ?? '')),
                 'facturado' => (int)($row['facturado'] ?? 0) === 1,
+                'produccion' => $totalProduccion,
+                'procedimientos_facturados' => (int)($row['procedimientos_facturados'] ?? 0),
+                'fecha_facturacion' => $this->formatDashboardDate((string)($row['fecha_facturacion'] ?? '')),
                 'codigo' => $codigo,
                 'examen' => $examen,
             ];
@@ -4903,14 +4971,87 @@ class ExamenController extends BaseController
         return true;
     }
 
-    private function isImagenExamenRealizado(string $estado): bool
+    /**
+     * @param array<string, mixed> $row
+     */
+    private function resolveImagenRealizationState(array $row): string
     {
-        $estadoKey = strtoupper(trim($estado));
-        if ($estadoKey === '') {
+        $facturado = (int)($row['facturado'] ?? 0) === 1;
+        $nasHasFiles = (int)($row['nas_has_files'] ?? 0) === 1 || (int)($row['nas_files_count'] ?? 0) > 0;
+        $informado = !empty($row['informe_id']) || (int)($row['informes_total'] ?? 0) > 0;
+        $estadoAgenda = trim((string)($row['estado_agenda'] ?? ''));
+
+        if ($facturado) {
+            return 'FACTURADA';
+        }
+        if ($nasHasFiles) {
+            return 'REALIZADA_CON_ARCHIVOS';
+        }
+        if ($informado) {
+            return 'REALIZADA_INFORMADA';
+        }
+        if ($this->isImagenEstadoCancelado($estadoAgenda)) {
+            return 'CANCELADA';
+        }
+        if ($this->isImagenEstadoAusente($estadoAgenda)) {
+            return 'AUSENTE';
+        }
+
+        return 'SIN_CIERRE_OPERATIVO';
+    }
+
+    private function resolveImagenBillingState(string $estadoRealizacion, bool $facturado): string
+    {
+        if ($facturado || $estadoRealizacion === 'FACTURADA') {
+            return 'FACTURADA';
+        }
+        if (in_array($estadoRealizacion, ['REALIZADA_CON_ARCHIVOS', 'REALIZADA_INFORMADA'], true)) {
+            return 'PENDIENTE_FACTURAR';
+        }
+
+        return 'SIN_FACTURACION';
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    private function resolveImagenInformeState(array $row): string
+    {
+        $informado = !empty($row['informe_id']) || (int)($row['informes_total'] ?? 0) > 0;
+        $nasHasFiles = (int)($row['nas_has_files'] ?? 0) === 1 || (int)($row['nas_files_count'] ?? 0) > 0;
+
+        if ($informado) {
+            return 'INFORMADA';
+        }
+        if ($nasHasFiles) {
+            return 'PENDIENTE_INFORMAR';
+        }
+
+        return 'SIN_EVIDENCIA_TECNICA';
+    }
+
+    private function isImagenEstadoRealizado(string $estadoRealizacion): bool
+    {
+        return in_array($estadoRealizacion, ['FACTURADA', 'REALIZADA_CON_ARCHIVOS', 'REALIZADA_INFORMADA'], true);
+    }
+
+    private function isImagenEstadoCancelado(string $estado): bool
+    {
+        $normalized = $this->normalizarTexto($estado);
+        return $normalized !== '' && (str_contains($normalized, 'cancel') || str_contains($normalized, 'anul'));
+    }
+
+    private function isImagenEstadoAusente(string $estado): bool
+    {
+        $normalized = $this->normalizarTexto($estado);
+        if ($normalized === '') {
             return false;
         }
 
-        return !in_array($estadoKey, ['AGENDADO', 'CONFIRMADO'], true);
+        return str_contains($normalized, 'ausent')
+            || str_contains($normalized, 'no show')
+            || str_contains($normalized, 'no asist')
+            || str_contains($normalized, 'inasistent');
     }
 
     private function excelColumnByIndex(int $index): string
@@ -4942,12 +5083,34 @@ class ExamenController extends BaseController
 
         $informados = 0;
         $noInformados = 0;
+        $pendientesInformar = 0;
         $facturados = 0;
+        $pendientesFacturar = 0;
         $facturadosEInformados = 0;
         $facturadosSinInformar = 0;
         $informadosSinFacturar = 0;
         $citasGeneradas = 0;
         $examenesRealizados = 0;
+        $realizadasConArchivos = 0;
+        $realizadasInformadas = 0;
+        $canceladas = 0;
+        $ausentes = 0;
+        $sinCierre = 0;
+        $produccionFacturada = 0.0;
+        $procedimientosFacturados = 0;
+        $estadoRealCounts = [
+            'FACTURADA' => 0,
+            'REALIZADA_CON_ARCHIVOS' => 0,
+            'REALIZADA_INFORMADA' => 0,
+            'CANCELADA' => 0,
+            'AUSENTE' => 0,
+            'SIN_CIERRE_OPERATIVO' => 0,
+        ];
+        $estadoInformeCounts = [
+            'INFORMADA' => 0,
+            'PENDIENTE_INFORMAR' => 0,
+            'SIN_EVIDENCIA_TECNICA' => 0,
+        ];
 
         $tatHoras = [];
         $sla48Cumple = 0;
@@ -4982,9 +5145,12 @@ class ExamenController extends BaseController
         ];
 
         foreach ($rows as $row) {
-            $informado = !empty($row['informe_id']);
+            $informado = $this->resolveImagenInformeState($row) === 'INFORMADA';
             $facturado = (int)($row['facturado'] ?? 0) === 1;
             $estadoAgenda = trim((string)($row['estado_agenda'] ?? ''));
+            $estadoRealizacion = $this->resolveImagenRealizationState($row);
+            $estadoInforme = $this->resolveImagenInformeState($row);
+            $realizado = $this->isImagenEstadoRealizado($estadoRealizacion);
             $fechaExamenRaw = trim((string)($row['fecha_examen'] ?? ''));
             $fechaExamenTs = $fechaExamenRaw !== '' ? strtotime($fechaExamenRaw) : false;
             $fechaExamenDia = $fechaExamenTs !== false ? date('Y-m-d', $fechaExamenTs) : '';
@@ -4998,11 +5164,20 @@ class ExamenController extends BaseController
             if ($this->isImagenCitaGeneradaEstado($estadoAgenda)) {
                 $citasGeneradas++;
             }
-            if ($this->isImagenExamenRealizado($estadoAgenda)) {
+            if ($realizado) {
                 $examenesRealizados++;
             }
 
-            if ($fechaExamenDia !== '') {
+            if (!isset($estadoRealCounts[$estadoRealizacion])) {
+                $estadoRealCounts[$estadoRealizacion] = 0;
+            }
+            $estadoRealCounts[$estadoRealizacion]++;
+            if (!isset($estadoInformeCounts[$estadoInforme])) {
+                $estadoInformeCounts[$estadoInforme] = 0;
+            }
+            $estadoInformeCounts[$estadoInforme]++;
+
+            if ($fechaExamenDia !== '' && $realizado) {
                 if (!isset($dailyMap[$fechaExamenDia])) {
                     $dailyMap[$fechaExamenDia] = ['realizados' => 0, 'informados' => 0];
                 }
@@ -5012,6 +5187,9 @@ class ExamenController extends BaseController
             if ($informado) {
                 $informados++;
                 if ($fechaExamenDia !== '') {
+                    if (!isset($dailyMap[$fechaExamenDia])) {
+                        $dailyMap[$fechaExamenDia] = ['realizados' => 0, 'informados' => 0];
+                    }
                     $dailyMap[$fechaExamenDia]['informados']++;
                 }
             } else {
@@ -5020,6 +5198,28 @@ class ExamenController extends BaseController
 
             if ($facturado) {
                 $facturados++;
+            }
+
+            $produccionFacturada += max(0.0, (float)($row['total_produccion'] ?? 0));
+            $procedimientosFacturados += max(0, (int)($row['procedimientos_facturados'] ?? 0));
+
+            if ($estadoRealizacion === 'REALIZADA_CON_ARCHIVOS') {
+                $realizadasConArchivos++;
+            } elseif ($estadoRealizacion === 'REALIZADA_INFORMADA') {
+                $realizadasInformadas++;
+            } elseif ($estadoRealizacion === 'CANCELADA') {
+                $canceladas++;
+            } elseif ($estadoRealizacion === 'AUSENTE') {
+                $ausentes++;
+            } elseif ($estadoRealizacion === 'SIN_CIERRE_OPERATIVO') {
+                $sinCierre++;
+            }
+
+            if (!$facturado && in_array($estadoRealizacion, ['REALIZADA_CON_ARCHIVOS', 'REALIZADA_INFORMADA'], true)) {
+                $pendientesFacturar++;
+            }
+            if ($estadoInforme === 'PENDIENTE_INFORMAR') {
+                $pendientesInformar++;
             }
 
             if ($informado && $facturado) {
@@ -5041,7 +5241,7 @@ class ExamenController extends BaseController
                         $sla48Cumple++;
                     }
                 }
-            } elseif ($fechaExamenTs !== false) {
+            } elseif ($fechaExamenTs !== false && $estadoInforme === 'PENDIENTE_INFORMAR') {
                 $dias = max(0, (int)floor(($todayTs - $fechaExamenTs) / 86400));
                 if ($dias <= 2) {
                     $aging['0-2 días']++;
@@ -5118,6 +5318,9 @@ class ExamenController extends BaseController
         $tatP90 = $this->calcularPercentil($tatHoras, 0.90);
         $sla48Pct = $sla48Total > 0 ? ($sla48Cumple * 100 / $sla48Total) : null;
         $cumplimientoCitaPct = $citasGeneradas > 0 ? ($examenesRealizados * 100 / $citasGeneradas) : null;
+        $ticketPromedioFacturado = $facturados > 0 ? ($produccionFacturada / $facturados) : 0.0;
+        $produccionPromedioPorEstudio = $total > 0 ? ($produccionFacturada / $total) : 0.0;
+        $perdidas = $canceladas + $ausentes;
         $maxTraficoValor = !empty($traficoSemana) ? max($traficoSemana) : 0;
         $maxTraficoDiaNum = 0;
         if ($maxTraficoValor > 0) {
@@ -5141,19 +5344,49 @@ class ExamenController extends BaseController
                     'hint' => $rangeLabel !== '' ? ('Rango: ' . $rangeLabel) : 'Sin rango',
                 ],
                 [
-                    'label' => 'Informados',
-                    'value' => $informados,
-                    'hint' => $total > 0 ? (number_format(($informados * 100) / $total, 1) . '% del total') : '0.0% del total',
+                    'label' => 'Realizadas',
+                    'value' => $examenesRealizados,
+                    'hint' => $total > 0 ? (number_format(($examenesRealizados * 100) / $total, 1) . '% del total') : '0.0% del total',
                 ],
                 [
-                    'label' => 'No informados',
-                    'value' => $noInformados,
-                    'hint' => $total > 0 ? (number_format(($noInformados * 100) / $total, 1) . '% del total') : '0.0% del total',
-                ],
-                [
-                    'label' => 'Facturados',
+                    'label' => 'Facturadas',
                     'value' => $facturados,
-                    'hint' => $total > 0 ? (number_format(($facturados * 100) / $total, 1) . '% del total') : '0.0% del total',
+                    'hint' => $examenesRealizados > 0 ? (number_format(($facturados * 100) / $examenesRealizados, 1) . '% de realizadas') : '0.0% de realizadas',
+                ],
+                [
+                    'label' => 'Pendiente de informar',
+                    'value' => $pendientesInformar,
+                    'hint' => $examenesRealizados > 0 ? (number_format(($pendientesInformar * 100) / $examenesRealizados, 1) . '% de realizadas') : '0.0% de realizadas',
+                ],
+                [
+                    'label' => 'Pendiente de facturar',
+                    'value' => $pendientesFacturar,
+                    'hint' => 'Realizadas con evidencia técnica aún sin billing real',
+                ],
+                [
+                    'label' => 'Pérdida',
+                    'value' => $perdidas,
+                    'hint' => $canceladas . ' canceladas, ' . $ausentes . ' ausentes',
+                ],
+                [
+                    'label' => 'Sin cierre operativo',
+                    'value' => $sinCierre,
+                    'hint' => 'Sin NAS, sin informe y sin billing',
+                ],
+                [
+                    'label' => 'Producción facturada',
+                    'value' => '$' . number_format($produccionFacturada, 2),
+                    'hint' => 'Monto real facturado en el rango.',
+                ],
+                [
+                    'label' => 'Ticket promedio facturado',
+                    'value' => '$' . number_format($ticketPromedioFacturado, 2),
+                    'hint' => $facturados > 0 ? ('Promedio por ' . $facturados . ' estudios facturados') : 'Sin estudios facturados',
+                ],
+                [
+                    'label' => 'Procedimientos facturados',
+                    'value' => $procedimientosFacturados,
+                    'hint' => '$' . number_format($produccionPromedioPorEstudio, 2) . ' promedio por estudio',
                 ],
                 [
                     'label' => 'Día pico de tráfico',
@@ -5161,14 +5394,9 @@ class ExamenController extends BaseController
                     'hint' => $maxTraficoValor > 0 ? ($maxTraficoValor . ' estudios') : 'Sin datos',
                 ],
                 [
-                    'label' => 'Citas generadas',
-                    'value' => $citasGeneradas,
-                    'hint' => $total > 0 ? (number_format(($citasGeneradas * 100) / $total, 1) . '% del total') : '0.0% del total',
-                ],
-                [
-                    'label' => 'Exámenes realizados',
-                    'value' => $examenesRealizados,
-                    'hint' => $citasGeneradas > 0 ? ($examenesRealizados . ' de ' . $citasGeneradas . ' citas') : 'Sin citas en rango',
+                    'label' => 'Informadas',
+                    'value' => $informados,
+                    'hint' => $total > 0 ? (number_format(($informados * 100) / $total, 1) . '% del total') : '0.0% del total',
                 ],
                 [
                     'label' => 'Cumplimiento cita->realización',
@@ -5200,6 +5428,14 @@ class ExamenController extends BaseController
                 'tat_promedio_horas' => $tatPromedio !== null ? round($tatPromedio, 2) : null,
                 'tat_mediana_horas' => $tatMediana !== null ? round($tatMediana, 2) : null,
                 'tat_p90_horas' => $tatP90 !== null ? round($tatP90, 2) : null,
+                'produccion_facturada' => round($produccionFacturada, 2),
+                'ticket_promedio_facturado' => round($ticketPromedioFacturado, 2),
+                'procedimientos_facturados' => $procedimientosFacturados,
+                'produccion_promedio_por_estudio' => round($produccionPromedioPorEstudio, 2),
+                'pendientes_informar' => $pendientesInformar,
+                'pendientes_facturar' => $pendientesFacturar,
+                'perdidas' => $perdidas,
+                'sin_cierre_operativo' => $sinCierre,
             ],
             'charts' => [
                 'serie_diaria' => [
@@ -5217,28 +5453,28 @@ class ExamenController extends BaseController
                 ],
                 'trazabilidad' => [
                     'labels' => [
-                        'Facturados e informados',
-                        'Facturados sin informar',
-                        'Informados sin facturar',
-                        'No informados y no facturados',
+                        'Facturada',
+                        'Realizada con archivos',
+                        'Realizada informada',
+                        'Sin cierre operativo',
                     ],
                     'values' => [
-                        $facturadosEInformados,
-                        $facturadosSinInformar,
-                        $informadosSinFacturar,
-                        max(0, $noInformados - $facturadosSinInformar),
+                        (int)($estadoRealCounts['FACTURADA'] ?? 0),
+                        (int)($estadoRealCounts['REALIZADA_CON_ARCHIVOS'] ?? 0),
+                        (int)($estadoRealCounts['REALIZADA_INFORMADA'] ?? 0),
+                        (int)($estadoRealCounts['SIN_CIERRE_OPERATIVO'] ?? 0),
                     ],
                 ],
                 'citas_vs_realizados' => [
                     'labels' => [
                         'Citas generadas',
-                        'Exámenes realizados',
-                        'Pendientes por realizar',
+                        'Realizadas',
+                        'Pérdida',
                     ],
                     'values' => [
                         $citasGeneradas,
                         $examenesRealizados,
-                        max(0, $citasGeneradas - $examenesRealizados),
+                        $perdidas,
                     ],
                 ],
                 'trafico_dia_semana' => [

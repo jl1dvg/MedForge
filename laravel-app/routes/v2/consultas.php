@@ -5,9 +5,18 @@ use App\Modules\Consultas\Http\Controllers\ConsultasWriteController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware([
+    'consultas.cors',
     'legacy.auth',
     'legacy.permission:administrativo,ai.manage,ai.consultas.enfermedad,ai.consultas.plan',
 ])->group(function (): void {
+    // Explicit preflight endpoints for cross-origin extension traffic.
+    Route::options('/api/consultas/guardar.php', static fn () => response('', 204));
+    Route::options('/api/consultas/anterior.php', static fn () => response('', 204));
+    Route::options('/api/consultas/plan.php', static fn () => response('', 204));
+    Route::options('/api/consultas/guardar', static fn () => response('', 204));
+    Route::options('/api/consultas/anterior', static fn () => response('', 204));
+    Route::options('/api/consultas/plan', static fn () => response('', 204));
+
     // Legacy-style API aliases
     Route::post('/api/consultas/guardar.php', [ConsultasWriteController::class, 'guardar']);
     Route::get('/api/consultas/anterior.php', [ConsultasReadController::class, 'anterior']);

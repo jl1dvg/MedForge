@@ -221,6 +221,7 @@ def scrape_index_admisiones(fecha_inicio: str, fecha_fin: str):
                 data = {
                     "fecha_grupo": fecha_grupo,  # e.g. "19-12-2025"
                     "pedido_id": pedido_id,
+                    "precio": c(7),
                     "codigo_examen": c(8),
 
                     "hc_number": c(16),
@@ -241,6 +242,8 @@ def scrape_index_admisiones(fecha_inicio: str, fecha_fin: str):
                     "estado": c(33),
 
                     # Derivación
+                    "referido_prefactura_por": c(36),
+                    "especificar_referido_prefactura": c(37),
                     "codigo_derivacion": c(42),
                     "num_secuencial_derivacion": c(43),
                     "referido_prefactura_por": c(col_referido_prefactura_por) if col_referido_prefactura_por is not None else "",

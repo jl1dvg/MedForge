@@ -617,6 +617,7 @@
             noQuirurgicos: new Set(),
             imagenes: new Set(),
             consultas: new Set(),
+            pni: new Set(),
         };
 
         const groupingState = {
@@ -648,6 +649,11 @@
                 tableId: 'tablaConsultas',
                 selectAllId: 'selectAllConsultas',
                 baseFilters: {tipo: 'consulta'},
+            },
+            pni: {
+                tableId: 'tablaPni',
+                selectAllId: 'selectAllPni',
+                baseFilters: {tipo: 'pni'},
             },
         };
 
@@ -852,6 +858,9 @@
             if (row?.tipo === 'consulta') {
                 return getProcedimientoDisplay(row) || value;
             }
+            if (row?.tipo === 'pni') {
+                return getProcedimientoDisplay(row) || value;
+            }
             if (!value) return '';
             const text = String(value).toLowerCase();
             return text.charAt(0).toUpperCase() + text.slice(1);
@@ -901,6 +910,9 @@
                     }
                     if (data === 'consulta') {
                         return renderBadge('Consulta', 'dark');
+                    }
+                    if (data === 'pni') {
+                        return renderBadge('PNI', 'warning');
                     }
                     return renderBadge('No quirúrgico', 'info');
                 },
@@ -1048,13 +1060,21 @@
                 const json = table.ajax.json();
                 const summary = json?.summary || {};
                 const formatMonto = (valor) => `$${Number(valor || 0).toFixed(2)}`;
+                const setResumen = (key, value) => {
+                    const node = resumenContainer.querySelector(`[data-resumen="${key}"]`);
+                    if (node) {
+                        node.textContent = value;
+                    }
+                };
 
-                resumenContainer.querySelector('[data-resumen="total-cantidad"]').textContent = summary.total ?? 0;
-                resumenContainer.querySelector('[data-resumen="total-monto"]').textContent = formatMonto(summary.monto);
-                resumenContainer.querySelector('[data-resumen="quirurgicos-cantidad"]').textContent = summary.quirurgicos?.cantidad ?? 0;
-                resumenContainer.querySelector('[data-resumen="quirurgicos-monto"]').textContent = formatMonto(summary.quirurgicos?.monto);
-                resumenContainer.querySelector('[data-resumen="no-quirurgicos-cantidad"]').textContent = summary.no_quirurgicos?.cantidad ?? 0;
-                resumenContainer.querySelector('[data-resumen="no-quirurgicos-monto"]').textContent = formatMonto(summary.no_quirurgicos?.monto);
+                setResumen('total-cantidad', summary.total ?? 0);
+                setResumen('total-monto', formatMonto(summary.monto));
+                setResumen('quirurgicos-cantidad', summary.quirurgicos?.cantidad ?? 0);
+                setResumen('quirurgicos-monto', formatMonto(summary.quirurgicos?.monto));
+                setResumen('no-quirurgicos-cantidad', summary.no_quirurgicos?.cantidad ?? 0);
+                setResumen('no-quirurgicos-monto', formatMonto(summary.no_quirurgicos?.monto));
+                setResumen('pni-cantidad', summary.pni?.cantidad ?? 0);
+                setResumen('pni-monto', formatMonto(summary.pni?.monto));
             });
 
             $(`#${config.tableId} tbody`).on('change', '.row-select', function () {
@@ -1134,6 +1154,7 @@
             noQuirurgicos: createTable('noQuirurgicos'),
             imagenes: createTable('imagenes'),
             consultas: createTable('consultas'),
+            pni: createTable('pni'),
         };
 
         toggleImagenesAgrupar?.addEventListener('change', (event) => {

@@ -37,12 +37,24 @@
         codeResults: document.getElementById('code-search-results'),
     };
 
+    const csrfToken = root.getAttribute('data-csrf') || '';
+    const listEndpoint = root.getAttribute('data-list-endpoint') || '/codes/api/packages';
+    const showEndpointTemplate = root.getAttribute('data-show-endpoint-template') || '/codes/api/packages/{id}';
+    const saveEndpoint = root.getAttribute('data-save-endpoint') || '/codes/api/packages';
+    const updateEndpointTemplate = root.getAttribute('data-update-endpoint-template') || '/codes/api/packages/{id}';
+    const deleteEndpointTemplate = root.getAttribute('data-delete-endpoint-template') || '/codes/api/packages/{id}/delete';
+    const codeSearchEndpoint = root.getAttribute('data-code-search-endpoint') || '/codes/api/search';
+
+    function endpointFromTemplate(template, id) {
+        return template.replace('{id}', encodeURIComponent(String(id)));
+    }
+
     const endpoints = {
-        list: '/codes/api/packages',
-        show: (id) => `/codes/api/packages/${id}`,
-        save: (id) => (id ? `/codes/api/packages/${id}` : '/codes/api/packages'),
-        delete: (id) => `/codes/api/packages/${id}/delete`,
-        codeSearch: '/codes/api/search',
+        list: listEndpoint,
+        show: (id) => endpointFromTemplate(showEndpointTemplate, id),
+        save: (id) => (id ? endpointFromTemplate(updateEndpointTemplate, id) : saveEndpoint),
+        delete: (id) => endpointFromTemplate(deleteEndpointTemplate, id),
+        codeSearch: codeSearchEndpoint,
     };
 
     let sortableInstance = null;
@@ -57,6 +69,14 @@
             // eslint-disable-next-line no-alert
             alert(`${title} ${text}`);
         }
+    }
+
+    function requestHeaders(extraHeaders = {}) {
+        const headers = { Accept: 'application/json', ...extraHeaders };
+        if (csrfToken) {
+            headers['X-CSRF-TOKEN'] = csrfToken;
+        }
+        return headers;
     }
 
     function parseInitialPackages() {
@@ -377,7 +397,7 @@
         try {
             const response = await fetch(endpoints.save(id), {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: requestHeaders({ 'Content-Type': 'application/json' }),
                 body: JSON.stringify(payload),
             });
             const result = await response.json();
@@ -404,7 +424,10 @@
         }
 
         try {
-            const response = await fetch(endpoints.delete(state.currentPackage.id), { method: 'POST' });
+            const response = await fetch(endpoints.delete(state.currentPackage.id), {
+                method: 'POST',
+                headers: requestHeaders(),
+            });
             const payload = await response.json();
             if (payload && payload.ok) {
                 toast('success', 'Paquete eliminado');

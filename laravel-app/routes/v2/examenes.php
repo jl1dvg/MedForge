@@ -14,6 +14,10 @@ Route::get('/examenes/api/estado', [ExamenesParityController::class, 'apiEstadoG
 Route::get('/examenes/{id}/crm', [ExamenesParityController::class, 'crmResumen'])->whereNumber('id');
 Route::get('/examenes/derivacion', [ExamenesParityController::class, 'derivacionDetalle']);
 Route::get('/examenes/prefactura', [ExamenesParityController::class, 'prefactura']);
+Route::get('/imagenes/examenes-realizados/nas/list', [ExamenesParityController::class, 'imagenesNasList']);
+Route::get('/imagenes/examenes-realizados/nas/file', [ExamenesParityController::class, 'imagenesNasFile']);
+Route::get('/imagenes/dashboard/export/pdf', [ExamenesParityController::class, 'imagenesDashboardExportPdf']);
+Route::get('/imagenes/dashboard/export/excel', [ExamenesParityController::class, 'imagenesDashboardExportExcel']);
 
 // Legacy mirror paths (writes)
 Route::post('/examenes/actualizar-estado', [ExamenesParityController::class, 'actualizarEstado']);
@@ -34,6 +38,9 @@ Route::post('/examenes/{id}/crm/tareas', [ExamenesParityController::class, 'crmG
 Route::post('/examenes/{id}/crm/tareas/estado', [ExamenesParityController::class, 'crmActualizarTarea'])->whereNumber('id');
 Route::post('/examenes/{id}/crm/bloqueo', [ExamenesParityController::class, 'crmRegistrarBloqueo'])->whereNumber('id');
 Route::post('/examenes/{id}/crm/adjuntos', [ExamenesParityController::class, 'crmSubirAdjunto'])->whereNumber('id');
+Route::post('/imagenes/examenes-realizados/nas/warm', [ExamenesParityController::class, 'imagenesNasWarm']);
+Route::post('/imagenes/examenes-realizados/actualizar', [ExamenesParityController::class, 'actualizarImagenRealizada']);
+Route::post('/imagenes/examenes-realizados/eliminar', [ExamenesParityController::class, 'eliminarImagenRealizada']);
 
 // Clean aliases
 Route::match(['GET', 'POST'], '/api/examenes/kanban', [ExamenesParityController::class, 'kanbanData']);

@@ -102,17 +102,23 @@ ob_start();
         <th>Paciente</th>
         <th>Afiliación</th>
         <th>Estado</th>
+        <th>Estado real</th>
+        <th>Estado informe</th>
         <th>Cita</th>
         <th>Realizado</th>
         <th>Informado</th>
         <th>Facturado</th>
+        <th>Archivos NAS</th>
+        <th>Producción USD</th>
+        <th>Proc. facturados</th>
+        <th>Fecha facturación</th>
         <th>Examen</th>
     </tr>
     </thead>
     <tbody>
     <?php if (empty($rows)): ?>
         <tr>
-            <td colspan="12" class="text-muted">Sin registros para exportar.</td>
+            <td colspan="18" class="text-muted">Sin registros para exportar.</td>
         </tr>
     <?php else: ?>
         <?php foreach ($rows as $index => $row): ?>
@@ -124,10 +130,16 @@ ob_start();
                 <td><?= htmlspecialchars((string)($row['paciente'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
                 <td><?= htmlspecialchars((string)($row['afiliacion'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
                 <td><?= htmlspecialchars((string)($row['estado_agenda'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
+                <td><?= htmlspecialchars((string)($row['estado_realizacion'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
+                <td><?= htmlspecialchars((string)($row['estado_informe'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
                 <td><?= !empty($row['cita_generada']) ? 'SI' : 'NO' ?></td>
                 <td><?= !empty($row['examen_realizado']) ? 'SI' : 'NO' ?></td>
                 <td><?= !empty($row['informado']) ? 'SI' : 'NO' ?></td>
                 <td><?= !empty($row['facturado']) ? 'SI' : 'NO' ?></td>
+                <td><?= !empty($row['nas_has_files']) ? htmlspecialchars((string)($row['nas_files_count'] ?? 0), ENT_QUOTES, 'UTF-8') : '0' ?></td>
+                <td><?= htmlspecialchars(number_format((float)($row['produccion'] ?? 0), 2), ENT_QUOTES, 'UTF-8') ?></td>
+                <td><?= htmlspecialchars((string)($row['procedimientos_facturados'] ?? 0), ENT_QUOTES, 'UTF-8') ?></td>
+                <td><?= htmlspecialchars((string)($row['fecha_facturacion'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></td>
                 <td><?= htmlspecialchars((string)($row['examen'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
             </tr>
         <?php endforeach; ?>

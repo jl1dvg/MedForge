@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\LegacySessionBridge;
+use App\Http\Middleware\ConsultasCors;
 use App\Http\Middleware\RequireLegacyPermission;
 use App\Http\Middleware\RequireLegacySession;
 use Illuminate\Foundation\Application;
@@ -22,6 +23,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'legacy.auth' => RequireLegacySession::class,
             'legacy.permission' => RequireLegacyPermission::class,
+            'consultas.cors' => ConsultasCors::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

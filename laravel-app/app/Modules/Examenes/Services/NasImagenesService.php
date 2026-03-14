@@ -45,7 +45,7 @@ class NasImagenesService
         }
 
         if ($this->host && $this->username && $this->password) {
-            $this->lastError = 'SFTP no disponible en este servidor.';
+            $this->lastError = 'SFTP no disponible en este servidor. Falta ext-ssh2 o la libreria phpseclib/phpseclib.';
             return false;
         }
 

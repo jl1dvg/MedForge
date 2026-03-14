@@ -247,7 +247,7 @@ class BillingUiController
         return $this->exportConsolidadoSimple($request, 'issfa');
     }
 
-    public function informeParticulares(Request $request): JsonResponse|RedirectResponse|View
+    public function informeParticulares(Request $request): JsonResponse|RedirectResponse|View|Response
     {
         if (!$this->isLegacyAuthenticated($request)) {
             if ($request->expectsJson()) {
@@ -257,11 +257,17 @@ class BillingUiController
             return redirect('/auth/login?auth_required=1');
         }
 
-        $range = $this->particularesReportService->resolveDateRange((string) $request->query('mes', ''));
+        $range = $this->particularesReportService->resolveDateRange(
+            (string) $request->query('date_from', ''),
+            (string) $request->query('date_to', '')
+        );
         $filters = [
-            'mes' => $range['mes'],
-            'semana' => (string) $request->query('semana', ''),
+            'date_from' => $range['date_from'],
+            'date_to' => $range['date_to'],
             'afiliacion' => (string) $request->query('afiliacion', ''),
+            'sede' => $this->normalizeSedeFilter((string) $request->query('sede', '')),
+            'categoria_cliente' => (string) $request->query('categoria_cliente', ''),
+            'categoria_madre_referido' => (string) $request->query('categoria_madre_referido', ''),
             'tipo' => (string) $request->query('tipo', ''),
             'procedimiento' => (string) $request->query('procedimiento', ''),
         ];
@@ -270,7 +276,6 @@ class BillingUiController
             $baseRows = $this->particularesReportService->obtenerAtencionesParticulares($range['from'], $range['to']);
             $rows = $this->particularesReportService->aplicarFiltros($baseRows, $filters);
             $catalogos = $this->particularesReportService->catalogos($baseRows);
-            $groupedRows = $this->particularesReportService->agruparPorMes($rows);
             $summary = $this->particularesReportService->resumen($rows);
         } catch (\Throwable) {
             if ($request->expectsJson()) {
@@ -278,6 +283,14 @@ class BillingUiController
             }
 
             return redirect('/v2/billing')->with('error', 'No se pudo cargar el informe de particulares.');
+        }
+
+        $export = strtolower(trim((string) $request->query('export', '')));
+        if (in_array($export, ['csv', 'excel'], true)) {
+            return $this->exportInformeParticularesCsv($rows, $filters);
+        }
+        if ($export === 'pdf') {
+            return $this->exportInformeParticularesPdf($summary, $filters);
         }
 
         if ($request->expectsJson()) {
@@ -291,6 +304,7 @@ class BillingUiController
                     'total' => $summary['total'],
                 ],
                 'catalogos' => $catalogos,
+                'summary' => $summary,
                 'data' => $rows,
             ]);
         }
@@ -299,7 +313,7 @@ class BillingUiController
             'pageTitle' => 'Informe de Atenciones Particulares',
             'currentUser' => LegacyCurrentUser::resolve($request),
             'filters' => $filters,
-            'groupedRows' => $groupedRows,
+            'rows' => $rows,
             'summary' => $summary,
             'catalogos' => $catalogos,
         ]);
@@ -1256,5 +1270,701 @@ class BillingUiController
         }
 
         return '';
+    }
+
+    /**
+     * @param array<string, mixed> $summary
+     * @param array<string, mixed> $filters
+     */
+    private function exportInformeParticularesPdf(array $summary, array $filters): Response|RedirectResponse
+    {
+        $economico = is_array($summary['economico'] ?? null) ? $summary['economico'] : [];
+        $operativo = is_array($summary['operativo'] ?? null) ? $summary['operativo'] : [];
+        $temporal = is_array($summary['temporal'] ?? null) ? $summary['temporal'] : [];
+        $procedimientosVolumen = is_array($summary['procedimientos_volumen'] ?? null) ? $summary['procedimientos_volumen'] : [];
+        $desgloseGerencial = is_array($summary['desglose_gerencial'] ?? null) ? $summary['desglose_gerencial'] : [];
+        $picos = is_array($summary['picos'] ?? null) ? $summary['picos'] : [];
+        $pacientesFrecuencia = is_array($summary['pacientes_frecuencia'] ?? null) ? $summary['pacientes_frecuencia'] : [];
+        $categoriaCounts = is_array($summary['categoria_counts'] ?? null) ? $summary['categoria_counts'] : [];
+        $categoriaShare = is_array($summary['categoria_share'] ?? null) ? $summary['categoria_share'] : [];
+        $topAfiliaciones = is_array($summary['top_afiliaciones'] ?? null) ? $summary['top_afiliaciones'] : [];
+        $referidoSummary = is_array($summary['referido_prefactura'] ?? null) ? $summary['referido_prefactura'] : [];
+        $referidoPacientesUnicosSummary = is_array($summary['referido_prefactura_pacientes_unicos'] ?? null) ? $summary['referido_prefactura_pacientes_unicos'] : [];
+        $referidoNuevoPacienteSummary = is_array($summary['referido_prefactura_consulta_nuevo_paciente'] ?? null) ? $summary['referido_prefactura_consulta_nuevo_paciente'] : [];
+        $hierarquiaReferidos = is_array($summary['hierarquia_referidos'] ?? null) ? $summary['hierarquia_referidos'] : [];
+        $totalAtenciones = (int) ($summary['total'] ?? 0);
+        $totalConsultas = (int) ($summary['total_consultas'] ?? 0);
+        $totalProtocolos = (int) ($summary['total_protocolos'] ?? 0);
+        $pacientesUnicos = (int) ($summary['pacientes_unicos'] ?? 0);
+        $honorarioRealTotal = (float) ($economico['total_honorario_real'] ?? $economico['total_produccion'] ?? 0);
+        $operativoEvaluadas = (int) ($operativo['evaluadas'] ?? $totalAtenciones);
+        $operativoRealizadas = (int) ($operativo['realizadas'] ?? 0);
+        $operativoFacturadas = (int) ($operativo['facturadas'] ?? 0);
+        $operativoPendientesFacturar = (int) ($operativo['pendientes_facturar'] ?? 0);
+        $operativoPerdidas = (int) ($operativo['perdidas'] ?? 0);
+        $operativoSinCierre = (int) ($operativo['sin_cierre'] ?? 0);
+        $operativoRealizacionRate = (float) ($operativo['realizacion_rate'] ?? 0);
+        $operativoFacturacionRate = (float) ($operativo['facturacion_sobre_realizadas_rate'] ?? 0);
+        $operativoPendienteRate = (float) ($operativo['pendiente_sobre_realizadas_rate'] ?? 0);
+        $operativoPerdidaRate = (float) ($operativo['perdida_rate'] ?? 0);
+        $operativoPorCobrarEstimado = (float) ($operativo['por_cobrar_estimado'] ?? 0);
+        $operativoPerdidaEstimada = (float) ($operativo['perdida_estimada'] ?? 0);
+        $operativoPotencialCapturable = (float) ($operativo['potencial_capturable'] ?? ($honorarioRealTotal + $operativoPorCobrarEstimado));
+        $operativoTicketFacturadoReal = (float) ($operativo['ticket_facturado_real'] ?? 0);
+        $operativoTicketPendiente = (float) ($operativo['ticket_pendiente'] ?? 0);
+        $honorarioPorCategoria = is_array($economico['honorario_por_categoria'] ?? null)
+            ? $economico['honorario_por_categoria']
+            : (is_array($economico['produccion_por_categoria'] ?? null) ? $economico['produccion_por_categoria'] : []);
+        $honorarioParticular = (float) ($honorarioPorCategoria['particular'] ?? 0);
+        $honorarioPrivado = (float) ($honorarioPorCategoria['privado'] ?? 0);
+        $formasPagoValues = is_array(($economico['formas_pago']['values'] ?? null)) ? $economico['formas_pago']['values'] : [];
+        $doctoresTop = is_array($economico['doctores_top'] ?? null) ? $economico['doctores_top'] : [];
+        $areasTop = is_array($economico['areas_top'] ?? null) ? $economico['areas_top'] : [];
+
+        $particularCount = (int) ($categoriaCounts['particular'] ?? 0);
+        $privadoCount = (int) ($categoriaCounts['privado'] ?? 0);
+        $particularShare = (float) ($categoriaShare['particular'] ?? 0);
+        $privadoShare = (float) ($categoriaShare['privado'] ?? 0);
+
+        $currentMonthLabel = (string) ($temporal['current_month_label'] ?? 'N/D');
+        $currentMonthCount = (int) ($temporal['current_month_count'] ?? 0);
+        $previousMonthLabel = (string) ($temporal['previous_month_label'] ?? 'N/D');
+        $previousMonthCount = (int) ($temporal['previous_month_count'] ?? 0);
+        $sameMonthLastYearLabel = (string) ($temporal['same_month_last_year_label'] ?? 'N/D');
+        $sameMonthLastYearCount = (int) ($temporal['same_month_last_year_count'] ?? 0);
+        $vsPreviousPct = is_numeric($temporal['vs_previous_pct'] ?? null) ? (float) $temporal['vs_previous_pct'] : null;
+        $vsLastYearPct = is_numeric($temporal['vs_same_month_last_year_pct'] ?? null) ? (float) $temporal['vs_same_month_last_year_pct'] : null;
+        $temporalTrend = is_array($temporal['trend'] ?? null) ? $temporal['trend'] : [];
+        $temporalTrendLabels = is_array($temporalTrend['labels'] ?? null) ? $temporalTrend['labels'] : [];
+        $temporalTrendCounts = is_array($temporalTrend['counts'] ?? null) ? $temporalTrend['counts'] : [];
+
+        $pacientesNuevos = (int) ($pacientesFrecuencia['nuevos'] ?? 0);
+        $pacientesRecurrentes = (int) ($pacientesFrecuencia['recurrentes'] ?? 0);
+        $pacientesNuevosPct = (float) ($pacientesFrecuencia['nuevos_pct'] ?? 0);
+        $pacientesRecurrentesPct = (float) ($pacientesFrecuencia['recurrentes_pct'] ?? 0);
+
+        $topProcedimientosVolumen = is_array($procedimientosVolumen['top_10'] ?? null) ? $procedimientosVolumen['top_10'] : [];
+
+        $desgloseSedes = is_array($desgloseGerencial['sedes'] ?? null) ? $desgloseGerencial['sedes'] : [];
+        $desgloseDoctores = is_array($desgloseGerencial['doctores'] ?? null) ? $desgloseGerencial['doctores'] : [];
+
+        $picosDias = is_array($picos['dias'] ?? null) ? $picos['dias'] : [];
+        $peakDay = is_array($picos['peak_day'] ?? null) ? $picos['peak_day'] : ['valor' => 'N/D', 'cantidad' => 0];
+
+        $referidoValues = is_array($referidoSummary['values'] ?? null) ? $referidoSummary['values'] : [];
+        $referidoWithValue = (int) ($referidoSummary['with_value'] ?? 0);
+        $referidoWithoutValue = (int) ($referidoSummary['without_value'] ?? 0);
+        $referidoPacientesUnicosValues = is_array($referidoPacientesUnicosSummary['values'] ?? null) ? $referidoPacientesUnicosSummary['values'] : [];
+        $referidoPacientesUnicosWithValue = (int) ($referidoPacientesUnicosSummary['with_value'] ?? 0);
+        $referidoPacientesUnicosWithoutValue = (int) ($referidoPacientesUnicosSummary['without_value'] ?? 0);
+        $referidoNuevoPacienteValues = is_array($referidoNuevoPacienteSummary['values'] ?? null) ? $referidoNuevoPacienteSummary['values'] : [];
+        $referidoNuevoPacienteWithValue = (int) ($referidoNuevoPacienteSummary['with_value'] ?? 0);
+        $referidoNuevoPacienteWithoutValue = (int) ($referidoNuevoPacienteSummary['without_value'] ?? 0);
+        $hierarquiaPares = is_array($hierarquiaReferidos['pares'] ?? null) ? $hierarquiaReferidos['pares'] : [];
+
+        $dateFrom = trim((string) ($filters['date_from'] ?? ''));
+        $dateTo = trim((string) ($filters['date_to'] ?? ''));
+        $queryWithoutExport = array_filter([
+            'date_from' => $dateFrom,
+            'date_to' => $dateTo,
+            'categoria_cliente' => trim((string) ($filters['categoria_cliente'] ?? '')),
+            'categoria_madre_referido' => trim((string) ($filters['categoria_madre_referido'] ?? '')),
+            'tipo' => trim((string) ($filters['tipo'] ?? '')),
+            'sede' => trim((string) ($filters['sede'] ?? '')),
+            'afiliacion' => trim((string) ($filters['afiliacion'] ?? '')),
+            'procedimiento' => trim((string) ($filters['procedimiento'] ?? '')),
+        ], static fn($value): bool => trim((string) $value) !== '');
+
+        $dateRangeValue = 'Últimos 30 días';
+        if ($dateFrom !== '' || $dateTo !== '') {
+            $dateRangeValue = ($dateFrom !== '' ? $dateFrom : '...') . ' a ' . ($dateTo !== '' ? $dateTo : '...');
+        }
+
+        $filterSummary = [
+            ['label' => 'Rango de fechas', 'value' => $dateRangeValue],
+            ['label' => 'Sede', 'value' => strtoupper(trim((string) ($filters['sede'] ?? ''))) ?: 'Todas'],
+            ['label' => 'Afiliación', 'value' => strtoupper(trim((string) ($filters['afiliacion'] ?? ''))) ?: 'Todas'],
+            ['label' => 'Categoría cliente', 'value' => ucfirst(strtolower(trim((string) ($filters['categoria_cliente'] ?? '')))) ?: 'Todas'],
+            ['label' => 'Tipo de atención', 'value' => strtoupper(trim((string) ($filters['tipo'] ?? ''))) ?: 'Todos'],
+            ['label' => 'Procedimiento', 'value' => trim((string) ($filters['procedimiento'] ?? '')) ?: 'Todos'],
+        ];
+
+        $formatCurrency = static fn(float $amount): string => '$' . number_format($amount, 2);
+        $formatPercent = static fn(float $value): string => number_format($value, 2) . '%';
+        $formatCount = static fn(int $value): string => number_format($value);
+        $normalizeLabel = static function (mixed $value, string $default = 'SIN DATO'): string {
+            $text = trim((string) $value);
+            return $text !== '' ? strtoupper($text) : $default;
+        };
+        $buildMetricRows = static function (array $items, int $limit = 8) use ($formatCount, $formatPercent, $normalizeLabel): array {
+            $rows = [];
+            foreach (array_slice($items, 0, $limit) as $item) {
+                if (!is_array($item)) {
+                    continue;
+                }
+
+                $rows[] = [
+                    $normalizeLabel($item['valor'] ?? ''),
+                    $formatCount((int) ($item['cantidad'] ?? 0)),
+                    $formatPercent((float) ($item['porcentaje'] ?? 0)),
+                ];
+            }
+
+            return $rows;
+        };
+        $buildMoneyRows = static function (array $items, int $limit = 8) use ($formatCurrency, $formatPercent, $normalizeLabel): array {
+            $rows = [];
+            foreach (array_slice($items, 0, $limit) as $item) {
+                if (!is_array($item)) {
+                    continue;
+                }
+
+                $rows[] = [
+                    $normalizeLabel($item['valor'] ?? ''),
+                    $formatCurrency((float) ($item['monto'] ?? 0)),
+                    $formatPercent((float) ($item['porcentaje'] ?? 0)),
+                ];
+            }
+
+            return $rows;
+        };
+        $buildTrendRows = static function (array $labels, array $values) use ($formatCurrency): array {
+            $rows = [];
+            $count = min(count($labels), count($values));
+            for ($index = 0; $index < $count; $index++) {
+                $rows[] = [
+                    trim((string) $labels[$index]) !== '' ? (string) $labels[$index] : 'N/D',
+                    $formatCurrency((float) ($values[$index] ?? 0)),
+                ];
+            }
+
+            return $rows;
+        };
+        $buildTrendCountRows = static function (array $labels, array $values) use ($formatCount): array {
+            $rows = [];
+            $count = min(count($labels), count($values));
+            for ($index = 0; $index < $count; $index++) {
+                $rows[] = [
+                    trim((string) $labels[$index]) !== '' ? (string) $labels[$index] : 'N/D',
+                    $formatCount((int) ($values[$index] ?? 0)),
+                ];
+            }
+
+            return $rows;
+        };
+        $buildCombinedMoneyMetricRows = static function (array $moneyItems, array $metricItems, int $limit = 10) use ($formatCount, $formatCurrency, $formatPercent, $normalizeLabel): array {
+            $order = [];
+            $moneyMap = [];
+            $metricMap = [];
+
+            foreach ($moneyItems as $item) {
+                if (!is_array($item)) {
+                    continue;
+                }
+
+                $label = $normalizeLabel($item['valor'] ?? '');
+                if (!in_array($label, $order, true)) {
+                    $order[] = $label;
+                }
+
+                $moneyMap[$label] = [
+                    'amount' => (float) ($item['monto'] ?? 0),
+                    'percent' => (float) ($item['porcentaje'] ?? 0),
+                ];
+            }
+
+            foreach ($metricItems as $item) {
+                if (!is_array($item)) {
+                    continue;
+                }
+
+                $label = $normalizeLabel($item['valor'] ?? '');
+                if (!in_array($label, $order, true)) {
+                    $order[] = $label;
+                }
+
+                $metricMap[$label] = [
+                    'count' => (int) ($item['cantidad'] ?? 0),
+                    'percent' => (float) ($item['porcentaje'] ?? 0),
+                ];
+            }
+
+            $rows = [];
+            foreach (array_slice($order, 0, $limit) as $label) {
+                $metric = $metricMap[$label] ?? ['count' => 0, 'percent' => 0];
+                $money = $moneyMap[$label] ?? ['amount' => 0, 'percent' => 0];
+
+                $rows[] = [
+                    $label,
+                    $formatCount($metric['count']),
+                    $formatPercent($metric['percent']),
+                    $formatCurrency($money['amount']),
+                    $formatPercent($money['percent']),
+                ];
+            }
+
+            return $rows;
+        };
+
+        $categoriaLiderLabel = $particularCount >= $privadoCount ? 'PARTICULAR' : 'PRIVADO';
+        $categoriaLiderCount = $particularCount >= $privadoCount ? $particularCount : $privadoCount;
+        $categoriaLiderPct = $particularCount >= $privadoCount ? $particularShare : $privadoShare;
+        $topProcedimientoLider = is_array($topProcedimientosVolumen[0] ?? null) ? $topProcedimientosVolumen[0] : [];
+        $topProcedimientoLabel = $normalizeLabel($topProcedimientoLider['valor'] ?? '', '');
+        $topProcedimientoCount = (int) ($topProcedimientoLider['cantidad'] ?? 0);
+        $topProcedimientoPct = (float) ($topProcedimientoLider['porcentaje'] ?? 0);
+
+        $hallazgosClave = [];
+        if ($operativoEvaluadas > 0) {
+            $hallazgosClave[] = sprintf(
+                'Se realizaron %d de %d atenciones evaluadas (%s).',
+                $operativoRealizadas,
+                $operativoEvaluadas,
+                $formatPercent($operativoRealizacionRate)
+            );
+            $hallazgosClave[] = sprintf(
+                'Se facturaron %d de las realizadas (%s) y %d quedaron pendientes de cobro (%s).',
+                $operativoFacturadas,
+                $formatPercent($operativoFacturacionRate),
+                $operativoPendientesFacturar,
+                $formatPercent($operativoPendienteRate)
+            );
+            $hallazgosClave[] = sprintf(
+                'La pérdida operativa fue de %d casos (%s) con una pérdida estimada de %s.',
+                $operativoPerdidas,
+                $formatPercent($operativoPerdidaRate),
+                $formatCurrency($operativoPerdidaEstimada)
+            );
+        }
+        if ($topProcedimientoLabel !== '' && $topProcedimientoCount > 0) {
+            $hallazgosClave[] = sprintf(
+                'El procedimiento más frecuente fue %s con %d atenciones (%s).',
+                $topProcedimientoLabel,
+                $topProcedimientoCount,
+                $formatPercent($topProcedimientoPct)
+            );
+        }
+        if ((int) ($peakDay['cantidad'] ?? 0) > 0) {
+            $hallazgosClave[] = sprintf(
+                'El pico operativo por día fue %s con %d atenciones.',
+                $normalizeLabel($peakDay['valor'] ?? 'N/D', 'N/D'),
+                (int) ($peakDay['cantidad'] ?? 0)
+            );
+        }
+        $hallazgosClave = array_slice($hallazgosClave, 0, 4);
+
+        $generalKpis = [
+            [
+                'label' => 'Atenciones evaluadas',
+                'value' => $formatCount($operativoEvaluadas),
+                'note' => 'Universo auditado con la lógica real por categoría de servicio.',
+            ],
+            [
+                'label' => 'Realizadas',
+                'value' => $formatCount($operativoRealizadas) . ' (' . $formatPercent($operativoRealizacionRate) . ')',
+                'note' => 'Atenciones con evidencia real de servicio realizado.',
+            ],
+            [
+                'label' => 'Facturadas',
+                'value' => $formatCount($operativoFacturadas) . ' (' . $formatPercent($operativoFacturacionRate) . ')',
+                'note' => 'Atenciones realizadas que ya tienen billing real asociado.',
+            ],
+            [
+                'label' => 'Pendientes de facturar',
+                'value' => $formatCount($operativoPendientesFacturar) . ' (' . $formatPercent($operativoPendienteRate) . ')',
+                'note' => 'Atenciones realizadas con respaldo operativo o clínico aún sin billing real.',
+            ],
+            [
+                'label' => 'Pérdida operativa',
+                'value' => $formatCount($operativoPerdidas) . ' (' . $formatPercent($operativoPerdidaRate) . ')',
+                'note' => 'Atenciones no realizadas o perdidas según la lógica real por servicio.',
+            ],
+            [
+                'label' => 'Pacientes únicos',
+                'value' => $formatCount($pacientesUnicos),
+                'note' => 'Pacientes distintos incluidos en el rango filtrado.',
+            ],
+        ];
+
+        $temporalKpis = [
+            [
+                'label' => 'Volumen mes actual',
+                'value' => $formatCount($currentMonthCount),
+                'note' => $currentMonthLabel,
+            ],
+            [
+                'label' => 'Vs mes anterior',
+                'value' => $vsPreviousPct === null ? 'N/D' : (($vsPreviousPct >= 0 ? '↑ ' : '↓ ') . $formatPercent(abs($vsPreviousPct))),
+                'note' => $formatCount($currentMonthCount) . ' vs ' . $formatCount($previousMonthCount) . ' (' . $previousMonthLabel . ')',
+            ],
+            [
+                'label' => 'Vs mismo mes año pasado',
+                'value' => $vsLastYearPct === null ? 'N/D' : (($vsLastYearPct >= 0 ? '↑ ' : '↓ ') . $formatPercent(abs($vsLastYearPct))),
+                'note' => $formatCount($currentMonthCount) . ' vs ' . $formatCount($sameMonthLastYearCount) . ' (' . $sameMonthLastYearLabel . ')',
+            ],
+            [
+                'label' => 'Nuevos vs recurrentes',
+                'value' => $formatCount($pacientesNuevos) . ' / ' . $formatCount($pacientesRecurrentes),
+                'note' => 'Nuevos ' . $formatPercent($pacientesNuevosPct) . ' | Recurrentes ' . $formatPercent($pacientesRecurrentesPct),
+            ],
+            [
+                'label' => 'Pico operativo por día',
+                'value' => $normalizeLabel($peakDay['valor'] ?? 'N/D', 'N/D') . ' (' . $formatCount((int) ($peakDay['cantidad'] ?? 0)) . ')',
+                'note' => 'Día con mayor volumen de atención en el rango filtrado.',
+            ],
+        ];
+
+        $economicKpis = [
+            [
+                'label' => 'Honorario real acumulado',
+                'value' => $formatCurrency($honorarioRealTotal),
+                'meaning' => 'Suma del valor económico real único por procedimiento, obtenido desde billing_facturacion_real.',
+                'formula' => 'SUM(billing_facturacion_real.monto_honorario) sobre las atenciones filtradas.',
+            ],
+            [
+                'label' => 'Por cobrar estimado',
+                'value' => $formatCurrency($operativoPorCobrarEstimado),
+                'meaning' => 'Monto estimado pendiente de cobrar en atenciones realizadas sin billing real.',
+                'formula' => 'SUM(monto_por_cobrar_estimado) para estados operativos PENDIENTE_FACTURAR.',
+            ],
+            [
+                'label' => 'Pérdida estimada',
+                'value' => $formatCurrency($operativoPerdidaEstimada),
+                'meaning' => 'Monto estimado de producción perdida por cancelación, ausentismo o pérdida operativa.',
+                'formula' => 'SUM(monto_perdida_estimada) según la lógica real por categoría de servicio.',
+            ],
+            [
+                'label' => 'Potencial capturable',
+                'value' => $formatCurrency($operativoPotencialCapturable),
+                'meaning' => 'Suma de honorario real ya capturado más el valor estimado todavía pendiente de cobro.',
+                'formula' => 'Honorario real acumulado + por cobrar estimado.',
+            ],
+            [
+                'label' => 'Cobro sobre realizadas',
+                'value' => $formatPercent($operativoFacturacionRate),
+                'meaning' => 'Cobertura de facturación real sobre las atenciones efectivamente realizadas.',
+                'formula' => 'Atenciones facturadas / Atenciones realizadas.',
+            ],
+            [
+                'label' => 'Ticket facturado real',
+                'value' => $formatCurrency($operativoTicketFacturadoReal),
+                'meaning' => 'Honorario real promedio por atención con billing real.',
+                'formula' => 'Honorario real acumulado / Atenciones facturadas.',
+            ],
+            [
+                'label' => 'Ticket pendiente',
+                'value' => $formatCurrency($operativoTicketPendiente),
+                'meaning' => 'Valor estimado promedio por cada atención pendiente de facturar.',
+                'formula' => 'Por cobrar estimado / Atenciones pendientes de facturar.',
+            ],
+            [
+                'label' => 'Honorario Particular',
+                'value' => $formatCurrency($honorarioParticular),
+                'meaning' => 'Honorario real acumulado para la categoría cliente Particular.',
+                'formula' => 'SUM(monto_honorario) filtrando categoria_cliente = particular.',
+            ],
+            [
+                'label' => 'Honorario Privado',
+                'value' => $formatCurrency($honorarioPrivado),
+                'meaning' => 'Honorario real acumulado para la categoría cliente Privado.',
+                'formula' => 'SUM(monto_honorario) filtrando categoria_cliente = privado.',
+            ],
+        ];
+
+        $tables = [
+            [
+                'title' => 'Categoría cliente: volumen + honorario',
+                'columns' => ['Categoría', 'Atenciones', '% del total', 'Honorario real'],
+                'rows' => [
+                    ['PARTICULAR', $formatCount($particularCount), $formatPercent($particularShare), $formatCurrency($honorarioParticular)],
+                    ['PRIVADO', $formatCount($privadoCount), $formatPercent($privadoShare), $formatCurrency($honorarioPrivado)],
+                    ['TOTAL', $formatCount($totalAtenciones), $formatPercent(100), $formatCurrency($honorarioRealTotal)],
+                ],
+                'empty_message' => 'Sin datos de categoría para el rango seleccionado.',
+            ],
+            [
+                'title' => 'Tendencia mensual de volumen',
+                'columns' => ['Mes', 'Atenciones'],
+                'rows' => $buildTrendCountRows($temporalTrendLabels, $temporalTrendCounts),
+                'empty_message' => 'Sin tendencia de volumen disponible.',
+            ],
+            [
+                'title' => 'Top procedimientos por volumen',
+                'columns' => ['Procedimiento', 'Atenciones', '% del total'],
+                'rows' => $buildMetricRows($topProcedimientosVolumen, 10),
+                'empty_message' => 'Sin procedimientos para el rango seleccionado.',
+            ],
+            [
+                'title' => 'Top afiliaciones',
+                'columns' => ['Afiliación', 'Atenciones', '% del total'],
+                'rows' => array_map(
+                    static function (array $item) use ($formatCount, $formatPercent, $normalizeLabel, $totalAtenciones): array {
+                        $cantidad = (int) ($item['cantidad'] ?? 0);
+                        $porcentaje = $totalAtenciones > 0 ? round(($cantidad / $totalAtenciones) * 100, 2) : 0.0;
+
+                        return [
+                            $normalizeLabel($item['afiliacion'] ?? ''),
+                            $formatCount($cantidad),
+                            $formatPercent($porcentaje),
+                        ];
+                    },
+                    array_slice($topAfiliaciones, 0, 10)
+                ),
+                'empty_message' => 'Sin afiliaciones para el rango seleccionado.',
+            ],
+            [
+                'title' => 'Formas de pago',
+                'columns' => ['Forma de pago', 'Atenciones', '%'],
+                'rows' => $buildMetricRows($formasPagoValues, 8),
+                'empty_message' => 'Sin formas de pago registradas en el rango.',
+            ],
+            [
+                'title' => 'Áreas con mayor honorario real',
+                'columns' => ['Área', 'Honorario', '% del honorario'],
+                'rows' => $buildMoneyRows($areasTop, 8),
+                'empty_message' => 'Sin áreas con honorario en el rango.',
+            ],
+            [
+                'title' => 'Desglose por sede',
+                'columns' => ['Sede', 'Atenciones', '% del total'],
+                'rows' => $buildMetricRows($desgloseSedes, 10),
+                'empty_message' => 'Sin sedes para el rango seleccionado.',
+            ],
+            [
+                'title' => 'Médicos: volumen + honorario',
+                'columns' => ['Médico', 'Atenciones', '% del total', 'Honorario', '% del honorario'],
+                'rows' => $buildCombinedMoneyMetricRows($doctoresTop, $desgloseDoctores, 10),
+                'empty_message' => 'Sin médicos para el rango seleccionado.',
+            ],
+            [
+                'title' => 'Picos por día',
+                'columns' => ['Día', 'Atenciones', '% del total'],
+                'rows' => $buildMetricRows($picosDias, 7),
+                'empty_message' => 'Sin picos operativos para el rango seleccionado.',
+            ],
+            [
+                'title' => 'Origen de referencia: Total de atenciones',
+                'subtitle' => 'Con valor: ' . $formatCount($referidoWithValue) . ' | Sin valor: ' . $formatCount($referidoWithoutValue),
+                'columns' => ['Valor', 'Atenciones', '%'],
+                'rows' => $buildMetricRows($referidoValues, 12),
+                'empty_message' => 'Sin datos de origen de referencia.',
+            ],
+            [
+                'title' => 'Origen de referencia: Pacientes únicos',
+                'subtitle' => 'Con valor: ' . $formatCount($referidoPacientesUnicosWithValue) . ' | Sin valor: ' . $formatCount($referidoPacientesUnicosWithoutValue),
+                'columns' => ['Valor', 'Pacientes únicos', '%'],
+                'rows' => $buildMetricRows($referidoPacientesUnicosValues, 12),
+                'empty_message' => 'Sin datos de pacientes únicos por referencia.',
+            ],
+            [
+                'title' => 'Origen de referencia: Nuevo paciente',
+                'subtitle' => 'Con valor: ' . $formatCount($referidoNuevoPacienteWithValue) . ' | Sin valor: ' . $formatCount($referidoNuevoPacienteWithoutValue),
+                'columns' => ['Valor', 'Cantidad', '%'],
+                'rows' => $buildMetricRows($referidoNuevoPacienteValues, 12),
+                'empty_message' => 'Sin datos de nuevo paciente por referencia.',
+            ],
+            [
+                'title' => 'Jerarquía de referencias',
+                'subtitle' => '% en categoría = participación de la subcategoría dentro de su categoría madre.',
+                'columns' => ['Categoría madre', 'Subcategoría', 'Cantidad', '% en categoría'],
+                'rows' => array_map(
+                    static function (array $item) use ($formatCount, $formatPercent, $normalizeLabel): array {
+                        return [
+                            $normalizeLabel($item['categoria'] ?? ''),
+                            $normalizeLabel($item['subcategoria'] ?? ''),
+                            $formatCount((int) ($item['cantidad'] ?? 0)),
+                            $formatPercent((float) ($item['porcentaje_en_categoria'] ?? 0)),
+                        ];
+                    },
+                    array_slice($hierarquiaPares, 0, 15)
+                ),
+                'empty_message' => 'Sin jerarquía de referencias para el rango seleccionado.',
+            ],
+        ];
+
+        $methodology = [
+            'El universo del informe considera atenciones de categoría cliente Particular o Privado dentro del rango filtrado y aplica una lógica real específica por categoría de servicio.',
+            'Cirugías, PNI, servicios oftalmológicos e imágenes se clasifican en realizadas, pendientes de facturar o pérdida según evidencia clínica, operativa, técnica y económica disponible.',
+            'La fuente económica del PDF es exclusivamente billing_facturacion_real, unida por form_id.',
+            'Se analiza únicamente billing_facturacion_real.monto_honorario como valor económico único por procedimiento/form_id.',
+            'billing_facturacion_real.monto_facturado no se usa en KPI ni totales porque puede repetir el total diario en múltiples form_id y sobrestimar la producción.',
+            'Facturas emitidas, número de factura, forma de pago, cliente y área se usan como metadata operativa y no como base de suma monetaria.',
+        ];
+
+        $filename = 'kpi_particulares_' . ($dateFrom !== '' ? str_replace('-', '', $dateFrom) : date('Ymd')) . '_' .
+            ($dateTo !== '' ? str_replace('-', '', $dateTo) : date('Ymd')) . '.pdf';
+
+        try {
+            if (!class_exists(\Mpdf\Mpdf::class)) {
+                throw new RuntimeException('La librería mPDF no está disponible en el entorno.');
+            }
+
+            $html = view('billing.pdf.particulares-kpi', [
+                'generatedAt' => (new DateTimeImmutable('now'))->format('d/m/Y H:i'),
+                'filterSummary' => $filterSummary,
+                'hallazgosClave' => $hallazgosClave,
+                'methodology' => $methodology,
+                'generalKpis' => $generalKpis,
+                'temporalKpis' => $temporalKpis,
+                'economicKpis' => $economicKpis,
+                'tables' => $tables,
+                'totalAtenciones' => $totalAtenciones,
+            ])->render();
+
+            $pdf = new \Mpdf\Mpdf([
+                'mode' => 'utf-8',
+                'format' => 'A4',
+                'orientation' => 'P',
+                'margin_left' => 10,
+                'margin_right' => 10,
+                'margin_top' => 10,
+                'margin_bottom' => 10,
+            ]);
+
+            $pdf->SetTitle('KPI Informe Particulares');
+            $pdf->WriteHTML($html);
+            $content = (string) $pdf->Output('', 'S');
+
+            if (strncmp($content, '%PDF-', 5) !== 0) {
+                throw new RuntimeException('El contenido generado no es un PDF válido.');
+            }
+
+            return response($content, 200, [
+                'Content-Type' => 'application/pdf',
+                'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+                'X-Content-Type-Options' => 'nosniff',
+                'Content-Length' => (string) strlen($content),
+            ]);
+        } catch (\Throwable $exception) {
+            Log::error('billing.particulares.export_pdf.error', [
+                'error' => $exception->getMessage(),
+            ]);
+
+            $redirect = '/v2/informes/particulares';
+            if (!empty($queryWithoutExport)) {
+                $redirect .= '?' . http_build_query($queryWithoutExport);
+            }
+
+            return redirect($redirect)->with('error', 'No se pudo generar el PDF de KPI de particulares.');
+        }
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $rows
+     * @param array<string, mixed> $filters
+     */
+    private function exportInformeParticularesCsv(array $rows, array $filters): Response
+    {
+        $from = trim((string) ($filters['date_from'] ?? ''));
+        $to = trim((string) ($filters['date_to'] ?? ''));
+        $suffix = date('Ymd_His');
+        if ($from !== '' && $to !== '') {
+            $suffix = str_replace('-', '', $from) . '_' . str_replace('-', '', $to);
+        }
+        $filename = 'informe_particulares_' . $suffix . '.csv';
+
+        $handle = fopen('php://temp', 'r+');
+        if ($handle === false) {
+            return response('No se pudo generar el archivo CSV.', 500);
+        }
+
+        fputcsv($handle, [
+            'Fecha',
+            'HC',
+            'Nombre',
+            'Afiliacion',
+            'Categoria cliente',
+            'Sede',
+            'Estado encuentro',
+            'Estado realizacion',
+            'Tipo atencion',
+            'Procedimiento proyectado',
+            'Doctor',
+            'Facturacion',
+            'Estado facturacion operativa',
+            'Monto estimado',
+            'Honorario real',
+            'Billing ID',
+            'Fecha facturacion',
+            'Numero factura',
+            'Factura ID',
+            'Formas pago',
+            'Cliente facturacion',
+            'Area facturacion',
+            'Referido prefactura por',
+            'Especificar referido prefactura',
+            'Sin tarifa estimable',
+            'Sin costo configurado',
+            'Codigo tarifario',
+            'Detalle tarifario',
+            'Estado tarifa',
+            'Motivo tarifa',
+            'Nivel tarifa',
+            'Codigo match',
+            'Descripcion match',
+        ]);
+
+        foreach ($rows as $row) {
+            $fechaRaw = trim((string) ($row['fecha'] ?? ''));
+            $fecha = $fechaRaw !== '' && strtotime($fechaRaw) !== false ? date('d/m/Y H:i', strtotime($fechaRaw)) : '';
+            $fechaFacturacionRaw = trim((string) ($row['fecha_facturacion'] ?? ''));
+            $fechaFacturacion = $fechaFacturacionRaw !== '' && strtotime($fechaFacturacionRaw) !== false
+                ? date('d/m/Y H:i', strtotime($fechaFacturacionRaw))
+                : '';
+            $facturado = (bool) ($row['facturado'] ?? false);
+            $estadoRealizacion = trim((string) ($row['estado_realizacion'] ?? ''));
+            $estadoFacturacionOperativa = trim((string) ($row['estado_facturacion_operativa'] ?? ''));
+            $montoEstimado = (float) ($row['monto_por_cobrar_estimado'] ?? 0);
+            if ($montoEstimado <= 0) {
+                $montoEstimado = (float) ($row['monto_perdida_estimada'] ?? 0);
+            }
+
+            fputcsv($handle, [
+                $fecha,
+                (string) ($row['hc_number'] ?? ''),
+                trim((string) ($row['nombre_completo'] ?? '')),
+                trim((string) ($row['afiliacion'] ?? '')),
+                trim((string) ($row['categoria_cliente'] ?? '')),
+                trim((string) ($row['sede'] ?? '')),
+                trim((string) ($row['estado_encuentro'] ?? '')),
+                $estadoRealizacion,
+                trim((string) ($row['tipo_atencion'] ?? '')),
+                trim((string) ($row['procedimiento_proyectado'] ?? '')),
+                trim((string) ($row['doctor'] ?? '')),
+                $facturado ? 'FACTURADO' : 'PENDIENTE',
+                $estadoFacturacionOperativa,
+                number_format($montoEstimado, 2, '.', ''),
+                number_format((float) ($row['monto_honorario_real'] ?? $row['total_produccion'] ?? 0), 2, '.', ''),
+                (string) ($row['billing_id'] ?? ''),
+                $fechaFacturacion,
+                trim((string) ($row['numero_factura'] ?? '')),
+                trim((string) ($row['factura_id'] ?? '')),
+                trim((string) ($row['formas_pago'] ?? '')),
+                trim((string) ($row['cliente_facturacion'] ?? '')),
+                trim((string) ($row['area_facturacion'] ?? '')),
+                trim((string) ($row['referido_prefactura_por'] ?? '')),
+                trim((string) ($row['especificar_referido_prefactura'] ?? '')),
+                (bool) ($row['sin_tarifa_estimable'] ?? false) ? 'SI' : 'NO',
+                (bool) ($row['tarifa_sin_costo_configurado'] ?? false) ? 'SI' : 'NO',
+                trim((string) ($row['tarifa_codigo'] ?? '')),
+                trim((string) ($row['tarifa_detalle'] ?? '')),
+                trim((string) ($row['tarifa_lookup_status'] ?? '')),
+                trim((string) ($row['tarifa_lookup_reason'] ?? '')),
+                trim((string) ($row['tarifa_level_title'] ?? $row['tarifa_level_key'] ?? '')),
+                trim((string) ($row['tarifa_codigo_match'] ?? '')),
+                trim((string) ($row['tarifa_descripcion_match'] ?? '')),
+            ]);
+        }
+
+        rewind($handle);
+        $csvContent = stream_get_contents($handle);
+        fclose($handle);
+
+        $csvBody = "\xEF\xBB\xBF" . ($csvContent !== false ? $csvContent : '');
+
+        return response($csvBody, 200, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+        ]);
     }
 }

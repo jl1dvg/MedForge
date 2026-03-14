@@ -227,7 +227,7 @@ class SolicitudModel
                 ':slug' => $slug,
                 ':accion' => 'completar',
                 ':nota' => 'Marcado desde actualización de solicitud',
-                ':old' => $oldCompletadoAt ?: null,
+                ':old' => $oldCompletadoAt,
                 ':new' => $now,
             ]);
 

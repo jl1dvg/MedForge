@@ -7,25 +7,32 @@
                 </div>
                 <div class="box-body">
                     <div class="row text-center" id="resumenTotales">
-                        <div class="col-md-4 mb-2">
+                        <div class="col-md-3 mb-2">
                             <div class="p-2 border rounded h-100">
                                 <div class="text-muted">Total pendientes</div>
                                 <div class="fw-bold fs-5" data-resumen="total-cantidad">0</div>
                                 <div class="text-success" data-resumen="total-monto">$0.00</div>
                             </div>
                         </div>
-                        <div class="col-md-4 mb-2">
+                        <div class="col-md-3 mb-2">
                             <div class="p-2 border rounded h-100">
                                 <div class="text-muted">Quirúrgicos</div>
                                 <div class="fw-bold fs-5" data-resumen="quirurgicos-cantidad">0</div>
                                 <div class="text-success" data-resumen="quirurgicos-monto">$0.00</div>
                             </div>
                         </div>
-                        <div class="col-md-4 mb-2">
+                        <div class="col-md-3 mb-2">
                             <div class="p-2 border rounded h-100">
                                 <div class="text-muted">No quirúrgicos</div>
                                 <div class="fw-bold fs-5" data-resumen="no-quirurgicos-cantidad">0</div>
                                 <div class="text-success" data-resumen="no-quirurgicos-monto">$0.00</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 mb-2">
+                            <div class="p-2 border rounded h-100">
+                                <div class="text-muted">PNI</div>
+                                <div class="fw-bold fs-5" data-resumen="pni-cantidad">0</div>
+                                <div class="text-success" data-resumen="pni-monto">$0.00</div>
                             </div>
                         </div>
                     </div>
@@ -122,6 +129,7 @@
                                 <option value="">Todos</option>
                                 <option value="quirurgico">Quirúrgico</option>
                                 <option value="no_quirurgico">No quirúrgico</option>
+                                <option value="pni">PNI</option>
                             </select>
                         </div>
                         <div class="col-md-2">
@@ -194,6 +202,12 @@
                             <button class="nav-link" id="tabConsultas" data-bs-toggle="tab"
                                     data-bs-target="#paneConsultas" type="button" role="tab" aria-controls="paneConsultas"
                                     aria-selected="false">Consultas
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="tabPni" data-bs-toggle="tab"
+                                    data-bs-target="#panePni" type="button" role="tab" aria-controls="panePni"
+                                    aria-selected="false">PNI
                             </button>
                         </li>
                     </ul>
@@ -404,6 +418,44 @@
                                     <i class="mdi mdi-alert-outline fs-4 mb-0"></i>
                                     <div>
                                         <div class="fw-bold">No pudimos cargar las consultas.</div>
+                                        <div class="small text-muted" data-error-message>Revisa tu conexión o vuelve a
+                                            intentar.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="tab-pane fade" id="panePni" role="tabpanel" aria-labelledby="tabPni">
+                            <div class="table-responsive">
+                                <table class="table table-lg invoice-archive" id="tablaPni">
+                                    <thead class="table-light">
+                                    <tr>
+                                        <th class="text-center">
+                                            <input type="checkbox" class="form-check-input" id="selectAllPni"
+                                                   aria-label="Seleccionar todos los PNI">
+                                        </th>
+                                        <th>Form ID</th>
+                                        <!--<th>HC</th>-->
+                                        <th>Paciente</th>
+                                        <th>Afiliación</th>
+                                        <th>Fecha</th>
+                                        <th>Tipo</th>
+                                        <th>Estado revisión</th>
+                                        <th>Informe</th>
+                                        <th>Procedimiento</th>
+                                        <th>Valor</th>
+                                        <th>Acciones</th>
+                                    </tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                            <div class="alert alert-danger d-none rounded-0" role="alert"
+                                 data-table-error="tablaPni">
+                                <div class="d-flex align-items-center gap-2">
+                                    <i class="mdi mdi-alert-outline fs-4 mb-0"></i>
+                                    <div>
+                                        <div class="fw-bold">No pudimos cargar los PNI.</div>
                                         <div class="small text-muted" data-error-message>Revisa tu conexión o vuelve a
                                             intentar.
                                         </div>

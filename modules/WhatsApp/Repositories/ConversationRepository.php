@@ -227,7 +227,7 @@ class ConversationRepository
     /**
      * @return array<int, array<string, mixed>>
      */
-    public function listConversations(string $search = '', ?int $limit = null): array
+    public function listConversations(string $search = '', ?int $limit = null, ?int $viewerUserId = null, bool $includeAssignedOthers = true): array
     {
         $search = trim($search);
         $sql = 'SELECT c.id, c.wa_number, c.display_name, c.patient_hc_number, c.patient_full_name, c.last_message_at, c.last_message_direction, c.last_message_type, c.last_message_preview, c.needs_human, c.handoff_notes, c.handoff_role_id, c.assigned_user_id, c.assigned_at, c.handoff_requested_at, c.unread_count, c.created_at, c.updated_at, ' .
@@ -240,15 +240,25 @@ class ConversationRepository
             'LEFT JOIN users u ON u.id = c.assigned_user_id ' .
             'LEFT JOIN roles r ON r.id = c.handoff_role_id';
         $params = [];
+        $where = [];
+
+        if (!$includeAssignedOthers && $viewerUserId !== null && $viewerUserId > 0) {
+            $where[] = '(c.assigned_user_id IS NULL OR c.assigned_user_id = :viewer_user_id)';
+            $params[':viewer_user_id'] = $viewerUserId;
+        }
 
         if ($search !== '') {
-            $sql .= ' WHERE wa_number LIKE :search_wa OR display_name LIKE :search_display OR patient_full_name LIKE :search_patient OR patient_hc_number LIKE :search_hc OR last_message_preview LIKE :search_preview';
+            $where[] = '(wa_number LIKE :search_wa OR display_name LIKE :search_display OR patient_full_name LIKE :search_patient OR patient_hc_number LIKE :search_hc OR last_message_preview LIKE :search_preview)';
             $value = '%' . $search . '%';
             $params[':search_wa'] = $value;
             $params[':search_display'] = $value;
             $params[':search_patient'] = $value;
             $params[':search_hc'] = $value;
             $params[':search_preview'] = $value;
+        }
+
+        if (!empty($where)) {
+            $sql .= ' WHERE ' . implode(' AND ', $where);
         }
 
         $sql .= ' ORDER BY COALESCE(c.last_message_at, c.updated_at, c.created_at) DESC, c.id DESC';

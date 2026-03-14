@@ -179,6 +179,8 @@
     $informesParticularesLink = $isV2Shell ? '/v2/informes/particulares' : '/informes/particulares';
     $usersLink = '/usuarios';
     $rolesLink = '/roles';
+    $codesLink = $isV2Shell ? '/v2/codes' : '/codes';
+    $codesPackagesLink = $isV2Shell ? '/v2/codes/packages' : '/codes/packages';
 @endphp
 <aside class="main-sidebar">
     <section class="sidebar position-relative">
@@ -319,7 +321,7 @@
                     @endif
 
                     @if($showImagenesTree)
-                        <li class="treeview{{ $isTreeOpen(['/examenes', '/v2/examenes', '/imagenes/examenes-realizados', '/imagenes/dashboard']) }}">
+                        <li class="treeview{{ $isTreeOpen(['/examenes', '/v2/examenes', '/imagenes/examenes-realizados', '/imagenes/dashboard', '/v2/imagenes/examenes-realizados', '/v2/imagenes/dashboard']) }}">
                             <a href="#">
                                 <i class="mdi mdi-image-multiple"><span class="path1"></span><span class="path2"></span></i>
                                 <span>Imágenes</span>
@@ -330,10 +332,10 @@
                                     <li class="{{ $isActive('/examenes') }}{{ $isActive('/v2/examenes') }}"><a href="{{ $examenesLink }}"><i class="mdi mdi-eyedropper"></i>Exámenes (Kanban)</a></li>
                                 @endif
                                 @if($canAccessExamenesRealizados)
-                                    <li class="{{ $isActive('/imagenes/examenes-realizados') }}"><a href="/imagenes/examenes-realizados"><i class="mdi mdi-file-image"></i>Exámenes realizados</a></li>
+                                    <li class="{{ $isActive('/imagenes/examenes-realizados') || $isActive('/v2/imagenes/examenes-realizados') }}"><a href="/v2/imagenes/examenes-realizados"><i class="mdi mdi-file-image"></i>Exámenes realizados</a></li>
                                 @endif
                                 @if($canAccessImagenesDashboard)
-                                    <li class="{{ $isActive('/imagenes/dashboard') }}"><a href="/imagenes/dashboard"><i class="mdi mdi-chart-line"></i>Dashboard imágenes</a></li>
+                                    <li class="{{ $isActive('/imagenes/dashboard') || $isActive('/v2/imagenes/dashboard') }}"><a href="/v2/imagenes/dashboard"><i class="mdi mdi-chart-line"></i>Dashboard imágenes</a></li>
                                 @endif
                             </ul>
                         </li>
@@ -363,7 +365,7 @@
                     @endif
 
                     @if($showAdminTree)
-                        <li class="treeview{{ $isTreeOpen(['/usuarios', '/roles', '/settings', '/cron-manager', '/codes', '/codes/packages', '/mail-templates']) }}">
+                        <li class="treeview{{ $isTreeOpen(['/usuarios', '/roles', '/settings', '/cron-manager', '/codes', '/v2/codes', '/codes/packages', '/v2/codes/packages', '/mail-templates']) }}">
                             <a href="#">
                                 <i class="mdi mdi-settings"><span class="path1"></span><span class="path2"></span><span class="path3"></span></i>
                                 <span>Administración y TI</span>
@@ -384,8 +386,8 @@
                                     <li class="{{ $isActive('/cron-manager') }}"><a href="/cron-manager"><i class="mdi mdi-react"></i>Cron Manager</a></li>
                                 @endif
                                 @if($canAccessCodes)
-                                    <li class="{{ $isPrefix('/codes') }}"><a href="/codes"><i class="mdi mdi-tag-text-outline"></i>Catálogo de códigos</a></li>
-                                    <li class="{{ $isPrefix('/codes/packages') }}"><a href="/codes/packages"><i class="mdi mdi-package-variant-closed"></i>Constructor de paquetes</a></li>
+                                    <li class="{{ $isPrefix('/codes') }}{{ $isPrefix('/v2/codes') }}"><a href="{{ $codesLink }}"><i class="mdi mdi-tag-text-outline"></i>Catálogo de códigos</a></li>
+                                    <li class="{{ $isPrefix('/codes/packages') }}{{ $isPrefix('/v2/codes/packages') }}"><a href="{{ $codesPackagesLink }}"><i class="mdi mdi-package-variant-closed"></i>Constructor de paquetes</a></li>
                                 @endif
                             </ul>
                         </li>

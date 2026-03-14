@@ -27,30 +27,6 @@ try {
         file_put_contents($logFile, $line, FILE_APPEND);
     };
 
-    $schema = (string) ($pdo->query('SELECT DATABASE()')->fetchColumn() ?: '');
-    $columnExists = static function (PDO $pdoConn, string $schemaName, string $table, string $column): bool {
-        static $cache = [];
-        $cacheKey = $schemaName . '.' . $table . '.' . $column;
-        if (array_key_exists($cacheKey, $cache)) {
-            return $cache[$cacheKey];
-        }
-
-        $stmt = $pdoConn->prepare(
-            'SELECT 1 FROM information_schema.columns WHERE table_schema = :schema AND table_name = :table AND column_name = :column LIMIT 1'
-        );
-        $stmt->execute([
-            ':schema' => $schemaName,
-            ':table' => $table,
-            ':column' => $column,
-        ]);
-
-        $cache[$cacheKey] = (bool) $stmt->fetchColumn();
-        return $cache[$cacheKey];
-    };
-
-    $hasReferidoPrefacturaPor = $schema !== '' && $columnExists($pdo, $schema, 'procedimiento_proyectado', 'referido_prefactura_por');
-    $hasEspecificarReferidoPrefactura = $schema !== '' && $columnExists($pdo, $schema, 'procedimiento_proyectado', 'especificar_referido_prefactura');
-
     $rawInput = file_get_contents('php://input');
     $log("RAW INPUT: " . $rawInput);
     $data = json_decode($rawInput, true);
@@ -90,14 +66,94 @@ try {
         return null;
     };
 
+    $quoteIdentifier = static function (string $identifier): string {
+        if (!preg_match('/^[A-Za-z0-9_]+$/', $identifier)) {
+            throw new RuntimeException("Identificador SQL inválido: {$identifier}");
+        }
+        return "`{$identifier}`";
+    };
+
+    $fetchTableColumns = static function (PDO $pdo, string $table): array {
+        $stmt = $pdo->prepare(
+            "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :table"
+        );
+        $stmt->execute([':table' => $table]);
+        $columns = [];
+        while (($column = $stmt->fetchColumn()) !== false) {
+            $name = (string) $column;
+            $columns[strtolower($name)] = $name;
+        }
+        return $columns;
+    };
+
+    $procTableColumns = [];
+    try {
+        $procTableColumns = $fetchTableColumns($pdo, 'procedimiento_proyectado');
+    } catch (Throwable $schemaError) {
+        $log('WARN no se pudo inspeccionar schema procedimiento_proyectado: ' . $schemaError->getMessage());
+    }
+
+    $resolveColumn = static function (array $candidates) use ($procTableColumns): ?string {
+        foreach ($candidates as $candidate) {
+            $lookup = strtolower((string) $candidate);
+            if (isset($procTableColumns[$lookup])) {
+                return $procTableColumns[$lookup];
+            }
+        }
+        return null;
+    };
+
+    $referidoPrefacturaColumn = $resolveColumn(['referido_prefactura_por', 'id_procedencia']);
+    $especificarReferidoColumn = $resolveColumn(['especificar_referido_prefactura', 'especificar_por', 'especificarpor']);
+
     $allowedKeys = [
         'hcNumber', 'form_id', 'procedimiento_proyectado', 'doctor', 'cie10', 'estado_agenda', 'estado',
         'codigo_derivacion', 'num_secuencial_derivacion', 'fname', 'mname', 'lname', 'lname2', 'email',
         'fecha_nacimiento', 'sexo', 'ciudad', 'afiliacion', 'telefono', 'fecha', 'hora', 'nombre_completo',
-        'sede_departamento', 'id_sede',
-        'referido_prefactura_por', 'especificar_referido_prefactura',
+        'sede_departamento', 'id_sede', 'referido_prefactura_por', 'especificar_referido_prefactura',
     ];
     $dateKeys = ['fecha', 'fecha_nacimiento', 'fechaCaducidad', 'fecha_caducidad', 'fecha_nac'];
+
+    $procedimientoInsertColumns = [
+        'form_id', 'procedimiento_proyectado', 'doctor', 'hc_number',
+        'sede_departamento', 'id_sede', 'estado_agenda', 'afiliacion', 'fecha', 'hora',
+    ];
+    $procedimientoValuePlaceholders = [
+        ':form_id', ':procedimiento', ':doctor', ':hc_number',
+        ':sede_departamento', ':id_sede', ':estado_agenda', ':afiliacion', ':fecha', ':hora',
+    ];
+    $procedimientoUpdateClauses = [
+        'procedimiento_proyectado = VALUES(procedimiento_proyectado)',
+        'doctor = VALUES(doctor)',
+        "sede_departamento = IF(VALUES(sede_departamento) IS NULL OR VALUES(sede_departamento) = '', sede_departamento, VALUES(sede_departamento))",
+        "id_sede = IF(VALUES(id_sede) IS NULL OR VALUES(id_sede) = '', id_sede, VALUES(id_sede))",
+        "estado_agenda = IF(VALUES(estado_agenda) IS NULL OR VALUES(estado_agenda) = '', estado_agenda, VALUES(estado_agenda))",
+        "afiliacion = IF(VALUES(afiliacion) IS NULL OR VALUES(afiliacion) = '', afiliacion, VALUES(afiliacion))",
+        'fecha = VALUES(fecha)',
+        'hora = VALUES(hora)',
+    ];
+
+    if ($referidoPrefacturaColumn !== null) {
+        $quoted = $quoteIdentifier($referidoPrefacturaColumn);
+        $procedimientoInsertColumns[] = $referidoPrefacturaColumn;
+        $procedimientoValuePlaceholders[] = ':referido_prefactura_por';
+        $procedimientoUpdateClauses[] = "{$quoted} = IF(VALUES({$quoted}) IS NULL OR VALUES({$quoted}) = '', {$quoted}, VALUES({$quoted}))";
+    }
+
+    if ($especificarReferidoColumn !== null) {
+        $quoted = $quoteIdentifier($especificarReferidoColumn);
+        $procedimientoInsertColumns[] = $especificarReferidoColumn;
+        $procedimientoValuePlaceholders[] = ':especificar_referido_prefactura';
+        $procedimientoUpdateClauses[] = "{$quoted} = IF(VALUES({$quoted}) IS NULL OR VALUES({$quoted}) = '', {$quoted}, VALUES({$quoted}))";
+    }
+
+    $sqlProcedimiento = sprintf(
+        "INSERT INTO procedimiento_proyectado (%s)\n                VALUES (%s)\n                ON DUPLICATE KEY UPDATE\n                    %s",
+        implode(', ', array_map($quoteIdentifier, $procedimientoInsertColumns)),
+        implode(', ', $procedimientoValuePlaceholders),
+        implode(",\n                    ", $procedimientoUpdateClauses)
+    );
+    $stmtProc = $pdo->prepare($sqlProcedimiento);
 
     $respuestas = [];
     $erroresBatch = [];
@@ -224,6 +280,9 @@ try {
             $stmtPatient = $pdo->prepare($sqlPatient);
             $stmtPatient->execute($patientParams);
 
+            $referidoPrefacturaPor = trim((string) ($item['referido_prefactura_por'] ?? ''));
+            $especificarReferidoPrefactura = trim((string) ($item['especificar_referido_prefactura'] ?? ''));
+
             $procedimientoParams = [
                 ':form_id' => $item['form_id'],
                 ':procedimiento' => $item['procedimiento_proyectado'],
@@ -237,54 +296,13 @@ try {
                 ':hora' => $item['hora'] ?? null,
             ];
 
-            $columns = [
-                'form_id', 'procedimiento_proyectado', 'doctor', 'hc_number', 'sede_departamento', 'id_sede',
-                'estado_agenda', 'afiliacion', 'fecha', 'hora',
-            ];
-            $values = [
-                ':form_id', ':procedimiento', ':doctor', ':hc_number', ':sede_departamento', ':id_sede',
-                ':estado_agenda', ':afiliacion', ':fecha', ':hora',
-            ];
-            $updates = [
-                'procedimiento_proyectado = VALUES(procedimiento_proyectado)',
-                'doctor = VALUES(doctor)',
-                "sede_departamento = IF(VALUES(sede_departamento) IS NULL OR VALUES(sede_departamento) = '', sede_departamento, VALUES(sede_departamento))",
-                "id_sede = IF(VALUES(id_sede) IS NULL OR VALUES(id_sede) = '', id_sede, VALUES(id_sede))",
-                "estado_agenda = IF(VALUES(estado_agenda) IS NULL OR VALUES(estado_agenda) = '', estado_agenda, VALUES(estado_agenda))",
-                "afiliacion = IF(VALUES(afiliacion) IS NULL OR VALUES(afiliacion) = '', afiliacion, VALUES(afiliacion))",
-                'fecha = VALUES(fecha)',
-                'hora = VALUES(hora)',
-            ];
-
-            if ($hasReferidoPrefacturaPor) {
-                $columns[] = 'referido_prefactura_por';
-                $values[] = ':referido_prefactura_por';
-                $procedimientoParams[':referido_prefactura_por'] = $item['referido_prefactura_por'] ?? null;
-                $updates[] = "referido_prefactura_por = IF(VALUES(referido_prefactura_por) IS NULL OR VALUES(referido_prefactura_por) = '', referido_prefactura_por, VALUES(referido_prefactura_por))";
+            if ($referidoPrefacturaColumn !== null) {
+                $procedimientoParams[':referido_prefactura_por'] = $referidoPrefacturaPor !== '' ? $referidoPrefacturaPor : null;
+            }
+            if ($especificarReferidoColumn !== null) {
+                $procedimientoParams[':especificar_referido_prefactura'] = $especificarReferidoPrefactura !== '' ? $especificarReferidoPrefactura : null;
             }
 
-            if ($hasEspecificarReferidoPrefactura) {
-                $columns[] = 'especificar_referido_prefactura';
-                $values[] = ':especificar_referido_prefactura';
-                $procedimientoParams[':especificar_referido_prefactura'] = $item['especificar_referido_prefactura'] ?? null;
-                $updates[] = "especificar_referido_prefactura = IF(VALUES(especificar_referido_prefactura) IS NULL OR VALUES(especificar_referido_prefactura) = '', especificar_referido_prefactura, VALUES(especificar_referido_prefactura))";
-            }
-
-            $sqlProcedimiento = sprintf(
-                "
-                INSERT INTO procedimiento_proyectado
-                    (%s)
-                VALUES
-                    (%s)
-                ON DUPLICATE KEY UPDATE
-                    %s
-            ",
-                implode(', ', $columns),
-                implode(', ', $values),
-                implode(",
-                    ", $updates)
-            );
-            $stmtProc = $pdo->prepare($sqlProcedimiento);
             $stmtProc->execute($procedimientoParams);
 
             $respuesta = [

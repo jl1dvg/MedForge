@@ -43,6 +43,7 @@ class NoFacturadosQueryService
                     pr.procedimiento_proyectado AS procedimiento,
                     CASE
                         WHEN pr.procedimiento_proyectado LIKE 'Imagenes%' THEN 'imagen'
+                        WHEN UPPER(pr.procedimiento_proyectado) LIKE '%PNI%' THEN 'pni'
                         WHEN pr.procedimiento_proyectado LIKE 'Servicios oftalmologicos generales%' THEN 'consulta'
                         ELSE 'no_quirurgico'
                     END AS tipo,
@@ -83,6 +84,7 @@ class NoFacturadosQueryService
                     TRIM(CONCAT(pd.membrete, ' ', pd.lateralidad)) AS procedimiento,
                     CASE
                         WHEN TRIM(CONCAT(pd.membrete, ' ', pd.lateralidad)) LIKE 'Imagenes%' THEN 'imagen'
+                        WHEN UPPER(TRIM(CONCAT(pd.membrete, ' ', pd.lateralidad))) LIKE '%PNI%' THEN 'pni'
                         WHEN TRIM(CONCAT(pd.membrete, ' ', pd.lateralidad)) LIKE 'Servicios oftalmologicos generales%' THEN 'consulta'
                         ELSE 'quirurgico'
                     END AS tipo,
@@ -170,6 +172,7 @@ class NoFacturadosQueryService
             'monto' => 0.0,
             'quirurgicos' => ['cantidad' => 0, 'monto' => 0.0],
             'no_quirurgicos' => ['cantidad' => 0, 'monto' => 0.0],
+            'pni' => ['cantidad' => 0, 'monto' => 0.0],
         ];
 
         foreach ($summaryRows as $row) {
@@ -185,6 +188,11 @@ class NoFacturadosQueryService
             if ($tipo === 'no_quirurgico') {
                 $resumen['no_quirurgicos']['cantidad'] = $cantidad;
                 $resumen['no_quirurgicos']['monto'] = $monto;
+            }
+
+            if ($tipo === 'pni') {
+                $resumen['pni']['cantidad'] = $cantidad;
+                $resumen['pni']['monto'] = $monto;
             }
 
             $resumen['monto'] += $monto;

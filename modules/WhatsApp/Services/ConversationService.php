@@ -179,9 +179,9 @@ class ConversationService
     /**
      * @return array<int, array<string, mixed>>
      */
-    public function listConversations(string $search = '', ?int $limit = null): array
+    public function listConversations(string $search = '', ?int $limit = null, ?int $viewerUserId = null, bool $includeAssignedOthers = true): array
     {
-        $rows = $this->repository->listConversations($search, $limit);
+        $rows = $this->repository->listConversations($search, $limit, $viewerUserId, $includeAssignedOthers);
         $result = [];
 
         foreach ($rows as $row) {
