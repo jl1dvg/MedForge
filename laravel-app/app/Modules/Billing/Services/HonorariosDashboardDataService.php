@@ -2,16 +2,19 @@
 
 namespace App\Modules\Billing\Services;
 
+use App\Modules\Shared\Support\AfiliacionDimensionService;
 use Illuminate\Support\Facades\DB;
 use PDO;
 
 class HonorariosDashboardDataService
 {
     private PDO $db;
+    private AfiliacionDimensionService $afiliacionDimensions;
 
     public function __construct(?PDO $db = null)
     {
         $this->db = $db ?? DB::connection()->getPdo();
+        $this->afiliacionDimensions = new AfiliacionDimensionService($this->db);
     }
 
     /**
@@ -44,11 +47,14 @@ class HonorariosDashboardDataService
     private function fetchProcedimientos(string $start, string $end, array $filters): array
     {
         $dateExpr = $this->safeBillingDateExpr();
+        $rawAfiliacionExpr = "COALESCE(NULLIF(TRIM(pa.afiliacion), ''), '')";
+        $dimensionContext = $this->afiliacionDimensions->buildContext($rawAfiliacionExpr, 'acm');
         $sql = "
             SELECT
                 bm.id AS billing_id,
                 {$dateExpr} AS fecha,
                 COALESCE(NULLIF(TRIM(pa.afiliacion), ''), 'Sin afiliación') AS afiliacion,
+                {$dimensionContext['empresa_label_expr']} AS empresa_seguro,
                 COALESCE(NULLIF(TRIM(pd.cirujano_1), ''), 'Sin cirujano') AS cirujano,
                 SUM(bp.proc_precio) AS total_procedimientos,
                 COUNT(bp.id) AS procedimientos_count
@@ -57,6 +63,7 @@ class HonorariosDashboardDataService
             LEFT JOIN protocolo_data pd ON pd.form_id = bm.form_id
             LEFT JOIN procedimiento_proyectado pp ON pp.form_id = bm.form_id
             LEFT JOIN patient_data pa ON pa.hc_number = bm.hc_number
+            {$dimensionContext['join']}
             WHERE {$dateExpr} BETWEEN :inicio AND :fin
         ";
 
@@ -70,12 +77,25 @@ class HonorariosDashboardDataService
             $params[':cirujano'] = (string) $filters['cirujano'];
         }
 
-        if (!empty($filters['afiliacion'])) {
-            $sql .= " AND COALESCE(NULLIF(TRIM(pa.afiliacion), ''), 'Sin afiliación') = :afiliacion";
-            $params[':afiliacion'] = (string) $filters['afiliacion'];
+        $categoriaFilter = $this->afiliacionDimensions->normalizeCategoriaFilter((string) ($filters['categoria_seguro'] ?? ''));
+        if ($categoriaFilter !== '') {
+            $sql .= " AND {$dimensionContext['categoria_expr']} = :categoria_seguro";
+            $params[':categoria_seguro'] = $categoriaFilter;
         }
 
-        $sql .= " GROUP BY bm.id, fecha, afiliacion, cirujano ORDER BY fecha ASC";
+        $empresaFilter = $this->afiliacionDimensions->normalizeEmpresaFilter((string) ($filters['empresa_seguro'] ?? ''));
+        if ($empresaFilter !== '') {
+            $sql .= " AND {$dimensionContext['empresa_key_expr']} = :empresa_seguro";
+            $params[':empresa_seguro'] = $empresaFilter;
+        }
+
+        $seguroFilter = $this->afiliacionDimensions->normalizeSeguroFilter((string) ($filters['seguro'] ?? ''));
+        if ($seguroFilter !== '') {
+            $sql .= " AND {$dimensionContext['seguro_key_expr']} = :seguro";
+            $params[':seguro'] = $seguroFilter;
+        }
+
+        $sql .= " GROUP BY bm.id, fecha, afiliacion, empresa_seguro, cirujano ORDER BY fecha ASC";
 
         $stmt = $this->db->prepare($sql);
         $stmt->execute($params);
@@ -99,7 +119,7 @@ class HonorariosDashboardDataService
             $totalProcedimientos += (int) ($row['procedimientos_count'] ?? 0);
             $produccion = (float) ($row['total_procedimientos'] ?? 0);
             $totalProduccion += $produccion;
-            $totalHonorarios += $this->calcularHonorario($produccion, (string) ($row['afiliacion'] ?? ''), $rules);
+            $totalHonorarios += $this->calcularHonorario($produccion, (string) ($row['empresa_seguro'] ?? ''), $rules);
         }
 
         $ticketPromedio = $totalCasos > 0 ? $totalProduccion / $totalCasos : 0.0;
@@ -130,7 +150,7 @@ class HonorariosDashboardDataService
             $produccion = (float) ($row['total_procedimientos'] ?? 0);
             $totalsByAffiliation[$afiliacion] = ($totalsByAffiliation[$afiliacion] ?? 0) + $produccion;
             $honorariosByAffiliation[$afiliacion] = ($honorariosByAffiliation[$afiliacion] ?? 0)
-                + $this->calcularHonorario($produccion, $afiliacion, $rules);
+                + $this->calcularHonorario($produccion, (string) ($row['empresa_seguro'] ?? $afiliacion), $rules);
         }
 
         arsort($totalsByAffiliation);
@@ -164,7 +184,7 @@ class HonorariosDashboardDataService
             $produccion = (float) ($row['total_procedimientos'] ?? 0);
             $totalsBySurgeon[$cirujano] = ($totalsBySurgeon[$cirujano] ?? 0) + $produccion;
             $honorariosBySurgeon[$cirujano] = ($honorariosBySurgeon[$cirujano] ?? 0)
-                + $this->calcularHonorario($produccion, (string) ($row['afiliacion'] ?? ''), $rules);
+                + $this->calcularHonorario($produccion, (string) ($row['empresa_seguro'] ?? ''), $rules);
         }
 
         arsort($totalsBySurgeon);
@@ -208,7 +228,7 @@ class HonorariosDashboardDataService
             $table[$cirujano]['casos'] += 1;
             $table[$cirujano]['procedimientos'] += (int) ($row['procedimientos_count'] ?? 0);
             $table[$cirujano]['produccion'] += $produccion;
-            $table[$cirujano]['honorarios'] += $this->calcularHonorario($produccion, (string) ($row['afiliacion'] ?? ''), $rules);
+            $table[$cirujano]['honorarios'] += $this->calcularHonorario($produccion, (string) ($row['empresa_seguro'] ?? ''), $rules);
         }
 
         usort($table, static fn($a, $b) => ((float) ($b['produccion'] ?? 0) <=> (float) ($a['produccion'] ?? 0)));
@@ -227,6 +247,8 @@ class HonorariosDashboardDataService
     private function getTopProcedimientos(string $start, string $end, array $filters, int $limit): array
     {
         $dateExpr = $this->safeBillingDateExpr();
+        $rawAfiliacionExpr = "COALESCE(NULLIF(TRIM(pa.afiliacion), ''), '')";
+        $dimensionContext = $this->afiliacionDimensions->buildContext($rawAfiliacionExpr, 'acm');
         $sql = "
             SELECT COALESCE(NULLIF(TRIM(bp.proc_detalle), ''), bp.proc_codigo, 'Sin detalle') AS procedimiento,
                    SUM(bp.proc_precio) AS total
@@ -235,6 +257,7 @@ class HonorariosDashboardDataService
             LEFT JOIN protocolo_data pd ON pd.form_id = bm.form_id
             LEFT JOIN procedimiento_proyectado pp ON pp.form_id = bm.form_id
             LEFT JOIN patient_data pa ON pa.hc_number = bm.hc_number
+            {$dimensionContext['join']}
             WHERE {$dateExpr} BETWEEN :inicio AND :fin
         ";
 
@@ -248,9 +271,22 @@ class HonorariosDashboardDataService
             $params[':cirujano'] = (string) $filters['cirujano'];
         }
 
-        if (!empty($filters['afiliacion'])) {
-            $sql .= " AND COALESCE(NULLIF(TRIM(pa.afiliacion), ''), 'Sin afiliación') = :afiliacion";
-            $params[':afiliacion'] = (string) $filters['afiliacion'];
+        $categoriaFilter = $this->afiliacionDimensions->normalizeCategoriaFilter((string) ($filters['categoria_seguro'] ?? ''));
+        if ($categoriaFilter !== '') {
+            $sql .= " AND {$dimensionContext['categoria_expr']} = :categoria_seguro";
+            $params[':categoria_seguro'] = $categoriaFilter;
+        }
+
+        $empresaFilter = $this->afiliacionDimensions->normalizeEmpresaFilter((string) ($filters['empresa_seguro'] ?? ''));
+        if ($empresaFilter !== '') {
+            $sql .= " AND {$dimensionContext['empresa_key_expr']} = :empresa_seguro";
+            $params[':empresa_seguro'] = $empresaFilter;
+        }
+
+        $seguroFilter = $this->afiliacionDimensions->normalizeSeguroFilter((string) ($filters['seguro'] ?? ''));
+        if ($seguroFilter !== '') {
+            $sql .= " AND {$dimensionContext['seguro_key_expr']} = :seguro";
+            $params[':seguro'] = $seguroFilter;
         }
 
         $sql .= " GROUP BY procedimiento ORDER BY total DESC LIMIT :limit";
@@ -261,8 +297,14 @@ class HonorariosDashboardDataService
         if (isset($params[':cirujano'])) {
             $stmt->bindValue(':cirujano', $params[':cirujano']);
         }
-        if (isset($params[':afiliacion'])) {
-            $stmt->bindValue(':afiliacion', $params[':afiliacion']);
+        if (isset($params[':categoria_seguro'])) {
+            $stmt->bindValue(':categoria_seguro', $params[':categoria_seguro']);
+        }
+        if (isset($params[':empresa_seguro'])) {
+            $stmt->bindValue(':empresa_seguro', $params[':empresa_seguro']);
+        }
+        if (isset($params[':seguro'])) {
+            $stmt->bindValue(':seguro', $params[':seguro']);
         }
         $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
         $stmt->execute();

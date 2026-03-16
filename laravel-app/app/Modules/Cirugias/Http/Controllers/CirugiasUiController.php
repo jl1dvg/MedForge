@@ -143,8 +143,9 @@ class CirugiasUiController
         $dateRange = $this->resolveDateRange($request);
         $afiliacionFilter = $this->resolveAfiliacionFilter($request);
         $afiliacionCategoriaFilter = $this->resolveAfiliacionCategoriaFilter($request);
+        $seguroFilter = $this->resolveSeguroFilter($request);
         $sedeFilter = $this->resolveSedeFilter($request);
-        $data = $this->buildDashboardPayload($dateRange, $afiliacionFilter, $afiliacionCategoriaFilter, $sedeFilter);
+        $data = $this->buildDashboardPayload($dateRange, $afiliacionFilter, $afiliacionCategoriaFilter, $seguroFilter, $sedeFilter);
 
         $data['pageTitle'] = 'Dashboard quirúrgico';
         $data['currentUser'] = LegacyCurrentUser::resolve($request);
@@ -166,8 +167,9 @@ class CirugiasUiController
         $dateRange = $this->resolveDateRange($request);
         $afiliacionFilter = $this->resolveAfiliacionFilter($request);
         $afiliacionCategoriaFilter = $this->resolveAfiliacionCategoriaFilter($request);
+        $seguroFilter = $this->resolveSeguroFilter($request);
         $sedeFilter = $this->resolveSedeFilter($request);
-        $payload = $this->buildDashboardExportPayload($dateRange, $afiliacionFilter, $afiliacionCategoriaFilter, $sedeFilter);
+        $payload = $this->buildDashboardExportPayload($dateRange, $afiliacionFilter, $afiliacionCategoriaFilter, $seguroFilter, $sedeFilter);
         $report = is_array($payload['report'] ?? null) ? $payload['report'] : [];
         $filename = 'dashboard_cirugias_' . date('Ymd_His') . '.pdf';
 
@@ -239,8 +241,9 @@ class CirugiasUiController
         $dateRange = $this->resolveDateRange($request);
         $afiliacionFilter = $this->resolveAfiliacionFilter($request);
         $afiliacionCategoriaFilter = $this->resolveAfiliacionCategoriaFilter($request);
+        $seguroFilter = $this->resolveSeguroFilter($request);
         $sedeFilter = $this->resolveSedeFilter($request);
-        $payload = $this->buildDashboardExportPayload($dateRange, $afiliacionFilter, $afiliacionCategoriaFilter, $sedeFilter);
+        $payload = $this->buildDashboardExportPayload($dateRange, $afiliacionFilter, $afiliacionCategoriaFilter, $seguroFilter, $sedeFilter);
         $detailRows = is_array($payload['detailRows'] ?? null) ? $payload['detailRows'] : [];
         $filtersSummary = is_array($payload['filtersSummary'] ?? null) ? $payload['filtersSummary'] : [];
         $report = is_array($payload['report'] ?? null) ? $payload['report'] : [];
@@ -501,21 +504,25 @@ class CirugiasUiController
         array $dateRange,
         string $afiliacionFilter = '',
         string $afiliacionCategoriaFilter = '',
+        string $seguroFilter = '',
         string $sedeFilter = ''
     ): array {
-        $data = $this->buildDashboardPayload($dateRange, $afiliacionFilter, $afiliacionCategoriaFilter, $sedeFilter);
+        $data = $this->buildDashboardPayload($dateRange, $afiliacionFilter, $afiliacionCategoriaFilter, $seguroFilter, $sedeFilter);
         $filtersSummary = $this->buildDashboardFiltersSummary(
             $data['date_range'],
             $afiliacionFilter,
             $data['afiliacion_options'],
             $afiliacionCategoriaFilter,
             $data['afiliacion_categoria_options'],
+            $seguroFilter,
+            $data['seguro_options'],
             $sedeFilter,
             $data['sede_options']
         );
 
         $startSql = $dateRange['start']->format('Y-m-d 00:00:00');
         $endSql = $dateRange['end']->format('Y-m-d 23:59:59');
+        $this->dashboardService->setSeguroFilter($seguroFilter);
         $detailRows = $this->dashboardService->getCirugiasFacturacionDetalle(
             $startSql,
             $endSql,
@@ -749,6 +756,7 @@ class CirugiasUiController
         array $dateRange,
         string $afiliacionFilter = '',
         string $afiliacionCategoriaFilter = '',
+        string $seguroFilter = '',
         string $sedeFilter = ''
     ): array {
         $startSql = $dateRange['start']->format('Y-m-d 00:00:00');
@@ -756,9 +764,12 @@ class CirugiasUiController
         $dateRangeView = $this->formatDateRangeForView($dateRange);
         $afiliacionFilter = $this->normalizeAfiliacionFilter($afiliacionFilter);
         $afiliacionCategoriaFilter = $this->normalizeAfiliacionCategoriaFilter($afiliacionCategoriaFilter);
+        $seguroFilter = $this->normalizeSeguroFilter($seguroFilter);
         $sedeFilter = $this->normalizeSedeFilter($sedeFilter);
+        $this->dashboardService->setSeguroFilter($seguroFilter);
         $afiliacionOptions = $this->dashboardService->getAfiliacionOptions($startSql, $endSql);
         $afiliacionCategoriaOptions = $this->dashboardService->getAfiliacionCategoriaOptions($startSql, $endSql);
+        $seguroOptions = $this->dashboardService->getSeguroOptions($startSql, $endSql);
         $sedeOptions = $this->dashboardService->getSedeOptions($startSql, $endSql);
 
         $totalCirugias = $this->dashboardService->getTotalCirugias($startSql, $endSql, $afiliacionFilter, $afiliacionCategoriaFilter, $sedeFilter);
@@ -797,6 +808,8 @@ class CirugiasUiController
             'afiliacion_options' => $afiliacionOptions,
             'afiliacion_categoria_filter' => $afiliacionCategoriaFilter,
             'afiliacion_categoria_options' => $afiliacionCategoriaOptions,
+            'seguro_filter' => $seguroFilter,
+            'seguro_options' => $seguroOptions,
             'sede_filter' => $sedeFilter,
             'sede_options' => $sedeOptions,
             'kpi_cards' => $this->buildKpiCards(
@@ -826,6 +839,8 @@ class CirugiasUiController
         array $afiliacionOptions,
         string $afiliacionCategoriaFilter,
         array $afiliacionCategoriaOptions,
+        string $seguroFilter,
+        array $seguroOptions,
         string $sedeFilter,
         array $sedeOptions
     ): array {
@@ -843,7 +858,7 @@ class CirugiasUiController
                     break;
                 }
             }
-            $filters[] = ['label' => 'Afiliación', 'value' => $afiliacionLabel];
+            $filters[] = ['label' => 'Empresa de seguro', 'value' => $afiliacionLabel];
         }
 
         $afiliacionCategoriaFilter = $this->normalizeAfiliacionCategoriaFilter($afiliacionCategoriaFilter);
@@ -855,7 +870,19 @@ class CirugiasUiController
                     break;
                 }
             }
-            $filters[] = ['label' => 'Categoría de afiliación', 'value' => $afiliacionCategoriaLabel];
+            $filters[] = ['label' => 'Categoría de seguro', 'value' => $afiliacionCategoriaLabel];
+        }
+
+        $seguroFilter = $this->normalizeSeguroFilter($seguroFilter);
+        if ($seguroFilter !== '') {
+            $seguroLabel = $seguroFilter;
+            foreach ($seguroOptions as $option) {
+                if ((string) ($option['value'] ?? '') === $seguroFilter) {
+                    $seguroLabel = (string) ($option['label'] ?? $seguroFilter);
+                    break;
+                }
+            }
+            $filters[] = ['label' => 'Seguro', 'value' => $seguroLabel];
         }
 
         $sedeFilter = $this->normalizeSedeFilter($sedeFilter);
@@ -1005,6 +1032,11 @@ class CirugiasUiController
         return $this->normalizeAfiliacionCategoriaFilter(trim((string) $request->query('afiliacion_categoria', '')));
     }
 
+    private function resolveSeguroFilter(Request $request): string
+    {
+        return $this->normalizeSeguroFilter(trim((string) $request->query('seguro', '')));
+    }
+
     private function resolveSedeFilter(Request $request): string
     {
         return $this->normalizeSedeFilter(trim((string) $request->query('sede', '')));
@@ -1017,7 +1049,35 @@ class CirugiasUiController
             return 'sin_convenio';
         }
 
-        return $value;
+        $value = strtr($value, [
+            'á' => 'a',
+            'é' => 'e',
+            'í' => 'i',
+            'ó' => 'o',
+            'ú' => 'u',
+            'ñ' => 'n',
+        ]);
+
+        return str_replace([' ', '-'], '_', $value);
+    }
+
+    private function normalizeSeguroFilter(string $value): string
+    {
+        $value = strtolower(trim($value));
+        if ($value === 'sin convenio') {
+            return 'sin_convenio';
+        }
+
+        $value = strtr($value, [
+            'á' => 'a',
+            'é' => 'e',
+            'í' => 'i',
+            'ó' => 'o',
+            'ú' => 'u',
+            'ñ' => 'n',
+        ]);
+
+        return str_replace([' ', '-'], '_', $value);
     }
 
     private function normalizeAfiliacionCategoriaFilter(string $value): string

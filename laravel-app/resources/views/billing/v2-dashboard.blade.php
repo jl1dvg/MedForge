@@ -2,6 +2,9 @@
 
 @php
     $currentYear = (int) date('Y');
+    $afiliacionCategoriaOptions = is_array($afiliacionCategoriaOptions ?? null) ? $afiliacionCategoriaOptions : [];
+    $empresaSeguroOptions = is_array($empresaSeguroOptions ?? null) ? $empresaSeguroOptions : [];
+    $seguroOptions = is_array($seguroOptions ?? null) ? $seguroOptions : [];
 @endphp
 
 @push('styles')
@@ -133,6 +136,21 @@
             </div>
             <div class="ms-auto d-flex flex-wrap gap-2">
                 <input type="text" class="form-control" id="billing-range-input" placeholder="Selecciona rango" autocomplete="off" style="min-width: 260px;">
+                <select class="form-select" id="billing-categoria" style="min-width: 190px;">
+                    @foreach($afiliacionCategoriaOptions as $option)
+                        <option value="{{ (string) ($option['value'] ?? '') }}">{{ (string) ($option['label'] ?? '') }}</option>
+                    @endforeach
+                </select>
+                <select class="form-select" id="billing-empresa-seguro" style="min-width: 220px;">
+                    @foreach($empresaSeguroOptions as $option)
+                        <option value="{{ (string) ($option['value'] ?? '') }}">{{ (string) ($option['label'] ?? '') }}</option>
+                    @endforeach
+                </select>
+                <select class="form-select" id="billing-seguro" style="min-width: 240px;">
+                    @foreach($seguroOptions as $option)
+                        <option value="{{ (string) ($option['value'] ?? '') }}">{{ (string) ($option['label'] ?? '') }}</option>
+                    @endforeach
+                </select>
                 <select class="form-select" id="billing-sede" style="min-width: 170px;">
                     <option value="">Todas las sedes</option>
                     <option value="MATRIZ">MATRIZ</option>
@@ -207,11 +225,22 @@
                     <option value="CEIBOS">CEIBOS</option>
                 </select>
                 <select class="form-select" id="procedimientos-cliente" style="min-width: 180px;">
-                    <option value="todos">Todos los clientes</option>
+                    <option value="">Todas las categorías</option>
                     <option value="privado">Privado</option>
                     <option value="particular">Particular</option>
                     <option value="publico">Público</option>
                     <option value="fundacional">Fundacional</option>
+                    <option value="otros">Otros</option>
+                </select>
+                <select class="form-select" id="procedimientos-empresa-seguro" style="min-width: 220px;">
+                    @foreach($empresaSeguroOptions as $option)
+                        <option value="{{ (string) ($option['value'] ?? '') }}">{{ (string) ($option['label'] ?? '') }}</option>
+                    @endforeach
+                </select>
+                <select class="form-select" id="procedimientos-seguro" style="min-width: 240px;">
+                    @foreach($seguroOptions as $option)
+                        <option value="{{ (string) ($option['value'] ?? '') }}">{{ (string) ($option['label'] ?? '') }}</option>
+                    @endforeach
                 </select>
                 <button type="button" class="btn btn-primary" id="procedimientos-refresh"><i class="mdi mdi-refresh"></i> Actualizar</button>
                 <button type="button" class="btn btn-outline-primary" id="procedimientos-export"><i class="mdi mdi-file-export"></i> Exportar detalle CSV</button>

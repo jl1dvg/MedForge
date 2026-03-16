@@ -8,6 +8,9 @@
         loaderOverlay: document.getElementById('billing-dashboard-loader'),
         rangeLabel: document.getElementById('billing-range'),
         rangeInput: document.getElementById('billing-range-input'),
+        billingCategoria: document.getElementById('billing-categoria'),
+        billingEmpresaSeguro: document.getElementById('billing-empresa-seguro'),
+        billingSeguro: document.getElementById('billing-seguro'),
         billingSede: document.getElementById('billing-sede'),
         refreshButton: document.getElementById('billing-refresh'),
         metricFacturas: document.getElementById('metric-facturas'),
@@ -20,6 +23,8 @@
         procedimientosYear: document.getElementById('procedimientos-year'),
         procedimientosSede: document.getElementById('procedimientos-sede'),
         procedimientosCliente: document.getElementById('procedimientos-cliente'),
+        procedimientosEmpresaSeguro: document.getElementById('procedimientos-empresa-seguro'),
+        procedimientosSeguro: document.getElementById('procedimientos-seguro'),
         procedimientosRefresh: document.getElementById('procedimientos-refresh'),
         procedimientosExport: document.getElementById('procedimientos-export'),
         procedimientosFiltersLabel: document.getElementById('procedimientos-filters-label'),
@@ -38,7 +43,7 @@
         tableProcSummary: document.getElementById('table-proc-summary'),
     };
 
-    const currentProcFilters = { year: '', sede: '', tipoCliente: 'todos' };
+    const currentProcFilters = { year: '', sede: '', tipoCliente: '', empresaSeguro: '', seguro: '' };
     let loadingCounter = 0;
 
     if (!elements.rangeInput) {
@@ -319,8 +324,10 @@
         if (elements.procedimientosFiltersLabel) {
             const year = data.filters?.year ?? '—';
             const sedeLabel = elements.procedimientosSede?.value?.trim() || 'Todas las sedes';
-            const clienteLabel = elements.procedimientosCliente?.selectedOptions?.[0]?.textContent ?? 'Todos los clientes';
-            elements.procedimientosFiltersLabel.textContent = `${year} · ${sedeLabel} · ${clienteLabel}`;
+            const clienteLabel = elements.procedimientosCliente?.selectedOptions?.[0]?.textContent ?? 'Todas las categorías';
+            const empresaLabel = elements.procedimientosEmpresaSeguro?.selectedOptions?.[0]?.textContent ?? 'Todas las empresas';
+            const seguroLabel = elements.procedimientosSeguro?.selectedOptions?.[0]?.textContent ?? 'Todos los seguros';
+            elements.procedimientosFiltersLabel.textContent = `${year} · ${sedeLabel} · ${clienteLabel} · ${empresaLabel} · ${seguroLabel}`;
         }
 
         if (!hasData) {
@@ -399,10 +406,28 @@
     const fetchDashboard = (filters = {}) => {
         const payload = { ...filters };
         const sede = elements.billingSede?.value?.trim() || '';
+        const categoriaSeguro = elements.billingCategoria?.value?.trim() || '';
+        const empresaSeguro = elements.billingEmpresaSeguro?.value?.trim() || '';
+        const seguro = elements.billingSeguro?.value?.trim() || '';
         if (sede) {
             payload.sede = sede;
         } else {
             delete payload.sede;
+        }
+        if (categoriaSeguro) {
+            payload.categoria_seguro = categoriaSeguro;
+        } else {
+            delete payload.categoria_seguro;
+        }
+        if (empresaSeguro) {
+            payload.empresa_seguro = empresaSeguro;
+        } else {
+            delete payload.empresa_seguro;
+        }
+        if (seguro) {
+            payload.seguro = seguro;
+        } else {
+            delete payload.seguro;
         }
 
         setLoading(true);
@@ -431,11 +456,17 @@
     const buildProcParams = (extra = {}) => {
         const params = new URLSearchParams({
             year: currentProcFilters.year,
-            tipo_cliente: currentProcFilters.tipoCliente || 'todos',
+            tipo_cliente: currentProcFilters.tipoCliente || '',
             ...extra,
         });
         if (currentProcFilters.sede) {
             params.set('sede', currentProcFilters.sede);
+        }
+        if (currentProcFilters.empresaSeguro) {
+            params.set('empresa_seguro', currentProcFilters.empresaSeguro);
+        }
+        if (currentProcFilters.seguro) {
+            params.set('seguro', currentProcFilters.seguro);
         }
         if (elements.procDetailCategory?.value) {
             params.set('categoria', elements.procDetailCategory.value);
@@ -477,7 +508,9 @@
         }
         currentProcFilters.year = elements.procedimientosYear.value;
         currentProcFilters.sede = elements.procedimientosSede?.value?.trim() || '';
-        currentProcFilters.tipoCliente = elements.procedimientosCliente?.value || 'todos';
+        currentProcFilters.tipoCliente = elements.procedimientosCliente?.value || '';
+        currentProcFilters.empresaSeguro = elements.procedimientosEmpresaSeguro?.value?.trim() || '';
+        currentProcFilters.seguro = elements.procedimientosSeguro?.value?.trim() || '';
 
         const params = buildProcParams();
 
@@ -580,9 +613,31 @@
         });
     }
 
+    [elements.billingCategoria, elements.billingEmpresaSeguro, elements.billingSeguro].forEach(node => {
+        if (!node) {
+            return;
+        }
+        node.addEventListener('change', () => {
+            const value = elements.rangeInput.value || '';
+            if (value.includes(' - ')) {
+                const [from, to] = value.split(' - ');
+                fetchDashboard({ date_from: from.trim(), date_to: to.trim() });
+                return;
+            }
+            fetchDashboard();
+        });
+    });
+
     if (elements.procedimientosRefresh) {
         elements.procedimientosRefresh.addEventListener('click', fetchProcedimientos);
     }
+
+    [elements.procedimientosSede, elements.procedimientosCliente, elements.procedimientosEmpresaSeguro, elements.procedimientosSeguro].forEach(node => {
+        if (!node) {
+            return;
+        }
+        node.addEventListener('change', fetchProcedimientos);
+    });
 
     if (elements.procDetailRefresh) {
         elements.procDetailRefresh.addEventListener('click', fetchProcedimientosDetalle);

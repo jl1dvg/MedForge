@@ -4,6 +4,7 @@ namespace App\Modules\Billing\Services;
 
 use App\Models\Tarifario2014;
 use App\Modules\Codes\Services\CodePriceService;
+use App\Modules\Shared\Support\AfiliacionDimensionService;
 use DateTimeImmutable;
 use PDO;
 use Throwable;
@@ -19,11 +20,12 @@ class BillingParticularesReportService
     private array $tarifaDiagnosticCache = [];
     /** @var array<string, array{id:int,codigo:string,descripcion:string}> */
     private array $tarifaCodeCache = [];
-    /** @var array<string, array{categoria:string,afiliacion_raw:string}>|null */
+    /** @var array<string, array{categoria:string,afiliacion_raw:string,empresa_seguro:string}>|null */
     private ?array $afiliacionCategoriaMapCache = null;
     /** @var array<int, array{level_key:string,storage_key:string,title:string,category:string,source:string}>|null */
     private ?array $codePriceLevelsCache = null;
     private ?CodePriceService $codePriceService = null;
+    private AfiliacionDimensionService $afiliacionDimensions;
     /** @var array<int, string> */
     private const EXCLUDED_ATTENTION_TYPES = [
         'consulta optometria',
@@ -48,6 +50,7 @@ class BillingParticularesReportService
     public function __construct(PDO $db)
     {
         $this->db = $db;
+        $this->afiliacionDimensions = new AfiliacionDimensionService($db);
     }
 
     /**
@@ -391,6 +394,12 @@ class BillingParticularesReportService
             if ($mappedRawAffiliation !== '') {
                 $row['afiliacion'] = $mappedRawAffiliation;
             }
+            $empresaSeguro = trim((string) ($mappedAffiliation['empresa_seguro'] ?? ''));
+            if ($empresaSeguro === '') {
+                $empresaSeguro = $this->resolveEmpresaSeguroLabel((string) ($row['afiliacion'] ?? ''));
+            }
+            $row['empresa_seguro'] = $empresaSeguro;
+            $row['empresa_seguro_key'] = $this->afiliacionDimensions->normalizeEmpresaFilter($empresaSeguro);
             $row['categoria_cliente'] = $categoriaCliente;
             $tipoAtencion = $this->resolveAttentionType((string) ($row['procedimiento_proyectado'] ?? ''));
             if ($this->isExcludedAttentionType($tipoAtencion)) {
@@ -625,6 +634,7 @@ class BillingParticularesReportService
     public function aplicarFiltros(array $rows, array $filters): array
     {
         $afiliacion = strtolower(trim((string) ($filters['afiliacion'] ?? '')));
+        $empresaSeguro = $this->afiliacionDimensions->normalizeEmpresaFilter((string) ($filters['empresa_seguro'] ?? ''));
         $sede = $this->normalizeSedeFilter($filters['sede'] ?? null);
         $tipoAtencion = strtoupper(trim((string) ($filters['tipo'] ?? '')));
         $procedimiento = strtolower(trim((string) ($filters['procedimiento'] ?? '')));
@@ -645,6 +655,7 @@ class BillingParticularesReportService
             }
 
             $afiliacionRow = strtolower(trim((string) ($row['afiliacion'] ?? '')));
+            $empresaSeguroRow = $this->afiliacionDimensions->normalizeEmpresaFilter((string) ($row['empresa_seguro_key'] ?? $row['empresa_seguro'] ?? ''));
             $sedeRow = $this->normalizeSedeFilter($row['sede'] ?? null);
             $tipoAtencionRow = strtoupper(trim((string) ($row['tipo_atencion'] ?? '')));
             $procedimientoRow = strtolower((string) ($row['procedimiento_proyectado'] ?? ''));
@@ -662,6 +673,9 @@ class BillingParticularesReportService
                 continue;
             }
             if ($afiliacion !== '' && $afiliacionRow !== $afiliacion) {
+                continue;
+            }
+            if ($empresaSeguro !== '' && $empresaSeguroRow !== $empresaSeguro) {
                 continue;
             }
             if ($sede !== '' && $sedeRow !== $sede) {
@@ -820,9 +834,10 @@ class BillingParticularesReportService
      *     }
      * }
      */
-    public function resumen(array $rows): array
+    public function resumen(array $rows, array $filters = []): array
     {
         $conteoAfiliacion = [];
+        $conteoEmpresaSeguro = [];
         $pacientesUnicos = [];
         $pacienteAtenciones = [];
         $produccionTotal = 0.0;
@@ -961,6 +976,15 @@ class BillingParticularesReportService
                 $conteoAfiliacion[$afiliacion] = 0;
             }
             $conteoAfiliacion[$afiliacion]++;
+
+            $empresaSeguro = strtoupper(trim((string) ($row['empresa_seguro'] ?? '')));
+            if ($empresaSeguro === '') {
+                $empresaSeguro = 'SIN CONVENIO';
+            }
+            if (!isset($conteoEmpresaSeguro[$empresaSeguro])) {
+                $conteoEmpresaSeguro[$empresaSeguro] = 0;
+            }
+            $conteoEmpresaSeguro[$empresaSeguro]++;
 
             $hcNumber = trim((string) ($row['hc_number'] ?? ''));
             if ($hcNumber !== '') {
@@ -1390,8 +1414,32 @@ class BillingParticularesReportService
             $hierarchy[$hierarchyCategory]['subcategorias'][$hierarchySubcategory]++;
         }
 
-        arsort($conteoAfiliacion);
-        $top = array_slice($conteoAfiliacion, 0, 5, true);
+        $empresaSeguroFilter = $this->afiliacionDimensions->normalizeEmpresaFilter((string) ($filters['empresa_seguro'] ?? ''));
+        $selectedEmpresaSeguro = '';
+        if ($empresaSeguroFilter !== '') {
+            foreach ($rows as $row) {
+                $rowEmpresaLabel = trim((string) ($row['empresa_seguro'] ?? ''));
+                $rowEmpresaKey = $this->afiliacionDimensions->normalizeEmpresaFilter(
+                    (string) ($row['empresa_seguro_key'] ?? $rowEmpresaLabel)
+                );
+                if ($rowEmpresaKey === $empresaSeguroFilter) {
+                    $selectedEmpresaSeguro = strtoupper($rowEmpresaLabel !== '' ? $rowEmpresaLabel : 'SIN CONVENIO');
+                    break;
+                }
+            }
+        }
+
+        $insuranceBreakdownMode = $empresaSeguroFilter !== '' ? 'seguro' : 'empresa';
+        $insuranceBreakdownTitle = $insuranceBreakdownMode === 'seguro'
+            ? 'Planes de seguro' . ($selectedEmpresaSeguro !== '' ? ' de ' . $selectedEmpresaSeguro : '')
+            : 'Empresas de seguro';
+        $insuranceBreakdownItemLabel = $insuranceBreakdownMode === 'seguro'
+            ? 'Plan de seguro'
+            : 'Empresa de seguro';
+        $conteoSeguroAnalisis = $insuranceBreakdownMode === 'seguro' ? $conteoAfiliacion : $conteoEmpresaSeguro;
+
+        arsort($conteoSeguroAnalisis);
+        $top = array_slice($conteoSeguroAnalisis, 0, 5, true);
 
         $topAfiliaciones = [];
         foreach ($top as $afiliacion => $cantidad) {
@@ -1646,6 +1694,12 @@ class BillingParticularesReportService
             'pacientes_unicos' => count($pacientesUnicos),
             'categoria_counts' => $categoriaCounts,
             'categoria_share' => $categoriaShare,
+            'insurance_breakdown' => [
+                'mode' => $insuranceBreakdownMode,
+                'title' => $insuranceBreakdownTitle,
+                'item_label' => $insuranceBreakdownItemLabel,
+                'selected_company' => $selectedEmpresaSeguro,
+            ],
             'top_afiliaciones' => $topAfiliaciones,
             'referido_prefactura' => [
                 'with_value' => $referidoWithValue,
@@ -1701,7 +1755,7 @@ class BillingParticularesReportService
             'desglose_gerencial' => [
                 'sedes' => $this->metricValues($sedeCounts, 10, $totalRows),
                 'doctores' => $this->metricValues($doctorCounts, 10, $totalRows),
-                'afiliaciones' => $this->metricValues($conteoAfiliacion, 10, $totalRows),
+                'afiliaciones' => $this->metricValues($conteoSeguroAnalisis, 10, $totalRows),
                 'categorias' => $this->metricValues($categoriaGerencialCounts, null, $totalRows),
             ],
             'picos' => [
@@ -1803,23 +1857,27 @@ class BillingParticularesReportService
 
     /**
      * @param array<int, array<string, mixed>> $rows
+     * @param array<string, mixed> $filters
      * @return array{
      *     meses:array<int, array{value:string,label:string}>,
      *     afiliaciones:array<int, string>,
+     *     empresas_seguro:array<int, array{value:string,label:string}>,
      *     tipos_atencion:array<int, string>,
      *     sedes:array<int, string>,
      *     categorias:array<int, array{value:string,label:string}>,
      *     categorias_madre_referido:array<int, string>
      * }
      */
-    public function catalogos(array $rows): array
+    public function catalogos(array $rows, array $filters = []): array
     {
         $meses = [];
         $afiliaciones = [];
+        $empresasSeguro = [];
         $tiposAtencion = [];
         $sedes = [];
         $categorias = [];
         $categoriasMadreReferido = [];
+        $empresaSeguroFilter = $this->afiliacionDimensions->normalizeEmpresaFilter((string) ($filters['empresa_seguro'] ?? ''));
 
         foreach ($rows as $row) {
             $timestamp = strtotime((string) ($row['fecha'] ?? ''));
@@ -1831,8 +1889,19 @@ class BillingParticularesReportService
                 ];
             }
 
+            $empresaSeguroLabel = trim((string) ($row['empresa_seguro'] ?? ''));
+            $empresaSeguroKey = $this->afiliacionDimensions->normalizeEmpresaFilter(
+                (string) ($row['empresa_seguro_key'] ?? $empresaSeguroLabel)
+            );
+            if ($empresaSeguroLabel !== '' && $empresaSeguroKey !== '') {
+                $empresasSeguro[$empresaSeguroKey] = strtoupper($empresaSeguroLabel);
+            }
+
             $afiliacion = strtolower(trim((string) ($row['afiliacion'] ?? '')));
-            if ($afiliacion !== '') {
+            if (
+                $afiliacion !== ''
+                && ($empresaSeguroFilter === '' || $empresaSeguroKey === $empresaSeguroFilter)
+            ) {
                 $afiliaciones[$afiliacion] = $afiliacion;
             }
 
@@ -1858,6 +1927,7 @@ class BillingParticularesReportService
         }
 
         krsort($meses);
+        asort($empresasSeguro);
         ksort($afiliaciones);
         ksort($tiposAtencion);
         ksort($categoriasMadreReferido);
@@ -1879,6 +1949,11 @@ class BillingParticularesReportService
         return [
             'meses' => array_values($meses),
             'afiliaciones' => array_values($afiliaciones),
+            'empresas_seguro' => array_map(
+                static fn(string $label, string $value): array => ['value' => $value, 'label' => $label],
+                array_values($empresasSeguro),
+                array_keys($empresasSeguro)
+            ),
             'tipos_atencion' => array_values($tiposAtencion),
             'sedes' => array_values($sedes),
             'categorias' => array_map(static function (string $categoria): array {
@@ -1926,7 +2001,7 @@ class BillingParticularesReportService
     }
 
     /**
-     * @return array{categoria:string,afiliacion_raw:string}|null
+     * @return array{categoria:string,afiliacion_raw:string,empresa_seguro:string}|null
      */
     private function resolveMappedAffiliation(string $afiliacion): ?array
     {
@@ -1944,7 +2019,7 @@ class BillingParticularesReportService
     }
 
     /**
-     * @return array<string, array{categoria:string,afiliacion_raw:string}>
+     * @return array<string, array{categoria:string,afiliacion_raw:string,empresa_seguro:string}>
      */
     private function afiliacionCategoriaMap(): array
     {
@@ -1961,8 +2036,12 @@ class BillingParticularesReportService
             return $this->afiliacionCategoriaMapCache;
         }
 
+        $empresaSeguroSelect = $this->columnExists('afiliacion_categoria_map', 'empresa_seguro')
+            ? 'empresa_seguro'
+            : "'' AS empresa_seguro";
+
         $stmt = $this->db->query(
-            "SELECT afiliacion_norm, categoria, afiliacion_raw
+            "SELECT afiliacion_norm, categoria, afiliacion_raw, {$empresaSeguroSelect}
              FROM afiliacion_categoria_map
              WHERE TRIM(COALESCE(afiliacion_norm, '')) <> ''"
         );
@@ -1978,6 +2057,11 @@ class BillingParticularesReportService
             $map[$key] = [
                 'categoria' => $this->normalizeClientCategory((string) ($row['categoria'] ?? '')),
                 'afiliacion_raw' => trim((string) ($row['afiliacion_raw'] ?? '')),
+                'empresa_seguro' => $this->resolveEmpresaSeguroLabel(
+                    trim((string) ($row['empresa_seguro'] ?? '')) !== ''
+                        ? (string) ($row['empresa_seguro'] ?? '')
+                        : (string) ($row['afiliacion_raw'] ?? '')
+                ),
             ];
         }
 
@@ -1989,6 +2073,13 @@ class BillingParticularesReportService
     private function normalizeClientCategory(string $category): string
     {
         return strtolower(trim($category));
+    }
+
+    private function resolveEmpresaSeguroLabel(string $value): string
+    {
+        $label = trim($this->afiliacionDimensions->resolveEmpresaLabel($value));
+
+        return $label !== '' ? strtoupper($label) : 'SIN CONVENIO';
     }
 
     private function isParticularReportCategory(string $category): bool

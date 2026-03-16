@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Examenes\Services;
 
+use App\Modules\Shared\Support\AfiliacionDimensionService;
 use DateTime;
 use DateTimeImmutable;
 use Illuminate\Support\Facades\DB;
@@ -11,21 +12,8 @@ use PDO;
 
 class ImagenesUiService
 {
-    private const IESS_AFFILIATIONS = [
-        'contribuyente voluntario',
-        'conyuge',
-        'conyuge pensionista',
-        'seguro campesino',
-        'seguro campesino jubilado',
-        'seguro general',
-        'seguro general jubilado',
-        'seguro general por montepio',
-        'seguro general tiempo parcial',
-        'hijos dependientes',
-        'sin cobertura',
-    ];
-
     private PDO $db;
+    private AfiliacionDimensionService $afiliacionDimensions;
 
     /** @var array<string,bool> */
     private array $tableExistsCache = [];
@@ -36,6 +24,7 @@ class ImagenesUiService
     public function __construct(?PDO $pdo = null)
     {
         $this->db = $pdo ?? DB::connection()->getPdo();
+        $this->afiliacionDimensions = new AfiliacionDimensionService($this->db);
     }
 
     /**
@@ -57,7 +46,7 @@ class ImagenesUiService
 
     /**
      * @param array<string,mixed> $query
-     * @return array{filters:array<string,string>,rows:array<int,array<string,mixed>>,dashboard:array<string,mixed>,afiliacionOptions:array<int,array{value:string,label:string}>,afiliacionCategoriaOptions:array<int,array{value:string,label:string}>,sedeOptions:array<int,array{value:string,label:string}>,filtersSummary:array<int,array{label:string,value:string}>,detailRows:array<int,array<string,mixed>>}
+     * @return array{filters:array<string,string>,rows:array<int,array<string,mixed>>,dashboard:array<string,mixed>,afiliacionOptions:array<int,array{value:string,label:string}>,afiliacionCategoriaOptions:array<int,array{value:string,label:string}>,seguroOptions:array<int,array{value:string,label:string}>,sedeOptions:array<int,array{value:string,label:string}>,filtersSummary:array<int,array{label:string,value:string}>,detailRows:array<int,array<string,mixed>>}
      */
     public function imagenesDashboard(array $query): array
     {
@@ -67,16 +56,17 @@ class ImagenesUiService
         $rows = array_map(fn(array $row): array => $this->decorateImagenRow($row), $rows);
         $dashboard = $this->buildImagenesDashboardSummary($rows, $filters);
         $detailRows = $this->buildImagenesDashboardDetailRows($rows);
-        [$afiliacionOptions, $afiliacionCategoriaOptions, $sedeOptions] = $this->resolveImagenesDashboardAffiliationOptions($filters);
+        [$afiliacionOptions, $afiliacionCategoriaOptions, $seguroOptions, $sedeOptions] = $this->resolveImagenesDashboardAffiliationOptions($filters);
 
         return [
             'filters' => $filters,
             'rows' => $rows,
             'dashboard' => $dashboard,
             'detailRows' => $detailRows,
-            'filtersSummary' => $this->buildImagenesDashboardFiltersSummary($filters, $afiliacionOptions, $afiliacionCategoriaOptions, $sedeOptions),
+            'filtersSummary' => $this->buildImagenesDashboardFiltersSummary($filters, $afiliacionOptions, $afiliacionCategoriaOptions, $seguroOptions, $sedeOptions),
             'afiliacionOptions' => $afiliacionOptions,
             'afiliacionCategoriaOptions' => $afiliacionCategoriaOptions,
+            'seguroOptions' => $seguroOptions,
             'sedeOptions' => $sedeOptions,
         ];
     }
@@ -145,6 +135,7 @@ class ImagenesUiService
             'fecha_fin' => $this->normalizeDateFilter($fechaFin, 'last day of this month'),
             'afiliacion' => trim((string) ($query['afiliacion'] ?? '')),
             'afiliacion_categoria' => trim((string) ($query['afiliacion_categoria'] ?? '')),
+            'seguro' => trim((string) ($query['seguro'] ?? '')),
             'sede' => trim((string) ($query['sede'] ?? '')),
             'tipo_examen' => trim((string) ($query['tipo_examen'] ?? '')),
             'paciente' => trim((string) ($query['paciente'] ?? '')),
@@ -154,29 +145,20 @@ class ImagenesUiService
 
     /**
      * @param array<string,string> $filters
-     * @return array{0:array<int,array{value:string,label:string}>,1:array<int,array{value:string,label:string}>,2:array<int,array{value:string,label:string}>}
+     * @return array{0:array<int,array{value:string,label:string}>,1:array<int,array{value:string,label:string}>,2:array<int,array{value:string,label:string}>,3:array<int,array{value:string,label:string}>}
      */
     private function resolveImagenesDashboardAffiliationOptions(array $filters): array
     {
-        $fechaInicio = trim((string) ($filters['fecha_inicio'] ?? ''));
-        $fechaFin = trim((string) ($filters['fecha_fin'] ?? ''));
         $sedeOptions = [
             ['value' => '', 'label' => 'Todas las sedes'],
             ['value' => 'MATRIZ', 'label' => 'MATRIZ'],
             ['value' => 'CEIBOS', 'label' => 'CEIBOS'],
         ];
 
-        if ($fechaInicio === '' || $fechaFin === '') {
-            return [
-                [['value' => '', 'label' => 'Todas'], ['value' => 'iess', 'label' => 'IESS']],
-                [['value' => '', 'label' => 'Todas las categorías'], ['value' => 'publico', 'label' => 'Pública'], ['value' => 'privado', 'label' => 'Privada']],
-                $sedeOptions,
-            ];
-        }
-
         return [
-            $this->getImagenesAfiliacionOptions($fechaInicio, $fechaFin),
-            $this->getImagenesAfiliacionCategoriaOptions($fechaInicio, $fechaFin),
+            $this->getImagenesAfiliacionOptions(),
+            $this->getImagenesAfiliacionCategoriaOptions(),
+            $this->getImagenesSeguroOptions(),
             $sedeOptions,
         ];
     }
@@ -211,9 +193,10 @@ class ImagenesUiService
     {
         $rawAfiliacionExpr = "COALESCE(NULLIF(TRIM(pp.afiliacion), ''), NULLIF(TRIM(pd.afiliacion), ''), '')";
         $displayAfiliacionExpr = "COALESCE(NULLIF(TRIM(pp.afiliacion), ''), NULLIF(TRIM(pd.afiliacion), ''), 'Sin afiliación')";
-        $afiliacionKeyExpr = $this->afiliacionGroupKeyExpr($rawAfiliacionExpr);
+        $afiliacionKeyExpr = $this->afiliacionGroupKeyExpr($rawAfiliacionExpr, 'iacm');
         $afiliacionExactExpr = 'TRIM(' . $this->normalizeSqlText($displayAfiliacionExpr) . ')';
         $categoriaContext = $this->resolveAfiliacionCategoriaContext($rawAfiliacionExpr, 'iacm');
+        $seguroKeyExpr = $this->seguroKeyExpr($rawAfiliacionExpr, 'iacm');
         $sedeExpr = $this->imagenesSedeExpr();
         $imagenInformeJoin = "LEFT JOIN (
                 SELECT
@@ -308,6 +291,12 @@ class ImagenesUiService
         if ($afiliacionCategoriaFilter !== '') {
             $sql .= " AND {$categoriaContext['expr']} = :afiliacion_categoria_filter_match";
             $params[':afiliacion_categoria_filter_match'] = $afiliacionCategoriaFilter;
+        }
+
+        $seguroFilter = $this->normalizeSeguroFilter((string) ($filters['seguro'] ?? ''));
+        if ($seguroFilter !== '') {
+            $sql .= " AND {$seguroKeyExpr} = :seguro_filter_match";
+            $params[':seguro_filter_match'] = $seguroFilter;
         }
 
         $sedeFilter = $this->normalizeSedeFilter((string) ($filters['sede'] ?? ''));
@@ -538,100 +527,25 @@ class ImagenesUiService
     /**
      * @return array<int, array{value:string,label:string}>
      */
-    private function getImagenesAfiliacionOptions(string $startDate, string $endDate): array
+    private function getImagenesAfiliacionOptions(): array
     {
-        $rawAfiliacionExpr = "COALESCE(NULLIF(TRIM(pp.afiliacion), ''), NULLIF(TRIM(pd.afiliacion), ''), '')";
-        $afiliacionKeyExpr = $this->afiliacionGroupKeyExpr($rawAfiliacionExpr);
-        $afiliacionLabelExpr = $this->afiliacionLabelExpr($rawAfiliacionExpr);
-
-        $sql = "SELECT x.value_key, MAX(x.value_label) AS value_label
-            FROM (
-                SELECT
-                    {$afiliacionKeyExpr} AS value_key,
-                    {$afiliacionLabelExpr} AS value_label
-                FROM procedimiento_proyectado pp
-                LEFT JOIN patient_data pd ON pd.hc_number = pp.hc_number
-                WHERE pp.fecha BETWEEN :fecha_inicio AND :fecha_fin
-                  AND pp.estado_agenda IS NOT NULL
-                  AND TRIM(pp.estado_agenda) <> ''
-                  AND UPPER(TRIM(pp.procedimiento_proyectado)) LIKE 'IMAGENES%'
-            ) x
-            GROUP BY x.value_key
-            ORDER BY value_label ASC";
-
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute([
-            ':fecha_inicio' => $startDate,
-            ':fecha_fin' => $endDate,
-        ]);
-
-        $options = [
-            ['value' => '', 'label' => 'Todas'],
-            ['value' => 'iess', 'label' => 'IESS'],
-        ];
-        $seen = ['' => true, 'iess' => true];
-
-        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-            $key = trim((string) ($row['value_key'] ?? ''));
-            $label = trim((string) ($row['value_label'] ?? ''));
-            if ($key === '' || $label === '' || isset($seen[$key])) {
-                continue;
-            }
-            $options[] = ['value' => $key, 'label' => $label];
-            $seen[$key] = true;
-        }
-
-        return $options;
+        return $this->afiliacionDimensions->getEmpresaOptions('Todas las empresas');
     }
 
     /**
      * @return array<int, array{value:string,label:string}>
      */
-    private function getImagenesAfiliacionCategoriaOptions(string $startDate, string $endDate): array
+    private function getImagenesAfiliacionCategoriaOptions(): array
     {
-        $rawAfiliacionExpr = "COALESCE(NULLIF(TRIM(pp.afiliacion), ''), NULLIF(TRIM(pd.afiliacion), ''), '')";
-        $categoriaContext = $this->resolveAfiliacionCategoriaContext($rawAfiliacionExpr, 'iacm');
+        return $this->afiliacionDimensions->getCategoriaOptions('Todas las categorías');
+    }
 
-        $sql = "SELECT
-                {$categoriaContext['expr']} AS categoria,
-                COUNT(*) AS total
-            FROM procedimiento_proyectado pp
-            LEFT JOIN patient_data pd ON pd.hc_number = pp.hc_number
-            {$categoriaContext['join']}
-            WHERE pp.fecha BETWEEN :fecha_inicio AND :fecha_fin
-              AND pp.estado_agenda IS NOT NULL
-              AND TRIM(pp.estado_agenda) <> ''
-              AND UPPER(TRIM(pp.procedimiento_proyectado)) LIKE 'IMAGENES%'
-            GROUP BY {$categoriaContext['expr']}
-            ORDER BY total DESC";
-
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute([
-            ':fecha_inicio' => $startDate,
-            ':fecha_fin' => $endDate,
-        ]);
-
-        $options = [
-            ['value' => '', 'label' => 'Todas las categorías'],
-            ['value' => 'publico', 'label' => 'Pública'],
-            ['value' => 'privado', 'label' => 'Privada'],
-        ];
-        $seen = ['' => true, 'publico' => true, 'privado' => true];
-
-        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-            $key = trim((string) ($row['categoria'] ?? ''));
-            if ($key === '' || isset($seen[$key])) {
-                continue;
-            }
-
-            $options[] = [
-                'value' => $key,
-                'label' => $this->formatCategoriaLabel($key),
-            ];
-            $seen[$key] = true;
-        }
-
-        return $options;
+    /**
+     * @return array<int, array{value:string,label:string}>
+     */
+    private function getImagenesSeguroOptions(): array
+    {
+        return $this->afiliacionDimensions->getSeguroOptions('Todos los seguros');
     }
 
     /**
@@ -1725,6 +1639,7 @@ class ImagenesUiService
         array $filters,
         array $afiliacionOptions = [],
         array $afiliacionCategoriaOptions = [],
+        array $seguroOptions = [],
         array $sedeOptions = []
     ): array {
         $summary = [];
@@ -1753,7 +1668,7 @@ class ImagenesUiService
                     break;
                 }
             }
-            $summary[] = ['label' => 'Afiliación', 'value' => $afiliacionLabel];
+            $summary[] = ['label' => 'Empresa de seguro', 'value' => $afiliacionLabel];
         }
 
         $afiliacionCategoriaFilter = $this->normalizeAfiliacionCategoriaFilter((string) ($filters['afiliacion_categoria'] ?? ''));
@@ -1765,7 +1680,19 @@ class ImagenesUiService
                     break;
                 }
             }
-            $summary[] = ['label' => 'Categoría de afiliación', 'value' => $categoriaLabel];
+            $summary[] = ['label' => 'Categoría de seguro', 'value' => $categoriaLabel];
+        }
+
+        $seguroFilter = $this->normalizeSeguroFilter((string) ($filters['seguro'] ?? ''));
+        if ($seguroFilter !== '') {
+            $seguroLabel = $seguroFilter;
+            foreach ($seguroOptions as $option) {
+                if ((string) ($option['value'] ?? '') === $seguroFilter) {
+                    $seguroLabel = (string) ($option['label'] ?? $seguroFilter);
+                    break;
+                }
+            }
+            $summary[] = ['label' => 'Seguro', 'value' => $seguroLabel];
         }
 
         $sedeFilter = $this->normalizeSedeFilter((string) ($filters['sede'] ?? ''));
@@ -1785,29 +1712,7 @@ class ImagenesUiService
 
     private function normalizeAfiliacionFilter(string $afiliacionFilter): string
     {
-        $value = strtolower(trim($afiliacionFilter));
-        if ($value === '') {
-            return '';
-        }
-
-        $comparisonValue = strtr($value, [
-            'á' => 'a',
-            'é' => 'e',
-            'í' => 'i',
-            'ó' => 'o',
-            'ú' => 'u',
-            'ñ' => 'n',
-        ]);
-        $comparisonValue = trim(preg_replace('/\s+/', ' ', str_replace('_', ' ', $comparisonValue)) ?? $comparisonValue);
-
-        if (in_array($comparisonValue, ['sin convenio', 'sin afiliacion'], true) || $value === 'sin_convenio') {
-            return 'sin_convenio';
-        }
-        if ($comparisonValue === 'iess' || in_array($comparisonValue, self::IESS_AFFILIATIONS, true)) {
-            return 'iess';
-        }
-
-        return $value;
+        return $this->afiliacionDimensions->normalizeEmpresaFilter($afiliacionFilter);
     }
 
     private function normalizeAfiliacionExactFilter(string $afiliacionFilter): string
@@ -1827,17 +1732,14 @@ class ImagenesUiService
         ]);
     }
 
+    private function normalizeSeguroFilter(string $seguroFilter): string
+    {
+        return $this->afiliacionDimensions->normalizeSeguroFilter($seguroFilter);
+    }
+
     private function normalizeAfiliacionCategoriaFilter(string $categoryFilter): string
     {
-        $value = strtolower(trim($categoryFilter));
-        if ($value === 'publica') {
-            return 'publico';
-        }
-        if ($value === 'privada') {
-            return 'privado';
-        }
-
-        return $value;
+        return $this->afiliacionDimensions->normalizeCategoriaFilter($categoryFilter);
     }
 
     private function normalizeSedeFilter(string $value): string
@@ -1870,41 +1772,36 @@ class ImagenesUiService
 
     private function formatCategoriaLabel(string $key): string
     {
-        return match ($key) {
-            'publico' => 'Pública',
-            'privado' => 'Privada',
-            'particular' => 'Particular',
-            'fundacional' => 'Fundacional',
-            'otros' => 'Otros',
-            default => ucwords(str_replace('_', ' ', $key)),
-        };
+        return $this->afiliacionDimensions->formatCategoriaLabel($key);
     }
 
-    private function afiliacionGroupKeyExpr(string $rawAffiliationExpr): string
+    private function afiliacionGroupKeyExpr(string $rawAffiliationExpr, string $mapAlias = 'acm'): string
     {
-        $col = "LOWER(TRIM(COALESCE({$rawAffiliationExpr}, '')))";
+        $context = $this->resolveAfiliacionDimensionsContext($rawAffiliationExpr, $mapAlias);
 
-        return "CASE
-            WHEN {$col} IN (" . $this->iessAffiliationsSqlList() . ") THEN 'iess'
-            WHEN {$col} = '' THEN 'sin_convenio'
-            ELSE {$col}
-        END";
+        return $context['empresa_key_expr'];
     }
 
-    private function afiliacionLabelExpr(string $rawAffiliationExpr): string
+    private function afiliacionLabelExpr(string $rawAffiliationExpr, string $mapAlias = 'acm'): string
     {
-        $col = "LOWER(TRIM(COALESCE({$rawAffiliationExpr}, '')))";
+        $context = $this->resolveAfiliacionDimensionsContext($rawAffiliationExpr, $mapAlias);
 
-        return "CASE
-            WHEN {$col} IN (" . $this->iessAffiliationsSqlList() . ") THEN 'IESS'
-            WHEN {$col} = '' THEN 'Sin convenio'
-            ELSE TRIM({$rawAffiliationExpr})
-        END";
+        return $context['empresa_label_expr'];
     }
 
-    private function iessAffiliationsSqlList(): string
+    private function seguroKeyExpr(string $rawAffiliationExpr, string $mapAlias = 'acm'): string
     {
-        return "'" . implode("','", self::IESS_AFFILIATIONS) . "'";
+        $context = $this->resolveAfiliacionDimensionsContext($rawAffiliationExpr, $mapAlias);
+
+        return $context['seguro_key_expr'];
+    }
+
+    /**
+     * @return array{join:string,expr:string}
+     */
+    private function resolveAfiliacionDimensionsContext(string $rawAffiliationExpr, string $mapAlias = 'acm'): array
+    {
+        return $this->afiliacionDimensions->buildContext($rawAffiliationExpr, $mapAlias);
     }
 
     /**
@@ -1912,29 +1809,9 @@ class ImagenesUiService
      */
     private function resolveAfiliacionCategoriaContext(string $rawAffiliationExpr, string $mapAlias = 'acm'): array
     {
-        $afiliacionNormExpr = $this->normalizeSqlKey($rawAffiliationExpr);
-        $fallbackExpr = "CASE
-            WHEN {$afiliacionNormExpr} = '' THEN 'otros'
-            WHEN {$afiliacionNormExpr} LIKE '%particular%' THEN 'particular'
-            WHEN {$afiliacionNormExpr} LIKE '%fundacion%' OR {$afiliacionNormExpr} LIKE '%fundacional%' THEN 'fundacional'
-            WHEN {$afiliacionNormExpr} REGEXP 'iess|issfa|isspol|seguro_general|seguro_campesino|jubilado|montepio|contribuyente|voluntario|publico' THEN 'publico'
-            ELSE 'privado'
-        END";
+        $context = $this->resolveAfiliacionDimensionsContext($rawAffiliationExpr, $mapAlias);
 
-        if (
-            $this->tableExists('afiliacion_categoria_map')
-            && $this->columnExists('afiliacion_categoria_map', 'afiliacion_norm')
-            && $this->columnExists('afiliacion_categoria_map', 'categoria')
-        ) {
-            $join = "LEFT JOIN afiliacion_categoria_map {$mapAlias}
-                     ON ({$mapAlias}.afiliacion_norm COLLATE utf8mb4_unicode_ci)
-                      = ({$afiliacionNormExpr} COLLATE utf8mb4_unicode_ci)";
-            $expr = "LOWER(COALESCE(NULLIF({$mapAlias}.categoria, ''), {$fallbackExpr}))";
-
-            return ['join' => $join, 'expr' => $expr];
-        }
-
-        return ['join' => '', 'expr' => $fallbackExpr];
+        return ['join' => $context['join'], 'expr' => $context['categoria_expr']];
     }
 
     private function normalizeSqlText(string $expr): string

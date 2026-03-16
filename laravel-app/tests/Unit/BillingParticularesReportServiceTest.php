@@ -47,6 +47,48 @@ class BillingParticularesReportServiceTest extends TestCase
         ]));
     }
 
+    public function test_company_filter_only_keeps_rows_for_the_selected_insurer(): void
+    {
+        $service = new BillingParticularesReportService(new PDO('sqlite::memory:'));
+
+        $filtered = $service->aplicarFiltros($this->insuranceRowsFixture(), [
+            'empresa_seguro' => 'salud',
+        ]);
+
+        $this->assertCount(3, $filtered);
+        $this->assertSame(
+            ['SALUD', 'SALUD', 'SALUD'],
+            array_values(array_map(
+                static fn(array $row): string => (string) ($row['empresa_seguro'] ?? ''),
+                $filtered
+            ))
+        );
+    }
+
+    public function test_summary_switches_from_company_breakdown_to_plan_breakdown_when_a_company_is_selected(): void
+    {
+        $service = new BillingParticularesReportService(new PDO('sqlite::memory:'));
+
+        $summaryByCompany = $service->resumen($this->insuranceRowsFixture());
+        $this->assertSame('empresa', $summaryByCompany['insurance_breakdown']['mode']);
+        $this->assertSame('Empresa de seguro', $summaryByCompany['insurance_breakdown']['item_label']);
+        $this->assertSame('SALUD', $summaryByCompany['top_afiliaciones'][0]['afiliacion']);
+        $this->assertSame(3, $summaryByCompany['top_afiliaciones'][0]['cantidad']);
+
+        $companyRows = $service->aplicarFiltros($this->insuranceRowsFixture(), [
+            'empresa_seguro' => 'salud',
+        ]);
+        $summaryByPlan = $service->resumen($companyRows, [
+            'empresa_seguro' => 'salud',
+        ]);
+
+        $this->assertSame('seguro', $summaryByPlan['insurance_breakdown']['mode']);
+        $this->assertSame('Plan de seguro', $summaryByPlan['insurance_breakdown']['item_label']);
+        $this->assertSame('Planes de seguro de SALUD', $summaryByPlan['insurance_breakdown']['title']);
+        $this->assertSame('SALUD NIVEL 1', $summaryByPlan['top_afiliaciones'][0]['afiliacion']);
+        $this->assertSame(2, $summaryByPlan['top_afiliaciones'][0]['cantidad']);
+    }
+
     /**
      * @param array<string, float> $prices
      */
@@ -83,6 +125,71 @@ class BillingParticularesReportServiceTest extends TestCase
         ]);
 
         return $service;
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function insuranceRowsFixture(): array
+    {
+        return [
+            [
+                'fecha' => '2026-03-10 08:00:00',
+                'hc_number' => '1',
+                'tipo' => 'consulta',
+                'tipo_atencion' => 'CONSULTA',
+                'afiliacion' => 'SALUD NIVEL 1',
+                'empresa_seguro' => 'SALUD',
+                'empresa_seguro_key' => 'salud',
+                'categoria_cliente' => 'privado',
+                'estado_encuentro' => 'ATENDIDO',
+                'sede' => 'MATRIZ',
+                'doctor' => 'DR. A',
+                'procedimiento_proyectado' => 'CONSULTA GENERAL',
+            ],
+            [
+                'fecha' => '2026-03-11 09:00:00',
+                'hc_number' => '2',
+                'tipo' => 'consulta',
+                'tipo_atencion' => 'CONSULTA',
+                'afiliacion' => 'SALUD NIVEL 1',
+                'empresa_seguro' => 'SALUD',
+                'empresa_seguro_key' => 'salud',
+                'categoria_cliente' => 'privado',
+                'estado_encuentro' => 'ATENDIDO',
+                'sede' => 'MATRIZ',
+                'doctor' => 'DR. B',
+                'procedimiento_proyectado' => 'CONSULTA GENERAL',
+            ],
+            [
+                'fecha' => '2026-03-12 10:00:00',
+                'hc_number' => '3',
+                'tipo' => 'consulta',
+                'tipo_atencion' => 'CONSULTA',
+                'afiliacion' => 'SALUD NIVEL 2',
+                'empresa_seguro' => 'SALUD',
+                'empresa_seguro_key' => 'salud',
+                'categoria_cliente' => 'privado',
+                'estado_encuentro' => 'ATENDIDO',
+                'sede' => 'CEIBOS',
+                'doctor' => 'DR. C',
+                'procedimiento_proyectado' => 'CONSULTA GENERAL',
+            ],
+            [
+                'fecha' => '2026-03-13 11:00:00',
+                'hc_number' => '4',
+                'tipo' => 'consulta',
+                'tipo_atencion' => 'CONSULTA',
+                'afiliacion' => 'SEGURO GENERAL MONTEPIO',
+                'empresa_seguro' => 'IESS',
+                'empresa_seguro_key' => 'iess',
+                'categoria_cliente' => 'privado',
+                'estado_encuentro' => 'ATENDIDO',
+                'sede' => 'MATRIZ',
+                'doctor' => 'DR. D',
+                'procedimiento_proyectado' => 'CONSULTA GENERAL',
+            ],
+        ];
     }
 
     /**

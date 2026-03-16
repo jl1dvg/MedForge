@@ -11,6 +11,7 @@ use App\Modules\Billing\Services\BillingParticularesReportService;
 use App\Modules\Billing\Services\BillingProcedimientosKpiService;
 use App\Modules\Billing\Services\HonorariosDashboardDataService;
 use App\Modules\Billing\Services\BillingUiService;
+use App\Modules\Shared\Support\AfiliacionDimensionService;
 use App\Modules\Shared\Support\LegacyCurrentUser;
 use App\Modules\Shared\Support\LegacySessionAuth;
 use DateInterval;
@@ -174,6 +175,9 @@ class BillingUiController
         return view('billing.v2-dashboard', [
             'pageTitle' => 'Dashboard Billing',
             'currentUser' => LegacyCurrentUser::resolve($request),
+            'afiliacionCategoriaOptions' => $this->insuranceDimensionOptions('categoria'),
+            'empresaSeguroOptions' => $this->insuranceDimensionOptions('empresa'),
+            'seguroOptions' => $this->insuranceDimensionOptions('seguro'),
         ]);
     }
 
@@ -202,6 +206,9 @@ class BillingUiController
             'pageTitle' => 'Honorarios médicos',
             'currentUser' => LegacyCurrentUser::resolve($request),
             'cirujanos' => $cirujanos,
+            'afiliacionCategoriaOptions' => $this->insuranceDimensionOptions('categoria'),
+            'empresaSeguroOptions' => $this->insuranceDimensionOptions('empresa'),
+            'seguroOptions' => $this->insuranceDimensionOptions('seguro'),
         ]);
     }
 
@@ -264,6 +271,7 @@ class BillingUiController
         $filters = [
             'date_from' => $range['date_from'],
             'date_to' => $range['date_to'],
+            'empresa_seguro' => (string) $request->query('empresa_seguro', ''),
             'afiliacion' => (string) $request->query('afiliacion', ''),
             'sede' => $this->normalizeSedeFilter((string) $request->query('sede', '')),
             'categoria_cliente' => (string) $request->query('categoria_cliente', ''),
@@ -275,8 +283,8 @@ class BillingUiController
         try {
             $baseRows = $this->particularesReportService->obtenerAtencionesParticulares($range['from'], $range['to']);
             $rows = $this->particularesReportService->aplicarFiltros($baseRows, $filters);
-            $catalogos = $this->particularesReportService->catalogos($baseRows);
-            $summary = $this->particularesReportService->resumen($rows);
+            $catalogos = $this->particularesReportService->catalogos($baseRows, $filters);
+            $summary = $this->particularesReportService->resumen($rows, $filters);
         } catch (\Throwable) {
             if ($request->expectsJson()) {
                 return response()->json(['error' => 'No se pudo cargar el informe de particulares.'], 500);
@@ -328,12 +336,18 @@ class BillingUiController
         $payload = $request->all();
         $range = $this->resolveDashboardRange(is_array($payload) ? $payload : []);
         $sedeFilter = $this->normalizeSedeFilter((string) ($payload['sede'] ?? ''));
+        $categoriaFilter = trim((string) ($payload['categoria_seguro'] ?? ''));
+        $empresaFilter = trim((string) ($payload['empresa_seguro'] ?? ''));
+        $seguroFilter = trim((string) ($payload['seguro'] ?? ''));
 
         try {
             $data = $this->dashboardDataService->buildSummary(
                 $range['start']->format('Y-m-d 00:00:00'),
                 $range['end']->format('Y-m-d 23:59:59'),
-                $sedeFilter
+                $sedeFilter,
+                $categoriaFilter,
+                $empresaFilter,
+                $seguroFilter
             );
         } catch (\Throwable) {
             return response()->json(['error' => 'No se pudo cargar el dashboard de billing.'], 500);
@@ -344,6 +358,9 @@ class BillingUiController
                 'date_from' => $range['from'],
                 'date_to' => $range['to'],
                 'sede' => $sedeFilter,
+                'categoria_seguro' => $categoriaFilter,
+                'empresa_seguro' => $empresaFilter,
+                'seguro' => $seguroFilter,
             ],
             'data' => $data,
         ]);
@@ -359,7 +376,9 @@ class BillingUiController
         $range = $this->resolveDashboardRange(is_array($payload) ? $payload : []);
         $filters = [
             'cirujano' => $payload['cirujano'] ?? null,
-            'afiliacion' => $payload['afiliacion'] ?? null,
+            'categoria_seguro' => $payload['categoria_seguro'] ?? null,
+            'empresa_seguro' => $payload['empresa_seguro'] ?? null,
+            'seguro' => $payload['seguro'] ?? null,
         ];
         $rules = is_array($payload['reglas'] ?? null) ? $payload['reglas'] : [];
 
@@ -379,7 +398,9 @@ class BillingUiController
                 'date_from' => $range['from'],
                 'date_to' => $range['to'],
                 'cirujano' => $filters['cirujano'],
-                'afiliacion' => $filters['afiliacion'],
+                'categoria_seguro' => $filters['categoria_seguro'],
+                'empresa_seguro' => $filters['empresa_seguro'],
+                'seguro' => $filters['seguro'],
             ],
             'data' => $data,
         ]);
@@ -392,6 +413,8 @@ class BillingUiController
             'year' => $request->query('year'),
             'sede' => $request->query('sede'),
             'tipo_cliente' => $request->query('tipo_cliente', $request->query('tipoCliente')),
+            'empresa_seguro' => $request->query('empresa_seguro'),
+            'seguro' => $request->query('seguro'),
             'categoria' => $request->query('categoria'),
         ];
 
@@ -479,6 +502,21 @@ class BillingUiController
 
             return response()->json($response, 500);
         }
+    }
+
+    /**
+     * @return array<int,array{value:string,label:string}>
+     */
+    private function insuranceDimensionOptions(string $type): array
+    {
+        $service = new AfiliacionDimensionService(DB::connection()->getPdo());
+
+        return match ($type) {
+            'categoria' => $service->getCategoriaOptions('Todas las categorías'),
+            'empresa' => $service->getEmpresaOptions('Todas las empresas'),
+            'seguro' => $service->getSeguroOptions('Todos los seguros'),
+            default => [],
+        };
     }
 
     private function isLegacyAuthenticated(Request $request): bool
@@ -1287,6 +1325,7 @@ class BillingUiController
         $pacientesFrecuencia = is_array($summary['pacientes_frecuencia'] ?? null) ? $summary['pacientes_frecuencia'] : [];
         $categoriaCounts = is_array($summary['categoria_counts'] ?? null) ? $summary['categoria_counts'] : [];
         $categoriaShare = is_array($summary['categoria_share'] ?? null) ? $summary['categoria_share'] : [];
+        $insuranceBreakdown = is_array($summary['insurance_breakdown'] ?? null) ? $summary['insurance_breakdown'] : [];
         $topAfiliaciones = is_array($summary['top_afiliaciones'] ?? null) ? $summary['top_afiliaciones'] : [];
         $referidoSummary = is_array($summary['referido_prefactura'] ?? null) ? $summary['referido_prefactura'] : [];
         $referidoPacientesUnicosSummary = is_array($summary['referido_prefactura_pacientes_unicos'] ?? null) ? $summary['referido_prefactura_pacientes_unicos'] : [];
@@ -1367,6 +1406,7 @@ class BillingUiController
         $queryWithoutExport = array_filter([
             'date_from' => $dateFrom,
             'date_to' => $dateTo,
+            'empresa_seguro' => trim((string) ($filters['empresa_seguro'] ?? '')),
             'categoria_cliente' => trim((string) ($filters['categoria_cliente'] ?? '')),
             'categoria_madre_referido' => trim((string) ($filters['categoria_madre_referido'] ?? '')),
             'tipo' => trim((string) ($filters['tipo'] ?? '')),
@@ -1374,6 +1414,27 @@ class BillingUiController
             'afiliacion' => trim((string) ($filters['afiliacion'] ?? '')),
             'procedimiento' => trim((string) ($filters['procedimiento'] ?? '')),
         ], static fn($value): bool => trim((string) $value) !== '');
+
+        $empresaSeguroFilter = trim((string) ($filters['empresa_seguro'] ?? ''));
+        $empresaSeguroOptions = $this->insuranceDimensionOptions('empresa');
+        $empresaSeguroLabel = '';
+        foreach ($empresaSeguroOptions as $option) {
+            if (!is_array($option)) {
+                continue;
+            }
+
+            $optionValue = trim((string) ($option['value'] ?? ''));
+            if ($optionValue !== '' && $optionValue === $empresaSeguroFilter) {
+                $empresaSeguroLabel = trim((string) ($option['label'] ?? ''));
+                break;
+            }
+        }
+        if ($empresaSeguroLabel === '' && $empresaSeguroFilter !== '') {
+            $empresaSeguroLabel = strtoupper(str_replace('_', ' ', $empresaSeguroFilter));
+        }
+
+        $insuranceBreakdownTitle = trim((string) ($insuranceBreakdown['title'] ?? 'Empresas de seguro'));
+        $insuranceBreakdownItemLabel = trim((string) ($insuranceBreakdown['item_label'] ?? 'Empresa de seguro'));
 
         $dateRangeValue = 'Últimos 30 días';
         if ($dateFrom !== '' || $dateTo !== '') {
@@ -1383,7 +1444,8 @@ class BillingUiController
         $filterSummary = [
             ['label' => 'Rango de fechas', 'value' => $dateRangeValue],
             ['label' => 'Sede', 'value' => strtoupper(trim((string) ($filters['sede'] ?? ''))) ?: 'Todas'],
-            ['label' => 'Afiliación', 'value' => strtoupper(trim((string) ($filters['afiliacion'] ?? ''))) ?: 'Todas'],
+            ['label' => 'Empresa de seguro', 'value' => $empresaSeguroLabel !== '' ? strtoupper($empresaSeguroLabel) : 'Todas'],
+            ['label' => 'Seguro / plan', 'value' => strtoupper(trim((string) ($filters['afiliacion'] ?? ''))) ?: 'Todos'],
             ['label' => 'Categoría cliente', 'value' => ucfirst(strtolower(trim((string) ($filters['categoria_cliente'] ?? '')))) ?: 'Todas'],
             ['label' => 'Tipo de atención', 'value' => strtoupper(trim((string) ($filters['tipo'] ?? ''))) ?: 'Todos'],
             ['label' => 'Procedimiento', 'value' => trim((string) ($filters['procedimiento'] ?? '')) ?: 'Todos'],
@@ -1695,8 +1757,8 @@ class BillingUiController
                 'empty_message' => 'Sin procedimientos para el rango seleccionado.',
             ],
             [
-                'title' => 'Top afiliaciones',
-                'columns' => ['Afiliación', 'Atenciones', '% del total'],
+                'title' => $insuranceBreakdownTitle,
+                'columns' => [$insuranceBreakdownItemLabel, 'Atenciones', '% del total'],
                 'rows' => array_map(
                     static function (array $item) use ($formatCount, $formatPercent, $normalizeLabel, $totalAtenciones): array {
                         $cantidad = (int) ($item['cantidad'] ?? 0);
@@ -1872,6 +1934,7 @@ class BillingUiController
             'Fecha',
             'HC',
             'Nombre',
+            'Empresa seguro',
             'Afiliacion',
             'Categoria cliente',
             'Sede',
@@ -1923,6 +1986,7 @@ class BillingUiController
                 $fecha,
                 (string) ($row['hc_number'] ?? ''),
                 trim((string) ($row['nombre_completo'] ?? '')),
+                trim((string) ($row['empresa_seguro'] ?? '')),
                 trim((string) ($row['afiliacion'] ?? '')),
                 trim((string) ($row['categoria_cliente'] ?? '')),
                 trim((string) ($row['sede'] ?? '')),

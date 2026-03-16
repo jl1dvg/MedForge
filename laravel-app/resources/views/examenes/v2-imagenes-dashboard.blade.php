@@ -11,6 +11,7 @@
 /** @var array<int, array<string, mixed>> $rows */
 /** @var array<int, array{value:string,label:string}> $afiliacionOptions */
 /** @var array<int, array{value:string,label:string}> $afiliacionCategoriaOptions */
+/** @var array<int, array{value:string,label:string}> $seguroOptions */
 /** @var array<int, array{value:string,label:string}> $sedeOptions */
 
 if (!isset($scripts) || !is_array($scripts)) {
@@ -24,6 +25,7 @@ if (!isset($filters) || !is_array($filters)) {
         'fecha_fin' => '',
         'afiliacion' => '',
         'afiliacion_categoria' => '',
+        'seguro' => '',
         'sede' => '',
         'tipo_examen' => '',
         'paciente' => '',
@@ -37,14 +39,16 @@ if (!isset($dashboard) || !is_array($dashboard)) {
 
 $dashboardCards = is_array($dashboard['cards'] ?? null) ? $dashboard['cards'] : [];
 $dashboardMeta = is_array($dashboard['meta'] ?? null) ? $dashboard['meta'] : [];
-$afiliacionOptions = is_array($afiliacionOptions ?? null) ? $afiliacionOptions : [['value' => '', 'label' => 'Todas'], ['value' => 'iess', 'label' => 'IESS']];
+$afiliacionOptions = is_array($afiliacionOptions ?? null) ? $afiliacionOptions : [['value' => '', 'label' => 'Todas las empresas']];
 $afiliacionCategoriaOptions = is_array($afiliacionCategoriaOptions ?? null) ? $afiliacionCategoriaOptions : [['value' => '', 'label' => 'Todas las categorías'], ['value' => 'publico', 'label' => 'Pública'], ['value' => 'privado', 'label' => 'Privada']];
+$seguroOptions = is_array($seguroOptions ?? null) ? $seguroOptions : [['value' => '', 'label' => 'Todos los seguros']];
 $sedeOptions = is_array($sedeOptions ?? null) ? $sedeOptions : [['value' => '', 'label' => 'Todas las sedes'], ['value' => 'MATRIZ', 'label' => 'MATRIZ'], ['value' => 'CEIBOS', 'label' => 'CEIBOS']];
 $exportQuery = http_build_query([
     'fecha_inicio' => (string)($filters['fecha_inicio'] ?? ''),
     'fecha_fin' => (string)($filters['fecha_fin'] ?? ''),
     'afiliacion' => (string)($filters['afiliacion'] ?? ''),
     'afiliacion_categoria' => (string)($filters['afiliacion_categoria'] ?? ''),
+    'seguro' => (string)($filters['seguro'] ?? ''),
     'sede' => (string)($filters['sede'] ?? ''),
     'tipo_examen' => (string)($filters['tipo_examen'] ?? ''),
     'paciente' => (string)($filters['paciente'] ?? ''),
@@ -105,7 +109,7 @@ sort($estadoOpciones);
                            value="<?= htmlspecialchars($filters['fecha_fin'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
                 </div>
                 <div class="col-sm-6 col-md-2">
-                    <label class="form-label">Afiliación</label>
+                    <label class="form-label">Empresa de seguro</label>
                     <select class="form-select" name="afiliacion">
                         <?php foreach ($afiliacionOptions as $option): ?>
                             <?php $optionValue = (string)($option['value'] ?? ''); ?>
@@ -116,11 +120,22 @@ sort($estadoOpciones);
                     </select>
                 </div>
                 <div class="col-sm-6 col-md-2">
-                    <label class="form-label">Categoría afiliación</label>
+                    <label class="form-label">Categoría de seguro</label>
                     <select class="form-select" name="afiliacion_categoria">
                         <?php foreach ($afiliacionCategoriaOptions as $option): ?>
                             <?php $optionValue = (string)($option['value'] ?? ''); ?>
                             <option value="<?= htmlspecialchars($optionValue, ENT_QUOTES, 'UTF-8') ?>" <?= ($optionValue === (string)($filters['afiliacion_categoria'] ?? '')) ? 'selected' : '' ?>>
+                                <?= htmlspecialchars((string)($option['label'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-sm-6 col-md-2">
+                    <label class="form-label">Seguro</label>
+                    <select class="form-select" name="seguro">
+                        <?php foreach ($seguroOptions as $option): ?>
+                            <?php $optionValue = (string)($option['value'] ?? ''); ?>
+                            <option value="<?= htmlspecialchars($optionValue, ENT_QUOTES, 'UTF-8') ?>" <?= ($optionValue === (string)($filters['seguro'] ?? '')) ? 'selected' : '' ?>>
                                 <?= htmlspecialchars((string)($option['label'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
                             </option>
                         <?php endforeach; ?>

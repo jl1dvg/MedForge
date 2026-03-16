@@ -2,6 +2,9 @@
 
 @php
     $cirujanosList = is_array($cirujanos ?? null) ? $cirujanos : [];
+    $afiliacionCategoriaOptions = is_array($afiliacionCategoriaOptions ?? null) ? $afiliacionCategoriaOptions : [];
+    $empresaSeguroOptions = is_array($empresaSeguroOptions ?? null) ? $empresaSeguroOptions : [];
+    $seguroOptions = is_array($seguroOptions ?? null) ? $seguroOptions : [];
 @endphp
 
 @push('styles')
@@ -88,13 +91,20 @@
                         <option value="{{ $cirujano }}">{{ $cirujano }}</option>
                     @endforeach
                 </select>
-                <select class="form-select" id="honorarios-afiliacion" style="min-width: 180px;">
-                    <option value="">Todas las afiliaciones</option>
-                    <option value="IESS">IESS</option>
-                    <option value="ISSFA">ISSFA</option>
-                    <option value="ISSPOL">ISSPOL</option>
-                    <option value="Particular">Particular</option>
-                    <option value="Sin afiliación">Sin afiliación</option>
+                <select class="form-select" id="honorarios-categoria" style="min-width: 190px;">
+                    @foreach($afiliacionCategoriaOptions as $option)
+                        <option value="{{ (string) ($option['value'] ?? '') }}">{{ (string) ($option['label'] ?? '') }}</option>
+                    @endforeach
+                </select>
+                <select class="form-select" id="honorarios-empresa-seguro" style="min-width: 220px;">
+                    @foreach($empresaSeguroOptions as $option)
+                        <option value="{{ (string) ($option['value'] ?? '') }}">{{ (string) ($option['label'] ?? '') }}</option>
+                    @endforeach
+                </select>
+                <select class="form-select" id="honorarios-seguro" style="min-width: 240px;">
+                    @foreach($seguroOptions as $option)
+                        <option value="{{ (string) ($option['value'] ?? '') }}">{{ (string) ($option['label'] ?? '') }}</option>
+                    @endforeach
                 </select>
                 <button type="button" class="btn btn-primary" id="honorarios-refresh"><i class="mdi mdi-refresh"></i> Actualizar</button>
             </div>

@@ -2,15 +2,18 @@
 
 namespace App\Modules\Billing\Services;
 
+use App\Modules\Shared\Support\AfiliacionDimensionService;
 use PDO;
 
 class BillingLeakageService
 {
     /** @var array<string,bool> */
     private array $columnExistsCache = [];
+    private AfiliacionDimensionService $afiliacionDimensions;
 
     public function __construct(private readonly PDO $db)
     {
+        $this->afiliacionDimensions = new AfiliacionDimensionService($db);
     }
 
     /**
@@ -72,12 +75,17 @@ class BillingLeakageService
 
     private function getBaseSql(): string
     {
+        $rawAfiliacionExpr = "COALESCE(NULLIF(TRIM(base.afiliacion), ''), '')";
+        $dimensionContext = $this->afiliacionDimensions->buildContext($rawAfiliacionExpr, 'acm');
         $sql = <<<'SQL'
             SELECT
                 base.form_id,
                 base.hc_number,
                 base.fecha,
                 base.afiliacion,
+                %AFILIACION_CATEGORIA_EXPR% AS afiliacion_categoria,
+                %AFILIACION_EMPRESA_EXPR% AS empresa_seguro,
+                %AFILIACION_SEGURO_EXPR% AS seguro,
                 base.sede,
                 base.paciente,
                 base.procedimiento,
@@ -148,9 +156,16 @@ class BillingLeakageService
                         )
                   )
             ) AS base
+            %AFILIACION_JOIN%
         SQL;
 
-        return str_replace('%SEDE_EXPR%', $this->sedeExpression('pr'), $sql);
+        $sql = str_replace('%SEDE_EXPR%', $this->sedeExpression('pr'), $sql);
+        $sql = str_replace('%AFILIACION_JOIN%', $dimensionContext['join'], $sql);
+        $sql = str_replace('%AFILIACION_CATEGORIA_EXPR%', $dimensionContext['categoria_expr'], $sql);
+        $sql = str_replace('%AFILIACION_EMPRESA_EXPR%', $dimensionContext['empresa_key_expr'], $sql);
+        $sql = str_replace('%AFILIACION_SEGURO_EXPR%', $dimensionContext['seguro_key_expr'], $sql);
+
+        return $sql;
     }
 
     /**
@@ -175,6 +190,24 @@ class BillingLeakageService
         if ($sede !== '') {
             $conditions[] = 'base.sede = :sede';
             $params[':sede'] = $sede;
+        }
+
+        $categoria = $this->afiliacionDimensions->normalizeCategoriaFilter((string) ($filters['categoria'] ?? ''));
+        if ($categoria !== '') {
+            $conditions[] = 'base.afiliacion_categoria = :categoria';
+            $params[':categoria'] = $categoria;
+        }
+
+        $empresa = $this->afiliacionDimensions->normalizeEmpresaFilter((string) ($filters['empresa_seguro'] ?? ''));
+        if ($empresa !== '') {
+            $conditions[] = 'base.empresa_seguro = :empresa_seguro';
+            $params[':empresa_seguro'] = $empresa;
+        }
+
+        $seguro = $this->afiliacionDimensions->normalizeSeguroFilter((string) ($filters['seguro'] ?? ''));
+        if ($seguro !== '') {
+            $conditions[] = 'base.seguro = :seguro';
+            $params[':seguro'] = $seguro;
         }
 
         return $conditions ? (' WHERE ' . implode(' AND ', $conditions)) : '';

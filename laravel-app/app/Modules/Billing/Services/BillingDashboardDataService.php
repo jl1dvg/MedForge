@@ -2,6 +2,7 @@
 
 namespace App\Modules\Billing\Services;
 
+use App\Modules\Shared\Support\AfiliacionDimensionService;
 use DateTimeImmutable;
 use Illuminate\Support\Facades\DB;
 use PDO;
@@ -10,20 +11,39 @@ class BillingDashboardDataService
 {
     private PDO $db;
     private BillingLeakageService $leakageService;
+    private AfiliacionDimensionService $afiliacionDimensions;
 
     public function __construct(?PDO $db = null, ?BillingLeakageService $leakageService = null)
     {
         $this->db = $db ?? DB::connection()->getPdo();
         $this->leakageService = $leakageService ?? new BillingLeakageService($this->db);
+        $this->afiliacionDimensions = new AfiliacionDimensionService($this->db);
     }
 
     /**
      * @return array<string, mixed>
      */
-    public function buildSummary(string $start, string $end, string $sedeFilter = ''): array
+    public function buildSummary(
+        string $start,
+        string $end,
+        string $sedeFilter = '',
+        string $categoriaFilter = '',
+        string $empresaFilter = '',
+        string $seguroFilter = ''
+    ): array
     {
         $sedeFilterValue = $this->normalizeSedeFilter($sedeFilter);
-        $billingRows = $this->fetchBillingRows($start, $end, $sedeFilterValue);
+        $categoriaFilterValue = $this->afiliacionDimensions->normalizeCategoriaFilter($categoriaFilter);
+        $empresaFilterValue = $this->afiliacionDimensions->normalizeEmpresaFilter($empresaFilter);
+        $seguroFilterValue = $this->afiliacionDimensions->normalizeSeguroFilter($seguroFilter);
+        $billingRows = $this->fetchBillingRows(
+            $start,
+            $end,
+            $sedeFilterValue,
+            $categoriaFilterValue,
+            $empresaFilterValue,
+            $seguroFilterValue
+        );
         $kpis = $this->buildKpis($billingRows);
 
         $facturasTotal = (int) ($kpis['total_facturas'] ?? 0);
@@ -32,6 +52,9 @@ class BillingDashboardDataService
             'fecha_desde' => $start,
             'fecha_hasta' => $end,
             'sede' => $sedeFilterValue,
+            'categoria' => $categoriaFilterValue,
+            'empresa_seguro' => $empresaFilterValue,
+            'seguro' => $seguroFilterValue,
         ];
         $leakage = $this->leakageService->getLeakageSummary($leakageFilters, 10);
         $leakageTotal = (int) ($leakage['total'] ?? 0);
@@ -47,7 +70,15 @@ class BillingDashboardDataService
             'series' => [
                 'por_dia' => $this->groupByDate($billingRows),
                 'por_afiliacion' => $this->groupByAffiliation($billingRows),
-                'top_procedimientos' => $this->getTopProcedimientos($start, $end, 20, $sedeFilterValue),
+                'top_procedimientos' => $this->getTopProcedimientos(
+                    $start,
+                    $end,
+                    20,
+                    $sedeFilterValue,
+                    $categoriaFilterValue,
+                    $empresaFilterValue,
+                    $seguroFilterValue
+                ),
             ],
             'leakage' => $leakage,
         ];
@@ -56,10 +87,19 @@ class BillingDashboardDataService
     /**
      * @return array<int, array<string, mixed>>
      */
-    private function fetchBillingRows(string $start, string $end, string $sedeFilter = ''): array
+    private function fetchBillingRows(
+        string $start,
+        string $end,
+        string $sedeFilter = '',
+        string $categoriaFilter = '',
+        string $empresaFilter = '',
+        string $seguroFilter = ''
+    ): array
     {
         $dateExpr = $this->safeBillingDateExpr();
         $sedeExpr = $this->sedeExpr('pp');
+        $rawAfiliacionExpr = "COALESCE(NULLIF(TRIM(pa.afiliacion), ''), '')";
+        $dimensionContext = $this->afiliacionDimensions->buildContext($rawAfiliacionExpr, 'acm');
 
         $sql = "
             SELECT
@@ -75,6 +115,7 @@ class BillingDashboardDataService
             LEFT JOIN protocolo_data pd ON pd.form_id = bm.form_id
             LEFT JOIN procedimiento_proyectado pp ON pp.form_id = bm.form_id
             LEFT JOIN patient_data pa ON pa.hc_number = bm.hc_number
+            {$dimensionContext['join']}
             LEFT JOIN (
                 SELECT billing_id, SUM(proc_precio) AS total, COUNT(*) AS items_count
                 FROM billing_procedimientos
@@ -102,6 +143,9 @@ class BillingDashboardDataService
             ) AS oxi ON oxi.billing_id = bm.id
             WHERE {$dateExpr} BETWEEN :inicio AND :fin
               AND (:sede_filter = '' OR {$sedeExpr} = :sede_filter_match)
+              AND (:categoria_filter = '' OR {$dimensionContext['categoria_expr']} = :categoria_filter_match)
+              AND (:empresa_filter = '' OR {$dimensionContext['empresa_key_expr']} = :empresa_filter_match)
+              AND (:seguro_filter = '' OR {$dimensionContext['seguro_key_expr']} = :seguro_filter_match)
             ORDER BY fecha ASC
         ";
 
@@ -111,6 +155,12 @@ class BillingDashboardDataService
             ':fin' => $end,
             ':sede_filter' => $sedeFilter,
             ':sede_filter_match' => $sedeFilter,
+            ':categoria_filter' => $categoriaFilter,
+            ':categoria_filter_match' => $categoriaFilter,
+            ':empresa_filter' => $empresaFilter,
+            ':empresa_filter_match' => $empresaFilter,
+            ':seguro_filter' => $seguroFilter,
+            ':seguro_filter_match' => $seguroFilter,
         ]);
 
         return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
@@ -197,10 +247,20 @@ class BillingDashboardDataService
     /**
      * @return array{labels:array<int,string>,totals:array<int,float>}
      */
-    private function getTopProcedimientos(string $start, string $end, int $limit = 20, string $sedeFilter = ''): array
+    private function getTopProcedimientos(
+        string $start,
+        string $end,
+        int $limit = 20,
+        string $sedeFilter = '',
+        string $categoriaFilter = '',
+        string $empresaFilter = '',
+        string $seguroFilter = ''
+    ): array
     {
         $dateExpr = $this->safeBillingDateExpr();
         $sedeExpr = $this->sedeExpr('pp');
+        $rawAfiliacionExpr = "COALESCE(NULLIF(TRIM(pa.afiliacion), ''), '')";
+        $dimensionContext = $this->afiliacionDimensions->buildContext($rawAfiliacionExpr, 'acm');
 
         $sql = "SELECT COALESCE(NULLIF(TRIM(bp.proc_detalle), ''), bp.proc_codigo, 'Sin detalle') AS procedimiento,
                        SUM(bp.proc_precio) AS total
@@ -208,8 +268,13 @@ class BillingDashboardDataService
                 INNER JOIN billing_main bm ON bm.id = bp.billing_id
                 LEFT JOIN protocolo_data pd ON pd.form_id = bm.form_id
                 LEFT JOIN procedimiento_proyectado pp ON pp.form_id = bm.form_id
+                LEFT JOIN patient_data pa ON pa.hc_number = bm.hc_number
+                {$dimensionContext['join']}
                 WHERE {$dateExpr} BETWEEN :inicio AND :fin
                   AND (:sede_filter = '' OR {$sedeExpr} = :sede_filter_match)
+                  AND (:categoria_filter = '' OR {$dimensionContext['categoria_expr']} = :categoria_filter_match)
+                  AND (:empresa_filter = '' OR {$dimensionContext['empresa_key_expr']} = :empresa_filter_match)
+                  AND (:seguro_filter = '' OR {$dimensionContext['seguro_key_expr']} = :seguro_filter_match)
                 GROUP BY COALESCE(NULLIF(TRIM(bp.proc_detalle), ''), bp.proc_codigo, 'Sin detalle')
                 ORDER BY total DESC
                 LIMIT :limit";
@@ -219,6 +284,12 @@ class BillingDashboardDataService
         $stmt->bindValue(':fin', $end);
         $stmt->bindValue(':sede_filter', $sedeFilter);
         $stmt->bindValue(':sede_filter_match', $sedeFilter);
+        $stmt->bindValue(':categoria_filter', $categoriaFilter);
+        $stmt->bindValue(':categoria_filter_match', $categoriaFilter);
+        $stmt->bindValue(':empresa_filter', $empresaFilter);
+        $stmt->bindValue(':empresa_filter_match', $empresaFilter);
+        $stmt->bindValue(':seguro_filter', $seguroFilter);
+        $stmt->bindValue(':seguro_filter_match', $seguroFilter);
         $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
         $stmt->execute();
 

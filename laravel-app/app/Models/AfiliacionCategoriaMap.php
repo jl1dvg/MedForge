@@ -28,6 +28,7 @@ class AfiliacionCategoriaMap extends Model
 	protected $fillable = [
 		'afiliacion_raw',
 		'afiliacion_norm',
-		'categoria'
+		'categoria',
+		'empresa_seguro'
 	];
 }

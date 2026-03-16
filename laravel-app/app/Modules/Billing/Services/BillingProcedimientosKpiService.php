@@ -2,12 +2,14 @@
 
 namespace App\Modules\Billing\Services;
 
+use App\Modules\Shared\Support\AfiliacionDimensionService;
 use DateTimeImmutable;
 use PDO;
 
 class BillingProcedimientosKpiService
 {
     private PDO $db;
+    private AfiliacionDimensionService $afiliacionDimensions;
 
     private array $monthLabels = [
         1 => 'Ene',
@@ -35,6 +37,7 @@ class BillingProcedimientosKpiService
     public function __construct(PDO $db)
     {
         $this->db = $db;
+        $this->afiliacionDimensions = new AfiliacionDimensionService($db);
     }
 
     public function build(array $filters): array
@@ -42,8 +45,10 @@ class BillingProcedimientosKpiService
         $year = (int) ($filters['year'] ?? date('Y'));
         $sede = $this->normalizeFilter($filters['sede'] ?? null);
         $tipoCliente = $this->normalizeFilter($filters['tipo_cliente'] ?? ($filters['tipoCliente'] ?? null));
+        $empresaSeguro = $this->afiliacionDimensions->normalizeEmpresaFilter((string) ($filters['empresa_seguro'] ?? ''));
+        $seguro = $this->afiliacionDimensions->normalizeSeguroFilter((string) ($filters['seguro'] ?? ''));
 
-        $rows = $this->fetchProcedimientos($year, $sede, $tipoCliente);
+        $rows = $this->fetchProcedimientos($year, $sede, $tipoCliente, $empresaSeguro, $seguro);
 
         $monthlyTotals = array_fill(1, 12, 0.0);
         $monthlyCounts = array_fill(1, 12, 0);
@@ -129,6 +134,8 @@ class BillingProcedimientosKpiService
                 'year' => $year,
                 'sede' => $sede,
                 'tipo_cliente' => $tipoCliente,
+                'empresa_seguro' => $empresaSeguro,
+                'seguro' => $seguro,
             ],
             'labels' => array_values($this->monthLabels),
             'monthly_totals' => array_values($monthlyTotals),
@@ -158,7 +165,7 @@ class BillingProcedimientosKpiService
         ];
     }
 
-    private function fetchProcedimientos(int $year, ?string $sede, ?string $tipoCliente): array
+    private function fetchProcedimientos(int $year, ?string $sede, ?string $tipoCliente, string $empresaSeguro = '', string $seguro = ''): array
     {
         $dateExpr = "COALESCE(
             CASE
@@ -184,7 +191,8 @@ class BillingProcedimientosKpiService
             : '';
         $sedeExpr = $this->normalizeSqlKey($this->resolveSedeExpr($derivacionesJoin !== ''));
         $afiliacionExpr = $this->resolveAffiliationExpr($derivacionesJoin !== '');
-        $clienteContext = $this->resolveClienteCategoryContext($afiliacionExpr);
+        $dimensionContext = $this->resolveAffiliationDimensionContext($afiliacionExpr, 'acm');
+        $clienteContext = ['join' => $dimensionContext['join'], 'expr' => $dimensionContext['categoria_expr']];
         $catalogJoin = '';
         $categorySelect = 'NULL AS categoria_id';
         $groupByCatalog = '';
@@ -242,6 +250,16 @@ class BillingProcedimientosKpiService
             $params[':cliente_categoria'] = $tipoCliente;
         }
 
+        if ($empresaSeguro !== '') {
+            $sql .= " AND {$dimensionContext['empresa_key_expr']} = :empresa_seguro";
+            $params[':empresa_seguro'] = $empresaSeguro;
+        }
+
+        if ($seguro !== '') {
+            $sql .= " AND {$dimensionContext['seguro_key_expr']} = :seguro";
+            $params[':seguro'] = $seguro;
+        }
+
         $sql .= " GROUP BY mes$groupByCatalog, pr.categoria, pr.cirugia ORDER BY mes ASC";
 
         $stmt = $this->db->prepare($sql);
@@ -255,10 +273,12 @@ class BillingProcedimientosKpiService
         $year = (int) ($filters['year'] ?? date('Y'));
         $sede = $this->normalizeFilter($filters['sede'] ?? null);
         $tipoCliente = $this->normalizeFilter($filters['tipo_cliente'] ?? ($filters['tipoCliente'] ?? null));
+        $empresaSeguro = $this->afiliacionDimensions->normalizeEmpresaFilter((string) ($filters['empresa_seguro'] ?? ''));
+        $seguro = $this->afiliacionDimensions->normalizeSeguroFilter((string) ($filters['seguro'] ?? ''));
         $categoria = trim((string) ($filters['categoria'] ?? ''));
         $limit = max(1, min($limit, 5000));
 
-        $rows = $this->fetchDetalleProcedimientos($year, $sede, $tipoCliente, $limit);
+        $rows = $this->fetchDetalleProcedimientos($year, $sede, $tipoCliente, $empresaSeguro, $seguro, $limit);
         $output = [];
 
         foreach ($rows as $row) {
@@ -286,6 +306,8 @@ class BillingProcedimientosKpiService
                 'year' => $year,
                 'sede' => $sede,
                 'tipo_cliente' => $tipoCliente,
+                'empresa_seguro' => $empresaSeguro,
+                'seguro' => $seguro,
                 'categoria' => $categoria,
             ],
             'total' => count($output),
@@ -293,7 +315,14 @@ class BillingProcedimientosKpiService
         ];
     }
 
-    private function fetchDetalleProcedimientos(int $year, ?string $sede, ?string $tipoCliente, int $limit): array
+    private function fetchDetalleProcedimientos(
+        int $year,
+        ?string $sede,
+        ?string $tipoCliente,
+        string $empresaSeguro,
+        string $seguro,
+        int $limit
+    ): array
     {
         $dateExpr = "COALESCE(
             CASE
@@ -319,7 +348,8 @@ class BillingProcedimientosKpiService
             : '';
         $sedeExpr = $this->normalizeSqlKey($this->resolveSedeExpr($derivacionesJoin !== ''));
         $afiliacionExpr = $this->resolveAffiliationExpr($derivacionesJoin !== '');
-        $clienteContext = $this->resolveClienteCategoryContext($afiliacionExpr);
+        $dimensionContext = $this->resolveAffiliationDimensionContext($afiliacionExpr, 'acm');
+        $clienteContext = ['join' => $dimensionContext['join'], 'expr' => $dimensionContext['categoria_expr']];
         $catalogJoin = '';
         $categorySelect = 'NULL AS categoria_id';
 
@@ -375,6 +405,16 @@ class BillingProcedimientosKpiService
         if ($tipoCliente && $tipoCliente !== 'todos') {
             $sql .= " AND {$clienteContext['expr']} = :cliente_categoria";
             $params[':cliente_categoria'] = $tipoCliente;
+        }
+
+        if ($empresaSeguro !== '') {
+            $sql .= " AND {$dimensionContext['empresa_key_expr']} = :empresa_seguro";
+            $params[':empresa_seguro'] = $empresaSeguro;
+        }
+
+        if ($seguro !== '') {
+            $sql .= " AND {$dimensionContext['seguro_key_expr']} = :seguro";
+            $params[':seguro'] = $seguro;
         }
 
         $sql .= " ORDER BY fecha DESC, bm.form_id DESC LIMIT :limit_rows";
@@ -540,29 +580,17 @@ class BillingProcedimientosKpiService
 
     private function resolveClienteCategoryContext(string $rawAffiliationExpr): array
     {
-        $afiliacionNormExpr = $this->normalizeSqlKey($rawAffiliationExpr);
-        $fallbackExpr = "CASE
-            WHEN $afiliacionNormExpr = '' THEN 'otros'
-            WHEN $afiliacionNormExpr LIKE '%particular%' THEN 'particular'
-            WHEN $afiliacionNormExpr LIKE '%fundacion%' OR $afiliacionNormExpr LIKE '%fundacional%' THEN 'fundacional'
-            WHEN $afiliacionNormExpr REGEXP 'iess|issfa|isspol|seguro_general|seguro_campesino|jubilado|montepio|contribuyente|voluntario' THEN 'publico'
-            ELSE 'privado'
-        END";
+        $context = $this->resolveAffiliationDimensionContext($rawAffiliationExpr, 'acm');
 
-        if (
-            $this->tableExists('afiliacion_categoria_map')
-            && $this->columnExists('afiliacion_categoria_map', 'afiliacion_norm')
-            && $this->columnExists('afiliacion_categoria_map', 'categoria')
-        ) {
-            $join = "LEFT JOIN afiliacion_categoria_map acm
-                     ON (acm.afiliacion_norm COLLATE utf8mb4_unicode_ci)
-                      = ($afiliacionNormExpr COLLATE utf8mb4_unicode_ci)";
-            $expr = "LOWER(COALESCE(NULLIF(acm.categoria, ''), $fallbackExpr))";
+        return ['join' => $context['join'], 'expr' => $context['categoria_expr']];
+    }
 
-            return ['join' => $join, 'expr' => $expr];
-        }
-
-        return ['join' => '', 'expr' => $fallbackExpr];
+    /**
+     * @return array{join:string,categoria_expr:string,empresa_key_expr:string,empresa_label_expr:string,seguro_key_expr:string,seguro_label_expr:string}
+     */
+    private function resolveAffiliationDimensionContext(string $rawAffiliationExpr, string $mapAlias = 'acm'): array
+    {
+        return $this->afiliacionDimensions->buildContext($rawAffiliationExpr, $mapAlias);
     }
 
     private function resolveAffiliationExpr(bool $hasDerivacionesJoin): string

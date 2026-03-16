@@ -52,6 +52,7 @@ class ImagenesUiController
             'rows' => $payload['rows'],
             'afiliacionOptions' => $payload['afiliacionOptions'],
             'afiliacionCategoriaOptions' => $payload['afiliacionCategoriaOptions'],
+            'seguroOptions' => $payload['seguroOptions'],
             'sedeOptions' => $payload['sedeOptions'],
         ]);
     }

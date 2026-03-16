@@ -21,6 +21,8 @@
     $afiliacion_options = is_array($afiliacion_options ?? null) ? $afiliacion_options : [];
     $afiliacion_categoria_filter = (string) ($afiliacion_categoria_filter ?? '');
     $afiliacion_categoria_options = is_array($afiliacion_categoria_options ?? null) ? $afiliacion_categoria_options : [];
+    $seguro_filter = (string) ($seguro_filter ?? '');
+    $seguro_options = is_array($seguro_options ?? null) ? $seguro_options : [];
     $sede_filter = (string) ($sede_filter ?? '');
     $sede_options = is_array($sede_options ?? null) ? $sede_options : [];
 
@@ -39,6 +41,7 @@
         'end_date' => (string) ($date_range['end'] ?? ''),
         'afiliacion' => $afiliacion_filter,
         'afiliacion_categoria' => $afiliacion_categoria_filter,
+        'seguro' => $seguro_filter,
         'sede' => $sede_filter,
     ]);
 
@@ -198,7 +201,7 @@
                                        value="{{ (string) ($date_range['end'] ?? '') }}">
                             </div>
                             <div class="col-sm-6 col-md-3">
-                                <label for="afiliacion" class="form-label">Afiliación</label>
+                                <label for="afiliacion" class="form-label">Empresa de seguro</label>
                                 <select id="afiliacion" name="afiliacion" class="form-select">
                                     @foreach(($afiliacion_options ?? []) as $option)
                                         @php $optionValue = (string) ($option['value'] ?? ''); @endphp
@@ -209,11 +212,22 @@
                                 </select>
                             </div>
                             <div class="col-sm-6 col-md-3">
-                                <label for="afiliacion_categoria" class="form-label">Categoría afiliación</label>
+                                <label for="afiliacion_categoria" class="form-label">Categoría de seguro</label>
                                 <select id="afiliacion_categoria" name="afiliacion_categoria" class="form-select">
                                     @foreach(($afiliacion_categoria_options ?? []) as $option)
                                         @php $optionValue = (string) ($option['value'] ?? ''); @endphp
                                         <option value="{{ $optionValue }}" {{ $optionValue === (string) ($afiliacion_categoria_filter ?? '') ? 'selected' : '' }}>
+                                            {{ (string) ($option['label'] ?? '') }}
+                                        </option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="col-sm-6 col-md-3">
+                                <label for="seguro" class="form-label">Seguro</label>
+                                <select id="seguro" name="seguro" class="form-select">
+                                    @foreach(($seguro_options ?? []) as $option)
+                                        @php $optionValue = (string) ($option['value'] ?? ''); @endphp
+                                        <option value="{{ $optionValue }}" {{ $optionValue === (string) ($seguro_filter ?? '') ? 'selected' : '' }}>
                                             {{ (string) ($option['label'] ?? '') }}
                                         </option>
                                     @endforeach

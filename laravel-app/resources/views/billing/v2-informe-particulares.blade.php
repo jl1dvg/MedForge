@@ -2,7 +2,7 @@
 
 @php
     $filters = is_array($filters ?? null) ? $filters : [];
-    $catalogos = is_array($catalogos ?? null) ? $catalogos : ['afiliaciones' => [], 'tipos_atencion' => [], 'sedes' => [], 'categorias' => [], 'categorias_madre_referido' => []];
+    $catalogos = is_array($catalogos ?? null) ? $catalogos : ['afiliaciones' => [], 'empresas_seguro' => [], 'tipos_atencion' => [], 'sedes' => [], 'categorias' => [], 'categorias_madre_referido' => []];
     $rows = is_array($rows ?? null) ? $rows : [];
     $summary = is_array($summary ?? null) ? $summary : [
         'total' => 0,
@@ -80,6 +80,7 @@
 
     $dateFromSeleccionado = trim((string) ($filters['date_from'] ?? ''));
     $dateToSeleccionado = trim((string) ($filters['date_to'] ?? ''));
+    $empresaSeguroSeleccionada = trim((string) ($filters['empresa_seguro'] ?? ''));
     $afiliacionSeleccionada = strtolower(trim((string) ($filters['afiliacion'] ?? '')));
     $sedeSeleccionada = strtoupper(trim((string) ($filters['sede'] ?? '')));
     $categoriaClienteSeleccionada = strtolower(trim((string) ($filters['categoria_cliente'] ?? '')));
@@ -89,6 +90,7 @@
     $exportParticularesQuery = array_filter([
         'date_from' => $dateFromSeleccionado,
         'date_to' => $dateToSeleccionado,
+        'empresa_seguro' => $empresaSeguroSeleccionada,
         'categoria_cliente' => $categoriaClienteSeleccionada,
         'categoria_madre_referido' => $categoriaMadreReferidoSeleccionada,
         'tipo' => $tipoSeleccionado,
@@ -213,7 +215,23 @@
                         </select>
                     </div>
                     <div class="col-md-3">
-                        <label for="afiliacion" class="form-label">Afiliación</label>
+                        <label for="empresa_seguro" class="form-label">Empresa de seguro</label>
+                        <select name="empresa_seguro" id="empresa_seguro" class="form-select">
+                            <option value="">Todas</option>
+                            @foreach(($catalogos['empresas_seguro'] ?? []) as $empresaSeguro)
+                                @php
+                                    $empresaSeguroValue = trim((string) ($empresaSeguro['value'] ?? ''));
+                                    $empresaSeguroLabel = trim((string) ($empresaSeguro['label'] ?? $empresaSeguroValue));
+                                @endphp
+                                <option
+                                    value="{{ $empresaSeguroValue }}" {{ $empresaSeguroSeleccionada === $empresaSeguroValue ? 'selected' : '' }}>
+                                    {{ strtoupper($empresaSeguroLabel) }}
+                                </option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="afiliacion" class="form-label">Seguro / plan</label>
                         <select name="afiliacion" id="afiliacion" class="form-select">
                             <option value="">Todas</option>
                             @foreach(($catalogos['afiliaciones'] ?? []) as $afiliacion)
@@ -371,7 +389,10 @@
             $pacientesUnicos = (int) ($summary['pacientes_unicos'] ?? 0);
             $categoriaCounts = is_array($summary['categoria_counts'] ?? null) ? $summary['categoria_counts'] : ['particular' => 0, 'privado' => 0];
             $categoriaShare = is_array($summary['categoria_share'] ?? null) ? $summary['categoria_share'] : ['particular' => 0, 'privado' => 0];
+            $insuranceBreakdown = is_array($summary['insurance_breakdown'] ?? null) ? $summary['insurance_breakdown'] : [];
             $topAfiliaciones = is_array($summary['top_afiliaciones'] ?? null) ? $summary['top_afiliaciones'] : [];
+            $insuranceBreakdownTitle = trim((string) ($insuranceBreakdown['title'] ?? 'Empresas de seguro'));
+            $insuranceBreakdownItemLabel = trim((string) ($insuranceBreakdown['item_label'] ?? 'Empresa de seguro'));
             $particularCount = (int) ($categoriaCounts['particular'] ?? 0);
             $privadoCount = (int) ($categoriaCounts['privado'] ?? 0);
             $particularShare = (float) ($categoriaShare['particular'] ?? 0);
@@ -1105,7 +1126,7 @@
             <div class="col-xl-6 col-12">
                 <div class="box">
                     <div class="box-header with-border d-flex justify-content-between align-items-center">
-                        <h5 class="box-title mb-0">Top afiliaciones (Polar)</h5>
+                        <h5 class="box-title mb-0">{{ $insuranceBreakdownTitle }} (Polar)</h5>
                         <span class="badge bg-primary-light text-primary">{{ count($topAfiliaciones) }} valores</span>
                     </div>
                     <div class="box-body">
@@ -1114,7 +1135,7 @@
                             <table class="table table-sm table-striped mb-0">
                                 <thead class="table-light">
                                 <tr>
-                                    <th>Afiliación</th>
+                                    <th>{{ $insuranceBreakdownItemLabel }}</th>
                                     <th class="text-end">Cantidad</th>
                                 </tr>
                                 </thead>
@@ -1122,10 +1143,10 @@
                                 @forelse($topAfiliaciones as $item)
                                     @php
                                         $cantidad = (int) ($item['cantidad'] ?? 0);
-                                        $afiliacion = strtoupper(trim((string) ($item['afiliacion'] ?? 'SIN AFILIACION')));
+                                        $afiliacion = strtoupper(trim((string) ($item['afiliacion'] ?? 'SIN DATO')));
                                     @endphp
                                     <tr>
-                                        <td>{{ $afiliacion !== '' ? $afiliacion : 'SIN AFILIACION' }}</td>
+                                        <td>{{ $afiliacion !== '' ? $afiliacion : 'SIN DATO' }}</td>
                                         <td class="text-end">{{ $cantidad }}</td>
                                     </tr>
                                 @empty

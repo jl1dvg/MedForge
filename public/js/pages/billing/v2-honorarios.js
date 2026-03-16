@@ -2,7 +2,9 @@
     const endpoint = '/v2/billing/honorarios-data';
     const rangeInput = document.getElementById('honorarios-range-input');
     const cirujanoSelect = document.getElementById('honorarios-cirujano');
-    const afiliacionSelect = document.getElementById('honorarios-afiliacion');
+    const categoriaSelect = document.getElementById('honorarios-categoria');
+    const empresaSeguroSelect = document.getElementById('honorarios-empresa-seguro');
+    const seguroSelect = document.getElementById('honorarios-seguro');
     const refreshButton = document.getElementById('honorarios-refresh');
 
     if (!rangeInput || !refreshButton) {
@@ -96,7 +98,9 @@
             date_from: dateFrom,
             date_to: dateTo,
             cirujano: cirujanoSelect ? String(cirujanoSelect.value || '').trim() : '',
-            afiliacion: afiliacionSelect ? String(afiliacionSelect.value || '').trim() : '',
+            categoria_seguro: categoriaSelect ? String(categoriaSelect.value || '').trim() : '',
+            empresa_seguro: empresaSeguroSelect ? String(empresaSeguroSelect.value || '').trim() : '',
+            seguro: seguroSelect ? String(seguroSelect.value || '').trim() : '',
             reglas: buildRules(),
         };
 
@@ -155,9 +159,12 @@
     if (cirujanoSelect) {
         cirujanoSelect.addEventListener('change', fetchData);
     }
-    if (afiliacionSelect) {
-        afiliacionSelect.addEventListener('change', fetchData);
-    }
+    [categoriaSelect, empresaSeguroSelect, seguroSelect].forEach(select => {
+        if (!select) {
+            return;
+        }
+        select.addEventListener('change', fetchData);
+    });
     document.querySelectorAll('[data-rule-key]').forEach(input => {
         input.addEventListener('change', fetchData);
     });
