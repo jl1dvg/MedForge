@@ -402,6 +402,7 @@ class CirugiasUiController
                 'Form ID',
                 'HC',
                 'Paciente',
+                'Empresa seguro',
                 'Afiliación',
                 'Categoría cliente',
                 'Sede',
@@ -433,6 +434,7 @@ class CirugiasUiController
                     (string) ($item['form_id'] ?? ''),
                     (string) ($item['hc_number'] ?? ''),
                     (string) ($item['paciente'] ?? ''),
+                    (string) ($item['empresa_seguro'] ?? ''),
                     (string) ($item['afiliacion'] ?? ''),
                     (string) ($item['afiliacion_categoria'] ?? ''),
                     (string) ($item['sede'] ?? ''),
@@ -455,14 +457,14 @@ class CirugiasUiController
 
             if ($detailRow > 1) {
                 $detailSheet->getStyle("A1:{$lastDetailColumn}{$detailRow}")->applyFromArray($this->excelTableBodyStyle());
-                $detailSheet->getStyle("I2:I{$detailRow}")->getAlignment()->setWrapText(true);
+                $detailSheet->getStyle("J2:J{$detailRow}")->getAlignment()->setWrapText(true);
             }
 
             $detailSheet->freezePane('A2');
             foreach ([
-                'A' => 6, 'B' => 18, 'C' => 14, 'D' => 14, 'E' => 34, 'F' => 24, 'G' => 18, 'H' => 14,
-                'I' => 56, 'J' => 12, 'K' => 24, 'L' => 14, 'M' => 16, 'N' => 16, 'O' => 14, 'P' => 14,
-                'Q' => 18,
+                'A' => 6, 'B' => 18, 'C' => 14, 'D' => 14, 'E' => 34, 'F' => 22, 'G' => 24, 'H' => 18,
+                'I' => 14, 'J' => 56, 'K' => 12, 'L' => 24, 'M' => 14, 'N' => 16, 'O' => 16, 'P' => 14,
+                'Q' => 14, 'R' => 18,
             ] as $column => $width) {
                 $detailSheet->getColumnDimension($column)->setWidth($width);
             }
@@ -553,6 +555,8 @@ class CirugiasUiController
         $topProcedimientos = is_array($data['top_procedimientos'] ?? null) ? $data['top_procedimientos'] : ['labels' => [], 'totals' => []];
         $topCirujanos = is_array($data['top_cirujanos'] ?? null) ? $data['top_cirujanos'] : ['labels' => [], 'totals' => []];
         $cirugiasPorConvenio = is_array($data['cirugias_por_convenio'] ?? null) ? $data['cirugias_por_convenio'] : ['labels' => [], 'totals' => []];
+        $insuranceBreakdownTitle = trim((string) ($cirugiasPorConvenio['title'] ?? 'Empresas de seguro'));
+        $insuranceBreakdownItemLabel = trim((string) ($cirugiasPorConvenio['item_label'] ?? 'Empresa de seguro'));
 
         $atendidos = (int) ($facturacion['atendidos'] ?? 0);
         $facturados = (int) ($facturacion['facturados'] ?? 0);
@@ -702,11 +706,11 @@ class CirugiasUiController
                 'empty_message' => 'Sin cirujanos para el rango seleccionado.',
             ],
             [
-                'title' => 'Cirugías por convenio',
-                'subtitle' => 'Distribución del volumen por afiliación/convenio.',
-                'columns' => ['Convenio', 'Cirugías'],
+                'title' => $insuranceBreakdownTitle,
+                'subtitle' => 'Distribución del volumen quirúrgico por aseguradora o plan según el filtro aplicado.',
+                'columns' => [$insuranceBreakdownItemLabel, 'Cirugías'],
                 'rows' => $this->buildExportChartRows($cirugiasPorConvenio),
-                'empty_message' => 'Sin convenios para el rango seleccionado.',
+                'empty_message' => 'Sin datos de seguro para el rango seleccionado.',
             ],
         ];
 
@@ -769,7 +773,7 @@ class CirugiasUiController
         $this->dashboardService->setSeguroFilter($seguroFilter);
         $afiliacionOptions = $this->dashboardService->getAfiliacionOptions($startSql, $endSql);
         $afiliacionCategoriaOptions = $this->dashboardService->getAfiliacionCategoriaOptions($startSql, $endSql);
-        $seguroOptions = $this->dashboardService->getSeguroOptions($startSql, $endSql);
+        $seguroOptions = $this->dashboardService->getSeguroOptions($startSql, $endSql, $afiliacionFilter);
         $sedeOptions = $this->dashboardService->getSedeOptions($startSql, $endSql);
 
         $totalCirugias = $this->dashboardService->getTotalCirugias($startSql, $endSql, $afiliacionFilter, $afiliacionCategoriaFilter, $sedeFilter);
@@ -882,7 +886,7 @@ class CirugiasUiController
                     break;
                 }
             }
-            $filters[] = ['label' => 'Seguro', 'value' => $seguroLabel];
+            $filters[] = ['label' => 'Seguro / plan', 'value' => $seguroLabel];
         }
 
         $sedeFilter = $this->normalizeSedeFilter($sedeFilter);

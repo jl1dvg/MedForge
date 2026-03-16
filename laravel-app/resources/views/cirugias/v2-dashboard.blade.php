@@ -11,6 +11,7 @@
     $top_cirujanos = is_array($top_cirujanos ?? null) ? $top_cirujanos : ['labels' => [], 'totals' => []];
     $top_doctores_solicitudes_realizadas = is_array($top_doctores_solicitudes_realizadas ?? null) ? $top_doctores_solicitudes_realizadas : ['labels' => [], 'totals' => []];
     $cirugias_por_convenio = is_array($cirugias_por_convenio ?? null) ? $cirugias_por_convenio : ['labels' => [], 'totals' => []];
+    $insurance_breakdown_title = trim((string) ($cirugias_por_convenio['title'] ?? 'Empresas de seguro'));
     $programacion_kpis = is_array($programacion_kpis ?? null) ? $programacion_kpis : [];
     $reingreso_mismo_diagnostico = is_array($reingreso_mismo_diagnostico ?? null) ? $reingreso_mismo_diagnostico : [];
     $cirugias_sin_solicitud_previa = is_array($cirugias_sin_solicitud_previa ?? null) ? $cirugias_sin_solicitud_previa : [];
@@ -223,7 +224,7 @@
                                 </select>
                             </div>
                             <div class="col-sm-6 col-md-3">
-                                <label for="seguro" class="form-label">Seguro</label>
+                                <label for="seguro" class="form-label">Seguro / plan</label>
                                 <select id="seguro" name="seguro" class="form-select">
                                     @foreach(($seguro_options ?? []) as $option)
                                         @php $optionValue = (string) ($option['value'] ?? ''); @endphp
@@ -313,7 +314,7 @@
 
             <div class="col-12">
                 <div class="box">
-                    <div class="box-header"><h4 class="box-title">Cirugías por convenio</h4></div>
+                    <div class="box-header"><h4 class="box-title">{{ $insurance_breakdown_title }}</h4></div>
                     <div class="box-body"><div id="cirugias-por-convenio" style="height: 320px;"></div></div>
                 </div>
             </div>

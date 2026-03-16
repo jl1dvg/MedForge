@@ -186,12 +186,13 @@ class AfiliacionDimensionService
     /**
      * @return array<int,array{value:string,label:string}>
      */
-    public function getSeguroOptions(string $allLabel = 'Todos los seguros'): array
+    public function getSeguroOptions(string $allLabel = 'Todos los seguros', string $empresaFilter = ''): array
     {
         $options = [
             ['value' => '', 'label' => $allLabel],
             ['value' => 'sin_convenio', 'label' => 'Sin convenio'],
         ];
+        $empresaFilter = $this->normalizeEmpresaFilter($empresaFilter);
 
         if (
             !$this->tableExists('afiliacion_categoria_map')
@@ -201,8 +202,13 @@ class AfiliacionDimensionService
             return $options;
         }
 
+        $empresaSeguroSelect = $this->columnExists('afiliacion_categoria_map', 'empresa_seguro')
+            ? 'empresa_seguro'
+            : "'' AS empresa_seguro";
         $stmt = $this->db->query(
-            "SELECT afiliacion_norm, COALESCE(NULLIF(TRIM(afiliacion_raw), ''), 'Sin convenio') AS afiliacion_label
+            "SELECT afiliacion_norm,
+                    COALESCE(NULLIF(TRIM(afiliacion_raw), ''), 'Sin convenio') AS afiliacion_label,
+                    {$empresaSeguroSelect}
              FROM afiliacion_categoria_map
              ORDER BY afiliacion_label ASC"
         );
@@ -216,6 +222,15 @@ class AfiliacionDimensionService
         }
 
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $empresaLabel = trim((string) ($row['empresa_seguro'] ?? ''));
+            if ($empresaLabel === '') {
+                $empresaLabel = $this->resolveEmpresaLabelFromRaw(trim((string) ($row['afiliacion_label'] ?? '')));
+            }
+            $empresaKey = $this->normalizeEmpresaFilter($empresaLabel);
+            if ($empresaFilter !== '' && $empresaKey !== $empresaFilter) {
+                continue;
+            }
+
             $label = trim((string) ($row['afiliacion_label'] ?? ''));
             $value = $this->normalizeSeguroFilter((string) ($row['afiliacion_norm'] ?? $label));
             if ($label === '') {

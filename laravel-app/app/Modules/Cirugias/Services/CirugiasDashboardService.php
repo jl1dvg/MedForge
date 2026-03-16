@@ -22,9 +22,9 @@ class CirugiasDashboardService
         return $this->afiliacionDimensions->getEmpresaOptions('Todas las empresas');
     }
 
-    public function getSeguroOptions(string $start, string $end): array
+    public function getSeguroOptions(string $start, string $end, string $empresaFilter = ''): array
     {
-        return $this->afiliacionDimensions->getSeguroOptions('Todos los seguros');
+        return $this->afiliacionDimensions->getSeguroOptions('Todos los seguros', $empresaFilter);
     }
 
     public function getAfiliacionCategoriaOptions(string $start, string $end): array
@@ -356,6 +356,7 @@ class CirugiasDashboardService
                         MAX(COALESCE(p.lname, '')) AS lname,
                         MAX(COALESCE(p.lname2, '')) AS lname2,
                         MAX(COALESCE(p.afiliacion, '')) AS afiliacion,
+                        MAX({$this->afiliacionLabelExpr('p', 'acm')}) AS empresa_seguro,
                         MAX({$categoriaContext['expr']}) AS afiliacion_categoria,
                         MAX({$sedeExpr}) AS sede,
                         GROUP_CONCAT(DISTINCT NULLIF(TRIM(COALESCE(pp.procedimiento_proyectado, '')), '') SEPARATOR ' | ') AS procedimiento_proyectado
@@ -416,6 +417,7 @@ class CirugiasDashboardService
             $row['pendiente_facturar'] = $estadoFacturacion === 'PENDIENTE_FACTURAR';
             $row['pendiente_pago'] = $estadoFacturacion === 'PENDIENTE_PAGO';
             $row['facturacion_cancelada'] = $estadoFacturacion === 'CANCELADA';
+            $row['empresa_seguro'] = trim((string) ($row['empresa_seguro'] ?? ''));
         }
         unset($row);
 
@@ -1115,14 +1117,17 @@ class CirugiasDashboardService
     {
         $afiliacionKeyExpr = $this->afiliacionGroupKeyExpr('p');
         $afiliacionLabelExpr = $this->afiliacionLabelExpr('p');
+        $seguroLabelExpr = $this->seguroLabelExpr('p');
         $seguroKeyExpr = $this->seguroKeyExpr('p');
         $afiliacionFilterValue = $this->normalizeAfiliacionFilter($afiliacionFilter);
         $afiliacionCategoriaFilterValue = $this->normalizeAfiliacionCategoriaFilter($afiliacionCategoriaFilter);
         $sedeFilterValue = $this->normalizeSedeFilter($sedeFilter);
         $sedeExpr = $this->sedeExpr('pp');
         $categoriaContext = $this->resolveAfiliacionCategoriaContext("COALESCE(p.afiliacion, '')", 'acm');
+        $breakdownByPlan = $afiliacionFilterValue !== '';
+        $breakdownLabelExpr = $breakdownByPlan ? $seguroLabelExpr : $afiliacionLabelExpr;
         $stmt = $this->db->prepare(
-            "SELECT {$afiliacionLabelExpr} AS afiliacion, COUNT(*) AS total
+            "SELECT {$breakdownLabelExpr} AS afiliacion, COUNT(*) AS total
              FROM protocolo_data pr
              LEFT JOIN patient_data p
                 ON CONVERT(p.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
@@ -1135,7 +1140,7 @@ class CirugiasDashboardService
                AND (:afiliacion_categoria_filter = '' OR {$categoriaContext['expr']} = :afiliacion_categoria_filter_match)
                {$this->seguroFilterSql($seguroKeyExpr)}
                AND (:sede_filter = '' OR {$sedeExpr} = :sede_filter_match)
-             GROUP BY {$afiliacionLabelExpr}
+             GROUP BY {$breakdownLabelExpr}
              ORDER BY total DESC"
         );
         $stmt->execute(array_merge([
@@ -1157,7 +1162,20 @@ class CirugiasDashboardService
             $totals[] = (int) $row['total'];
         }
 
-        return ['labels' => $labels, 'totals' => $totals];
+        $selectedCompany = $breakdownByPlan
+            ? strtoupper(trim($this->afiliacionDimensions->resolveEmpresaLabel($afiliacionFilterValue)))
+            : '';
+
+        return [
+            'labels' => $labels,
+            'totals' => $totals,
+            'mode' => $breakdownByPlan ? 'seguro' : 'empresa',
+            'title' => $breakdownByPlan
+                ? 'Planes de seguro' . ($selectedCompany !== '' ? ' de ' . $selectedCompany : '')
+                : 'Empresas de seguro',
+            'item_label' => $breakdownByPlan ? 'Plan de seguro' : 'Empresa de seguro',
+            'selected_company' => $selectedCompany,
+        ];
     }
 
     /**
@@ -1695,6 +1713,13 @@ class CirugiasDashboardService
         $context = $this->resolveAfiliacionDimensionsContext("COALESCE({$alias}.afiliacion, '')", $mapAlias);
 
         return $context['empresa_label_expr'];
+    }
+
+    private function seguroLabelExpr(string $alias, string $mapAlias = 'acm'): string
+    {
+        $context = $this->resolveAfiliacionDimensionsContext("COALESCE({$alias}.afiliacion, '')", $mapAlias);
+
+        return $context['seguro_label_expr'];
     }
 
     private function seguroKeyExpr(string $alias, string $mapAlias = 'acm'): string

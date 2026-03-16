@@ -39,6 +39,8 @@ if (!isset($dashboard) || !is_array($dashboard)) {
 
 $dashboardCards = is_array($dashboard['cards'] ?? null) ? $dashboard['cards'] : [];
 $dashboardMeta = is_array($dashboard['meta'] ?? null) ? $dashboard['meta'] : [];
+$insuranceBreakdown = is_array($dashboardMeta['insurance_breakdown'] ?? null) ? $dashboardMeta['insurance_breakdown'] : [];
+$insuranceBreakdownTitle = trim((string) ($insuranceBreakdown['title'] ?? 'Empresas de seguro'));
 $afiliacionOptions = is_array($afiliacionOptions ?? null) ? $afiliacionOptions : [['value' => '', 'label' => 'Todas las empresas']];
 $afiliacionCategoriaOptions = is_array($afiliacionCategoriaOptions ?? null) ? $afiliacionCategoriaOptions : [['value' => '', 'label' => 'Todas las categorías'], ['value' => 'publico', 'label' => 'Pública'], ['value' => 'privado', 'label' => 'Privada']];
 $seguroOptions = is_array($seguroOptions ?? null) ? $seguroOptions : [['value' => '', 'label' => 'Todos los seguros']];
@@ -131,7 +133,7 @@ sort($estadoOpciones);
                     </select>
                 </div>
                 <div class="col-sm-6 col-md-2">
-                    <label class="form-label">Seguro</label>
+                    <label class="form-label">Seguro / plan</label>
                     <select class="form-select" name="seguro">
                         <?php foreach ($seguroOptions as $option): ?>
                             <?php $optionValue = (string)($option['value'] ?? ''); ?>
@@ -246,6 +248,14 @@ sort($estadoOpciones);
         </div>
         <div class="col-12 col-xl-6">
             <div class="imagenes-chart-card">
+                <h6 class="imagenes-chart-title"><?= htmlspecialchars($insuranceBreakdownTitle !== '' ? $insuranceBreakdownTitle : 'Empresas de seguro', ENT_QUOTES, 'UTF-8') ?></h6>
+                <div class="imagenes-chart-wrap">
+                    <canvas id="chartImagenesAnalisisSeguro"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-xl-6">
+            <div class="imagenes-chart-card">
                 <h6 class="imagenes-chart-title">Aging de no informados</h6>
                 <div class="imagenes-chart-wrap">
                     <canvas id="chartImagenesAging"></canvas>
@@ -352,6 +362,7 @@ sort($estadoOpciones);
             const citasRealizados = charts.citas_vs_realizados || {};
             const traficoSemana = charts.trafico_dia_semana || {};
             const mix = charts.mix_codigos || {};
+            const analisisSeguro = charts.analisis_seguro || {};
             const aging = charts.aging_backlog || {};
             const backlogCategoria = charts.backlog_facturacion_categoria || {};
             const rendimientoEconomico = charts.rendimiento_economico || {};
@@ -442,6 +453,33 @@ sort($estadoOpciones);
                     };
                 },
                 Array.isArray(mix.labels) && mix.labels.length > 0
+            );
+
+            drawChart(
+                'chartImagenesAnalisisSeguro',
+                function () {
+                    return {
+                        type: 'bar',
+                        data: {
+                            labels: Array.isArray(analisisSeguro.labels) ? analisisSeguro.labels : [],
+                            datasets: [
+                                {
+                                    label: 'Estudios',
+                                    data: Array.isArray(analisisSeguro.values) ? analisisSeguro.values : [],
+                                    backgroundColor: '#198754'
+                                }
+                            ]
+                        },
+                        options: {
+                            indexAxis: 'y',
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {legend: {display: false}},
+                            scales: {x: {beginAtZero: true, ticks: {precision: 0}}}
+                        }
+                    };
+                },
+                Array.isArray(analisisSeguro.labels) && analisisSeguro.labels.length > 0
             );
 
             drawChart(

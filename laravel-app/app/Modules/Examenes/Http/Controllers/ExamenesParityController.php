@@ -903,6 +903,7 @@ class ExamenesParityController
                 'Fecha',
                 'HC',
                 'Paciente',
+                'Empresa seguro',
                 'Afiliación',
                 'Categoría cliente',
                 'Sede',
@@ -940,6 +941,7 @@ class ExamenesParityController
                     (string) ($item['fecha_examen'] ?? '—'),
                     (string) ($item['hc_number'] ?? ''),
                     (string) ($item['paciente'] ?? ''),
+                    (string) ($item['empresa_seguro'] ?? ''),
                     (string) ($item['afiliacion'] ?? ''),
                     (string) ($item['afiliacion_categoria'] ?? ''),
                     (string) ($item['sede'] ?? ''),
@@ -969,14 +971,14 @@ class ExamenesParityController
 
             if ($detailRow > 1) {
                 $detailSheet->getStyle("A1:{$lastDetailColumn}{$detailRow}")->applyFromArray($this->excelTableBodyStyle());
-                $detailSheet->getStyle("W2:W{$detailRow}")->getAlignment()->setWrapText(true);
+                $detailSheet->getStyle("X2:X{$detailRow}")->getAlignment()->setWrapText(true);
             }
 
             $detailSheet->freezePane('A2');
             foreach ([
-                'A' => 6, 'B' => 18, 'C' => 14, 'D' => 34, 'E' => 24, 'F' => 18, 'G' => 14, 'H' => 18,
-                'I' => 20, 'J' => 18, 'K' => 14, 'L' => 24, 'M' => 16, 'N' => 16, 'O' => 16, 'P' => 14,
-                'Q' => 18, 'R' => 14, 'S' => 12, 'T' => 16, 'U' => 12, 'V' => 14, 'W' => 56,
+                'A' => 6, 'B' => 18, 'C' => 14, 'D' => 34, 'E' => 24, 'F' => 24, 'G' => 18, 'H' => 14,
+                'I' => 18, 'J' => 20, 'K' => 18, 'L' => 14, 'M' => 24, 'N' => 16, 'O' => 16, 'P' => 16,
+                'Q' => 14, 'R' => 18, 'S' => 14, 'T' => 12, 'U' => 16, 'V' => 12, 'W' => 14, 'X' => 56,
             ] as $column => $width) {
                 $detailSheet->getColumnDimension($column)->setWidth($width);
             }

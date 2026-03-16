@@ -158,7 +158,7 @@ class ImagenesUiService
         return [
             $this->getImagenesAfiliacionOptions(),
             $this->getImagenesAfiliacionCategoriaOptions(),
-            $this->getImagenesSeguroOptions(),
+            $this->getImagenesSeguroOptions((string) ($filters['afiliacion'] ?? '')),
             $sedeOptions,
         ];
     }
@@ -194,9 +194,11 @@ class ImagenesUiService
         $rawAfiliacionExpr = "COALESCE(NULLIF(TRIM(pp.afiliacion), ''), NULLIF(TRIM(pd.afiliacion), ''), '')";
         $displayAfiliacionExpr = "COALESCE(NULLIF(TRIM(pp.afiliacion), ''), NULLIF(TRIM(pd.afiliacion), ''), 'Sin afiliación')";
         $afiliacionKeyExpr = $this->afiliacionGroupKeyExpr($rawAfiliacionExpr, 'iacm');
+        $afiliacionLabelExpr = $this->afiliacionLabelExpr($rawAfiliacionExpr, 'iacm');
         $afiliacionExactExpr = 'TRIM(' . $this->normalizeSqlText($displayAfiliacionExpr) . ')';
         $categoriaContext = $this->resolveAfiliacionCategoriaContext($rawAfiliacionExpr, 'iacm');
         $seguroKeyExpr = $this->seguroKeyExpr($rawAfiliacionExpr, 'iacm');
+        $seguroLabelExpr = $this->seguroLabelExpr($rawAfiliacionExpr, 'iacm');
         $sedeExpr = $this->imagenesSedeExpr();
         $imagenInformeJoin = "LEFT JOIN (
                 SELECT
@@ -237,7 +239,9 @@ class ImagenesUiService
                     ELSE NULL
                 END AS fecha_examen,
                 {$displayAfiliacionExpr} AS afiliacion,
+                {$afiliacionLabelExpr} AS empresa_seguro,
                 {$afiliacionKeyExpr} AS afiliacion_key,
+                {$seguroLabelExpr} AS seguro_label,
                 {$categoriaContext['expr']} AS afiliacion_categoria,
                 CONCAT_WS(' ', TRIM(pd.lname), TRIM(pd.lname2), TRIM(pd.fname), TRIM(pd.mname)) AS full_name,
                 COALESCE(NULLIF(TRIM(pd.hc_number), ''), pp.hc_number) AS cedula,
@@ -543,9 +547,9 @@ class ImagenesUiService
     /**
      * @return array<int, array{value:string,label:string}>
      */
-    private function getImagenesSeguroOptions(): array
+    private function getImagenesSeguroOptions(string $empresaFilter = ''): array
     {
-        return $this->afiliacionDimensions->getSeguroOptions('Todos los seguros');
+        return $this->afiliacionDimensions->getSeguroOptions('Todos los seguros', $empresaFilter);
     }
 
     /**
@@ -941,6 +945,7 @@ class ImagenesUiService
                 'fecha_examen' => $this->formatDashboardDate((string) ($row['fecha_examen'] ?? '')),
                 'hc_number' => trim((string) ($row['hc_number'] ?? '')),
                 'paciente' => trim((string) ($row['full_name'] ?? '')),
+                'empresa_seguro' => trim((string) ($row['empresa_seguro'] ?? '')),
                 'afiliacion' => trim((string) ($row['afiliacion'] ?? '')),
                 'afiliacion_categoria' => $this->formatCategoriaLabel($afiliacionCategoriaKey),
                 'afiliacion_categoria_key' => $afiliacionCategoriaKey,
@@ -1009,8 +1014,13 @@ class ImagenesUiService
         $tatPromedio = ($meta['tat_promedio_horas'] ?? null) !== null ? number_format((float) $meta['tat_promedio_horas'], 2) . ' h' : '—';
         $tatMediana = ($meta['tat_mediana_horas'] ?? null) !== null ? number_format((float) $meta['tat_mediana_horas'], 2) . ' h' : '—';
         $tatP90 = ($meta['tat_p90_horas'] ?? null) !== null ? number_format((float) $meta['tat_p90_horas'], 2) . ' h' : '—';
+        $insuranceBreakdown = is_array($meta['insurance_breakdown'] ?? null) ? $meta['insurance_breakdown'] : [];
+        $insuranceBreakdownTitle = trim((string) ($insuranceBreakdown['title'] ?? 'Empresas de seguro'));
+        $insuranceBreakdownItemLabel = trim((string) ($insuranceBreakdown['item_label'] ?? 'Empresa de seguro'));
         $traficoLabels = is_array($charts['trafico_dia_semana']['labels'] ?? null) ? $charts['trafico_dia_semana']['labels'] : [];
         $traficoValues = is_array($charts['trafico_dia_semana']['values'] ?? null) ? $charts['trafico_dia_semana']['values'] : [];
+        $insuranceLabels = is_array($charts['analisis_seguro']['labels'] ?? null) ? $charts['analisis_seguro']['labels'] : [];
+        $insuranceValues = is_array($charts['analisis_seguro']['values'] ?? null) ? $charts['analisis_seguro']['values'] : [];
         $diaPico = '—';
         $traficoPico = 0;
         foreach ($traficoValues as $index => $value) {
@@ -1120,6 +1130,13 @@ class ImagenesUiService
 
         $tables = [
             [
+                'title' => $insuranceBreakdownTitle,
+                'subtitle' => 'Agrupación del volumen por empresa; al elegir una empresa, se desglosa por plan.',
+                'columns' => [$insuranceBreakdownItemLabel, 'Estudios'],
+                'rows' => $this->buildImagenesDashboardMetricRows($insuranceLabels, $insuranceValues),
+                'empty_message' => 'Sin datos de seguro para el rango seleccionado.',
+            ],
+            [
                 'title' => 'Backlog de facturación por categoría',
                 'subtitle' => 'Separación entre casos ya facturados y backlog atendido pendiente.',
                 'columns' => ['Categoría', 'Facturados', 'Pendiente facturar', 'Pendiente estimado'],
@@ -1186,6 +1203,28 @@ class ImagenesUiService
         }
 
         return (int) preg_replace('/[^\d-]/', '', $value);
+    }
+
+    /**
+     * @param array<int,mixed> $labels
+     * @param array<int,mixed> $values
+     * @return array<int,array{0:string,1:string}>
+     */
+    private function buildImagenesDashboardMetricRows(array $labels, array $values): array
+    {
+        $rows = [];
+        $count = min(count($labels), count($values));
+        for ($index = 0; $index < $count; $index++) {
+            $label = strtoupper(trim((string) ($labels[$index] ?? '')));
+            $value = (int) ($values[$index] ?? 0);
+            if ($label === '') {
+                $label = 'SIN DATO';
+            }
+
+            $rows[] = [$label, number_format($value)];
+        }
+
+        return $rows;
     }
 
     private function formatDashboardDate(?string $value): string
@@ -1256,6 +1295,10 @@ class ImagenesUiService
         $mixMap = [];
         $tarifarioCache = [];
         $aging = ['0-2 días' => 0, '3-7 días' => 0, '8-14 días' => 0, '15+ días' => 0];
+        $empresaSeguroCounts = [];
+        $seguroCounts = [];
+        $empresaSeguroFilter = $this->normalizeAfiliacionFilter((string) ($filters['afiliacion'] ?? ''));
+        $selectedEmpresaSeguro = '';
 
         foreach ($rows as $row) {
             $estadoAgenda = trim((string) ($row['estado_agenda'] ?? ''));
@@ -1272,6 +1315,28 @@ class ImagenesUiService
             $afiliacionCategoria = trim((string) ($row['afiliacion_categoria'] ?? ''));
             $esPublico = $afiliacionCategoria === 'publico';
             $esPrivado = $afiliacionCategoria === 'privado';
+            $empresaSeguroLabel = strtoupper(trim((string) ($row['empresa_seguro'] ?? '')));
+            if ($empresaSeguroLabel === '') {
+                $empresaSeguroLabel = 'SIN CONVENIO';
+            }
+            $empresaSeguroKey = $this->normalizeAfiliacionFilter((string) ($row['afiliacion_key'] ?? $empresaSeguroLabel));
+            if (!isset($empresaSeguroCounts[$empresaSeguroLabel])) {
+                $empresaSeguroCounts[$empresaSeguroLabel] = 0;
+            }
+            $empresaSeguroCounts[$empresaSeguroLabel]++;
+            if ($empresaSeguroFilter !== '' && $empresaSeguroKey === $empresaSeguroFilter) {
+                if ($selectedEmpresaSeguro === '') {
+                    $selectedEmpresaSeguro = $empresaSeguroLabel;
+                }
+                $seguroLabel = strtoupper(trim((string) ($row['seguro_label'] ?? $row['afiliacion'] ?? '')));
+                if ($seguroLabel === '') {
+                    $seguroLabel = 'SIN CONVENIO';
+                }
+                if (!isset($seguroCounts[$seguroLabel])) {
+                    $seguroCounts[$seguroLabel] = 0;
+                }
+                $seguroCounts[$seguroLabel]++;
+            }
             $fechaExamenRaw = trim((string) ($row['fecha_examen'] ?? ''));
             $fechaExamenTs = $fechaExamenRaw !== '' ? strtotime($fechaExamenRaw) : false;
             $fechaExamenDia = $fechaExamenTs !== false ? date('Y-m-d', $fechaExamenTs) : '';
@@ -1483,6 +1548,16 @@ class ImagenesUiService
         $maxTraficoDiaLabel = $maxTraficoDiaNum > 0 ? (string) ($traficoSemanaLabels[$maxTraficoDiaNum] ?? '') : '—';
         $rangeLabel = trim((string) ($filters['fecha_inicio'] ?? '')) . ' a ' . trim((string) ($filters['fecha_fin'] ?? ''));
         $rangeLabel = trim($rangeLabel, ' a');
+        $insuranceBreakdownMode = $empresaSeguroFilter !== '' ? 'seguro' : 'empresa';
+        $insuranceBreakdownTitle = $insuranceBreakdownMode === 'seguro'
+            ? 'Planes de seguro' . ($selectedEmpresaSeguro !== '' ? ' de ' . $selectedEmpresaSeguro : '')
+            : 'Empresas de seguro';
+        $insuranceBreakdownItemLabel = $insuranceBreakdownMode === 'seguro'
+            ? 'Plan de seguro'
+            : 'Empresa de seguro';
+        $insuranceBreakdownCounts = $insuranceBreakdownMode === 'seguro' ? $seguroCounts : $empresaSeguroCounts;
+        arsort($insuranceBreakdownCounts);
+        $insuranceBreakdownTop = array_slice($insuranceBreakdownCounts, 0, 10, true);
 
         return [
             'cards' => [
@@ -1533,6 +1608,12 @@ class ImagenesUiService
                 'facturacion_cancelada' => $facturacionCancelada,
                 'perdidas' => $perdidas,
                 'sin_cierre_operativo' => $sinCierre,
+                'insurance_breakdown' => [
+                    'mode' => $insuranceBreakdownMode,
+                    'title' => $insuranceBreakdownTitle,
+                    'item_label' => $insuranceBreakdownItemLabel,
+                    'selected_company' => $selectedEmpresaSeguro,
+                ],
             ],
             'charts' => [
                 'serie_diaria' => [
@@ -1584,6 +1665,10 @@ class ImagenesUiService
                         round($produccionFacturada, 2),
                         round($montoPendienteEstimadoPublico, 2),
                     ],
+                ],
+                'analisis_seguro' => [
+                    'labels' => array_keys($insuranceBreakdownTop),
+                    'values' => array_values($insuranceBreakdownTop),
                 ],
             ],
         ];
@@ -1692,7 +1777,7 @@ class ImagenesUiService
                     break;
                 }
             }
-            $summary[] = ['label' => 'Seguro', 'value' => $seguroLabel];
+            $summary[] = ['label' => 'Seguro / plan', 'value' => $seguroLabel];
         }
 
         $sedeFilter = $this->normalizeSedeFilter((string) ($filters['sede'] ?? ''));
@@ -1787,6 +1872,13 @@ class ImagenesUiService
         $context = $this->resolveAfiliacionDimensionsContext($rawAffiliationExpr, $mapAlias);
 
         return $context['empresa_label_expr'];
+    }
+
+    private function seguroLabelExpr(string $rawAffiliationExpr, string $mapAlias = 'acm'): string
+    {
+        $context = $this->resolveAfiliacionDimensionsContext($rawAffiliationExpr, $mapAlias);
+
+        return $context['seguro_label_expr'];
     }
 
     private function seguroKeyExpr(string $rawAffiliationExpr, string $mapAlias = 'acm'): string
