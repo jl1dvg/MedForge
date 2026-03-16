@@ -31,7 +31,7 @@ window.initCirugiasDashboard = function (data) {
             ? [
                 Number(trazabilidad.atendidos || 0),
                 Number(trazabilidad.facturados || 0),
-                Number(trazabilidad.pendiente_pago || 0),
+                Number(trazabilidad.pendiente_facturar || trazabilidad.pendiente_pago || 0),
                 Number(trazabilidad.cancelados || 0)
             ]
             : [
@@ -43,7 +43,7 @@ window.initCirugiasDashboard = function (data) {
         var estadoOptions = {
             series: estadoSeries,
             labels: hasTrazabilidad
-                ? ['Atendidos', 'Facturados', 'Pendiente de pago', 'Cancelados']
+                ? ['Atendidos', 'Facturados', 'Pendiente de facturar', 'Cancelados']
                 : ['Revisado', 'No revisado', 'Incompleto'],
             colors: hasTrazabilidad
                 ? ['#1e88e5', '#2e7d32', '#ffb300', '#ef5350']

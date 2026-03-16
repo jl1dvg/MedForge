@@ -224,51 +224,144 @@ class CirugiasDashboardService
         string $sedeFilter = ''
     ): int
     {
-        $afiliacionKeyExpr = $this->afiliacionGroupKeyExpr('p');
-        $afiliacionFilterValue = $this->normalizeAfiliacionFilter($afiliacionFilter);
-        $afiliacionCategoriaFilterValue = $this->normalizeAfiliacionCategoriaFilter($afiliacionCategoriaFilter);
-        $sedeFilterValue = $this->normalizeSedeFilter($sedeFilter);
-        $sedeExpr = $this->sedeExpr('pp');
-        $categoriaContext = $this->resolveAfiliacionCategoriaContext("COALESCE(p.afiliacion, '')", 'acm');
-        $stmt = $this->db->prepare(
-            "SELECT COUNT(*)
-             FROM protocolo_data pr
-             LEFT JOIN patient_data p
-                ON CONVERT(p.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
-                 = CONVERT(pr.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
-             LEFT JOIN procedimiento_proyectado pp
-                ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number
-             {$categoriaContext['join']}
-             LEFT JOIN billing_main bm ON bm.form_id = pr.form_id
-             WHERE pr.fecha_inicio BETWEEN :inicio AND :fin
-               AND bm.id IS NULL
-               AND (:afiliacion_filter = '' OR {$afiliacionKeyExpr} = :afiliacion_filter_match)
-               AND (:afiliacion_categoria_filter = '' OR {$categoriaContext['expr']} = :afiliacion_categoria_filter_match)
-               AND (:sede_filter = '' OR {$sedeExpr} = :sede_filter_match)"
+        $trazabilidad = $this->getCirugiasFacturacionTrazabilidad(
+            $start,
+            $end,
+            $afiliacionFilter,
+            $afiliacionCategoriaFilter,
+            $sedeFilter
         );
-        $stmt->execute([
-            ':inicio' => $start,
-            ':fin' => $end,
-            ':afiliacion_filter' => $afiliacionFilterValue,
-            ':afiliacion_filter_match' => $afiliacionFilterValue,
-            ':afiliacion_categoria_filter' => $afiliacionCategoriaFilterValue,
-            ':afiliacion_categoria_filter_match' => $afiliacionCategoriaFilterValue,
-            ':sede_filter' => $sedeFilterValue,
-            ':sede_filter_match' => $sedeFilterValue,
-        ]);
 
-        return (int) $stmt->fetchColumn();
+        return (int) ($trazabilidad['pendiente_facturar'] ?? 0);
     }
 
     /**
      * Trazabilidad operativa de cirugías, alineada al enfoque de Informe Particulares.
      *
      * - atendidos: protocolos quirúrgicos en el rango (base = protocolo_data)
-     * - facturados: protocolos con evidencia en billing_facturacion_real
+     * - facturados: protocolos con evidencia en billing_facturacion_real o billing_procedimientos
+     * - pendiente_facturar: protocolos operados aún sin evidencia de billing
      * - pendiente_pago: facturados con estado de cartera/pendiente/crédito
      * - cancelados: solicitudes quirúrgicas canceladas/suspendidas en programación
      */
     public function getCirugiasFacturacionTrazabilidad(
+        string $start,
+        string $end,
+        string $afiliacionFilter = '',
+        string $afiliacionCategoriaFilter = '',
+        string $sedeFilter = ''
+    ): array {
+        $rows = $this->fetchCirugiasFacturacionRows(
+            $start,
+            $end,
+            $afiliacionFilter,
+            $afiliacionCategoriaFilter,
+            $sedeFilter
+        );
+
+        $atendidos = count($rows);
+        $facturados = 0;
+        $pendienteFacturar = 0;
+        $pendientePago = 0;
+        $facturacionCancelada = 0;
+        $produccionFacturada = 0.0;
+        $produccionFacturadaPublico = 0.0;
+        $produccionFacturadaPrivado = 0.0;
+        $facturadosPublico = 0;
+        $facturadosPrivado = 0;
+        $pendientesFacturarPublico = 0;
+        $pendientesFacturarPrivado = 0;
+        $procedimientosFacturados = 0;
+
+        foreach ($rows as $row) {
+            $estadoFacturacion = (string) ($row['estado_facturacion_operativa'] ?? '');
+            $afiliacionCategoria = trim((string) ($row['afiliacion_categoria'] ?? ''));
+            $esPublico = $afiliacionCategoria === 'publico';
+            $esPrivado = $afiliacionCategoria === 'privado';
+            $hasBillingEvidence = (int) ($row['facturado'] ?? 0) === 1;
+            $facturadoValido = $hasBillingEvidence && $estadoFacturacion !== 'CANCELADA';
+
+            if ($estadoFacturacion === 'PENDIENTE_PAGO') {
+                $pendientePago++;
+            }
+
+            if ($estadoFacturacion === 'CANCELADA') {
+                $facturacionCancelada++;
+                continue;
+            }
+
+            if ($facturadoValido) {
+                $facturados++;
+                $produccionRow = max(0.0, (float) ($row['total_produccion'] ?? 0));
+                $procedimientosRow = max(0, (int) ($row['procedimientos_facturados'] ?? 0));
+
+                $produccionFacturada += $produccionRow;
+                $procedimientosFacturados += $procedimientosRow;
+
+                if ($esPublico) {
+                    $facturadosPublico++;
+                    $produccionFacturadaPublico += $produccionRow;
+                } elseif ($esPrivado) {
+                    $facturadosPrivado++;
+                    $produccionFacturadaPrivado += $produccionRow;
+                }
+
+                continue;
+            }
+
+            $pendienteFacturar++;
+            if ($esPublico) {
+                $pendientesFacturarPublico++;
+            } elseif ($esPrivado) {
+                $pendientesFacturarPrivado++;
+            }
+        }
+
+        $programacion = $this->getProgramacionKpis($start, $end, $afiliacionFilter, $afiliacionCategoriaFilter, $sedeFilter);
+        $cancelados = (int) ($programacion['suspendidas'] ?? 0);
+
+        return [
+            'atendidos' => $atendidos,
+            'facturados' => $facturados,
+            'pendiente_facturar' => $pendienteFacturar,
+            'pendiente_pago' => $pendientePago,
+            'cancelados' => max(0, $cancelados),
+            'facturacion_cancelada' => $facturacionCancelada,
+            'produccion_facturada' => round($produccionFacturada, 2),
+            'produccion_facturada_publico' => round($produccionFacturadaPublico, 2),
+            'produccion_facturada_privado' => round($produccionFacturadaPrivado, 2),
+            'facturados_publico' => $facturadosPublico,
+            'facturados_privado' => $facturadosPrivado,
+            'pendientes_facturar_publico' => $pendientesFacturarPublico,
+            'pendientes_facturar_privado' => $pendientesFacturarPrivado,
+            'procedimientos_facturados' => $procedimientosFacturados,
+            'ticket_promedio_facturado' => $facturados > 0 ? round($produccionFacturada / $facturados, 2) : 0.0,
+        ];
+    }
+
+    /**
+     * @return array<int,array<string,mixed>>
+     */
+    public function getCirugiasFacturacionDetalle(
+        string $start,
+        string $end,
+        string $afiliacionFilter = '',
+        string $afiliacionCategoriaFilter = '',
+        string $sedeFilter = ''
+    ): array {
+        return $this->fetchCirugiasFacturacionDetalleRows(
+            $start,
+            $end,
+            $afiliacionFilter,
+            $afiliacionCategoriaFilter,
+            $sedeFilter
+        );
+    }
+
+    /**
+     * @return array<int,array<string,mixed>>
+     */
+    private function fetchCirugiasFacturacionRows(
         string $start,
         string $end,
         string $afiliacionFilter = '',
@@ -281,37 +374,12 @@ class CirugiasDashboardService
         $sedeFilterValue = $this->normalizeSedeFilter($sedeFilter);
         $sedeExpr = $this->sedeExpr('pp');
         $categoriaContext = $this->resolveAfiliacionCategoriaContext("COALESCE(p.afiliacion, '')", 'acm');
+        $facturacionSql = $this->buildCirugiasFacturacionSql();
 
-        $hasFacturacionReal = $this->tableExists('billing_facturacion_real')
-            && $this->columnExists('billing_facturacion_real', 'form_id')
-            && $this->columnExists('billing_facturacion_real', 'estado');
-
-        $facturacionJoin = $hasFacturacionReal
-            ? "LEFT JOIN (
-                    SELECT
-                        bfr.form_id,
-                        MAX(NULLIF(TRIM(COALESCE(bfr.estado, '')), '')) AS estado_facturacion_raw,
-                        COUNT(*) AS rows_count
-                    FROM billing_facturacion_real bfr
-                    WHERE bfr.form_id IS NOT NULL
-                      AND TRIM(bfr.form_id) <> ''
-                    GROUP BY bfr.form_id
-                ) bfr ON bfr.form_id = pr.form_id"
-            : "LEFT JOIN (
-                    SELECT
-                        CAST(NULL AS CHAR(100)) AS form_id,
-                        CAST(NULL AS CHAR(100)) AS estado_facturacion_raw,
-                        0 AS rows_count
-                ) bfr ON 1 = 0";
-
-        $sql = "SELECT
-                    COUNT(*) AS atendidos,
-                    SUM(CASE WHEN COALESCE(bfr.rows_count, 0) > 0 THEN 1 ELSE 0 END) AS facturados,
-                    SUM(CASE
-                        WHEN LOWER(TRIM(COALESCE(bfr.estado_facturacion_raw, ''))) LIKE '%pend%'
-                          OR LOWER(TRIM(COALESCE(bfr.estado_facturacion_raw, ''))) LIKE '%cartera%'
-                          OR LOWER(TRIM(COALESCE(bfr.estado_facturacion_raw, ''))) LIKE '%credito%'
-                        THEN 1 ELSE 0 END) AS pendiente_pago
+        $sql = "SELECT DISTINCT
+                    pr.form_id,
+                    {$categoriaContext['expr']} AS afiliacion_categoria,
+                    {$facturacionSql['select']}
                 FROM protocolo_data pr
                 LEFT JOIN patient_data p
                     ON CONVERT(p.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
@@ -319,7 +387,7 @@ class CirugiasDashboardService
                 LEFT JOIN procedimiento_proyectado pp
                     ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number
                 {$categoriaContext['join']}
-                {$facturacionJoin}
+                {$facturacionSql['join']}
                 WHERE pr.fecha_inicio BETWEEN :inicio AND :fin
                   AND (:afiliacion_filter = '' OR {$afiliacionKeyExpr} = :afiliacion_filter_match)
                   AND (:afiliacion_categoria_filter = '' OR {$categoriaContext['expr']} = :afiliacion_categoria_filter_match)
@@ -337,16 +405,300 @@ class CirugiasDashboardService
             ':sede_filter_match' => $sedeFilterValue,
         ]);
 
-        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
-        $programacion = $this->getProgramacionKpis($start, $end, $afiliacionFilter, $afiliacionCategoriaFilter, $sedeFilter);
-        $cancelados = (int) ($programacion['suspendidas'] ?? 0);
+        $rows = $stmt ? ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
+
+        foreach ($rows as &$row) {
+            $row = $this->mergeCirugiaBillingEvidence($row);
+            $row['estado_facturacion_operativa'] = $this->resolveCirugiaDashboardBillingState(
+                (int) ($row['facturado'] ?? 0) === 1,
+                (string) ($row['estado_facturacion_raw'] ?? '')
+            );
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * @return array<int,array<string,mixed>>
+     */
+    private function fetchCirugiasFacturacionDetalleRows(
+        string $start,
+        string $end,
+        string $afiliacionFilter = '',
+        string $afiliacionCategoriaFilter = '',
+        string $sedeFilter = ''
+    ): array {
+        $afiliacionKeyExpr = $this->afiliacionGroupKeyExpr('p');
+        $afiliacionFilterValue = $this->normalizeAfiliacionFilter($afiliacionFilter);
+        $afiliacionCategoriaFilterValue = $this->normalizeAfiliacionCategoriaFilter($afiliacionCategoriaFilter);
+        $sedeFilterValue = $this->normalizeSedeFilter($sedeFilter);
+        $sedeExpr = $this->sedeExpr('pp');
+        $categoriaContext = $this->resolveAfiliacionCategoriaContext("COALESCE(p.afiliacion, '')", 'acm');
+        $facturacionSql = $this->buildCirugiasFacturacionSql('base');
+
+        $baseSql = "SELECT
+                        pr.form_id,
+                        pr.hc_number,
+                        MAX(pr.fecha_inicio) AS fecha_inicio,
+                        MAX(COALESCE(p.fname, '')) AS fname,
+                        MAX(COALESCE(p.mname, '')) AS mname,
+                        MAX(COALESCE(p.lname, '')) AS lname,
+                        MAX(COALESCE(p.lname2, '')) AS lname2,
+                        MAX(COALESCE(p.afiliacion, '')) AS afiliacion,
+                        MAX({$categoriaContext['expr']}) AS afiliacion_categoria,
+                        MAX({$sedeExpr}) AS sede,
+                        GROUP_CONCAT(DISTINCT NULLIF(TRIM(COALESCE(pp.procedimiento_proyectado, '')), '') SEPARATOR ' | ') AS procedimiento_proyectado
+                    FROM protocolo_data pr
+                    LEFT JOIN patient_data p
+                        ON CONVERT(p.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                         = CONVERT(pr.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                    LEFT JOIN procedimiento_proyectado pp
+                        ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number
+                    {$categoriaContext['join']}
+                    WHERE pr.fecha_inicio BETWEEN :inicio AND :fin
+                      AND (:afiliacion_filter = '' OR {$afiliacionKeyExpr} = :afiliacion_filter_match)
+                      AND (:afiliacion_categoria_filter = '' OR {$categoriaContext['expr']} = :afiliacion_categoria_filter_match)
+                      AND (:sede_filter = '' OR {$sedeExpr} = :sede_filter_match)
+                    GROUP BY pr.form_id, pr.hc_number";
+
+        $sql = "SELECT
+                    base.form_id,
+                    base.hc_number,
+                    base.fecha_inicio,
+                    base.afiliacion,
+                    base.afiliacion_categoria,
+                    base.sede,
+                    TRIM(CONCAT_WS(' ',
+                        NULLIF(TRIM(base.fname), ''),
+                        NULLIF(TRIM(base.mname), ''),
+                        NULLIF(TRIM(base.lname), ''),
+                        NULLIF(TRIM(base.lname2), '')
+                    )) AS paciente,
+                    COALESCE(base.procedimiento_proyectado, '') AS procedimiento_proyectado,
+                    {$facturacionSql['select']}
+                FROM ({$baseSql}) base
+                {$facturacionSql['join']}
+                ORDER BY base.fecha_inicio DESC, base.form_id DESC";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([
+            ':inicio' => $start,
+            ':fin' => $end,
+            ':afiliacion_filter' => $afiliacionFilterValue,
+            ':afiliacion_filter_match' => $afiliacionFilterValue,
+            ':afiliacion_categoria_filter' => $afiliacionCategoriaFilterValue,
+            ':afiliacion_categoria_filter_match' => $afiliacionCategoriaFilterValue,
+            ':sede_filter' => $sedeFilterValue,
+            ':sede_filter_match' => $sedeFilterValue,
+        ]);
+
+        $rows = $stmt ? ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
+
+        foreach ($rows as &$row) {
+            $row = $this->mergeCirugiaBillingEvidence($row);
+            $estadoFacturacion = $this->resolveCirugiaDashboardBillingState(
+                (int) ($row['facturado'] ?? 0) === 1,
+                (string) ($row['estado_facturacion_raw'] ?? '')
+            );
+            $row['estado_facturacion_operativa'] = $estadoFacturacion;
+            $row['pendiente_facturar'] = $estadoFacturacion === 'PENDIENTE_FACTURAR';
+            $row['pendiente_pago'] = $estadoFacturacion === 'PENDIENTE_PAGO';
+            $row['facturacion_cancelada'] = $estadoFacturacion === 'CANCELADA';
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * @return array{select:string,join:string}
+     */
+    private function buildCirugiasFacturacionSql(string $formAlias = 'pr'): array
+    {
+        $hasFacturacionReal = $this->tableExists('billing_facturacion_real')
+            && $this->columnExists('billing_facturacion_real', 'form_id')
+            && $this->columnExists('billing_facturacion_real', 'monto_honorario');
+        $hasBillingPublico = $this->tableExists('billing_main')
+            && $this->columnExists('billing_main', 'id')
+            && $this->columnExists('billing_main', 'form_id')
+            && $this->tableExists('billing_procedimientos')
+            && $this->columnExists('billing_procedimientos', 'billing_id')
+            && $this->columnExists('billing_procedimientos', 'proc_precio');
+
+        $publicFechaExpr = $hasBillingPublico && $this->columnExists('billing_main', 'created_at')
+            ? "MAX(
+                    CASE
+                        WHEN CAST(bm.created_at AS CHAR) IN ('', '0000-00-00', '0000-00-00 00:00:00') THEN NULL
+                        ELSE bm.created_at
+                    END
+                ) AS fecha_facturacion"
+            : 'NULL AS fecha_facturacion';
+
+        $realSubquery = $hasFacturacionReal
+            ? "SELECT
+                    NULLIF(TRIM(COALESCE(bfr.form_id, '')), '') AS form_id,
+                    MAX(NULLIF(TRIM(COALESCE(bfr.factura_id, '')), '')) AS billing_id,
+                    MAX(
+                        CASE
+                            WHEN CAST(bfr.fecha_facturacion AS CHAR) IN ('', '0000-00-00', '0000-00-00 00:00:00') THEN NULL
+                            ELSE bfr.fecha_facturacion
+                        END
+                    ) AS fecha_facturacion,
+                    MAX(
+                        CASE
+                            WHEN CAST(bfr.fecha_atencion AS CHAR) IN ('', '0000-00-00', '0000-00-00 00:00:00') THEN NULL
+                            ELSE bfr.fecha_atencion
+                        END
+                    ) AS fecha_atencion,
+                    MAX(NULLIF(TRIM(COALESCE(bfr.numero_factura, '')), '')) AS numero_factura,
+                    MAX(NULLIF(TRIM(COALESCE(bfr.factura_id, '')), '')) AS factura_id,
+                    MAX(NULLIF(TRIM(COALESCE(bfr.estado, '')), '')) AS estado_facturacion_raw,
+                    COALESCE(SUM(COALESCE(bfr.monto_honorario, 0)), 0) AS total_produccion,
+                    COUNT(*) AS procedimientos_facturados
+                FROM billing_facturacion_real bfr
+                WHERE bfr.form_id IS NOT NULL AND TRIM(bfr.form_id) <> ''
+                GROUP BY bfr.form_id"
+            : "SELECT
+                    CAST(NULL AS CHAR(50)) AS form_id,
+                    CAST(NULL AS CHAR(50)) AS billing_id,
+                    CAST(NULL AS DATETIME) AS fecha_facturacion,
+                    CAST(NULL AS DATETIME) AS fecha_atencion,
+                    CAST(NULL AS CHAR(50)) AS numero_factura,
+                    CAST(NULL AS CHAR(50)) AS factura_id,
+                    CAST(NULL AS CHAR(100)) AS estado_facturacion_raw,
+                    0 AS total_produccion,
+                    0 AS procedimientos_facturados
+                LIMIT 0";
+
+        $publicSubquery = $hasBillingPublico
+            ? "SELECT
+                    NULLIF(TRIM(COALESCE(bm.form_id, '')), '') AS form_id,
+                    MAX(CAST(bm.id AS CHAR)) AS billing_id,
+                    {$publicFechaExpr},
+                    COALESCE(SUM(COALESCE(bp.proc_precio, 0)), 0) AS total_produccion,
+                    COUNT(*) AS procedimientos_facturados
+                FROM billing_procedimientos bp
+                INNER JOIN billing_main bm ON bm.id = bp.billing_id
+                WHERE bm.form_id IS NOT NULL AND TRIM(bm.form_id) <> ''
+                GROUP BY bm.form_id"
+            : "SELECT
+                    CAST(NULL AS CHAR(50)) AS form_id,
+                    CAST(NULL AS CHAR(50)) AS billing_id,
+                    CAST(NULL AS DATETIME) AS fecha_facturacion,
+                    0 AS total_produccion,
+                    0 AS procedimientos_facturados
+                LIMIT 0";
 
         return [
-            'atendidos' => (int) ($row['atendidos'] ?? 0),
-            'facturados' => (int) ($row['facturados'] ?? 0),
-            'pendiente_pago' => (int) ($row['pendiente_pago'] ?? 0),
-            'cancelados' => max(0, $cancelados),
+            'select' => "0 AS facturado,
+                NULL AS billing_id,
+                NULL AS fecha_facturacion,
+                NULL AS fecha_atencion,
+                0 AS total_produccion,
+                0 AS procedimientos_facturados,
+                NULL AS numero_factura,
+                NULL AS factura_id,
+                NULL AS estado_facturacion_raw,
+                NULLIF(TRIM(COALESCE(bfr.billing_id, '')), '') AS real_billing_id,
+                bfr.fecha_facturacion AS real_fecha_facturacion,
+                bfr.fecha_atencion AS real_fecha_atencion,
+                COALESCE(bfr.total_produccion, 0) AS real_total_produccion,
+                COALESCE(bfr.procedimientos_facturados, 0) AS real_procedimientos_facturados,
+                NULLIF(TRIM(COALESCE(bfr.numero_factura, '')), '') AS real_numero_factura,
+                NULLIF(TRIM(COALESCE(bfr.factura_id, '')), '') AS real_factura_id,
+                NULLIF(TRIM(COALESCE(bfr.estado_facturacion_raw, '')), '') AS real_estado_facturacion_raw,
+                NULLIF(TRIM(COALESCE(bpub.billing_id, '')), '') AS public_billing_id,
+                bpub.fecha_facturacion AS public_fecha_facturacion,
+                COALESCE(bpub.total_produccion, 0) AS public_total_produccion,
+                COALESCE(bpub.procedimientos_facturados, 0) AS public_procedimientos_facturados",
+            'join' => "LEFT JOIN ({$realSubquery}) bfr ON bfr.form_id = {$formAlias}.form_id
+                LEFT JOIN ({$publicSubquery}) bpub ON bpub.form_id = {$formAlias}.form_id",
         ];
+    }
+
+    /**
+     * @param array<string,mixed> $row
+     * @return array<string,mixed>
+     */
+    private function mergeCirugiaBillingEvidence(array $row): array
+    {
+        $afiliacionCategoria = trim((string) ($row['afiliacion_categoria'] ?? ''));
+        $realEvidence = $this->hasCirugiaBillingSourceEvidence($row, 'real');
+        $publicEvidence = $this->hasCirugiaBillingSourceEvidence($row, 'public');
+        $source = null;
+
+        if ($afiliacionCategoria === 'publico' && $publicEvidence) {
+            $source = 'public';
+        } elseif ($realEvidence) {
+            $source = 'real';
+        } elseif ($publicEvidence) {
+            $source = 'public';
+        }
+
+        $row['facturado'] = $source !== null ? 1 : 0;
+        $row['billing_id'] = $source !== null ? trim((string) ($row[$source . '_billing_id'] ?? '')) : null;
+        $row['fecha_facturacion'] = $source !== null ? ($row[$source . '_fecha_facturacion'] ?? null) : null;
+        $row['fecha_atencion'] = $source === 'real' ? ($row['real_fecha_atencion'] ?? null) : null;
+        $row['total_produccion'] = $source !== null ? (float) ($row[$source . '_total_produccion'] ?? 0) : 0.0;
+        $row['procedimientos_facturados'] = $source !== null ? (int) ($row[$source . '_procedimientos_facturados'] ?? 0) : 0;
+        $row['numero_factura'] = $source === 'real' ? trim((string) ($row['real_numero_factura'] ?? '')) : null;
+        $row['factura_id'] = $source === 'real' ? trim((string) ($row['real_factura_id'] ?? '')) : null;
+        $row['estado_facturacion_raw'] = $source === 'real'
+            ? trim((string) ($row['real_estado_facturacion_raw'] ?? ''))
+            : null;
+        $row['billing_source'] = $source;
+
+        return $row;
+    }
+
+    /**
+     * @param array<string,mixed> $row
+     */
+    private function hasCirugiaBillingSourceEvidence(array $row, string $prefix): bool
+    {
+        $billingId = trim((string) ($row[$prefix . '_billing_id'] ?? ''));
+        $fechaFacturacion = trim((string) ($row[$prefix . '_fecha_facturacion'] ?? ''));
+        $procedimientosFacturados = (int) ($row[$prefix . '_procedimientos_facturados'] ?? 0);
+        $totalProduccion = (float) ($row[$prefix . '_total_produccion'] ?? 0);
+
+        if ($prefix === 'real') {
+            $numeroFactura = trim((string) ($row['real_numero_factura'] ?? ''));
+            $facturaId = trim((string) ($row['real_factura_id'] ?? ''));
+
+            return $billingId !== ''
+                || $fechaFacturacion !== ''
+                || $numeroFactura !== ''
+                || $facturaId !== ''
+                || $procedimientosFacturados > 0
+                || abs($totalProduccion) > 0.00001;
+        }
+
+        return $billingId !== ''
+            || $fechaFacturacion !== ''
+            || $procedimientosFacturados > 0
+            || abs($totalProduccion) > 0.00001;
+    }
+
+    private function resolveCirugiaDashboardBillingState(bool $facturado, string $estadoFacturacionRaw = ''): string
+    {
+        $estadoNorm = $this->normalizeTextValue($estadoFacturacionRaw);
+
+        if ($estadoNorm !== '') {
+            if (str_contains($estadoNorm, 'cancel') || str_contains($estadoNorm, 'anul')) {
+                return 'CANCELADA';
+            }
+
+            if (
+                str_contains($estadoNorm, 'pend')
+                || str_contains($estadoNorm, 'credito')
+                || str_contains($estadoNorm, 'cartera')
+            ) {
+                return 'PENDIENTE_PAGO';
+            }
+        }
+
+        return $facturado ? 'FACTURADA' : 'PENDIENTE_FACTURAR';
     }
 
     public function getDuracionPromedioMinutos(
@@ -1332,6 +1684,29 @@ class CirugiasDashboardService
         }
 
         return $timestamp;
+    }
+
+    private function normalizeTextValue(string $value): string
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return '';
+        }
+
+        return strtolower(strtr($value, [
+            'Á' => 'A',
+            'É' => 'E',
+            'Í' => 'I',
+            'Ó' => 'O',
+            'Ú' => 'U',
+            'Ñ' => 'N',
+            'á' => 'a',
+            'é' => 'e',
+            'í' => 'i',
+            'ó' => 'o',
+            'ú' => 'u',
+            'ñ' => 'n',
+        ]));
     }
 
     private function normalizeAfiliacionFilter(string $afiliacionFilter): string
