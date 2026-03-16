@@ -1019,6 +1019,8 @@ class ImagenesUiService
         $insuranceBreakdownItemLabel = trim((string) ($insuranceBreakdown['item_label'] ?? 'Empresa de seguro'));
         $traficoLabels = is_array($charts['trafico_dia_semana']['labels'] ?? null) ? $charts['trafico_dia_semana']['labels'] : [];
         $traficoValues = is_array($charts['trafico_dia_semana']['values'] ?? null) ? $charts['trafico_dia_semana']['values'] : [];
+        $doctorSolicitanteLabels = is_array($charts['top_doctores_solicitantes']['labels'] ?? null) ? $charts['top_doctores_solicitantes']['labels'] : [];
+        $doctorSolicitanteValues = is_array($charts['top_doctores_solicitantes']['values'] ?? null) ? $charts['top_doctores_solicitantes']['values'] : [];
         $insuranceLabels = is_array($charts['analisis_seguro']['labels'] ?? null) ? $charts['analisis_seguro']['labels'] : [];
         $insuranceValues = is_array($charts['analisis_seguro']['values'] ?? null) ? $charts['analisis_seguro']['values'] : [];
         $diaPico = '—';
@@ -1130,6 +1132,13 @@ class ImagenesUiService
 
         $tables = [
             [
+                'title' => 'Top 10 doctores solicitantes',
+                'subtitle' => 'Conteo simple desde consulta_examenes con LEFT JOIN a procedimiento_proyectado por form_id.',
+                'columns' => ['Doctor solicitante', 'Solicitudes'],
+                'rows' => $this->buildImagenesDashboardMetricRows($doctorSolicitanteLabels, $doctorSolicitanteValues),
+                'empty_message' => 'Sin solicitudes de exámenes asociadas para el rango seleccionado.',
+            ],
+            [
                 'title' => $insuranceBreakdownTitle,
                 'subtitle' => 'Agrupación del volumen por empresa; al elegir una empresa, se desglosa por plan.',
                 'columns' => [$insuranceBreakdownItemLabel, 'Estudios'],
@@ -1225,6 +1234,113 @@ class ImagenesUiService
         }
 
         return $rows;
+    }
+
+    /**
+     * @param array<string,string> $filters
+     * @return array{labels:array<int,string>,values:array<int,int>}
+     */
+    private function fetchTopDoctoresSolicitantes(array $filters, int $limit = 10): array
+    {
+        if (!$this->tableExists('consulta_examenes')) {
+            return ['labels' => [], 'values' => []];
+        }
+
+        $rawAfiliacionExpr = "COALESCE(NULLIF(TRIM(pp.afiliacion), ''), NULLIF(TRIM(pd.afiliacion), ''), '')";
+        $afiliacionKeyExpr = $this->afiliacionGroupKeyExpr($rawAfiliacionExpr);
+        $categoriaContext = $this->resolveAfiliacionCategoriaContext($rawAfiliacionExpr, 'iacm_top_doctor');
+        $sedeExpr = $this->imagenesSedeExpr();
+
+        $sql = "SELECT
+                COALESCE(NULLIF(TRIM(pp.doctor), ''), 'Sin asignar') AS doctor_solicitante,
+                COUNT(*) AS total_examenes
+            FROM consulta_examenes ce
+            LEFT JOIN procedimiento_proyectado pp ON pp.form_id = ce.form_id
+            LEFT JOIN patient_data pd ON pd.hc_number = ce.hc_number
+            {$categoriaContext['join']}
+            WHERE ce.examen_nombre IS NOT NULL
+              AND TRIM(ce.examen_nombre) <> ''";
+
+        $params = [];
+
+        $fechaInicio = trim((string) ($filters['fecha_inicio'] ?? ''));
+        if ($fechaInicio !== '') {
+            $sql .= ' AND DATE(COALESCE(ce.consulta_fecha, ce.created_at)) >= :fecha_inicio';
+            $params[':fecha_inicio'] = $fechaInicio;
+        }
+
+        $fechaFin = trim((string) ($filters['fecha_fin'] ?? ''));
+        if ($fechaFin !== '') {
+            $sql .= ' AND DATE(COALESCE(ce.consulta_fecha, ce.created_at)) <= :fecha_fin';
+            $params[':fecha_fin'] = $fechaFin;
+        }
+
+        $afiliacionFilter = $this->normalizeAfiliacionFilter((string) ($filters['afiliacion'] ?? ''));
+        if ($afiliacionFilter !== '') {
+            $sql .= " AND {$afiliacionKeyExpr} = :afiliacion_filter_match";
+            $params[':afiliacion_filter_match'] = $afiliacionFilter;
+        }
+
+        $afiliacionCategoriaFilter = $this->normalizeAfiliacionCategoriaFilter((string) ($filters['afiliacion_categoria'] ?? ''));
+        if ($afiliacionCategoriaFilter !== '') {
+            $sql .= " AND {$categoriaContext['expr']} = :afiliacion_categoria_filter_match";
+            $params[':afiliacion_categoria_filter_match'] = $afiliacionCategoriaFilter;
+        }
+
+        $sedeFilter = $this->normalizeSedeFilter((string) ($filters['sede'] ?? ''));
+        if ($sedeFilter !== '') {
+            $sql .= " AND {$sedeExpr} = :sede_filter_match";
+            $params[':sede_filter_match'] = $sedeFilter;
+        }
+
+        $tipoExamen = trim((string) ($filters['tipo_examen'] ?? ''));
+        if ($tipoExamen !== '') {
+            $sql .= ' AND (
+                    ce.examen_nombre LIKE :tipo_examen
+                    OR ce.examen_codigo LIKE :tipo_examen
+                    OR TRIM(COALESCE(pp.procedimiento_proyectado, "")) LIKE :tipo_examen
+                )';
+            $params[':tipo_examen'] = '%' . $tipoExamen . '%';
+        }
+
+        $paciente = trim((string) ($filters['paciente'] ?? ''));
+        if ($paciente !== '') {
+            $sql .= " AND (
+                    ce.hc_number LIKE :paciente
+                    OR CONCAT_WS(' ', TRIM(pd.lname), TRIM(pd.lname2), TRIM(pd.fname), TRIM(pd.mname)) LIKE :paciente
+                    OR CONCAT_WS(' ', TRIM(pd.fname), TRIM(pd.mname), TRIM(pd.lname), TRIM(pd.lname2)) LIKE :paciente
+                )";
+            $params[':paciente'] = '%' . $paciente . '%';
+        }
+
+        $estadoAgenda = trim((string) ($filters['estado_agenda'] ?? ''));
+        if ($estadoAgenda !== '') {
+            $sql .= ' AND TRIM(COALESCE(pp.estado_agenda, "")) = :estado_agenda';
+            $params[':estado_agenda'] = $estadoAgenda;
+        }
+
+        $sql .= ' GROUP BY COALESCE(NULLIF(TRIM(pp.doctor), \'\'), \'Sin asignar\')
+                  ORDER BY total_examenes DESC, doctor_solicitante ASC
+                  LIMIT :limit';
+
+        $stmt = $this->db->prepare($sql);
+        foreach ($params as $key => $value) {
+            $stmt->bindValue($key, $value, PDO::PARAM_STR);
+        }
+        $stmt->bindValue(':limit', max(1, $limit), PDO::PARAM_INT);
+        $stmt->execute();
+
+        $labels = [];
+        $values = [];
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $labels[] = trim((string) ($row['doctor_solicitante'] ?? 'Sin asignar'));
+            $values[] = (int) ($row['total_examenes'] ?? 0);
+        }
+
+        return [
+            'labels' => $labels,
+            'values' => $values,
+        ];
     }
 
     private function formatDashboardDate(?string $value): string
@@ -1507,6 +1623,7 @@ class ImagenesUiService
 
         arsort($mixMap);
         $mixTop = array_slice($mixMap, 0, 8, true);
+        $doctorSolicitanteTop = $this->fetchTopDoctoresSolicitantes($filters, 10);
 
         $seriesStart = trim((string) ($filters['fecha_inicio'] ?? ''));
         $seriesEnd = trim((string) ($filters['fecha_fin'] ?? ''));
@@ -1624,6 +1741,10 @@ class ImagenesUiService
                 'mix_codigos' => [
                     'labels' => array_keys($mixTop),
                     'values' => array_values($mixTop),
+                ],
+                'top_doctores_solicitantes' => [
+                    'labels' => $doctorSolicitanteTop['labels'],
+                    'values' => $doctorSolicitanteTop['values'],
                 ],
                 'aging_backlog' => [
                     'labels' => array_keys($aging),

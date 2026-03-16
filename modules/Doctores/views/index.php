@@ -4,6 +4,24 @@
 
 $doctors = $doctors ?? [];
 $totalDoctors = isset($totalDoctors) ? (int) $totalDoctors : count($doctors);
+$renderStars = static function (float $stars): string {
+    $html = '';
+    for ($i = 1; $i <= 5; $i++) {
+        if ($stars >= $i) {
+            $html .= '<i class="fa fa-star text-warning"></i>';
+            continue;
+        }
+
+        if ($stars >= ($i - 0.5)) {
+            $html .= '<i class="fa fa-star-half-o text-warning"></i>';
+            continue;
+        }
+
+        $html .= '<i class="fa fa-star-o text-muted"></i>';
+    }
+
+    return $html;
+};
 ?>
 
 <div class="container-full">
@@ -11,12 +29,12 @@ $totalDoctors = isset($totalDoctors) ? (int) $totalDoctors : count($doctors);
     <div class="content-header">
         <div class="d-flex align-items-center">
             <div class="me-auto">
-                <h4 class="page-title">Doctors</h4>
+                <h4 class="page-title">Doctores</h4>
                 <div class="d-inline-block align-items-center">
                     <nav>
                         <ol class="breadcrumb">
                             <li class="breadcrumb-item"><a href="/"><i class="mdi mdi-home-outline"></i></a></li>
-                            <li class="breadcrumb-item active" aria-current="page">Doctors</li>
+                            <li class="breadcrumb-item active" aria-current="page">Doctores</li>
                         </ol>
                     </nav>
                 </div>
@@ -107,6 +125,20 @@ $totalDoctors = isset($totalDoctors) ? (int) $totalDoctors : count($doctors);
                                     <h6 class="user-info mt-0 mb-10 text-fade">
                                         <?= htmlspecialchars($doctor['especialidad'] ?? 'Especialidad no registrada', ENT_QUOTES, 'UTF-8') ?>
                                     </h6>
+                                    <?php $performanceSummary = is_array($doctor['performance_summary'] ?? null) ? $doctor['performance_summary'] : []; ?>
+                                    <?php if (!empty($performanceSummary)): ?>
+                                        <div class="mb-10">
+                                            <div class="d-flex align-items-center justify-content-center gap-10 flex-wrap">
+                                                <div><?= $renderStars((float) ($performanceSummary['stars'] ?? 0)) ?></div>
+                                                <span class="badge badge-warning-light text-warning px-10 py-5">
+                                                    <?= htmlspecialchars((string) ($performanceSummary['label'] ?? 'Sin score'), ENT_QUOTES, 'UTF-8') ?>
+                                                </span>
+                                            </div>
+                                            <p class="mb-0 text-fade fs-12 mt-5">
+                                                <?= htmlspecialchars((string) ($performanceSummary['summary'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
+                                            </p>
+                                        </div>
+                                    <?php endif; ?>
                                     <?php if (!empty($doctor['subespecialidad'])): ?>
                                         <p class="mb-5 text-fade"><?= htmlspecialchars($doctor['subespecialidad'], ENT_QUOTES, 'UTF-8') ?></p>
                                     <?php endif; ?>
@@ -115,6 +147,17 @@ $totalDoctors = isset($totalDoctors) ? (int) $totalDoctors : count($doctors);
                                             <i class="mdi mdi-hospital-building me-5"></i>
                                             <?= htmlspecialchars($doctor['sede'], ENT_QUOTES, 'UTF-8') ?>
                                         </p>
+                                    <?php endif; ?>
+                                    <?php $quickStats = is_array($doctor['performance_quick_stats'] ?? null) ? $doctor['performance_quick_stats'] : []; ?>
+                                    <?php if (!empty($quickStats)): ?>
+                                        <div class="d-flex justify-content-center gap-5 mt-10 flex-wrap">
+                                            <?php foreach ($quickStats as $stat): ?>
+                                                <span class="badge badge-light px-10 py-5">
+                                                    <?= htmlspecialchars((string) ($stat['label'] ?? ''), ENT_QUOTES, 'UTF-8') ?>:
+                                                    <?= htmlspecialchars((string) ($stat['value'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
+                                                </span>
+                                            <?php endforeach; ?>
+                                        </div>
                                     <?php endif; ?>
 
                                     <div class="d-flex justify-content-center gap-10 mt-15 flex-wrap">

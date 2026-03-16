@@ -19,6 +19,8 @@ class ImagenesNasIndexService
     /**
      * @param array{
      *   days?:int,
+     *   from_date?:string|null,
+     *   to_date?:string|null,
      *   limit?:int|null,
      *   stale_hours?:int,
      *   form_id?:string|null,
@@ -29,7 +31,6 @@ class ImagenesNasIndexService
      */
     public function scan(array $options = [], ?callable $progress = null): array
     {
-        $days = max(1, (int) ($options['days'] ?? 7));
         $rawLimit = $options['limit'] ?? null;
         $limit = null;
         if ($rawLimit !== null && $rawLimit !== '' && (int) $rawLimit > 0) {
@@ -38,6 +39,16 @@ class ImagenesNasIndexService
         $staleHours = max(1, (int) ($options['stale_hours'] ?? 6));
         $formId = trim((string) ($options['form_id'] ?? ''));
         $force = (bool) ($options['force'] ?? false);
+        $dateWindow = $this->resolveDateWindow($options, $formId !== '');
+
+        if ($dateWindow['error'] !== null) {
+            return [
+                'success' => false,
+                'error' => $dateWindow['error'],
+                'processed' => 0,
+                'candidates' => 0,
+            ];
+        }
 
         if (!$this->nasImagenesService->isAvailable()) {
             return [
@@ -61,7 +72,13 @@ class ImagenesNasIndexService
 
         try {
             $startedAt = microtime(true);
-            $query = $this->candidateQuery($days, $staleHours, $formId, $force);
+            $query = $this->candidateQuery(
+                $dateWindow['from'],
+                $dateWindow['to'],
+                $staleHours,
+                $formId,
+                $force
+            );
             if ($limit !== null) {
                 $query->limit($limit);
             }
@@ -145,7 +162,90 @@ class ImagenesNasIndexService
         }
     }
 
-    private function candidateQuery(int $days, int $staleHours, string $formId, bool $force)
+    /**
+     * @param array{
+     *   days?:int,
+     *   from_date?:string|null,
+     *   to_date?:string|null
+     * } $options
+     * @return array{from:?string,to:?string,error:?string}
+     */
+    private function resolveDateWindow(array $options, bool $ignoreDates): array
+    {
+        if ($ignoreDates) {
+            return [
+                'from' => null,
+                'to' => null,
+                'error' => null,
+            ];
+        }
+
+        $rawFrom = trim((string) ($options['from_date'] ?? ''));
+        $rawTo = trim((string) ($options['to_date'] ?? ''));
+
+        if ($rawFrom === '' && $rawTo === '') {
+            $days = max(1, (int) ($options['days'] ?? 7));
+
+            return [
+                'from' => Carbon::today()->subDays($days)->toDateString(),
+                'to' => null,
+                'error' => null,
+            ];
+        }
+
+        $fromDate = $this->normalizeDateOption($rawFrom);
+        if ($fromDate === false) {
+            return [
+                'from' => null,
+                'to' => null,
+                'error' => 'La opción --from-date debe tener el formato YYYY-MM-DD.',
+            ];
+        }
+
+        $toDate = $this->normalizeDateOption($rawTo);
+        if ($toDate === false) {
+            return [
+                'from' => null,
+                'to' => null,
+                'error' => 'La opción --to-date debe tener el formato YYYY-MM-DD.',
+            ];
+        }
+
+        if ($fromDate !== null && $toDate !== null && strcmp($fromDate, $toDate) > 0) {
+            return [
+                'from' => null,
+                'to' => null,
+                'error' => 'La opción --from-date no puede ser mayor que --to-date.',
+            ];
+        }
+
+        return [
+            'from' => $fromDate,
+            'to' => $toDate,
+            'error' => null,
+        ];
+    }
+
+    private function normalizeDateOption(string $value): string|false|null
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return null;
+        }
+
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) !== 1) {
+            return false;
+        }
+
+        [$year, $month, $day] = array_map('intval', explode('-', $value));
+        if (!checkdate($month, $day, $year)) {
+            return false;
+        }
+
+        return sprintf('%04d-%02d-%02d', $year, $month, $day);
+    }
+
+    private function candidateQuery(?string $fromDate, ?string $toDate, int $staleHours, string $formId, bool $force)
     {
         $base = DB::table('procedimiento_proyectado as pp')
             ->selectRaw('TRIM(pp.form_id) as form_id, TRIM(pp.hc_number) as hc_number, MAX(pp.fecha) as fecha_programada')
@@ -159,7 +259,12 @@ class ImagenesNasIndexService
         if ($formId !== '') {
             $base->where('pp.form_id', $formId);
         } else {
-            $base->where('pp.fecha', '>=', Carbon::today()->subDays($days)->toDateString());
+            if ($fromDate !== null) {
+                $base->where('pp.fecha', '>=', $fromDate);
+            }
+            if ($toDate !== null) {
+                $base->where('pp.fecha', '<', Carbon::parse($toDate)->addDay()->toDateString());
+            }
         }
 
         $query = DB::query()

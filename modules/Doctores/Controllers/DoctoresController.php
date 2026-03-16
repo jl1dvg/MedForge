@@ -12,6 +12,10 @@ use PDOException;
 class DoctoresController extends BaseController
 {
     private DoctorModel $doctors;
+    /** @var array<int, array<string, mixed>> */
+    private array $doctorPerformanceCache = [];
+    /** @var array<int, array<string, mixed>> */
+    private array $doctorCardCache = [];
 
     public function __construct(PDO $pdo)
     {
@@ -23,7 +27,13 @@ class DoctoresController extends BaseController
     {
         $this->requireAuth();
 
-        $doctors = $this->doctors->all();
+        $doctors = array_map(function (array $doctor): array {
+            $performance = $this->getDoctorCardPerformanceSummary($doctor);
+            $doctor['performance_summary'] = $performance['rating'] ?? [];
+            $doctor['performance_quick_stats'] = $performance['quick_stats'] ?? [];
+
+            return $doctor;
+        }, $this->doctors->all());
 
         $this->render(BASE_PATH . '/modules/Doctores/views/index.php', [
             'pageTitle' => 'Doctores',
@@ -79,20 +89,25 @@ class DoctoresController extends BaseController
      */
     private function buildDoctorInsights(array $doctor, ?string $selectedDate): array
     {
-        $baseSeed = (string)($doctor['id'] ?? $doctor['name'] ?? '0');
-
-        $appointmentsSchedule = $this->buildAppointmentsSchedule($doctor, $baseSeed, $selectedDate);
+        $appointmentsSchedule = $this->buildAppointmentsSchedule($doctor, '', $selectedDate);
+        $performance = $this->getDoctorPerformanceContext($doctor);
+        $todayPatients = $this->buildTodayPatients($doctor, '');
 
         return [
-            'todayPatients' => $this->buildTodayPatients($doctor, $baseSeed),
-            'activityStats' => $this->buildActivityStats($doctor, $baseSeed),
-            'careProgress' => $this->buildCareProgress($doctor, $baseSeed),
-            'milestones' => $this->buildMilestones($doctor, $baseSeed),
-            'biographyParagraphs' => $this->buildBiographyParagraphs($doctor, $baseSeed),
-            'availabilitySummary' => $this->buildAvailabilitySummary($doctor, $baseSeed),
+            'todayPatients' => $todayPatients,
+            'activityStats' => $this->buildActivityStats($doctor, ''),
+            'careProgress' => $this->buildCareProgress($doctor, ''),
+            'milestones' => $this->buildMilestones($doctor, ''),
+            'biographyParagraphs' => $this->buildBiographyParagraphs($doctor, ''),
+            'availabilitySummary' => $this->buildAvailabilitySummary($doctor, ''),
             'focusAreas' => $this->buildFocusAreas($doctor),
-            'supportChannels' => $this->buildSupportChannels($doctor, $baseSeed),
-            'researchHighlights' => $this->buildResearchHighlights($doctor, $baseSeed),
+            'supportChannels' => $this->buildSupportChannels($doctor, ''),
+            'researchHighlights' => $this->buildResearchHighlights($doctor, ''),
+            'performanceSummary' => $performance['rating'] ?? [],
+            'operationalNotes' => $performance['operational_notes'] ?? [],
+            'recentSurgeries' => $performance['recent_surgeries'] ?? [],
+            'recentRequests' => $performance['recent_requests'] ?? [],
+            'recentExams' => $performance['recent_exams'] ?? [],
             'appointmentsDays' => $appointmentsSchedule['days'],
             'appointments' => $appointmentsSchedule['appointments'],
             'appointmentsSelectedDate' => $appointmentsSchedule['selectedDate'],
@@ -107,31 +122,7 @@ class DoctoresController extends BaseController
     private function buildTodayPatients(array $doctor, string $seed): array
     {
         $realPatients = $this->loadTodayPatientsFromDatabase($doctor);
-        if (!empty($realPatients)) {
-            return $realPatients;
-        }
-
-        $patients = [
-            ['time' => '08:30', 'name' => 'Lucía Paredes', 'diagnosis' => 'Control de seguimiento', 'avatar' => 'images/avatar/1.jpg'],
-            ['time' => '09:15', 'name' => 'Andrés Villamar', 'diagnosis' => 'Evaluación de laboratorio', 'avatar' => 'images/avatar/2.jpg'],
-            ['time' => '10:30', 'name' => 'María Fernanda León', 'diagnosis' => 'Consulta preventiva', 'avatar' => 'images/avatar/3.jpg'],
-            ['time' => '11:00', 'name' => 'Carlos Gutiérrez', 'diagnosis' => 'Revisión postoperatoria', 'avatar' => 'images/avatar/4.jpg'],
-            ['time' => '11:45', 'name' => 'Gabriela Intriago', 'diagnosis' => 'Seguimiento crónico', 'avatar' => 'images/avatar/5.jpg'],
-            ['time' => '12:30', 'name' => 'Xavier Molina', 'diagnosis' => 'Ajuste de medicación', 'avatar' => 'images/avatar/6.jpg'],
-        ];
-
-        $ordered = $this->seededSlice($patients, $seed . '|today', 3);
-
-        return array_map(
-            function (array $patient, int $index): array {
-                $times = ['08:30', '09:15', '10:30', '11:00', '11:45', '12:30'];
-                $patient['time'] = $patient['time'] ?? ($times[$index] ?? '10:00');
-
-                return $patient;
-            },
-            $ordered,
-            array_keys($ordered)
-        );
+        return !empty($realPatients) ? $realPatients : [];
     }
 
     /**
@@ -141,10 +132,6 @@ class DoctoresController extends BaseController
     private function buildAppointmentsSchedule(array $doctor, string $seed, ?string $requestedDate): array
     {
         $appointments = $this->loadAppointmentsFromDatabase($doctor, $requestedDate);
-
-        if (empty($appointments)) {
-            $appointments = $this->buildFallbackAppointments($seed);
-        }
 
         if (empty($appointments)) {
             return [
@@ -885,28 +872,50 @@ class DoctoresController extends BaseController
      */
     private function buildActivityStats(array $doctor, string $seed): array
     {
-        $patientsMonth = $this->seededRange($seed . '|patients_month', 32, 96);
-        $procedures = $this->seededRange($seed . '|procedures', 12, 48);
-        $satisfaction = $this->seededRange($seed . '|satisfaction', 86, 98);
+        $context = $this->getDoctorPerformanceContext($doctor);
+        $agenda = $context['agenda_30'] ?? [];
+        $agendaPrev = $context['agenda_prev_30'] ?? [];
+        $surgeries = $context['surgeries_90'] ?? [];
+        $surgeriesPrev = $context['surgeries_prev_90'] ?? [];
+        $exams = $context['exams_30'] ?? [];
+        $examsPrev = $context['exams_prev_30'] ?? [];
 
         return [
             [
-                'label' => 'Pacientes atendidos este mes',
-                'value' => $patientsMonth,
+                'label' => 'Pacientes 30d',
+                'value' => (int) ($agenda['unique_patients'] ?? 0),
                 'suffix' => '',
-                'trend' => $this->formatTrend($this->seededRange($seed . '|patients_trend', -6, 12)),
+                'trend' => $this->buildTrend(
+                    (int) ($agenda['unique_patients'] ?? 0),
+                    (int) ($agendaPrev['unique_patients'] ?? 0)
+                ),
             ],
             [
-                'label' => 'Procedimientos resueltos',
-                'value' => $procedures,
+                'label' => 'Citas atendidas 30d',
+                'value' => (int) ($agenda['completed'] ?? 0),
                 'suffix' => '',
-                'trend' => $this->formatTrend($this->seededRange($seed . '|procedures_trend', -4, 9)),
+                'trend' => $this->buildTrend(
+                    (int) ($agenda['completed'] ?? 0),
+                    (int) ($agendaPrev['completed'] ?? 0)
+                ),
             ],
             [
-                'label' => 'Índice de satisfacción',
-                'value' => $satisfaction,
-                'suffix' => '%',
-                'trend' => $this->formatTrend($this->seededRange($seed . '|satisfaction_trend', -2, 5)),
+                'label' => 'Cirugías 90d',
+                'value' => (int) ($surgeries['total'] ?? 0),
+                'suffix' => '',
+                'trend' => $this->buildTrend(
+                    (int) ($surgeries['total'] ?? 0),
+                    (int) ($surgeriesPrev['total'] ?? 0)
+                ),
+            ],
+            [
+                'label' => 'Exámenes solicitados 30d',
+                'value' => (int) ($exams['total'] ?? 0),
+                'suffix' => '',
+                'trend' => $this->buildTrend(
+                    (int) ($exams['total'] ?? 0),
+                    (int) ($examsPrev['total'] ?? 0)
+                ),
             ],
         ];
     }
@@ -917,51 +926,40 @@ class DoctoresController extends BaseController
      */
     private function buildCareProgress(array $doctor, string $seed): array
     {
-        $specialty = strtolower((string)($doctor['especialidad'] ?? ''));
-        $defaults = [
-            ['label' => 'Controles preventivos', 'variant' => 'primary'],
-            ['label' => 'Tratamientos activos', 'variant' => 'success'],
-            ['label' => 'Seguimientos virtuales', 'variant' => 'info'],
-            ['label' => 'Rehabilitación', 'variant' => 'warning'],
-            ['label' => 'Casos críticos', 'variant' => 'danger'],
+        $context = $this->getDoctorPerformanceContext($doctor);
+        $agenda = $context['agenda_30'] ?? [];
+        $surgeries = $context['surgeries_90'] ?? [];
+        $requests = $context['requests_90'] ?? [];
+
+        $agendaTotal = max(0, (int) ($agenda['total'] ?? 0));
+        $agendaCompleted = max(0, (int) ($agenda['completed'] ?? 0));
+        $agendaLost = max(0, (int) ($agenda['lost'] ?? 0));
+        $surgeriesTotal = max(0, (int) ($surgeries['total'] ?? 0));
+        $surgeriesReviewed = max(0, (int) ($surgeries['reviewed'] ?? 0));
+        $requestsTotal = max(0, (int) ($requests['total'] ?? 0));
+
+        return [
+            [
+                'label' => 'Agenda efectiva',
+                'variant' => 'primary',
+                'value' => $this->safePercentage($agendaCompleted, $agendaTotal),
+            ],
+            [
+                'label' => 'Control de ausentismo',
+                'variant' => 'success',
+                'value' => $agendaTotal > 0 ? max(0, 100 - $this->safePercentage($agendaLost, $agendaTotal)) : 0,
+            ],
+            [
+                'label' => 'Protocolos revisados',
+                'variant' => 'warning',
+                'value' => $this->safePercentage($surgeriesReviewed, $surgeriesTotal),
+            ],
+            [
+                'label' => 'Conversión a cirugía',
+                'variant' => 'info',
+                'value' => min(100, $this->safePercentage($surgeriesTotal, $requestsTotal)),
+            ],
         ];
-
-        if (str_contains($specialty, 'gine') || str_contains($specialty, 'obst')) {
-            $defaults = [
-                ['label' => 'Controles prenatales', 'variant' => 'primary'],
-                ['label' => 'Seguimiento postparto', 'variant' => 'success'],
-                ['label' => 'Planificación familiar', 'variant' => 'info'],
-                ['label' => 'Procedimientos quirúrgicos', 'variant' => 'warning'],
-                ['label' => 'Casos de alto riesgo', 'variant' => 'danger'],
-            ];
-        } elseif (str_contains($specialty, 'cardio')) {
-            $defaults = [
-                ['label' => 'Control hipertensión', 'variant' => 'primary'],
-                ['label' => 'Rehabilitación cardiaca', 'variant' => 'success'],
-                ['label' => 'Telemonitorización', 'variant' => 'info'],
-                ['label' => 'Intervenciones programadas', 'variant' => 'warning'],
-                ['label' => 'Casos críticos', 'variant' => 'danger'],
-            ];
-        } elseif (str_contains($specialty, 'pedi')) {
-            $defaults = [
-                ['label' => 'Vacunas al día', 'variant' => 'primary'],
-                ['label' => 'Controles de crecimiento', 'variant' => 'success'],
-                ['label' => 'Teleconsulta familiar', 'variant' => 'info'],
-                ['label' => 'Casos respiratorios', 'variant' => 'warning'],
-                ['label' => 'Casos críticos', 'variant' => 'danger'],
-            ];
-        }
-
-        return array_map(
-            function (array $item, int $index) use ($seed): array {
-                $percentage = $this->seededRange($seed . '|progress|' . $index, 48, 96);
-                $item['value'] = $percentage;
-
-                return $item;
-            },
-            $defaults,
-            array_keys($defaults)
-        );
     }
 
     /**
@@ -970,31 +968,9 @@ class DoctoresController extends BaseController
      */
     private function buildMilestones(array $doctor, string $seed): array
     {
-        $displayName = $doctor['display_name'] ?? $doctor['name'] ?? 'El especialista';
-        $baseYear = 2006 + ($this->seededRange($seed . '|milestone_base', 0, 6));
+        $context = $this->getDoctorPerformanceContext($doctor);
 
-        return [
-            [
-                'year' => (string)($baseYear),
-                'title' => 'Inicio de la práctica profesional',
-                'description' => sprintf('%s se incorporó al staff de la clínica con un enfoque en atención integral.', $displayName),
-            ],
-            [
-                'year' => (string)($baseYear + 5),
-                'title' => 'Implementación de protocolos especializados',
-                'description' => 'Lideró la adopción de guías clínicas basadas en evidencia para optimizar los resultados de los pacientes.',
-            ],
-            [
-                'year' => (string)($baseYear + 9),
-                'title' => 'Coordinación de programa multidisciplinario',
-                'description' => 'Integró equipos de enfermería, rehabilitación y apoyo social para acompañar a los pacientes complejos.',
-            ],
-            [
-                'year' => 'Actualidad',
-                'title' => 'Mentoría y formación continua',
-                'description' => 'Actualmente lidera sesiones de actualización clínica y acompaña a residentes en el desarrollo de casos complejos.',
-            ],
-        ];
+        return $context['recent_activity'] ?? [];
     }
 
     /**
@@ -1003,17 +979,9 @@ class DoctoresController extends BaseController
      */
     private function buildBiographyParagraphs(array $doctor, string $seed): array
     {
-        $displayName = $doctor['display_name'] ?? $doctor['name'] ?? 'El especialista';
-        $specialty = $doctor['especialidad'] ?? 'medicina integral';
-        $location = $doctor['sede'] ?? 'nuestras sedes principales';
-        $years = $this->seededRange($seed . '|experience_years', 7, 18);
-        $patients = $this->seededRange($seed . '|patients_total', 1200, 3600);
+        $context = $this->getDoctorPerformanceContext($doctor);
 
-        return [
-            sprintf('%s cuenta con %d años de experiencia en %s y acompaña a los pacientes en %s. Ha desarrollado estrategias de atención personalizada que combinan evidencia científica con un trato cercano.', $displayName, $years, strtolower($specialty), $location),
-            sprintf('Durante su trayectoria ha coordinado más de %d procesos de diagnóstico y seguimiento, trabajando de la mano con equipos interdisciplinarios para garantizar continuidad asistencial y mejora sostenida de los indicadores clínicos.', $patients),
-            'Su práctica clínica incorpora tableros de monitoreo en tiempo real, seguimiento proactivo de signos de alerta y sesiones educativas con pacientes y familias para reforzar la adherencia a los tratamientos.',
-        ];
+        return $context['summary_paragraphs'] ?? [];
     }
 
     /**
@@ -1022,19 +990,19 @@ class DoctoresController extends BaseController
      */
     private function buildAvailabilitySummary(array $doctor, string $seed): array
     {
-        $startHour = $this->seededRange($seed . '|start_hour', 7, 9);
-        $endHour = $startHour + $this->seededRange($seed . '|work_length', 7, 9);
-        $virtualSlots = $this->seededRange($seed . '|virtual_slots', 2, 6);
-        $inPersonSlots = $this->seededRange($seed . '|in_person_slots', 5, 12);
-        $responseHours = $this->seededRange($seed . '|response_hours', 4, 12);
+        $context = $this->getDoctorPerformanceContext($doctor);
+        $upcoming = $context['agenda_next_7'] ?? [];
 
         return [
-            'working_days_label' => 'Lunes a Viernes',
-            'working_hours_label' => sprintf('%02d:00 - %02d:00', $startHour, $endHour),
-            'virtual_slots' => $virtualSlots,
-            'in_person_slots' => $inPersonSlots,
-            'response_time_hours' => $responseHours,
-            'primary_location' => $doctor['sede'] ?? 'Consultorio principal',
+            'schedule_label' => $this->buildScheduleLabel(
+                (string) ($upcoming['weekdays'] ?? ''),
+                (string) ($upcoming['first_hour'] ?? ''),
+                (string) ($upcoming['last_hour'] ?? '')
+            ),
+            'next_7d_appointments' => (int) ($upcoming['total'] ?? 0),
+            'today_patients' => (int) ($context['today_patients_count'] ?? 0),
+            'latest_surgery_label' => $this->formatRecencyLabel((string) ($context['surgeries_90']['latest_date'] ?? '')),
+            'latest_exam_label' => $this->formatRecencyLabel((string) ($context['exams_30']['latest_date'] ?? '')),
         ];
     }
 
@@ -1044,20 +1012,15 @@ class DoctoresController extends BaseController
      */
     private function buildFocusAreas(array $doctor): array
     {
-        $specialty = strtolower((string)($doctor['especialidad'] ?? ''));
-        $areas = ['Atención basada en evidencia', 'Coordinación inter-disciplinaria', 'Seguimiento remoto de pacientes'];
+        $context = $this->getDoctorPerformanceContext($doctor);
+        $areas = is_array($context['focus_areas'] ?? null) ? $context['focus_areas'] : [];
 
-        if (str_contains($specialty, 'gine') || str_contains($specialty, 'obst')) {
-            $areas = array_merge($areas, ['Salud materno-fetal', 'Educación prenatal', 'Planificación familiar']);
-        } elseif (str_contains($specialty, 'cardio')) {
-            $areas = array_merge($areas, ['Prevención cardiovascular', 'Rehabilitación cardíaca', 'Telemetría clínica']);
-        } elseif (str_contains($specialty, 'pedi')) {
-            $areas = array_merge($areas, ['Control del desarrollo infantil', 'Programas de vacunación', 'Educación familiar']);
-        } elseif (str_contains($specialty, 'derma')) {
-            $areas = array_merge($areas, ['Dermatoscopía digital', 'Protocolos de fototerapia', 'Prevención de cáncer de piel']);
+        if ($areas !== []) {
+            return $areas;
         }
 
-        return array_values(array_unique($areas));
+        $specialty = trim((string) ($doctor['especialidad'] ?? ''));
+        return $specialty !== '' ? [$specialty] : [];
     }
 
     /**
@@ -1066,15 +1029,9 @@ class DoctoresController extends BaseController
      */
     private function buildSupportChannels(array $doctor, string $seed): array
     {
-        $assistants = [
-            ['label' => 'Asistente clínica', 'value' => 'María Silva · Ext. 204'],
-            ['label' => 'Coordinación quirúrgica', 'value' => 'Carlos Benítez · Ext. 219'],
-            ['label' => 'Gestor de seguros', 'value' => 'Paola Díaz · Ext. 132'],
-            ['label' => 'Soporte telemedicina', 'value' => 'telemedicina@medforge.com'],
-            ['label' => 'Línea de emergencias', 'value' => '+593 99 123 4567'],
-        ];
+        $context = $this->getDoctorPerformanceContext($doctor);
 
-        return $this->seededSlice($assistants, $seed . '|channels', 4);
+        return $context['distribution_rows'] ?? [];
     }
 
     /**
@@ -1083,34 +1040,1271 @@ class DoctoresController extends BaseController
      */
     private function buildResearchHighlights(array $doctor, string $seed): array
     {
-        $specialty = strtolower((string)($doctor['especialidad'] ?? ''));
-        $topics = [
-            'Aplicación de analítica predictiva en seguimiento ambulatorio',
-            'Protocolos colaborativos con enfermería avanzada',
-            'Optimización de rutas asistenciales con tableros operativos',
-        ];
+        $context = $this->getDoctorPerformanceContext($doctor);
+        $mixRows = is_array($context['mix_rows'] ?? null) ? $context['mix_rows'] : [];
 
-        if (str_contains($specialty, 'gine') || str_contains($specialty, 'obst')) {
-            $topics[] = 'Resultados materno-fetales en programas de alto riesgo';
-        } elseif (str_contains($specialty, 'cardio')) {
-            $topics[] = 'Uso de telemetría para pacientes con insuficiencia cardíaca';
-        } elseif (str_contains($specialty, 'pedi')) {
-            $topics[] = 'Innovación en monitoreo remoto pediátrico';
+        return array_map(static function (array $row): array {
+            return [
+                'year' => (string) ($row['source'] ?? 'Actividad'),
+                'title' => (string) ($row['label'] ?? 'Sin detalle'),
+                'description' => sprintf('%s registro(s) en la ventana operativa analizada.', number_format((int) ($row['count'] ?? 0))),
+            ];
+        }, array_slice($mixRows, 0, 5));
+    }
+
+    /**
+     * @param array<string, mixed> $doctor
+     * @return array<string, mixed>
+     */
+    private function getDoctorPerformanceContext(array $doctor): array
+    {
+        $doctorId = (int) ($doctor['id'] ?? 0);
+        $cacheKey = $doctorId > 0 ? $doctorId : abs((int) crc32(implode('|', $this->resolveDoctorLookupValues($doctor))));
+
+        if (isset($this->doctorPerformanceCache[$cacheKey])) {
+            return $this->doctorPerformanceCache[$cacheKey];
         }
 
-        $years = [2019, 2020, 2021, 2022, 2023];
+        $today = new DateTimeImmutable('today');
+        $agenda30 = $this->loadDoctorAgendaAggregate($doctor, $today->modify('-29 days'), $today);
+        $agendaPrev30 = $this->loadDoctorAgendaAggregate($doctor, $today->modify('-59 days'), $today->modify('-30 days'));
+        $agendaNext7 = $this->loadDoctorAgendaAggregate($doctor, $today, $today->modify('+6 days'), true);
+        $surgeries90 = $this->loadDoctorSurgeryAggregate($doctor, $today->modify('-89 days'), $today);
+        $surgeriesPrev90 = $this->loadDoctorSurgeryAggregate($doctor, $today->modify('-179 days'), $today->modify('-90 days'));
+        $requests90 = $this->loadDoctorRequestAggregate($doctor, $today->modify('-89 days'), $today);
+        $requestsPrev90 = $this->loadDoctorRequestAggregate($doctor, $today->modify('-179 days'), $today->modify('-90 days'));
+        $exams30 = $this->loadDoctorExamAggregate($doctor, $today->modify('-29 days'), $today);
+        $examsPrev30 = $this->loadDoctorExamAggregate($doctor, $today->modify('-59 days'), $today->modify('-30 days'));
 
-        $highlights = [];
-        foreach ($this->seededSlice($topics, $seed . '|research', 3) as $index => $topic) {
-            $year = $years[$this->seededRange($seed . '|research_year|' . $index, 0, count($years) - 1)];
-            $highlights[] = [
-                'year' => (string)$year,
-                'title' => $topic,
-                'description' => 'Documento presentado en jornadas científicas internas con propuestas para fortalecer la práctica clínica.',
+        $recentSurgeries = $this->loadRecentSurgeries($doctor, 5);
+        $recentRequests = $this->loadRecentRequests($doctor, 5);
+        $recentExams = $this->loadRecentExams($doctor, 5);
+        $agendaMix = $this->loadTopAgendaProcedures($doctor, 4);
+        $surgeryMix = $this->loadTopSurgeryProcedures($doctor, 4);
+        $examMix = $this->loadTopExamProcedures($doctor, 4);
+
+        $mixRows = array_merge(
+            array_map(static fn(array $row): array => ['source' => 'Agenda', 'label' => (string) ($row['label'] ?? ''), 'count' => (int) ($row['count'] ?? 0)], $agendaMix),
+            array_map(static fn(array $row): array => ['source' => 'Cirugías', 'label' => (string) ($row['label'] ?? ''), 'count' => (int) ($row['count'] ?? 0)], $surgeryMix),
+            array_map(static fn(array $row): array => ['source' => 'Exámenes', 'label' => (string) ($row['label'] ?? ''), 'count' => (int) ($row['count'] ?? 0)], $examMix),
+        );
+        usort($mixRows, static fn(array $a, array $b): int => ((int) ($b['count'] ?? 0)) <=> ((int) ($a['count'] ?? 0)));
+
+        $todayPatientsCount = count($this->loadTodayPatientsFromDatabase($doctor));
+        $rating = $this->buildDoctorRating($agenda30, $surgeries90, $requests90, $exams30);
+        $recentActivity = $this->buildRecentActivityTimeline($recentSurgeries, $recentRequests, $recentExams);
+
+        $context = [
+            'agenda_30' => $agenda30,
+            'agenda_prev_30' => $agendaPrev30,
+            'agenda_next_7' => $agendaNext7,
+            'surgeries_90' => $surgeries90,
+            'surgeries_prev_90' => $surgeriesPrev90,
+            'requests_90' => $requests90,
+            'requests_prev_90' => $requestsPrev90,
+            'exams_30' => $exams30,
+            'exams_prev_30' => $examsPrev30,
+            'today_patients_count' => $todayPatientsCount,
+            'recent_surgeries' => $recentSurgeries,
+            'recent_requests' => $recentRequests,
+            'recent_exams' => $recentExams,
+            'recent_activity' => $recentActivity,
+            'mix_rows' => $mixRows,
+            'focus_areas' => $this->extractFocusAreas($mixRows, $doctor),
+            'distribution_rows' => $this->buildDistributionRows($agenda30, $surgeries90, $requests90, $exams30),
+            'rating' => $rating,
+            'quick_stats' => $this->buildQuickStats($agenda30, $surgeries90, $rating),
+            'summary_paragraphs' => $this->buildSummaryParagraphs($doctor, $agenda30, $surgeries90, $requests90, $exams30, $rating),
+            'operational_notes' => $this->buildOperationalNotes($agenda30, $surgeries90, $requests90, $exams30),
+        ];
+
+        $this->doctorPerformanceCache[$cacheKey] = $context;
+
+        return $context;
+    }
+
+    /**
+     * @param array<string, mixed> $doctor
+     * @return array<string, mixed>
+     */
+    private function getDoctorCardPerformanceSummary(array $doctor): array
+    {
+        $doctorId = (int) ($doctor['id'] ?? 0);
+        $cacheKey = $doctorId > 0 ? $doctorId : abs((int) crc32(implode('|', $this->resolveDoctorLookupValues($doctor))));
+
+        if (isset($this->doctorCardCache[$cacheKey])) {
+            return $this->doctorCardCache[$cacheKey];
+        }
+
+        $today = new DateTimeImmutable('today');
+        $agenda30 = $this->loadDoctorAgendaAggregate($doctor, $today->modify('-29 days'), $today);
+        $surgeries90 = $this->loadDoctorSurgeryAggregate($doctor, $today->modify('-89 days'), $today);
+        $rating = $this->buildDoctorRating($agenda30, $surgeries90, ['total' => 0], ['total' => 0]);
+
+        $summary = [
+            'rating' => $rating,
+            'quick_stats' => $this->buildQuickStats($agenda30, $surgeries90, $rating),
+        ];
+
+        $this->doctorCardCache[$cacheKey] = $summary;
+
+        return $summary;
+    }
+
+    /**
+     * @return array{total:int,unique_patients:int,completed:int,lost:int,rescheduled:int,first_hour:string,last_hour:string,weekdays:string,latest_date:string}
+     */
+    private function loadDoctorAgendaAggregate(array $doctor, DateTimeInterface $start, DateTimeInterface $end, bool $excludeCancelled = false): array
+    {
+        $empty = [
+            'total' => 0,
+            'unique_patients' => 0,
+            'completed' => 0,
+            'lost' => 0,
+            'rescheduled' => 0,
+            'first_hour' => '',
+            'last_hour' => '',
+            'weekdays' => '',
+            'latest_date' => '',
+        ];
+        $lookupValues = $this->resolveDoctorLookupValues($doctor);
+        if ($lookupValues === []) {
+            return $empty;
+        }
+
+        $attempts = [
+            $this->buildMatchClause($lookupValues, 'pp.doctor', false, 'agenda_eq_'),
+            $this->buildMatchClause($lookupValues, 'pp.doctor', true, 'agenda_like_'),
+        ];
+
+        foreach ($attempts as [$clause, $params]) {
+            if ($clause === '') {
+                continue;
+            }
+
+            $result = $this->runDoctorAgendaAggregateQuery($clause, $params, $start, $end, $excludeCancelled);
+            if ((int) ($result['total'] ?? 0) > 0) {
+                return $result;
+            }
+        }
+
+        return $empty;
+    }
+
+    /**
+     * @param array<string, string> $params
+     * @return array{total:int,unique_patients:int,completed:int,lost:int,rescheduled:int,first_hour:string,last_hour:string,weekdays:string,latest_date:string}
+     */
+    private function runDoctorAgendaAggregateQuery(
+        string $doctorClause,
+        array $params,
+        DateTimeInterface $start,
+        DateTimeInterface $end,
+        bool $excludeCancelled
+    ): array {
+        $successSql = $this->quoteStringList($this->doctorAgendaSuccessStatuses());
+        $dangerSql = $this->quoteStringList($this->doctorAgendaDangerStatuses());
+        $warningSql = $this->quoteStringList($this->doctorAgendaWarningStatuses());
+        $excludeSql = $excludeCancelled ? ' AND UPPER(TRIM(COALESCE(pp.estado_agenda, ""))) NOT IN (' . $dangerSql . ')' : '';
+
+        $sql = <<<SQL
+            SELECT
+                COUNT(*) AS total,
+                COUNT(DISTINCT CASE
+                    WHEN pp.hc_number IS NOT NULL AND TRIM(pp.hc_number) <> '' THEN pp.hc_number
+                    ELSE NULL
+                END) AS unique_patients,
+                SUM(CASE WHEN UPPER(TRIM(COALESCE(pp.estado_agenda, ''))) IN ({$successSql}) THEN 1 ELSE 0 END) AS completed,
+                SUM(CASE WHEN UPPER(TRIM(COALESCE(pp.estado_agenda, ''))) IN ({$dangerSql}) THEN 1 ELSE 0 END) AS lost,
+                SUM(CASE WHEN UPPER(TRIM(COALESCE(pp.estado_agenda, ''))) IN ({$warningSql}) THEN 1 ELSE 0 END) AS rescheduled,
+                MIN(NULLIF(TRIM(pp.hora), '')) AS first_hour,
+                MAX(NULLIF(TRIM(pp.hora), '')) AS last_hour,
+                GROUP_CONCAT(DISTINCT DAYOFWEEK(pp.fecha) ORDER BY DAYOFWEEK(pp.fecha) SEPARATOR ',') AS weekdays,
+                MAX(DATE(pp.fecha)) AS latest_date
+            FROM procedimiento_proyectado pp
+            WHERE {$doctorClause}
+              AND DATE(pp.fecha) BETWEEN :agenda_start AND :agenda_end
+              AND pp.procedimiento_proyectado IS NOT NULL
+              AND TRIM(pp.procedimiento_proyectado) <> ''
+              {$excludeSql}
+        SQL;
+
+        try {
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute(array_merge($params, [
+                ':agenda_start' => $start->format('Y-m-d'),
+                ':agenda_end' => $end->format('Y-m-d'),
+            ]));
+            $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+        } catch (PDOException) {
+            return [
+                'total' => 0,
+                'unique_patients' => 0,
+                'completed' => 0,
+                'lost' => 0,
+                'rescheduled' => 0,
+                'first_hour' => '',
+                'last_hour' => '',
+                'weekdays' => '',
+                'latest_date' => '',
             ];
         }
 
-        return $highlights;
+        return [
+            'total' => (int) ($row['total'] ?? 0),
+            'unique_patients' => (int) ($row['unique_patients'] ?? 0),
+            'completed' => (int) ($row['completed'] ?? 0),
+            'lost' => (int) ($row['lost'] ?? 0),
+            'rescheduled' => (int) ($row['rescheduled'] ?? 0),
+            'first_hour' => trim((string) ($row['first_hour'] ?? '')),
+            'last_hour' => trim((string) ($row['last_hour'] ?? '')),
+            'weekdays' => trim((string) ($row['weekdays'] ?? '')),
+            'latest_date' => trim((string) ($row['latest_date'] ?? '')),
+        ];
+    }
+
+    /**
+     * @return array{total:int,reviewed:int,latest_date:string}
+     */
+    private function loadDoctorSurgeryAggregate(array $doctor, DateTimeInterface $start, DateTimeInterface $end): array
+    {
+        $empty = ['total' => 0, 'reviewed' => 0, 'latest_date' => ''];
+        $lookupValues = $this->resolveDoctorLookupValues($doctor);
+        if ($lookupValues === []) {
+            return $empty;
+        }
+
+        $attempts = [
+            $this->buildMatchClause($lookupValues, 'pd.cirujano_1', false, 'surgery_eq_'),
+            $this->buildMatchClause($lookupValues, 'pd.cirujano_1', true, 'surgery_like_'),
+        ];
+
+        foreach ($attempts as [$clause, $params]) {
+            if ($clause === '') {
+                continue;
+            }
+
+            $result = $this->runDoctorSurgeryAggregateQuery($clause, $params, $start, $end);
+            if ((int) ($result['total'] ?? 0) > 0) {
+                return $result;
+            }
+        }
+
+        return $empty;
+    }
+
+    /**
+     * @param array<string, string> $params
+     * @return array{total:int,reviewed:int,latest_date:string}
+     */
+    private function runDoctorSurgeryAggregateQuery(string $doctorClause, array $params, DateTimeInterface $start, DateTimeInterface $end): array
+    {
+        $sql = <<<SQL
+            SELECT
+                COUNT(*) AS total,
+                SUM(CASE WHEN COALESCE(pd.status, 0) = 1 THEN 1 ELSE 0 END) AS reviewed,
+                MAX(DATE(pd.fecha_inicio)) AS latest_date
+            FROM protocolo_data pd
+            WHERE {$doctorClause}
+              AND DATE(pd.fecha_inicio) BETWEEN :surgery_start AND :surgery_end
+        SQL;
+
+        try {
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute(array_merge($params, [
+                ':surgery_start' => $start->format('Y-m-d'),
+                ':surgery_end' => $end->format('Y-m-d'),
+            ]));
+            $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+        } catch (PDOException) {
+            return ['total' => 0, 'reviewed' => 0, 'latest_date' => ''];
+        }
+
+        return [
+            'total' => (int) ($row['total'] ?? 0),
+            'reviewed' => (int) ($row['reviewed'] ?? 0),
+            'latest_date' => trim((string) ($row['latest_date'] ?? '')),
+        ];
+    }
+
+    /**
+     * @return array{total:int,unique_patients:int,latest_date:string}
+     */
+    private function loadDoctorRequestAggregate(array $doctor, DateTimeInterface $start, DateTimeInterface $end): array
+    {
+        $empty = ['total' => 0, 'unique_patients' => 0, 'latest_date' => ''];
+        $lookupValues = $this->resolveDoctorLookupValues($doctor);
+        if ($lookupValues === []) {
+            return $empty;
+        }
+
+        $attempts = [
+            $this->buildMatchClause($lookupValues, 'sp.doctor', false, 'request_eq_'),
+            $this->buildMatchClause($lookupValues, 'sp.doctor', true, 'request_like_'),
+        ];
+
+        foreach ($attempts as [$clause, $params]) {
+            if ($clause === '') {
+                continue;
+            }
+
+            $result = $this->runDoctorRequestAggregateQuery($clause, $params, $start, $end);
+            if ((int) ($result['total'] ?? 0) > 0) {
+                return $result;
+            }
+        }
+
+        return $empty;
+    }
+
+    /**
+     * @param array<string, string> $params
+     * @return array{total:int,unique_patients:int,latest_date:string}
+     */
+    private function runDoctorRequestAggregateQuery(string $doctorClause, array $params, DateTimeInterface $start, DateTimeInterface $end): array
+    {
+        $sql = <<<SQL
+            SELECT
+                COUNT(*) AS total,
+                COUNT(DISTINCT CASE
+                    WHEN sp.hc_number IS NOT NULL AND TRIM(sp.hc_number) <> '' THEN sp.hc_number
+                    ELSE NULL
+                END) AS unique_patients,
+                MAX(DATE(COALESCE(sp.created_at, sp.fecha))) AS latest_date
+            FROM solicitud_procedimiento sp
+            WHERE {$doctorClause}
+              AND DATE(COALESCE(sp.created_at, sp.fecha)) BETWEEN :request_start AND :request_end
+              AND sp.procedimiento IS NOT NULL
+              AND TRIM(sp.procedimiento) <> ''
+              AND TRIM(sp.procedimiento) <> 'SELECCIONE'
+        SQL;
+
+        try {
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute(array_merge($params, [
+                ':request_start' => $start->format('Y-m-d'),
+                ':request_end' => $end->format('Y-m-d'),
+            ]));
+            $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+        } catch (PDOException) {
+            return ['total' => 0, 'unique_patients' => 0, 'latest_date' => ''];
+        }
+
+        return [
+            'total' => (int) ($row['total'] ?? 0),
+            'unique_patients' => (int) ($row['unique_patients'] ?? 0),
+            'latest_date' => trim((string) ($row['latest_date'] ?? '')),
+        ];
+    }
+
+    /**
+     * @return array{total:int,unique_patients:int,latest_date:string}
+     */
+    private function loadDoctorExamAggregate(array $doctor, DateTimeInterface $start, DateTimeInterface $end): array
+    {
+        $empty = ['total' => 0, 'unique_patients' => 0, 'latest_date' => ''];
+        if (!$this->tableExists('consulta_examenes')) {
+            return $empty;
+        }
+
+        $lookupValues = $this->resolveDoctorLookupValues($doctor);
+        if ($lookupValues === []) {
+            return $empty;
+        }
+
+        $expression = "COALESCE(NULLIF(TRIM(pp.doctor), ''), NULLIF(TRIM(ce.doctor), ''), NULLIF(TRIM(ce.solicitante), ''), '')";
+        $attempts = [
+            $this->buildMatchClause($lookupValues, $expression, false, 'exam_eq_'),
+            $this->buildMatchClause($lookupValues, $expression, true, 'exam_like_'),
+        ];
+
+        foreach ($attempts as [$clause, $params]) {
+            if ($clause === '') {
+                continue;
+            }
+
+            $result = $this->runDoctorExamAggregateQuery($clause, $params, $start, $end);
+            if ((int) ($result['total'] ?? 0) > 0) {
+                return $result;
+            }
+        }
+
+        return $empty;
+    }
+
+    /**
+     * @param array<string, string> $params
+     * @return array{total:int,unique_patients:int,latest_date:string}
+     */
+    private function runDoctorExamAggregateQuery(string $doctorClause, array $params, DateTimeInterface $start, DateTimeInterface $end): array
+    {
+        $sql = <<<SQL
+            SELECT
+                COUNT(*) AS total,
+                COUNT(DISTINCT CASE
+                    WHEN ce.hc_number IS NOT NULL AND TRIM(ce.hc_number) <> '' THEN ce.hc_number
+                    ELSE NULL
+                END) AS unique_patients,
+                MAX(DATE(COALESCE(ce.consulta_fecha, ce.created_at))) AS latest_date
+            FROM consulta_examenes ce
+            LEFT JOIN procedimiento_proyectado pp ON pp.form_id = ce.form_id AND pp.hc_number = ce.hc_number
+            WHERE {$doctorClause}
+              AND ce.examen_nombre IS NOT NULL
+              AND TRIM(ce.examen_nombre) <> ''
+              AND DATE(COALESCE(ce.consulta_fecha, ce.created_at)) BETWEEN :exam_start AND :exam_end
+        SQL;
+
+        try {
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute(array_merge($params, [
+                ':exam_start' => $start->format('Y-m-d'),
+                ':exam_end' => $end->format('Y-m-d'),
+            ]));
+            $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+        } catch (PDOException) {
+            return ['total' => 0, 'unique_patients' => 0, 'latest_date' => ''];
+        }
+
+        return [
+            'total' => (int) ($row['total'] ?? 0),
+            'unique_patients' => (int) ($row['unique_patients'] ?? 0),
+            'latest_date' => trim((string) ($row['latest_date'] ?? '')),
+        ];
+    }
+
+    /**
+     * @return array<int, array<string, string>>
+     */
+    private function loadRecentSurgeries(array $doctor, int $limit = 5): array
+    {
+        $lookupValues = $this->resolveDoctorLookupValues($doctor);
+        if ($lookupValues === []) {
+            return [];
+        }
+
+        $attempts = [
+            $this->buildMatchClause($lookupValues, 'pd.cirujano_1', false, 'recent_surgery_eq_'),
+            $this->buildMatchClause($lookupValues, 'pd.cirujano_1', true, 'recent_surgery_like_'),
+        ];
+
+        foreach ($attempts as [$clause, $params]) {
+            if ($clause === '') {
+                continue;
+            }
+
+            $rows = $this->runRecentSurgeryQuery($clause, $params, $limit);
+            if ($rows !== []) {
+                return $rows;
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * @param array<string, string> $params
+     * @return array<int, array<string, string>>
+     */
+    private function runRecentSurgeryQuery(string $doctorClause, array $params, int $limit): array
+    {
+        $sql = <<<SQL
+            SELECT
+                DATE(pd.fecha_inicio) AS event_date,
+                COALESCE(NULLIF(TRIM(pd.membrete), ''), 'Cirugía sin membrete') AS procedure_label,
+                COALESCE(
+                    NULLIF(TRIM(CONCAT_WS(' ', NULLIF(p.fname, ''), NULLIF(p.mname, ''), NULLIF(p.lname, ''), NULLIF(p.lname2, ''))), ''),
+                    CONCAT('HC ', pd.hc_number)
+                ) AS patient_name,
+                CASE WHEN COALESCE(pd.status, 0) = 1 THEN 'Revisado' ELSE 'Pendiente de revisión' END AS state_label
+            FROM protocolo_data pd
+            LEFT JOIN patient_data p ON p.hc_number = pd.hc_number
+            WHERE {$doctorClause}
+            ORDER BY pd.fecha_inicio DESC
+            LIMIT {$limit}
+        SQL;
+
+        try {
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute($params);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        } catch (PDOException) {
+            return [];
+        }
+
+        return array_map(function (array $row): array {
+            return [
+                'event_date' => trim((string) ($row['event_date'] ?? '')),
+                'label' => $this->truncateText((string) ($row['procedure_label'] ?? 'Cirugía'), 70),
+                'patient' => trim((string) ($row['patient_name'] ?? '')),
+                'state' => trim((string) ($row['state_label'] ?? '')),
+            ];
+        }, $rows);
+    }
+
+    /**
+     * @return array<int, array<string, string>>
+     */
+    private function loadRecentRequests(array $doctor, int $limit = 5): array
+    {
+        $lookupValues = $this->resolveDoctorLookupValues($doctor);
+        if ($lookupValues === []) {
+            return [];
+        }
+
+        $attempts = [
+            $this->buildMatchClause($lookupValues, 'sp.doctor', false, 'recent_request_eq_'),
+            $this->buildMatchClause($lookupValues, 'sp.doctor', true, 'recent_request_like_'),
+        ];
+
+        foreach ($attempts as [$clause, $params]) {
+            if ($clause === '') {
+                continue;
+            }
+
+            $rows = $this->runRecentRequestQuery($clause, $params, $limit);
+            if ($rows !== []) {
+                return $rows;
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * @param array<string, string> $params
+     * @return array<int, array<string, string>>
+     */
+    private function runRecentRequestQuery(string $doctorClause, array $params, int $limit): array
+    {
+        $sql = <<<SQL
+            SELECT
+                DATE(COALESCE(sp.created_at, sp.fecha)) AS event_date,
+                COALESCE(NULLIF(TRIM(sp.procedimiento), ''), 'Solicitud sin procedimiento') AS procedure_label,
+                COALESCE(
+                    NULLIF(TRIM(CONCAT_WS(' ', NULLIF(p.fname, ''), NULLIF(p.mname, ''), NULLIF(p.lname, ''), NULLIF(p.lname2, ''))), ''),
+                    CONCAT('HC ', sp.hc_number)
+                ) AS patient_name,
+                COALESCE(NULLIF(TRIM(sp.estado), ''), 'Sin estado') AS state_label
+            FROM solicitud_procedimiento sp
+            LEFT JOIN patient_data p ON p.hc_number = sp.hc_number
+            WHERE {$doctorClause}
+              AND sp.procedimiento IS NOT NULL
+              AND TRIM(sp.procedimiento) <> ''
+              AND TRIM(sp.procedimiento) <> 'SELECCIONE'
+            ORDER BY COALESCE(sp.created_at, sp.fecha) DESC, sp.id DESC
+            LIMIT {$limit}
+        SQL;
+
+        try {
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute($params);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        } catch (PDOException) {
+            return [];
+        }
+
+        return array_map(function (array $row): array {
+            return [
+                'event_date' => trim((string) ($row['event_date'] ?? '')),
+                'label' => $this->truncateText((string) ($row['procedure_label'] ?? 'Solicitud'), 70),
+                'patient' => trim((string) ($row['patient_name'] ?? '')),
+                'state' => $this->formatStatusLabel((string) ($row['state_label'] ?? '')) ?? 'Sin estado',
+            ];
+        }, $rows);
+    }
+
+    /**
+     * @return array<int, array<string, string>>
+     */
+    private function loadRecentExams(array $doctor, int $limit = 5): array
+    {
+        if (!$this->tableExists('consulta_examenes')) {
+            return [];
+        }
+
+        $lookupValues = $this->resolveDoctorLookupValues($doctor);
+        if ($lookupValues === []) {
+            return [];
+        }
+
+        $expression = "COALESCE(NULLIF(TRIM(pp.doctor), ''), NULLIF(TRIM(ce.doctor), ''), NULLIF(TRIM(ce.solicitante), ''), '')";
+        $attempts = [
+            $this->buildMatchClause($lookupValues, $expression, false, 'recent_exam_eq_'),
+            $this->buildMatchClause($lookupValues, $expression, true, 'recent_exam_like_'),
+        ];
+
+        foreach ($attempts as [$clause, $params]) {
+            if ($clause === '') {
+                continue;
+            }
+
+            $rows = $this->runRecentExamQuery($clause, $params, $limit);
+            if ($rows !== []) {
+                return $rows;
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * @param array<string, string> $params
+     * @return array<int, array<string, string>>
+     */
+    private function runRecentExamQuery(string $doctorClause, array $params, int $limit): array
+    {
+        $sql = <<<SQL
+            SELECT
+                DATE(COALESCE(ce.consulta_fecha, ce.created_at)) AS event_date,
+                COALESCE(NULLIF(TRIM(ce.examen_nombre), ''), 'Examen sin nombre') AS exam_label,
+                COALESCE(
+                    NULLIF(TRIM(CONCAT_WS(' ', NULLIF(p.fname, ''), NULLIF(p.mname, ''), NULLIF(p.lname, ''), NULLIF(p.lname2, ''))), ''),
+                    CONCAT('HC ', ce.hc_number)
+                ) AS patient_name
+            FROM consulta_examenes ce
+            LEFT JOIN procedimiento_proyectado pp ON pp.form_id = ce.form_id AND pp.hc_number = ce.hc_number
+            LEFT JOIN patient_data p ON p.hc_number = ce.hc_number
+            WHERE {$doctorClause}
+              AND ce.examen_nombre IS NOT NULL
+              AND TRIM(ce.examen_nombre) <> ''
+            ORDER BY COALESCE(ce.consulta_fecha, ce.created_at) DESC
+            LIMIT {$limit}
+        SQL;
+
+        try {
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute($params);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        } catch (PDOException) {
+            return [];
+        }
+
+        return array_map(function (array $row): array {
+            return [
+                'event_date' => trim((string) ($row['event_date'] ?? '')),
+                'label' => $this->truncateText((string) ($row['exam_label'] ?? 'Examen'), 70),
+                'patient' => trim((string) ($row['patient_name'] ?? '')),
+                'state' => 'Solicitado',
+            ];
+        }, $rows);
+    }
+
+    /**
+     * @return array<int, array{label:string,count:int}>
+     */
+    private function loadTopAgendaProcedures(array $doctor, int $limit = 4): array
+    {
+        $lookupValues = $this->resolveDoctorLookupValues($doctor);
+        if ($lookupValues === []) {
+            return [];
+        }
+
+        $attempts = [
+            $this->buildMatchClause($lookupValues, 'pp.doctor', false, 'mix_agenda_eq_'),
+            $this->buildMatchClause($lookupValues, 'pp.doctor', true, 'mix_agenda_like_'),
+        ];
+
+        foreach ($attempts as [$clause, $params]) {
+            if ($clause === '') {
+                continue;
+            }
+
+            $rows = $this->runTopAgendaProceduresQuery($clause, $params, $limit);
+            if ($rows !== []) {
+                return $rows;
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * @param array<string, string> $params
+     * @return array<int, array{label:string,count:int}>
+     */
+    private function runTopAgendaProceduresQuery(string $doctorClause, array $params, int $limit): array
+    {
+        $sql = <<<SQL
+            SELECT
+                COALESCE(NULLIF(TRIM(pp.procedimiento_proyectado), ''), 'Sin procedimiento') AS label,
+                COUNT(*) AS total
+            FROM procedimiento_proyectado pp
+            WHERE {$doctorClause}
+              AND DATE(pp.fecha) >= DATE_SUB(CURDATE(), INTERVAL 90 DAY)
+              AND pp.procedimiento_proyectado IS NOT NULL
+              AND TRIM(pp.procedimiento_proyectado) <> ''
+            GROUP BY label
+            ORDER BY total DESC, label ASC
+            LIMIT {$limit}
+        SQL;
+
+        return $this->runTopLabelsQuery($sql, $params);
+    }
+
+    /**
+     * @return array<int, array{label:string,count:int}>
+     */
+    private function loadTopSurgeryProcedures(array $doctor, int $limit = 4): array
+    {
+        $lookupValues = $this->resolveDoctorLookupValues($doctor);
+        if ($lookupValues === []) {
+            return [];
+        }
+
+        $attempts = [
+            $this->buildMatchClause($lookupValues, 'pd.cirujano_1', false, 'mix_surgery_eq_'),
+            $this->buildMatchClause($lookupValues, 'pd.cirujano_1', true, 'mix_surgery_like_'),
+        ];
+
+        foreach ($attempts as [$clause, $params]) {
+            if ($clause === '') {
+                continue;
+            }
+
+            $sql = <<<SQL
+                SELECT
+                    COALESCE(NULLIF(TRIM(pd.membrete), ''), 'Cirugía sin membrete') AS label,
+                    COUNT(*) AS total
+                FROM protocolo_data pd
+                WHERE {$clause}
+                  AND DATE(pd.fecha_inicio) >= DATE_SUB(CURDATE(), INTERVAL 180 DAY)
+                GROUP BY label
+                ORDER BY total DESC, label ASC
+                LIMIT {$limit}
+            SQL;
+
+            $rows = $this->runTopLabelsQuery($sql, $params);
+            if ($rows !== []) {
+                return $rows;
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * @return array<int, array{label:string,count:int}>
+     */
+    private function loadTopExamProcedures(array $doctor, int $limit = 4): array
+    {
+        if (!$this->tableExists('consulta_examenes')) {
+            return [];
+        }
+
+        $lookupValues = $this->resolveDoctorLookupValues($doctor);
+        if ($lookupValues === []) {
+            return [];
+        }
+
+        $expression = "COALESCE(NULLIF(TRIM(pp.doctor), ''), NULLIF(TRIM(ce.doctor), ''), NULLIF(TRIM(ce.solicitante), ''), '')";
+        $attempts = [
+            $this->buildMatchClause($lookupValues, $expression, false, 'mix_exam_eq_'),
+            $this->buildMatchClause($lookupValues, $expression, true, 'mix_exam_like_'),
+        ];
+
+        foreach ($attempts as [$clause, $params]) {
+            if ($clause === '') {
+                continue;
+            }
+
+            $sql = <<<SQL
+                SELECT
+                    COALESCE(NULLIF(TRIM(ce.examen_nombre), ''), 'Examen sin nombre') AS label,
+                    COUNT(*) AS total
+                FROM consulta_examenes ce
+                LEFT JOIN procedimiento_proyectado pp ON pp.form_id = ce.form_id AND pp.hc_number = ce.hc_number
+                WHERE {$clause}
+                  AND DATE(COALESCE(ce.consulta_fecha, ce.created_at)) >= DATE_SUB(CURDATE(), INTERVAL 90 DAY)
+                  AND ce.examen_nombre IS NOT NULL
+                  AND TRIM(ce.examen_nombre) <> ''
+                GROUP BY label
+                ORDER BY total DESC, label ASC
+                LIMIT {$limit}
+            SQL;
+
+            $rows = $this->runTopLabelsQuery($sql, $params);
+            if ($rows !== []) {
+                return $rows;
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * @param array<string, string> $params
+     * @return array<int, array{label:string,count:int}>
+     */
+    private function runTopLabelsQuery(string $sql, array $params): array
+    {
+        try {
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute($params);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        } catch (PDOException) {
+            return [];
+        }
+
+        return array_map(function (array $row): array {
+            return [
+                'label' => $this->truncateText((string) ($row['label'] ?? 'Sin detalle'), 64),
+                'count' => (int) ($row['total'] ?? 0),
+            ];
+        }, $rows);
+    }
+
+    /**
+     * @param array<string, mixed> $agenda
+     * @param array<string, mixed> $surgeries
+     * @param array<string, mixed> $requests
+     * @param array<string, mixed> $exams
+     * @return array<string, mixed>
+     */
+    private function buildDoctorRating(array $agenda, array $surgeries, array $requests, array $exams): array
+    {
+        $agendaTotal = max(0, (int) ($agenda['total'] ?? 0));
+        $agendaCompleted = max(0, (int) ($agenda['completed'] ?? 0));
+        $agendaLost = max(0, (int) ($agenda['lost'] ?? 0));
+        $patients = max(0, (int) ($agenda['unique_patients'] ?? 0));
+        $surgeryTotal = max(0, (int) ($surgeries['total'] ?? 0));
+        $surgeryReviewed = max(0, (int) ($surgeries['reviewed'] ?? 0));
+        $requestTotal = max(0, (int) ($requests['total'] ?? 0));
+        $examTotal = max(0, (int) ($exams['total'] ?? 0));
+
+        $volumeScore = min(1.0, $patients / 40);
+        $agendaEffectiveness = $agendaTotal > 0 ? ($agendaCompleted / $agendaTotal) : 0.0;
+        $noShowControl = $agendaTotal > 0 ? max(0.0, 1 - ($agendaLost / $agendaTotal)) : 0.0;
+        $protocolReview = $surgeryTotal > 0 ? ($surgeryReviewed / $surgeryTotal) : 0.60;
+        $throughput = min(1.0, (($surgeryTotal * 2) + $requestTotal + $examTotal) / 50);
+
+        $composite = ($volumeScore * 0.30)
+            + ($agendaEffectiveness * 0.25)
+            + ($noShowControl * 0.15)
+            + ($protocolReview * 0.15)
+            + ($throughput * 0.15);
+
+        $stars = max(1.0, min(5.0, round((1 + ($composite * 4)) * 2) / 2));
+        $scorePercent = (int) round($composite * 100);
+
+        if ($stars >= 4.5) {
+            $label = 'Excelente';
+        } elseif ($stars >= 3.5) {
+            $label = 'Destacado';
+        } elseif ($stars >= 2.5) {
+            $label = 'En seguimiento';
+        } else {
+            $label = 'Oportunidad de mejora';
+        }
+
+        return [
+            'stars' => $stars,
+            'score_percent' => $scorePercent,
+            'label' => $label,
+            'summary' => $scorePercent . '/100 en consistencia operativa',
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $agenda
+     * @param array<string, mixed> $surgeries
+     * @param array<string, mixed> $rating
+     * @return array<int, array{label:string,value:string}>
+     */
+    private function buildQuickStats(array $agenda, array $surgeries, array $rating): array
+    {
+        return [
+            ['label' => 'Pacientes 30d', 'value' => number_format((int) ($agenda['unique_patients'] ?? 0))],
+            ['label' => 'Cirugías 90d', 'value' => number_format((int) ($surgeries['total'] ?? 0))],
+            ['label' => 'Score', 'value' => (string) (($rating['score_percent'] ?? 0) . '/100')],
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $doctor
+     * @param array<string, mixed> $agenda
+     * @param array<string, mixed> $surgeries
+     * @param array<string, mixed> $requests
+     * @param array<string, mixed> $exams
+     * @param array<string, mixed> $rating
+     * @return array<int, string>
+     */
+    private function buildSummaryParagraphs(
+        array $doctor,
+        array $agenda,
+        array $surgeries,
+        array $requests,
+        array $exams,
+        array $rating
+    ): array {
+        $displayName = (string) ($doctor['display_name'] ?? $doctor['name'] ?? 'El doctor');
+        $agendaTotal = max(0, (int) ($agenda['total'] ?? 0));
+        $agendaPatients = max(0, (int) ($agenda['unique_patients'] ?? 0));
+        $agendaCompleted = max(0, (int) ($agenda['completed'] ?? 0));
+        $agendaLost = max(0, (int) ($agenda['lost'] ?? 0));
+        $surgeryTotal = max(0, (int) ($surgeries['total'] ?? 0));
+        $surgeryReviewed = max(0, (int) ($surgeries['reviewed'] ?? 0));
+        $requestTotal = max(0, (int) ($requests['total'] ?? 0));
+        $examTotal = max(0, (int) ($exams['total'] ?? 0));
+
+        return [
+            sprintf(
+                '%s registra %s citas en los últimos 30 días para %s pacientes distintos. La atención efectiva se ubica en %s%% y el ausentismo/cancelación en %s%%.',
+                $displayName,
+                number_format($agendaTotal),
+                number_format($agendaPatients),
+                $this->safePercentage($agendaCompleted, $agendaTotal),
+                $agendaTotal > 0 ? $this->safePercentage($agendaLost, $agendaTotal) : 0
+            ),
+            sprintf(
+                'En la ventana quirúrgica y diagnóstica reciente lideró %s cirugías, generó %s solicitudes y %s órdenes de exámenes. El score actual es %s con calificación %s.',
+                number_format($surgeryTotal),
+                number_format($requestTotal),
+                number_format($examTotal),
+                (string) ($rating['summary'] ?? '0/100'),
+                (string) ($rating['label'] ?? 'Sin clasificar')
+            ),
+            sprintf(
+                'De las cirugías analizadas, %s%% ya aparecen revisadas por protocolo.',
+                $this->safePercentage($surgeryReviewed, $surgeryTotal)
+            ),
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $agenda
+     * @param array<string, mixed> $surgeries
+     * @param array<string, mixed> $requests
+     * @param array<string, mixed> $exams
+     * @return array<int, string>
+     */
+    private function buildOperationalNotes(array $agenda, array $surgeries, array $requests, array $exams): array
+    {
+        $notes = [];
+        $agendaTotal = max(0, (int) ($agenda['total'] ?? 0));
+        $agendaLost = max(0, (int) ($agenda['lost'] ?? 0));
+        $agendaCompleted = max(0, (int) ($agenda['completed'] ?? 0));
+        $surgeryTotal = max(0, (int) ($surgeries['total'] ?? 0));
+        $surgeryReviewed = max(0, (int) ($surgeries['reviewed'] ?? 0));
+        $requestTotal = max(0, (int) ($requests['total'] ?? 0));
+        $examTotal = max(0, (int) ($exams['total'] ?? 0));
+
+        if ($agendaTotal === 0) {
+            $notes[] = 'No registra agenda operativa en los últimos 30 días.';
+        } else {
+            $notes[] = 'Agenda efectiva del periodo: ' . $this->safePercentage($agendaCompleted, $agendaTotal) . '%.';
+            if ($agendaTotal > 0 && $this->safePercentage($agendaLost, $agendaTotal) >= 15) {
+                $notes[] = 'El ausentismo/cancelación supera el 15%; conviene revisar confirmaciones y reprogramaciones.';
+            }
+        }
+
+        if ($surgeryTotal > 0) {
+            $notes[] = 'Protocolos revisados: ' . $this->safePercentage($surgeryReviewed, $surgeryTotal) . '% de las cirugías recientes.';
+        }
+
+        if ($requestTotal > 0) {
+            $notes[] = 'Solicitudes quirúrgicas recientes: ' . number_format($requestTotal) . '.';
+        }
+
+        if ($examTotal > 0) {
+            $notes[] = 'Órdenes diagnósticas recientes: ' . number_format($examTotal) . '.';
+        }
+
+        return array_slice($notes, 0, 4);
+    }
+
+    /**
+     * @param array<string, mixed> $agenda
+     * @param array<string, mixed> $surgeries
+     * @param array<string, mixed> $requests
+     * @param array<string, mixed> $exams
+     * @return array<int, array<string, string>>
+     */
+    private function buildDistributionRows(array $agenda, array $surgeries, array $requests, array $exams): array
+    {
+        return [
+            [
+                'label' => 'Agenda 30d',
+                'value' => sprintf(
+                    '%s citas · %s pacientes',
+                    number_format((int) ($agenda['total'] ?? 0)),
+                    number_format((int) ($agenda['unique_patients'] ?? 0))
+                ),
+            ],
+            [
+                'label' => 'Quirófano 90d',
+                'value' => sprintf(
+                    '%s cirugías · %s%% revisadas',
+                    number_format((int) ($surgeries['total'] ?? 0)),
+                    $this->safePercentage((int) ($surgeries['reviewed'] ?? 0), (int) ($surgeries['total'] ?? 0))
+                ),
+            ],
+            [
+                'label' => 'Solicitudes 90d',
+                'value' => sprintf(
+                    '%s solicitudes · %s pacientes',
+                    number_format((int) ($requests['total'] ?? 0)),
+                    number_format((int) ($requests['unique_patients'] ?? 0))
+                ),
+            ],
+            [
+                'label' => 'Exámenes 30d',
+                'value' => sprintf(
+                    '%s órdenes · %s pacientes',
+                    number_format((int) ($exams['total'] ?? 0)),
+                    number_format((int) ($exams['unique_patients'] ?? 0))
+                ),
+            ],
+        ];
+    }
+
+    /**
+     * @param array<int, array<string, string>> $recentSurgeries
+     * @param array<int, array<string, string>> $recentRequests
+     * @param array<int, array<string, string>> $recentExams
+     * @return array<int, array<string, string>>
+     */
+    private function buildRecentActivityTimeline(array $recentSurgeries, array $recentRequests, array $recentExams): array
+    {
+        $items = [];
+
+        foreach ($recentSurgeries as $row) {
+            $items[] = [
+                'ts' => (string) ($row['event_date'] ?? ''),
+                'year' => $this->formatShortDateLabel((string) ($row['event_date'] ?? '')),
+                'title' => 'Cirugía · ' . (string) ($row['label'] ?? 'Sin detalle'),
+                'description' => trim((string) ($row['patient'] ?? '')) . ($row['state'] !== '' ? ' · ' . (string) $row['state'] : ''),
+            ];
+        }
+
+        foreach ($recentRequests as $row) {
+            $items[] = [
+                'ts' => (string) ($row['event_date'] ?? ''),
+                'year' => $this->formatShortDateLabel((string) ($row['event_date'] ?? '')),
+                'title' => 'Solicitud · ' . (string) ($row['label'] ?? 'Sin detalle'),
+                'description' => trim((string) ($row['patient'] ?? '')) . ($row['state'] !== '' ? ' · ' . (string) $row['state'] : ''),
+            ];
+        }
+
+        foreach ($recentExams as $row) {
+            $items[] = [
+                'ts' => (string) ($row['event_date'] ?? ''),
+                'year' => $this->formatShortDateLabel((string) ($row['event_date'] ?? '')),
+                'title' => 'Examen · ' . (string) ($row['label'] ?? 'Sin detalle'),
+                'description' => trim((string) ($row['patient'] ?? '')) . ($row['state'] !== '' ? ' · ' . (string) $row['state'] : ''),
+            ];
+        }
+
+        usort($items, static function (array $a, array $b): int {
+            return strcmp((string) ($b['ts'] ?? ''), (string) ($a['ts'] ?? ''));
+        });
+
+        return array_map(static function (array $item): array {
+            unset($item['ts']);
+            return $item;
+        }, array_slice($items, 0, 8));
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $mixRows
+     * @param array<string, mixed> $doctor
+     * @return array<int, string>
+     */
+    private function extractFocusAreas(array $mixRows, array $doctor): array
+    {
+        $labels = [];
+        foreach ($mixRows as $row) {
+            $label = trim((string) ($row['label'] ?? ''));
+            if ($label !== '') {
+                $labels[] = $label;
+            }
+            if (count($labels) >= 6) {
+                break;
+            }
+        }
+
+        if ($labels === []) {
+            $specialty = trim((string) ($doctor['especialidad'] ?? ''));
+            if ($specialty !== '') {
+                $labels[] = $specialty;
+            }
+        }
+
+        return array_values(array_unique($labels));
+    }
+
+    /**
+     * @param array<int, string> $values
+     * @return array{0: string, 1: array<string, string>}
+     */
+    private function buildMatchClause(array $values, string $expression, bool $useLike, string $paramPrefix): array
+    {
+        $conditions = [];
+        $params = [];
+
+        foreach (array_values($values) as $index => $value) {
+            $param = ':' . $paramPrefix . $index;
+            $conditions[] = $useLike
+                ? 'LOWER(TRIM(' . $expression . ')) LIKE ' . $param
+                : 'LOWER(TRIM(' . $expression . ')) = ' . $param;
+
+            $normalized = $this->normalizeLower($value);
+            $params[$param] = $useLike ? '%' . $normalized . '%' : $normalized;
+        }
+
+        return [$conditions !== [] ? '(' . implode(' OR ', $conditions) . ')' : '', $params];
+    }
+
+    private function quoteStringList(array $values): string
+    {
+        return implode(', ', array_map(static function (string $value): string {
+            return "'" . str_replace("'", "''", $value) . "'";
+        }, $values));
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function doctorAgendaSuccessStatuses(): array
+    {
+        return ['LLEGADO', 'LLEGADA', 'ATENDIDO', 'ATENDIDA', 'FACTURADO', 'FACTURADA', 'EN CONSULTA'];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function doctorAgendaWarningStatuses(): array
+    {
+        return ['REPROGRAMADO', 'REPROGRAMADA', 'REAGENDADO', 'REAGENDADA', 'EN ESPERA'];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function doctorAgendaDangerStatuses(): array
+    {
+        return ['ANULADO', 'ANULADA', 'CANCELADO', 'CANCELADA', 'NO ASISTE', 'NO ASISTIO', 'NO SE PRESENTO', 'NO SE PRESENTÓ', 'NO-SE-PRESENTO'];
+    }
+
+    private function safePercentage(int $part, int $total): int
+    {
+        if ($total <= 0) {
+            return 0;
+        }
+
+        return (int) round(($part * 100) / $total);
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function buildTrend(int $current, int $previous): ?array
+    {
+        if ($current === 0 && $previous === 0) {
+            return null;
+        }
+
+        if ($previous <= 0) {
+            return $this->formatTrend($current > 0 ? 100 : 0);
+        }
+
+        $delta = (int) round((($current - $previous) * 100) / $previous);
+        return $this->formatTrend($delta);
+    }
+
+    private function buildScheduleLabel(string $weekdaysCsv, string $firstHour, string $lastHour): string
+    {
+        $days = $this->formatWeekdaysLabel($weekdaysCsv);
+        $hours = $this->formatHourRange($firstHour, $lastHour);
+
+        if ($days === '' && $hours === '') {
+            return 'Sin agenda futura';
+        }
+
+        if ($days === '') {
+            return $hours;
+        }
+
+        if ($hours === '') {
+            return $days;
+        }
+
+        return $days . ' · ' . $hours;
+    }
+
+    private function formatWeekdaysLabel(string $weekdaysCsv): string
+    {
+        $map = [
+            '1' => 'Dom',
+            '2' => 'Lun',
+            '3' => 'Mar',
+            '4' => 'Mié',
+            '5' => 'Jue',
+            '6' => 'Vie',
+            '7' => 'Sáb',
+        ];
+        $labels = [];
+        foreach (array_filter(array_map('trim', explode(',', $weekdaysCsv))) as $day) {
+            if (isset($map[$day])) {
+                $labels[] = $map[$day];
+            }
+        }
+
+        return implode(', ', array_values(array_unique($labels)));
+    }
+
+    private function formatHourRange(string $firstHour, string $lastHour): string
+    {
+        $start = $this->formatHourLabel($firstHour);
+        $end = $this->formatHourLabel($lastHour);
+
+        if ($start === '--:--' && $end === '--:--') {
+            return '';
+        }
+
+        return trim($start . ' - ' . $end, ' -');
+    }
+
+    private function formatRecencyLabel(string $date): string
+    {
+        if ($date === '') {
+            return 'Sin registros recientes';
+        }
+
+        return $this->formatShortDateLabel($date);
+    }
+
+    private function formatShortDateLabel(string $date): string
+    {
+        if ($date === '') {
+            return 'Sin fecha';
+        }
+
+        $timestamp = strtotime($date);
+        if ($timestamp === false) {
+            return $date;
+        }
+
+        return date('d/m/Y', $timestamp);
+    }
+
+    private function tableExists(string $table): bool
+    {
+        static $cache = [];
+        if (isset($cache[$table])) {
+            return $cache[$table];
+        }
+
+        try {
+            $stmt = $this->pdo->prepare(
+                'SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = :table LIMIT 1'
+            );
+            $stmt->execute([':table' => $table]);
+            $cache[$table] = (bool) $stmt->fetchColumn();
+        } catch (PDOException) {
+            $cache[$table] = false;
+        }
+
+        return $cache[$table];
     }
 
     /**

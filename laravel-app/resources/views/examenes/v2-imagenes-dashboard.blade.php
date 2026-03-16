@@ -248,6 +248,14 @@ sort($estadoOpciones);
         </div>
         <div class="col-12 col-xl-6">
             <div class="imagenes-chart-card">
+                <h6 class="imagenes-chart-title">Top 10 doctores solicitantes</h6>
+                <div class="imagenes-chart-wrap">
+                    <canvas id="chartImagenesTopDoctoresSolicitantes"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-xl-6">
+            <div class="imagenes-chart-card">
                 <h6 class="imagenes-chart-title"><?= htmlspecialchars($insuranceBreakdownTitle !== '' ? $insuranceBreakdownTitle : 'Empresas de seguro', ENT_QUOTES, 'UTF-8') ?></h6>
                 <div class="imagenes-chart-wrap">
                     <canvas id="chartImagenesAnalisisSeguro"></canvas>
@@ -362,6 +370,7 @@ sort($estadoOpciones);
             const citasRealizados = charts.citas_vs_realizados || {};
             const traficoSemana = charts.trafico_dia_semana || {};
             const mix = charts.mix_codigos || {};
+            const topDoctoresSolicitantes = charts.top_doctores_solicitantes || {};
             const analisisSeguro = charts.analisis_seguro || {};
             const aging = charts.aging_backlog || {};
             const backlogCategoria = charts.backlog_facturacion_categoria || {};
@@ -453,6 +462,33 @@ sort($estadoOpciones);
                     };
                 },
                 Array.isArray(mix.labels) && mix.labels.length > 0
+            );
+
+            drawChart(
+                'chartImagenesTopDoctoresSolicitantes',
+                function () {
+                    return {
+                        type: 'bar',
+                        data: {
+                            labels: Array.isArray(topDoctoresSolicitantes.labels) ? topDoctoresSolicitantes.labels : [],
+                            datasets: [
+                                {
+                                    label: 'Solicitudes',
+                                    data: Array.isArray(topDoctoresSolicitantes.values) ? topDoctoresSolicitantes.values : [],
+                                    backgroundColor: '#f59e0b'
+                                }
+                            ]
+                        },
+                        options: {
+                            indexAxis: 'y',
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {legend: {display: false}},
+                            scales: {x: {beginAtZero: true, ticks: {precision: 0}}}
+                        }
+                    };
+                },
+                Array.isArray(topDoctoresSolicitantes.labels) && topDoctoresSolicitantes.labels.length > 0
             );
 
             drawChart(

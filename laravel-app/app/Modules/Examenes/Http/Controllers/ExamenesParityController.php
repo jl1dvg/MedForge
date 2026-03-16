@@ -530,6 +530,14 @@ class ExamenesParityController
             ));
         }
 
+        if ($cachePath !== null && $this->warmNasFileCache($resolvedHcNumber, $resolvedFormId, $filename)) {
+            return response()->file($cachePath, $this->nasResponseHeaders(
+                $this->resolveNasMimeByFilename($filename),
+                (int) (filesize($cachePath) ?: 0),
+                basename($filename)
+            ));
+        }
+
         $opened = $this->nasImagenesService->openFile($resolvedHcNumber, $resolvedFormId, $filename);
         if (!$opened || empty($opened['stream'])) {
             return response($this->nasImagenesService->getLastError() ?? 'Archivo no encontrado.', 404);
@@ -1233,6 +1241,12 @@ class ExamenesParityController
             return true;
         }
 
+        $tmpPath = $cachePath . '.part';
+        if ($this->nasImagenesService->downloadFileToPath($hcNumber, $formId, $filename, $tmpPath)) {
+            @rename($tmpPath, $cachePath);
+            return is_file($cachePath) && (int) (filesize($cachePath) ?: 0) > 0;
+        }
+
         $opened = $this->nasImagenesService->openFile($hcNumber, $formId, $filename);
         if (!$opened || empty($opened['stream'])) {
             return false;
@@ -1240,7 +1254,6 @@ class ExamenesParityController
 
         /** @var resource $stream */
         $stream = $opened['stream'];
-        $tmpPath = $cachePath . '.part';
         $handle = @fopen($tmpPath, 'wb');
         if (!$handle) {
             fclose($stream);
@@ -1256,7 +1269,6 @@ class ExamenesParityController
         }
         fclose($stream);
         fclose($handle);
-
         if (!is_file($tmpPath) || (int) (filesize($tmpPath) ?: 0) <= 0) {
             @unlink($tmpPath);
             return false;

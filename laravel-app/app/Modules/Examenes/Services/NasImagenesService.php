@@ -30,6 +30,45 @@ class NasImagenesService
         return $this->lastError;
     }
 
+    /**
+     * @return array{
+     *     available:bool,
+     *     transport:string,
+     *     mount_path:?string,
+     *     mount_ready:bool,
+     *     mount_readable:bool,
+     *     host:?string,
+     *     port:int,
+     *     username:?string,
+     *     base_path:?string,
+     *     ssh2_available:bool,
+     *     phpseclib_available:bool,
+     *     last_error:?string
+     * }
+     */
+    public function diagnostics(): array
+    {
+        $mountReady = $this->mountPath !== null && $this->mountPath !== '' && is_dir($this->mountPath);
+        $mountReadable = $mountReady && is_readable($this->mountPath);
+        $transport = $this->resolveTransport();
+        $available = $this->isAvailable();
+
+        return [
+            'available' => $available,
+            'transport' => $transport,
+            'mount_path' => $this->mountPath,
+            'mount_ready' => $mountReady,
+            'mount_readable' => $mountReadable,
+            'host' => $this->host,
+            'port' => $this->port,
+            'username' => $this->username,
+            'base_path' => $this->basePath,
+            'ssh2_available' => function_exists('ssh2_connect'),
+            'phpseclib_available' => class_exists('\\phpseclib3\\Net\\SFTP'),
+            'last_error' => $this->lastError,
+        ];
+    }
+
     public function isAvailable(): bool
     {
         if ($this->mountPath !== null && $this->mountPath !== '' && is_dir($this->mountPath)) {
@@ -142,6 +181,66 @@ class NasImagenesService
         return null;
     }
 
+    public function downloadFileToPath(string $hcNumber, string $formId, string $filename, string $localPath): bool
+    {
+        $this->lastError = null;
+        $hcNumber = $this->sanitizeSegment($hcNumber);
+        $formId = $this->sanitizeSegment($formId);
+        $filename = $this->sanitizeFilename($filename);
+        $localPath = trim($localPath);
+
+        if ($hcNumber === '' || $formId === '' || $filename === '' || $localPath === '') {
+            $this->lastError = 'Parámetros inválidos.';
+            return false;
+        }
+
+        $path = $this->buildPath($hcNumber, $formId);
+        if ($path === null) {
+            $this->lastError = 'No se pudo resolver la ruta del NAS.';
+            return false;
+        }
+
+        $dir = dirname($localPath);
+        if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) {
+            $this->lastError = 'No se pudo preparar la carpeta de caché local.';
+            return false;
+        }
+
+        if ($this->mountPath !== null && $this->mountPath !== '' && is_dir($this->mountPath)) {
+            $fullPath = rtrim($path, '/') . '/' . $filename;
+            if (!is_file($fullPath)) {
+                $this->lastError = 'Archivo no encontrado.';
+                return false;
+            }
+
+            $source = @fopen($fullPath, 'rb');
+            if (!$source) {
+                $this->lastError = 'No se pudo abrir el archivo.';
+                return false;
+            }
+
+            return $this->copyStreamToLocalPath($source, $localPath);
+        }
+
+        if ($this->host && $this->username && $this->password && function_exists('ssh2_connect')) {
+            $opened = $this->openFileSftp($path, $filename);
+            if (!$opened || empty($opened['stream'])) {
+                return false;
+            }
+
+            /** @var resource $stream */
+            $stream = $opened['stream'];
+            return $this->copyStreamToLocalPath($stream, $localPath);
+        }
+
+        if ($this->host && $this->username && $this->password && class_exists('\\phpseclib3\\Net\\SFTP')) {
+            return $this->downloadFilePhpseclib($path, $filename, $localPath);
+        }
+
+        $this->lastError = 'NAS no disponible.';
+        return false;
+    }
+
     private function readEnv(string $key): ?string
     {
         $value = getenv($key);
@@ -153,6 +252,27 @@ class NasImagenesService
         }
         $value = trim((string) $value);
         return $value !== '' ? $value : null;
+    }
+
+    private function resolveTransport(): string
+    {
+        if ($this->mountPath !== null && $this->mountPath !== '' && is_dir($this->mountPath)) {
+            return 'mount-local';
+        }
+
+        if ($this->host && $this->username && $this->password && function_exists('ssh2_connect')) {
+            return 'ssh2-sftp';
+        }
+
+        if ($this->host && $this->username && $this->password && class_exists('\\phpseclib3\\Net\\SFTP')) {
+            return 'phpseclib-sftp';
+        }
+
+        if ($this->host && $this->username && $this->password) {
+            return 'sftp-no-driver';
+        }
+
+        return 'unconfigured';
     }
 
     private function sanitizeSegment(string $value): string
@@ -177,6 +297,48 @@ class NasImagenesService
             return '';
         }
         return $value;
+    }
+
+    /**
+     * @param resource $stream
+     */
+    private function copyStreamToLocalPath($stream, string $localPath): bool
+    {
+        $handle = @fopen($localPath, 'wb');
+        if (!$handle) {
+            fclose($stream);
+            $this->lastError = 'No se pudo escribir el archivo en caché local.';
+            return false;
+        }
+
+        $ok = true;
+        while (!feof($stream)) {
+            $chunk = fread($stream, 65536);
+            if ($chunk === false) {
+                $ok = false;
+                break;
+            }
+            if ($chunk === '') {
+                continue;
+            }
+            if (fwrite($handle, $chunk) === false) {
+                $ok = false;
+                break;
+            }
+        }
+
+        fclose($stream);
+        fclose($handle);
+
+        if (!$ok || !is_file($localPath) || (int) (filesize($localPath) ?: 0) <= 0) {
+            @unlink($localPath);
+            if ($this->lastError === null) {
+                $this->lastError = 'No se pudo copiar el archivo desde NAS.';
+            }
+            return false;
+        }
+
+        return true;
     }
 
     private function buildPath(string $hcNumber, string $formId): ?string
@@ -419,6 +581,50 @@ class NasImagenesService
             'type' => $this->mapMime($ext),
             'name' => $filename,
         ];
+    }
+
+    private function downloadFilePhpseclib(string $path, string $filename, string $localPath): bool
+    {
+        $sftp = $this->connectPhpseclib();
+        if (!$sftp) {
+            return false;
+        }
+
+        $remotePath = $path . '/' . $filename;
+        [$stat, $warning] = $this->withWarningTrap(
+            static fn() => $sftp->stat($remotePath),
+            'Error al consultar archivo en NAS'
+        );
+        if ($warning) {
+            return false;
+        }
+        if ($stat === false) {
+            $this->lastError = 'Archivo no encontrado.';
+            return false;
+        }
+
+        $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+        if (!$this->isAllowedExtension($ext)) {
+            $this->lastError = 'Extensión no permitida.';
+            return false;
+        }
+
+        [$downloaded, $warning] = $this->withWarningTrap(
+            static fn() => $sftp->get($remotePath, $localPath),
+            'Error al descargar archivo en NAS'
+        );
+        if ($warning) {
+            @unlink($localPath);
+            return false;
+        }
+
+        if ($downloaded === false || !is_file($localPath) || (int) (filesize($localPath) ?: 0) <= 0) {
+            @unlink($localPath);
+            $this->lastError = 'No se pudo leer el archivo.';
+            return false;
+        }
+
+        return true;
     }
 
     private function connectPhpseclib(): ?\phpseclib3\Net\SFTP

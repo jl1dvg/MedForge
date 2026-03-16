@@ -419,7 +419,18 @@ function ejecutarProtocoloEnPagina(item) {
                     faltantes
                 );
             })(),
-            hacerClickEnBoton('#diagnosticossub11111 .list-cell__button .js-input-plus', Array.isArray(item.diagnosticos) ? item.diagnosticos.length - 1 : 0)
+            (() => {
+                const yaCreados = document.querySelectorAll('#diagnosticossub11111 tbody tr').length;
+                const necesarios = Array.isArray(item.diagnosticos) ? item.diagnosticos.length : 0;
+                const faltantes = Math.max(necesarios - yaCreados, 0);
+
+                console.log(`🧮 Diagnósticos: necesarios=${necesarios}, yaCreados=${yaCreados}, faltantes=${faltantes}`);
+
+                return hacerClickEnBoton(
+                    '#diagnosticossub11111 .list-cell__button .js-input-plus',
+                    faltantes
+                );
+            })()
         ]);
     };
 

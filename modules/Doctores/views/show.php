@@ -56,6 +56,10 @@ $focusAreas = $focusAreas ?? [];
 $supportChannels = $supportChannels ?? [];
 /** @var array<int, array<string, string>> $researchHighlights */
 $researchHighlights = $researchHighlights ?? [];
+/** @var array<string, mixed> $performanceSummary */
+$performanceSummary = is_array($performanceSummary ?? null) ? $performanceSummary : [];
+/** @var array<int, string> $operationalNotes */
+$operationalNotes = $operationalNotes ?? [];
 /** @var array<int, array<string, mixed>> $appointmentsDays */
 $appointmentsDays = $appointmentsDays ?? [];
 /** @var array<int, array<string, mixed>> $appointments */
@@ -79,6 +83,25 @@ foreach ($appointmentsDays as $idx => $day) {
 
 $prevDay = $selectedDayIndex !== null && $selectedDayIndex > 0 ? $appointmentsDays[$selectedDayIndex - 1] : null;
 $nextDay = $selectedDayIndex !== null && $selectedDayIndex < count($appointmentsDays) - 1 ? $appointmentsDays[$selectedDayIndex + 1] : null;
+
+$renderStars = static function (float $stars): string {
+    $html = '';
+    for ($i = 1; $i <= 5; $i++) {
+        if ($stars >= $i) {
+            $html .= '<i class="fa fa-star text-warning"></i>';
+            continue;
+        }
+
+        if ($stars >= ($i - 0.5)) {
+            $html .= '<i class="fa fa-star-half-o text-warning"></i>';
+            continue;
+        }
+
+        $html .= '<i class="fa fa-star-o text-muted"></i>';
+    }
+
+    return $html;
+};
 
 $buildDayUrl = static function (?array $day) use ($doctorDetailUrl): string {
     if ($doctorDetailUrl === null || $day === null || empty($day['date'])) {
@@ -106,7 +129,7 @@ $scripts = array_merge($scripts ?? [], [
                     <nav>
                         <ol class="breadcrumb">
                             <li class="breadcrumb-item"><a href="/"><i class="mdi mdi-home-outline"></i></a></li>
-                            <li class="breadcrumb-item"><a href="/doctores">Doctors</a></li>
+                            <li class="breadcrumb-item"><a href="/doctores">Doctores</a></li>
                             <li class="breadcrumb-item active" aria-current="page">Perfil</li>
                         </ol>
                     </nav>
@@ -136,6 +159,19 @@ $scripts = array_merge($scripts ?? [], [
                                  class="avatar avatar-xxl rounded-circle border border-3 border-white shadow mb-15"
                                  alt="<?= htmlspecialchars($displayName, ENT_QUOTES, 'UTF-8') ?>">
                             <h3 class="mb-5"><?= htmlspecialchars($displayName, ENT_QUOTES, 'UTF-8') ?></h3>
+                            <?php if (!empty($performanceSummary)): ?>
+                                <div class="mb-10">
+                                    <div class="d-flex align-items-center justify-content-center gap-10 flex-wrap">
+                                        <div class="fs-18"><?= $renderStars((float) ($performanceSummary['stars'] ?? 0)) ?></div>
+                                        <span class="badge badge-warning-light text-warning px-10 py-5">
+                                            <?= htmlspecialchars((string) ($performanceSummary['label'] ?? 'Sin score'), ENT_QUOTES, 'UTF-8') ?>
+                                        </span>
+                                    </div>
+                                    <p class="mb-0 text-fade fs-13 mt-5">
+                                        <?= htmlspecialchars((string) ($performanceSummary['summary'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
+                                    </p>
+                                </div>
+                            <?php endif; ?>
                             <?php if (!empty($doctor['especialidad'])): ?>
                                 <p class="text-fade mb-5"><?= htmlspecialchars($doctor['especialidad'], ENT_QUOTES, 'UTF-8') ?></p>
                             <?php endif; ?>
@@ -195,7 +231,7 @@ $scripts = array_merge($scripts ?? [], [
                 <div class="box">
                     <div class="box-header">
                         <div class="d-flex justify-content-between align-items-center">
-                            <h4 class="box-title mb-0">Appointments</h4>
+                            <h4 class="box-title mb-0">Agenda</h4>
                             <?php if ($appointmentsSelectedLabel): ?>
                                 <span class="text-fade fs-12"><?= htmlspecialchars($appointmentsSelectedLabel, ENT_QUOTES, 'UTF-8') ?></span>
                             <?php endif; ?>
@@ -370,7 +406,7 @@ $scripts = array_merge($scripts ?? [], [
                 <?php if (!empty($supportChannels)): ?>
                     <div class="box">
                         <div class="box-header">
-                            <h4 class="box-title">Canales de coordinación</h4>
+                            <h4 class="box-title">Distribución operativa</h4>
                         </div>
                         <div class="box-body">
                             <ul class="list-unstyled mb-0">
@@ -435,23 +471,28 @@ $scripts = array_merge($scripts ?? [], [
                         <?php if (!empty($availabilitySummary)): ?>
                             <div class="row g-3 mt-20 pt-15 border-top">
                                 <div class="col-sm-6 col-lg-3">
-                                    <p class="text-fade mb-0">Jornada presencial</p>
-                                    <h5 class="mb-0"><?= htmlspecialchars((string)($availabilitySummary['working_hours_label'] ?? ''), ENT_QUOTES, 'UTF-8') ?></h5>
+                                    <p class="text-fade mb-0">Agenda habitual</p>
+                                    <h5 class="mb-0"><?= htmlspecialchars((string)($availabilitySummary['schedule_label'] ?? 'Sin agenda futura'), ENT_QUOTES, 'UTF-8') ?></h5>
                                 </div>
                                 <div class="col-sm-6 col-lg-3">
-                                    <p class="text-fade mb-0">Consultas presenciales</p>
-                                    <h5 class="mb-0"><?= htmlspecialchars((string)$availabilitySummary['in_person_slots'], ENT_QUOTES, 'UTF-8') ?>
-                                        turnos</h5>
+                                    <p class="text-fade mb-0">Próximos 7 días</p>
+                                    <h5 class="mb-0"><?= htmlspecialchars((string)($availabilitySummary['next_7d_appointments'] ?? 0), ENT_QUOTES, 'UTF-8') ?>
+                                        citas</h5>
                                 </div>
                                 <div class="col-sm-6 col-lg-3">
-                                    <p class="text-fade mb-0">Telemedicina</p>
-                                    <h5 class="mb-0"><?= htmlspecialchars((string)$availabilitySummary['virtual_slots'], ENT_QUOTES, 'UTF-8') ?>
-                                        cupos</h5>
+                                    <p class="text-fade mb-0">Pacientes hoy</p>
+                                    <h5 class="mb-0"><?= htmlspecialchars((string)($availabilitySummary['today_patients'] ?? 0), ENT_QUOTES, 'UTF-8') ?>
+                                        casos</h5>
                                 </div>
                                 <div class="col-sm-6 col-lg-3">
-                                    <p class="text-fade mb-0">Tiempo de respuesta</p>
-                                    <h5 class="mb-0"><?= htmlspecialchars((string)$availabilitySummary['response_time_hours'], ENT_QUOTES, 'UTF-8') ?>
-                                        h</h5>
+                                    <p class="text-fade mb-0">Última cirugía</p>
+                                    <h5 class="mb-0"><?= htmlspecialchars((string)($availabilitySummary['latest_surgery_label'] ?? 'Sin registros recientes'), ENT_QUOTES, 'UTF-8') ?></h5>
+                                </div>
+                            </div>
+                            <div class="row g-3 mt-5">
+                                <div class="col-sm-6 col-lg-3">
+                                    <p class="text-fade mb-0">Último examen</p>
+                                    <h5 class="mb-0"><?= htmlspecialchars((string)($availabilitySummary['latest_exam_label'] ?? 'Sin registros recientes'), ENT_QUOTES, 'UTF-8') ?></h5>
                                 </div>
                             </div>
                         <?php endif; ?>
@@ -461,7 +502,7 @@ $scripts = array_merge($scripts ?? [], [
                 <?php if (!empty($biographyParagraphs)): ?>
                     <div class="box">
                         <div class="box-header">
-                            <h4 class="box-title">Biografía</h4>
+                            <h4 class="box-title">Resumen operativo</h4>
                         </div>
                         <div class="box-body">
                             <?php foreach ($biographyParagraphs as $paragraph): ?>
@@ -506,7 +547,7 @@ $scripts = array_merge($scripts ?? [], [
                         <?php if (!empty($activityStats)): ?>
                             <div class="row g-3">
                                 <?php foreach ($activityStats as $stat): ?>
-                                    <div class="col-md-4">
+                                    <div class="col-md-3">
                                         <div class="bg-lightest rounded10 p-20 h-100">
                                             <p class="text-fade mb-10"><?= htmlspecialchars($stat['label'], ENT_QUOTES, 'UTF-8') ?></p>
                                             <h3 class="mb-5 fw-600">
@@ -530,7 +571,7 @@ $scripts = array_merge($scripts ?? [], [
                                 <?php endforeach; ?>
                             </div>
                             <p class="text-fade mt-15 mb-0">Los indicadores combinan la actividad registrada en agenda,
-                                reportes clínicos y sesiones de telemedicina coordinadas por el equipo de soporte.</p>
+                                cirugía, solicitudes y órdenes diagnósticas del doctor.</p>
                         <?php else: ?>
                             <div class="alert alert-info mb-0 d-flex align-items-start">
                                 <i class="fa fa-info-circle me-10 mt-1"></i>
@@ -547,7 +588,7 @@ $scripts = array_merge($scripts ?? [], [
 
                 <div class="box">
                     <div class="box-header">
-                        <h4 class="box-title">Hitos profesionales</h4>
+                        <h4 class="box-title">Actividad reciente</h4>
                     </div>
                     <div class="box-body">
                         <?php if (!empty($milestones)): ?>
@@ -563,8 +604,7 @@ $scripts = array_merge($scripts ?? [], [
                                 </div>
                             <?php endforeach; ?>
                         <?php else: ?>
-                            <p class="text-fade mb-0">Registra hitos importantes de la trayectoria del profesional para
-                                compartirlos con el equipo médico.</p>
+                            <p class="text-fade mb-0">No se encontraron movimientos recientes para este doctor.</p>
                         <?php endif; ?>
                     </div>
                 </div>
@@ -572,7 +612,7 @@ $scripts = array_merge($scripts ?? [], [
                 <?php if (!empty($researchHighlights)): ?>
                     <div class="box">
                         <div class="box-header">
-                            <h4 class="box-title">Investigación y publicaciones</h4>
+                            <h4 class="box-title">Top procedimientos</h4>
                         </div>
                         <div class="box-body">
                             <?php foreach ($researchHighlights as $highlight): ?>
@@ -593,33 +633,15 @@ $scripts = array_merge($scripts ?? [], [
                         <h4 class="box-title">Notas operativas</h4>
                     </div>
                     <div class="box-body">
-                        <ul class="list-unstyled mb-0">
-                            <li class="mb-10"><i class="fa fa-calendar-check text-primary me-10"></i> Confirmar
-                                disponibilidad
-                                de <?= htmlspecialchars((string)($availabilitySummary['virtual_slots'] ?? '0'), ENT_QUOTES, 'UTF-8') ?>
-                                teleconsultas
-                                y <?= htmlspecialchars((string)($availabilitySummary['in_person_slots'] ?? '0'), ENT_QUOTES, 'UTF-8') ?>
-                                turnos presenciales antes de las 12h00.
-                            </li>
-                            <?php if ($primarySupportLabel && $primarySupportValue): ?>
-                                <li class="mb-10"><i class="fa fa-users text-success me-10"></i> Coordinar
-                                    interconsultas
-                                    con <?= htmlspecialchars($primarySupportLabel, ENT_QUOTES, 'UTF-8') ?>
-                                    (<?= htmlspecialchars($primarySupportValue, ENT_QUOTES, 'UTF-8') ?>) para pacientes
-                                    complejos.
-                                </li>
-                            <?php endif; ?>
-                            <?php if (!empty($activityStats)): ?>
-                                <?php $satisfactionStat = end($activityStats); ?>
-                                <?php if ($satisfactionStat && isset($satisfactionStat['value'])): ?>
-                                    <li class="mb-0"><i class="fa fa-line-chart text-warning me-10"></i> Actualizar
-                                        tablero de satisfacción cuando cierre la jornada
-                                        (meta <?= htmlspecialchars((string)$satisfactionStat['value'], ENT_QUOTES, 'UTF-8') ?><?= !empty($satisfactionStat['suffix']) ? htmlspecialchars($satisfactionStat['suffix'], ENT_QUOTES, 'UTF-8') : '' ?>
-                                        ).
-                                    </li>
-                                <?php endif; ?>
-                            <?php endif; ?>
-                        </ul>
+                        <?php if (!empty($operationalNotes)): ?>
+                            <ul class="list-unstyled mb-0">
+                                <?php foreach ($operationalNotes as $note): ?>
+                                    <li class="mb-10"><i class="fa fa-line-chart text-primary me-10"></i><?= htmlspecialchars($note, ENT_QUOTES, 'UTF-8') ?></li>
+                                <?php endforeach; ?>
+                            </ul>
+                        <?php else: ?>
+                            <p class="text-fade mb-0">Sin observaciones operativas relevantes en la ventana analizada.</p>
+                        <?php endif; ?>
                     </div>
                 </div>
             </div>
