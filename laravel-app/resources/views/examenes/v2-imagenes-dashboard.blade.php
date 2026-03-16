@@ -237,6 +237,22 @@ sort($estadoOpciones);
                 </div>
             </div>
         </div>
+        <div class="col-12 col-xl-6">
+            <div class="imagenes-chart-card">
+                <h6 class="imagenes-chart-title">Backlog de facturación por categoría</h6>
+                <div class="imagenes-chart-wrap">
+                    <canvas id="chartImagenesBacklogCategoria"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-xl-6">
+            <div class="imagenes-chart-card">
+                <h6 class="imagenes-chart-title">Rendimiento económico</h6>
+                <div class="imagenes-chart-wrap">
+                    <canvas id="chartImagenesRendimientoEconomico"></canvas>
+                </div>
+            </div>
+        </div>
     </div>
 </section>
 
@@ -322,6 +338,8 @@ sort($estadoOpciones);
             const traficoSemana = charts.trafico_dia_semana || {};
             const mix = charts.mix_codigos || {};
             const aging = charts.aging_backlog || {};
+            const backlogCategoria = charts.backlog_facturacion_categoria || {};
+            const rendimientoEconomico = charts.rendimiento_economico || {};
 
             drawChart(
                 'chartImagenesSerieDiaria',
@@ -487,6 +505,88 @@ sort($estadoOpciones);
                     };
                 },
                 Array.isArray(traficoSemana.values) && traficoSemana.values.some(function (value) { return Number(value || 0) > 0; })
+            );
+
+            drawChart(
+                'chartImagenesBacklogCategoria',
+                function () {
+                    const datasets = Array.isArray(backlogCategoria.datasets) ? backlogCategoria.datasets : [];
+                    return {
+                        type: 'bar',
+                        data: {
+                            labels: Array.isArray(backlogCategoria.labels) ? backlogCategoria.labels : [],
+                            datasets: datasets.map(function (dataset, index) {
+                                const palette = [
+                                    {backgroundColor: '#0d6efd', borderColor: '#0a58ca'},
+                                    {backgroundColor: '#6f42c1', borderColor: '#59359c'},
+                                    {backgroundColor: '#20c997', borderColor: '#198754'}
+                                ];
+                                const colors = palette[index] || palette[palette.length - 1];
+                                return {
+                                    label: dataset.label || ('Serie ' + (index + 1)),
+                                    data: Array.isArray(dataset.values) ? dataset.values : [],
+                                    backgroundColor: colors.backgroundColor,
+                                    borderColor: colors.borderColor,
+                                    borderWidth: 1
+                                };
+                            })
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {legend: {position: 'top'}},
+                            scales: {y: {beginAtZero: true, ticks: {precision: 0}}}
+                        }
+                    };
+                },
+                Array.isArray(backlogCategoria.datasets)
+                    && backlogCategoria.datasets.some(function (dataset) {
+                        return Array.isArray(dataset.values) && dataset.values.some(function (value) { return Number(value || 0) > 0; });
+                    })
+            );
+
+            drawChart(
+                'chartImagenesRendimientoEconomico',
+                function () {
+                    return {
+                        type: 'bar',
+                        data: {
+                            labels: Array.isArray(rendimientoEconomico.labels) ? rendimientoEconomico.labels : [],
+                            datasets: [
+                                {
+                                    label: 'Monto',
+                                    data: Array.isArray(rendimientoEconomico.values) ? rendimientoEconomico.values : [],
+                                    backgroundColor: ['#198754', '#fd7e14']
+                                }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: {display: false},
+                                tooltip: {
+                                    callbacks: {
+                                        label: function (context) {
+                                            return '$' + Number(context.parsed.y || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                                        }
+                                    }
+                                }
+                            },
+                            scales: {
+                                y: {
+                                    beginAtZero: true,
+                                    ticks: {
+                                        callback: function (value) {
+                                            return '$' + Number(value || 0).toLocaleString('en-US');
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    };
+                },
+                Array.isArray(rendimientoEconomico.values) && rendimientoEconomico.values.some(function (value) { return Number(value || 0) > 0; })
             );
         });
     })();

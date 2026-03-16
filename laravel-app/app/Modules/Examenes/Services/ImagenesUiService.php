@@ -100,18 +100,34 @@ class ImagenesUiService
 
     /**
      * @param array<string,mixed> $query
-     * @return array{filters:array<string,string>,filtersSummary:array<int,array{label:string,value:string}>,dashboard:array<string,mixed>,detailRows:array<int,array<string,mixed>>,total:int}
+     * @return array{
+     *     filters:array<string,string>,
+     *     filtersSummary:array<int,array{label:string,value:string}>,
+     *     dashboard:array<string,mixed>,
+     *     detailRows:array<int,array<string,mixed>>,
+     *     report:array<string,mixed>,
+     *     total:int
+     * }
      */
     public function imagenesDashboardExportPayload(array $query): array
     {
         $payload = $this->imagenesDashboard($query);
+        $dashboard = is_array($payload['dashboard'] ?? null) ? $payload['dashboard'] : [];
+        $detailRows = is_array($payload['detailRows'] ?? null) ? $payload['detailRows'] : [];
+        $filtersSummary = is_array($payload['filtersSummary'] ?? null) ? $payload['filtersSummary'] : [];
 
         return [
             'filters' => $payload['filters'],
-            'filtersSummary' => $payload['filtersSummary'],
-            'dashboard' => $payload['dashboard'],
-            'detailRows' => $payload['detailRows'],
-            'total' => count($payload['detailRows']),
+            'filtersSummary' => $filtersSummary,
+            'dashboard' => $dashboard,
+            'detailRows' => $detailRows,
+            'report' => $this->buildImagenesDashboardReport(
+                $dashboard,
+                $detailRows,
+                $filtersSummary,
+                is_array($payload['filters'] ?? null) ? $payload['filters'] : []
+            ),
+            'total' => count($detailRows),
         ];
     }
 
@@ -226,58 +242,7 @@ class ImagenesUiService
                NULL AS nas_last_scanned_at";
         $nasJoin = $nasAvailable ? 'LEFT JOIN imagenes_nas_index ini ON ini.form_id = pp.form_id' : '';
 
-        $hasFacturacionReal = $this->tableExists('billing_facturacion_real')
-            && $this->columnExists('billing_facturacion_real', 'form_id')
-            && $this->columnExists('billing_facturacion_real', 'monto_honorario');
-        $facturadoSelect = $includeFacturado && $hasFacturacionReal
-            ? "CASE
-                    WHEN bfr.billing_id IS NULL AND COALESCE(bfr.total_produccion, 0) <= 0 THEN 0
-                    ELSE 1
-               END AS facturado,
-               bfr.billing_id,
-               bfr.fecha_facturacion,
-               bfr.fecha_atencion,
-               COALESCE(bfr.total_produccion, 0) AS total_produccion,
-               COALESCE(bfr.procedimientos_facturados, 0) AS procedimientos_facturados,
-               bfr.numero_factura,
-               bfr.factura_id,
-               bfr.estado_facturacion_raw"
-            : "0 AS facturado,
-               NULL AS billing_id,
-               NULL AS fecha_facturacion,
-               NULL AS fecha_atencion,
-               0 AS total_produccion,
-               0 AS procedimientos_facturados,
-               NULL AS numero_factura,
-               NULL AS factura_id,
-               NULL AS estado_facturacion_raw";
-        $facturadoJoin = $includeFacturado && $hasFacturacionReal
-            ? "LEFT JOIN (
-                SELECT
-                    bfr.form_id,
-                    MAX(NULLIF(TRIM(COALESCE(bfr.factura_id, '')), '')) AS billing_id,
-                    MAX(
-                        CASE
-                            WHEN CAST(bfr.fecha_facturacion AS CHAR) IN ('', '0000-00-00', '0000-00-00 00:00:00') THEN NULL
-                            ELSE bfr.fecha_facturacion
-                        END
-                    ) AS fecha_facturacion,
-                    MAX(
-                        CASE
-                            WHEN CAST(bfr.fecha_atencion AS CHAR) IN ('', '0000-00-00', '0000-00-00 00:00:00') THEN NULL
-                            ELSE bfr.fecha_atencion
-                        END
-                    ) AS fecha_atencion,
-                    MAX(NULLIF(TRIM(COALESCE(bfr.numero_factura, '')), '')) AS numero_factura,
-                    MAX(NULLIF(TRIM(COALESCE(bfr.factura_id, '')), '')) AS factura_id,
-                    MAX(NULLIF(TRIM(COALESCE(bfr.estado, '')), '')) AS estado_facturacion_raw,
-                    COALESCE(SUM(bfr.monto_honorario), 0) AS total_produccion,
-                    COUNT(*) AS procedimientos_facturados
-                FROM billing_facturacion_real bfr
-                WHERE bfr.form_id IS NOT NULL AND TRIM(bfr.form_id) <> ''
-                GROUP BY bfr.form_id
-            ) bfr ON bfr.form_id = pp.form_id"
-            : '';
+        $facturacionSql = $this->buildImagenesFacturacionSql($includeFacturado);
 
         $sql = "SELECT
                 pp.id,
@@ -305,13 +270,13 @@ class ImagenesUiService
                 ii.informe_actualizado AS informe_actualizado,
                 COALESCE(ii.informes_total, 0) AS informes_total,
                 {$nasSelect},
-                {$facturadoSelect}
+                {$facturacionSql['select']}
             FROM procedimiento_proyectado pp
             LEFT JOIN patient_data pd ON pd.hc_number = pp.hc_number
             {$imagenInformeJoin}
             {$nasJoin}
             {$categoriaContext['join']}
-            {$facturadoJoin}
+            {$facturacionSql['join']}
             WHERE pp.estado_agenda IS NOT NULL
               AND TRIM(pp.estado_agenda) <> ''
               AND UPPER(TRIM(pp.procedimiento_proyectado)) LIKE 'IMAGENES%'";
@@ -374,8 +339,200 @@ class ImagenesUiService
 
         $stmt = $this->db->prepare($sql);
         $stmt->execute($params);
+        $rows = $stmt ? ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
 
-        return $stmt ? ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
+        foreach ($rows as &$row) {
+            $row = $this->mergeImagenBillingEvidence($row);
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * @return array{select:string,join:string}
+     */
+    private function buildImagenesFacturacionSql(bool $includeFacturado): array
+    {
+        $defaultSelect = "0 AS facturado,
+               NULL AS billing_id,
+               NULL AS fecha_facturacion,
+               NULL AS fecha_atencion,
+               0 AS total_produccion,
+               0 AS procedimientos_facturados,
+               NULL AS numero_factura,
+               NULL AS factura_id,
+               NULL AS estado_facturacion_raw,
+               NULL AS real_billing_id,
+               NULL AS real_fecha_facturacion,
+               NULL AS real_fecha_atencion,
+               0 AS real_total_produccion,
+               0 AS real_procedimientos_facturados,
+               NULL AS real_numero_factura,
+               NULL AS real_factura_id,
+               NULL AS real_estado_facturacion_raw,
+               NULL AS public_billing_id,
+               NULL AS public_fecha_facturacion,
+               0 AS public_total_produccion,
+               0 AS public_procedimientos_facturados";
+        if (!$includeFacturado) {
+            return ['select' => $defaultSelect, 'join' => ''];
+        }
+
+        $hasFacturacionReal = $this->tableExists('billing_facturacion_real')
+            && $this->columnExists('billing_facturacion_real', 'form_id')
+            && $this->columnExists('billing_facturacion_real', 'monto_honorario');
+        $hasBillingPublico = $this->tableExists('billing_main')
+            && $this->columnExists('billing_main', 'id')
+            && $this->columnExists('billing_main', 'form_id')
+            && $this->tableExists('billing_procedimientos')
+            && $this->columnExists('billing_procedimientos', 'billing_id')
+            && $this->columnExists('billing_procedimientos', 'proc_precio');
+
+        $publicFechaExpr = $hasBillingPublico && $this->columnExists('billing_main', 'created_at')
+            ? "MAX(
+                    CASE
+                        WHEN CAST(bm.created_at AS CHAR) IN ('', '0000-00-00', '0000-00-00 00:00:00') THEN NULL
+                        ELSE bm.created_at
+                    END
+                ) AS fecha_facturacion"
+            : 'NULL AS fecha_facturacion';
+
+        $realSubquery = $hasFacturacionReal
+            ? "SELECT
+                    NULLIF(TRIM(COALESCE(bfr.form_id, '')), '') AS form_id,
+                    MAX(NULLIF(TRIM(COALESCE(bfr.factura_id, '')), '')) AS billing_id,
+                    MAX(
+                        CASE
+                            WHEN CAST(bfr.fecha_facturacion AS CHAR) IN ('', '0000-00-00', '0000-00-00 00:00:00') THEN NULL
+                            ELSE bfr.fecha_facturacion
+                        END
+                    ) AS fecha_facturacion,
+                    MAX(
+                        CASE
+                            WHEN CAST(bfr.fecha_atencion AS CHAR) IN ('', '0000-00-00', '0000-00-00 00:00:00') THEN NULL
+                            ELSE bfr.fecha_atencion
+                        END
+                    ) AS fecha_atencion,
+                    MAX(NULLIF(TRIM(COALESCE(bfr.numero_factura, '')), '')) AS numero_factura,
+                    MAX(NULLIF(TRIM(COALESCE(bfr.factura_id, '')), '')) AS factura_id,
+                    MAX(NULLIF(TRIM(COALESCE(bfr.estado, '')), '')) AS estado_facturacion_raw,
+                    COALESCE(SUM(bfr.monto_honorario), 0) AS total_produccion,
+                    COUNT(*) AS procedimientos_facturados
+                FROM billing_facturacion_real bfr
+                WHERE bfr.form_id IS NOT NULL AND TRIM(bfr.form_id) <> ''
+                GROUP BY bfr.form_id"
+            : "SELECT
+                    CAST(NULL AS CHAR(50)) AS form_id,
+                    CAST(NULL AS CHAR(50)) AS billing_id,
+                    CAST(NULL AS DATETIME) AS fecha_facturacion,
+                    CAST(NULL AS DATETIME) AS fecha_atencion,
+                    CAST(NULL AS CHAR(50)) AS numero_factura,
+                    CAST(NULL AS CHAR(50)) AS factura_id,
+                    CAST(NULL AS CHAR(100)) AS estado_facturacion_raw,
+                    0 AS total_produccion,
+                    0 AS procedimientos_facturados
+                LIMIT 0";
+        $publicSubquery = $hasBillingPublico
+            ? "SELECT
+                    NULLIF(TRIM(COALESCE(bm.form_id, '')), '') AS form_id,
+                    MAX(CAST(bm.id AS CHAR)) AS billing_id,
+                    {$publicFechaExpr},
+                    COALESCE(SUM(COALESCE(bp.proc_precio, 0)), 0) AS total_produccion,
+                    COUNT(*) AS procedimientos_facturados
+                FROM billing_procedimientos bp
+                INNER JOIN billing_main bm ON bm.id = bp.billing_id
+                WHERE bm.form_id IS NOT NULL AND TRIM(bm.form_id) <> ''
+                GROUP BY bm.form_id"
+            : "SELECT
+                    CAST(NULL AS CHAR(50)) AS form_id,
+                    CAST(NULL AS CHAR(50)) AS billing_id,
+                    CAST(NULL AS DATETIME) AS fecha_facturacion,
+                    0 AS total_produccion,
+                    0 AS procedimientos_facturados
+                LIMIT 0";
+
+        return [
+            'select' => "0 AS facturado,
+               NULL AS billing_id,
+               NULL AS fecha_facturacion,
+               NULL AS fecha_atencion,
+               0 AS total_produccion,
+               0 AS procedimientos_facturados,
+               NULL AS numero_factura,
+               NULL AS factura_id,
+               NULL AS estado_facturacion_raw,
+               NULLIF(TRIM(COALESCE(bfr.billing_id, '')), '') AS real_billing_id,
+               bfr.fecha_facturacion AS real_fecha_facturacion,
+               bfr.fecha_atencion AS real_fecha_atencion,
+               COALESCE(bfr.total_produccion, 0) AS real_total_produccion,
+               COALESCE(bfr.procedimientos_facturados, 0) AS real_procedimientos_facturados,
+               NULLIF(TRIM(COALESCE(bfr.numero_factura, '')), '') AS real_numero_factura,
+               NULLIF(TRIM(COALESCE(bfr.factura_id, '')), '') AS real_factura_id,
+               NULLIF(TRIM(COALESCE(bfr.estado_facturacion_raw, '')), '') AS real_estado_facturacion_raw,
+               NULLIF(TRIM(COALESCE(bpub.billing_id, '')), '') AS public_billing_id,
+               bpub.fecha_facturacion AS public_fecha_facturacion,
+               COALESCE(bpub.total_produccion, 0) AS public_total_produccion,
+               COALESCE(bpub.procedimientos_facturados, 0) AS public_procedimientos_facturados",
+            'join' => "LEFT JOIN ({$realSubquery}) bfr ON bfr.form_id = pp.form_id
+            LEFT JOIN ({$publicSubquery}) bpub ON bpub.form_id = pp.form_id",
+        ];
+    }
+
+    /**
+     * @param array<string,mixed> $row
+     * @return array<string,mixed>
+     */
+    private function mergeImagenBillingEvidence(array $row): array
+    {
+        $realEvidence = $this->hasImagenBillingSourceEvidence($row, 'real');
+        $publicEvidence = $this->hasImagenBillingSourceEvidence($row, 'public');
+        $source = $realEvidence ? 'real' : ($publicEvidence ? 'public' : null);
+
+        $row['facturado'] = $source !== null ? 1 : 0;
+        $row['billing_id'] = $source !== null ? trim((string) ($row[$source . '_billing_id'] ?? '')) : null;
+        $row['fecha_facturacion'] = $source !== null ? ($row[$source . '_fecha_facturacion'] ?? null) : null;
+        $row['fecha_atencion'] = $source === 'real' ? ($row['real_fecha_atencion'] ?? null) : null;
+        $row['total_produccion'] = $source !== null ? (float) ($row[$source . '_total_produccion'] ?? 0) : 0.0;
+        $row['procedimientos_facturados'] = $source !== null ? (int) ($row[$source . '_procedimientos_facturados'] ?? 0) : 0;
+        $row['numero_factura'] = $source === 'real' ? trim((string) ($row['real_numero_factura'] ?? '')) : null;
+        $row['factura_id'] = $source === 'real' ? trim((string) ($row['real_factura_id'] ?? '')) : null;
+        $row['estado_facturacion_raw'] = $source === 'real'
+            ? trim((string) ($row['real_estado_facturacion_raw'] ?? ''))
+            : null;
+        $row['billing_source'] = $source;
+
+        return $row;
+    }
+
+    /**
+     * @param array<string,mixed> $row
+     */
+    private function hasImagenBillingSourceEvidence(array $row, string $prefix): bool
+    {
+        $billingId = trim((string) ($row[$prefix . '_billing_id'] ?? ''));
+        $fechaFacturacion = trim((string) ($row[$prefix . '_fecha_facturacion'] ?? ''));
+        $procedimientosFacturados = (int) ($row[$prefix . '_procedimientos_facturados'] ?? 0);
+        $totalProduccion = (float) ($row[$prefix . '_total_produccion'] ?? 0);
+
+        if ($prefix === 'real') {
+            $numeroFactura = trim((string) ($row['real_numero_factura'] ?? ''));
+            $facturaId = trim((string) ($row['real_factura_id'] ?? ''));
+            $fechaAtencion = trim((string) ($row['real_fecha_atencion'] ?? ''));
+
+            return $billingId !== ''
+                || $numeroFactura !== ''
+                || $facturaId !== ''
+                || $fechaFacturacion !== ''
+                || $fechaAtencion !== ''
+                || $procedimientosFacturados > 0
+                || $totalProduccion > 0;
+        }
+
+        return $billingId !== ''
+            || $fechaFacturacion !== ''
+            || $procedimientosFacturados > 0
+            || $totalProduccion > 0;
     }
 
     /**
@@ -694,23 +851,80 @@ class ImagenesUiService
     /**
      * @return array<string,mixed>|null
      */
-    private function obtenerTarifarioPorCodigo(string $codigo): ?array
+    private function obtenerTarifarioPorCodigo(string $codigo, ?string $afiliacionCategoria = null): ?array
     {
         $codigo = trim($codigo);
         if ($codigo === '') {
             return null;
         }
 
+        $afiliacionCategoria = $this->normalizarTexto((string) $afiliacionCategoria);
+
+        if ($afiliacionCategoria === 'publico') {
+            $tarifaPublica = $this->obtenerTarifario2014PorCodigo($codigo);
+            if (is_array($tarifaPublica) && $tarifaPublica !== []) {
+                return $tarifaPublica;
+            }
+        }
+
+        if (
+            $this->tableExists('tarifario_procedimientos')
+            && $this->columnExists('tarifario_procedimientos', 'codigo')
+            && $this->columnExists('tarifario_procedimientos', 'descripcion')
+        ) {
+            $stmt = $this->db->prepare(
+                'SELECT codigo, descripcion, short_description
+                 FROM tarifario_procedimientos
+                 WHERE codigo = :codigo
+                 LIMIT 1'
+            );
+            $stmt->execute([':codigo' => $codigo]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (is_array($row) && $row !== []) {
+                return $row;
+            }
+        }
+
+        return $this->obtenerTarifario2014PorCodigo($codigo);
+    }
+
+    /**
+     * @return array<string,mixed>|null
+     */
+    private function obtenerTarifario2014PorCodigo(string $codigo): ?array
+    {
+        if (
+            !$this->tableExists('tarifario_2014')
+            || !$this->columnExists('tarifario_2014', 'codigo')
+            || !$this->columnExists('tarifario_2014', 'descripcion')
+        ) {
+            return null;
+        }
+
+        $select = $this->columnExists('tarifario_2014', 'valor_facturar_nivel3')
+            ? 'codigo, descripcion, short_description, valor_facturar_nivel3'
+            : 'codigo, descripcion, short_description';
         $stmt = $this->db->prepare(
-            'SELECT codigo, descripcion, short_description
-             FROM tarifario_procedimientos
+            "SELECT {$select}
+             FROM tarifario_2014
              WHERE codigo = :codigo
-             LIMIT 1'
+             LIMIT 1"
         );
         $stmt->execute([':codigo' => $codigo]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (is_array($row) && $row !== []) {
+            return $row;
+        }
 
-        return is_array($row) ? $row : null;
+        $codigoSinCeros = ltrim($codigo, '0');
+        if ($codigoSinCeros === '' || $codigoSinCeros === $codigo) {
+            return null;
+        }
+
+        $stmt->execute([':codigo' => $codigoSinCeros]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        return is_array($row) && $row !== [] ? $row : null;
     }
 
     private function normalizarDetalleEstudio012A(string $detalle, string $tarifaDesc): string
@@ -749,10 +963,14 @@ class ImagenesUiService
             $nombreTarifario = '';
 
             if ($codigo !== '') {
-                if (!isset($tarifarioCache[$codigo])) {
-                    $tarifarioCache[$codigo] = $this->obtenerTarifarioPorCodigo($codigo);
+                $tarifaCacheKey = $codigo . '|' . trim((string) ($row['afiliacion_categoria'] ?? ''));
+                if (!isset($tarifarioCache[$tarifaCacheKey])) {
+                    $tarifarioCache[$tarifaCacheKey] = $this->obtenerTarifarioPorCodigo(
+                        $codigo,
+                        (string) ($row['afiliacion_categoria'] ?? '')
+                    );
                 }
-                $tarifa = $tarifarioCache[$codigo];
+                $tarifa = $tarifarioCache[$tarifaCacheKey];
                 if (is_array($tarifa) && $tarifa !== []) {
                     $nombreTarifario = trim((string) ($tarifa['descripcion'] ?? ($tarifa['short_description'] ?? '')));
                 }
@@ -792,6 +1010,16 @@ class ImagenesUiService
             $informado = $estadoInforme === 'INFORMADA';
             $pendienteInformar = $estadoInforme === 'PENDIENTE_INFORMAR';
             $totalProduccion = round((float) ($row['total_produccion'] ?? 0), 2);
+            $facturado = (int) ($row['facturado'] ?? 0) === 1;
+            $afiliacionCategoriaKey = trim((string) ($row['afiliacion_categoria'] ?? ''));
+            $esPendienteFacturar = !$facturado && in_array($estadoRealizacion, ['REALIZADA_CON_ARCHIVOS', 'REALIZADA_INFORMADA'], true);
+            $montoPendienteEstimado = 0.0;
+            $sinTarifaPublica = false;
+
+            if ($esPendienteFacturar && $afiliacionCategoriaKey === 'publico') {
+                $montoPendienteEstimado = $this->resolveImagenTarifaPublicaNivel3($tarifa ?? null);
+                $sinTarifaPublica = $montoPendienteEstimado <= 0;
+            }
 
             $output[] = [
                 'id' => isset($row['id']) ? (int) $row['id'] : 0,
@@ -800,6 +1028,9 @@ class ImagenesUiService
                 'hc_number' => trim((string) ($row['hc_number'] ?? '')),
                 'paciente' => trim((string) ($row['full_name'] ?? '')),
                 'afiliacion' => trim((string) ($row['afiliacion'] ?? '')),
+                'afiliacion_categoria' => $this->formatCategoriaLabel($afiliacionCategoriaKey),
+                'afiliacion_categoria_key' => $afiliacionCategoriaKey,
+                'sede' => trim((string) ($row['sede'] ?? '')),
                 'estado_agenda' => $estadoAgenda,
                 'cita_generada' => $this->isImagenCitaGeneradaEstado($estadoAgenda),
                 'examen_realizado' => $this->isImagenEstadoRealizado($estadoRealizacion),
@@ -813,16 +1044,234 @@ class ImagenesUiService
                 'nas_files_count' => (int) ($row['nas_files_count'] ?? 0),
                 'nas_scan_status' => trim((string) ($row['nas_scan_status'] ?? '')),
                 'nas_last_scanned_at' => $this->formatDashboardDate((string) ($row['nas_last_scanned_at'] ?? '')),
-                'facturado' => (int) ($row['facturado'] ?? 0) === 1,
+                'facturado' => $facturado,
+                'billing_source' => trim((string) ($row['billing_source'] ?? '')),
+                'billing_id' => trim((string) ($row['billing_id'] ?? '')),
+                'numero_factura' => trim((string) ($row['numero_factura'] ?? '')),
+                'factura_id' => trim((string) ($row['factura_id'] ?? '')),
                 'produccion' => $totalProduccion,
                 'procedimientos_facturados' => (int) ($row['procedimientos_facturados'] ?? 0),
                 'fecha_facturacion' => $this->formatDashboardDate((string) ($row['fecha_facturacion'] ?? '')),
+                'monto_pendiente_estimado' => round($montoPendienteEstimado, 2),
+                'sin_tarifa_publica' => $sinTarifaPublica,
                 'codigo' => $codigo,
                 'examen' => $examen,
             ];
         }
 
         return $output;
+    }
+
+    /**
+     * @param array<string,mixed> $dashboard
+     * @param array<int,array<string,mixed>> $detailRows
+     * @param array<int,array{label:string,value:string}> $filtersSummary
+     * @param array<string,string> $filters
+     * @return array<string,mixed>
+     */
+    private function buildImagenesDashboardReport(
+        array $dashboard,
+        array $detailRows,
+        array $filtersSummary,
+        array $filters
+    ): array {
+        $cards = is_array($dashboard['cards'] ?? null) ? $dashboard['cards'] : [];
+        $meta = is_array($dashboard['meta'] ?? null) ? $dashboard['meta'] : [];
+        $charts = is_array($dashboard['charts'] ?? null) ? $dashboard['charts'] : [];
+        $total = count($detailRows);
+        $atendidos = (int) ($this->reportCardValue($cards, 'Atendidos') ?? 0);
+        $informadas = (int) ($this->reportCardValue($cards, 'Informadas') ?? 0);
+        $facturados = (int) ($this->reportCardValue($cards, 'Facturados') ?? 0);
+        $pendientesFacturar = (int) ($meta['pendientes_facturar'] ?? 0);
+        $pendientesFacturarPublico = (int) ($meta['pendientes_facturar_publico'] ?? 0);
+        $pendientesFacturarPrivado = (int) ($meta['pendientes_facturar_privado'] ?? 0);
+        $montoPendienteEstimadoPublico = (float) ($meta['monto_pendiente_estimado_publico'] ?? 0);
+        $pendientesFacturarPublicoSinTarifa = (int) ($meta['pendientes_facturar_publico_sin_tarifa'] ?? 0);
+        $produccionFacturada = (float) ($meta['produccion_facturada'] ?? 0);
+        $produccionFacturadaPublico = (float) ($meta['produccion_facturada_publico'] ?? 0);
+        $produccionFacturadaPrivado = (float) ($meta['produccion_facturada_privado'] ?? 0);
+        $sla48 = trim((string) ($this->reportCardText($cards, 'SLA informe <= 48h') ?? '—'));
+        $cumplimientoCita = trim((string) ($this->reportCardText($cards, 'Cumplimiento cita->realización') ?? '—'));
+        $tatPromedio = ($meta['tat_promedio_horas'] ?? null) !== null ? number_format((float) $meta['tat_promedio_horas'], 2) . ' h' : '—';
+        $tatMediana = ($meta['tat_mediana_horas'] ?? null) !== null ? number_format((float) $meta['tat_mediana_horas'], 2) . ' h' : '—';
+        $tatP90 = ($meta['tat_p90_horas'] ?? null) !== null ? number_format((float) $meta['tat_p90_horas'], 2) . ' h' : '—';
+        $traficoLabels = is_array($charts['trafico_dia_semana']['labels'] ?? null) ? $charts['trafico_dia_semana']['labels'] : [];
+        $traficoValues = is_array($charts['trafico_dia_semana']['values'] ?? null) ? $charts['trafico_dia_semana']['values'] : [];
+        $diaPico = '—';
+        $traficoPico = 0;
+        foreach ($traficoValues as $index => $value) {
+            $totalDia = (int) $value;
+            if ($totalDia > $traficoPico) {
+                $traficoPico = $totalDia;
+                $diaPico = trim((string) ($traficoLabels[$index] ?? '—'));
+            }
+        }
+
+        $hallazgos = [];
+        $hallazgos[] = sprintf(
+            'Se analizaron %s estudios; %s atendidos, %s informados y %s facturados.',
+            number_format($total),
+            number_format($atendidos),
+            number_format($informadas),
+            number_format($facturados)
+        );
+        if ($pendientesFacturar > 0) {
+            $hallazgos[] = sprintf(
+                'El backlog atendido sin facturar es de %s casos: %s públicos y %s privados.',
+                number_format($pendientesFacturar),
+                number_format($pendientesFacturarPublico),
+                number_format($pendientesFacturarPrivado)
+            );
+        }
+        if ($montoPendienteEstimadoPublico > 0) {
+            $hallazgos[] = sprintf(
+                'El pendiente público estimado asciende a $%s usando tarifario 2014 nivel 3.',
+                number_format($montoPendienteEstimadoPublico, 2)
+            );
+        }
+        if ($pendientesFacturarPublicoSinTarifa > 0) {
+            $hallazgos[] = sprintf(
+                'Hay %s casos públicos sin tarifa nivel 3 disponible; requieren revisión tarifaria.',
+                number_format($pendientesFacturarPublicoSinTarifa)
+            );
+        }
+        if ($sla48 !== '—') {
+            $hallazgos[] = sprintf('El SLA de informe <= 48h se ubica en %s con TAT promedio de %s.', $sla48, $tatPromedio);
+        }
+
+        $methodology = [
+            'El universo considera procedimientos de IMAGENES dentro del rango filtrado con estado de agenda no vacío.',
+            'La realización se clasifica con evidencia operativa, informes registrados y presencia de archivos en NAS o índice NAS.',
+            'La facturación se resuelve con evidencia combinada de billing_facturacion_real y billing_main + billing_procedimientos.',
+            'Para backlog público se estima el pendiente con tarifario_2014 nivel 3 cuando existe coincidencia de código.',
+            'Los casos públicos sin tarifa nivel 3 quedan identificados por separado para auditoría.',
+        ];
+
+        $generalKpis = [
+            ['label' => 'Total estudios', 'value' => $this->reportCardText($cards, 'Total estudios') ?? '0', 'note' => $this->reportCardText($cards, 'Total estudios', 'hint') ?? ''],
+            ['label' => 'Atendidos', 'value' => $this->reportCardText($cards, 'Atendidos') ?? '0', 'note' => $this->reportCardText($cards, 'Atendidos', 'hint') ?? ''],
+            ['label' => 'Informadas', 'value' => $this->reportCardText($cards, 'Informadas') ?? '0', 'note' => $this->reportCardText($cards, 'Informadas', 'hint') ?? ''],
+            ['label' => 'Facturados', 'value' => $this->reportCardText($cards, 'Facturados') ?? '0', 'note' => $this->reportCardText($cards, 'Facturados', 'hint') ?? ''],
+            ['label' => 'Pendiente de facturar', 'value' => $this->reportCardText($cards, 'Pendiente de facturar') ?? '0', 'note' => $this->reportCardText($cards, 'Pendiente de facturar', 'hint') ?? ''],
+            ['label' => 'Pérdida', 'value' => $this->reportCardText($cards, 'Pérdida') ?? '0', 'note' => $this->reportCardText($cards, 'Pérdida', 'hint') ?? ''],
+        ];
+
+        $temporalKpis = [
+            ['label' => 'SLA informe <= 48h', 'value' => $sla48, 'note' => $this->reportCardText($cards, 'SLA informe <= 48h', 'hint') ?? ''],
+            ['label' => 'TAT promedio', 'value' => $tatPromedio, 'note' => 'Tiempo promedio entre examen e informe.'],
+            ['label' => 'TAT mediana', 'value' => $tatMediana, 'note' => 'Mitad de los informes queda por debajo de este tiempo.'],
+            ['label' => 'TAT P90', 'value' => $tatP90, 'note' => '90% de los informes cae bajo este umbral.'],
+            ['label' => 'Cumplimiento cita->realización', 'value' => $cumplimientoCita, 'note' => $this->reportCardText($cards, 'Cumplimiento cita->realización', 'hint') ?? ''],
+            ['label' => 'Día pico de tráfico', 'value' => $diaPico, 'note' => $traficoPico > 0 ? ($traficoPico . ' estudios en el día pico') : 'Sin datos'],
+        ];
+
+        $economicKpis = [
+            [
+                'label' => 'Producción facturada',
+                'value' => '$' . number_format($produccionFacturada, 2),
+                'meaning' => 'Monto facturado real consolidado en el rango.',
+                'formula' => 'SUM(total_produccion) de la fuente de billing priorizada por form_id.',
+            ],
+            [
+                'label' => 'Facturado público',
+                'value' => '$' . number_format($produccionFacturadaPublico, 2),
+                'meaning' => 'Producción real ya cerrada para afiliaciones públicas.',
+                'formula' => 'SUM(total_produccion) donde afiliacion_categoria = publico y existe evidencia de billing.',
+            ],
+            [
+                'label' => 'Facturado privado',
+                'value' => '$' . number_format($produccionFacturadaPrivado, 2),
+                'meaning' => 'Producción real ya cerrada para afiliaciones privadas.',
+                'formula' => 'SUM(total_produccion) donde afiliacion_categoria = privado y existe evidencia de billing.',
+            ],
+            [
+                'label' => 'Pendiente facturar pública',
+                'value' => number_format($pendientesFacturarPublico),
+                'meaning' => 'Casos públicos atendidos sin billing cerrado.',
+                'formula' => 'Estado realizado con evidencia técnica y sin evidencia de billing.',
+            ],
+            [
+                'label' => 'Pendiente facturar privada',
+                'value' => number_format($pendientesFacturarPrivado),
+                'meaning' => 'Casos privados atendidos sin billing real.',
+                'formula' => 'Estado realizado con evidencia técnica y sin evidencia de billing.',
+            ],
+            [
+                'label' => 'Pendiente estimado público',
+                'value' => '$' . number_format($montoPendienteEstimadoPublico, 2),
+                'meaning' => 'Valor potencial pendiente en públicos.',
+                'formula' => 'SUM(valor_facturar_nivel3) de tarifario_2014 para públicos pendientes de facturar.',
+            ],
+        ];
+
+        $tables = [
+            [
+                'title' => 'Backlog de facturación por categoría',
+                'subtitle' => 'Separación entre casos ya facturados y backlog atendido pendiente.',
+                'columns' => ['Categoría', 'Facturados', 'Pendiente facturar', 'Pendiente estimado'],
+                'rows' => [
+                    ['Pública', number_format((int) ($meta['facturados_publico'] ?? 0)), number_format($pendientesFacturarPublico), '$' . number_format($montoPendienteEstimadoPublico, 2)],
+                    ['Privada', number_format((int) ($meta['facturados_privado'] ?? 0)), number_format($pendientesFacturarPrivado), '—'],
+                ],
+                'empty_message' => 'Sin backlog de facturación para el rango seleccionado.',
+            ],
+            [
+                'title' => 'Rendimiento económico',
+                'subtitle' => 'Producción real facturada vs oportunidad económica pública aún abierta.',
+                'columns' => ['Métrica', 'Valor'],
+                'rows' => [
+                    ['Producción facturada real', '$' . number_format($produccionFacturada, 2)],
+                    ['Pendiente estimado público', '$' . number_format($montoPendienteEstimadoPublico, 2)],
+                    ['Ticket promedio facturado', '$' . number_format((float) ($meta['ticket_promedio_facturado'] ?? 0), 2)],
+                    ['Procedimientos facturados', number_format((int) ($meta['procedimientos_facturados'] ?? 0))],
+                ],
+                'empty_message' => 'Sin datos económicos para el rango seleccionado.',
+            ],
+        ];
+
+        return [
+            'scopeNotice' => 'Este reporte consolida actividad operativa, evidencia técnica NAS/informe y cierre económico para estudios de imágenes.',
+            'filtersSummary' => $filtersSummary,
+            'hallazgosClave' => $hallazgos,
+            'methodology' => $methodology,
+            'generalKpis' => $generalKpis,
+            'temporalKpis' => $temporalKpis,
+            'economicKpis' => $economicKpis,
+            'tables' => $tables,
+            'totalAtenciones' => $total,
+            'rangeLabel' => trim((string) ($filters['fecha_inicio'] ?? '')) !== '' && trim((string) ($filters['fecha_fin'] ?? '')) !== ''
+                ? trim((string) ($filters['fecha_inicio'] ?? '')) . ' a ' . trim((string) ($filters['fecha_fin'] ?? ''))
+                : '',
+        ];
+    }
+
+    /**
+     * @param array<int,array<string,mixed>> $cards
+     */
+    private function reportCardText(array $cards, string $label, string $field = 'value'): ?string
+    {
+        foreach ($cards as $card) {
+            if (trim((string) ($card['label'] ?? '')) !== $label) {
+                continue;
+            }
+
+            return trim((string) ($card[$field] ?? ''));
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<int,array<string,mixed>> $cards
+     */
+    private function reportCardValue(array $cards, string $label): ?int
+    {
+        $value = $this->reportCardText($cards, $label);
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return (int) preg_replace('/[^\d-]/', '', $value);
     }
 
     private function formatDashboardDate(?string $value): string
@@ -855,6 +1304,7 @@ class ImagenesUiService
         $pendientesInformar = 0;
         $facturados = 0;
         $pendientesFacturar = 0;
+        $atendidosPendientesFacturar = 0;
         $pendientesPago = 0;
         $facturacionCancelada = 0;
         $facturadosEInformados = 0;
@@ -866,7 +1316,15 @@ class ImagenesUiService
         $ausentes = 0;
         $sinCierre = 0;
         $produccionFacturada = 0.0;
+        $produccionFacturadaPublico = 0.0;
+        $produccionFacturadaPrivado = 0.0;
         $procedimientosFacturados = 0;
+        $facturadosPublico = 0;
+        $facturadosPrivado = 0;
+        $pendientesFacturarPublico = 0;
+        $pendientesFacturarPrivado = 0;
+        $montoPendienteEstimadoPublico = 0.0;
+        $pendientesFacturarPublicoSinTarifa = 0;
         $estadoRealCounts = [
             'FACTURADA' => 0,
             'REALIZADA_CON_ARCHIVOS' => 0,
@@ -897,6 +1355,9 @@ class ImagenesUiService
             $informado = $estadoInforme === 'INFORMADA';
             $facturado = (int) ($row['facturado'] ?? 0) === 1;
             $realizado = $this->isImagenEstadoRealizado($estadoRealizacion);
+            $afiliacionCategoria = trim((string) ($row['afiliacion_categoria'] ?? ''));
+            $esPublico = $afiliacionCategoria === 'publico';
+            $esPrivado = $afiliacionCategoria === 'privado';
             $fechaExamenRaw = trim((string) ($row['fecha_examen'] ?? ''));
             $fechaExamenTs = $fechaExamenRaw !== '' ? strtotime($fechaExamenRaw) : false;
             $fechaExamenDia = $fechaExamenTs !== false ? date('Y-m-d', $fechaExamenTs) : '';
@@ -948,8 +1409,18 @@ class ImagenesUiService
                 $facturacionCancelada++;
             }
 
-            $produccionFacturada += max(0.0, (float) ($row['total_produccion'] ?? 0));
+            $produccionRow = max(0.0, (float) ($row['total_produccion'] ?? 0));
+            $produccionFacturada += $produccionRow;
             $procedimientosFacturados += max(0, (int) ($row['procedimientos_facturados'] ?? 0));
+            if ($facturado || $estadoFacturacion === 'FACTURADA') {
+                if ($esPublico) {
+                    $facturadosPublico++;
+                    $produccionFacturadaPublico += $produccionRow;
+                } elseif ($esPrivado) {
+                    $facturadosPrivado++;
+                    $produccionFacturadaPrivado += $produccionRow;
+                }
+            }
 
             if ($estadoRealizacion === 'CANCELADA') {
                 $canceladas++;
@@ -959,8 +1430,15 @@ class ImagenesUiService
                 $sinCierre++;
             }
 
-            if (!$facturado && in_array($estadoRealizacion, ['REALIZADA_CON_ARCHIVOS', 'REALIZADA_INFORMADA'], true)) {
+            $esPendienteFacturar = !$facturado && in_array($estadoRealizacion, ['REALIZADA_CON_ARCHIVOS', 'REALIZADA_INFORMADA'], true);
+            if ($esPendienteFacturar) {
                 $pendientesFacturar++;
+                $atendidosPendientesFacturar++;
+                if ($esPublico) {
+                    $pendientesFacturarPublico++;
+                } elseif ($esPrivado) {
+                    $pendientesFacturarPrivado++;
+                }
             }
             if ($estadoInforme === 'PENDIENTE_INFORMAR') {
                 $pendientesInformar++;
@@ -1005,12 +1483,25 @@ class ImagenesUiService
             $nombreTarifario = '';
 
             if ($codigo !== '') {
-                if (!isset($tarifarioCache[$codigo])) {
-                    $tarifarioCache[$codigo] = $this->obtenerTarifarioPorCodigo($codigo);
+                $tarifaCacheKey = $codigo . '|' . trim((string) ($row['afiliacion_categoria'] ?? ''));
+                if (!isset($tarifarioCache[$tarifaCacheKey])) {
+                    $tarifarioCache[$tarifaCacheKey] = $this->obtenerTarifarioPorCodigo(
+                        $codigo,
+                        (string) ($row['afiliacion_categoria'] ?? '')
+                    );
                 }
-                $tarifa = $tarifarioCache[$codigo];
+                $tarifa = $tarifarioCache[$tarifaCacheKey];
                 if (is_array($tarifa) && $tarifa !== []) {
                     $nombreTarifario = trim((string) ($tarifa['descripcion'] ?? ($tarifa['short_description'] ?? '')));
+                }
+            }
+
+            if ($esPendienteFacturar && $esPublico) {
+                $montoEstimadoPublico = $this->resolveImagenTarifaPublicaNivel3($tarifa ?? null);
+                if ($montoEstimadoPublico > 0) {
+                    $montoPendienteEstimadoPublico += $montoEstimadoPublico;
+                } else {
+                    $pendientesFacturarPublicoSinTarifa++;
                 }
             }
 
@@ -1087,9 +1578,13 @@ class ImagenesUiService
                 ['label' => 'Pendiente de pago', 'value' => $pendientesPago, 'hint' => 'Estado en facturación real marcado como pendiente/cartera'],
                 ['label' => 'Cancelados', 'value' => $canceladas, 'hint' => 'Cierre operativo cancelado en agenda'],
                 ['label' => 'Pendiente de facturar', 'value' => $pendientesFacturar, 'hint' => 'Realizadas con evidencia técnica aún sin billing real'],
+                ['label' => 'Atendidos pendientes facturar', 'value' => $atendidosPendientesFacturar, 'hint' => $atendidosPendientesFacturar > 0 ? ($pendientesFacturarPublico . ' públicos / ' . $pendientesFacturarPrivado . ' privados') : 'Sin backlog atendido'],
+                ['label' => 'Pendiente facturar pública', 'value' => $pendientesFacturarPublico, 'hint' => $pendientesFacturarPublico > 0 ? ('$' . number_format($montoPendienteEstimadoPublico, 2) . ' estimado nivel 3') : 'Sin backlog público'],
+                ['label' => 'Pendiente facturar privada', 'value' => $pendientesFacturarPrivado, 'hint' => $pendientesFacturarPrivado > 0 ? 'Casos atendidos sin billing real' : 'Sin backlog privado'],
                 ['label' => 'Facturación cancelada', 'value' => $facturacionCancelada, 'hint' => 'Registros con estado cancelado/anulado en facturación'],
                 ['label' => 'Pérdida', 'value' => $perdidas, 'hint' => $canceladas . ' canceladas, ' . $ausentes . ' ausentes'],
                 ['label' => 'Producción facturada', 'value' => '$' . number_format($produccionFacturada, 2), 'hint' => 'Monto real facturado en el rango.'],
+                ['label' => 'Pendiente estimado público', 'value' => '$' . number_format($montoPendienteEstimadoPublico, 2), 'hint' => $pendientesFacturarPublicoSinTarifa > 0 ? ($pendientesFacturarPublicoSinTarifa . ' públicos sin tarifa nivel 3') : 'Estimado con tarifario 2014 nivel 3'],
                 ['label' => 'Ticket promedio facturado', 'value' => '$' . number_format($ticketPromedioFacturado, 2), 'hint' => $facturados > 0 ? ('Promedio por ' . $facturados . ' estudios facturados') : 'Sin estudios facturados'],
                 ['label' => 'Procedimientos facturados', 'value' => $procedimientosFacturados, 'hint' => '$' . number_format($produccionPromedioPorEstudio, 2) . ' promedio por estudio'],
                 ['label' => 'Día pico de tráfico', 'value' => $maxTraficoDiaLabel, 'hint' => $maxTraficoValor > 0 ? ($maxTraficoValor . ' estudios') : 'Sin datos'],
@@ -1105,11 +1600,20 @@ class ImagenesUiService
                 'tat_mediana_horas' => $tatMediana !== null ? round($tatMediana, 2) : null,
                 'tat_p90_horas' => $tatP90 !== null ? round($tatP90, 2) : null,
                 'produccion_facturada' => round($produccionFacturada, 2),
+                'produccion_facturada_publico' => round($produccionFacturadaPublico, 2),
+                'produccion_facturada_privado' => round($produccionFacturadaPrivado, 2),
                 'ticket_promedio_facturado' => round($ticketPromedioFacturado, 2),
                 'procedimientos_facturados' => $procedimientosFacturados,
                 'produccion_promedio_por_estudio' => round($produccionPromedioPorEstudio, 2),
                 'pendientes_informar' => $pendientesInformar,
                 'pendientes_facturar' => $pendientesFacturar,
+                'atendidos_pendientes_facturar' => $atendidosPendientesFacturar,
+                'pendientes_facturar_publico' => $pendientesFacturarPublico,
+                'pendientes_facturar_privado' => $pendientesFacturarPrivado,
+                'pendientes_facturar_publico_sin_tarifa' => $pendientesFacturarPublicoSinTarifa,
+                'monto_pendiente_estimado_publico' => round($montoPendienteEstimadoPublico, 2),
+                'facturados_publico' => $facturadosPublico,
+                'facturados_privado' => $facturadosPrivado,
                 'pendientes_pago' => $pendientesPago,
                 'cancelados' => $canceladas,
                 'facturacion_cancelada' => $facturacionCancelada,
@@ -1147,8 +1651,40 @@ class ImagenesUiService
                     'labels' => array_values($traficoSemanaLabels),
                     'values' => array_values($traficoSemana),
                 ],
+                'backlog_facturacion_categoria' => [
+                    'labels' => ['Facturados', 'Pend. facturar'],
+                    'datasets' => [
+                        [
+                            'label' => 'Pública',
+                            'values' => [$facturadosPublico, $pendientesFacturarPublico],
+                        ],
+                        [
+                            'label' => 'Privada',
+                            'values' => [$facturadosPrivado, $pendientesFacturarPrivado],
+                        ],
+                    ],
+                ],
+                'rendimiento_economico' => [
+                    'labels' => ['Facturado real', 'Pendiente público estimado'],
+                    'values' => [
+                        round($produccionFacturada, 2),
+                        round($montoPendienteEstimadoPublico, 2),
+                    ],
+                ],
             ],
         ];
+    }
+
+    /**
+     * @param array<string,mixed>|null $tarifa
+     */
+    private function resolveImagenTarifaPublicaNivel3(?array $tarifa): float
+    {
+        if (!is_array($tarifa) || $tarifa === []) {
+            return 0.0;
+        }
+
+        return round(max(0.0, (float) ($tarifa['valor_facturar_nivel3'] ?? 0)), 2);
     }
 
     /**

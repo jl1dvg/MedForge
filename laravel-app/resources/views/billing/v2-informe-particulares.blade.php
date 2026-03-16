@@ -296,23 +296,6 @@
             $operativoPotencialCapturable = (float) ($operativo['potencial_capturable'] ?? ($operativoHonorarioReal + $operativoPorCobrarEstimado));
             $operativoTicketFacturadoReal = (float) ($operativo['ticket_facturado_real'] ?? 0);
             $operativoTicketPendiente = (float) ($operativo['ticket_pendiente'] ?? 0);
-            $sinCostoConfiguradoRows = array_values(array_filter($rows, static function (array $row): bool {
-                return (bool) ($row['tarifa_sin_costo_configurado'] ?? false);
-            }));
-            $sinCostoConfiguradoPreviewRows = array_slice($sinCostoConfiguradoRows, 0, 100);
-            $sinTarifaRows = array_values(array_filter($rows, static function (array $row): bool {
-                return (bool) ($row['sin_tarifa_estimable'] ?? false);
-            }));
-            $sinTarifaPreviewRows = array_slice($sinTarifaRows, 0, 100);
-            $sinTarifaStatusCounts = [];
-            foreach ($sinTarifaRows as $sinTarifaRow) {
-                $status = strtoupper(trim((string) ($sinTarifaRow['tarifa_lookup_status'] ?? 'SIN_DIAGNOSTICO')));
-                if ($status === '') {
-                    $status = 'SIN_DIAGNOSTICO';
-                }
-                $sinTarifaStatusCounts[$status] = (int) ($sinTarifaStatusCounts[$status] ?? 0) + 1;
-            }
-            arsort($sinTarifaStatusCounts);
             $pniSummary = is_array($summary['pni'] ?? null) ? $summary['pni'] : [];
             $pniTotal = (int) ($pniSummary['total'] ?? 0);
             $pniRealizadas = (int) ($pniSummary['realizadas'] ?? 0);
@@ -876,10 +859,19 @@
                         </div>
                     </div>
                 </div>
+                <div class="col-xl-3 col-md-6 col-12">
+                    <div class="box">
+                        <div class="box-body text-center">
+                            <h6 class="mb-5">Sin tarifa estimable</h6>
+                            <div class="fs-28 fw-700 text-dark">{{ $imagenesSinTarifaEstimable }}</div>
+                            <small class="text-muted">Solo faltantes reales de pricing. {{ $imagenesSinCostoConfigurado }} con precio 0 van aparte.</small>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <div class="row">
-                <div class="col-xl-3 col-md-6 col-12">
+                <div class="col-xl-4 col-md-6 col-12">
                     <div class="box">
                         <div class="box-body text-center">
                             <h6 class="mb-5">Honorario real imágenes</h6>
@@ -887,7 +879,7 @@
                         </div>
                     </div>
                 </div>
-                <div class="col-xl-3 col-md-6 col-12">
+                <div class="col-xl-4 col-md-6 col-12">
                     <div class="box">
                         <div class="box-body text-center">
                             <h6 class="mb-5">Por cobrar estimado</h6>
@@ -895,20 +887,11 @@
                         </div>
                     </div>
                 </div>
-                <div class="col-xl-3 col-md-6 col-12">
+                <div class="col-xl-4 col-md-6 col-12">
                     <div class="box">
                         <div class="box-body text-center">
                             <h6 class="mb-5">Pérdida estimada</h6>
                             <div class="fs-28 fw-700 text-danger">${{ number_format($imagenesPerdidaEstimada, 2) }}</div>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-xl-3 col-md-6 col-12">
-                    <div class="box">
-                        <div class="box-body text-center">
-                            <h6 class="mb-5">Sin tarifa estimable</h6>
-                            <div class="fs-28 fw-700 text-dark">{{ $imagenesSinTarifaEstimable }}</div>
-                            <small class="text-muted">Solo faltantes reales de pricing. {{ $imagenesSinCostoConfigurado }} con precio 0 van aparte.</small>
                         </div>
                     </div>
                 </div>
@@ -1553,175 +1536,6 @@
             </div>
         </div>
 
-        @if(!empty($sinCostoConfiguradoRows))
-            <div class="row">
-                <div class="col-12">
-                    <div class="box">
-                        <div class="box-header with-border d-flex flex-wrap justify-content-between align-items-center gap-2">
-                            <div>
-                                <h5 class="box-title mb-0">Casos con costo 0 configurado</h5>
-                                <small class="text-muted">Estos casos sí tienen match en codes y nivel resuelto. No cuentan como "Sin tarifa estimable" porque el precio configurado es 0.</small>
-                            </div>
-                            <span class="badge bg-info-light text-info">{{ count($sinCostoConfiguradoRows) }} casos</span>
-                        </div>
-                        <div class="box-body">
-                            <div class="table-responsive">
-                                <table class="table table-sm table-striped table-hover mb-0">
-                                    <thead class="table-light">
-                                    <tr>
-                                        <th>Fecha</th>
-                                        <th>HC</th>
-                                        <th>Paciente</th>
-                                        <th>Tipo</th>
-                                        <th>Afiliación</th>
-                                        <th>Procedimiento</th>
-                                        <th>Código extraído</th>
-                                        <th>Nivel pricing</th>
-                                        <th>Diagnóstico</th>
-                                        <th>Código match</th>
-                                        <th>Detalle match</th>
-                                        <th class="text-end">Tarifa</th>
-                                    </tr>
-                                    </thead>
-                                    <tbody>
-                                    @foreach($sinCostoConfiguradoPreviewRows as $row)
-                                        @php
-                                            $fecha = trim((string) ($row['fecha'] ?? ''));
-                                            $fechaFmt = $fecha !== '' && strtotime($fecha) !== false ? date('d/m/Y', strtotime($fecha)) : '—';
-                                            $afiliacion = strtoupper(trim((string) ($row['afiliacion'] ?? '')));
-                                            if ($afiliacion === '') {
-                                                $afiliacion = '—';
-                                            }
-                                            $tipoAtencion = strtoupper(trim((string) ($row['tipo_atencion'] ?? 'SIN TIPO')));
-                                            $tarifaStatus = strtoupper(trim((string) ($row['tarifa_lookup_status'] ?? 'SIN_DIAGNOSTICO')));
-                                            $tarifaReason = trim((string) ($row['tarifa_lookup_reason'] ?? ''));
-                                            $tarifaLevelTitle = trim((string) ($row['tarifa_level_title'] ?? ''));
-                                            $tarifaLevelKey = trim((string) ($row['tarifa_level_key'] ?? ''));
-                                            $tarifaCodigo = trim((string) ($row['tarifa_codigo'] ?? ''));
-                                            $tarifaCodigoMatch = trim((string) ($row['tarifa_codigo_match'] ?? ''));
-                                            $tarifaDescripcionMatch = trim((string) ($row['tarifa_descripcion_match'] ?? ''));
-                                            $montoTarifa = (float) ($row['monto_estimado_tarifario'] ?? 0);
-                                        @endphp
-                                        <tr>
-                                            <td>{{ $fechaFmt }}</td>
-                                            <td>{{ (string) ($row['hc_number'] ?? '—') }}</td>
-                                            <td>{{ ucwords(strtolower(trim((string) ($row['nombre_completo'] ?? '—')))) }}</td>
-                                            <td>{{ $tipoAtencion }}</td>
-                                            <td>{{ $afiliacion }}</td>
-                                            <td>{{ $procedimientoLegible((string) ($row['procedimiento_proyectado'] ?? '')) }}</td>
-                                            <td>{{ $tarifaCodigo !== '' ? $tarifaCodigo : '—' }}</td>
-                                            <td>{{ $tarifaLevelTitle !== '' ? strtoupper($tarifaLevelTitle) : ($tarifaLevelKey !== '' ? strtoupper($tarifaLevelKey) : '—') }}</td>
-                                            <td>
-                                                <div class="fw-600">{{ $tarifaStatus }}</div>
-                                                <small class="text-muted">{{ $tarifaReason !== '' ? $tarifaReason : '—' }}</small>
-                                            </td>
-                                            <td>{{ $tarifaCodigoMatch !== '' ? $tarifaCodigoMatch : '—' }}</td>
-                                            <td>{{ $tarifaDescripcionMatch !== '' ? strtoupper($tarifaDescripcionMatch) : '—' }}</td>
-                                            <td class="text-end">${{ number_format($montoTarifa, 2) }}</td>
-                                        </tr>
-                                    @endforeach
-                                    </tbody>
-                                </table>
-                            </div>
-                            @if(count($sinCostoConfiguradoRows) > count($sinCostoConfiguradoPreviewRows))
-                                <div class="text-muted mt-10">
-                                    Mostrando {{ count($sinCostoConfiguradoPreviewRows) }} de {{ count($sinCostoConfiguradoRows) }} casos. Usa el Excel para revisar el detalle completo.
-                                </div>
-                            @endif
-                        </div>
-                    </div>
-                </div>
-            </div>
-        @endif
-
-        @if(!empty($sinTarifaRows))
-            <div class="row">
-                <div class="col-12">
-                    <div class="box">
-                        <div class="box-header with-border d-flex flex-wrap justify-content-between align-items-center gap-2">
-                            <div>
-                                <h5 class="box-title mb-0">Casos sin tarifa estimable</h5>
-                                <small class="text-muted">Estos son los casos que explican el KPI de "Sin tarifa estimable". El Excel del informe ahora también trae este diagnóstico.</small>
-                            </div>
-                            <div class="d-flex flex-wrap gap-2">
-                                @foreach($sinTarifaStatusCounts as $status => $count)
-                                    <span class="badge bg-danger-light text-danger">{{ $status }}: {{ $count }}</span>
-                                @endforeach
-                            </div>
-                        </div>
-                        <div class="box-body">
-                            <div class="table-responsive">
-                                <table class="table table-sm table-striped table-hover mb-0">
-                                    <thead class="table-light">
-                                    <tr>
-                                        <th>Fecha</th>
-                                        <th>HC</th>
-                                        <th>Paciente</th>
-                                        <th>Tipo</th>
-                                        <th>Afiliación</th>
-                                        <th>Procedimiento</th>
-                                        <th>Código extraído</th>
-                                        <th>Nivel pricing</th>
-                                        <th>Diagnóstico</th>
-                                        <th>Código match</th>
-                                        <th>Detalle match</th>
-                                        <th class="text-end">Estimado</th>
-                                    </tr>
-                                    </thead>
-                                    <tbody>
-                                    @foreach($sinTarifaPreviewRows as $row)
-                                        @php
-                                            $fecha = trim((string) ($row['fecha'] ?? ''));
-                                            $fechaFmt = $fecha !== '' && strtotime($fecha) !== false ? date('d/m/Y', strtotime($fecha)) : '—';
-                                            $afiliacion = strtoupper(trim((string) ($row['afiliacion'] ?? '')));
-                                            if ($afiliacion === '') {
-                                                $afiliacion = '—';
-                                            }
-                                            $tipoAtencion = strtoupper(trim((string) ($row['tipo_atencion'] ?? 'SIN TIPO')));
-                                            $tarifaStatus = strtoupper(trim((string) ($row['tarifa_lookup_status'] ?? 'SIN_DIAGNOSTICO')));
-                                            $tarifaReason = trim((string) ($row['tarifa_lookup_reason'] ?? ''));
-                                            $tarifaLevelTitle = trim((string) ($row['tarifa_level_title'] ?? ''));
-                                            $tarifaLevelKey = trim((string) ($row['tarifa_level_key'] ?? ''));
-                                            $tarifaCodigo = trim((string) ($row['tarifa_codigo'] ?? ''));
-                                            $tarifaCodigoMatch = trim((string) ($row['tarifa_codigo_match'] ?? ''));
-                                            $tarifaDescripcionMatch = trim((string) ($row['tarifa_descripcion_match'] ?? ''));
-                                            $montoEstimado = (float) ($row['monto_por_cobrar_estimado'] ?? 0);
-                                            if ($montoEstimado <= 0) {
-                                                $montoEstimado = (float) ($row['monto_perdida_estimada'] ?? 0);
-                                            }
-                                        @endphp
-                                        <tr>
-                                            <td>{{ $fechaFmt }}</td>
-                                            <td>{{ (string) ($row['hc_number'] ?? '—') }}</td>
-                                            <td>{{ ucwords(strtolower(trim((string) ($row['nombre_completo'] ?? '—')))) }}</td>
-                                            <td>{{ $tipoAtencion }}</td>
-                                            <td>{{ $afiliacion }}</td>
-                                            <td>{{ $procedimientoLegible((string) ($row['procedimiento_proyectado'] ?? '')) }}</td>
-                                            <td>{{ $tarifaCodigo !== '' ? $tarifaCodigo : '—' }}</td>
-                                            <td>{{ $tarifaLevelTitle !== '' ? strtoupper($tarifaLevelTitle) : ($tarifaLevelKey !== '' ? strtoupper($tarifaLevelKey) : '—') }}</td>
-                                            <td>
-                                                <div class="fw-600">{{ $tarifaStatus }}</div>
-                                                <small class="text-muted">{{ $tarifaReason !== '' ? $tarifaReason : '—' }}</small>
-                                            </td>
-                                            <td>{{ $tarifaCodigoMatch !== '' ? $tarifaCodigoMatch : '—' }}</td>
-                                            <td>{{ $tarifaDescripcionMatch !== '' ? strtoupper($tarifaDescripcionMatch) : '—' }}</td>
-                                            <td class="text-end">{{ $montoEstimado > 0 ? '$' . number_format($montoEstimado, 2) : '—' }}</td>
-                                        </tr>
-                                    @endforeach
-                                    </tbody>
-                                </table>
-                            </div>
-                            @if(count($sinTarifaRows) > count($sinTarifaPreviewRows))
-                                <div class="text-muted mt-10">
-                                    Mostrando {{ count($sinTarifaPreviewRows) }} de {{ count($sinTarifaRows) }} casos. Usa el Excel para revisar el detalle completo.
-                                </div>
-                            @endif
-                        </div>
-                    </div>
-                </div>
-            </div>
-        @endif
-
         <div class="row">
             <div class="col-xl-12 col-12">
                 <div class="box">
@@ -1743,6 +1557,7 @@
                                     <th>Procedimiento</th>
                                     <th>Doctor</th>
                                     <th>Facturación</th>
+                                    <th>Tarifa</th>
                                     <th>Estimado</th>
                                     <th>Honorario real</th>
                                     <th>Fecha fact.</th>
@@ -1808,6 +1623,22 @@
                                         if ($estadoFacturacionOperativa === '') {
                                             $estadoFacturacionOperativa = $facturado ? 'FACTURADA' : 'SIN FACTURACION';
                                         }
+                                        $tarifaStatus = strtoupper(trim((string) ($row['tarifa_lookup_status'] ?? '')));
+                                        $tarifaReason = trim((string) ($row['tarifa_lookup_reason'] ?? ''));
+                                        $tarifaCodigo = trim((string) ($row['tarifa_codigo'] ?? ''));
+                                        $tarifaLevelTitle = trim((string) ($row['tarifa_level_title'] ?? ''));
+                                        $tarifaLevelKey = trim((string) ($row['tarifa_level_key'] ?? ''));
+                                        $tarifaLevelLabel = $tarifaLevelTitle !== '' ? strtoupper($tarifaLevelTitle) : ($tarifaLevelKey !== '' ? strtoupper($tarifaLevelKey) : '—');
+                                        $tarifaCodigoMatch = trim((string) ($row['tarifa_codigo_match'] ?? ''));
+                                        $tarifaDescripcionMatch = trim((string) ($row['tarifa_descripcion_match'] ?? ''));
+                                        $tarifaSinCostoConfigurado = (bool) ($row['tarifa_sin_costo_configurado'] ?? false);
+                                        $sinTarifaEstimable = (bool) ($row['sin_tarifa_estimable'] ?? false);
+                                        $tarifaClasificacion = $tarifaSinCostoConfigurado
+                                            ? 'COSTO 0 CONFIGURADO'
+                                            : ($sinTarifaEstimable ? 'SIN TARIFA ESTIMABLE' : '');
+                                        $tarifaBadgeClass = $tarifaSinCostoConfigurado
+                                            ? 'bg-info-light text-info'
+                                            : ($sinTarifaEstimable ? 'bg-danger-light text-danger' : 'bg-success-light text-success');
                                         $montoEstimadoRow = (float) ($row['monto_por_cobrar_estimado'] ?? 0);
                                         if ($montoEstimadoRow <= 0) {
                                             $montoEstimadoRow = (float) ($row['monto_perdida_estimada'] ?? 0);
@@ -1858,6 +1689,30 @@
                                                     {{ str_replace('_', ' ', $estadoFacturacionOperativa) }}
                                                 </span>
                                         </td>
+                                        <td>
+                                            <div>
+                                                <span class="badge {{ $tarifaBadgeClass }}">
+                                                    {{ $tarifaClasificacion !== '' ? $tarifaClasificacion : ($tarifaStatus !== '' ? $tarifaStatus : 'OK') }}
+                                                </span>
+                                            </div>
+                                            <small class="d-block text-muted mt-5">
+                                                {{ $tarifaCodigo !== '' ? $tarifaCodigo : '—' }} / {{ $tarifaLevelLabel }}
+                                            </small>
+                                            @if($tarifaStatus !== '' || $tarifaReason !== '' || $tarifaCodigoMatch !== '' || $tarifaDescripcionMatch !== '')
+                                                <small class="d-block text-muted">
+                                                    {{ $tarifaStatus !== '' ? $tarifaStatus : 'SIN_DIAGNOSTICO' }}
+                                                    @if($tarifaReason !== '')
+                                                        · {{ $tarifaReason }}
+                                                    @endif
+                                                    @if($tarifaCodigoMatch !== '' || $tarifaDescripcionMatch !== '')
+                                                        · MATCH: {{ $tarifaCodigoMatch !== '' ? $tarifaCodigoMatch : '—' }}
+                                                        @if($tarifaDescripcionMatch !== '')
+                                                            {{ strtoupper($tarifaDescripcionMatch) }}
+                                                        @endif
+                                                    @endif
+                                                </small>
+                                            @endif
+                                        </td>
                                         <td class="text-end">{{ $montoEstimadoRow > 0 ? '$' . number_format($montoEstimadoRow, 2) : '—' }}</td>
                                         <td class="text-end">${{ number_format($honorarioRealRow, 2) }}</td>
                                         <td>{{ $fechaFacturacionFmt }}</td>
@@ -1868,7 +1723,7 @@
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="20" class="text-center text-muted py-30">No hay atenciones
+                                        <td colspan="21" class="text-center text-muted py-30">No hay atenciones
                                             particulares para los filtros seleccionados.
                                         </td>
                                     </tr>

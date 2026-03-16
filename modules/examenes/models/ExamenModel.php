@@ -1453,57 +1453,7 @@ class ExamenModel
         $nasJoin = ($this->tableExists('imagenes_nas_index') && $this->columnExists('imagenes_nas_index', 'form_id'))
             ? "LEFT JOIN imagenes_nas_index ini ON ini.form_id = pp.form_id"
             : '';
-        $hasFacturacionReal = $this->tableExists('billing_facturacion_real')
-            && $this->columnExists('billing_facturacion_real', 'form_id')
-            && $this->columnExists('billing_facturacion_real', 'monto_honorario');
-        $facturadoSelect = $includeFacturado
-            && $hasFacturacionReal
-            ? "CASE
-                    WHEN bfr.billing_id IS NULL AND COALESCE(bfr.total_produccion, 0) <= 0 THEN 0
-                    ELSE 1
-               END AS facturado,
-               bfr.billing_id,
-               bfr.fecha_facturacion,
-               bfr.fecha_atencion,
-               COALESCE(bfr.total_produccion, 0) AS total_produccion,
-               COALESCE(bfr.procedimientos_facturados, 0) AS procedimientos_facturados,
-               bfr.numero_factura,
-               bfr.factura_id"
-            : "0 AS facturado,
-               NULL AS billing_id,
-               NULL AS fecha_facturacion,
-               NULL AS fecha_atencion,
-               0 AS total_produccion,
-               0 AS procedimientos_facturados,
-               NULL AS numero_factura,
-               NULL AS factura_id";
-        $facturadoJoin = $includeFacturado
-            && $hasFacturacionReal
-            ? "LEFT JOIN (
-                SELECT
-                    bfr.form_id,
-                    MAX(NULLIF(TRIM(COALESCE(bfr.factura_id, '')), '')) AS billing_id,
-                    MAX(
-                        CASE
-                            WHEN CAST(bfr.fecha_facturacion AS CHAR) IN ('', '0000-00-00', '0000-00-00 00:00:00') THEN NULL
-                            ELSE bfr.fecha_facturacion
-                        END
-                    ) AS fecha_facturacion,
-                    MAX(
-                        CASE
-                            WHEN CAST(bfr.fecha_atencion AS CHAR) IN ('', '0000-00-00', '0000-00-00 00:00:00') THEN NULL
-                            ELSE bfr.fecha_atencion
-                        END
-                    ) AS fecha_atencion,
-                    MAX(NULLIF(TRIM(COALESCE(bfr.numero_factura, '')), '')) AS numero_factura,
-                    MAX(NULLIF(TRIM(COALESCE(bfr.factura_id, '')), '')) AS factura_id,
-                    COALESCE(SUM(bfr.monto_honorario), 0) AS total_produccion,
-                    COUNT(*) AS procedimientos_facturados
-                FROM billing_facturacion_real bfr
-                WHERE bfr.form_id IS NOT NULL AND TRIM(bfr.form_id) <> ''
-                GROUP BY bfr.form_id
-            ) bfr ON bfr.form_id = pp.form_id"
-            : '';
+        $facturacionSql = $this->buildImagenesFacturacionSql($includeFacturado);
 
         $sql = "SELECT
                 pp.id,
@@ -1533,13 +1483,13 @@ class ExamenModel
                 ii.informe_actualizado AS informe_actualizado,
                 COALESCE(ii.informes_total, 0) AS informes_total,
                 {$nasSelect},
-                {$facturadoSelect}
+                {$facturacionSql['select']}
             FROM procedimiento_proyectado pp
             LEFT JOIN patient_data pd ON pd.hc_number = pp.hc_number
             {$imagenInformeJoin}
             {$nasJoin}
             {$categoriaContext['join']}
-            {$facturadoJoin}
+            {$facturacionSql['join']}
             WHERE pp.estado_agenda IS NOT NULL
               AND TRIM(pp.estado_agenda) <> ''
               AND UPPER(TRIM(pp.procedimiento_proyectado)) LIKE 'IMAGENES%'";
@@ -1602,7 +1552,199 @@ class ExamenModel
 
         $stmt = $this->db->prepare($sql);
         $stmt->execute($params);
-        return $stmt ? ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
+        $rows = $stmt ? ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
+
+        foreach ($rows as &$row) {
+            $row = $this->mergeImagenBillingEvidence($row);
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * @return array{select:string,join:string}
+     */
+    private function buildImagenesFacturacionSql(bool $includeFacturado): array
+    {
+        $defaultSelect = "0 AS facturado,
+               NULL AS billing_id,
+               NULL AS fecha_facturacion,
+               NULL AS fecha_atencion,
+               0 AS total_produccion,
+               0 AS procedimientos_facturados,
+               NULL AS numero_factura,
+               NULL AS factura_id,
+               NULL AS estado_facturacion_raw,
+               NULL AS real_billing_id,
+               NULL AS real_fecha_facturacion,
+               NULL AS real_fecha_atencion,
+               0 AS real_total_produccion,
+               0 AS real_procedimientos_facturados,
+               NULL AS real_numero_factura,
+               NULL AS real_factura_id,
+               NULL AS real_estado_facturacion_raw,
+               NULL AS public_billing_id,
+               NULL AS public_fecha_facturacion,
+               0 AS public_total_produccion,
+               0 AS public_procedimientos_facturados";
+        if (!$includeFacturado) {
+            return ['select' => $defaultSelect, 'join' => ''];
+        }
+
+        $hasFacturacionReal = $this->tableExists('billing_facturacion_real')
+            && $this->columnExists('billing_facturacion_real', 'form_id')
+            && $this->columnExists('billing_facturacion_real', 'monto_honorario');
+        $hasBillingPublico = $this->tableExists('billing_main')
+            && $this->columnExists('billing_main', 'id')
+            && $this->columnExists('billing_main', 'form_id')
+            && $this->tableExists('billing_procedimientos')
+            && $this->columnExists('billing_procedimientos', 'billing_id')
+            && $this->columnExists('billing_procedimientos', 'proc_precio');
+
+        $publicFechaExpr = $hasBillingPublico && $this->columnExists('billing_main', 'created_at')
+            ? "MAX(
+                    CASE
+                        WHEN CAST(bm.created_at AS CHAR) IN ('', '0000-00-00', '0000-00-00 00:00:00') THEN NULL
+                        ELSE bm.created_at
+                    END
+                ) AS fecha_facturacion"
+            : "NULL AS fecha_facturacion";
+
+        $realSubquery = $hasFacturacionReal
+            ? "SELECT
+                    NULLIF(TRIM(COALESCE(bfr.form_id, '')), '') AS form_id,
+                    MAX(NULLIF(TRIM(COALESCE(bfr.factura_id, '')), '')) AS billing_id,
+                    MAX(
+                        CASE
+                            WHEN CAST(bfr.fecha_facturacion AS CHAR) IN ('', '0000-00-00', '0000-00-00 00:00:00') THEN NULL
+                            ELSE bfr.fecha_facturacion
+                        END
+                    ) AS fecha_facturacion,
+                    MAX(
+                        CASE
+                            WHEN CAST(bfr.fecha_atencion AS CHAR) IN ('', '0000-00-00', '0000-00-00 00:00:00') THEN NULL
+                            ELSE bfr.fecha_atencion
+                        END
+                    ) AS fecha_atencion,
+                    MAX(NULLIF(TRIM(COALESCE(bfr.numero_factura, '')), '')) AS numero_factura,
+                    MAX(NULLIF(TRIM(COALESCE(bfr.factura_id, '')), '')) AS factura_id,
+                    MAX(NULLIF(TRIM(COALESCE(bfr.estado, '')), '')) AS estado_facturacion_raw,
+                    COALESCE(SUM(bfr.monto_honorario), 0) AS total_produccion,
+                    COUNT(*) AS procedimientos_facturados
+                FROM billing_facturacion_real bfr
+                WHERE bfr.form_id IS NOT NULL AND TRIM(bfr.form_id) <> ''
+                GROUP BY bfr.form_id"
+            : "SELECT
+                    CAST(NULL AS CHAR(50)) AS form_id,
+                    CAST(NULL AS CHAR(50)) AS billing_id,
+                    CAST(NULL AS DATETIME) AS fecha_facturacion,
+                    CAST(NULL AS DATETIME) AS fecha_atencion,
+                    CAST(NULL AS CHAR(50)) AS numero_factura,
+                    CAST(NULL AS CHAR(50)) AS factura_id,
+                    CAST(NULL AS CHAR(100)) AS estado_facturacion_raw,
+                    0 AS total_produccion,
+                    0 AS procedimientos_facturados
+                LIMIT 0";
+        $publicSubquery = $hasBillingPublico
+            ? "SELECT
+                    NULLIF(TRIM(COALESCE(bm.form_id, '')), '') AS form_id,
+                    MAX(CAST(bm.id AS CHAR)) AS billing_id,
+                    {$publicFechaExpr},
+                    COALESCE(SUM(COALESCE(bp.proc_precio, 0)), 0) AS total_produccion,
+                    COUNT(*) AS procedimientos_facturados
+                FROM billing_procedimientos bp
+                INNER JOIN billing_main bm ON bm.id = bp.billing_id
+                WHERE bm.form_id IS NOT NULL AND TRIM(bm.form_id) <> ''
+                GROUP BY bm.form_id"
+            : "SELECT
+                    CAST(NULL AS CHAR(50)) AS form_id,
+                    CAST(NULL AS CHAR(50)) AS billing_id,
+                    CAST(NULL AS DATETIME) AS fecha_facturacion,
+                    0 AS total_produccion,
+                    0 AS procedimientos_facturados
+                LIMIT 0";
+
+        return [
+            'select' => "0 AS facturado,
+               NULL AS billing_id,
+               NULL AS fecha_facturacion,
+               NULL AS fecha_atencion,
+               0 AS total_produccion,
+               0 AS procedimientos_facturados,
+               NULL AS numero_factura,
+               NULL AS factura_id,
+               NULL AS estado_facturacion_raw,
+               NULLIF(TRIM(COALESCE(bfr.billing_id, '')), '') AS real_billing_id,
+               bfr.fecha_facturacion AS real_fecha_facturacion,
+               bfr.fecha_atencion AS real_fecha_atencion,
+               COALESCE(bfr.total_produccion, 0) AS real_total_produccion,
+               COALESCE(bfr.procedimientos_facturados, 0) AS real_procedimientos_facturados,
+               NULLIF(TRIM(COALESCE(bfr.numero_factura, '')), '') AS real_numero_factura,
+               NULLIF(TRIM(COALESCE(bfr.factura_id, '')), '') AS real_factura_id,
+               NULLIF(TRIM(COALESCE(bfr.estado_facturacion_raw, '')), '') AS real_estado_facturacion_raw,
+               NULLIF(TRIM(COALESCE(bpub.billing_id, '')), '') AS public_billing_id,
+               bpub.fecha_facturacion AS public_fecha_facturacion,
+               COALESCE(bpub.total_produccion, 0) AS public_total_produccion,
+               COALESCE(bpub.procedimientos_facturados, 0) AS public_procedimientos_facturados",
+            'join' => "LEFT JOIN ({$realSubquery}) bfr ON bfr.form_id = pp.form_id
+            LEFT JOIN ({$publicSubquery}) bpub ON bpub.form_id = pp.form_id",
+        ];
+    }
+
+    /**
+     * @param array<string,mixed> $row
+     * @return array<string,mixed>
+     */
+    private function mergeImagenBillingEvidence(array $row): array
+    {
+        $realEvidence = $this->hasImagenBillingSourceEvidence($row, 'real');
+        $publicEvidence = $this->hasImagenBillingSourceEvidence($row, 'public');
+        $source = $realEvidence ? 'real' : ($publicEvidence ? 'public' : null);
+
+        $row['facturado'] = $source !== null ? 1 : 0;
+        $row['billing_id'] = $source !== null ? trim((string)($row[$source . '_billing_id'] ?? '')) : null;
+        $row['fecha_facturacion'] = $source !== null ? ($row[$source . '_fecha_facturacion'] ?? null) : null;
+        $row['fecha_atencion'] = $source === 'real' ? ($row['real_fecha_atencion'] ?? null) : null;
+        $row['total_produccion'] = $source !== null ? (float)($row[$source . '_total_produccion'] ?? 0) : 0.0;
+        $row['procedimientos_facturados'] = $source !== null ? (int)($row[$source . '_procedimientos_facturados'] ?? 0) : 0;
+        $row['numero_factura'] = $source === 'real' ? trim((string)($row['real_numero_factura'] ?? '')) : null;
+        $row['factura_id'] = $source === 'real' ? trim((string)($row['real_factura_id'] ?? '')) : null;
+        $row['estado_facturacion_raw'] = $source === 'real'
+            ? trim((string)($row['real_estado_facturacion_raw'] ?? ''))
+            : null;
+
+        return $row;
+    }
+
+    /**
+     * @param array<string,mixed> $row
+     */
+    private function hasImagenBillingSourceEvidence(array $row, string $prefix): bool
+    {
+        $billingId = trim((string)($row[$prefix . '_billing_id'] ?? ''));
+        $fechaFacturacion = trim((string)($row[$prefix . '_fecha_facturacion'] ?? ''));
+        $procedimientosFacturados = (int)($row[$prefix . '_procedimientos_facturados'] ?? 0);
+        $totalProduccion = (float)($row[$prefix . '_total_produccion'] ?? 0);
+
+        if ($prefix === 'real') {
+            $numeroFactura = trim((string)($row['real_numero_factura'] ?? ''));
+            $facturaId = trim((string)($row['real_factura_id'] ?? ''));
+            $fechaAtencion = trim((string)($row['real_fecha_atencion'] ?? ''));
+
+            return $billingId !== ''
+                || $numeroFactura !== ''
+                || $facturaId !== ''
+                || $fechaFacturacion !== ''
+                || $fechaAtencion !== ''
+                || $procedimientosFacturados > 0
+                || $totalProduccion > 0;
+        }
+
+        return $billingId !== ''
+            || $fechaFacturacion !== ''
+            || $procedimientosFacturados > 0
+            || $totalProduccion > 0;
     }
 
     /**

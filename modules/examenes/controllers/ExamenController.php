@@ -4904,7 +4904,11 @@ class ExamenController extends BaseController
 
             $estadoAgenda = trim((string)($row['estado_agenda'] ?? ''));
             $estadoRealizacion = $this->resolveImagenRealizationState($row);
-            $estadoFacturacion = $this->resolveImagenBillingState($estadoRealizacion, (int)($row['facturado'] ?? 0) === 1);
+            $estadoFacturacion = $this->resolveImagenBillingState(
+                $estadoRealizacion,
+                (int)($row['facturado'] ?? 0) === 1,
+                (string)($row['estado_facturacion_raw'] ?? '')
+            );
             $estadoInforme = $this->resolveImagenInformeState($row);
             $informado = $estadoInforme === 'INFORMADA';
             $pendienteInformar = $estadoInforme === 'PENDIENTE_INFORMAR';
@@ -5000,8 +5004,24 @@ class ExamenController extends BaseController
         return 'SIN_CIERRE_OPERATIVO';
     }
 
-    private function resolveImagenBillingState(string $estadoRealizacion, bool $facturado): string
+    private function resolveImagenBillingState(string $estadoRealizacion, bool $facturado, string $estadoFacturacionRaw = ''): string
     {
+        $estadoFacturacionRawNorm = $this->normalizarTexto($estadoFacturacionRaw);
+
+        if ($estadoFacturacionRawNorm !== '') {
+            if (str_contains($estadoFacturacionRawNorm, 'cancel') || str_contains($estadoFacturacionRawNorm, 'anul')) {
+                return 'CANCELADA';
+            }
+
+            if (
+                str_contains($estadoFacturacionRawNorm, 'pend')
+                || str_contains($estadoFacturacionRawNorm, 'credito')
+                || str_contains($estadoFacturacionRawNorm, 'cartera')
+            ) {
+                return 'PENDIENTE_PAGO';
+            }
+        }
+
         if ($facturado || $estadoRealizacion === 'FACTURADA') {
             return 'FACTURADA';
         }

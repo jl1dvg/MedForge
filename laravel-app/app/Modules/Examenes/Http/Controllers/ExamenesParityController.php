@@ -11,7 +11,6 @@ use App\Modules\Examenes\Services\ImagenesUiService;
 use App\Modules\Examenes\Services\LegacyExamenesBridge;
 use App\Modules\Examenes\Services\LegacyExamenesRuntime;
 use App\Modules\Examenes\Services\NasImagenesService;
-use App\Modules\Reporting\Services\ReportService;
 use App\Modules\Shared\Support\LegacySessionAuth;
 use DateTimeImmutable;
 use Illuminate\Http\RedirectResponse;
@@ -20,6 +19,10 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Border;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
+use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Modules\Examenes\Models\ExamenModel;
 use Symfony\Component\HttpFoundation\Response;
@@ -685,30 +688,39 @@ class ExamenesParityController
 
         try {
             $payload = $this->imagenesUi->imagenesDashboardExportPayload($request->query());
-            $dashboard = $payload['dashboard'];
-            $detailRows = $payload['detailRows'];
+            $report = is_array($payload['report'] ?? null) ? $payload['report'] : [];
             $filename = 'dashboard_imagenes_' . date('Ymd_His') . '.pdf';
 
-            $reportService = new ReportService();
-            $pdf = $reportService->renderPdf('imagenes_dashboard', [
-                'titulo' => 'Dashboard de KPIs de imágenes',
-                'generatedAt' => (new DateTimeImmutable('now'))->format('d-m-Y H:i'),
-                'filters' => $payload['filtersSummary'],
-                'cards' => is_array($dashboard['cards'] ?? null) ? $dashboard['cards'] : [],
-                'meta' => is_array($dashboard['meta'] ?? null) ? $dashboard['meta'] : [],
-                'rows' => $detailRows,
-                'total' => count($detailRows),
-            ], [
-                'destination' => 'S',
-                'filename' => $filename,
-                'mpdf' => [
-                    'orientation' => 'L',
-                    'margin_left' => 6,
-                    'margin_right' => 6,
-                    'margin_top' => 8,
-                    'margin_bottom' => 8,
-                ],
+            if (!class_exists(\Mpdf\Mpdf::class)) {
+                throw new \RuntimeException('La librería mPDF no está disponible en el entorno.');
+            }
+
+            $html = view('examenes.pdf.imagenes-dashboard-kpi', [
+                'generatedAt' => (new DateTimeImmutable('now'))->format('d/m/Y H:i'),
+                'filterSummary' => is_array($payload['filtersSummary'] ?? null) ? $payload['filtersSummary'] : [],
+                'scopeNotice' => trim((string) ($report['scopeNotice'] ?? '')),
+                'hallazgosClave' => is_array($report['hallazgosClave'] ?? null) ? $report['hallazgosClave'] : [],
+                'methodology' => is_array($report['methodology'] ?? null) ? $report['methodology'] : [],
+                'generalKpis' => is_array($report['generalKpis'] ?? null) ? $report['generalKpis'] : [],
+                'temporalKpis' => is_array($report['temporalKpis'] ?? null) ? $report['temporalKpis'] : [],
+                'economicKpis' => is_array($report['economicKpis'] ?? null) ? $report['economicKpis'] : [],
+                'tables' => is_array($report['tables'] ?? null) ? $report['tables'] : [],
+                'totalAtenciones' => (int) ($report['totalAtenciones'] ?? ($payload['total'] ?? 0)),
+                'rangeLabel' => trim((string) ($report['rangeLabel'] ?? '')),
+            ])->render();
+
+            $pdf = new \Mpdf\Mpdf([
+                'mode' => 'utf-8',
+                'format' => 'A4',
+                'orientation' => 'P',
+                'margin_left' => 10,
+                'margin_right' => 10,
+                'margin_top' => 10,
+                'margin_bottom' => 10,
             ]);
+            $pdf->SetTitle('KPI Dashboard Imágenes');
+            $pdf->WriteHTML($html);
+            $pdf = (string) $pdf->Output('', 'S');
 
             if (strncmp($pdf, '%PDF-', 5) !== 0) {
                 return response()->json(['error' => 'No se pudo generar el PDF (contenido inválido).'], 500);
@@ -735,106 +747,181 @@ class ExamenesParityController
 
         try {
             $payload = $this->imagenesUi->imagenesDashboardExportPayload($request->query());
-            $dashboard = $payload['dashboard'];
-            $detailRows = $payload['detailRows'];
-            $filtersSummary = $payload['filtersSummary'];
+            $detailRows = is_array($payload['detailRows'] ?? null) ? $payload['detailRows'] : [];
+            $filtersSummary = is_array($payload['filtersSummary'] ?? null) ? $payload['filtersSummary'] : [];
+            $report = is_array($payload['report'] ?? null) ? $payload['report'] : [];
             $filename = 'dashboard_imagenes_' . date('Ymd_His') . '.xlsx';
 
             $spreadsheet = new Spreadsheet();
             $sheet = $spreadsheet->getActiveSheet();
-            $sheet->setTitle('Resumen');
-
+            $sheet->setTitle('Resumen KPI');
+            $generatedAt = (new DateTimeImmutable('now'))->format('d/m/Y H:i');
             $row = 1;
-            $sheet->setCellValue("A{$row}", 'Dashboard de KPIs de imágenes');
-            $sheet->mergeCells("A{$row}:E{$row}");
-            $sheet->getStyle("A{$row}")->getFont()->setBold(true)->setSize(15);
 
+            $this->writeExcelMergedTitle($sheet, $row, 'Dashboard de KPIs de imágenes', 'G');
             $row++;
             $sheet->setCellValue("A{$row}", 'Generado:');
-            $sheet->setCellValue("B{$row}", (new DateTimeImmutable('now'))->format('d-m-Y H:i'));
-            $sheet->setCellValue("D{$row}", 'Registros:');
-            $sheet->setCellValueExplicit("E{$row}", (string) count($detailRows), DataType::TYPE_STRING);
-            $sheet->getStyle("A{$row}")->getFont()->setBold(true);
-            $sheet->getStyle("D{$row}")->getFont()->setBold(true);
+            $sheet->setCellValue("B{$row}", $generatedAt);
+            $sheet->setCellValue("D{$row}", 'Periodo:');
+            $sheet->setCellValue("E{$row}", (string) ($report['rangeLabel'] ?? ''));
+            $sheet->setCellValue("F{$row}", 'Registros:');
+            $sheet->setCellValueExplicit("G{$row}", (string) count($detailRows), DataType::TYPE_STRING);
+            $sheet->getStyle("A{$row}:G{$row}")->getFont()->setBold(true);
+
+            $scopeNotice = trim((string) ($report['scopeNotice'] ?? ''));
+            if ($scopeNotice !== '') {
+                $row += 2;
+                $sheet->setCellValue("A{$row}", $scopeNotice);
+                $sheet->mergeCells("A{$row}:G{$row}");
+                $sheet->getStyle("A{$row}:G{$row}")->applyFromArray($this->excelNoticeStyle('EFF6FF', '1D4ED8'));
+                $sheet->getStyle("A{$row}:G{$row}")->getAlignment()->setWrapText(true);
+            }
 
             $row += 2;
-            $sheet->setCellValue("A{$row}", 'Filtros aplicados');
-            $sheet->mergeCells("A{$row}:E{$row}");
-            $sheet->getStyle("A{$row}")->getFont()->setBold(true);
+            $row = $this->writeExcelSectionHeader($sheet, $row, 'Filtros aplicados', 'G');
+            $filterRows = [];
+            foreach ($filtersSummary as $filter) {
+                $filterRows[] = [
+                    (string) ($filter['label'] ?? ''),
+                    (string) ($filter['value'] ?? ''),
+                ];
+            }
+            $row = $this->writeExcelTable(
+                $sheet,
+                $row,
+                ['Filtro', 'Valor'],
+                $filterRows,
+                'Sin filtros específicos.',
+                [26, 62]
+            );
 
-            if ($filtersSummary === []) {
-                $row++;
-                $sheet->setCellValue("A{$row}", 'Sin filtros específicos.');
-                $sheet->mergeCells("A{$row}:E{$row}");
-            } else {
-                foreach ($filtersSummary as $filter) {
+            $row += 2;
+            $row = $this->writeExcelSectionHeader($sheet, $row, 'Hallazgos clave', 'G');
+            $hallazgosRows = array_map(
+                static fn(string $item): array => [$item],
+                array_values(array_filter(
+                    is_array($report['hallazgosClave'] ?? null) ? $report['hallazgosClave'] : [],
+                    static fn($item): bool => trim((string) $item) !== ''
+                ))
+            );
+            $row = $this->writeExcelTable(
+                $sheet,
+                $row,
+                ['Hallazgo'],
+                $hallazgosRows,
+                'No hubo suficientes datos para generar hallazgos destacados.',
+                [96]
+            );
+
+            $row += 2;
+            $row = $this->writeExcelSectionHeader($sheet, $row, 'Metodología', 'G');
+            $methodologyRows = array_map(
+                static fn(string $item): array => [$item],
+                array_values(array_filter(
+                    is_array($report['methodology'] ?? null) ? $report['methodology'] : [],
+                    static fn($item): bool => trim((string) $item) !== ''
+                ))
+            );
+            $row = $this->writeExcelTable(
+                $sheet,
+                $row,
+                ['Criterio'],
+                $methodologyRows,
+                'Sin metodología documentada.',
+                [96]
+            );
+
+            $row += 2;
+            $row = $this->writeExcelSectionHeader($sheet, $row, 'KPI Generales', 'G');
+            $row = $this->writeExcelTable(
+                $sheet,
+                $row,
+                ['KPI', 'Valor', 'Detalle'],
+                $this->normalizeExcelRows(is_array($report['generalKpis'] ?? null) ? $report['generalKpis'] : [], ['label', 'value', 'note']),
+                'Sin KPI generales para el rango seleccionado.',
+                [28, 16, 54]
+            );
+
+            $row += 2;
+            $row = $this->writeExcelSectionHeader($sheet, $row, 'KPI Temporales', 'G');
+            $row = $this->writeExcelTable(
+                $sheet,
+                $row,
+                ['KPI', 'Valor', 'Detalle'],
+                $this->normalizeExcelRows(is_array($report['temporalKpis'] ?? null) ? $report['temporalKpis'] : [], ['label', 'value', 'note']),
+                'Sin KPI temporales para el rango seleccionado.',
+                [28, 16, 54]
+            );
+
+            $row += 2;
+            $row = $this->writeExcelSectionHeader($sheet, $row, 'KPI Económicos', 'G');
+            $row = $this->writeExcelTable(
+                $sheet,
+                $row,
+                ['KPI', 'Valor', 'Qué significa', 'Cómo se calcula'],
+                $this->normalizeExcelRows(is_array($report['economicKpis'] ?? null) ? $report['economicKpis'] : [], ['label', 'value', 'meaning', 'formula']),
+                'Sin KPI económicos para el rango seleccionado.',
+                [24, 16, 34, 34]
+            );
+
+            $tables = is_array($report['tables'] ?? null) ? $report['tables'] : [];
+            foreach ($tables as $table) {
+                $title = trim((string) ($table['title'] ?? 'Tabla'));
+                $subtitle = trim((string) ($table['subtitle'] ?? ''));
+                $row += 2;
+                $row = $this->writeExcelSectionHeader($sheet, $row, $title, 'G');
+                if ($subtitle !== '') {
+                    $sheet->setCellValue("A{$row}", $subtitle);
+                    $sheet->mergeCells("A{$row}:G{$row}");
+                    $sheet->getStyle("A{$row}:G{$row}")->getFont()->setItalic(true)->getColor()->setRGB('64748B');
+                    $sheet->getStyle("A{$row}:G{$row}")->getAlignment()->setWrapText(true);
                     $row++;
-                    $sheet->setCellValue("A{$row}", (string) ($filter['label'] ?? ''));
-                    $sheet->setCellValue("B{$row}", (string) ($filter['value'] ?? ''));
-                    $sheet->mergeCells("B{$row}:E{$row}");
-                    $sheet->getStyle("A{$row}")->getFont()->setBold(true);
                 }
+                $headers = array_values(array_map(static fn($value): string => (string) $value, is_array($table['columns'] ?? null) ? $table['columns'] : []));
+                $tableRows = [];
+                foreach (is_array($table['rows'] ?? null) ? $table['rows'] : [] as $tableRow) {
+                    $tableRows[] = array_map(static fn($value): string => (string) $value, is_array($tableRow) ? $tableRow : []);
+                }
+                $row = $this->writeExcelTable(
+                    $sheet,
+                    $row,
+                    $headers,
+                    $tableRows,
+                    trim((string) ($table['empty_message'] ?? 'Sin datos.'))
+                );
             }
 
-            $row += 2;
-            $sheet->setCellValue("A{$row}", 'KPIs');
-            $sheet->mergeCells("A{$row}:E{$row}");
-            $sheet->getStyle("A{$row}")->getFont()->setBold(true);
-
-            $row++;
-            $sheet->setCellValue("A{$row}", 'Indicador');
-            $sheet->setCellValue("B{$row}", 'Valor');
-            $sheet->setCellValue("C{$row}", 'Detalle');
-            $sheet->mergeCells("C{$row}:E{$row}");
-            $sheet->getStyle("A{$row}:E{$row}")->getFont()->setBold(true);
-
-            $cards = is_array($dashboard['cards'] ?? null) ? $dashboard['cards'] : [];
-            foreach ($cards as $card) {
-                $row++;
-                $sheet->setCellValue("A{$row}", (string) ($card['label'] ?? ''));
-                $sheet->setCellValueExplicit("B{$row}", (string) ($card['value'] ?? ''), DataType::TYPE_STRING);
-                $sheet->setCellValue("C{$row}", (string) ($card['hint'] ?? ''));
-                $sheet->mergeCells("C{$row}:E{$row}");
+            $sheet->freezePane('A4');
+            foreach (['A' => 28, 'B' => 18, 'C' => 28, 'D' => 20, 'E' => 24, 'F' => 18, 'G' => 18] as $column => $width) {
+                $sheet->getColumnDimension($column)->setWidth($width);
             }
-
-            $meta = is_array($dashboard['meta'] ?? null) ? $dashboard['meta'] : [];
-            $tatPromedio = ($meta['tat_promedio_horas'] ?? null) !== null ? number_format((float) $meta['tat_promedio_horas'], 2) . ' h' : '—';
-            $tatMediana = ($meta['tat_mediana_horas'] ?? null) !== null ? number_format((float) $meta['tat_mediana_horas'], 2) . ' h' : '—';
-            $tatP90 = ($meta['tat_p90_horas'] ?? null) !== null ? number_format((float) $meta['tat_p90_horas'], 2) . ' h' : '—';
-            $row++;
-            $sheet->setCellValue("A{$row}", 'TAT');
-            $sheet->setCellValue("B{$row}", $tatPromedio);
-            $sheet->setCellValue("C{$row}", 'Mediana: ' . $tatMediana . ' | P90: ' . $tatP90);
-            $sheet->mergeCells("C{$row}:E{$row}");
-
-            $sheet->getColumnDimension('A')->setWidth(36);
-            $sheet->getColumnDimension('B')->setWidth(18);
-            $sheet->getColumnDimension('C')->setWidth(34);
-            $sheet->getColumnDimension('D')->setWidth(16);
-            $sheet->getColumnDimension('E')->setWidth(16);
 
             $detailSheet = $spreadsheet->createSheet();
             $detailSheet->setTitle('Detalle');
             $detailHeaders = [
                 '#',
-                'Fecha examen',
-                'Form ID',
+                'Fecha',
                 'HC',
                 'Paciente',
                 'Afiliación',
-                'Estado agenda',
-                'Estado real',
+                'Categoría cliente',
+                'Sede',
+                'Estado encuentro',
+                'Estado realización',
                 'Estado informe',
-                'Cita generada',
-                'Examen realizado',
-                'Informado',
-                'Facturado',
-                'Archivos NAS',
-                'Producción USD',
-                'Proc. facturados',
+                'Facturación',
+                'Estado facturación operativa',
+                'Fuente billing',
+                'Monto estimado',
+                'Honorario real',
+                'Billing ID',
                 'Fecha facturación',
-                'Código',
-                'Examen',
+                'Proc. facturados',
+                'Archivos NAS',
+                'Sin tarifa nivel 3',
+                'Form ID',
+                'Código tarifario',
+                'Detalle tarifario',
             ];
 
             $detailRow = 1;
@@ -842,29 +929,34 @@ class ExamenesParityController
                 $column = $this->excelColumnByIndex($idx);
                 $detailSheet->setCellValue("{$column}{$detailRow}", $label);
             }
-            $detailSheet->getStyle('A1:R1')->getFont()->setBold(true);
-            $detailSheet->setAutoFilter('A1:R1');
+            $lastDetailColumn = $this->excelColumnByIndex(count($detailHeaders) - 1);
+            $detailSheet->getStyle("A1:{$lastDetailColumn}1")->applyFromArray($this->excelTableHeaderStyle());
+            $detailSheet->setAutoFilter("A1:{$lastDetailColumn}1");
 
             foreach ($detailRows as $index => $item) {
                 $detailRow++;
                 $values = [
                     (string) ($index + 1),
                     (string) ($item['fecha_examen'] ?? '—'),
-                    (string) ($item['form_id'] ?? ''),
                     (string) ($item['hc_number'] ?? ''),
                     (string) ($item['paciente'] ?? ''),
                     (string) ($item['afiliacion'] ?? ''),
+                    (string) ($item['afiliacion_categoria'] ?? ''),
+                    (string) ($item['sede'] ?? ''),
                     (string) ($item['estado_agenda'] ?? ''),
                     (string) ($item['estado_realizacion'] ?? ''),
                     (string) ($item['estado_informe'] ?? ''),
-                    !empty($item['cita_generada']) ? 'SI' : 'NO',
-                    !empty($item['examen_realizado']) ? 'SI' : 'NO',
-                    !empty($item['informado']) ? 'SI' : 'NO',
-                    !empty($item['facturado']) ? 'SI' : 'NO',
-                    !empty($item['nas_has_files']) ? ((string) ($item['nas_files_count'] ?? 0) . ' archivo(s)') : 'NO',
+                    !empty($item['facturado']) ? 'FACTURADO' : 'PENDIENTE',
+                    (string) ($item['estado_facturacion'] ?? ''),
+                    $this->formatBillingSourceLabel((string) ($item['billing_source'] ?? '')),
+                    (float) ($item['monto_pendiente_estimado'] ?? 0) > 0 ? number_format((float) ($item['monto_pendiente_estimado'] ?? 0), 2, '.', '') : '',
                     number_format((float) ($item['produccion'] ?? 0), 2, '.', ''),
-                    (string) ($item['procedimientos_facturados'] ?? 0),
+                    (string) ($item['billing_id'] ?? ''),
                     (string) ($item['fecha_facturacion'] ?? '—'),
+                    (string) ($item['procedimientos_facturados'] ?? 0),
+                    !empty($item['nas_has_files']) ? (string) ($item['nas_files_count'] ?? 0) : '0',
+                    !empty($item['sin_tarifa_publica']) ? 'SI' : 'NO',
+                    (string) ($item['form_id'] ?? ''),
                     (string) ($item['codigo'] ?? ''),
                     (string) ($item['examen'] ?? ''),
                 ];
@@ -875,28 +967,18 @@ class ExamenesParityController
                 }
             }
 
-            $detailSheet->freezePane('A2');
-            $detailSheet->getColumnDimension('A')->setWidth(6);
-            $detailSheet->getColumnDimension('B')->setWidth(20);
-            $detailSheet->getColumnDimension('C')->setWidth(12);
-            $detailSheet->getColumnDimension('D')->setWidth(14);
-            $detailSheet->getColumnDimension('E')->setWidth(36);
-            $detailSheet->getColumnDimension('F')->setWidth(24);
-            $detailSheet->getColumnDimension('G')->setWidth(20);
-            $detailSheet->getColumnDimension('H')->setWidth(18);
-            $detailSheet->getColumnDimension('I')->setWidth(18);
-            $detailSheet->getColumnDimension('J')->setWidth(14);
-            $detailSheet->getColumnDimension('K')->setWidth(16);
-            $detailSheet->getColumnDimension('L')->setWidth(12);
-            $detailSheet->getColumnDimension('M')->setWidth(12);
-            $detailSheet->getColumnDimension('N')->setWidth(18);
-            $detailSheet->getColumnDimension('O')->setWidth(14);
-            $detailSheet->getColumnDimension('P')->setWidth(16);
-            $detailSheet->getColumnDimension('Q')->setWidth(10);
-            $detailSheet->getColumnDimension('R')->setWidth(62);
-
             if ($detailRow > 1) {
-                $detailSheet->getStyle("R2:R{$detailRow}")->getAlignment()->setWrapText(true);
+                $detailSheet->getStyle("A1:{$lastDetailColumn}{$detailRow}")->applyFromArray($this->excelTableBodyStyle());
+                $detailSheet->getStyle("W2:W{$detailRow}")->getAlignment()->setWrapText(true);
+            }
+
+            $detailSheet->freezePane('A2');
+            foreach ([
+                'A' => 6, 'B' => 18, 'C' => 14, 'D' => 34, 'E' => 24, 'F' => 18, 'G' => 14, 'H' => 18,
+                'I' => 20, 'J' => 18, 'K' => 14, 'L' => 24, 'M' => 16, 'N' => 16, 'O' => 16, 'P' => 14,
+                'Q' => 18, 'R' => 14, 'S' => 12, 'T' => 16, 'U' => 12, 'V' => 14, 'W' => 56,
+            ] as $column => $width) {
+                $detailSheet->getColumnDimension($column)->setWidth($width);
             }
 
             $writer = new Xlsx($spreadsheet);
@@ -1239,6 +1321,210 @@ class ExamenesParityController
             'png' => 'image/png',
             'jpg', 'jpeg' => 'image/jpeg',
             default => 'application/octet-stream',
+        };
+    }
+
+    private function writeExcelMergedTitle(Worksheet $sheet, int $row, string $title, string $lastColumn = 'G'): void
+    {
+        $sheet->setCellValue("A{$row}", $title);
+        $sheet->mergeCells("A{$row}:{$lastColumn}{$row}");
+        $sheet->getStyle("A{$row}:{$lastColumn}{$row}")->applyFromArray([
+            'font' => [
+                'bold' => true,
+                'size' => 16,
+                'color' => ['rgb' => 'FFFFFF'],
+            ],
+            'fill' => [
+                'fillType' => Fill::FILL_SOLID,
+                'startColor' => ['rgb' => '0F766E'],
+            ],
+            'alignment' => [
+                'horizontal' => Alignment::HORIZONTAL_LEFT,
+                'vertical' => Alignment::VERTICAL_CENTER,
+            ],
+        ]);
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private function excelNoticeStyle(string $fillColor, string $textColor): array
+    {
+        return [
+            'font' => [
+                'italic' => true,
+                'color' => ['rgb' => $textColor],
+            ],
+            'fill' => [
+                'fillType' => Fill::FILL_SOLID,
+                'startColor' => ['rgb' => $fillColor],
+            ],
+            'borders' => [
+                'allBorders' => [
+                    'borderStyle' => Border::BORDER_THIN,
+                    'color' => ['rgb' => 'BFDBFE'],
+                ],
+            ],
+            'alignment' => [
+                'wrapText' => true,
+                'vertical' => Alignment::VERTICAL_TOP,
+            ],
+        ];
+    }
+
+    private function writeExcelSectionHeader(Worksheet $sheet, int $row, string $title, string $lastColumn = 'G'): int
+    {
+        $sheet->setCellValue("A{$row}", $title);
+        $sheet->mergeCells("A{$row}:{$lastColumn}{$row}");
+        $sheet->getStyle("A{$row}:{$lastColumn}{$row}")->applyFromArray([
+            'font' => [
+                'bold' => true,
+                'size' => 12,
+                'color' => ['rgb' => '0F172A'],
+            ],
+            'fill' => [
+                'fillType' => Fill::FILL_SOLID,
+                'startColor' => ['rgb' => 'E2E8F0'],
+            ],
+            'borders' => [
+                'allBorders' => [
+                    'borderStyle' => Border::BORDER_THIN,
+                    'color' => ['rgb' => 'CBD5E1'],
+                ],
+            ],
+        ]);
+
+        return $row + 1;
+    }
+
+    /**
+     * @param array<int,string> $headers
+     * @param array<int,array<int,string>> $rows
+     * @param array<int,int|float> $widths
+     */
+    private function writeExcelTable(
+        Worksheet $sheet,
+        int $row,
+        array $headers,
+        array $rows,
+        string $emptyMessage,
+        array $widths = []
+    ): int {
+        if ($headers === []) {
+            return $row;
+        }
+
+        $lastColumn = $this->excelColumnByIndex(count($headers) - 1);
+        foreach ($headers as $index => $header) {
+            $column = $this->excelColumnByIndex($index);
+            $sheet->setCellValue("{$column}{$row}", $header);
+            if (isset($widths[$index])) {
+                $sheet->getColumnDimension($column)->setWidth((float) $widths[$index]);
+            }
+        }
+        $sheet->getStyle("A{$row}:{$lastColumn}{$row}")->applyFromArray($this->excelTableHeaderStyle());
+        $bodyStart = $row + 1;
+
+        if ($rows === []) {
+            $sheet->setCellValue("A{$bodyStart}", $emptyMessage);
+            $sheet->mergeCells("A{$bodyStart}:{$lastColumn}{$bodyStart}");
+            $sheet->getStyle("A{$bodyStart}:{$lastColumn}{$bodyStart}")->applyFromArray($this->excelTableBodyStyle());
+            $sheet->getStyle("A{$bodyStart}:{$lastColumn}{$bodyStart}")->getFont()->setItalic(true)->getColor()->setRGB('64748B');
+            $sheet->getStyle("A{$bodyStart}:{$lastColumn}{$bodyStart}")->getAlignment()->setWrapText(true);
+
+            return $bodyStart;
+        }
+
+        $currentRow = $bodyStart;
+        foreach ($rows as $dataRow) {
+            foreach ($headers as $index => $_header) {
+                $column = $this->excelColumnByIndex($index);
+                $sheet->setCellValueExplicit(
+                    "{$column}{$currentRow}",
+                    (string) ($dataRow[$index] ?? ''),
+                    DataType::TYPE_STRING
+                );
+            }
+            $currentRow++;
+        }
+
+        $endRow = $currentRow - 1;
+        $sheet->getStyle("A{$bodyStart}:{$lastColumn}{$endRow}")->applyFromArray($this->excelTableBodyStyle());
+        $sheet->getStyle("A{$bodyStart}:{$lastColumn}{$endRow}")->getAlignment()->setWrapText(true);
+
+        return $endRow;
+    }
+
+    /**
+     * @param array<int,array<string,mixed>> $rows
+     * @param array<int,string> $keys
+     * @return array<int,array<int,string>>
+     */
+    private function normalizeExcelRows(array $rows, array $keys): array
+    {
+        $normalized = [];
+
+        foreach ($rows as $row) {
+            $normalizedRow = [];
+            foreach ($keys as $key) {
+                $normalizedRow[] = trim((string) ($row[$key] ?? ''));
+            }
+            $normalized[] = $normalizedRow;
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private function excelTableHeaderStyle(): array
+    {
+        return [
+            'font' => [
+                'bold' => true,
+                'color' => ['rgb' => '0F172A'],
+            ],
+            'fill' => [
+                'fillType' => Fill::FILL_SOLID,
+                'startColor' => ['rgb' => 'F1F5F9'],
+            ],
+            'borders' => [
+                'allBorders' => [
+                    'borderStyle' => Border::BORDER_THIN,
+                    'color' => ['rgb' => 'CBD5E1'],
+                ],
+            ],
+            'alignment' => [
+                'vertical' => Alignment::VERTICAL_CENTER,
+            ],
+        ];
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private function excelTableBodyStyle(): array
+    {
+        return [
+            'borders' => [
+                'allBorders' => [
+                    'borderStyle' => Border::BORDER_THIN,
+                    'color' => ['rgb' => 'E2E8F0'],
+                ],
+            ],
+            'alignment' => [
+                'vertical' => Alignment::VERTICAL_TOP,
+            ],
+        ];
+    }
+
+    private function formatBillingSourceLabel(string $source): string
+    {
+        return match (trim($source)) {
+            'real' => 'Billing real',
+            'public' => 'Billing público',
+            default => '',
         };
     }
 
