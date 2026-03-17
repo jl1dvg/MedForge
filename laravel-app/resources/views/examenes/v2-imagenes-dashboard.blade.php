@@ -65,6 +65,96 @@ foreach (($rows ?? []) as $row) {
     }
 }
 sort($estadoOpciones);
+
+$cardIndex = [];
+foreach ($dashboardCards as $card) {
+    $label = trim((string) ($card['label'] ?? ''));
+    if ($label === '') {
+        continue;
+    }
+    $cardIndex[$label] = $card;
+}
+
+$pickCards = static function (array $labels) use ($cardIndex): array {
+    $picked = [];
+    foreach ($labels as $label) {
+        if (isset($cardIndex[$label])) {
+            $picked[] = $cardIndex[$label];
+        }
+    }
+
+    return $picked;
+};
+
+$cardNumber = static function (string $label) use ($cardIndex): float {
+    $raw = trim((string) (($cardIndex[$label]['value'] ?? '0')));
+    $normalized = preg_replace('/[^\d\.\-]/', '', str_replace(',', '', $raw));
+
+    return is_string($normalized) && $normalized !== '' ? (float) $normalized : 0.0;
+};
+
+$summaryCards = $pickCards([
+    'Total estudios',
+    'Atendidos',
+    'Informadas',
+    'Facturados',
+    'Pendiente de facturar',
+    'Producción facturada',
+]);
+
+$operationCards = $pickCards([
+    'Cumplimiento cita->realización',
+    'SLA informe <= 48h',
+    'Día pico de tráfico',
+    'Pérdida',
+    'Cancelados',
+    'Pendiente de pago',
+]);
+
+$facturacionCards = $pickCards([
+    'Atendidos pendientes facturar',
+    'Pendiente facturar pública',
+    'Pendiente facturar privada',
+    'Facturación cancelada',
+    'Pendiente estimado público',
+    'Ticket promedio facturado',
+    'Procedimientos facturados',
+    'Facturados e informados',
+    'Facturados sin informar',
+    'Informados sin facturar',
+]);
+
+$rangeSummary = trim((string) ($filters['fecha_inicio'] ?? '')) !== '' && trim((string) ($filters['fecha_fin'] ?? '')) !== ''
+    ? trim((string) ($filters['fecha_inicio'] ?? '')) . ' a ' . trim((string) ($filters['fecha_fin'] ?? ''))
+    : 'Rango abierto';
+
+$executiveHighlights = [];
+$pendingBilling = (int) ($dashboardMeta['pendientes_facturar'] ?? $cardNumber('Pendiente de facturar'));
+$pendingBillingPublic = (int) ($dashboardMeta['pendientes_facturar_publico'] ?? 0);
+$pendingBillingPrivate = (int) ($dashboardMeta['pendientes_facturar_privado'] ?? 0);
+$pendingAmountPublic = (float) ($dashboardMeta['monto_pendiente_estimado_publico'] ?? 0);
+$pendingPublicWithoutRate = (int) ($dashboardMeta['pendientes_facturar_publico_sin_tarifa'] ?? 0);
+$sla48Value = trim((string) (($cardIndex['SLA informe <= 48h']['value'] ?? '—')));
+$trafficPeakLabel = trim((string) (($cardIndex['Día pico de tráfico']['value'] ?? '—')));
+$trafficPeakHint = trim((string) (($cardIndex['Día pico de tráfico']['hint'] ?? '')));
+
+if ($pendingBilling > 0) {
+    $executiveHighlights[] = 'Backlog operativo: ' . number_format($pendingBilling) . ' casos atendidos siguen sin cierre de facturación (' . number_format($pendingBillingPublic) . ' públicos y ' . number_format($pendingBillingPrivate) . ' privados).';
+}
+if ($pendingAmountPublic > 0) {
+    $executiveHighlights[] = 'Oportunidad pública abierta: $' . number_format($pendingAmountPublic, 2) . ' estimados por facturar con tarifario nivel 3.';
+} elseif ($pendingPublicWithoutRate > 0) {
+    $executiveHighlights[] = 'Existen ' . number_format($pendingPublicWithoutRate) . ' casos públicos pendientes sin tarifa nivel 3, por lo que el pendiente económico está subestimado.';
+}
+if ($sla48Value !== '' && $sla48Value !== '—') {
+    $executiveHighlights[] = 'Cumplimiento temporal: SLA de informe <= 48h en ' . $sla48Value . ' para el rango actual.';
+}
+if ($trafficPeakLabel !== '' && $trafficPeakLabel !== '—') {
+    $executiveHighlights[] = 'Carga operativa concentrada en ' . $trafficPeakLabel . ($trafficPeakHint !== '' ? (' (' . $trafficPeakHint . ').') : '.');
+}
+if ($executiveHighlights === []) {
+    $executiveHighlights[] = 'No se detectaron alertas destacadas para el rango seleccionado. Usa los bloques de operación y facturación para revisar detalle.';
+}
 ?>
 
 <div class="content-header">
@@ -189,117 +279,279 @@ sort($estadoOpciones);
         </div>
     </div>
 
-    <div class="imagenes-kpi-grid mb-3">
-        <?php foreach ($dashboardCards as $card): ?>
-            <article class="imagenes-kpi-card">
-                <p class="imagenes-kpi-label mb-1"><?= htmlspecialchars((string)($card['label'] ?? ''), ENT_QUOTES, 'UTF-8') ?></p>
-                <h4 class="imagenes-kpi-value mb-1"><?= htmlspecialchars((string)($card['value'] ?? '0'), ENT_QUOTES, 'UTF-8') ?></h4>
-                <p class="imagenes-kpi-hint mb-0"><?= htmlspecialchars((string)($card['hint'] ?? ''), ENT_QUOTES, 'UTF-8') ?></p>
-            </article>
-        <?php endforeach; ?>
-    </div>
+    <nav class="imagenes-section-nav mb-3">
+        <a href="#imagenes-resumen">Resumen</a>
+        <a href="#imagenes-operacion">Operación</a>
+        <a href="#imagenes-facturacion">Facturación</a>
+        <a href="#imagenes-demanda">Demanda</a>
+    </nav>
 
-    <div class="d-flex flex-wrap gap-3 align-items-center text-muted small mb-3">
-        <span><strong>TAT promedio:</strong> <?= htmlspecialchars(($dashboardMeta['tat_promedio_horas'] ?? null) !== null ? number_format((float)$dashboardMeta['tat_promedio_horas'], 2) . ' h' : '—', ENT_QUOTES, 'UTF-8') ?></span>
-        <span><strong>TAT mediana:</strong> <?= htmlspecialchars(($dashboardMeta['tat_mediana_horas'] ?? null) !== null ? number_format((float)$dashboardMeta['tat_mediana_horas'], 2) . ' h' : '—', ENT_QUOTES, 'UTF-8') ?></span>
-        <span><strong>TAT P90:</strong> <?= htmlspecialchars(($dashboardMeta['tat_p90_horas'] ?? null) !== null ? number_format((float)$dashboardMeta['tat_p90_horas'], 2) . ' h' : '—', ENT_QUOTES, 'UTF-8') ?></span>
-    </div>
+    <section id="imagenes-resumen" class="imagenes-section-card mb-3">
+        <div class="imagenes-section-head">
+            <div>
+                <p class="imagenes-section-kicker mb-1">Resumen ejecutivo</p>
+                <h4 class="imagenes-section-title mb-1">Lectura gerencial del periodo</h4>
+                <p class="imagenes-section-copy mb-0">Consolida producción, cierre operativo, facturación y presión de backlog para el rango <strong><?= htmlspecialchars($rangeSummary, ENT_QUOTES, 'UTF-8') ?></strong>.</p>
+            </div>
+            <div class="imagenes-section-badges">
+                <span class="badge bg-light text-primary">Fuente: Laravel V2</span>
+                <span class="badge bg-light text-dark">Registros: <?= htmlspecialchars((string) ($cardIndex['Total estudios']['value'] ?? '0'), ENT_QUOTES, 'UTF-8') ?></span>
+            </div>
+        </div>
+        <div class="row g-3">
+            <div class="col-12 col-xl-8">
+                <div class="imagenes-kpi-grid">
+                    <?php foreach ($summaryCards as $card): ?>
+                        <article class="imagenes-kpi-card imagenes-kpi-card--summary">
+                            <p class="imagenes-kpi-label mb-1"><?= htmlspecialchars((string)($card['label'] ?? ''), ENT_QUOTES, 'UTF-8') ?></p>
+                            <h4 class="imagenes-kpi-value mb-1"><?= htmlspecialchars((string)($card['value'] ?? '0'), ENT_QUOTES, 'UTF-8') ?></h4>
+                            <p class="imagenes-kpi-hint mb-0"><?= htmlspecialchars((string)($card['hint'] ?? ''), ENT_QUOTES, 'UTF-8') ?></p>
+                        </article>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+            <div class="col-12 col-xl-4">
+                <div class="imagenes-insight-card">
+                    <h6 class="imagenes-chart-title">Hallazgos del periodo</h6>
+                    <ul class="imagenes-insight-list mb-0">
+                        <?php foreach ($executiveHighlights as $highlight): ?>
+                            <li><?= htmlspecialchars($highlight, ENT_QUOTES, 'UTF-8') ?></li>
+                        <?php endforeach; ?>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
 
-    <div class="row g-3">
-        <div class="col-12 col-xl-6">
-            <div class="imagenes-chart-card">
-                <h6 class="imagenes-chart-title">Serie diaria (realizados vs informados)</h6>
-                <div class="imagenes-chart-wrap">
-                    <canvas id="chartImagenesSerieDiaria"></canvas>
+    <section id="imagenes-operacion" class="imagenes-section-card mb-3">
+        <div class="imagenes-section-head">
+            <div>
+                <p class="imagenes-section-kicker mb-1">Sección 1</p>
+                <h4 class="imagenes-section-title mb-1">Operación y tiempos</h4>
+                <p class="imagenes-section-copy mb-0">Este bloque deja claro volumen, conversión, tráfico y presión de no informados.</p>
+            </div>
+        </div>
+        <div class="imagenes-kpi-grid imagenes-kpi-grid--compact mb-3">
+            <?php foreach ($operationCards as $card): ?>
+                <article class="imagenes-kpi-card">
+                    <p class="imagenes-kpi-label mb-1"><?= htmlspecialchars((string)($card['label'] ?? ''), ENT_QUOTES, 'UTF-8') ?></p>
+                    <h4 class="imagenes-kpi-value mb-1"><?= htmlspecialchars((string)($card['value'] ?? '0'), ENT_QUOTES, 'UTF-8') ?></h4>
+                    <p class="imagenes-kpi-hint mb-0"><?= htmlspecialchars((string)($card['hint'] ?? ''), ENT_QUOTES, 'UTF-8') ?></p>
+                </article>
+            <?php endforeach; ?>
+        </div>
+        <div class="imagenes-stat-strip mb-3">
+            <div class="imagenes-stat-pill">
+                <span>TAT promedio</span>
+                <strong><?= htmlspecialchars(($dashboardMeta['tat_promedio_horas'] ?? null) !== null ? number_format((float)$dashboardMeta['tat_promedio_horas'], 2) . ' h' : '—', ENT_QUOTES, 'UTF-8') ?></strong>
+            </div>
+            <div class="imagenes-stat-pill">
+                <span>TAT mediana</span>
+                <strong><?= htmlspecialchars(($dashboardMeta['tat_mediana_horas'] ?? null) !== null ? number_format((float)$dashboardMeta['tat_mediana_horas'], 2) . ' h' : '—', ENT_QUOTES, 'UTF-8') ?></strong>
+            </div>
+            <div class="imagenes-stat-pill">
+                <span>TAT P90</span>
+                <strong><?= htmlspecialchars(($dashboardMeta['tat_p90_horas'] ?? null) !== null ? number_format((float)$dashboardMeta['tat_p90_horas'], 2) . ' h' : '—', ENT_QUOTES, 'UTF-8') ?></strong>
+            </div>
+        </div>
+        <div class="row g-3">
+            <div class="col-12 col-xl-6">
+                <div class="imagenes-chart-card">
+                    <h6 class="imagenes-chart-title">Embudo operativo</h6>
+                    <div class="imagenes-chart-wrap">
+                        <canvas id="chartImagenesEmbudoOperativo"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-xl-6">
+                <div class="imagenes-chart-card">
+                    <h6 class="imagenes-chart-title">Serie diaria (realizados vs informados)</h6>
+                    <div class="imagenes-chart-wrap">
+                        <canvas id="chartImagenesSerieDiaria"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-xl-6">
+                <div class="imagenes-chart-card">
+                    <h6 class="imagenes-chart-title">Citas generadas vs exámenes realizados</h6>
+                    <div class="imagenes-chart-wrap">
+                        <canvas id="chartImagenesCitasRealizados"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-xl-6">
+                <div class="imagenes-chart-card">
+                    <h6 class="imagenes-chart-title">Tráfico por día de semana</h6>
+                    <div class="imagenes-chart-wrap">
+                        <canvas id="chartImagenesTraficoSemana"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="col-12">
+                <div class="imagenes-chart-card">
+                    <h6 class="imagenes-chart-title">Aging de no informados</h6>
+                    <div class="imagenes-chart-wrap imagenes-chart-wrap--short">
+                        <canvas id="chartImagenesAging"></canvas>
+                    </div>
                 </div>
             </div>
         </div>
-        <div class="col-12 col-xl-6">
-            <div class="imagenes-chart-card">
-                <h6 class="imagenes-chart-title">Trazabilidad facturación</h6>
-                <div class="imagenes-chart-wrap">
-                    <canvas id="chartImagenesTrazabilidad"></canvas>
+    </section>
+
+    <section id="imagenes-facturacion" class="imagenes-section-card mb-3">
+        <div class="imagenes-section-head">
+            <div>
+                <p class="imagenes-section-kicker mb-1">Sección 2</p>
+                <h4 class="imagenes-section-title mb-1">Facturación y cierre</h4>
+                <p class="imagenes-section-copy mb-0">Aquí se concentra el backlog atendido, el cierre por categoría y la oportunidad económica pública.</p>
+            </div>
+        </div>
+        <div class="imagenes-kpi-grid imagenes-kpi-grid--compact mb-3">
+            <?php foreach ($facturacionCards as $card): ?>
+                <article class="imagenes-kpi-card">
+                    <p class="imagenes-kpi-label mb-1"><?= htmlspecialchars((string)($card['label'] ?? ''), ENT_QUOTES, 'UTF-8') ?></p>
+                    <h4 class="imagenes-kpi-value mb-1"><?= htmlspecialchars((string)($card['value'] ?? '0'), ENT_QUOTES, 'UTF-8') ?></h4>
+                    <p class="imagenes-kpi-hint mb-0"><?= htmlspecialchars((string)($card['hint'] ?? ''), ENT_QUOTES, 'UTF-8') ?></p>
+                </article>
+            <?php endforeach; ?>
+        </div>
+        <div class="row g-3">
+            <div class="col-12 col-xl-4">
+                <div class="imagenes-chart-card">
+                    <h6 class="imagenes-chart-title">Trazabilidad facturación</h6>
+                    <div class="imagenes-chart-wrap">
+                        <canvas id="chartImagenesTrazabilidad"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-xl-4">
+                <div class="imagenes-chart-card">
+                    <h6 class="imagenes-chart-title">Backlog de facturación por categoría</h6>
+                    <div class="imagenes-chart-wrap">
+                        <canvas id="chartImagenesBacklogCategoria"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-xl-4">
+                <div class="imagenes-chart-card">
+                    <h6 class="imagenes-chart-title">Rendimiento económico</h6>
+                    <div class="imagenes-chart-wrap">
+                        <canvas id="chartImagenesRendimientoEconomico"></canvas>
+                    </div>
                 </div>
             </div>
         </div>
-        <div class="col-12 col-xl-6">
-            <div class="imagenes-chart-card">
-                <h6 class="imagenes-chart-title">Citas generadas vs exámenes realizados</h6>
-                <div class="imagenes-chart-wrap">
-                    <canvas id="chartImagenesCitasRealizados"></canvas>
+    </section>
+
+    <section id="imagenes-demanda" class="imagenes-section-card mb-3">
+        <div class="imagenes-section-head">
+            <div>
+                <p class="imagenes-section-kicker mb-1">Sección 3</p>
+                <h4 class="imagenes-section-title mb-1">Demanda y mezcla</h4>
+                <p class="imagenes-section-copy mb-0">Este bloque ordena quién solicita, qué estudios pesan más y cómo se distribuye el volumen por seguro o plan.</p>
+            </div>
+        </div>
+        <div class="row g-3">
+            <div class="col-12 col-xl-4">
+                <div class="imagenes-chart-card">
+                    <h6 class="imagenes-chart-title">Top códigos de imágenes</h6>
+                    <div class="imagenes-chart-wrap">
+                        <canvas id="chartImagenesMixCodigos"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-xl-4">
+                <div class="imagenes-chart-card">
+                    <h6 class="imagenes-chart-title">Top 10 doctores solicitantes</h6>
+                    <div class="imagenes-chart-wrap">
+                        <canvas id="chartImagenesTopDoctoresSolicitantes"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-xl-4">
+                <div class="imagenes-chart-card">
+                    <h6 class="imagenes-chart-title"><?= htmlspecialchars($insuranceBreakdownTitle !== '' ? $insuranceBreakdownTitle : 'Empresas de seguro', ENT_QUOTES, 'UTF-8') ?></h6>
+                    <div class="imagenes-chart-wrap">
+                        <canvas id="chartImagenesAnalisisSeguro"></canvas>
+                    </div>
                 </div>
             </div>
         </div>
-        <div class="col-12 col-xl-6">
-            <div class="imagenes-chart-card">
-                <h6 class="imagenes-chart-title">Tráfico por día de semana</h6>
-                <div class="imagenes-chart-wrap">
-                    <canvas id="chartImagenesTraficoSemana"></canvas>
-                </div>
-            </div>
-        </div>
-        <div class="col-12 col-xl-6">
-            <div class="imagenes-chart-card">
-                <h6 class="imagenes-chart-title">Top códigos de imágenes</h6>
-                <div class="imagenes-chart-wrap">
-                    <canvas id="chartImagenesMixCodigos"></canvas>
-                </div>
-            </div>
-        </div>
-        <div class="col-12 col-xl-6">
-            <div class="imagenes-chart-card">
-                <h6 class="imagenes-chart-title">Top 10 doctores solicitantes</h6>
-                <div class="imagenes-chart-wrap">
-                    <canvas id="chartImagenesTopDoctoresSolicitantes"></canvas>
-                </div>
-            </div>
-        </div>
-        <div class="col-12 col-xl-6">
-            <div class="imagenes-chart-card">
-                <h6 class="imagenes-chart-title"><?= htmlspecialchars($insuranceBreakdownTitle !== '' ? $insuranceBreakdownTitle : 'Empresas de seguro', ENT_QUOTES, 'UTF-8') ?></h6>
-                <div class="imagenes-chart-wrap">
-                    <canvas id="chartImagenesAnalisisSeguro"></canvas>
-                </div>
-            </div>
-        </div>
-        <div class="col-12 col-xl-6">
-            <div class="imagenes-chart-card">
-                <h6 class="imagenes-chart-title">Aging de no informados</h6>
-                <div class="imagenes-chart-wrap">
-                    <canvas id="chartImagenesAging"></canvas>
-                </div>
-            </div>
-        </div>
-        <div class="col-12 col-xl-6">
-            <div class="imagenes-chart-card">
-                <h6 class="imagenes-chart-title">Backlog de facturación por categoría</h6>
-                <div class="imagenes-chart-wrap">
-                    <canvas id="chartImagenesBacklogCategoria"></canvas>
-                </div>
-            </div>
-        </div>
-        <div class="col-12 col-xl-6">
-            <div class="imagenes-chart-card">
-                <h6 class="imagenes-chart-title">Rendimiento económico</h6>
-                <div class="imagenes-chart-wrap">
-                    <canvas id="chartImagenesRendimientoEconomico"></canvas>
-                </div>
-            </div>
-        </div>
-    </div>
+    </section>
 </section>
 
 <style>
+    html {
+        scroll-behavior: smooth;
+    }
+    .imagenes-section-nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.6rem;
+    }
+    .imagenes-section-nav a {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.45rem 0.8rem;
+        border-radius: 999px;
+        background: #eef5ff;
+        color: #0b4f9c;
+        font-size: 0.82rem;
+        font-weight: 600;
+        text-decoration: none;
+    }
+    .imagenes-section-card {
+        border: 1px solid #e7ebf0;
+        border-radius: 1rem;
+        background: #ffffff;
+        padding: 1rem;
+        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.04);
+    }
+    .imagenes-section-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        align-items: flex-start;
+        margin-bottom: 1rem;
+    }
+    .imagenes-section-kicker {
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: .08em;
+        color: #6c757d;
+    }
+    .imagenes-section-title {
+        font-size: 1.05rem;
+        color: #16324f;
+    }
+    .imagenes-section-copy {
+        font-size: 0.88rem;
+        color: #64748b;
+        max-width: 780px;
+    }
+    .imagenes-section-badges {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.45rem;
+        justify-content: flex-end;
+    }
     .imagenes-kpi-grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
         gap: 0.75rem;
+    }
+    .imagenes-kpi-grid--compact {
+        grid-template-columns: repeat(auto-fit, minmax(185px, 1fr));
     }
     .imagenes-kpi-card {
         border: 1px solid #e7ebf0;
         border-radius: 0.75rem;
         padding: 0.75rem 0.85rem;
         background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+    }
+    .imagenes-kpi-card--summary {
+        border-color: #d7e6fb;
+        background: linear-gradient(180deg, #ffffff 0%, #eef6ff 100%);
     }
     .imagenes-kpi-label {
         font-size: 0.78rem;
@@ -332,12 +584,58 @@ sort($estadoOpciones);
         height: 290px;
         max-height: 290px;
     }
+    .imagenes-chart-wrap--short {
+        height: 240px;
+        max-height: 240px;
+    }
     .imagenes-chart-wrap canvas {
         width: 100% !important;
         height: 100% !important;
         display: block;
     }
+    .imagenes-insight-card {
+        border: 1px solid #dbeafe;
+        border-radius: 0.9rem;
+        background: linear-gradient(180deg, #f8fbff 0%, #eff6ff 100%);
+        padding: 0.95rem 1rem;
+    }
+    .imagenes-insight-list {
+        padding-left: 1rem;
+        color: #334155;
+    }
+    .imagenes-insight-list li + li {
+        margin-top: 0.55rem;
+    }
+    .imagenes-stat-strip {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 0.75rem;
+    }
+    .imagenes-stat-pill {
+        border: 1px dashed #cbd5e1;
+        border-radius: 0.85rem;
+        padding: 0.7rem 0.85rem;
+        background: #f8fafc;
+    }
+    .imagenes-stat-pill span {
+        display: block;
+        font-size: 0.78rem;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: .05em;
+        margin-bottom: 0.2rem;
+    }
+    .imagenes-stat-pill strong {
+        font-size: 1rem;
+        color: #0f172a;
+    }
     @media (max-width: 991.98px) {
+        .imagenes-section-head {
+            flex-direction: column;
+        }
+        .imagenes-section-badges {
+            justify-content: flex-start;
+        }
         .imagenes-chart-wrap {
             height: 240px;
             max-height: 240px;
@@ -365,6 +663,7 @@ sort($estadoOpciones);
 
         document.addEventListener('DOMContentLoaded', function () {
             const charts = (dashboardData && dashboardData.charts) ? dashboardData.charts : {};
+            const cards = Array.isArray(dashboardData.cards) ? dashboardData.cards : [];
             const serie = charts.serie_diaria || {};
             const trazabilidad = charts.trazabilidad || {};
             const citasRealizados = charts.citas_vs_realizados || {};
@@ -375,6 +674,49 @@ sort($estadoOpciones);
             const aging = charts.aging_backlog || {};
             const backlogCategoria = charts.backlog_facturacion_categoria || {};
             const rendimientoEconomico = charts.rendimiento_economico || {};
+            const cardValueMap = cards.reduce(function (acc, card) {
+                const label = String((card && card.label) || '').trim();
+                const value = Number(String((card && card.value) || '0').replace(/[^0-9.\-]/g, '')) || 0;
+                if (label !== '') {
+                    acc[label] = value;
+                }
+                return acc;
+            }, {});
+
+            drawChart(
+                'chartImagenesEmbudoOperativo',
+                function () {
+                    return {
+                        type: 'bar',
+                        data: {
+                            labels: ['Total estudios', 'Atendidos', 'Informadas', 'Facturados'],
+                            datasets: [
+                                {
+                                    label: 'Casos',
+                                    data: [
+                                        Number(cardValueMap['Total estudios'] || 0),
+                                        Number(cardValueMap['Atendidos'] || 0),
+                                        Number(cardValueMap['Informadas'] || 0),
+                                        Number(cardValueMap['Facturados'] || 0)
+                                    ],
+                                    backgroundColor: ['#cfe2ff', '#7cc6ff', '#45b36b', '#0b8f55'],
+                                    borderRadius: 10
+                                }
+                            ]
+                        },
+                        options: {
+                            indexAxis: 'y',
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {legend: {display: false}},
+                            scales: {x: {beginAtZero: true, ticks: {precision: 0}}}
+                        }
+                    };
+                },
+                ['Total estudios', 'Atendidos', 'Informadas', 'Facturados'].some(function (label) {
+                    return Number(cardValueMap[label] || 0) > 0;
+                })
+            );
 
             drawChart(
                 'chartImagenesSerieDiaria',
