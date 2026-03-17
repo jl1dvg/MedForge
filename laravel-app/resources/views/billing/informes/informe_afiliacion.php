@@ -378,6 +378,7 @@ $sedeSeleccionada = $informesHelperClass::normalizarSede($filtros['sede'] ?? '')
 
                 $categoriasIess = [
                         'procedimientos' => 'Procedimientos',
+                        'pni' => 'PNI',
                         'consulta' => 'Consulta',
                         'imagenes' => 'Imágenes',
                 ];

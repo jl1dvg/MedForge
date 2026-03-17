@@ -13,8 +13,8 @@ from datetime import datetime, timedelta
 # =========================
 modo_quieto = "--quiet" in sys.argv
 
-USERNAME = "jdevera"
-PASSWORD = "0925619736"
+USERNAME = "agsuper"
+PASSWORD = "123456"
 BASE = "https://cive.ddns.net:8085"
 LOGIN_URL = f"{BASE}/site/login"
 

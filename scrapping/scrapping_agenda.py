@@ -9,8 +9,8 @@ from datetime import date, timedelta
 from clasificar_procedimiento import clasificar_procedimiento
 
 # Credenciales
-USERNAME = "jdevera"
-PASSWORD = "0925619736"
+USERNAME = "agsuper"
+PASSWORD = "123456"
 LOGIN_URL = "http://cive.ddns.net:8085/site/login"
 AGENDA_URL = "http://cive.ddns.net:8085/documentacion/doc-solicitud-procedimientos/index-doctor"
 

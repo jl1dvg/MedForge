@@ -25,6 +25,7 @@ Route::middleware([
     Route::get('/informes/iess/consolidado', [BillingUiController::class, 'informeIessConsolidado']);
     Route::get('/informes/isspol/consolidado', [BillingUiController::class, 'informeIsspolConsolidado']);
     Route::get('/informes/issfa/consolidado', [BillingUiController::class, 'informeIssfaConsolidado']);
+    Route::get('/informes/msp/consolidado', [BillingUiController::class, 'informeMspConsolidado']);
     Route::get('/api/billing/kpis_procedimientos.php', [BillingUiController::class, 'kpisProcedimientos']);
 
     Route::get('/api/billing/no-facturados', [BillingReadController::class, 'noFacturados']);

@@ -254,6 +254,11 @@ class BillingUiController
         return $this->exportConsolidadoSimple($request, 'issfa');
     }
 
+    public function informeMspConsolidado(Request $request): Response|RedirectResponse
+    {
+        return $this->exportConsolidadoSimple($request, 'msp');
+    }
+
     public function informeParticulares(Request $request): JsonResponse|RedirectResponse|View|Response
     {
         if (!$this->isLegacyAuthenticated($request)) {

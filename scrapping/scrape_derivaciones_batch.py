@@ -9,8 +9,8 @@ import threading
 import requests
 from bs4 import BeautifulSoup
 
-USERNAME = "jdevera"
-PASSWORD = "0925619736"
+USERNAME = "agsuper"
+PASSWORD = "123456"
 LOGIN_URL = "https://cive.ddns.net:8085/site/login"
 LOG_ADMISION_URL = "https://cive.ddns.net:8085/documentacion/doc-solicitud-procedimientos/log-admision?id={form_id}"
 

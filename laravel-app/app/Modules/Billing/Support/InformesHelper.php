@@ -199,7 +199,7 @@ class InformesHelper
     ): array
     {
         $categoriaFiltro = $categoriaFiltro ? strtolower(trim($categoriaFiltro)) : null;
-        $categoriasValidas = ['procedimientos', 'consulta', 'imagenes'];
+        $categoriasValidas = ['procedimientos', 'pni', 'consulta', 'imagenes'];
         if ($categoriaFiltro && !in_array($categoriaFiltro, $categoriasValidas, true)) {
             $categoriaFiltro = null;
         }
@@ -500,12 +500,42 @@ class InformesHelper
             }
         }
 
-        // 3) Fallback (opcional): si no hay códigos (casos antiguos) intentar clasificar por texto.
+        $textosReferencia = [];
         $formulario = $datosPaciente['formulario'] ?? [];
         $procedimientoNombre = strtolower(trim((string)($formulario['procedimiento'] ?? '')));
+        if ($procedimientoNombre !== '') {
+            $textosReferencia[] = $procedimientoNombre;
+        }
         if ($procedimientoNombre === '' && !empty($datosPaciente['protocoloExtendido']['membrete'])) {
             $procedimientoNombre = strtolower((string)$datosPaciente['protocoloExtendido']['membrete']);
         }
+        if ($procedimientoNombre !== '') {
+            $textosReferencia[] = $procedimientoNombre;
+        }
+
+        $procedimientoProtocolo = trim(
+            (string)($datosPaciente['protocoloExtendido']['membrete'] ?? '')
+            . ' '
+            . (string)($datosPaciente['protocoloExtendido']['lateralidad'] ?? '')
+        );
+        if ($procedimientoProtocolo !== '') {
+            $textosReferencia[] = strtolower($procedimientoProtocolo);
+        }
+
+        foreach (($datosPaciente['procedimientos'] ?? []) as $procedimiento) {
+            $detalle = trim((string)($procedimiento['proc_detalle'] ?? ''));
+            if ($detalle !== '') {
+                $textosReferencia[] = strtolower($detalle);
+            }
+        }
+
+        foreach ($textosReferencia as $textoReferencia) {
+            if (self::textoCategoriaEsPni($textoReferencia)) {
+                return 'pni';
+            }
+        }
+
+        // 3) Fallback (opcional): si no hay códigos (casos antiguos) intentar clasificar por texto.
         if ($procedimientoNombre !== '' && stripos($procedimientoNombre, 'imagenes') === 0) {
             return 'imagenes';
         }
@@ -516,5 +546,11 @@ class InformesHelper
         }
 
         return 'procedimientos';
+    }
+
+    private static function textoCategoriaEsPni(string $texto): bool
+    {
+        $texto = strtoupper(trim($texto));
+        return $texto !== '' && str_contains($texto, 'PNI');
     }
 }

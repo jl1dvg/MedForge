@@ -26,7 +26,7 @@ class BillingConsolidadoExportService
     public function exportSimple(string $grupo, array $filters): array
     {
         $grupo = strtolower(trim($grupo));
-        if (!in_array($grupo, ['iess', 'isspol', 'issfa'], true)) {
+        if (!in_array($grupo, ['iess', 'isspol', 'issfa', 'msp'], true)) {
             throw new \InvalidArgumentException('Grupo de consolidado no soportado: ' . $grupo);
         }
 
@@ -235,7 +235,7 @@ class BillingConsolidadoExportService
         if ($categoria === '') {
             return null;
         }
-        return in_array($categoria, ['procedimientos', 'consulta', 'imagenes'], true)
+        return in_array($categoria, ['procedimientos', 'pni', 'consulta', 'imagenes'], true)
             ? $categoria
             : null;
     }
