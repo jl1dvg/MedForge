@@ -1793,10 +1793,28 @@
 @endsection
 
 @push('scripts')
-    <script src="/assets/vendor_components/datatable/datatables.min.js"></script>
-    <script src="/assets/vendor_components/apexcharts-bundle/dist/apexcharts.js"></script>
+    @if (\App\Modules\Shared\Support\MedforgeAssets::hasViteBuild())
+        @vite('resources/js/v2/billing-informe-particulares.js')
+    @else
+        <script src="/assets/vendor_components/datatable/datatables.min.js"></script>
+        <script src="/assets/vendor_components/apexcharts-bundle/dist/apexcharts.js"></script>
+    @endif
     <script>
         (function () {
+            let initialized = false;
+
+            const dependenciesReady = function () {
+                return typeof window.ApexCharts !== 'undefined'
+                    && !!(window.jQuery && window.jQuery.fn && typeof window.jQuery.fn.DataTable === 'function');
+            };
+
+            const boot = function () {
+                if (initialized || !dependenciesReady()) {
+                    return;
+                }
+
+                initialized = true;
+
             const referidoValues = @json($referidoValues);
             const referidoUniquePatientValues = @json($referidoUniquePatientsValues);
             const referidoNuevoPacienteValues = @json($referidoNuevoPacienteValues);
@@ -1832,10 +1850,6 @@
             const cirugiasEstados = @json($cirugiasEstados);
             const cirugiasDoctoresPorCobrar = @json($cirugiasDoctoresPorCobrar);
             const cirugiasDoctoresPerdida = @json($cirugiasDoctoresPerdida);
-
-            if (typeof ApexCharts === 'undefined') {
-                return;
-            }
 
             const truncateLabel = function (value, maxLength) {
                 const text = String(value || '').trim();
@@ -2856,7 +2870,7 @@
                 }
 
                 $table.DataTable(Object.assign({
-                    language: {url: 'https://cdn.datatables.net/plug-ins/1.13.8/i18n/es-ES.json'},
+                    language: window.medforgeDataTableLanguageEs ? window.medforgeDataTableLanguageEs() : {},
                     pageLength: 10,
                     lengthMenu: [[10, 25, 50, 100], [10, 25, 50, 100]],
                     deferRender: true,
@@ -2869,6 +2883,15 @@
                 order: [[8, 'desc']],
             });
 
+            };
+
+            if (window.__MEDFORGE_BILLING_PARTICULARES_READY__ === true) {
+                boot();
+                return;
+            }
+
+            window.addEventListener('medforge:billing-informe-particulares:ready', boot, {once: true});
+            boot();
         })();
     </script>
 @endpush

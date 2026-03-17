@@ -8,7 +8,7 @@
 @endphp
 
 @push('styles')
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css">
+    <link rel="stylesheet" href="/assets/vendor_components/bootstrap-daterangepicker/daterangepicker.css">
     <style>
         .billing-dashboard-header {
             display: flex;
@@ -307,8 +307,12 @@
 @endsection
 
 @push('scripts')
-    <script src="https://cdn.jsdelivr.net/momentjs/latest/moment.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js"></script>
-    <script src="/assets/vendor_components/apexcharts-bundle/dist/apexcharts.js"></script>
-    <script src="/js/pages/billing/v2-dashboard.js"></script>
+    @if (\App\Modules\Shared\Support\MedforgeAssets::hasViteBuild())
+        @vite('resources/js/v2/billing-dashboard.js')
+    @else
+        <script src="/assets/vendor_components/moment/moment.js"></script>
+        <script src="/assets/vendor_components/bootstrap-daterangepicker/daterangepicker.js"></script>
+        <script src="/assets/vendor_components/apexcharts-bundle/dist/apexcharts.js"></script>
+        <script src="/js/pages/billing/v2-dashboard.js"></script>
+    @endif
 @endpush

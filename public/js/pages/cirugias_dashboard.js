@@ -101,3 +101,7 @@ window.initCirugiasDashboard = function (data) {
         new ApexCharts(convenioEl, convenioOptions).render();
     }
 };
+
+if (window.cirugiasDashboardData && typeof window.initCirugiasDashboard === 'function') {
+    window.initCirugiasDashboard(window.cirugiasDashboardData);
+}

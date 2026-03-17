@@ -55,6 +55,10 @@
 @endsection
 
 @push('scripts')
-    <script src="/assets/vendor_components/datatable/datatables.min.js"></script>
-    <script src="/js/pages/patients.js"></script>
+    @if (\App\Modules\Shared\Support\MedforgeAssets::hasViteBuild())
+        @vite('resources/js/v2/patients-index.js')
+    @else
+        <script src="/assets/vendor_components/datatable/datatables.min.js"></script>
+        <script src="/js/pages/patients.js"></script>
+    @endif
 @endpush

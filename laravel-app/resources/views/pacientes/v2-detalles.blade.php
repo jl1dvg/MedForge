@@ -505,39 +505,17 @@
 @endsection
 
 @push('scripts')
-    <script src="/assets/vendor_components/apexcharts-bundle/dist/apexcharts.js"></script>
-    <script src="/assets/vendor_components/horizontal-timeline/js/horizontal-timeline.js"></script>
-    <script src="/js/pages/patient-detail.js"></script>
     <script>
-        document.addEventListener('DOMContentLoaded', function () {
-            const chartContainer = document.querySelector('#chart123');
-            if (!chartContainer) {
-                return;
-            }
-
-            const series = @json(array_values($statsRows));
-            const labels = @json(array_keys($statsRows));
-
-            if (typeof ApexCharts === 'undefined' || !Array.isArray(series) || series.length === 0) {
-                chartContainer.innerHTML = '<p class="text-muted mb-0">Sin datos suficientes para mostrar estadísticas.</p>';
-                return;
-            }
-
-            const options = {
-                series: series,
-                chart: { type: 'donut' },
-                colors: ['#3246D3', '#00D0FF', '#ee3158', '#ffa800', '#05825f'],
-                legend: { position: 'bottom' },
-                plotOptions: { pie: { donut: { size: '45%' } } },
-                labels: labels,
-                responsive: [
-                    { breakpoint: 1600, options: { chart: { width: 330 } } },
-                    { breakpoint: 500, options: { chart: { width: 280 } } }
-                ]
-            };
-
-            const chart = new ApexCharts(chartContainer, options);
-            chart.render();
-        });
+        window.patientDetailChartData = {
+            series: @json(array_values($statsRows)),
+            labels: @json(array_keys($statsRows)),
+        };
     </script>
+    @if (\App\Modules\Shared\Support\MedforgeAssets::hasViteBuild())
+        @vite('resources/js/v2/patient-detail.js')
+    @else
+        <script src="/assets/vendor_components/apexcharts-bundle/dist/apexcharts.js"></script>
+        <script src="/assets/vendor_components/horizontal-timeline/js/horizontal-timeline.js"></script>
+        <script src="/js/pages/patient-detail.js"></script>
+    @endif
 @endpush

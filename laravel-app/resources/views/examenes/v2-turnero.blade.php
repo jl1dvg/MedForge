@@ -307,23 +307,29 @@ $contextFor = 'turneroTitle';
     </div>
 </section>
 
-<?php if (!empty($realtime['enabled']) && !empty($realtime['key'])): ?>
-<script src="https://js.pusher.com/8.4.0/pusher.min.js"></script>
-<?php endif; ?>
-<script>
-    document.body.classList.add('turnero-body');
-    window.__KANBAN_MODULE__ = {
-        key: 'examenes',
-        basePath: '/examenes',
-        v2ReadsEnabled: <?= json_encode($examenesV2ReadsEnabled); ?>,
-        readPrefix: <?= json_encode($examenesReadPrefix, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); ?>,
-        v2WritesEnabled: <?= json_encode($examenesV2WritesEnabled); ?>,
-        writePrefix: <?= json_encode($examenesWritePrefix, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); ?>,
-        selectors: {
-            prefix: 'examenes',
-        },
-    };
-</script>
-<script type="module" src="<?= asset('js/pages/examenes/turnero.js') ?>"></script>
-
 @endsection
+
+@push('scripts')
+    <script>
+        document.body.classList.add('turnero-body');
+        window.__KANBAN_MODULE__ = {
+            key: 'examenes',
+            basePath: '/examenes',
+            v2ReadsEnabled: <?= json_encode($examenesV2ReadsEnabled); ?>,
+            readPrefix: <?= json_encode($examenesReadPrefix, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); ?>,
+            v2WritesEnabled: <?= json_encode($examenesV2WritesEnabled); ?>,
+            writePrefix: <?= json_encode($examenesWritePrefix, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); ?>,
+            selectors: {
+                prefix: 'examenes',
+            },
+        };
+    </script>
+    @if (\App\Modules\Shared\Support\MedforgeAssets::hasViteBuild())
+        @vite('resources/js/v2/examenes-turnero.js')
+    @else
+        @if (!empty($realtime['enabled']) && !empty($realtime['key']))
+            <script src="/assets/vendor_components/pusher/pusher.min.js"></script>
+        @endif
+        <script type="module" src="<?= asset('js/pages/examenes/turnero.js') ?>"></script>
+    @endif
+@endpush

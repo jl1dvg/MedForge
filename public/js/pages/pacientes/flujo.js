@@ -565,6 +565,31 @@ function verificarCambiosRecientes() {
 // INICIALIZACIÓN DE INTERFAZ Y LISTENERS
 // =========================
 $(document).ready(function () {
+    const dateInput = document.getElementById('kanbanDateFilter');
+
+    function cargarFlujoPorFecha(fechaSeleccionada) {
+        const selected = fechaSeleccionada || moment().format('YYYY-MM-DD');
+
+        if (dateInput) {
+            dateInput.value = selected;
+        }
+
+        renderColumnasVisita();
+        showLoader();
+        fetch(`/v2/pacientes/flujo/tablero?fecha=${selected}&modo=visita`)
+            .then(response => response.json())
+            .then(data => {
+                allSolicitudes = data;
+                poblarAfiliacionesUnicas(allSolicitudes);
+                hideLoader();
+                renderTabActivo();
+            })
+            .catch(error => {
+                hideLoader();
+                console.error('Error al cargar las solicitudes del flujo:', error);
+            });
+    }
+
     // Primero renderiza las columnas de Visitas
     renderColumnasVisita();
 
@@ -573,59 +598,28 @@ $(document).ready(function () {
 
     // Cargar solicitudes por defecto usando la fecha de hoy al cargar la página
     const today = moment().format('YYYY-MM-DD');
-    const dateInput = document.getElementById('kanbanDateFilter');
     if (dateInput) {
         dateInput.value = today;
     }
-    showLoader();
-    fetch(`/v2/pacientes/flujo/tablero?fecha=${today}&modo=visita`)
-        .then(response => response.json())
-        .then(data => {
-            allSolicitudes = data;
-            poblarAfiliacionesUnicas(allSolicitudes);
-            hideLoader();
-            renderTabActivo();
-        })
-        .catch(error => {
-            hideLoader();
-            console.error('Error al cargar las solicitudes del flujo:', error);
-        });
+    cargarFlujoPorFecha(today);
 
     // Filtros básicos: ahora filtran en frontend sin recargar
-    $('#kanbanDateFilter').pickadate({
-        format: 'yyyy-mm-dd',
-        selectMonths: true,
-        selectYears: true,
-        today: 'Hoy',
-        clear: 'Limpiar',
-        close: 'Cerrar',
-        onStart: function () {
-            const picker = this;
-            const today = moment().format('YYYY-MM-DD');
-            picker.set('select', today, {format: 'yyyy-mm-dd'});
-        },
-        onSet: function (context) {
-            const picker = this;
-            const selected = picker.get('select', 'yyyy-mm-dd') || moment().format('YYYY-MM-DD');
-            if (dateInput) {
-                dateInput.value = selected;
-            }
-            renderColumnasVisita(); // <- ¡Agregado aquí para resetear columnas antes de recargar!
-            showLoader();
-            fetch(`/v2/pacientes/flujo/tablero?fecha=${selected}&modo=visita`)
-                .then(response => response.json())
-                .then(data => {
-                    allSolicitudes = data;
-                    poblarAfiliacionesUnicas(allSolicitudes);
-                    hideLoader();
-                    renderTabActivo();
-                })
-                .catch(error => {
-                    hideLoader();
-                    console.error('Error al cargar las solicitudes del flujo:', error);
-                });
-        }
-    });
+    $('#kanbanDateFilter')
+        .datepicker({
+            autoclose: true,
+            clearBtn: true,
+            todayBtn: 'linked',
+            todayHighlight: true,
+            format: 'yyyy-mm-dd',
+            language: 'es',
+        })
+        .on('changeDate', function (event) {
+            const selected = event?.format?.('yyyy-mm-dd') || (dateInput ? dateInput.value : '') || moment().format('YYYY-MM-DD');
+            cargarFlujoPorFecha(selected);
+        })
+        .on('clearDate', function () {
+            cargarFlujoPorFecha(moment().format('YYYY-MM-DD'));
+        });
 
     // Listeners para filtros en frontend
     ['kanbanDoctorFilter', 'kanbanAfiliacionFilter', 'kanbanDateFilter'].forEach(id => {

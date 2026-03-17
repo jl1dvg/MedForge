@@ -1346,10 +1346,42 @@
         return false;
     };
 
-    document.addEventListener('DOMContentLoaded', function () {
+    function renderStatsChart() {
+        var chartContainer = document.querySelector('#chart123');
+        if (!chartContainer) {
+            return;
+        }
+
+        var chartData = window.patientDetailChartData || {};
+        var series = Array.isArray(chartData.series) ? chartData.series : [];
+        var labels = Array.isArray(chartData.labels) ? chartData.labels : [];
+
+        if (typeof ApexCharts === 'undefined' || series.length === 0) {
+            chartContainer.innerHTML = '<p class="text-muted mb-0">Sin datos suficientes para mostrar estadísticas.</p>';
+            return;
+        }
+
+        var options = {
+            series: series,
+            chart: { type: 'donut' },
+            colors: ['#3246D3', '#00D0FF', '#ee3158', '#ffa800', '#05825f'],
+            legend: { position: 'bottom' },
+            plotOptions: { pie: { donut: { size: '45%' } } },
+            labels: labels,
+            responsive: [
+                { breakpoint: 1600, options: { chart: { width: 330 } } },
+                { breakpoint: 500, options: { chart: { width: 280 } } }
+            ]
+        };
+
+        new ApexCharts(chartContainer, options).render();
+    }
+
+    function initPatientDetailPage() {
         window.filterDocuments('ultimos_3_meses');
         loadSolicitudesPanel();
         loadPaciente360();
+        renderStatsChart();
 
         document.addEventListener('click', function (event) {
             var trigger = event.target.closest('[data-action="open-exam-nas"]');
@@ -1457,5 +1489,11 @@
                     console.error('Error cargando los detalles de la solicitud', error);
                 });
         });
-    });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initPatientDetailPage);
+    } else {
+        initPatientDetailPage();
+    }
 })();

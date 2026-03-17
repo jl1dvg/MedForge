@@ -378,8 +378,6 @@
 @endsection
 
 @push('scripts')
-<script src="/assets/vendor_components/apexcharts-bundle/dist/apexcharts.js"></script>
-<script src="/assets/vendor_components/OwlCarousel2/dist/owl.carousel.js"></script>
 <script>
     var fechas = {!! $fechasJson ?: '[]' !!};
     var procedimientos_dia = {!! $procedimientosDiaJson ?: '[]' !!};
@@ -391,13 +389,11 @@
     var crmBacklog = {!! $crmBacklogJson ?: '{}' !!};
     var revisionEstados = {!! $revisionEstadosJson ?: '{}' !!};
 </script>
-<script src="/js/pages/dashboard3.js"></script>
-<script>
-    (function () {
-        if (window.jQuery && typeof window.jQuery.fn.slimScroll === 'function') {
-            window.jQuery('.inner-user-div3').slimScroll({height: '310px'});
-            window.jQuery('.inner-user-div4').slimScroll({height: '200px'});
-        }
-    })();
-</script>
+@if (\App\Modules\Shared\Support\MedforgeAssets::hasViteBuild())
+    @vite('resources/js/v2/dashboard-home.js')
+@else
+    <script src="/assets/vendor_components/apexcharts-bundle/dist/apexcharts.js"></script>
+    <script src="/assets/vendor_components/OwlCarousel2/dist/owl.carousel.js"></script>
+    <script src="/js/pages/dashboard3.js"></script>
+@endif
 @endpush

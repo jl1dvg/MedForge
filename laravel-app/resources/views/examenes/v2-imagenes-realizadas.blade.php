@@ -1,42 +1,17 @@
 @extends('layouts.medforge')
 
-@push('styles')
-    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/dataTables.bootstrap5.min.css">
-    <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.2/css/buttons.bootstrap5.min.css">
-@endpush
-
 @push('scripts')
-    <script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
-    <script src="https://cdn.datatables.net/1.13.8/js/dataTables.bootstrap5.min.js"></script>
-    <script src="https://cdn.datatables.net/buttons/2.4.2/js/dataTables.buttons.min.js"></script>
-    <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.bootstrap5.min.js"></script>
-    <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.print.min.js"></script>
+    @if (\App\Modules\Shared\Support\MedforgeAssets::hasViteBuild())
+        @vite('resources/js/v2/imagenes-realizadas.js')
+    @else
+        <script src="/assets/vendor_components/datatable/datatables.min.js"></script>
+    @endif
 @endpush
 
 @section('content')
 <?php
 /** @var array<int, array<string,mixed>> $imagenesRealizadas */
 /** @var array<string, string> $filters */
-
-if (!isset($styles) || !is_array($styles)) {
-    $styles = [];
-}
-
-$styles[] = 'https://cdn.datatables.net/1.13.8/css/dataTables.bootstrap5.min.css';
-$styles[] = 'https://cdn.datatables.net/buttons/2.4.2/css/buttons.bootstrap5.min.css';
-
-if (!isset($scripts) || !is_array($scripts)) {
-    $scripts = [];
-}
-
-array_push(
-        $scripts,
-        'https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js',
-        'https://cdn.datatables.net/1.13.8/js/dataTables.bootstrap5.min.js',
-        'https://cdn.datatables.net/buttons/2.4.2/js/dataTables.buttons.min.js',
-        'https://cdn.datatables.net/buttons/2.4.2/js/buttons.bootstrap5.min.js',
-        'https://cdn.datatables.net/buttons/2.4.2/js/buttons.print.min.js'
-);
 
 if (!isset($filters) || !is_array($filters)) {
     $filters = [
@@ -1905,7 +1880,7 @@ sort($estadoOpciones);
 
                 dataTable = $('#tablaImagenesRealizadas').DataTable({
                     order: [[1, 'desc']],
-                    language: {url: '//cdn.datatables.net/plug-ins/1.13.8/i18n/es-ES.json'},
+                    language: window.medforgeDataTableLanguageEs ? window.medforgeDataTableLanguageEs() : {},
                     pageLength: 25,
                     autoWidth: false,
                     deferRender: true,

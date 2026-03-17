@@ -2,8 +2,6 @@
 
 @push('styles')
     <link rel="stylesheet" href="/css/kanban-scroll.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pickadate@3.6.2/lib/themes/classic.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pickadate@3.6.2/lib/themes/classic.date.css">
     <style>
         .kanban-toolbar {
             gap: 1rem;
@@ -76,9 +74,13 @@
 @endsection
 
 @push('scripts')
-    <script src="https://cdn.jsdelivr.net/npm/moment@2.29.4/moment.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <script src="https://cdn.jsdelivr.net/npm/pickadate@3.6.2/lib/picker.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/pickadate@3.6.2/lib/picker.date.js"></script>
-    <script src="/js/pages/pacientes/flujo.js"></script>
+    @if (\App\Modules\Shared\Support\MedforgeAssets::hasViteBuild())
+        @vite('resources/js/v2/pacientes-flujo.js')
+    @else
+        <script src="/assets/vendor_components/moment/moment.js"></script>
+        <script src="/assets/vendor_components/sweetalert2/sweetalert2.all.min.js"></script>
+        <script src="/assets/vendor_components/bootstrap-datepicker/dist/js/bootstrap-datepicker.min.js"></script>
+        <script src="/assets/vendor_components/bootstrap-datepicker/dist/locales/bootstrap-datepicker.es.min.js"></script>
+        <script src="/js/pages/pacientes/flujo.js"></script>
+    @endif
 @endpush

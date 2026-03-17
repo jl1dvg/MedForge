@@ -37,10 +37,6 @@ if (!function_exists('format_profile_photo_url')) {
     <!-- Vendors Style-->
     <link rel="stylesheet" href="<?= asset('/css/vendors_css.css') ?>">
 
-    <!-- Font Awesome 6 -->
-    <link rel="stylesheet"
-          href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-
     <!-- Style-->
     <link rel="stylesheet" href="<?= asset('css/horizontal-menu.css') ?>">
     <link rel="stylesheet" href="<?= asset('css/style.css') ?>">
@@ -197,11 +193,13 @@ if (!function_exists('format_profile_photo_url')) {
 <?php
 $defaultScripts = [
     'js/vendors.min.js',
+    'assets/vendor_components/bootstrap/dist/js/bootstrap.bundle.min.js',
     'js/pages/chat-popup.js',
     'assets/icons/feather-icons/feather.min.js',
     'js/jquery.smartmenus.js',
     'js/menus.js',
     'js/pages/global-search.js',
+    'js/pages/shared/datatables-language-es.js',
     'js/template.js',
 ];
 

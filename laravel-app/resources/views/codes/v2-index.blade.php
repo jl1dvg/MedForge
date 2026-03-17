@@ -152,13 +152,11 @@
     </section>
 @endsection
 
-@push('styles')
-    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
-    <link rel="stylesheet" href="https://cdn.datatables.net/rowgroup/1.3.1/css/rowGroup.dataTables.min.css">
-@endpush
-
 @push('scripts')
-    <script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
-    <script src="https://cdn.datatables.net/rowgroup/1.3.1/js/dataTables.rowGroup.min.js"></script>
-    <script src="/js/pages/codes-index.js"></script>
+    @if (\App\Modules\Shared\Support\MedforgeAssets::hasViteBuild())
+        @vite('resources/js/v2/codes-index.js')
+    @else
+        <script src="/assets/vendor_components/datatable/datatables.min.js"></script>
+        <script src="/js/pages/codes-index.js"></script>
+    @endif
 @endpush

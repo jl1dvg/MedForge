@@ -1530,7 +1530,7 @@ import {
                         { title: 'Tags' },
                         { title: 'Acciones', orderable: false, searchable: false, className: 'text-end' },
                     ],
-                    language: { url: 'https://cdn.datatables.net/plug-ins/1.13.8/i18n/es-ES.json' },
+                    language: window.medforgeDataTableLanguageEs ? window.medforgeDataTableLanguageEs() : {},
                     pageLength: 10,
                     lengthMenu: [10, 25, 50],
                     autoWidth: false,

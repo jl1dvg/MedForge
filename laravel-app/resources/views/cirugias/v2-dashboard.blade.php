@@ -406,14 +406,13 @@
 @endpush
 
 @push('scripts')
-    <script src="/assets/vendor_components/apexcharts-bundle/dist/apexcharts.js"></script>
     <script>
         window.cirugiasDashboardData = {!! $dashboardPayload ?: '{}' !!};
     </script>
-    <script src="/js/pages/cirugias_dashboard.js"></script>
-    <script>
-        if (window.initCirugiasDashboard) {
-            window.initCirugiasDashboard(window.cirugiasDashboardData || {});
-        }
-    </script>
+    @if (\App\Modules\Shared\Support\MedforgeAssets::hasViteBuild())
+        @vite('resources/js/v2/cirugias-dashboard.js')
+    @else
+        <script src="/assets/vendor_components/apexcharts-bundle/dist/apexcharts.js"></script>
+        <script src="/js/pages/cirugias_dashboard.js"></script>
+    @endif
 @endpush

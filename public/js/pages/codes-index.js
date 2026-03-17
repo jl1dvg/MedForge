@@ -23,7 +23,7 @@
     }
 
     const dataTable = $table.DataTable({
-        language: { url: 'https://cdn.datatables.net/plug-ins/1.13.8/i18n/es-ES.json' },
+        language: window.medforgeDataTableLanguageEs ? window.medforgeDataTableLanguageEs() : {},
         processing: true,
         serverSide: true,
         responsive: true,

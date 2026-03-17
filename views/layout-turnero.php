@@ -42,6 +42,8 @@
 <?php
 $defaultScripts = [
     'js/vendors.min.js',
+    'assets/vendor_components/bootstrap/dist/js/bootstrap.bundle.min.js',
+    'js/pages/shared/datatables-language-es.js',
 ];
 
 if (!isset($scripts) || !is_array($scripts)) {

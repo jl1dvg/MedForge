@@ -19,9 +19,7 @@ $(function () {
         pageLength: 25,
         lengthMenu: [10, 25, 50, 100, 250, 500],
         responsive: true,
-        language: {
-            url: '//cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json'
-        },
+        language: window.medforgeDataTableLanguageEs ? window.medforgeDataTableLanguageEs() : {},
         dom: 'Bfrtip',
         buttons: [
             'copy', 'csv', 'excel', 'pdf', 'print'

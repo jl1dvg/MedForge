@@ -1,4 +1,4 @@
-    document.addEventListener("DOMContentLoaded", () => {
+    const initBillingNoFacturados = () => {
         const previewModal = document.getElementById("previewModal");
         const previewContent = document.getElementById("previewContent");
         const facturarFormId = document.getElementById("facturarFormId");
@@ -1310,4 +1310,10 @@
         btnMarcarRevisado?.addEventListener('click', () => handleBulkAction('revisar'));
 
         updateSelectionInfo();
-    });
+    };
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initBillingNoFacturados);
+    } else {
+        initBillingNoFacturados();
+    }

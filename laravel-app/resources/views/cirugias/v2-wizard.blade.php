@@ -65,12 +65,6 @@
 @endsection
 
 @push('scripts')
-    <script src="/assets/vendor_components/datatable/datatables.min.js"></script>
-    <script src="/assets/vendor_components/tiny-editable/mindmup-editabletable.js"></script>
-    <script src="/assets/vendor_components/tiny-editable/numeric-input-example.js"></script>
-    <script src="/assets/vendor_components/jquery-steps-master/build/jquery.steps.js"></script>
-    <script src="/assets/vendor_components/jquery-validation-1.17.0/dist/jquery.validate.min.js"></script>
-    <script src="/js/pages/steps.js"></script>
     <script>
         window.cirugiasEndpoints = {
             datatable: '/v2/cirugias/datatable',
@@ -93,6 +87,16 @@
         const viaOptionsHTML = @json($viaOptionsHTML);
         const responsableOptionsHTML = @json($responsableOptionsHTML);
     </script>
-    <script src="/js/modules/cirugias_wizard.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    @if (\App\Modules\Shared\Support\MedforgeAssets::hasViteBuild())
+        @vite('resources/js/v2/cirugias-wizard.js')
+    @else
+        <script src="/assets/vendor_components/datatable/datatables.min.js"></script>
+        <script src="/assets/vendor_components/sweetalert2/sweetalert2.all.min.js"></script>
+        <script src="/assets/vendor_components/tiny-editable/mindmup-editabletable.js"></script>
+        <script src="/assets/vendor_components/tiny-editable/numeric-input-example.js"></script>
+        <script src="/assets/vendor_components/jquery-steps-master/build/jquery.steps.js"></script>
+        <script src="/assets/vendor_components/jquery-validation-1.17.0/dist/jquery.validate.min.js"></script>
+        <script src="/js/pages/steps.js"></script>
+        <script src="/js/modules/cirugias_wizard.js"></script>
+    @endif
 @endpush

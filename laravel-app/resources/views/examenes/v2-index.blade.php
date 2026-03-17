@@ -1,15 +1,7 @@
 @extends('layouts.medforge')
 
 @push('styles')
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css">
-@endpush
-
-@push('scripts')
-    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/momentjs/latest/moment.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip-utils/0.1.0/jszip-utils.min.js"></script>
+    <link rel="stylesheet" href="/assets/vendor_components/bootstrap-daterangepicker/daterangepicker.css">
 @endpush
 
 @section('content')
@@ -30,24 +22,6 @@ $realtime = array_merge(
         'auto_dismiss_seconds' => 0,
     ],
     $realtime ?? []
-);
-
-if (!isset($styles) || !is_array($styles)) {
-    $styles = [];
-}
-
-$styles[] = 'https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css';
-
-if (!isset($scripts) || !is_array($scripts)) {
-    $scripts = [];
-}
-
-array_push(
-    $scripts,
-    'https://cdn.jsdelivr.net/momentjs/latest/moment.min.js',
-    'https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js',
-    'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js',
-    'https://cdnjs.cloudflare.com/ajax/libs/jszip-utils/0.1.0/jszip-utils.min.js'
 );
 
 $reporting = array_merge(
@@ -1045,15 +1019,23 @@ $examenesWritePrefix = $examenesV2WritesEnabled ? '/v2' : '';
 </div>
 
 <div id="toastContainer" style="position: fixed; top: 1rem; right: 1rem; z-index: 1055;"></div>
-
-<script>
-    window.MEDF_PusherConfig = <?= json_encode($realtime, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_SLASHES); ?>;
-</script>
-<?php if (!empty($realtime['enabled']) && !empty($realtime['key'])): ?>
-    <script src="https://js.pusher.com/8.4.0/pusher.min.js"></script>
-<?php endif; ?>
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-<script src="<?= asset('assets/vendor_components/ckeditor/ckeditor.js') ?>"></script>
-<script type="module" src="<?= asset('js/pages/examenes/index.js') ?>"></script>
-
 @endsection
+
+@push('scripts')
+    <script>
+        window.MEDF_PusherConfig = <?= json_encode($realtime, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_SLASHES); ?>;
+    </script>
+    @if (\App\Modules\Shared\Support\MedforgeAssets::hasViteBuild())
+        @vite('resources/js/v2/examenes-index.js')
+    @else
+        <script src="/assets/vendor_components/sortablejs/Sortable.min.js"></script>
+        <script src="/assets/vendor_components/moment/moment.js"></script>
+        <script src="/assets/vendor_components/bootstrap-daterangepicker/daterangepicker.js"></script>
+        @if (!empty($realtime['enabled']) && !empty($realtime['key']))
+            <script src="/assets/vendor_components/pusher/pusher.min.js"></script>
+        @endif
+        <script src="/assets/vendor_components/sweetalert2/sweetalert2.all.min.js"></script>
+        <script src="<?= asset('assets/vendor_components/ckeditor/ckeditor.js') ?>"></script>
+        <script type="module" src="<?= asset('js/pages/examenes/index.js') ?>"></script>
+    @endif
+@endpush

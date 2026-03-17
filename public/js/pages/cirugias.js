@@ -68,9 +68,7 @@ $(function () {
             {targets: [6, 7, 8], orderable: false, searchable: false},
             {targets: [3, 6, 7, 8], className: "text-nowrap"}
         ],
-        language: {
-            url: "https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json"
-        },
+        language: window.medforgeDataTableLanguageEs ? window.medforgeDataTableLanguageEs() : {},
         dom: "Bfrtip",
         buttons: ["copy", "csv", "excel", "pdf", "print"],
         initComplete: clearInlineTableWidth

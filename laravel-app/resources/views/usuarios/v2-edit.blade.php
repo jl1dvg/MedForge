@@ -117,27 +117,36 @@
 @endsection
 
 @push('scripts')
-    <script>
-        (function () {
-            const profiles = @json($permissionProfiles ?? []);
-            const applyButton = document.getElementById('apply_permission_profile');
-            const profileSelect = document.getElementById('permission_profile');
-            if (!applyButton || !profileSelect) {
-                return;
-            }
-
-            const permissionInputs = Array.from(document.querySelectorAll('input[name="permissions[]"]'));
-            applyButton.addEventListener('click', function () {
-                const key = profileSelect.value;
-                if (!key || !profiles[key] || !Array.isArray(profiles[key].permissions)) {
+    @if (\App\Modules\Shared\Support\MedforgeAssets::hasViteBuild())
+        <script>
+            window.__USUARIOS_V2_EDIT__ = {
+                permissionProfiles: @json($permissionProfiles ?? []),
+            };
+        </script>
+        @vite('resources/js/v2/user-edit.js')
+    @else
+        <script>
+            (function () {
+                const profiles = @json($permissionProfiles ?? []);
+                const applyButton = document.getElementById('apply_permission_profile');
+                const profileSelect = document.getElementById('permission_profile');
+                if (!applyButton || !profileSelect) {
                     return;
                 }
 
-                const selected = new Set(profiles[key].permissions);
-                permissionInputs.forEach(function (input) {
-                    input.checked = selected.has(input.value);
+                const permissionInputs = Array.from(document.querySelectorAll('input[name="permissions[]"]'));
+                applyButton.addEventListener('click', function () {
+                    const key = profileSelect.value;
+                    if (!key || !profiles[key] || !Array.isArray(profiles[key].permissions)) {
+                        return;
+                    }
+
+                    const selected = new Set(profiles[key].permissions);
+                    permissionInputs.forEach(function (input) {
+                        input.checked = selected.has(input.value);
+                    });
                 });
-            });
-        })();
-    </script>
+            })();
+        </script>
+    @endif
 @endpush

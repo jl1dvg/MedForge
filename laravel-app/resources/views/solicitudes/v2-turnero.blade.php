@@ -223,5 +223,10 @@
             },
         };
     </script>
-    <script type="module" src="/js/pages/solicitudes/turnero.js"></script>
+    @if (\App\Modules\Shared\Support\MedforgeAssets::hasViteBuild())
+        @vite('resources/js/v2/solicitudes-turnero.js')
+    @else
+        <script src="/assets/vendor_components/pusher/pusher.min.js"></script>
+        <script type="module" src="/js/pages/solicitudes/turnero.js"></script>
+    @endif
 @endpush

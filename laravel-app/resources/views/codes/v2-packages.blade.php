@@ -189,6 +189,10 @@
 @endpush
 
 @push('scripts')
-    <script src="/js/pages/code-packages.js"></script>
+    @if (\App\Modules\Shared\Support\MedforgeAssets::hasViteBuild())
+        @vite('resources/js/v2/code-packages.js')
+    @else
+        <script src="/assets/vendor_components/sortablejs/Sortable.min.js"></script>
+        <script src="/js/pages/code-packages.js"></script>
+    @endif
 @endpush
-

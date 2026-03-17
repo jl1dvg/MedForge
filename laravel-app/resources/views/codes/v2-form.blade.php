@@ -358,37 +358,41 @@
 @endsection
 
 @push('scripts')
-    <script>
-        (function () {
-            const filter = document.getElementById('pricelevel-category-filter');
-            if (!filter) {
-                return;
-            }
-
-            const rows = Array.from(document.querySelectorAll('[data-pricelevel-row="1"]'));
-            const counter = document.getElementById('pricelevel-visible-counter');
-            const total = rows.length;
-
-            function applyFilter() {
-                const selected = filter.value;
-                let visible = 0;
-
-                rows.forEach(function (row) {
-                    const rowCategory = row.getAttribute('data-pricelevel-category') || '';
-                    const show = selected === '' || rowCategory === selected;
-                    row.classList.toggle('d-none', !show);
-                    if (show) {
-                        visible += 1;
-                    }
-                });
-
-                if (counter) {
-                    counter.textContent = 'Mostrando ' + visible + ' de ' + total + ' afiliaciones';
+    @if (\App\Modules\Shared\Support\MedforgeAssets::hasViteBuild())
+        @vite('resources/js/v2/code-form.js')
+    @else
+        <script>
+            (function () {
+                const filter = document.getElementById('pricelevel-category-filter');
+                if (!filter) {
+                    return;
                 }
-            }
 
-            filter.addEventListener('change', applyFilter);
-            applyFilter();
-        })();
-    </script>
+                const rows = Array.from(document.querySelectorAll('[data-pricelevel-row="1"]'));
+                const counter = document.getElementById('pricelevel-visible-counter');
+                const total = rows.length;
+
+                function applyFilter() {
+                    const selected = filter.value;
+                    let visible = 0;
+
+                    rows.forEach(function (row) {
+                        const rowCategory = row.getAttribute('data-pricelevel-category') || '';
+                        const show = selected === '' || rowCategory === selected;
+                        row.classList.toggle('d-none', !show);
+                        if (show) {
+                            visible += 1;
+                        }
+                    });
+
+                    if (counter) {
+                        counter.textContent = 'Mostrando ' + visible + ' de ' + total + ' afiliaciones';
+                    }
+                }
+
+                filter.addEventListener('change', applyFilter);
+                applyFilter();
+            })();
+        </script>
+    @endif
 @endpush

@@ -1,7 +1,11 @@
 @extends('layouts.medforge')
 
 @push('scripts')
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    @if (\App\Modules\Shared\Support\MedforgeAssets::hasViteBuild())
+        @vite('resources/js/v2/imagenes-dashboard.js')
+    @else
+        <script src="/assets/vendor_components/chart.js/chart.umd.js"></script>
+    @endif
 @endpush
 
 @section('content')
@@ -13,11 +17,6 @@
 /** @var array<int, array{value:string,label:string}> $afiliacionCategoriaOptions */
 /** @var array<int, array{value:string,label:string}> $seguroOptions */
 /** @var array<int, array{value:string,label:string}> $sedeOptions */
-
-if (!isset($scripts) || !is_array($scripts)) {
-    $scripts = [];
-}
-$scripts[] = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js';
 
 if (!isset($filters) || !is_array($filters)) {
     $filters = [

@@ -121,7 +121,6 @@
 @endsection
 
 @push('scripts')
-    <script src="/assets/vendor_components/datatable/datatables.min.js"></script>
     <script>
         window.cirugiasEndpoints = {
             datatable: '/v2/cirugias/datatable',
@@ -263,6 +262,11 @@
                 });
         }
     </script>
-    <script src="/js/pages/cirugias.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    @if (\App\Modules\Shared\Support\MedforgeAssets::hasViteBuild())
+        @vite('resources/js/v2/cirugias-index.js')
+    @else
+        <script src="/assets/vendor_components/datatable/datatables.min.js"></script>
+        <script src="/assets/vendor_components/sweetalert2/sweetalert2.all.min.js"></script>
+        <script src="/js/pages/cirugias.js"></script>
+    @endif
 @endpush
