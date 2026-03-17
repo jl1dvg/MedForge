@@ -381,55 +381,48 @@ class BillingInformeDataService
         $anestesia = $this->fetchAllByBillingId('billing_anestesia', $billingId);
         $insumosRaw = $this->obtenerInsumosPorBillingId($billingId);
 
-        $insumosConIva = [];
-        $medicamentosSinIva = [];
-        foreach ($insumosRaw as $insumo) {
-            $esMedicamento = $insumo['es_medicamento'] ?? null;
-            if ($esMedicamento === null) {
-                $esMedicamento = isset($insumo['iva']) && (int) $insumo['iva'] === 0 ? 1 : 0;
-            } else {
-                $esMedicamento = (int) $esMedicamento;
+        $afiliacion = (string) ($pacienteInfo['afiliacion'] ?? '');
+        $splitInsumos = $this->splitInsumosPorTipo($insumosRaw);
+        $insumosConIva = $splitInsumos['insumos'];
+        $medicamentosSinIva = $this->ajustarMedicamentosPorAfiliacionLista($splitInsumos['medicamentos'], $afiliacion);
+
+        if (
+            $procedimientos === []
+            || $derechos === []
+            || $oxigeno === []
+            || $anestesia === []
+            || $insumosConIva === []
+            || $medicamentosSinIva === []
+        ) {
+            $preview = $this->buildPreviewFallbackData($formId, $hcNumber, $protocoloExtendido);
+
+            if ($procedimientos === []) {
+                $procedimientos = $this->normalizePreviewProcedimientos($preview['procedimientos'] ?? []);
             }
 
-            if ($esMedicamento === 1) {
-                $medicamentosSinIva[] = $insumo;
-            } else {
-                $insumosConIva[] = $insumo;
+            if ($derechos === []) {
+                $derechos = $this->normalizePreviewDerechos($preview['derechos'] ?? []);
             }
-        }
 
-        if ($medicamentosSinIva !== []) {
-            $codigos = [];
-            foreach ($medicamentosSinIva as $medicamento) {
-                $codigo = trim((string) ($medicamento['codigo'] ?? ''));
-                if ($codigo !== '') {
-                    $codigos[] = $codigo;
-                }
+            if ($oxigeno === []) {
+                $oxigeno = $this->normalizePreviewCollection($preview['oxigeno'] ?? []);
             }
-            $codigos = array_values(array_unique($codigos));
 
-            if ($codigos !== []) {
-                $placeholders = implode(',', array_fill(0, count($codigos), '?'));
-                $stmt = $this->db->prepare(
-                    "SELECT codigo_isspol, codigo_issfa, codigo_msp, codigo_iess, nombre
-                     FROM insumos
-                     WHERE codigo_isspol IN ($placeholders)"
-                );
-                $stmt->execute($codigos);
-                $referencias = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-                $referenciaMap = [];
-                foreach ($referencias as $referencia) {
-                    $codigoClave = (string) ($referencia['codigo_isspol'] ?? '');
-                    if ($codigoClave !== '') {
-                        $referenciaMap[$codigoClave] = $referencia;
-                    }
+            if ($anestesia === []) {
+                $anestesia = $this->normalizePreviewCollection($preview['anestesia'] ?? []);
+            }
+
+            if ($insumosConIva === [] || $medicamentosSinIva === []) {
+                $previewSplit = $this->splitInsumosPorTipo($this->normalizePreviewCollection($preview['insumos'] ?? []));
+                $previewMedicamentos = $this->ajustarMedicamentosPorAfiliacionLista($previewSplit['medicamentos'], $afiliacion);
+
+                if ($insumosConIva === [] && $previewSplit['insumos'] !== []) {
+                    $insumosConIva = $previewSplit['insumos'];
                 }
 
-                $afiliacion = (string) ($pacienteInfo['afiliacion'] ?? '');
-                foreach ($medicamentosSinIva as &$medicamento) {
-                    $medicamento = $this->ajustarCodigoPorAfiliacion($medicamento, $afiliacion, $referenciaMap);
+                if ($medicamentosSinIva === [] && $previewMedicamentos !== []) {
+                    $medicamentosSinIva = $previewMedicamentos;
                 }
-                unset($medicamento);
             }
         }
 
@@ -628,6 +621,385 @@ class BillingInformeDataService
         } catch (\Throwable) {
             return [];
         }
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $rows
+     * @return array{insumos: array<int, array<string, mixed>>, medicamentos: array<int, array<string, mixed>>}
+     */
+    private function splitInsumosPorTipo(array $rows): array
+    {
+        $insumosConIva = [];
+        $medicamentosSinIva = [];
+
+        foreach ($rows as $insumo) {
+            if (!is_array($insumo)) {
+                continue;
+            }
+
+            $esMedicamento = $insumo['es_medicamento'] ?? null;
+            if ($esMedicamento === null) {
+                $esMedicamento = isset($insumo['iva']) && (int) $insumo['iva'] === 0 ? 1 : 0;
+            } else {
+                $esMedicamento = (int) $esMedicamento;
+            }
+
+            if ($esMedicamento === 1) {
+                $medicamentosSinIva[] = $insumo;
+                continue;
+            }
+
+            $insumosConIva[] = $insumo;
+        }
+
+        return [
+            'insumos' => $insumosConIva,
+            'medicamentos' => $medicamentosSinIva,
+        ];
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $medicamentos
+     * @return array<int, array<string, mixed>>
+     */
+    private function ajustarMedicamentosPorAfiliacionLista(array $medicamentos, string $afiliacion): array
+    {
+        if ($medicamentos === []) {
+            return [];
+        }
+
+        $codigos = [];
+        foreach ($medicamentos as $medicamento) {
+            $codigo = trim((string) ($medicamento['codigo'] ?? ''));
+            if ($codigo !== '') {
+                $codigos[] = $codigo;
+            }
+        }
+        $codigos = array_values(array_unique($codigos));
+
+        if ($codigos === []) {
+            return $medicamentos;
+        }
+
+        try {
+            $placeholders = implode(',', array_fill(0, count($codigos), '?'));
+            $stmt = $this->db->prepare(
+                "SELECT codigo_isspol, codigo_issfa, codigo_msp, codigo_iess, nombre
+                 FROM insumos
+                 WHERE codigo_isspol IN ($placeholders)"
+            );
+            $stmt->execute($codigos);
+            $referencias = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        } catch (\Throwable) {
+            return $medicamentos;
+        }
+
+        $referenciaMap = [];
+        foreach ($referencias as $referencia) {
+            $codigoClave = (string) ($referencia['codigo_isspol'] ?? '');
+            if ($codigoClave !== '') {
+                $referenciaMap[$codigoClave] = $referencia;
+            }
+        }
+
+        foreach ($medicamentos as &$medicamento) {
+            $medicamento = $this->ajustarCodigoPorAfiliacion($medicamento, $afiliacion, $referenciaMap);
+        }
+        unset($medicamento);
+
+        return $medicamentos;
+    }
+
+    /**
+     * @param array<string, mixed>|null $protocoloExtendido
+     * @return array<string, array<int, array<string, mixed>>>
+     */
+    private function buildPreviewFallbackData(string $formId, string $hcNumber, ?array $protocoloExtendido): array
+    {
+        $preview = [
+            'procedimientos' => [],
+            'insumos' => [],
+            'derechos' => [],
+            'oxigeno' => [],
+            'anestesia' => [],
+            'reglas' => [],
+        ];
+
+        if ($formId !== '' && $hcNumber !== '') {
+            try {
+                $previewService = new BillingPreviewService($this->db);
+                $previewData = $previewService->prepararPreviewFacturacion($formId, $hcNumber);
+                if (is_array($previewData)) {
+                    foreach (array_keys($preview) as $key) {
+                        if (isset($previewData[$key]) && is_array($previewData[$key])) {
+                            $preview[$key] = $previewData[$key];
+                        }
+                    }
+                }
+            } catch (\Throwable) {
+                // El informe debe seguir abriendo aunque falle el preview remoto.
+            }
+        }
+
+        if ($preview['procedimientos'] === []) {
+            $preview['procedimientos'] = $this->buildProcedimientosPreviewRows($formId, $protocoloExtendido);
+        }
+
+        return $preview;
+    }
+
+    /**
+     * @param array<int, mixed> $rows
+     * @return array<int, array<string, mixed>>
+     */
+    private function normalizePreviewCollection(array $rows): array
+    {
+        $result = [];
+        foreach ($rows as $row) {
+            if (is_array($row)) {
+                $result[] = $row;
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param array<int, mixed> $rows
+     * @return array<int, array<string, mixed>>
+     */
+    private function normalizePreviewProcedimientos(array $rows): array
+    {
+        $result = [];
+        $seen = [];
+
+        foreach ($rows as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+
+            $codigo = trim((string) ($row['proc_codigo'] ?? $row['procCodigo'] ?? ''));
+            $detalle = trim((string) ($row['proc_detalle'] ?? $row['procDetalle'] ?? ''));
+            if ($codigo === '' || $detalle === '') {
+                continue;
+            }
+
+            $key = $codigo . '|' . $detalle;
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+
+            $precio = $row['proc_precio'] ?? $row['procPrecio'] ?? null;
+            $result[] = [
+                'proc_codigo' => $codigo,
+                'proc_detalle' => $detalle,
+                'proc_precio' => $precio !== null ? (float) $precio : $this->lookupTarifa($codigo),
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param array<int, mixed> $rows
+     * @return array<int, array<string, mixed>>
+     */
+    private function normalizePreviewDerechos(array $rows): array
+    {
+        $result = [];
+
+        foreach ($rows as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+
+            $codigo = trim((string) ($row['codigo'] ?? ''));
+            $detalle = trim((string) ($row['detalle'] ?? ''));
+            if ($codigo === '' || $detalle === '') {
+                continue;
+            }
+
+            $precioAfiliacion = $row['precio_afiliacion'] ?? $row['precioAfiliacion'] ?? 0;
+            $result[] = [
+                'codigo' => $codigo,
+                'detalle' => $detalle,
+                'cantidad' => (float) ($row['cantidad'] ?? 1),
+                'iva' => (int) ($row['iva'] ?? 0),
+                'precio_afiliacion' => (float) $precioAfiliacion,
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param array<string, mixed>|null $protocoloExtendido
+     * @return array<int, array<string, mixed>>
+     */
+    private function buildProcedimientosPreviewRows(string $formId, ?array $protocoloExtendido): array
+    {
+        $rows = [];
+        $seen = [];
+
+        $json = is_array($protocoloExtendido) ? (string) ($protocoloExtendido['procedimientos'] ?? '') : '';
+        if ($json !== '') {
+            $decoded = json_decode($json, true);
+            if (is_array($decoded)) {
+                foreach ($decoded as $proc) {
+                    if (!is_array($proc)) {
+                        continue;
+                    }
+
+                    [$codigo, $detalle] = $this->parseCodigoDetalle((string) ($proc['procInterno'] ?? ''));
+                    if ($codigo === '' || $detalle === '') {
+                        continue;
+                    }
+
+                    $key = $codigo . '|' . $detalle;
+                    if (isset($seen[$key])) {
+                        continue;
+                    }
+
+                    $seen[$key] = true;
+                    $rows[] = [
+                        'proc_codigo' => $codigo,
+                        'proc_detalle' => $detalle,
+                        'proc_precio' => $this->lookupTarifa($codigo),
+                    ];
+                }
+            }
+        }
+
+        if ($rows !== []) {
+            return $rows;
+        }
+
+        $raw = is_array($protocoloExtendido) ? (string) ($protocoloExtendido['procedimiento_proyectado'] ?? '') : '';
+        if ($raw === '') {
+            try {
+                $stmt = $this->db->prepare('SELECT procedimiento_proyectado FROM procedimiento_proyectado WHERE form_id = ? LIMIT 1');
+                $stmt->execute([$formId]);
+                $raw = (string) ($stmt->fetchColumn() ?: '');
+            } catch (\Throwable) {
+                $raw = '';
+            }
+        }
+
+        [$codigo, $detalle] = $this->parseCodigoDetalle($raw);
+        if ($codigo === '' || $detalle === '') {
+            return $this->buildProcedimientosFromPrefactura($formId);
+        }
+
+        return [[
+            'proc_codigo' => $codigo,
+            'proc_detalle' => $detalle,
+            'proc_precio' => $this->lookupTarifa($codigo),
+        ]];
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function buildProcedimientosFromPrefactura(string $formId): array
+    {
+        try {
+            $stmt = $this->db->prepare(
+                <<<'SQL'
+                SELECT prefactura_id
+                FROM prefactura_payload_audit
+                WHERE form_id = ?
+                  AND prefactura_id IS NOT NULL
+                ORDER BY received_at DESC, id DESC
+                LIMIT 1
+                SQL
+            );
+            $stmt->execute([$formId]);
+            $prefacturaId = (int) ($stmt->fetchColumn() ?: 0);
+        } catch (\Throwable) {
+            return [];
+        }
+
+        if ($prefacturaId <= 0) {
+            return [];
+        }
+
+        try {
+            $stmt = $this->db->prepare(
+                <<<'SQL'
+                SELECT codigo, descripcion, proc_interno, precio_tarifado, precio_base
+                FROM prefactura_detalle_procedimientos
+                WHERE prefactura_id = ?
+                ORDER BY posicion ASC, id ASC
+                SQL
+            );
+            $stmt->execute([$prefacturaId]);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        } catch (\Throwable) {
+            return [];
+        }
+
+        $result = [];
+        foreach ($rows as $row) {
+            $codigo = trim((string) ($row['codigo'] ?? ''));
+            $detalle = trim((string) ($row['descripcion'] ?? ''));
+
+            if ($codigo === '' || $detalle === '') {
+                [$codigo, $detalle] = $this->parseCodigoDetalle((string) ($row['proc_interno'] ?? ''));
+            }
+
+            if ($codigo === '' || $detalle === '') {
+                continue;
+            }
+
+            $precio = $row['precio_tarifado'] ?? $row['precio_base'] ?? null;
+            $result[] = [
+                'proc_codigo' => $codigo,
+                'proc_detalle' => $detalle,
+                'proc_precio' => $precio !== null ? (float) $precio : $this->lookupTarifa($codigo),
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
+     * @return array{0:string,1:string}
+     */
+    private function parseCodigoDetalle(string $raw): array
+    {
+        $text = trim($raw);
+        if ($text === '') {
+            return ['', ''];
+        }
+
+        if (preg_match('/-\s*(\d{5,6})\s*-\s*(.+)$/', $text, $matches) === 1) {
+            return [trim($matches[1]), trim($matches[2])];
+        }
+
+        if (preg_match('/\b(\d{5,6})\b/', $text, $matches) === 1) {
+            $codigo = trim($matches[1]);
+            $detalle = trim(str_replace($codigo, '', $text));
+            $detalle = trim(preg_replace('/\s+/', ' ', $detalle) ?? $detalle);
+            return [$codigo, $detalle !== '' ? $detalle : $text];
+        }
+
+        return ['', ''];
+    }
+
+    private function lookupTarifa(string $codigo): float
+    {
+        try {
+            $stmt = $this->db->prepare(
+                'SELECT valor_facturar_nivel3 FROM tarifario_2014 WHERE codigo = ? OR codigo = ? LIMIT 1'
+            );
+            $stmt->execute([$codigo, ltrim($codigo, '0')]);
+            $value = $stmt->fetchColumn();
+        } catch (\Throwable) {
+            $value = false;
+        }
+
+        return $value !== false ? (float) $value : 0.0;
     }
 
     /**

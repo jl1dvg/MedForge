@@ -2,6 +2,12 @@ import '../../../../public/assets/vendor_components/horizontal-timeline/css/hori
 import '../../css/v2/patient-detail.css';
 import { bootLegacyPatientDetailPage } from '../medforge/v2/bootLegacyPatientDetailPage';
 
-bootLegacyPatientDetailPage('/js/pages/patient-detail.js').catch((error) => {
+function getAssetSuffix() {
+    const config = window.__SOLICITUDES_V2_UI__ || {};
+    const version = String(config.assetVersion || '').trim();
+    return version ? `?v=${encodeURIComponent(version)}` : '';
+}
+
+bootLegacyPatientDetailPage(`/js/pages/patient-detail.js${getAssetSuffix()}`).catch((error) => {
     console.error('Unable to initialize the patient detail page bundle.', error);
 });

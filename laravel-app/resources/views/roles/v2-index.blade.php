@@ -14,7 +14,7 @@
                     </nav>
                 </div>
             </div>
-            <a href="/v2/roles/create" class="btn btn-primary btn-sm">Nuevo rol</a>
+            <a href="/roles/create" class="btn btn-primary btn-sm">Nuevo rol</a>
         </div>
     </div>
 
@@ -63,8 +63,8 @@
                                     @endif
                                 </td>
                                 <td class="d-flex gap-2">
-                                    <a href="/v2/roles/{{ $role['id'] }}/edit" class="btn btn-sm btn-primary">Editar</a>
-                                    <form method="POST" action="/v2/roles/{{ $role['id'] }}/delete" onsubmit="return confirm('¿Eliminar este rol?');">
+                                    <a href="/roles/{{ $role['id'] }}/edit" class="btn btn-sm btn-primary">Editar</a>
+                                    <form method="POST" action="/roles/{{ $role['id'] }}/delete" onsubmit="return confirm('¿Eliminar este rol?');">
                                         @csrf
                                         <button type="submit" class="btn btn-sm btn-danger">Eliminar</button>
                                     </form>

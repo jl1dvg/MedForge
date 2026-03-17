@@ -9,13 +9,13 @@
                     <nav>
                         <ol class="breadcrumb">
                             <li class="breadcrumb-item"><a href="/v2/dashboard"><i class="mdi mdi-home-outline"></i></a></li>
-                            <li class="breadcrumb-item"><a href="/v2/usuarios">Usuarios</a></li>
+                            <li class="breadcrumb-item"><a href="/usuarios">Usuarios</a></li>
                             <li class="breadcrumb-item active" aria-current="page">{{ $user['username'] }}</li>
                         </ol>
                     </nav>
                 </div>
             </div>
-            <a href="/v2/usuarios" class="btn btn-outline-secondary btn-sm">Volver</a>
+            <a href="/usuarios" class="btn btn-outline-secondary btn-sm">Volver</a>
         </div>
     </div>
 
@@ -33,7 +33,7 @@
         @endif
 
         <div class="box">
-            <form method="POST" action="/v2/usuarios/{{ $user['id'] }}">
+            <form method="POST" action="/usuarios/{{ $user['id'] }}">
                 @csrf
                 <div class="box-body">
                     <div class="row g-3 mb-4">

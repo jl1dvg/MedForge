@@ -6,11 +6,13 @@ use App\Modules\Shared\Support\LegacySessionAuth;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 
 class UnifiedLogoutController
 {
     public function logout(Request $request): JsonResponse|RedirectResponse
     {
+        Auth::guard('web')->logout();
         LegacySessionAuth::destroySession($request);
 
         if ($request->hasSession()) {

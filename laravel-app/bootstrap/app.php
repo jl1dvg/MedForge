@@ -1,6 +1,8 @@
 <?php
 
 use App\Http\Middleware\LegacySessionBridge;
+use App\Http\Middleware\RequireAppPermission;
+use App\Http\Middleware\RequireAppSession;
 use App\Http\Middleware\ConsultasCors;
 use App\Http\Middleware\RequireLegacyPermission;
 use App\Http\Middleware\RequireLegacySession;
@@ -21,6 +23,8 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->web(prepend: [LegacySessionBridge::class]);
         $middleware->api(prepend: [LegacySessionBridge::class]);
         $middleware->alias([
+            'app.auth' => RequireAppSession::class,
+            'app.permission' => RequireAppPermission::class,
             'legacy.auth' => RequireLegacySession::class,
             'legacy.permission' => RequireLegacyPermission::class,
             'consultas.cors' => ConsultasCors::class,

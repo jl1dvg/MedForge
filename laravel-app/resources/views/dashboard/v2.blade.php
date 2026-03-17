@@ -81,12 +81,12 @@
                         </div>
                         <div class="col-md-4 col-lg-3">
                             <button type="submit" class="btn btn-primary w-100">
-                                <i class="fa fa-filter me-5"></i>Aplicar filtros
+                                <i class="mdi mdi-filter-outline me-5"></i>Aplicar filtros
                             </button>
                         </div>
                         <div class="col-md-4 col-lg-3">
                             <a href="/v2/dashboard" class="btn btn-light w-100">
-                                <i class="fa fa-undo me-5"></i>Limpiar
+                                <i class="mdi mdi-filter-remove-outline me-5"></i>Limpiar
                             </a>
                         </div>
                     </form>
@@ -273,7 +273,7 @@
                                         <div>
                                             <div class="d-flex align-items-center mb-10">
                                                 <div class="d-flex flex-column flex-grow-1 fw-500">
-                                                    <p class="hover-primary text-fade mb-1 fs-14"><i class="fa fa-stethoscope"></i> Diagnóstico</p>
+                                                    <p class="hover-primary text-fade mb-1 fs-14"><i class="mdi mdi-stethoscope"></i> Diagnóstico</p>
                                                     <span class="text-dark fs-16">{{ (string) $key }}</span>
                                                     <p class="mb-0 fs-14">{{ $porcentaje }}% de pacientes</p>
                                                 </div>
@@ -367,8 +367,8 @@
                     <p class="mb-5">Estado: <strong>{{ !empty($aiSummary['provider_configured']) ? 'Activo' : 'En migración' }}</strong></p>
                     <p class="text-muted mb-10">Proveedor: {{ !empty($aiSummary['provider']) ? strtoupper((string) $aiSummary['provider']) : 'Por definir' }}</p>
                     <ul class="list-unstyled mb-0 fs-12 text-muted">
-                        <li><i class="fa fa-check-circle me-5 text-success"></i> Consultas por enfermedad: {{ !empty($aiSummary['features']['consultas_enfermedad']) ? 'Habilitado' : 'Pendiente' }}</li>
-                        <li><i class="fa fa-check-circle me-5 text-success"></i> Consultas de plan: {{ !empty($aiSummary['features']['consultas_plan']) ? 'Habilitado' : 'Pendiente' }}</li>
+                        <li><i class="mdi mdi-check-circle-outline me-5 text-success"></i> Consultas por enfermedad: {{ !empty($aiSummary['features']['consultas_enfermedad']) ? 'Habilitado' : 'Pendiente' }}</li>
+                        <li><i class="mdi mdi-check-circle-outline me-5 text-success"></i> Consultas de plan: {{ !empty($aiSummary['features']['consultas_plan']) ? 'Habilitado' : 'Pendiente' }}</li>
                     </ul>
                 </div>
             </div>

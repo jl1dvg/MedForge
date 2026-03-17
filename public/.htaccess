@@ -2,6 +2,10 @@
     RewriteEngine On
     RewriteBase /
 
+    # Laravel auth and migrated admin modules
+    RewriteRule ^auth/(login|logout)$ v2_kernel.php [QSA,L]
+    RewriteRule ^(usuarios|roles)(/.*)?$ v2_kernel.php [QSA,L]
+
     # Strangler bridge: /v2/* -> Laravel kernel (parallel app)
     RewriteRule ^v2(/.*)?$ v2_kernel.php [QSA,L]
 

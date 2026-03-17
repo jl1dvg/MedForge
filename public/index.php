@@ -14,6 +14,27 @@ if (!$pdo instanceof PDO) {
     exit;
 }
 
+$requestPath = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
+$basePath = '/public/index.php';
+if (strncmp($requestPath, $basePath, strlen($basePath)) === 0) {
+    $requestPath = substr($requestPath, strlen($basePath)) ?: '/';
+}
+
+$laravelBridgeExact = ['/auth/login', '/auth/logout'];
+$laravelBridgePrefixes = ['/v2', '/usuarios', '/roles'];
+
+if (in_array($requestPath, $laravelBridgeExact, true)) {
+    require __DIR__ . '/v2_kernel.php';
+    exit;
+}
+
+foreach ($laravelBridgePrefixes as $prefix) {
+    if ($requestPath === $prefix || strncmp($requestPath, $prefix . '/', strlen($prefix) + 1) === 0) {
+        require __DIR__ . '/v2_kernel.php';
+        exit;
+    }
+}
+
 try {
     $router = new Router($pdo);
 
@@ -42,9 +63,9 @@ try {
         $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) ?: '/';
 
         // Normalizar la ruta si viene con /public/index.php
-        $basePath = '/public/index.php';
-        if (strncmp($path, $basePath, strlen($basePath)) === 0) {
-            $path = substr($path, strlen($basePath)) ?: '/';
+        $requestBasePath = '/public/index.php';
+        if (strncmp($path, $requestBasePath, strlen($requestBasePath)) === 0) {
+            $path = substr($path, strlen($requestBasePath)) ?: '/';
         }
 
         $method = $_SERVER['REQUEST_METHOD'];

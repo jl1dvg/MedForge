@@ -21,25 +21,57 @@ import {initSigcenterPanel} from "./sigcenter.js";
 import {findSolicitudById} from "./store.js";
 import {getDataStore} from "../config.js";
 
+function getAssetSuffix() {
+    const config = window.__SOLICITUDES_V2_UI__ || {};
+    const version = String(config.assetVersion || "").trim();
+    return version ? `?v=${encodeURIComponent(version)}` : "";
+}
+
+async function loadLioEditorApi() {
+    return import(`./handlers.js${getAssetSuffix()}`);
+}
+
+function attachPrefacturaLioEditorButton(content, solicitud) {
+    const button = content?.querySelector("#btnPrefacturaEditarLio");
+    if (!button || button.dataset.lioEditorBound === "true") {
+        return;
+    }
+
+    button.dataset.lioEditorBound = "true";
+    button.addEventListener("click", async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        try {
+            const module = await loadLioEditorApi();
+            if (!module || typeof module.openLioEditor !== "function") {
+                throw new Error("Editor de LIO no disponible");
+            }
+
+            module.openLioEditor({
+                solicitudId: button.dataset.id || solicitud?.id || "",
+                formId: button.dataset.formId || solicitud?.form_id || "",
+                hcNumber: button.dataset.hc || solicitud?.hc_number || "",
+                solicitud: solicitud || findSolicitudById(button.dataset.id || ""),
+            });
+        } catch (error) {
+            console.error("No se pudo abrir el editor de LIO desde prefactura", error);
+            showToast("No se pudo abrir el editor de LIO", false);
+        }
+    });
+}
+
 export function relocateExamenesPrequirurgicosButton(content) {
     const button = document.getElementById("btnSolicitarExamenesPrequirurgicos");
-    if (!button || !content) {
+    const modalElement = document.getElementById("prefacturaModal");
+    const footer = modalElement?.querySelector(".modal-footer");
+    if (!button || !content || !footer) {
         return;
     }
 
-    const targetFooter = content.querySelector(
-        "#prefactura-tab-oftalmo .card:first-of-type .card-footer"
-    );
-
-    if (targetFooter) {
-        button.classList.add("ms-2");
-        button.classList.remove("d-none");
-        targetFooter.appendChild(button);
-        return;
-    }
-
+    button.classList.remove("ms-2");
     button.classList.remove("d-none");
-    content.prepend(button);
+    footer.appendChild(button);
 }
 
 export function parkExamenesPrequirurgicosButton(modalElement) {
@@ -223,6 +255,7 @@ export function abrirPrefactura({hc, formId, solicitudId}) {
             }
 
             relocateExamenesPrequirurgicosButton(content);
+            attachPrefacturaLioEditorButton(content, solicitud);
 
             const header = content.querySelector(".prefactura-detail-header");
             const tabs = content.querySelector("#prefacturaTabs");

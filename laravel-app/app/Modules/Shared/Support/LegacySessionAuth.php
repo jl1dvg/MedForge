@@ -2,7 +2,9 @@
 
 namespace App\Modules\Shared\Support;
 
+use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 
 class LegacySessionAuth
 {
@@ -16,6 +18,19 @@ class LegacySessionAuth
     }
 
     public static function userId(Request $request): ?int
+    {
+        $authId = Auth::id();
+        if (is_numeric($authId)) {
+            $normalized = (int) $authId;
+            if ($normalized > 0) {
+                return $normalized;
+            }
+        }
+
+        return self::legacyUserId($request);
+    }
+
+    public static function legacyUserId(Request $request): ?int
     {
         self::hydrateRequest($request);
         $cached = $request->attributes->get(self::ATTR_USER_ID);
@@ -74,6 +89,65 @@ class LegacySessionAuth
         return $destroyed;
     }
 
+    public static function bootstrapLaravelAuth(Request $request): bool
+    {
+        if (Auth::check()) {
+            return true;
+        }
+
+        $userId = self::legacyUserId($request);
+        if ($userId === null) {
+            return false;
+        }
+
+        $user = User::query()->find($userId);
+        if (!$user instanceof User) {
+            return false;
+        }
+
+        Auth::login($user);
+
+        return Auth::check();
+    }
+
+    /**
+     * @param array<string, mixed> $sessionData
+     */
+    public static function writeCompatibilitySession(array $sessionData, ?string $sessionId = null): string
+    {
+        $originalName = session_name();
+        $originalId = session_id();
+        $wasActive = session_status() === PHP_SESSION_ACTIVE;
+
+        if ($wasActive) {
+            @session_write_close();
+        }
+
+        session_name('PHPSESSID');
+        if (self::isValidSessionId($sessionId)) {
+            session_id((string) $sessionId);
+        } else {
+            session_id('');
+        }
+
+        $started = @session_start();
+        $activeSessionId = $started ? session_id() : '';
+
+        if ($started) {
+            $existing = is_array($_SESSION ?? null) ? $_SESSION : [];
+            $_SESSION = array_merge($existing, $sessionData);
+            @session_write_close();
+        }
+
+        if ($originalName !== '') {
+            @session_name($originalName);
+        }
+
+        @session_id($originalId);
+
+        return is_string($activeSessionId) ? $activeSessionId : '';
+    }
+
     private static function resolveSessionId(Request $request): string
     {
         $sessionId = trim((string) $request->cookie('PHPSESSID', ''));
@@ -81,8 +155,7 @@ class LegacySessionAuth
             $sessionId = self::extractCookieValue((string) $request->headers->get('cookie', ''), 'PHPSESSID');
         }
 
-        // Conservador: evita IDs inválidos antes de tocar session_start().
-        if (!preg_match('/^[A-Za-z0-9,-]{8,128}$/', $sessionId)) {
+        if (!self::isValidSessionId($sessionId)) {
             return '';
         }
 
@@ -181,5 +254,14 @@ class LegacySessionAuth
         $userId = (int) $raw;
 
         return $userId > 0 ? $userId : null;
+    }
+
+    private static function isValidSessionId(?string $sessionId): bool
+    {
+        if (!is_string($sessionId)) {
+            return false;
+        }
+
+        return preg_match('/^[A-Za-z0-9,-]{8,128}$/', $sessionId) === 1;
     }
 }

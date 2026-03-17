@@ -9,13 +9,13 @@
                     <nav>
                         <ol class="breadcrumb">
                             <li class="breadcrumb-item"><a href="/v2/dashboard"><i class="mdi mdi-home-outline"></i></a></li>
-                            <li class="breadcrumb-item"><a href="/v2/roles">Roles</a></li>
+                            <li class="breadcrumb-item"><a href="/roles">Roles</a></li>
                             <li class="breadcrumb-item active" aria-current="page">{{ $role['id'] ? $role['name'] : 'Nuevo' }}</li>
                         </ol>
                     </nav>
                 </div>
             </div>
-            <a href="/v2/roles" class="btn btn-outline-secondary btn-sm">Volver</a>
+            <a href="/roles" class="btn btn-outline-secondary btn-sm">Volver</a>
         </div>
     </div>
 

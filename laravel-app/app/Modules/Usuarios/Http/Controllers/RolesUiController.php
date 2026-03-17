@@ -57,7 +57,7 @@ class RolesUiController
             'role' => ['id' => null, 'name' => '', 'description' => ''],
             'permissions' => LegacyPermissionCatalog::groups(),
             'selectedPermissions' => [],
-            'formAction' => '/v2/roles',
+            'formAction' => '/roles',
             'status' => session('status'),
         ]);
     }
@@ -85,7 +85,7 @@ class RolesUiController
             'updated_at' => now(),
         ]);
 
-        return redirect('/v2/roles/' . $id . '/edit')->with('status', 'created');
+        return redirect('/roles/' . $id . '/edit')->with('status', 'created');
     }
 
     public function edit(Request $request, int $id): View|RedirectResponse
@@ -96,7 +96,7 @@ class RolesUiController
 
         $role = $this->findRole($id);
         if ($role === null) {
-            return redirect('/v2/roles')->with('status', 'not_found');
+            return redirect('/roles')->with('status', 'not_found');
         }
 
         return view('roles.v2-form', [
@@ -105,7 +105,7 @@ class RolesUiController
             'role' => $role,
             'permissions' => LegacyPermissionCatalog::groups(),
             'selectedPermissions' => LegacyPermissionCatalog::normalize($role['permissions'] ?? []),
-            'formAction' => '/v2/roles/' . $id,
+            'formAction' => '/roles/' . $id,
             'status' => session('status'),
         ]);
     }
@@ -118,7 +118,7 @@ class RolesUiController
 
         $role = $this->findRole($id);
         if ($role === null) {
-            return redirect('/v2/roles')->with('status', 'not_found');
+            return redirect('/roles')->with('status', 'not_found');
         }
 
         $validated = $request->validate([
@@ -139,7 +139,7 @@ class RolesUiController
                 'updated_at' => now(),
             ]);
 
-        return redirect('/v2/roles/' . $id . '/edit')->with('status', 'updated');
+        return redirect('/roles/' . $id . '/edit')->with('status', 'updated');
     }
 
     public function destroy(Request $request, int $id): RedirectResponse
@@ -150,17 +150,17 @@ class RolesUiController
 
         $role = $this->findRole($id);
         if ($role === null) {
-            return redirect('/v2/roles')->with('status', 'not_found');
+            return redirect('/roles')->with('status', 'not_found');
         }
 
         $usersCount = (int) DB::table('users')->where('role_id', $id)->count();
         if ($usersCount > 0) {
-            return redirect('/v2/roles')->with('status', 'role_in_use');
+            return redirect('/roles')->with('status', 'role_in_use');
         }
 
         DB::table('roles')->where('id', $id)->delete();
 
-        return redirect('/v2/roles')->with('status', 'deleted');
+        return redirect('/roles')->with('status', 'deleted');
     }
 
     /**

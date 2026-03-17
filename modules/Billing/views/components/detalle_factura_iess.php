@@ -6,6 +6,12 @@ $medicamentos = $datos['medicamentos'] ?? [];
 $oxigeno = $datos['oxigeno'] ?? [];
 $insumos = $datos['insumos'] ?? [];
 $derechos = $datos['derechos'] ?? [];
+$hasLineItems = $procedimientos !== []
+    || $anestesias !== []
+    || $medicamentos !== []
+    || $oxigeno !== []
+    || $insumos !== []
+    || $derechos !== [];
 $formId = $datos['billing']['form_id'] ?? '';
 $membrete = $protocolo['membrete'] ?? '';
 $fechaInicio = $protocolo['fecha_inicio'] ?? null;
@@ -61,6 +67,10 @@ $billingEliminarFacturaEndpoint = $billingWritePrefix . '/informes/api/eliminar-
                 $total = 0;
                 $n = 1;
                 $has67036 = false;
+
+                if (!$hasLineItems) {
+                    echo "<tr><td colspan='11' class='text-center text-muted py-4'>Esta factura no tiene rubros guardados en billing_procedimientos, billing_anestesia, billing_insumos, billing_oxigeno ni billing_derechos.</td></tr>";
+                }
 
                 // Check if any procedimiento has codigo 67036
                 foreach ($procedimientos as $p) {

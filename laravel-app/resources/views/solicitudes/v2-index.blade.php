@@ -3,6 +3,15 @@
 @php
     $columns = is_array($kanbanColumns ?? null) ? $kanbanColumns : [];
     $filters = is_array($initialFilters ?? null) ? $initialFilters : [];
+    $solicitudesAssetVersionFiles = array_filter([
+        public_path('js/pages/solicitudes/v2-index.js'),
+        public_path('js/pages/solicitudes/kanban/modalDetalles.js'),
+        public_path('js/pages/solicitudes/kanban/modalDetalles/handlers.js'),
+        public_path('js/pages/solicitudes/kanban/modalDetalles/prefactura.js'),
+    ], 'is_file');
+    $solicitudesAssetVersion = $solicitudesAssetVersionFiles !== []
+        ? (string) max(array_map('filemtime', $solicitudesAssetVersionFiles))
+        : 'solicitudes-v2';
 @endphp
 
 @push('styles')
@@ -983,6 +992,7 @@
             columns: @json($columns),
             realtime: @json($realtimeConfig ?? []),
             notificationStorageKey: @json($notificationStorageKey ?? 'medf:notification-panel:solicitudes-v2'),
+            assetVersion: @json($solicitudesAssetVersion),
         };
     </script>
     @if (\App\Modules\Shared\Support\MedforgeAssets::hasViteBuild())
@@ -991,6 +1001,6 @@
         @if(!empty($realtimeConfig['enabled']) && !empty($realtimeConfig['key']))
             <script src="/assets/vendor_components/pusher/pusher.min.js"></script>
         @endif
-        <script src="/js/pages/solicitudes/v2-index.js"></script>
+        <script src="/js/pages/solicitudes/v2-index.js?v={{ urlencode($solicitudesAssetVersion) }}"></script>
     @endif
 @endpush

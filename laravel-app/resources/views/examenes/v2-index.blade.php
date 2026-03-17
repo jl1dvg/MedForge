@@ -989,14 +989,14 @@ $examenesWritePrefix = $examenesV2WritesEnabled ? '/v2' : '';
                 <div class="box-body">
                     <div class="media media-single px-0 align-items-center">
                         <div class="me-3 bg-danger-light h-50 w-50 l-h-50 rounded text-center d-flex align-items-center justify-content-center">
-                            <span class="fs-24 text-danger"><i class="fa fa-file-zip-o"></i></span>
+                            <span class="fs-24 text-danger"><i class="mdi mdi-folder-zip-outline"></i></span>
                         </div>
                         <div class="d-flex flex-column flex-grow-1">
                             <span class="title fw-500 fs-16 text-truncate">Exportar ZIP</span>
                             <small class="text-muted">Descarga el respaldo de documentos asociados</small>
                         </div>
                         <a id="exportExcel" class="fs-18 text-gray hover-info" href="#" aria-label="Exportar examenes">
-                            <i class="fa fa-download"></i>
+                            <i class="mdi mdi-download"></i>
                         </a>
                     </div>
                 </div>

@@ -21406,7 +21406,8 @@ body .main-header .navbar .nav > li.search-box > a:hover, body .main-header .nav
     color: #b5b5c3;
     opacity: 0.5;
     text-transform: uppercase; }
-  .sidebar-menu li > a > .fa-angle-right {
+.sidebar-menu li > a > .fa-angle-right,
+.sidebar-menu li > a > .mdi-chevron-right {
     width: auto;
     height: auto;
     padding: 0;
@@ -21426,7 +21427,8 @@ body .main-header .navbar .nav > li.search-box > a:hover, body .main-header .nav
     -webkit-transition: transform .5s ease;
     -o-transition: transform .5s ease;
     transition: transform .5s ease; }
-  .sidebar-menu li > a > .pull-right-container > .fa-angle-right {
+  .sidebar-menu li > a > .pull-right-container > .fa-angle-right,
+  .sidebar-menu li > a > .pull-right-container > .mdi-chevron-right {
     width: auto;
     height: auto;
     padding: 0;
@@ -21434,12 +21436,14 @@ body .main-header .navbar .nav > li.search-box > a:hover, body .main-header .nav
     -webkit-transition: transform .5s ease;
     -o-transition: transform .5s ease;
     transition: transform .5s ease; }
-  .sidebar-menu .menu-open > a > .fa-angle-right {
+  .sidebar-menu .menu-open > a > .fa-angle-right,
+  .sidebar-menu .menu-open > a > .mdi-chevron-right {
     -webkit-transform: rotate(90deg);
     -ms-transform: rotate(90deg);
     -o-transform: rotate(90deg);
     transform: rotate(90deg); }
-  .sidebar-menu .menu-open > a > .pull-right-container > .fa-angle-right {
+  .sidebar-menu .menu-open > a > .pull-right-container > .fa-angle-right,
+  .sidebar-menu .menu-open > a > .pull-right-container > .mdi-chevron-right {
     -webkit-transform: rotate(90deg);
     -ms-transform: rotate(90deg);
     -o-transform: rotate(90deg);
@@ -21645,7 +21649,8 @@ body .main-header .navbar .nav > li.search-box > a:hover, body .main-header .nav
       padding-right: 0; }
       .sidebar-mini.sidebar-collapse .sidebar-menu > li > a i {
         margin-right: 0; }
-        .sidebar-mini.sidebar-collapse .sidebar-menu > li > a i.fa.fa-angle-right {
+        .sidebar-mini.sidebar-collapse .sidebar-menu > li > a i.fa.fa-angle-right,
+        .sidebar-mini.sidebar-collapse .sidebar-menu > li > a i.mdi.mdi-chevron-right {
           display: none; }
       .sidebar-mini.sidebar-collapse .sidebar-menu > li > a svg {
         margin-right: 0;

@@ -368,13 +368,13 @@ class MedforgeNavigation
             ])
                 : null,
             $canAccessUsers
-                ? $link('Usuarios', '/v2/usuarios', 'mdi mdi-account-key-outline', [
-                'prefix' => ['/v2/usuarios'],
+                ? $link('Usuarios', '/usuarios', 'mdi mdi-account-key-outline', [
+                'prefix' => ['/usuarios', '/v2/usuarios'],
             ])
                 : null,
             $canAccessRoles
-                ? $link('Roles', '/v2/roles', 'mdi mdi-security', [
-                'prefix' => ['/v2/roles'],
+                ? $link('Roles', '/roles', 'mdi mdi-security', [
+                'prefix' => ['/roles', '/v2/roles'],
             ])
                 : null,
             $canAccessSettings
@@ -446,7 +446,7 @@ class MedforgeNavigation
             ] : null,
             $canAccessUsers ? [
                 'label' => 'Usuarios',
-                'href' => '/v2/usuarios',
+                'href' => '/usuarios',
                 'icon' => 'mdi mdi-account-outline',
             ] : null,
         ]));
@@ -463,7 +463,7 @@ class MedforgeNavigation
             $inventory['children'] !== [] ? $inventory : null,
             $finance['children'] !== [] ? $finance : null,
             $administration['children'] !== [] ? $administration : null,
-            $link('Cerrar sesion', '/v2/auth/logout', 'mdi mdi-logout'),
+            $link('Cerrar sesion', '/auth/logout', 'mdi mdi-logout'),
         ]));
 
         return [

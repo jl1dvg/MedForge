@@ -144,12 +144,12 @@
                             </div>
                             <div class="col-xl-2 col-md-4">
                                 <button type="submit" class="btn btn-primary w-100">
-                                    <i class="fa fa-filter me-5"></i>Filtrar
+                                    <i class="mdi mdi-filter-outline me-5"></i>Filtrar
                                 </button>
                             </div>
                             <div class="col-xl-2 col-md-4">
                                 <a href="/v2/agenda" class="btn btn-light w-100">
-                                    <i class="fa fa-undo me-5"></i>Limpiar
+                                    <i class="mdi mdi-filter-remove-outline me-5"></i>Limpiar
                                 </a>
                             </div>
                         </form>

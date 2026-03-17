@@ -63,6 +63,19 @@
         : asset('images/avatar/female.png');
 
     $solicitudPdfBaseUrl = '/views/reports/solicitud_quirurgica/solicitud_qx_pdf.php';
+    $patientDetailAssetFiles = [
+        public_path('js/pages/patient-detail.js'),
+        public_path('js/pages/solicitudes/kanban/botonesModal.js'),
+        public_path('js/pages/solicitudes/kanban/modalDetalles.js'),
+        public_path('js/pages/solicitudes/kanban/modalDetalles/prefactura.js'),
+        public_path('js/pages/solicitudes/kanban/modalDetalles/handlers.js'),
+    ];
+    $patientDetailAssetVersions = array_values(array_filter(array_map(
+        static fn(string $path): ?string => is_file($path) ? (string) @filemtime($path) : null,
+        $patientDetailAssetFiles
+    )));
+    $patientDetailAssetVersion = $patientDetailAssetVersions !== [] ? max($patientDetailAssetVersions) : '';
+    $patientDetailScriptSrc = '/js/pages/patient-detail.js' . ($patientDetailAssetVersion !== '' ? '?v=' . rawurlencode($patientDetailAssetVersion) : '');
 @endphp
 
 @push('styles')
@@ -121,6 +134,15 @@
         .patient-scroll-inner {
             padding-right: 6px;
         }
+
+        .prefactura-modal-body {
+            max-height: calc(100vh - 180px);
+            overflow-y: auto;
+        }
+
+        .prefactura-content-wrapper {
+            min-height: 120px;
+        }
     </style>
 @endpush
 
@@ -165,7 +187,7 @@
                             <ul>
                                 @forelse($diagnosticosRows as $diagnosis)
                                     <li>
-                                        <div class="icon bg-primary fa fa-heart-o"></div>
+                                        <div class="icon bg-primary mdi mdi-heart-outline"></div>
                                         <a class="timeline-panel text-muted" href="#">
                                             <h4 class="mb-2 mt-1">{{ $diagnosis['idDiagnostico'] ?? '' }}</h4>
                                             <p class="fs-15 mb-0">{{ $diagnosis['fecha'] ?? '' }}</p>
@@ -220,9 +242,9 @@
                             <div class="mt-40">
                                 <h4 class="fw-600 mb-5">{{ $fullName !== '' ? $fullName : 'Paciente sin nombre' }}</h4>
                                 <h5 class="fw-500 mb-5">HC: {{ $patient['hc_number'] ?? $hc_number }}</h5>
-                                <p><i class="fa fa-clock-o"></i> Edad: {{ $edadPaciente !== null ? $edadPaciente . ' años' : '—' }}</p>
-                                <p><i class="fa fa-calendar"></i> Fecha de nacimiento: {{ $formatDate($patient['fecha_nacimiento'] ?? null) }}</p>
-                                <p><i class="fa fa-phone"></i> Celular: {{ trim((string) ($patient['celular'] ?? '')) !== '' ? $patient['celular'] : '—' }}</p>
+                                <p><i class="mdi mdi-clock-outline"></i> Edad: {{ $edadPaciente !== null ? $edadPaciente . ' años' : '—' }}</p>
+                                <p><i class="mdi mdi-calendar"></i> Fecha de nacimiento: {{ $formatDate($patient['fecha_nacimiento'] ?? null) }}</p>
+                                <p><i class="mdi mdi-phone"></i> Celular: {{ trim((string) ($patient['celular'] ?? '')) !== '' ? $patient['celular'] : '—' }}</p>
                             </div>
                         </div>
                     </div>
@@ -306,7 +328,11 @@
                     </div>
                 </div>
 
-                <div id="patient-sections" data-hc="{{ $hc_number }}" data-sections="examenes,agenda,derivaciones,recetas">
+                <div id="patient-sections"
+                     data-hc="{{ $hc_number }}"
+                     data-patient-name="{{ $fullName }}"
+                     data-patient-afiliacion="{{ $patient['afiliacion'] ?? '' }}"
+                     data-sections="examenes,agenda,derivaciones,recetas">
                     <div class="row">
                         <div class="col-xl-6 col-12">
                             <div class="box box-body px-35 bg-lightgray patient-scroll-self">
@@ -346,7 +372,7 @@
                                         @endphp
                                         <div class="media media-single px-0">
                                             <div class="ms-0 me-15 bg-{{ $isProtocolo ? 'success' : 'primary' }}-light h-50 w-50 l-h-50 rounded text-center d-flex align-items-center justify-content-center">
-                                                <span class="fs-24 text-{{ $isProtocolo ? 'success' : 'primary' }}"><i class="fa fa-file-{{ $isProtocolo ? 'pdf' : 'text' }}-o"></i></span>
+                                                <span class="fs-24 text-{{ $isProtocolo ? 'success' : 'primary' }}"><i class="mdi {{ $isProtocolo ? 'mdi-file-pdf-box' : 'mdi-file-document-outline' }}"></i></span>
                                             </div>
                                             <div class="d-flex flex-column flex-grow-1">
                                                 <span class="title fw-500 fs-16 text-truncate" style="max-width: 220px;">
@@ -357,13 +383,13 @@
                                             @if($isProtocolo)
                                                 <a class="fs-18 text-gray hover-info" href="#"
                                                    onclick="window.descargarPDFsSeparados('{{ (string) ($documento['form_id'] ?? '') }}', '{{ (string) ($documento['hc_number'] ?? '') }}'); return false;">
-                                                    <i class="fa fa-download"></i>
+                                                    <i class="mdi mdi-download"></i>
                                                 </a>
                                             @else
                                                 <a class="fs-18 text-gray hover-info"
                                                    href="{{ $solicitudPdfBaseUrl }}?hc_number={{ urlencode((string) ($documento['hc_number'] ?? '')) }}&form_id={{ urlencode((string) ($documento['form_id'] ?? '')) }}"
                                                    target="_blank" rel="noopener noreferrer">
-                                                    <i class="fa fa-download"></i>
+                                                    <i class="mdi mdi-download"></i>
                                                 </a>
                                             @endif
                                         </div>
@@ -389,36 +415,36 @@
         </div>
     </section>
 
-    <div class="modal fade" id="modalSolicitud" tabindex="-1" aria-labelledby="modalSolicitudLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
+    <div class="modal fade" id="prefacturaModal" tabindex="-1" aria-hidden="true" aria-labelledby="prefacturaModalLabel">
+        <div class="modal-dialog modal-xl">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="modalSolicitudLabel">Detalle de la Solicitud</h5>
+                    <h5 class="modal-title" id="prefacturaModalLabel">Detalle de Solicitud</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
                 </div>
-                <div class="modal-body">
-                    <div class="mb-3 p-3 rounded" id="solicitudContainer" style="background-color: #e9f5ff;">
-                        <p class="mb-1"><strong>Fecha:</strong> <span id="modalFecha" class="float-end badge bg-light text-dark"></span></p>
-                        <p class="mb-1"><strong>Procedimiento:</strong> <span id="modalProcedimiento"></span></p>
-                        <p class="mb-1"><strong>Ojo:</strong> <span id="modalOjo"></span></p>
-                        <p class="mb-1"><strong>Diagnóstico:</strong> <span id="modalDiagnostico"></span></p>
-                        <p class="mb-1"><strong>Doctor:</strong> <span id="modalDoctor"></span></p>
-                        <p class="mb-1">
-                            <strong>Estado:</strong>
-                            <span id="modalEstado" class="float-end badge bg-secondary"></span>
-                            <span id="modalSemaforo" class="float-end me-2 badge" style="width: 16px; height: 16px; border-radius: 50%;"></span>
-                        </p>
+                <div class="modal-body prefactura-modal-body">
+                    <div class="prefactura-content-wrapper">
+                        <div id="prefacturaContent">
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="spinner-border spinner-border-sm text-primary" role="status" aria-hidden="true"></span>
+                                <strong>Cargando información...</strong>
+                            </div>
+                        </div>
                     </div>
-                    <p><strong>Motivo:</strong> <span id="modalMotivo"></span></p>
-                    <p><strong>Enfermedad Actual:</strong> <span id="modalEnfermedad"></span></p>
-                    <p><strong>Plan:</strong> <span id="modalDescripcion"></span></p>
                 </div>
-                <div class="modal-footer">
+                <div class="modal-footer d-flex flex-wrap gap-2">
+                    <button type="button" class="btn btn-outline-primary d-none" id="btnGenerarTurnoModal">Generar turno</button>
+                    <button type="button" class="btn btn-outline-success d-none" id="btnMarcarAtencionModal" data-estado="En atención">En atención</button>
+                    <button class="btn btn-success btn-sm d-inline-flex align-items-center gap-2" type="button" id="btnSolicitarExamenesPrequirurgicos" data-bs-toggle="tooltip" title="Enviar solicitud de exámenes prequirúrgicos al paciente">
+                        <i class="mdi mdi-file-multiple me-1"></i> Solicitar exámenes prequirúrgicos
+                    </button>
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
                 </div>
             </div>
         </div>
     </div>
+
+    <div id="toastContainer" style="position: fixed; top: 1rem; right: 1rem; z-index: 2055;"></div>
 
     <div class="modal fade" id="modalEditarPaciente" tabindex="-1" aria-labelledby="modalEditarPacienteLabel" aria-hidden="true">
         <div class="modal-dialog">
@@ -496,7 +522,7 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
                     <button type="button" class="btn btn-primary" id="btnPrintReceta">
-                        <i class="fa fa-print me-5"></i>Imprimir receta
+                        <i class="mdi mdi-printer-outline me-5"></i>Imprimir receta
                     </button>
                 </div>
             </div>
@@ -506,6 +532,10 @@
 
 @push('scripts')
     <script>
+        window.__SOLICITUDES_V2_UI__ = Object.assign({}, window.__SOLICITUDES_V2_UI__ || {}, {
+            assetVersion: @json($patientDetailAssetVersion)
+        });
+
         window.patientDetailChartData = {
             series: @json(array_values($statsRows)),
             labels: @json(array_keys($statsRows)),
@@ -516,6 +546,6 @@
     @else
         <script src="/assets/vendor_components/apexcharts-bundle/dist/apexcharts.js"></script>
         <script src="/assets/vendor_components/horizontal-timeline/js/horizontal-timeline.js"></script>
-        <script src="/js/pages/patient-detail.js"></script>
+        <script src="{{ $patientDetailScriptSrc }}"></script>
     @endif
 @endpush

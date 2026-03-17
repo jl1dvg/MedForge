@@ -110,6 +110,111 @@
     };
     var recetasRowsCache = [];
     var recetaPrintHtml = '';
+    var solicitudesPrefacturaRuntimePromise = null;
+
+    function getSolicitudesAssetSuffix() {
+        var config = window.__SOLICITUDES_V2_UI__ || {};
+        var version = String(config.assetVersion || '').trim();
+        return version !== '' ? '?v=' + encodeURIComponent(version) : '';
+    }
+
+    function configureSolicitudesPrefacturaBridge() {
+        window.__KANBAN_MODULE__ = {
+            key: 'solicitudes',
+            basePath: '/v2/solicitudes',
+            apiBasePath: '/api',
+            readPrefix: '/v2',
+            v2ReadsEnabled: true,
+            writePrefix: '/v2',
+            v2WritesEnabled: true,
+            dataKey: '__solicitudesKanban',
+            estadosMetaKey: '__solicitudesEstadosMeta',
+            selectors: {
+                prefix: 'solicitudes'
+            }
+        };
+        window.aplicarFiltros = loadSolicitudesPanel;
+    }
+
+    function syncSolicitudesPrefacturaStore(rows, hcNumber) {
+        var container = getPatientSectionsContainer();
+        var patientName = container ? String(container.getAttribute('data-patient-name') || '').trim() : '';
+        var afiliacion = container ? String(container.getAttribute('data-patient-afiliacion') || '').trim() : '';
+
+        configureSolicitudesPrefacturaBridge();
+
+        window.__solicitudesKanban = (Array.isArray(rows) ? rows : []).map(function (row) {
+            var item = row && typeof row === 'object' ? Object.assign({}, row) : {};
+
+            item.id = item.id !== undefined && item.id !== null ? item.id : '';
+            item.form_id = item.form_id !== undefined && item.form_id !== null ? item.form_id : '';
+            item.hc_number = item.hc_number || hcNumber || '';
+            item.full_name = item.full_name || patientName;
+            item.afiliacion = item.afiliacion || afiliacion;
+            item.kanban_estado = item.kanban_estado || item.estado || '';
+
+            return item;
+        });
+    }
+
+    function ensureSolicitudesPrefacturaRuntime() {
+        configureSolicitudesPrefacturaBridge();
+
+        if (!solicitudesPrefacturaRuntimePromise) {
+            var assetSuffix = getSolicitudesAssetSuffix();
+
+            solicitudesPrefacturaRuntimePromise = Promise.all([
+                import('/js/pages/solicitudes/kanban/modalDetalles/prefactura.js' + assetSuffix),
+                import('/js/pages/solicitudes/kanban/modalDetalles.js' + assetSuffix),
+                import('/js/pages/solicitudes/kanban/botonesModal.js' + assetSuffix)
+            ]).then(function (modules) {
+                var prefacturaModule = modules[0];
+                var modalDetallesModule = modules[1];
+                var botonesModalModule = modules[2];
+
+                if (!prefacturaModule || typeof prefacturaModule.abrirPrefactura !== 'function') {
+                    throw new Error('No se pudo inicializar el detalle de solicitud');
+                }
+
+                if (modalDetallesModule && typeof modalDetallesModule.inicializarModalDetalles === 'function') {
+                    modalDetallesModule.inicializarModalDetalles();
+                }
+
+                if (botonesModalModule && typeof botonesModalModule.inicializarBotonesModal === 'function') {
+                    botonesModalModule.inicializarBotonesModal();
+                }
+
+                return prefacturaModule;
+            }).catch(function (error) {
+                solicitudesPrefacturaRuntimePromise = null;
+                throw error;
+            });
+        }
+
+        return solicitudesPrefacturaRuntimePromise;
+    }
+
+    function openSolicitudPrefactura(trigger) {
+        var hcNumber = String(trigger && trigger.getAttribute('data-hc') ? trigger.getAttribute('data-hc') : '').trim();
+        var formId = String(trigger && trigger.getAttribute('data-form-id') ? trigger.getAttribute('data-form-id') : '').trim();
+        var solicitudId = String(trigger && trigger.getAttribute('data-solicitud-id') ? trigger.getAttribute('data-solicitud-id') : '').trim();
+
+        if (!hcNumber || !formId) {
+            return;
+        }
+
+        ensureSolicitudesPrefacturaRuntime()
+            .then(function (prefacturaModule) {
+                prefacturaModule.abrirPrefactura({
+                    hc: hcNumber,
+                    formId: formId,
+                    solicitudId: solicitudId || formId
+                });
+            })
+            .catch(function (error) {
+                console.error('No se pudo abrir la prefactura de la solicitud desde pacientes/details', error);
+            });
+    }
 
     function parseJSON(value, fallback) {
         if (typeof value !== 'string') {
@@ -345,18 +450,18 @@
         var normalized = String(estado || '').toLowerCase();
 
         if (normalized.indexOf('cancel') !== -1 || normalized.indexOf('no_show') !== -1 || normalized.indexOf('ausen') !== -1) {
-            return { icon: 'fa-times-circle', iconClass: 'text-danger', textClass: 'text-danger' };
+            return { icon: 'mdi-close-circle-outline', iconClass: 'text-danger', textClass: 'text-danger' };
         }
 
         if (normalized.indexOf('atendido') !== -1 || normalized.indexOf('terminado') !== -1 || normalized.indexOf('pagado') !== -1) {
-            return { icon: 'fa-check-circle', iconClass: 'text-lightgreen', textClass: 'text-lightgreen' };
+            return { icon: 'mdi-check-circle-outline', iconClass: 'text-lightgreen', textClass: 'text-lightgreen' };
         }
 
         if (normalized.indexOf('confirm') !== -1 || normalized.indexOf('agenda') !== -1 || normalized.indexOf('dilatar') !== -1 || normalized.indexOf('consulta') !== -1) {
-            return { icon: 'fa-check-circle', iconClass: 'text-primary', textClass: 'text-primary' };
+            return { icon: 'mdi-check-circle-outline', iconClass: 'text-primary', textClass: 'text-primary' };
         }
 
-        return { icon: 'fa-clock-o', iconClass: 'text-fade', textClass: 'text-fade' };
+        return { icon: 'mdi-clock-outline', iconClass: 'text-fade', textClass: 'text-fade' };
     }
 
     function normalizeProcedureText(value) {
@@ -469,7 +574,7 @@
                 + '</div>'
                 + '</div>'
                 + '<div class="text-end ms-20">'
-                + '<p class="mb-0 fs-16"><i class="fa ' + escapeHtml(presentation.icon) + ' ' + escapeHtml(iconClass) + ' fs-18 me-5" aria-hidden="true"></i> ' + escapeHtml(hora) + '</p>'
+                + '<p class="mb-0 fs-16"><i class="mdi ' + escapeHtml(presentation.icon) + ' ' + escapeHtml(iconClass) + ' fs-18 me-5" aria-hidden="true"></i> ' + escapeHtml(hora) + '</p>'
                 + '<p class="m-0 fs-12 fw-600 ' + escapeHtml(textClass) + '">' + escapeHtml(estado) + '</p>'
                 + '</div>'
                 + '</div>'
@@ -640,7 +745,7 @@
                 + '</div>'
                 + '</div>'
                 + '<div class="dropdown">'
-                + '<a href="#" data-action="open-exam-nas" data-nas-list-url="' + escapeHtml(nasListUrl) + '" data-nas-page-url="' + escapeHtml(nasPageUrl) + '"><i class="fa fa-download bg-light rounded p-5 me-5 text-dark" aria-hidden="true"></i></a>'
+                + '<a href="#" data-action="open-exam-nas" data-nas-list-url="' + escapeHtml(nasListUrl) + '" data-nas-page-url="' + escapeHtml(nasPageUrl) + '"><i class="mdi mdi-download bg-light rounded p-5 me-5 text-dark" aria-hidden="true"></i></a>'
                 + '<a data-bs-toggle="dropdown" href="#" aria-expanded="false"><i class="mdi mdi-dots-vertical"></i></a>'
                 + '<div class="dropdown-menu dropdown-menu-end">'
                 + detalleAction
@@ -663,14 +768,14 @@
     function recetaStatePresentation(estado) {
         var normalized = String(estado || '').toLowerCase();
         if (normalized.indexOf('cancel') !== -1 || normalized === '0' || normalized.indexOf('caduc') !== -1) {
-            return { pointClass: 'timeline-point-danger bg-danger', icon: 'fa-times' };
+            return { pointClass: 'timeline-point-danger bg-danger', icon: 'mdi-close' };
         }
 
         if (normalized.indexOf('entreg') !== -1 || normalized.indexOf('enviado') !== -1 || normalized === '1' || normalized.indexOf('act') !== -1) {
-            return { pointClass: 'timeline-point-success bg-success', icon: 'fa-check' };
+            return { pointClass: 'timeline-point-success bg-success', icon: 'mdi-check' };
         }
 
-        return { pointClass: 'timeline-point-primary bg-primary', icon: 'fa-refresh' };
+        return { pointClass: 'timeline-point-primary bg-primary', icon: 'mdi-refresh' };
     }
 
     function extractPositiveInt(rawValue) {
@@ -732,7 +837,7 @@
 
             return '<div class="timeline-item timeline-item-arrow-sm">'
                 + '<div class="timeline-point ' + escapeHtml(point.pointClass) + '">'
-                + '<i class="fa ' + escapeHtml(point.icon) + ' text-white" aria-hidden="true"></i>'
+                + '<i class="mdi ' + escapeHtml(point.icon) + ' text-white" aria-hidden="true"></i>'
                 + '</div>'
                 + '<div>'
                 + '<div class="timeline-heading d-flex justify-content-between">'
@@ -822,10 +927,10 @@
 
             var actions = '';
             if (linkArchivo !== '') {
-                actions += '<a class="ms-10 text-primary" href="' + escapeHtml(linkArchivo) + '" target="_blank" rel="noopener noreferrer" title="Abrir PDF"><i class="fa fa-file-pdf-o"></i></a>';
-                actions += '<a class="ms-10 text-dark" href="#" data-action="print-derivacion" data-print-url="' + escapeHtml(linkArchivo) + '" title="Imprimir PDF"><i class="fa fa-print"></i></a>';
+                actions += '<a class="ms-10 text-primary" href="' + escapeHtml(linkArchivo) + '" target="_blank" rel="noopener noreferrer" title="Abrir PDF"><i class="mdi mdi-file-pdf-box"></i></a>';
+                actions += '<a class="ms-10 text-dark" href="#" data-action="print-derivacion" data-print-url="' + escapeHtml(linkArchivo) + '" title="Imprimir PDF"><i class="mdi mdi-printer-outline"></i></a>';
             } else if (linkDetalle !== '') {
-                actions += '<a class="ms-10 text-primary" href="' + escapeHtml(linkDetalle) + '" target="_blank" rel="noopener noreferrer" title="Ver detalle"><i class="fa fa-external-link"></i></a>';
+                actions += '<a class="ms-10 text-primary" href="' + escapeHtml(linkDetalle) + '" target="_blank" rel="noopener noreferrer" title="Ver detalle"><i class="mdi mdi-open-in-new"></i></a>';
             }
 
             return '<div class="media-list p-0' + lineClass + '">'
@@ -1064,6 +1169,7 @@
 
         var items = rows.map(function (row, index) {
             var formId = String(row.form_id || '').trim();
+            var solicitudId = String(row.id || row.solicitud_id || formId).trim();
             var fecha = formatValue(row.fecha, 'fecha');
             var estado = formatValue(row.estado, 'estado');
             var prioridad = formatValue(row.prioridad, 'prioridad');
@@ -1105,14 +1211,15 @@
                 actionHtml = '<div class="dropdown">'
                     + '<a class="px-10 pt-5" href="#" data-bs-toggle="dropdown"><i class="mdi mdi-dots-vertical"></i></a>'
                     + '<div class="dropdown-menu dropdown-menu-end">'
-                    + '<a class="dropdown-item flexbox" href="#" data-bs-toggle="modal" data-bs-target="#modalSolicitud"'
+                    + '<a class="dropdown-item flexbox" href="#" data-prefactura-trigger="1"'
+                    + ' data-solicitud-id="' + escapeHtml(solicitudId) + '"'
                     + ' data-form-id="' + escapeHtml(formId) + '" data-hc="' + escapeHtml(hcNumber) + '">'
                     + '<span>Ver detalles</span></a>'
                     + '</div></div>';
             }
 
             var procedimientoHtml = '<a href="#" class="text-dark fw-500 fs-16"'
-                + (formId !== '' ? ' data-bs-toggle="modal" data-bs-target="#modalSolicitud" data-form-id="' + escapeHtml(formId) + '" data-hc="' + escapeHtml(hcNumber) + '"' : '')
+                + (formId !== '' ? ' data-prefactura-trigger="1" data-solicitud-id="' + escapeHtml(solicitudId) + '" data-form-id="' + escapeHtml(formId) + '" data-hc="' + escapeHtml(hcNumber) + '"' : '')
                 + '>' + escapeHtml(procedimiento) + '</a>';
 
             return '<div class="d-flex align-items-center mb-25">'
@@ -1204,6 +1311,7 @@
 
         fetchJson('/v2/pacientes/detalles/section?' + query.toString())
             .then(function (payload) {
+                syncSolicitudesPrefacturaStore(payload && payload.data, hcNumber);
                 renderSolicitudesPanel(payload || {}, hcNumber);
             })
             .catch(function (error) {
@@ -1391,12 +1499,20 @@
     }
 
     function initPatientDetailPage() {
+        configureSolicitudesPrefacturaBridge();
         window.filterDocuments('ultimos_3_meses');
         loadSolicitudesPanel();
         loadPaciente360();
         renderStatsChart();
 
         document.addEventListener('click', function (event) {
+            var prefacturaTrigger = event.target.closest('[data-prefactura-trigger="1"]');
+            if (prefacturaTrigger) {
+                event.preventDefault();
+                openSolicitudPrefactura(prefacturaTrigger);
+                return;
+            }
+
             var trigger = event.target.closest('[data-action="open-exam-nas"]');
             if (!trigger) {
                 var recetaTrigger = event.target.closest('[data-action="open-receta-modal"]');
@@ -1431,77 +1547,6 @@
                 printRecetaModal();
             });
         }
-
-        var modal = document.getElementById('modalSolicitud');
-        if (!modal) {
-            return;
-        }
-
-        modal.addEventListener('show.bs.modal', function (event) {
-            var button = event.relatedTarget;
-            if (!button) {
-                return;
-            }
-
-            var hcNumber = button.getAttribute('data-hc');
-            var formId = button.getAttribute('data-form-id');
-            if (!hcNumber || !formId) {
-                return;
-            }
-
-            var endpoint = '/v2/pacientes/detalles/solicitud?hc_number=' + encodeURIComponent(hcNumber)
-                + '&form_id=' + encodeURIComponent(formId);
-
-            fetchJson(endpoint)
-                .then(function (payload) {
-                    var data = payload && payload.data ? payload.data : {};
-                    var diagnosticos = Array.isArray(data.diagnosticos)
-                        ? data.diagnosticos
-                        : parseJSON(data.diagnosticos || '[]', []);
-
-                    var fechaEl = document.getElementById('modalFecha');
-                    if (fechaEl) {
-                        fechaEl.textContent = formatFecha(data.fecha);
-                    }
-                    var procedimientoEl = document.getElementById('modalProcedimiento');
-                    if (procedimientoEl) {
-                        procedimientoEl.textContent = data.procedimiento || '—';
-                    }
-                    var diagnosticoEl = document.getElementById('modalDiagnostico');
-                    if (diagnosticoEl) {
-                        diagnosticoEl.innerHTML = formatDiagnosticos(diagnosticos);
-                    }
-                    var doctorEl = document.getElementById('modalDoctor');
-                    if (doctorEl) {
-                        doctorEl.textContent = data.doctor || '—';
-                    }
-                    var descripcionEl = document.getElementById('modalDescripcion');
-                    if (descripcionEl) {
-                        descripcionEl.textContent = data.plan || '—';
-                    }
-                    var ojoEl = document.getElementById('modalOjo');
-                    if (ojoEl) {
-                        ojoEl.textContent = data.ojo || '—';
-                    }
-                    var estadoEl = document.getElementById('modalEstado');
-                    if (estadoEl) {
-                        estadoEl.textContent = data.estado || '—';
-                    }
-                    var motivoEl = document.getElementById('modalMotivo');
-                    if (motivoEl) {
-                        motivoEl.textContent = data.motivo_consulta || '—';
-                    }
-                    var enfermedadEl = document.getElementById('modalEnfermedad');
-                    if (enfermedadEl) {
-                        enfermedadEl.textContent = data.enfermedad_actual || '—';
-                    }
-
-                    actualizarSemaforo(data.estado || '', data.fecha || '');
-                })
-                .catch(function (error) {
-                    console.error('Error cargando los detalles de la solicitud', error);
-                });
-        });
     }
 
     if (document.readyState === 'loading') {

@@ -2,6 +2,7 @@ import {actualizarEstadoSolicitud} from './estado.js';
 import {showToast} from './toast.js';
 import {getDataStore, resolveWritePath} from './config.js';
 import {llamarTurnoSolicitud} from './turnero.js';
+import {findSolicitudById} from './modalDetalles/store.js';
 
 const PREQUIRURGICO_DEBOUNCE_MS = 900;
 let lastPrequirurgicoOpenAt = 0;
@@ -16,7 +17,31 @@ let coberturaEditorReady = false;
 const coberturaTemplateCache = new Map();
 
 function obtenerTarjetaActiva() {
-    return document.querySelector('.kanban-card.view-details.active');
+    const activeCard = document.querySelector('.kanban-card.view-details.active');
+    if (activeCard) {
+        return activeCard;
+    }
+
+    const context = window.__prefacturaCurrent || {};
+    const solicitudId = String(context.solicitudId || '').trim();
+    const formId = String(context.formId || '').trim();
+    const hcNumber = String(context.hcNumber || '').trim();
+
+    if (!solicitudId && !formId && !hcNumber) {
+        return null;
+    }
+
+    const solicitud = findSolicitudById(solicitudId || formId) || {};
+
+    return {
+        dataset: {
+            id: String(solicitudId || solicitud.id || '').trim(),
+            form: String(formId || solicitud.form_id || '').trim(),
+            hc: String(hcNumber || solicitud.hc_number || '').trim(),
+            estado: String(solicitud.estado || solicitud.kanban_estado || '').trim(),
+            turno: String(solicitud.turno || '').trim(),
+        },
+    };
 }
 
 function cerrarModal() {

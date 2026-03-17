@@ -103,7 +103,7 @@
     <a href="#">
         <i class="{$icon}"></i>
         <span>{$label}</span>
-        <span class="pull-right-container"><i class="fa fa-angle-right pull-right"></i></span>
+        <span class="pull-right-container"><i class="mdi mdi-chevron-right pull-right"></i></span>
     </a>
     <ul class="treeview-menu">
         {$childrenHtml}

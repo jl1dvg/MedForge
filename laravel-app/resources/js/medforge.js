@@ -1,6 +1,6 @@
 const loadShell = async () => {
     await import('./medforge/legacy/global-search.js');
-    await import('./medforge/legacy/template.js');
+    await import('./medforge/v2/shellRuntime.js');
 };
 
 loadShell().catch((error) => {

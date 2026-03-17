@@ -859,7 +859,7 @@ if ($sessionUsername === 'jl1dvg') {
                                 class="btn btn-primary btn-sm d-inline-flex align-items-center gap-2"
                                 type="button"
                                 id="btnPrefacturaEditarLio"
-                                data-context-action="editar-lio"
+                                data-lio-editor-trigger="1"
                                 data-id="<?= htmlspecialchars((string)$solicitudIdRaw, ENT_QUOTES, 'UTF-8') ?>"
                                 data-form-id="<?= htmlspecialchars((string)($solicitud['form_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                                 data-hc="<?= htmlspecialchars((string)($solicitud['hc_number'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"

@@ -3,6 +3,8 @@
     const endpoints = config.endpoints || {};
     const columns = Array.isArray(config.columns) ? config.columns : [];
     const initialFilters = config.initialFilters || {};
+    const assetVersion = String(config.assetVersion || '').trim();
+    const assetSuffix = assetVersion ? `?v=${encodeURIComponent(assetVersion)}` : '';
     const rawRealtimeConfig = config.realtime && typeof config.realtime === 'object'
         ? config.realtime
         : {};
@@ -110,6 +112,9 @@
             api: null,
             loadingPromise: null,
             failed: false,
+            interactionsReady: false,
+            interactionsPromise: null,
+            interactionsFailed: false,
         },
         conciliacionPanel: {
             api: null,
@@ -905,7 +910,7 @@
         }
 
         if (!state.prefacturaPanel.loadingPromise) {
-            state.prefacturaPanel.loadingPromise = import('/js/pages/solicitudes/kanban/modalDetalles/prefactura.js')
+            state.prefacturaPanel.loadingPromise = import(`/js/pages/solicitudes/kanban/modalDetalles/prefactura.js${assetSuffix}`)
                 .then((module) => {
                     if (!module || typeof module.abrirPrefactura !== 'function') {
                         throw new Error('Módulo de prefactura no disponible');
@@ -922,6 +927,37 @@
         }
 
         return state.prefacturaPanel.loadingPromise;
+    };
+
+    const ensurePrefacturaInteractions = async () => {
+        if (state.prefacturaPanel.interactionsFailed) {
+            return false;
+        }
+
+        if (state.prefacturaPanel.interactionsReady) {
+            return true;
+        }
+
+        if (!state.prefacturaPanel.interactionsPromise) {
+            state.prefacturaPanel.interactionsPromise = import(`/js/pages/solicitudes/kanban/modalDetalles.js${assetSuffix}`)
+                .then((module) => {
+                    if (!module || typeof module.inicializarModalDetalles !== 'function') {
+                        throw new Error('Módulo de interacciones de prefactura no disponible');
+                    }
+
+                    module.inicializarModalDetalles();
+                    state.prefacturaPanel.interactionsReady = true;
+                    return true;
+                })
+                .catch((error) => {
+                    state.prefacturaPanel.interactionsFailed = true;
+                    console.error('No se pudieron inicializar las acciones del detalle de solicitudes', error);
+                    showToast('No se pudieron inicializar algunas acciones del detalle', false);
+                    return false;
+                });
+        }
+
+        return state.prefacturaPanel.interactionsPromise;
     };
 
     const attachPrefacturaCrmProxy = () => {
@@ -1703,6 +1739,7 @@
 
         syncLegacyKanbanBridge();
         attachPrefacturaCrmProxy();
+        await ensurePrefacturaInteractions();
 
         const prefacturaApi = await ensurePrefacturaModalApi();
         if (!prefacturaApi || typeof prefacturaApi.abrirPrefactura !== 'function') {

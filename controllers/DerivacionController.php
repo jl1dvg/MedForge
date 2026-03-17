@@ -194,13 +194,12 @@ class DerivacionController
                         }
                     }
 
-            if (!empty($item['codigo']) && !empty($item['detalle']) && $billing_id) {
+            [$codigo, $detalle] = $this->extraerCodigoDetalle($item);
+            if ($billing_id && $codigo !== '' && $detalle !== '') {
                 try {
-                    $stmtPrecio = $db->prepare("SELECT valor_facturar_nivel3 FROM tarifario_2014 WHERE codigo = ?");
-                    $stmtPrecio->execute([$item['codigo']]);
-                    $precio = $stmtPrecio->fetchColumn() ?: 0;
+                    $precio = $this->obtenerTarifaPorCodigo($codigo);
                     $stmtProc = $db->prepare("INSERT INTO billing_procedimientos (billing_id, proc_codigo, proc_detalle, proc_precio) VALUES (?, ?, ?, ?)");
-                    $stmtProc->execute([$billing_id, $item['codigo'], $item['detalle'], $precio]);
+                    $stmtProc->execute([$billing_id, $codigo, $detalle, $precio]);
                     $procedimientosInsertados[] = $form_id;
                 } catch (\PDOException $e) {
                     $errores[] = "Error insertando procedimiento $form_id: " . $e->getMessage();
@@ -253,5 +252,46 @@ class DerivacionController
         $stmt = $this->db->prepare("SELECT COUNT(*) FROM derivaciones_form_id WHERE form_id = ?");
         $stmt->execute([$formId]);
         return $stmt->fetchColumn() > 0;
+    }
+
+    private function extraerCodigoDetalle(array $item): array
+    {
+        $codigo = trim((string) ($item['codigo'] ?? ''));
+        $detalle = trim((string) ($item['detalle'] ?? ''));
+        if ($codigo !== '' && $detalle !== '') {
+            return [$codigo, $detalle];
+        }
+
+        return $this->parseCodigoDetalle((string) ($item['procedimiento_proyectado'] ?? ''));
+    }
+
+    private function parseCodigoDetalle(string $raw): array
+    {
+        $text = trim($raw);
+        if ($text === '') {
+            return ['', ''];
+        }
+
+        if (preg_match('/-\s*(\d{5,6})\s*-\s*(.+)$/', $text, $matches) === 1) {
+            return [trim($matches[1]), trim($matches[2])];
+        }
+
+        if (preg_match('/\b(\d{5,6})\b/', $text, $matches) === 1) {
+            $codigo = trim($matches[1]);
+            $detalle = trim(str_replace($codigo, '', $text));
+            $detalle = trim(preg_replace('/\s+/', ' ', $detalle) ?? $detalle);
+            return [$codigo, $detalle !== '' ? $detalle : $text];
+        }
+
+        return ['', ''];
+    }
+
+    private function obtenerTarifaPorCodigo(string $codigo): float
+    {
+        $stmt = $this->db->prepare("SELECT valor_facturar_nivel3 FROM tarifario_2014 WHERE codigo = ? OR codigo = ? LIMIT 1");
+        $stmt->execute([$codigo, ltrim($codigo, '0')]);
+        $precio = $stmt->fetchColumn();
+
+        return $precio !== false ? (float) $precio : 0.0;
     }
 }

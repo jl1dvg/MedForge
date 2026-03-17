@@ -73,7 +73,7 @@
 
             html.push(`
                 <button type="button" class="list-group-item list-group-item-action d-flex align-items-center gap-2 global-search-history-item" data-term="${escapeAttr(safeTerm)}">
-                    <span class="text-muted"><i class="fa fa-clock-o"></i></span>
+                    <span class="text-muted"><i class="mdi mdi-history"></i></span>
                     <span class="text-start">${escapeHtml(safeTerm)}</span>
                 </button>
             `);

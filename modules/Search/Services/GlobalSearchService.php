@@ -457,7 +457,7 @@ class GlobalSearchService
                     $username !== '' ? '@' . $username : null,
                     $row['email'] ?? null,
                 ]),
-                'url' => '/usuarios/edit?id=' . $id,
+                'url' => '/usuarios/' . $id . '/edit',
                 'badge' => null,
                 'meta' => $this->buildMeta([
                     $row['especialidad'] ? 'Especialidad: ' . $row['especialidad'] : null,

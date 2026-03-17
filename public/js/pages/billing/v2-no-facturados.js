@@ -982,7 +982,7 @@
                            data-procedimiento="${procedimiento}"
                            data-bs-toggle="modal"
                data-bs-target="#previewModal">
-                <i class="fa fa-eye"
+                <i class="mdi mdi-eye-outline"
                    data-bs-toggle="tooltip"
                    data-bs-placement="top"
                    title="Preview"></i>
@@ -992,7 +992,7 @@
                     const facturarLink = `
                         <a href="/v2/billing/detalle?form_id=${encodeURIComponent(formId)}"
                class="list-icons-item">
-                <i class="fa fa-file-text"
+                <i class="mdi mdi-file-document-outline"
                    data-bs-toggle="tooltip"
                    data-bs-placement="top"
                    title="Facturar"></i>

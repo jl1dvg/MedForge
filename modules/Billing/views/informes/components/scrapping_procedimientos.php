@@ -213,7 +213,7 @@ if (!empty($scrapingOutput)):
                                     let codigo = '';
                                     let detalle = '';
 
-                                    const match = p.procedimiento.match(/ - ([0-9]{6})[-\s]+(.+)$/);
+                                    const match = p.procedimiento.match(/ - ([0-9]{5,6})[-\s]+(.+)$/);
                                     if (match) {
                                         codigo = match[1];
                                         detalle = match[2].trim();
@@ -330,4 +330,3 @@ if ($scrapingOutput !== null && $codigoDerivacionObtenida === ''): ?>
         })();
     </script>
 <?php endif; ?>
-?>

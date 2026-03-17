@@ -62,7 +62,7 @@
             <ul class="header-megamenu nav">
                 <li class="btn-group nav-item">
                     <a href="#" class="waves-effect waves-light nav-link push-btn btn-primary-light" data-toggle="push-menu" role="button">
-                        <i class="icon-Menu"><span class="path1"></span><span class="path2"></span></i>
+                        <i class="mdi mdi-menu fs-22" aria-hidden="true"></i>
                     </a>
                 </li>
                 <li class="btn-group d-lg-inline-flex d-none">
@@ -83,7 +83,7 @@
                                     >
                                     <div class="input-group-append">
                                         <button class="btn" type="submit" id="global-search-submit" aria-label="Ejecutar busqueda">
-                                            <i class="icon-Search"><span class="path1"></span><span class="path2"></span></i>
+                                            <i class="mdi mdi-magnify fs-20" aria-hidden="true"></i>
                                         </button>
                                     </div>
                                 </div>
@@ -145,7 +145,7 @@
                             @if($userMenuLinks !== [])
                                 <div class="dropdown-divider"></div>
                             @endif
-                            <a class="dropdown-item" href="/v2/auth/logout"><i class="mdi mdi-lock-outline text-muted me-2"></i> Cerrar sesion</a>
+                            <a class="dropdown-item" href="/auth/logout"><i class="mdi mdi-lock-outline text-muted me-2"></i> Cerrar sesion</a>
                         </li>
                     </ul>
                 </li>
@@ -158,7 +158,7 @@
                         data-notification-panel-toggle="true"
                         aria-controls="kanbanNotificationPanel"
                     >
-                        <i class="icon-Notification"><span class="path1"></span><span class="path2"></span></i>
+                        <i class="mdi mdi-bell-outline fs-22" aria-hidden="true"></i>
                         <span class="badge bg-danger notification-unread-badge d-none" data-notification-unread-badge>0</span>
                     </a>
                 </li>
