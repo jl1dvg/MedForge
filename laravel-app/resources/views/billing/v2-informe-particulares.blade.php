@@ -147,6 +147,19 @@
 
     <section class="content">
         <div class="box mb-20">
+            <div class="box-header with-border d-flex justify-content-between align-items-center">
+                <h4 class="box-title mb-0">Filtros</h4>
+                <div class="d-flex flex-wrap gap-2 justify-content-end">
+                    <a href="{{ $exportParticularesPdfUrl }}"
+                        class="btn btn-outline-danger btn-sm">
+                        <i class="mdi mdi-file-pdf-box me-1"></i> Descargar PDF
+                    </a>
+                    <a href="{{ $exportParticularesUrl }}"
+                       class="btn btn-outline-success btn-sm">
+                        <i class="mdi mdi-file-excel-box me-1"></i> Descargar Excel
+                    </a>
+                </div>
+            </div>
             <div class="box-body">
                 <form method="GET" action="/v2/informes/particulares" class="row g-10 align-items-end">
                     <div class="col-md-3">
@@ -255,19 +268,11 @@
                         >
                     </div>
                     <div class="col-md-2">
-                        <button type="submit" class="btn btn-primary">
-                            <i class="mdi mdi-magnify me-5"></i>
+                        <button type="submit" class="btn btn-primary btn-sm">
+                            <i class="mdi mdi-filter-variant"></i> Aplicar filtros
                         </button>
-                        <a href="{{ $exportParticularesUrl }}" class="btn btn-success">
-                            <i class="mdi mdi-file-excel me-5"></i>
-                            Excel
-                        </a>
-                        <a href="{{ $exportParticularesPdfUrl }}" class="btn btn-danger">
-                            <i class="mdi mdi-file-pdf-box me-5"></i>
-                            PDF KPI
-                        </a>
-                        <a href="/v2/informes/particulares" class="btn btn-light">
-                            <i class="mdi mdi-filter-remove me-5"></i>
+                        <a href="/v2/imagenes/particulares" class="btn btn-outline-secondary btn-sm">
+                            <i class="mdi mdi-close-circle-outline"></i> Limpiar
                         </a>
                     </div>
                 </form>
@@ -536,7 +541,8 @@
                     <div class="box-body text-center">
                         <h6 class="mb-5">Realizadas</h6>
                         <div class="fs-30 fw-700 text-success">{{ $operativoRealizadas }}</div>
-                        <small class="text-muted">{{ number_format($operativoRealizacionRate, 2) }}% del total evaluado</small>
+                        <small class="text-muted">{{ number_format($operativoRealizacionRate, 2) }}% del total
+                            evaluado</small>
                     </div>
                 </div>
             </div>
@@ -545,7 +551,8 @@
                     <div class="box-body text-center">
                         <h6 class="mb-5">Facturadas</h6>
                         <div class="fs-30 fw-700 text-info">{{ $operativoFacturadas }}</div>
-                        <small class="text-muted">{{ number_format($operativoFacturacionRate, 2) }}% de las realizadas</small>
+                        <small class="text-muted">{{ number_format($operativoFacturacionRate, 2) }}% de las
+                            realizadas</small>
                     </div>
                 </div>
             </div>
@@ -554,7 +561,8 @@
                     <div class="box-body text-center">
                         <h6 class="mb-5">Pendientes</h6>
                         <div class="fs-30 fw-700 text-warning">{{ $operativoPendientesFacturar }}</div>
-                        <small class="text-muted">{{ number_format($operativoPendienteRate, 2) }}% de las realizadas</small>
+                        <small class="text-muted">{{ number_format($operativoPendienteRate, 2) }}% de las
+                            realizadas</small>
                     </div>
                 </div>
             </div>
@@ -563,7 +571,8 @@
                     <div class="box-body text-center">
                         <h6 class="mb-5">Pérdida</h6>
                         <div class="fs-30 fw-700 text-danger">{{ $operativoPerdidas }}</div>
-                        <small class="text-muted">{{ number_format($operativoPerdidaRate, 2) }}% del total evaluado</small>
+                        <small class="text-muted">{{ number_format($operativoPerdidaRate, 2) }}% del total
+                            evaluado</small>
                     </div>
                 </div>
             </div>
@@ -572,7 +581,8 @@
                     <div class="box-body text-center">
                         <h6 class="mb-5">Pacientes únicos</h6>
                         <div class="fs-30 fw-700 text-primary">{{ $pacientesUnicos }}</div>
-                        <small class="text-muted">{{ $particularCount }} particulares / {{ $privadoCount }} privadas</small>
+                        <small class="text-muted">{{ $particularCount }} particulares / {{ $privadoCount }}
+                            privadas</small>
                     </div>
                 </div>
             </div>
@@ -636,7 +646,8 @@
                         <div class="box-body text-center">
                             <h6 class="mb-5">Sin tarifa estimable</h6>
                             <div class="fs-28 fw-700 text-dark">{{ $cirugiasSinTarifaEstimable }}</div>
-                            <small class="text-muted">Solo faltantes reales de pricing. {{ $cirugiasSinCostoConfigurado }} con precio 0 van aparte.</small>
+                            <small class="text-muted">Solo faltantes reales de
+                                pricing. {{ $cirugiasSinCostoConfigurado }} con precio 0 van aparte.</small>
                         </div>
                     </div>
                 </div>
@@ -762,7 +773,8 @@
                         <div class="box-body text-center">
                             <h6 class="mb-5">Sin tarifa estimable</h6>
                             <div class="fs-28 fw-700 text-dark">{{ $pniSinTarifaEstimable }}</div>
-                            <small class="text-muted">Solo faltantes reales de pricing. {{ $pniSinCostoConfigurado }} con precio 0 van aparte.</small>
+                            <small class="text-muted">Solo faltantes reales de pricing. {{ $pniSinCostoConfigurado }}
+                                con precio 0 van aparte.</small>
                         </div>
                     </div>
                 </div>
@@ -858,7 +870,8 @@
                         <div class="box-body text-center">
                             <h6 class="mb-5">Imágenes realizadas</h6>
                             <div class="fs-28 fw-700 text-success">{{ $imagenesRealizadas }}</div>
-                            <small class="text-muted">{{ $imagenesFacturadas }} facturadas, {{ $imagenesConArchivos }} con archivos, {{ $imagenesRealizadaInformada }} informadas</small>
+                            <small class="text-muted">{{ $imagenesFacturadas }} facturadas, {{ $imagenesConArchivos }}
+                                con archivos, {{ $imagenesRealizadaInformada }} informadas</small>
                         </div>
                     </div>
                 </div>
@@ -875,8 +888,10 @@
                     <div class="box">
                         <div class="box-body text-center">
                             <h6 class="mb-5">Pérdida</h6>
-                            <div class="fs-28 fw-700 text-danger">{{ $imagenesCanceladas + $imagenesAusentes + $imagenesSinCierre }}</div>
-                            <small class="text-muted">{{ $imagenesCanceladas }} canceladas, {{ $imagenesAusentes }} ausentes, {{ $imagenesSinCierre }} sin cierre</small>
+                            <div
+                                class="fs-28 fw-700 text-danger">{{ $imagenesCanceladas + $imagenesAusentes + $imagenesSinCierre }}</div>
+                            <small class="text-muted">{{ $imagenesCanceladas }} canceladas, {{ $imagenesAusentes }}
+                                ausentes, {{ $imagenesSinCierre }} sin cierre</small>
                         </div>
                     </div>
                 </div>
@@ -885,7 +900,8 @@
                         <div class="box-body text-center">
                             <h6 class="mb-5">Sin tarifa estimable</h6>
                             <div class="fs-28 fw-700 text-dark">{{ $imagenesSinTarifaEstimable }}</div>
-                            <small class="text-muted">Solo faltantes reales de pricing. {{ $imagenesSinCostoConfigurado }} con precio 0 van aparte.</small>
+                            <small class="text-muted">Solo faltantes reales de
+                                pricing. {{ $imagenesSinCostoConfigurado }} con precio 0 van aparte.</small>
                         </div>
                     </div>
                 </div>
@@ -904,7 +920,8 @@
                     <div class="box">
                         <div class="box-body text-center">
                             <h6 class="mb-5">Por cobrar estimado</h6>
-                            <div class="fs-28 fw-700 text-warning">${{ number_format($imagenesPorCobrarEstimado, 2) }}</div>
+                            <div class="fs-28 fw-700 text-warning">
+                                ${{ number_format($imagenesPorCobrarEstimado, 2) }}</div>
                         </div>
                     </div>
                 </div>
@@ -912,7 +929,8 @@
                     <div class="box">
                         <div class="box-body text-center">
                             <h6 class="mb-5">Pérdida estimada</h6>
-                            <div class="fs-28 fw-700 text-danger">${{ number_format($imagenesPerdidaEstimada, 2) }}</div>
+                            <div class="fs-28 fw-700 text-danger">
+                                ${{ number_format($imagenesPerdidaEstimada, 2) }}</div>
                         </div>
                     </div>
                 </div>
@@ -980,7 +998,8 @@
                         <div class="box-body text-center">
                             <h6 class="mb-5">Servicios realizados</h6>
                             <div class="fs-28 fw-700 text-success">{{ $serviciosOftalmologicosRealizadas }}</div>
-                            <small class="text-muted">{{ $serviciosOftalmologicosFacturadas }} facturadas, {{ $serviciosOftalmologicosRealizadaConsulta }} con consulta</small>
+                            <small class="text-muted">{{ $serviciosOftalmologicosFacturadas }}
+                                facturadas, {{ $serviciosOftalmologicosRealizadaConsulta }} con consulta</small>
                         </div>
                     </div>
                 </div>
@@ -988,7 +1007,8 @@
                     <div class="box">
                         <div class="box-body text-center">
                             <h6 class="mb-5">Pendiente de facturar</h6>
-                            <div class="fs-28 fw-700 text-warning">{{ $serviciosOftalmologicosPendientesFacturar }}</div>
+                            <div
+                                class="fs-28 fw-700 text-warning">{{ $serviciosOftalmologicosPendientesFacturar }}</div>
                             <small class="text-muted">Atenciones con respaldo clínico aún sin billing real</small>
                         </div>
                     </div>
@@ -998,7 +1018,8 @@
                         <div class="box-body text-center">
                             <h6 class="mb-5">Canceladas</h6>
                             <div class="fs-28 fw-700 text-danger">{{ $serviciosOftalmologicosCanceladas }}</div>
-                            <small class="text-muted">{{ $serviciosOftalmologicosAusentes }} ausentes / sin atención</small>
+                            <small class="text-muted">{{ $serviciosOftalmologicosAusentes }} ausentes / sin
+                                atención</small>
                         </div>
                     </div>
                 </div>
@@ -1007,7 +1028,9 @@
                         <div class="box-body text-center">
                             <h6 class="mb-5">Sin tarifa estimable</h6>
                             <div class="fs-28 fw-700 text-dark">{{ $serviciosOftalmologicosSinTarifaEstimable }}</div>
-                            <small class="text-muted">Solo faltantes reales de pricing. {{ $serviciosOftalmologicosSinCostoConfigurado }} con precio 0 van aparte.</small>
+                            <small class="text-muted">Solo faltantes reales de
+                                pricing. {{ $serviciosOftalmologicosSinCostoConfigurado }} con precio 0 van
+                                aparte.</small>
                         </div>
                     </div>
                 </div>
@@ -1018,7 +1041,8 @@
                     <div class="box">
                         <div class="box-body text-center">
                             <h6 class="mb-5">Honorario real servicios</h6>
-                            <div class="fs-28 fw-700 text-success">${{ number_format($serviciosOftalmologicosHonorarioReal, 2) }}</div>
+                            <div class="fs-28 fw-700 text-success">
+                                ${{ number_format($serviciosOftalmologicosHonorarioReal, 2) }}</div>
                         </div>
                     </div>
                 </div>
@@ -1026,7 +1050,8 @@
                     <div class="box">
                         <div class="box-body text-center">
                             <h6 class="mb-5">Por cobrar estimado</h6>
-                            <div class="fs-28 fw-700 text-warning">${{ number_format($serviciosOftalmologicosPorCobrarEstimado, 2) }}</div>
+                            <div class="fs-28 fw-700 text-warning">
+                                ${{ number_format($serviciosOftalmologicosPorCobrarEstimado, 2) }}</div>
                         </div>
                     </div>
                 </div>
@@ -1034,7 +1059,8 @@
                     <div class="box">
                         <div class="box-body text-center">
                             <h6 class="mb-5">Pérdida estimada</h6>
-                            <div class="fs-28 fw-700 text-danger">${{ number_format($serviciosOftalmologicosPerdidaEstimada, 2) }}</div>
+                            <div class="fs-28 fw-700 text-danger">
+                                ${{ number_format($serviciosOftalmologicosPerdidaEstimada, 2) }}</div>
                         </div>
                     </div>
                 </div>
@@ -1081,7 +1107,8 @@
                     <div class="box-header with-border d-flex justify-content-between align-items-center">
                         <h5 class="box-title mb-0">Categoría cliente: volumen + honorario</h5>
                         <div class="d-flex flex-wrap gap-2">
-                            <span class="badge bg-primary-light text-primary">{{ $operativoFacturadas }} facturadas</span>
+                            <span
+                                class="badge bg-primary-light text-primary">{{ $operativoFacturadas }} facturadas</span>
                             <span class="badge bg-warning-light text-warning">{{ $operativoPendientesFacturar }} pendientes</span>
                             <span class="badge bg-danger-light text-danger">{{ $operativoPerdidas }} pérdida</span>
                         </div>
@@ -1337,7 +1364,8 @@
                 <div class="box">
                     <div class="box-body text-center">
                         <h6 class="mb-5">Por cobrar estimado</h6>
-                        <div class="fs-28 fw-700 text-warning">${{ number_format($operativoPorCobrarEstimado, 2) }}</div>
+                        <div class="fs-28 fw-700 text-warning">
+                            ${{ number_format($operativoPorCobrarEstimado, 2) }}</div>
                         <small class="text-muted">{{ $operativoPendientesFacturar }} casos pendientes</small>
                     </div>
                 </div>
@@ -1365,7 +1393,8 @@
                     <div class="box-body text-center">
                         <h6 class="mb-5">Cobro sobre realizadas</h6>
                         <div class="fs-28 fw-700 text-info">{{ number_format($operativoFacturacionRate, 2) }}%</div>
-                        <small class="text-muted">{{ $operativoFacturadas }} facturadas de {{ $operativoRealizadas }} realizadas</small>
+                        <small class="text-muted">{{ $operativoFacturadas }} facturadas de {{ $operativoRealizadas }}
+                            realizadas</small>
                     </div>
                 </div>
             </div>
@@ -1373,8 +1402,10 @@
                 <div class="box">
                     <div class="box-body text-center">
                         <h6 class="mb-5">Ticket pendiente</h6>
-                        <div class="fs-28 fw-700 text-secondary">${{ number_format($operativoTicketPendiente, 2) }}</div>
-                        <small class="text-muted">${{ number_format($operativoTicketFacturadoReal, 2) }} ticket facturado real</small>
+                        <div class="fs-28 fw-700 text-secondary">
+                            ${{ number_format($operativoTicketPendiente, 2) }}</div>
+                        <small class="text-muted">${{ number_format($operativoTicketFacturadoReal, 2) }} ticket
+                            facturado real</small>
                     </div>
                 </div>
             </div>
@@ -1717,7 +1748,8 @@
                                                 </span>
                                             </div>
                                             <small class="d-block text-muted mt-5">
-                                                {{ $tarifaCodigo !== '' ? $tarifaCodigo : '—' }} / {{ $tarifaLevelLabel }}
+                                                {{ $tarifaCodigo !== '' ? $tarifaCodigo : '—' }}
+                                                / {{ $tarifaLevelLabel }}
                                             </small>
                                             @if($tarifaStatus !== '' || $tarifaReason !== '' || $tarifaCodigoMatch !== '' || $tarifaDescripcionMatch !== '')
                                                 <small class="d-block text-muted">
@@ -1726,7 +1758,8 @@
                                                         · {{ $tarifaReason }}
                                                     @endif
                                                     @if($tarifaCodigoMatch !== '' || $tarifaDescripcionMatch !== '')
-                                                        · MATCH: {{ $tarifaCodigoMatch !== '' ? $tarifaCodigoMatch : '—' }}
+                                                        ·
+                                                        MATCH: {{ $tarifaCodigoMatch !== '' ? $tarifaCodigoMatch : '—' }}
                                                         @if($tarifaDescripcionMatch !== '')
                                                             {{ strtoupper($tarifaDescripcionMatch) }}
                                                         @endif

@@ -26,11 +26,11 @@ return function (Router $router) {
         (new ExamenController($pdo))->prefactura();
     });
 
-    $router->get('/imagenes/examenes-realizados', function (\PDO $pdo) {
+    $router->get('/imagenes/examenes-realizados', function (\PDO $pdo) use ($redirectToV2) {
         $redirectToV2('/v2/imagenes/examenes-realizados');
     });
 
-    $router->get('/imagenes/dashboard', function (\PDO $pdo) {
+    $router->get('/imagenes/dashboard', function (\PDO $pdo) use ($redirectToV2) {
         $redirectToV2('/v2/imagenes/dashboard');
     });
 
