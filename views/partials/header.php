@@ -1,4 +1,12 @@
 <header class="main-header">
+    <?php
+    $headerQuickLinks = isset($appNavigation['header_quick_links']) && is_array($appNavigation['header_quick_links'])
+        ? $appNavigation['header_quick_links']
+        : [];
+    $userMenuLinks = isset($appNavigation['user_menu_links']) && is_array($appNavigation['user_menu_links'])
+        ? $appNavigation['user_menu_links']
+        : [];
+    ?>
     <div class="d-flex align-items-center logo-box justify-content-start">
         <!-- Logo -->
         <a href="/dashboard" class="logo">
@@ -53,6 +61,30 @@
                         </div>
                     </div>
                 </li>
+                <?php if ($headerQuickLinks !== []): ?>
+                    <li class="btn-group nav-item d-xl-inline-flex d-none">
+                        <a href="#"
+                           class="waves-effect waves-light nav-link dropdown-toggle btn-primary-light"
+                           data-bs-toggle="dropdown" role="button" aria-expanded="false"
+                           title="Accesos rapidos">
+                            <i class="mdi mdi-lightning-bolt-outline me-5"></i>
+                            <span>Accesos</span>
+                        </a>
+                        <ul class="dropdown-menu animated flipInX">
+                            <?php foreach ($headerQuickLinks as $quickLink): ?>
+                                <?php if (!is_array($quickLink)): ?>
+                                    <?php continue; ?>
+                                <?php endif; ?>
+                                <li>
+                                    <a class="dropdown-item" href="<?= htmlspecialchars((string) ($quickLink['href'] ?? '#'), ENT_QUOTES, 'UTF-8'); ?>">
+                                        <i class="<?= htmlspecialchars((string) ($quickLink['icon'] ?? 'mdi mdi-link-variant'), ENT_QUOTES, 'UTF-8'); ?> text-muted me-2"></i>
+                                        <?= htmlspecialchars((string) ($quickLink['label'] ?? 'Acceso'), ENT_QUOTES, 'UTF-8'); ?>
+                                    </a>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    </li>
+                <?php endif; ?>
             </ul>
         </div>
 
@@ -124,8 +156,18 @@
                     </a>
                     <ul class="dropdown-menu animated flipInX">
                         <li class="user-body">
-                            <a class="dropdown-item" href="extra_profile.html"><i
-                                        class="ti-user text-muted me-2"></i> Perfil</a>
+                            <?php foreach ($userMenuLinks as $userMenuLink): ?>
+                                <?php if (!is_array($userMenuLink)): ?>
+                                    <?php continue; ?>
+                                <?php endif; ?>
+                                <a class="dropdown-item" href="<?= htmlspecialchars((string) ($userMenuLink['href'] ?? '#'), ENT_QUOTES, 'UTF-8'); ?>">
+                                    <i class="<?= htmlspecialchars((string) ($userMenuLink['icon'] ?? 'ti-link'), ENT_QUOTES, 'UTF-8'); ?> text-muted me-2"></i>
+                                    <?= htmlspecialchars((string) ($userMenuLink['label'] ?? 'Acceso'), ENT_QUOTES, 'UTF-8'); ?>
+                                </a>
+                            <?php endforeach; ?>
+                            <?php if ($userMenuLinks !== []): ?>
+                                <div class="dropdown-divider"></div>
+                            <?php endif; ?>
                             <a class="dropdown-item" href="/v2/auth/logout"><i
                                         class="ti-lock text-muted me-2"></i> Cerrar sesión</a>
                         </li>
@@ -139,85 +181,14 @@
                     </a>
                 </li>
                 <!-- Notifications -->
-                <li class="dropdown notifications-menu">
-                    <a href="#" class="waves-effect waves-light dropdown-toggle btn-info-light"
-                       data-bs-toggle="dropdown" title="Notifications"
+                <li class="notifications-menu">
+                    <a href="#" class="waves-effect waves-light btn-info-light"
+                       role="button" title="Notificaciones"
                        data-notification-panel-toggle="true" aria-controls="kanbanNotificationPanel">
                         <i class="icon-Notification"><span class="path1"></span><span class="path2"></span></i>
                         <span class="badge bg-danger notification-unread-badge d-none" data-notification-unread-badge>0</span>
                     </a>
-                    <ul class="dropdown-menu animated bounceIn">
-                        <li class="header">
-                            <div class="p-20">
-                                <div class="flexbox">
-                                    <div>
-                                        <h4 class="mb-0 mt-0">Notifications</h4>
-                                    </div>
-                                    <div>
-                                        <a href="#" class="text-danger">Clear All</a>
-                                    </div>
-                                </div>
-                            </div>
-                        </li>
-                        <li>
-                            <!-- inner menu: contains the actual data -->
-                            <ul class="menu sm-scrol">
-                                <li>
-                                    <a href="#">
-                                        <i class="fa fa-users text-info"></i> Curabitur id eros quis nunc
-                                        suscipit blandit.
-                                    </a>
-                                </li>
-                                <li>
-                                    <a href="#">
-                                        <i class="fa fa-warning text-warning"></i> Duis malesuada justo eu
-                                        sapien elementum, in semper diam posuere.
-                                    </a>
-                                </li>
-                                <li>
-                                    <a href="#">
-                                        <i class="fa fa-users text-danger"></i> Donec at nisi sit amet tortor
-                                        commodo porttitor pretium a erat.
-                                    </a>
-                                </li>
-                                <li>
-                                    <a href="#">
-                                        <i class="fa fa-shopping-cart text-success"></i> In gravida mauris et
-                                        nisi
-                                    </a>
-                                </li>
-                                <li>
-                                    <a href="#">
-                                        <i class="fa fa-user text-danger"></i> Praesent eu lacus in libero
-                                        dictum fermentum.
-                                    </a>
-                                </li>
-                                <li>
-                                    <a href="#">
-                                        <i class="fa fa-user text-primary"></i> Nunc fringilla lorem
-                                    </a>
-                                </li>
-                                <li>
-                                    <a href="#">
-                                        <i class="fa fa-user text-success"></i> Nullam euismod dolor ut quam
-                                        interdum, at scelerisque ipsum imperdiet.
-                                    </a>
-                                </li>
-                            </ul>
-                        </li>
-                        <li class="footer">
-                            <a href="#">View all</a>
-                        </li>
-                    </ul>
                 </li>
-                <!-- Control Sidebar Toggle Button -->
-                <li class="btn-group nav-item">
-                    <a href="#" title="Setting"
-                       class="waves-effect full-screen waves-light btn-danger-light">
-                        <i class="icon-Settings1"><span class="path1"></span><span class="path2"></span></i>
-                    </a>
-                </li>
-
             </ul>
         </div>
     </nav>

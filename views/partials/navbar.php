@@ -1,402 +1,173 @@
 <?php
-use Core\Permissions;
-
-// Helpers para resaltar elementos activos y abrir treeviews según la URL actual
-if (!function_exists('currentPath')) {
-    function currentPath(): string
+if (!function_exists('navCurrentPath')) {
+    function navCurrentPath(): string
     {
-        return rtrim(parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?? '', '/');
+        $path = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?? '';
+        $normalized = trim((string) $path);
+
+        if ($normalized === '') {
+            return '/';
+        }
+
+        $normalized = '/' . ltrim($normalized, '/');
+
+        return rtrim($normalized, '/') ?: '/';
     }
 }
 
-if (!function_exists('isActive')) {
-    function isActive(string $path): string
+if (!function_exists('navNormalizePath')) {
+    function navNormalizePath(string $path): string
     {
-        $current = currentPath();
-        return $current === rtrim($path, '/') ? ' is-active' : '';
+        $normalized = trim($path);
+        if ($normalized === '') {
+            return '/';
+        }
+
+        $normalized = '/' . ltrim($normalized, '/');
+
+        return rtrim($normalized, '/') ?: '/';
     }
 }
 
-if (!function_exists('isActivePrefix')) {
-    // Activo si la ruta actual comienza con el prefijo dado
-    function isActivePrefix(string $prefix): string
+if (!function_exists('navPathStartsWith')) {
+    function navPathStartsWith(string $currentPath, string $prefix): bool
     {
-        $current = currentPath() . '/';
-        $pref = rtrim($prefix, '/') . '/';
-        return str_starts_with($current, $pref) ? ' is-active' : '';
+        $current = navNormalizePath($currentPath);
+        $expected = navNormalizePath($prefix);
+
+        if ($expected === '/') {
+            return true;
+        }
+
+        return $current === $expected || str_starts_with($current . '/', $expected . '/');
     }
 }
 
-if (!function_exists('isTreeOpen')) {
-    /**
-     * Retorna ' menu-open' si la ruta actual empieza con alguno de los prefijos.
-     * @param array $prefixes Prefijos de rutas, p.ej. ['/pacientes', '/solicitudes']
-     */
-    function isTreeOpen(array $prefixes): string
+if (!function_exists('navRuleMatches')) {
+    function navRuleMatches(array $rules): bool
     {
-        $current = currentPath() . '/';
-        foreach ($prefixes as $p) {
-            $pref = rtrim($p, '/') . '/';
-            if (str_starts_with($current, $pref)) {
-                return ' menu-open';
+        $current = navCurrentPath();
+
+        foreach ((array) ($rules['exclude_exact'] ?? []) as $path) {
+            if ($current === navNormalizePath((string) $path)) {
+                return false;
             }
         }
-        return '';
+
+        foreach ((array) ($rules['exclude_prefix'] ?? []) as $prefix) {
+            if (navPathStartsWith($current, (string) $prefix)) {
+                return false;
+            }
+        }
+
+        foreach ((array) ($rules['exact'] ?? []) as $path) {
+            if ($current === navNormalizePath((string) $path)) {
+                return true;
+            }
+        }
+
+        foreach ((array) ($rules['prefix'] ?? []) as $prefix) {
+            if (navPathStartsWith($current, (string) $prefix)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
+
+if (!function_exists('navItemIsActive')) {
+    function navItemIsActive(array $item): bool
+    {
+        $type = (string) ($item['type'] ?? 'item');
+
+        if ($type === 'group') {
+            foreach ((array) ($item['children'] ?? []) as $child) {
+                if (is_array($child) && navItemIsActive($child)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        if ($type === 'label') {
+            return false;
+        }
+
+        return navRuleMatches((array) ($item['active'] ?? []));
+    }
+}
+
+if (!function_exists('renderSidebarItem')) {
+    function renderSidebarItem(array $item): string
+    {
+        $type = (string) ($item['type'] ?? 'item');
+
+        if ($type === 'label') {
+            $label = htmlspecialchars((string) ($item['label'] ?? ''), ENT_QUOTES, 'UTF-8');
+
+            return '<li class="header">' . $label . '</li>';
+        }
+
+        if ($type === 'group') {
+            $label = htmlspecialchars((string) ($item['label'] ?? ''), ENT_QUOTES, 'UTF-8');
+            $icon = htmlspecialchars((string) ($item['icon'] ?? 'mdi mdi-folder-outline'), ENT_QUOTES, 'UTF-8');
+            $openClass = navItemIsActive($item) ? ' menu-open' : '';
+
+            $childrenHtml = '';
+            foreach ((array) ($item['children'] ?? []) as $child) {
+                if (!is_array($child)) {
+                    continue;
+                }
+
+                $childrenHtml .= renderSidebarItem($child);
+            }
+
+            return <<<HTML
+<li class="treeview{$openClass}">
+    <a href="#">
+        <i class="{$icon}"></i>
+        <span>{$label}</span>
+        <span class="pull-right-container"><i class="fa fa-angle-right pull-right"></i></span>
+    </a>
+    <ul class="treeview-menu">
+        {$childrenHtml}
+    </ul>
+</li>
+HTML;
+        }
+
+        $label = htmlspecialchars((string) ($item['label'] ?? ''), ENT_QUOTES, 'UTF-8');
+        $href = htmlspecialchars((string) ($item['href'] ?? '#'), ENT_QUOTES, 'UTF-8');
+        $icon = htmlspecialchars((string) ($item['icon'] ?? 'mdi mdi-circle-outline'), ENT_QUOTES, 'UTF-8');
+        $classAttr = navItemIsActive($item) ? ' class="is-active"' : '';
+
+        return <<<HTML
+<li{$classAttr}>
+    <a href="{$href}">
+        <i class="{$icon}"></i>
+        <span>{$label}</span>
+    </a>
+</li>
+HTML;
+    }
+}
+
+$sidebarItems = isset($appNavigation['sidebar']) && is_array($appNavigation['sidebar'])
+    ? $appNavigation['sidebar']
+    : [];
 ?>
 <aside class="main-sidebar">
-    <!-- sidebar-->
     <section class="sidebar position-relative">
         <div class="multinav">
             <div class="multinav-scroll" style="height: 100%;">
-
-                <!-- sidebar menu-->
                 <ul class="sidebar-menu" data-widget="tree">
-                    <?php
-                    $rawPermissions = $_SESSION['permisos'] ?? [];
-                    $normalizedPermissions = Permissions::normalize($rawPermissions);
-                    $canAccessUsers = Permissions::containsAny($normalizedPermissions, ['administrativo', 'admin.usuarios.manage', 'admin.usuarios.view', 'admin.usuarios']);
-                    $canAccessRoles = Permissions::containsAny($normalizedPermissions, ['administrativo', 'admin.roles.manage', 'admin.roles.view', 'admin.roles']);
-                    $canAccessSettings = Permissions::containsAny($normalizedPermissions, ['administrativo', 'settings.manage', 'settings.view']);
-                    $canAccessCRM = Permissions::containsAny($normalizedPermissions, ['administrativo', 'crm.manage', 'crm.view', 'crm.leads.manage', 'crm.projects.manage', 'crm.tasks.manage', 'crm.tickets.manage']);
-                    $canAccessWhatsAppChat = Permissions::containsAny($normalizedPermissions, ['administrativo', 'whatsapp.manage', 'whatsapp.chat.view', 'settings.manage']);
-                    $canConfigureWhatsApp = Permissions::containsAny($normalizedPermissions, ['administrativo', 'whatsapp.manage', 'whatsapp.templates.manage', 'whatsapp.autoresponder.manage', 'settings.manage']);
-                    $canAccessCronManager = Permissions::containsAny($normalizedPermissions, ['administrativo', 'settings.manage']);
-                    $canAccessDoctors = Permissions::containsAny($normalizedPermissions, ['administrativo', 'doctores.manage', 'doctores.view']);
-                    $canAccessCodes = Permissions::containsAny($normalizedPermissions, ['administrativo', 'codes.manage', 'codes.view']);
-                    $canAccessPatientVerification = Permissions::containsAny($normalizedPermissions, ['administrativo', 'pacientes.verification.manage', 'pacientes.verification.view']);
-                    $canAccessProtocolTemplates = Permissions::containsAny($normalizedPermissions, ['administrativo', 'protocolos.manage', 'protocolos.templates.view', 'protocolos.templates.manage']);
-                    $canAccessMailbox = Permissions::containsAny($normalizedPermissions, ['administrativo', 'crm.view', 'crm.manage', 'whatsapp.chat.view']);
-                    $canAccessCirugiasDashboard = Permissions::containsAny($normalizedPermissions, ['administrativo', 'cirugias.dashboard.view']);
-                    $canAccessSolicitudesDashboard = Permissions::containsAny($normalizedPermissions, ['administrativo', 'solicitudes.dashboard.view']);
-                    $canAccessQuirurgicoDashboard = $canAccessCirugiasDashboard || $canAccessSolicitudesDashboard;
-                    ?>
-                    <li class="<?= isActive('/dashboard') ?>">
-                        <a href="/dashboard">
-                            <i class="mdi mdi-view-dashboard"><span class="path1"></span><span class="path2"></span></i>
-                            <span>Inicio</span>
-                        </a>
-                    </li>
-                    <li class="treeview<?= isTreeOpen(['/crm', '/pacientes/flujo', '/leads', '/whatsapp/autoresponder', '/whatsapp/templates']) ?>">
-                        <a href="#">
-                            <i class="mdi mdi-sale"><span class="path1"></span><span class="path2"></span></i>
-                            <span>Marketing y captación</span>
-                            <span class="pull-right-container"><i class="fa fa-angle-right pull-right"></i></span>
-                        </a>
-                        <ul class="treeview-menu">
-                            <?php if ($canAccessCRM): ?>
-                                <li class="<?= isActive('/crm') ?>">
-                                    <a href="/crm">
-                                        <i class="mdi mdi-ticket-account"></i>CRM
-                                    </a>
-                                </li>
-                            <?php endif; ?>
-                            <li class="<?= isActivePrefix('/pacientes/flujo') ?>">
-                                <a href="/pacientes/flujo">
-                                    <i class="mdi mdi-timetable"></i>Flujo de Pacientes
-                                </a>
-                            </li>
-                            <li class="<?= isActive('/leads') ?>">
-                                <a href="/leads">
-                                    <i class="mdi mdi-bullhorn"></i>Campañas y Leads
-                                </a>
-                            </li>
-                            <?php if ($canConfigureWhatsApp): ?>
-                                <li class="<?= isActive('/whatsapp/autoresponder') ?>">
-                                    <a href="/whatsapp/autoresponder">
-                                        <i class="mdi mdi-robot"></i>Automatizaciones de WhatsApp
-                                    </a>
-                                </li>
-                                <li class="<?= isActive('/whatsapp/templates') ?>">
-                                    <a href="/whatsapp/templates">
-                                        <i class="mdi mdi-whatsapp"></i>Plantillas de WhatsApp
-                                    </a>
-                                </li>
-                            <?php endif; ?>
-                        </ul>
-                    </li>
-
-                    <li class="<?= isActive('/agenda') ?>">
-                        <a href="/agenda">
-                            <i class="mdi mdi-calendar-clock"><span class="path1"></span><span class="path2"></span></i>
-                            <span>Agenda</span>
-                        </a>
-                    </li>
-
-                    <?php if ($canAccessDoctors): ?>
-                        <li class="<?= isActivePrefix('/doctores') ?>">
-                            <a href="/doctores">
-                                <i class="mdi mdi-stethoscope"></i>
-                                <span>Doctores</span>
-                            </a>
-                        </li>
-                    <?php endif; ?>
-
-                    <li class="treeview<?= isTreeOpen(['/pacientes', '/whatsapp/chat', '/whatsapp/dashboard', '/pacientes/certificaciones', '/turnoAgenda', '/derivaciones']) ?>">
-                        <a href="#">
-                            <i class="icon-Compiling"><span class="path1"></span><span class="path2"></span></i>
-                            <span>Atención al paciente</span>
-                            <span class="pull-right-container"><i class="fa fa-angle-right pull-right"></i></span>
-                        </a>
-                        <ul class="treeview-menu">
-                            <li class="<?= isActive('/pacientes') ?>">
-                                <a href="/pacientes">
-                                    <i class="mdi mdi-account-multiple-outline"></i>Lista de Pacientes
-                                </a>
-                            </li>
-                            <li class="<?= isActive('/derivaciones') ?>">
-                                <a href="/derivaciones">
-                                    <i class="mdi mdi-file-find"></i>Derivaciones
-                                </a>
-                            </li>
-                            <li class="<?= isActivePrefix('/turnoAgenda') ?>">
-                                <a href="/turnoAgenda/agenda-doctor/index">
-                                    <i class="mdi mdi-calendar"></i>Agendamiento
-                                </a>
-                            </li>
-                            <?php if ($canAccessPatientVerification): ?>
-                                <li class="<?= isActive('/pacientes/certificaciones') ?: isActivePrefix('/pacientes/certificaciones') ?>">
-                                    <a href="/pacientes/certificaciones">
-                                        <i class="mdi mdi-qrcode-scan"></i>Certificación biométrica
-                                    </a>
-                                </li>
-                            <?php endif; ?>
-                            <?php if ($canAccessWhatsAppChat): ?>
-                                <li class="<?= isActive('/whatsapp/chat') ?>">
-                                    <a href="/whatsapp/chat">
-                                        <i class="mdi mdi-message-text-outline"></i>Chat de WhatsApp
-                                    </a>
-                                </li>
-                                <li class="<?= isActive('/whatsapp/dashboard') ?>">
-                                    <a href="/whatsapp/dashboard">
-                                        <i class="mdi mdi-chart-line"></i>Dashboard WhatsApp
-                                    </a>
-                                </li>
-                            <?php endif; ?>
-                            <?php if ($canAccessMailbox): ?>
-                                <li class="<?= isActive('/mailbox') ?: isActive('/mail') ?>">
-                                    <a href="/mailbox">
-                                        <i class="mdi mdi-email-open-outline"></i>Mailbox
-                                    </a>
-                                </li>
-                            <?php endif; ?>
-                        </ul>
-                    </li>
-
-                    <li class="treeview<?= isTreeOpen(['/cirugias', '/solicitudes', '/views/ipl', '/ipl', '/protocolos']) ?>">
-                        <a href="#">
-                            <i class="icon-Diagnostics"><span class="path1"></span><span class="path2"></span><span
-                                        class="path3"></span></i>
-                            <span>Coordinación quirúrgica</span>
-                            <span class="pull-right-container"><i class="fa fa-angle-right pull-right"></i></span>
-                        </a>
-                        <ul class="treeview-menu">
-                            <li class="<?= isActive('/solicitudes') ?: isActive('/views/solicitudes/examenes.php') ?>">
-                                <a href="/solicitudes">
-                                    <i class="mdi mdi-file-document"></i>Solicitudes (Kanban)
-                                </a>
-                            </li>
-                            <li class="<?= isActive('/cirugias') ?>">
-                                <a href="/cirugias">
-                                    <i class="mdi mdi-clipboard-check"></i>Protocolos Realizados
-                                </a>
-                            </li>
-                            <?php if ($canAccessQuirurgicoDashboard): ?>
-                                <li class="<?= isActive('/cirugias/dashboard') ?: isActive('/solicitudes/dashboard') ?>">
-                                    <a href="/cirugias/dashboard">
-                                        <i class="mdi mdi-chart-arc"></i>Dashboard quirúrgico
-                                    </a>
-                                </li>
-                            <?php endif; ?>
-                            <li class="<?= isActive('/ipl') ?: isActive('/views/ipl/ipl_planificador_lista.php') ?>">
-                                <a href="/ipl">
-                                    <i class="mdi mdi-calendar-clock"></i>Planificador de IPL
-                                </a>
-                            </li>
-                            <?php if ($canAccessProtocolTemplates): ?>
-                                <li class="<?= isActive('/protocolos') ?>">
-                                    <a href="/protocolos">
-                                        <i class="mdi mdi-note-multiple"></i>Plantillas de Protocolos
-                                    </a>
-                                </li>
-                            <?php endif; ?>
-                        </ul>
-                    </li>
-
-                    <li class="treeview<?= isTreeOpen(['/insumos', '/insumos/medicamentos', '/insumos/lentes', '/farmacia']) ?>">
-                        <a href="#">
-                            <i class="mdi mdi-medical-bag"><span class="path1"></span><span class="path2"></span><span
-                                        class="path3"></span></i>
-                            <span>Inventario y logística</span>
-                            <span class="pull-right-container"><i class="fa fa-angle-right pull-right"></i></span>
-                        </a>
-                        <ul class="treeview-menu">
-                            <li class="<?= isActive('/insumos') ?>">
-                                <a href="/insumos">
-                                    <i class="mdi mdi-format-list-bulleted"></i>Lista de Insumos
-                                </a>
-                            </li>
-                            <li class="<?= isActive('/insumos/medicamentos') ?>">
-                                <a href="/insumos/medicamentos">
-                                    <i class="mdi mdi-pill"></i>Lista de Medicamentos
-                                </a>
-                            </li>
-                            <li class="<?= isActive('/insumos/lentes') ?>">
-                                <a href="/insumos/lentes">
-                                    <i class="mdi mdi-glasses"></i>Catálogo de Lentes
-                                </a>
-                            </li>
-                            <li class="<?= isActive('/farmacia') ?>">
-                                <a href="/farmacia">
-                                    <i class="mdi mdi-pill"></i>Dashboard farmacia
-                                </a>
-                            </li>
-                        </ul>
-                    </li>
-
-
-                    <li class="treeview<?= isTreeOpen(['/examenes', '/imagenes/examenes-realizados', '/imagenes/dashboard']) ?>">
-                        <a href="#">
-                            <i class="mdi mdi-image-multiple"><span class="path1"></span><span class="path2"></span></i>
-                            <span>Imágenes</span>
-                            <span class="pull-right-container"><i class="fa fa-angle-right pull-right"></i></span>
-                        </a>
-                        <ul class="treeview-menu">
-                            <li class="<?= isActive('/examenes') ?>">
-                                <a href="/examenes">
-                                    <i class="mdi mdi-eyedropper"></i>Exámenes (Kanban)
-                                </a>
-                            </li>
-                            <li class="<?= isActive('/imagenes/examenes-realizados') ?>">
-                                <a href="/imagenes/examenes-realizados">
-                                    <i class="mdi mdi-file-image"></i>Exámenes realizados
-                                </a>
-                            </li>
-                            <li class="<?= isActive('/imagenes/dashboard') ?>">
-                                <a href="/imagenes/dashboard">
-                                    <i class="mdi mdi-chart-line"></i>Dashboard imágenes
-                                </a>
-                            </li>
-                        </ul>
-                    </li>
-
-                    <li class="treeview<?= isTreeOpen(['/informes', '/billing', '/views/reportes']) ?>">
-                        <a href="#">
-                            <i class="mdi mdi-chart-areaspline"><span class="path1"></span><span
-                                        class="path2"></span><span
-                                        class="path3"></span></i>
-                            <span>Finanzas y análisis</span>
-                            <span class="pull-right-container"><i class="fa fa-angle-right pull-right"></i></span>
-                        </a>
-                        <ul class="treeview-menu">
-                            <li class="header">Facturación por afiliación</li>
-                            <li class="<?= isActive('/informes/isspol') ?>">
-                                <a href="/informes/isspol">
-                                    <i class="mdi mdi-shield"></i>ISSPOL
-                                </a>
-                            </li>
-                            <li class="<?= isActive('/informes/issfa') ?>">
-                                <a href="/informes/issfa">
-                                    <i class="mdi mdi-star"></i>ISSFA
-                                </a>
-                            </li>
-                            <li class="<?= isActive('/informes/iess') ?>">
-                                <a href="/informes/iess">
-                                    <i class="mdi mdi-account"></i>IESS
-                                </a>
-                            </li>
-                            <li class="<?= isActive('/informes/particulares') ?>">
-                                <a href="/informes/particulares">
-                                    <i class="mdi mdi-account-outline"></i>Particulares
-                                </a>
-                            </li>
-                            <li class="<?= isActive('/billing/no-facturados') ?>">
-                                <a href="/billing/no-facturados">
-                                    <i class="mdi mdi-account-outline"></i>No Facturado
-                                </a>
-                            </li>
-                            <li class="<?= isActive('/billing/dashboard') ?>">
-                                <a href="/billing/dashboard">
-                                    <i class="mdi mdi-chart-line"></i>Dashboard Billing
-                                </a>
-                            </li>
-                            <li class="header">Reportes y estadísticas</li>
-                            <li class="<?= isActive('/views/reportes/estadistica_flujo.php') ?>">
-                                <a href="/views/reportes/estadistica_flujo.php">
-                                    <i class="mdi mdi-chart-line"></i>Flujo de Pacientes
-                                </a>
-                            </li>
-                        </ul>
-                    </li>
-
-                    <?php
-                    $showAdmin = $canAccessUsers || $canAccessRoles || $canAccessSettings || $canAccessCodes || $canAccessCronManager;
-                    ?>
-                    <?php if ($showAdmin): ?>
-                        <li class="treeview<?= isTreeOpen(['/usuarios', '/roles', '/codes', '/codes/packages', '/mail-templates']) ?>">
-                            <a href="#">
-                                <i class="mdi mdi-settings"><span class="path1"></span><span class="path2"></span><span
-                                            class="path3"></span></i>
-                                <span>Administración y TI</span>
-                                <span class="pull-right-container"><i class="fa fa-angle-right pull-right"></i></span>
-                            </a>
-                            <ul class="treeview-menu">
-                                <?php if ($canAccessUsers): ?>
-                                    <li class="<?= isActive('/usuarios') ?>">
-                                        <a href="/usuarios">
-                                            <i class="mdi mdi-account-key"></i>Usuarios
-                                        </a>
-                                    </li>
-                                <?php endif; ?>
-                                <?php if ($canAccessRoles): ?>
-                                    <li class="<?= isActive('/roles') ?>">
-                                        <a href="/roles">
-                                            <i class="mdi mdi-security"></i>Roles
-                                        </a>
-                                    </li>
-                                <?php endif; ?>
-                                <?php if ($canAccessSettings): ?>
-                                    <li class="<?= isActive('/settings') ?>">
-                                        <a href="/settings">
-                                            <i class="mdi mdi-settings"></i>Ajustes
-                                        </a>
-                                    </li>
-                                    <li class="<?= isActivePrefix('/mail-templates') ?>">
-                                        <a href="/mail-templates/cobertura">
-                                            <i class="mdi mdi-email-variant"></i>Plantillas de correo
-                                        </a>
-                                    </li>
-                                <?php endif; ?>
-                                <?php if ($canAccessCronManager): ?>
-                                    <li class="<?= isActive('/cron-manager') ?>">
-                                        <a href="/cron-manager">
-                                            <i class="mdi mdi-react"></i>Cron Manager
-                                        </a>
-                                    </li>
-                                <?php endif; ?>
-                                <?php if ($canAccessCodes): ?>
-                                    <li class="<?= isActive('/codes') ?>">
-                                        <a href="/codes">
-                                            <i class="mdi mdi-tag-text-outline"></i>Catálogo de códigos
-                                        </a>
-                                    </li>
-                                    <li class="<?= isActive('/codes/packages') ?>">
-                                        <a href="/codes/packages">
-                                            <i class="mdi mdi-package-variant-closed"></i>Constructor de paquetes
-                                        </a>
-                                    </li>
-                                <?php endif; ?>
-                            </ul>
-                        </li>
-                    <?php endif; ?>
-
-                    <li>
-                        <a href="/v2/auth/logout">
-                            <i class="mdi mdi-logout"></i>
-                            <span>Cerrar sesión</span>
-                        </a>
-                    </li>
+                    <?php foreach ($sidebarItems as $sidebarItem): ?>
+                        <?php if (is_array($sidebarItem)): ?>
+                            <?= renderSidebarItem($sidebarItem); ?>
+                        <?php endif; ?>
+                    <?php endforeach; ?>
                 </ul>
             </div>
         </div>

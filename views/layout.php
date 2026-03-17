@@ -134,6 +134,34 @@ if (!function_exists('format_profile_photo_url')) {
         if (!isset($username) || trim((string) $username) === '') {
             $username = $currentUser['display_name'];
         }
+
+        $rawPermissions = $_SESSION['permisos'] ?? [];
+        $normalizedPermissions = \Core\Permissions::normalize($rawPermissions);
+
+        $navigationContext = [
+            'permissions' => $normalizedPermissions,
+            'canAccessUsers' => \Core\Permissions::containsAny($normalizedPermissions, ['administrativo', 'admin.usuarios.manage', 'admin.usuarios.view', 'admin.usuarios']),
+            'canAccessRoles' => \Core\Permissions::containsAny($normalizedPermissions, ['administrativo', 'admin.roles.manage', 'admin.roles.view', 'admin.roles']),
+            'canAccessSettings' => \Core\Permissions::containsAny($normalizedPermissions, ['administrativo', 'settings.manage', 'settings.view']),
+            'canAccessCRM' => \Core\Permissions::containsAny($normalizedPermissions, ['administrativo', 'crm.manage', 'crm.view', 'crm.leads.manage', 'crm.projects.manage', 'crm.tasks.manage', 'crm.tickets.manage']),
+            'canAccessWhatsAppChat' => \Core\Permissions::containsAny($normalizedPermissions, ['administrativo', 'whatsapp.manage', 'whatsapp.chat.view', 'settings.manage']),
+            'canConfigureWhatsApp' => \Core\Permissions::containsAny($normalizedPermissions, ['administrativo', 'whatsapp.manage', 'whatsapp.templates.manage', 'whatsapp.autoresponder.manage', 'settings.manage']),
+            'canAccessCronManager' => \Core\Permissions::containsAny($normalizedPermissions, ['administrativo', 'settings.manage']),
+            'canAccessDoctors' => \Core\Permissions::containsAny($normalizedPermissions, ['administrativo', 'doctores.manage', 'doctores.view']),
+            'canAccessCodes' => \Core\Permissions::containsAny($normalizedPermissions, ['administrativo', 'codes.manage', 'codes.view']),
+            'canAccessPatientVerification' => \Core\Permissions::containsAny($normalizedPermissions, ['administrativo', 'pacientes.verification.manage', 'pacientes.verification.view']),
+            'canAccessProtocolTemplates' => \Core\Permissions::containsAny($normalizedPermissions, ['administrativo', 'protocolos.manage', 'protocolos.templates.view', 'protocolos.templates.manage']),
+            'canAccessMailbox' => \Core\Permissions::containsAny($normalizedPermissions, ['administrativo', 'crm.view', 'crm.manage', 'whatsapp.chat.view']),
+            'canAccessCirugiasDashboard' => \Core\Permissions::containsAny($normalizedPermissions, ['administrativo', 'cirugias.dashboard.view']),
+            'canAccessSolicitudesDashboard' => \Core\Permissions::containsAny($normalizedPermissions, ['administrativo', 'solicitudes.dashboard.view']),
+        ];
+        $navigationContext['canAccessQuirurgicoDashboard'] = $navigationContext['canAccessCirugiasDashboard']
+            || $navigationContext['canAccessSolicitudesDashboard'];
+
+        $navigationFactory = require dirname(__DIR__) . '/config/navigation.php';
+        $appNavigation = is_callable($navigationFactory)
+            ? (array) $navigationFactory($navigationContext)
+            : ['header_quick_links' => [], 'sidebar' => [], 'user_menu_links' => []];
         ?>
 
         <!-- Encabezado -->
