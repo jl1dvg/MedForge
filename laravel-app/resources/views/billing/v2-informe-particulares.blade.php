@@ -1797,6 +1797,7 @@
         @vite('resources/js/v2/billing-informe-particulares.js')
     @else
         <script src="/assets/vendor_components/datatable/datatables.min.js"></script>
+        <script src="/js/pages/shared/datatables-language-es.js"></script>
         <script src="/assets/vendor_components/apexcharts-bundle/dist/apexcharts.js"></script>
     @endif
     <script>

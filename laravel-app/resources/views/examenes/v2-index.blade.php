@@ -1,7 +1,9 @@
 @extends('layouts.medforge')
 
 @push('styles')
-    <link rel="stylesheet" href="/assets/vendor_components/bootstrap-daterangepicker/daterangepicker.css">
+    @unless (\App\Modules\Shared\Support\MedforgeAssets::hasViteBuild())
+        <link rel="stylesheet" href="/assets/vendor_components/bootstrap-daterangepicker/daterangepicker.css">
+    @endunless
 @endpush
 
 @section('content')

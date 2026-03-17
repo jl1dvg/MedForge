@@ -101,7 +101,7 @@
                             <i class="mdi mdi-lightning-bolt-outline me-5"></i>
                             <span>Accesos</span>
                         </a>
-                        <ul class="dropdown-menu animated flipInX">
+                        <ul class="dropdown-menu">
                             @foreach($headerQuickLinks as $quickLink)
                                 @continue(!is_array($quickLink))
                                 <li>
@@ -133,26 +133,21 @@
                             @endif
                         </div>
                     </a>
-                    <ul class="dropdown-menu animated flipInX">
+                    <ul class="dropdown-menu">
                         <li class="user-body">
                             @foreach($userMenuLinks as $userMenuLink)
                                 @continue(!is_array($userMenuLink))
                                 <a class="dropdown-item" href="{{ $userMenuLink['href'] ?? '#' }}">
-                                    <i class="{{ $userMenuLink['icon'] ?? 'ti-link' }} text-muted me-2"></i>
+                                    <i class="{{ $userMenuLink['icon'] ?? 'mdi mdi-link-variant' }} text-muted me-2"></i>
                                     {{ $userMenuLink['label'] ?? 'Acceso' }}
                                 </a>
                             @endforeach
                             @if($userMenuLinks !== [])
                                 <div class="dropdown-divider"></div>
                             @endif
-                            <a class="dropdown-item" href="/v2/auth/logout"><i class="ti-lock text-muted me-2"></i> Cerrar sesion</a>
+                            <a class="dropdown-item" href="/v2/auth/logout"><i class="mdi mdi-lock-outline text-muted me-2"></i> Cerrar sesion</a>
                         </li>
                     </ul>
-                </li>
-                <li class="btn-group nav-item d-lg-inline-flex d-none">
-                    <a href="#" data-provide="fullscreen" class="waves-effect waves-light nav-link full-screen btn-warning-light" title="Full Screen">
-                        <i class="icon-Position"></i>
-                    </a>
                 </li>
                 <li class="notifications-menu">
                     <a

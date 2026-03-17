@@ -13,13 +13,13 @@
 
     <title>MedForge{{ isset($pageTitle) && $pageTitle !== '' ? ' - ' . $pageTitle : '' }}</title>
 
-    <link rel="stylesheet" href="/css/vendors_css.css">
-    <link rel="stylesheet" href="/css/horizontal-menu.css">
-    <link rel="stylesheet" href="/css/style.css">
-    <link rel="stylesheet" href="/css/skin_color.css">
     @if ($hasMedforgeViteBuild)
         @vite('resources/css/medforge.css')
     @else
+        <link rel="stylesheet" href="/css/vendors_css.css">
+        <link rel="stylesheet" href="/css/horizontal-menu.css">
+        <link rel="stylesheet" href="/css/style.css">
+        <link rel="stylesheet" href="/css/skin_color.css">
         <link rel="stylesheet" href="/css/pages/medforge-datatables.css">
     @endif
 
@@ -45,16 +45,12 @@
     </footer>
 </div>
 
-<script src="/js/vendors.min.js"></script>
-<script src="/assets/vendor_components/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
-<script src="/assets/icons/feather-icons/feather.min.js"></script>
-<script src="/js/pages/shared/datatables-language-es.js"></script>
 @if ($hasMedforgeViteBuild)
+    <script src="/assets/vendor_components/jquery/jquery.min.js"></script>
+    <script src="/assets/vendor_components/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
     @vite('resources/js/medforge.js')
 @else
-    <script src="/js/pages/chat-popup.js"></script>
-    <script src="/js/jquery.smartmenus.js"></script>
-    <script src="/js/menus.js"></script>
+    <script src="/js/vendors.min.js"></script>
     <script src="/js/pages/global-search.js"></script>
     <script src="/js/template.js"></script>
 @endif

@@ -1,0 +1,6 @@
+/* Theme adjustment extracted from the shared shell for the patient timeline. */
+.cd-horizontal-timeline .timeline {
+  padding: 20px 0 20px; }
+  .cd-horizontal-timeline .timeline:before,
+  .cd-horizontal-timeline .timeline:after {
+    display: none; }

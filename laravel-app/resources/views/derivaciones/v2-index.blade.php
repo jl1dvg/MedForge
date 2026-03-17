@@ -62,6 +62,7 @@
         @vite('resources/js/v2/derivaciones-index.js')
     @else
         <script src="/assets/vendor_components/datatable/datatables.min.js"></script>
+        <script src="/js/pages/shared/datatables-language-es.js"></script>
         <script src="/js/pages/derivaciones.js"></script>
     @endif
 @endpush

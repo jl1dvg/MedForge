@@ -442,12 +442,12 @@ class MedforgeNavigation
             $canAccessSettings ? [
                 'label' => 'Ajustes',
                 'href' => '/settings',
-                'icon' => 'ti-settings',
+                'icon' => 'mdi mdi-cog-outline',
             ] : null,
             $canAccessUsers ? [
                 'label' => 'Usuarios',
                 'href' => '/v2/usuarios',
-                'icon' => 'ti-user',
+                'icon' => 'mdi mdi-account-outline',
             ] : null,
         ]));
 

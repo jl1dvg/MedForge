@@ -5,6 +5,7 @@
         @vite('resources/js/v2/imagenes-realizadas.js')
     @else
         <script src="/assets/vendor_components/datatable/datatables.min.js"></script>
+        <script src="/js/pages/shared/datatables-language-es.js"></script>
     @endif
 @endpush
 

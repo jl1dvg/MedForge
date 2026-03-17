@@ -626,8 +626,8 @@
             var wrapperClass = index < rows.length - 1 ? ' mb-15' : '';
             var detalleLink = row && row.links && row.links.derivacion ? String(row.links.derivacion) : '';
             var detalleAction = detalleLink !== ''
-                ? '<a class="dropdown-item" href="' + escapeHtml(detalleLink) + '" target="_blank" rel="noopener noreferrer"><i class="ti-import"></i> Details</a>'
-                : '<a class="dropdown-item disabled text-muted" href="#" tabindex="-1" aria-disabled="true"><i class="ti-import"></i> Details</a>';
+                ? '<a class="dropdown-item" href="' + escapeHtml(detalleLink) + '" target="_blank" rel="noopener noreferrer"><i class="mdi mdi-open-in-new"></i> Details</a>'
+                : '<a class="dropdown-item disabled text-muted" href="#" tabindex="-1" aria-disabled="true"><i class="mdi mdi-open-in-new"></i> Details</a>';
 
             return '<div class="d-flex justify-content-between align-items-center' + wrapperClass + '">'
                 + '<div class="w-p100 rounded10 justify-content-between align-items-center d-flex">'
@@ -641,10 +641,10 @@
                 + '</div>'
                 + '<div class="dropdown">'
                 + '<a href="#" data-action="open-exam-nas" data-nas-list-url="' + escapeHtml(nasListUrl) + '" data-nas-page-url="' + escapeHtml(nasPageUrl) + '"><i class="fa fa-download bg-light rounded p-5 me-5 text-dark" aria-hidden="true"></i></a>'
-                + '<a data-bs-toggle="dropdown" href="#" aria-expanded="false"><i class="ti-more-alt rotate-90"></i></a>'
+                + '<a data-bs-toggle="dropdown" href="#" aria-expanded="false"><i class="mdi mdi-dots-vertical"></i></a>'
                 + '<div class="dropdown-menu dropdown-menu-end">'
                 + detalleAction
-                + '<a class="dropdown-item" href="#" data-action="open-exam-nas" data-nas-list-url="' + escapeHtml(nasListUrl) + '" data-nas-page-url="' + escapeHtml(nasPageUrl) + '"><i class="ti-export"></i> Lab Reports</a>'
+                + '<a class="dropdown-item" href="#" data-action="open-exam-nas" data-nas-list-url="' + escapeHtml(nasListUrl) + '" data-nas-page-url="' + escapeHtml(nasPageUrl) + '"><i class="mdi mdi-download"></i> Lab Reports</a>'
                 + '</div>'
                 + '</div>'
                 + '</div>'
@@ -948,7 +948,20 @@
             return;
         }
 
-        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        if (typeof bootstrap.Modal.getOrCreateInstance === 'function') {
+            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+            return;
+        }
+
+        if (typeof bootstrap.Modal.getInstance === 'function') {
+            var existingModal = bootstrap.Modal.getInstance(modalEl);
+            if (existingModal) {
+                existingModal.show();
+                return;
+            }
+        }
+
+        new bootstrap.Modal(modalEl).show();
     }
 
     function printRecetaModal() {
@@ -1090,7 +1103,7 @@
             var actionHtml = '';
             if (formId !== '') {
                 actionHtml = '<div class="dropdown">'
-                    + '<a class="px-10 pt-5" href="#" data-bs-toggle="dropdown"><i class="ti-more-alt"></i></a>'
+                    + '<a class="px-10 pt-5" href="#" data-bs-toggle="dropdown"><i class="mdi mdi-dots-vertical"></i></a>'
                     + '<div class="dropdown-menu dropdown-menu-end">'
                     + '<a class="dropdown-item flexbox" href="#" data-bs-toggle="modal" data-bs-target="#modalSolicitud"'
                     + ' data-form-id="' + escapeHtml(formId) + '" data-hc="' + escapeHtml(hcNumber) + '">'

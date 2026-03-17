@@ -1,3 +1,4 @@
+import '../../../css/medforge-datatables.css';
 import {
     ensureDataTables,
     ensureDataTableLanguage,

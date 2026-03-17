@@ -266,6 +266,7 @@
         @vite('resources/js/v2/cirugias-index.js')
     @else
         <script src="/assets/vendor_components/datatable/datatables.min.js"></script>
+        <script src="/js/pages/shared/datatables-language-es.js"></script>
         <script src="/assets/vendor_components/sweetalert2/sweetalert2.all.min.js"></script>
         <script src="/js/pages/cirugias.js"></script>
     @endif

@@ -157,6 +157,7 @@
         @vite('resources/js/v2/codes-index.js')
     @else
         <script src="/assets/vendor_components/datatable/datatables.min.js"></script>
+        <script src="/js/pages/shared/datatables-language-es.js"></script>
         <script src="/js/pages/codes-index.js"></script>
     @endif
 @endpush

@@ -1,3 +1,5 @@
+import '../../css/medforge-datatables.css';
+import '../../css/v2/cirugias-wizard.css';
 import {
     ensureDataTables,
     ensureSweetAlert,

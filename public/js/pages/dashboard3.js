@@ -220,13 +220,15 @@ $(function () {
         }).render();
     }
 
-    $('.inner-user-div3').slimScroll({
-        height: '310px'
-    });
+    if (typeof $.fn.slimScroll !== 'undefined') {
+        $('.inner-user-div3').slimScroll({
+            height: '310px'
+        });
 
-    $('.inner-user-div4').slimScroll({
-        height: '200px'
-    });
+        $('.inner-user-div4').slimScroll({
+            height: '200px'
+        });
+    }
 
     $('.owl-carousel').owlCarousel({
         loop: true,

@@ -325,8 +325,11 @@ if ($scrapingOutput !== null && $codigoDerivacionObtenida === ''): ?>
     <script>
         (function () {
             const modalEl = document.getElementById('scrapeErrorModal');
-            if (!modalEl || typeof bootstrap === 'undefined') return;
-            const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+            if (!modalEl || typeof bootstrap === 'undefined' || !bootstrap.Modal) return;
+            const modal = typeof bootstrap.Modal.getOrCreateInstance === 'function'
+                ? bootstrap.Modal.getOrCreateInstance(modalEl)
+                : (typeof bootstrap.Modal.getInstance === 'function' && bootstrap.Modal.getInstance(modalEl))
+                    || new bootstrap.Modal(modalEl);
             modal.show();
         })();
     </script>

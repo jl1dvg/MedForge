@@ -1,3 +1,4 @@
+import '../../../../public/assets/vendor_components/bootstrap-daterangepicker/daterangepicker.css';
 import {
     ensureCkeditor,
     ensureDaterangepicker,
