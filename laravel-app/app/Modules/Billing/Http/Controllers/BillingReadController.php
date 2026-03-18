@@ -38,6 +38,7 @@ class BillingReadController
             'form_id' => $request->query('form_id'),
             'hc_number' => $request->query('hc_number'),
             'afiliacion' => $afiliaciones,
+            'empresa_seguro' => $request->query('empresa_seguro'),
             'sede' => $request->query('sede'),
             'estado_revision' => $request->query('estado_revision'),
             'informado' => $request->query('informado'),

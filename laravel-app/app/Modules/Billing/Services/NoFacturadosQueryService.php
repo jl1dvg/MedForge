@@ -2,6 +2,7 @@
 
 namespace App\Modules\Billing\Services;
 
+use App\Modules\Shared\Support\AfiliacionDimensionService;
 use PDO;
 
 class NoFacturadosQueryService
@@ -10,19 +11,26 @@ class NoFacturadosQueryService
      * @var array<string,bool>
      */
     private array $columnExistsCache = [];
+    private readonly AfiliacionDimensionService $afiliacionDimensions;
 
     public function __construct(private readonly PDO $db)
     {
+        $this->afiliacionDimensions = new AfiliacionDimensionService($db);
     }
 
     private function getBaseSql(): string
     {
+        $dimensionPr = $this->afiliacionDimensions->buildContext('pa.afiliacion', 'acm_pr');
+        $dimensionPd = $this->afiliacionDimensions->buildContext('pa.afiliacion', 'acm_pd');
+
         $sql = <<<'SQL'
             SELECT
                 base.form_id,
                 base.hc_number,
                 base.fecha,
                 base.afiliacion,
+                base.empresa_seguro_key,
+                base.empresa_seguro,
                 base.sede,
                 base.paciente,
                 base.procedimiento,
@@ -31,13 +39,17 @@ class NoFacturadosQueryService
                 base.informado,
                 base.informe_actualizado,
                 base.estado_agenda,
-                base.valor_estimado
+                base.valor_estimado,
+                base.consulta_fecha,
+                base.consulta_diagnosticos
             FROM (
                 SELECT
                     pr.form_id,
                     pr.hc_number,
                     pr.fecha AS fecha,
                     pa.afiliacion,
+                    %EMPRESA_PR_KEY_EXPR% AS empresa_seguro_key,
+                    %EMPRESA_PR_LABEL_EXPR% AS empresa_seguro,
                     %SEDE_EXPR% AS sede,
                     CONCAT_WS(' ', pa.lname, pa.lname2, pa.fname, pa.mname) AS paciente,
                     pr.procedimiento_proyectado AS procedimiento,
@@ -54,11 +66,15 @@ class NoFacturadosQueryService
                     END AS informado,
                     ii.updated_at AS informe_actualizado,
                     pr.estado_agenda AS estado_agenda,
-                    0 AS valor_estimado
+                    0 AS valor_estimado,
+                    cd.fecha AS consulta_fecha,
+                    NULLIF(TRIM(COALESCE(cd.diagnosticos, '')), '') AS consulta_diagnosticos
                 FROM procedimiento_proyectado pr
                 INNER JOIN patient_data pa ON pa.hc_number = pr.hc_number
+                %DIMENSION_PR_JOIN%
                 LEFT JOIN protocolo_data pd ON pd.form_id = pr.form_id
                 LEFT JOIN imagenes_informes ii ON ii.form_id = pr.form_id
+                LEFT JOIN consulta_data cd ON cd.hc_number = pr.hc_number AND cd.form_id = pr.form_id
                 WHERE pd.form_id IS NULL
                   AND NOT EXISTS (SELECT 1 FROM billing_main bm WHERE bm.form_id = pr.form_id)
                   AND (
@@ -79,6 +95,8 @@ class NoFacturadosQueryService
                     pd.hc_number,
                     pd.fecha_inicio AS fecha,
                     pa.afiliacion,
+                    %EMPRESA_PD_KEY_EXPR% AS empresa_seguro_key,
+                    %EMPRESA_PD_LABEL_EXPR% AS empresa_seguro,
                     %SEDE_EXPR% AS sede,
                     CONCAT_WS(' ', pa.lname, pa.lname2, pa.fname, pa.mname) AS paciente,
                     TRIM(CONCAT(pd.membrete, ' ', pd.lateralidad)) AS procedimiento,
@@ -95,11 +113,15 @@ class NoFacturadosQueryService
                     END AS informado,
                     ii.updated_at AS informe_actualizado,
                     pr.estado_agenda AS estado_agenda,
-                    0 AS valor_estimado
+                    0 AS valor_estimado,
+                    cd.fecha AS consulta_fecha,
+                    NULLIF(TRIM(COALESCE(cd.diagnosticos, '')), '') AS consulta_diagnosticos
                 FROM protocolo_data pd
                 INNER JOIN procedimiento_proyectado pr ON pr.form_id = pd.form_id
                 INNER JOIN patient_data pa ON pa.hc_number = pd.hc_number
+                %DIMENSION_PD_JOIN%
                 LEFT JOIN imagenes_informes ii ON ii.form_id = pd.form_id
+                LEFT JOIN consulta_data cd ON cd.hc_number = pd.hc_number AND cd.form_id = pd.form_id
                 WHERE NOT EXISTS (SELECT 1 FROM billing_main bm WHERE bm.form_id = pd.form_id)
                   AND (
                         UPPER(TRIM(CONCAT(pd.membrete, ' ', pd.lateralidad))) NOT LIKE 'SERVICIOS OFTALMOLOGICOS GENERALES%'
@@ -114,7 +136,23 @@ class NoFacturadosQueryService
             ) AS base
         SQL;
 
-        return str_replace('%SEDE_EXPR%', $this->sedeExpression('pr'), $sql);
+        return str_replace([
+            '%SEDE_EXPR%',
+            '%DIMENSION_PR_JOIN%',
+            '%EMPRESA_PR_KEY_EXPR%',
+            '%EMPRESA_PR_LABEL_EXPR%',
+            '%DIMENSION_PD_JOIN%',
+            '%EMPRESA_PD_KEY_EXPR%',
+            '%EMPRESA_PD_LABEL_EXPR%',
+        ], [
+            $this->sedeExpression('pr'),
+            $dimensionPr['join'],
+            $dimensionPr['empresa_key_expr'],
+            $dimensionPr['empresa_label_expr'],
+            $dimensionPd['join'],
+            $dimensionPd['empresa_key_expr'],
+            $dimensionPd['empresa_label_expr'],
+        ], $sql);
     }
 
     public function listar(array $filters, int $start, int $length): array
@@ -143,6 +181,34 @@ class NoFacturadosQueryService
         $stmtSummary->execute();
         $summaryRows = $stmtSummary->fetchAll(PDO::FETCH_ASSOC);
 
+        $pniSummary = [
+            'realizadas' => 0,
+            'canceladas' => 0,
+            'no_realizadas' => 0,
+        ];
+
+        $pniRealizadaSql = '(' . $this->pniHasConsultaUtilSql('base') . ' AND ' . $this->pniEncounterAttendedSql('base') . ')';
+        $pniCanceladaSql = $this->pniEncounterCancelledSql('base');
+        $pniWhere = $where === ''
+            ? " WHERE base.tipo = 'pni'"
+            : $where . " AND base.tipo = 'pni'";
+        $pniSummarySql = 'SELECT
+                SUM(CASE WHEN ' . $pniRealizadaSql . ' THEN 1 ELSE 0 END) AS realizadas,
+                SUM(CASE WHEN NOT ' . $pniRealizadaSql . ' AND (' . $pniCanceladaSql . ') THEN 1 ELSE 0 END) AS canceladas,
+                SUM(CASE WHEN NOT ' . $pniRealizadaSql . ' AND NOT (' . $pniCanceladaSql . ') THEN 1 ELSE 0 END) AS no_realizadas
+            FROM (' . $baseSql . ') AS base' . $pniWhere;
+        $stmtPniSummary = $this->db->prepare($pniSummarySql);
+        foreach ($params as $key => $value) {
+            $stmtPniSummary->bindValue($key, $value);
+        }
+        $stmtPniSummary->execute();
+        $pniSummaryRow = $stmtPniSummary->fetch(PDO::FETCH_ASSOC) ?: [];
+        $pniSummary = [
+            'realizadas' => (int) ($pniSummaryRow['realizadas'] ?? 0),
+            'canceladas' => (int) ($pniSummaryRow['canceladas'] ?? 0),
+            'no_realizadas' => (int) ($pniSummaryRow['no_realizadas'] ?? 0),
+        ];
+
         $limitStart = max(0, (int) $start);
         $limitLength = max(1, (int) $length);
 
@@ -164,6 +230,11 @@ class NoFacturadosQueryService
                     $row['procedimiento_display'] = $parts['codigo'] . ' (' . $parts['detalle'] . ')';
                 }
             }
+
+            if (($row['tipo'] ?? '') === 'pni') {
+                $row['estado_realizacion'] = $this->resolvePniRealizationState($row);
+            }
+
             return $row;
         }, $data);
 
@@ -172,7 +243,7 @@ class NoFacturadosQueryService
             'monto' => 0.0,
             'quirurgicos' => ['cantidad' => 0, 'monto' => 0.0],
             'no_quirurgicos' => ['cantidad' => 0, 'monto' => 0.0],
-            'pni' => ['cantidad' => 0, 'monto' => 0.0],
+            'pni' => ['cantidad' => 0, 'monto' => 0.0] + $pniSummary,
         ];
 
         foreach ($summaryRows as $row) {
@@ -317,12 +388,77 @@ class NoFacturadosQueryService
         return trim($clean);
     }
 
+    /**
+     * @param array<string, mixed> $row
+     */
+    private function resolvePniRealizationState(array $row): string
+    {
+        $estadoEncuentro = strtoupper(trim((string) ($row['estado_agenda'] ?? '')));
+
+        if ($this->hasConsultaUtil($row) && $this->isEncounterAttended($estadoEncuentro)) {
+            return 'REALIZADA';
+        }
+
+        if ($this->isEncounterCancelled($estadoEncuentro)) {
+            return 'CANCELADA';
+        }
+
+        return 'NO_REALIZADA';
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    private function hasConsultaUtil(array $row): bool
+    {
+        $consultaFecha = trim((string) ($row['consulta_fecha'] ?? ''));
+        $consultaDiagnosticos = trim((string) ($row['consulta_diagnosticos'] ?? ''));
+
+        return $consultaFecha !== '' || $consultaDiagnosticos !== '';
+    }
+
+    private function isEncounterAttended(string $status): bool
+    {
+        $status = strtoupper(trim($status));
+        if ($status === '') {
+            return false;
+        }
+
+        return str_starts_with($status, 'ATENDID')
+            || str_starts_with($status, 'PAGAD')
+            || str_starts_with($status, 'TERMINAD');
+    }
+
+    private function isEncounterCancelled(string $status): bool
+    {
+        $status = strtoupper(trim($status));
+        return $status === 'CANCELADO' || $status === 'CANCELADA';
+    }
+
+    private function pniHasConsultaUtilSql(string $alias): string
+    {
+        return "(COALESCE(TRIM(CAST({$alias}.consulta_fecha AS CHAR)), '') <> '' OR COALESCE(TRIM({$alias}.consulta_diagnosticos), '') <> '')";
+    }
+
+    private function pniEncounterAttendedSql(string $alias): string
+    {
+        return "(UPPER(TRIM(COALESCE({$alias}.estado_agenda, ''))) LIKE 'ATENDID%'"
+            . " OR UPPER(TRIM(COALESCE({$alias}.estado_agenda, ''))) LIKE 'PAGAD%'"
+            . " OR UPPER(TRIM(COALESCE({$alias}.estado_agenda, ''))) LIKE 'TERMINAD%')";
+    }
+
+    private function pniEncounterCancelledSql(string $alias): string
+    {
+        return "UPPER(TRIM(COALESCE({$alias}.estado_agenda, ''))) IN ('CANCELADO', 'CANCELADA')";
+    }
+
     private function buildWhere(array $filters, array &$params): string
     {
         $conditions = [];
         $formId = trim((string) ($filters['form_id'] ?? ''));
         $hcNumber = trim((string) ($filters['hc_number'] ?? ''));
         $afiliaciones = array_values(array_filter(array_map('trim', (array)($filters['afiliacion'] ?? [])), static fn($value) => $value !== ''));
+        $empresaSeguro = $this->afiliacionDimensions->normalizeEmpresaFilter((string) ($filters['empresa_seguro'] ?? ''));
         $estadoRevision = $filters['estado_revision'] ?? null;
         $tipo = $filters['tipo'] ?? null;
         $busqueda = $filters['busqueda'] ?? null;
@@ -351,6 +487,11 @@ class NoFacturadosQueryService
                 $params[$placeholder] = $afiliacion;
             }
             $conditions[] = 'base.afiliacion IN (' . implode(', ', $placeholders) . ')';
+        }
+
+        if ($empresaSeguro !== '') {
+            $conditions[] = 'base.empresa_seguro_key = :empresa_seguro';
+            $params[':empresa_seguro'] = $empresaSeguro;
         }
 
         if ($sede !== '') {

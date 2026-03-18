@@ -107,6 +107,7 @@ class BillingUiController
         return view('billing.v2-no-facturados', [
             'pageTitle' => 'No Facturados',
             'currentUser' => LegacyCurrentUser::resolve($request),
+            'empresaSeguroOptions' => $this->insuranceDimensionOptions('empresa'),
         ]);
     }
 

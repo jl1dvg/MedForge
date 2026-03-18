@@ -1,3 +1,6 @@
+    @php
+        $empresaSeguroOptions = is_array($empresaSeguroOptions ?? null) ? $empresaSeguroOptions : [];
+    @endphp
     <div class="row">
         <div class="col-12">
             <div class="box">
@@ -33,6 +36,9 @@
                                 <div class="text-muted">PNI</div>
                                 <div class="fw-bold fs-5" data-resumen="pni-cantidad">0</div>
                                 <div class="text-success" data-resumen="pni-monto">$0.00</div>
+                                <div class="small text-muted" data-resumen="pni-realizadas">Realizadas: 0</div>
+                                <div class="small text-muted" data-resumen="pni-no-realizadas">No realizadas: 0</div>
+                                <div class="small text-muted" data-resumen="pni-canceladas">Canceladas: 0</div>
                             </div>
                         </div>
                     </div>
@@ -144,15 +150,16 @@
                                    placeholder="Texto o código">
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label">Rango valor</label>
-                            <div class="input-group input-group-sm">
-                                <span class="input-group-text">$</span>
-                                <input type="number" step="0.01" id="fValorMin" name="valor_min" class="form-control"
-                                       placeholder="Mín">
-                                <span class="input-group-text">-</span>
-                                <input type="number" step="0.01" id="fValorMax" name="valor_max" class="form-control"
-                                       placeholder="Máx">
-                            </div>
+                            <label for="fEmpresaSeguro" class="form-label">Empresa aseguradora</label>
+                            <select id="fEmpresaSeguro" name="empresa_seguro" class="form-select form-select-sm">
+                                @foreach($empresaSeguroOptions as $option)
+                                    @php
+                                        $optionValue = trim((string) ($option['value'] ?? ''));
+                                        $optionLabel = trim((string) ($option['label'] ?? $optionValue));
+                                    @endphp
+                                    <option value="{{ $optionValue }}">{{ $optionLabel }}</option>
+                                @endforeach
+                            </select>
                         </div>
                         <div class="col-md-4 ms-auto text-end">
                             <button type="submit" class="btn btn-sm btn-primary me-2"><i class="mdi mdi-magnify"></i>
@@ -440,8 +447,7 @@
                                         <th>Afiliación</th>
                                         <th>Fecha</th>
                                         <th>Tipo</th>
-                                        <th>Estado revisión</th>
-                                        <th>Informe</th>
+                                        <th>Realización</th>
                                         <th>Procedimiento</th>
                                         <th>Valor</th>
                                         <th>Acciones</th>

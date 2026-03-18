@@ -709,6 +709,24 @@
 
         const renderBadge = (label, type = 'secondary') => `<span class="badge badge-pill badge-${type}">${label}</span>`;
 
+        const renderPniRealizationBadge = (row) => {
+            const estado = String(row?.estado_realizacion || '').toUpperCase();
+            const agenda = String(row?.estado_agenda || '').trim();
+
+            let badge = renderBadge('No realizada', 'secondary');
+            if (estado === 'REALIZADA') {
+                badge = renderBadge('Realizada', 'success');
+            } else if (estado === 'CANCELADA') {
+                badge = renderBadge('Cancelada', 'danger');
+            }
+
+            if (!agenda) {
+                return badge;
+            }
+
+            return `${badge}<div class="text-muted small mt-1">Agenda: ${escapeHtml(agenda)}</div>`;
+        };
+
         const getActiveTableKey = () => document.querySelector('#noFacturadosTabs .nav-link.active')?.id?.replace('tab', '')?.replace(/^./, (c) => c.toLowerCase()) || 'revisados';
 
         const updateSelectionInfo = () => {
@@ -875,8 +893,9 @@
             if (previewProcedimiento) previewProcedimiento.textContent = formatProcedimiento(procedimiento || '') || '—';
         };
 
-        const buildColumns = (tableKey) => ([
-            {
+        const buildColumns = (tableKey) => {
+            const columns = [
+                {
                 data: null,
                 orderable: false,
                 searchable: false,
@@ -1009,7 +1028,29 @@
                     `;
                 }
             }
-        ]);
+            ];
+
+            if (tableKey === 'pni') {
+                return [
+                    columns[0],
+                    columns[1],
+                    columns[2],
+                    columns[3],
+                    columns[4],
+                    columns[5],
+                    {
+                        data: 'estado_realizacion',
+                        defaultContent: '',
+                        render: (_, __, row) => renderPniRealizationBadge(row),
+                    },
+                    columns[8],
+                    columns[9],
+                    columns[10],
+                ];
+            }
+
+            return columns;
+        };
 
         $.fn.dataTable.ext.errMode = 'none';
 
@@ -1075,6 +1116,9 @@
                 setResumen('no-quirurgicos-monto', formatMonto(summary.no_quirurgicos?.monto));
                 setResumen('pni-cantidad', summary.pni?.cantidad ?? 0);
                 setResumen('pni-monto', formatMonto(summary.pni?.monto));
+                setResumen('pni-realizadas', `Realizadas: ${summary.pni?.realizadas ?? 0}`);
+                setResumen('pni-no-realizadas', `No realizadas: ${summary.pni?.no_realizadas ?? 0}`);
+                setResumen('pni-canceladas', `Canceladas: ${summary.pni?.canceladas ?? 0}`);
             });
 
             $(`#${config.tableId} tbody`).on('change', '.row-select', function () {

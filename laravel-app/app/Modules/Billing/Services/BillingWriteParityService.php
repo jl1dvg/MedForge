@@ -19,15 +19,32 @@ class BillingWriteParityService
     }
 
     /**
-     * @return array{billing_id:int, created:bool}
+     * @return array{billing_id:int, created:bool, repaired:bool}
      */
     public function crearDesdeNoFacturado(string $formId, string $hcNumber, ?int $userId): array
     {
         $existing = $this->findBillingByFormId($formId);
         if ($existing !== null) {
+            $billingId = (int) ($existing['id'] ?? 0);
+            $repaired = false;
+
+            if ($billingId > 0 && !$this->hasAnyBillingDetail($billingId)) {
+                $this->db->beginTransaction();
+
+                try {
+                    $this->seedBillingDetailsFromPreview($billingId, $formId, $hcNumber);
+                    $this->db->commit();
+                    $repaired = true;
+                } catch (Throwable $e) {
+                    $this->db->rollBack();
+                    throw $e;
+                }
+            }
+
             return [
-                'billing_id' => (int) ($existing['id'] ?? 0),
+                'billing_id' => $billingId,
                 'created' => false,
+                'repaired' => $repaired,
             ];
         }
 
@@ -36,12 +53,13 @@ class BillingWriteParityService
         try {
             $billingId = $this->insertBillingMain($formId, $hcNumber, $userId);
             $this->syncBillingCreatedAt($billingId, $formId);
-            $this->seedBillingDetailsFromPreview($billingId, $formId);
+            $this->seedBillingDetailsFromPreview($billingId, $formId, $hcNumber);
             $this->db->commit();
 
             return [
                 'billing_id' => $billingId,
                 'created' => true,
+                'repaired' => false,
             ];
         } catch (Throwable $e) {
             $this->db->rollBack();
@@ -477,14 +495,11 @@ class BillingWriteParityService
         $stmt->execute([$fechaInicio, $billingId]);
     }
 
-    private function seedBillingDetailsFromPreview(int $billingId, string $formId): void
+    private function seedBillingDetailsFromPreview(int $billingId, string $formId, string $hcNumber): void
     {
-        if (!$this->hasTable('billing_procedimientos')) {
-            return;
-        }
+        $preview = $this->buildPreviewPayload($formId, $hcNumber);
 
-        $procedimientos = $this->buildProcedimientosPreview($formId);
-        foreach ($procedimientos as $procedimiento) {
+        foreach (($preview['procedimientos'] ?? []) as $procedimiento) {
             $codigo = trim((string) ($procedimiento['procCodigo'] ?? ''));
             $detalle = trim((string) ($procedimiento['procDetalle'] ?? ''));
             if ($codigo === '' || $detalle === '') {
@@ -498,6 +513,291 @@ class BillingWriteParityService
                 (float) ($procedimiento['procPrecio'] ?? 0)
             );
         }
+
+        foreach (($preview['insumos'] ?? []) as $insumo) {
+            $codigo = trim((string) ($insumo['codigo'] ?? ''));
+            $nombre = trim((string) ($insumo['nombre'] ?? ''));
+            if ($codigo === '' || $nombre === '') {
+                continue;
+            }
+
+            $this->insertBillingInsumo(
+                $billingId,
+                [
+                    'id' => $insumo['id'] ?? null,
+                    'codigo' => $codigo,
+                    'nombre' => $nombre,
+                    'cantidad' => (float) ($insumo['cantidad'] ?? 0),
+                    'precio' => (float) ($insumo['precio'] ?? 0),
+                    'iva' => (int) ($insumo['iva'] ?? 1),
+                ]
+            );
+        }
+
+        foreach (($preview['derechos'] ?? []) as $derecho) {
+            $codigo = trim((string) ($derecho['codigo'] ?? ''));
+            $detalle = trim((string) ($derecho['detalle'] ?? ''));
+            if ($codigo === '' || $detalle === '') {
+                continue;
+            }
+
+            $this->insertBillingDerecho(
+                $billingId,
+                [
+                    'id' => $derecho['id'] ?? null,
+                    'codigo' => $codigo,
+                    'detalle' => $detalle,
+                    'cantidad' => (float) ($derecho['cantidad'] ?? 0),
+                    'iva' => (int) ($derecho['iva'] ?? 0),
+                    'precioAfiliacion' => (float) ($derecho['precioAfiliacion'] ?? 0),
+                ]
+            );
+        }
+
+        foreach (($preview['oxigeno'] ?? []) as $oxigeno) {
+            $codigo = trim((string) ($oxigeno['codigo'] ?? ''));
+            $nombre = trim((string) ($oxigeno['nombre'] ?? ''));
+            if ($codigo === '' || $nombre === '') {
+                continue;
+            }
+
+            $this->insertBillingOxigeno(
+                $billingId,
+                [
+                    'codigo' => $codigo,
+                    'nombre' => $nombre,
+                    'tiempo' => (float) ($oxigeno['tiempo'] ?? 0),
+                    'litros' => (float) ($oxigeno['litros'] ?? 0),
+                    'valor1' => (float) ($oxigeno['valor1'] ?? 0),
+                    'valor2' => (float) ($oxigeno['valor2'] ?? 0),
+                    'precio' => (float) ($oxigeno['precio'] ?? 0),
+                ]
+            );
+        }
+
+        foreach (($preview['anestesia'] ?? []) as $anestesia) {
+            $codigo = trim((string) ($anestesia['codigo'] ?? ''));
+            $nombre = trim((string) ($anestesia['nombre'] ?? ''));
+            if ($codigo === '' || $nombre === '') {
+                continue;
+            }
+
+            $this->insertBillingAnestesia(
+                $billingId,
+                [
+                    'codigo' => $codigo,
+                    'nombre' => $nombre,
+                    'tiempo' => (float) ($anestesia['tiempo'] ?? 0),
+                    'valor2' => (float) ($anestesia['valor2'] ?? 0),
+                    'precio' => (float) ($anestesia['precio'] ?? 0),
+                ]
+            );
+        }
+    }
+
+    /**
+     * @return array<string, array<int, array<string, mixed>>>
+     */
+    private function buildPreviewPayload(string $formId, string $hcNumber): array
+    {
+        $preview = [
+            'procedimientos' => [],
+            'insumos' => [],
+            'derechos' => [],
+            'oxigeno' => [],
+            'anestesia' => [],
+        ];
+
+        try {
+            $previewService = new BillingPreviewService($this->db);
+            $previewData = $previewService->prepararPreviewFacturacion($formId, $hcNumber);
+            if (is_array($previewData)) {
+                foreach (array_keys($preview) as $key) {
+                    if (isset($previewData[$key]) && is_array($previewData[$key])) {
+                        $preview[$key] = $previewData[$key];
+                    }
+                }
+            }
+        } catch (Throwable) {
+            // Mantener el flujo de facturación aunque el preview enriquecido falle.
+        }
+
+        if (($preview['procedimientos'] ?? []) === []) {
+            $preview['procedimientos'] = $this->buildProcedimientosPreview($formId);
+        }
+
+        return $preview;
+    }
+
+    private function hasAnyBillingDetail(int $billingId): bool
+    {
+        foreach ([
+            'billing_procedimientos',
+            'billing_insumos',
+            'billing_derechos',
+            'billing_oxigeno',
+            'billing_anestesia',
+        ] as $table) {
+            if (!$this->hasTable($table)) {
+                continue;
+            }
+
+            $stmt = $this->db->prepare('SELECT 1 FROM `' . $table . '` WHERE billing_id = ? LIMIT 1');
+            $stmt->execute([$billingId]);
+            if ($stmt->fetchColumn() !== false) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param array<string, mixed> $insumo
+     */
+    private function insertBillingInsumo(int $billingId, array $insumo): void
+    {
+        if (!$this->hasTable('billing_insumos')) {
+            return;
+        }
+
+        $columns = $this->tableColumns('billing_insumos');
+        $payload = [];
+
+        if (in_array('billing_id', $columns, true)) {
+            $payload['billing_id'] = $billingId;
+        }
+        if (in_array('insumo_id', $columns, true)) {
+            $payload['insumo_id'] = is_numeric($insumo['id'] ?? null) ? (int) $insumo['id'] : null;
+        }
+        if (in_array('codigo', $columns, true)) {
+            $payload['codigo'] = $insumo['codigo'] ?? '';
+        }
+        if (in_array('nombre', $columns, true)) {
+            $payload['nombre'] = $insumo['nombre'] ?? '';
+        }
+        if (in_array('cantidad', $columns, true)) {
+            $payload['cantidad'] = $insumo['cantidad'] ?? 0;
+        }
+        if (in_array('precio', $columns, true)) {
+            $payload['precio'] = $insumo['precio'] ?? 0;
+        }
+        if (in_array('iva', $columns, true)) {
+            $payload['iva'] = $insumo['iva'] ?? 1;
+        }
+
+        $this->insertRow('billing_insumos', $payload);
+    }
+
+    /**
+     * @param array<string, mixed> $derecho
+     */
+    private function insertBillingDerecho(int $billingId, array $derecho): void
+    {
+        if (!$this->hasTable('billing_derechos')) {
+            return;
+        }
+
+        $columns = $this->tableColumns('billing_derechos');
+        $payload = [];
+
+        if (in_array('billing_id', $columns, true)) {
+            $payload['billing_id'] = $billingId;
+        }
+        if (in_array('derecho_id', $columns, true)) {
+            $payload['derecho_id'] = is_numeric($derecho['id'] ?? null) ? (int) $derecho['id'] : null;
+        }
+        if (in_array('codigo', $columns, true)) {
+            $payload['codigo'] = $derecho['codigo'] ?? '';
+        }
+        if (in_array('detalle', $columns, true)) {
+            $payload['detalle'] = $derecho['detalle'] ?? '';
+        }
+        if (in_array('cantidad', $columns, true)) {
+            $payload['cantidad'] = $derecho['cantidad'] ?? 0;
+        }
+        if (in_array('iva', $columns, true)) {
+            $payload['iva'] = $derecho['iva'] ?? 0;
+        }
+        if (in_array('precio_afiliacion', $columns, true)) {
+            $payload['precio_afiliacion'] = $derecho['precioAfiliacion'] ?? 0;
+        }
+
+        $this->insertRow('billing_derechos', $payload);
+    }
+
+    /**
+     * @param array<string, mixed> $oxigeno
+     */
+    private function insertBillingOxigeno(int $billingId, array $oxigeno): void
+    {
+        if (!$this->hasTable('billing_oxigeno')) {
+            return;
+        }
+
+        $columns = $this->tableColumns('billing_oxigeno');
+        $payload = [];
+
+        if (in_array('billing_id', $columns, true)) {
+            $payload['billing_id'] = $billingId;
+        }
+        if (in_array('codigo', $columns, true)) {
+            $payload['codigo'] = $oxigeno['codigo'] ?? '';
+        }
+        if (in_array('nombre', $columns, true)) {
+            $payload['nombre'] = $oxigeno['nombre'] ?? '';
+        }
+        if (in_array('tiempo', $columns, true)) {
+            $payload['tiempo'] = $oxigeno['tiempo'] ?? 0;
+        }
+        if (in_array('litros', $columns, true)) {
+            $payload['litros'] = $oxigeno['litros'] ?? 0;
+        }
+        if (in_array('valor1', $columns, true)) {
+            $payload['valor1'] = $oxigeno['valor1'] ?? 0;
+        }
+        if (in_array('valor2', $columns, true)) {
+            $payload['valor2'] = $oxigeno['valor2'] ?? 0;
+        }
+        if (in_array('precio', $columns, true)) {
+            $payload['precio'] = $oxigeno['precio'] ?? 0;
+        }
+
+        $this->insertRow('billing_oxigeno', $payload);
+    }
+
+    /**
+     * @param array<string, mixed> $anestesia
+     */
+    private function insertBillingAnestesia(int $billingId, array $anestesia): void
+    {
+        if (!$this->hasTable('billing_anestesia')) {
+            return;
+        }
+
+        $columns = $this->tableColumns('billing_anestesia');
+        $payload = [];
+
+        if (in_array('billing_id', $columns, true)) {
+            $payload['billing_id'] = $billingId;
+        }
+        if (in_array('codigo', $columns, true)) {
+            $payload['codigo'] = $anestesia['codigo'] ?? '';
+        }
+        if (in_array('nombre', $columns, true)) {
+            $payload['nombre'] = $anestesia['nombre'] ?? '';
+        }
+        if (in_array('tiempo', $columns, true)) {
+            $payload['tiempo'] = $anestesia['tiempo'] ?? 0;
+        }
+        if (in_array('valor2', $columns, true)) {
+            $payload['valor2'] = $anestesia['valor2'] ?? 0;
+        }
+        if (in_array('precio', $columns, true)) {
+            $payload['precio'] = $anestesia['precio'] ?? 0;
+        }
+
+        $this->insertRow('billing_anestesia', $payload);
     }
 
     /**
@@ -713,4 +1013,3 @@ class BillingWriteParityService
         return date('H:i:s', $timestamp);
     }
 }
-

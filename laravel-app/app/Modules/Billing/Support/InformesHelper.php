@@ -502,6 +502,7 @@ class InformesHelper
 
         $textosReferencia = [];
         $formulario = $datosPaciente['formulario'] ?? [];
+        $visita = $datosPaciente['visita'] ?? [];
         $procedimientoNombre = strtolower(trim((string)($formulario['procedimiento'] ?? '')));
         if ($procedimientoNombre !== '') {
             $textosReferencia[] = $procedimientoNombre;
@@ -520,6 +521,11 @@ class InformesHelper
         );
         if ($procedimientoProtocolo !== '') {
             $textosReferencia[] = strtolower($procedimientoProtocolo);
+        }
+
+        $procedimientoVisita = trim((string)($visita['procedimiento'] ?? ''));
+        if ($procedimientoVisita !== '') {
+            $textosReferencia[] = strtolower($procedimientoVisita);
         }
 
         foreach (($datosPaciente['procedimientos'] ?? []) as $procedimiento) {
