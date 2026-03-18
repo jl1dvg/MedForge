@@ -92,67 +92,134 @@ $cardNumber = static function (string $label) use ($cardIndex): float {
     return is_string($normalized) && $normalized !== '' ? (float) $normalized : 0.0;
 };
 
-$summaryCards = $pickCards([
-    'Total estudios',
+$operationCoreCards = $pickCards([
+    'Agendas del periodo',
     'Atendidos',
     'Informadas',
     'Facturados',
-    'Pendiente de facturar',
-    'Producción facturada',
-]);
-
-$operationCards = $pickCards([
     'Cumplimiento cita->realización',
     'SLA informe <= 48h',
     'Día pico de tráfico',
-    'Pérdida',
-    'Cancelados',
-    'Pendiente de pago',
+    'Cancelados del periodo',
+    'Pérdida operativa',
+    'Pendientes operativos',
 ]);
 
-$facturacionCards = $pickCards([
-    'Atendidos pendientes facturar',
-    'Pendiente facturar pública',
-    'Pendiente facturar privada',
-    'Facturación cancelada',
-    'Pendiente estimado público',
+$operationFinanceCards = $pickCards([
+    'Producción facturada',
+    'Pendiente de facturar',
+    'Pendiente de pago',
+    'Pendiente estimado',
     'Ticket promedio facturado',
     'Procedimientos facturados',
-    'Facturados e informados',
-    'Facturados sin informar',
-    'Informados sin facturar',
+]);
+
+$requestCards = $pickCards([
+    'Solicitudes de exámenes',
+    'Agendadas al corte',
+    'Realizadas al corte',
+    'Realizadas posterior al corte',
+    'Cumplimiento al corte',
+    'Pérdida económica por no agendar',
+    'Solicitudes sin agenda',
+    'Ausentes de cohorte',
+    'Pendientes vigentes de cohorte',
 ]);
 
 $rangeSummary = trim((string) ($filters['fecha_inicio'] ?? '')) !== '' && trim((string) ($filters['fecha_fin'] ?? '')) !== ''
     ? trim((string) ($filters['fecha_inicio'] ?? '')) . ' a ' . trim((string) ($filters['fecha_fin'] ?? ''))
     : 'Rango abierto';
 
-$executiveHighlights = [];
+$operationHighlights = [];
+$requestHighlights = [];
+$agendasPeriodo = (int) $cardNumber('Agendas del periodo');
 $pendingBilling = (int) ($dashboardMeta['pendientes_facturar'] ?? $cardNumber('Pendiente de facturar'));
 $pendingBillingPublic = (int) ($dashboardMeta['pendientes_facturar_publico'] ?? 0);
 $pendingBillingPrivate = (int) ($dashboardMeta['pendientes_facturar_privado'] ?? 0);
-$pendingAmountPublic = (float) ($dashboardMeta['monto_pendiente_estimado_publico'] ?? 0);
-$pendingPublicWithoutRate = (int) ($dashboardMeta['pendientes_facturar_publico_sin_tarifa'] ?? 0);
+$pendingBillingOther = (int) ($dashboardMeta['pendientes_facturar_otros'] ?? 0);
+$pendingAmountTotal = (float) ($dashboardMeta['monto_pendiente_estimado'] ?? 0);
+$pendingWithoutRate = (int) ($dashboardMeta['pendientes_facturar_sin_tarifa'] ?? 0);
 $sla48Value = trim((string) (($cardIndex['SLA informe <= 48h']['value'] ?? '—')));
 $trafficPeakLabel = trim((string) (($cardIndex['Día pico de tráfico']['value'] ?? '—')));
 $trafficPeakHint = trim((string) (($cardIndex['Día pico de tráfico']['hint'] ?? '')));
+$solicitudesTotal = (int) ($dashboardMeta['solicitudes_total'] ?? $cardNumber('Solicitudes de exámenes'));
+$solicitudesAgendadasAlCorte = (int) ($dashboardMeta['solicitudes_agendadas_al_corte'] ?? $cardNumber('Agendadas al corte'));
+$solicitudesRealizadasAlCorte = (int) ($dashboardMeta['solicitudes_realizadas_al_corte'] ?? $cardNumber('Realizadas al corte'));
+$solicitudesRealizadasPostCorte = (int) ($dashboardMeta['solicitudes_realizadas_post_corte'] ?? $cardNumber('Realizadas posterior al corte'));
+$solicitudesSinAgenda = (int) ($dashboardMeta['solicitudes_sin_agenda'] ?? $cardNumber('Solicitudes sin agenda'));
+$solicitudesSinAgendaMontoEstimado = (float) ($dashboardMeta['solicitudes_sin_agenda_monto_estimado'] ?? 0);
+$solicitudesSinAgendaSinTarifa = (int) ($dashboardMeta['solicitudes_sin_agenda_sin_tarifa'] ?? 0);
+$solicitudesAgendadasPendientes = (int) ($dashboardMeta['solicitudes_agendadas_pendientes'] ?? 0);
+$solicitudesAusentes = (int) ($dashboardMeta['solicitudes_ausentes'] ?? $cardNumber('Ausentes de cohorte'));
+$solicitudesPendientesVigentes = (int) ($dashboardMeta['solicitudes_pendientes_vigentes'] ?? $cardNumber('Pendientes vigentes de cohorte'));
+$cumplimientoAlCorte = $dashboardMeta['cumplimiento_realizacion_al_corte_pct'] ?? null;
+$atendidosPeriodo = (int) $cardNumber('Atendidos');
+$cumplimientoCita = trim((string) (($cardIndex['Cumplimiento cita->realización']['value'] ?? '—')));
+$perdidaOperativa = (int) $cardNumber('Pérdida operativa');
+$pendientesOperativos = (int) ($dashboardMeta['pendientes_operativos'] ?? $cardNumber('Pendientes operativos'));
+$pendingPayment = (int) ($dashboardMeta['pendientes_pago'] ?? $cardNumber('Pendiente de pago'));
 
-if ($pendingBilling > 0) {
-    $executiveHighlights[] = 'Backlog operativo: ' . number_format($pendingBilling) . ' casos atendidos siguen sin cierre de facturación (' . number_format($pendingBillingPublic) . ' públicos y ' . number_format($pendingBillingPrivate) . ' privados).';
+if ($agendasPeriodo > 0) {
+    $operationHighlights[] = 'Se analizaron ' . number_format($agendasPeriodo) . ' agendas operativas y se cerraron ' . number_format($atendidosPeriodo) . ' estudios como realizados; el cumplimiento cita->realización se ubica en ' . $cumplimientoCita . '.';
 }
-if ($pendingAmountPublic > 0) {
-    $executiveHighlights[] = 'Oportunidad pública abierta: $' . number_format($pendingAmountPublic, 2) . ' estimados por facturar con tarifario nivel 3.';
-} elseif ($pendingPublicWithoutRate > 0) {
-    $executiveHighlights[] = 'Existen ' . number_format($pendingPublicWithoutRate) . ' casos públicos pendientes sin tarifa nivel 3, por lo que el pendiente económico está subestimado.';
+if ($perdidaOperativa > 0) {
+    $operationHighlights[] = 'La pérdida operativa del rango asciende a ' . number_format($perdidaOperativa) . ' agendas no concretadas entre canceladas y ausentes; las ausentes incluyen agendas vencidas sin evidencia de realización.';
+}
+if ($pendientesOperativos > 0) {
+    $operationHighlights[] = 'Persisten ' . number_format($pendientesOperativos) . ' agendas operativas sin cierre final; no se consideran pérdida mientras sigan vigentes o correspondan al día actual.';
+}
+if ($pendingBilling > 0) {
+    $pendingBreakdown = [];
+    if ($pendingBillingPublic > 0) {
+        $pendingBreakdown[] = number_format($pendingBillingPublic) . ' públicos';
+    }
+    if ($pendingBillingPrivate > 0) {
+        $pendingBreakdown[] = number_format($pendingBillingPrivate) . ' privados';
+    }
+    if ($pendingBillingOther > 0) {
+        $pendingBreakdown[] = number_format($pendingBillingOther) . ' particulares/otros';
+    }
+    $operationHighlights[] = 'Quedan ' . number_format($pendingBilling) . ' estudios realizados pendientes de facturar; no cuentan como pendiente de pago mientras no exista billing real' . ($pendingBreakdown !== [] ? ' (' . implode(', ', $pendingBreakdown) . ').' : '.');
+}
+if ($pendingPayment > 0) {
+    $operationHighlights[] = 'Adicionalmente, ' . number_format($pendingPayment) . ' registros ya facturados siguen en cartera o pendiente de pago.';
+}
+if ($pendingAmountTotal > 0) {
+    $operationHighlights[] = 'La oportunidad económica estimada del backlog aún no facturado asciende a $' . number_format($pendingAmountTotal, 2) . '.';
+}
+if ($pendingWithoutRate > 0) {
+    $operationHighlights[] = 'Hay ' . number_format($pendingWithoutRate) . ' pendientes de facturar sin tarifa resoluble por código/categoría; requieren revisión tarifaria.';
 }
 if ($sla48Value !== '' && $sla48Value !== '—') {
-    $executiveHighlights[] = 'Cumplimiento temporal: SLA de informe <= 48h en ' . $sla48Value . ' para el rango actual.';
+    $operationHighlights[] = 'El SLA de informe <= 48h está en ' . $sla48Value . '.';
 }
 if ($trafficPeakLabel !== '' && $trafficPeakLabel !== '—') {
-    $executiveHighlights[] = 'Carga operativa concentrada en ' . $trafficPeakLabel . ($trafficPeakHint !== '' ? (' (' . $trafficPeakHint . ').') : '.');
+    $operationHighlights[] = 'La carga operativa se concentró en ' . $trafficPeakLabel . ($trafficPeakHint !== '' ? ' (' . $trafficPeakHint . ').' : '.');
 }
-if ($executiveHighlights === []) {
-    $executiveHighlights[] = 'No se detectaron alertas destacadas para el rango seleccionado. Usa los bloques de operación y facturación para revisar detalle.';
+if ($operationHighlights === []) {
+    $operationHighlights[] = 'No se detectaron alertas operativas destacadas para el rango filtrado.';
+}
+
+if ($solicitudesTotal > 0) {
+    $requestHighlights[] = 'Cumplimiento de cohorte: ' . number_format($solicitudesRealizadasAlCorte) . ' de ' . number_format($solicitudesTotal) . ' solicitudes ya estaban realizadas al cierre del rango' . ($cumplimientoAlCorte !== null ? ' (' . number_format((float) $cumplimientoAlCorte, 1) . '%).' : '.');
+}
+if ($solicitudesRealizadasPostCorte > 0) {
+    $requestHighlights[] = 'Arrastre posterior al corte: ' . number_format($solicitudesRealizadasPostCorte) . ' solicitudes del rango se completaron después de la fecha fin.';
+}
+if ($solicitudesSinAgenda > 0) {
+    $requestHighlights[] = 'Pérdida por no agendar: ' . number_format($solicitudesSinAgenda) . ' solicitudes siguen sin agenda asociada.';
+}
+if ($solicitudesSinAgendaMontoEstimado > 0) {
+    $requestHighlights[] = 'La pérdida económica estimada por esas solicitudes no agendadas asciende a $' . number_format($solicitudesSinAgendaMontoEstimado, 2) . ($solicitudesSinAgendaSinTarifa > 0 ? '; ' . number_format($solicitudesSinAgendaSinTarifa) . ' no tienen tarifa resoluble.' : '.');
+}
+if ($solicitudesAusentes > 0) {
+    $requestHighlights[] = 'Ausentismo consolidado: ' . number_format($solicitudesAusentes) . ' solicitudes quedaron sin cierre tras vencer su agenda o ya fueron marcadas como ausentes.';
+}
+if ($solicitudesPendientesVigentes > 0) {
+    $requestHighlights[] = 'Pendiente vigente: ' . number_format($solicitudesPendientesVigentes) . ' solicitudes de esa cohorte continúan abiertas a la fecha; ' . number_format($solicitudesSinAgenda) . ' sin agenda y ' . number_format($solicitudesAgendadasPendientes) . ' con agenda vigente.';
+}
+if ($requestHighlights === []) {
+    $requestHighlights[] = 'No se detectaron alertas destacadas en la cohorte de solicitudes para el rango seleccionado.';
 }
 ?>
 
@@ -279,28 +346,26 @@ if ($executiveHighlights === []) {
     </div>
 
     <nav class="imagenes-section-nav mb-3">
-        <a href="#imagenes-resumen">Resumen</a>
-        <a href="#imagenes-operacion">Operación</a>
-        <a href="#imagenes-facturacion">Facturación</a>
-        <a href="#imagenes-demanda">Demanda</a>
+        <a href="#imagenes-operacion">Operación del periodo</a>
+        <a href="#imagenes-solicitudes">Solicitudes</a>
     </nav>
 
-    <section id="imagenes-resumen" class="imagenes-section-card mb-3">
+    <section id="imagenes-operacion" class="imagenes-section-card mb-3">
         <div class="imagenes-section-head">
             <div>
-                <p class="imagenes-section-kicker mb-1">Resumen ejecutivo</p>
-                <h4 class="imagenes-section-title mb-1">Lectura gerencial del periodo</h4>
-                <p class="imagenes-section-copy mb-0">Consolida producción, cierre operativo, facturación y presión de backlog para el rango <strong><?= htmlspecialchars($rangeSummary, ENT_QUOTES, 'UTF-8') ?></strong>.</p>
+                <p class="imagenes-section-kicker mb-1">Bloque 1</p>
+                <h4 class="imagenes-section-title mb-1">Operación del periodo</h4>
+                <p class="imagenes-section-copy mb-0">Agenda, realización, cumplimiento operativo, pérdida, economía, top exámenes realizados y estado de facturación para <strong><?= htmlspecialchars($rangeSummary, ENT_QUOTES, 'UTF-8') ?></strong>.</p>
             </div>
             <div class="imagenes-section-badges">
-                <span class="badge bg-light text-primary">Fuente: Laravel V2</span>
-                <span class="badge bg-light text-dark">Registros: <?= htmlspecialchars((string) ($cardIndex['Total estudios']['value'] ?? '0'), ENT_QUOTES, 'UTF-8') ?></span>
+                <span class="badge bg-light text-primary">Fuente: agenda + billing + NAS</span>
+                <span class="badge bg-light text-dark">Agendas: <?= htmlspecialchars((string) ($cardIndex['Agendas del periodo']['value'] ?? '0'), ENT_QUOTES, 'UTF-8') ?></span>
             </div>
         </div>
-        <div class="row g-3">
+        <div class="row g-3 mb-3">
             <div class="col-12 col-xl-8">
-                <div class="imagenes-kpi-grid">
-                    <?php foreach ($summaryCards as $card): ?>
+                <div class="imagenes-kpi-grid imagenes-kpi-grid--compact">
+                    <?php foreach ($operationCoreCards as $card): ?>
                         <article class="imagenes-kpi-card imagenes-kpi-card--summary">
                             <p class="imagenes-kpi-label mb-1"><?= htmlspecialchars((string)($card['label'] ?? ''), ENT_QUOTES, 'UTF-8') ?></p>
                             <h4 class="imagenes-kpi-value mb-1"><?= htmlspecialchars((string)($card['value'] ?? '0'), ENT_QUOTES, 'UTF-8') ?></h4>
@@ -311,27 +376,59 @@ if ($executiveHighlights === []) {
             </div>
             <div class="col-12 col-xl-4">
                 <div class="imagenes-insight-card">
-                    <h6 class="imagenes-chart-title">Hallazgos del periodo</h6>
+                    <h6 class="imagenes-chart-title">Lectura operativa</h6>
                     <ul class="imagenes-insight-list mb-0">
-                        <?php foreach ($executiveHighlights as $highlight): ?>
+                        <?php foreach ($operationHighlights as $highlight): ?>
                             <li><?= htmlspecialchars($highlight, ENT_QUOTES, 'UTF-8') ?></li>
                         <?php endforeach; ?>
                     </ul>
                 </div>
             </div>
         </div>
-    </section>
+        <div class="row g-3">
+            <div class="col-12 col-xl-6">
+                <div class="imagenes-chart-card">
+                    <h6 class="imagenes-chart-title">Agendas vs cierre operativo</h6>
+                    <div class="imagenes-chart-wrap">
+                        <canvas id="chartImagenesCitasRealizados"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-xl-6">
+                <div class="imagenes-chart-card">
+                    <h6 class="imagenes-chart-title">Serie diaria (realizados vs informados)</h6>
+                    <div class="imagenes-chart-wrap">
+                        <canvas id="chartImagenesSerieDiaria"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-xl-6">
+                <div class="imagenes-chart-card">
+                    <h6 class="imagenes-chart-title">Tráfico por día de semana</h6>
+                    <div class="imagenes-chart-wrap">
+                        <canvas id="chartImagenesTraficoSemana"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-xl-6">
+                <div class="imagenes-chart-card">
+                    <h6 class="imagenes-chart-title">Top exámenes realizados</h6>
+                    <div class="imagenes-chart-wrap">
+                        <canvas id="chartImagenesMixCodigos"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
 
-    <section id="imagenes-operacion" class="imagenes-section-card mb-3">
-        <div class="imagenes-section-head">
+        <div class="imagenes-section-head mt-4">
             <div>
-                <p class="imagenes-section-kicker mb-1">Sección 1</p>
-                <h4 class="imagenes-section-title mb-1">Operación y tiempos</h4>
-                <p class="imagenes-section-copy mb-0">Este bloque deja claro volumen, conversión, tráfico y presión de no informados.</p>
+                <p class="imagenes-section-kicker mb-1">Economía y facturación</p>
+                <h4 class="imagenes-section-title mb-1">Cierre financiero del periodo</h4>
+                <p class="imagenes-section-copy mb-0">Backlog atendido sin billing, cartera ya emitida, valorización estimada y productividad facturada del periodo.</p>
             </div>
         </div>
         <div class="imagenes-kpi-grid imagenes-kpi-grid--compact mb-3">
-            <?php foreach ($operationCards as $card): ?>
+            <?php foreach ($operationFinanceCards as $card): ?>
                 <article class="imagenes-kpi-card">
                     <p class="imagenes-kpi-label mb-1"><?= htmlspecialchars((string)($card['label'] ?? ''), ENT_QUOTES, 'UTF-8') ?></p>
                     <h4 class="imagenes-kpi-value mb-1"><?= htmlspecialchars((string)($card['value'] ?? '0'), ENT_QUOTES, 'UTF-8') ?></h4>
@@ -352,67 +449,6 @@ if ($executiveHighlights === []) {
                 <span>TAT P90</span>
                 <strong><?= htmlspecialchars(($dashboardMeta['tat_p90_horas'] ?? null) !== null ? number_format((float)$dashboardMeta['tat_p90_horas'], 2) . ' h' : '—', ENT_QUOTES, 'UTF-8') ?></strong>
             </div>
-        </div>
-        <div class="row g-3">
-            <div class="col-12 col-xl-6">
-                <div class="imagenes-chart-card">
-                    <h6 class="imagenes-chart-title">Embudo operativo</h6>
-                    <div class="imagenes-chart-wrap">
-                        <canvas id="chartImagenesEmbudoOperativo"></canvas>
-                    </div>
-                </div>
-            </div>
-            <div class="col-12 col-xl-6">
-                <div class="imagenes-chart-card">
-                    <h6 class="imagenes-chart-title">Serie diaria (realizados vs informados)</h6>
-                    <div class="imagenes-chart-wrap">
-                        <canvas id="chartImagenesSerieDiaria"></canvas>
-                    </div>
-                </div>
-            </div>
-            <div class="col-12 col-xl-6">
-                <div class="imagenes-chart-card">
-                    <h6 class="imagenes-chart-title">Citas generadas vs exámenes realizados</h6>
-                    <div class="imagenes-chart-wrap">
-                        <canvas id="chartImagenesCitasRealizados"></canvas>
-                    </div>
-                </div>
-            </div>
-            <div class="col-12 col-xl-6">
-                <div class="imagenes-chart-card">
-                    <h6 class="imagenes-chart-title">Tráfico por día de semana</h6>
-                    <div class="imagenes-chart-wrap">
-                        <canvas id="chartImagenesTraficoSemana"></canvas>
-                    </div>
-                </div>
-            </div>
-            <div class="col-12">
-                <div class="imagenes-chart-card">
-                    <h6 class="imagenes-chart-title">Aging de no informados</h6>
-                    <div class="imagenes-chart-wrap imagenes-chart-wrap--short">
-                        <canvas id="chartImagenesAging"></canvas>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <section id="imagenes-facturacion" class="imagenes-section-card mb-3">
-        <div class="imagenes-section-head">
-            <div>
-                <p class="imagenes-section-kicker mb-1">Sección 2</p>
-                <h4 class="imagenes-section-title mb-1">Facturación y cierre</h4>
-                <p class="imagenes-section-copy mb-0">Aquí se concentra el backlog atendido, el cierre por categoría y la oportunidad económica pública.</p>
-            </div>
-        </div>
-        <div class="imagenes-kpi-grid imagenes-kpi-grid--compact mb-3">
-            <?php foreach ($facturacionCards as $card): ?>
-                <article class="imagenes-kpi-card">
-                    <p class="imagenes-kpi-label mb-1"><?= htmlspecialchars((string)($card['label'] ?? ''), ENT_QUOTES, 'UTF-8') ?></p>
-                    <h4 class="imagenes-kpi-value mb-1"><?= htmlspecialchars((string)($card['value'] ?? '0'), ENT_QUOTES, 'UTF-8') ?></h4>
-                    <p class="imagenes-kpi-hint mb-0"><?= htmlspecialchars((string)($card['hint'] ?? ''), ENT_QUOTES, 'UTF-8') ?></p>
-                </article>
-            <?php endforeach; ?>
         </div>
         <div class="row g-3">
             <div class="col-12 col-xl-4">
@@ -442,20 +478,43 @@ if ($executiveHighlights === []) {
         </div>
     </section>
 
-    <section id="imagenes-demanda" class="imagenes-section-card mb-3">
+    <section id="imagenes-solicitudes" class="imagenes-section-card mb-3">
         <div class="imagenes-section-head">
             <div>
-                <p class="imagenes-section-kicker mb-1">Sección 3</p>
-                <h4 class="imagenes-section-title mb-1">Demanda y mezcla</h4>
-                <p class="imagenes-section-copy mb-0">Este bloque ordena quién solicita, qué estudios pesan más y cómo se distribuye el volumen por seguro o plan.</p>
+                <p class="imagenes-section-kicker mb-1">Bloque 2</p>
+                <h4 class="imagenes-section-title mb-1">Solicitudes</h4>
+                <p class="imagenes-section-copy mb-0">Cohortes, cumplimiento de solicitud, pérdidas por no agendar, top médicos solicitantes y top exámenes solicitados.</p>
+            </div>
+        </div>
+        <div class="row g-3 mb-3">
+            <div class="col-12 col-xl-8">
+                <div class="imagenes-kpi-grid imagenes-kpi-grid--compact">
+                    <?php foreach ($requestCards as $card): ?>
+                        <article class="imagenes-kpi-card imagenes-kpi-card--summary">
+                            <p class="imagenes-kpi-label mb-1"><?= htmlspecialchars((string)($card['label'] ?? ''), ENT_QUOTES, 'UTF-8') ?></p>
+                            <h4 class="imagenes-kpi-value mb-1"><?= htmlspecialchars((string)($card['value'] ?? '0'), ENT_QUOTES, 'UTF-8') ?></h4>
+                            <p class="imagenes-kpi-hint mb-0"><?= htmlspecialchars((string)($card['hint'] ?? ''), ENT_QUOTES, 'UTF-8') ?></p>
+                        </article>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+            <div class="col-12 col-xl-4">
+                <div class="imagenes-insight-card">
+                    <h6 class="imagenes-chart-title">Lectura de solicitudes</h6>
+                    <ul class="imagenes-insight-list mb-0">
+                        <?php foreach ($requestHighlights as $highlight): ?>
+                            <li><?= htmlspecialchars($highlight, ENT_QUOTES, 'UTF-8') ?></li>
+                        <?php endforeach; ?>
+                    </ul>
+                </div>
             </div>
         </div>
         <div class="row g-3">
             <div class="col-12 col-xl-4">
                 <div class="imagenes-chart-card">
-                    <h6 class="imagenes-chart-title">Top códigos de imágenes</h6>
+                    <h6 class="imagenes-chart-title">Embudo de solicitudes</h6>
                     <div class="imagenes-chart-wrap">
-                        <canvas id="chartImagenesMixCodigos"></canvas>
+                        <canvas id="chartImagenesEmbudoOperativo"></canvas>
                     </div>
                 </div>
             </div>
@@ -469,9 +528,9 @@ if ($executiveHighlights === []) {
             </div>
             <div class="col-12 col-xl-4">
                 <div class="imagenes-chart-card">
-                    <h6 class="imagenes-chart-title"><?= htmlspecialchars($insuranceBreakdownTitle !== '' ? $insuranceBreakdownTitle : 'Empresas de seguro', ENT_QUOTES, 'UTF-8') ?></h6>
+                    <h6 class="imagenes-chart-title">Top exámenes solicitados</h6>
                     <div class="imagenes-chart-wrap">
-                        <canvas id="chartImagenesAnalisisSeguro"></canvas>
+                        <canvas id="chartImagenesTopExamenesSolicitados"></canvas>
                     </div>
                 </div>
             </div>
@@ -663,14 +722,14 @@ if ($executiveHighlights === []) {
         document.addEventListener('DOMContentLoaded', function () {
             const charts = (dashboardData && dashboardData.charts) ? dashboardData.charts : {};
             const cards = Array.isArray(dashboardData.cards) ? dashboardData.cards : [];
+            const solicitudesPipeline = charts.solicitudes_pipeline || {};
             const serie = charts.serie_diaria || {};
             const trazabilidad = charts.trazabilidad || {};
             const citasRealizados = charts.citas_vs_realizados || {};
             const traficoSemana = charts.trafico_dia_semana || {};
             const mix = charts.mix_codigos || {};
             const topDoctoresSolicitantes = charts.top_doctores_solicitantes || {};
-            const analisisSeguro = charts.analisis_seguro || {};
-            const aging = charts.aging_backlog || {};
+            const topExamenesSolicitados = charts.top_examenes_solicitados || {};
             const backlogCategoria = charts.backlog_facturacion_categoria || {};
             const rendimientoEconomico = charts.rendimiento_economico || {};
             const cardValueMap = cards.reduce(function (acc, card) {
@@ -688,17 +747,12 @@ if ($executiveHighlights === []) {
                     return {
                         type: 'bar',
                         data: {
-                            labels: ['Total estudios', 'Atendidos', 'Informadas', 'Facturados'],
+                            labels: Array.isArray(solicitudesPipeline.labels) ? solicitudesPipeline.labels : [],
                             datasets: [
                                 {
                                     label: 'Casos',
-                                    data: [
-                                        Number(cardValueMap['Total estudios'] || 0),
-                                        Number(cardValueMap['Atendidos'] || 0),
-                                        Number(cardValueMap['Informadas'] || 0),
-                                        Number(cardValueMap['Facturados'] || 0)
-                                    ],
-                                    backgroundColor: ['#cfe2ff', '#7cc6ff', '#45b36b', '#0b8f55'],
+                                    data: Array.isArray(solicitudesPipeline.values) ? solicitudesPipeline.values : [],
+                                    backgroundColor: ['#cfe2ff', '#8ec5ff', '#4dabf7', '#45b36b', '#0b8f55'],
                                     borderRadius: 10
                                 }
                             ]
@@ -712,8 +766,8 @@ if ($executiveHighlights === []) {
                         }
                     };
                 },
-                ['Total estudios', 'Atendidos', 'Informadas', 'Facturados'].some(function (label) {
-                    return Number(cardValueMap[label] || 0) > 0;
+                Array.isArray(solicitudesPipeline.values) && solicitudesPipeline.values.some(function (value) {
+                    return Number(value || 0) > 0;
                 })
             );
 
@@ -833,17 +887,17 @@ if ($executiveHighlights === []) {
             );
 
             drawChart(
-                'chartImagenesAnalisisSeguro',
+                'chartImagenesTopExamenesSolicitados',
                 function () {
                     return {
                         type: 'bar',
                         data: {
-                            labels: Array.isArray(analisisSeguro.labels) ? analisisSeguro.labels : [],
+                            labels: Array.isArray(topExamenesSolicitados.labels) ? topExamenesSolicitados.labels : [],
                             datasets: [
                                 {
-                                    label: 'Estudios',
-                                    data: Array.isArray(analisisSeguro.values) ? analisisSeguro.values : [],
-                                    backgroundColor: '#198754'
+                                    label: 'Solicitudes',
+                                    data: Array.isArray(topExamenesSolicitados.values) ? topExamenesSolicitados.values : [],
+                                    backgroundColor: '#7c3aed'
                                 }
                             ]
                         },
@@ -856,33 +910,7 @@ if ($executiveHighlights === []) {
                         }
                     };
                 },
-                Array.isArray(analisisSeguro.labels) && analisisSeguro.labels.length > 0
-            );
-
-            drawChart(
-                'chartImagenesAging',
-                function () {
-                    return {
-                        type: 'bar',
-                        data: {
-                            labels: Array.isArray(aging.labels) ? aging.labels : [],
-                            datasets: [
-                                {
-                                    label: 'No informados',
-                                    data: Array.isArray(aging.values) ? aging.values : [],
-                                    backgroundColor: ['#20c997', '#ffc107', '#fd7e14', '#dc3545']
-                                }
-                            ]
-                        },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            plugins: {legend: {display: false}},
-                            scales: {y: {beginAtZero: true, ticks: {precision: 0}}}
-                        }
-                    };
-                },
-                Array.isArray(aging.values) && aging.values.some(function (value) { return Number(value || 0) > 0; })
+                Array.isArray(topExamenesSolicitados.labels) && topExamenesSolicitados.labels.length > 0
             );
 
             drawChart(
@@ -896,7 +924,7 @@ if ($executiveHighlights === []) {
                                 {
                                     label: 'Casos',
                                     data: Array.isArray(citasRealizados.values) ? citasRealizados.values : [],
-                                    backgroundColor: ['#0d6efd', '#198754', '#fd7e14']
+                                    backgroundColor: ['#0d6efd', '#198754', '#fd7e14', '#6c757d']
                                 }
                             ]
                         },

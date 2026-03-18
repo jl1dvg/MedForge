@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Examenes\Services;
 
+use App\Models\Tarifario2014;
+use App\Modules\Codes\Services\CodePriceService;
 use App\Modules\Shared\Support\AfiliacionDimensionService;
 use DateTime;
 use DateTimeImmutable;
@@ -20,6 +22,29 @@ class ImagenesUiService
 
     /** @var array<string,bool> */
     private array $columnExistsCache = [];
+
+    /** @var array<string,array{id:int,codigo:string,descripcion:string}|null> */
+    private array $tarifaCodeCache = [];
+
+    /** @var array<string,array{id:int,codigo:string,descripcion:string}|null> */
+    private array $tarifaDescriptionResolveCache = [];
+
+    /** @var array<int,array<string,float>> */
+    private array $codePriceCache = [];
+
+    /** @var array<string,array{categoria:string,afiliacion_raw:string,empresa_seguro:string}>|null */
+    private ?array $afiliacionCategoriaMapCache = null;
+
+    /** @var array<int,array{id:int,codigo:string,descripcion:string,descripcion_norm:string,short_description_norm:string}>|null */
+    private ?array $tarifaDescriptionIndexCache = null;
+
+    /** @var array<int, array{level_key:string,storage_key:string,title:string,category:string,source:string}>|null */
+    private ?array $codePriceLevelsCache = null;
+
+    /** @var array<string,string|null> */
+    private array $levelKeyResolveCache = [];
+
+    private ?CodePriceService $codePriceService = null;
 
     public function __construct(?PDO $pdo = null)
     {
@@ -54,7 +79,8 @@ class ImagenesUiService
         $filters['afiliacion_match_mode'] = 'grouped';
         $rows = $this->fetchImagenesRealizadas($filters, true);
         $rows = array_map(fn(array $row): array => $this->decorateImagenRow($row), $rows);
-        $dashboard = $this->buildImagenesDashboardSummary($rows, $filters);
+        $solicitudes = $this->fetchImagenesSolicitudPipeline($filters);
+        $dashboard = $this->buildImagenesDashboardSummary($rows, $filters, $solicitudes);
         $detailRows = $this->buildImagenesDashboardDetailRows($rows);
         [$afiliacionOptions, $afiliacionCategoriaOptions, $seguroOptions, $sedeOptions] = $this->resolveImagenesDashboardAffiliationOptions($filters);
 
@@ -95,6 +121,7 @@ class ImagenesUiService
      *     filtersSummary:array<int,array{label:string,value:string}>,
      *     dashboard:array<string,mixed>,
      *     detailRows:array<int,array<string,mixed>>,
+     *     requestRows:array<int,array<string,mixed>>,
      *     report:array<string,mixed>,
      *     total:int
      * }
@@ -104,6 +131,7 @@ class ImagenesUiService
         $payload = $this->imagenesDashboard($query);
         $dashboard = is_array($payload['dashboard'] ?? null) ? $payload['dashboard'] : [];
         $detailRows = is_array($payload['detailRows'] ?? null) ? $payload['detailRows'] : [];
+        $requestRows = $this->buildImagenesDashboardSolicitudRows(is_array($payload['filters'] ?? null) ? $payload['filters'] : []);
         $filtersSummary = is_array($payload['filtersSummary'] ?? null) ? $payload['filtersSummary'] : [];
 
         return [
@@ -111,6 +139,7 @@ class ImagenesUiService
             'filtersSummary' => $filtersSummary,
             'dashboard' => $dashboard,
             'detailRows' => $detailRows,
+            'requestRows' => $requestRows,
             'report' => $this->buildImagenesDashboardReport(
                 $dashboard,
                 $detailRows,
@@ -372,6 +401,40 @@ class ImagenesUiService
             return ['select' => $defaultSelect, 'join' => ''];
         }
 
+        $billingSources = $this->buildImagenesBillingAggregateSources();
+
+        return [
+            'select' => "0 AS facturado,
+               NULL AS billing_id,
+               NULL AS fecha_facturacion,
+               NULL AS fecha_atencion,
+               0 AS total_produccion,
+               0 AS procedimientos_facturados,
+               NULL AS numero_factura,
+               NULL AS factura_id,
+               NULL AS estado_facturacion_raw,
+               NULLIF(TRIM(COALESCE(bfr.billing_id, '')), '') AS real_billing_id,
+               bfr.fecha_facturacion AS real_fecha_facturacion,
+               bfr.fecha_atencion AS real_fecha_atencion,
+               COALESCE(bfr.total_produccion, 0) AS real_total_produccion,
+               COALESCE(bfr.procedimientos_facturados, 0) AS real_procedimientos_facturados,
+               NULLIF(TRIM(COALESCE(bfr.numero_factura, '')), '') AS real_numero_factura,
+               NULLIF(TRIM(COALESCE(bfr.factura_id, '')), '') AS real_factura_id,
+               NULLIF(TRIM(COALESCE(bfr.estado_facturacion_raw, '')), '') AS real_estado_facturacion_raw,
+               NULLIF(TRIM(COALESCE(bpub.billing_id, '')), '') AS public_billing_id,
+               bpub.fecha_facturacion AS public_fecha_facturacion,
+               COALESCE(bpub.total_produccion, 0) AS public_total_produccion,
+               COALESCE(bpub.procedimientos_facturados, 0) AS public_procedimientos_facturados",
+            'join' => "LEFT JOIN ({$billingSources['real_subquery']}) bfr ON bfr.form_id = pp.form_id
+            LEFT JOIN ({$billingSources['public_subquery']}) bpub ON bpub.form_id = pp.form_id",
+        ];
+    }
+
+    /**
+     * @return array{real_subquery:string,public_subquery:string}
+     */
+    private function buildImagenesBillingAggregateSources(): array
+    {
         $hasFacturacionReal = $this->tableExists('billing_facturacion_real')
             && $this->columnExists('billing_facturacion_real', 'form_id')
             && $this->columnExists('billing_facturacion_real', 'monto_honorario');
@@ -446,30 +509,468 @@ class ImagenesUiService
                 LIMIT 0";
 
         return [
-            'select' => "0 AS facturado,
-               NULL AS billing_id,
-               NULL AS fecha_facturacion,
-               NULL AS fecha_atencion,
-               0 AS total_produccion,
-               0 AS procedimientos_facturados,
-               NULL AS numero_factura,
-               NULL AS factura_id,
-               NULL AS estado_facturacion_raw,
-               NULLIF(TRIM(COALESCE(bfr.billing_id, '')), '') AS real_billing_id,
-               bfr.fecha_facturacion AS real_fecha_facturacion,
-               bfr.fecha_atencion AS real_fecha_atencion,
-               COALESCE(bfr.total_produccion, 0) AS real_total_produccion,
-               COALESCE(bfr.procedimientos_facturados, 0) AS real_procedimientos_facturados,
-               NULLIF(TRIM(COALESCE(bfr.numero_factura, '')), '') AS real_numero_factura,
-               NULLIF(TRIM(COALESCE(bfr.factura_id, '')), '') AS real_factura_id,
-               NULLIF(TRIM(COALESCE(bfr.estado_facturacion_raw, '')), '') AS real_estado_facturacion_raw,
-               NULLIF(TRIM(COALESCE(bpub.billing_id, '')), '') AS public_billing_id,
-               bpub.fecha_facturacion AS public_fecha_facturacion,
-               COALESCE(bpub.total_produccion, 0) AS public_total_produccion,
-               COALESCE(bpub.procedimientos_facturados, 0) AS public_procedimientos_facturados",
-            'join' => "LEFT JOIN ({$realSubquery}) bfr ON bfr.form_id = pp.form_id
-            LEFT JOIN ({$publicSubquery}) bpub ON bpub.form_id = pp.form_id",
+            'real_subquery' => $realSubquery,
+            'public_subquery' => $publicSubquery,
         ];
+    }
+
+    /**
+     * @param array<string,string> $filters
+     * @return array<string,int|float|null>
+     */
+    private function fetchImagenesSolicitudPipeline(array $filters): array
+    {
+        $default = [
+            'solicitudes_total' => 0,
+            'solicitudes_agendadas' => 0,
+            'solicitudes_realizadas' => 0,
+            'solicitudes_informadas' => 0,
+            'solicitudes_facturadas' => 0,
+            'solicitudes_agendadas_al_corte' => 0,
+            'solicitudes_realizadas_al_corte' => 0,
+            'solicitudes_realizadas_post_corte' => 0,
+            'solicitudes_sin_agenda' => 0,
+            'solicitudes_agendadas_pendientes' => 0,
+            'solicitudes_pendientes_vigentes' => 0,
+            'solicitudes_canceladas' => 0,
+            'solicitudes_ausentes' => 0,
+            'solicitudes_sin_agenda_monto_estimado' => 0.0,
+            'solicitudes_sin_agenda_sin_tarifa' => 0,
+            'conversion_solicitud_realizacion_pct' => null,
+            'cumplimiento_realizacion_al_corte_pct' => null,
+            'cumplimiento_realizacion_acumulado_pct' => null,
+        ];
+
+        if (!$this->tableExists('consulta_examenes')) {
+            return $default;
+        }
+
+        $flowSubquery = $this->buildImagenesSolicitudFlowSubquery();
+        $rawAfiliacionExpr = "COALESCE(NULLIF(TRIM(flow.afiliacion), ''), NULLIF(TRIM(pd.afiliacion), ''), '')";
+        $afiliacionKeyExpr = $this->afiliacionGroupKeyExpr($rawAfiliacionExpr, 'iacm_solicitudes');
+        $categoriaContext = $this->resolveAfiliacionCategoriaContext($rawAfiliacionExpr, 'iacm_solicitudes');
+        $seguroKeyExpr = $this->seguroKeyExpr($rawAfiliacionExpr, 'iacm_solicitudes');
+        $sedeExpr = $this->imagenesSedeExprFromFields('flow.sede_departamento', 'flow.id_sede');
+        $fechaSolicitudExpr = $this->safeSqlDateExpr('flow.fecha_solicitud');
+        $fechaAgendaFlowExpr = $this->safeSqlDateExpr('flow.fecha_agenda');
+        $fechaRealizacionFlowExpr = $this->safeSqlDateExpr('flow.fecha_realizacion');
+        $agendaPendienteExpr = "(COALESCE(flow.has_agenda, 0) = 1
+                AND COALESCE(flow.realizada, 0) = 0
+                AND COALESCE(flow.cancelada, 0) = 0
+                AND COALESCE(flow.ausente, 0) = 0
+                AND ({$fechaAgendaFlowExpr} IS NULL OR {$fechaAgendaFlowExpr} >= :fecha_hoy_agendada_pendiente))";
+        $agendaPendienteVigenteExpr = "(COALESCE(flow.has_agenda, 0) = 1
+                AND COALESCE(flow.realizada, 0) = 0
+                AND COALESCE(flow.cancelada, 0) = 0
+                AND COALESCE(flow.ausente, 0) = 0
+                AND ({$fechaAgendaFlowExpr} IS NULL OR {$fechaAgendaFlowExpr} >= :fecha_hoy_pendiente_vigente))";
+        $ausenteExpr = "(COALESCE(flow.realizada, 0) = 0
+                AND COALESCE(flow.cancelada, 0) = 0
+                AND (
+                    COALESCE(flow.ausente, 0) = 1
+                    OR (
+                        COALESCE(flow.has_agenda, 0) = 1
+                        AND {$fechaAgendaFlowExpr} IS NOT NULL
+                        AND {$fechaAgendaFlowExpr} < :fecha_hoy_ausente
+                    )
+                ))";
+        $pendienteVigenteExpr = "(COALESCE(flow.realizada, 0) = 0
+                AND COALESCE(flow.cancelada, 0) = 0
+                AND (
+                    COALESCE(flow.has_agenda, 0) = 0
+                    OR {$agendaPendienteVigenteExpr}
+                ))";
+
+        $sql = "SELECT
+                COUNT(*) AS solicitudes_total,
+                COALESCE(SUM(CASE WHEN COALESCE(flow.has_agenda, 0) = 1 THEN 1 ELSE 0 END), 0) AS solicitudes_agendadas,
+                COALESCE(SUM(CASE WHEN COALESCE(flow.realizada, 0) = 1 THEN 1 ELSE 0 END), 0) AS solicitudes_realizadas,
+                COALESCE(SUM(CASE WHEN COALESCE(flow.informada, 0) = 1 THEN 1 ELSE 0 END), 0) AS solicitudes_informadas,
+                COALESCE(SUM(CASE WHEN COALESCE(flow.facturada, 0) = 1 THEN 1 ELSE 0 END), 0) AS solicitudes_facturadas,
+                COALESCE(SUM(CASE WHEN {$fechaAgendaFlowExpr} IS NOT NULL AND {$fechaAgendaFlowExpr} <= :fecha_corte_agenda THEN 1 ELSE 0 END), 0) AS solicitudes_agendadas_al_corte,
+                COALESCE(SUM(CASE WHEN {$fechaRealizacionFlowExpr} IS NOT NULL AND {$fechaRealizacionFlowExpr} <= :fecha_corte_realizada_lte THEN 1 ELSE 0 END), 0) AS solicitudes_realizadas_al_corte,
+                COALESCE(SUM(CASE WHEN {$fechaRealizacionFlowExpr} IS NOT NULL AND {$fechaRealizacionFlowExpr} > :fecha_corte_realizada_gt THEN 1 ELSE 0 END), 0) AS solicitudes_realizadas_post_corte,
+                COALESCE(SUM(CASE WHEN COALESCE(flow.has_agenda, 0) = 0 THEN 1 ELSE 0 END), 0) AS solicitudes_sin_agenda,
+                COALESCE(SUM(CASE WHEN {$agendaPendienteExpr} THEN 1 ELSE 0 END), 0) AS solicitudes_agendadas_pendientes,
+                COALESCE(SUM(CASE WHEN {$pendienteVigenteExpr} THEN 1 ELSE 0 END), 0) AS solicitudes_pendientes_vigentes,
+                COALESCE(SUM(CASE WHEN COALESCE(flow.cancelada, 0) = 1 AND COALESCE(flow.realizada, 0) = 0 THEN 1 ELSE 0 END), 0) AS solicitudes_canceladas,
+                COALESCE(SUM(CASE WHEN {$ausenteExpr} THEN 1 ELSE 0 END), 0) AS solicitudes_ausentes
+            FROM ({$flowSubquery}) flow
+            LEFT JOIN patient_data pd ON pd.hc_number = flow.hc_number
+            {$categoriaContext['join']}
+            WHERE flow.examen_nombre IS NOT NULL
+              AND TRIM(flow.examen_nombre) <> ''";
+
+        $params = [];
+        $fechaCorte = trim((string) ($filters['fecha_fin'] ?? '')) !== '' ? trim((string) ($filters['fecha_fin'] ?? '')) : (new DateTimeImmutable('today'))->format('Y-m-d');
+        $params[':fecha_corte_agenda'] = $fechaCorte;
+        $params[':fecha_corte_realizada_lte'] = $fechaCorte;
+        $params[':fecha_corte_realizada_gt'] = $fechaCorte;
+        $fechaHoy = (new DateTimeImmutable('today'))->format('Y-m-d');
+        $params[':fecha_hoy_agendada_pendiente'] = $fechaHoy;
+        $params[':fecha_hoy_pendiente_vigente'] = $fechaHoy;
+        $params[':fecha_hoy_ausente'] = $fechaHoy;
+
+        $fechaInicio = trim((string) ($filters['fecha_inicio'] ?? ''));
+        if ($fechaInicio !== '') {
+            $sql .= " AND {$fechaSolicitudExpr} >= :fecha_inicio";
+            $params[':fecha_inicio'] = $fechaInicio;
+        }
+
+        $fechaFin = trim((string) ($filters['fecha_fin'] ?? ''));
+        if ($fechaFin !== '') {
+            $sql .= " AND {$fechaSolicitudExpr} <= :fecha_fin";
+            $params[':fecha_fin'] = $fechaFin;
+        }
+
+        $afiliacionFilter = $this->normalizeAfiliacionFilter((string) ($filters['afiliacion'] ?? ''));
+        if ($afiliacionFilter !== '') {
+            $sql .= " AND {$afiliacionKeyExpr} = :afiliacion_filter_match";
+            $params[':afiliacion_filter_match'] = $afiliacionFilter;
+        }
+
+        $afiliacionCategoriaFilter = $this->normalizeAfiliacionCategoriaFilter((string) ($filters['afiliacion_categoria'] ?? ''));
+        if ($afiliacionCategoriaFilter !== '') {
+            $sql .= " AND {$categoriaContext['expr']} = :afiliacion_categoria_filter_match";
+            $params[':afiliacion_categoria_filter_match'] = $afiliacionCategoriaFilter;
+        }
+
+        $seguroFilter = $this->normalizeSeguroFilter((string) ($filters['seguro'] ?? ''));
+        if ($seguroFilter !== '') {
+            $sql .= " AND {$seguroKeyExpr} = :seguro_filter_match";
+            $params[':seguro_filter_match'] = $seguroFilter;
+        }
+
+        $sedeFilter = $this->normalizeSedeFilter((string) ($filters['sede'] ?? ''));
+        if ($sedeFilter !== '') {
+            $sql .= " AND {$sedeExpr} = :sede_filter_match";
+            $params[':sede_filter_match'] = $sedeFilter;
+        }
+
+        $tipoExamen = trim((string) ($filters['tipo_examen'] ?? ''));
+        if ($tipoExamen !== '') {
+            $sql .= ' AND (
+                    flow.examen_nombre LIKE :tipo_examen
+                    OR flow.examen_codigo LIKE :tipo_examen
+                    OR TRIM(COALESCE(flow.procedimientos_match, "")) LIKE :tipo_examen
+                )';
+            $params[':tipo_examen'] = '%' . $tipoExamen . '%';
+        }
+
+        $paciente = trim((string) ($filters['paciente'] ?? ''));
+        if ($paciente !== '') {
+            $sql .= " AND (
+                    flow.hc_number LIKE :paciente
+                    OR CONCAT_WS(' ', TRIM(pd.lname), TRIM(pd.lname2), TRIM(pd.fname), TRIM(pd.mname)) LIKE :paciente
+                    OR CONCAT_WS(' ', TRIM(pd.fname), TRIM(pd.mname), TRIM(pd.lname), TRIM(pd.lname2)) LIKE :paciente
+                )";
+            $params[':paciente'] = '%' . $paciente . '%';
+        }
+
+        $estadoAgenda = trim((string) ($filters['estado_agenda'] ?? ''));
+        if ($estadoAgenda !== '') {
+            $sql .= ' AND TRIM(COALESCE(flow.estados_agenda, "")) LIKE :estado_agenda_like';
+            $params[':estado_agenda_like'] = '%' . $estadoAgenda . '%';
+        }
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!is_array($row) || $row === []) {
+            return $default;
+        }
+
+        $sinAgendaEstimate = $this->fetchImagenesSolicitudesSinAgendaEstimate($filters);
+
+        $total = (int) ($row['solicitudes_total'] ?? 0);
+        $realizadas = (int) ($row['solicitudes_realizadas'] ?? 0);
+        $realizadasAlCorte = (int) ($row['solicitudes_realizadas_al_corte'] ?? 0);
+
+        return [
+            'solicitudes_total' => $total,
+            'solicitudes_agendadas' => (int) ($row['solicitudes_agendadas'] ?? 0),
+            'solicitudes_realizadas' => $realizadas,
+            'solicitudes_informadas' => (int) ($row['solicitudes_informadas'] ?? 0),
+            'solicitudes_facturadas' => (int) ($row['solicitudes_facturadas'] ?? 0),
+            'solicitudes_agendadas_al_corte' => (int) ($row['solicitudes_agendadas_al_corte'] ?? 0),
+            'solicitudes_realizadas_al_corte' => $realizadasAlCorte,
+            'solicitudes_realizadas_post_corte' => (int) ($row['solicitudes_realizadas_post_corte'] ?? 0),
+            'solicitudes_sin_agenda' => (int) ($row['solicitudes_sin_agenda'] ?? 0),
+            'solicitudes_agendadas_pendientes' => (int) ($row['solicitudes_agendadas_pendientes'] ?? 0),
+            'solicitudes_pendientes_vigentes' => (int) ($row['solicitudes_pendientes_vigentes'] ?? 0),
+            'solicitudes_canceladas' => (int) ($row['solicitudes_canceladas'] ?? 0),
+            'solicitudes_ausentes' => (int) ($row['solicitudes_ausentes'] ?? 0),
+            'solicitudes_sin_agenda_monto_estimado' => round((float) ($sinAgendaEstimate['monto_estimado'] ?? 0), 2),
+            'solicitudes_sin_agenda_sin_tarifa' => (int) ($sinAgendaEstimate['sin_tarifa'] ?? 0),
+            'conversion_solicitud_realizacion_pct' => $total > 0 ? round(($realizadas * 100) / $total, 1) : null,
+            'cumplimiento_realizacion_al_corte_pct' => $total > 0 ? round(($realizadasAlCorte * 100) / $total, 1) : null,
+            'cumplimiento_realizacion_acumulado_pct' => $total > 0 ? round(($realizadas * 100) / $total, 1) : null,
+        ];
+    }
+
+    /**
+     * @param array<string,string> $filters
+     * @return array{monto_estimado:float,sin_tarifa:int}
+     */
+    private function fetchImagenesSolicitudesSinAgendaEstimate(array $filters): array
+    {
+        if (!$this->tableExists('consulta_examenes')) {
+            return ['monto_estimado' => 0.0, 'sin_tarifa' => 0];
+        }
+
+        $flowSubquery = $this->buildImagenesSolicitudFlowSubquery();
+        $rawAfiliacionExpr = "COALESCE(NULLIF(TRIM(flow.afiliacion), ''), NULLIF(TRIM(pd.afiliacion), ''), '')";
+        $afiliacionKeyExpr = $this->afiliacionGroupKeyExpr($rawAfiliacionExpr, 'iacm_solicitudes_loss');
+        $categoriaContext = $this->resolveAfiliacionCategoriaContext($rawAfiliacionExpr, 'iacm_solicitudes_loss');
+        $seguroKeyExpr = $this->seguroKeyExpr($rawAfiliacionExpr, 'iacm_solicitudes_loss');
+        $sedeExpr = $this->imagenesSedeExprFromFields('flow.sede_departamento', 'flow.id_sede');
+        $fechaSolicitudExpr = $this->safeSqlDateExpr('flow.fecha_solicitud');
+
+        $sql = "SELECT
+                TRIM(COALESCE(flow.examen_codigo, '')) AS examen_codigo,
+                TRIM(COALESCE(flow.examen_nombre, '')) AS examen_nombre,
+                {$rawAfiliacionExpr} AS afiliacion,
+                {$rawAfiliacionExpr} AS seguro_label,
+                {$rawAfiliacionExpr} AS empresa_seguro,
+                {$categoriaContext['expr']} AS afiliacion_categoria,
+                COUNT(*) AS solicitudes_count
+            FROM ({$flowSubquery}) flow
+            LEFT JOIN patient_data pd ON pd.hc_number = flow.hc_number
+            {$categoriaContext['join']}
+            WHERE flow.examen_nombre IS NOT NULL
+              AND TRIM(flow.examen_nombre) <> ''
+              AND COALESCE(flow.has_agenda, 0) = 0";
+
+        $params = [];
+
+        $fechaInicio = trim((string) ($filters['fecha_inicio'] ?? ''));
+        if ($fechaInicio !== '') {
+            $sql .= " AND {$fechaSolicitudExpr} >= :fecha_inicio";
+            $params[':fecha_inicio'] = $fechaInicio;
+        }
+
+        $fechaFin = trim((string) ($filters['fecha_fin'] ?? ''));
+        if ($fechaFin !== '') {
+            $sql .= " AND {$fechaSolicitudExpr} <= :fecha_fin";
+            $params[':fecha_fin'] = $fechaFin;
+        }
+
+        $afiliacionFilter = $this->normalizeAfiliacionFilter((string) ($filters['afiliacion'] ?? ''));
+        if ($afiliacionFilter !== '') {
+            $sql .= " AND {$afiliacionKeyExpr} = :afiliacion_filter_match";
+            $params[':afiliacion_filter_match'] = $afiliacionFilter;
+        }
+
+        $afiliacionCategoriaFilter = $this->normalizeAfiliacionCategoriaFilter((string) ($filters['afiliacion_categoria'] ?? ''));
+        if ($afiliacionCategoriaFilter !== '') {
+            $sql .= " AND {$categoriaContext['expr']} = :afiliacion_categoria_filter_match";
+            $params[':afiliacion_categoria_filter_match'] = $afiliacionCategoriaFilter;
+        }
+
+        $seguroFilter = $this->normalizeSeguroFilter((string) ($filters['seguro'] ?? ''));
+        if ($seguroFilter !== '') {
+            $sql .= " AND {$seguroKeyExpr} = :seguro_filter_match";
+            $params[':seguro_filter_match'] = $seguroFilter;
+        }
+
+        $sedeFilter = $this->normalizeSedeFilter((string) ($filters['sede'] ?? ''));
+        if ($sedeFilter !== '') {
+            $sql .= " AND {$sedeExpr} = :sede_filter_match";
+            $params[':sede_filter_match'] = $sedeFilter;
+        }
+
+        $tipoExamen = trim((string) ($filters['tipo_examen'] ?? ''));
+        if ($tipoExamen !== '') {
+            $sql .= ' AND (
+                    flow.examen_nombre LIKE :tipo_examen
+                    OR flow.examen_codigo LIKE :tipo_examen
+                    OR TRIM(COALESCE(flow.procedimientos_match, "")) LIKE :tipo_examen
+                )';
+            $params[':tipo_examen'] = '%' . $tipoExamen . '%';
+        }
+
+        $paciente = trim((string) ($filters['paciente'] ?? ''));
+        if ($paciente !== '') {
+            $sql .= " AND (
+                    flow.hc_number LIKE :paciente
+                    OR CONCAT_WS(' ', TRIM(pd.lname), TRIM(pd.lname2), TRIM(pd.fname), TRIM(pd.mname)) LIKE :paciente
+                    OR CONCAT_WS(' ', TRIM(pd.fname), TRIM(pd.mname), TRIM(pd.lname), TRIM(pd.lname2)) LIKE :paciente
+                )";
+            $params[':paciente'] = '%' . $paciente . '%';
+        }
+
+        $estadoAgenda = trim((string) ($filters['estado_agenda'] ?? ''));
+        if ($estadoAgenda !== '') {
+            $sql .= ' AND TRIM(COALESCE(flow.estados_agenda, "")) LIKE :estado_agenda_like';
+            $params[':estado_agenda_like'] = '%' . $estadoAgenda . '%';
+        }
+
+        $sql .= " GROUP BY
+                TRIM(COALESCE(flow.examen_codigo, '')),
+                TRIM(COALESCE(flow.examen_nombre, '')),
+                {$rawAfiliacionExpr},
+                {$categoriaContext['expr']}";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+
+        $montoEstimado = 0.0;
+        $sinTarifa = 0;
+        $tarifarioCache = [];
+
+        while (($row = $stmt->fetch(PDO::FETCH_ASSOC)) !== false) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $codigo = trim((string) ($row['examen_codigo'] ?? ''));
+            $categoria = trim((string) ($row['afiliacion_categoria'] ?? ''));
+            $solicitudesCount = max(1, (int) ($row['solicitudes_count'] ?? 1));
+            $tarifa = null;
+            if ($codigo !== '') {
+                $tarifaCacheKey = $codigo . '|' . $categoria;
+                if (!array_key_exists($tarifaCacheKey, $tarifarioCache)) {
+                    $tarifarioCache[$tarifaCacheKey] = $this->obtenerTarifarioPorCodigo($codigo, $categoria);
+                }
+                $tarifa = $tarifarioCache[$tarifaCacheKey];
+            }
+
+            $amount = $this->resolveImagenTarifaPendiente($codigo, $row, is_array($tarifa) ? $tarifa : null);
+            if ($amount > 0) {
+                $montoEstimado += $amount * $solicitudesCount;
+            } else {
+                $sinTarifa += $solicitudesCount;
+            }
+        }
+
+        return [
+            'monto_estimado' => round($montoEstimado, 2),
+            'sin_tarifa' => $sinTarifa,
+        ];
+    }
+
+    private function buildImagenesSolicitudFlowSubquery(): string
+    {
+        $fechaSolicitudExpr = $this->safeSqlDateExpr("COALESCE(
+                NULLIF(CAST(ce.consulta_fecha AS CHAR), ''),
+                NULLIF(CAST(ce.created_at AS CHAR), '')
+            )");
+        $fechaAgendaPpExpr = $this->safeSqlDateExpr('pp.fecha');
+        $imagenInformeJoin = "LEFT JOIN (
+                SELECT
+                    ii.form_id,
+                    COUNT(*) AS informes_total,
+                    MAX(
+                        CASE
+                            WHEN CAST(ii.updated_at AS CHAR) IN ('', '0000-00-00', '0000-00-00 00:00:00') THEN NULL
+                            ELSE ii.updated_at
+                        END
+                    ) AS informe_actualizado
+                FROM imagenes_informes ii
+                WHERE ii.form_id IS NOT NULL AND TRIM(ii.form_id) <> ''
+                GROUP BY ii.form_id
+            ) ii ON ii.form_id = pp.form_id";
+        $nasAvailable = $this->tableExists('imagenes_nas_index') && $this->columnExists('imagenes_nas_index', 'form_id');
+        $nasJoin = $nasAvailable ? 'LEFT JOIN imagenes_nas_index ini ON ini.form_id = pp.form_id' : '';
+        $nasEvidenceExpr = $nasAvailable
+            ? '(COALESCE(ini.has_files, 0) = 1 OR COALESCE(ini.files_count, 0) > 0)'
+            : '0 = 1';
+        $billingSources = $this->buildImagenesBillingAggregateSources();
+        $statusExpr = "LOWER(TRIM(COALESCE(pp.estado_agenda, '')))";
+        $canceladaExpr = "({$statusExpr} LIKE '%cancel%' OR {$statusExpr} LIKE '%anul%')";
+        $ausenteExpr = "({$statusExpr} LIKE '%ausent%' OR {$statusExpr} LIKE '%no show%' OR {$statusExpr} LIKE '%no asist%' OR {$statusExpr} LIKE '%inasistent%')";
+        $realBillingEvidenceExpr = "(
+                NULLIF(TRIM(COALESCE(bfr.billing_id, '')), '') IS NOT NULL
+                OR NULLIF(TRIM(COALESCE(bfr.numero_factura, '')), '') IS NOT NULL
+                OR NULLIF(TRIM(COALESCE(bfr.factura_id, '')), '') IS NOT NULL
+                OR bfr.fecha_facturacion IS NOT NULL
+                OR bfr.fecha_atencion IS NOT NULL
+                OR COALESCE(bfr.procedimientos_facturados, 0) > 0
+                OR COALESCE(bfr.total_produccion, 0) > 0
+            )";
+        $publicBillingEvidenceExpr = "(
+                NULLIF(TRIM(COALESCE(bpub.billing_id, '')), '') IS NOT NULL
+                OR bpub.fecha_facturacion IS NOT NULL
+                OR COALESCE(bpub.procedimientos_facturados, 0) > 0
+                OR COALESCE(bpub.total_produccion, 0) > 0
+            )";
+        $informadaExpr = '(COALESCE(ii.informes_total, 0) > 0)';
+        $atendidoPagadoExpr = "({$statusExpr} LIKE '%atendid%' OR {$statusExpr} LIKE '%pagad%')";
+        $realizadaExpr = "({$realBillingEvidenceExpr} OR {$publicBillingEvidenceExpr} OR {$informadaExpr} OR {$nasEvidenceExpr} OR {$atendidoPagadoExpr})";
+        $agendaDateExpr = "MIN(
+                CASE
+                    WHEN pp.estado_agenda IS NOT NULL AND TRIM(pp.estado_agenda) <> ''
+                    THEN {$fechaAgendaPpExpr}
+                    ELSE NULL
+                END
+            )";
+        $realizacionDateExpr = "MIN(
+                CASE
+                    WHEN {$realizadaExpr}
+                    THEN COALESCE(
+                        {$fechaAgendaPpExpr},
+                        NULLIF(CAST(bfr.fecha_atencion AS CHAR), ''),
+                        NULLIF(CAST(bfr.fecha_facturacion AS CHAR), ''),
+                        NULLIF(CAST(bpub.fecha_facturacion AS CHAR), ''),
+                        NULLIF(CAST(ii.informe_actualizado AS CHAR), '')
+                    )
+                    ELSE NULL
+                END
+            )";
+
+        return "SELECT
+                ce.id AS solicitud_id,
+                ce.hc_number,
+                ce.form_id AS solicitud_form_id,
+                TRIM(COALESCE(ce.examen_codigo, '')) AS examen_codigo,
+                TRIM(COALESCE(ce.examen_nombre, '')) AS examen_nombre,
+                {$fechaSolicitudExpr} AS fecha_solicitud,
+                MAX(CASE WHEN pp.estado_agenda IS NOT NULL AND TRIM(pp.estado_agenda) <> '' THEN 1 ELSE 0 END) AS has_agenda,
+                MAX(CASE WHEN {$realizadaExpr} THEN 1 ELSE 0 END) AS realizada,
+                MAX(CASE WHEN {$informadaExpr} THEN 1 ELSE 0 END) AS informada,
+                MAX(CASE WHEN ({$realBillingEvidenceExpr} OR {$publicBillingEvidenceExpr}) THEN 1 ELSE 0 END) AS facturada,
+                MAX(CASE WHEN {$canceladaExpr} THEN 1 ELSE 0 END) AS cancelada,
+                MAX(CASE WHEN {$ausenteExpr} THEN 1 ELSE 0 END) AS ausente,
+                {$agendaDateExpr} AS fecha_agenda,
+                {$realizacionDateExpr} AS fecha_realizacion,
+                MAX(NULLIF(TRIM(pp.afiliacion), '')) AS afiliacion,
+                MAX(NULLIF(TRIM(pp.doctor), '')) AS doctor_solicitante,
+                MAX(NULLIF(TRIM(pp.sede_departamento), '')) AS sede_departamento,
+                MAX(NULLIF(TRIM(pp.id_sede), '')) AS id_sede,
+                GROUP_CONCAT(DISTINCT NULLIF(TRIM(pp.estado_agenda), '') ORDER BY pp.estado_agenda SEPARATOR ' | ') AS estados_agenda,
+                GROUP_CONCAT(DISTINCT NULLIF(TRIM(pp.procedimiento_proyectado), '') ORDER BY pp.procedimiento_proyectado SEPARATOR ' || ') AS procedimientos_match
+            FROM consulta_examenes ce
+            LEFT JOIN procedimiento_proyectado pp
+                ON pp.hc_number = ce.hc_number
+               AND UPPER(TRIM(COALESCE(pp.procedimiento_proyectado, ''))) LIKE 'IMAGENES%'
+               AND (
+                    (
+                        TRIM(COALESCE(ce.examen_codigo, '')) <> ''
+                        AND UPPER(TRIM(COALESCE(pp.procedimiento_proyectado, ''))) LIKE CONCAT('%', UPPER(TRIM(ce.examen_codigo)), '%')
+                    )
+                    OR (
+                        TRIM(COALESCE(ce.form_id, '')) <> ''
+                        AND pp.form_id = ce.form_id
+                    )
+               )
+               AND (
+                    pp.form_id = ce.form_id
+                    OR {$fechaAgendaPpExpr} IS NULL
+                    OR {$fechaSolicitudExpr} IS NULL
+                    OR {$fechaAgendaPpExpr} >= {$fechaSolicitudExpr}
+               )
+            {$imagenInformeJoin}
+            {$nasJoin}
+            LEFT JOIN ({$billingSources['real_subquery']}) bfr ON bfr.form_id = pp.form_id
+            LEFT JOIN ({$billingSources['public_subquery']}) bpub ON bpub.form_id = pp.form_id
+            WHERE ce.examen_nombre IS NOT NULL
+              AND TRIM(ce.examen_nombre) <> ''
+            GROUP BY
+                ce.id,
+                ce.hc_number,
+                ce.form_id,
+                ce.examen_codigo,
+                ce.examen_nombre,
+                {$fechaSolicitudExpr}";
     }
 
     /**
@@ -598,10 +1099,16 @@ class ImagenesUiService
         if ($informado) {
             return 'REALIZADA_INFORMADA';
         }
+        if ($this->isImagenEstadoAtendidoOPagado($estadoAgenda)) {
+            return 'REALIZADA_AGENDA_CERRADA';
+        }
         if ($this->isImagenEstadoCancelado($estadoAgenda)) {
             return 'CANCELADA';
         }
         if ($this->isImagenEstadoAusente($estadoAgenda)) {
+            return 'AUSENTE';
+        }
+        if ($this->isImagenAgendaVencidaSinCierre($row)) {
             return 'AUSENTE';
         }
 
@@ -629,7 +1136,7 @@ class ImagenesUiService
         if ($facturado || $estadoRealizacion === 'FACTURADA') {
             return 'FACTURADA';
         }
-        if (in_array($estadoRealizacion, ['REALIZADA_CON_ARCHIVOS', 'REALIZADA_INFORMADA'], true)) {
+        if (in_array($estadoRealizacion, ['REALIZADA_CON_ARCHIVOS', 'REALIZADA_INFORMADA', 'REALIZADA_AGENDA_CERRADA'], true)) {
             return 'PENDIENTE_FACTURAR';
         }
 
@@ -656,7 +1163,7 @@ class ImagenesUiService
 
     private function isImagenEstadoRealizado(string $estadoRealizacion): bool
     {
-        return in_array($estadoRealizacion, ['FACTURADA', 'REALIZADA_CON_ARCHIVOS', 'REALIZADA_INFORMADA'], true);
+        return in_array($estadoRealizacion, ['FACTURADA', 'REALIZADA_CON_ARCHIVOS', 'REALIZADA_INFORMADA', 'REALIZADA_AGENDA_CERRADA'], true);
     }
 
     private function isImagenCitaGeneradaEstado(string $estado): bool
@@ -693,6 +1200,42 @@ class ImagenesUiService
             || str_contains($normalized, 'no show')
             || str_contains($normalized, 'no asist')
             || str_contains($normalized, 'inasistent');
+    }
+
+    private function isImagenEstadoAtendidoOPagado(string $estado): bool
+    {
+        $normalized = $this->normalizarTexto($estado);
+        if ($normalized === '') {
+            return false;
+        }
+
+        return str_contains($normalized, 'atendid')
+            || str_contains($normalized, 'pagad');
+    }
+
+    /**
+     * @param array<string,mixed> $row
+     */
+    private function isImagenAgendaVencidaSinCierre(array $row): bool
+    {
+        $estadoAgenda = trim((string) ($row['estado_agenda'] ?? ''));
+        if (!$this->isImagenCitaGeneradaEstado($estadoAgenda)) {
+            return false;
+        }
+
+        $fechaExamenRaw = trim((string) ($row['fecha_examen'] ?? ''));
+        if ($fechaExamenRaw === '') {
+            return false;
+        }
+
+        $fechaExamenTs = strtotime($fechaExamenRaw);
+        if ($fechaExamenTs === false) {
+            return false;
+        }
+
+        $today = new DateTimeImmutable('today');
+
+        return $fechaExamenTs < $today->getTimestamp();
     }
 
     private function normalizarTexto(string $texto): string
@@ -930,14 +1473,9 @@ class ImagenesUiService
             $totalProduccion = round((float) ($row['total_produccion'] ?? 0), 2);
             $facturado = (int) ($row['facturado'] ?? 0) === 1;
             $afiliacionCategoriaKey = trim((string) ($row['afiliacion_categoria'] ?? ''));
-            $esPendienteFacturar = !$facturado && in_array($estadoRealizacion, ['REALIZADA_CON_ARCHIVOS', 'REALIZADA_INFORMADA'], true);
-            $montoPendienteEstimado = 0.0;
-            $sinTarifaPublica = false;
-
-            if ($esPendienteFacturar && $afiliacionCategoriaKey === 'publico') {
-                $montoPendienteEstimado = $this->resolveImagenTarifaPublicaNivel3($tarifa ?? null);
-                $sinTarifaPublica = $montoPendienteEstimado <= 0;
-            }
+            $esPendienteFacturar = $estadoFacturacion === 'PENDIENTE_FACTURAR';
+            $montoPendienteEstimado = $esPendienteFacturar ? $this->resolveImagenTarifaPendiente($codigo, $row, $tarifa ?? null) : 0.0;
+            $sinTarifaPublica = $esPendienteFacturar && $afiliacionCategoriaKey === 'publico' && $montoPendienteEstimado <= 0;
 
             $output[] = [
                 'id' => isset($row['id']) ? (int) $row['id'] : 0,
@@ -982,6 +1520,175 @@ class ImagenesUiService
     }
 
     /**
+     * @param array<string,string> $filters
+     * @return array<int,array<string,mixed>>
+     */
+    private function buildImagenesDashboardSolicitudRows(array $filters): array
+    {
+        if (!$this->tableExists('consulta_examenes')) {
+            return [];
+        }
+
+        $flowSubquery = $this->buildImagenesSolicitudFlowSubquery();
+        $rawAfiliacionExpr = "COALESCE(NULLIF(TRIM(flow.afiliacion), ''), NULLIF(TRIM(pd.afiliacion), ''), '')";
+        $empresaSeguroExpr = $this->afiliacionLabelExpr($rawAfiliacionExpr, 'iacm_solicitudes_export');
+        $afiliacionKeyExpr = $this->afiliacionGroupKeyExpr($rawAfiliacionExpr, 'iacm_solicitudes_export');
+        $categoriaContext = $this->resolveAfiliacionCategoriaContext($rawAfiliacionExpr, 'iacm_solicitudes_export');
+        $seguroKeyExpr = $this->seguroKeyExpr($rawAfiliacionExpr, 'iacm_solicitudes_export');
+        $sedeExpr = $this->imagenesSedeExprFromFields('flow.sede_departamento', 'flow.id_sede');
+
+        $sql = "SELECT
+                flow.solicitud_id,
+                flow.hc_number,
+                flow.solicitud_form_id,
+                TRIM(COALESCE(flow.examen_codigo, '')) AS examen_codigo,
+                TRIM(COALESCE(flow.examen_nombre, '')) AS examen_nombre,
+                flow.fecha_solicitud,
+                flow.fecha_agenda,
+                flow.fecha_realizacion,
+                COALESCE(flow.has_agenda, 0) AS has_agenda,
+                COALESCE(flow.realizada, 0) AS realizada,
+                COALESCE(flow.informada, 0) AS informada,
+                COALESCE(flow.facturada, 0) AS facturada,
+                COALESCE(flow.cancelada, 0) AS cancelada,
+                COALESCE(flow.ausente, 0) AS ausente,
+                COALESCE(NULLIF(TRIM(flow.doctor_solicitante), ''), 'Sin asignar') AS doctor_solicitante,
+                TRIM(COALESCE(flow.estados_agenda, '')) AS estados_agenda,
+                TRIM(COALESCE(flow.procedimientos_match, '')) AS procedimientos_match,
+                {$empresaSeguroExpr} AS empresa_seguro,
+                {$rawAfiliacionExpr} AS afiliacion,
+                {$categoriaContext['expr']} AS afiliacion_categoria,
+                {$sedeExpr} AS sede,
+                CONCAT_WS(' ', TRIM(pd.lname), TRIM(pd.lname2), TRIM(pd.fname), TRIM(pd.mname)) AS paciente
+            FROM ({$flowSubquery}) flow
+            LEFT JOIN patient_data pd ON pd.hc_number = flow.hc_number
+            {$categoriaContext['join']}
+            WHERE flow.examen_nombre IS NOT NULL
+              AND TRIM(flow.examen_nombre) <> ''";
+
+        $params = [];
+
+        $fechaInicio = trim((string) ($filters['fecha_inicio'] ?? ''));
+        if ($fechaInicio !== '') {
+            $sql .= ' AND flow.fecha_solicitud >= :fecha_inicio';
+            $params[':fecha_inicio'] = $fechaInicio;
+        }
+
+        $fechaFin = trim((string) ($filters['fecha_fin'] ?? ''));
+        if ($fechaFin !== '') {
+            $sql .= ' AND flow.fecha_solicitud <= :fecha_fin';
+            $params[':fecha_fin'] = $fechaFin;
+        }
+
+        $afiliacionFilter = $this->normalizeAfiliacionFilter((string) ($filters['afiliacion'] ?? ''));
+        if ($afiliacionFilter !== '') {
+            $sql .= " AND {$afiliacionKeyExpr} = :afiliacion_filter_match";
+            $params[':afiliacion_filter_match'] = $afiliacionFilter;
+        }
+
+        $afiliacionCategoriaFilter = $this->normalizeAfiliacionCategoriaFilter((string) ($filters['afiliacion_categoria'] ?? ''));
+        if ($afiliacionCategoriaFilter !== '') {
+            $sql .= " AND {$categoriaContext['expr']} = :afiliacion_categoria_filter_match";
+            $params[':afiliacion_categoria_filter_match'] = $afiliacionCategoriaFilter;
+        }
+
+        $seguroFilter = $this->normalizeSeguroFilter((string) ($filters['seguro'] ?? ''));
+        if ($seguroFilter !== '') {
+            $sql .= " AND {$seguroKeyExpr} = :seguro_filter_match";
+            $params[':seguro_filter_match'] = $seguroFilter;
+        }
+
+        $sedeFilter = $this->normalizeSedeFilter((string) ($filters['sede'] ?? ''));
+        if ($sedeFilter !== '') {
+            $sql .= " AND {$sedeExpr} = :sede_filter_match";
+            $params[':sede_filter_match'] = $sedeFilter;
+        }
+
+        $tipoExamen = trim((string) ($filters['tipo_examen'] ?? ''));
+        if ($tipoExamen !== '') {
+            $sql .= ' AND (
+                    flow.examen_nombre LIKE :tipo_examen
+                    OR flow.examen_codigo LIKE :tipo_examen
+                    OR TRIM(COALESCE(flow.procedimientos_match, "")) LIKE :tipo_examen
+                )';
+            $params[':tipo_examen'] = '%' . $tipoExamen . '%';
+        }
+
+        $paciente = trim((string) ($filters['paciente'] ?? ''));
+        if ($paciente !== '') {
+            $sql .= " AND (
+                    flow.hc_number LIKE :paciente
+                    OR CONCAT_WS(' ', TRIM(pd.lname), TRIM(pd.lname2), TRIM(pd.fname), TRIM(pd.mname)) LIKE :paciente
+                    OR CONCAT_WS(' ', TRIM(pd.fname), TRIM(pd.mname), TRIM(pd.lname), TRIM(pd.lname2)) LIKE :paciente
+                )";
+            $params[':paciente'] = '%' . $paciente . '%';
+        }
+
+        $estadoAgenda = trim((string) ($filters['estado_agenda'] ?? ''));
+        if ($estadoAgenda !== '') {
+            $sql .= ' AND TRIM(COALESCE(flow.estados_agenda, "")) LIKE :estado_agenda_like';
+            $params[':estado_agenda_like'] = '%' . $estadoAgenda . '%';
+        }
+
+        $sql .= ' ORDER BY flow.fecha_solicitud DESC, flow.solicitud_id DESC';
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $today = new DateTimeImmutable('today');
+        $todayTs = $today->getTimestamp();
+        $output = [];
+
+        foreach ($rows as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+
+            $hasAgenda = (int) ($row['has_agenda'] ?? 0) === 1;
+            $realizada = (int) ($row['realizada'] ?? 0) === 1;
+            $cancelada = (int) ($row['cancelada'] ?? 0) === 1;
+            $ausenteExplicita = (int) ($row['ausente'] ?? 0) === 1;
+            $fechaAgendaRaw = trim((string) ($row['fecha_agenda'] ?? ''));
+            $fechaAgendaTs = $fechaAgendaRaw !== '' ? strtotime($fechaAgendaRaw) : false;
+            $agendaVencidaSinCierre = $hasAgenda && !$realizada && !$cancelada && $fechaAgendaTs !== false && $fechaAgendaTs < $todayTs;
+            $ausenteCohorte = !$realizada && !$cancelada && ($ausenteExplicita || $agendaVencidaSinCierre);
+            $pendienteVigente = !$realizada && !$cancelada && (
+                !$hasAgenda
+                || (!$ausenteCohorte && ($fechaAgendaRaw === '' || $fechaAgendaTs === false || $fechaAgendaTs >= $todayTs))
+            );
+
+            $output[] = [
+                'solicitud_id' => (int) ($row['solicitud_id'] ?? 0),
+                'fecha_solicitud' => $this->formatDashboardDate((string) ($row['fecha_solicitud'] ?? '')),
+                'hc_number' => trim((string) ($row['hc_number'] ?? '')),
+                'paciente' => trim((string) ($row['paciente'] ?? '')),
+                'doctor_solicitante' => trim((string) ($row['doctor_solicitante'] ?? 'Sin asignar')),
+                'solicitud_form_id' => trim((string) ($row['solicitud_form_id'] ?? '')),
+                'examen_codigo' => trim((string) ($row['examen_codigo'] ?? '')),
+                'examen_nombre' => trim((string) ($row['examen_nombre'] ?? '')),
+                'empresa_seguro' => trim((string) ($row['empresa_seguro'] ?? '')),
+                'afiliacion' => trim((string) ($row['afiliacion'] ?? '')),
+                'afiliacion_categoria' => $this->formatCategoriaLabel((string) ($row['afiliacion_categoria'] ?? '')),
+                'sede' => trim((string) ($row['sede'] ?? '')),
+                'agendada' => $hasAgenda,
+                'fecha_agenda' => $this->formatDashboardDate((string) ($row['fecha_agenda'] ?? '')),
+                'realizada' => $realizada,
+                'fecha_realizacion' => $this->formatDashboardDate((string) ($row['fecha_realizacion'] ?? '')),
+                'informada' => (int) ($row['informada'] ?? 0) === 1,
+                'facturada' => (int) ($row['facturada'] ?? 0) === 1,
+                'cancelada' => $cancelada,
+                'ausente_cohorte' => $ausenteCohorte,
+                'pendiente_vigente' => $pendienteVigente,
+                'estados_agenda' => trim((string) ($row['estados_agenda'] ?? '')),
+                'procedimientos_match' => trim((string) ($row['procedimientos_match'] ?? '')),
+            ];
+        }
+
+        return $output;
+    }
+
+    /**
      * @param array<string,mixed> $dashboard
      * @param array<int,array<string,mixed>> $detailRows
      * @param array<int,array{label:string,value:string}> $filtersSummary
@@ -998,13 +1705,36 @@ class ImagenesUiService
         $meta = is_array($dashboard['meta'] ?? null) ? $dashboard['meta'] : [];
         $charts = is_array($dashboard['charts'] ?? null) ? $dashboard['charts'] : [];
         $total = count($detailRows);
+        $solicitudesTotal = (int) ($meta['solicitudes_total'] ?? 0);
+        $solicitudesAgendadas = (int) ($meta['solicitudes_agendadas'] ?? 0);
+        $solicitudesRealizadas = (int) ($meta['solicitudes_realizadas'] ?? 0);
+        $solicitudesAgendadasAlCorte = (int) ($meta['solicitudes_agendadas_al_corte'] ?? 0);
+        $solicitudesRealizadasAlCorte = (int) ($meta['solicitudes_realizadas_al_corte'] ?? 0);
+        $solicitudesRealizadasPostCorte = (int) ($meta['solicitudes_realizadas_post_corte'] ?? 0);
+        $solicitudesSinAgenda = (int) ($meta['solicitudes_sin_agenda'] ?? 0);
+        $solicitudesSinAgendaMontoEstimado = (float) ($meta['solicitudes_sin_agenda_monto_estimado'] ?? 0);
+        $solicitudesSinAgendaSinTarifa = (int) ($meta['solicitudes_sin_agenda_sin_tarifa'] ?? 0);
+        $solicitudesAgendadasPendientes = (int) ($meta['solicitudes_agendadas_pendientes'] ?? 0);
+        $solicitudesPendientesVigentes = (int) ($meta['solicitudes_pendientes_vigentes'] ?? 0);
+        $conversionSolicitudRealizacionPct = ($meta['conversion_solicitud_realizacion_pct'] ?? null) !== null
+            ? (float) $meta['conversion_solicitud_realizacion_pct']
+            : null;
+        $cumplimientoRealizacionAlCortePct = ($meta['cumplimiento_realizacion_al_corte_pct'] ?? null) !== null
+            ? (float) $meta['cumplimiento_realizacion_al_corte_pct']
+            : null;
+        $cumplimientoRealizacionAcumuladoPct = ($meta['cumplimiento_realizacion_acumulado_pct'] ?? null) !== null
+            ? (float) $meta['cumplimiento_realizacion_acumulado_pct']
+            : null;
         $atendidos = (int) ($this->reportCardValue($cards, 'Atendidos') ?? 0);
         $informadas = (int) ($this->reportCardValue($cards, 'Informadas') ?? 0);
         $facturados = (int) ($this->reportCardValue($cards, 'Facturados') ?? 0);
         $pendientesFacturar = (int) ($meta['pendientes_facturar'] ?? 0);
         $pendientesFacturarPublico = (int) ($meta['pendientes_facturar_publico'] ?? 0);
         $pendientesFacturarPrivado = (int) ($meta['pendientes_facturar_privado'] ?? 0);
+        $pendientesFacturarOtros = (int) ($meta['pendientes_facturar_otros'] ?? 0);
+        $montoPendienteEstimado = (float) ($meta['monto_pendiente_estimado'] ?? 0);
         $montoPendienteEstimadoPublico = (float) ($meta['monto_pendiente_estimado_publico'] ?? 0);
+        $pendientesFacturarSinTarifa = (int) ($meta['pendientes_facturar_sin_tarifa'] ?? 0);
         $pendientesFacturarPublicoSinTarifa = (int) ($meta['pendientes_facturar_publico_sin_tarifa'] ?? 0);
         $produccionFacturada = (float) ($meta['produccion_facturada'] ?? 0);
         $produccionFacturadaPublico = (float) ($meta['produccion_facturada_publico'] ?? 0);
@@ -1014,13 +1744,20 @@ class ImagenesUiService
         $tatPromedio = ($meta['tat_promedio_horas'] ?? null) !== null ? number_format((float) $meta['tat_promedio_horas'], 2) . ' h' : '—';
         $tatMediana = ($meta['tat_mediana_horas'] ?? null) !== null ? number_format((float) $meta['tat_mediana_horas'], 2) . ' h' : '—';
         $tatP90 = ($meta['tat_p90_horas'] ?? null) !== null ? number_format((float) $meta['tat_p90_horas'], 2) . ' h' : '—';
+        $canceladasOperativas = (int) ($meta['canceladas_operativas'] ?? $this->reportCardValue($cards, 'Cancelados del periodo') ?? 0);
+        $ausentesOperativos = (int) ($meta['ausentes_operativos'] ?? 0);
+        $sinCierre = (int) ($meta['pendientes_operativos'] ?? $this->reportCardValue($cards, 'Pendientes operativos') ?? 0);
         $insuranceBreakdown = is_array($meta['insurance_breakdown'] ?? null) ? $meta['insurance_breakdown'] : [];
         $insuranceBreakdownTitle = trim((string) ($insuranceBreakdown['title'] ?? 'Empresas de seguro'));
         $insuranceBreakdownItemLabel = trim((string) ($insuranceBreakdown['item_label'] ?? 'Empresa de seguro'));
         $traficoLabels = is_array($charts['trafico_dia_semana']['labels'] ?? null) ? $charts['trafico_dia_semana']['labels'] : [];
         $traficoValues = is_array($charts['trafico_dia_semana']['values'] ?? null) ? $charts['trafico_dia_semana']['values'] : [];
+        $mixLabels = is_array($charts['mix_codigos']['labels'] ?? null) ? $charts['mix_codigos']['labels'] : [];
+        $mixValues = is_array($charts['mix_codigos']['values'] ?? null) ? $charts['mix_codigos']['values'] : [];
         $doctorSolicitanteLabels = is_array($charts['top_doctores_solicitantes']['labels'] ?? null) ? $charts['top_doctores_solicitantes']['labels'] : [];
         $doctorSolicitanteValues = is_array($charts['top_doctores_solicitantes']['values'] ?? null) ? $charts['top_doctores_solicitantes']['values'] : [];
+        $topExamenesSolicitadosLabels = is_array($charts['top_examenes_solicitados']['labels'] ?? null) ? $charts['top_examenes_solicitados']['labels'] : [];
+        $topExamenesSolicitadosValues = is_array($charts['top_examenes_solicitados']['values'] ?? null) ? $charts['top_examenes_solicitados']['values'] : [];
         $insuranceLabels = is_array($charts['analisis_seguro']['labels'] ?? null) ? $charts['analisis_seguro']['labels'] : [];
         $insuranceValues = is_array($charts['analisis_seguro']['values'] ?? null) ? $charts['analisis_seguro']['values'] : [];
         $diaPico = '—';
@@ -1034,31 +1771,77 @@ class ImagenesUiService
         }
 
         $hallazgos = [];
+        if ($solicitudesTotal > 0) {
+            $hallazgos[] = sprintf(
+                'Se registraron %s solicitudes; %s quedaron agendadas al corte, %s se realizaron al corte (%s%%) y %s se realizaron después del corte.',
+                number_format($solicitudesTotal),
+                number_format($solicitudesAgendadasAlCorte),
+                number_format($solicitudesRealizadasAlCorte),
+                number_format($cumplimientoRealizacionAlCortePct ?? 0, 1),
+                number_format($solicitudesRealizadasPostCorte)
+            );
+            if ($solicitudesPendientesVigentes > 0 || $solicitudesSinAgenda > 0) {
+                $hallazgos[] = sprintf(
+                    'A la fecha siguen abiertas %s solicitudes de esa cohorte; %s no tienen agenda y %s conservan agenda vigente sin cierre técnico.',
+                    number_format($solicitudesPendientesVigentes),
+                    number_format($solicitudesSinAgenda),
+                    number_format($solicitudesAgendadasPendientes)
+                );
+            }
+            if (($meta['solicitudes_ausentes'] ?? 0) > 0) {
+                $hallazgos[] = sprintf(
+                    'Se detectan %s ausentes de cohorte, agrupando estados explícitos y agendas vencidas sin evidencia de realización.',
+                    number_format((int) ($meta['solicitudes_ausentes'] ?? 0))
+                );
+            }
+            if ($solicitudesSinAgendaMontoEstimado > 0) {
+                $hallazgos[] = sprintf(
+                    'La pérdida económica estimada por solicitudes aún no agendadas asciende a $%s.',
+                    number_format($solicitudesSinAgendaMontoEstimado, 2)
+                );
+            }
+        }
         $hallazgos[] = sprintf(
-            'Se analizaron %s estudios; %s atendidos, %s informados y %s facturados.',
+            'En la operación del periodo se analizaron %s agendas; %s atendidos, %s informados y %s facturados.',
             number_format($total),
             number_format($atendidos),
             number_format($informadas),
             number_format($facturados)
         );
+        if ($total > 0) {
+            $hallazgos[] = sprintf(
+                'La operación tuvo %s agendas y logró un cumplimiento cita->realización de %s.',
+                number_format($total),
+                $cumplimientoCita
+            );
+        }
         if ($pendientesFacturar > 0) {
+            $desglosePendiente = [];
+            if ($pendientesFacturarPublico > 0) {
+                $desglosePendiente[] = number_format($pendientesFacturarPublico) . ' públicos';
+            }
+            if ($pendientesFacturarPrivado > 0) {
+                $desglosePendiente[] = number_format($pendientesFacturarPrivado) . ' privados';
+            }
+            if ($pendientesFacturarOtros > 0) {
+                $desglosePendiente[] = number_format($pendientesFacturarOtros) . ' particulares/otros';
+            }
             $hallazgos[] = sprintf(
-                'El backlog atendido sin facturar es de %s casos: %s públicos y %s privados.',
+                'El backlog atendido sin facturar es de %s casos%s.',
                 number_format($pendientesFacturar),
-                number_format($pendientesFacturarPublico),
-                number_format($pendientesFacturarPrivado)
+                $desglosePendiente !== [] ? (': ' . implode(', ', $desglosePendiente)) : ''
             );
         }
-        if ($montoPendienteEstimadoPublico > 0) {
+        if ($montoPendienteEstimado > 0) {
             $hallazgos[] = sprintf(
-                'El pendiente público estimado asciende a $%s usando tarifario 2014 nivel 3.',
-                number_format($montoPendienteEstimadoPublico, 2)
+                'El pendiente estimado valorizado asciende a $%s para estudios realizados sin billing real.',
+                number_format($montoPendienteEstimado, 2)
             );
         }
-        if ($pendientesFacturarPublicoSinTarifa > 0) {
+        if ($pendientesFacturarSinTarifa > 0) {
             $hallazgos[] = sprintf(
-                'Hay %s casos públicos sin tarifa nivel 3 disponible; requieren revisión tarifaria.',
-                number_format($pendientesFacturarPublicoSinTarifa)
+                'Hay %s casos pendientes de facturar sin tarifa resoluble por código/categoría; requieren revisión tarifaria.',
+                number_format($pendientesFacturarSinTarifa)
             );
         }
         if ($sla48 !== '—') {
@@ -1066,28 +1849,56 @@ class ImagenesUiService
         }
 
         $methodology = [
-            'El universo considera procedimientos de IMAGENES dentro del rango filtrado con estado de agenda no vacío.',
+            'El reporte separa dos universos: cohorte de solicitudes y operación del periodo.',
+            'La cohorte parte de consulta_examenes y cruza contra procedimiento_proyectado por hc_number + examen_codigo contenido en el procedimiento; form_id queda como apoyo.',
+            'El filtro de fechas aplica a la solicitud; el cumplimiento al corte usa fecha_fin como fecha de corte de cohorte.',
+            'Si una solicitud del rango se realiza después de fecha_fin, se clasifica como realizada posterior al corte y no mejora el cumplimiento al corte.',
+            'La operación del periodo considera procedimientos de IMAGENES dentro del rango filtrado con estado de agenda no vacío, aunque la solicitud original sea anterior.',
             'La realización se clasifica con evidencia operativa, informes registrados y presencia de archivos en NAS o índice NAS.',
+            'Las ausencias agrupan estados explícitos de ausente y agendas ya vencidas sin evidencia de realización.',
             'La facturación se resuelve con evidencia combinada de billing_facturacion_real y billing_main + billing_procedimientos.',
-            'Para backlog público se estima el pendiente con tarifario_2014 nivel 3 cuando existe coincidencia de código.',
-            'Los casos públicos sin tarifa nivel 3 quedan identificados por separado para auditoría.',
+            'El pendiente estimado solo aplica a estudios realizados sin billing real; no incluye registros ya facturados en cartera o pendiente de pago.',
+            'La valorización del backlog usa código de examen + categoría/afiliación cuando existe tarifa resoluble; los casos sin tarifa quedan identificados para auditoría.',
         ];
 
-        $generalKpis = [
-            ['label' => 'Total estudios', 'value' => $this->reportCardText($cards, 'Total estudios') ?? '0', 'note' => $this->reportCardText($cards, 'Total estudios', 'hint') ?? ''],
+        $executiveKpis = [
+            ['label' => 'Solicitudes de exámenes', 'value' => $this->reportCardText($cards, 'Solicitudes de exámenes') ?? '0', 'note' => 'Cohorte base del rango filtrado.'],
+            ['label' => 'Agendas del periodo', 'value' => $this->reportCardText($cards, 'Agendas del periodo') ?? '0', 'note' => 'Universo operativo filtrado por fecha de agenda.'],
+            ['label' => 'Atendidos', 'value' => $this->reportCardText($cards, 'Atendidos') ?? '0', 'note' => $this->reportCardText($cards, 'Atendidos', 'hint') ?? ''],
+            ['label' => 'Facturados', 'value' => $this->reportCardText($cards, 'Facturados') ?? '0', 'note' => $this->reportCardText($cards, 'Facturados', 'hint') ?? ''],
+            ['label' => 'Pendiente de facturar', 'value' => $this->reportCardText($cards, 'Pendiente de facturar') ?? '0', 'note' => $this->reportCardText($cards, 'Pendiente de facturar', 'hint') ?? ''],
+            ['label' => 'Producción facturada', 'value' => '$' . number_format($produccionFacturada, 2), 'note' => 'Monto real facturado consolidado en el rango.'],
+        ];
+
+        $cohortKpis = [
+            ['label' => 'Solicitudes de exámenes', 'value' => $this->reportCardText($cards, 'Solicitudes de exámenes') ?? '0', 'note' => $this->reportCardText($cards, 'Solicitudes de exámenes', 'hint') ?? ''],
+            ['label' => 'Agendadas al corte', 'value' => $this->reportCardText($cards, 'Agendadas al corte') ?? '0', 'note' => $this->reportCardText($cards, 'Agendadas al corte', 'hint') ?? ''],
+            ['label' => 'Realizadas al corte', 'value' => $this->reportCardText($cards, 'Realizadas al corte') ?? '0', 'note' => $this->reportCardText($cards, 'Realizadas al corte', 'hint') ?? ''],
+            ['label' => 'Realizadas posterior al corte', 'value' => $this->reportCardText($cards, 'Realizadas posterior al corte') ?? '0', 'note' => $this->reportCardText($cards, 'Realizadas posterior al corte', 'hint') ?? ''],
+            ['label' => 'Cumplimiento al corte', 'value' => $this->reportCardText($cards, 'Cumplimiento al corte') ?? '—', 'note' => $this->reportCardText($cards, 'Cumplimiento al corte', 'hint') ?? ''],
+            ['label' => 'Pérdida económica por no agendar', 'value' => $this->reportCardText($cards, 'Pérdida económica por no agendar') ?? '$0.00', 'note' => $this->reportCardText($cards, 'Pérdida económica por no agendar', 'hint') ?? ''],
+            ['label' => 'Solicitudes sin agenda', 'value' => number_format($solicitudesSinAgenda), 'note' => 'Solicitudes registradas sin cruce operativo en procedimiento_proyectado.'],
+            ['label' => 'Ausentes de cohorte', 'value' => number_format((int) ($meta['solicitudes_ausentes'] ?? 0)), 'note' => 'Agrupa ausencias explícitas y agendas vencidas sin evidencia de realización.'],
+            ['label' => 'Pendientes vigentes de cohorte', 'value' => number_format($solicitudesPendientesVigentes), 'note' => 'Solicitudes aún abiertas: sin agenda o con agenda vigente sin cierre técnico.'],
+        ];
+
+        $operationalKpis = [
+            ['label' => 'Agendas del periodo', 'value' => $this->reportCardText($cards, 'Agendas del periodo') ?? '0', 'note' => $this->reportCardText($cards, 'Agendas del periodo', 'hint') ?? ''],
             ['label' => 'Atendidos', 'value' => $this->reportCardText($cards, 'Atendidos') ?? '0', 'note' => $this->reportCardText($cards, 'Atendidos', 'hint') ?? ''],
             ['label' => 'Informadas', 'value' => $this->reportCardText($cards, 'Informadas') ?? '0', 'note' => $this->reportCardText($cards, 'Informadas', 'hint') ?? ''],
             ['label' => 'Facturados', 'value' => $this->reportCardText($cards, 'Facturados') ?? '0', 'note' => $this->reportCardText($cards, 'Facturados', 'hint') ?? ''],
+            ['label' => 'Cumplimiento cita->realización', 'value' => $cumplimientoCita, 'note' => $this->reportCardText($cards, 'Cumplimiento cita->realización', 'hint') ?? ''],
+            ['label' => 'Cancelados del periodo', 'value' => number_format($canceladasOperativas), 'note' => 'Cierre operativo cancelado en agenda dentro del periodo.'],
+            ['label' => 'Pérdida operativa', 'value' => number_format($canceladasOperativas + $ausentesOperativos), 'note' => 'Cancelados + ausentes del periodo; ausente incluye agendas vencidas sin cierre.'],
+            ['label' => 'Pendientes operativos', 'value' => number_format($sinCierre), 'note' => 'Agendas vigentes o del día sin evidencia de realización ni cierre final.'],
             ['label' => 'Pendiente de facturar', 'value' => $this->reportCardText($cards, 'Pendiente de facturar') ?? '0', 'note' => $this->reportCardText($cards, 'Pendiente de facturar', 'hint') ?? ''],
-            ['label' => 'Pérdida', 'value' => $this->reportCardText($cards, 'Pérdida') ?? '0', 'note' => $this->reportCardText($cards, 'Pérdida', 'hint') ?? ''],
         ];
 
-        $temporalKpis = [
+        $qualityKpis = [
             ['label' => 'SLA informe <= 48h', 'value' => $sla48, 'note' => $this->reportCardText($cards, 'SLA informe <= 48h', 'hint') ?? ''],
             ['label' => 'TAT promedio', 'value' => $tatPromedio, 'note' => 'Tiempo promedio entre examen e informe.'],
             ['label' => 'TAT mediana', 'value' => $tatMediana, 'note' => 'Mitad de los informes queda por debajo de este tiempo.'],
             ['label' => 'TAT P90', 'value' => $tatP90, 'note' => '90% de los informes cae bajo este umbral.'],
-            ['label' => 'Cumplimiento cita->realización', 'value' => $cumplimientoCita, 'note' => $this->reportCardText($cards, 'Cumplimiento cita->realización', 'hint') ?? ''],
             ['label' => 'Día pico de tráfico', 'value' => $diaPico, 'note' => $traficoPico > 0 ? ($traficoPico . ' estudios en el día pico') : 'Sin datos'],
         ];
 
@@ -1099,44 +1910,67 @@ class ImagenesUiService
                 'formula' => 'SUM(total_produccion) de la fuente de billing priorizada por form_id.',
             ],
             [
-                'label' => 'Facturado público',
-                'value' => '$' . number_format($produccionFacturadaPublico, 2),
-                'meaning' => 'Producción real ya cerrada para afiliaciones públicas.',
-                'formula' => 'SUM(total_produccion) donde afiliacion_categoria = publico y existe evidencia de billing.',
-            ],
-            [
-                'label' => 'Facturado privado',
-                'value' => '$' . number_format($produccionFacturadaPrivado, 2),
-                'meaning' => 'Producción real ya cerrada para afiliaciones privadas.',
-                'formula' => 'SUM(total_produccion) donde afiliacion_categoria = privado y existe evidencia de billing.',
-            ],
-            [
-                'label' => 'Pendiente facturar pública',
-                'value' => number_format($pendientesFacturarPublico),
-                'meaning' => 'Casos públicos atendidos sin billing cerrado.',
+                'label' => 'Pendiente de facturar',
+                'value' => number_format($pendientesFacturar),
+                'meaning' => 'Estudios realizados con evidencia técnica pero todavía sin billing real.',
                 'formula' => 'Estado realizado con evidencia técnica y sin evidencia de billing.',
             ],
             [
-                'label' => 'Pendiente facturar privada',
-                'value' => number_format($pendientesFacturarPrivado),
-                'meaning' => 'Casos privados atendidos sin billing real.',
-                'formula' => 'Estado realizado con evidencia técnica y sin evidencia de billing.',
+                'label' => 'Pendiente de pago',
+                'value' => number_format((int) ($meta['pendientes_pago'] ?? 0)),
+                'meaning' => 'Billing emitido cuyo estado real permanece en pendiente/cartera.',
+                'formula' => 'Estado de facturación real marcado como pendiente/cartera; no incluye pendientes aún sin billing.',
             ],
             [
-                'label' => 'Pendiente estimado público',
-                'value' => '$' . number_format($montoPendienteEstimadoPublico, 2),
-                'meaning' => 'Valor potencial pendiente en públicos.',
-                'formula' => 'SUM(valor_facturar_nivel3) de tarifario_2014 para públicos pendientes de facturar.',
+                'label' => 'Pendiente estimado',
+                'value' => '$' . number_format($montoPendienteEstimado, 2),
+                'meaning' => 'Valor potencial del backlog sin facturar, valorizado por código y categoría cuando existe tarifa.',
+                'formula' => 'SUM de la tarifa resoluble por código/categoría para pendientes de facturar; excluye cartera/pendiente de pago.',
+            ],
+            [
+                'label' => 'Ticket promedio facturado',
+                'value' => '$' . number_format((float) ($meta['ticket_promedio_facturado'] ?? 0), 2),
+                'meaning' => 'Ingreso promedio por estudio con billing real.',
+                'formula' => 'Producción facturada / estudios facturados.',
+            ],
+            [
+                'label' => 'Procedimientos facturados',
+                'value' => number_format((int) ($meta['procedimientos_facturados'] ?? 0)),
+                'meaning' => 'Volumen de procedimientos con billing real en el periodo.',
+                'formula' => 'SUM(procedimientos_facturados) en la fuente de billing priorizada.',
             ],
         ];
 
-        $tables = [
+        $operationalTables = [
             [
-                'title' => 'Top 10 doctores solicitantes',
-                'subtitle' => 'Conteo simple desde consulta_examenes con LEFT JOIN a procedimiento_proyectado por form_id.',
-                'columns' => ['Doctor solicitante', 'Solicitudes'],
-                'rows' => $this->buildImagenesDashboardMetricRows($doctorSolicitanteLabels, $doctorSolicitanteValues),
-                'empty_message' => 'Sin solicitudes de exámenes asociadas para el rango seleccionado.',
+                'title' => 'Top exámenes realizados',
+                'subtitle' => 'Volumen operativo por examen a partir de agendas del periodo.',
+                'columns' => ['Examen realizado', 'Casos'],
+                'rows' => $this->buildImagenesDashboardMetricRows($mixLabels, $mixValues),
+                'empty_message' => 'Sin volumen operativo para el rango seleccionado.',
+            ],
+            [
+                'title' => 'Backlog de facturación por categoría',
+                'subtitle' => 'Separación entre casos ya facturados y backlog atendido pendiente.',
+                'columns' => ['Categoría', 'Facturados', 'Pendiente facturar', 'Pendiente estimado'],
+                'rows' => array_values(array_filter([
+                    ['Pública', number_format((int) ($meta['facturados_publico'] ?? 0)), number_format($pendientesFacturarPublico), $pendientesFacturarPublico > 0 ? '$' . number_format($montoPendienteEstimadoPublico, 2) : '—'],
+                    ['Privada', number_format((int) ($meta['facturados_privado'] ?? 0)), number_format($pendientesFacturarPrivado), '—'],
+                    ['Particular / otros', number_format((int) ($meta['facturados_otros'] ?? 0)), number_format($pendientesFacturarOtros), '—'],
+                ], static fn(array $row): bool => ((int) str_replace(',', '', $row[1])) > 0 || ((int) str_replace(',', '', $row[2])) > 0)),
+                'empty_message' => 'Sin backlog de facturación para el rango seleccionado.',
+            ],
+            [
+                'title' => 'Rendimiento económico',
+                'subtitle' => 'Producción real facturada vs oportunidad económica aún abierta en pendientes de facturar.',
+                'columns' => ['Métrica', 'Valor'],
+                'rows' => [
+                    ['Producción facturada real', '$' . number_format($produccionFacturada, 2)],
+                    ['Pendiente estimado', '$' . number_format($montoPendienteEstimado, 2)],
+                    ['Ticket promedio facturado', '$' . number_format((float) ($meta['ticket_promedio_facturado'] ?? 0), 2)],
+                    ['Procedimientos facturados', number_format((int) ($meta['procedimientos_facturados'] ?? 0))],
+                ],
+                'empty_message' => 'Sin datos económicos para el rango seleccionado.',
             ],
             [
                 'title' => $insuranceBreakdownTitle,
@@ -1145,39 +1979,40 @@ class ImagenesUiService
                 'rows' => $this->buildImagenesDashboardMetricRows($insuranceLabels, $insuranceValues),
                 'empty_message' => 'Sin datos de seguro para el rango seleccionado.',
             ],
+        ];
+
+        $cohortTables = [
             [
-                'title' => 'Backlog de facturación por categoría',
-                'subtitle' => 'Separación entre casos ya facturados y backlog atendido pendiente.',
-                'columns' => ['Categoría', 'Facturados', 'Pendiente facturar', 'Pendiente estimado'],
-                'rows' => [
-                    ['Pública', number_format((int) ($meta['facturados_publico'] ?? 0)), number_format($pendientesFacturarPublico), '$' . number_format($montoPendienteEstimadoPublico, 2)],
-                    ['Privada', number_format((int) ($meta['facturados_privado'] ?? 0)), number_format($pendientesFacturarPrivado), '—'],
-                ],
-                'empty_message' => 'Sin backlog de facturación para el rango seleccionado.',
+                'title' => 'Top 10 doctores solicitantes',
+                'subtitle' => 'Conteo de solicitudes del rango usando consulta_examenes y cruce operativo por form_id/hc_number.',
+                'columns' => ['Doctor solicitante', 'Solicitudes'],
+                'rows' => $this->buildImagenesDashboardMetricRows($doctorSolicitanteLabels, $doctorSolicitanteValues),
+                'empty_message' => 'Sin solicitudes de exámenes asociadas para el rango seleccionado.',
             ],
             [
-                'title' => 'Rendimiento económico',
-                'subtitle' => 'Producción real facturada vs oportunidad económica pública aún abierta.',
-                'columns' => ['Métrica', 'Valor'],
-                'rows' => [
-                    ['Producción facturada real', '$' . number_format($produccionFacturada, 2)],
-                    ['Pendiente estimado público', '$' . number_format($montoPendienteEstimadoPublico, 2)],
-                    ['Ticket promedio facturado', '$' . number_format((float) ($meta['ticket_promedio_facturado'] ?? 0), 2)],
-                    ['Procedimientos facturados', number_format((int) ($meta['procedimientos_facturados'] ?? 0))],
-                ],
-                'empty_message' => 'Sin datos económicos para el rango seleccionado.',
+                'title' => 'Top exámenes solicitados',
+                'subtitle' => 'Exámenes más pedidos en la cohorte filtrada.',
+                'columns' => ['Examen solicitado', 'Solicitudes'],
+                'rows' => $this->buildImagenesDashboardMetricRows($topExamenesSolicitadosLabels, $topExamenesSolicitadosValues),
+                'empty_message' => 'Sin exámenes solicitados para el rango seleccionado.',
             ],
         ];
 
         return [
-            'scopeNotice' => 'Este reporte consolida actividad operativa, evidencia técnica NAS/informe y cierre económico para estudios de imágenes.',
+            'scopeNotice' => 'Este reporte separa cohorte de solicitudes, operación del periodo, evidencia técnica NAS/informe y cierre económico para estudios de imágenes.',
             'filtersSummary' => $filtersSummary,
             'hallazgosClave' => $hallazgos,
             'methodology' => $methodology,
-            'generalKpis' => $generalKpis,
-            'temporalKpis' => $temporalKpis,
+            'executiveKpis' => $executiveKpis,
+            'cohortKpis' => $cohortKpis,
+            'operationalKpis' => $operationalKpis,
+            'qualityKpis' => $qualityKpis,
+            'generalKpis' => [],
+            'temporalKpis' => [],
             'economicKpis' => $economicKpis,
-            'tables' => $tables,
+            'operationalTables' => $operationalTables,
+            'cohortTables' => $cohortTables,
+            'tables' => array_merge($operationalTables, $cohortTables),
             'totalAtenciones' => $total,
             'rangeLabel' => trim((string) ($filters['fecha_inicio'] ?? '')) !== '' && trim((string) ($filters['fecha_fin'] ?? '')) !== ''
                 ? trim((string) ($filters['fecha_inicio'] ?? '')) . ' a ' . trim((string) ($filters['fecha_fin'] ?? ''))
@@ -1343,6 +2178,130 @@ class ImagenesUiService
         ];
     }
 
+    /**
+     * @param array<string,string> $filters
+     * @return array{labels:array<int,string>,values:array<int,int>}
+     */
+    private function fetchTopExamenesSolicitados(array $filters, int $limit = 10): array
+    {
+        if (!$this->tableExists('consulta_examenes')) {
+            return ['labels' => [], 'values' => []];
+        }
+
+        $flowSubquery = $this->buildImagenesSolicitudFlowSubquery();
+        $rawAfiliacionExpr = "COALESCE(NULLIF(TRIM(flow.afiliacion), ''), NULLIF(TRIM(pd.afiliacion), ''), '')";
+        $afiliacionKeyExpr = $this->afiliacionGroupKeyExpr($rawAfiliacionExpr, 'iacm_top_exam_sol');
+        $categoriaContext = $this->resolveAfiliacionCategoriaContext($rawAfiliacionExpr, 'iacm_top_exam_sol');
+        $seguroKeyExpr = $this->seguroKeyExpr($rawAfiliacionExpr, 'iacm_top_exam_sol');
+        $sedeExpr = $this->imagenesSedeExprFromFields('flow.sede_departamento', 'flow.id_sede');
+        $fechaSolicitudExpr = $this->safeSqlDateExpr('flow.fecha_solicitud');
+        $examExpr = "CASE
+                WHEN TRIM(COALESCE(flow.examen_codigo, '')) <> '' AND TRIM(COALESCE(flow.examen_nombre, '')) <> ''
+                    THEN CONCAT(TRIM(flow.examen_codigo), ' - ', TRIM(flow.examen_nombre))
+                WHEN TRIM(COALESCE(flow.examen_nombre, '')) <> ''
+                    THEN TRIM(flow.examen_nombre)
+                WHEN TRIM(COALESCE(flow.examen_codigo, '')) <> ''
+                    THEN TRIM(flow.examen_codigo)
+                ELSE 'Sin examen'
+            END";
+
+        $sql = "SELECT
+                {$examExpr} AS examen_solicitado,
+                COUNT(*) AS total_solicitudes
+            FROM ({$flowSubquery}) flow
+            LEFT JOIN patient_data pd ON pd.hc_number = flow.hc_number
+            {$categoriaContext['join']}
+            WHERE flow.examen_nombre IS NOT NULL
+              AND TRIM(flow.examen_nombre) <> ''";
+
+        $params = [];
+
+        $fechaInicio = trim((string) ($filters['fecha_inicio'] ?? ''));
+        if ($fechaInicio !== '') {
+            $sql .= " AND {$fechaSolicitudExpr} >= :fecha_inicio";
+            $params[':fecha_inicio'] = $fechaInicio;
+        }
+
+        $fechaFin = trim((string) ($filters['fecha_fin'] ?? ''));
+        if ($fechaFin !== '') {
+            $sql .= " AND {$fechaSolicitudExpr} <= :fecha_fin";
+            $params[':fecha_fin'] = $fechaFin;
+        }
+
+        $afiliacionFilter = $this->normalizeAfiliacionFilter((string) ($filters['afiliacion'] ?? ''));
+        if ($afiliacionFilter !== '') {
+            $sql .= " AND {$afiliacionKeyExpr} = :afiliacion_filter_match";
+            $params[':afiliacion_filter_match'] = $afiliacionFilter;
+        }
+
+        $afiliacionCategoriaFilter = $this->normalizeAfiliacionCategoriaFilter((string) ($filters['afiliacion_categoria'] ?? ''));
+        if ($afiliacionCategoriaFilter !== '') {
+            $sql .= " AND {$categoriaContext['expr']} = :afiliacion_categoria_filter_match";
+            $params[':afiliacion_categoria_filter_match'] = $afiliacionCategoriaFilter;
+        }
+
+        $seguroFilter = $this->normalizeSeguroFilter((string) ($filters['seguro'] ?? ''));
+        if ($seguroFilter !== '') {
+            $sql .= " AND {$seguroKeyExpr} = :seguro_filter_match";
+            $params[':seguro_filter_match'] = $seguroFilter;
+        }
+
+        $sedeFilter = $this->normalizeSedeFilter((string) ($filters['sede'] ?? ''));
+        if ($sedeFilter !== '') {
+            $sql .= " AND {$sedeExpr} = :sede_filter_match";
+            $params[':sede_filter_match'] = $sedeFilter;
+        }
+
+        $tipoExamen = trim((string) ($filters['tipo_examen'] ?? ''));
+        if ($tipoExamen !== '') {
+            $sql .= ' AND (
+                    flow.examen_nombre LIKE :tipo_examen
+                    OR flow.examen_codigo LIKE :tipo_examen
+                    OR TRIM(COALESCE(flow.procedimientos_match, "")) LIKE :tipo_examen
+                )';
+            $params[':tipo_examen'] = '%' . $tipoExamen . '%';
+        }
+
+        $paciente = trim((string) ($filters['paciente'] ?? ''));
+        if ($paciente !== '') {
+            $sql .= " AND (
+                    flow.hc_number LIKE :paciente
+                    OR CONCAT_WS(' ', TRIM(pd.lname), TRIM(pd.lname2), TRIM(pd.fname), TRIM(pd.mname)) LIKE :paciente
+                    OR CONCAT_WS(' ', TRIM(pd.fname), TRIM(pd.mname), TRIM(pd.lname), TRIM(pd.lname2)) LIKE :paciente
+                )";
+            $params[':paciente'] = '%' . $paciente . '%';
+        }
+
+        $estadoAgenda = trim((string) ($filters['estado_agenda'] ?? ''));
+        if ($estadoAgenda !== '') {
+            $sql .= ' AND TRIM(COALESCE(flow.estados_agenda, "")) LIKE :estado_agenda_like';
+            $params[':estado_agenda_like'] = '%' . $estadoAgenda . '%';
+        }
+
+        $sql .= " GROUP BY {$examExpr}
+                  ORDER BY total_solicitudes DESC, examen_solicitado ASC
+                  LIMIT :limit";
+
+        $stmt = $this->db->prepare($sql);
+        foreach ($params as $key => $value) {
+            $stmt->bindValue($key, $value, PDO::PARAM_STR);
+        }
+        $stmt->bindValue(':limit', max(1, $limit), PDO::PARAM_INT);
+        $stmt->execute();
+
+        $labels = [];
+        $values = [];
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $labels[] = trim((string) ($row['examen_solicitado'] ?? 'Sin examen'));
+            $values[] = (int) ($row['total_solicitudes'] ?? 0);
+        }
+
+        return [
+            'labels' => $labels,
+            'values' => $values,
+        ];
+    }
+
     private function formatDashboardDate(?string $value): string
     {
         $value = trim((string) $value);
@@ -1362,11 +2321,35 @@ class ImagenesUiService
      * @param array<string,string> $filters
      * @return array<string,mixed>
      */
-    private function buildImagenesDashboardSummary(array $rows, array $filters): array
+    private function buildImagenesDashboardSummary(array $rows, array $filters, array $solicitudes = []): array
     {
         $today = new DateTimeImmutable('today');
         $todayTs = $today->getTimestamp();
         $total = count($rows);
+        $solicitudesTotal = (int) ($solicitudes['solicitudes_total'] ?? 0);
+        $solicitudesAgendadas = (int) ($solicitudes['solicitudes_agendadas'] ?? 0);
+        $solicitudesRealizadas = (int) ($solicitudes['solicitudes_realizadas'] ?? 0);
+        $solicitudesInformadas = (int) ($solicitudes['solicitudes_informadas'] ?? 0);
+        $solicitudesFacturadas = (int) ($solicitudes['solicitudes_facturadas'] ?? 0);
+        $solicitudesAgendadasAlCorte = (int) ($solicitudes['solicitudes_agendadas_al_corte'] ?? 0);
+        $solicitudesRealizadasAlCorte = (int) ($solicitudes['solicitudes_realizadas_al_corte'] ?? 0);
+        $solicitudesRealizadasPostCorte = (int) ($solicitudes['solicitudes_realizadas_post_corte'] ?? 0);
+        $solicitudesSinAgenda = (int) ($solicitudes['solicitudes_sin_agenda'] ?? 0);
+        $solicitudesSinAgendaMontoEstimado = (float) ($solicitudes['solicitudes_sin_agenda_monto_estimado'] ?? 0);
+        $solicitudesSinAgendaSinTarifa = (int) ($solicitudes['solicitudes_sin_agenda_sin_tarifa'] ?? 0);
+        $solicitudesAgendadasPendientes = (int) ($solicitudes['solicitudes_agendadas_pendientes'] ?? 0);
+        $solicitudesPendientesVigentes = (int) ($solicitudes['solicitudes_pendientes_vigentes'] ?? 0);
+        $solicitudesCanceladas = (int) ($solicitudes['solicitudes_canceladas'] ?? 0);
+        $solicitudesAusentes = (int) ($solicitudes['solicitudes_ausentes'] ?? 0);
+        $conversionSolicitudRealizacionPct = isset($solicitudes['conversion_solicitud_realizacion_pct'])
+            ? (float) $solicitudes['conversion_solicitud_realizacion_pct']
+            : null;
+        $cumplimientoRealizacionAlCortePct = isset($solicitudes['cumplimiento_realizacion_al_corte_pct'])
+            ? (float) $solicitudes['cumplimiento_realizacion_al_corte_pct']
+            : null;
+        $cumplimientoRealizacionAcumuladoPct = isset($solicitudes['cumplimiento_realizacion_acumulado_pct'])
+            ? (float) $solicitudes['cumplimiento_realizacion_acumulado_pct']
+            : null;
 
         $informados = 0;
         $noInformados = 0;
@@ -1390,9 +2373,13 @@ class ImagenesUiService
         $procedimientosFacturados = 0;
         $facturadosPublico = 0;
         $facturadosPrivado = 0;
+        $facturadosOtros = 0;
         $pendientesFacturarPublico = 0;
         $pendientesFacturarPrivado = 0;
+        $pendientesFacturarOtros = 0;
+        $montoPendienteEstimadoTotal = 0.0;
         $montoPendienteEstimadoPublico = 0.0;
+        $pendientesFacturarSinTarifa = 0;
         $pendientesFacturarPublicoSinTarifa = 0;
         $estadoRealCounts = [
             'FACTURADA' => 0,
@@ -1431,6 +2418,7 @@ class ImagenesUiService
             $afiliacionCategoria = trim((string) ($row['afiliacion_categoria'] ?? ''));
             $esPublico = $afiliacionCategoria === 'publico';
             $esPrivado = $afiliacionCategoria === 'privado';
+            $esOtro = !$esPublico && !$esPrivado;
             $empresaSeguroLabel = strtoupper(trim((string) ($row['empresa_seguro'] ?? '')));
             if ($empresaSeguroLabel === '') {
                 $empresaSeguroLabel = 'SIN CONVENIO';
@@ -1514,6 +2502,8 @@ class ImagenesUiService
                 } elseif ($esPrivado) {
                     $facturadosPrivado++;
                     $produccionFacturadaPrivado += $produccionRow;
+                } elseif ($esOtro) {
+                    $facturadosOtros++;
                 }
             }
 
@@ -1525,7 +2515,7 @@ class ImagenesUiService
                 $sinCierre++;
             }
 
-            $esPendienteFacturar = !$facturado && in_array($estadoRealizacion, ['REALIZADA_CON_ARCHIVOS', 'REALIZADA_INFORMADA'], true);
+            $esPendienteFacturar = $estadoFacturacion === 'PENDIENTE_FACTURAR';
             if ($esPendienteFacturar) {
                 $pendientesFacturar++;
                 $atendidosPendientesFacturar++;
@@ -1533,6 +2523,8 @@ class ImagenesUiService
                     $pendientesFacturarPublico++;
                 } elseif ($esPrivado) {
                     $pendientesFacturarPrivado++;
+                } elseif ($esOtro) {
+                    $pendientesFacturarOtros++;
                 }
             }
             if ($estadoInforme === 'PENDIENTE_INFORMAR') {
@@ -1591,12 +2583,18 @@ class ImagenesUiService
                 }
             }
 
-            if ($esPendienteFacturar && $esPublico) {
-                $montoEstimadoPublico = $this->resolveImagenTarifaPublicaNivel3($tarifa ?? null);
-                if ($montoEstimadoPublico > 0) {
-                    $montoPendienteEstimadoPublico += $montoEstimadoPublico;
+            if ($esPendienteFacturar) {
+                $montoEstimadoPendiente = $this->resolveImagenTarifaPendiente($codigo, $row, $tarifa ?? null);
+                if ($montoEstimadoPendiente > 0) {
+                    $montoPendienteEstimadoTotal += $montoEstimadoPendiente;
+                    if ($esPublico) {
+                        $montoPendienteEstimadoPublico += $montoEstimadoPendiente;
+                    }
                 } else {
-                    $pendientesFacturarPublicoSinTarifa++;
+                    $pendientesFacturarSinTarifa++;
+                    if ($esPublico) {
+                        $pendientesFacturarPublicoSinTarifa++;
+                    }
                 }
             }
 
@@ -1624,6 +2622,7 @@ class ImagenesUiService
         arsort($mixMap);
         $mixTop = array_slice($mixMap, 0, 8, true);
         $doctorSolicitanteTop = $this->fetchTopDoctoresSolicitantes($filters, 10);
+        $topExamenesSolicitados = $this->fetchTopExamenesSolicitados($filters, 10);
 
         $seriesStart = trim((string) ($filters['fecha_inicio'] ?? ''));
         $seriesEnd = trim((string) ($filters['fecha_fin'] ?? ''));
@@ -1651,7 +2650,12 @@ class ImagenesUiService
         $cumplimientoCitaPct = $citasGeneradas > 0 ? ($examenesRealizados * 100 / $citasGeneradas) : null;
         $ticketPromedioFacturado = $facturados > 0 ? ($produccionFacturada / $facturados) : 0.0;
         $produccionPromedioPorEstudio = $total > 0 ? ($produccionFacturada / $total) : 0.0;
+        $canceladasOperativas = $canceladas;
+        $ausentesOperativos = $ausentes;
+        $canceladas = $solicitudesCanceladas;
+        $ausentes = $solicitudesAusentes;
         $perdidas = $canceladas + $ausentes;
+        $perdidasOperativas = $canceladasOperativas + $ausentesOperativos;
         $maxTraficoValor = $traficoSemana !== [] ? max($traficoSemana) : 0;
         $maxTraficoDiaNum = 0;
         if ($maxTraficoValor > 0) {
@@ -1678,27 +2682,30 @@ class ImagenesUiService
 
         return [
             'cards' => [
-                ['label' => 'Total estudios', 'value' => $total, 'hint' => $rangeLabel !== '' ? ('Rango: ' . $rangeLabel) : 'Sin rango'],
-                ['label' => 'Atendidos', 'value' => $examenesRealizados, 'hint' => $total > 0 ? (number_format(($examenesRealizados * 100) / $total, 1) . '% del total') : '0.0% del total'],
+                ['label' => 'Solicitudes de exámenes', 'value' => $solicitudesTotal, 'hint' => 'Base consulta_examenes según filtros del periodo'],
+                ['label' => 'Agendadas al corte', 'value' => $solicitudesAgendadasAlCorte, 'hint' => $solicitudesTotal > 0 ? (number_format(($solicitudesAgendadasAlCorte * 100) / $solicitudesTotal, 1) . '% de solicitudes al ' . $rangeLabel) : '0.0% de solicitudes'],
+                ['label' => 'Realizadas al corte', 'value' => $solicitudesRealizadasAlCorte, 'hint' => $solicitudesTotal > 0 ? (number_format(($solicitudesRealizadasAlCorte * 100) / $solicitudesTotal, 1) . '% de solicitudes al ' . $rangeLabel) : '0.0% de solicitudes'],
+                ['label' => 'Realizadas posterior al corte', 'value' => $solicitudesRealizadasPostCorte, 'hint' => $solicitudesRealizadasPostCorte > 0 ? 'Solicitudes del rango que se cerraron después de la fecha fin' : 'Sin cierres posteriores'],
+                ['label' => 'Cumplimiento al corte', 'value' => $cumplimientoRealizacionAlCortePct !== null ? (number_format($cumplimientoRealizacionAlCortePct, 1) . '%') : '—', 'hint' => $solicitudesTotal > 0 ? ($solicitudesRealizadasAlCorte . ' realizadas de ' . $solicitudesTotal . ' solicitudes') : 'Sin solicitudes'],
+                ['label' => 'Pérdida económica por no agendar', 'value' => '$' . number_format($solicitudesSinAgendaMontoEstimado, 2), 'hint' => $solicitudesSinAgenda > 0 ? (number_format($solicitudesSinAgenda) . ' solicitudes sin agenda' . ($solicitudesSinAgendaSinTarifa > 0 ? '; ' . number_format($solicitudesSinAgendaSinTarifa) . ' sin tarifa resoluble' : '')) : 'Sin solicitudes sin agenda'],
+                ['label' => 'Agendas del periodo', 'value' => $total, 'hint' => $rangeLabel !== '' ? ('Rango agenda: ' . $rangeLabel) : 'Sin rango'],
+                ['label' => 'Atendidos', 'value' => $examenesRealizados, 'hint' => $total > 0 ? (number_format(($examenesRealizados * 100) / $total, 1) . '% de agendas') : '0.0% de agendas'],
                 ['label' => 'Facturados', 'value' => $facturados, 'hint' => $examenesRealizados > 0 ? (number_format(($facturados * 100) / $examenesRealizados, 1) . '% de atendidos') : '0.0% de atendidos'],
-                ['label' => 'Pendiente de pago', 'value' => $pendientesPago, 'hint' => 'Estado en facturación real marcado como pendiente/cartera'],
-                ['label' => 'Cancelados', 'value' => $canceladas, 'hint' => 'Cierre operativo cancelado en agenda'],
-                ['label' => 'Pendiente de facturar', 'value' => $pendientesFacturar, 'hint' => 'Realizadas con evidencia técnica aún sin billing real'],
-                ['label' => 'Atendidos pendientes facturar', 'value' => $atendidosPendientesFacturar, 'hint' => $atendidosPendientesFacturar > 0 ? ($pendientesFacturarPublico . ' públicos / ' . $pendientesFacturarPrivado . ' privados') : 'Sin backlog atendido'],
-                ['label' => 'Pendiente facturar pública', 'value' => $pendientesFacturarPublico, 'hint' => $pendientesFacturarPublico > 0 ? ('$' . number_format($montoPendienteEstimadoPublico, 2) . ' estimado nivel 3') : 'Sin backlog público'],
-                ['label' => 'Pendiente facturar privada', 'value' => $pendientesFacturarPrivado, 'hint' => $pendientesFacturarPrivado > 0 ? 'Casos atendidos sin billing real' : 'Sin backlog privado'],
-                ['label' => 'Facturación cancelada', 'value' => $facturacionCancelada, 'hint' => 'Registros con estado cancelado/anulado en facturación'],
-                ['label' => 'Pérdida', 'value' => $perdidas, 'hint' => $canceladas . ' canceladas, ' . $ausentes . ' ausentes'],
+                ['label' => 'Solicitudes sin agenda', 'value' => $solicitudesSinAgenda, 'hint' => $solicitudesTotal > 0 ? (number_format(($solicitudesSinAgenda * 100) / $solicitudesTotal, 1) . '% de solicitudes') : '0.0% de solicitudes'],
+                ['label' => 'Ausentes de cohorte', 'value' => $solicitudesAusentes, 'hint' => 'Agrupa ausencias explícitas y agendas vencidas sin evidencia de realización'],
+                ['label' => 'Pendientes vigentes de cohorte', 'value' => $solicitudesPendientesVigentes, 'hint' => $solicitudesPendientesVigentes > 0 ? (number_format($solicitudesSinAgenda) . ' sin agenda / ' . number_format($solicitudesAgendadasPendientes) . ' con agenda vigente') : 'Sin solicitudes abiertas vigentes'],
+                ['label' => 'Pendiente de pago', 'value' => $pendientesPago, 'hint' => 'Billing ya emitido con estado pendiente/cartera; no incluye estudios aún sin facturar'],
+                ['label' => 'Cancelados del periodo', 'value' => $canceladasOperativas, 'hint' => 'Cierre operativo cancelado en agenda'],
+                ['label' => 'Pendiente de facturar', 'value' => $pendientesFacturar, 'hint' => 'Realizadas con evidencia técnica aún sin billing real; no entran en pendiente de pago hasta emitir billing'],
+                ['label' => 'Pérdida operativa', 'value' => $perdidasOperativas, 'hint' => $canceladasOperativas . ' canceladas, ' . $ausentesOperativos . ' ausentes (incluye agendas vencidas sin cierre)'],
+                ['label' => 'Pendientes operativos', 'value' => $sinCierre, 'hint' => 'Agendas vigentes o del día sin evidencia de realización ni cierre final'],
                 ['label' => 'Producción facturada', 'value' => '$' . number_format($produccionFacturada, 2), 'hint' => 'Monto real facturado en el rango.'],
-                ['label' => 'Pendiente estimado público', 'value' => '$' . number_format($montoPendienteEstimadoPublico, 2), 'hint' => $pendientesFacturarPublicoSinTarifa > 0 ? ($pendientesFacturarPublicoSinTarifa . ' públicos sin tarifa nivel 3') : 'Estimado con tarifario 2014 nivel 3'],
+                ['label' => 'Pendiente estimado', 'value' => '$' . number_format($montoPendienteEstimadoTotal, 2), 'hint' => $pendientesFacturarSinTarifa > 0 ? ('Valorizado por código/categoría; ' . $pendientesFacturarSinTarifa . ' sin tarifa resoluble') : 'Estimado valorizado por código y categoría; excluye pendientes de pago'],
                 ['label' => 'Ticket promedio facturado', 'value' => '$' . number_format($ticketPromedioFacturado, 2), 'hint' => $facturados > 0 ? ('Promedio por ' . $facturados . ' estudios facturados') : 'Sin estudios facturados'],
                 ['label' => 'Procedimientos facturados', 'value' => $procedimientosFacturados, 'hint' => '$' . number_format($produccionPromedioPorEstudio, 2) . ' promedio por estudio'],
                 ['label' => 'Día pico de tráfico', 'value' => $maxTraficoDiaLabel, 'hint' => $maxTraficoValor > 0 ? ($maxTraficoValor . ' estudios') : 'Sin datos'],
                 ['label' => 'Informadas', 'value' => $informados, 'hint' => $total > 0 ? (number_format(($informados * 100) / $total, 1) . '% del total') : '0.0% del total'],
                 ['label' => 'Cumplimiento cita->realización', 'value' => $cumplimientoCitaPct !== null ? (number_format($cumplimientoCitaPct, 1) . '%') : '—', 'hint' => 'Objetivo: subir conversión de cita a examen'],
-                ['label' => 'Facturados e informados', 'value' => $facturadosEInformados, 'hint' => 'Cruce OK'],
-                ['label' => 'Facturados sin informar', 'value' => $facturadosSinInformar, 'hint' => 'Debe tender a 0'],
-                ['label' => 'Informados sin facturar', 'value' => $informadosSinFacturar, 'hint' => 'Pendiente de facturar'],
                 ['label' => 'SLA informe <= 48h', 'value' => $sla48Pct !== null ? (number_format($sla48Pct, 1) . '%') : '—', 'hint' => $sla48Total > 0 ? ($sla48Cumple . ' de ' . $sla48Total . ' informes') : 'Sin datos de TAT'],
             ],
             'meta' => [
@@ -1713,13 +2720,36 @@ class ImagenesUiService
                 'produccion_promedio_por_estudio' => round($produccionPromedioPorEstudio, 2),
                 'pendientes_informar' => $pendientesInformar,
                 'pendientes_facturar' => $pendientesFacturar,
+                'pendientes_operativos' => $sinCierre,
                 'atendidos_pendientes_facturar' => $atendidosPendientesFacturar,
                 'pendientes_facturar_publico' => $pendientesFacturarPublico,
                 'pendientes_facturar_privado' => $pendientesFacturarPrivado,
+                'pendientes_facturar_otros' => $pendientesFacturarOtros,
+                'pendientes_facturar_sin_tarifa' => $pendientesFacturarSinTarifa,
                 'pendientes_facturar_publico_sin_tarifa' => $pendientesFacturarPublicoSinTarifa,
+                'monto_pendiente_estimado' => round($montoPendienteEstimadoTotal, 2),
                 'monto_pendiente_estimado_publico' => round($montoPendienteEstimadoPublico, 2),
                 'facturados_publico' => $facturadosPublico,
                 'facturados_privado' => $facturadosPrivado,
+                'facturados_otros' => $facturadosOtros,
+                'solicitudes_total' => $solicitudesTotal,
+                'solicitudes_agendadas' => $solicitudesAgendadas,
+                'solicitudes_realizadas' => $solicitudesRealizadas,
+                'solicitudes_informadas' => $solicitudesInformadas,
+                'solicitudes_facturadas' => $solicitudesFacturadas,
+                'solicitudes_agendadas_al_corte' => $solicitudesAgendadasAlCorte,
+                'solicitudes_realizadas_al_corte' => $solicitudesRealizadasAlCorte,
+                'solicitudes_realizadas_post_corte' => $solicitudesRealizadasPostCorte,
+                'solicitudes_sin_agenda' => $solicitudesSinAgenda,
+                'solicitudes_sin_agenda_monto_estimado' => round($solicitudesSinAgendaMontoEstimado, 2),
+                'solicitudes_sin_agenda_sin_tarifa' => $solicitudesSinAgendaSinTarifa,
+                'solicitudes_agendadas_pendientes' => $solicitudesAgendadasPendientes,
+                'solicitudes_pendientes_vigentes' => $solicitudesPendientesVigentes,
+                'solicitudes_canceladas' => $solicitudesCanceladas,
+                'solicitudes_ausentes' => $solicitudesAusentes,
+                'conversion_solicitud_realizacion_pct' => $conversionSolicitudRealizacionPct,
+                'cumplimiento_realizacion_al_corte_pct' => $cumplimientoRealizacionAlCortePct,
+                'cumplimiento_realizacion_acumulado_pct' => $cumplimientoRealizacionAcumuladoPct,
                 'pendientes_pago' => $pendientesPago,
                 'cancelados' => $canceladas,
                 'facturacion_cancelada' => $facturacionCancelada,
@@ -1733,6 +2763,16 @@ class ImagenesUiService
                 ],
             ],
             'charts' => [
+                'solicitudes_pipeline' => [
+                    'labels' => ['Solicitadas', 'Agendadas al corte', 'Realizadas al corte', 'Realizadas posterior', 'Pendientes vigentes'],
+                    'values' => [
+                        $solicitudesTotal,
+                        $solicitudesAgendadasAlCorte,
+                        $solicitudesRealizadasAlCorte,
+                        $solicitudesRealizadasPostCorte,
+                        $solicitudesPendientesVigentes,
+                    ],
+                ],
                 'serie_diaria' => [
                     'labels' => array_keys($dailyMap),
                     'realizados' => array_values(array_map(static fn(array $item): int => (int) ($item['realizados'] ?? 0), $dailyMap)),
@@ -1746,6 +2786,10 @@ class ImagenesUiService
                     'labels' => $doctorSolicitanteTop['labels'],
                     'values' => $doctorSolicitanteTop['values'],
                 ],
+                'top_examenes_solicitados' => [
+                    'labels' => $topExamenesSolicitados['labels'],
+                    'values' => $topExamenesSolicitados['values'],
+                ],
                 'aging_backlog' => [
                     'labels' => array_keys($aging),
                     'values' => array_values($aging),
@@ -1756,12 +2800,12 @@ class ImagenesUiService
                         $examenesRealizados,
                         $facturados,
                         $pendientesPago,
-                        $canceladas,
+                        $canceladasOperativas,
                     ],
                 ],
                 'citas_vs_realizados' => [
-                    'labels' => ['Citas generadas', 'Realizadas', 'Pérdida'],
-                    'values' => [$citasGeneradas, $examenesRealizados, $perdidas],
+                    'labels' => ['Agendas del periodo', 'Realizadas', 'Pérdida operativa', 'Pendientes operativos'],
+                    'values' => [$total, $examenesRealizados, $perdidasOperativas, $sinCierre],
                 ],
                 'trafico_dia_semana' => [
                     'labels' => array_values($traficoSemanaLabels),
@@ -1778,13 +2822,17 @@ class ImagenesUiService
                             'label' => 'Privada',
                             'values' => [$facturadosPrivado, $pendientesFacturarPrivado],
                         ],
+                        [
+                            'label' => 'Particular / otros',
+                            'values' => [$facturadosOtros, $pendientesFacturarOtros],
+                        ],
                     ],
                 ],
                 'rendimiento_economico' => [
-                    'labels' => ['Facturado real', 'Pendiente público estimado'],
+                    'labels' => ['Facturado real', 'Pendiente estimado'],
                     'values' => [
                         round($produccionFacturada, 2),
-                        round($montoPendienteEstimadoPublico, 2),
+                        round($montoPendienteEstimadoTotal, 2),
                     ],
                 ],
                 'analisis_seguro' => [
@@ -1805,6 +2853,475 @@ class ImagenesUiService
         }
 
         return round(max(0.0, (float) ($tarifa['valor_facturar_nivel3'] ?? 0)), 2);
+    }
+
+    /**
+     * @param array<string,mixed> $row
+     * @param array<string,mixed>|null $tarifa
+     */
+    private function resolveImagenTarifaPendiente(?string $codigo, array $row, ?array $tarifa = null): float
+    {
+        $codigo = strtoupper(trim((string) $codigo));
+        $levelKey = $this->resolveImagenTarifaLevelKey($row);
+        if ($levelKey !== null) {
+            if ($codigo !== '') {
+                $code = $this->findImagenTarifaCode($codigo);
+                if ($code !== null) {
+                    $prices = $this->pricesForTarifaCode((int) ($code['id'] ?? 0));
+                    $amount = round((float) ($prices[$levelKey] ?? 0.0), 2);
+                    if ($amount > 0) {
+                        return $amount;
+                    }
+                }
+            }
+
+            $descriptionCandidate = trim((string) ($row['examen_nombre'] ?? ($row['examen'] ?? '')));
+            if ($descriptionCandidate !== '') {
+                $fallbackCode = $this->findImagenTarifaCodeByDescription($descriptionCandidate, $codigo);
+                if ($fallbackCode !== null) {
+                    $isSameCode = $codigo !== '' && strtoupper(trim((string) ($fallbackCode['codigo'] ?? ''))) === $codigo;
+                    if (!$isSameCode) {
+                        $prices = $this->pricesForTarifaCode((int) ($fallbackCode['id'] ?? 0));
+                        $amount = round((float) ($prices[$levelKey] ?? 0.0), 2);
+                        if ($amount > 0) {
+                            return $amount;
+                        }
+                    }
+                }
+            }
+        }
+
+        $afiliacionCategoria = $this->normalizarTexto((string) ($row['afiliacion_categoria'] ?? ''));
+        if ($afiliacionCategoria === 'publico') {
+            return $this->resolveImagenTarifaPublicaNivel3($tarifa);
+        }
+
+        return 0.0;
+    }
+
+    /**
+     * @param array<string,mixed> $row
+     */
+    private function resolveImagenTarifaLevelKey(array $row): ?string
+    {
+        $levels = $this->codePriceLevels();
+        if ($levels === []) {
+            return null;
+        }
+
+        $categoria = $this->normalizarTexto((string) ($row['afiliacion_categoria'] ?? ''));
+        $candidates = [];
+        foreach ([
+            (string) ($row['afiliacion'] ?? ''),
+            (string) ($row['seguro_label'] ?? ''),
+            (string) ($row['empresa_seguro'] ?? ''),
+            (string) ($row['afiliacion_categoria'] ?? ''),
+        ] as $candidate) {
+            $candidate = trim($candidate);
+            if ($candidate === '') {
+                continue;
+            }
+            $candidates[] = $candidate;
+
+            $mapped = $this->resolveImagenMappedAffiliation($candidate);
+            if ($mapped !== null) {
+                $mappedRaw = trim((string) ($mapped['afiliacion_raw'] ?? ''));
+                if ($mappedRaw !== '') {
+                    $candidates[] = $mappedRaw;
+                }
+                $empresaSeguro = trim((string) ($mapped['empresa_seguro'] ?? ''));
+                if ($empresaSeguro !== '') {
+                    $candidates[] = $empresaSeguro;
+                }
+            }
+        }
+
+        $candidates = array_values(array_unique($candidates));
+        foreach ($candidates as $candidate) {
+            $levelKey = $this->codePriceService()->resolveLevelKey($candidate, $levels);
+            if ($levelKey !== null) {
+                return $levelKey;
+            }
+        }
+
+        foreach ($candidates as $candidate) {
+            $levelKey = $this->findImagenTarifaLevelKeyBySimilarity($candidate, $levels, $categoria);
+            if ($levelKey !== null) {
+                return $levelKey;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{id:int,codigo:string,descripcion:string}|null
+     */
+    private function findImagenTarifaCode(string $codigo): ?array
+    {
+        $codigo = strtoupper(trim($codigo));
+        if ($codigo === '') {
+            return null;
+        }
+
+        if (array_key_exists($codigo, $this->tarifaCodeCache)) {
+            return $this->tarifaCodeCache[$codigo];
+        }
+
+        $codigoSinCeros = ltrim($codigo, '0');
+        $code = Tarifario2014::query()
+            ->select(['id', 'codigo', 'descripcion'])
+            ->where(function ($builder) use ($codigo, $codigoSinCeros): void {
+                $builder->where('codigo', $codigo);
+                if ($codigoSinCeros !== '' && $codigoSinCeros !== $codigo) {
+                    $builder->orWhere('codigo', $codigoSinCeros);
+                }
+            })
+            ->orderByRaw('CASE WHEN codigo = ? THEN 0 ELSE 1 END', [$codigo])
+            ->first();
+
+        if ($code === null) {
+            return $this->tarifaCodeCache[$codigo] = null;
+        }
+
+        return $this->tarifaCodeCache[$codigo] = [
+            'id' => (int) $code->id,
+            'codigo' => trim((string) ($code->codigo ?? '')),
+            'descripcion' => trim((string) ($code->descripcion ?? '')),
+        ];
+    }
+
+    /**
+     * @return array{id:int,codigo:string,descripcion:string}|null
+     */
+    private function findImagenTarifaCodeByDescription(string $description, string $codigoHint = ''): ?array
+    {
+        $descriptionNorm = $this->normalizarTexto($description);
+        if ($descriptionNorm === '') {
+            return null;
+        }
+
+        $codigoHint = strtoupper(trim($codigoHint));
+        $cacheKey = $descriptionNorm . '|' . $codigoHint;
+        if (array_key_exists($cacheKey, $this->tarifaDescriptionResolveCache)) {
+            return $this->tarifaDescriptionResolveCache[$cacheKey];
+        }
+
+        $index = $this->tarifaDescriptionIndex();
+        if ($index === []) {
+            return $this->tarifaDescriptionResolveCache[$cacheKey] = null;
+        }
+
+        $bestRow = null;
+        $bestScore = 0.0;
+
+        foreach ($index as $row) {
+            $candidateNorms = array_values(array_filter([
+                trim((string) ($row['descripcion_norm'] ?? '')),
+                trim((string) ($row['short_description_norm'] ?? '')),
+            ]));
+
+            foreach ($candidateNorms as $candidateNorm) {
+                if ($candidateNorm === '') {
+                    continue;
+                }
+
+                $score = 0.0;
+                if ($candidateNorm === $descriptionNorm) {
+                    $score = 100.0;
+                } elseif (str_contains($candidateNorm, $descriptionNorm) || str_contains($descriptionNorm, $candidateNorm)) {
+                    $score = 92.0;
+                } else {
+                    similar_text($descriptionNorm, $candidateNorm, $percent);
+                    $score = (float) $percent;
+                }
+
+                if ($score <= 0) {
+                    continue;
+                }
+
+                if ($codigoHint !== '' && strtoupper(trim((string) ($row['codigo'] ?? ''))) === $codigoHint) {
+                    $score += 1.5;
+                }
+
+                if ($score > $bestScore) {
+                    $bestScore = $score;
+                    $bestRow = $row;
+                }
+            }
+        }
+
+        if (!is_array($bestRow) || $bestScore < 78.0) {
+            return $this->tarifaDescriptionResolveCache[$cacheKey] = null;
+        }
+
+        return $this->tarifaDescriptionResolveCache[$cacheKey] = [
+            'id' => (int) ($bestRow['id'] ?? 0),
+            'codigo' => trim((string) ($bestRow['codigo'] ?? '')),
+            'descripcion' => trim((string) ($bestRow['descripcion'] ?? '')),
+        ];
+    }
+
+    /**
+     * @return array<string,array{categoria:string,afiliacion_raw:string,empresa_seguro:string}>|null
+     */
+    private function resolveImagenMappedAffiliation(string $afiliacion): ?array
+    {
+        $key = $this->normalizeImagenAffiliationKey($afiliacion);
+        if ($key === '') {
+            return null;
+        }
+
+        $map = $this->imagenAfiliacionCategoriaMap();
+        if (!isset($map[$key])) {
+            return null;
+        }
+
+        return $map[$key];
+    }
+
+    private function normalizeImagenAffiliationKey(string $value): string
+    {
+        $value = $this->normalizarTexto($value);
+        if ($value === '') {
+            return '';
+        }
+
+        return str_replace([' ', '-'], '_', $value);
+    }
+
+    /**
+     * @return array<string,array{categoria:string,afiliacion_raw:string,empresa_seguro:string}>
+     */
+    private function imagenAfiliacionCategoriaMap(): array
+    {
+        if (is_array($this->afiliacionCategoriaMapCache)) {
+            return $this->afiliacionCategoriaMapCache;
+        }
+
+        if (
+            !$this->columnExists('afiliacion_categoria_map', 'afiliacion_norm')
+            || !$this->columnExists('afiliacion_categoria_map', 'categoria')
+            || !$this->columnExists('afiliacion_categoria_map', 'afiliacion_raw')
+        ) {
+            return $this->afiliacionCategoriaMapCache = [];
+        }
+
+        $empresaSeguroSelect = $this->columnExists('afiliacion_categoria_map', 'empresa_seguro')
+            ? 'empresa_seguro'
+            : "'' AS empresa_seguro";
+
+        $stmt = $this->db->query(
+            "SELECT afiliacion_norm, categoria, afiliacion_raw, {$empresaSeguroSelect}
+             FROM afiliacion_categoria_map
+             WHERE TRIM(COALESCE(afiliacion_norm, '')) <> ''"
+        );
+        $rows = $stmt ? ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
+
+        $map = [];
+        foreach ($rows as $row) {
+            $key = $this->normalizeImagenAffiliationKey((string) ($row['afiliacion_norm'] ?? ''));
+            if ($key === '') {
+                continue;
+            }
+
+            $map[$key] = [
+                'categoria' => $this->normalizarTexto((string) ($row['categoria'] ?? '')),
+                'afiliacion_raw' => trim((string) ($row['afiliacion_raw'] ?? '')),
+                'empresa_seguro' => $this->afiliacionDimensions->resolveEmpresaLabel(
+                    trim((string) ($row['empresa_seguro'] ?? '')) !== ''
+                        ? (string) ($row['empresa_seguro'] ?? '')
+                        : (string) ($row['afiliacion_raw'] ?? '')
+                ),
+            ];
+        }
+
+        return $this->afiliacionCategoriaMapCache = $map;
+    }
+
+    /**
+     * @return array<int,array{id:int,codigo:string,descripcion:string,descripcion_norm:string,short_description_norm:string}>
+     */
+    private function tarifaDescriptionIndex(): array
+    {
+        if (is_array($this->tarifaDescriptionIndexCache)) {
+            return $this->tarifaDescriptionIndexCache;
+        }
+
+        if (!$this->tableExists('tarifario_2014') || !$this->columnExists('tarifario_2014', 'codigo') || !$this->columnExists('tarifario_2014', 'descripcion')) {
+            return $this->tarifaDescriptionIndexCache = [];
+        }
+
+        $select = $this->columnExists('tarifario_2014', 'short_description')
+            ? ['id', 'codigo', 'descripcion', 'short_description']
+            : ['id', 'codigo', 'descripcion'];
+
+        $rows = Tarifario2014::query()->select($select)->get();
+        $index = [];
+        foreach ($rows as $row) {
+            $index[] = [
+                'id' => (int) $row->id,
+                'codigo' => trim((string) ($row->codigo ?? '')),
+                'descripcion' => trim((string) ($row->descripcion ?? '')),
+                'descripcion_norm' => $this->normalizarTexto((string) ($row->descripcion ?? '')),
+                'short_description_norm' => $this->normalizarTexto((string) ($row->short_description ?? '')),
+            ];
+        }
+
+        return $this->tarifaDescriptionIndexCache = $index;
+    }
+
+    /**
+     * @return array<string,float>
+     */
+    private function pricesForTarifaCode(int $codeId): array
+    {
+        if ($codeId <= 0) {
+            return [];
+        }
+
+        if (array_key_exists($codeId, $this->codePriceCache)) {
+            return $this->codePriceCache[$codeId];
+        }
+
+        try {
+            return $this->codePriceCache[$codeId] = $this->codePriceService()->pricesForCode($codeId, $this->codePriceLevels());
+        } catch (\Throwable) {
+            return $this->codePriceCache[$codeId] = [];
+        }
+    }
+
+    private function codePriceService(): CodePriceService
+    {
+        if ($this->codePriceService instanceof CodePriceService) {
+            return $this->codePriceService;
+        }
+
+        $this->codePriceService = new CodePriceService();
+
+        return $this->codePriceService;
+    }
+
+    /**
+     * @return array<int, array{level_key:string,storage_key:string,title:string,category:string,source:string}>
+     */
+    private function codePriceLevels(): array
+    {
+        if (is_array($this->codePriceLevelsCache)) {
+            return $this->codePriceLevelsCache;
+        }
+
+        try {
+            $this->codePriceLevelsCache = $this->codePriceService()->levels();
+        } catch (\Throwable) {
+            $this->codePriceLevelsCache = [];
+        }
+
+        return $this->codePriceLevelsCache;
+    }
+
+    /**
+     * @param array<int, array{level_key:string,storage_key:string,title:string,category:string,source:string}> $levels
+     */
+    private function findImagenTarifaLevelKeyBySimilarity(string $candidate, array $levels, string $categoriaPreferida = ''): ?string
+    {
+        $candidateNorm = $this->normalizarTexto($candidate);
+        if ($candidateNorm === '') {
+            return null;
+        }
+
+        $categoriaPreferida = $this->normalizarTexto($categoriaPreferida);
+        $cacheKey = $candidateNorm . '|' . $categoriaPreferida;
+        if (array_key_exists($cacheKey, $this->levelKeyResolveCache)) {
+            return $this->levelKeyResolveCache[$cacheKey];
+        }
+
+        $candidateTokens = $this->tokenizeImagenLookup($candidateNorm);
+        $bestLevelKey = null;
+        $bestScore = 0.0;
+
+        foreach ($levels as $level) {
+            $levelKey = trim((string) ($level['level_key'] ?? ''));
+            if ($levelKey === '') {
+                continue;
+            }
+
+            $titleNorm = $this->normalizarTexto((string) ($level['title'] ?? ''));
+            $keyNorm = $this->normalizarTexto($levelKey);
+            $score = max(
+                $this->scoreImagenLookupSimilarity($candidateNorm, $candidateTokens, $titleNorm),
+                $this->scoreImagenLookupSimilarity($candidateNorm, $candidateTokens, $keyNorm)
+            );
+
+            if ($score <= 0.0) {
+                continue;
+            }
+
+            $levelCategory = $this->normalizarTexto((string) ($level['category'] ?? ''));
+            if ($categoriaPreferida !== '' && $levelCategory === $categoriaPreferida) {
+                $score += 4.0;
+            }
+
+            if ($score > $bestScore) {
+                $bestScore = $score;
+                $bestLevelKey = $levelKey;
+            }
+        }
+
+        if ($bestScore < 72.0) {
+            return $this->levelKeyResolveCache[$cacheKey] = null;
+        }
+
+        return $this->levelKeyResolveCache[$cacheKey] = $bestLevelKey;
+    }
+
+    /**
+     * @param array<int,string> $candidateTokens
+     */
+    private function scoreImagenLookupSimilarity(string $candidateNorm, array $candidateTokens, string $probeNorm): float
+    {
+        $probeNorm = trim($probeNorm);
+        if ($candidateNorm === '' || $probeNorm === '') {
+            return 0.0;
+        }
+
+        if ($candidateNorm === $probeNorm) {
+            return 100.0;
+        }
+
+        if (str_contains($probeNorm, $candidateNorm) || str_contains($candidateNorm, $probeNorm)) {
+            return 94.0;
+        }
+
+        similar_text($candidateNorm, $probeNorm, $percent);
+        $score = (float) $percent;
+
+        $probeTokens = $this->tokenizeImagenLookup($probeNorm);
+        if ($candidateTokens !== [] && $probeTokens !== []) {
+            $intersection = array_intersect($candidateTokens, $probeTokens);
+            $union = array_unique(array_merge($candidateTokens, $probeTokens));
+            $jaccard = $union !== [] ? (count($intersection) / count($union)) * 100.0 : 0.0;
+
+            $score = max($score, $jaccard + (count($intersection) >= 2 ? 12.0 : 0.0));
+        }
+
+        return min(100.0, $score);
+    }
+
+    /**
+     * @return array<int,string>
+     */
+    private function tokenizeImagenLookup(string $text): array
+    {
+        $text = $this->normalizarTexto($text);
+        if ($text === '') {
+            return [];
+        }
+
+        return array_values(array_filter(
+            preg_split('/\s+/', $text) ?: [],
+            static fn (string $token): bool => $token !== '' && strlen($token) > 2
+        ));
     }
 
     /**
@@ -1967,7 +3484,12 @@ class ImagenesUiService
 
     private function imagenesSedeExpr(): string
     {
-        $rawExpr = "LOWER(TRIM(COALESCE(NULLIF(pp.sede_departamento, ''), NULLIF(pp.id_sede, ''), '')))";
+        return $this->imagenesSedeExprFromFields('pp.sede_departamento', 'pp.id_sede');
+    }
+
+    private function imagenesSedeExprFromFields(string $sedeDepartamentoExpr, string $idSedeExpr): string
+    {
+        $rawExpr = "LOWER(TRIM(COALESCE(NULLIF({$sedeDepartamentoExpr}, ''), NULLIF({$idSedeExpr}, ''), '')))";
 
         return "CASE
             WHEN {$rawExpr} LIKE '%ceib%' THEN 'CEIBOS'
@@ -2037,6 +3559,14 @@ class ImagenesUiService
         $normalized = $this->normalizeSqlText($expr);
 
         return "REPLACE(REPLACE({$normalized}, ' ', '_'), '-', '_')";
+    }
+
+    private function safeSqlDateExpr(string $expr): string
+    {
+        return "CASE
+            WHEN CAST({$expr} AS CHAR) IN ('', '0000-00-00', '0000-00-00 00:00:00') THEN NULL
+            ELSE DATE({$expr})
+        END";
     }
 
     private function tableExists(string $table): bool

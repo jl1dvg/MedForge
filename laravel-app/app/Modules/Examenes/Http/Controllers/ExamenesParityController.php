@@ -11,6 +11,7 @@ use App\Modules\Examenes\Services\ImagenesUiService;
 use App\Modules\Examenes\Services\LegacyExamenesBridge;
 use App\Modules\Examenes\Services\LegacyExamenesRuntime;
 use App\Modules\Examenes\Services\NasImagenesService;
+use App\Modules\Reporting\Services\PdfRenderer;
 use App\Modules\Shared\Support\LegacySessionAuth;
 use DateTimeImmutable;
 use Illuminate\Http\RedirectResponse;
@@ -709,28 +710,42 @@ class ExamenesParityController
                 'scopeNotice' => trim((string) ($report['scopeNotice'] ?? '')),
                 'hallazgosClave' => is_array($report['hallazgosClave'] ?? null) ? $report['hallazgosClave'] : [],
                 'methodology' => is_array($report['methodology'] ?? null) ? $report['methodology'] : [],
+                'executiveKpis' => is_array($report['executiveKpis'] ?? null) ? $report['executiveKpis'] : [],
+                'cohortKpis' => is_array($report['cohortKpis'] ?? null) ? $report['cohortKpis'] : [],
+                'operationalKpis' => is_array($report['operationalKpis'] ?? null) ? $report['operationalKpis'] : [],
+                'qualityKpis' => is_array($report['qualityKpis'] ?? null) ? $report['qualityKpis'] : [],
                 'generalKpis' => is_array($report['generalKpis'] ?? null) ? $report['generalKpis'] : [],
                 'temporalKpis' => is_array($report['temporalKpis'] ?? null) ? $report['temporalKpis'] : [],
                 'economicKpis' => is_array($report['economicKpis'] ?? null) ? $report['economicKpis'] : [],
+                'operationalTables' => is_array($report['operationalTables'] ?? null) ? $report['operationalTables'] : [],
+                'cohortTables' => is_array($report['cohortTables'] ?? null) ? $report['cohortTables'] : [],
                 'tables' => is_array($report['tables'] ?? null) ? $report['tables'] : [],
                 'totalAtenciones' => (int) ($report['totalAtenciones'] ?? ($payload['total'] ?? 0)),
                 'rangeLabel' => trim((string) ($report['rangeLabel'] ?? '')),
             ])->render();
 
-            $pdf = new \Mpdf\Mpdf([
-                'mode' => 'utf-8',
-                'format' => 'A4',
-                'orientation' => 'P',
-                'margin_left' => 10,
-                'margin_right' => 10,
-                'margin_top' => 10,
-                'margin_bottom' => 10,
-            ]);
-            $pdf->SetTitle('KPI Dashboard Imágenes');
-            $pdf->WriteHTML($html);
-            $pdf = (string) $pdf->Output('', 'S');
+            $tempDir = storage_path('app/mpdf');
+            if (!is_dir($tempDir)) {
+                @mkdir($tempDir, 0775, true);
+            }
 
-            if (strncmp($pdf, '%PDF-', 5) !== 0) {
+            $renderer = new PdfRenderer();
+            $pdf = $renderer->renderHtml($this->sanitizePdfHtml($html), [
+                'filename' => $filename,
+                'destination' => 'S',
+                'mpdf' => [
+                    'mode' => 'utf-8',
+                    'format' => 'A4',
+                    'orientation' => 'P',
+                    'margin_left' => 10,
+                    'margin_right' => 10,
+                    'margin_top' => 10,
+                    'margin_bottom' => 10,
+                    'tempDir' => $tempDir,
+                ],
+            ]);
+
+            if (!is_string($pdf) || strncmp($pdf, '%PDF-', 5) !== 0) {
                 return response()->json(['error' => 'No se pudo generar el PDF (contenido inválido).'], 500);
             }
 
@@ -741,9 +756,16 @@ class ExamenesParityController
                 'X-Content-Type-Options' => 'nosniff',
             ]);
         } catch (Throwable $e) {
-            Log::error('imagenes.v2.export.pdf', ['error' => $e->getMessage()]);
+            $errorId = bin2hex(random_bytes(6));
+            Log::error('imagenes.v2.export.pdf', [
+                'error_id' => $errorId,
+                'user_id' => LegacySessionAuth::userId($request),
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
 
-            return response()->json(['error' => 'No se pudo generar el PDF.'], 500);
+            return response()->json(['error' => 'No se pudo generar el PDF (ref: ' . $errorId . ')'], 500);
         }
     }
 
@@ -756,6 +778,7 @@ class ExamenesParityController
         try {
             $payload = $this->imagenesUi->imagenesDashboardExportPayload($request->query());
             $detailRows = is_array($payload['detailRows'] ?? null) ? $payload['detailRows'] : [];
+            $requestRows = is_array($payload['requestRows'] ?? null) ? $payload['requestRows'] : [];
             $filtersSummary = is_array($payload['filtersSummary'] ?? null) ? $payload['filtersSummary'] : [];
             $report = is_array($payload['report'] ?? null) ? $payload['report'] : [];
             $filename = 'dashboard_imagenes_' . date('Ymd_His') . '.xlsx';
@@ -772,9 +795,14 @@ class ExamenesParityController
             $sheet->setCellValue("B{$row}", $generatedAt);
             $sheet->setCellValue("D{$row}", 'Periodo:');
             $sheet->setCellValue("E{$row}", (string) ($report['rangeLabel'] ?? ''));
-            $sheet->setCellValue("F{$row}", 'Registros:');
+            $sheet->setCellValue("F{$row}", 'Agendas:');
             $sheet->setCellValueExplicit("G{$row}", (string) count($detailRows), DataType::TYPE_STRING);
             $sheet->getStyle("A{$row}:G{$row}")->getFont()->setBold(true);
+
+            $row++;
+            $sheet->setCellValue("F{$row}", 'Solicitudes:');
+            $sheet->setCellValueExplicit("G{$row}", (string) count($requestRows), DataType::TYPE_STRING);
+            $sheet->getStyle("F{$row}:G{$row}")->getFont()->setBold(true);
 
             $scopeNotice = trim((string) ($report['scopeNotice'] ?? ''));
             if ($scopeNotice !== '') {
@@ -840,29 +868,29 @@ class ExamenesParityController
             );
 
             $row += 2;
-            $row = $this->writeExcelSectionHeader($sheet, $row, 'KPI Generales', 'G');
+            $row = $this->writeExcelSectionHeader($sheet, $row, 'Bloque 1 - Operación del periodo', 'G');
             $row = $this->writeExcelTable(
                 $sheet,
                 $row,
                 ['KPI', 'Valor', 'Detalle'],
-                $this->normalizeExcelRows(is_array($report['generalKpis'] ?? null) ? $report['generalKpis'] : [], ['label', 'value', 'note']),
-                'Sin KPI generales para el rango seleccionado.',
+                $this->normalizeExcelRows(is_array($report['operationalKpis'] ?? null) ? $report['operationalKpis'] : [], ['label', 'value', 'note']),
+                'Sin KPI operativos para el rango seleccionado.',
                 [28, 16, 54]
             );
 
             $row += 2;
-            $row = $this->writeExcelSectionHeader($sheet, $row, 'KPI Temporales', 'G');
+            $row = $this->writeExcelSectionHeader($sheet, $row, 'Cumplimiento y oportunidad', 'G');
             $row = $this->writeExcelTable(
                 $sheet,
                 $row,
                 ['KPI', 'Valor', 'Detalle'],
-                $this->normalizeExcelRows(is_array($report['temporalKpis'] ?? null) ? $report['temporalKpis'] : [], ['label', 'value', 'note']),
-                'Sin KPI temporales para el rango seleccionado.',
+                $this->normalizeExcelRows(is_array($report['qualityKpis'] ?? null) ? $report['qualityKpis'] : [], ['label', 'value', 'note']),
+                'Sin KPI de oportunidad para el rango seleccionado.',
                 [28, 16, 54]
             );
 
             $row += 2;
-            $row = $this->writeExcelSectionHeader($sheet, $row, 'KPI Económicos', 'G');
+            $row = $this->writeExcelSectionHeader($sheet, $row, 'Economía y facturación', 'G');
             $row = $this->writeExcelTable(
                 $sheet,
                 $row,
@@ -872,8 +900,46 @@ class ExamenesParityController
                 [24, 16, 34, 34]
             );
 
-            $tables = is_array($report['tables'] ?? null) ? $report['tables'] : [];
-            foreach ($tables as $table) {
+            $operationalTables = is_array($report['operationalTables'] ?? null) ? $report['operationalTables'] : [];
+            foreach ($operationalTables as $table) {
+                $title = trim((string) ($table['title'] ?? 'Tabla'));
+                $subtitle = trim((string) ($table['subtitle'] ?? ''));
+                $row += 2;
+                $row = $this->writeExcelSectionHeader($sheet, $row, $title, 'G');
+                if ($subtitle !== '') {
+                    $sheet->setCellValue("A{$row}", $subtitle);
+                    $sheet->mergeCells("A{$row}:G{$row}");
+                    $sheet->getStyle("A{$row}:G{$row}")->getFont()->setItalic(true)->getColor()->setRGB('64748B');
+                    $sheet->getStyle("A{$row}:G{$row}")->getAlignment()->setWrapText(true);
+                    $row++;
+                }
+                $headers = array_values(array_map(static fn($value): string => (string) $value, is_array($table['columns'] ?? null) ? $table['columns'] : []));
+                $tableRows = [];
+                foreach (is_array($table['rows'] ?? null) ? $table['rows'] : [] as $tableRow) {
+                    $tableRows[] = array_map(static fn($value): string => (string) $value, is_array($tableRow) ? $tableRow : []);
+                }
+                $row = $this->writeExcelTable(
+                    $sheet,
+                    $row,
+                    $headers,
+                    $tableRows,
+                    trim((string) ($table['empty_message'] ?? 'Sin datos.'))
+                );
+            }
+
+            $row += 2;
+            $row = $this->writeExcelSectionHeader($sheet, $row, 'Bloque 2 - Solicitudes', 'G');
+            $row = $this->writeExcelTable(
+                $sheet,
+                $row,
+                ['KPI', 'Valor', 'Detalle'],
+                $this->normalizeExcelRows(is_array($report['cohortKpis'] ?? null) ? $report['cohortKpis'] : [], ['label', 'value', 'note']),
+                'Sin KPI de solicitudes para el rango seleccionado.',
+                [28, 16, 54]
+            );
+
+            $cohortTables = is_array($report['cohortTables'] ?? null) ? $report['cohortTables'] : [];
+            foreach ($cohortTables as $table) {
                 $title = trim((string) ($table['title'] ?? 'Tabla'));
                 $subtitle = trim((string) ($table['subtitle'] ?? ''));
                 $row += 2;
@@ -905,17 +971,17 @@ class ExamenesParityController
             }
 
             $detailSheet = $spreadsheet->createSheet();
-            $detailSheet->setTitle('Detalle');
+            $detailSheet->setTitle('Operacion');
             $detailHeaders = [
                 '#',
-                'Fecha',
+                'Fecha agenda',
                 'HC',
                 'Paciente',
                 'Empresa seguro',
                 'Afiliación',
                 'Categoría cliente',
                 'Sede',
-                'Estado encuentro',
+                'Estado agenda',
                 'Estado realización',
                 'Estado informe',
                 'Facturación',
@@ -989,6 +1055,91 @@ class ExamenesParityController
                 'Q' => 14, 'R' => 18, 'S' => 14, 'T' => 12, 'U' => 16, 'V' => 12, 'W' => 14, 'X' => 56,
             ] as $column => $width) {
                 $detailSheet->getColumnDimension($column)->setWidth($width);
+            }
+
+            $requestSheet = $spreadsheet->createSheet();
+            $requestSheet->setTitle('Solicitudes');
+            $requestHeaders = [
+                '#',
+                'Fecha solicitud',
+                'HC',
+                'Paciente',
+                'Doctor solicitante',
+                'Form ID solicitud',
+                'Código examen',
+                'Examen solicitado',
+                'Empresa seguro',
+                'Afiliación',
+                'Categoría',
+                'Sede',
+                'Agendada',
+                'Fecha agenda',
+                'Realizada',
+                'Fecha realización',
+                'Informada',
+                'Facturada',
+                'Cancelada',
+                'Ausente cohorte',
+                'Pendiente vigente',
+                'Estados agenda',
+                'Procedimientos match',
+            ];
+
+            $requestRow = 1;
+            foreach ($requestHeaders as $idx => $label) {
+                $column = $this->excelColumnByIndex($idx);
+                $requestSheet->setCellValue("{$column}{$requestRow}", $label);
+            }
+            $lastRequestColumn = $this->excelColumnByIndex(count($requestHeaders) - 1);
+            $requestSheet->getStyle("A1:{$lastRequestColumn}1")->applyFromArray($this->excelTableHeaderStyle());
+            $requestSheet->setAutoFilter("A1:{$lastRequestColumn}1");
+
+            foreach ($requestRows as $index => $item) {
+                $requestRow++;
+                $values = [
+                    (string) ($index + 1),
+                    (string) ($item['fecha_solicitud'] ?? '—'),
+                    (string) ($item['hc_number'] ?? ''),
+                    (string) ($item['paciente'] ?? ''),
+                    (string) ($item['doctor_solicitante'] ?? 'Sin asignar'),
+                    (string) ($item['solicitud_form_id'] ?? ''),
+                    (string) ($item['examen_codigo'] ?? ''),
+                    (string) ($item['examen_nombre'] ?? ''),
+                    (string) ($item['empresa_seguro'] ?? ''),
+                    (string) ($item['afiliacion'] ?? ''),
+                    (string) ($item['afiliacion_categoria'] ?? ''),
+                    (string) ($item['sede'] ?? ''),
+                    !empty($item['agendada']) ? 'SI' : 'NO',
+                    (string) ($item['fecha_agenda'] ?? '—'),
+                    !empty($item['realizada']) ? 'SI' : 'NO',
+                    (string) ($item['fecha_realizacion'] ?? '—'),
+                    !empty($item['informada']) ? 'SI' : 'NO',
+                    !empty($item['facturada']) ? 'SI' : 'NO',
+                    !empty($item['cancelada']) ? 'SI' : 'NO',
+                    !empty($item['ausente_cohorte']) ? 'SI' : 'NO',
+                    !empty($item['pendiente_vigente']) ? 'SI' : 'NO',
+                    (string) ($item['estados_agenda'] ?? ''),
+                    (string) ($item['procedimientos_match'] ?? ''),
+                ];
+
+                foreach ($values as $idx => $value) {
+                    $column = $this->excelColumnByIndex($idx);
+                    $requestSheet->setCellValueExplicit("{$column}{$requestRow}", $value, DataType::TYPE_STRING);
+                }
+            }
+
+            if ($requestRow > 1) {
+                $requestSheet->getStyle("A1:{$lastRequestColumn}{$requestRow}")->applyFromArray($this->excelTableBodyStyle());
+                $requestSheet->getStyle("W2:W{$requestRow}")->getAlignment()->setWrapText(true);
+            }
+
+            $requestSheet->freezePane('A2');
+            foreach ([
+                'A' => 6, 'B' => 18, 'C' => 14, 'D' => 34, 'E' => 24, 'F' => 14, 'G' => 14, 'H' => 36,
+                'I' => 24, 'J' => 24, 'K' => 16, 'L' => 14, 'M' => 12, 'N' => 18, 'O' => 12, 'P' => 18,
+                'Q' => 12, 'R' => 12, 'S' => 12, 'T' => 14, 'U' => 16, 'V' => 24, 'W' => 56,
+            ] as $column => $width) {
+                $requestSheet->getColumnDimension($column)->setWidth($width);
             }
 
             $writer = new Xlsx($spreadsheet);
@@ -1675,6 +1826,22 @@ class ExamenesParityController
         }
 
         return array_merge($all, $json);
+    }
+
+    private function sanitizePdfHtml(string $html): string
+    {
+        if ($html === '') {
+            return $html;
+        }
+
+        if (function_exists('iconv')) {
+            $clean = @iconv('UTF-8', 'UTF-8//IGNORE', $html);
+            if (is_string($clean) && $clean !== '') {
+                return $clean;
+            }
+        }
+
+        return $html;
     }
 
     /**
