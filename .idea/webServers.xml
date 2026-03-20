@@ -23,6 +23,13 @@
           </advancedOptions>
         </fileTransfer>
       </webServer>
+      <webServer id="daca6586-b710-4aba-b41b-a7c8dd125766" name="Google">
+        <fileTransfer accessType="SFTP" host="190.110.204.74" port="3000" sshConfigId="d25c30fa-fad2-4046-a769-a207fc8f2bcd" sshConfig="tecnico@190.110.204.74:3000 agent" authAgent="true">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" keepAliveTimeout="0" passiveMode="true" shareSSLContext="true" />
+          </advancedOptions>
+        </fileTransfer>
+      </webServer>
     </option>
   </component>
 </project>

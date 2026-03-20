@@ -2,7 +2,9 @@
 
 namespace App\Modules\Reporting\Services;
 
-use App\Modules\Examenes\Services\NasImagenesService;
+use App\Models\ImagenSigcenterIndex;
+use App\Modules\Examenes\Services\ImagenesSigcenterIndexService;
+use App\Modules\Examenes\Services\SigcenterImagenesService;
 use App\Modules\Reporting\Services\Definitions\PdfTemplateRegistry;
 use App\Modules\Reporting\Services\Definitions\SolicitudTemplateRegistry;
 use App\Modules\Reporting\Support\SolicitudDataFormatter;
@@ -33,7 +35,8 @@ class ReportPdfService
     private string $moduleBasePath;
     private ?ReportService $reportService = null;
     private ?SolicitudTemplateRegistry $solicitudTemplateRegistry = null;
-    private ?NasImagenesService $nasImagenesService = null;
+    private ?SigcenterImagenesService $sigcenterImagenesService = null;
+    private ?ImagenesSigcenterIndexService $imagenesSigcenterIndexService = null;
 
     public function __construct()
     {
@@ -295,18 +298,22 @@ class ReportPdfService
                     $hasPages = true;
                 }
 
-                $files = $this->nasImagenesService()->listFiles($hcNumber, $formId);
+                $files = $this->getSigcenterPackageFiles($formId, $hcNumber);
                 if ($this->isAngiografiaRetinal((string) ($item['tipo_examen'] ?? null)) && count($files) > 2) {
                     $files = array_slice($files, 0, 2);
                 }
 
                 foreach ($files as $file) {
-                    $name = is_array($file) ? trim((string) ($file['name'] ?? '')) : '';
-                    if ($name === '') {
+                    if (!is_array($file)) {
                         continue;
                     }
 
-                    $prepared = $this->prepareNasFileForPackage($hcNumber, $formId, $name);
+                    $relativePath = trim((string) ($file['relative_path'] ?? ''));
+                    if ($relativePath === '') {
+                        continue;
+                    }
+
+                    $prepared = $this->prepareSigcenterFileForPackage($relativePath);
                     if (!is_array($prepared)) {
                         continue;
                     }
@@ -804,26 +811,99 @@ class ReportPdfService
         return array_values($normalized);
     }
 
-    private function nasImagenesService(): NasImagenesService
+    private function sigcenterImagenesService(): SigcenterImagenesService
     {
-        if ($this->nasImagenesService === null) {
-            $this->nasImagenesService = new NasImagenesService();
+        if ($this->sigcenterImagenesService === null) {
+            $this->sigcenterImagenesService = new SigcenterImagenesService();
         }
 
-        return $this->nasImagenesService;
+        return $this->sigcenterImagenesService;
+    }
+
+    private function imagenesSigcenterIndexService(): ImagenesSigcenterIndexService
+    {
+        if ($this->imagenesSigcenterIndexService === null) {
+            $this->imagenesSigcenterIndexService = app(ImagenesSigcenterIndexService::class);
+        }
+
+        return $this->imagenesSigcenterIndexService;
+    }
+
+    /**
+     * @return array<int,array{name:string,size:int,mtime:int,ext:string,type:string,source:string,relative_path:string}>
+     */
+    private function getSigcenterPackageFiles(string $formId, string $hcNumber): array
+    {
+        $index = ImagenSigcenterIndex::query()
+            ->where('form_id', $formId)
+            ->where('hc_number', $hcNumber)
+            ->first();
+
+        if (!$index instanceof ImagenSigcenterIndex) {
+            $this->imagenesSigcenterIndexService()->scan([
+                'form_id' => $formId,
+                'force' => true,
+            ]);
+
+            $index = ImagenSigcenterIndex::query()
+                ->where('form_id', $formId)
+                ->where('hc_number', $hcNumber)
+                ->first();
+        }
+
+        if (!$index instanceof ImagenSigcenterIndex) {
+            return [];
+        }
+
+        $filesMeta = is_array($index->files_meta) ? $index->files_meta : [];
+        if ($filesMeta === []) {
+            return [];
+        }
+
+        $files = [];
+        foreach ($filesMeta as $file) {
+            if (!is_array($file)) {
+                continue;
+            }
+
+            $relativePath = trim((string) ($file['relative_path'] ?? ''));
+            $name = basename($relativePath !== '' ? $relativePath : (string) ($file['foto'] ?? ''));
+            if ($name === '') {
+                continue;
+            }
+
+            $mtime = trim((string) ($file['mtime'] ?? ''));
+            $mtimeTs = $mtime !== '' ? (int) (strtotime($mtime) ?: 0) : 0;
+            $ext = strtolower((string) pathinfo($name, PATHINFO_EXTENSION));
+            $files[] = [
+                'name' => $name,
+                'size' => (int) ($file['size'] ?? 0),
+                'mtime' => $mtimeTs,
+                'ext' => $ext,
+                'type' => ((string) ($file['tipo'] ?? '')) === 'pdf' ? 'application/pdf' : $this->resolveMimeByFilename($name),
+                'source' => 'sigcenter',
+                'relative_path' => $relativePath,
+            ];
+        }
+
+        usort($files, static function (array $a, array $b): int {
+            return [$b['mtime'] ?? 0, $a['name'] ?? ''] <=> [$a['mtime'] ?? 0, $b['name'] ?? ''];
+        });
+
+        return array_values($files);
     }
 
     /**
      * @return array{path:string,ext:string}|null
      */
-    private function prepareNasFileForPackage(string $hcNumber, string $formId, string $filename): ?array
+    private function prepareSigcenterFileForPackage(string $relativePath): ?array
     {
-        $opened = $this->nasImagenesService()->openFile($hcNumber, $formId, $filename);
+        $opened = $this->sigcenterImagenesService()->openRelativeFile($relativePath);
         if (!is_array($opened) || empty($opened['stream'])) {
             return null;
         }
 
-        $ext = strtolower((string) ($opened['ext'] ?? pathinfo($filename, PATHINFO_EXTENSION)));
+        $ext = strtolower((string) ($opened['ext'] ?? pathinfo($relativePath, PATHINFO_EXTENSION)));
         if ($ext === '') {
             $ext = 'bin';
         }
@@ -918,6 +998,16 @@ class ReportPdfService
         }
 
         $pdf->Image($path, 0, 0, $pageWidth, $pageHeight);
+    }
+
+    private function resolveMimeByFilename(string $filename): string
+    {
+        return match (strtolower((string) pathinfo($filename, PATHINFO_EXTENSION))) {
+            'pdf' => 'application/pdf',
+            'png' => 'image/png',
+            'jpg', 'jpeg' => 'image/jpeg',
+            default => 'application/octet-stream',
+        };
     }
 
     private function isAngiografiaRetinal(?string $tipoExamen): bool

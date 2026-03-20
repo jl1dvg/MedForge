@@ -113,6 +113,26 @@ return [
             // 'trust_server_certificate' => env('DB_TRUST_SERVER_CERTIFICATE', 'false'),
         ],
 
+        'sigcenter' => [
+            'driver' => env('SIGCENTER_DB_CONNECTION', 'mysql'),
+            'url' => env('SIGCENTER_DB_URL'),
+            'host' => env('SIGCENTER_DB_HOST', '127.0.0.1'),
+            'port' => env('SIGCENTER_DB_PORT', '3306'),
+            'database' => env('SIGCENTER_DB_DATABASE', 'inmicrocsa'),
+            'username' => env('SIGCENTER_DB_USERNAME', 'root'),
+            'password' => env('SIGCENTER_DB_PASSWORD', ''),
+            'unix_socket' => env('SIGCENTER_DB_SOCKET', ''),
+            'charset' => env('SIGCENTER_DB_CHARSET', 'utf8mb4'),
+            'collation' => env('SIGCENTER_DB_COLLATION', 'utf8mb4_unicode_ci'),
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'strict' => false,
+            'engine' => null,
+            'options' => extension_loaded('pdo_mysql') ? array_filter([
+                (PHP_VERSION_ID >= 80500 ? \Pdo\Mysql::ATTR_SSL_CA : \PDO::MYSQL_ATTR_SSL_CA) => env('SIGCENTER_MYSQL_ATTR_SSL_CA'),
+            ]) : [],
+        ],
+
     ],
 
     /*

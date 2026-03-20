@@ -13,6 +13,8 @@ class RequireLegacyPermission
 {
     public function handle(Request $request, Closure $next, string ...$permissions): Response|RedirectResponse
     {
+        LegacySessionAuth::bootstrapLaravelAuth($request);
+
         if (!LegacySessionAuth::isAuthenticated($request)) {
             if ($request->expectsJson()) {
                 return response()->json(['error' => 'Sesión expirada'], 401);

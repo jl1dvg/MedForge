@@ -1,6 +1,7 @@
 <?php
 
 use App\Modules\Examenes\Services\ImagenesNasIndexService;
+use App\Modules\Examenes\Services\ImagenesSigcenterIndexService;
 use App\Modules\Examenes\Services\NasImagenesService;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -86,9 +87,9 @@ Artisan::command('imagenes:nas-diagnose
     $service = app(NasImagenesService::class);
     $diagnostics = $service->diagnostics();
 
-    $cacheDir = trim((string) (env('NAS_IMAGES_CACHE_DIR') ?? ''));
+    $cacheDir = trim((string) (env('IMAGENES_CACHE_DIR') ?? env('NAS_IMAGES_CACHE_DIR') ?? ''));
     if ($cacheDir === '') {
-        $cacheDir = rtrim(sys_get_temp_dir(), '/\\') . DIRECTORY_SEPARATOR . 'medforge_nas_cache';
+        $cacheDir = rtrim(sys_get_temp_dir(), '/\\') . DIRECTORY_SEPARATOR . 'medforge_imagenes_cache';
     }
 
     $this->components->info('Diagnóstico NAS');
@@ -162,3 +163,75 @@ Artisan::command('imagenes:nas-diagnose
 
     return 0;
 })->purpose('Diagnostica si el NAS se esta leyendo por mount local o SFTP y mide una prueba real');
+
+Artisan::command('imagenes:sigcenter-index
+    {--days=7 : Dias hacia atras para buscar candidatos}
+    {--from-date= : Fecha inicial YYYY-MM-DD (inclusive). Si se usa, tiene prioridad sobre --days}
+    {--to-date= : Fecha final YYYY-MM-DD (inclusive). Si se usa, tiene prioridad sobre --days}
+    {--limit= : Maximo de form_id a escanear; vacio o 0 = sin limite}
+    {--stale-hours=6 : Solo reescanea filas mas viejas que este umbral}
+    {--form-id= : Escanea un form_id puntual}
+    {--force : Ignora antiguedad del cache}', function (): int {
+    /** @var ImagenesSigcenterIndexService $service */
+    $service = app(ImagenesSigcenterIndexService::class);
+
+    $this->components->info('Iniciando indexacion Sigcenter de imagenes...');
+
+    $limitOption = $this->option('limit');
+
+    $result = $service->scan([
+        'days' => (int) $this->option('days'),
+        'from_date' => $this->option('from-date'),
+        'to_date' => $this->option('to-date'),
+        'limit' => $limitOption === null || $limitOption === '' ? null : (int) $limitOption,
+        'stale_hours' => (int) $this->option('stale-hours'),
+        'form_id' => $this->option('form-id'),
+        'force' => (bool) $this->option('force'),
+    ], function (string $event, array $payload): void {
+        if ($event !== 'row') {
+            return;
+        }
+
+        $status = strtoupper((string) ($payload['scan_status'] ?? 'N/A'));
+        $formId = (string) ($payload['form_id'] ?? '');
+        $hcNumber = (string) ($payload['hc_number'] ?? '');
+        $filesCount = (int) ($payload['files_count'] ?? 0);
+        $verifiedFiles = (int) ($payload['verified_files_count'] ?? 0);
+        $durationMs = (int) ($payload['scan_duration_ms'] ?? 0);
+
+        $this->line(sprintf(
+            '[%s] form_id=%s hc=%s files=%d verified=%d scan=%dms',
+            $status,
+            $formId,
+            $hcNumber,
+            $filesCount,
+            $verifiedFiles,
+            $durationMs
+        ));
+    });
+
+    if (!(bool) ($result['success'] ?? false)) {
+        $this->components->error((string) ($result['error'] ?? 'No se pudo ejecutar el indexador.'));
+        return 1;
+    }
+
+    $this->newLine();
+    $this->table(
+        ['Candidates', 'Processed', 'With files', 'With DB rows', 'No mapping', 'Empty', 'Errors', 'Duration ms', 'Avg scan ms'],
+        [[
+            (int) ($result['candidates'] ?? 0),
+            (int) ($result['processed'] ?? 0),
+            (int) ($result['with_files'] ?? 0),
+            (int) ($result['with_db_rows'] ?? 0),
+            (int) ($result['no_mapping'] ?? 0),
+            (int) ($result['empty'] ?? 0),
+            (int) ($result['errors'] ?? 0),
+            (int) ($result['duration_ms'] ?? 0),
+            (int) ($result['avg_scan_ms'] ?? 0),
+        ]]
+    );
+
+    $this->components->info('Indexacion Sigcenter finalizada.');
+
+    return 0;
+})->purpose('Indexa evidencia de imagenes de Sigcenter en una tabla local por form_id');

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Examenes\Http\Controllers;
 
+use App\Models\ImagenSigcenterIndex;
 use App\Modules\Examenes\Services\ExamenesParityService;
 use App\Modules\Examenes\Services\ExamenesPrefacturaService;
 use App\Modules\Examenes\Services\ExamenesReportingService;
@@ -11,6 +12,8 @@ use App\Modules\Examenes\Services\ImagenesUiService;
 use App\Modules\Examenes\Services\LegacyExamenesBridge;
 use App\Modules\Examenes\Services\LegacyExamenesRuntime;
 use App\Modules\Examenes\Services\NasImagenesService;
+use App\Modules\Examenes\Services\ImagenesSigcenterIndexService;
+use App\Modules\Examenes\Services\SigcenterImagenesService;
 use App\Modules\Reporting\Services\PdfRenderer;
 use App\Modules\Shared\Support\LegacySessionAuth;
 use DateTimeImmutable;
@@ -36,7 +39,9 @@ class ExamenesParityController
     private ExamenesPrefacturaService $prefactura;
     private ExamenesReportingService $reporting;
     private ImagenesUiService $imagenesUi;
-    private NasImagenesService $nasImagenesService;
+    private SigcenterImagenesService $sigcenterImagenesService;
+    private ?NasImagenesService $nasImagenesService = null;
+    private ?ImagenesSigcenterIndexService $imagenesSigcenterIndexService = null;
     private ?ExamenModel $legacyExamenModel = null;
 
     public function __construct()
@@ -47,7 +52,7 @@ class ExamenesParityController
         $this->prefactura = new ExamenesPrefacturaService($pdo);
         $this->reporting = new ExamenesReportingService($pdo);
         $this->imagenesUi = new ImagenesUiService($pdo);
-        $this->nasImagenesService = new NasImagenesService();
+        $this->sigcenterImagenesService = new SigcenterImagenesService();
     }
 
     public function kanbanData(Request $request): Response
@@ -381,13 +386,6 @@ class ExamenesParityController
             ], 422);
         }
 
-        if (!$this->nasImagenesService->isAvailable()) {
-            return response()->json([
-                'success' => false,
-                'error' => $this->nasImagenesService->getLastError() ?? 'NAS no disponible.',
-            ], 500);
-        }
-
         $nasContext = $this->resolveNasContext($hcNumber, $formId);
         $resolvedHcNumber = $nasContext['hc_number'];
         $resolvedFormId = $nasContext['form_id'];
@@ -404,7 +402,7 @@ class ExamenesParityController
         }
 
         $error = null;
-        $files = $this->getNasFilesWithCache($resolvedHcNumber, $resolvedFormId, false, $error);
+        $files = $this->getPreferredFilesWithCache($resolvedHcNumber, $resolvedFormId, false, $error);
         $files = array_map(function (array $file) use ($resolvedHcNumber, $resolvedFormId): array {
             $name = trim((string) ($file['name'] ?? ''));
             $file['url'] = $name === ''
@@ -432,13 +430,6 @@ class ExamenesParityController
                 'success' => false,
                 'error' => 'Sesión expirada',
             ], 401);
-        }
-
-        if (!$this->nasImagenesService->isAvailable()) {
-            return response()->json([
-                'success' => false,
-                'error' => $this->nasImagenesService->getLastError() ?? 'NAS no disponible.',
-            ], 500);
         }
 
         $payload = $this->payload($request);
@@ -473,7 +464,7 @@ class ExamenesParityController
 
             $checked++;
             $error = null;
-            $files = $this->getNasFilesWithCache($resolvedHcNumber, $resolvedFormId, false, $error);
+            $files = $this->getPreferredFilesWithCache($resolvedHcNumber, $resolvedFormId, false, $error);
             if ($error !== null || $files === []) {
                 continue;
             }
@@ -484,7 +475,7 @@ class ExamenesParityController
                 continue;
             }
 
-            if ($this->warmNasFileCache($resolvedHcNumber, $resolvedFormId, $name)) {
+            if ($this->warmPreferredFileCache($resolvedHcNumber, $resolvedFormId, $name)) {
                 $warmed++;
             }
         }
@@ -510,10 +501,6 @@ class ExamenesParityController
             return response('Parámetros incompletos', 422);
         }
 
-        if (!$this->nasImagenesService->isAvailable()) {
-            return response($this->nasImagenesService->getLastError() ?? 'NAS no disponible.', 500);
-        }
-
         $nasContext = $this->resolveNasContext($hcNumber, $formId);
         $resolvedHcNumber = $nasContext['hc_number'];
         $resolvedFormId = $nasContext['form_id'];
@@ -531,7 +518,7 @@ class ExamenesParityController
             ));
         }
 
-        if ($cachePath !== null && $this->warmNasFileCache($resolvedHcNumber, $resolvedFormId, $filename)) {
+        if ($cachePath !== null && $this->warmPreferredFileCache($resolvedHcNumber, $resolvedFormId, $filename)) {
             return response()->file($cachePath, $this->nasResponseHeaders(
                 $this->resolveNasMimeByFilename($filename),
                 (int) (filesize($cachePath) ?: 0),
@@ -539,9 +526,14 @@ class ExamenesParityController
             ));
         }
 
-        $opened = $this->nasImagenesService->openFile($resolvedHcNumber, $resolvedFormId, $filename);
+        $opened = $this->openPreferredFile($resolvedHcNumber, $resolvedFormId, $filename);
         if (!$opened || empty($opened['stream'])) {
-            return response($this->nasImagenesService->getLastError() ?? 'Archivo no encontrado.', 404);
+            return response(
+                $this->sigcenterImagenesService->getLastError()
+                    ?? ($this->nasImagenesService?->getLastError())
+                    ?? 'Archivo no encontrado.',
+                404
+            );
         }
 
         $type = (string) ($opened['type'] ?? 'application/octet-stream');
@@ -580,6 +572,175 @@ class ExamenesParityController
     }
 
     /**
+     * @return array<int,array{name:string,size:int,mtime:int,ext:string,type:string,source?:string,relative_path?:string}>
+     */
+    private function getPreferredFilesWithCache(string $hcNumber, string $formId, bool $forceRefresh = false, ?string &$error = null): array
+    {
+        $sigcenterFiles = $this->getSigcenterFiles($formId, $hcNumber, $forceRefresh, $sigcenterError);
+        if ($sigcenterFiles !== []) {
+            $error = null;
+            return $sigcenterFiles;
+        }
+
+        $error = $sigcenterError;
+        if (!$this->imagenesUseNasFallback()) {
+            return [];
+        }
+        return $this->getNasFilesWithCache($hcNumber, $formId, $forceRefresh, $error);
+    }
+
+    /**
+     * @return array<int,array{name:string,size:int,mtime:int,ext:string,type:string,source:string,relative_path:string}>
+     */
+    private function getSigcenterFiles(string $formId, string $hcNumber, bool $forceRefresh, ?string &$error = null): array
+    {
+        $error = null;
+
+        if ($forceRefresh) {
+            $this->imagenesSigcenterIndexService()->scan([
+                'form_id' => $formId,
+                'force' => true,
+            ]);
+        }
+
+        $index = ImagenSigcenterIndex::query()
+            ->whereRaw("TRIM(COALESCE(form_id, '')) = ?", [$formId])
+            ->whereRaw("TRIM(COALESCE(hc_number, '')) = ?", [$hcNumber])
+            ->first();
+
+        if (!$index instanceof ImagenSigcenterIndex && !$forceRefresh) {
+            $this->imagenesSigcenterIndexService()->scan([
+                'form_id' => $formId,
+                'force' => true,
+            ]);
+
+            $index = ImagenSigcenterIndex::query()
+                ->whereRaw("TRIM(COALESCE(form_id, '')) = ?", [$formId])
+                ->whereRaw("TRIM(COALESCE(hc_number, '')) = ?", [$hcNumber])
+                ->first();
+        }
+
+        if (!$index instanceof ImagenSigcenterIndex) {
+            return [];
+        }
+
+        $filesMeta = is_array($index->files_meta) ? $index->files_meta : [];
+        if ($filesMeta === []) {
+            $scanStatus = trim((string) ($index->scan_status ?? ''));
+            if (in_array($scanStatus, ['empty', 'no_mapping'], true)) {
+                $error = null;
+            } else {
+                $error = $index->last_error;
+            }
+            return [];
+        }
+
+        $files = [];
+        foreach ($filesMeta as $file) {
+            if (!is_array($file)) {
+                continue;
+            }
+            $relativePath = trim((string) ($file['relative_path'] ?? ''));
+            $name = basename($relativePath !== '' ? $relativePath : (string) ($file['foto'] ?? ''));
+            if ($name === '') {
+                continue;
+            }
+
+            $mtime = trim((string) ($file['mtime'] ?? ''));
+            $mtimeTs = $mtime !== '' ? (int) (strtotime($mtime) ?: 0) : 0;
+            $ext = strtolower((string) pathinfo($name, PATHINFO_EXTENSION));
+            $files[] = [
+                'name' => $name,
+                'size' => (int) ($file['size'] ?? 0),
+                'mtime' => $mtimeTs,
+                'ext' => $ext,
+                'type' => ((string) ($file['tipo'] ?? '')) === 'pdf' ? 'application/pdf' : $this->resolveNasMimeByFilename($name),
+                'source' => 'sigcenter',
+                'relative_path' => $relativePath,
+            ];
+        }
+
+        usort($files, static function (array $a, array $b): int {
+            return [$b['mtime'] ?? 0, $a['name'] ?? ''] <=> [$a['mtime'] ?? 0, $b['name'] ?? ''];
+        });
+
+        return array_values($files);
+    }
+
+    private function warmPreferredFileCache(string $hcNumber, string $formId, string $filename): bool
+    {
+        $files = $this->getSigcenterFiles($formId, $hcNumber, false, $sigcenterError);
+        foreach ($files as $file) {
+            if (($file['name'] ?? '') !== $filename || ($file['source'] ?? '') !== 'sigcenter') {
+                continue;
+            }
+
+            $relativePath = trim((string) ($file['relative_path'] ?? ''));
+            if ($relativePath === '') {
+                break;
+            }
+
+            $cachePath = $this->resolveNasFileCachePath($hcNumber, $formId, $filename);
+            if ($cachePath === null) {
+                return false;
+            }
+            if ($this->isNasCacheFresh($cachePath)) {
+                return true;
+            }
+
+            $tmpPath = $cachePath . '.part';
+            if ($this->sigcenterImagenesService->downloadRelativeFileToPath($relativePath, $tmpPath)) {
+                @rename($tmpPath, $cachePath);
+                return is_file($cachePath) && (int) (filesize($cachePath) ?: 0) > 0;
+            }
+            break;
+        }
+
+        if (!$this->imagenesUseNasFallback()) {
+            return false;
+        }
+
+        return $this->warmNasFileCache($hcNumber, $formId, $filename);
+    }
+
+    private function openPreferredFile(string $hcNumber, string $formId, string $filename): ?array
+    {
+        $files = $this->getSigcenterFiles($formId, $hcNumber, false, $sigcenterError);
+        foreach ($files as $file) {
+            if (($file['name'] ?? '') !== $filename || ($file['source'] ?? '') !== 'sigcenter') {
+                continue;
+            }
+
+            $relativePath = trim((string) ($file['relative_path'] ?? ''));
+            if ($relativePath === '') {
+                break;
+            }
+
+            $opened = $this->sigcenterImagenesService->openRelativeFile($relativePath);
+            if ($opened) {
+                return $opened;
+            }
+            break;
+        }
+
+        if (!$this->imagenesUseNasFallback()) {
+            return null;
+        }
+
+        return $this->nasImagenesService()->openFile($hcNumber, $formId, $filename);
+    }
+
+    private function imagenesUseNasFallback(): bool
+    {
+        $raw = trim((string) ($_ENV['IMAGENES_ENABLE_NAS_FALLBACK'] ?? $_SERVER['IMAGENES_ENABLE_NAS_FALLBACK'] ?? '1'));
+        if ($raw === '') {
+            return true;
+        }
+
+        return in_array(strtolower($raw), ['1', 'true', 'yes', 'on'], true);
+    }
+
+    /**
      * @return array{form_id:string,hc_number:string,has_image_context:bool}
      */
     private function resolveNasContext(string $hcNumber, string $formId): array
@@ -591,6 +752,19 @@ class ExamenesParityController
                 'form_id' => $resolvedFormId,
                 'hc_number' => $resolvedHcNumber,
                 'has_image_context' => false,
+            ];
+        }
+
+        $sigcenterIndex = ImagenSigcenterIndex::query()
+            ->whereRaw("TRIM(COALESCE(form_id, '')) = ?", [$resolvedFormId])
+            ->whereRaw("TRIM(COALESCE(hc_number, '')) = ?", [$resolvedHcNumber])
+            ->first();
+
+        if ($sigcenterIndex instanceof ImagenSigcenterIndex) {
+            return [
+                'form_id' => $resolvedFormId,
+                'hc_number' => $resolvedHcNumber,
+                'has_image_context' => true,
             ];
         }
 
@@ -1267,8 +1441,8 @@ class ExamenesParityController
             }
         }
 
-        $files = $this->nasImagenesService->listFiles($hcNumber, $formId);
-        $error = $this->nasImagenesService->getLastError();
+        $files = $this->nasImagenesService()->listFiles($hcNumber, $formId);
+        $error = $this->nasImagenesService()->getLastError();
         if ($error === null) {
             $this->writeNasListCache($hcNumber, $formId, $files);
         }
@@ -1372,7 +1546,7 @@ class ExamenesParityController
             return false;
         }
 
-        $ttl = (int) ($_ENV['NAS_IMAGES_LIST_CACHE_TTL'] ?? $_SERVER['NAS_IMAGES_LIST_CACHE_TTL'] ?? 90);
+        $ttl = (int) ($_ENV['IMAGENES_LIST_CACHE_TTL'] ?? $_SERVER['IMAGENES_LIST_CACHE_TTL'] ?? $_ENV['NAS_IMAGES_LIST_CACHE_TTL'] ?? $_SERVER['NAS_IMAGES_LIST_CACHE_TTL'] ?? 90);
         if ($ttl <= 0) {
             return false;
         }
@@ -1393,12 +1567,12 @@ class ExamenesParityController
         }
 
         $tmpPath = $cachePath . '.part';
-        if ($this->nasImagenesService->downloadFileToPath($hcNumber, $formId, $filename, $tmpPath)) {
+        if ($this->nasImagenesService()->downloadFileToPath($hcNumber, $formId, $filename, $tmpPath)) {
             @rename($tmpPath, $cachePath);
             return is_file($cachePath) && (int) (filesize($cachePath) ?: 0) > 0;
         }
 
-        $opened = $this->nasImagenesService->openFile($hcNumber, $formId, $filename);
+        $opened = $this->nasImagenesService()->openFile($hcNumber, $formId, $filename);
         if (!$opened || empty($opened['stream'])) {
             return false;
         }
@@ -1451,7 +1625,7 @@ class ExamenesParityController
 
     private function resolveNasCacheDir(): ?string
     {
-        $fromEnv = trim((string) ($_ENV['NAS_IMAGES_CACHE_DIR'] ?? $_SERVER['NAS_IMAGES_CACHE_DIR'] ?? ''));
+        $fromEnv = trim((string) ($_ENV['IMAGENES_CACHE_DIR'] ?? $_SERVER['IMAGENES_CACHE_DIR'] ?? $_ENV['NAS_IMAGES_CACHE_DIR'] ?? $_SERVER['NAS_IMAGES_CACHE_DIR'] ?? ''));
         if ($fromEnv !== '') {
             return $fromEnv;
         }
@@ -1461,7 +1635,7 @@ class ExamenesParityController
             return null;
         }
 
-        return rtrim($tmp, '/\\') . DIRECTORY_SEPARATOR . 'medforge_nas_cache';
+        return rtrim($tmp, '/\\') . DIRECTORY_SEPARATOR . 'medforge_imagenes_cache';
     }
 
     private function isNasCacheFresh(string $path): bool
@@ -1470,7 +1644,7 @@ class ExamenesParityController
             return false;
         }
 
-        $ttl = (int) ($_ENV['NAS_IMAGES_CACHE_TTL'] ?? $_SERVER['NAS_IMAGES_CACHE_TTL'] ?? 1800);
+        $ttl = (int) ($_ENV['IMAGENES_CACHE_TTL'] ?? $_SERVER['IMAGENES_CACHE_TTL'] ?? $_ENV['NAS_IMAGES_CACHE_TTL'] ?? $_SERVER['NAS_IMAGES_CACHE_TTL'] ?? 1800);
         if ($ttl <= 0) {
             return false;
         }
@@ -1487,6 +1661,24 @@ class ExamenesParityController
             'jpg', 'jpeg' => 'image/jpeg',
             default => 'application/octet-stream',
         };
+    }
+
+    private function nasImagenesService(): NasImagenesService
+    {
+        if ($this->nasImagenesService === null) {
+            $this->nasImagenesService = new NasImagenesService();
+        }
+
+        return $this->nasImagenesService;
+    }
+
+    private function imagenesSigcenterIndexService(): ImagenesSigcenterIndexService
+    {
+        if ($this->imagenesSigcenterIndexService === null) {
+            $this->imagenesSigcenterIndexService = app(ImagenesSigcenterIndexService::class);
+        }
+
+        return $this->imagenesSigcenterIndexService;
     }
 
     private function writeExcelMergedTitle(Worksheet $sheet, int $row, string $title, string $lastColumn = 'G'): void

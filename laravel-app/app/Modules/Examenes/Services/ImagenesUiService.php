@@ -240,7 +240,7 @@ class ImagenesUiService
                 WHERE ii.form_id IS NOT NULL AND TRIM(ii.form_id) <> ''
                 GROUP BY ii.form_id
             ) ii ON ii.form_id = pp.form_id";
-        $nasAvailable = $this->tableExists('imagenes_nas_index') && $this->columnExists('imagenes_nas_index', 'form_id');
+        $nasAvailable = $this->tableExists('imagenes_sigcenter_index') && $this->columnExists('imagenes_sigcenter_index', 'form_id');
         $nasSelect = $nasAvailable
             ? "COALESCE(ini.has_files, 0) AS nas_has_files,
                COALESCE(ini.files_count, 0) AS nas_files_count,
@@ -254,7 +254,7 @@ class ImagenesUiService
                0 AS nas_pdf_count,
                '' AS nas_scan_status,
                NULL AS nas_last_scanned_at";
-        $nasJoin = $nasAvailable ? 'LEFT JOIN imagenes_nas_index ini ON ini.form_id = pp.form_id' : '';
+        $nasJoin = $nasAvailable ? "LEFT JOIN imagenes_sigcenter_index ini ON TRIM(COALESCE(ini.form_id, '')) = TRIM(COALESCE(pp.form_id, ''))" : '';
 
         $facturacionSql = $this->buildImagenesFacturacionSql($includeFacturado);
 
@@ -869,8 +869,8 @@ class ImagenesUiService
                 WHERE ii.form_id IS NOT NULL AND TRIM(ii.form_id) <> ''
                 GROUP BY ii.form_id
             ) ii ON ii.form_id = pp.form_id";
-        $nasAvailable = $this->tableExists('imagenes_nas_index') && $this->columnExists('imagenes_nas_index', 'form_id');
-        $nasJoin = $nasAvailable ? 'LEFT JOIN imagenes_nas_index ini ON ini.form_id = pp.form_id' : '';
+        $nasAvailable = $this->tableExists('imagenes_sigcenter_index') && $this->columnExists('imagenes_sigcenter_index', 'form_id');
+        $nasJoin = $nasAvailable ? "LEFT JOIN imagenes_sigcenter_index ini ON TRIM(COALESCE(ini.form_id, '')) = TRIM(COALESCE(pp.form_id, ''))" : '';
         $nasEvidenceExpr = $nasAvailable
             ? '(COALESCE(ini.has_files, 0) = 1 OR COALESCE(ini.files_count, 0) > 0)'
             : '0 = 1';

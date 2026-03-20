@@ -12,6 +12,8 @@ class RequireLegacySession
 {
     public function handle(Request $request, Closure $next): Response|RedirectResponse
     {
+        LegacySessionAuth::bootstrapLaravelAuth($request);
+
         if (LegacySessionAuth::isAuthenticated($request)) {
             return $next($request);
         }

@@ -137,7 +137,7 @@ sort($estadoOpciones);
                 $nasScanStatus = trim((string)($row['nas_scan_status'] ?? ''));
                 $nasStatus = $nasHasFiles
                     ? 'con-archivos'
-                    : (in_array($nasScanStatus, ['empty', 'missing_dir'], true) ? 'sin-archivos' : 'pendiente');
+                    : (in_array($nasScanStatus, ['empty', 'missing_dir', 'no_mapping'], true) ? 'sin-archivos' : 'pendiente');
                 if ($informado) {
                     $totalInformados++;
                 } elseif ($nasStatus === 'sin-archivos') {
@@ -162,7 +162,7 @@ sort($estadoOpciones);
                 </li>
                 <li class="nav-item">
                     <button class="nav-link" type="button" data-tab="sin-nas">
-                        Sin imágenes NAS
+                        Sin archivos
                         <span class="badge badge-warning-light ms-1"><?= (int) $totalSinNas ?></span>
                     </button>
                 </li>
@@ -262,7 +262,7 @@ sort($estadoOpciones);
                         $nasScanStatus = trim((string)($row['nas_scan_status'] ?? ''));
                         $nasStatus = $nasHasFiles
                             ? 'con-archivos'
-                            : (in_array($nasScanStatus, ['empty', 'missing_dir'], true) ? 'sin-archivos' : 'pendiente');
+                            : (in_array($nasScanStatus, ['empty', 'missing_dir', 'no_mapping'], true) ? 'sin-archivos' : 'pendiente');
                         ?>
                         <?php $informado = !empty($row['informe_id']); ?>
                         <tr data-id="<?= (int)($row['id'] ?? 0) ?>"
@@ -300,11 +300,11 @@ sort($estadoOpciones);
                                 </button>
                                 <div class="small mt-5">
                                     <?php if ($nasHasFiles): ?>
-                                        <span class="badge badge-success-light">Con NAS (<?= $nasFilesCount ?>)</span>
+                                        <span class="badge badge-success-light">Con archivos (<?= $nasFilesCount ?>)</span>
                                     <?php elseif ($nasStatus === 'sin-archivos'): ?>
-                                        <span class="badge badge-warning-light">Sin NAS</span>
+                                        <span class="badge badge-warning-light">Sin archivos</span>
                                     <?php else: ?>
-                                        <span class="badge badge-secondary-light">NAS pendiente</span>
+                                        <span class="badge badge-secondary-light">Archivos pendientes</span>
                                     <?php endif; ?>
                                 </div>
                             </td>
@@ -457,7 +457,7 @@ sort($estadoOpciones);
                     <div class="col-12 col-xl-6 order-1 order-xl-2">
                         <div class="border rounded p-3 h-100 d-flex flex-column">
                             <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
-                                <h6 class="mb-0">Imágenes del NAS</h6>
+                                <h6 class="mb-0">Archivos del examen</h6>
                                 <span class="text-muted small" id="informeImagenesStatus"></span>
                             </div>
                             <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
@@ -990,7 +990,7 @@ sort($estadoOpciones);
                     clearNasPreviewStage();
                 }
                 if (!nasFiles.length) {
-                    imagenesContainer.innerHTML = '<div class="text-muted small px-3">No se encontraron archivos en el NAS.</div>';
+                    imagenesContainer.innerHTML = '<div class="text-muted small px-3">No se encontraron archivos asociados al examen.</div>';
                     renderNasThumbs();
                     updateNasControls();
                     return;
@@ -1268,11 +1268,11 @@ sort($estadoOpciones);
                         }
                         setImagenesStatus(files.length
                             ? (files.length + ' archivo(s) encontrado(s)')
-                            : (res.message || 'Sin archivos en el NAS'));
+                            : (res.message || 'Sin archivos asociados'));
                     })
                     .catch(function () {
                         renderImagenesNas([]);
-                        setImagenesStatus('Error al conectar con el NAS.');
+                        setImagenesStatus('Error al conectar con el repositorio de archivos.');
                         if (row) {
                             setRowNasStatus(row, 'pendiente', false);
                         }

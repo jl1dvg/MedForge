@@ -2829,7 +2829,7 @@ class BillingParticularesReportService
             SQL;
         }
 
-        if ($this->columnExists('imagenes_nas_index', 'form_id')) {
+        if ($this->columnExists('imagenes_sigcenter_index', 'form_id')) {
             $joins[] = <<<SQL
                 LEFT JOIN (
                     SELECT
@@ -2838,7 +2838,7 @@ class BillingParticularesReportService
                         COALESCE(MAX(ini.files_count), 0) AS imagen_nas_files_count,
                         MAX(NULLIF(TRIM(COALESCE(ini.scan_status, '')), '')) AS nas_scan_status,
                         MAX(ini.last_scanned_at) AS nas_last_scanned_at
-                    FROM imagenes_nas_index ini
+                    FROM imagenes_sigcenter_index ini
                     WHERE TRIM(COALESCE(ini.form_id, '')) <> ''
                     GROUP BY ini.form_id
                 ) AS imgnas
