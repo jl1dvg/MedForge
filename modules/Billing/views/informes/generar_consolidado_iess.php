@@ -15,6 +15,43 @@ use Modules\Reporting\Support\SolicitudDataFormatter;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
+if (!function_exists('billing_iess_resolver_descripcion_tarifario')) {
+    function billing_iess_resolver_descripcion_tarifario(PDO $pdo, $codigo, $fallback = ''): string
+    {
+        static $cache = [];
+
+        $codigo = trim((string)$codigo);
+        $fallback = trim((string)$fallback);
+        if ($codigo === '') {
+            return $fallback;
+        }
+
+        if (!array_key_exists($codigo, $cache)) {
+            $stmt = $pdo->prepare(
+                'SELECT codigo, descripcion, short_description
+                 FROM tarifario_2014
+                 WHERE codigo = ? OR codigo = ?
+                 LIMIT 1'
+            );
+            $stmt->execute([$codigo, ltrim($codigo, '0')]);
+            $cache[$codigo] = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        }
+
+        $row = $cache[$codigo];
+        if (!is_array($row)) {
+            return $fallback;
+        }
+
+        $descripcion = trim((string)($row['descripcion'] ?? ''));
+        if ($descripcion !== '') {
+            return $descripcion;
+        }
+
+        $shortDescription = trim((string)($row['short_description'] ?? ''));
+        return $shortDescription !== '' ? $shortDescription : $fallback;
+    }
+}
+
 $billingController = new BillingController($pdo);
 $pacienteService = new PacienteService($pdo);
 $formato = strtoupper($_GET['formato'] ?? 'IESS');
@@ -351,7 +388,7 @@ foreach ($consolidado as $mes => $pacientesDelMes) {
 
         // === Procedimientos ===
         foreach ($data['procedimientos'] as $index => $p) {
-            $descripcion = $p['proc_detalle'] ?? '';
+            $descripcion = billing_iess_resolver_descripcion_tarifario($pdo, $p['proc_codigo'] ?? '', $p['proc_detalle'] ?? '');
             $precioBase = (float)($p['proc_precio'] ?? 0);
             $codigo = $p['proc_codigo'] ?? '';
 
@@ -480,7 +517,7 @@ foreach ($consolidado as $mes => $pacientesDelMes) {
 
         if (!empty($data['protocoloExtendido']['cirujano_2']) || !empty($data['protocoloExtendido']['primer_ayudante'])) {
             foreach ($data['procedimientos'] as $index => $p) {
-                $descripcion = $p['proc_detalle'] ?? '';
+                $descripcion = billing_iess_resolver_descripcion_tarifario($pdo, $p['proc_codigo'] ?? '', $p['proc_detalle'] ?? '');
                 $precio = (float)$p['proc_precio'];
                 $porcentaje = ($index === 0) ? 0.2 : 0.1;
                 $valorUnitario = $precio * $porcentaje;
@@ -497,7 +534,7 @@ foreach ($consolidado as $mes => $pacientesDelMes) {
                     $contexto['edad'] ?? '',  // I: Edad
                     'PRO/INTERV',        // J: Tipo prestación
                     $p['proc_codigo'] ?? '', // K: Código procedimiento
-                    $p['proc_detalle'] ?? '',// L: Descripción procedimiento
+                    billing_iess_resolver_descripcion_tarifario($pdo, $p['proc_codigo'] ?? '', $p['proc_detalle'] ?? ''),// L: Descripción procedimiento
                     $cie10,   // M: Diagnóstico principal (CIE10)
                     '',                  // N: Diagnóstico secundario
                     '',                  // O: Diagnóstico 3
@@ -566,7 +603,7 @@ foreach ($consolidado as $mes => $pacientesDelMes) {
                 $contexto['edad'] ?? '',  // I: Edad
                 'PRO/INTERV',        // J: Tipo prestación
                 $p['proc_codigo'] ?? '', // K: Código procedimiento
-                $p['proc_detalle'] ?? '',// L: Descripción procedimiento
+                billing_iess_resolver_descripcion_tarifario($pdo, $p['proc_codigo'] ?? '', $p['proc_detalle'] ?? ''),// L: Descripción procedimiento
                 $cie10,   // M: Diagnóstico principal (CIE10)
                 '',                  // N: Diagnóstico secundario
                 '',                  // O: Diagnóstico 3
