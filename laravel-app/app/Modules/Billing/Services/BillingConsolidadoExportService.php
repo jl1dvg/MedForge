@@ -104,21 +104,32 @@ class BillingConsolidadoExportService
 
                 $apellido = trim((string) ($paciente['lname'] ?? '') . ' ' . (string) ($paciente['lname2'] ?? ''));
                 $nombre = trim((string) ($paciente['fname'] ?? '') . ' ' . (string) ($paciente['mname'] ?? ''));
-                $edad = $this->pacienteService->calcularEdad(
-                    isset($paciente['fecha_nacimiento']) ? (string) $paciente['fecha_nacimiento'] : null,
-                    isset($factura['fecha']) ? (string) $factura['fecha'] : null
-                );
+                $edad = $grupo === 'isspol'
+                    ? $this->pacienteService->calcularEdad(
+                        isset($paciente['fecha_nacimiento']) ? (string) $paciente['fecha_nacimiento'] : null
+                    )
+                    : $this->pacienteService->calcularEdad(
+                        isset($paciente['fecha_nacimiento']) ? (string) $paciente['fecha_nacimiento'] : null,
+                        isset($factura['fecha']) ? (string) $factura['fecha'] : null
+                    );
                 $genero = !empty($paciente['sexo']) ? strtoupper(substr((string) $paciente['sexo'], 0, 1)) : '--';
-                $cie10 = InformesHelper::extraerCie10((string) ($derivacion['diagnostico'] ?? ''));
-                if ($cie10 === '') {
+                $cie10 = $grupo === 'isspol'
+                    ? (string) ($factura['cie10'] ?? '--')
+                    : InformesHelper::extraerCie10((string) ($derivacion['diagnostico'] ?? ''));
+                if (trim($cie10) === '') {
                     $cie10 = '--';
                 }
 
                 $descripcion = '--';
                 $items = 0;
                 if (is_array($datos)) {
-                    $descripcion = (string) ($datos['procedimientos'][0]['proc_detalle'] ?? '--');
-                    $items = $this->contarItemsFactura($datos);
+                    if ($grupo === 'isspol') {
+                        $descripcion = (string) ($factura['descripcion'] ?? '--');
+                        $items = (int) ($factura['items'] ?? 75);
+                    } else {
+                        $descripcion = (string) ($datos['procedimientos'][0]['proc_detalle'] ?? '--');
+                        $items = $this->contarItemsFactura($datos);
+                    }
                 }
 
                 $fecha = isset($factura['fecha']) && strtotime((string) $factura['fecha'])
@@ -152,6 +163,80 @@ class BillingConsolidadoExportService
         return [
             'filename' => 'consolidado_' . $grupo . ($categoria ? '_' . $categoria : '') . '.xlsx',
             'content' => is_string($content) ? $content : '',
+            'content_type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ];
+    }
+
+    /**
+     * @return array{filename:string,content:string,content_type:string}
+     */
+    public function exportIndividualLegacyAdapter(string $grupo, string $formId): array
+    {
+        $grupo = strtoupper(trim($grupo));
+        $formId = trim($formId);
+        if ($formId === '') {
+            throw new \InvalidArgumentException('Form ID requerido para exportación individual.');
+        }
+
+        $generatorPath = match ($grupo) {
+            'ISSPOL' => base_path('../views/billing/generar_excel_isspol.php'),
+            default => throw new \InvalidArgumentException('Grupo individual no soportado: ' . $grupo),
+        };
+
+        if (!is_file($generatorPath)) {
+            throw new \RuntimeException('No se encontró el generador individual de ' . $grupo . '.');
+        }
+
+        $datos = $this->billingService->obtenerDatos($formId);
+        if (!is_array($datos) || $datos === []) {
+            throw new \RuntimeException('No se encontraron datos para form_id ' . $formId . '.');
+        }
+
+        $prevGet = $_GET;
+        $prevPdo = $GLOBALS['pdo'] ?? null;
+        $prevDatos = $GLOBALS['datos_facturacion'] ?? null;
+        $prevFormId = $GLOBALS['form_id_facturacion'] ?? null;
+        $prevSpreadsheet = $GLOBALS['spreadsheet'] ?? null;
+        $prevExportOnly = $GLOBALS['spreadsheet_export_only'] ?? null;
+
+        try {
+            $_GET['form_id'] = $formId;
+            $GLOBALS['pdo'] = $this->resolvePdo();
+            $GLOBALS['datos_facturacion'] = $datos;
+            $GLOBALS['form_id_facturacion'] = $formId;
+            $GLOBALS['spreadsheet'] = new Spreadsheet();
+            $GLOBALS['spreadsheet_export_only'] = true;
+
+            include $generatorPath;
+
+            $spreadsheet = $GLOBALS['spreadsheet'] ?? null;
+        } finally {
+            $_GET = $prevGet;
+            $GLOBALS['pdo'] = $prevPdo;
+            $GLOBALS['datos_facturacion'] = $prevDatos;
+            $GLOBALS['form_id_facturacion'] = $prevFormId;
+            $GLOBALS['spreadsheet'] = $prevSpreadsheet;
+            $GLOBALS['spreadsheet_export_only'] = $prevExportOnly;
+        }
+
+        if (!($spreadsheet instanceof Spreadsheet)) {
+            throw new \RuntimeException('No se pudo generar el Excel individual de ' . $grupo . '.');
+        }
+
+        $paciente = is_array($datos['paciente'] ?? null) ? $datos['paciente'] : [];
+        $filename = trim(implode('_', array_filter([
+            (string) ($paciente['lname'] ?? ''),
+            (string) ($paciente['lname2'] ?? ''),
+            (string) ($paciente['fname'] ?? ''),
+            (string) ($paciente['mname'] ?? ''),
+        ])));
+        if ($filename === '') {
+            $filename = strtolower($grupo) . '_' . $formId;
+        }
+
+        return [
+            'filename' => $filename . '.xlsx',
+            'content' => $this->renderSpreadsheet($spreadsheet),
             'content_type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         ];
     }

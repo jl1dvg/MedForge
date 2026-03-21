@@ -20,6 +20,7 @@ Route::middleware([
     Route::get('/informes/particulares', [BillingUiController::class, 'informeParticulares']);
     Route::match(['GET', 'POST'], '/informes/iess', [BillingUiController::class, 'informeIess']);
     Route::match(['GET', 'POST'], '/informes/isspol', [BillingUiController::class, 'informeIsspol']);
+    Route::get('/informes/isspol/excel', [BillingUiController::class, 'informeIsspolExcel']);
     Route::match(['GET', 'POST'], '/informes/issfa', [BillingUiController::class, 'informeIssfa']);
     Route::match(['GET', 'POST'], '/informes/msp', [BillingUiController::class, 'informeMsp']);
     Route::get('/informes/iess/consolidado', [BillingUiController::class, 'informeIessConsolidado']);

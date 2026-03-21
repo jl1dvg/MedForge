@@ -329,7 +329,10 @@ $sedeSeleccionada = $informesHelperClass::normalizarSede($filtros['sede'] ?? '')
                                 $labelExcel = $button['label'] ?? 'Descargar Excel';
                                 $classExcel = $button['class'] ?? 'btn btn-success btn-lg me-2';
                                 $iconExcel = $button['icon'] ?? 'fa fa-file-excel-o';
-                                $excelUrl = '/public/index.php/billing/excel?form_id=' . urlencode($formIdsParam) . '&grupo=' . urlencode($grupoExcel);
+                                $detailExcelPath = (string) ($grupoConfig['detailExcelPath'] ?? '');
+                                $excelUrl = $detailExcelPath !== ''
+                                    ? $detailExcelPath . '?form_id=' . urlencode($formIdsParam)
+                                    : '/public/index.php/billing/excel?form_id=' . urlencode($formIdsParam) . '&grupo=' . urlencode($grupoExcel);
                                 ?>
                                 <a href="<?= htmlspecialchars($excelUrl) ?>"
                                    class="<?= htmlspecialchars($classExcel) ?>">

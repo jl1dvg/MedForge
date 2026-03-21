@@ -33,6 +33,8 @@ class ImagenesUiController
             'currentUser' => LegacyCurrentUser::resolve($request),
             'imagenesRealizadas' => $payload['rows'],
             'filters' => $payload['filters'],
+            'afiliacionOptions' => $payload['afiliacionOptions'],
+            'seguroOptions' => $payload['seguroOptions'],
         ]);
     }
 

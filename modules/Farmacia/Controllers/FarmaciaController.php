@@ -389,7 +389,6 @@ class FarmaciaController extends BaseController
      *     via: string,
      *     producto: string,
      *     sede: string,
-     *     localidad: string,
      *     departamento: string
      * }
      */
@@ -415,7 +414,6 @@ class FarmaciaController extends BaseController
             'via' => $this->normalizeTextFilter((string)($_GET['via'] ?? ''), 120),
             'producto' => $this->normalizeTextFilter((string)($_GET['producto'] ?? ''), 120),
             'sede' => $this->normalizeSedeFilter((string)($_GET['sede'] ?? '')),
-            'localidad' => $this->normalizeTextFilter((string)($_GET['localidad'] ?? ''), 120),
             'departamento' => $this->normalizeTextFilter((string)($_GET['departamento'] ?? ''), 120),
         ];
     }
@@ -934,7 +932,6 @@ class FarmaciaController extends BaseController
      *     via:string,
      *     producto:string,
      *     sede:string,
-     *     localidad:string,
      *     departamento:string
      * } $filters
      * @param array<int, string> $doctorOptions
@@ -985,12 +982,6 @@ class FarmaciaController extends BaseController
             $summary[] = [
                 'label' => 'Sede',
                 'value' => in_array($filters['sede'], $sedeOptions, true) ? $filters['sede'] : $filters['sede'],
-            ];
-        }
-        if ($filters['localidad'] !== '') {
-            $summary[] = [
-                'label' => 'Localidad',
-                'value' => $filters['localidad'],
             ];
         }
         if ($filters['departamento'] !== '') {

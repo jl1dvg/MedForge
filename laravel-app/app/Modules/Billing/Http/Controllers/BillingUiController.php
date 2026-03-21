@@ -250,6 +250,11 @@ class BillingUiController
         return $this->exportConsolidadoSimple($request, 'isspol');
     }
 
+    public function informeIsspolExcel(Request $request): Response|RedirectResponse
+    {
+        return $this->exportInformeAfiliacionExcel($request, 'ISSPOL');
+    }
+
     public function informeIssfaConsolidado(Request $request): Response|RedirectResponse
     {
         return $this->exportConsolidadoSimple($request, 'issfa');
@@ -636,6 +641,7 @@ class BillingUiController
                 'slug' => 'isspol',
                 'titulo' => 'Informe ISSPOL',
                 'basePath' => '/v2/informes/isspol',
+                'detailExcelPath' => '/v2/informes/isspol/excel',
                 'tableOptions' => [
                     'pageLength' => 25,
                     'defaultOrder' => 'fecha_ingreso_desc',
@@ -1015,6 +1021,54 @@ class BillingUiController
 
             return redirect('/v2/informes/' . $grupo)
                 ->with('error', 'No se pudo generar el consolidado.');
+        }
+
+        return response($export['content'], 200, [
+            'Content-Type' => $export['content_type'] ?? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="' . $export['filename'] . '"',
+            'Cache-Control' => 'max-age=0',
+        ]);
+    }
+
+    private function exportInformeAfiliacionExcel(Request $request, string $grupo): Response|RedirectResponse
+    {
+        if (!$this->isLegacyAuthenticated($request)) {
+            if ($request->expectsJson()) {
+                return response()->json(['error' => 'Sesión expirada'], 401);
+            }
+
+            return redirect('/auth/login?auth_required=1');
+        }
+
+        $formId = trim((string) $request->query('form_id', ''));
+        if ($formId === '') {
+            return redirect('/v2/informes/' . strtolower($grupo))
+                ->with('error', 'No se indicó un form_id válido para exportar.');
+        }
+
+        try {
+            $export = $this->consolidadoExportService->exportIndividualLegacyAdapter($grupo, $formId);
+        } catch (\Throwable $exception) {
+            Log::error('No se pudo generar excel individual v2', [
+                'grupo' => $grupo,
+                'form_id' => $formId,
+                'error' => $exception->getMessage(),
+            ]);
+
+            if ($request->expectsJson() || $request->boolean('debug')) {
+                $payload = ['error' => 'No se pudo generar el excel individual.'];
+                if ($request->boolean('debug')) {
+                    $payload['debug'] = [
+                        'message' => $exception->getMessage(),
+                        'type' => $exception::class,
+                    ];
+                }
+
+                return response()->json($payload, 500);
+            }
+
+            return redirect('/v2/informes/' . strtolower($grupo))
+                ->with('error', 'No se pudo generar el excel individual.');
         }
 
         return response($export['content'], 200, [

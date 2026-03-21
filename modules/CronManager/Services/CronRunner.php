@@ -1390,7 +1390,7 @@ class CronRunner
      */
     private function runIndexAdmisionesSyncTask(): array
     {
-        $script = BASE_PATH . '/scrapping/sync_index_admisiones.py';
+        $script = BASE_PATH . '/scrapping/sync_index_admisiones.php';
 
         if (!is_file($script)) {
             return [
@@ -1406,7 +1406,7 @@ class CronRunner
 
         $apiUrl = getenv('MEDFORGE_API_URL') ?: 'https://asistentecive.consulmed.me';
         $command = sprintf(
-            'python3 %s --start %s --end %s --api-url %s --quiet',
+            'php %s --start %s --end %s --api-url %s --quiet',
             escapeshellarg($script),
             escapeshellarg($range['start']),
             escapeshellarg($range['end']),
@@ -1445,7 +1445,7 @@ class CronRunner
         $details = is_array($decoded) ? $decoded : ['output' => trim($stdout)];
 
         return [
-            'message' => 'Scraping de index-admisiones completado correctamente.',
+            'message' => 'Sincronización de index-admisiones completada correctamente.',
             'details' => $details,
         ];
     }

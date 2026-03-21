@@ -54,18 +54,20 @@ class ImagenesUiService
 
     /**
      * @param array<string,mixed> $query
-     * @return array{filters:array<string,string>,rows:array<int,array<string,mixed>>}
+     * @return array{filters:array<string,string>,rows:array<int,array<string,mixed>>,afiliacionOptions:array<int,array{value:string,label:string}>,seguroOptions:array<int,array{value:string,label:string}>}
      */
     public function imagenesRealizadas(array $query): array
     {
         $filters = $this->buildFilters($query);
-        $filters['afiliacion_match_mode'] = 'exact';
+        $filters['afiliacion_match_mode'] = 'grouped';
         $rows = $this->fetchImagenesRealizadas($filters, true);
         $rows = array_map(fn(array $row): array => $this->decorateImagenRow($row), $rows);
 
         return [
             'filters' => $filters,
             'rows' => $rows,
+            'afiliacionOptions' => $this->getImagenesAfiliacionOptions(),
+            'seguroOptions' => $this->getImagenesSeguroOptions((string) ($filters['afiliacion'] ?? '')),
         ];
     }
 

@@ -1,8 +1,11 @@
 <?php
 
+use App\Modules\Agenda\Services\IndexAdmisionesSyncService;
+use App\Modules\Billing\Services\FacturacionRealSyncService;
 use App\Modules\Examenes\Services\ImagenesNasIndexService;
 use App\Modules\Examenes\Services\ImagenesSigcenterIndexService;
 use App\Modules\Examenes\Services\NasImagenesService;
+use App\Modules\Farmacia\Services\RecetasConciliacionSyncService;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 
@@ -235,3 +238,248 @@ Artisan::command('imagenes:sigcenter-index
 
     return 0;
 })->purpose('Indexa evidencia de imagenes de Sigcenter en una tabla local por form_id');
+
+Artisan::command('index-admisiones:sync
+    {--lookback=14 : Dias hacia atras desde hoy}
+    {--lookahead=14 : Dias hacia adelante desde hoy}
+    {--from-date= : Fecha inicial YYYY-MM-DD (inclusive). Si se usa, tiene prioridad sobre --lookback}
+    {--to-date= : Fecha final YYYY-MM-DD (inclusive). Si se usa, tiene prioridad sobre --lookahead}', function (): int {
+    /** @var IndexAdmisionesSyncService $service */
+    $service = app(IndexAdmisionesSyncService::class);
+
+    $fromDate = $this->option('from-date');
+    $toDate = $this->option('to-date');
+    $lookback = (int) $this->option('lookback');
+    $lookahead = (int) $this->option('lookahead');
+
+    $this->line(sprintf(
+        '[%s] [start] index-admisiones:sync lookback=%d lookahead=%d from_date=%s to_date=%s',
+        now()->format('Y-m-d H:i:s'),
+        $lookback,
+        $lookahead,
+        $fromDate !== null && $fromDate !== '' ? (string) $fromDate : '—',
+        $toDate !== null && $toDate !== '' ? (string) $toDate : '—'
+    ));
+
+    $result = $service->sync([
+        'lookback' => $lookback,
+        'lookahead' => $lookahead,
+        'from_date' => $fromDate,
+        'to_date' => $toDate,
+    ], function (string $event, array $payload): void {
+        if ($event === 'row') {
+            $this->line(sprintf(
+                '[ROW] form_id=%s hc=%s estado=%s fecha=%s',
+                (string) ($payload['form_id'] ?? ''),
+                (string) ($payload['hc_number'] ?? ''),
+                (string) ($payload['estado'] ?? '—'),
+                (string) ($payload['fecha'] ?? '—')
+            ));
+            return;
+        }
+
+        if ($event === 'skip') {
+            $this->line(sprintf(
+                '[SKIP] form_id=%s hc=%s reason=%s',
+                (string) ($payload['form_id'] ?? ''),
+                (string) ($payload['hc_number'] ?? ''),
+                (string) ($payload['reason'] ?? 'unknown')
+            ));
+            return;
+        }
+
+        if ($event === 'error') {
+            $this->error(sprintf(
+                '[ERROR] form_id=%s hc=%s error=%s',
+                (string) ($payload['form_id'] ?? ''),
+                (string) ($payload['hc_number'] ?? ''),
+                (string) ($payload['error'] ?? 'unknown')
+            ));
+        }
+    });
+
+    if (!(bool) ($result['success'] ?? false)) {
+        $this->error((string) ($result['error'] ?? 'No se pudo sincronizar index-admisiones.'));
+        $this->line(sprintf('[%s] [error] index-admisiones:sync', now()->format('Y-m-d H:i:s')));
+        return 1;
+    }
+
+    $this->newLine();
+    $this->table(
+        ['From', 'To', 'Source', 'Total', 'Processed', 'Sent', 'Skipped', 'Errors', 'Duration ms'],
+        [[
+            (string) ($result['from'] ?? '—'),
+            (string) ($result['to'] ?? '—'),
+            (string) ($result['source'] ?? '—'),
+            (int) ($result['total_rows'] ?? 0),
+            (int) ($result['processed_rows'] ?? 0),
+            (int) ($result['sent_rows'] ?? 0),
+            (int) ($result['skipped_rows'] ?? 0),
+            (int) ($result['error_rows'] ?? 0),
+            (int) ($result['duration_ms'] ?? 0),
+        ]]
+    );
+
+    $this->line(sprintf('[%s] [done] index-admisiones:sync', now()->format('Y-m-d H:i:s')));
+
+    return 0;
+})->purpose('Sincroniza index-admisiones desde Sigcenter hacia tablas locales sin usar el legacy');
+
+Artisan::command('billing:facturacion-real-sync
+    {--start= : Mes inicial YYYY-MM}
+    {--end= : Mes final YYYY-MM}', function (): int {
+    /** @var FacturacionRealSyncService $service */
+    $service = app(FacturacionRealSyncService::class);
+
+    $defaultMonth = now()->format('Y-m');
+    $start = trim((string) ($this->option('start') ?? ''));
+    $end = trim((string) ($this->option('end') ?? ''));
+    $start = $start !== '' ? $start : $defaultMonth;
+    $end = $end !== '' ? $end : $start;
+
+    $this->line(sprintf(
+        '[%s] [start] billing:facturacion-real-sync start=%s end=%s',
+        now()->format('Y-m-d H:i:s'),
+        $start,
+        $end
+    ));
+
+    try {
+        $result = $service->sync([
+            'start' => $start,
+            'end' => $end,
+        ], function (string $event, array $payload): void {
+            if ($event === 'row') {
+                $this->line(sprintf(
+                    '[ROW] form_id=%s factura_id=%s numero_factura=%s monto_honorario=%s mes=%s',
+                    (string) ($payload['form_id'] ?? ''),
+                    (string) ($payload['factura_id'] ?? ''),
+                    (string) ($payload['numero_factura'] ?? ''),
+                    (string) ($payload['monto_honorario'] ?? ''),
+                    (string) ($payload['source_month'] ?? '')
+                ));
+                return;
+            }
+
+            if ($event === 'error') {
+                $this->error(sprintf(
+                    '[ERROR] form_id=%s factura_id=%s mes=%s error=%s',
+                    (string) ($payload['form_id'] ?? ''),
+                    (string) ($payload['factura_id'] ?? ''),
+                    (string) ($payload['source_month'] ?? ''),
+                    (string) ($payload['error'] ?? 'unknown')
+                ));
+            }
+        });
+    } catch (\Throwable $e) {
+        $this->error($e->getMessage());
+        $this->line(sprintf('[%s] [error] billing:facturacion-real-sync', now()->format('Y-m-d H:i:s')));
+        return 1;
+    }
+
+    if (!(bool) ($result['success'] ?? false)) {
+        $this->error((string) ($result['error'] ?? 'No se pudo sincronizar facturación real.'));
+        $this->line(sprintf('[%s] [error] billing:facturacion-real-sync', now()->format('Y-m-d H:i:s')));
+        return 1;
+    }
+
+    $this->newLine();
+    $this->table(
+        ['From', 'To', 'Source', 'Months', 'Total', 'Sent', 'Errors', 'Duration ms'],
+        [[
+            (string) ($result['from'] ?? '—'),
+            (string) ($result['to'] ?? '—'),
+            (string) ($result['source'] ?? '—'),
+            implode(', ', (array) ($result['months'] ?? [])),
+            (int) ($result['total_rows'] ?? 0),
+            (int) ($result['sent_rows'] ?? 0),
+            (int) ($result['error_rows'] ?? 0),
+            (int) ($result['duration_ms'] ?? 0),
+        ]]
+    );
+
+    $this->line(sprintf('[%s] [done] billing:facturacion-real-sync', now()->format('Y-m-d H:i:s')));
+
+    return 0;
+})->purpose('Sincroniza facturación real consolidada por form_id desde Sigcenter hacia billing_facturacion_real');
+
+Artisan::command('farmacia:conciliar-recetas
+    {--lookback=14 : Dias hacia atras desde hoy}
+    {--lookahead=0 : Dias hacia adelante desde hoy}
+    {--from-date= : Fecha inicial YYYY-MM-DD (inclusive). Si se usa, tiene prioridad sobre --lookback}
+    {--to-date= : Fecha final YYYY-MM-DD (inclusive). Si se usa, tiene prioridad sobre --lookahead}', function (): int {
+    /** @var RecetasConciliacionSyncService $service */
+    $service = app(RecetasConciliacionSyncService::class);
+
+    $today = now()->startOfDay();
+    $fromDateOption = trim((string) ($this->option('from-date') ?? ''));
+    $toDateOption = trim((string) ($this->option('to-date') ?? ''));
+    $lookback = (int) $this->option('lookback');
+    $lookahead = (int) $this->option('lookahead');
+
+    $fromDate = $fromDateOption !== '' ? $fromDateOption : $today->copy()->subDays($lookback)->format('Y-m-d');
+    $toDate = $toDateOption !== '' ? $toDateOption : $today->copy()->addDays($lookahead)->format('Y-m-d');
+
+    $this->line(sprintf(
+        '[%s] [start] farmacia:conciliar-recetas from_date=%s to_date=%s',
+        now()->format('Y-m-d H:i:s'),
+        $fromDate,
+        $toDate
+    ));
+
+    try {
+        $result = $service->sync([
+            'from_date' => $fromDate,
+            'to_date' => $toDate,
+        ], function (string $event, array $payload): void {
+            if ($event === 'row') {
+                $this->line(sprintf(
+                    '[ROW] receta_id=%s pedido_id=%s tipo_match=%s fecha_receta=%s depto=%s',
+                    (string) ($payload['receta_id'] ?? ''),
+                    (string) ($payload['pedido_id'] ?? ''),
+                    (string) ($payload['tipo_match'] ?? ''),
+                    (string) ($payload['fecha_receta'] ?? ''),
+                    (string) ($payload['departamento_factura'] ?? '')
+                ));
+                return;
+            }
+
+            if ($event === 'error') {
+                $this->error(sprintf(
+                    '[ERROR] receta_id=%s pedido_id=%s error=%s',
+                    (string) ($payload['receta_id'] ?? ''),
+                    (string) ($payload['pedido_id'] ?? ''),
+                    (string) ($payload['error'] ?? 'unknown')
+                ));
+            }
+        });
+    } catch (\Throwable $e) {
+        $this->error($e->getMessage());
+        $this->line(sprintf('[%s] [error] farmacia:conciliar-recetas', now()->format('Y-m-d H:i:s')));
+        return 1;
+    }
+
+    if (!(bool) ($result['success'] ?? false)) {
+        $this->error((string) ($result['error'] ?? 'No se pudo conciliar recetas.'));
+        $this->line(sprintf('[%s] [error] farmacia:conciliar-recetas', now()->format('Y-m-d H:i:s')));
+        return 1;
+    }
+
+    $this->newLine();
+    $this->table(
+        ['From', 'To', 'Source', 'Total', 'Sent', 'Errors', 'Duration ms'],
+        [[
+            (string) ($result['from'] ?? '—'),
+            (string) ($result['to'] ?? '—'),
+            (string) ($result['source'] ?? '—'),
+            (int) ($result['total_rows'] ?? 0),
+            (int) ($result['sent_rows'] ?? 0),
+            (int) ($result['error_rows'] ?? 0),
+            (int) ($result['duration_ms'] ?? 0),
+        ]]
+    );
+
+    $this->line(sprintf('[%s] [done] farmacia:conciliar-recetas', now()->format('Y-m-d H:i:s')));
+
+    return 0;
+})->purpose('Concilia recetas emitidas contra facturación de farmacia en una tabla local derivada');
