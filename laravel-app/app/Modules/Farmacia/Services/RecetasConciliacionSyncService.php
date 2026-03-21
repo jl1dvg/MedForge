@@ -81,6 +81,7 @@ class RecetasConciliacionSyncService
                     'tipo_match' => $row['tipo_match'] ?? '',
                     'fecha_receta' => $row['fecha_receta'] ?? '',
                     'departamento_factura' => $row['departamento_factura'] ?? '',
+                    'monto_linea_neto' => $row['monto_linea_neto'] ?? null,
                 ]);
             } catch (Throwable $e) {
                 $errorRows++;
@@ -157,10 +158,29 @@ facturas_base AS (
         f.clientes_id AS paciente_id_match,
         cli.IDENTIFICACION AS cedula_cliente_factura,
         DATE(f.fecha_facturacion) AS fecha_factura,
+        f.fecha_facturacion,
         f.almacen_nombre AS departamento_factura,
         df.productos_id AS producto_factura_id,
         pf.codigo AS codigo_producto_factura,
-        pf.nombre AS producto_factura
+        pf.nombre AS producto_factura,
+        df.cantidad AS cantidad_facturada,
+        df.precio AS precio_unitario_facturado,
+        COALESCE(df.descuento_total, 0) AS descuento_total_linea,
+        COALESCE(df.descuento_bos, 0) AS descuento_bos_linea,
+        ROUND(
+            COALESCE(df.cantidad * df.precio, 0)
+            - COALESCE(df.descuento_total, 0)
+            - COALESCE(df.descuento_bos, 0),
+            2
+        ) AS monto_linea_neto,
+        ROUND(
+            (
+                COALESCE(df.cantidad * df.precio, 0)
+                - COALESCE(df.descuento_total, 0)
+                - COALESCE(df.descuento_bos, 0)
+            ) / NULLIF(df.cantidad, 0),
+            4
+        ) AS monto_linea_unitario_neto
     FROM detalles_facturas df
     INNER JOIN facturas f
         ON f.id = df.facturas_id
@@ -187,11 +207,18 @@ candidatos AS (
         f.factura_id,
         f.detalle_factura_id,
         f.fecha_factura,
+        f.fecha_facturacion,
         f.departamento_factura,
         f.cedula_cliente_factura,
         f.producto_factura_id,
         f.codigo_producto_factura,
         f.producto_factura,
+        f.cantidad_facturada,
+        f.precio_unitario_facturado,
+        f.descuento_total_linea,
+        f.descuento_bos_linea,
+        f.monto_linea_neto,
+        f.monto_linea_unitario_neto,
         ABS(DATEDIFF(f.fecha_factura, r.fecha_receta)) AS diff_dias,
         CASE
             WHEN f.factura_id IS NULL THEN 'sin_match'
@@ -234,11 +261,18 @@ SELECT
     factura_id,
     detalle_factura_id,
     fecha_factura,
+    fecha_facturacion,
     departamento_factura,
     cedula_cliente_factura,
     producto_factura_id,
     codigo_producto_factura,
     producto_factura,
+    cantidad_facturada,
+    precio_unitario_facturado,
+    descuento_total_linea,
+    descuento_bos_linea,
+    monto_linea_neto,
+    monto_linea_unitario_neto,
     diff_dias,
     tipo_match,
     total_farmacia
@@ -303,14 +337,21 @@ SQL;
                 'factura_id' => trim((string) ($parts[8] ?? '')),
                 'detalle_factura_id' => trim((string) ($parts[9] ?? '')),
                 'fecha_factura' => trim((string) ($parts[10] ?? '')),
-                'departamento_factura' => trim((string) ($parts[11] ?? '')),
-                'cedula_cliente_factura' => trim((string) ($parts[12] ?? '')),
-                'producto_factura_id' => trim((string) ($parts[13] ?? '')),
-                'codigo_producto_factura' => trim((string) ($parts[14] ?? '')),
-                'producto_factura' => trim((string) ($parts[15] ?? '')),
-                'diff_dias' => trim((string) ($parts[16] ?? '')),
-                'tipo_match' => trim((string) ($parts[17] ?? '')),
-                'total_farmacia' => trim((string) ($parts[18] ?? '')),
+                'fecha_facturacion' => trim((string) ($parts[11] ?? '')),
+                'departamento_factura' => trim((string) ($parts[12] ?? '')),
+                'cedula_cliente_factura' => trim((string) ($parts[13] ?? '')),
+                'producto_factura_id' => trim((string) ($parts[14] ?? '')),
+                'codigo_producto_factura' => trim((string) ($parts[15] ?? '')),
+                'producto_factura' => trim((string) ($parts[16] ?? '')),
+                'cantidad_facturada' => trim((string) ($parts[17] ?? '')),
+                'precio_unitario_facturado' => trim((string) ($parts[18] ?? '')),
+                'descuento_total_linea' => trim((string) ($parts[19] ?? '')),
+                'descuento_bos_linea' => trim((string) ($parts[20] ?? '')),
+                'monto_linea_neto' => trim((string) ($parts[21] ?? '')),
+                'monto_linea_unitario_neto' => trim((string) ($parts[22] ?? '')),
+                'diff_dias' => trim((string) ($parts[23] ?? '')),
+                'tipo_match' => trim((string) ($parts[24] ?? '')),
+                'total_farmacia' => trim((string) ($parts[25] ?? '')),
             ];
         }
 
@@ -338,11 +379,18 @@ SQL;
                 'factura_id' => $this->nullableTrim($row['factura_id'] ?? null, 50),
                 'detalle_factura_id' => $this->nullableTrim($row['detalle_factura_id'] ?? null, 50),
                 'fecha_factura' => $this->normalizeDate($row['fecha_factura'] ?? null),
+                'fecha_facturacion' => $this->normalizeDateTime($row['fecha_facturacion'] ?? null),
                 'departamento_factura' => $this->nullableTrim($row['departamento_factura'] ?? null, 255),
                 'cedula_cliente_factura' => $this->nullableTrim($row['cedula_cliente_factura'] ?? null, 20),
                 'producto_factura_id' => $this->nullableTrim($row['producto_factura_id'] ?? null, 50),
                 'codigo_producto_factura' => $this->nullableTrim($row['codigo_producto_factura'] ?? null, 100),
                 'producto_factura' => $this->nullableTrim($row['producto_factura'] ?? null, 255),
+                'cantidad_facturada' => $this->parseAmount($row['cantidad_facturada'] ?? null),
+                'precio_unitario_facturado' => $this->parseAmount($row['precio_unitario_facturado'] ?? null),
+                'descuento_total_linea' => $this->parseAmount($row['descuento_total_linea'] ?? null),
+                'descuento_bos_linea' => $this->parseAmount($row['descuento_bos_linea'] ?? null),
+                'monto_linea_neto' => $this->parseAmount($row['monto_linea_neto'] ?? null),
+                'monto_linea_unitario_neto' => $this->parseAmount($row['monto_linea_unitario_neto'] ?? null),
                 'diff_dias' => $this->parseInt($row['diff_dias'] ?? null),
                 'tipo_match' => $this->nullableTrim($row['tipo_match'] ?? null, 30) ?? 'sin_match',
                 'total_farmacia' => $this->parseAmount($row['total_farmacia'] ?? null),
@@ -380,6 +428,27 @@ SQL;
 
         try {
             return (new DateTimeImmutable($value))->format('Y-m-d');
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    private function normalizeDateTime(mixed $value): ?string
+    {
+        $value = trim((string) ($value ?? ''));
+        if ($value === '') {
+            return null;
+        }
+
+        foreach (['Y-m-d H:i:s', 'Y-m-d'] as $format) {
+            $date = DateTimeImmutable::createFromFormat($format, $value);
+            if ($date instanceof DateTimeImmutable) {
+                return $date->format('Y-m-d H:i:s');
+            }
+        }
+
+        try {
+            return (new DateTimeImmutable($value))->format('Y-m-d H:i:s');
         } catch (Throwable) {
             return null;
         }

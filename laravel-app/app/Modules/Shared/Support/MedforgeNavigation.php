@@ -305,8 +305,8 @@ class MedforgeNavigation
             ])
                 : null,
             $canAccessFarmacia
-                ? $link('Dashboard farmacia', '/farmacia', 'mdi mdi-medical-bag', [
-                'prefix' => ['/farmacia'],
+                ? $link('Dashboard farmacia', '/v2/farmacia', 'mdi mdi-medical-bag', [
+                'prefix' => ['/farmacia', '/v2/farmacia'],
             ])
                 : null,
         ]));

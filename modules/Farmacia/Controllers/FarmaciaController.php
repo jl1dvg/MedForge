@@ -34,6 +34,7 @@ class FarmaciaController extends BaseController
             'filters' => $payload['filters'],
             'dashboard' => $payload['dashboard'],
             'rows' => $payload['detail_rows'],
+            'conciliationRows' => $payload['conciliation_rows'],
             'doctorOptions' => $payload['doctor_options'],
             'afiliacionOptions' => $payload['afiliacion_options'],
             'sedeOptions' => $payload['sede_options'],
@@ -345,6 +346,7 @@ class FarmaciaController extends BaseController
      *     filters: array<string, string>,
      *     dashboard: array<string, mixed>,
      *     detail_rows: array<int, array<string, mixed>>,
+     *     conciliation_rows: array<int, array<string, mixed>>,
      *     doctor_options: array<int, string>,
      *     afiliacion_options: array<int, string>,
      *     sede_options: array<int, string>,
@@ -358,8 +360,9 @@ class FarmaciaController extends BaseController
     {
         $filters = $this->resolveDashboardFilters();
         $rows = $this->recetaModel->obtenerDashboardRows($filters);
+        $conciliationRows = $this->recetaModel->obtenerConciliacionRows($filters);
         $detailRows = $this->buildDashboardDetailRows($rows);
-        $dashboard = $this->buildDashboardSummary($rows, $filters);
+        $dashboard = $this->buildDashboardSummary($rows, $filters, $conciliationRows);
         $dateFilter = [
             'fecha_inicio' => $filters['fecha_inicio'],
             'fecha_fin' => $filters['fecha_fin'],
@@ -369,6 +372,7 @@ class FarmaciaController extends BaseController
             'filters' => $filters,
             'dashboard' => $dashboard,
             'detail_rows' => $detailRows,
+            'conciliation_rows' => $this->buildConciliacionDetailRows($conciliationRows),
             'doctor_options' => $this->recetaModel->listarDoctores($dateFilter),
             'afiliacion_options' => $this->recetaModel->listarAfiliaciones($dateFilter),
             'sede_options' => $this->recetaModel->listarSedes($dateFilter),
@@ -461,9 +465,10 @@ class FarmaciaController extends BaseController
     /**
      * @param array<int, array<string, mixed>> $rows
      * @param array{fecha_inicio:string,fecha_fin:string} $filters
+     * @param array<int, array<string, mixed>> $conciliationRows
      * @return array<string, mixed>
      */
-    private function buildDashboardSummary(array $rows, array $filters): array
+    private function buildDashboardSummary(array $rows, array $filters, array $conciliationRows = []): array
     {
         $totalItems = count($rows);
         $episodios = [];
@@ -628,8 +633,7 @@ class FarmaciaController extends BaseController
             }
         }
 
-        return [
-            'cards' => [
+        $baseCards = [
                 [
                     'label' => 'Ítems de recetas',
                     'value' => $totalItems,
@@ -670,47 +674,261 @@ class FarmaciaController extends BaseController
                     'value' => $diaPico,
                     'hint' => $diaPicoTotal > 0 ? ($diaPicoTotal . ' ítems de receta') : 'Sin actividad',
                 ],
+        ];
+
+        $baseMeta = [
+            'tat_promedio_horas' => $tatPromedio !== null ? round($tatPromedio, 2) : null,
+            'tat_mediana_horas' => $tatMediana !== null ? round($tatMediana, 2) : null,
+            'tat_p90_horas' => $tatP90 !== null ? round($tatP90, 2) : null,
+            'sla_24h_pct' => $sla24Pct !== null ? round($sla24Pct, 2) : null,
+            'cobertura_despacho_pct' => $coberturaDespacho !== null ? round($coberturaDespacho, 2) : null,
+            'sin_despacho_pct' => $sinDespachoPct !== null ? round($sinDespachoPct, 2) : null,
+            'parcial_despacho_pct' => $parcialDespachoPct !== null ? round($parcialDespachoPct, 2) : null,
+        ];
+
+        $baseCharts = [
+            'serie_diaria' => [
+                'labels' => array_keys($serieDiaria),
+                'recetas' => array_values(array_map(static fn(array $item): int => (int)($item['recetas'] ?? 0), $serieDiaria)),
+                'cantidad' => array_values(array_map(static fn(array $item): int => (int)($item['cantidad'] ?? 0), $serieDiaria)),
+                'farmacia' => array_values(array_map(static fn(array $item): int => (int)($item['farmacia'] ?? 0), $serieDiaria)),
+            ],
+            'top_productos' => [
+                'labels' => array_keys($topProductos),
+                'values' => array_values($topProductos),
+            ],
+            'top_doctores' => [
+                'labels' => array_keys($topDoctores),
+                'values' => array_values($topDoctores),
+            ],
+            'estado_receta' => [
+                'labels' => array_keys($estadoMap),
+                'values' => array_values($estadoMap),
+            ],
+            'vias' => [
+                'labels' => array_keys($viaMap),
+                'values' => array_values($viaMap),
+            ],
+            'afiliacion' => [
+                'labels' => array_keys($afiliacionMap),
+                'values' => array_values($afiliacionMap),
+            ],
+            'departamento' => [
+                'labels' => array_keys($departamentoMap),
+                'values' => array_values($departamentoMap),
+            ],
+        ];
+
+        $conciliationSummary = $this->buildConciliacionSummary($conciliationRows);
+
+        return [
+            'cards' => array_merge($baseCards, $conciliationSummary['cards']),
+            'meta' => array_merge($baseMeta, $conciliationSummary['meta']),
+            'charts' => array_merge($baseCharts, $conciliationSummary['charts']),
+        ];
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $rows
+     * @return array{cards:array<int, array<string, mixed>>,meta:array<string, mixed>,charts:array<string, mixed>}
+     */
+    private function buildConciliacionSummary(array $rows): array
+    {
+        if (empty($rows)) {
+            return [
+                'cards' => [],
+                'meta' => [
+                    'economia_neto_total' => null,
+                    'economia_descuentos_total' => null,
+                    'economia_ticket_promedio' => null,
+                    'conciliacion_exacta_pct' => null,
+                    'conciliacion_match_pct' => null,
+                    'conciliacion_diff_promedio_dias' => null,
+                ],
+                'charts' => [
+                    'serie_economica' => ['labels' => [], 'neto' => [], 'descuentos' => []],
+                    'tipos_match' => ['labels' => [], 'values' => [], 'neto' => []],
+                    'neto_afiliacion' => ['labels' => [], 'values' => []],
+                    'neto_sede' => ['labels' => [], 'values' => []],
+                    'neto_doctores' => ['labels' => [], 'values' => []],
+                    'departamento_factura' => ['labels' => [], 'values' => []],
+                ],
+            ];
+        }
+
+        $totalRows = count($rows);
+        $matchedRows = 0;
+        $exactRows = 0;
+        $sinMatchRows = 0;
+        $netoTotal = 0.0;
+        $netoExacto = 0.0;
+        $descuentoTotal = 0.0;
+        $diffDias = [];
+
+        $serieEconomica = [];
+        $tipoMatchMap = [
+            'exacto' => 0,
+            'cercano' => 0,
+            'solo_paciente' => 0,
+            'sin_match' => 0,
+        ];
+        $tipoMatchNetoMap = [
+            'exacto' => 0.0,
+            'cercano' => 0.0,
+            'solo_paciente' => 0.0,
+            'sin_match' => 0.0,
+        ];
+        $afiliacionNetoMap = [];
+        $sedeNetoMap = [];
+        $doctorNetoMap = [];
+        $departamentoFacturaMap = [];
+
+        foreach ($rows as $row) {
+            $tipoMatch = trim((string)($row['tipo_match'] ?? 'sin_match'));
+            if (!isset($tipoMatchMap[$tipoMatch])) {
+                $tipoMatchMap[$tipoMatch] = 0;
+                $tipoMatchNetoMap[$tipoMatch] = 0.0;
+            }
+            $tipoMatchMap[$tipoMatch]++;
+
+            if ($tipoMatch === 'exacto') {
+                $exactRows++;
+            }
+            if ($tipoMatch === 'sin_match') {
+                $sinMatchRows++;
+            }
+
+            $facturaId = trim((string)($row['factura_id'] ?? ''));
+            $montoNeto = (float)($row['monto_linea_neto'] ?? 0);
+            $descuentoLinea = (float)($row['descuento_total_linea'] ?? 0) + (float)($row['descuento_bos_linea'] ?? 0);
+
+            if ($facturaId !== '') {
+                $matchedRows++;
+                $netoTotal += $montoNeto;
+                $descuentoTotal += $descuentoLinea;
+                $tipoMatchNetoMap[$tipoMatch] = (float)$tipoMatchNetoMap[$tipoMatch] + $montoNeto;
+
+                if ($tipoMatch === 'exacto') {
+                    $netoExacto += $montoNeto;
+                }
+
+                $dateKey = $this->extractDateKey((string)($row['fecha_facturacion'] ?? $row['fecha_factura'] ?? $row['fecha_receta'] ?? ''));
+                if ($dateKey !== '') {
+                    if (!isset($serieEconomica[$dateKey])) {
+                        $serieEconomica[$dateKey] = [
+                            'neto' => 0.0,
+                            'descuento' => 0.0,
+                        ];
+                    }
+                    $serieEconomica[$dateKey]['neto'] += $montoNeto;
+                    $serieEconomica[$dateKey]['descuento'] += $descuentoLinea;
+                }
+
+                $afiliacion = trim((string)($row['afiliacion'] ?? 'Sin afiliación'));
+                $sede = trim((string)($row['sede'] ?? 'Sin sede'));
+                $doctor = trim((string)($row['doctor'] ?? 'Sin médico'));
+                $departamentoFactura = trim((string)($row['departamento_factura'] ?? 'Sin departamento factura'));
+
+                $afiliacionNetoMap[$afiliacion] = (float)($afiliacionNetoMap[$afiliacion] ?? 0.0) + $montoNeto;
+                $sedeNetoMap[$sede] = (float)($sedeNetoMap[$sede] ?? 0.0) + $montoNeto;
+                $doctorNetoMap[$doctor] = (float)($doctorNetoMap[$doctor] ?? 0.0) + $montoNeto;
+                $departamentoFacturaMap[$departamentoFactura] = (float)($departamentoFacturaMap[$departamentoFactura] ?? 0.0) + $montoNeto;
+            }
+
+            $diff = $row['diff_dias'] ?? null;
+            if ($facturaId !== '' && $diff !== null && $diff !== '') {
+                $diffDias[] = (float)$diff;
+            }
+        }
+
+        ksort($serieEconomica);
+        arsort($afiliacionNetoMap);
+        arsort($sedeNetoMap);
+        arsort($doctorNetoMap);
+        arsort($departamentoFacturaMap);
+
+        $ticketPromedio = $matchedRows > 0 ? ($netoTotal / $matchedRows) : null;
+        $exactaPct = $totalRows > 0 ? (($exactRows * 100) / $totalRows) : null;
+        $matchPct = $totalRows > 0 ? (($matchedRows * 100) / $totalRows) : null;
+        $diffPromedio = !empty($diffDias) ? (array_sum($diffDias) / count($diffDias)) : null;
+
+        return [
+            'cards' => [
+                [
+                    'label' => 'Ingreso neto conciliado',
+                    'value' => $this->formatCurrency($netoTotal),
+                    'hint' => 'Suma neta facturada de recetas conciliadas',
+                ],
+                [
+                    'label' => 'Ingreso neto exacto',
+                    'value' => $this->formatCurrency($netoExacto),
+                    'hint' => 'Valor neto de matches exactos',
+                ],
+                [
+                    'label' => 'Descuentos aplicados',
+                    'value' => $this->formatCurrency($descuentoTotal),
+                    'hint' => 'Descuento total + BOS sobre líneas conciliadas',
+                ],
+                [
+                    'label' => 'Ticket neto promedio',
+                    'value' => $ticketPromedio !== null ? $this->formatCurrency($ticketPromedio) : '—',
+                    'hint' => 'Promedio neto por línea conciliada',
+                ],
+                [
+                    'label' => 'Tasa exacta',
+                    'value' => $exactaPct !== null ? number_format($exactaPct, 1) . '%' : '—',
+                    'hint' => $exactRows . ' recetas exactas sobre ' . $totalRows,
+                ],
+                [
+                    'label' => 'Recetas sin match',
+                    'value' => $sinMatchRows,
+                    'hint' => $totalRows > 0 ? number_format(($sinMatchRows * 100) / $totalRows, 1) . '% del total conciliado' : 'Sin datos',
+                ],
             ],
             'meta' => [
-                'tat_promedio_horas' => $tatPromedio !== null ? round($tatPromedio, 2) : null,
-                'tat_mediana_horas' => $tatMediana !== null ? round($tatMediana, 2) : null,
-                'tat_p90_horas' => $tatP90 !== null ? round($tatP90, 2) : null,
-                'sla_24h_pct' => $sla24Pct !== null ? round($sla24Pct, 2) : null,
+                'economia_neto_total' => round($netoTotal, 2),
+                'economia_descuentos_total' => round($descuentoTotal, 2),
+                'economia_ticket_promedio' => $ticketPromedio !== null ? round($ticketPromedio, 2) : null,
+                'conciliacion_exacta_pct' => $exactaPct !== null ? round($exactaPct, 2) : null,
+                'conciliacion_match_pct' => $matchPct !== null ? round($matchPct, 2) : null,
+                'conciliacion_diff_promedio_dias' => $diffPromedio !== null ? round($diffPromedio, 2) : null,
             ],
             'charts' => [
-                'serie_diaria' => [
-                    'labels' => array_keys($serieDiaria),
-                    'recetas' => array_values(array_map(static fn(array $item): int => (int)($item['recetas'] ?? 0), $serieDiaria)),
-                    'cantidad' => array_values(array_map(static fn(array $item): int => (int)($item['cantidad'] ?? 0), $serieDiaria)),
-                    'farmacia' => array_values(array_map(static fn(array $item): int => (int)($item['farmacia'] ?? 0), $serieDiaria)),
+                'serie_economica' => [
+                    'labels' => array_keys($serieEconomica),
+                    'neto' => array_values(array_map(static fn(array $item): float => round((float)($item['neto'] ?? 0), 2), $serieEconomica)),
+                    'descuentos' => array_values(array_map(static fn(array $item): float => round((float)($item['descuento'] ?? 0), 2), $serieEconomica)),
                 ],
-                'top_productos' => [
-                    'labels' => array_keys($topProductos),
-                    'values' => array_values($topProductos),
+                'tipos_match' => [
+                    'labels' => ['Exacto', 'Cercano', 'Solo paciente', 'Sin match'],
+                    'values' => [
+                        (int)($tipoMatchMap['exacto'] ?? 0),
+                        (int)($tipoMatchMap['cercano'] ?? 0),
+                        (int)($tipoMatchMap['solo_paciente'] ?? 0),
+                        (int)($tipoMatchMap['sin_match'] ?? 0),
+                    ],
+                    'neto' => [
+                        round((float)($tipoMatchNetoMap['exacto'] ?? 0), 2),
+                        round((float)($tipoMatchNetoMap['cercano'] ?? 0), 2),
+                        round((float)($tipoMatchNetoMap['solo_paciente'] ?? 0), 2),
+                        round((float)($tipoMatchNetoMap['sin_match'] ?? 0), 2),
+                    ],
                 ],
-                'top_doctores' => [
-                    'labels' => array_keys($topDoctores),
-                    'values' => array_values($topDoctores),
+                'neto_afiliacion' => [
+                    'labels' => array_keys(array_slice($afiliacionNetoMap, 0, 8, true)),
+                    'values' => array_values(array_map(static fn($value): float => round((float)$value, 2), array_slice($afiliacionNetoMap, 0, 8, true))),
                 ],
-                'estado_receta' => [
-                    'labels' => array_keys($estadoMap),
-                    'values' => array_values($estadoMap),
+                'neto_sede' => [
+                    'labels' => array_keys(array_slice($sedeNetoMap, 0, 8, true)),
+                    'values' => array_values(array_map(static fn($value): float => round((float)$value, 2), array_slice($sedeNetoMap, 0, 8, true))),
                 ],
-                'vias' => [
-                    'labels' => array_keys($viaMap),
-                    'values' => array_values($viaMap),
+                'neto_doctores' => [
+                    'labels' => array_keys(array_slice($doctorNetoMap, 0, 8, true)),
+                    'values' => array_values(array_map(static fn($value): float => round((float)$value, 2), array_slice($doctorNetoMap, 0, 8, true))),
                 ],
-                'afiliacion' => [
-                    'labels' => array_keys($afiliacionMap),
-                    'values' => array_values($afiliacionMap),
-                ],
-                'localidad' => [
-                    'labels' => array_keys($localidadMap),
-                    'values' => array_values($localidadMap),
-                ],
-                'departamento' => [
-                    'labels' => array_keys($departamentoMap),
-                    'values' => array_values($departamentoMap),
+                'departamento_factura' => [
+                    'labels' => array_keys(array_slice($departamentoFacturaMap, 0, 8, true)),
+                    'values' => array_values(array_map(static fn($value): float => round((float)$value, 2), array_slice($departamentoFacturaMap, 0, 8, true))),
                 ],
             ],
         ];
@@ -773,11 +991,53 @@ class FarmaciaController extends BaseController
         return $detail;
     }
 
+    /**
+     * @param array<int, array<string, mixed>> $rows
+     * @return array<int, array<string, mixed>>
+     */
+    private function buildConciliacionDetailRows(array $rows): array
+    {
+        $detail = [];
+
+        foreach ($rows as $row) {
+            $tipoMatch = trim((string)($row['tipo_match'] ?? 'sin_match'));
+            if ($tipoMatch === 'exacto') {
+                continue;
+            }
+
+            $descuentos = (float)($row['descuento_total_linea'] ?? 0) + (float)($row['descuento_bos_linea'] ?? 0);
+            $detail[] = [
+                'fecha_receta' => $this->formatDashboardDate((string)($row['fecha_receta'] ?? '')),
+                'fecha_facturacion' => $this->formatDashboardDate((string)($row['fecha_facturacion'] ?? $row['fecha_factura'] ?? '')),
+                'tipo_match' => $tipoMatch,
+                'sede' => trim((string)($row['sede'] ?? 'Sin sede')),
+                'afiliacion' => trim((string)($row['afiliacion'] ?? 'Sin afiliación')),
+                'doctor' => trim((string)($row['doctor'] ?? 'Sin médico')),
+                'paciente' => trim((string)($row['paciente'] ?? $row['cedula_paciente'] ?? '')),
+                'producto_receta' => trim((string)($row['producto_receta'] ?? $row['producto'] ?? '')),
+                'producto_factura' => trim((string)($row['producto_factura'] ?? '')),
+                'monto_linea_neto' => $this->formatCurrency((float)($row['monto_linea_neto'] ?? 0)),
+                'descuentos' => $this->formatCurrency($descuentos),
+                'departamento_factura' => trim((string)($row['departamento_factura'] ?? '')),
+            ];
+        }
+
+        return array_slice($detail, 0, 20);
+    }
+
     private function formatDashboardDate(string $value): string
     {
         $value = trim($value);
         if ($value === '') {
             return '—';
+        }
+
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) === 1) {
+            try {
+                return (new DateTimeImmutable($value))->format('d-m-Y');
+            } catch (Throwable) {
+                return $value;
+            }
         }
 
         try {
@@ -813,6 +1073,11 @@ class FarmaciaController extends BaseController
         } catch (Throwable) {
             return $value;
         }
+    }
+
+    private function formatCurrency(float $value): string
+    {
+        return '$' . number_format($value, 2);
     }
 
     private function normalizeDiagnosticoDisplay(string $value): string

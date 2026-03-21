@@ -33,6 +33,29 @@
         return Array.isArray(value) ? value : [];
     }
 
+    function initDataTable(selector, options) {
+        if (!window.jQuery || !window.jQuery.fn || typeof window.jQuery.fn.DataTable !== 'function') {
+            return;
+        }
+
+        var $table = window.jQuery(selector);
+        if (!$table.length) {
+            return;
+        }
+
+        if (window.jQuery.fn.dataTable.isDataTable($table)) {
+            $table.DataTable().destroy();
+        }
+
+        $table.DataTable(Object.assign({
+            language: window.medforgeDataTableLanguageEs ? window.medforgeDataTableLanguageEs() : {},
+            pageLength: 10,
+            lengthMenu: [[10, 25, 50, 100], [10, 25, 50, 100]],
+            deferRender: true,
+            responsive: false,
+        }, options || {}));
+    }
+
     function colors() {
         return [
             '#0d6efd',
@@ -53,8 +76,23 @@
         var topDoctores = chartsData.top_doctores || {};
         var vias = chartsData.vias || {};
         var afiliacion = chartsData.afiliacion || {};
-        var localidad = chartsData.localidad || {};
         var departamento = chartsData.departamento || {};
+        var tiposMatch = chartsData.tipos_match || {};
+        var serieEconomica = chartsData.serie_economica || {};
+        var netoAfiliacion = chartsData.neto_afiliacion || {};
+        var netoSede = chartsData.neto_sede || {};
+        var netoDoctores = chartsData.neto_doctores || {};
+        var departamentoFactura = chartsData.departamento_factura || {};
+
+        initDataTable('#tablaFarmaciaDetalle', {
+            order: [[0, 'desc']],
+            pageLength: 10
+        });
+
+        initDataTable('#tablaFarmaciaConciliacion', {
+            order: [[0, 'desc']],
+            pageLength: 10
+        });
 
         var serieLabels = normalizeArray(serie.labels);
         var serieRecetas = normalizeArray(serie.recetas);
@@ -240,18 +278,18 @@
             afiliacionLabels.length > 0
         );
 
-        var localidadLabels = normalizeArray(localidad.labels);
-        var localidadValues = normalizeArray(localidad.values);
+        var tiposMatchLabels = normalizeArray(tiposMatch.labels);
+        var tiposMatchValues = normalizeArray(tiposMatch.values);
         renderChart(
-            'chartFarmaciaLocalidad',
+            'chartFarmaciaTiposMatch',
             function () {
                 return {
-                    type: 'pie',
+                    type: 'doughnut',
                     data: {
-                        labels: localidadLabels,
+                        labels: tiposMatchLabels,
                         datasets: [
                             {
-                                data: localidadValues,
+                                data: tiposMatchValues,
                                 backgroundColor: colors()
                             }
                         ]
@@ -265,7 +303,7 @@
                     }
                 };
             },
-            localidadLabels.length > 0
+            tiposMatchLabels.length > 0
         );
 
         var departamentoLabels = normalizeArray(departamento.labels);
@@ -298,6 +336,108 @@
                 };
             },
             departamentoLabels.length > 0
+        );
+
+        var serieEconomicaLabels = normalizeArray(serieEconomica.labels);
+        var serieEconomicaNeto = normalizeArray(serieEconomica.neto);
+        var serieEconomicaDescuentos = normalizeArray(serieEconomica.descuentos);
+        renderChart(
+            'chartFarmaciaSerieEconomica',
+            function () {
+                return {
+                    type: 'line',
+                    data: {
+                        labels: serieEconomicaLabels,
+                        datasets: [
+                            {
+                                label: 'Neto facturado',
+                                data: serieEconomicaNeto,
+                                borderColor: '#198754',
+                                backgroundColor: 'rgba(25, 135, 84, 0.12)',
+                                borderWidth: 2,
+                                tension: 0.25
+                            },
+                            {
+                                label: 'Descuentos',
+                                data: serieEconomicaDescuentos,
+                                borderColor: '#dc3545',
+                                backgroundColor: 'rgba(220, 53, 69, 0.12)',
+                                borderWidth: 2,
+                                tension: 0.25
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: {
+                            mode: 'index',
+                            intersect: false
+                        }
+                    }
+                };
+            },
+            serieEconomicaLabels.length > 0
+        );
+
+        function renderMoneyBarChart(id, labels, values, color) {
+            renderChart(
+                id,
+                function () {
+                    return {
+                        type: 'bar',
+                        data: {
+                            labels: labels,
+                            datasets: [
+                                {
+                                    label: 'Neto',
+                                    data: values,
+                                    backgroundColor: color
+                                }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            indexAxis: 'y',
+                            scales: {
+                                x: {
+                                    beginAtZero: true
+                                }
+                            }
+                        }
+                    };
+                },
+                labels.length > 0
+            );
+        }
+
+        renderMoneyBarChart(
+            'chartFarmaciaNetoAfiliacion',
+            normalizeArray(netoAfiliacion.labels),
+            normalizeArray(netoAfiliacion.values),
+            'rgba(13, 110, 253, 0.75)'
+        );
+
+        renderMoneyBarChart(
+            'chartFarmaciaNetoSede',
+            normalizeArray(netoSede.labels),
+            normalizeArray(netoSede.values),
+            'rgba(32, 201, 151, 0.75)'
+        );
+
+        renderMoneyBarChart(
+            'chartFarmaciaNetoDoctores',
+            normalizeArray(netoDoctores.labels),
+            normalizeArray(netoDoctores.values),
+            'rgba(111, 66, 193, 0.75)'
+        );
+
+        renderMoneyBarChart(
+            'chartFarmaciaDepartamentoFactura',
+            normalizeArray(departamentoFactura.labels),
+            normalizeArray(departamentoFactura.values),
+            'rgba(253, 126, 20, 0.75)'
         );
     };
 })();

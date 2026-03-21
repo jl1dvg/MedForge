@@ -462,6 +462,138 @@ class RecetaModel
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function obtenerConciliacionRows(array $filtros): array
+    {
+        if (!$this->tableExists('farmacia_recetas_conciliacion')) {
+            return [];
+        }
+
+        $sql = "
+            SELECT
+                ri.id,
+                ri.form_id,
+                ri.id_ui AS receta_id_ui,
+                ri.estado_receta,
+                ri.producto,
+                ri.vias,
+                ri.unidad,
+                ri.pauta,
+                ri.dosis,
+                ri.cantidad,
+                ri.total_farmacia,
+                ri.observaciones,
+                ri.created_at,
+                ri.updated_at AS receta_updated_at,
+                frc.receta_id AS conciliacion_receta_id,
+                frc.pedido_id,
+                frc.cedula_paciente,
+                frc.paciente,
+                frc.fecha_receta,
+                frc.producto_receta_id,
+                frc.codigo_producto_receta,
+                frc.producto_receta,
+                frc.factura_id,
+                frc.detalle_factura_id,
+                frc.fecha_factura,
+                frc.fecha_facturacion,
+                frc.departamento_factura,
+                frc.cedula_cliente_factura,
+                frc.producto_factura_id,
+                frc.codigo_producto_factura,
+                frc.producto_factura,
+                frc.cantidad_facturada,
+                frc.precio_unitario_facturado,
+                frc.descuento_total_linea,
+                frc.descuento_bos_linea,
+                frc.monto_linea_neto,
+                frc.monto_linea_unitario_neto,
+                frc.diff_dias,
+                frc.tipo_match,
+                frc.source_from,
+                frc.source_to,
+                frc.matched_at,
+                frc.updated_at AS conciliacion_updated_at,
+                {$this->doctorExpression()} AS doctor,
+                {$this->afiliacionExpression()} AS afiliacion,
+                {$this->sedeExpression()} AS sede,
+                {$this->departamentoExpression()} AS departamento_clinico
+            FROM recetas_items ri
+            LEFT JOIN farmacia_recetas_conciliacion frc
+              ON CAST(ri.id_ui AS UNSIGNED) = CAST(frc.receta_id AS UNSIGNED)
+            LEFT JOIN procedimiento_proyectado pp ON pp.form_id = ri.form_id
+            WHERE 1 = 1
+        ";
+
+        $params = [];
+
+        $fechaInicio = trim((string)($filtros['fecha_inicio'] ?? ''));
+        if ($fechaInicio !== '') {
+            $sql .= " AND DATE(COALESCE(frc.fecha_receta, ri.created_at)) >= :fecha_inicio";
+            $params[':fecha_inicio'] = $fechaInicio;
+        }
+
+        $fechaFin = trim((string)($filtros['fecha_fin'] ?? ''));
+        if ($fechaFin !== '') {
+            $sql .= " AND DATE(COALESCE(frc.fecha_receta, ri.created_at)) <= :fecha_fin";
+            $params[':fecha_fin'] = $fechaFin;
+        }
+
+        $doctor = trim((string)($filtros['doctor'] ?? ''));
+        if ($doctor !== '') {
+            $sql .= " AND {$this->doctorExpression()} = :doctor";
+            $params[':doctor'] = $doctor;
+        }
+
+        $producto = trim((string)($filtros['producto'] ?? ''));
+        if ($producto !== '') {
+            $sql .= " AND (
+                COALESCE(NULLIF(TRIM(ri.producto), ''), '') LIKE :producto
+                OR COALESCE(NULLIF(TRIM(frc.producto_receta), ''), '') LIKE :producto
+                OR COALESCE(NULLIF(TRIM(frc.producto_factura), ''), '') LIKE :producto
+            )";
+            $params[':producto'] = '%' . $producto . '%';
+        }
+
+        $afiliacion = trim((string)($filtros['afiliacion'] ?? ''));
+        if ($afiliacion !== '') {
+            $sql .= " AND {$this->afiliacionExpression()} = :afiliacion";
+            $params[':afiliacion'] = $afiliacion;
+        }
+
+        $estado = trim((string)($filtros['estado_receta'] ?? ''));
+        if ($estado !== '') {
+            $sql .= " AND COALESCE(NULLIF(TRIM(ri.estado_receta), ''), '" . self::ESTADO_FALLBACK . "') = :estado_receta";
+            $params[':estado_receta'] = $estado;
+        }
+
+        $via = trim((string)($filtros['via'] ?? ''));
+        if ($via !== '') {
+            $sql .= " AND COALESCE(NULLIF(TRIM(ri.vias), ''), '" . self::VIA_FALLBACK . "') = :via";
+            $params[':via'] = $via;
+        }
+
+        $sede = trim((string)($filtros['sede'] ?? ''));
+        if ($sede !== '') {
+            $sql .= " AND {$this->sedeExpression()} = :sede";
+            $params[':sede'] = $sede;
+        }
+
+        $departamento = trim((string)($filtros['departamento'] ?? ''));
+        if ($departamento !== '') {
+            $sql .= " AND {$this->departamentoExpression()} = :departamento";
+            $params[':departamento'] = $departamento;
+        }
+
+        $sql .= " ORDER BY COALESCE(frc.fecha_receta, DATE(ri.created_at)) DESC, ri.id DESC";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
     private function appendDateFilters(string &$sql, array &$params, array $filtros): void
     {
         $fechaInicio = trim((string)($filtros['fecha_inicio'] ?? ''));

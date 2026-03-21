@@ -3,6 +3,7 @@
  * @var array<string, string> $filters
  * @var array<string, mixed> $dashboard
  * @var array<int, array<string, mixed>> $rows
+ * @var array<int, array<string, mixed>> $conciliationRows
  * @var array<int, string> $doctorOptions
  * @var array<int, string> $afiliacionOptions
  * @var array<int, string> $sedeOptions
@@ -28,6 +29,7 @@ if (!isset($dashboard) || !is_array($dashboard)) {
 $dashboardCards = is_array($dashboard['cards'] ?? null) ? $dashboard['cards'] : [];
 $dashboardMeta = is_array($dashboard['meta'] ?? null) ? $dashboard['meta'] : [];
 $rows = is_array($rows ?? null) ? $rows : [];
+$conciliationRows = is_array($conciliationRows ?? null) ? $conciliationRows : [];
 $doctorOptions = is_array($doctorOptions ?? null) ? $doctorOptions : [];
 $afiliacionOptions = is_array($afiliacionOptions ?? null) ? $afiliacionOptions : [];
 $sedeOptions = is_array($sedeOptions ?? null) ? $sedeOptions : [];
@@ -171,6 +173,10 @@ $inlineScripts = array_merge($inlineScripts ?? [], [
         <span><strong>TAT mediana:</strong> <?= htmlspecialchars(($dashboardMeta['tat_mediana_horas'] ?? null) !== null ? number_format((float)$dashboardMeta['tat_mediana_horas'], 2) . ' h' : '—', ENT_QUOTES, 'UTF-8') ?></span>
         <span><strong>TAT P90:</strong> <?= htmlspecialchars(($dashboardMeta['tat_p90_horas'] ?? null) !== null ? number_format((float)$dashboardMeta['tat_p90_horas'], 2) . ' h' : '—', ENT_QUOTES, 'UTF-8') ?></span>
         <span><strong>SLA <= 24h:</strong> <?= htmlspecialchars(($dashboardMeta['sla_24h_pct'] ?? null) !== null ? number_format((float)$dashboardMeta['sla_24h_pct'], 1) . '%' : '—', ENT_QUOTES, 'UTF-8') ?></span>
+        <span><strong>Ingreso neto:</strong> <?= htmlspecialchars(($dashboardMeta['economia_neto_total'] ?? null) !== null ? ('$' . number_format((float)$dashboardMeta['economia_neto_total'], 2)) : '—', ENT_QUOTES, 'UTF-8') ?></span>
+        <span><strong>Descuentos:</strong> <?= htmlspecialchars(($dashboardMeta['economia_descuentos_total'] ?? null) !== null ? ('$' . number_format((float)$dashboardMeta['economia_descuentos_total'], 2)) : '—', ENT_QUOTES, 'UTF-8') ?></span>
+        <span><strong>Tasa exacta:</strong> <?= htmlspecialchars(($dashboardMeta['conciliacion_exacta_pct'] ?? null) !== null ? number_format((float)$dashboardMeta['conciliacion_exacta_pct'], 1) . '%' : '—', ENT_QUOTES, 'UTF-8') ?></span>
+        <span><strong>Dif. promedio facturación:</strong> <?= htmlspecialchars(($dashboardMeta['conciliacion_diff_promedio_dias'] ?? null) !== null ? number_format((float)$dashboardMeta['conciliacion_diff_promedio_dias'], 2) . ' d' : '—', ENT_QUOTES, 'UTF-8') ?></span>
     </div>
 
     <div class="row g-3 mb-3">
@@ -216,9 +222,9 @@ $inlineScripts = array_merge($inlineScripts ?? [], [
         </div>
         <div class="col-12 col-xl-6">
             <div class="farmacia-chart-card">
-                <h6 class="farmacia-chart-title">Distribución por localidad</h6>
+                <h6 class="farmacia-chart-title">Tipos de match de conciliación</h6>
                 <div class="farmacia-chart-wrap">
-                    <canvas id="chartFarmaciaLocalidad"></canvas>
+                    <canvas id="chartFarmaciaTiposMatch"></canvas>
                 </div>
             </div>
         </div>
@@ -227,6 +233,46 @@ $inlineScripts = array_merge($inlineScripts ?? [], [
                 <h6 class="farmacia-chart-title">Distribución por departamento</h6>
                 <div class="farmacia-chart-wrap">
                     <canvas id="chartFarmaciaDepartamento"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-xl-6">
+            <div class="farmacia-chart-card">
+                <h6 class="farmacia-chart-title">Serie económica facturada</h6>
+                <div class="farmacia-chart-wrap">
+                    <canvas id="chartFarmaciaSerieEconomica"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-xl-6">
+            <div class="farmacia-chart-card">
+                <h6 class="farmacia-chart-title">Neto por seguro</h6>
+                <div class="farmacia-chart-wrap">
+                    <canvas id="chartFarmaciaNetoAfiliacion"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-xl-6">
+            <div class="farmacia-chart-card">
+                <h6 class="farmacia-chart-title">Neto por sede</h6>
+                <div class="farmacia-chart-wrap">
+                    <canvas id="chartFarmaciaNetoSede"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-xl-6">
+            <div class="farmacia-chart-card">
+                <h6 class="farmacia-chart-title">Neto por médico</h6>
+                <div class="farmacia-chart-wrap">
+                    <canvas id="chartFarmaciaNetoDoctores"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-xl-6">
+            <div class="farmacia-chart-card">
+                <h6 class="farmacia-chart-title">Neto por departamento facturado</h6>
+                <div class="farmacia-chart-wrap">
+                    <canvas id="chartFarmaciaDepartamentoFactura"></canvas>
                 </div>
             </div>
         </div>
@@ -277,6 +323,56 @@ $inlineScripts = array_merge($inlineScripts ?? [], [
                 <?php else: ?>
                     <tr>
                         <td colspan="13" class="text-muted text-center">Sin datos para los filtros actuales.</td>
+                    </tr>
+                <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="box mt-3">
+        <div class="box-header with-border">
+            <h4 class="box-title">Incidencias de conciliación</h4>
+        </div>
+        <div class="box-body table-responsive">
+            <table class="table table-striped table-sm">
+                <thead>
+                <tr>
+                    <th>Fecha receta</th>
+                    <th>Fecha factura</th>
+                    <th>Tipo match</th>
+                    <th>Sede</th>
+                    <th>Seguro</th>
+                    <th>Médico</th>
+                    <th>Paciente</th>
+                    <th>Producto receta</th>
+                    <th>Producto factura</th>
+                    <th>Neto</th>
+                    <th>Descuentos</th>
+                    <th>Departamento factura</th>
+                </tr>
+                </thead>
+                <tbody>
+                <?php if (!empty($conciliationRows)): ?>
+                    <?php foreach ($conciliationRows as $row): ?>
+                        <tr>
+                            <td><?= htmlspecialchars((string)($row['fecha_receta'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></td>
+                            <td><?= htmlspecialchars((string)($row['fecha_facturacion'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></td>
+                            <td><?= htmlspecialchars((string)($row['tipo_match'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
+                            <td><?= htmlspecialchars((string)($row['sede'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
+                            <td><?= htmlspecialchars((string)($row['afiliacion'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
+                            <td><?= htmlspecialchars((string)($row['doctor'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
+                            <td><?= htmlspecialchars((string)($row['paciente'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
+                            <td><?= htmlspecialchars((string)($row['producto_receta'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
+                            <td><?= htmlspecialchars((string)($row['producto_factura'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></td>
+                            <td><?= htmlspecialchars((string)($row['monto_linea_neto'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></td>
+                            <td><?= htmlspecialchars((string)($row['descuentos'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></td>
+                            <td><?= htmlspecialchars((string)($row['departamento_factura'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                <?php else: ?>
+                    <tr>
+                        <td colspan="12" class="text-muted text-center">Sin incidencias de conciliación para los filtros actuales.</td>
                     </tr>
                 <?php endif; ?>
                 </tbody>

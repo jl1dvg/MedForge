@@ -928,7 +928,7 @@ class Paciente360ParityService
                 $links['archivo'] = '/derivaciones/archivo/' . rawurlencode($recordId);
             }
         } elseif ($section === 'recetas') {
-            $links['modulo'] = '/farmacia';
+            $links['modulo'] = '/v2/farmacia';
         } elseif ($section === 'crm') {
             $links['modulo'] = '/crm';
         }
