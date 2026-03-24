@@ -737,9 +737,10 @@ $sheet->getStyle("G{$startResumenRow}:J{$row}")->applyFromArray([
 //    $row++;
 //}
 
-// Descargar archivo
-header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-header('Content-Disposition: attachment; filename="' . $pacienteInfo['lname'] . '_' . $pacienteInfo['lname2'] . '_' . $pacienteInfo['fname'] . '_' . $pacienteInfo['mname'] . '.xlsx"');
-$writer = new Xlsx($spreadsheet);
-$writer->save('php://output');
-exit;
+if (!($GLOBALS['spreadsheet_export_only'] ?? false)) {
+    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    header('Content-Disposition: attachment; filename="' . $pacienteInfo['lname'] . '_' . $pacienteInfo['lname2'] . '_' . $pacienteInfo['fname'] . '_' . $pacienteInfo['mname'] . '.xlsx"');
+    $writer = new Xlsx($spreadsheet);
+    $writer->save('php://output');
+    exit;
+}

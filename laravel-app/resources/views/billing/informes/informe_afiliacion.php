@@ -876,6 +876,41 @@ $sedeSeleccionada = $informesHelperClass::normalizarSede($filtros['sede'] ?? '')
                                         </div>
                                     </div>
                                 </div>
+
+                                <!-- PNI -->
+                                <div class="col-12 col-lg-4">
+                                    <div class="box p-3 bb-3 border-warning h-100">
+                                        <div class="d-flex align-items-center justify-content-between mb-2">
+                                            <div class="fw-semibold">
+                                                <i class="mdi mdi-eye-outline me-1"></i> PNI
+                                            </div>
+                                            <span class="badge bg-light text-dark" data-bs-toggle="tooltip"
+                                                  title="Filtra el consolidado a la categoría PNI">Categoría</span>
+                                        </div>
+                                        <div class="d-flex flex-wrap gap-2">
+                                            <a
+                                                    href="<?= htmlspecialchars($buildConsolidadoUrl('pni', 'IESS')) ?>"
+                                                    class="btn btn-success btn-sm d-inline-flex align-items-center gap-2"
+                                                    data-bs-toggle="tooltip"
+                                                    title="Excel IESS (44 columnas) solo para PNI."
+                                            >
+                                                <i class="mdi mdi-file-excel"></i>
+                                                <span>Excel</span>
+                                                <span class="badge bg-white text-primary">44 col</span>
+                                            </a>
+
+                                            <a
+                                                    href="<?= htmlspecialchars($buildConsolidadoUrl('pni', 'IESS_SOAM')) ?>"
+                                                    class="btn btn-primary btn-sm d-inline-flex align-items-center gap-2"
+                                                    data-bs-toggle="tooltip"
+                                                    title="Excel SOAM solo para PNI."
+                                            >
+                                                <i class="mdi mdi-file-check"></i>
+                                                <span>SOAM</span>
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
 
                             <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-3">

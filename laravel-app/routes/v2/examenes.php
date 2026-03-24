@@ -16,6 +16,8 @@ Route::get('/examenes/derivacion', [ExamenesParityController::class, 'derivacion
 Route::get('/examenes/prefactura', [ExamenesParityController::class, 'prefactura']);
 Route::get('/imagenes/examenes-realizados/nas/list', [ExamenesParityController::class, 'imagenesNasList']);
 Route::get('/imagenes/examenes-realizados/nas/file', [ExamenesParityController::class, 'imagenesNasFile']);
+Route::get('/imagenes/informes/datos', [ExamenesParityController::class, 'informeDatos']);
+Route::get('/imagenes/informes/plantilla', [ExamenesParityController::class, 'informePlantilla']);
 Route::get('/imagenes/dashboard/export/pdf', [ExamenesParityController::class, 'imagenesDashboardExportPdf']);
 Route::get('/imagenes/dashboard/export/excel', [ExamenesParityController::class, 'imagenesDashboardExportExcel']);
 
@@ -41,6 +43,8 @@ Route::post('/examenes/{id}/crm/adjuntos', [ExamenesParityController::class, 'cr
 Route::post('/imagenes/examenes-realizados/nas/warm', [ExamenesParityController::class, 'imagenesNasWarm']);
 Route::post('/imagenes/examenes-realizados/actualizar', [ExamenesParityController::class, 'actualizarImagenRealizada']);
 Route::post('/imagenes/examenes-realizados/eliminar', [ExamenesParityController::class, 'eliminarImagenRealizada']);
+Route::post('/imagenes/informes/guardar', [ExamenesParityController::class, 'informeGuardar']);
+Route::post('/imagenes/informes/autofill', [ExamenesParityController::class, 'informeAutofill']);
 
 // Clean aliases
 Route::match(['GET', 'POST'], '/api/examenes/kanban', [ExamenesParityController::class, 'kanbanData']);

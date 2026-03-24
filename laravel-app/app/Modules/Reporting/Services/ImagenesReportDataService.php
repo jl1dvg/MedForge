@@ -123,7 +123,13 @@ class ImagenesReportDataService
      * @param array<int, array<string, mixed>> $selectedItems
      * @return array<string, mixed>
      */
-    public function buildCobertura012AData(string $formId, string $hcNumber, ?int $examenId = null, array $selectedItems = []): array
+    public function buildCobertura012AData(
+        string $formId,
+        string $hcNumber,
+        ?int $examenId = null,
+        array $selectedItems = [],
+        bool $preserveBaseContext = false
+    ): array
     {
         $formId = trim($formId);
         $hcNumber = trim($hcNumber);
@@ -132,7 +138,7 @@ class ImagenesReportDataService
         }
 
         $contextoOrigen = $this->resolveSolicitudOrigenContextFor012A($formId, $hcNumber);
-        if ($selectedItems !== []) {
+        if ($selectedItems !== [] && !$preserveBaseContext) {
             $contextoOrigen = $this->resolverMejorContextoClinico012A($contextoOrigen, $selectedItems);
         }
 

@@ -531,6 +531,7 @@
                 </div>
                 <div class="modal-footer">
                     <span class="text-muted small me-auto" id="informeEstado"></span>
+                    <button type="button" class="btn btn-outline-primary d-none" id="btnAutollenarMicroespecular">Autollenar desde imagen</button>
                     <button type="button" class="btn btn-primary" id="btnGuardarInforme">Guardar informe</button>
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cerrar</button>
                 </div>
@@ -755,6 +756,7 @@
                 const modalEl = document.getElementById('modalInformeImagen');
                 const templateContainer = document.getElementById('informeTemplateContainer');
                 const btnGuardarInforme = document.getElementById('btnGuardarInforme');
+                const btnAutollenarMicroespecular = document.getElementById('btnAutollenarMicroespecular');
                 const estadoInforme = document.getElementById('informeEstado');
                 const imagenesContainer = document.getElementById('informeImagenesContainer');
                 const imagenesStatus = document.getElementById('informeImagenesStatus');
@@ -787,6 +789,16 @@
                 function setInformeLoading(loading) {
                     if (!informeLoader) return;
                     informeLoader.classList.toggle('d-none', !loading);
+                }
+
+                function updateAutofillButtonState() {
+                    if (!btnAutollenarMicroespecular) return;
+                    const isMicro = !!(informeContext && informeContext.plantilla === 'microespecular');
+                    const hasImages = nasFiles.some(function (file) {
+                        return isImage(file);
+                    });
+                    btnAutollenarMicroespecular.classList.toggle('d-none', !isMicro);
+                    btnAutollenarMicroespecular.disabled = !isMicro || !hasImages;
                 }
 
                 function isPdf(file) {
@@ -1038,6 +1050,7 @@
                         imagenesContainer.innerHTML = '<div class="text-muted small px-3">No se encontraron archivos asociados al examen.</div>';
                         renderNasThumbs();
                         updateNasControls();
+                        updateAutofillButtonState();
                         return;
                     }
                     if (nasCurrentIndex >= nasFiles.length) {
@@ -1067,6 +1080,7 @@
 
                     renderNasThumbs();
                     updateNasControls();
+                    updateAutofillButtonState();
                 }
 
                 function scheduleNasStatusRefresh() {
@@ -1553,7 +1567,7 @@
                         cargarImagenesNas(formId, hcNumber, row);
                     }
 
-                    fetch('/imagenes/informes/datos?form_id=' + encodeURIComponent(formId) + '&tipo_examen=' + encodeURIComponent(tipoRaw))
+                    fetch('/v2/imagenes/informes/datos?form_id=' + encodeURIComponent(formId) + '&tipo_examen=' + encodeURIComponent(tipoRaw))
                         .then(function (r) {
                             return r.json();
                         })
@@ -1578,7 +1592,7 @@
                                 return templateHtmlCache.get(res.plantilla);
                             }
 
-                            return fetch('/imagenes/informes/plantilla?plantilla=' + encodeURIComponent(res.plantilla))
+                            return fetch('/v2/imagenes/informes/plantilla?plantilla=' + encodeURIComponent(res.plantilla))
                                 .then(function (response) {
                                     if (!response.ok) {
                                         throw new Error('No se pudo cargar la plantilla');
@@ -1607,6 +1621,7 @@
                                 btnGuardarInforme.disabled = false;
                             }
                             setInformeLoading(false);
+                            updateAutofillButtonState();
                         })
                         .catch(function () {
                             setEstado('');
@@ -1614,6 +1629,7 @@
                             if (btnGuardarInforme) {
                                 btnGuardarInforme.disabled = false;
                             }
+                            updateAutofillButtonState();
                             alert('Error de red al cargar la plantilla.');
                         });
                 }
@@ -1643,7 +1659,7 @@
                         }
                         const payload = normalizarPayload(collectPayload(templateContainer), informeContext.plantilla);
                         setEstado('Guardando informe...');
-                        postJson('/imagenes/informes/guardar', {
+                        postJson('/v2/imagenes/informes/guardar', {
                             form_id: informeContext.formId,
                             hc_number: informeContext.hcNumber,
                             tipo_examen: informeContext.tipoRaw,
@@ -1678,6 +1694,46 @@
                     });
                 }
 
+                if (btnAutollenarMicroespecular) {
+                    btnAutollenarMicroespecular.addEventListener('click', function () {
+                        if (!informeContext || !templateContainer || informeContext.plantilla !== 'microespecular') {
+                            return;
+                        }
+
+                        btnAutollenarMicroespecular.disabled = true;
+                        setEstado('Leyendo imagen de microscopía especular...');
+
+                        postJson('/v2/imagenes/informes/autofill', {
+                            form_id: informeContext.formId,
+                            hc_number: informeContext.hcNumber,
+                            tipo_examen: informeContext.tipoRaw,
+                            plantilla: informeContext.plantilla
+                        }).then(function (res) {
+                            if (!res || !res.success || !res.payload) {
+                                setEstado((res && res.error) ? res.error : 'No se pudo autollenar el informe.');
+                                return;
+                            }
+
+                            applyPayload(templateContainer, res.payload);
+
+                            const filesUsed = Array.isArray(res.files_used) && res.files_used.length
+                                ? ' ' + res.files_used.join(', ')
+                                : '';
+                            const warnings = Array.isArray(res.warnings) ? res.warnings.filter(Boolean) : [];
+
+                            if (warnings.length) {
+                                setEstado('Autollenado parcial.' + filesUsed + ' ' + warnings.join(' '));
+                            } else {
+                                setEstado('Autollenado completado.' + filesUsed);
+                            }
+                        }).catch(function () {
+                            setEstado('Error de red al intentar autollenar.');
+                        }).finally(function () {
+                            updateAutofillButtonState();
+                        });
+                    });
+                }
+
                 if (modalEl) {
                     modalEl.addEventListener('hidden.bs.modal', function () {
                         nasLoadToken += 1;
@@ -1696,6 +1752,10 @@
                         setInformeLoading(false);
                         if (btnGuardarInforme) {
                             btnGuardarInforme.disabled = false;
+                        }
+                        if (btnAutollenarMicroespecular) {
+                            btnAutollenarMicroespecular.disabled = false;
+                            btnAutollenarMicroespecular.classList.add('d-none');
                         }
                         informeContext = null;
                         setEstado('');

@@ -267,12 +267,71 @@ function img($path)
     return buildAssetUrl($path, 'images');
 }
 
-// Expiración automática de sesión tras 1 hora de inactividad
-if (isset($_SESSION['last_activity_time']) && (time() - $_SESSION['last_activity_time']) > 3600) {
+function isAsyncSessionRequest(): bool
+{
+    $requestedWith = strtolower((string) ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? ''));
+    if ($requestedWith === 'xmlhttprequest') {
+        return true;
+    }
+
+    $fetchMode = strtolower((string) ($_SERVER['HTTP_SEC_FETCH_MODE'] ?? ''));
+    if ($fetchMode !== '' && $fetchMode !== 'navigate') {
+        return true;
+    }
+
+    $accept = strtolower((string) ($_SERVER['HTTP_ACCEPT'] ?? ''));
+    if (strpos($accept, 'application/json') !== false) {
+        return true;
+    }
+
+    $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
+    $asyncPrefixes = [
+        '/api/',
+        '/v2/api/',
+        '/public/ajax/',
+        '/ajax/',
+    ];
+
+    foreach ($asyncPrefixes as $prefix) {
+        if (strpos($path, $prefix) === 0) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function handleExpiredSession(): void
+{
     session_unset();
     session_destroy();
-    header("Location: /auth/login?expired=1");
+
+    if (!headers_sent()) {
+        header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+        header('Pragma: no-cache');
+        header('X-Medf-Session-Expired: 1');
+
+        if (isAsyncSessionRequest()) {
+            http_response_code(401);
+            header('Content-Type: application/json; charset=UTF-8');
+            echo json_encode([
+                'success' => false,
+                'session_expired' => true,
+                'message' => 'Tu sesion expiro. Inicia sesion nuevamente para continuar.',
+                'redirect' => '/auth/login?expired=1',
+            ], JSON_UNESCAPED_UNICODE);
+            exit();
+        }
+
+        header('Location: /auth/login?expired=1');
+    }
+
     exit();
+}
+
+// Expiración automática de sesión tras 1 hora de inactividad
+if (isset($_SESSION['last_activity_time']) && (time() - $_SESSION['last_activity_time']) > 3600) {
+    handleExpiredSession();
 } else {
     $_SESSION['last_activity_time'] = time();
 }

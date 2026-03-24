@@ -180,6 +180,8 @@ class BillingConsolidadoExportService
 
         $generatorPath = match ($grupo) {
             'ISSPOL' => base_path('../views/billing/generar_excel_isspol.php'),
+            'ISSFA' => base_path('../views/billing/generar_excel_issfa.php'),
+            'MSP' => base_path('../views/billing/descargar_excel.php'),
             default => throw new \InvalidArgumentException('Grupo individual no soportado: ' . $grupo),
         };
 

@@ -17,10 +17,13 @@ use App\Modules\Examenes\Services\SigcenterImagenesService;
 use App\Modules\Reporting\Services\PdfRenderer;
 use App\Modules\Shared\Support\LegacySessionAuth;
 use DateTimeImmutable;
+use Helpers\JsonLogger;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Models\BillingMainModel;
+use Models\BillingProcedimientosModel;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
@@ -29,7 +32,9 @@ use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Modules\Examenes\Models\ExamenModel;
+use Modules\CRM\Services\LeadConfigurationService;
 use Symfony\Component\HttpFoundation\Response;
+use Services\PreviewService;
 use Throwable;
 
 class ExamenesParityController
@@ -571,6 +576,258 @@ class ExamenesParityController
         }, 200, $this->nasResponseHeaders($type, $size, $name));
     }
 
+    public function informeDatos(Request $request): Response
+    {
+        if (!LegacySessionAuth::isAuthenticated($request)) {
+            return response()->json(['success' => false, 'error' => 'Sesión expirada'], 401);
+        }
+
+        $formId = trim((string) $request->query('form_id', ''));
+        $tipoExamen = trim((string) $request->query('tipo_examen', ''));
+        if ($formId === '' || $tipoExamen === '') {
+            return response()->json(['success' => false, 'error' => 'Parámetros incompletos'], 400);
+        }
+
+        $informe = $this->legacyExamenModel()->obtenerInformeImagen($formId);
+        $plantilla = is_array($informe) ? trim((string) ($informe['plantilla'] ?? '')) : '';
+        if ($plantilla === '') {
+            $plantilla = (string) ($this->mapearPlantillaInforme($tipoExamen) ?? '');
+        }
+        if ($plantilla === '') {
+            return response()->json(['success' => false, 'error' => 'No hay plantilla para este examen'], 404);
+        }
+
+        $payload = null;
+        if (is_array($informe) && isset($informe['payload_json'])) {
+            $decoded = json_decode((string) $informe['payload_json'], true);
+            if (is_array($decoded)) {
+                $payload = $decoded;
+            }
+        }
+        if (is_array($payload) && !isset($payload['firmante_id']) && !empty($informe['firmado_por'])) {
+            $payload['firmante_id'] = (int) $informe['firmado_por'];
+        }
+
+        return response()->json([
+            'success' => true,
+            'plantilla' => $plantilla,
+            'payload' => $payload,
+            'exists' => $informe !== null,
+            'updated_at' => $informe['updated_at'] ?? null,
+        ]);
+    }
+
+    public function informePlantilla(Request $request): Response
+    {
+        if (!LegacySessionAuth::isAuthenticated($request)) {
+            return response('Sesión expirada', 401);
+        }
+
+        $plantilla = trim((string) $request->query('plantilla', ''));
+        $tipoExamen = trim((string) $request->query('tipo_examen', ''));
+        if ($plantilla === '' && $tipoExamen !== '') {
+            $plantilla = (string) ($this->mapearPlantillaInforme($tipoExamen) ?? '');
+        }
+        if ($plantilla === '') {
+            return response('Plantilla no encontrada', 404);
+        }
+
+        $view = $this->workspaceRootPath('modules/examenes/views/informes/' . $plantilla . '.php');
+        if (!is_file($view)) {
+            return response('Plantilla no disponible', 404);
+        }
+
+        $usuariosFirmantes = $this->listarUsuariosFirmantes();
+        $firmanteDefaultId = LegacySessionAuth::userId($request);
+
+        ob_start();
+        include $view;
+        $html = (string) ob_get_clean();
+
+        return response($html, 200)->header('Content-Type', 'text/html; charset=utf-8');
+    }
+
+    public function informeGuardar(Request $request): Response
+    {
+        if (!LegacySessionAuth::isAuthenticated($request)) {
+            return response()->json(['success' => false, 'error' => 'Sesión expirada'], 401);
+        }
+
+        $payload = $this->payload($request);
+        $formId = trim((string) ($payload['form_id'] ?? ''));
+        $hcNumber = trim((string) ($payload['hc_number'] ?? ''));
+        $tipoExamen = trim((string) ($payload['tipo_examen'] ?? ''));
+        $plantilla = trim((string) ($payload['plantilla'] ?? ''));
+        $data = $payload['payload'] ?? null;
+        $firmanteId = (int) ($payload['firmante_id'] ?? 0);
+
+        if (is_object($data)) {
+            $data = (array) $data;
+        }
+
+        if ($formId === '' || $tipoExamen === '' || !is_array($data)) {
+            return response()->json(['success' => false, 'error' => 'Datos incompletos para guardar'], 422);
+        }
+
+        $plantillaEsperada = $this->mapearPlantillaInforme($tipoExamen);
+        if ($plantillaEsperada === null) {
+            return response()->json(['success' => false, 'error' => 'No hay plantilla para este examen'], 422);
+        }
+        if ($plantilla === '' || $plantilla !== $plantillaEsperada) {
+            $plantilla = $plantillaEsperada;
+        }
+
+        $payloadJson = json_encode($data, JSON_UNESCAPED_UNICODE);
+        if ($payloadJson === false) {
+            return response()->json(['success' => false, 'error' => 'No se pudo serializar el informe'], 500);
+        }
+
+        try {
+            $userId = LegacySessionAuth::userId($request);
+            $firmante = $firmanteId > 0 ? $firmanteId : $userId;
+            $ok = $this->legacyExamenModel()->guardarInformeImagen(
+                $formId,
+                $hcNumber !== '' ? $hcNumber : null,
+                $tipoExamen,
+                $plantilla,
+                $payloadJson,
+                $userId,
+                $firmante
+            );
+
+            if ($ok) {
+                $this->autoFacturarInformeImagen($formId, $hcNumber !== '' ? $hcNumber : null, $userId);
+            }
+
+            return response()->json(['success' => (bool) $ok]);
+        } catch (Throwable $e) {
+            return response()->json(['success' => false, 'error' => 'No se pudo guardar el informe'], 500);
+        }
+    }
+
+    public function informeAutofill(Request $request): Response
+    {
+        if (!LegacySessionAuth::isAuthenticated($request)) {
+            return response()->json(['success' => false, 'error' => 'Sesión expirada'], 401);
+        }
+
+        $payload = $this->payload($request);
+        $formId = trim((string) ($payload['form_id'] ?? ''));
+        $hcNumber = trim((string) ($payload['hc_number'] ?? ''));
+        $tipoExamen = trim((string) ($payload['tipo_examen'] ?? ''));
+        $plantilla = trim((string) ($payload['plantilla'] ?? ''));
+
+        if ($formId === '' || $hcNumber === '') {
+            return response()->json(['success' => false, 'error' => 'Faltan datos del examen para autollenar.'], 422);
+        }
+
+        $plantillaEsperada = $plantilla !== '' ? $plantilla : (string) ($this->mapearPlantillaInforme($tipoExamen) ?? '');
+        if ($plantillaEsperada !== 'microespecular') {
+            return response()->json(['success' => false, 'error' => 'El autollenado inicial solo está disponible para microscopía especular.'], 422);
+        }
+
+        $nasContext = $this->resolveNasContext($hcNumber, $formId);
+        $resolvedHcNumber = $nasContext['hc_number'];
+        $resolvedFormId = $nasContext['form_id'];
+
+        if (!$nasContext['has_image_context']) {
+            return response()->json(['success' => false, 'error' => 'No existe un procedimiento de imágenes asociado a este examen.'], 404);
+        }
+
+        $error = null;
+        $files = $this->getPreferredFilesWithCache($resolvedHcNumber, $resolvedFormId, false, $error);
+        if ($error !== null) {
+            return response()->json(['success' => false, 'error' => $error], 500);
+        }
+
+        $candidateFiles = [];
+        $candidateDebug = [];
+        foreach ($files as $file) {
+            if (!is_array($file)) {
+                continue;
+            }
+            $name = trim((string) ($file['name'] ?? ''));
+            if ($name === '') {
+                continue;
+            }
+            $ext = strtolower(trim((string) ($file['ext'] ?? pathinfo($name, PATHINFO_EXTENSION))));
+            if (!in_array($ext, ['png', 'jpg', 'jpeg', 'webp'], true)) {
+                continue;
+            }
+            $localPath = $this->resolvePreferredFileLocalPathForAnalysis($resolvedHcNumber, $resolvedFormId, $name);
+            if ($localPath === null) {
+                $candidateDebug[] = [
+                    'name' => $name,
+                    'path' => null,
+                    'exists' => false,
+                    'size' => null,
+                    'status' => 'missing_local_path',
+                ];
+                continue;
+            }
+            $exists = is_file($localPath);
+            $size = $exists ? (int) (filesize($localPath) ?: 0) : null;
+            $candidateDebug[] = [
+                'name' => $name,
+                'path' => $localPath,
+                'exists' => $exists,
+                'size' => $size,
+                'status' => $exists ? 'ready' : 'path_not_found',
+            ];
+            $candidateFiles[] = ['name' => $name, 'path' => $localPath];
+        }
+
+        if ($candidateFiles === []) {
+            JsonLogger::log('microespecular-autofill', 'Autofill sin archivos locales compatibles', null, [
+                'form_id' => $resolvedFormId,
+                'hc_number' => $resolvedHcNumber,
+                'tipo_examen' => $tipoExamen,
+                'candidate_files' => $candidateDebug,
+            ]);
+            return response()->json(['success' => false, 'error' => 'No se encontraron imágenes compatibles para autollenar este examen.'], 404);
+        }
+
+        try {
+            $result = $this->runMicroespecularPythonAutofill($candidateFiles);
+            if (!empty($result['error'])) {
+                JsonLogger::log('microespecular-autofill', 'Autofill con error Python', null, [
+                    'form_id' => $resolvedFormId,
+                    'hc_number' => $resolvedHcNumber,
+                    'tipo_examen' => $tipoExamen,
+                    'files' => array_column($candidateFiles, 'name'),
+                    'candidate_files' => $candidateDebug,
+                    'python_error' => $result['error'],
+                    'attempts' => $result['attempts'] ?? [],
+                ]);
+            }
+            if (($result['payload'] ?? []) === []) {
+                JsonLogger::log('microespecular-autofill', 'Autofill sin extracción', null, [
+                    'form_id' => $resolvedFormId,
+                    'hc_number' => $resolvedHcNumber,
+                    'tipo_examen' => $tipoExamen,
+                    'files' => array_column($candidateFiles, 'name'),
+                    'candidate_files' => $candidateDebug,
+                    'attempts' => $result['attempts'] ?? [],
+                ]);
+
+                return response()->json([
+                    'success' => false,
+                    'error' => 'No se pudieron extraer valores de microscopía especular desde las imágenes disponibles.',
+                ], 422);
+            }
+
+            return response()->json([
+                'success' => true,
+                'payload' => $result['payload'],
+                'warnings' => $result['warnings'] ?? [],
+                'files_used' => $result['files_used'] ?? [],
+                'confidence' => $result['confidence'] ?? [],
+            ]);
+        } catch (Throwable $e) {
+            return response()->json(['success' => false, 'error' => $e->getMessage()], 422);
+        }
+    }
+
     /**
      * @return array<int,array{name:string,size:int,mtime:int,ext:string,type:string,source?:string,relative_path?:string}>
      */
@@ -861,6 +1118,21 @@ class ExamenesParityController
         $this->legacyExamenModel = new ExamenModel(DB::connection()->getPdo());
 
         return $this->legacyExamenModel;
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function listarUsuariosFirmantes(): array
+    {
+        $service = new LeadConfigurationService(DB::connection()->getPdo());
+        $usuarios = $service->getAssignableUsers();
+
+        $filtrados = array_filter($usuarios, static function (array $usuario): bool {
+            return trim((string) ($usuario['especialidad'] ?? '')) === 'Cirujano Oftalmólogo';
+        });
+
+        return array_values($filtrados);
     }
 
     public function imagenesDashboardExportPdf(Request $request): Response|RedirectResponse
@@ -2020,6 +2292,231 @@ class ExamenesParityController
         return array_merge($all, $json);
     }
 
+    private function mapearPlantillaInforme(string $tipoExamen): ?string
+    {
+        $texto = $this->normalizarTexto($tipoExamen);
+        if ($texto === '') {
+            return null;
+        }
+        if (str_contains($texto, 'angio')) {
+            return 'angio';
+        }
+        if (str_contains($texto, 'angulo')) {
+            return 'angulo';
+        }
+        if (str_contains($texto, 'auto') || str_contains($texto, 'autorefrac')) {
+            return 'auto';
+        }
+        if (str_contains($texto, 'biometria') || str_contains($texto, 'biometr')) {
+            return 'biometria';
+        }
+        if (str_contains($texto, '281197') || (str_contains($texto, 'microscopia') && str_contains($texto, 'especular'))) {
+            return 'microespecular';
+        }
+        if (str_contains($texto, '281229') || str_contains($texto, 'paquimetr')) {
+            return 'paquimetria';
+        }
+        if (str_contains($texto, 'oct') && (str_contains($texto, 'cornea') || str_contains($texto, 'corneal') || str_contains($texto, 'esclera'))) {
+            return 'octcornea';
+        }
+        if (str_contains($texto, 'cornea') || str_contains($texto, 'corneal') || str_contains($texto, 'topograf')) {
+            return 'cornea';
+        }
+        if (str_contains($texto, 'campo visual') || str_contains($texto, 'campimet') || preg_match('/\bcv\b/', $texto) === 1) {
+            return 'cv';
+        }
+        if (str_contains($texto, 'eco') || str_contains($texto, 'ecografia')) {
+            return 'eco';
+        }
+        if (str_contains($texto, 'oct')) {
+            return 'octm';
+        }
+        return null;
+    }
+
+    private function normalizarTexto(string $value): string
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return '';
+        }
+        $value = function_exists('mb_strtolower') ? mb_strtolower($value, 'UTF-8') : strtolower($value);
+        $value = strtr($value, [
+            'á' => 'a', 'à' => 'a', 'ä' => 'a', 'â' => 'a',
+            'é' => 'e', 'è' => 'e', 'ë' => 'e', 'ê' => 'e',
+            'í' => 'i', 'ì' => 'i', 'ï' => 'i', 'î' => 'i',
+            'ó' => 'o', 'ò' => 'o', 'ö' => 'o', 'ô' => 'o',
+            'ú' => 'u', 'ù' => 'u', 'ü' => 'u', 'û' => 'u',
+            'ñ' => 'n',
+        ]);
+        $value = preg_replace('/\s+/', ' ', $value) ?? $value;
+        return trim($value);
+    }
+
+    private function resolvePreferredFileLocalPathForAnalysis(string $hcNumber, string $formId, string $filename): ?string
+    {
+        $cachePath = $this->resolveNasFileCachePath($hcNumber, $formId, $filename);
+        if ($cachePath !== null && is_file($cachePath) && (int) (filesize($cachePath) ?: 0) > 0) {
+            return $cachePath;
+        }
+
+        if ($this->warmPreferredFileCache($hcNumber, $formId, $filename) && $cachePath !== null && is_file($cachePath)) {
+            return $cachePath;
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<int, array{name: string, path: string}> $candidateFiles
+     * @return array<string, mixed>
+     */
+    private function runMicroespecularPythonAutofill(array $candidateFiles): array
+    {
+        $script = $this->workspaceRootPath('tools/biometrics/microespecular_autofill.py');
+        if (!is_file($script)) {
+            throw new \RuntimeException('No se encontró el script Python para autollenado.');
+        }
+
+        $python = $this->workspaceRootPath('venv/bin/python');
+        if (!is_file($python)) {
+            $python = 'python3';
+        }
+        $process = proc_open(
+            escapeshellarg($python) . ' ' . escapeshellarg($script),
+            [
+                0 => ['pipe', 'r'],
+                1 => ['pipe', 'w'],
+                2 => ['pipe', 'w'],
+            ],
+            $pipes,
+            $this->workspaceRootPath()
+        );
+
+        if (!is_resource($process)) {
+            throw new \RuntimeException('No se pudo iniciar el proceso Python para autollenado.');
+        }
+
+        $closed = false;
+        try {
+            $request = json_encode(['files' => array_values($candidateFiles)], JSON_UNESCAPED_UNICODE);
+            $bytesWritten = fwrite($pipes[0], $request !== false ? $request : '{}');
+            if ($bytesWritten === false) {
+                throw new \RuntimeException('No se pudo enviar la solicitud al proceso Python de autollenado.');
+            }
+            fclose($pipes[0]);
+
+            $stdout = stream_get_contents($pipes[1]);
+            fclose($pipes[1]);
+            $stderr = stream_get_contents($pipes[2]);
+            fclose($pipes[2]);
+
+            $exitCode = proc_close($process);
+            $closed = true;
+            if ($exitCode !== 0) {
+                throw new \RuntimeException('El proceso Python falló: ' . trim((string) $stderr));
+            }
+
+            $decoded = json_decode((string) $stdout, true);
+            if (!is_array($decoded)) {
+                throw new \RuntimeException('La respuesta del autollenado Python no fue válida.');
+            }
+
+            return $decoded;
+        } finally {
+            if (!$closed && is_resource($process)) {
+                proc_close($process);
+            }
+        }
+    }
+
+    private function autoFacturarInformeImagen(string $formId, ?string $hcNumber, ?int $userId): void
+    {
+        $formId = trim($formId);
+        $hc = trim((string) $hcNumber);
+        if ($formId === '') {
+            return;
+        }
+
+        if ($hc === '') {
+            $procedimiento = $this->legacyExamenModel()->obtenerProcedimientoProyectadoPorFormId($formId);
+            $hc = trim((string) ($procedimiento['hc_number'] ?? ''));
+        }
+
+        if ($hc === '') {
+            JsonLogger::log('examenes_billing_auto', 'Auto facturación omitida: hc_number vacío', null, [
+                'form_id' => $formId,
+                'user_id' => $userId,
+            ]);
+            return;
+        }
+
+        try {
+            $previewService = new PreviewService(DB::connection()->getPdo());
+            $preview = $previewService->prepararPreviewFacturacion($formId, $hc);
+            $procedimientos = is_array($preview['procedimientos'] ?? null) ? $preview['procedimientos'] : [];
+            $facturables = [];
+
+            foreach ($procedimientos as $procedimiento) {
+                if (!is_array($procedimiento)) {
+                    continue;
+                }
+                $codigo = trim((string) ($procedimiento['procCodigo'] ?? ''));
+                $detalle = trim((string) ($procedimiento['procDetalle'] ?? ''));
+                if ($codigo === '' || $detalle === '') {
+                    continue;
+                }
+                $facturables[] = [
+                    'id' => isset($procedimiento['id']) ? (int) $procedimiento['id'] : null,
+                    'procCodigo' => $codigo,
+                    'procDetalle' => $detalle,
+                    'procPrecio' => (float) ($procedimiento['procPrecio'] ?? 0),
+                ];
+            }
+
+            if ($facturables === []) {
+                JsonLogger::log('examenes_billing_auto', 'Auto facturación omitida: sin procedimientos facturables', null, [
+                    'form_id' => $formId,
+                    'hc_number' => $hc,
+                    'user_id' => $userId,
+                ]);
+                return;
+            }
+
+            $pdo = DB::connection()->getPdo();
+            $billingMainModel = new BillingMainModel($pdo);
+            $billingProcedimientosModel = new BillingProcedimientosModel($pdo);
+
+            $pdo->beginTransaction();
+            $billing = $billingMainModel->findByFormId($formId);
+            if ($billing) {
+                $billingId = (int) ($billing['id'] ?? 0);
+                if ($billingId <= 0) {
+                    throw new \RuntimeException('Billing existente inválido para form_id ' . $formId);
+                }
+                $billingMainModel->update($hc, $billingId);
+                $billingProcedimientosModel->borrarPorBillingId($billingId);
+            } else {
+                $billingId = $billingMainModel->insert($hc, $formId, null);
+            }
+
+            foreach ($facturables as $procedimiento) {
+                $billingProcedimientosModel->insertar($billingId, $procedimiento);
+            }
+
+            $pdo->commit();
+        } catch (Throwable $e) {
+            if (DB::connection()->getPdo()->inTransaction()) {
+                DB::connection()->getPdo()->rollBack();
+            }
+            JsonLogger::log('examenes_billing_auto', 'Error en auto facturación al guardar informe', $e, [
+                'form_id' => $formId,
+                'hc_number' => $hc,
+                'user_id' => $userId,
+            ]);
+        }
+    }
+
     private function sanitizePdfHtml(string $html): string
     {
         if ($html === '') {
@@ -2034,6 +2531,16 @@ class ExamenesParityController
         }
 
         return $html;
+    }
+
+    private function workspaceRootPath(string $path = ''): string
+    {
+        $root = dirname(base_path());
+        if ($path === '') {
+            return $root;
+        }
+
+        return $root . DIRECTORY_SEPARATOR . ltrim($path, DIRECTORY_SEPARATOR);
     }
 
     /**

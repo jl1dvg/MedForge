@@ -22,7 +22,9 @@ Route::middleware([
     Route::match(['GET', 'POST'], '/informes/isspol', [BillingUiController::class, 'informeIsspol']);
     Route::get('/informes/isspol/excel', [BillingUiController::class, 'informeIsspolExcel']);
     Route::match(['GET', 'POST'], '/informes/issfa', [BillingUiController::class, 'informeIssfa']);
+    Route::get('/informes/issfa/excel', [BillingUiController::class, 'informeIssfaExcel']);
     Route::match(['GET', 'POST'], '/informes/msp', [BillingUiController::class, 'informeMsp']);
+    Route::get('/informes/msp/excel', [BillingUiController::class, 'informeMspExcel']);
     Route::get('/informes/iess/consolidado', [BillingUiController::class, 'informeIessConsolidado']);
     Route::get('/informes/isspol/consolidado', [BillingUiController::class, 'informeIsspolConsolidado']);
     Route::get('/informes/issfa/consolidado', [BillingUiController::class, 'informeIssfaConsolidado']);

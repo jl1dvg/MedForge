@@ -255,6 +255,16 @@ class BillingUiController
         return $this->exportInformeAfiliacionExcel($request, 'ISSPOL');
     }
 
+    public function informeIssfaExcel(Request $request): Response|RedirectResponse
+    {
+        return $this->exportInformeAfiliacionExcel($request, 'ISSFA');
+    }
+
+    public function informeMspExcel(Request $request): Response|RedirectResponse
+    {
+        return $this->exportInformeAfiliacionExcel($request, 'MSP');
+    }
+
     public function informeIssfaConsolidado(Request $request): Response|RedirectResponse
     {
         return $this->exportConsolidadoSimple($request, 'issfa');
@@ -664,6 +674,7 @@ class BillingUiController
                 'slug' => 'issfa',
                 'titulo' => 'Informe ISSFA',
                 'basePath' => '/v2/informes/issfa',
+                'detailExcelPath' => '/v2/informes/issfa/excel',
                 'tableOptions' => [
                     'pageLength' => 25,
                     'defaultOrder' => 'fecha_ingreso_desc',
@@ -686,6 +697,7 @@ class BillingUiController
                 'slug' => 'msp',
                 'titulo' => 'Informe MSP',
                 'basePath' => '/v2/informes/msp',
+                'detailExcelPath' => '/v2/informes/msp/excel',
                 'tableOptions' => [
                     'pageLength' => 25,
                     'defaultOrder' => 'fecha_ingreso_desc',

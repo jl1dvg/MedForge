@@ -11,6 +11,106 @@ if (typeof jQuery === 'undefined') {
 throw new Error('template requires jQuery')
 }
 
+(function (window, $) {
+  'use strict'
+
+  if (window.__medfSessionGuardInitialized) {
+    return
+  }
+
+  window.__medfSessionGuardInitialized = true
+
+  function isLoginUrl(url) {
+    return typeof url === 'string' && url.indexOf('/auth/login') !== -1
+  }
+
+  function buildLoginUrl() {
+    var target = '/auth/login?expired=1'
+    var currentPath = window.location.pathname || '/'
+    var currentQuery = window.location.search || ''
+    var currentHash = window.location.hash || ''
+    var currentUrl = currentPath + currentQuery + currentHash
+
+    if (!isLoginUrl(currentPath)) {
+      target += '&next=' + encodeURIComponent(currentUrl)
+    }
+
+    return target
+  }
+
+  function redirectToLogin() {
+    if (window.__medfSessionRedirecting || isLoginUrl(window.location.pathname || '')) {
+      return
+    }
+
+    window.__medfSessionRedirecting = true
+    window.location.replace(buildLoginUrl())
+  }
+
+  function responseHasExpiredSession(response) {
+    if (!response) {
+      return false
+    }
+
+    if (response.status === 401) {
+      return true
+    }
+
+    if (response.headers && typeof response.headers.get === 'function') {
+      if (response.headers.get('X-Medf-Session-Expired') === '1') {
+        return true
+      }
+    }
+
+    if (response.redirected && isLoginUrl(response.url)) {
+      return true
+    }
+
+    return response.status === 200 && isLoginUrl(response.url)
+  }
+
+  function xhrHasExpiredSession(xhr) {
+    if (!xhr) {
+      return false
+    }
+
+    if (xhr.status === 401) {
+      return true
+    }
+
+    if (typeof xhr.getResponseHeader === 'function' && xhr.getResponseHeader('X-Medf-Session-Expired') === '1') {
+      return true
+    }
+
+    return isLoginUrl(xhr.responseURL || '')
+  }
+
+  if (typeof window.fetch === 'function') {
+    var nativeFetch = window.fetch.bind(window)
+    window.fetch = function () {
+      return nativeFetch.apply(window, arguments).then(function (response) {
+        if (responseHasExpiredSession(response)) {
+          window.setTimeout(redirectToLogin, 0)
+        }
+
+        return response
+      })
+    }
+  }
+
+  $(document).ajaxComplete(function (event, xhr) {
+    if (xhrHasExpiredSession(xhr)) {
+      redirectToLogin()
+    }
+  })
+
+  $(document).ajaxError(function (event, xhr) {
+    if (xhrHasExpiredSession(xhr)) {
+      redirectToLogin()
+    }
+  })
+}(window, jQuery))
+
 // Layout()
 
 //  Implements layout.
@@ -1595,4 +1695,3 @@ function w3_close() {
                         loadNow(1);
                 }
         });
-

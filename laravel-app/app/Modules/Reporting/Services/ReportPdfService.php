@@ -217,9 +217,16 @@ class ReportPdfService
         string $formId,
         string $hcNumber,
         ?int $examenId = null,
-        array $selectedItems = []
+        array $selectedItems = [],
+        bool $preserveBaseContext = false
     ): ?array {
-        $data = $this->imagenesDataService->buildCobertura012AData($formId, $hcNumber, $examenId, $selectedItems);
+        $data = $this->imagenesDataService->buildCobertura012AData(
+            $formId,
+            $hcNumber,
+            $examenId,
+            $selectedItems,
+            $preserveBaseContext
+        );
         if ($data === []) {
             return null;
         }
@@ -270,70 +277,78 @@ class ReportPdfService
 
         try {
             $baseItem = $normalized[0];
-            $cobertura012A = $this->generateCobertura012APdf(
-                (string) $baseItem['form_id'],
-                $hcBase,
-                null,
-                $normalized
-            );
-            if (is_array($cobertura012A) && isset($cobertura012A['content'])) {
-                $tmp012A = $this->writeTempFile((string) $cobertura012A['content'], 'pdf');
-                $tempFiles[] = $tmp012A;
-                $this->appendPdfFile($pdf, $tmp012A);
-                $hasPages = true;
-            }
 
-            foreach ($normalized as $item) {
-                $formId = (string) ($item['form_id'] ?? '');
-                $hcNumber = (string) ($item['hc_number'] ?? '');
-                if ($formId === '' || $hcNumber === '') {
+            foreach ($this->groupPackageItemsByFecha($normalized) as $groupedItems) {
+                if ($groupedItems === []) {
                     continue;
                 }
 
-                $informe012B = $this->generateInforme012BPdf($formId, $hcNumber);
-                if (is_array($informe012B) && isset($informe012B['content'])) {
-                    $tmp012B = $this->writeTempFile((string) $informe012B['content'], 'pdf');
-                    $tempFiles[] = $tmp012B;
-                    $this->appendPdfFile($pdf, $tmp012B);
+                $cobertura012A = $this->generateCobertura012APdf(
+                    (string) $baseItem['form_id'],
+                    $hcBase,
+                    null,
+                    $groupedItems,
+                    true
+                );
+                if (is_array($cobertura012A) && isset($cobertura012A['content'])) {
+                    $tmp012A = $this->writeTempFile((string) $cobertura012A['content'], 'pdf');
+                    $tempFiles[] = $tmp012A;
+                    $this->appendPdfFile($pdf, $tmp012A);
                     $hasPages = true;
                 }
 
-                $files = $this->getSigcenterPackageFiles($formId, $hcNumber);
-                if ($this->isAngiografiaRetinal((string) ($item['tipo_examen'] ?? null)) && count($files) > 2) {
-                    $files = array_slice($files, 0, 2);
-                }
-
-                foreach ($files as $file) {
-                    if (!is_array($file)) {
+                foreach ($groupedItems as $item) {
+                    $formId = (string) ($item['form_id'] ?? '');
+                    $hcNumber = (string) ($item['hc_number'] ?? '');
+                    if ($formId === '' || $hcNumber === '') {
                         continue;
                     }
 
-                    $relativePath = trim((string) ($file['relative_path'] ?? ''));
-                    if ($relativePath === '') {
-                        continue;
-                    }
-
-                    $prepared = $this->prepareSigcenterFileForPackage($relativePath);
-                    if (!is_array($prepared)) {
-                        continue;
-                    }
-
-                    $tmpPath = (string) ($prepared['path'] ?? '');
-                    $ext = strtolower((string) ($prepared['ext'] ?? ''));
-                    if ($tmpPath === '' || !is_file($tmpPath)) {
-                        continue;
-                    }
-
-                    $tempFiles[] = $tmpPath;
-
-                    if ($ext === 'pdf') {
-                        $this->appendPdfFile($pdf, $tmpPath);
+                    $informe012B = $this->generateInforme012BPdf($formId, $hcNumber);
+                    if (is_array($informe012B) && isset($informe012B['content'])) {
+                        $tmp012B = $this->writeTempFile((string) $informe012B['content'], 'pdf');
+                        $tempFiles[] = $tmp012B;
+                        $this->appendPdfFile($pdf, $tmp012B);
                         $hasPages = true;
-                        continue;
                     }
 
-                    $this->appendImageFile($pdf, $tmpPath);
-                    $hasPages = true;
+                    $files = $this->getSigcenterPackageFiles($formId, $hcNumber);
+                    if ($this->isAngiografiaRetinal((string) ($item['tipo_examen'] ?? null)) && count($files) > 2) {
+                        $files = array_slice($files, 0, 2);
+                    }
+
+                    foreach ($files as $file) {
+                        if (!is_array($file)) {
+                            continue;
+                        }
+
+                        $relativePath = trim((string) ($file['relative_path'] ?? ''));
+                        if ($relativePath === '') {
+                            continue;
+                        }
+
+                        $prepared = $this->prepareSigcenterFileForPackage($relativePath);
+                        if (!is_array($prepared)) {
+                            continue;
+                        }
+
+                        $tmpPath = (string) ($prepared['path'] ?? '');
+                        $ext = strtolower((string) ($prepared['ext'] ?? ''));
+                        if ($tmpPath === '' || !is_file($tmpPath)) {
+                            continue;
+                        }
+
+                        $tempFiles[] = $tmpPath;
+
+                        if ($ext === 'pdf') {
+                            $this->appendPdfFile($pdf, $tmpPath);
+                            $hasPages = true;
+                            continue;
+                        }
+
+                        $this->appendImageFile($pdf, $tmpPath);
+                        $hasPages = true;
+                    }
                 }
             }
 
@@ -809,6 +824,34 @@ class ReportPdfService
         }
 
         return array_values($normalized);
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $items
+     * @return array<int, array<int, array<string, mixed>>>
+     */
+    private function groupPackageItemsByFecha(array $items): array
+    {
+        $grouped = [];
+
+        foreach ($items as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $fechaRaw = trim((string) ($item['fecha_examen'] ?? ''));
+            $fechaKey = preg_match('/^\d{4}-\d{2}-\d{2}/', $fechaRaw) === 1
+                ? substr($fechaRaw, 0, 10)
+                : '__sin_fecha__';
+
+            if (!isset($grouped[$fechaKey])) {
+                $grouped[$fechaKey] = [];
+            }
+
+            $grouped[$fechaKey][] = $item;
+        }
+
+        return array_values($grouped);
     }
 
     private function sigcenterImagenesService(): SigcenterImagenesService

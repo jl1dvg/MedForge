@@ -457,6 +457,8 @@ SQL;
             'hora' => $fechaHora['hora'],
             'nombre_completo' => $this->normalizeWhitespace($row['paciente_full'] ?? ''),
             'sede_departamento' => $sede,
+            'has_apellidos_source' => $this->normalizeWhitespace($row['apellidos'] ?? '') !== '',
+            'has_nombres_source' => $this->normalizeWhitespace($row['nombres'] ?? '') !== '',
         ];
     }
 
@@ -502,8 +504,44 @@ SQL;
         }
 
         $updates = [];
-        foreach (['lname', 'lname2', 'fname', 'mname', 'email', 'sexo', 'ciudad', 'afiliacion', 'celular'] as $column) {
-            if (!isset($insert[$column])) {
+        foreach (['email', 'sexo', 'ciudad', 'afiliacion', 'celular'] as $column) {
+            if (!array_key_exists($column, $insert)) {
+                continue;
+            }
+            $updates[] = sprintf(
+                "%s = IF(VALUES(%s) = '' OR VALUES(%s) IS NULL, %s, VALUES(%s))",
+                $column,
+                $column,
+                $column,
+                $column,
+                $column
+            );
+        }
+        $hasApellidosSource = (bool) ($normalized['has_apellidos_source'] ?? false);
+        foreach (['lname', 'lname2'] as $column) {
+            if (!array_key_exists($column, $insert)) {
+                continue;
+            }
+            if ($hasApellidosSource) {
+                $updates[] = sprintf('%s = VALUES(%s)', $column, $column);
+                continue;
+            }
+            $updates[] = sprintf(
+                "%s = IF(VALUES(%s) = '' OR VALUES(%s) IS NULL, %s, VALUES(%s))",
+                $column,
+                $column,
+                $column,
+                $column,
+                $column
+            );
+        }
+        $hasNombresSource = (bool) ($normalized['has_nombres_source'] ?? false);
+        foreach (['fname', 'mname'] as $column) {
+            if (!array_key_exists($column, $insert)) {
+                continue;
+            }
+            if ($hasNombresSource) {
+                $updates[] = sprintf('%s = VALUES(%s)', $column, $column);
                 continue;
             }
             $updates[] = sprintf(
