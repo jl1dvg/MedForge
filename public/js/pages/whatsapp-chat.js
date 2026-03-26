@@ -1186,8 +1186,10 @@
             placeholder.textContent = 'Selecciona un agente';
             transferSelect.appendChild(placeholder);
 
+            var assignedId = conversation && conversation.assigned_user_id ? Number(conversation.assigned_user_id) : 0;
             var roleFilter = conversation && conversation.handoff_role_id ? Number(conversation.handoff_role_id) : 0;
-            var enforceRoleFilter = roleFilter > 0 && !canSupervise;
+            var allowCrossRoleTransfer = assignedId > 0 && assignedId === currentUserId;
+            var enforceRoleFilter = roleFilter > 0 && !canSupervise && !allowCrossRoleTransfer;
 
             state.agents.forEach(function (agent) {
                 if (!agent || !agent.id) {

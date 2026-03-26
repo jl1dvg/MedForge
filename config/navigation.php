@@ -1,6 +1,7 @@
 <?php
 
 return static function (array $context): array {
+    $permissions = $context['permissions'] ?? [];
     $canAccessUsers = (bool) ($context['canAccessUsers'] ?? false);
     $canAccessRoles = (bool) ($context['canAccessRoles'] ?? false);
     $canAccessSettings = (bool) ($context['canAccessSettings'] ?? false);
@@ -14,6 +15,16 @@ return static function (array $context): array {
     $canAccessProtocolTemplates = (bool) ($context['canAccessProtocolTemplates'] ?? false);
     $canAccessMailbox = (bool) ($context['canAccessMailbox'] ?? false);
     $canAccessQuirurgicoDashboard = (bool) ($context['canAccessQuirurgicoDashboard'] ?? false);
+    $canAccessBillingIndex = \Core\Permissions::containsAny($permissions, ['administrativo', 'billing.view', 'billing.manage']);
+    $canAccessBillingNoFacturados = \Core\Permissions::containsAny($permissions, ['administrativo', 'billing.no_facturados.view', 'billing.no_facturados.create', 'billing.manage']);
+    $canAccessBillingDashboard = \Core\Permissions::containsAny($permissions, ['administrativo', 'billing.dashboard.view', 'billing.manage']);
+    $canAccessBillingHonorarios = \Core\Permissions::containsAny($permissions, ['administrativo', 'billing.honorarios.view', 'billing.manage']);
+    $canAccessBillingIess = \Core\Permissions::containsAny($permissions, ['administrativo', 'billing.iess.view', 'billing.manage']);
+    $canAccessBillingIsspol = \Core\Permissions::containsAny($permissions, ['administrativo', 'billing.isspol.view', 'billing.manage']);
+    $canAccessBillingIssfa = \Core\Permissions::containsAny($permissions, ['administrativo', 'billing.issfa.view', 'billing.manage']);
+    $canAccessBillingMsp = \Core\Permissions::containsAny($permissions, ['administrativo', 'billing.msp.view', 'billing.manage']);
+    $canAccessBillingParticulares = \Core\Permissions::containsAny($permissions, ['administrativo', 'billing.particulares.view', 'billing.manage']);
+    $canAccessFinanceReports = \Core\Permissions::containsAny($permissions, ['administrativo', 'reportes.view', 'reportes.export', 'billing.manage']);
 
     $link = static function (
         string $label,
@@ -152,31 +163,65 @@ return static function (array $context): array {
         ]),
     ]));
 
-    $finanzas = $group('Finanzas', 'mdi mdi-cash-multiple', [
-        $label('Facturacion por afiliacion'),
-        $link('ISSPOL', '/informes/isspol', 'mdi mdi-shield-outline', [
+    $finanzas = $group('Finanzas', 'mdi mdi-cash-multiple', array_filter([
+        ($canAccessBillingIess || $canAccessBillingIsspol || $canAccessBillingIssfa || $canAccessBillingMsp)
+            ? $label('Facturacion por afiliacion')
+            : null,
+        $canAccessBillingIsspol
+            ? $link('ISSPOL', '/informes/isspol', 'mdi mdi-shield-outline', [
             'prefix' => ['/informes/isspol', '/v2/informes/isspol'],
-        ]),
-        $link('ISSFA', '/informes/issfa', 'mdi mdi-star-outline', [
+        ])
+            : null,
+        $canAccessBillingIssfa
+            ? $link('ISSFA', '/informes/issfa', 'mdi mdi-star-outline', [
             'prefix' => ['/informes/issfa', '/v2/informes/issfa'],
-        ]),
-        $link('IESS', '/informes/iess', 'mdi mdi-card-account-details-outline', [
+        ])
+            : null,
+        $canAccessBillingIess
+            ? $link('IESS', '/informes/iess', 'mdi mdi-card-account-details-outline', [
             'prefix' => ['/informes/iess', '/v2/informes/iess'],
-        ]),
-        $link('Particulares', '/informes/particulares', 'mdi mdi-account-outline', [
+        ])
+            : null,
+        $canAccessBillingMsp
+            ? $link('MSP', '/informes/msp', 'mdi mdi-hospital-building', [
+            'prefix' => ['/informes/msp', '/v2/informes/msp'],
+        ])
+            : null,
+        $canAccessBillingParticulares
+            ? $link('Particulares', '/informes/particulares', 'mdi mdi-account-outline', [
             'prefix' => ['/informes/particulares', '/v2/informes/particulares'],
-        ]),
-        $link('No facturado', '/billing/no-facturados', 'mdi mdi-alert-circle-outline', [
+        ])
+            : null,
+        $canAccessBillingNoFacturados
+            ? $link('No facturado', '/billing/no-facturados', 'mdi mdi-alert-circle-outline', [
             'prefix' => ['/billing/no-facturados', '/v2/billing/no-facturados'],
-        ]),
-        $link('Dashboard billing', '/billing/dashboard', 'mdi mdi-chart-box-outline', [
+        ])
+            : null,
+        $canAccessBillingDashboard
+            ? $link('Dashboard billing', '/billing/dashboard', 'mdi mdi-chart-box-outline', [
             'prefix' => ['/billing/dashboard', '/v2/billing/dashboard'],
-        ]),
-        $label('Reportes y estadisticas'),
-        $link('Flujo de pacientes', '/views/reportes/estadistica_flujo.php', 'mdi mdi-chart-timeline-variant', [
+        ])
+            : null,
+        $canAccessBillingHonorarios
+            ? $link('Honorarios', '/billing/honorarios', 'mdi mdi-account-cash-outline', [
+            'prefix' => ['/billing/honorarios', '/v2/billing/honorarios'],
+        ])
+            : null,
+        $canAccessBillingIndex
+            ? $link('Facturas', '/billing', 'mdi mdi-receipt-text-outline', [
+            'prefix' => ['/billing', '/v2/billing'],
+            'exclude_prefix' => ['/billing/no-facturados', '/billing/dashboard', '/billing/honorarios', '/v2/billing/no-facturados', '/v2/billing/dashboard', '/v2/billing/honorarios'],
+        ])
+            : null,
+        ($canAccessFinanceReports)
+            ? $label('Reportes y estadisticas')
+            : null,
+        $canAccessFinanceReports
+            ? $link('Flujo de pacientes', '/views/reportes/estadistica_flujo.php', 'mdi mdi-chart-timeline-variant', [
             'prefix' => ['/views/reportes/estadistica_flujo.php'],
-        ]),
-    ]);
+        ])
+            : null,
+    ]));
 
     $administracion = $group('Administracion', 'mdi mdi-shield-crown-outline', array_filter([
         $canAccessDoctors
@@ -284,7 +329,7 @@ return static function (array $context): array {
         $operacionDiaria,
         $clinica,
         $inventario,
-        $finanzas,
+        $finanzas['children'] !== [] ? $finanzas : null,
         $administracion['children'] !== [] ? $administracion : null,
         $link('Cerrar sesion', '/v2/auth/logout', 'mdi mdi-logout', []),
     ]));

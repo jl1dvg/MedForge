@@ -16,6 +16,7 @@
     $warnings = $warnings ?? [];
     $mode = $mode ?? 'edit';
     $isCreate = $mode === 'create';
+    $canAssignSuperuser = !empty($canAssignSuperuser);
 
     $fieldValue = static function (string $key, string $default = '') use ($user): string {
         return htmlspecialchars((string) ($user[$key] ?? $default), ENT_QUOTES, 'UTF-8');
@@ -439,6 +440,11 @@
                     <hr class="my-4">
                     <div>
                         <h5 class="mb-3">Permisos</h5>
+                        @if(!$canAssignSuperuser)
+                            <div class="alert alert-warning">
+                                El permiso <strong>superusuario</strong> queda bloqueado en este formulario. Solo otro superusuario puede otorgarlo o retirarlo.
+                            </div>
+                        @endif
                         @foreach($permissions as $group => $items)
                             <div class="mb-3">
                                 <p class="fw-bold mb-2">{{ $group }}</p>
@@ -447,10 +453,19 @@
                                         <div class="col-md-6">
                                             <div class="form-check">
                                                 @php($permissionId = 'perm_' . preg_replace('/[^a-z0-9_-]/i', '_', $permission))
-                                                <input class="form-check-input" type="checkbox" name="permissions[]" value="{{ $permission }}" id="{{ $permissionId }}" {{ in_array($permission, $selectedPermissions, true) ? 'checked' : '' }}>
+                                                @php($isSuperuserPermission = $permission === 'superuser')
+                                                <input class="form-check-input" type="checkbox" name="permissions[]" value="{{ $permission }}" id="{{ $permissionId }}" {{ in_array($permission, $selectedPermissions, true) ? 'checked' : '' }} {{ $isSuperuserPermission && !$canAssignSuperuser ? 'disabled' : '' }}>
                                                 <label class="form-check-label" for="{{ $permissionId }}">
                                                     {{ $label }}
+                                                    @if($isSuperuserPermission)
+                                                        <span class="badge bg-danger ms-1">Crítico</span>
+                                                    @endif
                                                 </label>
+                                                @if($isSuperuserPermission)
+                                                    <div class="small text-muted">
+                                                        Otorga acceso irrestricto a todo el sistema y a la delegación de otros superusuarios.
+                                                    </div>
+                                                @endif
                                             </div>
                                         </div>
                                     @endforeach

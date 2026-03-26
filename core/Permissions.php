@@ -30,6 +30,8 @@ class Permissions
         'doctores.manage' => ['doctores.view'],
         'solicitudes.manage' => ['solicitudes.view', 'solicitudes.update', 'solicitudes.turnero', 'solicitudes.dashboard.view', 'solicitudes.checklist.override'],
         'examenes.manage' => ['examenes.view', 'examenes.checklist.override'],
+        'billing.manage' => ['billing.view', 'billing.no_facturados.view', 'billing.no_facturados.create', 'billing.dashboard.view', 'billing.honorarios.view', 'billing.iess.view', 'billing.isspol.view', 'billing.issfa.view', 'billing.msp.view', 'billing.particulares.view', 'billing.export', 'billing.delete', 'billing.scrape'],
+        'billing.no_facturados.create' => ['billing.no_facturados.view'],
     ];
 
     /**

@@ -4,6 +4,7 @@ namespace App\Modules\Usuarios\Http\Controllers;
 
 use App\Modules\Shared\Support\LegacyCurrentUser;
 use App\Modules\Shared\Support\LegacyPermissionCatalog;
+use App\Modules\Shared\Support\LegacyPermissionResolver;
 use App\Modules\Shared\Support\LegacySessionAuth;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
@@ -59,6 +60,7 @@ class RolesUiController
             'selectedPermissions' => [],
             'formAction' => '/roles',
             'status' => session('status'),
+            'canAssignSuperuser' => $this->currentUserIsSuperuser($request),
         ]);
     }
 
@@ -75,7 +77,10 @@ class RolesUiController
             'permissions.*' => ['string'],
         ]);
 
-        $selectedPermissions = LegacyPermissionCatalog::sanitizeSelection((array) ($validated['permissions'] ?? []));
+        $selectedPermissions = $this->filterAssignablePermissions(
+            $request,
+            LegacyPermissionCatalog::sanitizeSelection((array) ($validated['permissions'] ?? []))
+        );
 
         $id = DB::table('roles')->insertGetId([
             'name' => trim((string) $validated['name']),
@@ -107,6 +112,7 @@ class RolesUiController
             'selectedPermissions' => LegacyPermissionCatalog::normalize($role['permissions'] ?? []),
             'formAction' => '/roles/' . $id,
             'status' => session('status'),
+            'canAssignSuperuser' => $this->currentUserIsSuperuser($request),
         ]);
     }
 
@@ -128,7 +134,11 @@ class RolesUiController
             'permissions.*' => ['string'],
         ]);
 
-        $selectedPermissions = LegacyPermissionCatalog::sanitizeSelection((array) ($validated['permissions'] ?? []));
+        $selectedPermissions = $this->filterAssignablePermissions(
+            $request,
+            LegacyPermissionCatalog::sanitizeSelection((array) ($validated['permissions'] ?? [])),
+            $role['permissions'] ?? []
+        );
 
         DB::table('roles')
             ->where('id', $id)
@@ -179,5 +189,35 @@ class RolesUiController
             'description' => (string) ($row->description ?? ''),
             'permissions' => $row->permissions ?? '[]',
         ];
+    }
+
+    /**
+     * @param array<int, string> $selected
+     * @return array<int, string>
+     */
+    private function filterAssignablePermissions(Request $request, array $selected, mixed $existingPermissions = []): array
+    {
+        if ($this->currentUserIsSuperuser($request)) {
+            return $selected;
+        }
+
+        $selected = array_values(array_filter(
+            $selected,
+            static fn (string $permission): bool => $permission !== LegacyPermissionCatalog::SUPERUSER
+        ));
+
+        if (LegacyPermissionCatalog::contains($existingPermissions, LegacyPermissionCatalog::SUPERUSER)) {
+            $selected[] = LegacyPermissionCatalog::SUPERUSER;
+        }
+
+        return array_values(array_unique($selected));
+    }
+
+    private function currentUserIsSuperuser(Request $request): bool
+    {
+        return LegacyPermissionCatalog::contains(
+            LegacyPermissionResolver::resolve($request),
+            LegacyPermissionCatalog::SUPERUSER
+        );
     }
 }

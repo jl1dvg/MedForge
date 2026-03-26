@@ -99,6 +99,16 @@ try {
 
         // === Rutas legacy ===
         if ($path === '/billing/excel' && $method === 'GET') {
+            $permissions = \Core\Permissions::normalize($_SESSION['permisos'] ?? []);
+            if (
+                !isset($_SESSION['user_id'])
+                || !\Core\Permissions::containsAny($permissions, ['administrativo', 'billing.export', 'billing.manage'])
+            ) {
+                http_response_code(403);
+                echo 'Acceso denegado.';
+                exit;
+            }
+
             $formId = $_GET['form_id'] ?? null;
             $grupo = $_GET['grupo'] ?? '';
             if ($formId) {
@@ -112,6 +122,16 @@ try {
         }
 
         if ($path === '/billing/exportar_mes' && $method === 'GET') {
+            $permissions = \Core\Permissions::normalize($_SESSION['permisos'] ?? []);
+            if (
+                !isset($_SESSION['user_id'])
+                || !\Core\Permissions::containsAny($permissions, ['administrativo', 'billing.export', 'billing.manage'])
+            ) {
+                http_response_code(403);
+                echo 'Acceso denegado.';
+                exit;
+            }
+
             $mes = $_GET['mes'] ?? null;
             $grupo = $_GET['grupo'] ?? '';
             if ($mes) {

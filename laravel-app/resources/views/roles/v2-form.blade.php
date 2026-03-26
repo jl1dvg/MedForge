@@ -65,7 +65,13 @@
 
                     @php
                         $selected = old('permissions', $selectedPermissions ?? []);
+                        $canAssignSuperuser = !empty($canAssignSuperuser);
                     @endphp
+                    @if(!$canAssignSuperuser)
+                        <div class="alert alert-warning">
+                            El permiso <strong>superusuario</strong> del rol queda bloqueado. Solo un superusuario puede otorgarlo o retirarlo.
+                        </div>
+                    @endif
                     @foreach($permissions as $group => $groupPermissions)
                         <div class="border rounded p-3 mb-3">
                             <h5 class="mb-3">{{ $group }}</h5>
@@ -73,13 +79,21 @@
                                 @foreach($groupPermissions as $permission => $label)
                                     <div class="col-md-6 col-lg-4 mb-2">
                                         <label class="d-flex align-items-start gap-2">
+                                            @php($isSuperuserPermission = $permission === 'superuser')
                                             <input
                                                 type="checkbox"
                                                 name="permissions[]"
                                                 value="{{ $permission }}"
                                                 {{ in_array($permission, $selected, true) ? 'checked' : '' }}
+                                                {{ $isSuperuserPermission && !$canAssignSuperuser ? 'disabled' : '' }}
                                             >
-                                            <span>{{ $label }}</span>
+                                            <span>
+                                                {{ $label }}
+                                                @if($isSuperuserPermission)
+                                                    <span class="badge bg-danger ms-1">Crítico</span>
+                                                    <small class="d-block text-muted">Acceso irrestricto al sistema.</small>
+                                                @endif
+                                            </span>
                                         </label>
                                     </div>
                                 @endforeach

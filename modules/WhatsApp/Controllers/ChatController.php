@@ -351,14 +351,6 @@ class ChatController extends BaseController
             return;
         }
 
-        $roleId = isset($summary['handoff_role_id']) ? (int) $summary['handoff_role_id'] : null;
-        if ($roleId !== null && $roleId > 0 && !empty($agent['role_id']) && (int) $agent['role_id'] !== $roleId
-            && !$canSupervise) {
-            $this->json(['ok' => false, 'error' => 'El agente no pertenece al equipo requerido.'], 403);
-
-            return;
-        }
-
         if (!$this->conversations->transferConversation($conversationId, $targetUserId, $note)) {
             $this->json(['ok' => false, 'error' => 'No fue posible transferir la conversación.'], 500);
 

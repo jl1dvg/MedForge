@@ -34,6 +34,8 @@ class LegacyPermissionCatalog
         'doctores.manage' => ['doctores.view'],
         'solicitudes.manage' => ['solicitudes.view', 'solicitudes.update', 'solicitudes.turnero', 'solicitudes.dashboard.view', 'solicitudes.checklist.override'],
         'examenes.manage' => ['examenes.view', 'examenes.checklist.override'],
+        'billing.manage' => ['billing.view', 'billing.no_facturados.view', 'billing.no_facturados.create', 'billing.dashboard.view', 'billing.honorarios.view', 'billing.iess.view', 'billing.isspol.view', 'billing.issfa.view', 'billing.msp.view', 'billing.particulares.view', 'billing.export', 'billing.delete', 'billing.scrape'],
+        'billing.no_facturados.create' => ['billing.no_facturados.view'],
     ];
 
     /**
@@ -114,6 +116,22 @@ class LegacyPermissionCatalog
                 'protocolos.templates.view' => 'Plantillas de protocolos - Ver',
                 'protocolos.templates.manage' => 'Plantillas de protocolos - Crear y editar',
                 'protocolos.manage' => 'Plantillas de protocolos - Acceso total (atajo)',
+            ],
+            'Finanzas' => [
+                'billing.view' => 'Finanzas - Ver facturación',
+                'billing.no_facturados.view' => 'Finanzas - Ver no facturados',
+                'billing.no_facturados.create' => 'Finanzas - Crear facturación desde no facturado',
+                'billing.dashboard.view' => 'Finanzas - Ver dashboard de billing',
+                'billing.honorarios.view' => 'Finanzas - Ver honorarios',
+                'billing.iess.view' => 'Finanzas - Ver informe IESS',
+                'billing.isspol.view' => 'Finanzas - Ver informe ISSPOL',
+                'billing.issfa.view' => 'Finanzas - Ver informe ISSFA',
+                'billing.msp.view' => 'Finanzas - Ver informe MSP',
+                'billing.particulares.view' => 'Finanzas - Ver informe particulares',
+                'billing.export' => 'Finanzas - Exportar reportes y consolidados',
+                'billing.delete' => 'Finanzas - Eliminar facturas',
+                'billing.scrape' => 'Finanzas - Scrapear y verificar derivaciones',
+                'billing.manage' => 'Finanzas - Acceso total (atajo)',
             ],
             'Reportes' => [
                 'reportes.view' => 'Visualizar reportes e informes',

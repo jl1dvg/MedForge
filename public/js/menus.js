@@ -4,6 +4,10 @@
  */
 
 (function($) {
+  if (!$ || !$.SmartMenus || !$.SmartMenus.prototype) {
+    console.warn("SmartMenus plugin is not available; skipping menu enhancer.");
+    return;
+  }
 
   $.SmartMenus.prototype.old_init = $.SmartMenus.prototype.init;
   $.SmartMenus.prototype.init = function(refresh) {
@@ -82,6 +86,14 @@
 
 // SmartMenus init
 $(function() {
+  if (!$.fn || typeof $.fn.smartmenus !== "function") {
+    return;
+  }
+
+  if (!$('#main-menu').length) {
+    return;
+  }
+
   $('#main-menu').smartmenus({
 	mainMenuSubOffsetX: 1,
 	mainMenuSubOffsetY: -0,

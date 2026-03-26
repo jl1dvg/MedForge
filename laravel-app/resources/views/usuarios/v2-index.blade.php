@@ -9,6 +9,7 @@
     $warnings = $warnings ?? [];
     $canManageUsers = !empty($canManageUsers);
     $currentUserId = isset($currentUserId) ? (int) $currentUserId : 0;
+    $privilegedSummary = $privilegedSummary ?? ['superusers' => [], 'administrative' => [], 'totalAccess' => []];
 
     $especialidadesFiltro = [
         '' => 'Todas',
@@ -153,6 +154,87 @@
             </div>
         </div>
 
+        <div class="row g-3 mb-3" id="privilegedSummaryAccordion">
+            <div class="col-lg-4">
+                <div class="card border-danger">
+                    <div class="card-body">
+                        <button
+                            type="button"
+                            class="btn btn-link text-reset text-decoration-none d-flex justify-content-between align-items-center w-100 p-0"
+                            data-bs-toggle="collapse"
+                            data-bs-target="#privilegedSummarySuperusers"
+                            aria-expanded="false"
+                            aria-controls="privilegedSummarySuperusers"
+                        >
+                            <h5 class="card-title mb-0">Superusuarios</h5>
+                            <span class="badge bg-danger">{{ count($privilegedSummary['superusers'] ?? []) }}</span>
+                        </button>
+                        <div id="privilegedSummarySuperusers" class="collapse mt-3" data-bs-parent="#privilegedSummaryAccordion">
+                            @if(!empty($privilegedSummary['superusers']))
+                                <div class="small text-muted">{{ implode(', ', $privilegedSummary['superusers']) }}</div>
+                            @else
+                                <div class="small text-muted">No hay usuarios con `superuser` efectivo.</div>
+                            @endif
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-4">
+                <div class="card border-warning">
+                    <div class="card-body">
+                        <button
+                            type="button"
+                            class="btn btn-link text-reset text-decoration-none d-flex justify-content-between align-items-center w-100 p-0"
+                            data-bs-toggle="collapse"
+                            data-bs-target="#privilegedSummaryAdministrative"
+                            aria-expanded="false"
+                            aria-controls="privilegedSummaryAdministrative"
+                        >
+                            <h5 class="card-title mb-0">Acceso administrativo</h5>
+                            <span class="badge bg-warning text-dark">{{ count($privilegedSummary['administrative'] ?? []) }}</span>
+                        </button>
+                        <div id="privilegedSummaryAdministrative" class="collapse mt-3" data-bs-parent="#privilegedSummaryAccordion">
+                            @if(!empty($privilegedSummary['administrative']))
+                                <div class="small text-muted">{{ implode(', ', $privilegedSummary['administrative']) }}</div>
+                            @else
+                                <div class="small text-muted">Nadie tiene el flag `administrativo`.</div>
+                            @endif
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-4">
+                <div class="card border-primary">
+                    <div class="card-body">
+                        <button
+                            type="button"
+                            class="btn btn-link text-reset text-decoration-none d-flex justify-content-between align-items-center w-100 p-0"
+                            data-bs-toggle="collapse"
+                            data-bs-target="#privilegedSummaryTotalAccess"
+                            aria-expanded="false"
+                            aria-controls="privilegedSummaryTotalAccess"
+                        >
+                            <h5 class="card-title mb-0">Accesos totales</h5>
+                            <span class="badge bg-primary">{{ count($privilegedSummary['totalAccess'] ?? []) }}</span>
+                        </button>
+                        <div id="privilegedSummaryTotalAccess" class="collapse mt-3" data-bs-parent="#privilegedSummaryAccordion">
+                            @if(!empty($privilegedSummary['totalAccess']))
+                                @foreach($privilegedSummary['totalAccess'] as $entry)
+                                    <div class="small text-muted mb-1">
+                                        <strong>{{ $entry['name'] }}</strong>: {{ implode(', ', $entry['modules'] ?? []) }}
+                                    </div>
+                                @endforeach
+                            @else
+                                <div class="small text-muted">No hay atajos `*.manage` activos.</div>
+                            @endif
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="box">
             <div class="box-body table-responsive">
                 <table class="table table-striped table-hover align-middle usuarios-table">
@@ -195,6 +277,7 @@
                                 $fullName !== '' ? $fullName : $username,
                             ], static fn ($value): bool => (string) $value !== ''))), 'UTF-8');
                             $completeness = $user['profile_completeness'] ?? ['label' => 'N/D', 'class' => 'bg-secondary', 'ratio' => 0];
+                            $accessSummary = $user['access_summary'] ?? ['is_superuser' => false, 'is_administrative' => false, 'total_access_modules' => []];
                         @endphp
                         <tr
                             data-especialidad="{{ mb_strtolower($especialidad, 'UTF-8') }}"
@@ -216,6 +299,15 @@
                             <td>{{ $email !== '' ? $email : '—' }}</td>
                             <td>{{ $user['role_label'] ?? 'Sin asignar' }}</td>
                             <td>
+                                @if(!empty($accessSummary['is_superuser']))
+                                    <span class="badge bg-danger me-1 mb-1">Superusuario</span>
+                                @endif
+                                @if(!empty($accessSummary['is_administrative']))
+                                    <span class="badge bg-warning text-dark me-1 mb-1">Administrativo</span>
+                                @endif
+                                @foreach(($accessSummary['total_access_modules'] ?? []) as $module)
+                                    <span class="badge bg-primary me-1 mb-1">Total: {{ $module }}</span>
+                                @endforeach
                                 @if(empty($user['permisos_lista']))
                                     <span class="badge bg-secondary">Sin permisos</span>
                                 @else

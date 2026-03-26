@@ -45,14 +45,22 @@
     </footer>
 </div>
 
+@php
+    $skipDefaultVendorScripts = (bool) ($skipDefaultVendorScripts ?? false);
+@endphp
+
 @if ($hasMedforgeViteBuild)
-    <script src="/assets/vendor_components/jquery/jquery.min.js"></script>
-    <script src="/assets/vendor_components/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
-    @vite('resources/js/medforge.js')
+    @if (!$skipDefaultVendorScripts)
+        <script src="/assets/vendor_components/jquery/jquery.min.js"></script>
+        <script src="/assets/vendor_components/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+        @vite('resources/js/medforge.js')
+    @endif
 @else
-    <script src="/js/vendors.min.js"></script>
+    @if (!$skipDefaultVendorScripts)
+        <script src="/js/vendors.min.js"></script>
+        <script src="/js/template.js"></script>
+    @endif
     <script src="/js/pages/global-search.js"></script>
-    <script src="/js/template.js"></script>
 @endif
 
 @stack('scripts')

@@ -73,13 +73,17 @@ class UsuariosUiController
 
         $rows = DB::table('users as u')
             ->leftJoin('roles as r', 'r.id', '=', 'u.role_id')
-            ->select('u.*', 'r.name as role_name')
+            ->select('u.*', 'r.name as role_name', 'r.permissions as role_permissions')
             ->orderBy('u.username')
             ->get();
 
         $users = $rows->map(function (object $row) use ($roleMap): array {
             $user = (array) $row;
             $user['permisos_lista'] = LegacyPermissionCatalog::normalize($user['permisos'] ?? []);
+            $user['permisos_efectivos'] = LegacyPermissionCatalog::merge(
+                $user['permisos'] ?? [],
+                $user['role_permissions'] ?? []
+            );
             $user = $this->hydrateSensitiveFields($user);
             $user['display_full_name'] = $this->buildDisplayFullName($user);
             $user['profile_photo_url'] = $this->normalizeMediaUrl($user['profile_photo'] ?? null);
@@ -87,6 +91,7 @@ class UsuariosUiController
             $user['seal_status'] = $this->normalizeStatus((string) ($user['seal_status'] ?? ''), !empty($user['firma']));
             $user['signature_status'] = $this->normalizeStatus((string) ($user['signature_status'] ?? ''), !empty($user['signature_path']));
             $user['role_label'] = $roleMap[(int) ($user['role_id'] ?? 0)] ?? 'Sin asignar';
+            $user['access_summary'] = $this->buildAccessSummary($user['permisos_efectivos']);
 
             return $user;
         })->all();
@@ -104,6 +109,7 @@ class UsuariosUiController
                 ['administrativo', 'admin.usuarios.manage', 'admin.usuarios']
             ),
             'currentUserId' => LegacySessionAuth::userId($request),
+            'privilegedSummary' => $this->buildPrivilegedUsersSummary($users),
         ]);
     }
 
@@ -404,6 +410,7 @@ class UsuariosUiController
             'mode' => $context['mode'] ?? 'edit',
             'canDelete' => (bool) ($context['canDelete'] ?? false),
             'status' => $context['status'] ?? null,
+            'canAssignSuperuser' => $this->currentUserIsSuperuser($request),
         ]);
     }
 
@@ -443,7 +450,11 @@ class UsuariosUiController
      */
     private function collectInput(Request $request, bool $isCreate, ?array $existing = null): array
     {
-        $permissions = LegacyPermissionCatalog::sanitizeSelection((array) $request->input('permissions', []));
+        $permissions = $this->filterAssignablePermissions(
+            $request,
+            LegacyPermissionCatalog::sanitizeSelection((array) $request->input('permissions', [])),
+            $existing['permisos'] ?? []
+        );
 
         $nationalId = $this->normalizeSensitive((string) $request->input('national_id', ''));
         $passportNumber = $this->normalizeSensitive((string) $request->input('passport_number', ''));
@@ -509,6 +520,116 @@ class UsuariosUiController
         }
 
         return $data;
+    }
+
+    /**
+     * @param array<int, string> $permissions
+     * @return array<string, mixed>
+     */
+    private function buildAccessSummary(array $permissions): array
+    {
+        $moduleManageLabels = [
+            'cirugias.manage' => 'Cirugías',
+            'insumos.manage' => 'Insumos',
+            'crm.manage' => 'CRM',
+            'whatsapp.manage' => 'WhatsApp',
+            'ai.manage' => 'IA',
+            'solicitudes.manage' => 'Solicitudes',
+            'examenes.manage' => 'Exámenes',
+            'protocolos.manage' => 'Protocolos',
+            'billing.manage' => 'Finanzas',
+            'settings.manage' => 'Configuración',
+            'codes.manage' => 'Codificación',
+            'doctores.manage' => 'Doctores',
+            'admin.usuarios.manage' => 'Usuarios',
+            'admin.roles.manage' => 'Roles',
+        ];
+
+        $totalAccess = [];
+        foreach ($moduleManageLabels as $permission => $label) {
+            if (LegacyPermissionCatalog::contains($permissions, $permission)) {
+                $totalAccess[] = $label;
+            }
+        }
+
+        sort($totalAccess);
+
+        return [
+            'is_superuser' => LegacyPermissionCatalog::contains($permissions, LegacyPermissionCatalog::SUPERUSER),
+            'is_administrative' => LegacyPermissionCatalog::contains($permissions, 'administrativo'),
+            'total_access_modules' => $totalAccess,
+            'has_total_access' => $totalAccess !== [],
+        ];
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $users
+     * @return array<string, mixed>
+     */
+    private function buildPrivilegedUsersSummary(array $users): array
+    {
+        $summary = [
+            'superusers' => [],
+            'administrative' => [],
+            'totalAccess' => [],
+        ];
+
+        foreach ($users as $user) {
+            $name = trim((string) ($user['display_full_name'] ?? $user['username'] ?? ''));
+            if ($name === '') {
+                $name = 'Usuario #' . (int) ($user['id'] ?? 0);
+            }
+
+            $access = is_array($user['access_summary'] ?? null) ? $user['access_summary'] : [];
+            if (!empty($access['is_superuser'])) {
+                $summary['superusers'][] = $name;
+            }
+            if (!empty($access['is_administrative'])) {
+                $summary['administrative'][] = $name;
+            }
+            if (!empty($access['has_total_access'])) {
+                $summary['totalAccess'][] = [
+                    'name' => $name,
+                    'modules' => $access['total_access_modules'] ?? [],
+                ];
+            }
+        }
+
+        usort($summary['totalAccess'], static fn (array $left, array $right): int => strcmp((string) $left['name'], (string) $right['name']));
+        sort($summary['superusers']);
+        sort($summary['administrative']);
+
+        return $summary;
+    }
+
+    /**
+     * @param array<int, string> $selected
+     * @return array<int, string>
+     */
+    private function filterAssignablePermissions(Request $request, array $selected, mixed $existingPermissions = []): array
+    {
+        if ($this->currentUserIsSuperuser($request)) {
+            return $selected;
+        }
+
+        $selected = array_values(array_filter(
+            $selected,
+            static fn (string $permission): bool => $permission !== LegacyPermissionCatalog::SUPERUSER
+        ));
+
+        if (LegacyPermissionCatalog::contains($existingPermissions, LegacyPermissionCatalog::SUPERUSER)) {
+            $selected[] = LegacyPermissionCatalog::SUPERUSER;
+        }
+
+        return array_values(array_unique($selected));
+    }
+
+    private function currentUserIsSuperuser(Request $request): bool
+    {
+        return LegacyPermissionCatalog::contains(
+            LegacyPermissionResolver::resolve($request),
+            LegacyPermissionCatalog::SUPERUSER
+        );
     }
 
     /**

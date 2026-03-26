@@ -73,9 +73,45 @@ class MedforgeNavigation
             $permissions,
             ['administrativo', 'examenes.view', 'examenes.manage']
         );
-        $canAccessFinanzas = LegacyPermissionCatalog::containsAny(
+        $canAccessBillingIndex = LegacyPermissionCatalog::containsAny(
             $permissions,
-            ['administrativo', 'reportes.view', 'reportes.export']
+            ['administrativo', 'billing.view', 'billing.manage']
+        );
+        $canAccessBillingNoFacturados = LegacyPermissionCatalog::containsAny(
+            $permissions,
+            ['administrativo', 'billing.no_facturados.view', 'billing.no_facturados.create', 'billing.manage']
+        );
+        $canAccessBillingDashboard = LegacyPermissionCatalog::containsAny(
+            $permissions,
+            ['administrativo', 'billing.dashboard.view', 'billing.manage']
+        );
+        $canAccessBillingHonorarios = LegacyPermissionCatalog::containsAny(
+            $permissions,
+            ['administrativo', 'billing.honorarios.view', 'billing.manage']
+        );
+        $canAccessBillingIess = LegacyPermissionCatalog::containsAny(
+            $permissions,
+            ['administrativo', 'billing.iess.view', 'billing.manage']
+        );
+        $canAccessBillingIsspol = LegacyPermissionCatalog::containsAny(
+            $permissions,
+            ['administrativo', 'billing.isspol.view', 'billing.manage']
+        );
+        $canAccessBillingIssfa = LegacyPermissionCatalog::containsAny(
+            $permissions,
+            ['administrativo', 'billing.issfa.view', 'billing.manage']
+        );
+        $canAccessBillingMsp = LegacyPermissionCatalog::containsAny(
+            $permissions,
+            ['administrativo', 'billing.msp.view', 'billing.manage']
+        );
+        $canAccessBillingParticulares = LegacyPermissionCatalog::containsAny(
+            $permissions,
+            ['administrativo', 'billing.particulares.view', 'billing.manage']
+        );
+        $canAccessFinanceReports = LegacyPermissionCatalog::containsAny(
+            $permissions,
+            ['administrativo', 'reportes.view', 'reportes.export', 'billing.manage']
         );
         $canAccessUsers = LegacyPermissionCatalog::containsAny(
             $permissions,
@@ -312,51 +348,61 @@ class MedforgeNavigation
         ]));
 
         $finance = $group('Finanzas', 'mdi mdi-cash-multiple', array_filter([
-            $label('Facturacion por afiliacion'),
-            $canAccessFinanzas
+            ($canAccessBillingIess || $canAccessBillingIsspol || $canAccessBillingIssfa || $canAccessBillingMsp)
+                ? $label('Facturacion por afiliacion')
+                : null,
+            $canAccessBillingIsspol
                 ? $link('ISSPOL', '/v2/informes/isspol', 'mdi mdi-shield-outline', [
                 'prefix' => ['/v2/informes/isspol'],
             ])
                 : null,
-            $canAccessFinanzas
+            $canAccessBillingIssfa
                 ? $link('ISSFA', '/v2/informes/issfa', 'mdi mdi-star-outline', [
                 'prefix' => ['/v2/informes/issfa'],
             ])
                 : null,
-            $canAccessFinanzas
+            $canAccessBillingIess
                 ? $link('IESS', '/v2/informes/iess', 'mdi mdi-card-account-details-outline', [
                 'prefix' => ['/v2/informes/iess'],
             ])
                 : null,
-            $canAccessFinanzas
+            $canAccessBillingMsp
                 ? $link('MSP', '/v2/informes/msp', 'mdi mdi-hospital-building', [
                 'prefix' => ['/v2/informes/msp'],
             ])
                 : null,
-            $canAccessFinanzas
+            $canAccessBillingNoFacturados
                 ? $link('No facturado', '/v2/billing/no-facturados', 'mdi mdi-alert-circle-outline', [
                 'prefix' => ['/v2/billing/no-facturados'],
             ])
                 : null,
-            $label('Reportes y estadisticas'),
-            $canAccessFinanzas
+            ($canAccessBillingParticulares || $canAccessBillingDashboard || $canAccessBillingHonorarios || $canAccessFinanceReports || $canAccessBillingIndex)
+                ? $label('Reportes y estadisticas')
+                : null,
+            $canAccessBillingParticulares
                 ? $link('Particulares', '/v2/informes/particulares', 'mdi mdi-account-outline', [
                 'prefix' => ['/v2/informes/particulares'],
             ])
                 : null,
-            $canAccessFinanzas
+            $canAccessBillingDashboard
                 ? $link('Dashboard billing', '/v2/billing/dashboard', 'mdi mdi-chart-box-outline', [
                 'prefix' => ['/v2/billing/dashboard'],
             ])
                 : null,
-            $canAccessFinanzas
+            $canAccessBillingHonorarios
                 ? $link('Honorarios', '/v2/billing/honorarios', 'mdi mdi-account-cash-outline', [
                 'prefix' => ['/v2/billing/honorarios'],
             ])
                 : null,
-            $canAccessFinanzas
+            $canAccessFinanceReports
                 ? $link('Flujo de pacientes', '/views/reportes/estadistica_flujo.php', 'mdi mdi-chart-timeline-variant', [
                 'prefix' => ['/views/reportes/estadistica_flujo.php'],
+            ])
+                : null,
+            $canAccessBillingIndex
+                ? $link('Facturas', '/v2/billing', 'mdi mdi-receipt-text-outline', [
+                'prefix' => ['/v2/billing'],
+                'exclude_prefix' => ['/v2/billing/no-facturados', '/v2/billing/dashboard', '/v2/billing/honorarios'],
             ])
                 : null,
         ]));
