@@ -158,54 +158,67 @@ class InformesController extends BaseController
     public function informeParticulares(): void
     {
         $this->requireAuth();
+        $this->requirePermission(['administrativo', 'billing.particulares.view', 'billing.manage']);
         $this->includeLegacyView('informe_particulares.php');
     }
 
     public function informeIessPrueba(): void
     {
         $this->requireAuth();
+        $this->requirePermission(['administrativo', 'billing.iess.view', 'billing.manage']);
         $this->includeLegacyView('informe_iess_prueba.php');
     }
 
     public function generarConsolidadoIess(): void
     {
         $this->requireAuth();
+        $this->requirePermission(['administrativo', 'billing.iess.view', 'billing.manage']);
+        $this->requirePermission(['administrativo', 'billing.export', 'billing.manage']);
         $this->includeLegacyView('generar_consolidado_iess.php');
     }
 
     public function generarConsolidadoIsspol(): void
     {
         $this->requireAuth();
+        $this->requirePermission(['administrativo', 'billing.isspol.view', 'billing.manage']);
+        $this->requirePermission(['administrativo', 'billing.export', 'billing.manage']);
         $this->includeLegacyView('generar_consolidado_isspol.php');
     }
 
     public function generarConsolidadoIssfa(): void
     {
         $this->requireAuth();
+        $this->requirePermission(['administrativo', 'billing.issfa.view', 'billing.manage']);
+        $this->requirePermission(['administrativo', 'billing.export', 'billing.manage']);
         $this->includeLegacyView('generar_consolidado_issfa.php');
     }
 
     public function generarExcelIessLote(): void
     {
         $this->requireAuth();
+        $this->requirePermission(['administrativo', 'billing.iess.view', 'billing.manage']);
+        $this->requirePermission(['administrativo', 'billing.export', 'billing.manage']);
         $this->includeLegacyView('generar_excel_iess_lote.php');
     }
 
     public function ajaxDetalleFactura(): void
     {
         $this->requireAuth();
+        $this->requirePermission(['administrativo', 'billing.view', 'billing.iess.view', 'billing.isspol.view', 'billing.issfa.view', 'billing.msp.view', 'billing.particulares.view', 'billing.manage']);
         $this->includeLegacyView('ajax/ajax_detalle_factura.php');
     }
 
     public function ajaxEliminarFactura(): void
     {
         $this->requireAuth();
+        $this->requirePermission(['administrativo', 'billing.delete', 'billing.manage']);
         $this->includeLegacyView('components/eliminar_factura.php');
     }
 
     public function ajaxScrapearCodigoDerivacion(): void
     {
         $this->requireAuth();
+        $this->requirePermission(['administrativo', 'billing.scrape', 'billing.manage']);
         $this->includeLegacyView('ajax/scrapear_codigo_derivacion.php');
     }
 
@@ -236,6 +249,7 @@ class InformesController extends BaseController
         }
 
         $this->requireAuth();
+        $this->requirePermission(['administrativo', 'billing.' . $grupo . '.view', 'billing.manage']);
 
         $config = $this->grupoConfigs[$grupo];
         $scrapingOutput = null;

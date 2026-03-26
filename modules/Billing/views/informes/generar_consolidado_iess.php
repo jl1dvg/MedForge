@@ -749,7 +749,7 @@ foreach ($consolidado as $mes => $pacientesDelMes) {
                     $sexo,               // G: Sexo
                     $pacienteInfo['fecha_nacimiento'] ?? '', // H: Fecha nacimiento
                     $contexto['edad'] ?? '',  // I: Edad
-                    'PRO/INTERV',              // J: Tipo prestación (FARMACIA/INSUMOS)
+                    $grupo === 'FARMACIA' ? 'FAR' : 'IMM',              // J: Tipo prestación (FARMACIA/INSUMOS)
                     ltrim($codigo, '0'),   // K: Código insumo/fármaco SIN ceros a la izquierda
                     $descripcion,        // L: Descripción insumo/fármaco
                     $cie10,   // M: Diagnóstico principal (CIE10)

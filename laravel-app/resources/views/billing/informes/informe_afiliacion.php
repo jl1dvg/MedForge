@@ -94,17 +94,17 @@ $sedeSeleccionada = $informesHelperClass::normalizarSede($filtros['sede'] ?? '')
     </div>
 </section>
 
-<script src="/public/js/vendors.min.js"></script>
-<script src="/public/js/pages/chat-popup.js"></script>
-<script src="/public/assets/icons/feather-icons/feather.min.js"></script>
-<script src="/public/assets/vendor_components/datatable/datatables.min.js"></script>
-<script src="/public/assets/vendor_components/tiny-editable/mindmup-editabletable.js"></script>
-<script src="/public/assets/vendor_components/tiny-editable/numeric-input-example.js"></script>
+<script src="/js/vendors.min.js"></script>
+<script src="/js/pages/chat-popup.js"></script>
+<script src="/assets/icons/feather-icons/feather.min.js"></script>
+<script src="/assets/vendor_components/datatable/datatables.min.js"></script>
+<script src="/assets/vendor_components/tiny-editable/mindmup-editabletable.js"></script>
+<script src="/assets/vendor_components/tiny-editable/numeric-input-example.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-<script src="/public/js/jquery.smartmenus.js"></script>
-<script src="/public/js/menus.js"></script>
-<script src="/public/js/template.js"></script>
-<script src="/public/js/pages/data-table.js"></script>
+<script src="/js/jquery.smartmenus.js"></script>
+<script src="/js/menus.js"></script>
+<script src="/js/template.js"></script>
+<script src="/js/pages/data-table.js"></script>
 
 <section class="content">
     <div class="row">
@@ -330,9 +330,22 @@ $sedeSeleccionada = $informesHelperClass::normalizarSede($filtros['sede'] ?? '')
                                 $classExcel = $button['class'] ?? 'btn btn-success btn-lg me-2';
                                 $iconExcel = $button['icon'] ?? 'fa fa-file-excel-o';
                                 $detailExcelPath = (string) ($grupoConfig['detailExcelPath'] ?? '');
-                                $excelUrl = $detailExcelPath !== ''
-                                    ? $detailExcelPath . '?form_id=' . urlencode($formIdsParam)
-                                    : '/public/index.php/billing/excel?form_id=' . urlencode($formIdsParam) . '&grupo=' . urlencode($grupoExcel);
+                                $buttonQuery = is_array($button['query'] ?? null) ? $button['query'] : [];
+                                if (!isset($buttonQuery['formato']) && $grupoExcel === 'IESS_SOAM') {
+                                    $buttonQuery['formato'] = 'IESS_SOAM';
+                                } elseif (!isset($buttonQuery['formato']) && $grupoExcel === 'IESS') {
+                                    $buttonQuery['formato'] = 'IESS';
+                                }
+                                if ($detailExcelPath !== '') {
+                                    $queryParams = array_merge(['form_id' => $formIdsParam], $buttonQuery);
+                                    $excelUrl = $detailExcelPath . '?' . http_build_query($queryParams);
+                                } else {
+                                    $legacyParams = array_merge([
+                                        'form_id' => $formIdsParam,
+                                        'grupo' => $grupoExcel,
+                                    ], $buttonQuery);
+                                    $excelUrl = '/public/index.php/billing/excel?' . http_build_query($legacyParams);
+                                }
                                 ?>
                                 <a href="<?= htmlspecialchars($excelUrl) ?>"
                                    class="<?= htmlspecialchars($classExcel) ?>">

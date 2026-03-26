@@ -25,6 +25,10 @@ class BillingService
     private BillingAnestesiaModel $billingAnestesiaModel;
     private ProtocoloModel $protocoloModel;
     private PacienteService $pacienteService;
+    /** @var array<string, bool>|null */
+    private ?array $medicamentoNombreLookup = null;
+    /** @var array<int, string>|null */
+    private ?array $medicamentoNombreList = null;
 
     public function __construct(PDO $pdo)
     {
@@ -267,10 +271,15 @@ class BillingService
             }
 
             $esMedicamento = $insumo['es_medicamento'] ?? null;
+            $categoria = strtolower(trim((string)($insumo['categoria'] ?? '')));
             if ($esMedicamento === null) {
                 $esMedicamento = isset($insumo['iva']) && (int)$insumo['iva'] === 0 ? 1 : 0;
             } else {
                 $esMedicamento = (int)$esMedicamento;
+            }
+
+            if ($esMedicamento !== 1 && $this->looksLikeMedicamento($insumo, $categoria)) {
+                $esMedicamento = 1;
             }
 
             if ($esMedicamento === 1) {
@@ -285,6 +294,99 @@ class BillingService
             'insumos' => $insumosConIVA,
             'medicamentos' => $medicamentosSinIVA,
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $insumo
+     */
+    private function looksLikeMedicamento(array $insumo, string $categoria): bool
+    {
+        if ($categoria !== '' && (
+            str_contains($categoria, 'medic') ||
+            str_contains($categoria, 'farm')
+        )) {
+            return true;
+        }
+
+        $nombre = $this->normalizeInventoryName((string)($insumo['nombre'] ?? ''));
+        if ($nombre === '') {
+            return false;
+        }
+
+        $lookup = $this->medicamentoNombreLookup();
+        if (isset($lookup[$nombre])) {
+            return true;
+        }
+
+        foreach ($this->medicamentoNombreList() as $medicamento) {
+            if (strlen($medicamento) < 4) {
+                continue;
+            }
+            if (
+                str_starts_with($nombre, $medicamento . ' ') ||
+                str_starts_with($nombre, $medicamento . '(') ||
+                str_contains($nombre, $medicamento . ' liquido') ||
+                str_contains($nombre, $medicamento . ' solido')
+            ) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @return array<string, bool>
+     */
+    private function medicamentoNombreLookup(): array
+    {
+        if ($this->medicamentoNombreLookup !== null) {
+            return $this->medicamentoNombreLookup;
+        }
+
+        try {
+            $stmt = $this->db->query('SELECT nombre FROM insumos WHERE es_medicamento = 1');
+            $rows = $stmt ? ($stmt->fetchAll(PDO::FETCH_COLUMN) ?: []) : [];
+        } catch (\Throwable) {
+            $rows = [];
+        }
+
+        $lookup = [];
+        foreach ($rows as $row) {
+            $normalized = $this->normalizeInventoryName((string)$row);
+            if ($normalized !== '') {
+                $lookup[$normalized] = true;
+            }
+        }
+
+        $this->medicamentoNombreLookup = $lookup;
+        return $lookup;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function medicamentoNombreList(): array
+    {
+        if ($this->medicamentoNombreList !== null) {
+            return $this->medicamentoNombreList;
+        }
+
+        $list = array_keys($this->medicamentoNombreLookup());
+        usort($list, static fn(string $a, string $b): int => strlen($b) <=> strlen($a));
+        $this->medicamentoNombreList = $list;
+        return $list;
+    }
+
+    private function normalizeInventoryName(string $value): string
+    {
+        $value = strtolower(trim($value));
+        if ($value === '') {
+            return '';
+        }
+
+        $value = preg_replace('/\s+/', ' ', $value) ?? $value;
+        return preg_replace('/[^a-z0-9 ]+/i', '', $value) ?? $value;
     }
 
     /**

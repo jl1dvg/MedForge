@@ -33,10 +33,62 @@ class BillingInsumosModel
 
     public function obtenerPorBillingId(int $billingId): array
     {
-        $stmt = $this->db->prepare("SELECT bi.id, bi.insumo_id, bi.codigo, bi.nombre, bi.cantidad, bi.precio, bi.iva, i.es_medicamento 
-                                           FROM billing_insumos AS bi
-                                           LEFT JOIN insumos AS i ON bi.insumo_id = i.id 
-                                           WHERE billing_id = ?");
+        $stmt = $this->db->prepare("SELECT bi.id,
+                                           bi.insumo_id,
+                                           bi.codigo,
+                                           bi.nombre,
+                                           bi.cantidad,
+                                           bi.precio,
+                                           bi.iva,
+                                           CASE
+                                               WHEN COALESCE(i.es_medicamento, 0) = 1 THEN 1
+                                               ELSE COALESCE(
+                                                   (
+                                                       SELECT i2.es_medicamento
+                                                       FROM insumos AS i2
+                                                       WHERE i2.codigo_isspol = TRIM(bi.codigo)
+                                                          OR i2.codigo_issfa = TRIM(bi.codigo)
+                                                          OR i2.codigo_iess = TRIM(bi.codigo)
+                                                          OR i2.codigo_msp = TRIM(bi.codigo)
+                                                          OR i2.codigo_isspol = LPAD(TRIM(bi.codigo), 6, '0')
+                                                          OR i2.codigo_issfa = LPAD(TRIM(bi.codigo), 6, '0')
+                                                          OR i2.codigo_iess = LPAD(TRIM(bi.codigo), 6, '0')
+                                                          OR i2.codigo_msp = LPAD(TRIM(bi.codigo), 6, '0')
+                                                          OR i2.codigo_isspol = TRIM(LEADING '0' FROM TRIM(bi.codigo))
+                                                          OR i2.codigo_issfa = TRIM(LEADING '0' FROM TRIM(bi.codigo))
+                                                          OR i2.codigo_iess = TRIM(LEADING '0' FROM TRIM(bi.codigo))
+                                                          OR i2.codigo_msp = TRIM(LEADING '0' FROM TRIM(bi.codigo))
+                                                       ORDER BY COALESCE(i2.es_medicamento, 0) DESC, i2.id ASC
+                                                       LIMIT 1
+                                                   ),
+                                                   i.es_medicamento,
+                                                   0
+                                               )
+                                           END AS es_medicamento,
+                                           COALESCE(
+                                               (
+                                                   SELECT i2.categoria
+                                                   FROM insumos AS i2
+                                                   WHERE i2.codigo_isspol = TRIM(bi.codigo)
+                                                      OR i2.codigo_issfa = TRIM(bi.codigo)
+                                                      OR i2.codigo_iess = TRIM(bi.codigo)
+                                                      OR i2.codigo_msp = TRIM(bi.codigo)
+                                                      OR i2.codigo_isspol = LPAD(TRIM(bi.codigo), 6, '0')
+                                                      OR i2.codigo_issfa = LPAD(TRIM(bi.codigo), 6, '0')
+                                                      OR i2.codigo_iess = LPAD(TRIM(bi.codigo), 6, '0')
+                                                      OR i2.codigo_msp = LPAD(TRIM(bi.codigo), 6, '0')
+                                                      OR i2.codigo_isspol = TRIM(LEADING '0' FROM TRIM(bi.codigo))
+                                                      OR i2.codigo_issfa = TRIM(LEADING '0' FROM TRIM(bi.codigo))
+                                                      OR i2.codigo_iess = TRIM(LEADING '0' FROM TRIM(bi.codigo))
+                                                      OR i2.codigo_msp = TRIM(LEADING '0' FROM TRIM(bi.codigo))
+                                                   ORDER BY COALESCE(i2.es_medicamento, 0) DESC, i2.id ASC
+                                                   LIMIT 1
+                                               ),
+                                               i.categoria
+                                           ) AS categoria
+                                    FROM billing_insumos AS bi
+                                    LEFT JOIN insumos AS i ON bi.insumo_id = i.id 
+                                    WHERE billing_id = ?");
         $stmt->execute([$billingId]);
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }

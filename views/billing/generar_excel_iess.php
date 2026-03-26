@@ -541,7 +541,7 @@ foreach ($datosFacturacionLote as $bloque) {
                 $sexo,               // G: Sexo
                 !empty($pacienteInfo['fecha_nacimiento']) ? date('d/m/Y', strtotime($pacienteInfo['fecha_nacimiento'])) : '', // H: Fecha nacimiento
                 $contexto['edad'] ?? '',  // I: Edad
-                $esCirugia ? 'PRO/INTERV' : 'IMAGEN',              // J: Tipo prestación (FARMACIA/INSUMOS)
+                $grupo === 'FARMACIA' ? 'FAR' : 'IMM',              // J: Tipo prestación (FARMACIA/INSUMOS)
                 ltrim($codigo, '0'),   // K: Código insumo/fármaco SIN ceros a la izquierda
                 $descripcion,        // L: Descripción insumo/fármaco
                 $cie10,   // M: Diagnóstico principal (CIE10)

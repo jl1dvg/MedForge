@@ -223,6 +223,11 @@ class BillingUiController
         return $this->renderInformeAfiliacionV2($request, 'isspol');
     }
 
+    public function informeIessExcel(Request $request): Response|RedirectResponse
+    {
+        return $this->exportInformeAfiliacionIessExcel($request);
+    }
+
     public function informeIssfa(Request $request): JsonResponse|RedirectResponse|View
     {
         return $this->renderInformeAfiliacionV2($request, 'issfa');
@@ -612,6 +617,7 @@ class BillingUiController
                 'slug' => 'iess',
                 'titulo' => 'Informe IESS',
                 'basePath' => '/v2/informes/iess',
+                'detailExcelPath' => '/v2/informes/iess/excel',
                 'tableOptions' => [
                     'pageLength' => 25,
                     'defaultOrder' => 'fecha_ingreso_desc',
@@ -635,12 +641,14 @@ class BillingUiController
                         'label' => 'Descargar Excel',
                         'class' => 'btn btn-success btn-lg me-2',
                         'icon' => 'fa fa-file-excel-o',
+                        'query' => ['formato' => 'IESS'],
                     ],
                     [
                         'grupo' => 'IESS_SOAM',
                         'label' => 'Descargar SOAM',
                         'class' => 'btn btn-outline-success btn-lg me-2',
                         'icon' => 'fa fa-file-excel-o',
+                        'query' => ['formato' => 'IESS_SOAM'],
                     ],
                 ],
                 'scrapeButtonLabel' => '📋 Ver todas las atenciones por cobrar',
@@ -962,6 +970,7 @@ class BillingUiController
             'pageTitle' => $config['titulo'],
             'currentUser' => LegacyCurrentUser::resolve($request),
             'reportHtml' => $reportHtml,
+            'skipDefaultVendorScripts' => true,
         ]);
     }
 
@@ -1081,6 +1090,54 @@ class BillingUiController
 
             return redirect('/v2/informes/' . strtolower($grupo))
                 ->with('error', 'No se pudo generar el excel individual.');
+        }
+
+        return response($export['content'], 200, [
+            'Content-Type' => $export['content_type'] ?? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="' . $export['filename'] . '"',
+            'Cache-Control' => 'max-age=0',
+        ]);
+    }
+
+    private function exportInformeAfiliacionIessExcel(Request $request): Response|RedirectResponse
+    {
+        if (!$this->isLegacyAuthenticated($request)) {
+            if ($request->expectsJson()) {
+                return response()->json(['error' => 'Sesión expirada'], 401);
+            }
+
+            return redirect('/auth/login?auth_required=1');
+        }
+
+        $filters = [
+            'form_id' => (string) $request->query('form_id', ''),
+            'form_ids' => $request->query('form_ids', []),
+        ];
+        $formato = strtoupper((string) $request->query('formato', 'IESS'));
+
+        try {
+            $export = $this->consolidadoExportService->exportIessIndividual($filters, $formato);
+        } catch (\Throwable $exception) {
+            Log::error('No se pudo generar excel individual IESS v2', [
+                'form_id' => $filters['form_id'],
+                'formato' => $formato,
+                'error' => $exception->getMessage(),
+            ]);
+
+            if ($request->expectsJson() || $request->boolean('debug')) {
+                $payload = ['error' => 'No se pudo generar el excel individual de IESS.'];
+                if ($request->boolean('debug')) {
+                    $payload['debug'] = [
+                        'message' => $exception->getMessage(),
+                        'type' => $exception::class,
+                    ];
+                }
+
+                return response()->json($payload, 500);
+            }
+
+            return redirect('/v2/informes/iess')
+                ->with('error', 'No se pudo generar el excel individual de IESS.');
         }
 
         return response($export['content'], 200, [
@@ -1290,6 +1347,7 @@ class BillingUiController
                 'label' => $label !== '' ? $label : 'Descargar Excel',
                 'class' => $class !== '' ? $class : 'btn btn-success btn-lg me-2',
                 'icon' => $icon,
+                'query' => $grupo === 'IESS_SOAM' ? ['formato' => 'IESS_SOAM'] : ['formato' => 'IESS'],
             ];
         }
 

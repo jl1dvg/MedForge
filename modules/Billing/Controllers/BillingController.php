@@ -47,6 +47,7 @@ class BillingController extends BaseController
     public function index(): void
     {
         $this->requireAuth();
+        $this->requirePermission(['administrativo', 'billing.view', 'billing.manage']);
 
         $mes = $_GET['mes'] ?? null;
         $viewModel = $this->service->obtenerListadoFacturas($mes ?: null);
@@ -61,6 +62,7 @@ class BillingController extends BaseController
     public function detalle(): void
     {
         $this->requireAuth();
+        $this->requirePermission(['administrativo', 'billing.view', 'billing.manage']);
 
         $formId = $_GET['form_id'] ?? null;
         if (!$formId) {
@@ -90,6 +92,7 @@ class BillingController extends BaseController
     public function noFacturados(): void
     {
         $this->requireAuth();
+        $this->requirePermission(['administrativo', 'billing.no_facturados.view', 'billing.no_facturados.create', 'billing.manage']);
 
         $clasificados = $this->service->obtenerProcedimientosNoFacturados();
 
@@ -104,6 +107,7 @@ class BillingController extends BaseController
     public function dashboard(): void
     {
         $this->requireAuth();
+        $this->requirePermission(['administrativo', 'billing.dashboard.view', 'billing.manage']);
 
         $this->render('modules/Billing/views/dashboard.php', [
             'pageTitle' => 'Dashboard de Facturación',
@@ -113,6 +117,7 @@ class BillingController extends BaseController
     public function dashboardData(): void
     {
         $this->requireAuth();
+        $this->requirePermission(['administrativo', 'billing.dashboard.view', 'billing.manage']);
 
         $payload = $this->getRequestBody();
         $range = $this->resolveDashboardRange($payload);
@@ -144,6 +149,7 @@ class BillingController extends BaseController
     public function honorarios(): void
     {
         $this->requireAuth();
+        $this->requirePermission(['administrativo', 'billing.honorarios.view', 'billing.manage']);
 
         $this->render('modules/Billing/views/honorarios.php', [
             'pageTitle' => 'Honorarios médicos',
@@ -154,6 +160,7 @@ class BillingController extends BaseController
     public function honorariosData(): void
     {
         $this->requireAuth();
+        $this->requirePermission(['administrativo', 'billing.honorarios.view', 'billing.manage']);
 
         $payload = $this->getRequestBody();
         $range = $this->resolveDashboardRange($payload);
@@ -189,6 +196,7 @@ class BillingController extends BaseController
     public function crearDesdeNoFacturado(): void
     {
         $this->requireAuth();
+        $this->requirePermission(['administrativo', 'billing.no_facturados.create', 'billing.manage']);
 
         if (strtoupper($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
             if (!headers_sent()) {
@@ -301,6 +309,7 @@ class BillingController extends BaseController
     public function apiNoFacturados(): void
     {
         $this->requireAuth();
+        $this->requirePermission(['administrativo', 'billing.no_facturados.view', 'billing.no_facturados.create', 'billing.manage']);
 
         $draw = (int)($_GET['draw'] ?? 0);
         $start = (int)($_GET['start'] ?? 0);
@@ -341,6 +350,7 @@ class BillingController extends BaseController
     public function apiAfiliaciones(): void
     {
         $this->requireAuth();
+        $this->requirePermission(['administrativo', 'billing.no_facturados.view', 'billing.no_facturados.create', 'billing.manage']);
 
         $afiliaciones = $this->noFacturadosService->listarAfiliaciones();
 
@@ -353,6 +363,7 @@ class BillingController extends BaseController
     public function apiSedes(): void
     {
         $this->requireAuth();
+        $this->requirePermission(['administrativo', 'billing.no_facturados.view', 'billing.no_facturados.create', 'billing.manage']);
 
         $sedes = $this->noFacturadosService->listarSedes();
         if (!in_array('MATRIZ', $sedes, true)) {

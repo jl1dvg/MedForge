@@ -17,7 +17,7 @@ $(function () {
     if (!hasCss) {
       $("<link>", {
         rel: "stylesheet",
-        href: "/public/assets/vendor_components/datatable/datatables.min.css",
+        href: "/assets/vendor_components/datatable/datatables.min.css",
       }).appendTo("head");
     }
   };
@@ -36,6 +36,7 @@ $(function () {
     }
 
     var sources = [
+      "/assets/vendor_components/datatable/datatables.min.js",
       "/public/assets/vendor_components/datatable/datatables.min.js",
       "https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js",
     ];

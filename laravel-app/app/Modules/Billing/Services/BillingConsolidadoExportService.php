@@ -13,10 +13,16 @@ use ZipArchive;
 
 class BillingConsolidadoExportService
 {
+    private IessSpreadsheetExportService $iessSpreadsheetExportService;
+
     public function __construct(
         private readonly BillingInformeDataService $billingService,
         private readonly BillingInformePacienteService $pacienteService
     ) {
+        $this->iessSpreadsheetExportService = new IessSpreadsheetExportService(
+            $this->billingService->getPdo(),
+            $this->billingService
+        );
     }
 
     /**
@@ -28,6 +34,10 @@ class BillingConsolidadoExportService
         $grupo = strtolower(trim($grupo));
         if (!in_array($grupo, ['iess', 'isspol', 'issfa', 'msp'], true)) {
             throw new \InvalidArgumentException('Grupo de consolidado no soportado: ' . $grupo);
+        }
+
+        if ($grupo === 'iess') {
+            return $this->exportIessFlat($filters);
         }
 
         $categoria = $this->sanitizeCategoria((string) ($filters['categoria'] ?? ''));
@@ -168,6 +178,51 @@ class BillingConsolidadoExportService
     }
 
     /**
+     * @param array<string, mixed> $filters
+     * @return array{filename:string,content:string,content_type:string}
+     */
+    public function exportIessIndividual(array $filters, string $formato = 'IESS'): array
+    {
+        $formato = strtoupper(trim($formato));
+        $formIds = $this->extractFormIds($filters['form_ids'] ?? []);
+        if ($formIds === []) {
+            $single = trim((string) ($filters['form_id'] ?? ''));
+            if ($single !== '') {
+                $formIds = $this->extractFormIds($single);
+            }
+        }
+
+        if ($formIds === []) {
+            throw new \InvalidArgumentException('Form ID requerido para exportación individual IESS.');
+        }
+
+        $spreadsheet = $formato === 'IESS_SOAM'
+            ? $this->iessSpreadsheetExportService->buildSoamSpreadsheet($formIds)
+            : $this->iessSpreadsheetExportService->buildFlatSpreadsheet($formIds);
+
+        $firstData = $this->billingService->obtenerDatos($formIds[0]);
+        $paciente = is_array($firstData['paciente'] ?? null) ? $firstData['paciente'] : [];
+        $filename = trim(implode('_', array_filter([
+            (string) ($paciente['lname'] ?? ''),
+            (string) ($paciente['lname2'] ?? ''),
+            (string) ($paciente['fname'] ?? ''),
+            (string) ($paciente['mname'] ?? ''),
+        ])));
+        if ($filename === '') {
+            $filename = 'iess_' . implode('_', $formIds);
+        }
+        if ($formato === 'IESS_SOAM') {
+            $filename .= '_soam';
+        }
+
+        return [
+            'filename' => $filename . '.xlsx',
+            'content' => $this->renderSpreadsheet($spreadsheet),
+            'content_type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ];
+    }
+
+    /**
      * @return array{filename:string,content:string,content_type:string}
      */
     public function exportIndividualLegacyAdapter(string $grupo, string $formId): array
@@ -249,45 +304,12 @@ class BillingConsolidadoExportService
      */
     public function exportIessSoam(array $filters, bool $zipSolicitado): array
     {
-        $categoria = $this->sanitizeCategoria((string) ($filters['categoria'] ?? ''));
-        $formIds = $this->extractFormIds($filters['form_ids'] ?? []);
-        unset($filters['categoria'], $filters['form_ids']);
-
-        $facturas = $this->billingService->obtenerFacturasDisponibles();
-        $cacheDerivaciones = [];
-        $pacientesCache = [];
-        $datosCache = [];
-        $sedesCache = [];
-
-        $consolidado = InformesHelper::obtenerConsolidadoFiltrado(
-            $facturas,
-            $filters,
-            $this->billingService,
-            $this->pacienteService,
-            $this->resolveAfiliacionesPermitidas('iess'),
-            $categoria,
-            $cacheDerivaciones,
-            $pacientesCache,
-            $datosCache,
-            $sedesCache
-        );
-        $consolidado = $this->filtrarConsolidadoPorFormIds($consolidado, $formIds);
-
-        $formIdsConsolidado = [];
-        foreach ($consolidado as $pacientesDelMes) {
-            foreach ($pacientesDelMes as $factura) {
-                $formId = trim((string) ($factura['form_id'] ?? ''));
-                if ($formId !== '') {
-                    $formIdsConsolidado[] = $formId;
-                }
-            }
-        }
-        $formIdsConsolidado = array_values(array_unique($formIdsConsolidado));
+        [$categoria, $consolidado, $formIdsConsolidado] = $this->resolveIessConsolidadoContext($filters);
         if ($formIdsConsolidado === []) {
             throw new \RuntimeException('No se encontraron datos para el consolidado SOAM.');
         }
 
-        $spreadsheet = $this->buildIessSoamSpreadsheet($formIdsConsolidado);
+        $spreadsheet = $this->iessSpreadsheetExportService->buildSoamSpreadsheet($formIdsConsolidado);
         $baseFileName = 'consolidado_iess_soam' . ($categoria ? '_' . $categoria : '');
 
         if (!$zipSolicitado) {
@@ -325,50 +347,6 @@ class BillingConsolidadoExportService
         return in_array($categoria, ['procedimientos', 'pni', 'consulta', 'imagenes'], true)
             ? $categoria
             : null;
-    }
-
-    /**
-     * @param array<int, string> $formIds
-     */
-    private function buildIessSoamSpreadsheet(array $formIds): Spreadsheet
-    {
-        $generatorPath = base_path('../modules/Billing/views/informes/generar_excel_iess_soam.php');
-        if (!is_file($generatorPath)) {
-            throw new \RuntimeException('No se encontró el generador SOAM.');
-        }
-
-        $prevGet = $_GET;
-        $prevPdo = $GLOBALS['pdo'] ?? null;
-        $prevErrorReporting = error_reporting();
-        $errorHandler = static function (int $severity, string $message, string $file, int $line): bool {
-            // El generador legacy emite warnings/notices que no deben abortar el export en v2.
-            $softSeverities = [E_WARNING, E_NOTICE, E_USER_WARNING, E_USER_NOTICE, E_DEPRECATED, E_USER_DEPRECATED];
-            if (in_array($severity, $softSeverities, true)) {
-                return true;
-            }
-
-            return false;
-        };
-        try {
-            $_GET['form_id'] = implode(',', $formIds);
-            $GLOBALS['pdo'] = $this->resolvePdo();
-            $GLOBALS['spreadsheet'] = null;
-            error_reporting($prevErrorReporting & ~E_WARNING & ~E_NOTICE & ~E_DEPRECATED);
-            set_error_handler($errorHandler);
-            include $generatorPath;
-            $spreadsheet = $GLOBALS['spreadsheet'] ?? null;
-        } finally {
-            restore_error_handler();
-            error_reporting($prevErrorReporting);
-            $_GET = $prevGet;
-            $GLOBALS['pdo'] = $prevPdo;
-        }
-
-        if (!($spreadsheet instanceof Spreadsheet)) {
-            throw new \RuntimeException('No se pudo generar el consolidado SOAM.');
-        }
-
-        return $spreadsheet;
     }
 
     private function renderSpreadsheet(Spreadsheet $spreadsheet): string
@@ -468,6 +446,69 @@ class BillingConsolidadoExportService
             'content' => $content,
             'content_type' => 'application/zip',
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $filters
+     * @return array{filename:string,content:string,content_type:string}
+     */
+    private function exportIessFlat(array $filters): array
+    {
+        [$categoria, , $formIdsConsolidado] = $this->resolveIessConsolidadoContext($filters);
+        if ($formIdsConsolidado === []) {
+            throw new \RuntimeException('No se encontraron datos para el consolidado IESS.');
+        }
+
+        $spreadsheet = $this->iessSpreadsheetExportService->buildFlatSpreadsheet($formIdsConsolidado);
+
+        return [
+            'filename' => 'consolidado_iess' . ($categoria ? '_' . $categoria : '') . '.xlsx',
+            'content' => $this->renderSpreadsheet($spreadsheet),
+            'content_type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $filters
+     * @return array{0:?string,1:array<string, array<int, array<string, mixed>>>,2:array<int, string>}
+     */
+    private function resolveIessConsolidadoContext(array $filters): array
+    {
+        $categoria = $this->sanitizeCategoria((string) ($filters['categoria'] ?? ''));
+        $formIds = $this->extractFormIds($filters['form_ids'] ?? []);
+        unset($filters['categoria'], $filters['form_ids']);
+
+        $facturas = $this->billingService->obtenerFacturasDisponibles();
+        $cacheDerivaciones = [];
+        $pacientesCache = [];
+        $datosCache = [];
+        $sedesCache = [];
+
+        $consolidado = InformesHelper::obtenerConsolidadoFiltrado(
+            $facturas,
+            $filters,
+            $this->billingService,
+            $this->pacienteService,
+            $this->resolveAfiliacionesPermitidas('iess'),
+            $categoria,
+            $cacheDerivaciones,
+            $pacientesCache,
+            $datosCache,
+            $sedesCache
+        );
+        $consolidado = $this->filtrarConsolidadoPorFormIds($consolidado, $formIds);
+
+        $formIdsConsolidado = [];
+        foreach ($consolidado as $pacientesDelMes) {
+            foreach ($pacientesDelMes as $factura) {
+                $formId = trim((string) ($factura['form_id'] ?? ''));
+                if ($formId !== '') {
+                    $formIdsConsolidado[] = $formId;
+                }
+            }
+        }
+
+        return [$categoria, $consolidado, array_values(array_unique($formIdsConsolidado))];
     }
 
     private function resolvePdo(): PDO
