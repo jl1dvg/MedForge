@@ -151,6 +151,15 @@ class ImagenesReportDataService
             $viewData = $this->buildCobertura012AFallbackViewData($contextFormId, $contextHcNumber);
         }
 
+        $selectedExamDate = $this->resolveSelectedItemsExamDateTime($selectedItems);
+        if ($selectedExamDate !== null) {
+            if (!isset($viewData['consulta']) || !is_array($viewData['consulta'])) {
+                $viewData['consulta'] = [];
+            }
+            $viewData['consulta']['fecha'] = $selectedExamDate['date'];
+            $viewData['consulta']['created_at'] = $selectedExamDate['raw'];
+        }
+
         $dxDerivacion = [];
         if (!empty($viewData['derivacion']['diagnostico'])) {
             $dxDerivacion[] = ['diagnostico' => $viewData['derivacion']['diagnostico']];
@@ -174,9 +183,9 @@ class ImagenesReportDataService
             'diagnostico' => $viewData['diagnostico'] ?? [],
             'dx_derivacion' => $dxDerivacion,
             'solicitud' => [
-                'created_at' => $viewData['examen']['created_at'] ?? null,
-                'created_at_date' => $viewData['examen']['created_at'] ?? null,
-                'created_at_time' => $viewData['examen']['created_at'] ?? null,
+                'created_at' => $selectedExamDate['raw'] ?? ($viewData['examen']['created_at'] ?? null),
+                'created_at_date' => $selectedExamDate['date'] ?? ($viewData['examen']['created_at'] ?? null),
+                'created_at_time' => $selectedExamDate['time'] ?? ($viewData['examen']['created_at'] ?? null),
             ],
             'examenes_relacionados' => $viewData['examenes_relacionados'] ?? [],
             'imagenes_solicitadas' => $viewData['imagenes_solicitadas'] ?? [],
@@ -533,6 +542,51 @@ class ImagenesReportDataService
         }
 
         return $best;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $selectedItems
+     * @return array{raw:string,date:string,time:string}|null
+     */
+    private function resolveSelectedItemsExamDateTime(array $selectedItems): ?array
+    {
+        $candidates = [];
+
+        foreach ($selectedItems as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $raw = trim((string) ($item['fecha_examen'] ?? ($item['fecha'] ?? '')));
+            if ($raw === '') {
+                continue;
+            }
+
+            $timestamp = strtotime($raw);
+            if ($timestamp === false) {
+                continue;
+            }
+
+            $candidates[] = [
+                'raw' => date('Y-m-d H:i:s', $timestamp),
+                'date' => date('Y-m-d', $timestamp),
+                'time' => date('H:i', $timestamp),
+                'ts' => $timestamp,
+            ];
+        }
+
+        if ($candidates === []) {
+            return null;
+        }
+
+        usort($candidates, static fn (array $a, array $b): int => ($a['ts'] <=> $b['ts']));
+        $selected = $candidates[0];
+
+        return [
+            'raw' => (string) $selected['raw'],
+            'date' => (string) $selected['date'],
+            'time' => (string) $selected['time'],
+        ];
     }
 
     /**

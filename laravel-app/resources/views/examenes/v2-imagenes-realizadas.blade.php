@@ -1652,45 +1652,74 @@
                     });
                 });
 
-                if (btnGuardarInforme) {
-                    btnGuardarInforme.addEventListener('click', function () {
-                        if (!informeContext || !templateContainer) {
+                function guardarInformeActual() {
+                    if (!informeContext || !templateContainer || (btnGuardarInforme && btnGuardarInforme.disabled)) {
+                        return;
+                    }
+                    const payload = normalizarPayload(collectPayload(templateContainer), informeContext.plantilla);
+                    setEstado('Guardando informe...');
+                    if (btnGuardarInforme) {
+                        btnGuardarInforme.disabled = true;
+                    }
+                    postJson('/v2/imagenes/informes/guardar', {
+                        form_id: informeContext.formId,
+                        hc_number: informeContext.hcNumber,
+                        tipo_examen: informeContext.tipoRaw,
+                        plantilla: informeContext.plantilla,
+                        payload: payload,
+                        firmante_id: payload.firmante_id || ''
+                    }).then(function (res) {
+                        if (!res || !res.success) {
+                            setEstado('No se pudo guardar el informe.');
                             return;
                         }
-                        const payload = normalizarPayload(collectPayload(templateContainer), informeContext.plantilla);
-                        setEstado('Guardando informe...');
-                        postJson('/v2/imagenes/informes/guardar', {
-                            form_id: informeContext.formId,
-                            hc_number: informeContext.hcNumber,
-                            tipo_examen: informeContext.tipoRaw,
-                            plantilla: informeContext.plantilla,
-                            payload: payload,
-                            firmante_id: payload.firmante_id || ''
-                        }).then(function (res) {
-                            if (!res || !res.success) {
-                                setEstado('No se pudo guardar el informe.');
-                                return;
+                        setEstado('Informe guardado.');
+                        if (informeContext && informeContext.row) {
+                            const row = informeContext.row;
+                            row.dataset.informado = '1';
+                            const checkbox = row.querySelector('.row-select');
+                            if (checkbox) {
+                                checkbox.disabled = false;
                             }
-                            setEstado('Informe guardado.');
-                            if (informeContext && informeContext.row) {
-                                const row = informeContext.row;
-                                row.dataset.informado = '1';
-                                const checkbox = row.querySelector('.row-select');
-                                if (checkbox) {
-                                    checkbox.disabled = false;
-                                }
-                                const printBtn = row.querySelector('.btn-print-item');
-                                if (printBtn) {
-                                    printBtn.disabled = false;
-                                }
-                                applyTabFilter(activeTab);
+                            const printBtn = row.querySelector('.btn-print-item');
+                            if (printBtn) {
+                                printBtn.disabled = false;
                             }
-                            if (modalInstance) {
-                                modalInstance.hide();
-                            }
-                        }).catch(function () {
-                            setEstado('Error de red al guardar.');
-                        });
+                            applyTabFilter(activeTab);
+                        }
+                        if (modalInstance) {
+                            modalInstance.hide();
+                        }
+                    }).catch(function () {
+                        setEstado('Error de red al guardar.');
+                    }).finally(function () {
+                        if (btnGuardarInforme && modalEl && modalEl.classList.contains('show')) {
+                            btnGuardarInforme.disabled = false;
+                        }
+                    });
+                }
+
+                if (btnGuardarInforme) {
+                    btnGuardarInforme.addEventListener('click', function () {
+                        guardarInformeActual();
+                    });
+                }
+
+                if (templateContainer) {
+                    templateContainer.addEventListener('keydown', function (event) {
+                        if (event.key !== 'Enter' || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) {
+                            return;
+                        }
+                        const target = event.target;
+                        if (!(target instanceof HTMLElement)) {
+                            return;
+                        }
+                        const tag = target.tagName.toLowerCase();
+                        if (tag === 'textarea' || target.isContentEditable) {
+                            return;
+                        }
+                        event.preventDefault();
+                        guardarInformeActual();
                     });
                 }
 

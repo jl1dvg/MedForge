@@ -8,6 +8,7 @@ use App\Modules\Examenes\Services\SigcenterImagenesService;
 use App\Modules\Reporting\Services\Definitions\PdfTemplateRegistry;
 use App\Modules\Reporting\Services\Definitions\SolicitudTemplateRegistry;
 use App\Modules\Reporting\Support\SolicitudDataFormatter;
+use Illuminate\Support\Facades\Log;
 use Mpdf\HTMLParserMode;
 use Mpdf\Mpdf;
 use RuntimeException;
@@ -293,8 +294,13 @@ class ReportPdfService
                 if (is_array($cobertura012A) && isset($cobertura012A['content'])) {
                     $tmp012A = $this->writeTempFile((string) $cobertura012A['content'], 'pdf');
                     $tempFiles[] = $tmp012A;
-                    $this->appendPdfFile($pdf, $tmp012A);
-                    $hasPages = true;
+                    if ($this->safeAppendPdfFile($pdf, $tmp012A, [
+                        'source' => '012A',
+                        'hc_number' => $hcBase,
+                        'fecha_examen' => (string) ($groupedItems[0]['fecha_examen'] ?? ''),
+                    ])) {
+                        $hasPages = true;
+                    }
                 }
 
                 foreach ($groupedItems as $item) {
@@ -308,8 +314,14 @@ class ReportPdfService
                     if (is_array($informe012B) && isset($informe012B['content'])) {
                         $tmp012B = $this->writeTempFile((string) $informe012B['content'], 'pdf');
                         $tempFiles[] = $tmp012B;
-                        $this->appendPdfFile($pdf, $tmp012B);
-                        $hasPages = true;
+                        if ($this->safeAppendPdfFile($pdf, $tmp012B, [
+                            'source' => '012B',
+                            'form_id' => $formId,
+                            'hc_number' => $hcNumber,
+                            'fecha_examen' => (string) ($item['fecha_examen'] ?? ''),
+                        ])) {
+                            $hasPages = true;
+                        }
                     }
 
                     $files = $this->getSigcenterPackageFiles($formId, $hcNumber);
@@ -341,8 +353,15 @@ class ReportPdfService
                         $tempFiles[] = $tmpPath;
 
                         if ($ext === 'pdf') {
-                            $this->appendPdfFile($pdf, $tmpPath);
-                            $hasPages = true;
+                            if ($this->safeAppendPdfFile($pdf, $tmpPath, [
+                                'source' => 'sigcenter_file',
+                                'form_id' => $formId,
+                                'hc_number' => $hcNumber,
+                                'relative_path' => $relativePath,
+                                'fecha_examen' => (string) ($item['fecha_examen'] ?? ''),
+                            ])) {
+                                $hasPages = true;
+                            }
                             continue;
                         }
 
@@ -941,18 +960,16 @@ class ReportPdfService
      */
     private function prepareSigcenterFileForPackage(string $relativePath): ?array
     {
-        $opened = $this->sigcenterImagenesService()->openRelativeFile($relativePath);
-        if (!is_array($opened) || empty($opened['stream'])) {
-            return null;
-        }
-
-        $ext = strtolower((string) ($opened['ext'] ?? pathinfo($relativePath, PATHINFO_EXTENSION)));
+        $ext = strtolower((string) pathinfo($relativePath, PATHINFO_EXTENSION));
         if ($ext === '') {
             $ext = 'bin';
         }
 
-        $tmpPath = $this->writeTempStream($opened['stream'], $ext);
-        fclose($opened['stream']);
+        $tmpPath = $this->createTempPath($ext);
+        if (!$this->sigcenterImagenesService()->downloadRelativeFileToPath($relativePath, $tmpPath)) {
+            @unlink($tmpPath);
+            return null;
+        }
 
         return [
             'path' => $tmpPath,
@@ -960,7 +977,7 @@ class ReportPdfService
         ];
     }
 
-    private function writeTempFile(string $content, string $ext): string
+    private function createTempPath(string $ext): string
     {
         $base = tempnam(sys_get_temp_dir(), 'imgpdf_');
         if ($base === false) {
@@ -974,6 +991,13 @@ class ReportPdfService
 
         $path = $base . '.' . $ext;
         @rename($base, $path);
+
+        return $path;
+    }
+
+    private function writeTempFile(string $content, string $ext): string
+    {
+        $path = $this->createTempPath($ext);
         file_put_contents($path, $content);
 
         return $path;
@@ -1016,6 +1040,34 @@ class ReportPdfService
             $size = $pdf->getTemplateSize($tplId);
             $pdf->AddPage($size['orientation'], [$size['width'], $size['height']]);
             $pdf->useTemplate($tplId);
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     */
+    private function safeAppendPdfFile(Fpdi $pdf, string $path, array $context = []): bool
+    {
+        if (!$this->isPdfFile($path)) {
+            Log::warning('reporting.pdf.skip_invalid_pdf', $context + [
+                'path' => $path,
+                'reason' => 'missing_pdf_header',
+            ]);
+
+            return false;
+        }
+
+        try {
+            $this->appendPdfFile($pdf, $path);
+            return true;
+        } catch (\Throwable $e) {
+            Log::warning('reporting.pdf.skip_invalid_pdf', $context + [
+                'path' => $path,
+                'reason' => 'append_failed',
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
         }
     }
 
@@ -1125,6 +1177,23 @@ class ReportPdfService
         if (!str_starts_with($content, '%PDF-')) {
             throw new RuntimeException('No se generó un PDF válido para ' . $context . '.');
         }
+    }
+
+    private function isPdfFile(string $path): bool
+    {
+        if ($path === '' || !is_file($path)) {
+            return false;
+        }
+
+        $handle = @fopen($path, 'rb');
+        if ($handle === false) {
+            return false;
+        }
+
+        $header = fread($handle, 5);
+        fclose($handle);
+
+        return $header === '%PDF-';
     }
 
     private function normalizeIdentifier(string $identifier): string

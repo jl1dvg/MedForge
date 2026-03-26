@@ -716,6 +716,10 @@ class ExamenesParityController
         $hcNumber = trim((string) ($payload['hc_number'] ?? ''));
         $tipoExamen = trim((string) ($payload['tipo_examen'] ?? ''));
         $plantilla = trim((string) ($payload['plantilla'] ?? ''));
+        $empresaId = trim((string) ($payload['empresa_id'] ?? ''));
+        if ($empresaId === '') {
+            $empresaId = trim((string) (env('SIGCENTER_OCR_EMPRESA_ID', '113') ?? '113'));
+        }
 
         if ($formId === '' || $hcNumber === '') {
             return response()->json(['success' => false, 'error' => 'Faltan datos del examen para autollenar.'], 422);
@@ -754,27 +758,11 @@ class ExamenesParityController
             if (!in_array($ext, ['png', 'jpg', 'jpeg', 'webp'], true)) {
                 continue;
             }
-            $localPath = $this->resolvePreferredFileLocalPathForAnalysis($resolvedHcNumber, $resolvedFormId, $name);
-            if ($localPath === null) {
-                $candidateDebug[] = [
-                    'name' => $name,
-                    'path' => null,
-                    'exists' => false,
-                    'size' => null,
-                    'status' => 'missing_local_path',
-                ];
-                continue;
-            }
-            $exists = is_file($localPath);
-            $size = $exists ? (int) (filesize($localPath) ?: 0) : null;
             $candidateDebug[] = [
                 'name' => $name,
-                'path' => $localPath,
-                'exists' => $exists,
-                'size' => $size,
-                'status' => $exists ? 'ready' : 'path_not_found',
+                'status' => 'queued_remote_ocr',
             ];
-            $candidateFiles[] = ['name' => $name, 'path' => $localPath];
+            $candidateFiles[] = ['name' => $name];
         }
 
         if ($candidateFiles === []) {
@@ -788,9 +776,17 @@ class ExamenesParityController
         }
 
         try {
-            $result = $this->runMicroespecularPythonAutofill($candidateFiles);
+            $ocrPayload = [
+                'exam_type' => 'microespecular',
+                'form_id' => $resolvedFormId,
+                'hc_number' => $resolvedHcNumber,
+                'files' => $candidateFiles,
+            ];
+            $ocrPayload['empresa_id'] = $empresaId;
+
+            $result = $this->sigcenterImagenesService->requestMicroespecularOcr($ocrPayload);
             if (!empty($result['error'])) {
-                JsonLogger::log('microespecular-autofill', 'Autofill con error Python', null, [
+                JsonLogger::log('microespecular-autofill', 'Autofill con error OCR remoto', null, [
                     'form_id' => $resolvedFormId,
                     'hc_number' => $resolvedHcNumber,
                     'tipo_examen' => $tipoExamen,
@@ -2351,83 +2347,6 @@ class ExamenesParityController
         ]);
         $value = preg_replace('/\s+/', ' ', $value) ?? $value;
         return trim($value);
-    }
-
-    private function resolvePreferredFileLocalPathForAnalysis(string $hcNumber, string $formId, string $filename): ?string
-    {
-        $cachePath = $this->resolveNasFileCachePath($hcNumber, $formId, $filename);
-        if ($cachePath !== null && is_file($cachePath) && (int) (filesize($cachePath) ?: 0) > 0) {
-            return $cachePath;
-        }
-
-        if ($this->warmPreferredFileCache($hcNumber, $formId, $filename) && $cachePath !== null && is_file($cachePath)) {
-            return $cachePath;
-        }
-
-        return null;
-    }
-
-    /**
-     * @param array<int, array{name: string, path: string}> $candidateFiles
-     * @return array<string, mixed>
-     */
-    private function runMicroespecularPythonAutofill(array $candidateFiles): array
-    {
-        $script = $this->workspaceRootPath('tools/biometrics/microespecular_autofill.py');
-        if (!is_file($script)) {
-            throw new \RuntimeException('No se encontró el script Python para autollenado.');
-        }
-
-        $python = $this->workspaceRootPath('venv/bin/python');
-        if (!is_file($python)) {
-            $python = 'python3';
-        }
-        $process = proc_open(
-            escapeshellarg($python) . ' ' . escapeshellarg($script),
-            [
-                0 => ['pipe', 'r'],
-                1 => ['pipe', 'w'],
-                2 => ['pipe', 'w'],
-            ],
-            $pipes,
-            $this->workspaceRootPath()
-        );
-
-        if (!is_resource($process)) {
-            throw new \RuntimeException('No se pudo iniciar el proceso Python para autollenado.');
-        }
-
-        $closed = false;
-        try {
-            $request = json_encode(['files' => array_values($candidateFiles)], JSON_UNESCAPED_UNICODE);
-            $bytesWritten = fwrite($pipes[0], $request !== false ? $request : '{}');
-            if ($bytesWritten === false) {
-                throw new \RuntimeException('No se pudo enviar la solicitud al proceso Python de autollenado.');
-            }
-            fclose($pipes[0]);
-
-            $stdout = stream_get_contents($pipes[1]);
-            fclose($pipes[1]);
-            $stderr = stream_get_contents($pipes[2]);
-            fclose($pipes[2]);
-
-            $exitCode = proc_close($process);
-            $closed = true;
-            if ($exitCode !== 0) {
-                throw new \RuntimeException('El proceso Python falló: ' . trim((string) $stderr));
-            }
-
-            $decoded = json_decode((string) $stdout, true);
-            if (!is_array($decoded)) {
-                throw new \RuntimeException('La respuesta del autollenado Python no fue válida.');
-            }
-
-            return $decoded;
-        } finally {
-            if (!$closed && is_resource($process)) {
-                proc_close($process);
-            }
-        }
     }
 
     private function autoFacturarInformeImagen(string $formId, ?string $hcNumber, ?int $userId): void

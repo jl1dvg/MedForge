@@ -18,6 +18,9 @@ class SigcenterImagenesService
     private ?string $filesUser;
     private ?string $filesPass;
     private ?string $filesBasePath;
+    private ?string $ocrUrl;
+    private ?string $ocrToken;
+    private int $ocrTimeout;
     private ?string $lastError = null;
     private ?\phpseclib3\Net\SFTP $sftp = null;
     private ?\phpseclib3\Net\SSH2 $ssh = null;
@@ -36,6 +39,9 @@ class SigcenterImagenesService
         $this->filesUser = $this->readEnv('SIGCENTER_FILES_SSH_USER');
         $this->filesPass = $this->readEnv('SIGCENTER_FILES_SSH_PASS');
         $this->filesBasePath = $this->readEnv('SIGCENTER_FILES_BASE_PATH') ?: '/img';
+        $this->ocrUrl = $this->readEnv('SIGCENTER_OCR_REMOTE_URL') ?: 'http://127.0.0.1:8091/ocr/microespecular';
+        $this->ocrToken = $this->readEnv('SIGCENTER_OCR_TOKEN');
+        $this->ocrTimeout = (int) ($this->readEnv('SIGCENTER_OCR_TIMEOUT') ?: 30);
     }
 
     public function getLastError(): ?string
@@ -73,6 +79,128 @@ class SigcenterImagenesService
             && $this->dbDatabase !== null
             && $this->dbUsername !== null
             && class_exists('\\phpseclib3\\Net\\SSH2');
+    }
+
+    /**
+     * @param array<string,mixed> $payload
+     * @return array<string,mixed>
+     */
+    public function requestMicroespecularOcr(array $payload): array
+    {
+        $this->lastError = null;
+
+        if (!$this->canQueryViaSsh()) {
+            $this->lastError = 'Consulta por SSH a Sigcenter no configurada.';
+            return [
+                'success' => false,
+                'payload' => [],
+                'warnings' => [],
+                'files_used' => [],
+                'error' => $this->lastError,
+            ];
+        }
+
+        if ($this->ocrUrl === null || $this->ocrUrl === '') {
+            $this->lastError = 'URL OCR de Sigcenter no configurada.';
+            return [
+                'success' => false,
+                'payload' => [],
+                'warnings' => [],
+                'files_used' => [],
+                'error' => $this->lastError,
+            ];
+        }
+
+        if ($this->ocrToken === null || $this->ocrToken === '') {
+            $this->lastError = 'Token OCR de Sigcenter no configurado.';
+            return [
+                'success' => false,
+                'payload' => [],
+                'warnings' => [],
+                'files_used' => [],
+                'error' => $this->lastError,
+            ];
+        }
+
+        $ssh = $this->ssh();
+        if ($ssh === null) {
+            return [
+                'success' => false,
+                'payload' => [],
+                'warnings' => [],
+                'files_used' => [],
+                'error' => $this->lastError ?? 'No se pudo abrir SSH hacia Sigcenter.',
+            ];
+        }
+
+        $jsonPayload = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if ($jsonPayload === false) {
+            $this->lastError = 'No se pudo serializar la solicitud OCR.';
+            return [
+                'success' => false,
+                'payload' => [],
+                'warnings' => [],
+                'files_used' => [],
+                'error' => $this->lastError,
+            ];
+        }
+
+        $command = sprintf(
+            "curl -sS -o - -w '\n__HTTP_CODE__:%s' --max-time %d -X POST %s -H %s -H %s --data-binary %s 2>&1",
+            '%{http_code}',
+            max(5, $this->ocrTimeout),
+            escapeshellarg($this->ocrUrl),
+            escapeshellarg('Authorization: Bearer ' . $this->ocrToken),
+            escapeshellarg('Content-Type: application/json'),
+            escapeshellarg($jsonPayload)
+        );
+
+        $output = (string) $ssh->exec($command);
+        $exitStatus = $ssh->getExitStatus();
+        $marker = '__HTTP_CODE__:';
+        $markerPos = strrpos($output, $marker);
+        if ($markerPos === false) {
+            $this->lastError = 'Respuesta OCR inválida desde Sigcenter: ' . trim($output);
+            return [
+                'success' => false,
+                'payload' => [],
+                'warnings' => [],
+                'files_used' => [],
+                'error' => $this->lastError,
+            ];
+        }
+
+        $body = substr($output, 0, $markerPos);
+        $httpCode = (int) trim(substr($output, $markerPos + strlen($marker)));
+        if ($exitStatus !== 0 || $httpCode < 200 || $httpCode >= 300) {
+            $message = trim($body);
+            $this->lastError = 'OCR remoto de Sigcenter falló'
+                . ($httpCode > 0 ? ' (HTTP ' . $httpCode . ')' : '')
+                . ($message !== '' ? ': ' . $message : '.');
+
+            return [
+                'success' => false,
+                'payload' => [],
+                'warnings' => [],
+                'files_used' => [],
+                'error' => $this->lastError,
+            ];
+        }
+
+        $decoded = json_decode(trim($body), true);
+        if (!is_array($decoded)) {
+            $this->lastError = 'La respuesta OCR de Sigcenter no fue JSON válido.';
+            return [
+                'success' => false,
+                'payload' => [],
+                'warnings' => [],
+                'files_used' => [],
+                'error' => $this->lastError,
+            ];
+        }
+
+        $this->lastError = null;
+        return $decoded;
     }
 
     /**
