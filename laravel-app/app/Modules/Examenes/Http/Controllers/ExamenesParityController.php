@@ -637,6 +637,7 @@ class ExamenesParityController
             return response('Plantilla no disponible', 404);
         }
 
+        $checkboxes = $this->obtenerChecklistInforme($plantilla);
         $usuariosFirmantes = $this->listarUsuariosFirmantes();
         $firmanteDefaultId = LegacySessionAuth::userId($request);
 
@@ -645,6 +646,36 @@ class ExamenesParityController
         $html = (string) ob_get_clean();
 
         return response($html, 200)->header('Content-Type', 'text/html; charset=utf-8');
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function obtenerChecklistInforme(string $plantilla): array
+    {
+        $plantilla = trim($plantilla);
+        if ($plantilla === '') {
+            return [];
+        }
+
+        $file = $this->workspaceRootPath('modules/examenes/resources/informes/' . $plantilla . '.json');
+        if (!is_file($file)) {
+            return [];
+        }
+
+        $json = @file_get_contents($file);
+        if ($json === false) {
+            return [];
+        }
+
+        $decoded = json_decode($json, true);
+        if (!is_array($decoded)) {
+            return [];
+        }
+
+        return array_values(array_filter($decoded, static function ($item): bool {
+            return is_array($item);
+        }));
     }
 
     public function informeGuardar(Request $request): Response
@@ -2324,8 +2355,32 @@ class ExamenesParityController
         if (str_contains($texto, 'eco') || str_contains($texto, 'ecografia')) {
             return 'eco';
         }
+        if (
+            str_contains($texto, 'oct') && (
+                str_contains($texto, 'macular')
+                || str_contains($texto, 'macula')
+                || str_contains($texto, 'fovea')
+                || str_contains($texto, 'retina')
+            )
+        ) {
+            return 'octm';
+        }
+        if (
+            str_contains($texto, 'oct') && (
+                str_contains($texto, 'nervio')
+                || str_contains($texto, 'papila')
+                || str_contains($texto, 'cfnr')
+                || str_contains($texto, 'fibras nerviosas')
+                || str_contains($texto, 'rnfl')
+            )
+        ) {
+            return 'octno';
+        }
         if (str_contains($texto, 'oct')) {
             return 'octm';
+        }
+        if (str_contains($texto, 'retino') || str_contains($texto, 'retin')) {
+            return 'retino';
         }
         return null;
     }

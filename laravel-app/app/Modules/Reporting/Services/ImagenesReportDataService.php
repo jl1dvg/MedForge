@@ -1602,6 +1602,13 @@ class ImagenesReportDataService
             return trim(implode("\n", $lines));
         }
 
+        if ($plantilla === 'cv') {
+            $od = $this->buildCvEyeBlock('OD', $payload);
+            $oi = $this->buildCvEyeBlock('OI', $payload);
+
+            return trim(implode("\n\n", array_values(array_filter([$od, $oi], static fn(string $value): bool => $value !== ''))));
+        }
+
         if ($plantilla === 'paquimetria') {
             $od = trim((string) ($payload['inputOD'] ?? ''));
             $oi = trim((string) ($payload['inputOI'] ?? ''));
@@ -1653,6 +1660,51 @@ class ImagenesReportDataService
         }
 
         return trim(implode("\n", $lines));
+    }
+
+    private function buildCvEyeBlock(string $eye, array $payload): string
+    {
+        $suffix = strtoupper($eye) === 'OI' ? 'OI' : 'OD';
+        $label = $suffix === 'OD' ? 'OJO: DERECHO' : 'OJO: IZQUIERDO';
+        $text = trim((string) ($payload['input' . $suffix] ?? ''));
+        $dln = $this->payloadFlagEnabled($payload['checkbox' . $suffix . '_dln'] ?? null);
+        $amaurosis = $this->payloadFlagEnabled($payload['checkbox' . $suffix . '_amaurosis'] ?? null);
+
+        if (!$dln && !$amaurosis && $text === '') {
+            return '';
+        }
+
+        $lines = [
+            $label,
+            'SE REALIZA CAMPO VISUAL OCTOPUS 600 IMPRESIÓN HFA.',
+            'ESTRATEGIA: 24.2 DINÁMICO',
+            'CONFIABILIDAD: BUENA',
+        ];
+
+        if ($amaurosis) {
+            $lines[] = 'SENSIBILIDAD FOVEAL: NULA';
+            if ($text !== '') {
+                $lines[] = 'LECTURA: ' . $text;
+            }
+            $lines[] = 'CONCLUSIONES: CAMPO VISUAL AMAUROTICO';
+            return implode("\n", $lines);
+        }
+
+        $lines[] = 'SENSIBILIDAD FOVEAL: ACTIVA';
+
+        if ($dln) {
+            $lines[] = 'CONCLUSIONES: CAMPO VISUAL DENTRO DE LIMITES NORMALES';
+            $lines[] = '';
+            $lines[] = 'SE RECOMIENDA CORRELACIONAR CON CLÍNICA.';
+            return implode("\n", $lines);
+        }
+
+        if ($text !== '') {
+            $lines[] = 'LECTURA: ' . $text;
+        }
+        $lines[] = 'CONCLUSIONES: CAMPO VISUAL FUERA DE LIMITES NORMALES';
+
+        return implode("\n", $lines);
     }
 
     /**

@@ -296,6 +296,7 @@
                             data-afiliacion="<?= htmlspecialchars((string)($row['afiliacion'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                             data-paciente="<?= htmlspecialchars((string)($row['full_name'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                             data-examen="<?= htmlspecialchars($tipoExamen, ENT_QUOTES, 'UTF-8') ?>"
+                            data-ojo="<?= htmlspecialchars($ojoExamen, ENT_QUOTES, 'UTF-8') ?>"
                             data-tipo-raw="<?= htmlspecialchars($tipoExamenRaw, ENT_QUOTES, 'UTF-8') ?>"
                             data-nas-status="<?= htmlspecialchars($nasStatus, ENT_QUOTES, 'UTF-8') ?>"
                             data-pendiente-informar="<?= (!$informado && $nasHasFiles) ? '1' : '0' ?>"
@@ -391,6 +392,12 @@
                 border: 1px solid #dee2e6;
                 border-radius: 0.5rem;
                 overflow: hidden;
+            }
+
+            .nas-slider-stage:focus {
+                outline: 0;
+                box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.2);
+                border-color: #0d6efd;
             }
 
             .nas-slider-preview-wrap {
@@ -517,7 +524,10 @@
                                     </button>
                                 </div>
                                 <div id="informeImagenesContainer"
-                                     class="nas-slider-stage flex-grow-1 d-flex align-items-center justify-content-center"></div>
+                                     class="nas-slider-stage flex-grow-1 d-flex align-items-center justify-content-center"
+                                     tabindex="0"
+                                     role="region"
+                                     aria-label="Visor de archivos del examen"></div>
                                 <div class="d-flex justify-content-end mt-2">
                                     <a href="#" target="_blank" rel="noopener"
                                        class="btn btn-sm btn-outline-primary disabled" id="btnNasOpenCurrent">
@@ -531,6 +541,7 @@
                 </div>
                 <div class="modal-footer">
                     <span class="text-muted small me-auto" id="informeEstado"></span>
+                    <button type="button" class="btn btn-outline-dark" id="btnAutoInforme" aria-pressed="false">Auto: OFF</button>
                     <button type="button" class="btn btn-outline-primary d-none" id="btnAutollenarMicroespecular">Autollenar desde imagen</button>
                     <button type="button" class="btn btn-primary" id="btnGuardarInforme">Guardar informe</button>
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cerrar</button>
@@ -603,6 +614,7 @@
                 let nasWarmRequestInFlight = false;
                 const NAS_WARM_CASES_PER_PASS = 4;
                 const NAS_STATUS_CASES_PER_PASS = 6;
+                const SEQUENTIAL_WARM_NEXT_ROWS = 5;
 
                 function rowIsInformado(row) {
                     return (row && row.dataset && row.dataset.informado === '1');
@@ -635,6 +647,21 @@
                     if (dataTable) {
                         return dataTable
                             .rows({page: 'current', search: 'applied'})
+                            .nodes()
+                            .toArray()
+                            .filter(function (row) {
+                                return !!(row && row.dataset && row.dataset.id);
+                            });
+                    }
+                    return getDataRows().filter(function (row) {
+                        return row.style.display !== 'none';
+                    });
+                }
+
+                function getOrderedFilteredRows() {
+                    if (dataTable) {
+                        return dataTable
+                            .rows({search: 'applied', order: 'current'})
                             .nodes()
                             .toArray()
                             .filter(function (row) {
@@ -754,8 +781,10 @@
                 }
 
                 const modalEl = document.getElementById('modalInformeImagen');
+                const modalTitleEl = document.getElementById('modalInformeImagenLabel');
                 const templateContainer = document.getElementById('informeTemplateContainer');
                 const btnGuardarInforme = document.getElementById('btnGuardarInforme');
+                const btnAutoInforme = document.getElementById('btnAutoInforme');
                 const btnAutollenarMicroespecular = document.getElementById('btnAutollenarMicroespecular');
                 const estadoInforme = document.getElementById('informeEstado');
                 const imagenesContainer = document.getElementById('informeImagenesContainer');
@@ -773,6 +802,9 @@
                 let nasLoadToken = 0;
                 const nasPreviewNodes = new Map();
                 const templateHtmlCache = new Map();
+                let pendingInformeFocusLateralidad = '';
+                let autoInformeEnabled = false;
+                let pendingAutoAdvanceRow = null;
 
                 function setEstado(texto) {
                     if (estadoInforme) {
@@ -789,6 +821,49 @@
                 function setInformeLoading(loading) {
                     if (!informeLoader) return;
                     informeLoader.classList.toggle('d-none', !loading);
+                }
+
+                function updateAutoInformeButton() {
+                    if (!btnAutoInforme) return;
+                    btnAutoInforme.textContent = autoInformeEnabled ? 'Auto: ON' : 'Auto: OFF';
+                    btnAutoInforme.classList.toggle('btn-outline-dark', !autoInformeEnabled);
+                    btnAutoInforme.classList.toggle('btn-dark', autoInformeEnabled);
+                    btnAutoInforme.setAttribute('aria-pressed', autoInformeEnabled ? 'true' : 'false');
+                }
+
+                function normalizarLateralidad(raw) {
+                    const value = String(raw || '').trim().toUpperCase();
+                    if (!value) return '';
+                    if (['OD', 'DERECHO'].includes(value)) return 'OD';
+                    if (['OI', 'IZQUIERDO'].includes(value)) return 'OI';
+                    if (['AO', 'AMBOS OJOS', 'AMBOS'].includes(value)) return 'AO';
+                    return '';
+                }
+
+                function inferLateralidad(row, tipoRaw) {
+                    const rowEye = row && row.dataset ? normalizarLateralidad(row.dataset.ojo || '') : '';
+                    if (rowEye) return rowEye;
+                    const text = String(tipoRaw || '').toUpperCase();
+                    const match = text.match(/\s-\s(AMBOS OJOS|IZQUIERDO|DERECHO|OD|OI|AO)\s*$/);
+                    return match ? normalizarLateralidad(match[1]) : '';
+                }
+
+                function lateralidadLabel(code) {
+                    if (code === 'OD') return 'Derecho';
+                    if (code === 'OI') return 'Izquierdo';
+                    if (code === 'AO') return 'Ambos ojos';
+                    return '';
+                }
+
+                function updateInformeModalTitle(examName, lateralidad) {
+                    if (!modalTitleEl) return;
+                    const base = 'Informar examen';
+                    const parts = [];
+                    const exam = String(examName || '').trim();
+                    const side = lateralidadLabel(lateralidad);
+                    if (exam) parts.push(exam);
+                    if (side) parts.push(side);
+                    modalTitleEl.textContent = parts.length ? (base + ' · ' + parts.join(' · ')) : base;
                 }
 
                 function updateAutofillButtonState() {
@@ -897,6 +972,7 @@
                     if (file._preloadPromise) {
                         return file._preloadPromise;
                     }
+                    const isPdfFile = isPdf(file);
                     file._preloadPromise = fetch(file.url, {credentials: 'same-origin'})
                         .then(function (r) {
                             if (!r.ok) throw new Error('status');
@@ -904,6 +980,31 @@
                         })
                         .then(function (blob) {
                             if (!blob) return;
+                            if (isPdfFile) {
+                                return blob.arrayBuffer().then(function (buffer) {
+                                    const bytes = new Uint8Array(buffer.slice(0, 5));
+                                    const header = String.fromCharCode.apply(null, Array.from(bytes));
+                                    if (header !== '%PDF-') {
+                                        file._preloadFailed = true;
+                                        return;
+                                    }
+                                    file._preloadFailed = false;
+                                    const objectUrl = URL.createObjectURL(new Blob([buffer], {type: 'application/pdf'}));
+                                    if (token !== nasLoadToken) {
+                                        try {
+                                            URL.revokeObjectURL(objectUrl);
+                                        } catch (e) {
+                                        }
+                                        return;
+                                    }
+                                    file._cachedUrl = objectUrl;
+                                });
+                            }
+                            if (blob.type && !String(blob.type).startsWith('image/')) {
+                                file._preloadFailed = true;
+                                return;
+                            }
+                            file._preloadFailed = false;
                             const objectUrl = URL.createObjectURL(blob);
                             if (token !== nasLoadToken) {
                                 try {
@@ -915,6 +1016,7 @@
                             file._cachedUrl = objectUrl;
                         })
                         .catch(function () {
+                            file._preloadFailed = true;
                         })
                         .finally(function () {
                             file._preloadPromise = null;
@@ -951,6 +1053,7 @@
                     const wrapper = document.createElement('div');
                     wrapper.className = 'nas-slider-preview-wrap d-none';
                     wrapper.dataset.nasKey = getNasFileKey(current);
+                    wrapper.dataset.displayUrl = url;
 
                     const typeBadge = document.createElement('div');
                     typeBadge.className = 'position-absolute top-0 end-0 m-2';
@@ -1061,7 +1164,33 @@
                     }
 
                     const current = nasFiles[nasCurrentIndex];
+                    if (isPdf(current) && !current._cachedUrl && !current._preloadPromise && !current._preloadFailed) {
+                        const renderToken = nasLoadToken;
+                        preloadNasFile(current, renderToken).finally(function () {
+                            if (renderToken !== nasLoadToken) {
+                                return;
+                            }
+                            if (nasFiles[nasCurrentIndex] === current) {
+                                const currentKey = getNasFileKey(current);
+                                const staleNode = nasPreviewNodes.get(currentKey);
+                                if (staleNode && staleNode.parentNode) {
+                                    staleNode.parentNode.removeChild(staleNode);
+                                }
+                                nasPreviewNodes.delete(currentKey);
+                                renderImagenesNas();
+                            }
+                        });
+                    }
+
                     const key = getNasFileKey(current);
+                    const existingNode = nasPreviewNodes.get(key);
+                    const currentUrl = getNasDisplayUrl(current);
+                    if (existingNode && existingNode.dataset.displayUrl !== currentUrl) {
+                        if (existingNode.parentNode) {
+                            existingNode.parentNode.removeChild(existingNode);
+                        }
+                        nasPreviewNodes.delete(key);
+                    }
                     if (!nasPreviewNodes.has(key)) {
                         nasPreviewNodes.set(key, buildNasPreviewNode(current));
                     }
@@ -1081,6 +1210,39 @@
                     renderNasThumbs();
                     updateNasControls();
                     updateAutofillButtonState();
+                }
+
+                function navigateNasPreview(step) {
+                    const delta = Number(step || 0);
+                    if (!delta || !nasFiles.length) {
+                        return;
+                    }
+                    const nextIndex = nasCurrentIndex + delta;
+                    if (nextIndex < 0 || nextIndex >= nasFiles.length) {
+                        return;
+                    }
+                    nasCurrentIndex = nextIndex;
+                    renderImagenesNas();
+                }
+
+                function shouldHandleNasNavigationKey(target, allowWhileEditing) {
+                    if (!(target instanceof HTMLElement)) {
+                        return true;
+                    }
+                    const tag = target.tagName.toLowerCase();
+                    if (!allowWhileEditing && (tag === 'input' || tag === 'textarea' || tag === 'select' || target.isContentEditable)) {
+                        return false;
+                    }
+                    return true;
+                }
+
+                function focusNasViewer() {
+                    if (!imagenesContainer) {
+                        return;
+                    }
+                    if (typeof imagenesContainer.focus === 'function') {
+                        imagenesContainer.focus({preventScroll: true});
+                    }
                 }
 
                 function scheduleNasStatusRefresh() {
@@ -1261,6 +1423,57 @@
                         });
                 }
 
+                function getNextAutoInformeRow(currentRow) {
+                    if (!currentRow || !currentRow.dataset || !currentRow.dataset.id) {
+                        return null;
+                    }
+                    const orderedRows = getOrderedFilteredRows().filter(function (row) {
+                        return !rowIsInformado(row) && !rowIsSinNas(row);
+                    });
+                    if (!orderedRows.length) {
+                        return null;
+                    }
+                    const currentIndex = orderedRows.findIndex(function (row) {
+                        return row === currentRow;
+                    });
+                    if (currentIndex === -1) {
+                        return orderedRows[0] || null;
+                    }
+                    return orderedRows[currentIndex + 1] || null;
+                }
+
+                function warmSequentialNextRows(currentRow, limit) {
+                    if (!currentRow) return;
+                    const currentRows = getCurrentPageRows().filter(function (row) {
+                        return !!(row && row.dataset && row.dataset.id) && rowInActiveTab(row);
+                    });
+                    const currentIndex = currentRows.indexOf(currentRow);
+                    if (currentIndex === -1) {
+                        return;
+                    }
+
+                    currentRows
+                        .slice(currentIndex + 1, currentIndex + 1 + (limit || SEQUENTIAL_WARM_NEXT_ROWS))
+                        .forEach(function (row) {
+                            const form = String(row.dataset.formId || '').trim();
+                            const hc = String(row.dataset.hcNumber || '').trim();
+                            if (!form || !hc) {
+                                return;
+                            }
+
+                            resolveNasStatus(form, hc)
+                                .then(function (status) {
+                                    if (status === 'con-archivos') {
+                                        warmFirstNasFileForCase(form, hc);
+                                    } else if (status === 'sin-archivos') {
+                                        setRowNasStatus(row, 'sin-archivos', true);
+                                    }
+                                })
+                                .catch(function () {
+                                });
+                        });
+                }
+
                 function warmInformadosVisibleRows() {
                     if (activeTab !== 'informados') return;
                     const visibleRows = getCurrentPageRows().filter(function (row) {
@@ -1344,16 +1557,29 @@
 
                 if (btnNasPrev) {
                     btnNasPrev.addEventListener('click', function () {
-                        if (nasCurrentIndex <= 0) return;
-                        nasCurrentIndex -= 1;
-                        renderImagenesNas();
+                        navigateNasPreview(-1);
+                        focusNasViewer();
                     });
                 }
                 if (btnNasNext) {
                     btnNasNext.addEventListener('click', function () {
-                        if (nasCurrentIndex >= nasFiles.length - 1) return;
-                        nasCurrentIndex += 1;
-                        renderImagenesNas();
+                        navigateNasPreview(1);
+                        focusNasViewer();
+                    });
+                }
+                if (imagenesContainer) {
+                    imagenesContainer.addEventListener('keydown', function (event) {
+                        const key = String(event.key || '').toLowerCase();
+                        if (key === 'arrowleft' || key === 'a' || key === 'j') {
+                            event.preventDefault();
+                            navigateNasPreview(-1);
+                        } else if (key === 'arrowright' || key === 'd' || key === 'k') {
+                            event.preventDefault();
+                            navigateNasPreview(1);
+                        }
+                    });
+                    imagenesContainer.addEventListener('click', function () {
+                        focusNasViewer();
                     });
                 }
 
@@ -1414,6 +1640,110 @@
                     });
                 }
 
+                function updateCvTextarea(container, eye, checkbox) {
+                    if (!container || !eye || !checkbox) return;
+                    const textarea = container.querySelector('#input' + eye);
+                    if (!textarea) return;
+
+                    const itemId = (checkbox.getAttribute('data-item-id') || '').toLowerCase();
+                    if (itemId === 'dln') {
+                        const dlnText = 'DENTRO DE LIMITES NORMALES';
+                        if (checkbox.checked) {
+                            container.querySelectorAll('.informe-checkbox-cv[data-eye="' + eye + '"]').forEach(function (peer) {
+                                if (peer === checkbox) return;
+                                peer.checked = false;
+                            });
+                            textarea.value = dlnText;
+                        } else if ((textarea.value || '').trim() === dlnText) {
+                            textarea.value = '';
+                        }
+                        return;
+                    }
+
+                    if (itemId === 'amaurosis' && checkbox.checked) {
+                        container.querySelectorAll('.informe-checkbox-cv[data-eye="' + eye + '"]').forEach(function (peer) {
+                            const peerId = (peer.getAttribute('data-item-id') || '').toLowerCase();
+                            if (peer === checkbox) return;
+                            if (peerId === 'dln') {
+                                peer.checked = false;
+                            }
+                        });
+                    } else if (checkbox.checked) {
+                        container.querySelectorAll('.informe-checkbox-cv[data-eye="' + eye + '"]').forEach(function (peer) {
+                            const peerId = (peer.getAttribute('data-item-id') || '').toLowerCase();
+                            if (peer === checkbox) return;
+                            if (peerId === 'dln') {
+                                peer.checked = false;
+                            }
+                        });
+                        if ((textarea.value || '').trim() === 'DENTRO DE LIMITES NORMALES') {
+                            textarea.value = '';
+                        }
+                    }
+
+                    if (itemId === 'amaurosis') {
+                        return;
+                    }
+
+                    const text = checkbox.getAttribute('data-text') || '';
+                    if (!text) return;
+
+                    const currentValues = (textarea.value || '')
+                        .split(',')
+                        .map(function (item) { return item.trim(); })
+                        .filter(Boolean);
+
+                    if (checkbox.checked) {
+                        if (currentValues.length === 0) {
+                            textarea.value = 'SE APRECIAN PUNTOS DE DISMINUCION DE LA SENSIBILIDAD RETINIANA DE BAJA, MEDIA Y ALTA SIGNIFICANCIA QUE CONFORMAN ESCOTOMA CON PATRON ' + text;
+                        } else {
+                            currentValues.push(text);
+                            textarea.value = currentValues.join(', ');
+                        }
+                        return;
+                    }
+
+                    const index = currentValues.indexOf(text);
+                    if (index > -1) {
+                        currentValues.splice(index, 1);
+                        textarea.value = currentValues.join(', ');
+                    }
+                }
+
+                function initCvTemplate(container) {
+                    if (!container) return;
+                    const template = container.querySelector('[data-informe-template="cv"]');
+                    if (!template) return;
+
+                    template.querySelectorAll('.informe-checkbox-cv').forEach(function (checkbox) {
+                        if (checkbox.dataset.cvBound === '1') {
+                            return;
+                        }
+                        checkbox.addEventListener('change', function () {
+                            const eye = checkbox.getAttribute('data-eye') || '';
+                            updateCvTextarea(container, eye, checkbox);
+                        });
+                        checkbox.dataset.cvBound = '1';
+                    });
+                }
+
+                function rebuildCvTargets(container) {
+                    if (!container) return;
+                    const template = container.querySelector('[data-informe-template="cv"]');
+                    if (!template) return;
+
+                    ['OD', 'OI'].forEach(function (eye) {
+                        const textarea = container.querySelector('#input' + eye);
+                        if (!textarea || (textarea.value || '').trim() !== '') {
+                            return;
+                        }
+                        template.querySelectorAll('.informe-checkbox-cv[data-eye="' + eye + '"]').forEach(function (checkbox) {
+                            if (!checkbox.checked) return;
+                            updateCvTextarea(container, eye, checkbox);
+                        });
+                    });
+                }
+
                 function collectPayload(container) {
                     const payload = {};
                     if (!container) return payload;
@@ -1454,6 +1784,52 @@
                         }
                         el.value = payload[key] ?? '';
                     });
+                }
+
+                function focusFirstInformeField(container, lateralidad) {
+                    if (!container) return;
+                    const lateral = normalizarLateralidad(lateralidad);
+                    let firstField = null;
+
+                    if (lateral === 'OD' || lateral === 'OI') {
+                        firstField = container.querySelector(
+                            'input[id$="' + lateral + '"]:not([type="hidden"]):not([disabled]), ' +
+                            'textarea[id$="' + lateral + '"]:not([disabled]), ' +
+                            'select[id$="' + lateral + '"]:not([disabled])'
+                        );
+                    } else if (lateral === 'AO') {
+                        firstField = container.querySelector(
+                            'input[id$="OD"]:not([type="hidden"]):not([disabled]), textarea[id$="OD"]:not([disabled]), select[id$="OD"]:not([disabled])'
+                        ) || container.querySelector(
+                            'input[id$="OI"]:not([type="hidden"]):not([disabled]), textarea[id$="OI"]:not([disabled]), select[id$="OI"]:not([disabled])'
+                        );
+                    }
+
+                    if (!(firstField instanceof HTMLElement)) {
+                        firstField = container.querySelector(
+                            'input:not([type="hidden"]):not([disabled]), textarea:not([disabled])'
+                        ) || container.querySelector('select:not([disabled])');
+                    }
+                    if (!(firstField instanceof HTMLElement)) {
+                        return;
+                    }
+                    window.requestAnimationFrame(function () {
+                        firstField.focus();
+                        if (typeof firstField.select === 'function' && firstField.tagName.toLowerCase() !== 'select') {
+                            firstField.select();
+                        }
+                    });
+                }
+
+                function requestInformeFocus(lateralidad) {
+                    pendingInformeFocusLateralidad = normalizarLateralidad(lateralidad);
+                }
+
+                function flushInformeFocus() {
+                    if (!templateContainer) {
+                        return;
+                    }
+                    focusFirstInformeField(templateContainer, pendingInformeFocusLateralidad);
                 }
 
                 function normalizarPayload(payload, plantilla) {
@@ -1544,11 +1920,16 @@
                     const formId = (row.dataset.formId || '').trim();
                     const hcNumber = (row.dataset.hcNumber || '').trim();
                     const tipoRaw = (row.dataset.tipoRaw || '').trim();
+                    const examName = (row.dataset.examen || '').trim();
+                    const lateralidad = inferLateralidad(row, tipoRaw);
 
                     if (!formId || !tipoRaw) {
                         alert('Faltan datos del examen para informar.');
                         return;
                     }
+
+                    updateInformeModalTitle(examName, lateralidad);
+                    requestInformeFocus(lateralidad);
 
                     if (modalInstance) {
                         modalInstance.show();
@@ -1565,6 +1946,7 @@
 
                     if (formId && hcNumber) {
                         cargarImagenesNas(formId, hcNumber, row);
+                        warmSequentialNextRows(row, SEQUENTIAL_WARM_NEXT_ROWS);
                     }
 
                     fetch('/v2/imagenes/informes/datos?form_id=' + encodeURIComponent(formId) + '&tipo_examen=' + encodeURIComponent(tipoRaw))
@@ -1583,6 +1965,8 @@
                                 formId: formId,
                                 hcNumber: hcNumber,
                                 tipoRaw: tipoRaw,
+                                examName: examName,
+                                lateralidad: lateralidad,
                                 plantilla: res.plantilla,
                                 payload: res.payload || null,
                                 row: row
@@ -1608,11 +1992,14 @@
                             if (!html || !templateContainer) return;
                             templateContainer.innerHTML = html;
                             initChecklist(templateContainer);
+                            initCvTemplate(templateContainer);
                             initCorneaTopografiaTemplate(templateContainer);
                             if (informeContext && informeContext.payload) {
                                 applyPayload(templateContainer, informeContext.payload);
+                                initCvTemplate(templateContainer);
                                 initCorneaTopografiaTemplate(templateContainer);
                                 rebuildChecklistTargets(templateContainer);
+                                rebuildCvTargets(templateContainer);
                                 setEstado('Informe existente cargado.');
                             } else {
                                 setEstado('Informe nuevo.');
@@ -1621,6 +2008,8 @@
                                 btnGuardarInforme.disabled = false;
                             }
                             setInformeLoading(false);
+                            requestInformeFocus(informeContext ? informeContext.lateralidad : '');
+                            flushInformeFocus();
                             updateAutofillButtonState();
                         })
                         .catch(function () {
@@ -1657,6 +2046,8 @@
                         return;
                     }
                     const payload = normalizarPayload(collectPayload(templateContainer), informeContext.plantilla);
+                    const currentRow = informeContext && informeContext.row ? informeContext.row : null;
+                    pendingAutoAdvanceRow = autoInformeEnabled ? getNextAutoInformeRow(currentRow) : null;
                     setEstado('Guardando informe...');
                     if (btnGuardarInforme) {
                         btnGuardarInforme.disabled = true;
@@ -1670,27 +2061,31 @@
                         firmante_id: payload.firmante_id || ''
                     }).then(function (res) {
                         if (!res || !res.success) {
+                            pendingAutoAdvanceRow = null;
                             setEstado('No se pudo guardar el informe.');
                             return;
                         }
                         setEstado('Informe guardado.');
-                        if (informeContext && informeContext.row) {
-                            const row = informeContext.row;
-                            row.dataset.informado = '1';
-                            const checkbox = row.querySelector('.row-select');
+                        if (currentRow) {
+                            currentRow.dataset.informado = '1';
+                            const checkbox = currentRow.querySelector('.row-select');
                             if (checkbox) {
                                 checkbox.disabled = false;
                             }
-                            const printBtn = row.querySelector('.btn-print-item');
+                            const printBtn = currentRow.querySelector('.btn-print-item');
                             if (printBtn) {
                                 printBtn.disabled = false;
                             }
                             applyTabFilter(activeTab);
                         }
+                        if (autoInformeEnabled && !pendingAutoAdvanceRow) {
+                            setEstado('Informe guardado. No quedan más exámenes no informados en la tabla.');
+                        }
                         if (modalInstance) {
                             modalInstance.hide();
                         }
                     }).catch(function () {
+                        pendingAutoAdvanceRow = null;
                         setEstado('Error de red al guardar.');
                     }).finally(function () {
                         if (btnGuardarInforme && modalEl && modalEl.classList.contains('show')) {
@@ -1702,6 +2097,15 @@
                 if (btnGuardarInforme) {
                     btnGuardarInforme.addEventListener('click', function () {
                         guardarInformeActual();
+                    });
+                }
+
+                if (btnAutoInforme) {
+                    updateAutoInformeButton();
+                    btnAutoInforme.addEventListener('click', function () {
+                        autoInformeEnabled = !autoInformeEnabled;
+                        updateAutoInformeButton();
+                        setEstado(autoInformeEnabled ? 'Modo auto activado.' : 'Modo auto desactivado.');
                     });
                 }
 
@@ -1764,7 +2168,23 @@
                 }
 
                 if (modalEl) {
+                    modalEl.addEventListener('keydown', function (event) {
+                        if (!modalEl.classList.contains('show')) {
+                            return;
+                        }
+                        if (event.key === 'Escape') {
+                            event.preventDefault();
+                            if (modalInstance) {
+                                modalInstance.hide();
+                            }
+                        }
+                    });
+                    modalEl.addEventListener('shown.bs.modal', function () {
+                        setTimeout(flushInformeFocus, 30);
+                    });
                     modalEl.addEventListener('hidden.bs.modal', function () {
+                        const nextRowToOpen = pendingAutoAdvanceRow;
+                        pendingAutoAdvanceRow = null;
                         nasLoadToken += 1;
                         if (templateContainer) {
                             templateContainer.innerHTML = '';
@@ -1786,8 +2206,15 @@
                             btnAutollenarMicroespecular.disabled = false;
                             btnAutollenarMicroespecular.classList.add('d-none');
                         }
+                        pendingInformeFocusLateralidad = '';
+                        updateInformeModalTitle('', '');
                         informeContext = null;
                         setEstado('');
+                        if (autoInformeEnabled && nextRowToOpen && document.body.contains(nextRowToOpen)) {
+                            setTimeout(function () {
+                                abrirInformeModal(nextRowToOpen);
+                            }, 120);
+                        }
                     });
                 }
 
