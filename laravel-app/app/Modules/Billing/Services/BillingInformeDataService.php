@@ -320,7 +320,7 @@ class BillingInformeDataService
 
         $parts = preg_split('/\s*;\s*/', $value) ?: [];
         foreach ($parts as $part) {
-            if (preg_match('/^\s*[A-Z][0-9]{2}[0-9A-Z]?(?:\.[0-9A-Z]+)?\s*-/u', trim((string) $part))) {
+            if (preg_match('/^\s*[A-Z][0-9]{2}[0-9A-Z]{0,4}(?:\.[0-9A-Z]+)?\s*-/u', trim((string) $part))) {
                 return true;
             }
         }

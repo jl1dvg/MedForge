@@ -621,6 +621,10 @@ class IessSpreadsheetExportService
         }
 
         $primerDiagnostico = explode(';', $diagnosticoStr)[0];
+        if (preg_match('/^\s*([A-Z][0-9]{2}[0-9A-Z]{0,4}(?:\.[0-9A-Z]+)?)\s*-/u', trim($primerDiagnostico), $matches)) {
+            return strtoupper(trim((string) $matches[1]));
+        }
+
         return trim(explode(' ', explode('-', $primerDiagnostico)[0])[0]);
     }
 

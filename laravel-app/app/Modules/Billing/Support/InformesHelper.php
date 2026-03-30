@@ -466,7 +466,7 @@ class InformesHelper
         $cie10s = [];
         $partes = explode(';', $diagnostico);
         foreach ($partes as $parte) {
-            if (preg_match('/^\s*([A-Z][0-9]{2}[0-9A-Z]?(?:\.[0-9A-Z]+)?)\s*-/', trim($parte), $matches)) {
+            if (preg_match('/^\s*([A-Z][0-9]{2}[0-9A-Z]{0,4}(?:\.[0-9A-Z]+)?)\s*-/', trim($parte), $matches)) {
                 $cie10s[] = $matches[1];
             }
         }
@@ -475,6 +475,25 @@ class InformesHelper
 
     public static function clasificarCategoriaFactura(array $datosPaciente): string
     {
+        $textosReferencia = self::buildCategoriaTextosReferencia($datosPaciente);
+        foreach ($textosReferencia as $textoReferencia) {
+            if (self::textoCategoriaEsPni($textoReferencia)) {
+                return 'pni';
+            }
+        }
+
+        $codigosPni = [
+            '281339',
+        ];
+        $lookupPni = array_flip($codigosPni);
+
+        foreach (($datosPaciente['procedimientos'] ?? []) as $p) {
+            $codigo = trim((string)($p['proc_codigo'] ?? ''));
+            if ($codigo !== '' && isset($lookupPni[$codigo])) {
+                return 'pni';
+            }
+        }
+
         $codigosConsulta = ['92002', '92012'];
         $lookupConsulta = array_flip($codigosConsulta);
 
@@ -501,13 +520,51 @@ class InformesHelper
             }
         }
 
+        $formulario = $datosPaciente['formulario'] ?? [];
+        $procedimientoNombre = strtolower(trim((string)($formulario['procedimiento'] ?? '')));
+        if ($procedimientoNombre === '' && !empty($datosPaciente['protocoloExtendido']['membrete'])) {
+            $procedimientoNombre = strtolower((string)$datosPaciente['protocoloExtendido']['membrete']);
+        }
+
+        // 3) Fallback (opcional): si no hay códigos (casos antiguos) intentar clasificar por texto.
+        if ($procedimientoNombre !== '' && stripos($procedimientoNombre, 'imagenes') === 0) {
+            return 'imagenes';
+        }
+
+        $tipo = strtolower(trim((string)($formulario['tipo'] ?? '')));
+        if ($tipo !== '' && str_contains($tipo, 'imagen')) {
+            return 'imagenes';
+        }
+
+        return 'procedimientos';
+    }
+
+    private static function textoCategoriaEsPni(string $texto): bool
+    {
+        $texto = strtoupper(trim($texto));
+        return $texto !== '' && (
+            str_starts_with($texto, 'PNI')
+            || str_contains($texto, ' PNI ')
+            || str_contains($texto, '(PNI')
+            || str_contains($texto, '/PNI')
+            || str_contains($texto, '-PNI')
+        );
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private static function buildCategoriaTextosReferencia(array $datosPaciente): array
+    {
         $textosReferencia = [];
         $formulario = $datosPaciente['formulario'] ?? [];
         $visita = $datosPaciente['visita'] ?? [];
+
         $procedimientoNombre = strtolower(trim((string)($formulario['procedimiento'] ?? '')));
         if ($procedimientoNombre !== '') {
             $textosReferencia[] = $procedimientoNombre;
         }
+
         if ($procedimientoNombre === '' && !empty($datosPaciente['protocoloExtendido']['membrete'])) {
             $procedimientoNombre = strtolower((string)$datosPaciente['protocoloExtendido']['membrete']);
         }
@@ -536,28 +593,6 @@ class InformesHelper
             }
         }
 
-        foreach ($textosReferencia as $textoReferencia) {
-            if (self::textoCategoriaEsPni($textoReferencia)) {
-                return 'pni';
-            }
-        }
-
-        // 3) Fallback (opcional): si no hay códigos (casos antiguos) intentar clasificar por texto.
-        if ($procedimientoNombre !== '' && stripos($procedimientoNombre, 'imagenes') === 0) {
-            return 'imagenes';
-        }
-
-        $tipo = strtolower(trim((string)($formulario['tipo'] ?? '')));
-        if ($tipo !== '' && str_contains($tipo, 'imagen')) {
-            return 'imagenes';
-        }
-
-        return 'procedimientos';
-    }
-
-    private static function textoCategoriaEsPni(string $texto): bool
-    {
-        $texto = strtoupper(trim($texto));
-        return $texto !== '' && str_contains($texto, 'PNI');
+        return array_values(array_unique(array_filter($textosReferencia, static fn(string $texto): bool => trim($texto) !== '')));
     }
 }

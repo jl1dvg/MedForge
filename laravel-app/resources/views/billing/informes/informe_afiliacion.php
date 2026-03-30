@@ -800,7 +800,7 @@ $sedeSeleccionada = $informesHelperClass::normalizarSede($filtros['sede'] ?? '')
                         <div class="card-body">
                             <div class="row g-3">
                                 <!-- CONSOLIDADO GENERAL -->
-                                <div class="col-12 col-lg-4">
+                                <div class="col-12 col-lg-3">
                                     <div class="box p-3 bb-3 border-primary h-100">
                                         <div class="d-flex align-items-center justify-content-between mb-2">
                                             <div class="fw-semibold">
@@ -835,7 +835,7 @@ $sedeSeleccionada = $informesHelperClass::normalizarSede($filtros['sede'] ?? '')
                                 </div>
 
                                 <!-- CONSULTAS -->
-                                <div class="col-12 col-lg-4">
+                                <div class="col-12 col-lg-3">
                                     <div class="box p-3 bb-3 border-success h-100">
                                         <div class="d-flex align-items-center justify-content-between mb-2">
                                             <div class="fw-semibold">
@@ -882,7 +882,7 @@ $sedeSeleccionada = $informesHelperClass::normalizarSede($filtros['sede'] ?? '')
                                 </div>
 
                                 <!-- IMÁGENES -->
-                                <div class="col-12 col-lg-4">
+                                <div class="col-12 col-lg-3">
                                     <div class="box p-3 bb-3 border-info h-100">
                                         <div class="d-flex align-items-center justify-content-between mb-2">
                                             <div class="fw-semibold">
@@ -917,7 +917,7 @@ $sedeSeleccionada = $informesHelperClass::normalizarSede($filtros['sede'] ?? '')
                                 </div>
 
                                 <!-- PNI -->
-                                <div class="col-12 col-lg-4">
+                                <div class="col-12 col-lg-3">
                                     <div class="box p-3 bb-3 border-warning h-100">
                                         <div class="d-flex align-items-center justify-content-between mb-2">
                                             <div class="fw-semibold">

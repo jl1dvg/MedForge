@@ -8,6 +8,37 @@ use Illuminate\Support\Facades\DB;
 class ImagenesReportDataService
 {
     /**
+     * @param array<int, array<string, mixed>> $selectedItems
+     * @return array{form_id:string,hc_number:string,examen_id:int|null}
+     */
+    public function resolveCobertura012ABaseContext(array $selectedItems): array
+    {
+        $first = null;
+        foreach ($selectedItems as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $formId = trim((string) ($item['form_id'] ?? ''));
+            $hcNumber = trim((string) ($item['hc_number'] ?? ''));
+            if ($formId === '' || $hcNumber === '') {
+                continue;
+            }
+            $first = [
+                'form_id' => $formId,
+                'hc_number' => $hcNumber,
+                'examen_id' => null,
+            ];
+            break;
+        }
+
+        if ($first === null) {
+            return ['form_id' => '', 'hc_number' => '', 'examen_id' => null];
+        }
+
+        return $this->resolverMejorContextoClinico012A($first, $selectedItems);
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function buildInforme012BData(string $formId, string $hcNumber): array

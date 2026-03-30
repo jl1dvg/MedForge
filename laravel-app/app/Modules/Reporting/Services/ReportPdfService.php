@@ -277,7 +277,10 @@ class ReportPdfService
         $hasPages = false;
 
         try {
-            $baseItem = $normalized[0];
+            $baseContext = $this->imagenesDataService->resolveCobertura012ABaseContext($normalized);
+            $baseFormId = trim((string) ($baseContext['form_id'] ?? ($normalized[0]['form_id'] ?? '')));
+            $baseHcNumber = trim((string) ($baseContext['hc_number'] ?? $hcBase));
+            $baseExamenId = isset($baseContext['examen_id']) ? (int) $baseContext['examen_id'] : null;
 
             foreach ($this->groupPackageItemsByFecha($normalized) as $groupedItems) {
                 if ($groupedItems === []) {
@@ -285,9 +288,9 @@ class ReportPdfService
                 }
 
                 $cobertura012A = $this->generateCobertura012APdf(
-                    (string) $baseItem['form_id'],
-                    $hcBase,
-                    null,
+                    $baseFormId,
+                    $baseHcNumber !== '' ? $baseHcNumber : $hcBase,
+                    $baseExamenId,
                     $groupedItems,
                     true
                 );
