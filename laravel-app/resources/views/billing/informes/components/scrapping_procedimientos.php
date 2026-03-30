@@ -9,39 +9,73 @@ $billingV2WritesEnabled = filter_var(
 $billingWritePrefix = $billingV2WritesEnabled ? '/v2' : '';
 $billingVerificacionDerivacionEndpoint = $billingWritePrefix . '/api/billing/verificacion_derivacion.php';
 $billingInsertarBillingMainEndpoint = $billingWritePrefix . '/api/billing/insertar_billing_main.php';
+$scrapingDebug = [];
+$scrapingDebugItems = [];
+$pdfTotalizadoUrl = '';
 
 // Renderizar procedimientos scrappeados cuando se intentó scrapear
 if (!empty($scrapingOutput)):
+    $scrapingMessage = '';
+    $grupos = [];
+
     // Tolerar respuestas en string o array
     if (is_array($scrapingOutput)) {
         $codigo_derivacion = $scrapingOutput["codigo_derivacion"] ?? '';
         $fecha_registro = $scrapingOutput["fecha_registro"] ?? '';
+        $pdfTotalizadoUrl = trim((string) ($scrapingOutput['pdf_totalizado_url'] ?? ''));
+        $scrapingMessage = trim((string) ($scrapingOutput['_message'] ?? ''));
+        $scrapingDebug = is_array($scrapingOutput['_debug'] ?? null) ? $scrapingOutput['_debug'] : [];
+        $scrapingDebugItems = array_values(array_filter(
+            (array) ($scrapingOutput['_debug_items'] ?? []),
+            static fn($item): bool => is_array($item)
+        ));
+
+        foreach ((array) ($scrapingOutput['procedimientos'] ?? []) as $procedimiento) {
+            $proc = (array) ($procedimiento['procedimiento_proyectado'] ?? []);
+            $procId = trim((string) ($proc['id'] ?? $procedimiento['form_id'] ?? ''));
+            $procNombre = trim((string) ($proc['nombre'] ?? ''));
+
+            if ($procId === '' || $procNombre === '') {
+                continue;
+            }
+
+            $estado = trim((string) ($proc['estado_alta'] ?? '❌ No dado de alta'));
+            $grupos[] = [
+                'form_id' => $procId,
+                'procedimiento' => $procNombre,
+                'fecha' => trim((string) ($proc['fecha_ejecucion'] ?? 'N/D')),
+                'doctor' => trim((string) ($proc['doctor'] ?? '')),
+                'estado' => $estado,
+                'color' => str_contains($estado, '✅') ? 'success' : 'danger',
+            ];
+        }
     } else {
         $codigo_derivacion = '';
         $fecha_registro = '';
-    }
-    $codigoDerivacionObtenida = $codigo_derivacion;
-
-    $partes = explode("📋 Procedimientos proyectados:", (string)$scrapingOutput);
-    if (isset($partes[1])):
-        $lineas = array_filter(array_map('trim', explode("\n", trim($partes[1]))));
-        $grupos = [];
-        for ($i = 0; $i < count($lineas); $i += 5) {
-            $idLinea = $lineas[$i] ?? '';
-            $procedimiento = $lineas[$i + 1] ?? '';
-            $fecha = $lineas[$i + 2] ?? '';
-            $doctor = $lineas[$i + 3] ?? '';
-            $estado = $lineas[$i + 4] ?? '';
-            $color = str_contains($estado, '✅') ? 'success' : 'danger';
-            $grupos[] = [
-                'form_id' => trim($idLinea),
-                'procedimiento' => trim($procedimiento),
-                'fecha' => trim($fecha),
-                'doctor' => trim($doctor),
-                'estado' => trim($estado),
-                'color' => $color
-            ];
+        $partes = explode("📋 Procedimientos proyectados:", (string) $scrapingOutput);
+        if (isset($partes[1])) {
+            $lineas = array_filter(array_map('trim', explode("\n", trim($partes[1]))));
+            for ($i = 0; $i < count($lineas); $i += 5) {
+                $idLinea = $lineas[$i] ?? '';
+                $procedimiento = $lineas[$i + 1] ?? '';
+                $fecha = $lineas[$i + 2] ?? '';
+                $doctor = $lineas[$i + 3] ?? '';
+                $estado = $lineas[$i + 4] ?? '';
+                $color = str_contains($estado, '✅') ? 'success' : 'danger';
+                $grupos[] = [
+                    'form_id' => trim($idLinea),
+                    'procedimiento' => trim($procedimiento),
+                    'fecha' => trim($fecha),
+                    'doctor' => trim($doctor),
+                    'estado' => trim($estado),
+                    'color' => $color,
+                ];
+            }
         }
+    }
+
+    $codigoDerivacionObtenida = $codigo_derivacion;
+    if ($grupos !== []):
         // Obtener form_ids ya facturados desde el controller
         $formIdsFacturados = $billingController->obtenerFormIdsFacturados(); // Este método debe retornar un array de form_id
 
@@ -51,6 +85,16 @@ if (!empty($scrapingOutput)):
                 <h4 class="box-title">Procedimientos proyectados <?php echo $codigoDerivacionPrincipal; ?></h4>
             </div>
             <div class="box-body">
+                <?php if ($scrapingMessage !== ''): ?>
+                    <div class="alert alert-warning mb-15"><?= htmlspecialchars($scrapingMessage) ?></div>
+                <?php endif; ?>
+                <?php if ($pdfTotalizadoUrl !== ''): ?>
+                    <div class="mb-15">
+                        <a href="<?= htmlspecialchars($pdfTotalizadoUrl) ?>" class="btn btn-sm btn-outline-danger" target="_blank" rel="noopener noreferrer">
+                            <i class="mdi mdi-file-pdf-box"></i> Ver PDF totalizado
+                        </a>
+                    </div>
+                <?php endif; ?>
                 <div class="d-flex align-items-center mb-15">
                     <input type="checkbox" id="select_all_checkbox" class="filled-in chk-col-info me-10">
                     <label for="select_all_checkbox" class="mb-0">Seleccionar todos</label>
@@ -141,6 +185,9 @@ if (!empty($scrapingOutput)):
                 <?php endforeach; ?>
                 <!-- Botón para agregar seleccionados -->
                 <form id="guardarSeleccionadosForm" method="post">
+                    <?php if (function_exists('csrf_token') && csrf_token() !== ''): ?>
+                        <input type="hidden" name="_token" value="<?= htmlspecialchars((string) csrf_token()) ?>">
+                    <?php endif; ?>
                     <input type="hidden" name="accion_guardar_procedimientos" value="1">
                     <div class="text-end mt-3">
                         <button type="button" class="btn btn-primary"
@@ -304,7 +351,7 @@ if (!empty($scrapingOutput)):
     endif;
 endif;
 
-// Modal de error si el scraping no devolvió código de derivación
+// Modal de error si la búsqueda no devolvió código de derivación
 if ($scrapingOutput !== null && $codigoDerivacionObtenida === ''): ?>
     <div class="modal fade" id="scrapeErrorModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
@@ -314,7 +361,17 @@ if ($scrapingOutput !== null && $codigoDerivacionObtenida === ''): ?>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
                 </div>
                 <div class="modal-body">
-                    <p>El scraping no devolvió un código de derivación. Verifica que el formulario tenga derivación y vuelve a intentar.</p>
+                    <p>La búsqueda por base de datos no devolvió un código de derivación. Verifica que el formulario tenga derivación y vuelve a intentar.</p>
+                    <?php if ($scrapingDebug !== [] || $scrapingDebugItems !== []): ?>
+                        <hr>
+                        <p class="mb-2"><strong>Diagnóstico técnico:</strong></p>
+                        <?php if ($scrapingDebug !== []): ?>
+                            <pre class="small bg-light p-2 rounded mb-2" style="white-space: pre-wrap;"><?= htmlspecialchars(json_encode($scrapingDebug, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)) ?></pre>
+                        <?php endif; ?>
+                        <?php if ($scrapingDebugItems !== []): ?>
+                            <pre class="small bg-light p-2 rounded mb-0" style="white-space: pre-wrap;"><?= htmlspecialchars(json_encode($scrapingDebugItems, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)) ?></pre>
+                        <?php endif; ?>
+                    <?php endif; ?>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cerrar</button>

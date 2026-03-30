@@ -1,13 +1,18 @@
 <?php
 
 use App\Modules\Agenda\Services\IndexAdmisionesSyncService;
+use App\Modules\Billing\Services\BillingInformeDataService;
+use App\Modules\Billing\Services\BillingInformePacienteService;
 use App\Modules\Billing\Services\FacturacionRealSyncService;
 use App\Modules\Examenes\Services\ImagenesNasIndexService;
 use App\Modules\Examenes\Services\ImagenesSigcenterIndexService;
 use App\Modules\Examenes\Services\NasImagenesService;
 use App\Modules\Farmacia\Services\RecetasConciliacionSyncService;
+use App\Modules\Shared\Support\AfiliacionDimensionService;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schedule;
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
@@ -483,3 +488,232 @@ Artisan::command('farmacia:conciliar-recetas
 
     return 0;
 })->purpose('Concilia recetas emitidas contra facturación de farmacia en una tabla local derivada');
+
+Artisan::command('billing:sync-derivaciones
+    {--limit=200 : Máximo de facturas a procesar por corrida. Usa 0 para sin límite}
+    {--only-billed=1 : Prioriza solo billing_main ya facturado}
+    {--only-missing=1 : Solo procesa derivaciones faltantes o inconsistentes}
+    {--month= : Filtra por mes YYYY-MM usando procedimiento_proyectado.fecha}
+    {--procedure-date= : Filtra por fecha exacta YYYY-MM-DD usando procedimiento_proyectado.fecha}
+    {--categoria= : Filtra por categoría de seguro, por ejemplo publico o privado}
+    {--empresa-seguro= : Filtra por empresa de seguro}
+    {--afiliacion-like= : Filtro legacy por afiliación en patient_data.afiliacion}
+    {--form-ids= : Procesa varios form_id separados por coma}
+    {--form-id= : Procesa un form_id puntual}', function (): int {
+    @set_time_limit(0);
+    @ini_set('max_execution_time', '0');
+
+    $limit = (int) $this->option('limit');
+    $limitSql = $limit > 0 ? 'LIMIT ' . $limit : '';
+    $onlyBilled = (bool) ((int) $this->option('only-billed'));
+    $onlyMissing = (bool) ((int) $this->option('only-missing'));
+    $month = trim((string) ($this->option('month') ?? ''));
+    $procedureDate = trim((string) ($this->option('procedure-date') ?? ''));
+    $categoria = trim((string) ($this->option('categoria') ?? ''));
+    $empresaSeguro = trim((string) ($this->option('empresa-seguro') ?? ''));
+    $afiliacionLike = trim((string) ($this->option('afiliacion-like') ?? ''));
+    $formIdsOption = trim((string) ($this->option('form-ids') ?? ''));
+    $formId = trim((string) ($this->option('form-id') ?? ''));
+
+    $pdo = DB::connection()->getPdo();
+    $pacienteService = new BillingInformePacienteService($pdo);
+    $service = new BillingInformeDataService($pdo, $pacienteService);
+    $afiliacionDimensions = new AfiliacionDimensionService($pdo);
+    $dimensionContext = $afiliacionDimensions->buildContext('pt.afiliacion', 'acm_sync');
+
+    $conditions = [
+        "bm.form_id IS NOT NULL",
+        "TRIM(bm.form_id) <> ''",
+        "bm.hc_number IS NOT NULL",
+        "TRIM(bm.hc_number) <> ''",
+    ];
+    $params = [];
+
+    $explicitFormIds = [];
+    if ($formIdsOption !== '') {
+        $explicitFormIds = array_values(array_unique(array_filter(array_map(
+            static fn(string $value): string => trim($value),
+            explode(',', $formIdsOption)
+        ))));
+    }
+    if ($formId !== '') {
+        $explicitFormIds[] = $formId;
+        $explicitFormIds = array_values(array_unique(array_filter($explicitFormIds)));
+    }
+
+    if ($explicitFormIds !== []) {
+        $placeholders = implode(',', array_fill(0, count($explicitFormIds), '?'));
+        $conditions[] = "bm.form_id IN ($placeholders)";
+        array_push($params, ...$explicitFormIds);
+    } elseif ($formId !== '') {
+        $conditions[] = 'bm.form_id = ?';
+        $params[] = $formId;
+    }
+
+    if ($procedureDate !== '') {
+        $conditions[] = <<<'SQL'
+EXISTS (
+    SELECT 1
+    FROM procedimiento_proyectado ppm
+    WHERE ppm.form_id = bm.form_id
+      AND DATE(ppm.fecha) = ?
+)
+SQL;
+        $params[] = $procedureDate;
+    } elseif ($month !== '') {
+        $conditions[] = <<<'SQL'
+EXISTS (
+    SELECT 1
+    FROM procedimiento_proyectado ppm
+    WHERE ppm.form_id = bm.form_id
+      AND DATE(ppm.fecha) BETWEEN ? AND ?
+)
+SQL;
+        $params[] = $month . '-01';
+        $params[] = date('Y-m-t', strtotime($month . '-01'));
+    }
+
+    if ($afiliacionLike !== '') {
+        $conditions[] = 'LOWER(COALESCE(pt.afiliacion, \'\')) LIKE ?';
+        $params[] = '%' . strtolower($afiliacionLike) . '%';
+    }
+
+    $categoriaKey = $afiliacionDimensions->normalizeCategoriaFilter($categoria);
+    if ($categoriaKey !== '') {
+        $conditions[] = "{$dimensionContext['categoria_expr']} = ?";
+        $params[] = $categoriaKey;
+    }
+
+    $empresaKey = $afiliacionDimensions->normalizeEmpresaFilter($empresaSeguro);
+    if ($empresaKey !== '') {
+        $conditions[] = "{$dimensionContext['empresa_key_expr']} = ?";
+        $params[] = $empresaKey;
+    }
+
+    if ($onlyBilled) {
+        $conditions[] = 'bm.facturado_por IS NOT NULL';
+    }
+
+    if ($onlyMissing) {
+        $conditions[] = <<<'SQL'
+(
+    dfi.id IS NULL
+    OR dfi.cod_derivacion IS NULL
+    OR TRIM(dfi.cod_derivacion) = ''
+    OR dfi.archivo_derivacion_path IS NULL
+    OR TRIM(dfi.archivo_derivacion_path) = ''
+    OR REPLACE(TRIM(COALESCE(dfi.cod_derivacion, '')), ' ', '') NOT REGEXP '^[A-Z0-9._/-]{8,}$'
+)
+SQL;
+    }
+
+    $sql = sprintf(<<<'SQL'
+SELECT
+    bm.id,
+    bm.form_id,
+    bm.hc_number,
+    bm.facturado_por,
+    bm.updated_at,
+    dfi.id AS derivacion_id,
+    dfi.cod_derivacion,
+    dfi.archivo_derivacion_path
+FROM billing_main bm
+LEFT JOIN derivaciones_form_id dfi
+    ON dfi.form_id = bm.form_id
+LEFT JOIN patient_data pt
+    ON pt.hc_number = bm.hc_number
+%s
+WHERE %s
+ORDER BY
+    CASE WHEN dfi.id IS NULL THEN 0 ELSE 1 END ASC,
+    CASE WHEN dfi.cod_derivacion IS NULL OR TRIM(dfi.cod_derivacion) = '' THEN 0 ELSE 1 END ASC,
+    CASE WHEN dfi.archivo_derivacion_path IS NULL OR TRIM(dfi.archivo_derivacion_path) = '' THEN 0 ELSE 1 END ASC,
+    bm.updated_at DESC,
+    bm.id DESC
+%s
+SQL, $dimensionContext['join'], implode("\n  AND ", $conditions), $limitSql);
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+
+    if ($rows === []) {
+        $this->info('No hay facturas candidatas para sincronizar derivaciones.');
+        return 0;
+    }
+
+    $processed = 0;
+    $updated = 0;
+    $missing = 0;
+    $errors = 0;
+
+    foreach ($rows as $row) {
+        if ($processed > 0 && $processed % 100 === 0) {
+            $service->resetRemoteConnections();
+            $this->line(sprintf('[INFO] progreso=%d/%d reconectando SSH Sigcenter...', $processed, count($rows)));
+        }
+
+        $candidateFormId = trim((string) ($row['form_id'] ?? ''));
+        $candidateHcNumber = trim((string) ($row['hc_number'] ?? ''));
+        if ($candidateFormId === '' || $candidateHcNumber === '') {
+            continue;
+        }
+
+        $processed++;
+
+        try {
+            $payload = $service->buildDerivacionLookupPayload($candidateFormId, $candidateHcNumber);
+            $codigo = trim((string) ($payload['codigo_derivacion'] ?? ''));
+            $archivo = trim((string) ($payload['archivo_derivacion_path'] ?? ''));
+            $saved = $payload !== [] && (
+                $codigo !== ''
+                || $archivo !== ''
+                || trim((string) ($payload['referido'] ?? '')) !== ''
+                || trim((string) ($payload['diagnostico'] ?? '')) !== ''
+            )
+                ? $service->persistDerivacionLookupPayload($payload)
+                : false;
+
+            if ($saved) {
+                $updated++;
+                $this->line(sprintf(
+                    '[OK] form_id=%s hc=%s codigo=%s archivo=%s',
+                    $candidateFormId,
+                    $candidateHcNumber,
+                    $codigo !== '' ? $codigo : '—',
+                    $archivo !== '' ? 'SI' : 'NO'
+                ));
+                continue;
+            }
+
+            $missing++;
+            $this->warn(sprintf(
+                '[MISS] form_id=%s hc=%s codigo=%s archivo=%s',
+                $candidateFormId,
+                $candidateHcNumber,
+                $codigo !== '' ? $codigo : '—',
+                $archivo !== '' ? 'SI' : 'NO'
+            ));
+        } catch (\Throwable $e) {
+            $errors++;
+            $this->error(sprintf(
+                '[ERROR] form_id=%s hc=%s error=%s',
+                $candidateFormId,
+                $candidateHcNumber,
+                $e->getMessage()
+            ));
+        }
+    }
+
+    $this->newLine();
+    $this->table(
+        ['Candidates', 'Processed', 'Updated', 'Missing', 'Errors'],
+        [[count($rows), $processed, $updated, $missing, $errors]]
+    );
+
+    return $errors > 0 ? 1 : 0;
+})->purpose('Sincroniza derivaciones faltantes priorizando billing_main ya facturado');
+
+Schedule::command('billing:sync-derivaciones --only-billed=1 --only-missing=1 --limit=200')
+    ->hourly()
+    ->withoutOverlapping();

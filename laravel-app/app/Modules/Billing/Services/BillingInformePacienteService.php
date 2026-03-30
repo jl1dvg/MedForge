@@ -38,6 +38,49 @@ class BillingInformePacienteService
         return $row;
     }
 
+    public function preloadPatientDetails(array $hcNumbers): void
+    {
+        $normalizedHcNumbers = array_values(array_unique(array_filter(array_map(
+            static fn($value): string => trim((string) $value),
+            $hcNumbers
+        ))));
+
+        if ($normalizedHcNumbers === []) {
+            return;
+        }
+
+        $missingHcNumbers = array_values(array_filter(
+            $normalizedHcNumbers,
+            fn(string $hcNumber): bool => !array_key_exists($hcNumber, $this->patientCache)
+        ));
+
+        if ($missingHcNumbers === []) {
+            return;
+        }
+
+        foreach (array_chunk($missingHcNumbers, 500) as $chunk) {
+            $placeholders = implode(',', array_fill(0, count($chunk), '?'));
+            $stmt = $this->db->prepare("SELECT * FROM patient_data WHERE hc_number IN ($placeholders)");
+            $stmt->execute($chunk);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+            foreach ($rows as $row) {
+                $hcNumber = trim((string) ($row['hc_number'] ?? ''));
+                if ($hcNumber === '') {
+                    continue;
+                }
+
+                $this->patientCache[$hcNumber] = $row;
+            }
+        }
+
+        foreach ($missingHcNumbers as $hcNumber) {
+            if (!array_key_exists($hcNumber, $this->patientCache)) {
+                $this->patientCache[$hcNumber] = [];
+            }
+        }
+    }
+
     /**
      * @return array<string, mixed>
      */

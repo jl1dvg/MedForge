@@ -40,6 +40,7 @@ $orderMap = [
 ];
 $defaultOrderColumn = $orderMap[$defaultOrder]['column'] ?? 6;
 $defaultOrderDir = $orderMap[$defaultOrder]['dir'] ?? 'desc';
+$csrfToken = function_exists('csrf_token') ? (string) csrf_token() : '';
 $afiliacionesPermitidas = $grupoConfig['afiliaciones'] ?? [];
 $informesHelperClass = '\\App\\Modules\\Billing\\Support\\InformesHelper';
 if (empty($afiliacionesPermitidas)) {
@@ -301,6 +302,9 @@ $sedeSeleccionada = $informesHelperClass::normalizarSede($filtros['sede'] ?? '')
                     ?>
                     <div class="mb-4 text-end">
                         <form method="post" action="<?= htmlspecialchars($scrapeActionUrl) ?>">
+                            <?php if ($csrfToken !== ''): ?>
+                                <input type="hidden" name="_token" value="<?= htmlspecialchars($csrfToken) ?>">
+                            <?php endif; ?>
                             <input type="hidden" name="form_id_scrape"
                                    value="<?= htmlspecialchars($primerDato['billing']['form_id'] ?? '') ?>">
                             <input type="hidden" name="hc_number_scrape" value="<?= htmlspecialchars($hcNumber) ?>">
@@ -422,6 +426,38 @@ $sedeSeleccionada = $informesHelperClass::normalizarSede($filtros['sede'] ?? '')
                         $pacienteService,
                         $billingController
                 );
+
+                if ($scrapingOutput !== null): ?>
+                    <?php
+                    $lookupCodigo = is_array($scrapingOutput) ? trim((string) ($scrapingOutput['codigo_derivacion'] ?? '')) : '';
+                    $lookupSavedCount = is_array($scrapingOutput) ? (int) ($scrapingOutput['_saved_count'] ?? (!empty($scrapingOutput['_saved']) ? 1 : 0)) : 0;
+                    $lookupDebug = is_array($scrapingOutput) ? ($scrapingOutput['_debug_items'] ?? $scrapingOutput['_debug'] ?? null) : null;
+                    $lookupArchivoUrl = is_array($scrapingOutput) ? trim((string) ($scrapingOutput['archivo_derivacion_url'] ?? '')) : '';
+                    ?>
+                    <?php if ($lookupCodigo !== '' && $lookupSavedCount > 0): ?>
+                        <div class="alert alert-success">
+                            Código de derivación guardado correctamente: <strong><?= htmlspecialchars($lookupCodigo) ?></strong>.
+                            La tabla ya debería reflejarlo en esta misma carga.
+                            <?php if ($lookupArchivoUrl !== ''): ?>
+                                <a href="<?= htmlspecialchars($lookupArchivoUrl) ?>" class="ms-2" target="_blank" rel="noopener noreferrer">Ver PDF de derivación</a>
+                            <?php endif; ?>
+                        </div>
+                    <?php elseif ($lookupCodigo !== ''): ?>
+                        <div class="alert alert-warning">
+                            Se encontró el código <strong><?= htmlspecialchars($lookupCodigo) ?></strong>, pero no se pudo persistir en la tabla local.
+                        </div>
+                    <?php else: ?>
+                        <div class="alert alert-danger">
+                            No se obtuvo el código de derivación para la selección realizada.
+                            <?php if ($lookupDebug !== null): ?>
+                                <details class="mt-2">
+                                    <summary>Diagnóstico técnico</summary>
+                                    <pre class="small bg-light p-2 rounded mt-2 mb-0" style="white-space: pre-wrap;"><?= htmlspecialchars(json_encode($lookupDebug, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)) ?></pre>
+                                </details>
+                            <?php endif; ?>
+                        </div>
+                    <?php endif; ?>
+                <?php endif;
                 ?>
                     <ul class="nav nav-tabs" role="tablist">
                         <?php foreach ($categoriasIess as $slug => $label): ?>
@@ -483,6 +519,9 @@ $sedeSeleccionada = $informesHelperClass::normalizarSede($filtros['sede'] ?? '')
                                             </div>
                                             <form method="post" action="<?= htmlspecialchars($basePath) ?>"
                                                   class="d-flex gap-2 align-items-center bulk-derivaciones-form">
+                                                <?php if ($csrfToken !== ''): ?>
+                                                    <input type="hidden" name="_token" value="<?= htmlspecialchars($csrfToken) ?>">
+                                                <?php endif; ?>
                                                 <input type="hidden" name="scrape_derivacion" value="1">
                                                 <?php if (!empty($mesSeleccionado)): ?>
                                                     <input type="hidden" name="mes" value="<?= htmlspecialchars((string)$mesSeleccionado) ?>">
@@ -599,23 +638,7 @@ $sedeSeleccionada = $informesHelperClass::normalizarSede($filtros['sede'] ?? '')
                                                     $apellido = trim(($pacienteInfo['lname'] ?? '') . ' ' . ($pacienteInfo['lname2'] ?? ''));
                                                     $afiliacionTexto = $pacienteInfo['afiliacion'] ?? '--';
                                                     $formIdsPaciente = implode(', ', $info['form_ids']);
-                                                    $facturadores = [];
-                                                    foreach ($info['form_ids'] as $formIdLoop) {
-                                                        if (!isset($datosCache[$formIdLoop])) {
-                                                            $datosCache[$formIdLoop] = $billingController->obtenerDatos($formIdLoop);
-                                                        }
-                                                        $datosFactura = $datosCache[$formIdLoop] ?? null;
-                                                        if (!$datosFactura) {
-                                                            continue;
-                                                        }
-                                                        $facturadorNombre = $datosFactura['billing']['facturador_nombre']
-                                                            ?? $datosFactura['billing']['facturador']
-                                                            ?? null;
-                                                        if (!empty($facturadorNombre)) {
-                                                            $facturadores[] = $facturadorNombre;
-                                                        }
-                                                    }
-                                                    $facturadores = array_values(array_unique($facturadores));
+                                                    $facturadores = array_values(array_unique(array_filter($info['facturadores'] ?? [])));
                                                     $facturadoresTexto = $facturadores ? implode(', ', $facturadores) : '—';
                                                     $procHtml = htmlspecialchars($formIdsPaciente);
                                                     if ($slug === 'consulta' && !empty($info['form_ids'])) {
@@ -661,6 +684,9 @@ $sedeSeleccionada = $informesHelperClass::normalizarSede($filtros['sede'] ?? '')
                                                                 <span class="badge bg-success"><?= htmlspecialchars($codigoDerivacion) ?></span>
                                                             <?php else: ?>
                                                                 <form method="post" style="display:inline;">
+                                                                    <?php if ($csrfToken !== ''): ?>
+                                                                        <input type="hidden" name="_token" value="<?= htmlspecialchars($csrfToken) ?>">
+                                                                    <?php endif; ?>
                                                                     <input type="hidden" name="form_id_scrape"
                                                                            value="<?= htmlspecialchars($formIdsPaciente) ?>">
                                                                     <input type="hidden" name="hc_number_scrape"
@@ -1029,6 +1055,9 @@ $sedeSeleccionada = $informesHelperClass::normalizarSede($filtros['sede'] ?? '')
             };
 
             $table.off('change.bulkSelectDerivacion').on('change.bulkSelectDerivacion', '.select-derivacion', syncSelection);
+            $table.off('click.bulkSelectAllDerivacionInput').on('click.bulkSelectAllDerivacionInput', '.select-all-derivaciones', function (event) {
+                event.stopPropagation();
+            });
             $table.off('change.bulkSelectAllDerivacion').on('change.bulkSelectAllDerivacion', '.select-all-derivaciones', function () {
                 const checked = $(this).is(':checked');
                 const nodes = getRows();
@@ -1064,6 +1093,13 @@ $sedeSeleccionada = $informesHelperClass::normalizarSede($filtros['sede'] ?? '')
                     info: true,
                     autoWidth: false,
                     pageLength: pageLength,
+                    columnDefs: [
+                        {
+                            targets: 0,
+                            orderable: false,
+                            searchable: false,
+                        }
+                    ],
                 };
 
                 if (!Number.isNaN(orderColumn)) {

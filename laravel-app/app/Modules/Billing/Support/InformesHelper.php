@@ -282,15 +282,15 @@ class InformesHelper
             }
 
             if (!isset($datosCache[$formId])) {
-                $datosCache[$formId] = $billingController->obtenerDatos($formId);
+                $datosCache[$formId] = $billingController->obtenerResumenConsolidado($formId);
             }
             $datosPaciente = $datosCache[$formId];
-            if (!$datosPaciente) {
+            if (!$datosPaciente || !is_array($datosPaciente)) {
                 continue;
             }
 
-            $total = self::calcularTotalFactura($datosPaciente, $billingController);
-            $categoria = self::clasificarCategoriaFactura($datosPaciente);
+            $total = (float) ($datosPaciente['total'] ?? 0);
+            $categoria = (string) ($datosPaciente['categoria'] ?? 'procedimientos');
             if ($categoriaFiltro && $categoria !== $categoriaFiltro) {
                 continue;
             }
@@ -314,6 +314,7 @@ class InformesHelper
                 'sede' => $sedesCache[$formId] ?? '',
                 'derivacion' => $derivacion,
                 'vista_rapida' => $vistaRapida,
+                'facturador_nombre' => $datosPaciente['facturador_nombre'] ?? null,
             ];
         }
 
@@ -356,6 +357,7 @@ class InformesHelper
                             'afiliacion' => '',
                             'facturas' => 0,
                             'derivacion' => $p['derivacion'] ?? null,
+                            'facturadores' => [],
                         ];
                     }
 
@@ -368,13 +370,9 @@ class InformesHelper
                         ? max($agrupadoPorCategoria[$categoria][$mesKey][$hc]['fecha_egreso'], $fechaOrdenada)
                         : $fechaOrdenada;
 
-                    if (!isset($datosCache[$p['form_id']])) {
-                        $datosCache[$p['form_id']] = $billingController->obtenerDatos($p['form_id']);
-                    }
-                    $datosPaciente = $datosCache[$p['form_id']];
-                    if ($datosPaciente) {
-                        $agrupadoPorCategoria[$categoria][$mesKey][$hc]['total'] += self::calcularTotalFactura($datosPaciente, $billingController);
-                        $agrupadoPorCategoria[$categoria][$mesKey][$hc]['procedimientos'][] = $datosPaciente['procedimientos'] ?? [];
+                    $agrupadoPorCategoria[$categoria][$mesKey][$hc]['total'] += (float) ($p['total'] ?? 0);
+                    if (!empty($p['facturador_nombre'])) {
+                        $agrupadoPorCategoria[$categoria][$mesKey][$hc]['facturadores'][] = (string) $p['facturador_nombre'];
                     }
 
                     $vistaRapida = !empty($p['vista_rapida']);
@@ -382,7 +380,7 @@ class InformesHelper
                         if (!isset($cacheDerivaciones[$p['form_id']])) {
                             $cacheDerivaciones[$p['form_id']] = $billingController->obtenerDerivacionPorFormId($p['form_id']);
                         }
-                        $derivacion = $p['derivacion'] ?? $cacheDerivaciones[$p['form_id']];
+                        $derivacion = $cacheDerivaciones[$p['form_id']] ?? [];
                         if (!empty($derivacion['diagnostico'])) {
                             $agrupadoPorCategoria[$categoria][$mesKey][$hc]['cie10'][] = $derivacion['diagnostico'];
                         }
@@ -396,6 +394,9 @@ class InformesHelper
                         $pacientesCache[$hc] = $pacienteService->getPatientDetails($hc);
                     }
                     $agrupadoPorCategoria[$categoria][$mesKey][$hc]['afiliacion'] = strtoupper($pacientesCache[$hc]['afiliacion'] ?? '-');
+                    $agrupadoPorCategoria[$categoria][$mesKey][$hc]['facturadores'] = array_values(array_unique(
+                        array_filter($agrupadoPorCategoria[$categoria][$mesKey][$hc]['facturadores'])
+                    ));
                 }
             }
         }
@@ -465,7 +466,7 @@ class InformesHelper
         $cie10s = [];
         $partes = explode(';', $diagnostico);
         foreach ($partes as $parte) {
-            if (preg_match('/^\s*([A-Z]\d{2,3})\s*-/', trim($parte), $matches)) {
+            if (preg_match('/^\s*([A-Z][0-9]{2}[0-9A-Z]?(?:\.[0-9A-Z]+)?)\s*-/', trim($parte), $matches)) {
                 $cie10s[] = $matches[1];
             }
         }

@@ -42,12 +42,17 @@ class BillingUiController
     public function __construct()
     {
         $pdo = DB::connection()->getPdo();
+        try {
+            $sigcenterPdo = DB::connection('sigcenter')->getPdo();
+        } catch (\Throwable) {
+            $sigcenterPdo = null;
+        }
         $this->service = new BillingUiService();
         $this->particularesReportService = new BillingParticularesReportService($pdo);
         $this->dashboardDataService = new BillingDashboardDataService();
         $this->honorariosDashboardService = new HonorariosDashboardDataService();
         $this->informePacienteService = new BillingInformePacienteService($pdo);
-        $this->informeDataService = new BillingInformeDataService($pdo, $this->informePacienteService);
+        $this->informeDataService = new BillingInformeDataService($pdo, $this->informePacienteService, $sigcenterPdo);
         $this->consolidadoExportService = new BillingConsolidadoExportService($this->informeDataService, $this->informePacienteService);
         $this->informeConfigs = $this->defaultBillingInformeConfigs();
         $this->hydrateBillingInformeConfigsFromSettings();
@@ -761,7 +766,7 @@ class BillingUiController
                 : preg_split('/\s*,\s*/', (string) $formIdScrapeRaw)
         )));
 
-        $maxScrapeBatch = 20;
+        $maxScrapeBatch = 200;
         if (count($formIdsScrape) > $maxScrapeBatch) {
             $scrapingLimitMessage = "⚠️ Se limitaron las selecciones a los primeros {$maxScrapeBatch} registros para evitar saturar el servidor.";
             $formIdsScrape = array_slice($formIdsScrape, 0, $maxScrapeBatch);
@@ -776,7 +781,6 @@ class BillingUiController
         }
 
         if ($request->isMethod('post') && $request->has('scrape_derivacion') && $formIdsScrape && $hcNumbersScrape) {
-            $script = base_path('../scrapping/scrape_log_admision.py');
             $outputs = [];
 
             if (count($hcNumbersScrape) === 1 && count($formIdsScrape) > 1) {
@@ -789,36 +793,68 @@ class BillingUiController
                     continue;
                 }
 
-                $command = sprintf(
-                    '/usr/bin/python3 %s %s %s',
-                    escapeshellarg($script),
-                    escapeshellarg((string) $formIdScrape),
-                    escapeshellarg((string) $hcNumberScrape)
-                );
-                $outputs[] = shell_exec($command);
+                $payload = $billingController->buildDerivacionLookupPayload((string) $formIdScrape, (string) $hcNumberScrape);
+                if ($payload !== []) {
+                    $codigoLookup = trim((string) ($payload['codigo_derivacion'] ?? ''));
+                    $saved = false;
+                    if ($codigoLookup !== '') {
+                        $saved = $billingController->persistDerivacionLookupPayload($payload);
+                        $payload['_saved'] = $saved;
+                        if ($saved) {
+                            $payload['archivo_derivacion_url'] = $billingController->resolveDerivacionArchivoUrl(
+                                (string) $formIdScrape,
+                                '/v2/derivaciones/archivo-form'
+                            );
+                        }
+                    }
+                    if ($codigoLookup === '') {
+                        Log::warning('Billing derivacion lookup sin codigo', [
+                            'grupo' => $grupo,
+                            'form_id' => (string) $formIdScrape,
+                            'hc_number' => (string) $hcNumberScrape,
+                            'debug' => $payload['_debug'] ?? null,
+                        ]);
+                    }
+                    $outputs[] = $payload;
+                }
             }
 
-            $outputs = array_filter($outputs, static fn($output) => $output !== null && $output !== '');
+            $outputs = array_values(array_filter($outputs, static fn($output) => is_array($output) && $output !== []));
             if (count($outputs) === 1) {
                 $scrapingOutput = reset($outputs);
             } elseif ($outputs !== []) {
-                $procedimientos = [];
+                $scrapingOutput = $outputs[0];
+                $scrapingOutput['procedimientos'] = [];
+                $scrapingOutput['_debug_items'] = [];
+                $scrapingOutput['_saved_count'] = 0;
+                $seen = [];
                 foreach ($outputs as $output) {
-                    $partes = explode('📋 Procedimientos proyectados:', (string) $output);
-                    if (isset($partes[1])) {
-                        $procedimientos[] = trim($partes[1]);
+                    if (!empty($output['_saved'])) {
+                        $scrapingOutput['_saved_count']++;
+                    }
+                    if (!empty($output['_debug'])) {
+                        $scrapingOutput['_debug_items'][] = $output['_debug'];
+                    }
+                    foreach ((array) ($output['procedimientos'] ?? []) as $procedimiento) {
+                        $procId = trim((string) ($procedimiento['procedimiento_proyectado']['id'] ?? ''));
+                        if ($procId === '' || isset($seen[$procId])) {
+                            continue;
+                        }
+
+                        $seen[$procId] = true;
+                        $scrapingOutput['procedimientos'][] = $procedimiento;
                     }
                 }
-
-                $scrapingOutput = $procedimientos !== []
-                    ? "📋 Procedimientos proyectados:\n" . implode("\n", $procedimientos)
-                    : implode("\n\n", $outputs);
             }
 
             if ($scrapingLimitMessage !== '') {
-                $scrapingOutput = ($scrapingOutput !== null && $scrapingOutput !== '')
-                    ? $scrapingLimitMessage . "\n" . $scrapingOutput
-                    : $scrapingLimitMessage;
+                if (is_array($scrapingOutput)) {
+                    $scrapingOutput['_message'] = $scrapingLimitMessage;
+                } else {
+                    $scrapingOutput = ($scrapingOutput !== null && $scrapingOutput !== '')
+                        ? $scrapingLimitMessage . "\n" . $scrapingOutput
+                        : $scrapingLimitMessage;
+                }
             }
         } elseif ($scrapingLimitMessage !== '') {
             $scrapingOutput = $scrapingLimitMessage;
@@ -843,16 +879,27 @@ class BillingUiController
             'derivacion' => (string) $readInput($request, 'derivacion', ''),
             'afiliacion' => (string) $readInput($request, 'afiliacion', ''),
             'sede' => $this->normalizeSedeFilter((string) $readInput($request, 'sede', '')),
+            'vista' => (string) $readInput($request, 'vista', ''),
         ];
 
+        $billingIds = isset($filtros['billing_id']) && $filtros['billing_id'] !== ''
+            ? array_values(array_filter(array_map('trim', explode(',', (string) $filtros['billing_id']))))
+            : [];
+
         $mesSeleccionado = $filtros['mes'];
-        $vistaParamPresente = $request->query->has('vista');
-        $vista = $vistaParamPresente ? (string) $request->query('vista', '') : '';
+        $vistaParamPresente = $request->query->has('vista') || $request->request->has('vista');
+        $vista = $vistaParamPresente ? (string) $filtros['vista'] : '';
         if (!$vistaParamPresente && $mesSeleccionado !== '') {
             $vista = 'rapida';
         }
 
         $facturas = $billingController->obtenerFacturasDisponibles($mesSeleccionado !== '' ? $mesSeleccionado : null);
+        if ($billingIds === [] && $facturas !== []) {
+            $pacienteService->preloadPatientDetails(array_map(
+                static fn(array $factura): string => (string) ($factura['hc_number'] ?? ''),
+                $facturas
+            ));
+        }
 
         $necesitaDerivacion = $vista !== 'rapida' || !empty($filtros['derivacion']);
         $cacheDerivaciones = [];
@@ -880,6 +927,8 @@ class BillingUiController
         $pacientesCache = [];
         $datosCache = [];
         $sedesCache = [];
+        $facturasMesSeleccionado = [];
+        $formIdsConsolidado = [];
         if ($mesSeleccionado !== '') {
             foreach ($facturas as $factura) {
                 $fechaOrdenada = $factura['fecha_ordenada'] ?? null;
@@ -888,26 +937,30 @@ class BillingUiController
                     continue;
                 }
 
-                $hc = $factura['hc_number'];
-                $formId = $factura['form_id'];
+                $facturasMesSeleccionado[] = $factura;
+                $formId = (string) ($factura['form_id'] ?? '');
+                if ($formId !== '') {
+                    $formIdsConsolidado[] = $formId;
+                }
+            }
+
+            $pacienteService->preloadPatientDetails(array_map(
+                static fn(array $factura): string => (string) ($factura['hc_number'] ?? ''),
+                $facturasMesSeleccionado
+            ));
+
+            foreach ($facturasMesSeleccionado as $factura) {
+                $fechaOrdenada = $factura['fecha_ordenada'] ?? null;
+                $mes = $fechaOrdenada ? date('Y-m', strtotime((string) $fechaOrdenada)) : '';
+                $hc = (string) ($factura['hc_number'] ?? '');
 
                 if (!isset($cachePorMes[$mes]['pacientes'][$hc])) {
-                    $paciente = $pacienteService->getPatientDetails((string) $hc);
+                    $paciente = $pacienteService->getPatientDetails($hc);
                     $cachePorMes[$mes]['pacientes'][$hc] = $paciente;
                     $pacientesCache[$hc] = $paciente;
                 }
-
-                if ($vista !== 'rapida' && !isset($cachePorMes[$mes]['datos'][$formId])) {
-                    $datos = $billingController->obtenerDatos((string) $formId);
-                    $cachePorMes[$mes]['datos'][$formId] = $datos;
-                    $datosCache[$formId] = $datos;
-                }
             }
         }
-
-        $billingIds = isset($filtros['billing_id']) && $filtros['billing_id'] !== ''
-            ? array_values(array_filter(array_map('trim', explode(',', (string) $filtros['billing_id']))))
-            : [];
 
         $formIds = [];
         $datosFacturas = [];
@@ -929,6 +982,10 @@ class BillingUiController
                     $datosCache[$formId] = $datos;
                 }
             }
+        }
+
+        if ($billingIds === [] && $formIdsConsolidado !== []) {
+            $billingController->preloadResumenesConsolidado($formIdsConsolidado);
         }
 
         if ($request->expectsJson()) {

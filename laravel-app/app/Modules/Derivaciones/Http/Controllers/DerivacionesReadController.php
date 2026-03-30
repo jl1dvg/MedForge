@@ -16,10 +16,15 @@ class DerivacionesReadController
 {
     private DerivacionesParityService $service;
     private string $projectRoot;
+    private string $sigcenterDerivacionesBasePath;
 
     public function __construct()
     {
         $this->projectRoot = dirname(base_path());
+        $this->sigcenterDerivacionesBasePath = rtrim(
+            (string) (env('SIGCENTER_DERIVACIONES_BASE_PATH') ?: '/var/www/html/GOOGLE/frontend/web/data'),
+            DIRECTORY_SEPARATOR
+        );
         $this->service = new DerivacionesParityService(
             DB::connection()->getPdo(),
             $this->projectRoot
@@ -111,9 +116,60 @@ class DerivacionesReadController
 
         $rutaReal = $this->resolveDerivacionAbsolutePath($rutaRelativa);
         if ($rutaReal === null) {
+            $remoteResponse = $this->streamSigcenterRemoteFile($rutaRelativa, [
+                'derivacion_id' => $id,
+                'archivo_path' => $rutaRelativa,
+            ]);
+            if ($remoteResponse !== null) {
+                return $remoteResponse;
+            }
+
             Log::warning('derivaciones.archivo.not_found', [
                 'derivacion_id' => $id,
                 'archivo_path' => $rutaRelativa,
+            ]);
+
+            return response('Archivo de derivación no encontrado en disco', 404);
+        }
+
+        $filename = basename($rutaReal);
+
+        return response()->file($rutaReal, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="' . $filename . '"',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
+    }
+
+    public function archivoPorFormId(Request $request): BinaryFileResponse|RedirectResponse|Response
+    {
+        if (!LegacySessionAuth::isAuthenticated($request)) {
+            return redirect('/auth/login?auth_required=1');
+        }
+
+        $formId = trim((string) $request->query('form_id', ''));
+        if ($formId === '') {
+            return response('Parámetro form_id requerido', 422);
+        }
+
+        $rutaArchivo = $this->buscarArchivoDerivacionPorFormId($formId);
+        if ($rutaArchivo === null) {
+            return response('La derivación no tiene archivo asociado', 404);
+        }
+
+        $rutaReal = $this->resolveDerivacionAbsolutePath($rutaArchivo);
+        if ($rutaReal === null) {
+            $remoteResponse = $this->streamSigcenterRemoteFile($rutaArchivo, [
+                'form_id' => $formId,
+                'archivo_path' => $rutaArchivo,
+            ]);
+            if ($remoteResponse !== null) {
+                return $remoteResponse;
+            }
+
+            Log::warning('derivaciones.archivo_by_form.not_found', [
+                'form_id' => $formId,
+                'archivo_path' => $rutaArchivo,
             ]);
 
             return response('Archivo de derivación no encontrado en disco', 404);
@@ -135,30 +191,118 @@ class DerivacionesReadController
         return str_starts_with($path, '/v2/') ? '/v2/derivaciones' : '/derivaciones';
     }
 
+    private function buscarArchivoDerivacionPorFormId(string $formId): ?string
+    {
+        $queries = [
+            'SELECT archivo_derivacion_path FROM derivaciones_form_id WHERE form_id = ? AND archivo_derivacion_path IS NOT NULL AND archivo_derivacion_path <> \'\' ORDER BY id DESC LIMIT 1',
+            'SELECT archivo_derivacion_path FROM derivaciones_forms WHERE iess_form_id = ? AND archivo_derivacion_path IS NOT NULL AND archivo_derivacion_path <> \'\' ORDER BY id DESC LIMIT 1',
+        ];
+
+        foreach ($queries as $sql) {
+            try {
+                $stmt = DB::connection()->getPdo()->prepare($sql);
+                $stmt->execute([$formId]);
+                $value = $stmt->fetchColumn();
+                if ($value !== false && trim((string) $value) !== '') {
+                    return trim((string) $value);
+                }
+            } catch (\Throwable) {
+                continue;
+            }
+        }
+
+        return null;
+    }
+
     private function resolveDerivacionAbsolutePath(string $rutaRelativa): ?string
     {
-        $rutaNormalizada = ltrim(str_replace('\\', '/', $rutaRelativa), '/');
-        if ($rutaNormalizada === '') {
+        $ruta = trim(str_replace('\\', '/', $rutaRelativa));
+        if ($ruta === '') {
             return null;
         }
 
-        $rutaAbsoluta = $this->projectRoot . '/' . $rutaNormalizada;
-        $rutaReal = realpath($rutaAbsoluta);
-        $baseReal = realpath($this->projectRoot . '/storage/derivaciones');
+        $storageBase = realpath($this->projectRoot . '/storage/derivaciones');
+        if (is_string($storageBase)) {
+            $rutaNormalizada = ltrim($ruta, '/');
+            $rutaAbsoluta = $this->projectRoot . '/' . $rutaNormalizada;
+            $rutaReal = realpath($rutaAbsoluta);
+            if ($this->isAllowedDerivacionPath($rutaReal, $storageBase)) {
+                return $rutaReal;
+            }
+        }
 
+        $sigcenterBase = realpath($this->sigcenterDerivacionesBasePath);
+        if (is_string($sigcenterBase)) {
+            $rutaAbsoluta = str_starts_with($ruta, '/')
+                ? $ruta
+                : $sigcenterBase . '/' . ltrim($ruta, '/');
+            $rutaReal = realpath($rutaAbsoluta);
+            if ($this->isAllowedDerivacionPath($rutaReal, $sigcenterBase)) {
+                return $rutaReal;
+            }
+        }
+
+        return null;
+    }
+
+    private function isAllowedDerivacionPath(string|false $rutaReal, string|false $baseReal): bool
+    {
         if (!is_string($rutaReal) || !is_string($baseReal)) {
-            return null;
+            return false;
         }
 
         $basePrefix = rtrim($baseReal, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
         if (!str_starts_with($rutaReal, $basePrefix)) {
+            return false;
+        }
+
+        return is_file($rutaReal);
+    }
+
+    private function streamSigcenterRemoteFile(string $absolutePath, array $context = []): ?Response
+    {
+        $absolutePath = trim(str_replace('\\', '/', $absolutePath));
+        if ($absolutePath === '' || !str_starts_with($absolutePath, $this->sigcenterDerivacionesBasePath . '/')) {
             return null;
         }
 
-        if (!is_file($rutaReal)) {
+        if (!class_exists(\phpseclib3\Net\SFTP::class)) {
+            Log::warning('derivaciones.archivo.remote.phpseclib_missing', $context);
             return null;
         }
 
-        return $rutaReal;
+        $host = trim((string) (env('SIGCENTER_FILES_SSH_HOST') ?: ''));
+        $port = (int) (env('SIGCENTER_FILES_SSH_PORT') ?: 22);
+        $user = trim((string) (env('SIGCENTER_FILES_SSH_USER') ?: ''));
+        $pass = (string) (env('SIGCENTER_FILES_SSH_PASS') ?: '');
+        if ($host === '' || $user === '' || $pass === '') {
+            Log::warning('derivaciones.archivo.remote.credentials_missing', $context);
+            return null;
+        }
+
+        try {
+            $sftp = new \phpseclib3\Net\SFTP($host, $port, 20);
+            if (!$sftp->login($user, $pass)) {
+                Log::warning('derivaciones.archivo.remote.login_failed', $context + ['host' => $host, 'port' => $port]);
+                return null;
+            }
+
+            $contents = $sftp->get($absolutePath);
+            if (!is_string($contents) || $contents === '') {
+                Log::warning('derivaciones.archivo.remote.read_failed', $context + ['host' => $host, 'path' => $absolutePath]);
+                return null;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('derivaciones.archivo.remote.exception', $context + ['error' => $e->getMessage()]);
+            return null;
+        }
+
+        $filename = basename($absolutePath);
+
+        return response($contents, 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="' . $filename . '"',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
     }
 }

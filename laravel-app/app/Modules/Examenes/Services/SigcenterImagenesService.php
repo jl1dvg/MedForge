@@ -463,8 +463,8 @@ SQL;
             return null;
         }
 
-        $stream = $sftp->read($remotePath);
-        if (!is_string($stream) || $stream === '') {
+        $contents = $sftp->get($remotePath);
+        if (!is_string($contents) || $contents === '') {
             $this->lastError = 'Archivo Sigcenter no encontrado.';
             return null;
         }
@@ -475,7 +475,7 @@ SQL;
             return null;
         }
 
-        fwrite($handle, $stream);
+        fwrite($handle, $contents);
         rewind($handle);
 
         $filename = basename($relativePath);
@@ -483,7 +483,7 @@ SQL;
 
         return [
             'stream' => $handle,
-            'size' => strlen($stream),
+            'size' => strlen($contents),
             'ext' => $ext,
             'type' => $this->mapMime($ext),
             'name' => $filename,

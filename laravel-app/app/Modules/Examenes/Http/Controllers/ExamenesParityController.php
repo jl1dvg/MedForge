@@ -396,6 +396,29 @@ class ExamenesParityController
         $resolvedFormId = $nasContext['form_id'];
 
         if (!$nasContext['has_image_context']) {
+            $probeError = null;
+            $probeFiles = $this->getSigcenterFiles($formId, $hcNumber, false, $probeError);
+            if ($probeFiles !== []) {
+                $files = array_map(function (array $file) use ($hcNumber, $formId): array {
+                    $name = trim((string) ($file['name'] ?? ''));
+                    $file['url'] = $name === ''
+                        ? ''
+                        : '/v2/imagenes/examenes-realizados/nas/file?hc_number=' . rawurlencode($hcNumber)
+                            . '&form_id=' . rawurlencode($formId)
+                            . '&file=' . rawurlencode($name);
+
+                    return $file;
+                }, $probeFiles);
+
+                return response()->json([
+                    'success' => true,
+                    'files' => $files,
+                    'error' => null,
+                    'resolved_form_id' => $formId,
+                    'resolved_hc_number' => $hcNumber,
+                ]);
+            }
+
             return response()->json([
                 'success' => true,
                 'files' => [],
@@ -464,7 +487,13 @@ class ExamenesParityController
             $resolvedFormId = $nasContext['form_id'];
 
             if (!$nasContext['has_image_context']) {
-                continue;
+                $probeError = null;
+                $probeFiles = $this->getSigcenterFiles($formId, $hcNumber, false, $probeError);
+                if ($probeFiles === []) {
+                    continue;
+                }
+                $resolvedHcNumber = $hcNumber;
+                $resolvedFormId = $formId;
             }
 
             $checked++;
@@ -511,7 +540,14 @@ class ExamenesParityController
         $resolvedFormId = $nasContext['form_id'];
 
         if (!$nasContext['has_image_context']) {
-            return response('No existe un procedimiento de imagenes asociado a este examen.', 404);
+            $probeError = null;
+            $probeFiles = $this->getSigcenterFiles($formId, $hcNumber, false, $probeError);
+            $matched = collect($probeFiles)->first(static fn(array $file): bool => trim((string) ($file['name'] ?? '')) === $filename);
+            if (!is_array($matched)) {
+                return response('No existe un procedimiento de imagenes asociado a este examen.', 404);
+            }
+            $resolvedHcNumber = $hcNumber;
+            $resolvedFormId = $formId;
         }
 
         $cachePath = $this->resolveNasFileCachePath($resolvedHcNumber, $resolvedFormId, $filename);
@@ -904,6 +940,22 @@ class ExamenesParityController
                 ->first();
         }
 
+        if (
+            $index instanceof ImagenSigcenterIndex
+            && !$forceRefresh
+            && $this->shouldRescanSigcenterIndexOnDemand($index)
+        ) {
+            $this->imagenesSigcenterIndexService()->scan([
+                'form_id' => $formId,
+                'force' => true,
+            ]);
+
+            $index = ImagenSigcenterIndex::query()
+                ->whereRaw("TRIM(COALESCE(form_id, '')) = ?", [$formId])
+                ->whereRaw("TRIM(COALESCE(hc_number, '')) = ?", [$hcNumber])
+                ->first();
+        }
+
         if (!$index instanceof ImagenSigcenterIndex) {
             return [];
         }
@@ -949,6 +1001,25 @@ class ExamenesParityController
         });
 
         return array_values($files);
+    }
+
+    private function shouldRescanSigcenterIndexOnDemand(ImagenSigcenterIndex $index): bool
+    {
+        if ((bool) $index->has_files) {
+            return false;
+        }
+
+        $scanStatus = trim((string) ($index->scan_status ?? ''));
+        if (!in_array($scanStatus, ['empty', 'no_mapping', 'missing_dir', 'error'], true)) {
+            return false;
+        }
+
+        $lastScannedAt = $index->last_scanned_at;
+        if ($lastScannedAt === null) {
+            return true;
+        }
+
+        return $lastScannedAt->lt(now()->subMinute());
     }
 
     private function warmPreferredFileCache(string $hcNumber, string $formId, string $filename): bool

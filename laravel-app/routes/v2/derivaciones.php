@@ -9,6 +9,7 @@ Route::middleware([
     'legacy.permission:administrativo,derivaciones.view,pacientes.view,solicitudes.view',
 ])->group(function (): void {
     Route::post('/derivaciones/datatable', [DerivacionesReadController::class, 'datatable']);
+    Route::get('/derivaciones/archivo-form', [DerivacionesReadController::class, 'archivoPorFormId']);
     Route::get('/derivaciones/archivo/{id}', [DerivacionesReadController::class, 'archivo'])->whereNumber('id');
     Route::post('/derivaciones/scrap', [DerivacionesWriteController::class, 'scrap']);
 });

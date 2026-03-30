@@ -12,36 +12,60 @@ $billingInsertarBillingMainEndpoint = $billingWritePrefix . '/api/billing/insert
 
 // Renderizar procedimientos scrappeados cuando se intentó scrapear
 if (!empty($scrapingOutput)):
+    $scrapingMessage = '';
+    $grupos = [];
+
     // Tolerar respuestas en string o array
     if (is_array($scrapingOutput)) {
         $codigo_derivacion = $scrapingOutput["codigo_derivacion"] ?? '';
         $fecha_registro = $scrapingOutput["fecha_registro"] ?? '';
+        $scrapingMessage = trim((string) ($scrapingOutput['_message'] ?? ''));
+
+        foreach ((array) ($scrapingOutput['procedimientos'] ?? []) as $procedimiento) {
+            $proc = (array) ($procedimiento['procedimiento_proyectado'] ?? []);
+            $procId = trim((string) ($proc['id'] ?? $procedimiento['form_id'] ?? ''));
+            $procNombre = trim((string) ($proc['nombre'] ?? ''));
+
+            if ($procId === '' || $procNombre === '') {
+                continue;
+            }
+
+            $estado = trim((string) ($proc['estado_alta'] ?? '❌ No dado de alta'));
+            $grupos[] = [
+                'form_id' => $procId,
+                'procedimiento' => $procNombre,
+                'fecha' => trim((string) ($proc['fecha_ejecucion'] ?? 'N/D')),
+                'doctor' => trim((string) ($proc['doctor'] ?? '')),
+                'estado' => $estado,
+                'color' => str_contains($estado, '✅') ? 'success' : 'danger',
+            ];
+        }
     } else {
         $codigo_derivacion = '';
         $fecha_registro = '';
+        $partes = explode("📋 Procedimientos proyectados:", (string) $scrapingOutput);
+        if (isset($partes[1])) {
+            $lineas = array_filter(array_map('trim', explode("\n", trim($partes[1]))));
+            for ($i = 0; $i < count($lineas); $i += 5) {
+                $idLinea = $lineas[$i] ?? '';
+                $procedimiento = $lineas[$i + 1] ?? '';
+                $fecha = $lineas[$i + 2] ?? '';
+                $doctor = $lineas[$i + 3] ?? '';
+                $estado = $lineas[$i + 4] ?? '';
+                $color = str_contains($estado, '✅') ? 'success' : 'danger';
+                $grupos[] = [
+                    'form_id' => trim($idLinea),
+                    'procedimiento' => trim($procedimiento),
+                    'fecha' => trim($fecha),
+                    'doctor' => trim($doctor),
+                    'estado' => trim($estado),
+                    'color' => $color,
+                ];
+            }
+        }
     }
     $codigoDerivacionObtenida = $codigo_derivacion;
-
-    $partes = explode("📋 Procedimientos proyectados:", (string)$scrapingOutput);
-    if (isset($partes[1])):
-        $lineas = array_filter(array_map('trim', explode("\n", trim($partes[1]))));
-        $grupos = [];
-        for ($i = 0; $i < count($lineas); $i += 5) {
-            $idLinea = $lineas[$i] ?? '';
-            $procedimiento = $lineas[$i + 1] ?? '';
-            $fecha = $lineas[$i + 2] ?? '';
-            $doctor = $lineas[$i + 3] ?? '';
-            $estado = $lineas[$i + 4] ?? '';
-            $color = str_contains($estado, '✅') ? 'success' : 'danger';
-            $grupos[] = [
-                'form_id' => trim($idLinea),
-                'procedimiento' => trim($procedimiento),
-                'fecha' => trim($fecha),
-                'doctor' => trim($doctor),
-                'estado' => trim($estado),
-                'color' => $color
-            ];
-        }
+    if ($grupos !== []):
         // Obtener form_ids ya facturados desde el controller
         $formIdsFacturados = $billingController->obtenerFormIdsFacturados(); // Este método debe retornar un array de form_id
 
@@ -51,6 +75,9 @@ if (!empty($scrapingOutput)):
                 <h4 class="box-title">Procedimientos proyectados <?php echo $codigoDerivacionPrincipal; ?></h4>
             </div>
             <div class="box-body">
+                <?php if ($scrapingMessage !== ''): ?>
+                    <div class="alert alert-warning mb-15"><?= htmlspecialchars($scrapingMessage) ?></div>
+                <?php endif; ?>
                 <div class="d-flex align-items-center mb-15">
                     <input type="checkbox" id="select_all_checkbox" class="filled-in chk-col-info me-10">
                     <label for="select_all_checkbox" class="mb-0">Seleccionar todos</label>
@@ -314,7 +341,7 @@ if ($scrapingOutput !== null && $codigoDerivacionObtenida === ''): ?>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
                 </div>
                 <div class="modal-body">
-                    <p>El scraping no devolvió un código de derivación. Verifica que el formulario tenga derivación y vuelve a intentar.</p>
+                    <p>La búsqueda por base de datos no devolvió un código de derivación. Verifica que el formulario tenga derivación y vuelve a intentar.</p>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cerrar</button>
