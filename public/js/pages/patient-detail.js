@@ -622,15 +622,11 @@
         }
 
         var hcNumber = String(row && row.hc_number ? row.hc_number : '').trim();
-        var formId = String(row && row.form_id ? row.form_id : '').trim();
-        if (hcNumber === '' || formId === '') {
+        if (hcNumber === '') {
             return '/imagenes/examenes-realizados';
         }
 
-        return '/imagenes/examenes-realizados?hc_number='
-            + encodeURIComponent(hcNumber)
-            + '&form_id='
-            + encodeURIComponent(formId);
+        return '/imagenes/examenes-realizados?hc_number=' + encodeURIComponent(hcNumber);
     }
 
     function pickPreferredNasFile(files) {

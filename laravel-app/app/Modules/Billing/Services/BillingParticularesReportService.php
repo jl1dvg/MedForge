@@ -749,20 +749,20 @@ class BillingParticularesReportService
      *     referido_prefactura:array{
      *         with_value:int,
      *         without_value:int,
-     *         top_values:array<int, array{valor:string,cantidad:int,porcentaje:float}>,
-     *         values:array<int, array{valor:string,cantidad:int,porcentaje:float}>
+     *         top_values:array<int, array{valor:string,cantidad:int,porcentaje:float,monto:float,ticket_promedio:float,divisor_ticket:int}>,
+     *         values:array<int, array{valor:string,cantidad:int,porcentaje:float,monto:float,ticket_promedio:float,divisor_ticket:int}>
      *     },
      *     referido_prefactura_pacientes_unicos:array{
      *         with_value:int,
      *         without_value:int,
-     *         top_values:array<int, array{valor:string,cantidad:int,porcentaje:float}>,
-     *         values:array<int, array{valor:string,cantidad:int,porcentaje:float}>
+     *         top_values:array<int, array{valor:string,cantidad:int,porcentaje:float,monto:float,ticket_promedio:float}>,
+     *         values:array<int, array{valor:string,cantidad:int,porcentaje:float,monto:float,ticket_promedio:float}>
      *     },
      *     referido_prefactura_consulta_nuevo_paciente:array{
      *         with_value:int,
      *         without_value:int,
-     *         top_values:array<int, array{valor:string,cantidad:int,porcentaje:float}>,
-     *         values:array<int, array{valor:string,cantidad:int,porcentaje:float}>
+     *         top_values:array<int, array{valor:string,cantidad:int,porcentaje:float,monto:float,ticket_promedio:float}>,
+     *         values:array<int, array{valor:string,cantidad:int,porcentaje:float,monto:float,ticket_promedio:float}>
      *     },
      *     especificar_referido_prefactura:array{
      *         with_value:int,
@@ -860,6 +860,7 @@ class BillingParticularesReportService
         $procedureCounts = [];
         $sedeCounts = [];
         $doctorCounts = [];
+        $doctorCountsConHonorario = [];
         $doctorHonorario = [];
         $pniEstadoCounts = [
             'FACTURADA' => 0,
@@ -937,14 +938,18 @@ class BillingParticularesReportService
         $areaHonorario = [];
         $facturasEmitidas = [];
         $referidoCounts = [];
+        $referidoAmounts = [];
         $referidoWithValue = 0;
         $referidoWithoutValue = 0;
         $referidoUniquePatientsByCategory = [];
+        $referidoUniquePatientAmounts = [];
         $referidoUniquePatientsWithValue = [];
         $referidoUniquePatientsWithoutValue = [];
         $referidoNewPatientConsultationCounts = [];
-        $referidoNewPatientConsultationWithValue = 0;
-        $referidoNewPatientConsultationWithoutValue = 0;
+        $referidoNewPatientConsultationAmounts = [];
+        $referidoNewPatientConsultationPatientsByCategory = [];
+        $referidoNewPatientConsultationWithValuePatients = [];
+        $referidoNewPatientConsultationWithoutValuePatients = [];
         $especificarCounts = [];
         $especificarWithValue = 0;
         $especificarWithoutValue = 0;
@@ -1044,6 +1049,12 @@ class BillingParticularesReportService
                 $doctorCounts[$doctor] = 0;
             }
             $doctorCounts[$doctor]++;
+            if (!isset($doctorCountsConHonorario[$doctor])) {
+                $doctorCountsConHonorario[$doctor] = 0;
+            }
+            if ($produccionBaseRow > 0) {
+                $doctorCountsConHonorario[$doctor]++;
+            }
 
             $procedure = $this->resolveProcedureVolumeLabel((string) ($row['procedimiento_proyectado'] ?? ''));
             if (!isset($procedureCounts[$procedure])) {
@@ -1361,6 +1372,10 @@ class BillingParticularesReportService
                     $referidoCounts[$referidoValue] = 0;
                 }
                 $referidoCounts[$referidoValue]++;
+                if (!isset($referidoAmounts[$referidoValue])) {
+                    $referidoAmounts[$referidoValue] = 0.0;
+                }
+                $referidoAmounts[$referidoValue] += $produccionBaseRow;
             }
             if ($hcNumber !== '') {
                 if ($referidoValue === '') {
@@ -1371,17 +1386,33 @@ class BillingParticularesReportService
                     }
                     $referidoUniquePatientsByCategory[$referidoValue][$hcNumber] = true;
                     $referidoUniquePatientsWithValue[$hcNumber] = true;
+                    if (!isset($referidoUniquePatientAmounts[$referidoValue])) {
+                        $referidoUniquePatientAmounts[$referidoValue] = 0.0;
+                    }
+                    $referidoUniquePatientAmounts[$referidoValue] += $produccionBaseRow;
                 }
             }
             if ($this->isNewPatientConsultationProcedure($procedure)) {
+                $newPatientUniqueKey = $hcNumber !== ''
+                    ? 'HC:' . $hcNumber
+                    : ('FORM:' . trim((string) ($row['form_id'] ?? '')));
+
                 if ($referidoValue === '') {
-                    $referidoNewPatientConsultationWithoutValue++;
-                } else {
-                    $referidoNewPatientConsultationWithValue++;
-                    if (!isset($referidoNewPatientConsultationCounts[$referidoValue])) {
-                        $referidoNewPatientConsultationCounts[$referidoValue] = 0;
+                    if ($newPatientUniqueKey !== 'FORM:' && $newPatientUniqueKey !== '') {
+                        $referidoNewPatientConsultationWithoutValuePatients[$newPatientUniqueKey] = true;
                     }
-                    $referidoNewPatientConsultationCounts[$referidoValue]++;
+                } else {
+                    if (!isset($referidoNewPatientConsultationAmounts[$referidoValue])) {
+                        $referidoNewPatientConsultationAmounts[$referidoValue] = 0.0;
+                    }
+                    $referidoNewPatientConsultationAmounts[$referidoValue] += $produccionBaseRow;
+                    if ($newPatientUniqueKey !== 'FORM:' && $newPatientUniqueKey !== '') {
+                        if (!isset($referidoNewPatientConsultationPatientsByCategory[$referidoValue])) {
+                            $referidoNewPatientConsultationPatientsByCategory[$referidoValue] = [];
+                        }
+                        $referidoNewPatientConsultationPatientsByCategory[$referidoValue][$newPatientUniqueKey] = true;
+                        $referidoNewPatientConsultationWithValuePatients[$newPatientUniqueKey] = true;
+                    }
                 }
             }
 
@@ -1413,6 +1444,10 @@ class BillingParticularesReportService
             }
             $hierarchy[$hierarchyCategory]['subcategorias'][$hierarchySubcategory]++;
         }
+
+        $referidoNewPatientConsultationCounts = $this->uniquePatientDivisors($referidoNewPatientConsultationPatientsByCategory);
+        $referidoNewPatientConsultationWithValue = count($referidoNewPatientConsultationWithValuePatients);
+        $referidoNewPatientConsultationWithoutValue = count($referidoNewPatientConsultationWithoutValuePatients);
 
         $empresaSeguroFilter = $this->afiliacionDimensions->normalizeEmpresaFilter((string) ($filters['empresa_seguro'] ?? ''));
         $selectedEmpresaSeguro = '';
@@ -1631,7 +1666,7 @@ class BillingParticularesReportService
         $operativoPotencialCapturable = $honorarioRealTotal + $operativoPorCobrarEstimado;
         $ticketPromedioFacturadoReal = $operativoFacturadas > 0 ? round($honorarioRealTotal / $operativoFacturadas, 2) : 0.0;
         $ticketPromedioPendiente = $operativoPendientesFacturar > 0 ? round($operativoPorCobrarEstimado / $operativoPendientesFacturar, 2) : 0.0;
-
+        $doctorPerformanceTop = $this->doctorPerformanceRows($doctorCounts, $doctorCountsConHonorario, $doctorHonorario, 10);
         return [
             'total' => $totalRows,
             'total_consultas' => $totalConsultas,
@@ -1665,6 +1700,7 @@ class BillingParticularesReportService
                     'values' => $this->metricValues($formasPagoCounts, 8, $atencionesFacturadas),
                 ],
                 'doctores_top' => $this->moneyMetricValues($doctorHonorario, 10, $honorarioRealTotal),
+                'doctores_rendimiento_top' => $doctorPerformanceTop,
                 'clientes_top' => $this->moneyMetricValues($clienteHonorario, 8, $honorarioRealTotal),
                 'areas_top' => $this->moneyMetricValues($areaHonorario, 8, $honorarioRealTotal),
                 'trend' => [
@@ -1704,20 +1740,40 @@ class BillingParticularesReportService
             'referido_prefactura' => [
                 'with_value' => $referidoWithValue,
                 'without_value' => $referidoWithoutValue,
-                'top_values' => $this->metricValues($referidoCounts, 5, $referidoWithValue),
-                'values' => $this->metricValues($referidoCounts, null, $referidoWithValue),
+                'top_values' => $this->attachAmountsToMetricValues(
+                    $this->metricValues($referidoCounts, 5, $referidoWithValue),
+                    $referidoAmounts
+                ),
+                'values' => $this->attachAmountsToMetricValues(
+                    $this->metricValues($referidoCounts, null, $referidoWithValue),
+                    $referidoAmounts
+                ),
             ],
             'referido_prefactura_pacientes_unicos' => [
                 'with_value' => $referidoUniquePatientsWithValueCount,
                 'without_value' => $referidoUniquePatientsWithoutValueCount,
-                'top_values' => $this->metricValues($referidoUniquePatientCounts, 5, $referidoUniquePatientsWithValueCount),
-                'values' => $this->metricValues($referidoUniquePatientCounts, null, $referidoUniquePatientsWithValueCount),
+                'top_values' => $this->attachAmountsToMetricValues(
+                    $this->metricValues($referidoUniquePatientCounts, 5, $referidoUniquePatientsWithValueCount),
+                    $referidoUniquePatientAmounts
+                ),
+                'values' => $this->attachAmountsToMetricValues(
+                    $this->metricValues($referidoUniquePatientCounts, null, $referidoUniquePatientsWithValueCount),
+                    $referidoUniquePatientAmounts
+                ),
             ],
             'referido_prefactura_consulta_nuevo_paciente' => [
                 'with_value' => $referidoNewPatientConsultationWithValue,
                 'without_value' => $referidoNewPatientConsultationWithoutValue,
-                'top_values' => $this->metricValues($referidoNewPatientConsultationCounts, 5, $referidoNewPatientConsultationWithValue),
-                'values' => $this->metricValues($referidoNewPatientConsultationCounts, null, $referidoNewPatientConsultationWithValue),
+                'top_values' => $this->attachAmountsToMetricValues(
+                    $this->metricValues($referidoNewPatientConsultationCounts, 5, $referidoNewPatientConsultationWithValue),
+                    $referidoNewPatientConsultationAmounts,
+                    $this->uniquePatientDivisors($referidoNewPatientConsultationPatientsByCategory)
+                ),
+                'values' => $this->attachAmountsToMetricValues(
+                    $this->metricValues($referidoNewPatientConsultationCounts, null, $referidoNewPatientConsultationWithValue),
+                    $referidoNewPatientConsultationAmounts,
+                    $this->uniquePatientDivisors($referidoNewPatientConsultationPatientsByCategory)
+                ),
             ],
             'especificar_referido_prefactura' => [
                 'with_value' => $especificarWithValue,
@@ -3203,6 +3259,52 @@ class BillingParticularesReportService
     }
 
     /**
+     * @param array<int, array{valor:string,cantidad:int,porcentaje:float}> $items
+     * @param array<string, float> $amounts
+     * @param array<string, int> $ticketDivisors
+     * @return array<int, array{valor:string,cantidad:int,porcentaje:float,monto:float,ticket_promedio:float,divisor_ticket:int}>
+     */
+    private function attachAmountsToMetricValues(array $items, array $amounts, array $ticketDivisors = []): array
+    {
+        if (empty($items)) {
+            return [];
+        }
+
+        $result = [];
+        foreach ($items as $item) {
+            $label = (string) ($item['valor'] ?? '');
+            $count = (int) ($item['cantidad'] ?? 0);
+            $amount = round((float) ($amounts[$label] ?? 0), 2);
+            $divisor = (int) ($ticketDivisors[$label] ?? $count);
+
+            $result[] = [
+                'valor' => $label,
+                'cantidad' => $count,
+                'porcentaje' => (float) ($item['porcentaje'] ?? 0),
+                'monto' => $amount,
+                'ticket_promedio' => $divisor > 0 ? round($amount / $divisor, 2) : 0.0,
+                'divisor_ticket' => $divisor,
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param array<string, array<string, bool>> $patientsByCategory
+     * @return array<string, int>
+     */
+    private function uniquePatientDivisors(array $patientsByCategory): array
+    {
+        $divisors = [];
+        foreach ($patientsByCategory as $label => $patients) {
+            $divisors[(string) $label] = count($patients);
+        }
+
+        return $divisors;
+    }
+
+    /**
      * @param array<string, float> $amounts
      * @return array<int, array{valor:string,monto:float,porcentaje:float}>
      */
@@ -3233,6 +3335,139 @@ class BillingParticularesReportService
         }
 
         return $result;
+    }
+
+    /**
+     * @param array<string, int> $totalCounts
+     * @param array<string, int> $billableCounts
+     * @param array<string, float> $amounts
+     * @return array<int, array{
+     *     valor:string,
+     *     cantidad_total:int,
+     *     cantidad_con_honorario:int,
+     *     monto:float,
+     *     ticket_promedio:float,
+     *     tasa_cero:float,
+     *     score_rendimiento:float,
+     *     clasificacion:string
+     * }>
+     */
+    private function doctorPerformanceRows(
+        array $totalCounts,
+        array $billableCounts,
+        array $amounts,
+        ?int $limit = null
+    ): array {
+        $labels = array_values(array_unique(array_merge(array_keys($totalCounts), array_keys($amounts))));
+        if (empty($labels)) {
+            return [];
+        }
+
+        $excludedDoctors = [
+            'CHELE CHELE WILFRIDO BYRON' => true,
+            'BARONA RODRIGUEZ JORGE FERNANDO' => true
+        ];
+
+        $rows = [];
+        foreach ($labels as $label) {
+            $normalizedLabel = strtoupper(trim((string) $label));
+            if (isset($excludedDoctors[$normalizedLabel])) {
+                continue;
+            }
+
+            $monto = round((float) ($amounts[$label] ?? 0), 2);
+            $cantidadConHonorario = (int) ($billableCounts[$label] ?? 0);
+            if ($monto <= 0 || $cantidadConHonorario <= 0) {
+                continue;
+            }
+
+            $cantidadTotal = (int) ($totalCounts[$label] ?? 0);
+            $tasaCero = $cantidadTotal > 0
+                ? round(max($cantidadTotal - $cantidadConHonorario, 0) / $cantidadTotal, 4)
+                : 1.0;
+
+            $rows[] = [
+                'valor' => (string) $label,
+                'cantidad_total' => $cantidadTotal,
+                'cantidad_con_honorario' => $cantidadConHonorario,
+                'monto' => $monto,
+                'ticket_promedio' => round($monto / $cantidadConHonorario, 2),
+                'tasa_cero' => $tasaCero,
+                'score_rendimiento' => 0.0,
+                'clasificacion' => 'POR REVISAR',
+            ];
+        }
+
+        if (empty($rows)) {
+            return [];
+        }
+
+        $normalize = static function (float $value, float $min, float $max): float {
+            if (abs($max - $min) < 0.0001) {
+                return 1.0;
+            }
+
+            return ($value - $min) / ($max - $min);
+        };
+
+        $amountsOnly = array_map(static fn(array $row): float => (float) ($row['monto'] ?? 0), $rows);
+        $ticketsOnly = array_map(static fn(array $row): float => (float) ($row['ticket_promedio'] ?? 0), $rows);
+        $countsOnly = array_map(static fn(array $row): float => (float) ($row['cantidad_con_honorario'] ?? 0), $rows);
+        $zeroRatesOnly = array_map(static fn(array $row): float => (float) ($row['tasa_cero'] ?? 0), $rows);
+
+        $minAmount = min($amountsOnly);
+        $maxAmount = max($amountsOnly);
+        $minTicket = min($ticketsOnly);
+        $maxTicket = max($ticketsOnly);
+        $minCount = min($countsOnly);
+        $maxCount = max($countsOnly);
+        $minZeroRate = min($zeroRatesOnly);
+        $maxZeroRate = max($zeroRatesOnly);
+
+        foreach ($rows as &$row) {
+            $amountNorm = $normalize((float) ($row['monto'] ?? 0), $minAmount, $maxAmount);
+            $ticketNorm = $normalize((float) ($row['ticket_promedio'] ?? 0), $minTicket, $maxTicket);
+            $countNorm = $normalize((float) ($row['cantidad_con_honorario'] ?? 0), $minCount, $maxCount);
+            $zeroNorm = $normalize((float) ($row['tasa_cero'] ?? 0), $minZeroRate, $maxZeroRate);
+
+            $score = (
+                (0.4 * $amountNorm) +
+                (0.3 * $ticketNorm) +
+                (0.2 * $countNorm) -
+                (0.1 * $zeroNorm)
+            ) * 100;
+
+            $row['score_rendimiento'] = round($score, 2);
+            $row['clasificacion'] = $score >= 70
+                ? 'ALTO RENDIMIENTO'
+                : ($score >= 45 ? 'RENDIMIENTO MEDIO' : 'RIESGO OPERATIVO');
+        }
+        unset($row);
+
+        usort($rows, static function (array $a, array $b): int {
+            $scoreCmp = ((float) ($b['score_rendimiento'] ?? 0)) <=> ((float) ($a['score_rendimiento'] ?? 0));
+            if ($scoreCmp !== 0) {
+                return $scoreCmp;
+            }
+
+            $ticketCmp = ((float) ($b['ticket_promedio'] ?? 0)) <=> ((float) ($a['ticket_promedio'] ?? 0));
+            if ($ticketCmp !== 0) {
+                return $ticketCmp;
+            }
+
+            $billableCmp = ((int) ($b['cantidad_con_honorario'] ?? 0)) <=> ((int) ($a['cantidad_con_honorario'] ?? 0));
+            if ($billableCmp !== 0) {
+                return $billableCmp;
+            }
+
+            return strcmp((string) ($a['valor'] ?? ''), (string) ($b['valor'] ?? ''));
+        });
+
+        if ($limit !== null && $limit > 0) {
+            $rows = array_slice($rows, 0, $limit);
+        }
+
+        return $rows;
     }
 
     /**

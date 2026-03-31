@@ -1,6 +1,7 @@
 <?php
 
 use App\Modules\Dashboard\Http\Controllers\DashboardUiController;
+use App\Modules\Consultas\Http\Controllers\ConsultasUiController;
 use App\Modules\Examenes\Http\Controllers\ExamenesUiController;
 use App\Modules\Examenes\Http\Controllers\ImagenesUiController;
 use App\Modules\Farmacia\Http\Controllers\FarmaciaUiController;
@@ -48,6 +49,11 @@ Route::middleware(['legacy.auth', 'legacy.permission:administrativo,examenes.vie
     Route::get('/v2/examenes/turnero', [ExamenesUiController::class, 'turnero']);
     Route::get('/v2/imagenes/examenes-realizados', [ImagenesUiController::class, 'realizadas']);
     Route::get('/v2/imagenes/dashboard', [ImagenesUiController::class, 'dashboard']);
+});
+
+Route::middleware(['legacy.auth', 'legacy.permission:administrativo,agenda.view,pacientes.view,solicitudes.view,examenes.view'])->group(function (): void {
+    Route::get('/v2/consultas', [ConsultasUiController::class, 'edit']);
+    Route::post('/v2/consultas', [ConsultasUiController::class, 'update']);
 });
 
 Route::middleware(['legacy.auth', 'legacy.permission:administrativo,farmacia.view,insumos.view,insumos.manage'])->group(function (): void {

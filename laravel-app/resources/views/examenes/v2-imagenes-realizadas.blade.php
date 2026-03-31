@@ -26,6 +26,8 @@
             'tipo_examen' => '',
             'paciente' => '',
             'estado_agenda' => '',
+            'hc_number' => '',
+            'form_id' => '',
         ];
     }
 
@@ -174,6 +176,8 @@
                     </li>
                 </ul>
                 <form class="row g-2 align-items-end mb-3" method="get" id="filtrosImagenes">
+                    <input type="hidden" name="hc_number" value="<?= htmlspecialchars($filters['hc_number'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
+                    <input type="hidden" name="form_id" value="<?= htmlspecialchars($filters['form_id'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
                     <div class="col-sm-6 col-md-2">
                         <label class="form-label">Desde</label>
                         <input type="date" class="form-control" name="fecha_inicio"
@@ -251,6 +255,17 @@
                         </a>
                     </div>
                 </form>
+                <?php if (($filters['hc_number'] ?? '') !== '' || ($filters['form_id'] ?? '') !== ''): ?>
+                    <div class="alert alert-info py-10 px-15 mb-3">
+                        Contexto directo
+                        <?php if (($filters['hc_number'] ?? '') !== ''): ?>
+                            | HC: <strong><?= htmlspecialchars((string) $filters['hc_number'], ENT_QUOTES, 'UTF-8') ?></strong>
+                        <?php endif; ?>
+                        <?php if (($filters['form_id'] ?? '') !== ''): ?>
+                            | Formulario: <strong><?= htmlspecialchars((string) $filters['form_id'], ENT_QUOTES, 'UTF-8') ?></strong>
+                        <?php endif; ?>
+                    </div>
+                <?php endif; ?>
                 <div class="table-responsive">
                     <table id="tablaImagenesRealizadas" class="table table-lg invoice-archive">
                         <thead>

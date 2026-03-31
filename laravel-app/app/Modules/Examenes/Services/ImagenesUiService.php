@@ -160,10 +160,17 @@ class ImagenesUiService
     {
         $fechaInicio = trim((string) ($query['fecha_inicio'] ?? ''));
         $fechaFin = trim((string) ($query['fecha_fin'] ?? ''));
+        $hcNumber = trim((string) ($query['hc_number'] ?? ''));
+        $formId = trim((string) ($query['form_id'] ?? ''));
+        $hasDirectExamContext = $hcNumber !== '' || $formId !== '';
 
         return [
-            'fecha_inicio' => $this->normalizeDateFilter($fechaInicio, 'first day of this month'),
-            'fecha_fin' => $this->normalizeDateFilter($fechaFin, 'last day of this month'),
+            'fecha_inicio' => $hasDirectExamContext && $fechaInicio === ''
+                ? ''
+                : $this->normalizeDateFilter($fechaInicio, 'first day of this month'),
+            'fecha_fin' => $hasDirectExamContext && $fechaFin === ''
+                ? ''
+                : $this->normalizeDateFilter($fechaFin, 'last day of this month'),
             'afiliacion' => trim((string) ($query['afiliacion'] ?? '')),
             'afiliacion_categoria' => trim((string) ($query['afiliacion_categoria'] ?? '')),
             'seguro' => trim((string) ($query['seguro'] ?? '')),
@@ -171,6 +178,8 @@ class ImagenesUiService
             'tipo_examen' => trim((string) ($query['tipo_examen'] ?? '')),
             'paciente' => trim((string) ($query['paciente'] ?? '')),
             'estado_agenda' => trim((string) ($query['estado_agenda'] ?? '')),
+            'hc_number' => $hcNumber,
+            'form_id' => $formId,
         ];
     }
 
@@ -216,7 +225,9 @@ class ImagenesUiService
      *     sede?: string,
      *     tipo_examen?: string,
      *     paciente?: string,
-     *     estado_agenda?: string
+     *     estado_agenda?: string,
+     *     hc_number?: string,
+     *     form_id?: string
      * } $filters
      * @return array<int,array<string,mixed>>
      */
@@ -347,16 +358,29 @@ class ImagenesUiService
 
         if (!empty($filters['paciente'])) {
             $sql .= " AND (
-                pd.hc_number LIKE :paciente
-                OR CONCAT_WS(' ', TRIM(pd.lname), TRIM(pd.lname2), TRIM(pd.fname), TRIM(pd.mname)) LIKE :paciente
-                OR CONCAT_WS(' ', TRIM(pd.fname), TRIM(pd.mname), TRIM(pd.lname), TRIM(pd.lname2)) LIKE :paciente
+                pd.hc_number LIKE :paciente_hc
+                OR CONCAT_WS(' ', TRIM(pd.lname), TRIM(pd.lname2), TRIM(pd.fname), TRIM(pd.mname)) LIKE :paciente_nombre
+                OR CONCAT_WS(' ', TRIM(pd.fname), TRIM(pd.mname), TRIM(pd.lname), TRIM(pd.lname2)) LIKE :paciente_nombre_alt
             )";
-            $params[':paciente'] = '%' . $filters['paciente'] . '%';
+            $pacienteLike = '%' . $filters['paciente'] . '%';
+            $params[':paciente_hc'] = $pacienteLike;
+            $params[':paciente_nombre'] = $pacienteLike;
+            $params[':paciente_nombre_alt'] = $pacienteLike;
         }
 
         if (!empty($filters['estado_agenda'])) {
             $sql .= ' AND TRIM(pp.estado_agenda) = :estado_agenda';
             $params[':estado_agenda'] = $filters['estado_agenda'];
+        }
+
+        if (!empty($filters['hc_number'])) {
+            $sql .= " AND TRIM(COALESCE(pp.hc_number, '')) = :hc_number";
+            $params[':hc_number'] = trim((string) $filters['hc_number']);
+        }
+
+        if (!empty($filters['form_id'])) {
+            $sql .= " AND TRIM(COALESCE(pp.form_id, '')) = :form_id";
+            $params[':form_id'] = trim((string) $filters['form_id']);
         }
 
         $sql .= ' ORDER BY pp.fecha DESC, pp.hora DESC, pp.id DESC';
@@ -662,11 +686,14 @@ class ImagenesUiService
         $paciente = trim((string) ($filters['paciente'] ?? ''));
         if ($paciente !== '') {
             $sql .= " AND (
-                    flow.hc_number LIKE :paciente
-                    OR CONCAT_WS(' ', TRIM(pd.lname), TRIM(pd.lname2), TRIM(pd.fname), TRIM(pd.mname)) LIKE :paciente
-                    OR CONCAT_WS(' ', TRIM(pd.fname), TRIM(pd.mname), TRIM(pd.lname), TRIM(pd.lname2)) LIKE :paciente
+                    flow.hc_number LIKE :paciente_hc
+                    OR CONCAT_WS(' ', TRIM(pd.lname), TRIM(pd.lname2), TRIM(pd.fname), TRIM(pd.mname)) LIKE :paciente_nombre
+                    OR CONCAT_WS(' ', TRIM(pd.fname), TRIM(pd.mname), TRIM(pd.lname), TRIM(pd.lname2)) LIKE :paciente_nombre_alt
                 )";
-            $params[':paciente'] = '%' . $paciente . '%';
+            $pacienteLike = '%' . $paciente . '%';
+            $params[':paciente_hc'] = $pacienteLike;
+            $params[':paciente_nombre'] = $pacienteLike;
+            $params[':paciente_nombre_alt'] = $pacienteLike;
         }
 
         $estadoAgenda = trim((string) ($filters['estado_agenda'] ?? ''));
@@ -794,11 +821,14 @@ class ImagenesUiService
         $paciente = trim((string) ($filters['paciente'] ?? ''));
         if ($paciente !== '') {
             $sql .= " AND (
-                    flow.hc_number LIKE :paciente
-                    OR CONCAT_WS(' ', TRIM(pd.lname), TRIM(pd.lname2), TRIM(pd.fname), TRIM(pd.mname)) LIKE :paciente
-                    OR CONCAT_WS(' ', TRIM(pd.fname), TRIM(pd.mname), TRIM(pd.lname), TRIM(pd.lname2)) LIKE :paciente
+                    flow.hc_number LIKE :paciente_hc
+                    OR CONCAT_WS(' ', TRIM(pd.lname), TRIM(pd.lname2), TRIM(pd.fname), TRIM(pd.mname)) LIKE :paciente_nombre
+                    OR CONCAT_WS(' ', TRIM(pd.fname), TRIM(pd.mname), TRIM(pd.lname), TRIM(pd.lname2)) LIKE :paciente_nombre_alt
                 )";
-            $params[':paciente'] = '%' . $paciente . '%';
+            $pacienteLike = '%' . $paciente . '%';
+            $params[':paciente_hc'] = $pacienteLike;
+            $params[':paciente_nombre'] = $pacienteLike;
+            $params[':paciente_nombre_alt'] = $pacienteLike;
         }
 
         $estadoAgenda = trim((string) ($filters['estado_agenda'] ?? ''));
@@ -1619,11 +1649,14 @@ class ImagenesUiService
         $paciente = trim((string) ($filters['paciente'] ?? ''));
         if ($paciente !== '') {
             $sql .= " AND (
-                    flow.hc_number LIKE :paciente
-                    OR CONCAT_WS(' ', TRIM(pd.lname), TRIM(pd.lname2), TRIM(pd.fname), TRIM(pd.mname)) LIKE :paciente
-                    OR CONCAT_WS(' ', TRIM(pd.fname), TRIM(pd.mname), TRIM(pd.lname), TRIM(pd.lname2)) LIKE :paciente
+                    flow.hc_number LIKE :paciente_hc
+                    OR CONCAT_WS(' ', TRIM(pd.lname), TRIM(pd.lname2), TRIM(pd.fname), TRIM(pd.mname)) LIKE :paciente_nombre
+                    OR CONCAT_WS(' ', TRIM(pd.fname), TRIM(pd.mname), TRIM(pd.lname), TRIM(pd.lname2)) LIKE :paciente_nombre_alt
                 )";
-            $params[':paciente'] = '%' . $paciente . '%';
+            $pacienteLike = '%' . $paciente . '%';
+            $params[':paciente_hc'] = $pacienteLike;
+            $params[':paciente_nombre'] = $pacienteLike;
+            $params[':paciente_nombre_alt'] = $pacienteLike;
         }
 
         $estadoAgenda = trim((string) ($filters['estado_agenda'] ?? ''));
@@ -2143,11 +2176,14 @@ class ImagenesUiService
         $paciente = trim((string) ($filters['paciente'] ?? ''));
         if ($paciente !== '') {
             $sql .= " AND (
-                    ce.hc_number LIKE :paciente
-                    OR CONCAT_WS(' ', TRIM(pd.lname), TRIM(pd.lname2), TRIM(pd.fname), TRIM(pd.mname)) LIKE :paciente
-                    OR CONCAT_WS(' ', TRIM(pd.fname), TRIM(pd.mname), TRIM(pd.lname), TRIM(pd.lname2)) LIKE :paciente
+                    ce.hc_number LIKE :paciente_hc
+                    OR CONCAT_WS(' ', TRIM(pd.lname), TRIM(pd.lname2), TRIM(pd.fname), TRIM(pd.mname)) LIKE :paciente_nombre
+                    OR CONCAT_WS(' ', TRIM(pd.fname), TRIM(pd.mname), TRIM(pd.lname), TRIM(pd.lname2)) LIKE :paciente_nombre_alt
                 )";
-            $params[':paciente'] = '%' . $paciente . '%';
+            $pacienteLike = '%' . $paciente . '%';
+            $params[':paciente_hc'] = $pacienteLike;
+            $params[':paciente_nombre'] = $pacienteLike;
+            $params[':paciente_nombre_alt'] = $pacienteLike;
         }
 
         $estadoAgenda = trim((string) ($filters['estado_agenda'] ?? ''));
@@ -2267,11 +2303,14 @@ class ImagenesUiService
         $paciente = trim((string) ($filters['paciente'] ?? ''));
         if ($paciente !== '') {
             $sql .= " AND (
-                    flow.hc_number LIKE :paciente
-                    OR CONCAT_WS(' ', TRIM(pd.lname), TRIM(pd.lname2), TRIM(pd.fname), TRIM(pd.mname)) LIKE :paciente
-                    OR CONCAT_WS(' ', TRIM(pd.fname), TRIM(pd.mname), TRIM(pd.lname), TRIM(pd.lname2)) LIKE :paciente
+                    flow.hc_number LIKE :paciente_hc
+                    OR CONCAT_WS(' ', TRIM(pd.lname), TRIM(pd.lname2), TRIM(pd.fname), TRIM(pd.mname)) LIKE :paciente_nombre
+                    OR CONCAT_WS(' ', TRIM(pd.fname), TRIM(pd.mname), TRIM(pd.lname), TRIM(pd.lname2)) LIKE :paciente_nombre_alt
                 )";
-            $params[':paciente'] = '%' . $paciente . '%';
+            $pacienteLike = '%' . $paciente . '%';
+            $params[':paciente_hc'] = $pacienteLike;
+            $params[':paciente_nombre'] = $pacienteLike;
+            $params[':paciente_nombre_alt'] = $pacienteLike;
         }
 
         $estadoAgenda = trim((string) ($filters['estado_agenda'] ?? ''));

@@ -151,7 +151,7 @@
                 <h4 class="box-title mb-0">Filtros</h4>
                 <div class="d-flex flex-wrap gap-2 justify-content-end">
                     <a href="{{ $exportParticularesPdfUrl }}"
-                        class="btn btn-outline-danger btn-sm">
+                       class="btn btn-outline-danger btn-sm">
                         <i class="mdi mdi-file-pdf-box me-1"></i> Descargar PDF
                     </a>
                     <a href="{{ $exportParticularesUrl }}"
@@ -473,6 +473,11 @@
             $desgloseGerencial = is_array($summary['desglose_gerencial'] ?? null) ? $summary['desglose_gerencial'] : [];
             $desgloseSedes = is_array($desgloseGerencial['sedes'] ?? null) ? $desgloseGerencial['sedes'] : [];
             $desgloseDoctores = is_array($desgloseGerencial['doctores'] ?? null) ? $desgloseGerencial['doctores'] : [];
+            $ticketPromedioParticular = $particularCount > 0 ? round($honorarioParticular / $particularCount, 2) : 0.0;
+            $ticketPromedioPrivado = $privadoCount > 0 ? round($honorarioPrivado / $privadoCount, 2) : 0.0;
+            $ticketPromedioCategoriaTotal = $totalAtenciones > 0 ? round($totalHonorarioReal / $totalAtenciones, 2) : 0.0;
+
+            $doctorTicketPromedioRows = is_array($economico['doctores_rendimiento_top'] ?? null) ? $economico['doctores_rendimiento_top'] : [];
 
             $picosSummary = is_array($summary['picos'] ?? null) ? $summary['picos'] : [];
             $picosDias = is_array($picosSummary['dias'] ?? null) ? $picosSummary['dias'] : [];
@@ -1102,7 +1107,7 @@
 
 
         <div class="row">
-            <div class="col-xl-6 col-12">
+            <div class="col-xl-4 col-12">
                 <div class="box">
                     <div class="box-header with-border d-flex justify-content-between align-items-center">
                         <h5 class="box-title mb-0">Categoría cliente: volumen + honorario</h5>
@@ -1123,6 +1128,7 @@
                                     <th class="text-end">Atenciones</th>
                                     <th class="text-end">% mix</th>
                                     <th class="text-end">Honorario real</th>
+                                    <th class="text-end">Ticket prom.</th>
                                 </tr>
                                 </thead>
                                 <tbody>
@@ -1131,18 +1137,22 @@
                                     <td class="text-end">{{ $particularCount }}</td>
                                     <td class="text-end">{{ number_format($particularShare, 2) }}%</td>
                                     <td class="text-end">${{ number_format($honorarioParticular, 2) }}</td>
+                                    <td class="text-end">${{ number_format($ticketPromedioParticular, 2) }}</td>
                                 </tr>
                                 <tr>
                                     <td>PRIVADO</td>
                                     <td class="text-end">{{ $privadoCount }}</td>
                                     <td class="text-end">{{ number_format($privadoShare, 2) }}%</td>
                                     <td class="text-end">${{ number_format($honorarioPrivado, 2) }}</td>
+                                    <td class="text-end">${{ number_format($ticketPromedioPrivado, 2) }}</td>
                                 </tr>
                                 <tr>
                                     <td class="fw-600">TOTAL</td>
                                     <td class="text-end fw-700">{{ $totalAtenciones }}</td>
                                     <td class="text-end fw-700">100.00%</td>
                                     <td class="text-end fw-700">${{ number_format($totalHonorarioReal, 2) }}</td>
+                                    <td class="text-end fw-700">
+                                        ${{ number_format($ticketPromedioCategoriaTotal, 2) }}</td>
                                 </tr>
                                 </tbody>
                             </table>
@@ -1150,7 +1160,7 @@
                     </div>
                 </div>
             </div>
-            <div class="col-xl-6 col-12">
+            <div class="col-xl-4 col-12">
                 <div class="box">
                     <div class="box-header with-border d-flex justify-content-between align-items-center">
                         <h5 class="box-title mb-0">{{ $insuranceBreakdownTitle }} (Polar)</h5>
@@ -1179,6 +1189,60 @@
                                 @empty
                                     <tr>
                                         <td colspan="2" class="text-center text-muted">Sin datos disponibles.</td>
+                                    </tr>
+                                @endforelse
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-xl-4 col-12">
+                <div class="box">
+                    <div class="box-header with-border d-flex justify-content-between align-items-center">
+                        <h5 class="box-title mb-0">Calificación de rendimiento médico</h5>
+                        <span
+                            class="badge bg-success-light text-success">{{ count($doctorTicketPromedioRows) }} valores</span>
+                    </div>
+                    <div class="box-body">
+                        <div id="doctorTicketPromedioChart" style="min-height: 300px;"></div>
+                        <div class="alert alert-info py-10 px-15 mt-15 mb-0">
+                            <small>
+                                Score compuesto: <strong>40% producción</strong> + <strong>30% ticket</strong> +
+                                <strong>20% atenciones pagadas</strong> - <strong>10% tasa 0</strong>. El ranking se
+                                ordena por ese score.
+                            </small>
+                        </div>
+                        <div class="table-responsive" style="max-height: 320px;">
+                            <table class="table table-sm table-striped mb-0 mt-15">
+                                <thead class="table-light">
+                                <tr>
+                                    <th>Médico</th>
+                                    <th class="text-end">Atenc.</th>
+                                    <th class="text-end">C/Hon.</th>
+                                    <th class="text-end">% 0</th>
+                                    <th class="text-end">Honorario real</th>
+                                    <th class="text-end">Ticket prom. real</th>
+                                    <th class="text-end">Score</th>
+                                    <th class="text-end">Nivel</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                @forelse($doctorTicketPromedioRows as $item)
+                                    <tr>
+                                        <td>{{ (string) ($item['valor'] ?? 'SIN DOCTOR') }}</td>
+                                        <td class="text-end">{{ (int) ($item['cantidad_total'] ?? 0) }}</td>
+                                        <td class="text-end">{{ (int) ($item['cantidad_con_honorario'] ?? 0) }}</td>
+                                        <td class="text-end">{{ number_format(((float) ($item['tasa_cero'] ?? 0)) * 100, 2) }}%</td>
+                                        <td class="text-end">${{ number_format((float) ($item['monto'] ?? 0), 2) }}</td>
+                                        <td class="text-end">
+                                            ${{ number_format((float) ($item['ticket_promedio'] ?? 0), 2) }}</td>
+                                        <td class="text-end">{{ number_format((float) ($item['score_rendimiento'] ?? 0), 2) }}</td>
+                                        <td class="text-end">{{ (string) ($item['clasificacion'] ?? 'POR REVISAR') }}</td>
+                                    </tr>
+                                @empty
+                                    <tr>
+                                        <td colspan="8" class="text-center text-muted">Sin datos disponibles.</td>
                                     </tr>
                                 @endforelse
                                 </tbody>
@@ -1421,13 +1485,21 @@
                     </div>
                     <div class="box-body">
                         <div id="referidoPrefacturaChart" style="min-height: 300px;"></div>
+                        <div class="alert alert-info py-10 px-15 mt-15 mb-0">
+                            <small>
+                                `USD` suma el honorario de todas las atenciones del período en esa categoría.
+                                `Ticket prom.` = `USD acumulado / total de atenciones` de la categoría.
+                            </small>
+                        </div>
                         <div class="table-responsive mt-15" style="max-height: 320px;">
                             <table class="table table-sm table-striped mb-0">
                                 <thead class="table-light">
                                 <tr>
                                     <th>Valor</th>
-                                    <th class="text-end">Cantidad</th>
+                                    <th class="text-end">Atenciones</th>
                                     <th class="text-end">%</th>
+                                    <th class="text-end">USD</th>
+                                    <th class="text-end">Ticket prom.</th>
                                 </tr>
                                 </thead>
                                 <tbody>
@@ -1444,10 +1516,13 @@
                                         <td class="text-end">{{ number_format((float) ($item['porcentaje'] ?? 0), 2) }}
                                             %
                                         </td>
+                                        <td class="text-end">${{ number_format((float) ($item['monto'] ?? 0), 2) }}</td>
+                                        <td class="text-end">
+                                            ${{ number_format((float) ($item['ticket_promedio'] ?? 0), 2) }}</td>
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="3" class="text-center text-muted">Sin datos para el rango
+                                        <td colspan="5" class="text-center text-muted">Sin datos para el rango
                                             seleccionado.
                                         </td>
                                     </tr>
@@ -1466,6 +1541,13 @@
                     </div>
                     <div class="box-body">
                         <div id="referidoPrefacturaPacientesUnicosChart" style="min-height: 320px;"></div>
+                        <div class="alert alert-info py-10 px-15 mt-15 mb-0">
+                            <small>
+                                `USD` suma el honorario de todas las evaluaciones del período hechas por esos pacientes
+                                únicos.
+                                `Ticket prom.` = `USD acumulado / pacientes únicos` de la categoría.
+                            </small>
+                        </div>
                         <div class="table-responsive mt-15" style="max-height: 320px;">
                             <table class="table table-sm table-striped mb-0">
                                 <thead class="table-light">
@@ -1473,6 +1555,8 @@
                                     <th>Valor</th>
                                     <th class="text-end">Pacientes únicos</th>
                                     <th class="text-end">%</th>
+                                    <th class="text-end">USD acumulado</th>
+                                    <th class="text-end">Ticket prom. paciente</th>
                                 </tr>
                                 </thead>
                                 <tbody>
@@ -1489,10 +1573,13 @@
                                         <td class="text-end">{{ number_format((float) ($item['porcentaje'] ?? 0), 2) }}
                                             %
                                         </td>
+                                        <td class="text-end">${{ number_format((float) ($item['monto'] ?? 0), 2) }}</td>
+                                        <td class="text-end">
+                                            ${{ number_format((float) ($item['ticket_promedio'] ?? 0), 2) }}</td>
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="3" class="text-center text-muted">Sin datos para el rango
+                                        <td colspan="5" class="text-center text-muted">Sin datos para el rango
                                             seleccionado.
                                         </td>
                                     </tr>
@@ -1511,6 +1598,13 @@
                     </div>
                     <div class="box-body">
                         <div id="referidoPrefacturaNuevoPacienteChart" style="min-height: 320px;"></div>
+                        <div class="alert alert-info py-10 px-15 mt-15 mb-0">
+                            <small>
+                                `USD` suma el honorario de todas las atenciones de nuevo paciente del período en esa
+                                categoría.
+                                `Ticket prom.` = `USD acumulado / número de pacientes nuevos únicos` de la categoría.
+                            </small>
+                        </div>
                         <div class="table-responsive mt-15" style="max-height: 320px;">
                             <table class="table table-sm table-striped mb-0">
                                 <thead class="table-light">
@@ -1518,6 +1612,8 @@
                                     <th>Valor</th>
                                     <th class="text-end">Cantidad</th>
                                     <th class="text-end">%</th>
+                                    <th class="text-end">USD</th>
+                                    <th class="text-end">Ticket prom.</th>
                                 </tr>
                                 </thead>
                                 <tbody>
@@ -1534,10 +1630,13 @@
                                         <td class="text-end">{{ number_format((float) ($item['porcentaje'] ?? 0), 2) }}
                                             %
                                         </td>
+                                        <td class="text-end">${{ number_format((float) ($item['monto'] ?? 0), 2) }}</td>
+                                        <td class="text-end">
+                                            ${{ number_format((float) ($item['ticket_promedio'] ?? 0), 2) }}</td>
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="3" class="text-center text-muted">Sin datos para el rango
+                                        <td colspan="5" class="text-center text-muted">Sin datos para el rango
                                             seleccionado.
                                         </td>
                                     </tr>
@@ -1816,680 +1915,494 @@
 
                 initialized = true;
 
-            const referidoValues = @json($referidoValues);
-            const referidoUniquePatientValues = @json($referidoUniquePatientsValues);
-            const referidoNuevoPacienteValues = @json($referidoNuevoPacienteValues);
-            const referidoWithValue = @json($referidoWithValue);
-            const referidoWithoutValue = @json($referidoWithoutValue);
-            const referidoUniquePatientsWithValue = @json($referidoUniquePatientsWithValue);
-            const referidoUniquePatientsWithoutValue = @json($referidoUniquePatientsWithoutValue);
-            const referidoNuevoPacienteWithValue = @json($referidoNuevoPacienteWithValue);
-            const referidoNuevoPacienteWithoutValue = @json($referidoNuevoPacienteWithoutValue);
-            const particularCount = @json($particularCount);
-            const privadoCount = @json($privadoCount);
-            const topAfiliaciones = @json($topAfiliaciones);
-            const hierarquiaCategorias = @json($hierarquiaCategoriasGraficas);
-            const temporalTrendLabels = @json($temporalTrendLabels);
-            const temporalTrendCounts = @json($temporalTrendCounts);
-            const topProcedimientosVolumen = @json($topProcedimientosVolumen);
-            const desgloseSedes = @json($desgloseSedes);
-            const desgloseDoctores = @json($desgloseDoctores);
-            const doctoresHonorarioTop = @json($doctoresHonorarioTop);
-            const formasPagoValues = @json($formasPagoValues);
-            const areasTop = @json($areasTop);
-            const picosDias = @json($picosDias);
-            const pniEstados = @json($pniEstados);
-            const pniDoctoresPorCobrar = @json($pniDoctoresPorCobrar);
-            const pniDoctoresPerdida = @json($pniDoctoresPerdida);
-            const imagenesEstados = @json($imagenesEstados);
-            const imagenesEstadosInforme = @json($imagenesEstadosInforme);
-            const imagenesDoctoresPorCobrar = @json($imagenesDoctoresPorCobrar);
-            const imagenesDoctoresPerdida = @json($imagenesDoctoresPerdida);
-            const serviciosOftalmologicosEstados = @json($serviciosOftalmologicosEstados);
-            const serviciosOftalmologicosDoctoresPorCobrar = @json($serviciosOftalmologicosDoctoresPorCobrar);
-            const serviciosOftalmologicosDoctoresPerdida = @json($serviciosOftalmologicosDoctoresPerdida);
-            const cirugiasEstados = @json($cirugiasEstados);
-            const cirugiasDoctoresPorCobrar = @json($cirugiasDoctoresPorCobrar);
-            const cirugiasDoctoresPerdida = @json($cirugiasDoctoresPerdida);
+                const referidoValues = @json($referidoValues);
+                const referidoUniquePatientValues = @json($referidoUniquePatientsValues);
+                const referidoNuevoPacienteValues = @json($referidoNuevoPacienteValues);
+                const referidoWithValue = @json($referidoWithValue);
+                const referidoWithoutValue = @json($referidoWithoutValue);
+                const referidoUniquePatientsWithValue = @json($referidoUniquePatientsWithValue);
+                const referidoUniquePatientsWithoutValue = @json($referidoUniquePatientsWithoutValue);
+                const referidoNuevoPacienteWithValue = @json($referidoNuevoPacienteWithValue);
+                const referidoNuevoPacienteWithoutValue = @json($referidoNuevoPacienteWithoutValue);
+                const particularCount = @json($particularCount);
+                const privadoCount = @json($privadoCount);
+                const topAfiliaciones = @json($topAfiliaciones);
+                const doctorTicketPromedioRows = @json($doctorTicketPromedioRows);
+                const hierarquiaCategorias = @json($hierarquiaCategoriasGraficas);
+                const temporalTrendLabels = @json($temporalTrendLabels);
+                const temporalTrendCounts = @json($temporalTrendCounts);
+                const topProcedimientosVolumen = @json($topProcedimientosVolumen);
+                const desgloseSedes = @json($desgloseSedes);
+                const desgloseDoctores = @json($desgloseDoctores);
+                const doctoresHonorarioTop = @json($doctoresHonorarioTop);
+                const formasPagoValues = @json($formasPagoValues);
+                const areasTop = @json($areasTop);
+                const picosDias = @json($picosDias);
+                const pniEstados = @json($pniEstados);
+                const pniDoctoresPorCobrar = @json($pniDoctoresPorCobrar);
+                const pniDoctoresPerdida = @json($pniDoctoresPerdida);
+                const imagenesEstados = @json($imagenesEstados);
+                const imagenesEstadosInforme = @json($imagenesEstadosInforme);
+                const imagenesDoctoresPorCobrar = @json($imagenesDoctoresPorCobrar);
+                const imagenesDoctoresPerdida = @json($imagenesDoctoresPerdida);
+                const serviciosOftalmologicosEstados = @json($serviciosOftalmologicosEstados);
+                const serviciosOftalmologicosDoctoresPorCobrar = @json($serviciosOftalmologicosDoctoresPorCobrar);
+                const serviciosOftalmologicosDoctoresPerdida = @json($serviciosOftalmologicosDoctoresPerdida);
+                const cirugiasEstados = @json($cirugiasEstados);
+                const cirugiasDoctoresPorCobrar = @json($cirugiasDoctoresPorCobrar);
+                const cirugiasDoctoresPerdida = @json($cirugiasDoctoresPerdida);
 
-            const truncateLabel = function (value, maxLength) {
-                const text = String(value || '').trim();
-                if (text === '') {
-                    return 'SIN DATO';
-                }
-
-                return text.length > maxLength ? text.slice(0, maxLength) + '...' : text;
-            };
-
-            const buildVerticalChart = function (selector, title, values, color) {
-                const container = document.querySelector(selector);
-                if (!container) {
-                    return;
-                }
-
-                const categories = values.map(function (item) {
-                    const raw = (item && item.valor ? String(item.valor) : '').trim();
-                    return raw !== '' ? raw.toUpperCase() : 'SIN DATO';
-                });
-                const counts = values.map(function (item) {
-                    const qty = Number(item && item.cantidad ? item.cantidad : 0);
-                    return Number.isFinite(qty) ? qty : 0;
-                });
-
-                if (counts.length === 0) {
-                    container.innerHTML = '<div class="text-muted text-center py-30">Sin datos para graficar.</div>';
-                    return;
-                }
-
-                container.style.minHeight = '360px';
-
-                const chart = new ApexCharts(container, {
-                    chart: {
-                        type: 'bar',
-                        height: 360,
-                        toolbar: {show: false},
-                    },
-                    series: [{
-                        name: 'Cantidad',
-                        data: counts,
-                    }],
-                    xaxis: {
-                        categories: categories,
-                        labels: {
-                            rotate: -35,
-                            hideOverlappingLabels: false,
-                            trim: true,
-                            formatter: function (value) {
-                                const text = String(value || '');
-                                return text.length > 18 ? text.slice(0, 18) + '...' : text;
-                            },
-                        },
-                    },
-                    yaxis: {
-                        min: 0,
-                        forceNiceScale: true,
-                        title: {
-                            text: 'Cantidad',
-                        },
-                    },
-                    plotOptions: {
-                        bar: {
-                            horizontal: false,
-                            borderRadius: 4,
-                            columnWidth: '55%',
-                        },
-                    },
-                    colors: [color],
-                    title: {
-                        text: title,
-                        align: 'left',
-                        style: {fontSize: '13px'},
-                    },
-                    dataLabels: {
-                        enabled: true,
-                        offsetY: -12,
-                    },
-                    tooltip: {
-                        y: {
-                            formatter: function (value) {
-                                return value + ' registros';
-                            }
-                        }
-                    },
-                    grid: {
-                        borderColor: '#eef1f4',
-                    },
-                });
-
-                chart.render();
-            };
-
-            const buildHorizontalChart = function (selector, title, values, color) {
-                const container = document.querySelector(selector);
-                if (!container) {
-                    return;
-                }
-
-                const categories = values.map(function (item) {
-                    const raw = (item && item.valor ? String(item.valor) : '').trim();
-                    return raw !== '' ? raw.toUpperCase() : 'SIN DATO';
-                });
-                const counts = values.map(function (item) {
-                    const qty = Number(item && item.cantidad ? item.cantidad : 0);
-                    return Number.isFinite(qty) ? qty : 0;
-                });
-
-                if (counts.length === 0) {
-                    container.innerHTML = '<div class="text-muted text-center py-30">Sin datos para graficar.</div>';
-                    return;
-                }
-
-                const dynamicHeight = Math.max(320, (counts.length * 28) + 90);
-                container.style.minHeight = dynamicHeight + 'px';
-
-                const chart = new ApexCharts(container, {
-                    chart: {
-                        type: 'bar',
-                        height: dynamicHeight,
-                        toolbar: {show: false},
-                    },
-                    series: [{
-                        name: 'Cantidad',
-                        data: counts,
-                    }],
-                    xaxis: {
-                        categories: categories,
-                    },
-                    plotOptions: {
-                        bar: {
-                            horizontal: true,
-                            borderRadius: 4,
-                        },
-                    },
-                    colors: [color],
-                    title: {
-                        text: title,
-                        align: 'left',
-                        style: {fontSize: '13px'},
-                    },
-                    dataLabels: {
-                        enabled: true,
-                    },
-                    tooltip: {
-                        y: {
-                            formatter: function (value) {
-                                return value + ' registros';
-                            }
-                        }
-                    },
-                    grid: {
-                        borderColor: '#eef1f4',
-                    },
-                });
-
-                chart.render();
-            };
-
-            const buildHorizontalPercentageChart = function (selector, values, config) {
-                const container = document.querySelector(selector);
-                if (!container) {
-                    return;
-                }
-
-                const rows = (Array.isArray(values) ? values : []).map(function (item) {
-                    const label = String(item && item.valor ? item.valor : 'SIN DATO').trim().toUpperCase() || 'SIN DATO';
-                    const count = Number(item && item.cantidad ? item.cantidad : 0);
-                    const percent = Number(item && item.porcentaje ? item.porcentaje : 0);
-
-                    return {
-                        label: label,
-                        count: Number.isFinite(count) ? count : 0,
-                        percent: Number.isFinite(percent) ? Number(percent.toFixed(2)) : 0,
-                    };
-                }).filter(function (item) {
-                    return item.count > 0;
-                });
-
-                if (rows.length === 0) {
-                    container.innerHTML = '<div class="text-muted text-center py-30">Sin datos para graficar.</div>';
-                    return;
-                }
-
-                const dynamicHeight = Math.max(320, (rows.length * 42) + 70);
-                container.style.minHeight = dynamicHeight + 'px';
-
-                const chart = new ApexCharts(container, {
-                    chart: {
-                        type: 'bar',
-                        height: dynamicHeight,
-                        toolbar: {show: false},
-                    },
-                    series: [{
-                        name: config && config.seriesName ? config.seriesName : 'Cantidad',
-                        data: rows.map(function (item) {
-                            return item.count;
-                        }),
-                    }],
-                    xaxis: {
-                        categories: rows.map(function (item) {
-                            return truncateLabel(item.label, 34);
-                        }),
-                        title: {
-                            text: config && config.xTitle ? config.xTitle : '',
-                        },
-                    },
-                    yaxis: {
-                        labels: {
-                            maxWidth: 260,
-                        },
-                    },
-                    plotOptions: {
-                        bar: {
-                            horizontal: true,
-                            borderRadius: 5,
-                            barHeight: '68%',
-                            distributed: false,
-                        },
-                    },
-                    colors: [config && config.color ? config.color : '#16a34a'],
-                    dataLabels: {
-                        enabled: true,
-                        textAnchor: 'start',
-                        offsetX: 6,
-                        formatter: function (value, opts) {
-                            const row = rows[opts.dataPointIndex] || {percent: 0};
-                            return value + ' (' + row.percent.toFixed(2) + '%)';
-                        },
-                        style: {
-                            fontSize: '11px',
-                            fontWeight: 600,
-                            colors: ['#334155'],
-                        },
-                    },
-                    tooltip: {
-                        y: {
-                            formatter: function (value, opts) {
-                                const row = rows[opts.dataPointIndex] || {percent: 0};
-                                return value + ' atenciones | ' + row.percent.toFixed(2) + '%';
-                            },
-                        },
-                    },
-                    grid: {
-                        borderColor: '#eef1f4',
-                    },
-                });
-
-                chart.render();
-            };
-
-            const buildHorizontalMoneyChart = function (selector, values, config) {
-                const container = document.querySelector(selector);
-                if (!container) {
-                    return;
-                }
-
-                const rows = (Array.isArray(values) ? values : []).map(function (item) {
-                    const label = String(item && item.valor ? item.valor : 'SIN DATO').trim().toUpperCase() || 'SIN DATO';
-                    const amount = Number(item && item.monto ? item.monto : 0);
-                    const percent = Number(item && item.porcentaje ? item.porcentaje : 0);
-
-                    return {
-                        label: label,
-                        amount: Number.isFinite(amount) ? Number(amount.toFixed(2)) : 0,
-                        percent: Number.isFinite(percent) ? Number(percent.toFixed(2)) : 0,
-                    };
-                }).filter(function (item) {
-                    return item.amount > 0;
-                });
-
-                if (rows.length === 0) {
-                    container.innerHTML = '<div class="text-muted text-center py-30">Sin datos para graficar.</div>';
-                    return;
-                }
-
-                const dynamicHeight = Math.max(320, (rows.length * 42) + 70);
-                container.style.minHeight = dynamicHeight + 'px';
-
-                const chart = new ApexCharts(container, {
-                    chart: {
-                        type: 'bar',
-                        height: dynamicHeight,
-                        toolbar: {show: false},
-                    },
-                    series: [{
-                        name: config && config.seriesName ? config.seriesName : 'Honorario real',
-                        data: rows.map(function (item) {
-                            return item.amount;
-                        }),
-                    }],
-                    xaxis: {
-                        categories: rows.map(function (item) {
-                            return truncateLabel(item.label, 32);
-                        }),
-                        labels: {
-                            formatter: function (value) {
-                                return '$' + Number(value || 0).toFixed(0);
-                            },
-                        },
-                        title: {
-                            text: config && config.xTitle ? config.xTitle : '',
-                        },
-                    },
-                    yaxis: {
-                        labels: {
-                            maxWidth: 260,
-                        },
-                    },
-                    plotOptions: {
-                        bar: {
-                            horizontal: true,
-                            borderRadius: 5,
-                            barHeight: '68%',
-                        },
-                    },
-                    colors: [config && config.color ? config.color : '#0f766e'],
-                    dataLabels: {
-                        enabled: true,
-                        textAnchor: 'start',
-                        offsetX: 6,
-                        formatter: function (value, opts) {
-                            const row = rows[opts.dataPointIndex] || {percent: 0};
-                            return '$' + Number(value || 0).toFixed(2) + ' (' + row.percent.toFixed(2) + '%)';
-                        },
-                        style: {
-                            fontSize: '11px',
-                            fontWeight: 600,
-                            colors: ['#334155'],
-                        },
-                    },
-                    tooltip: {
-                        y: {
-                            formatter: function (value, opts) {
-                                const row = rows[opts.dataPointIndex] || {percent: 0};
-                                return '$' + Number(value || 0).toFixed(2) + ' | ' + row.percent.toFixed(2) + '% del honorario';
-                            },
-                        },
-                    },
-                    grid: {
-                        borderColor: '#eef1f4',
-                    },
-                });
-
-                chart.render();
-            };
-
-            const buildDoctorPerformanceRows = function () {
-                const order = [];
-                const countsMap = new Map();
-                const moneyMap = new Map();
-
-                (Array.isArray(doctoresHonorarioTop) ? doctoresHonorarioTop : []).forEach(function (item) {
-                    const label = String(item && item.valor ? item.valor : 'SIN DOCTOR').trim().toUpperCase() || 'SIN DOCTOR';
-                    if (!order.includes(label)) {
-                        order.push(label);
+                const truncateLabel = function (value, maxLength) {
+                    const text = String(value || '').trim();
+                    if (text === '') {
+                        return 'SIN DATO';
                     }
-                    const amount = Number(item && item.monto ? item.monto : 0);
-                    const percent = Number(item && item.porcentaje ? item.porcentaje : 0);
-                    moneyMap.set(label, {
-                        amount: Number.isFinite(amount) ? Number(amount.toFixed(2)) : 0,
-                        percent: Number.isFinite(percent) ? Number(percent.toFixed(2)) : 0,
-                    });
-                });
 
-                (Array.isArray(desgloseDoctores) ? desgloseDoctores : []).forEach(function (item) {
-                    const label = String(item && item.valor ? item.valor : 'SIN DOCTOR').trim().toUpperCase() || 'SIN DOCTOR';
-                    if (!order.includes(label)) {
-                        order.push(label);
-                    }
-                    const count = Number(item && item.cantidad ? item.cantidad : 0);
-                    const percent = Number(item && item.porcentaje ? item.porcentaje : 0);
-                    countsMap.set(label, {
-                        count: Number.isFinite(count) ? count : 0,
-                        percent: Number.isFinite(percent) ? Number(percent.toFixed(2)) : 0,
-                    });
-                });
-
-                return order.slice(0, 10).map(function (label) {
-                    const countMeta = countsMap.get(label) || {count: 0, percent: 0};
-                    const moneyMeta = moneyMap.get(label) || {amount: 0, percent: 0};
-
-                    return {
-                        label: label,
-                        count: countMeta.count,
-                        countPercent: countMeta.percent,
-                        amount: moneyMeta.amount,
-                        amountPercent: moneyMeta.percent,
-                    };
-                });
-            };
-
-            const doctorChartContainer = document.querySelector('#doctorPerformanceChart');
-            const doctorModeButtons = Array.from(document.querySelectorAll('[data-doctor-mode]'));
-            const doctorPerformanceRows = buildDoctorPerformanceRows();
-            let doctorPerformanceChart = null;
-
-            const renderDoctorPerformanceChart = function (mode) {
-                if (!doctorChartContainer) {
-                    return;
-                }
-
-                if (!Array.isArray(doctorPerformanceRows) || doctorPerformanceRows.length === 0) {
-                    doctorChartContainer.innerHTML = '<div class="text-muted text-center py-30">Sin datos de médicos para graficar.</div>';
-                    return;
-                }
-
-                const categories = doctorPerformanceRows.map(function (item) {
-                    const text = String(item.label || 'SIN DOCTOR');
-                    return text.length > 18 ? text.slice(0, 18) + '...' : text;
-                });
-                const counts = doctorPerformanceRows.map(function (item) {
-                    return Number(item.count || 0);
-                });
-                const amounts = doctorPerformanceRows.map(function (item) {
-                    return Number(item.amount || 0);
-                });
-
-                if (doctorPerformanceChart) {
-                    doctorPerformanceChart.destroy();
-                    doctorPerformanceChart = null;
-                }
-
-                const options = {
-                    chart: {
-                        height: 360,
-                        toolbar: {show: false},
-                    },
-                    xaxis: {
-                        categories: categories,
-                        labels: {
-                            rotate: -35,
-                            hideOverlappingLabels: false,
-                            trim: true,
-                        },
-                    },
-                    grid: {
-                        borderColor: '#eef1f4',
-                    },
-                    dataLabels: {
-                        enabled: false,
-                    },
-                    legend: {
-                        position: 'top',
-                    },
-                    tooltip: {
-                        shared: true,
-                        intersect: false,
-                    },
+                    return text.length > maxLength ? text.slice(0, maxLength) + '...' : text;
                 };
 
-                if (mode === 'volumen') {
-                    doctorPerformanceChart = new ApexCharts(doctorChartContainer, Object.assign({}, options, {
-                        chart: Object.assign({}, options.chart, {type: 'bar'}),
+                const buildVerticalChart = function (selector, title, values, color, config) {
+                    const container = document.querySelector(selector);
+                    if (!container) {
+                        return;
+                    }
+
+                    const formatUsd = function (value) {
+                        const amount = Number(value || 0);
+                        const safeAmount = Number.isFinite(amount) ? amount : 0;
+                        return '$' + safeAmount.toLocaleString('en-US', {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                        });
+                    };
+
+                    const categories = values.map(function (item) {
+                        const raw = (item && item.valor ? String(item.valor) : '').trim();
+                        return raw !== '' ? raw.toUpperCase() : 'SIN DATO';
+                    });
+                    const counts = values.map(function (item) {
+                        const qty = Number(item && item.cantidad ? item.cantidad : 0);
+                        return Number.isFinite(qty) ? qty : 0;
+                    });
+
+                    if (counts.length === 0) {
+                        container.innerHTML = '<div class="text-muted text-center py-30">Sin datos para graficar.</div>';
+                        return;
+                    }
+
+                    container.style.minHeight = '360px';
+
+                    const chart = new ApexCharts(container, {
+                        chart: {
+                            type: 'bar',
+                            height: 360,
+                            toolbar: {show: false},
+                        },
                         series: [{
-                            name: 'Atenciones',
+                            name: 'Cantidad',
                             data: counts,
                         }],
-                        colors: ['#2563eb'],
+                        xaxis: {
+                            categories: categories,
+                            labels: {
+                                rotate: -35,
+                                hideOverlappingLabels: false,
+                                trim: true,
+                                formatter: function (value) {
+                                    const text = String(value || '');
+                                    return text.length > 18 ? text.slice(0, 18) + '...' : text;
+                                },
+                            },
+                        },
                         yaxis: {
-                            title: {text: 'Atenciones'},
+                            min: 0,
+                            forceNiceScale: true,
+                            title: {
+                                text: 'Cantidad',
+                            },
                         },
                         plotOptions: {
                             bar: {
+                                horizontal: false,
                                 borderRadius: 4,
                                 columnWidth: '55%',
                             },
                         },
-                    }));
-                } else if (mode === 'honorario') {
-                    doctorPerformanceChart = new ApexCharts(doctorChartContainer, Object.assign({}, options, {
-                        chart: Object.assign({}, options.chart, {type: 'bar'}),
-                        series: [{
-                            name: 'Honorario real',
-                            data: amounts,
-                        }],
-                        colors: ['#0f766e'],
-                        yaxis: {
-                            title: {text: 'Honorario real'},
-                            labels: {
-                                formatter: function (value) {
-                                    return '$' + Number(value || 0).toFixed(0);
+                        colors: [color],
+                        title: {
+                            text: title,
+                            align: 'left',
+                            style: {fontSize: '13px'},
+                        },
+                        dataLabels: {
+                            enabled: true,
+                            offsetY: -12,
+                        },
+                        tooltip: {
+                            y: {
+                                formatter: function (value, opts) {
+                                    const row = Array.isArray(values) ? (values[opts.dataPointIndex] || {}) : {};
+                                    const amount = Number(row && row.monto ? row.monto : 0);
+                                    const ticket = Number(row && row.ticket_promedio ? row.ticket_promedio : 0);
+                                    const divisor = Number(row && row.divisor_ticket ? row.divisor_ticket : 0);
+                                    const amountLabel = config && config.amountLabel ? config.amountLabel : 'Monto';
+                                    const ticketLabel = config && config.ticketLabel ? config.ticketLabel : 'Ticket';
+                                    const divisorLabel = config && config.divisorLabel ? config.divisorLabel : '';
+
+                                    return value + ' registros | ' + amountLabel + ' ' + formatUsd(amount) + (divisorLabel !== '' ? ' | ' + divisorLabel + ' ' + divisor : '') + ' | ' + ticketLabel + ' ' + formatUsd(ticket);
                                 }
                             }
                         },
+                        grid: {
+                            borderColor: '#eef1f4',
+                        },
+                    });
+
+                    chart.render();
+                };
+
+                const buildHorizontalChart = function (selector, title, values, color) {
+                    const container = document.querySelector(selector);
+                    if (!container) {
+                        return;
+                    }
+
+                    const categories = values.map(function (item) {
+                        const raw = (item && item.valor ? String(item.valor) : '').trim();
+                        return raw !== '' ? raw.toUpperCase() : 'SIN DATO';
+                    });
+                    const counts = values.map(function (item) {
+                        const qty = Number(item && item.cantidad ? item.cantidad : 0);
+                        return Number.isFinite(qty) ? qty : 0;
+                    });
+
+                    if (counts.length === 0) {
+                        container.innerHTML = '<div class="text-muted text-center py-30">Sin datos para graficar.</div>';
+                        return;
+                    }
+
+                    const dynamicHeight = Math.max(320, (counts.length * 28) + 90);
+                    container.style.minHeight = dynamicHeight + 'px';
+
+                    const chart = new ApexCharts(container, {
+                        chart: {
+                            type: 'bar',
+                            height: dynamicHeight,
+                            toolbar: {show: false},
+                        },
+                        series: [{
+                            name: 'Cantidad',
+                            data: counts,
+                        }],
+                        xaxis: {
+                            categories: categories,
+                        },
                         plotOptions: {
                             bar: {
+                                horizontal: true,
                                 borderRadius: 4,
-                                columnWidth: '55%',
                             },
+                        },
+                        colors: [color],
+                        title: {
+                            text: title,
+                            align: 'left',
+                            style: {fontSize: '13px'},
+                        },
+                        dataLabels: {
+                            enabled: true,
                         },
                         tooltip: {
                             y: {
                                 formatter: function (value) {
-                                    return '$' + Number(value || 0).toFixed(2);
+                                    return value + ' registros';
                                 }
                             }
                         },
-                    }));
-                } else {
-                    doctorPerformanceChart = new ApexCharts(doctorChartContainer, Object.assign({}, options, {
-                        chart: Object.assign({}, options.chart, {type: 'line'}),
-                        series: [{
-                            name: 'Atenciones',
-                            type: 'column',
-                            data: counts,
-                        }, {
-                            name: 'Honorario real',
-                            type: 'line',
-                            data: amounts,
-                        }],
-                        colors: ['#2563eb', '#0f766e'],
-                        stroke: {
-                            width: [0, 3],
-                            curve: 'smooth',
+                        grid: {
+                            borderColor: '#eef1f4',
                         },
-                        markers: {
-                            size: [0, 4],
-                        },
-                        plotOptions: {
-                            bar: {
-                                borderRadius: 4,
-                                columnWidth: '52%',
-                            },
-                        },
-                        yaxis: [{
-                            title: {text: 'Atenciones'},
-                        }, {
-                            opposite: true,
-                            title: {text: 'Honorario real'},
-                            labels: {
-                                formatter: function (value) {
-                                    return '$' + Number(value || 0).toFixed(0);
-                                }
-                            }
-                        }],
-                        tooltip: {
-                            shared: true,
-                            intersect: false,
-                            y: [{
-                                formatter: function (value) {
-                                    return Number(value || 0) + ' atenciones';
-                                }
-                            }, {
-                                formatter: function (value) {
-                                    return '$' + Number(value || 0).toFixed(2);
-                                }
-                            }]
-                        },
-                    }));
-                }
-
-                doctorPerformanceChart.render();
-            };
-
-            doctorModeButtons.forEach(function (button) {
-                button.addEventListener('click', function () {
-                    doctorModeButtons.forEach(function (item) {
-                        item.classList.remove('active');
                     });
-                    button.classList.add('active');
-                    renderDoctorPerformanceChart(String(button.getAttribute('data-doctor-mode') || 'ambos'));
-                });
-            });
 
-            renderDoctorPerformanceChart('ambos');
+                    chart.render();
+                };
 
-            const categoriaClienteResumenContainer = document.querySelector('#categoriaClienteResumenChart');
-            if (categoriaClienteResumenContainer) {
-                const categoryCounts = [
-                    Number.isFinite(Number(particularCount)) ? Number(particularCount) : 0,
-                    Number.isFinite(Number(privadoCount)) ? Number(privadoCount) : 0,
-                ];
-                const categoryHonorarios = [
-                    {{ json_encode(round($honorarioParticular, 2)) }},
-                    {{ json_encode(round($honorarioPrivado, 2)) }},
-                ].map(function (item) {
-                    const value = Number(item);
-                    return Number.isFinite(value) ? Number(value.toFixed(2)) : 0;
-                });
+                const buildHorizontalPercentageChart = function (selector, values, config) {
+                    const container = document.querySelector(selector);
+                    if (!container) {
+                        return;
+                    }
 
-                if ((categoryCounts[0] + categoryCounts[1]) === 0) {
-                    categoriaClienteResumenContainer.innerHTML = '<div class="text-muted text-center py-30">Sin datos de categoría para graficar.</div>';
-                } else {
-                    const categoriaClienteResumenChart = new ApexCharts(categoriaClienteResumenContainer, {
+                    const rows = (Array.isArray(values) ? values : []).map(function (item) {
+                        const label = String(item && item.valor ? item.valor : 'SIN DATO').trim().toUpperCase() || 'SIN DATO';
+                        const count = Number(item && item.cantidad ? item.cantidad : 0);
+                        const percent = Number(item && item.porcentaje ? item.porcentaje : 0);
+
+                        return {
+                            label: label,
+                            count: Number.isFinite(count) ? count : 0,
+                            percent: Number.isFinite(percent) ? Number(percent.toFixed(2)) : 0,
+                        };
+                    }).filter(function (item) {
+                        return item.count > 0;
+                    });
+
+                    if (rows.length === 0) {
+                        container.innerHTML = '<div class="text-muted text-center py-30">Sin datos para graficar.</div>';
+                        return;
+                    }
+
+                    const dynamicHeight = Math.max(320, (rows.length * 42) + 70);
+                    container.style.minHeight = dynamicHeight + 'px';
+
+                    const chart = new ApexCharts(container, {
                         chart: {
-                            type: 'line',
-                            height: 320,
+                            type: 'bar',
+                            height: dynamicHeight,
                             toolbar: {show: false},
                         },
                         series: [{
-                            name: 'Atenciones',
-                            type: 'column',
-                            data: categoryCounts,
-                        }, {
-                            name: 'Honorario real',
-                            type: 'line',
-                            data: categoryHonorarios,
+                            name: config && config.seriesName ? config.seriesName : 'Cantidad',
+                            data: rows.map(function (item) {
+                                return item.count;
+                            }),
                         }],
                         xaxis: {
-                            categories: ['PARTICULAR', 'PRIVADO'],
+                            categories: rows.map(function (item) {
+                                return truncateLabel(item.label, 34);
+                            }),
+                            title: {
+                                text: config && config.xTitle ? config.xTitle : '',
+                            },
                         },
-                        colors: ['#2563eb', '#0f766e'],
-                        stroke: {
-                            width: [0, 3],
-                            curve: 'smooth',
-                        },
-                        markers: {
-                            size: [0, 4],
+                        yaxis: {
+                            labels: {
+                                maxWidth: 260,
+                            },
                         },
                         plotOptions: {
                             bar: {
-                                borderRadius: 4,
-                                columnWidth: '45%',
+                                horizontal: true,
+                                borderRadius: 5,
+                                barHeight: '68%',
+                                distributed: false,
                             },
                         },
-                        yaxis: [{
-                            title: {text: 'Atenciones'},
-                        }, {
-                            opposite: true,
-                            title: {text: 'Honorario real'},
+                        colors: [config && config.color ? config.color : '#16a34a'],
+                        dataLabels: {
+                            enabled: true,
+                            textAnchor: 'start',
+                            offsetX: 6,
+                            formatter: function (value, opts) {
+                                const row = rows[opts.dataPointIndex] || {percent: 0};
+                                return value + ' (' + row.percent.toFixed(2) + '%)';
+                            },
+                            style: {
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                colors: ['#334155'],
+                            },
+                        },
+                        tooltip: {
+                            y: {
+                                formatter: function (value, opts) {
+                                    const row = rows[opts.dataPointIndex] || {percent: 0};
+                                    return value + ' atenciones | ' + row.percent.toFixed(2) + '%';
+                                },
+                            },
+                        },
+                        grid: {
+                            borderColor: '#eef1f4',
+                        },
+                    });
+
+                    chart.render();
+                };
+
+                const buildHorizontalMoneyChart = function (selector, values, config) {
+                    const container = document.querySelector(selector);
+                    if (!container) {
+                        return;
+                    }
+
+                    const rows = (Array.isArray(values) ? values : []).map(function (item) {
+                        const label = String(item && item.valor ? item.valor : 'SIN DATO').trim().toUpperCase() || 'SIN DATO';
+                        const amount = Number(item && item.monto ? item.monto : 0);
+                        const percent = Number(item && item.porcentaje ? item.porcentaje : 0);
+
+                        return {
+                            label: label,
+                            amount: Number.isFinite(amount) ? Number(amount.toFixed(2)) : 0,
+                            percent: Number.isFinite(percent) ? Number(percent.toFixed(2)) : 0,
+                        };
+                    }).filter(function (item) {
+                        return item.amount > 0;
+                    });
+
+                    if (rows.length === 0) {
+                        container.innerHTML = '<div class="text-muted text-center py-30">Sin datos para graficar.</div>';
+                        return;
+                    }
+
+                    const dynamicHeight = Math.max(320, (rows.length * 42) + 70);
+                    container.style.minHeight = dynamicHeight + 'px';
+
+                    const chart = new ApexCharts(container, {
+                        chart: {
+                            type: 'bar',
+                            height: dynamicHeight,
+                            toolbar: {show: false},
+                        },
+                        series: [{
+                            name: config && config.seriesName ? config.seriesName : 'Honorario real',
+                            data: rows.map(function (item) {
+                                return item.amount;
+                            }),
+                        }],
+                        xaxis: {
+                            categories: rows.map(function (item) {
+                                return truncateLabel(item.label, 32);
+                            }),
                             labels: {
                                 formatter: function (value) {
                                     return '$' + Number(value || 0).toFixed(0);
-                                }
-                            }
-                        }],
+                                },
+                            },
+                            title: {
+                                text: config && config.xTitle ? config.xTitle : '',
+                            },
+                        },
+                        yaxis: {
+                            labels: {
+                                maxWidth: 260,
+                            },
+                        },
+                        plotOptions: {
+                            bar: {
+                                horizontal: true,
+                                borderRadius: 5,
+                                barHeight: '68%',
+                            },
+                        },
+                        colors: [config && config.color ? config.color : '#0f766e'],
+                        dataLabels: {
+                            enabled: true,
+                            textAnchor: 'start',
+                            offsetX: 6,
+                            formatter: function (value, opts) {
+                                const row = rows[opts.dataPointIndex] || {percent: 0};
+                                return '$' + Number(value || 0).toFixed(2) + ' (' + row.percent.toFixed(2) + '%)';
+                            },
+                            style: {
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                colors: ['#334155'],
+                            },
+                        },
                         tooltip: {
-                            shared: true,
-                            intersect: false,
-                            y: [{
-                                formatter: function (value) {
-                                    return Number(value || 0) + ' atenciones';
-                                }
-                            }, {
-                                formatter: function (value) {
-                                    return '$' + Number(value || 0).toFixed(2);
-                                }
-                            }]
+                            y: {
+                                formatter: function (value, opts) {
+                                    const row = rows[opts.dataPointIndex] || {percent: 0};
+                                    return '$' + Number(value || 0).toFixed(2) + ' | ' + row.percent.toFixed(2) + '% del honorario';
+                                },
+                            },
+                        },
+                        grid: {
+                            borderColor: '#eef1f4',
+                        },
+                    });
+
+                    chart.render();
+                };
+
+                const buildDoctorPerformanceRows = function () {
+                    const order = [];
+                    const countsMap = new Map();
+                    const moneyMap = new Map();
+
+                    (Array.isArray(doctoresHonorarioTop) ? doctoresHonorarioTop : []).forEach(function (item) {
+                        const label = String(item && item.valor ? item.valor : 'SIN DOCTOR').trim().toUpperCase() || 'SIN DOCTOR';
+                        if (!order.includes(label)) {
+                            order.push(label);
+                        }
+                        const amount = Number(item && item.monto ? item.monto : 0);
+                        const percent = Number(item && item.porcentaje ? item.porcentaje : 0);
+                        moneyMap.set(label, {
+                            amount: Number.isFinite(amount) ? Number(amount.toFixed(2)) : 0,
+                            percent: Number.isFinite(percent) ? Number(percent.toFixed(2)) : 0,
+                        });
+                    });
+
+                    (Array.isArray(desgloseDoctores) ? desgloseDoctores : []).forEach(function (item) {
+                        const label = String(item && item.valor ? item.valor : 'SIN DOCTOR').trim().toUpperCase() || 'SIN DOCTOR';
+                        if (!order.includes(label)) {
+                            order.push(label);
+                        }
+                        const count = Number(item && item.cantidad ? item.cantidad : 0);
+                        const percent = Number(item && item.porcentaje ? item.porcentaje : 0);
+                        countsMap.set(label, {
+                            count: Number.isFinite(count) ? count : 0,
+                            percent: Number.isFinite(percent) ? Number(percent.toFixed(2)) : 0,
+                        });
+                    });
+
+                    return order.slice(0, 10).map(function (label) {
+                        const countMeta = countsMap.get(label) || {count: 0, percent: 0};
+                        const moneyMeta = moneyMap.get(label) || {amount: 0, percent: 0};
+
+                        return {
+                            label: label,
+                            count: countMeta.count,
+                            countPercent: countMeta.percent,
+                            amount: moneyMeta.amount,
+                            amountPercent: moneyMeta.percent,
+                        };
+                    });
+                };
+
+                const doctorChartContainer = document.querySelector('#doctorPerformanceChart');
+                const doctorModeButtons = Array.from(document.querySelectorAll('[data-doctor-mode]'));
+                const doctorPerformanceRows = buildDoctorPerformanceRows();
+                let doctorPerformanceChart = null;
+
+                const renderDoctorPerformanceChart = function (mode) {
+                    if (!doctorChartContainer) {
+                        return;
+                    }
+
+                    if (!Array.isArray(doctorPerformanceRows) || doctorPerformanceRows.length === 0) {
+                        doctorChartContainer.innerHTML = '<div class="text-muted text-center py-30">Sin datos de médicos para graficar.</div>';
+                        return;
+                    }
+
+                    const categories = doctorPerformanceRows.map(function (item) {
+                        const text = String(item.label || 'SIN DOCTOR');
+                        return text.length > 18 ? text.slice(0, 18) + '...' : text;
+                    });
+                    const counts = doctorPerformanceRows.map(function (item) {
+                        return Number(item.count || 0);
+                    });
+                    const amounts = doctorPerformanceRows.map(function (item) {
+                        return Number(item.amount || 0);
+                    });
+
+                    if (doctorPerformanceChart) {
+                        doctorPerformanceChart.destroy();
+                        doctorPerformanceChart = null;
+                    }
+
+                    const options = {
+                        chart: {
+                            height: 360,
+                            toolbar: {show: false},
+                        },
+                        xaxis: {
+                            categories: categories,
+                            labels: {
+                                rotate: -35,
+                                hideOverlappingLabels: false,
+                                trim: true,
+                            },
                         },
                         grid: {
                             borderColor: '#eef1f4',
@@ -2500,389 +2413,699 @@
                         legend: {
                             position: 'top',
                         },
+                        tooltip: {
+                            shared: true,
+                            intersect: false,
+                        },
+                    };
+
+                    if (mode === 'volumen') {
+                        doctorPerformanceChart = new ApexCharts(doctorChartContainer, Object.assign({}, options, {
+                            chart: Object.assign({}, options.chart, {type: 'bar'}),
+                            series: [{
+                                name: 'Atenciones',
+                                data: counts,
+                            }],
+                            colors: ['#2563eb'],
+                            yaxis: {
+                                title: {text: 'Atenciones'},
+                            },
+                            plotOptions: {
+                                bar: {
+                                    borderRadius: 4,
+                                    columnWidth: '55%',
+                                },
+                            },
+                        }));
+                    } else if (mode === 'honorario') {
+                        doctorPerformanceChart = new ApexCharts(doctorChartContainer, Object.assign({}, options, {
+                            chart: Object.assign({}, options.chart, {type: 'bar'}),
+                            series: [{
+                                name: 'Honorario real',
+                                data: amounts,
+                            }],
+                            colors: ['#0f766e'],
+                            yaxis: {
+                                title: {text: 'Honorario real'},
+                                labels: {
+                                    formatter: function (value) {
+                                        return '$' + Number(value || 0).toFixed(0);
+                                    }
+                                }
+                            },
+                            plotOptions: {
+                                bar: {
+                                    borderRadius: 4,
+                                    columnWidth: '55%',
+                                },
+                            },
+                            tooltip: {
+                                y: {
+                                    formatter: function (value) {
+                                        return '$' + Number(value || 0).toFixed(2);
+                                    }
+                                }
+                            },
+                        }));
+                    } else {
+                        doctorPerformanceChart = new ApexCharts(doctorChartContainer, Object.assign({}, options, {
+                            chart: Object.assign({}, options.chart, {type: 'line'}),
+                            series: [{
+                                name: 'Atenciones',
+                                type: 'column',
+                                data: counts,
+                            }, {
+                                name: 'Honorario real',
+                                type: 'line',
+                                data: amounts,
+                            }],
+                            colors: ['#2563eb', '#0f766e'],
+                            stroke: {
+                                width: [0, 3],
+                                curve: 'smooth',
+                            },
+                            markers: {
+                                size: [0, 4],
+                            },
+                            plotOptions: {
+                                bar: {
+                                    borderRadius: 4,
+                                    columnWidth: '52%',
+                                },
+                            },
+                            yaxis: [{
+                                title: {text: 'Atenciones'},
+                            }, {
+                                opposite: true,
+                                title: {text: 'Honorario real'},
+                                labels: {
+                                    formatter: function (value) {
+                                        return '$' + Number(value || 0).toFixed(0);
+                                    }
+                                }
+                            }],
+                            tooltip: {
+                                shared: true,
+                                intersect: false,
+                                y: [{
+                                    formatter: function (value) {
+                                        return Number(value || 0) + ' atenciones';
+                                    }
+                                }, {
+                                    formatter: function (value) {
+                                        return '$' + Number(value || 0).toFixed(2);
+                                    }
+                                }]
+                            },
+                        }));
+                    }
+
+                    doctorPerformanceChart.render();
+                };
+
+                doctorModeButtons.forEach(function (button) {
+                    button.addEventListener('click', function () {
+                        doctorModeButtons.forEach(function (item) {
+                            item.classList.remove('active');
+                        });
+                        button.classList.add('active');
+                        renderDoctorPerformanceChart(String(button.getAttribute('data-doctor-mode') || 'ambos'));
+                    });
+                });
+
+                renderDoctorPerformanceChart('ambos');
+
+                const categoriaClienteResumenContainer = document.querySelector('#categoriaClienteResumenChart');
+                if (categoriaClienteResumenContainer) {
+                    const categoryCounts = [
+                        Number.isFinite(Number(particularCount)) ? Number(particularCount) : 0,
+                        Number.isFinite(Number(privadoCount)) ? Number(privadoCount) : 0,
+                    ];
+                    const categoryHonorarios = [
+                        {{ json_encode(round($honorarioParticular, 2)) }},
+                        {{ json_encode(round($honorarioPrivado, 2)) }},
+                    ].map(function (item) {
+                        const value = Number(item);
+                        return Number.isFinite(value) ? Number(value.toFixed(2)) : 0;
+                    });
+                    const categoryTickets = [
+                        {{ json_encode(round($ticketPromedioParticular, 2)) }},
+                        {{ json_encode(round($ticketPromedioPrivado, 2)) }},
+                    ].map(function (item) {
+                        const value = Number(item);
+                        return Number.isFinite(value) ? Number(value.toFixed(2)) : 0;
                     });
 
-                    categoriaClienteResumenChart.render();
-                }
-            }
+                    if ((categoryCounts[0] + categoryCounts[1]) === 0) {
+                        categoriaClienteResumenContainer.innerHTML = '<div class="text-muted text-center py-30">Sin datos de categoría para graficar.</div>';
+                    } else {
+                        const categoriaClienteResumenChart = new ApexCharts(categoriaClienteResumenContainer, {
+                            chart: {
+                                type: 'line',
+                                height: 320,
+                                toolbar: {show: false},
+                            },
+                            series: [{
+                                name: 'Atenciones',
+                                type: 'column',
+                                data: categoryCounts,
+                            }, {
+                                name: 'Honorario real',
+                                type: 'line',
+                                data: categoryHonorarios,
+                            }],
+                            xaxis: {
+                                categories: ['PARTICULAR', 'PRIVADO'],
+                            },
+                            colors: ['#2563eb', '#0f766e'],
+                            stroke: {
+                                width: [0, 3],
+                                curve: 'smooth',
+                            },
+                            markers: {
+                                size: [0, 4],
+                            },
+                            plotOptions: {
+                                bar: {
+                                    borderRadius: 4,
+                                    columnWidth: '45%',
+                                },
+                            },
+                            yaxis: [{
+                                title: {text: 'Atenciones'},
+                            }, {
+                                opposite: true,
+                                title: {text: 'Honorario real'},
+                                labels: {
+                                    formatter: function (value) {
+                                        return '$' + Number(value || 0).toFixed(0);
+                                    }
+                                }
+                            }],
+                            tooltip: {
+                                shared: true,
+                                intersect: false,
+                                y: [{
+                                    formatter: function (value, opts) {
+                                        const ticket = Number(categoryTickets[opts.dataPointIndex] || 0);
+                                        return Number(value || 0) + ' atenciones | Ticket $' + ticket.toFixed(2);
+                                    }
+                                }, {
+                                    formatter: function (value, opts) {
+                                        const ticket = Number(categoryTickets[opts.dataPointIndex] || 0);
+                                        return '$' + Number(value || 0).toFixed(2) + ' | Ticket $' + ticket.toFixed(2);
+                                    }
+                                }]
+                            },
+                            grid: {
+                                borderColor: '#eef1f4',
+                            },
+                            dataLabels: {
+                                enabled: false,
+                            },
+                            legend: {
+                                position: 'top',
+                            },
+                        });
 
-            const tendenciaVolumenContainer = document.querySelector('#tendenciaVolumenChart');
-            if (tendenciaVolumenContainer) {
-                if (!Array.isArray(temporalTrendCounts) || temporalTrendCounts.length === 0) {
-                    tendenciaVolumenContainer.innerHTML = '<div class="text-muted text-center py-30">Sin datos para graficar.</div>';
-                } else {
-                    const tendenciaVolumenChart = new ApexCharts(tendenciaVolumenContainer, {
+                        categoriaClienteResumenChart.render();
+                    }
+                }
+
+                const tendenciaVolumenContainer = document.querySelector('#tendenciaVolumenChart');
+                if (tendenciaVolumenContainer) {
+                    if (!Array.isArray(temporalTrendCounts) || temporalTrendCounts.length === 0) {
+                        tendenciaVolumenContainer.innerHTML = '<div class="text-muted text-center py-30">Sin datos para graficar.</div>';
+                    } else {
+                        const tendenciaVolumenChart = new ApexCharts(tendenciaVolumenContainer, {
+                            chart: {
+                                type: 'line',
+                                height: 320,
+                                toolbar: {show: false},
+                            },
+                            series: [{
+                                name: 'Atenciones',
+                                data: temporalTrendCounts.map(function (item) {
+                                    const value = Number(item);
+                                    return Number.isFinite(value) ? value : 0;
+                                }),
+                            }],
+                            xaxis: {
+                                categories: Array.isArray(temporalTrendLabels) ? temporalTrendLabels : [],
+                            },
+                            stroke: {
+                                curve: 'smooth',
+                                width: 3,
+                            },
+                            markers: {
+                                size: 4,
+                            },
+                            colors: ['#2563eb'],
+                            dataLabels: {
+                                enabled: false,
+                            },
+                            grid: {
+                                borderColor: '#eef1f4',
+                            },
+                        });
+
+                        tendenciaVolumenChart.render();
+                    }
+                }
+
+                buildHorizontalChart(
+                    '#topProcedimientosVolumenChart',
+                    'Top 10 procedimientos por volumen',
+                    Array.isArray(topProcedimientosVolumen) ? topProcedimientosVolumen : [],
+                    '#0ea5e9'
+                );
+
+                buildHorizontalChart('#desgloseSedeChart', 'Participación por sede', Array.isArray(desgloseSedes) ? desgloseSedes : [], '#0891b2');
+                buildHorizontalPercentageChart('#formasPagoChart', formasPagoValues, {
+                    seriesName: 'Atenciones',
+                    xTitle: 'Atenciones',
+                    color: '#16a34a',
+                });
+                buildHorizontalMoneyChart('#areasHonorarioChart', areasTop, {
+                    seriesName: 'Honorario real',
+                    xTitle: 'Honorario real',
+                    color: '#f8d830',
+                });
+
+                buildVerticalChart('#picosDiasChart', 'Atenciones por día', Array.isArray(picosDias) ? picosDias : [], '#8b5cf6');
+                buildHorizontalChart(
+                    '#pniEstadoChart',
+                    'PNI por estado real',
+                    Array.isArray(pniEstados) ? pniEstados : [],
+                    '#10b981'
+                );
+                buildHorizontalMoneyChart('#pniPorCobrarDoctorChart', pniDoctoresPorCobrar, {
+                    seriesName: 'Por cobrar estimado',
+                    xTitle: 'Por cobrar estimado',
+                    color: '#f59e0b',
+                });
+                buildHorizontalMoneyChart('#pniPerdidaDoctorChart', pniDoctoresPerdida, {
+                    seriesName: 'Pérdida estimada',
+                    xTitle: 'Pérdida estimada',
+                    color: '#dc2626',
+                });
+                buildHorizontalChart(
+                    '#imagenesEstadoChart',
+                    'Imágenes por estado real',
+                    Array.isArray(imagenesEstados) ? imagenesEstados : [],
+                    '#06b6d4'
+                );
+                buildHorizontalMoneyChart('#imagenesPorCobrarDoctorChart', imagenesDoctoresPorCobrar, {
+                    seriesName: 'Por cobrar estimado',
+                    xTitle: 'Por cobrar estimado',
+                    color: '#f59e0b',
+                });
+                buildHorizontalMoneyChart('#imagenesPerdidaDoctorChart', imagenesDoctoresPerdida, {
+                    seriesName: 'Pérdida estimada',
+                    xTitle: 'Pérdida estimada',
+                    color: '#dc2626',
+                });
+                buildHorizontalChart(
+                    '#serviciosOftalmologicosEstadoChart',
+                    'Servicios oftalmológicos por estado real',
+                    Array.isArray(serviciosOftalmologicosEstados) ? serviciosOftalmologicosEstados : [],
+                    '#2563eb'
+                );
+                buildHorizontalMoneyChart('#serviciosOftalmologicosPorCobrarDoctorChart', serviciosOftalmologicosDoctoresPorCobrar, {
+                    seriesName: 'Por cobrar estimado',
+                    xTitle: 'Por cobrar estimado',
+                    color: '#f59e0b',
+                });
+                buildHorizontalMoneyChart('#serviciosOftalmologicosPerdidaDoctorChart', serviciosOftalmologicosDoctoresPerdida, {
+                    seriesName: 'Pérdida estimada',
+                    xTitle: 'Pérdida estimada',
+                    color: '#dc2626',
+                });
+                buildHorizontalChart(
+                    '#cirugiasEstadoChart',
+                    'Cirugías por estado real',
+                    Array.isArray(cirugiasEstados) ? cirugiasEstados : [],
+                    '#ef4444'
+                );
+                buildHorizontalMoneyChart('#cirugiasPorCobrarDoctorChart', cirugiasDoctoresPorCobrar, {
+                    seriesName: 'Por cobrar estimado',
+                    xTitle: 'Por cobrar estimado',
+                    color: '#f59e0b',
+                });
+                buildHorizontalMoneyChart('#cirugiasPerdidaDoctorChart', cirugiasDoctoresPerdida, {
+                    seriesName: 'Pérdida estimada',
+                    xTitle: 'Pérdida estimada',
+                    color: '#dc2626',
+                });
+
+                const topAfiliacionesContainer = document.querySelector('#topAfiliacionesChart');
+                if (topAfiliacionesContainer) {
+                    const afiliacionesRows = Array.isArray(topAfiliaciones) ? topAfiliaciones : [];
+                    const afiliacionesSeries = afiliacionesRows.map(function (item) {
+                        const qty = Number(item && item.cantidad ? item.cantidad : 0);
+                        return Number.isFinite(qty) ? qty : 0;
+                    });
+                    const afiliacionesLabels = afiliacionesRows.map(function (item) {
+                        const raw = String(item && item.afiliacion ? item.afiliacion : 'SIN AFILIACION').toUpperCase();
+                        return raw.length > 24 ? raw.slice(0, 24) + '...' : raw;
+                    });
+
+                    if (afiliacionesSeries.length === 0) {
+                        topAfiliacionesContainer.innerHTML = '<div class="text-muted text-center py-30">Sin datos para graficar.</div>';
+                    } else {
+                        const topAfiliacionesChart = new ApexCharts(topAfiliacionesContainer, {
+                            chart: {
+                                type: 'polarArea',
+                                height: 320,
+                            },
+                            labels: afiliacionesLabels,
+                            series: afiliacionesSeries,
+                            colors: ['#3b82f6', '#0ea5e9', '#38bdf8', '#60a5fa', '#93c5fd', '#c4b5fd'],
+                            stroke: {
+                                colors: ['#ffffff'],
+                            },
+                            fill: {
+                                opacity: 0.9,
+                            },
+                            legend: {
+                                position: 'bottom',
+                            },
+                            yaxis: {
+                                show: false,
+                            },
+                            tooltip: {
+                                y: {
+                                    formatter: function (value) {
+                                        return value + ' registros';
+                                    },
+                                },
+                            },
+                        });
+
+                        topAfiliacionesChart.render();
+                    }
+                }
+
+                const doctorTicketPromedioContainer = document.querySelector('#doctorTicketPromedioChart');
+                if (doctorTicketPromedioContainer) {
+                    const rows = Array.isArray(doctorTicketPromedioRows) ? doctorTicketPromedioRows : [];
+                    if (rows.length === 0) {
+                        doctorTicketPromedioContainer.innerHTML = '<div class="text-muted text-center py-30">Sin datos de médicos para graficar.</div>';
+                    } else {
+                        const dynamicHeight = Math.max(300, (rows.length * 34) + 80);
+                        doctorTicketPromedioContainer.style.minHeight = dynamicHeight + 'px';
+
+                        const doctorTicketChart = new ApexCharts(doctorTicketPromedioContainer, {
+                            chart: {
+                                type: 'bar',
+                                height: dynamicHeight,
+                                toolbar: {show: false},
+                            },
+                            series: [{
+                                name: 'Score rendimiento',
+                                data: rows.map(function (item) {
+                                    return Number(item && item.score_rendimiento ? item.score_rendimiento : 0);
+                                }),
+                            }],
+                            xaxis: {
+                                categories: rows.map(function (item) {
+                                    return truncateLabel(String(item && item.valor ? item.valor : 'SIN DOCTOR'), 26);
+                                }),
+                                labels: {
+                                    formatter: function (value) {
+                                        return Number(value || 0).toFixed(0);
+                                    },
+                                },
+                                title: {
+                                    text: 'Score de rendimiento',
+                                },
+                            },
+                            yaxis: {
+                                labels: {
+                                    maxWidth: 220,
+                                },
+                            },
+                            plotOptions: {
+                                bar: {
+                                    horizontal: true,
+                                    borderRadius: 5,
+                                    barHeight: '68%',
+                                },
+                            },
+                            colors: ['#0f766e'],
+                            dataLabels: {
+                                enabled: true,
+                                textAnchor: 'start',
+                                offsetX: 6,
+                                formatter: function (value, opts) {
+                                    const row = rows[opts.dataPointIndex] || {};
+                                    return Number(value || 0).toFixed(2) + ' | Tkt $' + Number(row && row.ticket_promedio ? row.ticket_promedio : 0).toFixed(2);
+                                },
+                                style: {
+                                    fontSize: '11px',
+                                    fontWeight: 600,
+                                    colors: ['#334155'],
+                                },
+                            },
+                            tooltip: {
+                                y: {
+                                    formatter: function (value, opts) {
+                                        const row = rows[opts.dataPointIndex] || {};
+                                        const totalCount = Number(row && row.cantidad_total ? row.cantidad_total : 0);
+                                        const billableCount = Number(row && row.cantidad_con_honorario ? row.cantidad_con_honorario : 0);
+                                        const zeroRate = Number(row && row.tasa_cero ? row.tasa_cero : 0);
+                                        const amount = Number(row && row.monto ? row.monto : 0);
+                                        const ticket = Number(row && row.ticket_promedio ? row.ticket_promedio : 0);
+                                        const level = String(row && row.clasificacion ? row.clasificacion : 'POR REVISAR');
+                                        return 'Score ' + Number(value || 0).toFixed(2) + ' | ' + level + ' | Honorario ' + formatUsd(amount) + ' | Ticket ' + formatUsd(ticket) + ' | ' + billableCount + ' pagadas | ' + totalCount + ' totales | %0 ' + (zeroRate * 100).toFixed(2) + '%';
+                                    },
+                                },
+                            },
+                            grid: {
+                                borderColor: '#eef1f4',
+                            },
+                        });
+
+                        doctorTicketChart.render();
+                    }
+                }
+
+                buildVerticalChart(
+                    '#referidoPrefacturaChart',
+                    'Categorías madre (con valor: ' + referidoWithValue + ', sin valor: ' + referidoWithoutValue + ')',
+                    referidoValues,
+                    '#3b82f6',
+                    {
+                        amountLabel: 'USD acumulado del período:',
+                        ticketLabel: 'Ticket promedio por atención:',
+                    }
+                );
+
+                buildVerticalChart(
+                    '#referidoPrefacturaPacientesUnicosChart',
+                    'Categorías madre por pacientes únicos (con valor: ' + referidoUniquePatientsWithValue + ', sin valor: ' + referidoUniquePatientsWithoutValue + ')',
+                    referidoUniquePatientValues,
+                    '#1d4ed8',
+                    {
+                        amountLabel: 'USD acumulado del período:',
+                        ticketLabel: 'Promedio por paciente único:',
+                    }
+                );
+
+                buildVerticalChart(
+                    '#referidoPrefacturaNuevoPacienteChart',
+                    'Categorías madre en consulta oftalmológica nuevo paciente (con valor: ' + referidoNuevoPacienteWithValue + ', sin valor: ' + referidoNuevoPacienteWithoutValue + ')',
+                    referidoNuevoPacienteValues,
+                    '#2563eb',
+                    {
+                        amountLabel: 'USD acumulado del período:',
+                        divisorLabel: 'Pacientes nuevos únicos:',
+                        ticketLabel: 'Promedio por paciente nuevo único:',
+                    }
+                );
+
+                const hierarchyDonutContainer = document.querySelector('#hierarquiaCategoriasChart');
+                const hierarchySelect = document.querySelector('#hierarquiaCategoriaSelect');
+                const hierarchySubContainer = document.querySelector('#hierarquiaSubcategoriasChart');
+
+                let hierarchyDonutChart = null;
+                let hierarchySubChart = null;
+
+                if (hierarchyDonutContainer) {
+                    const labels = hierarquiaCategorias.map(function (item) {
+                        return String(item && item.categoria ? item.categoria : 'SIN CATEGORIA').toUpperCase();
+                    });
+                    const series = hierarquiaCategorias.map(function (item) {
+                        const qty = Number(item && item.cantidad ? item.cantidad : 0);
+                        return Number.isFinite(qty) ? qty : 0;
+                    });
+
+                    if (series.length === 0) {
+                        hierarchyDonutContainer.innerHTML = '<div class="text-muted text-center py-30">Sin categorías para graficar.</div>';
+                    } else {
+                        hierarchyDonutChart = new ApexCharts(hierarchyDonutContainer, {
+                            chart: {
+                                type: 'donut',
+                                height: 320,
+                            },
+                            labels: labels,
+                            series: series,
+                            title: {
+                                text: 'Participación de categorías madre',
+                                align: 'left',
+                                style: {fontSize: '13px'},
+                            },
+                            legend: {
+                                position: 'bottom',
+                            },
+                            dataLabels: {
+                                enabled: true,
+                                formatter: function (val) {
+                                    return val.toFixed(1) + '%';
+                                }
+                            },
+                            tooltip: {
+                                y: {
+                                    formatter: function (value) {
+                                        return value + ' registros';
+                                    }
+                                }
+                            }
+                        });
+
+                        hierarchyDonutChart.render();
+                    }
+                }
+
+                const renderHierarchySubcategories = function (selectedCategory) {
+                    if (!hierarchySubContainer) {
+                        return;
+                    }
+
+                    const fallback = hierarquiaCategorias.length > 0 ? hierarquiaCategorias[0] : null;
+                    const selected = hierarquiaCategorias.find(function (item) {
+                        return String(item && item.categoria ? item.categoria : '') === String(selectedCategory || '');
+                    }) || fallback;
+
+                    if (!selected || !Array.isArray(selected.subcategorias) || selected.subcategorias.length === 0) {
+                        hierarchySubContainer.innerHTML = '<div class="text-muted text-center py-30">Sin subcategorías para graficar.</div>';
+                        return;
+                    }
+
+                    const rows = selected.subcategorias;
+                    const categories = rows.map(function (item) {
+                        return String(item && item.subcategoria ? item.subcategoria : 'SIN SUBCATEGORIA').toUpperCase();
+                    });
+                    const percents = rows.map(function (item) {
+                        const pct = Number(item && item.porcentaje_en_categoria ? item.porcentaje_en_categoria : 0);
+                        return Number.isFinite(pct) ? pct : 0;
+                    });
+
+                    const dynamicHeight = Math.max(320, (rows.length * 28) + 90);
+                    hierarchySubContainer.style.minHeight = dynamicHeight + 'px';
+
+                    if (hierarchySubChart) {
+                        hierarchySubChart.destroy();
+                        hierarchySubChart = null;
+                    }
+
+                    hierarchySubChart = new ApexCharts(hierarchySubContainer, {
                         chart: {
-                            type: 'line',
-                            height: 320,
+                            type: 'bar',
+                            height: dynamicHeight,
                             toolbar: {show: false},
                         },
                         series: [{
-                            name: 'Atenciones',
-                            data: temporalTrendCounts.map(function (item) {
-                                const value = Number(item);
-                                return Number.isFinite(value) ? value : 0;
-                            }),
+                            name: '% en categoría',
+                            data: percents,
                         }],
                         xaxis: {
-                            categories: Array.isArray(temporalTrendLabels) ? temporalTrendLabels : [],
+                            categories: categories,
+                            min: 0,
+                            max: 100,
+                            labels: {
+                                formatter: function (value) {
+                                    return value + '%';
+                                }
+                            }
                         },
-                        stroke: {
-                            curve: 'smooth',
-                            width: 3,
+                        plotOptions: {
+                            bar: {
+                                horizontal: true,
+                                borderRadius: 4,
+                            },
                         },
-                        markers: {
-                            size: 4,
+                        colors: ['#7c3aed'],
+                        title: {
+                            text: 'Subcategorías dentro de ' + String(selected.categoria || 'SIN CATEGORIA').toUpperCase(),
+                            align: 'left',
+                            style: {fontSize: '13px'},
                         },
-                        colors: ['#2563eb'],
                         dataLabels: {
-                            enabled: false,
+                            enabled: true,
+                            formatter: function (value) {
+                                return value.toFixed(2) + '%';
+                            }
+                        },
+                        tooltip: {
+                            custom: function ({dataPointIndex}) {
+                                const item = rows[dataPointIndex] || {};
+                                const count = Number(item.cantidad || 0);
+                                const pctInCategory = Number(item.porcentaje_en_categoria || 0);
+                                const pctTotal = Number(item.porcentaje_total || 0);
+
+                                return '<div class="px-10 py-5">' +
+                                    '<div><strong>' + String(item.subcategoria || 'SIN SUBCATEGORIA').toUpperCase() + '</strong></div>' +
+                                    '<div>Cantidad: ' + count + '</div>' +
+                                    '<div>% en categoría: ' + pctInCategory.toFixed(2) + '%</div>' +
+                                    '<div>% del total: ' + pctTotal.toFixed(2) + '%</div>' +
+                                    '</div>';
+                            }
                         },
                         grid: {
                             borderColor: '#eef1f4',
                         },
                     });
 
-                    tendenciaVolumenChart.render();
-                }
-            }
+                    hierarchySubChart.render();
+                };
 
-            buildHorizontalChart(
-                '#topProcedimientosVolumenChart',
-                'Top 10 procedimientos por volumen',
-                Array.isArray(topProcedimientosVolumen) ? topProcedimientosVolumen : [],
-                '#0ea5e9'
-            );
-
-            buildHorizontalChart('#desgloseSedeChart', 'Participación por sede', Array.isArray(desgloseSedes) ? desgloseSedes : [], '#0891b2');
-            buildHorizontalPercentageChart('#formasPagoChart', formasPagoValues, {
-                seriesName: 'Atenciones',
-                xTitle: 'Atenciones',
-                color: '#16a34a',
-            });
-            buildHorizontalMoneyChart('#areasHonorarioChart', areasTop, {
-                seriesName: 'Honorario real',
-                xTitle: 'Honorario real',
-                color: '#f8d830',
-            });
-
-            buildVerticalChart('#picosDiasChart', 'Atenciones por día', Array.isArray(picosDias) ? picosDias : [], '#8b5cf6');
-            buildHorizontalChart(
-                '#pniEstadoChart',
-                'PNI por estado real',
-                Array.isArray(pniEstados) ? pniEstados : [],
-                '#10b981'
-            );
-            buildHorizontalMoneyChart('#pniPorCobrarDoctorChart', pniDoctoresPorCobrar, {
-                seriesName: 'Por cobrar estimado',
-                xTitle: 'Por cobrar estimado',
-                color: '#f59e0b',
-            });
-            buildHorizontalMoneyChart('#pniPerdidaDoctorChart', pniDoctoresPerdida, {
-                seriesName: 'Pérdida estimada',
-                xTitle: 'Pérdida estimada',
-                color: '#dc2626',
-            });
-            buildHorizontalChart(
-                '#imagenesEstadoChart',
-                'Imágenes por estado real',
-                Array.isArray(imagenesEstados) ? imagenesEstados : [],
-                '#06b6d4'
-            );
-            buildHorizontalMoneyChart('#imagenesPorCobrarDoctorChart', imagenesDoctoresPorCobrar, {
-                seriesName: 'Por cobrar estimado',
-                xTitle: 'Por cobrar estimado',
-                color: '#f59e0b',
-            });
-            buildHorizontalMoneyChart('#imagenesPerdidaDoctorChart', imagenesDoctoresPerdida, {
-                seriesName: 'Pérdida estimada',
-                xTitle: 'Pérdida estimada',
-                color: '#dc2626',
-            });
-            buildHorizontalChart(
-                '#serviciosOftalmologicosEstadoChart',
-                'Servicios oftalmológicos por estado real',
-                Array.isArray(serviciosOftalmologicosEstados) ? serviciosOftalmologicosEstados : [],
-                '#2563eb'
-            );
-            buildHorizontalMoneyChart('#serviciosOftalmologicosPorCobrarDoctorChart', serviciosOftalmologicosDoctoresPorCobrar, {
-                seriesName: 'Por cobrar estimado',
-                xTitle: 'Por cobrar estimado',
-                color: '#f59e0b',
-            });
-            buildHorizontalMoneyChart('#serviciosOftalmologicosPerdidaDoctorChart', serviciosOftalmologicosDoctoresPerdida, {
-                seriesName: 'Pérdida estimada',
-                xTitle: 'Pérdida estimada',
-                color: '#dc2626',
-            });
-            buildHorizontalChart(
-                '#cirugiasEstadoChart',
-                'Cirugías por estado real',
-                Array.isArray(cirugiasEstados) ? cirugiasEstados : [],
-                '#ef4444'
-            );
-            buildHorizontalMoneyChart('#cirugiasPorCobrarDoctorChart', cirugiasDoctoresPorCobrar, {
-                seriesName: 'Por cobrar estimado',
-                xTitle: 'Por cobrar estimado',
-                color: '#f59e0b',
-            });
-            buildHorizontalMoneyChart('#cirugiasPerdidaDoctorChart', cirugiasDoctoresPerdida, {
-                seriesName: 'Pérdida estimada',
-                xTitle: 'Pérdida estimada',
-                color: '#dc2626',
-            });
-
-            const topAfiliacionesContainer = document.querySelector('#topAfiliacionesChart');
-            if (topAfiliacionesContainer) {
-                const afiliacionesRows = Array.isArray(topAfiliaciones) ? topAfiliaciones : [];
-                const afiliacionesSeries = afiliacionesRows.map(function (item) {
-                    const qty = Number(item && item.cantidad ? item.cantidad : 0);
-                    return Number.isFinite(qty) ? qty : 0;
-                });
-                const afiliacionesLabels = afiliacionesRows.map(function (item) {
-                    const raw = String(item && item.afiliacion ? item.afiliacion : 'SIN AFILIACION').toUpperCase();
-                    return raw.length > 24 ? raw.slice(0, 24) + '...' : raw;
-                });
-
-                if (afiliacionesSeries.length === 0) {
-                    topAfiliacionesContainer.innerHTML = '<div class="text-muted text-center py-30">Sin datos para graficar.</div>';
-                } else {
-                    const topAfiliacionesChart = new ApexCharts(topAfiliacionesContainer, {
-                        chart: {
-                            type: 'polarArea',
-                            height: 320,
-                        },
-                        labels: afiliacionesLabels,
-                        series: afiliacionesSeries,
-                        colors: ['#3b82f6', '#0ea5e9', '#38bdf8', '#60a5fa', '#93c5fd', '#c4b5fd'],
-                        stroke: {
-                            colors: ['#ffffff'],
-                        },
-                        fill: {
-                            opacity: 0.9,
-                        },
-                        legend: {
-                            position: 'bottom',
-                        },
-                        yaxis: {
-                            show: false,
-                        },
-                        tooltip: {
-                            y: {
-                                formatter: function (value) {
-                                    return value + ' registros';
-                                },
-                            },
-                        },
+                if (hierarchySelect) {
+                    hierarchySelect.addEventListener('change', function (event) {
+                        renderHierarchySubcategories(event.target.value);
                     });
-
-                    topAfiliacionesChart.render();
-                }
-            }
-
-            buildVerticalChart(
-                '#referidoPrefacturaChart',
-                'Categorías madre (con valor: ' + referidoWithValue + ', sin valor: ' + referidoWithoutValue + ')',
-                referidoValues,
-                '#3b82f6'
-            );
-
-            buildVerticalChart(
-                '#referidoPrefacturaPacientesUnicosChart',
-                'Categorías madre por pacientes únicos (con valor: ' + referidoUniquePatientsWithValue + ', sin valor: ' + referidoUniquePatientsWithoutValue + ')',
-                referidoUniquePatientValues,
-                '#1d4ed8'
-            );
-
-            buildVerticalChart(
-                '#referidoPrefacturaNuevoPacienteChart',
-                'Categorías madre en consulta oftalmológica nuevo paciente (con valor: ' + referidoNuevoPacienteWithValue + ', sin valor: ' + referidoNuevoPacienteWithoutValue + ')',
-                referidoNuevoPacienteValues,
-                '#2563eb'
-            );
-
-            const hierarchyDonutContainer = document.querySelector('#hierarquiaCategoriasChart');
-            const hierarchySelect = document.querySelector('#hierarquiaCategoriaSelect');
-            const hierarchySubContainer = document.querySelector('#hierarquiaSubcategoriasChart');
-
-            let hierarchyDonutChart = null;
-            let hierarchySubChart = null;
-
-            if (hierarchyDonutContainer) {
-                const labels = hierarquiaCategorias.map(function (item) {
-                    return String(item && item.categoria ? item.categoria : 'SIN CATEGORIA').toUpperCase();
-                });
-                const series = hierarquiaCategorias.map(function (item) {
-                    const qty = Number(item && item.cantidad ? item.cantidad : 0);
-                    return Number.isFinite(qty) ? qty : 0;
-                });
-
-                if (series.length === 0) {
-                    hierarchyDonutContainer.innerHTML = '<div class="text-muted text-center py-30">Sin categorías para graficar.</div>';
+                    renderHierarchySubcategories(hierarchySelect.value);
                 } else {
-                    hierarchyDonutChart = new ApexCharts(hierarchyDonutContainer, {
-                        chart: {
-                            type: 'donut',
-                            height: 320,
-                        },
-                        labels: labels,
-                        series: series,
-                        title: {
-                            text: 'Participación de categorías madre',
-                            align: 'left',
-                            style: {fontSize: '13px'},
-                        },
-                        legend: {
-                            position: 'bottom',
-                        },
-                        dataLabels: {
-                            enabled: true,
-                            formatter: function (val) {
-                                return val.toFixed(1) + '%';
-                            }
-                        },
-                        tooltip: {
-                            y: {
-                                formatter: function (value) {
-                                    return value + ' registros';
-                                }
-                            }
-                        }
-                    });
-
-                    hierarchyDonutChart.render();
-                }
-            }
-
-            const renderHierarchySubcategories = function (selectedCategory) {
-                if (!hierarchySubContainer) {
-                    return;
+                    renderHierarchySubcategories('');
                 }
 
-                const fallback = hierarquiaCategorias.length > 0 ? hierarquiaCategorias[0] : null;
-                const selected = hierarquiaCategorias.find(function (item) {
-                    return String(item && item.categoria ? item.categoria : '') === String(selectedCategory || '');
-                }) || fallback;
+                const initDataTable = function (selector, options) {
+                    if (!window.jQuery || !window.jQuery.fn || typeof window.jQuery.fn.DataTable !== 'function') {
+                        return;
+                    }
 
-                if (!selected || !Array.isArray(selected.subcategorias) || selected.subcategorias.length === 0) {
-                    hierarchySubContainer.innerHTML = '<div class="text-muted text-center py-30">Sin subcategorías para graficar.</div>';
-                    return;
-                }
+                    const $table = window.jQuery(selector);
+                    if (!$table.length) {
+                        return;
+                    }
 
-                const rows = selected.subcategorias;
-                const categories = rows.map(function (item) {
-                    return String(item && item.subcategoria ? item.subcategoria : 'SIN SUBCATEGORIA').toUpperCase();
-                });
-                const percents = rows.map(function (item) {
-                    const pct = Number(item && item.porcentaje_en_categoria ? item.porcentaje_en_categoria : 0);
-                    return Number.isFinite(pct) ? pct : 0;
-                });
+                    if (window.jQuery.fn.dataTable.isDataTable($table)) {
+                        $table.DataTable().destroy();
+                    }
 
-                const dynamicHeight = Math.max(320, (rows.length * 28) + 90);
-                hierarchySubContainer.style.minHeight = dynamicHeight + 'px';
+                    $table.DataTable(Object.assign({
+                        language: window.medforgeDataTableLanguageEs ? window.medforgeDataTableLanguageEs() : {},
+                        pageLength: 10,
+                        lengthMenu: [[10, 25, 50, 100], [10, 25, 50, 100]],
+                        deferRender: true,
+                    }, options || {}));
+                };
 
-                if (hierarchySubChart) {
-                    hierarchySubChart.destroy();
-                    hierarchySubChart = null;
-                }
-
-                hierarchySubChart = new ApexCharts(hierarchySubContainer, {
-                    chart: {
-                        type: 'bar',
-                        height: dynamicHeight,
-                        toolbar: {show: false},
-                    },
-                    series: [{
-                        name: '% en categoría',
-                        data: percents,
-                    }],
-                    xaxis: {
-                        categories: categories,
-                        min: 0,
-                        max: 100,
-                        labels: {
-                            formatter: function (value) {
-                                return value + '%';
-                            }
-                        }
-                    },
-                    plotOptions: {
-                        bar: {
-                            horizontal: true,
-                            borderRadius: 4,
-                        },
-                    },
-                    colors: ['#7c3aed'],
-                    title: {
-                        text: 'Subcategorías dentro de ' + String(selected.categoria || 'SIN CATEGORIA').toUpperCase(),
-                        align: 'left',
-                        style: {fontSize: '13px'},
-                    },
-                    dataLabels: {
-                        enabled: true,
-                        formatter: function (value) {
-                            return value.toFixed(2) + '%';
-                        }
-                    },
-                    tooltip: {
-                        custom: function ({dataPointIndex}) {
-                            const item = rows[dataPointIndex] || {};
-                            const count = Number(item.cantidad || 0);
-                            const pctInCategory = Number(item.porcentaje_en_categoria || 0);
-                            const pctTotal = Number(item.porcentaje_total || 0);
-
-                            return '<div class="px-10 py-5">' +
-                                '<div><strong>' + String(item.subcategoria || 'SIN SUBCATEGORIA').toUpperCase() + '</strong></div>' +
-                                '<div>Cantidad: ' + count + '</div>' +
-                                '<div>% en categoría: ' + pctInCategory.toFixed(2) + '%</div>' +
-                                '<div>% del total: ' + pctTotal.toFixed(2) + '%</div>' +
-                                '</div>';
-                        }
-                    },
-                    grid: {
-                        borderColor: '#eef1f4',
-                    },
-                });
-
-                hierarchySubChart.render();
-            };
-
-            if (hierarchySelect) {
-                hierarchySelect.addEventListener('change', function (event) {
-                    renderHierarchySubcategories(event.target.value);
-                });
-                renderHierarchySubcategories(hierarchySelect.value);
-            } else {
-                renderHierarchySubcategories('');
-            }
-
-            const initDataTable = function (selector, options) {
-                if (!window.jQuery || !window.jQuery.fn || typeof window.jQuery.fn.DataTable !== 'function') {
-                    return;
-                }
-
-                const $table = window.jQuery(selector);
-                if (!$table.length) {
-                    return;
-                }
-
-                if (window.jQuery.fn.dataTable.isDataTable($table)) {
-                    $table.DataTable().destroy();
-                }
-
-                $table.DataTable(Object.assign({
-                    language: window.medforgeDataTableLanguageEs ? window.medforgeDataTableLanguageEs() : {},
-                    pageLength: 10,
+                initDataTable('#tablaAtencionesRango', {
+                    pageLength: 25,
                     lengthMenu: [[10, 25, 50, 100], [10, 25, 50, 100]],
-                    deferRender: true,
-                }, options || {}));
-            };
-
-            initDataTable('#tablaAtencionesRango', {
-                pageLength: 25,
-                lengthMenu: [[10, 25, 50, 100], [10, 25, 50, 100]],
-                order: [[8, 'desc']],
-            });
+                    order: [[8, 'desc']],
+                });
 
             };
 

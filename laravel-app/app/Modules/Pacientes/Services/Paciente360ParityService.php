@@ -914,7 +914,7 @@ class Paciente360ParityService
             $links['modulo'] = '/examenes';
             if ($formId !== '') {
                 $links['derivacion'] = '/examenes/derivacion?hc_number=' . rawurlencode($hcNumber) . '&form_id=' . rawurlencode($formId);
-                $links['imagenes'] = '/imagenes/examenes-realizados?hc_number=' . rawurlencode($hcNumber) . '&form_id=' . rawurlencode($formId);
+                $links['imagenes'] = '/imagenes/examenes-realizados?hc_number=' . rawurlencode($hcNumber);
                 $links['archivos_list'] = '/imagenes/examenes-realizados/nas/list?hc_number=' . rawurlencode($hcNumber) . '&form_id=' . rawurlencode($formId);
             }
         } elseif ($section === 'agenda') {

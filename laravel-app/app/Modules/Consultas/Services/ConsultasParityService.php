@@ -508,9 +508,298 @@ class ConsultasParityService
         ];
     }
 
+    /**
+     * @return array<string, mixed>
+     */
+    public function editorData(?string $formId, ?string $hcNumber): array
+    {
+        $formId = trim((string) ($formId ?? ''));
+        $hcNumber = trim((string) ($hcNumber ?? ''));
+
+        if ($formId === '' || $hcNumber === '') {
+            throw new RuntimeException('form_id y hc_number son obligatorios');
+        }
+
+        $context = $this->fetchConsultaContext($formId, $hcNumber);
+        if ($context === []) {
+            throw new RuntimeException('No se encontró la cita o procedimiento asociado.');
+        }
+
+        $resolvedFormId = trim((string) ($context['form_id'] ?? $formId));
+        $resolvedHc = trim((string) ($context['hc_number'] ?? $hcNumber));
+        $consulta = $this->fetchConsultaRow($resolvedFormId, $resolvedHc);
+
+        $fechaActual = trim((string) ($consulta['fecha'] ?? ($context['fecha_agenda'] ?? date('Y-m-d'))));
+        if ($fechaActual === '') {
+            $fechaActual = date('Y-m-d');
+        }
+
+        return [
+            'success' => true,
+            'data' => [
+                'context' => $context,
+                'consulta_exists' => $consulta !== [],
+                'consulta' => [
+                    'fechaActual' => $fechaActual,
+                    'motivoConsulta' => trim((string) ($consulta['motivo_consulta'] ?? '')),
+                    'enfermedadActual' => trim((string) ($consulta['enfermedad_actual'] ?? '')),
+                    'examenFisico' => trim((string) ($consulta['examen_fisico'] ?? '')),
+                    'plan' => trim((string) ($consulta['plan'] ?? '')),
+                    'estadoEnfermedad' => trim((string) ($consulta['estado_enfermedad'] ?? '')),
+                    'antecedente_alergico' => trim((string) ($consulta['antecedente_alergico'] ?? '')),
+                    'signos_alarma' => trim((string) ($consulta['signos_alarma'] ?? '')),
+                    'recomen_no_farmaco' => trim((string) ($consulta['recomen_no_farmaco'] ?? '')),
+                    'vigenciaReceta' => trim((string) ($consulta['vigencia_receta'] ?? '')),
+                ],
+                'diagnosticos' => $this->fetchDiagnosticosEditor($resolvedFormId, $consulta),
+                'examenes' => $this->decodeJsonArray($consulta['examenes'] ?? null),
+                'recetas' => $this->fetchRecetasEditor($resolvedFormId),
+                'pio' => $this->fetchPioEditor($resolvedFormId),
+            ],
+        ];
+    }
+
     private function normalizeString(?string $value): string
     {
         return trim($value ?? '');
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function fetchConsultaContext(string $formId, string $hcNumber): array
+    {
+        $sql = "SELECT
+                    pp.form_id,
+                    pp.hc_number,
+                    TRIM(CONCAT_WS(' ', pd.fname, pd.mname, pd.lname, pd.lname2)) AS paciente,
+                    pp.procedimiento_proyectado AS procedimiento,
+                    pp.doctor,
+                    pp.fecha,
+                    pp.hora,
+                    pp.estado_agenda,
+                    pp.afiliacion,
+                    pp.visita_id,
+                    v.fecha_visita,
+                    v.hora_llegada,
+                    COALESCE(DATE(pp.fecha), v.fecha_visita) AS fecha_agenda,
+                    pd.fecha_nacimiento,
+                    pd.sexo,
+                    pd.celular,
+                    pd.ciudad
+                FROM procedimiento_proyectado pp
+                LEFT JOIN patient_data pd ON pd.hc_number = pp.hc_number
+                LEFT JOIN visitas v ON v.id = pp.visita_id
+                WHERE pp.form_id = :form_id AND pp.hc_number = :hc_number
+                LIMIT 1";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([
+            ':form_id' => $formId,
+            ':hc_number' => $hcNumber,
+        ]);
+
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (is_array($row)) {
+            return $row;
+        }
+
+        $stmt = $this->db->prepare(
+            "SELECT
+                pp.form_id,
+                pp.hc_number,
+                TRIM(CONCAT_WS(' ', pd.fname, pd.mname, pd.lname, pd.lname2)) AS paciente,
+                pp.procedimiento_proyectado AS procedimiento,
+                pp.doctor,
+                pp.fecha,
+                pp.hora,
+                pp.estado_agenda,
+                pp.afiliacion,
+                pp.visita_id,
+                v.fecha_visita,
+                v.hora_llegada,
+                COALESCE(DATE(pp.fecha), v.fecha_visita) AS fecha_agenda,
+                pd.fecha_nacimiento,
+                pd.sexo,
+                pd.celular,
+                pd.ciudad
+            FROM procedimiento_proyectado pp
+            LEFT JOIN patient_data pd ON pd.hc_number = pp.hc_number
+            LEFT JOIN visitas v ON v.id = pp.visita_id
+            WHERE pp.form_id = :form_id
+            LIMIT 1"
+        );
+        $stmt->execute([':form_id' => $formId]);
+
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return is_array($row) ? $row : [];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function fetchConsultaRow(string $formId, string $hcNumber): array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT * FROM consulta_data WHERE form_id = :form_id AND hc_number = :hc_number ORDER BY COALESCE(fecha, created_at) DESC LIMIT 1'
+        );
+        $stmt->execute([
+            ':form_id' => $formId,
+            ':hc_number' => $hcNumber,
+        ]);
+
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (is_array($row)) {
+            return $row;
+        }
+
+        $stmt = $this->db->prepare(
+            'SELECT * FROM consulta_data WHERE form_id = :form_id ORDER BY COALESCE(fecha, created_at) DESC LIMIT 1'
+        );
+        $stmt->execute([':form_id' => $formId]);
+
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return is_array($row) ? $row : [];
+    }
+
+    /**
+     * @param array<string, mixed> $consulta
+     * @return array<int, array<string, string>>
+     */
+    private function fetchDiagnosticosEditor(string $formId, array $consulta): array
+    {
+        try {
+            $stmt = $this->db->prepare(
+                "SELECT dx_code, descripcion, definitivo, lateralidad, selector
+                 FROM diagnosticos_asignados
+                 WHERE form_id = :form_id AND fuente = 'consulta'
+                 ORDER BY id ASC"
+            );
+            $stmt->execute([':form_id' => $formId]);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            if (is_array($rows) && $rows !== []) {
+                return array_values(array_map(static function (array $row): array {
+                    $code = trim((string) ($row['dx_code'] ?? ''));
+                    $description = trim((string) ($row['descripcion'] ?? ''));
+
+                    return [
+                        'idDiagnostico' => trim($code . ($description !== '' ? ' - ' . $description : '')),
+                        'ojo' => trim((string) ($row['lateralidad'] ?? '')),
+                        'evidencia' => ((int) ($row['definitivo'] ?? 0)) === 1 ? '1' : '0',
+                        'selector' => trim((string) ($row['selector'] ?? '')),
+                    ];
+                }, $rows));
+            }
+        } catch (Throwable) {
+            // Fallback al JSON embebido si la tabla normalizada no existe o falla.
+        }
+
+        $decoded = $this->decodeJsonArray($consulta['diagnosticos'] ?? null);
+
+        return array_values(array_map(static function (array $row): array {
+            return [
+                'idDiagnostico' => trim((string) ($row['idDiagnostico'] ?? '')),
+                'ojo' => trim((string) ($row['ojo'] ?? '')),
+                'evidencia' => trim((string) ($row['evidencia'] ?? '0')) === '1' ? '1' : '0',
+                'selector' => trim((string) ($row['selector'] ?? '')),
+            ];
+        }, array_filter($decoded, static fn($row): bool => is_array($row))));
+    }
+
+    /**
+     * @return array<int, array<string, string>>
+     */
+    private function fetchRecetasEditor(string $formId): array
+    {
+        try {
+            $stmt = $this->db->prepare(
+                'SELECT id_ui, estado_receta, producto, vias, unidad, pauta, dosis, cantidad, total_farmacia, observaciones
+                 FROM recetas_items
+                 WHERE form_id = :form_id
+                 ORDER BY id ASC'
+            );
+            $stmt->execute([':form_id' => $formId]);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Throwable) {
+            return [];
+        }
+
+        if (!is_array($rows)) {
+            return [];
+        }
+
+        return array_values(array_map(static function (array $row): array {
+            return [
+                'idRecetas' => trim((string) ($row['id_ui'] ?? '')),
+                'estadoRecetaid' => trim((string) ($row['estado_receta'] ?? '')),
+                'producto' => trim((string) ($row['producto'] ?? '')),
+                'vias' => trim((string) ($row['vias'] ?? '')),
+                'dosis' => trim((string) ($row['dosis'] ?? '')),
+                'unidad' => trim((string) ($row['unidad'] ?? '')),
+                'pauta' => trim((string) ($row['pauta'] ?? '')),
+                'cantidad' => trim((string) ($row['cantidad'] ?? '')),
+                'total_farmacia' => trim((string) ($row['total_farmacia'] ?? '')),
+                'observaciones' => trim((string) ($row['observaciones'] ?? '')),
+            ];
+        }, $rows));
+    }
+
+    /**
+     * @return array<int, array<string, string>>
+     */
+    private function fetchPioEditor(string $formId): array
+    {
+        try {
+            $stmt = $this->db->prepare(
+                'SELECT id_ui, tonometro, od, oi, patologico, hora, hora_fin, observacion
+                 FROM pio_mediciones
+                 WHERE form_id = :form_id
+                 ORDER BY id ASC'
+            );
+            $stmt->execute([':form_id' => $formId]);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Throwable) {
+            return [];
+        }
+
+        if (!is_array($rows)) {
+            return [];
+        }
+
+        return array_values(array_map(static function (array $row): array {
+            return [
+                'id' => trim((string) ($row['id_ui'] ?? '')),
+                'tonometro' => trim((string) ($row['tonometro'] ?? '')),
+                'od' => trim((string) ($row['od'] ?? '')),
+                'oi' => trim((string) ($row['oi'] ?? '')),
+                'po_patologico' => ((int) ($row['patologico'] ?? 0)) === 1 ? '1' : '0',
+                'po_hora' => trim((string) ($row['hora'] ?? '')),
+                'hora_fin' => trim((string) ($row['hora_fin'] ?? '')),
+                'po_observacion' => trim((string) ($row['observacion'] ?? '')),
+            ];
+        }, $rows));
+    }
+
+    /**
+     * @return array<int, array<string, string>>
+     */
+    private function decodeJsonArray(mixed $value): array
+    {
+        if (is_array($value)) {
+            return array_values(array_filter($value, static fn($row): bool => is_array($row)));
+        }
+
+        if (!is_string($value) || trim($value) === '') {
+            return [];
+        }
+
+        $decoded = json_decode($value, true);
+        if (!is_array($decoded)) {
+            return [];
+        }
+
+        return array_values(array_filter($decoded, static fn($row): bool => is_array($row)));
     }
 
     private function normalizeOptionalId(mixed $value): mixed

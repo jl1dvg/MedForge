@@ -5,15 +5,20 @@
     $agendaMeta = is_array($agendaMeta ?? null) ? $agendaMeta : [];
     $filters = is_array($agendaMeta['filters'] ?? null) ? $agendaMeta['filters'] : [];
     $estados = array_values(array_filter((array) ($agendaMeta['estados_disponibles'] ?? []), static fn ($value) => trim((string) $value) !== ''));
-    $doctores = array_values(array_filter((array) ($agendaMeta['doctores_disponibles'] ?? []), static fn ($value) => trim((string) $value) !== ''));
+    $doctores = array_values(array_filter(
+        (array) ($agendaMeta['doctores_disponibles'] ?? []),
+        static fn ($value) => is_array($value) && trim((string) ($value['label'] ?? '')) !== ''
+    ));
 
-    $fechaInicio = (string) ($filters['fecha_inicio'] ?? date('Y-m-d'));
-    $fechaFin = (string) ($filters['fecha_fin'] ?? $fechaInicio);
+    $fechaInicio = (string) ($filters['fecha_inicio'] ?? '');
+    $fechaFin = (string) ($filters['fecha_fin'] ?? '');
     $doctorActual = (string) ($filters['doctor'] ?? '');
     $estadoActual = (string) ($filters['estado'] ?? '');
     $sedeActual = (string) ($filters['sede'] ?? '');
     $soloConVisita = (bool) ($filters['solo_con_visita'] ?? false);
     $total = (int) ($agendaMeta['count'] ?? count($agendaRows));
+    $conConsulta = count(array_filter($agendaRows, static fn ($row) => (int) ($row->tiene_consulta ?? 0) === 1));
+    $sinConsulta = max(0, $total - $conConsulta);
 
     $formatDate = static function (?string $value): string {
         $value = trim((string) $value);
@@ -80,6 +85,73 @@
         min-width: 220px;
         white-space: normal;
     }
+
+    .agenda-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+
+    .agenda-visit-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.55);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 1200;
+        padding: 20px;
+    }
+
+    .agenda-visit-modal {
+        width: min(960px, 100%);
+        max-height: 90vh;
+        overflow: auto;
+        background: #fff;
+        border-radius: 14px;
+        box-shadow: 0 24px 60px rgba(15, 23, 42, 0.22);
+    }
+
+    .agenda-visit-header,
+    .agenda-visit-footer {
+        padding: 16px 20px;
+        border-bottom: 1px solid #edf1f7;
+    }
+
+    .agenda-visit-footer {
+        border-top: 1px solid #edf1f7;
+        border-bottom: 0;
+        display: flex;
+        justify-content: flex-end;
+    }
+
+    .agenda-visit-body {
+        padding: 20px;
+    }
+
+    .agenda-visit-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 12px;
+        margin-bottom: 18px;
+    }
+
+    .agenda-visit-card {
+        background: #f8fafc;
+        border: 1px solid #edf1f7;
+        border-radius: 12px;
+        padding: 12px 14px;
+    }
+
+    .agenda-visit-card .label {
+        display: block;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: .04em;
+        color: #7a8699;
+        margin-bottom: 5px;
+        font-weight: 700;
+    }
 </style>
 @endpush
 
@@ -119,7 +191,9 @@
                                 <select id="doctor" name="doctor" class="form-select">
                                     <option value="">Todos</option>
                                     @foreach($doctores as $doctor)
-                                        <option value="{{ $doctor }}" @selected($doctorActual === $doctor)>{{ $doctor }}</option>
+                                        <option value="{{ (string) ($doctor['value'] ?? '') }}" @selected($doctorActual === (string) ($doctor['value'] ?? ''))>
+                                            {{ (string) ($doctor['label'] ?? '') }}
+                                        </option>
                                     @endforeach
                                 </select>
                             </div>
@@ -157,11 +231,15 @@
                         <div class="d-flex flex-wrap gap-10 align-items-center mt-20">
                             <span class="agenda-summary-chip">
                                 <i class="mdi mdi-calendar-range"></i>
-                                {{ $formatDate($fechaInicio) }} al {{ $formatDate($fechaFin) }}
+                                {{ $fechaInicio !== '' || $fechaFin !== '' ? ($formatDate($fechaInicio) . ' al ' . $formatDate($fechaFin)) : 'Sin rango de fecha' }}
                             </span>
                             <span class="agenda-summary-chip">
                                 <i class="mdi mdi-format-list-bulleted"></i>
                                 {{ number_format($total) }} registros
+                            </span>
+                            <span class="agenda-summary-chip">
+                                <i class="mdi mdi-file-document-edit-outline"></i>
+                                {{ number_format($sinConsulta) }} sin consulta
                             </span>
                             @if($soloConVisita)
                                 <span class="agenda-summary-chip">
@@ -184,7 +262,7 @@
                 <div class="box">
                     <div class="box-body">
                         <div class="table-responsive rounded card-table">
-                            <table class="table table-striped table-hover table-sm agenda-table mb-0">
+                            <table id="agenda-table" class="table table-striped table-hover table-sm agenda-table mb-0">
                                 <thead class="bg-primary">
                                 <tr>
                                     <th>Fecha</th>
@@ -198,6 +276,8 @@
                                     <th>Sede</th>
                                     <th>Afiliación</th>
                                     <th>Visita</th>
+                                    <th>Historia clínica</th>
+                                    <th>Acciones</th>
                                 </tr>
                                 </thead>
                                 <tbody>
@@ -212,15 +292,17 @@
                                         if ($sede === '') {
                                             $sede = trim((string) ($row->id_sede ?? ''));
                                         }
+
+                                        $tieneConsulta = (int) ($row->tiene_consulta ?? 0) === 1;
                                     @endphp
                                     <tr>
-                                        <td>{{ $formatDate((string) ($row->fecha_agenda ?? $row->fecha ?? '')) }}</td>
-                                        <td>{{ $formatTime($hora) }}</td>
+                                        <td data-order="{{ (string) ($row->fecha_agenda ?? $row->fecha ?? '') }}">{{ $formatDate((string) ($row->fecha_agenda ?? $row->fecha ?? '')) }}</td>
+                                        <td data-order="{{ $hora }}">{{ $formatTime($hora) }}</td>
                                         <td>{{ (string) ($row->form_id ?? '-') }}</td>
                                         <td>{{ (string) ($row->hc_number ?? '-') }}</td>
                                         <td class="agenda-paciente">{{ (string) ($row->paciente ?? '-') }}</td>
                                         <td class="agenda-procedimiento">{{ (string) ($row->procedimiento ?? '-') }}</td>
-                                        <td>{{ (string) ($row->doctor ?? '-') }}</td>
+                                        <td>{{ (string) ($row->doctor_display ?? $row->doctor ?? '-') }}</td>
                                         <td>
                                             <span class="{{ $statusBadgeClass((string) ($row->estado_agenda ?? '')) }}">
                                                 {{ (string) ($row->estado_agenda ?? 'SIN ESTADO') }}
@@ -229,10 +311,38 @@
                                         <td>{{ $sede !== '' ? $sede : '-' }}</td>
                                         <td>{{ (string) ($row->afiliacion ?? '-') }}</td>
                                         <td>{{ (string) ($row->visita_id ?? '-') }}</td>
+                                        <td data-order="{{ $tieneConsulta ? 1 : 0 }}">
+                                            <span class="badge {{ $tieneConsulta ? 'badge-success' : 'badge-warning' }}">
+                                                {{ $tieneConsulta ? 'Con datos' : 'Sin datos' }}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <div class="agenda-actions">
+                                                @if(!empty($row->visita_id))
+                                                    <button
+                                                        type="button"
+                                                        class="btn btn-sm btn-outline-primary"
+                                                        data-agenda-view-visita
+                                                        data-visita-id="{{ (int) $row->visita_id }}"
+                                                    >
+                                                        Ver visita
+                                                    </button>
+                                                @endif
+
+                                                @if(!empty($row->form_id) && !empty($row->hc_number))
+                                                    <a
+                                                        href="/v2/consultas?form_id={{ urlencode((string) $row->form_id) }}&hc_number={{ urlencode((string) $row->hc_number) }}"
+                                                        class="btn btn-sm btn-outline-success"
+                                                    >
+                                                        {{ $tieneConsulta ? 'Editar consulta' : 'Crear consulta' }}
+                                                    </a>
+                                                @endif
+                                            </div>
+                                        </td>
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="11" class="text-center text-muted py-30">
+                                        <td colspan="13" class="text-center text-muted py-30">
                                             No hay resultados para los filtros seleccionados.
                                         </td>
                                     </tr>
@@ -245,4 +355,47 @@
             </div>
         </div>
     </section>
+
+    <div class="agenda-visit-backdrop" id="agenda-visit-modal" aria-hidden="true">
+        <div class="agenda-visit-modal">
+            <div class="agenda-visit-header d-flex justify-content-between align-items-center">
+                <div>
+                    <h4 class="mb-0">Detalle de visita</h4>
+                    <small class="text-muted" id="agenda-visit-subtitle">Cargando...</small>
+                </div>
+                <button type="button" class="btn btn-light btn-sm" data-agenda-close-visita>Cerrar</button>
+            </div>
+            <div class="agenda-visit-body">
+                <div id="agenda-visit-loading" class="text-muted">Cargando visita...</div>
+                <div id="agenda-visit-error" class="alert alert-danger d-none mb-0"></div>
+                <div id="agenda-visit-content" class="d-none">
+                    <div class="agenda-visit-grid" id="agenda-visit-grid"></div>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped mb-0">
+                            <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Hora</th>
+                                <th>Form ID</th>
+                                <th>Procedimiento</th>
+                                <th>Doctor</th>
+                                <th>Estado</th>
+                            </tr>
+                            </thead>
+                            <tbody id="agenda-visit-procedimientos"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="agenda-visit-footer">
+                <button type="button" class="btn btn-light" data-agenda-close-visita>Cerrar</button>
+            </div>
+        </div>
+    </div>
 @endsection
+
+@push('scripts')
+    <script src="/assets/vendor_components/datatable/datatables.min.js"></script>
+    <script src="/js/pages/shared/datatables-language-es.js"></script>
+    <script src="/js/pages/agenda-v2.js"></script>
+@endpush
