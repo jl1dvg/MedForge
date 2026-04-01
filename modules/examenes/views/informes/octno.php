@@ -5,8 +5,8 @@
         <div class="col-md-6">
             <div class="border rounded p-3 h-100 bg-white">
                 <h6 class="mb-2 text-muted">Ojo derecho (OD)</h6>
-                <label class="form-label" for="inputOD" tabindex="1">Promedio espesor CFNR (um)</label>
-                <input type="number" min="0" max="300" step="1" id="inputOD" class="form-control" inputmode="numeric">
+                <label class="form-label" for="inputOD">Promedio espesor CFNR (um)</label>
+                <input type="number" min="0" max="300" step="1" id="inputOD" class="form-control" inputmode="numeric" tabindex="1">
 
                 <div class="small text-muted mt-3 mb-2">Cuadrantes afectados</div>
                 <div class="row g-2">
@@ -41,8 +41,8 @@
         <div class="col-md-6">
             <div class="border rounded p-3 h-100 bg-white">
                 <h6 class="mb-2 text-muted">Ojo izquierdo (OI)</h6>
-                <label class="form-label" for="inputOI" tabindex="2">Promedio espesor CFNR (um)</label>
-                <input type="number" min="0" max="300" step="1" id="inputOI" class="form-control" inputmode="numeric">
+                <label class="form-label" for="inputOI">Promedio espesor CFNR (um)</label>
+                <input type="number" min="0" max="300" step="1" id="inputOI" class="form-control" inputmode="numeric" tabindex="2">
 
                 <div class="small text-muted mt-3 mb-2">Cuadrantes afectados</div>
                 <div class="row g-2">

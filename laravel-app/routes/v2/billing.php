@@ -32,6 +32,7 @@ Route::middleware(['legacy.auth'])->group(function (): void {
 
     Route::middleware(['legacy.permission:administrativo,billing.particulares.view,billing.manage'])->group(function (): void {
         Route::get('/informes/particulares', [BillingUiController::class, 'informeParticulares']);
+        Route::get('/informes/particulares/referidos', [BillingUiController::class, 'informeParticularesReferidos']);
     });
 
     Route::middleware(['legacy.permission:administrativo,billing.iess.view,billing.manage'])->group(function (): void {

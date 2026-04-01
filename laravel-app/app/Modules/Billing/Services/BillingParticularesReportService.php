@@ -849,6 +849,18 @@ class BillingParticularesReportService
             'particular' => 0.0,
             'privado' => 0.0,
         ];
+        $categoriaPacientes = [
+            'particular' => [],
+            'privado' => [],
+        ];
+        $categoriaMonthCounts = [
+            'particular' => [],
+            'privado' => [],
+        ];
+        $categoriaMonthHonorarios = [
+            'particular' => [],
+            'privado' => [],
+        ];
         $totalConsultas = 0;
         $totalProtocolos = 0;
         $categoriaCounts = [
@@ -1025,6 +1037,9 @@ class BillingParticularesReportService
             if ($this->isParticularReportCategory($categoria)) {
                 $categoriaCounts[$categoria] = (int) ($categoriaCounts[$categoria] ?? 0) + 1;
                 $produccionPorCategoria[$categoria] = (float) ($produccionPorCategoria[$categoria] ?? 0) + $produccionBaseRow;
+                if ($hcNumber !== '') {
+                    $categoriaPacientes[$categoria][$hcNumber] = true;
+                }
                 $categoriaGerencial = strtoupper($categoria);
                 if (!isset($categoriaGerencialCounts[$categoriaGerencial])) {
                     $categoriaGerencialCounts[$categoriaGerencial] = 0;
@@ -1297,6 +1312,18 @@ class BillingParticularesReportService
                     $monthCounts[$monthKey] = 0;
                 }
                 $monthCounts[$monthKey]++;
+
+                if ($this->isParticularReportCategory($categoria)) {
+                    if (!isset($categoriaMonthCounts[$categoria][$monthKey])) {
+                        $categoriaMonthCounts[$categoria][$monthKey] = 0;
+                    }
+                    $categoriaMonthCounts[$categoria][$monthKey]++;
+
+                    if (!isset($categoriaMonthHonorarios[$categoria][$monthKey])) {
+                        $categoriaMonthHonorarios[$categoria][$monthKey] = 0.0;
+                    }
+                    $categoriaMonthHonorarios[$categoria][$monthKey] += $produccionBaseRow;
+                }
 
                 $dayName = $this->weekdayName((int) date('N', $timestamp));
                 if (!isset($dayCounts[$dayName])) {
@@ -1667,10 +1694,18 @@ class BillingParticularesReportService
         $ticketPromedioFacturadoReal = $operativoFacturadas > 0 ? round($honorarioRealTotal / $operativoFacturadas, 2) : 0.0;
         $ticketPromedioPendiente = $operativoPendientesFacturar > 0 ? round($operativoPorCobrarEstimado / $operativoPendientesFacturar, 2) : 0.0;
         $doctorPerformanceTop = $this->doctorPerformanceRows($doctorCounts, $doctorCountsConHonorario, $doctorHonorario, 10);
+        $objetivoUno = $this->buildObjectiveOneSummary(
+            $categoriaCounts,
+            $produccionPorCategoria,
+            $categoriaPacientes,
+            $categoriaMonthCounts,
+            $categoriaMonthHonorarios
+        );
         return [
             'total' => $totalRows,
             'total_consultas' => $totalConsultas,
             'total_protocolos' => $totalProtocolos,
+            'objetivo_1' => $objetivoUno,
             'economico' => [
                 'total_produccion' => round($produccionTotal, 2),
                 'total_honorario_real' => round($honorarioRealTotal, 2),
@@ -3223,6 +3258,15 @@ class BillingParticularesReportService
             return '';
         }
 
+        $marketingTokens = [
+            'MARKETING',
+            'MEDIOS',
+            'MARKETING (PROMOCIONES)',
+        ];
+        if (in_array($upper, $marketingTokens, true)) {
+            return 'MARKETING';
+        }
+
         return $upper;
     }
 
@@ -3468,6 +3512,152 @@ class BillingParticularesReportService
         }
 
         return $rows;
+    }
+
+    /**
+     * @param array{particular:int,privado:int} $categoriaCounts
+     * @param array{particular:float,privado:float} $produccionPorCategoria
+     * @param array{particular:array<string,bool>,privado:array<string,bool>} $categoriaPacientes
+     * @param array{particular:array<string,int>,privado:array<string,int>} $categoriaMonthCounts
+     * @param array{particular:array<string,float>,privado:array<string,float>} $categoriaMonthHonorarios
+     * @return array{segments:array<int,array<string,mixed>>,alerts:array<int,string>}
+     */
+    private function buildObjectiveOneSummary(
+        array $categoriaCounts,
+        array $produccionPorCategoria,
+        array $categoriaPacientes,
+        array $categoriaMonthCounts,
+        array $categoriaMonthHonorarios
+    ): array {
+        $segments = [];
+        foreach (['particular' => 'PARTICULAR', 'privado' => 'PRIVADO'] as $key => $label) {
+            $countsByMonth = $categoriaMonthCounts[$key] ?? [];
+            $honorariosByMonth = $categoriaMonthHonorarios[$key] ?? [];
+            ksort($countsByMonth);
+            ksort($honorariosByMonth);
+
+            $monthKeys = array_values(array_unique(array_merge(array_keys($countsByMonth), array_keys($honorariosByMonth))));
+            sort($monthKeys);
+
+            $currentMonthKey = !empty($monthKeys) ? (string) end($monthKeys) : '';
+            $previousMonthKey = $currentMonthKey !== '' ? date('Y-m', strtotime($currentMonthKey . '-01 -1 month')) : '';
+            $lastYearMonthKey = $currentMonthKey !== '' ? date('Y-m', strtotime($currentMonthKey . '-01 -1 year')) : '';
+
+            $currentMonthAtenciones = $currentMonthKey !== '' ? (int) ($countsByMonth[$currentMonthKey] ?? 0) : 0;
+            $previousMonthAtenciones = $previousMonthKey !== '' ? (int) ($countsByMonth[$previousMonthKey] ?? 0) : 0;
+            $lastYearMonthAtenciones = $lastYearMonthKey !== '' ? (int) ($countsByMonth[$lastYearMonthKey] ?? 0) : 0;
+
+            $currentMonthHonorario = $currentMonthKey !== '' ? round((float) ($honorariosByMonth[$currentMonthKey] ?? 0), 2) : 0.0;
+            $previousMonthHonorario = $previousMonthKey !== '' ? round((float) ($honorariosByMonth[$previousMonthKey] ?? 0), 2) : 0.0;
+            $lastYearMonthHonorario = $lastYearMonthKey !== '' ? round((float) ($honorariosByMonth[$lastYearMonthKey] ?? 0), 2) : 0.0;
+
+            $currentMonthTicket = $currentMonthAtenciones > 0 ? round($currentMonthHonorario / $currentMonthAtenciones, 2) : 0.0;
+            $previousMonthTicket = $previousMonthAtenciones > 0 ? round($previousMonthHonorario / $previousMonthAtenciones, 2) : 0.0;
+            $lastYearMonthTicket = $lastYearMonthAtenciones > 0 ? round($lastYearMonthHonorario / $lastYearMonthAtenciones, 2) : 0.0;
+
+            $totalAtenciones = (int) ($categoriaCounts[$key] ?? 0);
+            $totalHonorario = round((float) ($produccionPorCategoria[$key] ?? 0), 2);
+            $totalPacientes = count($categoriaPacientes[$key] ?? []);
+            $ticketPromedio = $totalAtenciones > 0 ? round($totalHonorario / $totalAtenciones, 2) : 0.0;
+            $monthlyAvgHonorario = !empty($honorariosByMonth) ? round(array_sum($honorariosByMonth) / count($honorariosByMonth), 2) : 0.0;
+            $monthlyAvgAtenciones = !empty($countsByMonth) ? round(array_sum($countsByMonth) / count($countsByMonth), 2) : 0.0;
+
+            $facturacionVsPreviousPct = $this->percentageChangeAmount($currentMonthHonorario, $previousMonthHonorario);
+            $facturacionVsLastYearPct = $this->percentageChangeAmount($currentMonthHonorario, $lastYearMonthHonorario);
+            $atencionesVsPreviousPct = $this->percentageChange($currentMonthAtenciones, $previousMonthAtenciones);
+            $ticketVsPreviousPct = $this->percentageChangeAmount($currentMonthTicket, $previousMonthTicket);
+
+            $signal = 'ESTABLE';
+            if (($facturacionVsPreviousPct ?? 0) >= 3 && ($ticketVsPreviousPct ?? 0) >= 0) {
+                $signal = 'CRECIENDO';
+            } elseif (($facturacionVsPreviousPct ?? 0) <= -3 || ($ticketVsPreviousPct ?? 0) <= -5) {
+                $signal = 'EN RETROCESO';
+            }
+
+            $segments[] = [
+                'key' => $key,
+                'label' => $label,
+                'signal' => $signal,
+                'atenciones_total' => $totalAtenciones,
+                'pacientes_unicos_total' => $totalPacientes,
+                'honorario_total' => $totalHonorario,
+                'ticket_promedio_total' => $ticketPromedio,
+                'monthly_avg_honorario' => $monthlyAvgHonorario,
+                'monthly_avg_atenciones' => $monthlyAvgAtenciones,
+                'current_month_label' => $currentMonthKey !== '' ? $this->monthLabel($currentMonthKey) : 'N/D',
+                'current_month_honorario' => $currentMonthHonorario,
+                'current_month_atenciones' => $currentMonthAtenciones,
+                'current_month_ticket' => $currentMonthTicket,
+                'previous_month_label' => $previousMonthKey !== '' ? $this->monthLabel($previousMonthKey) : 'N/D',
+                'previous_month_honorario' => $previousMonthHonorario,
+                'previous_month_atenciones' => $previousMonthAtenciones,
+                'previous_month_ticket' => $previousMonthTicket,
+                'last_year_month_label' => $lastYearMonthKey !== '' ? $this->monthLabel($lastYearMonthKey) : 'N/D',
+                'last_year_month_honorario' => $lastYearMonthHonorario,
+                'last_year_month_atenciones' => $lastYearMonthAtenciones,
+                'last_year_month_ticket' => $lastYearMonthTicket,
+                'facturacion_vs_previous_pct' => $facturacionVsPreviousPct,
+                'facturacion_vs_last_year_pct' => $facturacionVsLastYearPct,
+                'atenciones_vs_previous_pct' => $atencionesVsPreviousPct,
+                'ticket_vs_previous_pct' => $ticketVsPreviousPct,
+            ];
+        }
+
+        $alerts = [];
+        foreach ($segments as $segment) {
+            $label = (string) ($segment['label'] ?? 'SEGMENTO');
+            $facturacionVsPreviousPct = $segment['facturacion_vs_previous_pct'];
+            $atencionesVsPreviousPct = $segment['atenciones_vs_previous_pct'];
+            $ticketVsPreviousPct = $segment['ticket_vs_previous_pct'];
+
+            if (is_numeric($facturacionVsPreviousPct) && is_numeric($ticketVsPreviousPct) && (float) $facturacionVsPreviousPct > 0 && (float) $ticketVsPreviousPct < 0) {
+                $alerts[] = sprintf(
+                    '%s crece en facturación mensual, pero cae en ticket promedio (%s%%).',
+                    $label,
+                    number_format((float) $ticketVsPreviousPct, 2)
+                );
+            } elseif (is_numeric($facturacionVsPreviousPct) && is_numeric($atencionesVsPreviousPct) && (float) $facturacionVsPreviousPct < 0 && (float) $atencionesVsPreviousPct > 0) {
+                $alerts[] = sprintf(
+                    '%s sube en volumen mensual, pero la facturación cae; revisar calidad del mix o descuentos.',
+                    $label
+                );
+            }
+        }
+
+        if (count($segments) === 2) {
+            [$segmentA, $segmentB] = $segments;
+            if ((float) ($segmentA['ticket_promedio_total'] ?? 0) >= (float) ($segmentB['ticket_promedio_total'] ?? 0)) {
+                $alerts[] = sprintf(
+                    '%s mantiene un ticket promedio superior a %s ($%s vs $%s).',
+                    (string) ($segmentA['label'] ?? 'A'),
+                    (string) ($segmentB['label'] ?? 'B'),
+                    number_format((float) ($segmentA['ticket_promedio_total'] ?? 0), 2),
+                    number_format((float) ($segmentB['ticket_promedio_total'] ?? 0), 2)
+                );
+            } else {
+                $alerts[] = sprintf(
+                    '%s mantiene un ticket promedio superior a %s ($%s vs $%s).',
+                    (string) ($segmentB['label'] ?? 'B'),
+                    (string) ($segmentA['label'] ?? 'A'),
+                    number_format((float) ($segmentB['ticket_promedio_total'] ?? 0), 2),
+                    number_format((float) ($segmentA['ticket_promedio_total'] ?? 0), 2)
+                );
+            }
+        }
+
+        return [
+            'segments' => $segments,
+            'alerts' => array_slice($alerts, 0, 4),
+        ];
+    }
+
+    private function percentageChangeAmount(float $current, float $base): ?float
+    {
+        if ($base <= 0) {
+            return null;
+        }
+
+        return round((($current - $base) / $base) * 100, 2);
     }
 
     /**

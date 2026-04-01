@@ -1683,6 +1683,15 @@
                                 peer.checked = false;
                             }
                         });
+                        textarea.value = 'AMAUROSIS';
+                        return;
+                    }
+
+                    if (itemId === 'amaurosis' && !checkbox.checked) {
+                        if ((textarea.value || '').trim() === 'AMAUROSIS') {
+                            textarea.value = '';
+                        }
+                        return;
                     } else if (checkbox.checked) {
                         container.querySelectorAll('.informe-checkbox-cv[data-eye="' + eye + '"]').forEach(function (peer) {
                             const peerId = (peer.getAttribute('data-item-id') || '').toLowerCase();
@@ -1694,10 +1703,6 @@
                         if ((textarea.value || '').trim() === 'DENTRO DE LIMITES NORMALES') {
                             textarea.value = '';
                         }
-                    }
-
-                    if (itemId === 'amaurosis') {
-                        return;
                     }
 
                     const text = checkbox.getAttribute('data-text') || '';
@@ -1862,6 +1867,17 @@
                             payload.textOI = defecto;
                         }
                     }
+                    if (plantilla === 'piocompensada') {
+                        ['OD', 'OI'].forEach(function (eye) {
+                            const calculado = computePioCompensadaPayload({
+                                paquimetria: payload['paquimetria' + eye],
+                                pioMedida: payload['pioMedida' + eye]
+                            });
+                            payload['compensacion' + eye] = calculado.compensacion;
+                            payload['ajuste' + eye] = calculado.ajuste;
+                            payload['pioCompensada' + eye] = calculado.pioCompensada;
+                        });
+                    }
                     return payload;
                 }
 
@@ -1870,6 +1886,70 @@
                     if (!normalized) return null;
                     const n = Number(normalized);
                     return Number.isFinite(n) ? n : null;
+                }
+
+                function formatPioNumber(value, withSign) {
+                    if (value === null || !Number.isFinite(value)) {
+                        return '';
+                    }
+                    const sign = withSign && value > 0 ? '+' : '';
+                    return sign + value.toFixed(2);
+                }
+
+                function computePioCompensadaPayload(source) {
+                    const paquimetria = toNumber(source && source.paquimetria);
+                    const pioMedida = toNumber(source && source.pioMedida);
+                    if (paquimetria === null) {
+                        return {compensacion: '', ajuste: '', pioCompensada: ''};
+                    }
+
+                    const delta = -(((paquimetria - 540) / 10) * 0.7);
+                    let ajuste = 'Sin ajuste';
+                    if (delta > 0.0001) {
+                        ajuste = 'Aumentar ' + delta.toFixed(2) + ' mmHg';
+                    } else if (delta < -0.0001) {
+                        ajuste = 'Disminuir ' + Math.abs(delta).toFixed(2) + ' mmHg';
+                    }
+
+                    return {
+                        compensacion: formatPioNumber(delta, true),
+                        ajuste: ajuste,
+                        pioCompensada: pioMedida === null ? '' : formatPioNumber(pioMedida + delta, false)
+                    };
+                }
+
+                function initPioCompensadaTemplate(container) {
+                    if (!container) return;
+                    const template = container.querySelector('[data-informe-template="piocompensada"]');
+                    if (!template) return;
+
+                    ['OD', 'OI'].forEach(function (eye) {
+                        const paquimetriaInput = template.querySelector('#paquimetria' + eye);
+                        const pioInput = template.querySelector('#pioMedida' + eye);
+                        const compensacionInput = template.querySelector('#compensacion' + eye);
+                        const ajusteInput = template.querySelector('#ajuste' + eye);
+                        const corregidaInput = template.querySelector('#pioCompensada' + eye);
+
+                        const update = function () {
+                            const calculado = computePioCompensadaPayload({
+                                paquimetria: paquimetriaInput ? paquimetriaInput.value : '',
+                                pioMedida: pioInput ? pioInput.value : ''
+                            });
+                            if (compensacionInput) compensacionInput.value = calculado.compensacion;
+                            if (ajusteInput) ajusteInput.value = calculado.ajuste;
+                            if (corregidaInput) corregidaInput.value = calculado.pioCompensada;
+                        };
+
+                        if (paquimetriaInput && !paquimetriaInput.dataset.pioCompBound) {
+                            paquimetriaInput.addEventListener('input', update);
+                            paquimetriaInput.dataset.pioCompBound = '1';
+                        }
+                        if (pioInput && !pioInput.dataset.pioCompBound) {
+                            pioInput.addEventListener('input', update);
+                            pioInput.dataset.pioCompBound = '1';
+                        }
+                        update();
+                    });
                 }
 
                 function wrapAxis(axis) {
@@ -2009,10 +2089,12 @@
                             initChecklist(templateContainer);
                             initCvTemplate(templateContainer);
                             initCorneaTopografiaTemplate(templateContainer);
+                            initPioCompensadaTemplate(templateContainer);
                             if (informeContext && informeContext.payload) {
                                 applyPayload(templateContainer, informeContext.payload);
                                 initCvTemplate(templateContainer);
                                 initCorneaTopografiaTemplate(templateContainer);
+                                initPioCompensadaTemplate(templateContainer);
                                 rebuildChecklistTargets(templateContainer);
                                 rebuildCvTargets(templateContainer);
                                 setEstado('Informe existente cargado.');

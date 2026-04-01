@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>PIO Compensada</title>
+    <link rel="stylesheet" href="piocompensada.css">
+</head>
+<body>
+<div class="popup-overlay">
+    <div class="popup-content">
+        <button id="btnClose" class="close-btn" aria-label="Cerrar">&times;</button>
+        <h3>PIO Compensada (AO)</h3>
+        <p class="formula">PIO corregida = PIO medida - (((CCT - 540) / 10) * 0.7)</p>
+        <div class="grid">
+            <section class="eye-card">
+                <h4>Ojo derecho (OD)</h4>
+                <label for="paquimetriaOD">Paquimetria central (micras)</label>
+                <input type="number" step="0.01" id="paquimetriaOD" inputmode="decimal" autocomplete="off">
+
+                <label for="pioMedidaOD">PIO medida (mmHg)</label>
+                <input type="number" step="0.01" id="pioMedidaOD" inputmode="decimal" autocomplete="off">
+
+                <label for="compensacionOD">Compensacion estimada (mmHg)</label>
+                <input type="text" id="compensacionOD" readonly>
+
+                <label for="ajusteOD">Ajuste sugerido</label>
+                <input type="text" id="ajusteOD" readonly>
+
+                <label for="pioCompensadaOD">PIO compensada (mmHg)</label>
+                <input type="text" id="pioCompensadaOD" readonly>
+            </section>
+
+            <section class="eye-card">
+                <h4>Ojo izquierdo (OI)</h4>
+                <label for="paquimetriaOI">Paquimetria central (micras)</label>
+                <input type="number" step="0.01" id="paquimetriaOI" inputmode="decimal" autocomplete="off">
+
+                <label for="pioMedidaOI">PIO medida (mmHg)</label>
+                <input type="number" step="0.01" id="pioMedidaOI" inputmode="decimal" autocomplete="off">
+
+                <label for="compensacionOI">Compensacion estimada (mmHg)</label>
+                <input type="text" id="compensacionOI" readonly>
+
+                <label for="ajusteOI">Ajuste sugerido</label>
+                <input type="text" id="ajusteOI" readonly>
+
+                <label for="pioCompensadaOI">PIO compensada (mmHg)</label>
+                <input type="text" id="pioCompensadaOI" readonly>
+            </section>
+        </div>
+        <div class="actions">
+            <button id="btnAceptar">Aceptar</button>
+        </div>
+    </div>
+</div>
+<script src="piocompensada.js"></script>
+</body>
+</html>

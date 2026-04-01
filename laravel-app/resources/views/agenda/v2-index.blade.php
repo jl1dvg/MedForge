@@ -5,16 +5,23 @@
     $agendaMeta = is_array($agendaMeta ?? null) ? $agendaMeta : [];
     $filters = is_array($agendaMeta['filters'] ?? null) ? $agendaMeta['filters'] : [];
     $estados = array_values(array_filter((array) ($agendaMeta['estados_disponibles'] ?? []), static fn ($value) => trim((string) $value) !== ''));
+    $sedes = array_values(array_filter((array) ($agendaMeta['sedes_disponibles'] ?? []), static fn ($value) => is_array($value) && trim((string) ($value['label'] ?? '')) !== ''));
     $doctores = array_values(array_filter(
         (array) ($agendaMeta['doctores_disponibles'] ?? []),
         static fn ($value) => is_array($value) && trim((string) ($value['label'] ?? '')) !== ''
     ));
+    $tiposAfiliacion = array_values(array_filter((array) ($agendaMeta['tipo_afiliacion_opciones'] ?? []), static fn ($value) => is_array($value)));
+    $empresasAfiliacion = array_values(array_filter((array) ($agendaMeta['empresa_afiliacion_opciones'] ?? []), static fn ($value) => is_array($value)));
+    $afiliaciones = array_values(array_filter((array) ($agendaMeta['afiliacion_opciones'] ?? []), static fn ($value) => is_array($value)));
 
     $fechaInicio = (string) ($filters['fecha_inicio'] ?? '');
     $fechaFin = (string) ($filters['fecha_fin'] ?? '');
     $doctorActual = (string) ($filters['doctor'] ?? '');
     $estadoActual = (string) ($filters['estado'] ?? '');
     $sedeActual = (string) ($filters['sede'] ?? '');
+    $tipoAfiliacionActual = (string) ($filters['tipo_afiliacion'] ?? '');
+    $empresaAfiliacionActual = (string) ($filters['empresa_afiliacion'] ?? '');
+    $afiliacionActual = (string) ($filters['afiliacion'] ?? '');
     $soloConVisita = (bool) ($filters['solo_con_visita'] ?? false);
     $total = (int) ($agendaMeta['count'] ?? count($agendaRows));
     $conConsulta = count(array_filter($agendaRows, static fn ($row) => (int) ($row->tiene_consulta ?? 0) === 1));
@@ -208,7 +215,44 @@
                             </div>
                             <div class="col-xl-2 col-md-4">
                                 <label for="sede" class="form-label">Sede</label>
-                                <input type="text" id="sede" name="sede" class="form-control" value="{{ $sedeActual }}" placeholder="ID o nombre">
+                                <select id="sede" name="sede" class="form-select">
+                                    <option value="">Todas</option>
+                                    @foreach($sedes as $sede)
+                                        <option value="{{ (string) ($sede['value'] ?? '') }}" @selected($sedeActual === (string) ($sede['value'] ?? ''))>
+                                            {{ (string) ($sede['label'] ?? '') }}
+                                        </option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="col-xl-2 col-md-4">
+                                <label for="tipo_afiliacion" class="form-label">Tipo afiliación</label>
+                                <select id="tipo_afiliacion" name="tipo_afiliacion" class="form-select">
+                                    @foreach($tiposAfiliacion as $option)
+                                        <option value="{{ (string) ($option['value'] ?? '') }}" @selected($tipoAfiliacionActual === (string) ($option['value'] ?? ''))>
+                                            {{ (string) ($option['label'] ?? '') }}
+                                        </option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="col-xl-2 col-md-4">
+                                <label for="empresa_afiliacion" class="form-label">Empresa aseguradora</label>
+                                <select id="empresa_afiliacion" name="empresa_afiliacion" class="form-select">
+                                    @foreach($empresasAfiliacion as $option)
+                                        <option value="{{ (string) ($option['value'] ?? '') }}" @selected($empresaAfiliacionActual === (string) ($option['value'] ?? ''))>
+                                            {{ (string) ($option['label'] ?? '') }}
+                                        </option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="col-xl-2 col-md-4">
+                                <label for="afiliacion" class="form-label">Afiliación</label>
+                                <select id="afiliacion" name="afiliacion" class="form-select">
+                                    @foreach($afiliaciones as $option)
+                                        <option value="{{ (string) ($option['value'] ?? '') }}" @selected($afiliacionActual === (string) ($option['value'] ?? ''))>
+                                            {{ (string) ($option['label'] ?? '') }}
+                                        </option>
+                                    @endforeach
+                                </select>
                             </div>
                             <div class="col-xl-1 col-md-4">
                                 <div class="form-check mt-4 pt-2">
@@ -288,10 +332,7 @@
                                             $hora = trim((string) ($row->hora_llegada ?? ''));
                                         }
 
-                                        $sede = trim((string) ($row->sede_departamento ?? ''));
-                                        if ($sede === '') {
-                                            $sede = trim((string) ($row->id_sede ?? ''));
-                                        }
+                                        $sede = trim((string) ($row->sede ?? ''));
 
                                         $tieneConsulta = (int) ($row->tiene_consulta ?? 0) === 1;
                                     @endphp
@@ -309,7 +350,7 @@
                                             </span>
                                         </td>
                                         <td>{{ $sede !== '' ? $sede : '-' }}</td>
-                                        <td>{{ (string) ($row->afiliacion ?? '-') }}</td>
+                                        <td>{{ (string) ($row->afiliacion_label ?? $row->afiliacion ?? '-') }}</td>
                                         <td>{{ (string) ($row->visita_id ?? '-') }}</td>
                                         <td data-order="{{ $tieneConsulta ? 1 : 0 }}">
                                             <span class="badge {{ $tieneConsulta ? 'badge-success' : 'badge-warning' }}">

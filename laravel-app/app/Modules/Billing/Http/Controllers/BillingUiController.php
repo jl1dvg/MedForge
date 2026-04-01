@@ -22,6 +22,13 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Border;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
+use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -325,7 +332,10 @@ class BillingUiController
         }
 
         $export = strtolower(trim((string) $request->query('export', '')));
-        if (in_array($export, ['csv', 'excel'], true)) {
+        if ($export === 'excel') {
+            return $this->exportInformeParticularesExcel($summary, $rows, $filters);
+        }
+        if ($export === 'csv') {
             return $this->exportInformeParticularesCsv($rows, $filters);
         }
         if ($export === 'pdf') {
@@ -354,6 +364,90 @@ class BillingUiController
             'filters' => $filters,
             'rows' => $rows,
             'summary' => $summary,
+            'catalogos' => $catalogos,
+        ]);
+    }
+
+    public function informeParticularesReferidos(Request $request): JsonResponse|RedirectResponse|View
+    {
+        if (!$this->isLegacyAuthenticated($request)) {
+            if ($request->expectsJson()) {
+                return response()->json(['error' => 'Sesión expirada'], 401);
+            }
+
+            return redirect('/auth/login?auth_required=1');
+        }
+
+        $range = $this->particularesReportService->resolveDateRange(
+            (string) $request->query('date_from', ''),
+            (string) $request->query('date_to', '')
+        );
+
+        $filters = [
+            'date_from' => $range['date_from'],
+            'date_to' => $range['date_to'],
+            'empresa_seguro' => (string) $request->query('empresa_seguro', ''),
+            'afiliacion' => (string) $request->query('afiliacion', ''),
+            'sede' => $this->normalizeSedeFilter((string) $request->query('sede', '')),
+            'categoria_cliente' => (string) $request->query('categoria_cliente', ''),
+            'categoria_madre_referido' => '',
+            'tipo' => (string) $request->query('tipo', ''),
+            'procedimiento' => (string) $request->query('procedimiento', ''),
+        ];
+
+        $selectedCategory = $this->normalizeReferralDashboardCategory(
+            (string) $request->query('categoria_referido', $request->query('categoria_madre_referido', ''))
+        );
+        if ($selectedCategory === '') {
+            $selectedCategory = 'MARKETING';
+        }
+
+        try {
+            $baseRows = $this->particularesReportService->obtenerAtencionesParticulares($range['from'], $range['to']);
+            $comparisonRows = $this->particularesReportService->aplicarFiltros($baseRows, $filters);
+            $catalogos = $this->particularesReportService->catalogos($baseRows, $filters);
+            $selectedRows = $this->filterRowsByReferralCategories($comparisonRows, [$selectedCategory]);
+            $overallSummary = $this->particularesReportService->resumen($comparisonRows, $filters);
+            $selectedSummary = $this->particularesReportService->resumen(
+                $selectedRows,
+                array_merge($filters, ['categoria_madre_referido' => $selectedCategory])
+            );
+            $dashboard = $this->buildReferralStrategicDashboard(
+                $comparisonRows,
+                $selectedRows,
+                $overallSummary,
+                $selectedSummary,
+                $filters,
+                $selectedCategory
+            );
+        } catch (\Throwable) {
+            if ($request->expectsJson()) {
+                return response()->json(['error' => 'No se pudo cargar el dashboard estratégico de referidos.'], 500);
+            }
+
+            return redirect('/v2/informes/particulares')
+                ->with('error', 'No se pudo cargar el dashboard estratégico de referidos.');
+        }
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'filters' => $filters,
+                'selected_category' => $selectedCategory,
+                'summary' => $selectedSummary,
+                'dashboard' => $dashboard,
+                'data' => $selectedRows,
+            ]);
+        }
+
+        return view('billing.v2-informe-particulares-referidos', [
+            'pageTitle' => 'Dashboard estratégico de referidos',
+            'currentUser' => LegacyCurrentUser::resolve($request),
+            'filters' => $filters,
+            'selectedCategory' => $selectedCategory,
+            'rows' => $selectedRows,
+            'summary' => $selectedSummary,
+            'overallSummary' => $overallSummary,
+            'dashboard' => $dashboard,
             'catalogos' => $catalogos,
         ]);
     }
@@ -1480,6 +1574,577 @@ class BillingUiController
         return $this->settingsModel;
     }
 
+    private function normalizeReferralDashboardCategory(mixed $value): string
+    {
+        $normalized = preg_replace('/\s+/', ' ', trim((string) $value)) ?? '';
+        if ($normalized === '') {
+            return '';
+        }
+
+        $upper = strtoupper($normalized);
+        if (in_array($upper, ['(NO DEFINIDO)', 'NO DEFINIDO', 'N/A', 'NA', 'NULL', '-', '—'], true)) {
+            return '';
+        }
+
+        if (in_array($upper, ['MARKETING', 'MEDIOS', 'MARKETING (PROMOCIONES)'], true)) {
+            return 'MARKETING';
+        }
+
+        return $upper;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $rows
+     * @param array<int, string> $categories
+     * @return array<int, array<string, mixed>>
+     */
+    private function filterRowsByReferralCategories(array $rows, array $categories): array
+    {
+        $normalizedCategories = [];
+        foreach ($categories as $category) {
+            $normalized = $this->normalizeReferralDashboardCategory($category);
+            if ($normalized !== '') {
+                $normalizedCategories[$normalized] = true;
+            }
+        }
+
+        if ($normalizedCategories === []) {
+            return [];
+        }
+
+        $filtered = [];
+        foreach ($rows as $row) {
+            $rowCategory = $this->normalizeReferralDashboardCategory($row['referido_prefactura_por'] ?? null);
+            if ($rowCategory !== '' && isset($normalizedCategories[$rowCategory])) {
+                $filtered[] = $row;
+            }
+        }
+
+        return $filtered;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $comparisonRows
+     * @param array<int, array<string, mixed>> $selectedRows
+     * @param array<string, mixed> $overallSummary
+     * @param array<string, mixed> $selectedSummary
+     * @param array<string, mixed> $filters
+     * @return array<string, mixed>
+     */
+    private function buildReferralStrategicDashboard(
+        array $comparisonRows,
+        array $selectedRows,
+        array $overallSummary,
+        array $selectedSummary,
+        array $filters,
+        string $selectedCategory
+    ): array {
+        $overallMetrics = $this->buildReferralStrategicMetrics($comparisonRows, $overallSummary, $overallSummary, 'CLINICA');
+        $selectedMetrics = $this->buildReferralStrategicMetrics(
+            $selectedRows,
+            $selectedSummary,
+            $overallSummary,
+            $selectedCategory,
+            $this->resolveReferralMarketingBudget($filters, $selectedCategory)
+        );
+
+        $comparisonDefinitions = $this->referralComparisonDefinitions($selectedCategory);
+        $comparisonMetrics = [];
+        foreach ($comparisonDefinitions as $definition) {
+            $groupRows = $definition['key'] === $selectedCategory
+                ? $selectedRows
+                : $this->filterRowsByReferralCategories($comparisonRows, $definition['categories']);
+
+            if ($groupRows === [] && $definition['key'] !== $selectedCategory) {
+                continue;
+            }
+
+            $groupSummary = $definition['key'] === $selectedCategory
+                ? $selectedSummary
+                : $this->particularesReportService->resumen($groupRows, $filters);
+
+            $comparisonMetrics[] = $this->buildReferralStrategicMetrics(
+                $groupRows,
+                $groupSummary,
+                $overallSummary,
+                $definition['label']
+            );
+        }
+
+        $comparisonByLabel = [];
+        foreach ($comparisonMetrics as $metric) {
+            $comparisonByLabel[(string) ($metric['label'] ?? '')] = $metric;
+        }
+
+        $classification = $this->classifyReferralPerformance($selectedMetrics, $overallMetrics);
+        $selectedMetrics['clasificacion'] = $classification['label'];
+        $selectedMetrics['clasificacion_tone'] = $classification['tone'];
+        $selectedMetrics['clasificacion_reason'] = $classification['reason'];
+
+        $hallazgos = $this->buildReferralFindings($selectedMetrics, $overallMetrics, $comparisonByLabel);
+        $opportunities = $this->buildReferralOpportunities($selectedMetrics, $overallMetrics, $comparisonByLabel);
+        $automaticInsights = $this->buildReferralAutomaticInsights($selectedMetrics, $overallMetrics, $comparisonByLabel);
+        $trend = $this->buildReferralMonthlyTrend($selectedRows);
+
+        return [
+            'selected' => $selectedMetrics,
+            'overall' => $overallMetrics,
+            'comparison' => $comparisonMetrics,
+            'comparison_chart' => [
+                'labels' => array_values(array_map(static fn(array $metric): string => (string) $metric['label'], $comparisonMetrics)),
+                'atenciones' => array_values(array_map(static fn(array $metric): int => (int) $metric['atenciones'], $comparisonMetrics)),
+                'usd' => array_values(array_map(static fn(array $metric): float => (float) $metric['usd_total'], $comparisonMetrics)),
+                'ticket' => array_values(array_map(static fn(array $metric): float => (float) $metric['ticket_promedio'], $comparisonMetrics)),
+                'cero' => array_values(array_map(static fn(array $metric): float => (float) $metric['tasa_cero'], $comparisonMetrics)),
+            ],
+            'trend' => $trend,
+            'classification' => $classification,
+            'hallazgos' => $hallazgos,
+            'opportunities' => $opportunities,
+            'automatic_insights' => $automaticInsights,
+            'budget' => $selectedMetrics['budget'] ?? null,
+        ];
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $rows
+     * @param array<string, mixed> $summary
+     * @param array<string, mixed> $overallSummary
+     * @param array<string, mixed>|null $budget
+     * @return array<string, mixed>
+     */
+    private function buildReferralStrategicMetrics(
+        array $rows,
+        array $summary,
+        array $overallSummary,
+        string $label,
+        ?array $budget = null
+    ): array {
+        $economico = is_array($summary['economico'] ?? null) ? $summary['economico'] : [];
+        $operativo = is_array($summary['operativo'] ?? null) ? $summary['operativo'] : [];
+        $cirugias = is_array($summary['cirugias'] ?? null) ? $summary['cirugias'] : [];
+        $pacientesFrecuencia = is_array($summary['pacientes_frecuencia'] ?? null) ? $summary['pacientes_frecuencia'] : [];
+        $overallEconomico = is_array($overallSummary['economico'] ?? null) ? $overallSummary['economico'] : [];
+
+        $atenciones = (int) ($summary['total'] ?? 0);
+        $pacientesUnicos = (int) ($summary['pacientes_unicos'] ?? 0);
+        $usdTotal = round((float) ($economico['total_honorario_real'] ?? $economico['total_produccion'] ?? 0), 2);
+        $atencionesConHonorario = (int) ($economico['atenciones_con_honorario'] ?? 0);
+        $atencionesFacturadas = (int) ($economico['atenciones_facturadas'] ?? 0);
+        $ticketPromedio = $atenciones > 0 ? round($usdTotal / $atenciones, 2) : 0.0;
+        $ltv = $pacientesUnicos > 0 ? round($usdTotal / $pacientesUnicos, 2) : 0.0;
+        $tasaCero = $atenciones > 0 ? round((max($atenciones - $atencionesConHonorario, 0) / $atenciones) * 100, 2) : 0.0;
+        $facturacionRate = (float) ($economico['facturacion_rate'] ?? 0);
+        $realizacionRate = (float) ($operativo['realizacion_rate'] ?? 0);
+        $conversionProcedimiento = $atenciones > 0 ? round(((int) ($summary['total_protocolos'] ?? 0) / $atenciones) * 100, 2) : 0.0;
+        $conversionCirugia = $atenciones > 0 ? round(((int) ($cirugias['realizadas'] ?? 0) / $atenciones) * 100, 2) : 0.0;
+        $nuevos = (int) ($pacientesFrecuencia['nuevos'] ?? 0);
+        $recurrentes = (int) ($pacientesFrecuencia['recurrentes'] ?? 0);
+        $tasaRetorno = $pacientesUnicos > 0 ? round(($recurrentes / $pacientesUnicos) * 100, 2) : 0.0;
+        $eficiencia = $pacientesUnicos > 0 ? round($usdTotal / $pacientesUnicos, 2) : 0.0;
+
+        $overallAtenciones = (int) ($overallSummary['total'] ?? 0);
+        $overallUsd = round((float) ($overallEconomico['total_honorario_real'] ?? $overallEconomico['total_produccion'] ?? 0), 2);
+        $overallTicket = $overallAtenciones > 0 ? round($overallUsd / $overallAtenciones, 2) : 0.0;
+        $atencionesShare = $overallAtenciones > 0 ? round(($atenciones / $overallAtenciones) * 100, 2) : 0.0;
+        $usdShare = $overallUsd > 0 ? round(($usdTotal / $overallUsd) * 100, 2) : 0.0;
+
+        $patientValueStats = $this->buildReferralPatientValueStats($rows);
+        $pacientesSinValor = (int) ($patientValueStats['without_value'] ?? 0);
+        $pacientesSinValorRate = $pacientesUnicos > 0 ? round(($pacientesSinValor / $pacientesUnicos) * 100, 2) : 0.0;
+
+        $metrics = [
+            'label' => $label,
+            'atenciones' => $atenciones,
+            'atenciones_share' => $atencionesShare,
+            'pacientes_unicos' => $pacientesUnicos,
+            'pacientes_share' => (int) ($overallSummary['pacientes_unicos'] ?? 0) > 0
+                ? round(($pacientesUnicos / max((int) ($overallSummary['pacientes_unicos'] ?? 0), 1)) * 100, 2)
+                : 0.0,
+            'usd_total' => $usdTotal,
+            'usd_share' => $usdShare,
+            'ticket_promedio' => $ticketPromedio,
+            'ticket_vs_clinica' => $overallTicket > 0 ? round($ticketPromedio / $overallTicket, 2) : 0.0,
+            'tasa_cero' => $tasaCero,
+            'atenciones_cero' => max($atenciones - $atencionesConHonorario, 0),
+            'facturacion_rate' => $facturacionRate,
+            'realizacion_rate' => $realizacionRate,
+            'conversion_procedimiento' => $conversionProcedimiento,
+            'conversion_cirugia' => $conversionCirugia,
+            'atenciones_facturadas' => $atencionesFacturadas,
+            'nuevos' => $nuevos,
+            'recurrentes' => $recurrentes,
+            'tasa_retorno' => $tasaRetorno,
+            'ltv' => $ltv,
+            'eficiencia' => $eficiencia,
+            'pacientes_sin_valor' => $pacientesSinValor,
+            'pacientes_sin_valor_rate' => $pacientesSinValorRate,
+            'overall_ticket_promedio' => $overallTicket,
+        ];
+
+        if (is_array($budget) && (float) ($budget['period_budget'] ?? 0) > 0) {
+            $periodBudget = round((float) ($budget['period_budget'] ?? 0), 2);
+            $roi = $periodBudget > 0 ? round((($usdTotal - $periodBudget) / $periodBudget) * 100, 2) : null;
+            $metrics['budget'] = [
+                'annual_budget' => round((float) ($budget['annual_budget'] ?? 0), 2),
+                'period_budget' => $periodBudget,
+                'days' => (int) ($budget['days'] ?? 0),
+                'scope' => (string) ($budget['scope'] ?? ''),
+                'roi_pct' => $roi,
+            ];
+        }
+
+        return $metrics;
+    }
+
+    /**
+     * @param array<string, mixed> $selected
+     * @param array<string, mixed> $overall
+     * @return array{label:string,tone:string,reason:string}
+     */
+    private function classifyReferralPerformance(array $selected, array $overall): array
+    {
+        $overallTicket = (float) ($overall['ticket_promedio'] ?? 0);
+        $selectedTicket = (float) ($selected['ticket_promedio'] ?? 0);
+        $tasaCero = (float) ($selected['tasa_cero'] ?? 0);
+        $facturacionRate = (float) ($selected['facturacion_rate'] ?? 0);
+        $atencionesShare = (float) ($selected['atenciones_share'] ?? 0);
+
+        if ($tasaCero >= 35 || ($facturacionRate < 35 && $selectedTicket < ($overallTicket * 0.85))) {
+            return [
+                'label' => 'INEFICIENTE',
+                'tone' => 'danger',
+                'reason' => 'La categoría concentra demasiadas atenciones sin valor o una conversión económica insuficiente.',
+            ];
+        }
+
+        if ($atencionesShare >= 20 && $selectedTicket < ($overallTicket * 0.9)) {
+            return [
+                'label' => 'VOLUMEN CON BAJO VALOR',
+                'tone' => 'warning',
+                'reason' => 'Aporta volumen operativo, pero el ticket promedio está por debajo del promedio de la clínica.',
+            ];
+        }
+
+        if ($selectedTicket > ($overallTicket * 1.1) && $atencionesShare < 10) {
+            return [
+                'label' => 'POTENCIAL ALTO NO APROVECHADO',
+                'tone' => 'info',
+                'reason' => 'La categoría trae pacientes de alto valor, pero todavía con escala limitada.',
+            ];
+        }
+
+        if ($selectedTicket >= $overallTicket && $tasaCero <= 20 && $facturacionRate >= 50) {
+            return [
+                'label' => 'ALTO RENDIMIENTO',
+                'tone' => 'success',
+                'reason' => 'Combina ticket competitivo, baja fricción operativa y buena captura de ingresos.',
+            ];
+        }
+
+        return [
+            'label' => 'DESEMPEÑO MIXTO',
+            'tone' => 'secondary',
+            'reason' => 'La categoría tiene señales mixtas entre volumen, ticket y eficiencia operativa.',
+        ];
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $rows
+     * @return array{total:int,with_value:int,without_value:int}
+     */
+    private function buildReferralPatientValueStats(array $rows): array
+    {
+        $patientAmounts = [];
+        foreach ($rows as $row) {
+            $patientKey = trim((string) ($row['hc_number'] ?? ''));
+            if ($patientKey === '') {
+                continue;
+            }
+
+            $amount = (float) ($row['monto_honorario_real'] ?? 0);
+            if ($amount <= 0) {
+                $amount = (float) ($row['total_produccion'] ?? 0);
+            }
+
+            if (!isset($patientAmounts[$patientKey])) {
+                $patientAmounts[$patientKey] = 0.0;
+            }
+            $patientAmounts[$patientKey] += $amount;
+        }
+
+        $withValue = 0;
+        $withoutValue = 0;
+        foreach ($patientAmounts as $amount) {
+            if ((float) $amount > 0) {
+                $withValue++;
+            } else {
+                $withoutValue++;
+            }
+        }
+
+        return [
+            'total' => count($patientAmounts),
+            'with_value' => $withValue,
+            'without_value' => $withoutValue,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $filters
+     * @return array{annual_budget:float,period_budget:float,days:int,scope:string}|null
+     */
+    private function resolveReferralMarketingBudget(array $filters, string $selectedCategory): ?array
+    {
+        if ($selectedCategory !== 'MARKETING') {
+            return null;
+        }
+
+        $annualBudget = strtoupper(trim((string) ($filters['sede'] ?? ''))) !== '' ? 27400.0 : 54800.0;
+        $dateFrom = trim((string) ($filters['date_from'] ?? ''));
+        $dateTo = trim((string) ($filters['date_to'] ?? ''));
+        $from = DateTimeImmutable::createFromFormat('Y-m-d', $dateFrom) ?: new DateTimeImmutable('today');
+        $to = DateTimeImmutable::createFromFormat('Y-m-d', $dateTo) ?: $from;
+        if ($to < $from) {
+            $to = $from;
+        }
+
+        $days = (int) $from->diff($to)->format('%a') + 1;
+        $periodBudget = round($annualBudget * ($days / 365), 2);
+
+        return [
+            'annual_budget' => $annualBudget,
+            'period_budget' => $periodBudget,
+            'days' => $days,
+            'scope' => strtoupper(trim((string) ($filters['sede'] ?? ''))) !== '' ? 'UNA SEDE' : 'DOS SEDES',
+        ];
+    }
+
+    /**
+     * @return array<int, array{key:string,label:string,categories:array<int,string>}>
+     */
+    private function referralComparisonDefinitions(string $selectedCategory): array
+    {
+        $definitions = [
+            ['key' => $selectedCategory, 'label' => $selectedCategory, 'categories' => [$selectedCategory]],
+            ['key' => 'MARKETING', 'label' => 'MARKETING', 'categories' => ['MARKETING']],
+            ['key' => 'REFERIDOS CLIENTES', 'label' => 'REFERIDOS CLIENTES', 'categories' => ['REFERIDOS CLIENTES']],
+            ['key' => 'DOCTORES', 'label' => 'DOCTORES', 'categories' => ['DOCTORES INTERNOS', 'DOCTORES EXTERNOS']],
+        ];
+
+        $unique = [];
+        $result = [];
+        foreach ($definitions as $definition) {
+            if (isset($unique[$definition['key']])) {
+                continue;
+            }
+            $unique[$definition['key']] = true;
+            $result[] = $definition;
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param array<string, mixed> $selected
+     * @param array<string, mixed> $overall
+     * @param array<string, array<string, mixed>> $comparisonByLabel
+     * @return array<int, string>
+     */
+    private function buildReferralFindings(array $selected, array $overall, array $comparisonByLabel): array
+    {
+        $messages = [];
+        $label = (string) ($selected['label'] ?? 'La categoría');
+        $overallTicket = (float) ($overall['ticket_promedio'] ?? 0);
+        $selectedTicket = (float) ($selected['ticket_promedio'] ?? 0);
+
+        $messages[] = sprintf(
+            '%s aporta %s%% de las atenciones y %s%% del ingreso real del período.',
+            $label,
+            number_format((float) ($selected['atenciones_share'] ?? 0), 2),
+            number_format((float) ($selected['usd_share'] ?? 0), 2)
+        );
+
+        if ($overallTicket > 0) {
+            $messages[] = sprintf(
+                'Su ticket promedio es $%s, frente a $%s del promedio de la clínica.',
+                number_format($selectedTicket, 2),
+                number_format($overallTicket, 2)
+            );
+        }
+
+        if (isset($comparisonByLabel['REFERIDOS CLIENTES'])) {
+            $referidos = $comparisonByLabel['REFERIDOS CLIENTES'];
+            $messages[] = sprintf(
+                'Comparado con Referidos Clientes, el ticket es $%s vs $%s y la tasa 0 es %s%% vs %s%%.',
+                number_format((float) ($selected['ticket_promedio'] ?? 0), 2),
+                number_format((float) ($referidos['ticket_promedio'] ?? 0), 2),
+                number_format((float) ($selected['tasa_cero'] ?? 0), 2),
+                number_format((float) ($referidos['tasa_cero'] ?? 0), 2)
+            );
+        }
+
+        return $messages;
+    }
+
+    /**
+     * @param array<string, mixed> $selected
+     * @param array<string, mixed> $overall
+     * @param array<string, array<string, mixed>> $comparisonByLabel
+     * @return array<int, string>
+     */
+    private function buildReferralOpportunities(array $selected, array $overall, array $comparisonByLabel): array
+    {
+        $messages = [];
+        $label = (string) ($selected['label'] ?? 'La categoría');
+        $overallTicket = (float) ($overall['ticket_promedio'] ?? 0);
+
+        if ((float) ($selected['tasa_cero'] ?? 0) >= 20) {
+            $messages[] = sprintf(
+                'Reducir la tasa de atenciones en 0$ de %s%% debería ser la prioridad operativa inmediata.',
+                number_format((float) ($selected['tasa_cero'] ?? 0), 2)
+            );
+        }
+
+        if ((float) ($selected['ticket_promedio'] ?? 0) < ($overallTicket * 0.9) && (float) ($selected['atenciones_share'] ?? 0) >= 15) {
+            $messages[] = sprintf(
+                '%s necesita elevar calidad de captación: hoy mueve volumen, pero con ticket por debajo de la clínica.',
+                $label
+            );
+        }
+
+        if ((float) ($selected['ticket_promedio'] ?? 0) > ($overallTicket * 1.1) && (float) ($selected['atenciones_share'] ?? 0) < 10) {
+            $messages[] = sprintf(
+                '%s muestra valor por paciente superior al promedio; conviene escalar inversión o exposición sin deteriorar ticket.',
+                $label
+            );
+        }
+
+        if (isset($comparisonByLabel['DOCTORES']) && (float) ($selected['ticket_promedio'] ?? 0) < (float) ($comparisonByLabel['DOCTORES']['ticket_promedio'] ?? 0)) {
+            $messages[] = 'Existe una brecha frente al canal DOCTORES; revisar segmentación, seguimiento y cierres comerciales.';
+        }
+
+        return $messages;
+    }
+
+    /**
+     * @param array<string, mixed> $selected
+     * @param array<string, mixed> $overall
+     * @param array<string, array<string, mixed>> $comparisonByLabel
+     * @return array<int, string>
+     */
+    private function buildReferralAutomaticInsights(array $selected, array $overall, array $comparisonByLabel): array
+    {
+        $insights = [];
+        $label = (string) ($selected['label'] ?? 'La categoría');
+        $overallTicket = (float) ($overall['ticket_promedio'] ?? 0);
+
+        if ((float) ($selected['atenciones_share'] ?? 0) > (float) ($selected['usd_share'] ?? 0)) {
+            $insights[] = sprintf('%s genera más volumen que valor económico relativo.', $label);
+        } else {
+            $insights[] = sprintf('%s convierte mejor valor económico que su peso en volumen.', $label);
+        }
+
+        if ((float) ($selected['tasa_cero'] ?? 0) >= 25) {
+            $insights[] = sprintf('El %s%% de las atenciones de %s no generan ingreso real.', number_format((float) ($selected['tasa_cero'] ?? 0), 2), $label);
+        }
+
+        if ($overallTicket > 0) {
+            $ratio = (float) ($selected['ticket_vs_clinica'] ?? 0);
+            if ($ratio >= 1.1) {
+                $insights[] = sprintf('%s trae un ticket promedio %s%% por encima del promedio de la clínica.', $label, number_format(($ratio - 1) * 100, 2));
+            } elseif ($ratio <= 0.9) {
+                $insights[] = sprintf('%s trae un ticket promedio %s%% por debajo del promedio de la clínica.', $label, number_format((1 - $ratio) * 100, 2));
+            }
+        }
+
+        if (isset($selected['budget']['roi_pct'])) {
+            $roi = (float) ($selected['budget']['roi_pct'] ?? 0);
+            $insights[] = sprintf('Con el presupuesto prorrateado del período, el ROI observado es %s%%.', number_format($roi, 2));
+        }
+
+        if (isset($comparisonByLabel['REFERIDOS CLIENTES'])) {
+            $referidos = $comparisonByLabel['REFERIDOS CLIENTES'];
+            if ((float) ($selected['ticket_promedio'] ?? 0) < (float) ($referidos['ticket_promedio'] ?? 0)) {
+                $insights[] = 'Referidos Clientes sigue siendo una referencia de mayor valor por paciente.';
+            }
+        }
+
+        return $insights;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $rows
+     * @return array{labels:array<int,string>,counts:array<int,int>,usd:array<int,float>}
+     */
+    private function buildReferralMonthlyTrend(array $rows): array
+    {
+        $months = [];
+        foreach ($rows as $row) {
+            $timestamp = strtotime((string) ($row['fecha'] ?? ''));
+            if ($timestamp === false) {
+                continue;
+            }
+
+            $monthKey = date('Y-m', $timestamp);
+            if (!isset($months[$monthKey])) {
+                $months[$monthKey] = [
+                    'count' => 0,
+                    'usd' => 0.0,
+                ];
+            }
+
+            $months[$monthKey]['count']++;
+            $amount = (float) ($row['monto_honorario_real'] ?? 0);
+            if ($amount <= 0) {
+                $amount = (float) ($row['total_produccion'] ?? 0);
+            }
+            $months[$monthKey]['usd'] += $amount;
+        }
+
+        ksort($months);
+
+        $labels = [];
+        $counts = [];
+        $usd = [];
+        foreach ($months as $monthKey => $values) {
+            $labels[] = $this->referralMonthLabel($monthKey);
+            $counts[] = (int) ($values['count'] ?? 0);
+            $usd[] = round((float) ($values['usd'] ?? 0), 2);
+        }
+
+        return [
+            'labels' => $labels,
+            'counts' => $counts,
+            'usd' => $usd,
+        ];
+    }
+
+    private function referralMonthLabel(string $monthKey): string
+    {
+        $date = DateTimeImmutable::createFromFormat('Y-m-d', $monthKey . '-01');
+        if (!$date instanceof DateTimeImmutable) {
+            return $monthKey;
+        }
+
+        $monthNames = [
+            1 => 'ENE',
+            2 => 'FEB',
+            3 => 'MAR',
+            4 => 'ABR',
+            5 => 'MAY',
+            6 => 'JUN',
+            7 => 'JUL',
+            8 => 'AGO',
+            9 => 'SEP',
+            10 => 'OCT',
+            11 => 'NOV',
+            12 => 'DIC',
+        ];
+
+        return ($monthNames[(int) $date->format('n')] ?? strtoupper($date->format('M'))) . ' ' . $date->format('y');
+    }
+
     private function normalizeSedeFilter(string $value): string
     {
         $value = strtolower(trim($value));
@@ -1501,7 +2166,20 @@ class BillingUiController
      * @param array<string, mixed> $summary
      * @param array<string, mixed> $filters
      */
-    private function exportInformeParticularesPdf(array $summary, array $filters): Response|RedirectResponse
+    /**
+     * @return array{
+     *   generatedAt:string,
+     *   totalAtenciones:int,
+     *   filterSummary:array<int,array{label:string,value:string}>,
+     *   hallazgosClave:array<int,string>,
+     *   methodology:array<int,string>,
+     *   generalKpis:array<int,array<string,string>>,
+     *   temporalKpis:array<int,array<string,string>>,
+     *   economicKpis:array<int,array<string,string>>,
+     *   tables:array<int,array<string,mixed>>
+     * }
+     */
+    private function buildInformeParticularesKpiExportPayload(array $summary, array $filters): array
     {
         $economico = is_array($summary['economico'] ?? null) ? $summary['economico'] : [];
         $operativo = is_array($summary['operativo'] ?? null) ? $summary['operativo'] : [];
@@ -1519,8 +2197,6 @@ class BillingUiController
         $referidoNuevoPacienteSummary = is_array($summary['referido_prefactura_consulta_nuevo_paciente'] ?? null) ? $summary['referido_prefactura_consulta_nuevo_paciente'] : [];
         $hierarquiaReferidos = is_array($summary['hierarquia_referidos'] ?? null) ? $summary['hierarquia_referidos'] : [];
         $totalAtenciones = (int) ($summary['total'] ?? 0);
-        $totalConsultas = (int) ($summary['total_consultas'] ?? 0);
-        $totalProtocolos = (int) ($summary['total_protocolos'] ?? 0);
         $pacientesUnicos = (int) ($summary['pacientes_unicos'] ?? 0);
         $honorarioRealTotal = (float) ($economico['total_honorario_real'] ?? $economico['total_produccion'] ?? 0);
         $operativoEvaluadas = (int) ($operativo['evaluadas'] ?? $totalAtenciones);
@@ -1528,7 +2204,6 @@ class BillingUiController
         $operativoFacturadas = (int) ($operativo['facturadas'] ?? 0);
         $operativoPendientesFacturar = (int) ($operativo['pendientes_facturar'] ?? 0);
         $operativoPerdidas = (int) ($operativo['perdidas'] ?? 0);
-        $operativoSinCierre = (int) ($operativo['sin_cierre'] ?? 0);
         $operativoRealizacionRate = (float) ($operativo['realizacion_rate'] ?? 0);
         $operativoFacturacionRate = (float) ($operativo['facturacion_sobre_realizadas_rate'] ?? 0);
         $operativoPendienteRate = (float) ($operativo['pendiente_sobre_realizadas_rate'] ?? 0);
@@ -1544,13 +2219,16 @@ class BillingUiController
         $honorarioParticular = (float) ($honorarioPorCategoria['particular'] ?? 0);
         $honorarioPrivado = (float) ($honorarioPorCategoria['privado'] ?? 0);
         $formasPagoValues = is_array(($economico['formas_pago']['values'] ?? null)) ? $economico['formas_pago']['values'] : [];
-        $doctoresTop = is_array($economico['doctores_top'] ?? null) ? $economico['doctores_top'] : [];
         $areasTop = is_array($economico['areas_top'] ?? null) ? $economico['areas_top'] : [];
+        $doctorPerformanceRows = is_array($economico['doctores_rendimiento_top'] ?? null) ? $economico['doctores_rendimiento_top'] : [];
 
         $particularCount = (int) ($categoriaCounts['particular'] ?? 0);
         $privadoCount = (int) ($categoriaCounts['privado'] ?? 0);
         $particularShare = (float) ($categoriaShare['particular'] ?? 0);
         $privadoShare = (float) ($categoriaShare['privado'] ?? 0);
+        $ticketPromedioParticular = $particularCount > 0 ? round($honorarioParticular / $particularCount, 2) : 0.0;
+        $ticketPromedioPrivado = $privadoCount > 0 ? round($honorarioPrivado / $privadoCount, 2) : 0.0;
+        $ticketPromedioCategoriaTotal = $totalAtenciones > 0 ? round($honorarioRealTotal / $totalAtenciones, 2) : 0.0;
 
         $currentMonthLabel = (string) ($temporal['current_month_label'] ?? 'N/D');
         $currentMonthCount = (int) ($temporal['current_month_count'] ?? 0);
@@ -1570,10 +2248,7 @@ class BillingUiController
         $pacientesRecurrentesPct = (float) ($pacientesFrecuencia['recurrentes_pct'] ?? 0);
 
         $topProcedimientosVolumen = is_array($procedimientosVolumen['top_10'] ?? null) ? $procedimientosVolumen['top_10'] : [];
-
         $desgloseSedes = is_array($desgloseGerencial['sedes'] ?? null) ? $desgloseGerencial['sedes'] : [];
-        $desgloseDoctores = is_array($desgloseGerencial['doctores'] ?? null) ? $desgloseGerencial['doctores'] : [];
-
         $picosDias = is_array($picos['dias'] ?? null) ? $picos['dias'] : [];
         $peakDay = is_array($picos['peak_day'] ?? null) ? $picos['peak_day'] : ['valor' => 'N/D', 'cantidad' => 0];
 
@@ -1590,18 +2265,6 @@ class BillingUiController
 
         $dateFrom = trim((string) ($filters['date_from'] ?? ''));
         $dateTo = trim((string) ($filters['date_to'] ?? ''));
-        $queryWithoutExport = array_filter([
-            'date_from' => $dateFrom,
-            'date_to' => $dateTo,
-            'empresa_seguro' => trim((string) ($filters['empresa_seguro'] ?? '')),
-            'categoria_cliente' => trim((string) ($filters['categoria_cliente'] ?? '')),
-            'categoria_madre_referido' => trim((string) ($filters['categoria_madre_referido'] ?? '')),
-            'tipo' => trim((string) ($filters['tipo'] ?? '')),
-            'sede' => trim((string) ($filters['sede'] ?? '')),
-            'afiliacion' => trim((string) ($filters['afiliacion'] ?? '')),
-            'procedimiento' => trim((string) ($filters['procedimiento'] ?? '')),
-        ], static fn($value): bool => trim((string) $value) !== '');
-
         $empresaSeguroFilter = trim((string) ($filters['empresa_seguro'] ?? ''));
         $empresaSeguroOptions = $this->insuranceDimensionOptions('empresa');
         $empresaSeguroLabel = '';
@@ -1609,7 +2272,6 @@ class BillingUiController
             if (!is_array($option)) {
                 continue;
             }
-
             $optionValue = trim((string) ($option['value'] ?? ''));
             if ($optionValue !== '' && $optionValue === $empresaSeguroFilter) {
                 $empresaSeguroLabel = trim((string) ($option['label'] ?? ''));
@@ -1634,6 +2296,7 @@ class BillingUiController
             ['label' => 'Empresa de seguro', 'value' => $empresaSeguroLabel !== '' ? strtoupper($empresaSeguroLabel) : 'Todas'],
             ['label' => 'Seguro / plan', 'value' => strtoupper(trim((string) ($filters['afiliacion'] ?? ''))) ?: 'Todos'],
             ['label' => 'Categoría cliente', 'value' => ucfirst(strtolower(trim((string) ($filters['categoria_cliente'] ?? '')))) ?: 'Todas'],
+            ['label' => 'Categoría madre referido', 'value' => strtoupper(trim((string) ($filters['categoria_madre_referido'] ?? ''))) ?: 'Todas'],
             ['label' => 'Tipo de atención', 'value' => strtoupper(trim((string) ($filters['tipo'] ?? ''))) ?: 'Todos'],
             ['label' => 'Procedimiento', 'value' => trim((string) ($filters['procedimiento'] ?? '')) ?: 'Todos'],
         ];
@@ -1651,14 +2314,12 @@ class BillingUiController
                 if (!is_array($item)) {
                     continue;
                 }
-
                 $rows[] = [
                     $normalizeLabel($item['valor'] ?? ''),
                     $formatCount((int) ($item['cantidad'] ?? 0)),
                     $formatPercent((float) ($item['porcentaje'] ?? 0)),
                 ];
             }
-
             return $rows;
         };
         $buildMoneyRows = static function (array $items, int $limit = 8) use ($formatCurrency, $formatPercent, $normalizeLabel): array {
@@ -1667,26 +2328,12 @@ class BillingUiController
                 if (!is_array($item)) {
                     continue;
                 }
-
                 $rows[] = [
                     $normalizeLabel($item['valor'] ?? ''),
                     $formatCurrency((float) ($item['monto'] ?? 0)),
                     $formatPercent((float) ($item['porcentaje'] ?? 0)),
                 ];
             }
-
-            return $rows;
-        };
-        $buildTrendRows = static function (array $labels, array $values) use ($formatCurrency): array {
-            $rows = [];
-            $count = min(count($labels), count($values));
-            for ($index = 0; $index < $count; $index++) {
-                $rows[] = [
-                    trim((string) $labels[$index]) !== '' ? (string) $labels[$index] : 'N/D',
-                    $formatCurrency((float) ($values[$index] ?? 0)),
-                ];
-            }
-
             return $rows;
         };
         $buildTrendCountRows = static function (array $labels, array $values) use ($formatCount): array {
@@ -1698,66 +2345,44 @@ class BillingUiController
                     $formatCount((int) ($values[$index] ?? 0)),
                 ];
             }
-
             return $rows;
         };
-        $buildCombinedMoneyMetricRows = static function (array $moneyItems, array $metricItems, int $limit = 10) use ($formatCount, $formatCurrency, $formatPercent, $normalizeLabel): array {
-            $order = [];
-            $moneyMap = [];
-            $metricMap = [];
-
-            foreach ($moneyItems as $item) {
-                if (!is_array($item)) {
-                    continue;
-                }
-
-                $label = $normalizeLabel($item['valor'] ?? '');
-                if (!in_array($label, $order, true)) {
-                    $order[] = $label;
-                }
-
-                $moneyMap[$label] = [
-                    'amount' => (float) ($item['monto'] ?? 0),
-                    'percent' => (float) ($item['porcentaje'] ?? 0),
-                ];
-            }
-
-            foreach ($metricItems as $item) {
-                if (!is_array($item)) {
-                    continue;
-                }
-
-                $label = $normalizeLabel($item['valor'] ?? '');
-                if (!in_array($label, $order, true)) {
-                    $order[] = $label;
-                }
-
-                $metricMap[$label] = [
-                    'count' => (int) ($item['cantidad'] ?? 0),
-                    'percent' => (float) ($item['porcentaje'] ?? 0),
-                ];
-            }
-
+        $buildReferidoRows = static function (array $items, int $limit = 12) use ($formatCount, $formatCurrency, $formatPercent, $normalizeLabel): array {
             $rows = [];
-            foreach (array_slice($order, 0, $limit) as $label) {
-                $metric = $metricMap[$label] ?? ['count' => 0, 'percent' => 0];
-                $money = $moneyMap[$label] ?? ['amount' => 0, 'percent' => 0];
-
+            foreach (array_slice($items, 0, $limit) as $item) {
+                if (!is_array($item)) {
+                    continue;
+                }
                 $rows[] = [
-                    $label,
-                    $formatCount($metric['count']),
-                    $formatPercent($metric['percent']),
-                    $formatCurrency($money['amount']),
-                    $formatPercent($money['percent']),
+                    $normalizeLabel($item['valor'] ?? ''),
+                    $formatCount((int) ($item['cantidad'] ?? 0)),
+                    $formatPercent((float) ($item['porcentaje'] ?? 0)),
+                    $formatCurrency((float) ($item['monto'] ?? 0)),
+                    $formatCurrency((float) ($item['ticket_promedio'] ?? 0)),
                 ];
             }
-
+            return $rows;
+        };
+        $buildDoctorPerformanceRows = static function (array $items, int $limit = 10) use ($formatCount, $formatCurrency, $formatPercent): array {
+            $rows = [];
+            foreach (array_slice($items, 0, $limit) as $item) {
+                if (!is_array($item)) {
+                    continue;
+                }
+                $rows[] = [
+                    trim((string) ($item['valor'] ?? 'SIN DOCTOR')) ?: 'SIN DOCTOR',
+                    $formatCount((int) ($item['cantidad_total'] ?? 0)),
+                    $formatCount((int) ($item['cantidad_con_honorario'] ?? 0)),
+                    $formatPercent(((float) ($item['tasa_cero'] ?? 0)) * 100),
+                    $formatCurrency((float) ($item['monto'] ?? 0)),
+                    $formatCurrency((float) ($item['ticket_promedio'] ?? 0)),
+                    number_format((float) ($item['score_rendimiento'] ?? 0), 2),
+                    trim((string) ($item['clasificacion'] ?? 'POR REVISAR')) ?: 'POR REVISAR',
+                ];
+            }
             return $rows;
         };
 
-        $categoriaLiderLabel = $particularCount >= $privadoCount ? 'PARTICULAR' : 'PRIVADO';
-        $categoriaLiderCount = $particularCount >= $privadoCount ? $particularCount : $privadoCount;
-        $categoriaLiderPct = $particularCount >= $privadoCount ? $particularShare : $privadoShare;
         $topProcedimientoLider = is_array($topProcedimientosVolumen[0] ?? null) ? $topProcedimientosVolumen[0] : [];
         $topProcedimientoLabel = $normalizeLabel($topProcedimientoLider['valor'] ?? '', '');
         $topProcedimientoCount = (int) ($topProcedimientoLider['cantidad'] ?? 0);
@@ -1803,131 +2428,42 @@ class BillingUiController
         $hallazgosClave = array_slice($hallazgosClave, 0, 4);
 
         $generalKpis = [
-            [
-                'label' => 'Atenciones evaluadas',
-                'value' => $formatCount($operativoEvaluadas),
-                'note' => 'Universo auditado con la lógica real por categoría de servicio.',
-            ],
-            [
-                'label' => 'Realizadas',
-                'value' => $formatCount($operativoRealizadas) . ' (' . $formatPercent($operativoRealizacionRate) . ')',
-                'note' => 'Atenciones con evidencia real de servicio realizado.',
-            ],
-            [
-                'label' => 'Facturadas',
-                'value' => $formatCount($operativoFacturadas) . ' (' . $formatPercent($operativoFacturacionRate) . ')',
-                'note' => 'Atenciones realizadas que ya tienen billing real asociado.',
-            ],
-            [
-                'label' => 'Pendientes de facturar',
-                'value' => $formatCount($operativoPendientesFacturar) . ' (' . $formatPercent($operativoPendienteRate) . ')',
-                'note' => 'Atenciones realizadas con respaldo operativo o clínico aún sin billing real.',
-            ],
-            [
-                'label' => 'Pérdida operativa',
-                'value' => $formatCount($operativoPerdidas) . ' (' . $formatPercent($operativoPerdidaRate) . ')',
-                'note' => 'Atenciones no realizadas o perdidas según la lógica real por servicio.',
-            ],
-            [
-                'label' => 'Pacientes únicos',
-                'value' => $formatCount($pacientesUnicos),
-                'note' => 'Pacientes distintos incluidos en el rango filtrado.',
-            ],
+            ['label' => 'Atenciones evaluadas', 'value' => $formatCount($operativoEvaluadas), 'note' => 'Universo auditado con la lógica real por categoría de servicio.'],
+            ['label' => 'Realizadas', 'value' => $formatCount($operativoRealizadas) . ' (' . $formatPercent($operativoRealizacionRate) . ')', 'note' => 'Atenciones con evidencia real de servicio realizado.'],
+            ['label' => 'Facturadas', 'value' => $formatCount($operativoFacturadas) . ' (' . $formatPercent($operativoFacturacionRate) . ')', 'note' => 'Atenciones realizadas que ya tienen billing real asociado.'],
+            ['label' => 'Pendientes de facturar', 'value' => $formatCount($operativoPendientesFacturar) . ' (' . $formatPercent($operativoPendienteRate) . ')', 'note' => 'Atenciones realizadas aún sin billing real.'],
+            ['label' => 'Pérdida operativa', 'value' => $formatCount($operativoPerdidas) . ' (' . $formatPercent($operativoPerdidaRate) . ')', 'note' => 'Atenciones no realizadas o perdidas según la lógica real.'],
+            ['label' => 'Pacientes únicos', 'value' => $formatCount($pacientesUnicos), 'note' => 'Pacientes distintos incluidos en el rango filtrado.'],
         ];
 
         $temporalKpis = [
-            [
-                'label' => 'Volumen mes actual',
-                'value' => $formatCount($currentMonthCount),
-                'note' => $currentMonthLabel,
-            ],
-            [
-                'label' => 'Vs mes anterior',
-                'value' => $vsPreviousPct === null ? 'N/D' : (($vsPreviousPct >= 0 ? '↑ ' : '↓ ') . $formatPercent(abs($vsPreviousPct))),
-                'note' => $formatCount($currentMonthCount) . ' vs ' . $formatCount($previousMonthCount) . ' (' . $previousMonthLabel . ')',
-            ],
-            [
-                'label' => 'Vs mismo mes año pasado',
-                'value' => $vsLastYearPct === null ? 'N/D' : (($vsLastYearPct >= 0 ? '↑ ' : '↓ ') . $formatPercent(abs($vsLastYearPct))),
-                'note' => $formatCount($currentMonthCount) . ' vs ' . $formatCount($sameMonthLastYearCount) . ' (' . $sameMonthLastYearLabel . ')',
-            ],
-            [
-                'label' => 'Nuevos vs recurrentes',
-                'value' => $formatCount($pacientesNuevos) . ' / ' . $formatCount($pacientesRecurrentes),
-                'note' => 'Nuevos ' . $formatPercent($pacientesNuevosPct) . ' | Recurrentes ' . $formatPercent($pacientesRecurrentesPct),
-            ],
-            [
-                'label' => 'Pico operativo por día',
-                'value' => $normalizeLabel($peakDay['valor'] ?? 'N/D', 'N/D') . ' (' . $formatCount((int) ($peakDay['cantidad'] ?? 0)) . ')',
-                'note' => 'Día con mayor volumen de atención en el rango filtrado.',
-            ],
+            ['label' => 'Volumen mes actual', 'value' => $formatCount($currentMonthCount), 'note' => $currentMonthLabel],
+            ['label' => 'Vs mes anterior', 'value' => $vsPreviousPct === null ? 'N/D' : (($vsPreviousPct >= 0 ? '↑ ' : '↓ ') . $formatPercent(abs($vsPreviousPct))), 'note' => $formatCount($currentMonthCount) . ' vs ' . $formatCount($previousMonthCount) . ' (' . $previousMonthLabel . ')'],
+            ['label' => 'Vs mismo mes año pasado', 'value' => $vsLastYearPct === null ? 'N/D' : (($vsLastYearPct >= 0 ? '↑ ' : '↓ ') . $formatPercent(abs($vsLastYearPct))), 'note' => $formatCount($currentMonthCount) . ' vs ' . $formatCount($sameMonthLastYearCount) . ' (' . $sameMonthLastYearLabel . ')'],
+            ['label' => 'Nuevos vs recurrentes', 'value' => $formatCount($pacientesNuevos) . ' / ' . $formatCount($pacientesRecurrentes), 'note' => 'Nuevos ' . $formatPercent($pacientesNuevosPct) . ' | Recurrentes ' . $formatPercent($pacientesRecurrentesPct)],
+            ['label' => 'Pico operativo por día', 'value' => $normalizeLabel($peakDay['valor'] ?? 'N/D', 'N/D') . ' (' . $formatCount((int) ($peakDay['cantidad'] ?? 0)) . ')', 'note' => 'Día con mayor volumen de atención en el rango filtrado.'],
         ];
 
         $economicKpis = [
-            [
-                'label' => 'Honorario real acumulado',
-                'value' => $formatCurrency($honorarioRealTotal),
-                'meaning' => 'Suma del valor económico real único por procedimiento, obtenido desde billing_facturacion_real.',
-                'formula' => 'SUM(billing_facturacion_real.monto_honorario) sobre las atenciones filtradas.',
-            ],
-            [
-                'label' => 'Por cobrar estimado',
-                'value' => $formatCurrency($operativoPorCobrarEstimado),
-                'meaning' => 'Monto estimado pendiente de cobrar en atenciones realizadas sin billing real.',
-                'formula' => 'SUM(monto_por_cobrar_estimado) para estados operativos PENDIENTE_FACTURAR.',
-            ],
-            [
-                'label' => 'Pérdida estimada',
-                'value' => $formatCurrency($operativoPerdidaEstimada),
-                'meaning' => 'Monto estimado de producción perdida por cancelación, ausentismo o pérdida operativa.',
-                'formula' => 'SUM(monto_perdida_estimada) según la lógica real por categoría de servicio.',
-            ],
-            [
-                'label' => 'Potencial capturable',
-                'value' => $formatCurrency($operativoPotencialCapturable),
-                'meaning' => 'Suma de honorario real ya capturado más el valor estimado todavía pendiente de cobro.',
-                'formula' => 'Honorario real acumulado + por cobrar estimado.',
-            ],
-            [
-                'label' => 'Cobro sobre realizadas',
-                'value' => $formatPercent($operativoFacturacionRate),
-                'meaning' => 'Cobertura de facturación real sobre las atenciones efectivamente realizadas.',
-                'formula' => 'Atenciones facturadas / Atenciones realizadas.',
-            ],
-            [
-                'label' => 'Ticket facturado real',
-                'value' => $formatCurrency($operativoTicketFacturadoReal),
-                'meaning' => 'Honorario real promedio por atención con billing real.',
-                'formula' => 'Honorario real acumulado / Atenciones facturadas.',
-            ],
-            [
-                'label' => 'Ticket pendiente',
-                'value' => $formatCurrency($operativoTicketPendiente),
-                'meaning' => 'Valor estimado promedio por cada atención pendiente de facturar.',
-                'formula' => 'Por cobrar estimado / Atenciones pendientes de facturar.',
-            ],
-            [
-                'label' => 'Honorario Particular',
-                'value' => $formatCurrency($honorarioParticular),
-                'meaning' => 'Honorario real acumulado para la categoría cliente Particular.',
-                'formula' => 'SUM(monto_honorario) filtrando categoria_cliente = particular.',
-            ],
-            [
-                'label' => 'Honorario Privado',
-                'value' => $formatCurrency($honorarioPrivado),
-                'meaning' => 'Honorario real acumulado para la categoría cliente Privado.',
-                'formula' => 'SUM(monto_honorario) filtrando categoria_cliente = privado.',
-            ],
+            ['label' => 'Honorario real acumulado', 'value' => $formatCurrency($honorarioRealTotal), 'meaning' => 'Suma del valor económico real único por procedimiento desde billing_facturacion_real.', 'formula' => 'SUM(billing_facturacion_real.monto_honorario) sobre las atenciones filtradas.'],
+            ['label' => 'Por cobrar estimado', 'value' => $formatCurrency($operativoPorCobrarEstimado), 'meaning' => 'Monto estimado pendiente de cobrar en atenciones realizadas sin billing real.', 'formula' => 'SUM(monto_por_cobrar_estimado) para PENDIENTE_FACTURAR.'],
+            ['label' => 'Pérdida estimada', 'value' => $formatCurrency($operativoPerdidaEstimada), 'meaning' => 'Monto estimado de producción perdida por cancelación, ausentismo o pérdida operativa.', 'formula' => 'SUM(monto_perdida_estimada) según la lógica real por categoría.'],
+            ['label' => 'Potencial capturable', 'value' => $formatCurrency($operativoPotencialCapturable), 'meaning' => 'Honorario real ya capturado más el valor estimado todavía pendiente de cobro.', 'formula' => 'Honorario real acumulado + por cobrar estimado.'],
+            ['label' => 'Cobro sobre realizadas', 'value' => $formatPercent($operativoFacturacionRate), 'meaning' => 'Cobertura de facturación real sobre las atenciones efectivamente realizadas.', 'formula' => 'Atenciones facturadas / Atenciones realizadas.'],
+            ['label' => 'Ticket facturado real', 'value' => $formatCurrency($operativoTicketFacturadoReal), 'meaning' => 'Honorario real promedio por atención con billing real.', 'formula' => 'Honorario real acumulado / Atenciones facturadas.'],
+            ['label' => 'Ticket pendiente', 'value' => $formatCurrency($operativoTicketPendiente), 'meaning' => 'Valor estimado promedio por cada atención pendiente de facturar.', 'formula' => 'Por cobrar estimado / Atenciones pendientes de facturar.'],
+            ['label' => 'Ticket Particular', 'value' => $formatCurrency($ticketPromedioParticular), 'meaning' => 'Honorario real promedio por atención de categoría Particular.', 'formula' => 'Honorario particular / Atenciones particulares.'],
+            ['label' => 'Ticket Privado', 'value' => $formatCurrency($ticketPromedioPrivado), 'meaning' => 'Honorario real promedio por atención de categoría Privado.', 'formula' => 'Honorario privado / Atenciones privadas.'],
         ];
 
         $tables = [
             [
                 'title' => 'Categoría cliente: volumen + honorario',
-                'columns' => ['Categoría', 'Atenciones', '% del total', 'Honorario real'],
+                'columns' => ['Categoría', 'Atenciones', '% del total', 'Honorario real', 'Ticket prom.'],
                 'rows' => [
-                    ['PARTICULAR', $formatCount($particularCount), $formatPercent($particularShare), $formatCurrency($honorarioParticular)],
-                    ['PRIVADO', $formatCount($privadoCount), $formatPercent($privadoShare), $formatCurrency($honorarioPrivado)],
-                    ['TOTAL', $formatCount($totalAtenciones), $formatPercent(100), $formatCurrency($honorarioRealTotal)],
+                    ['PARTICULAR', $formatCount($particularCount), $formatPercent($particularShare), $formatCurrency($honorarioParticular), $formatCurrency($ticketPromedioParticular)],
+                    ['PRIVADO', $formatCount($privadoCount), $formatPercent($privadoShare), $formatCurrency($honorarioPrivado), $formatCurrency($ticketPromedioPrivado)],
+                    ['TOTAL', $formatCount($totalAtenciones), $formatPercent(100), $formatCurrency($honorarioRealTotal), $formatCurrency($ticketPromedioCategoriaTotal)],
                 ],
                 'empty_message' => 'Sin datos de categoría para el rango seleccionado.',
             ],
@@ -1950,16 +2486,18 @@ class BillingUiController
                     static function (array $item) use ($formatCount, $formatPercent, $normalizeLabel, $totalAtenciones): array {
                         $cantidad = (int) ($item['cantidad'] ?? 0);
                         $porcentaje = $totalAtenciones > 0 ? round(($cantidad / $totalAtenciones) * 100, 2) : 0.0;
-
-                        return [
-                            $normalizeLabel($item['afiliacion'] ?? ''),
-                            $formatCount($cantidad),
-                            $formatPercent($porcentaje),
-                        ];
+                        return [$normalizeLabel($item['afiliacion'] ?? ''), $formatCount($cantidad), $formatPercent($porcentaje)];
                     },
                     array_slice($topAfiliaciones, 0, 10)
                 ),
                 'empty_message' => 'Sin afiliaciones para el rango seleccionado.',
+            ],
+            [
+                'title' => 'Calificación de rendimiento médico',
+                'subtitle' => 'Score compuesto: 40% producción + 30% ticket + 20% atenciones pagadas - 10% tasa 0.',
+                'columns' => ['Médico', 'Atenc.', 'C/Hon.', '% 0', 'Honorario real', 'Ticket prom. real', 'Score', 'Nivel'],
+                'rows' => $buildDoctorPerformanceRows($doctorPerformanceRows, 10),
+                'empty_message' => 'Sin médicos para el rango seleccionado.',
             ],
             [
                 'title' => 'Formas de pago',
@@ -1980,12 +2518,6 @@ class BillingUiController
                 'empty_message' => 'Sin sedes para el rango seleccionado.',
             ],
             [
-                'title' => 'Médicos: volumen + honorario',
-                'columns' => ['Médico', 'Atenciones', '% del total', 'Honorario', '% del honorario'],
-                'rows' => $buildCombinedMoneyMetricRows($doctoresTop, $desgloseDoctores, 10),
-                'empty_message' => 'Sin médicos para el rango seleccionado.',
-            ],
-            [
                 'title' => 'Picos por día',
                 'columns' => ['Día', 'Atenciones', '% del total'],
                 'rows' => $buildMetricRows($picosDias, 7),
@@ -1994,22 +2526,22 @@ class BillingUiController
             [
                 'title' => 'Origen de referencia: Total de atenciones',
                 'subtitle' => 'Con valor: ' . $formatCount($referidoWithValue) . ' | Sin valor: ' . $formatCount($referidoWithoutValue),
-                'columns' => ['Valor', 'Atenciones', '%'],
-                'rows' => $buildMetricRows($referidoValues, 12),
+                'columns' => ['Valor', 'Atenciones', '%', 'USD', 'Ticket prom.'],
+                'rows' => $buildReferidoRows($referidoValues, 12),
                 'empty_message' => 'Sin datos de origen de referencia.',
             ],
             [
                 'title' => 'Origen de referencia: Pacientes únicos',
                 'subtitle' => 'Con valor: ' . $formatCount($referidoPacientesUnicosWithValue) . ' | Sin valor: ' . $formatCount($referidoPacientesUnicosWithoutValue),
-                'columns' => ['Valor', 'Pacientes únicos', '%'],
-                'rows' => $buildMetricRows($referidoPacientesUnicosValues, 12),
+                'columns' => ['Valor', 'Pacientes únicos', '%', 'USD acumulado', 'Ticket prom. paciente'],
+                'rows' => $buildReferidoRows($referidoPacientesUnicosValues, 12),
                 'empty_message' => 'Sin datos de pacientes únicos por referencia.',
             ],
             [
                 'title' => 'Origen de referencia: Nuevo paciente',
                 'subtitle' => 'Con valor: ' . $formatCount($referidoNuevoPacienteWithValue) . ' | Sin valor: ' . $formatCount($referidoNuevoPacienteWithoutValue),
-                'columns' => ['Valor', 'Cantidad', '%'],
-                'rows' => $buildMetricRows($referidoNuevoPacienteValues, 12),
+                'columns' => ['Valor', 'Cantidad', '%', 'USD', 'Ticket prom.'],
+                'rows' => $buildReferidoRows($referidoNuevoPacienteValues, 12),
                 'empty_message' => 'Sin datos de nuevo paciente por referencia.',
             ],
             [
@@ -2034,11 +2566,30 @@ class BillingUiController
         $methodology = [
             'El universo del informe considera atenciones de categoría cliente Particular o Privado dentro del rango filtrado y aplica una lógica real específica por categoría de servicio.',
             'Cirugías, PNI, servicios oftalmológicos e imágenes se clasifican en realizadas, pendientes de facturar o pérdida según evidencia clínica, operativa, técnica y económica disponible.',
-            'La fuente económica del PDF es exclusivamente billing_facturacion_real, unida por form_id.',
+            'La fuente económica del reporte es exclusivamente billing_facturacion_real, unida por form_id.',
             'Se analiza únicamente billing_facturacion_real.monto_honorario como valor económico único por procedimiento/form_id.',
-            'billing_facturacion_real.monto_facturado no se usa en KPI ni totales porque puede repetir el total diario en múltiples form_id y sobrestimar la producción.',
-            'Facturas emitidas, número de factura, forma de pago, cliente y área se usan como metadata operativa y no como base de suma monetaria.',
+            'Los tickets promedio por referencia y categoría se calculan sobre el divisor operativo correspondiente a cada KPI.',
+            'La calificación médica usa score compuesto para priorizar rendimiento económico real y penalizar alta tasa de atenciones en 0.',
         ];
+
+        return [
+            'generatedAt' => (new DateTimeImmutable('now'))->format('d/m/Y H:i'),
+            'totalAtenciones' => $totalAtenciones,
+            'filterSummary' => $filterSummary,
+            'hallazgosClave' => $hallazgosClave,
+            'methodology' => $methodology,
+            'generalKpis' => $generalKpis,
+            'temporalKpis' => $temporalKpis,
+            'economicKpis' => $economicKpis,
+            'tables' => $tables,
+        ];
+    }
+
+    private function exportInformeParticularesPdf(array $summary, array $filters): Response|RedirectResponse
+    {
+        $payload = $this->buildInformeParticularesKpiExportPayload($summary, $filters);
+        $dateFrom = trim((string) ($filters['date_from'] ?? ''));
+        $dateTo = trim((string) ($filters['date_to'] ?? ''));
 
         $filename = 'kpi_particulares_' . ($dateFrom !== '' ? str_replace('-', '', $dateFrom) : date('Ymd')) . '_' .
             ($dateTo !== '' ? str_replace('-', '', $dateTo) : date('Ymd')) . '.pdf';
@@ -2049,15 +2600,15 @@ class BillingUiController
             }
 
             $html = view('billing.pdf.particulares-kpi', [
-                'generatedAt' => (new DateTimeImmutable('now'))->format('d/m/Y H:i'),
-                'filterSummary' => $filterSummary,
-                'hallazgosClave' => $hallazgosClave,
-                'methodology' => $methodology,
-                'generalKpis' => $generalKpis,
-                'temporalKpis' => $temporalKpis,
-                'economicKpis' => $economicKpis,
-                'tables' => $tables,
-                'totalAtenciones' => $totalAtenciones,
+                'generatedAt' => $payload['generatedAt'],
+                'filterSummary' => $payload['filterSummary'],
+                'hallazgosClave' => $payload['hallazgosClave'],
+                'methodology' => $payload['methodology'],
+                'generalKpis' => $payload['generalKpis'],
+                'temporalKpis' => $payload['temporalKpis'],
+                'economicKpis' => $payload['economicKpis'],
+                'tables' => $payload['tables'],
+                'totalAtenciones' => $payload['totalAtenciones'],
             ])->render();
 
             $pdf = new \Mpdf\Mpdf([
@@ -2095,6 +2646,208 @@ class BillingUiController
             }
 
             return redirect($redirect)->with('error', 'No se pudo generar el PDF de KPI de particulares.');
+        }
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $rows
+     */
+    private function exportInformeParticularesExcel(array $summary, array $rows, array $filters): Response
+    {
+        try {
+            $payload = $this->buildInformeParticularesKpiExportPayload($summary, $filters);
+            $dateFrom = trim((string) ($filters['date_from'] ?? ''));
+            $dateTo = trim((string) ($filters['date_to'] ?? ''));
+            $suffix = date('Ymd_His');
+            if ($dateFrom !== '' && $dateTo !== '') {
+                $suffix = str_replace('-', '', $dateFrom) . '_' . str_replace('-', '', $dateTo);
+            }
+
+            $spreadsheet = new Spreadsheet();
+            $sheet = $spreadsheet->getActiveSheet();
+            $sheet->setTitle('Resumen KPI');
+            $row = 1;
+
+            $this->writeExcelMergedTitle($sheet, $row, 'Informe de Atenciones Particulares', 'H');
+            $row++;
+            $sheet->setCellValue("A{$row}", 'Generado:');
+            $sheet->setCellValue("B{$row}", (string) $payload['generatedAt']);
+            $sheet->setCellValue("D{$row}", 'Total atenciones:');
+            $sheet->setCellValueExplicit("E{$row}", (string) ($payload['totalAtenciones'] ?? 0), DataType::TYPE_STRING);
+            $sheet->getStyle("A{$row}:E{$row}")->getFont()->setBold(true);
+
+            $row += 2;
+            $row = $this->writeExcelSectionHeader($sheet, $row, 'Filtros aplicados', 'H');
+            $filterRows = [];
+            foreach ($payload['filterSummary'] as $filter) {
+                $filterRows[] = [(string) ($filter['label'] ?? ''), (string) ($filter['value'] ?? '')];
+            }
+            $row = $this->writeExcelTable($sheet, $row, ['Filtro', 'Valor'], $filterRows, 'Sin filtros específicos.', [24, 58]);
+
+            $row += 2;
+            $row = $this->writeExcelSectionHeader($sheet, $row, 'Hallazgos clave', 'H');
+            $hallazgoRows = array_map(static fn(string $item): array => [$item], array_values($payload['hallazgosClave']));
+            $row = $this->writeExcelTable($sheet, $row, ['Hallazgo'], $hallazgoRows, 'No hubo hallazgos destacados.', [92]);
+
+            $row += 2;
+            $row = $this->writeExcelSectionHeader($sheet, $row, 'Metodología', 'H');
+            $methodologyRows = array_map(static fn(string $item): array => [$item], array_values($payload['methodology']));
+            $row = $this->writeExcelTable($sheet, $row, ['Criterio'], $methodologyRows, 'Sin metodología documentada.', [92]);
+
+            $row += 2;
+            $row = $this->writeExcelSectionHeader($sheet, $row, 'KPI Generales', 'H');
+            $row = $this->writeExcelTable(
+                $sheet,
+                $row,
+                ['KPI', 'Valor', 'Detalle'],
+                $this->normalizeExcelRows(is_array($payload['generalKpis']) ? $payload['generalKpis'] : [], ['label', 'value', 'note']),
+                'Sin KPI generales.',
+                [28, 18, 50]
+            );
+
+            $row += 2;
+            $row = $this->writeExcelSectionHeader($sheet, $row, 'KPI Temporales', 'H');
+            $row = $this->writeExcelTable(
+                $sheet,
+                $row,
+                ['KPI', 'Valor', 'Detalle'],
+                $this->normalizeExcelRows(is_array($payload['temporalKpis']) ? $payload['temporalKpis'] : [], ['label', 'value', 'note']),
+                'Sin KPI temporales.',
+                [28, 18, 50]
+            );
+
+            $row += 2;
+            $row = $this->writeExcelSectionHeader($sheet, $row, 'KPI Económicos', 'H');
+            $row = $this->writeExcelTable(
+                $sheet,
+                $row,
+                ['KPI', 'Valor', 'Qué significa', 'Cómo se calcula'],
+                $this->normalizeExcelRows(is_array($payload['economicKpis']) ? $payload['economicKpis'] : [], ['label', 'value', 'meaning', 'formula']),
+                'Sin KPI económicos.',
+                [24, 16, 30, 32]
+            );
+
+            foreach (is_array($payload['tables']) ? $payload['tables'] : [] as $table) {
+                $title = trim((string) ($table['title'] ?? 'Tabla'));
+                $subtitle = trim((string) ($table['subtitle'] ?? ''));
+                $headers = array_values(array_map(static fn($value): string => (string) $value, is_array($table['columns'] ?? null) ? $table['columns'] : []));
+                $tableRows = [];
+                foreach (is_array($table['rows'] ?? null) ? $table['rows'] : [] as $tableRow) {
+                    $tableRows[] = array_map(static fn($value): string => (string) $value, is_array($tableRow) ? $tableRow : []);
+                }
+
+                $row += 2;
+                $row = $this->writeExcelSectionHeader($sheet, $row, $title, 'H');
+                if ($subtitle !== '') {
+                    $sheet->setCellValue("A{$row}", $subtitle);
+                    $sheet->mergeCells("A{$row}:H{$row}");
+                    $sheet->getStyle("A{$row}:H{$row}")->applyFromArray($this->excelNoticeStyle('EFF6FF', '1D4ED8'));
+                    $row++;
+                }
+
+                $row = $this->writeExcelTable(
+                    $sheet,
+                    $row,
+                    $headers,
+                    $tableRows,
+                    trim((string) ($table['empty_message'] ?? 'Sin datos.'))
+                );
+            }
+
+            $sheet->freezePane('A4');
+            foreach (['A' => 28, 'B' => 18, 'C' => 18, 'D' => 20, 'E' => 18, 'F' => 18, 'G' => 16, 'H' => 22] as $column => $width) {
+                $sheet->getColumnDimension($column)->setWidth($width);
+            }
+
+            $detailSheet = $spreadsheet->createSheet();
+            $detailSheet->setTitle('Detalle');
+            $headers = [
+                'Fecha', 'HC', 'Nombre', 'Empresa seguro', 'Afiliacion', 'Categoria cliente', 'Sede',
+                'Estado encuentro', 'Estado realizacion', 'Tipo atencion', 'Procedimiento proyectado', 'Doctor',
+                'Facturacion', 'Estado facturacion operativa', 'Monto estimado', 'Honorario real', 'Billing ID',
+                'Fecha facturacion', 'Numero factura', 'Factura ID', 'Formas pago', 'Cliente facturacion',
+                'Area facturacion', 'Referido prefactura por', 'Especificar referido prefactura',
+            ];
+
+            foreach ($headers as $index => $header) {
+                $column = $this->excelColumnByIndex($index);
+                $detailSheet->setCellValue("{$column}1", $header);
+            }
+            $lastDetailColumn = $this->excelColumnByIndex(count($headers) - 1);
+            $detailSheet->getStyle("A1:{$lastDetailColumn}1")->applyFromArray($this->excelTableHeaderStyle());
+            $detailSheet->setAutoFilter("A1:{$lastDetailColumn}1");
+
+            $detailRow = 1;
+            foreach ($rows as $item) {
+                $detailRow++;
+                $fechaRaw = trim((string) ($item['fecha'] ?? ''));
+                $fecha = $fechaRaw !== '' && strtotime($fechaRaw) !== false ? date('d/m/Y H:i', strtotime($fechaRaw)) : '';
+                $fechaFacturacionRaw = trim((string) ($item['fecha_facturacion'] ?? ''));
+                $fechaFacturacion = $fechaFacturacionRaw !== '' && strtotime($fechaFacturacionRaw) !== false ? date('d/m/Y H:i', strtotime($fechaFacturacionRaw)) : '';
+                $facturado = (bool) ($item['facturado'] ?? false);
+                $montoEstimado = (float) ($item['monto_por_cobrar_estimado'] ?? 0);
+                if ($montoEstimado <= 0) {
+                    $montoEstimado = (float) ($item['monto_perdida_estimada'] ?? 0);
+                }
+
+                $values = [
+                    $fecha,
+                    (string) ($item['hc_number'] ?? ''),
+                    trim((string) ($item['nombre_completo'] ?? '')),
+                    trim((string) ($item['empresa_seguro'] ?? '')),
+                    trim((string) ($item['afiliacion'] ?? '')),
+                    trim((string) ($item['categoria_cliente'] ?? '')),
+                    trim((string) ($item['sede'] ?? '')),
+                    trim((string) ($item['estado_encuentro'] ?? '')),
+                    trim((string) ($item['estado_realizacion'] ?? '')),
+                    trim((string) ($item['tipo_atencion'] ?? '')),
+                    trim((string) ($item['procedimiento_proyectado'] ?? '')),
+                    trim((string) ($item['doctor'] ?? '')),
+                    $facturado ? 'FACTURADO' : 'PENDIENTE',
+                    trim((string) ($item['estado_facturacion_operativa'] ?? '')),
+                    number_format($montoEstimado, 2, '.', ''),
+                    number_format((float) ($item['monto_honorario_real'] ?? $item['total_produccion'] ?? 0), 2, '.', ''),
+                    (string) ($item['billing_id'] ?? ''),
+                    $fechaFacturacion,
+                    trim((string) ($item['numero_factura'] ?? '')),
+                    trim((string) ($item['factura_id'] ?? '')),
+                    trim((string) ($item['formas_pago'] ?? '')),
+                    trim((string) ($item['cliente_facturacion'] ?? '')),
+                    trim((string) ($item['area_facturacion'] ?? '')),
+                    trim((string) ($item['referido_prefactura_por'] ?? '')),
+                    trim((string) ($item['especificar_referido_prefactura'] ?? '')),
+                ];
+
+                foreach ($values as $index => $value) {
+                    $column = $this->excelColumnByIndex($index);
+                    $detailSheet->setCellValueExplicit("{$column}{$detailRow}", $value, DataType::TYPE_STRING);
+                }
+            }
+
+            if ($detailRow > 1) {
+                $detailSheet->getStyle("A1:{$lastDetailColumn}{$detailRow}")->applyFromArray($this->excelTableBodyStyle());
+                $detailSheet->getStyle("A2:{$lastDetailColumn}{$detailRow}")->getAlignment()->setWrapText(true);
+            }
+            $detailSheet->freezePane('A2');
+
+            $writer = new Xlsx($spreadsheet);
+            $stream = fopen('php://temp', 'r+');
+            $writer->save($stream);
+            rewind($stream);
+            $content = stream_get_contents($stream) ?: '';
+            fclose($stream);
+            $spreadsheet->disconnectWorksheets();
+
+            return response($content, 200, [
+                'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'Content-Disposition' => 'attachment; filename="informe_particulares_' . $suffix . '.xlsx"',
+                'Content-Length' => (string) strlen($content),
+                'X-Content-Type-Options' => 'nosniff',
+            ]);
+        } catch (\Throwable $exception) {
+            Log::error('billing.particulares.export_excel.error', ['error' => $exception->getMessage()]);
+
+            return response('No se pudo generar el Excel de KPI de particulares.', 500);
         }
     }
 
@@ -2217,5 +2970,209 @@ class BillingUiController
             'Content-Type' => 'text/csv; charset=UTF-8',
             'Content-Disposition' => 'attachment; filename="' . $filename . '"',
         ]);
+    }
+
+    private function writeExcelMergedTitle(Worksheet $sheet, int $row, string $title, string $lastColumn = 'H'): void
+    {
+        $sheet->setCellValue("A{$row}", $title);
+        $sheet->mergeCells("A{$row}:{$lastColumn}{$row}");
+        $sheet->getStyle("A{$row}:{$lastColumn}{$row}")->applyFromArray([
+            'font' => [
+                'bold' => true,
+                'size' => 16,
+                'color' => ['rgb' => 'FFFFFF'],
+            ],
+            'fill' => [
+                'fillType' => Fill::FILL_SOLID,
+                'startColor' => ['rgb' => '0F766E'],
+            ],
+            'alignment' => [
+                'horizontal' => Alignment::HORIZONTAL_LEFT,
+                'vertical' => Alignment::VERTICAL_CENTER,
+            ],
+        ]);
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private function excelNoticeStyle(string $fillColor, string $textColor): array
+    {
+        return [
+            'font' => [
+                'italic' => true,
+                'color' => ['rgb' => $textColor],
+            ],
+            'fill' => [
+                'fillType' => Fill::FILL_SOLID,
+                'startColor' => ['rgb' => $fillColor],
+            ],
+            'borders' => [
+                'allBorders' => [
+                    'borderStyle' => Border::BORDER_THIN,
+                    'color' => ['rgb' => 'BFDBFE'],
+                ],
+            ],
+            'alignment' => [
+                'wrapText' => true,
+                'vertical' => Alignment::VERTICAL_TOP,
+            ],
+        ];
+    }
+
+    private function writeExcelSectionHeader(Worksheet $sheet, int $row, string $title, string $lastColumn = 'H'): int
+    {
+        $sheet->setCellValue("A{$row}", $title);
+        $sheet->mergeCells("A{$row}:{$lastColumn}{$row}");
+        $sheet->getStyle("A{$row}:{$lastColumn}{$row}")->applyFromArray([
+            'font' => [
+                'bold' => true,
+                'size' => 12,
+                'color' => ['rgb' => '0F172A'],
+            ],
+            'fill' => [
+                'fillType' => Fill::FILL_SOLID,
+                'startColor' => ['rgb' => 'E2E8F0'],
+            ],
+            'borders' => [
+                'allBorders' => [
+                    'borderStyle' => Border::BORDER_THIN,
+                    'color' => ['rgb' => 'CBD5E1'],
+                ],
+            ],
+        ]);
+
+        return $row + 1;
+    }
+
+    /**
+     * @param array<int,string> $headers
+     * @param array<int,array<int,string>> $rows
+     * @param array<int,int|float> $widths
+     */
+    private function writeExcelTable(
+        Worksheet $sheet,
+        int $row,
+        array $headers,
+        array $rows,
+        string $emptyMessage,
+        array $widths = []
+    ): int {
+        if ($headers === []) {
+            return $row;
+        }
+
+        $lastColumn = $this->excelColumnByIndex(count($headers) - 1);
+        foreach ($headers as $index => $header) {
+            $column = $this->excelColumnByIndex($index);
+            $sheet->setCellValue("{$column}{$row}", $header);
+            if (isset($widths[$index])) {
+                $sheet->getColumnDimension($column)->setWidth((float) $widths[$index]);
+            }
+        }
+        $sheet->getStyle("A{$row}:{$lastColumn}{$row}")->applyFromArray($this->excelTableHeaderStyle());
+        $bodyStart = $row + 1;
+
+        if ($rows === []) {
+            $sheet->setCellValue("A{$bodyStart}", $emptyMessage);
+            $sheet->mergeCells("A{$bodyStart}:{$lastColumn}{$bodyStart}");
+            $sheet->getStyle("A{$bodyStart}:{$lastColumn}{$bodyStart}")->applyFromArray($this->excelTableBodyStyle());
+            $sheet->getStyle("A{$bodyStart}:{$lastColumn}{$bodyStart}")->getFont()->setItalic(true)->getColor()->setRGB('64748B');
+            $sheet->getStyle("A{$bodyStart}:{$lastColumn}{$bodyStart}")->getAlignment()->setWrapText(true);
+
+            return $bodyStart;
+        }
+
+        $currentRow = $bodyStart;
+        foreach ($rows as $dataRow) {
+            foreach ($headers as $index => $_header) {
+                $column = $this->excelColumnByIndex($index);
+                $sheet->setCellValueExplicit("{$column}{$currentRow}", (string) ($dataRow[$index] ?? ''), DataType::TYPE_STRING);
+            }
+            $currentRow++;
+        }
+
+        $endRow = $currentRow - 1;
+        $sheet->getStyle("A{$bodyStart}:{$lastColumn}{$endRow}")->applyFromArray($this->excelTableBodyStyle());
+        $sheet->getStyle("A{$bodyStart}:{$lastColumn}{$endRow}")->getAlignment()->setWrapText(true);
+
+        return $endRow;
+    }
+
+    /**
+     * @param array<int,array<string,mixed>> $rows
+     * @param array<int,string> $keys
+     * @return array<int,array<int,string>>
+     */
+    private function normalizeExcelRows(array $rows, array $keys): array
+    {
+        $normalized = [];
+        foreach ($rows as $row) {
+            $normalizedRow = [];
+            foreach ($keys as $key) {
+                $normalizedRow[] = trim((string) ($row[$key] ?? ''));
+            }
+            $normalized[] = $normalizedRow;
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private function excelTableHeaderStyle(): array
+    {
+        return [
+            'font' => [
+                'bold' => true,
+                'color' => ['rgb' => '0F172A'],
+            ],
+            'fill' => [
+                'fillType' => Fill::FILL_SOLID,
+                'startColor' => ['rgb' => 'F1F5F9'],
+            ],
+            'borders' => [
+                'allBorders' => [
+                    'borderStyle' => Border::BORDER_THIN,
+                    'color' => ['rgb' => 'CBD5E1'],
+                ],
+            ],
+            'alignment' => [
+                'vertical' => Alignment::VERTICAL_CENTER,
+            ],
+        ];
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private function excelTableBodyStyle(): array
+    {
+        return [
+            'borders' => [
+                'allBorders' => [
+                    'borderStyle' => Border::BORDER_THIN,
+                    'color' => ['rgb' => 'E2E8F0'],
+                ],
+            ],
+            'alignment' => [
+                'vertical' => Alignment::VERTICAL_TOP,
+            ],
+        ];
+    }
+
+    private function excelColumnByIndex(int $index): string
+    {
+        $index = max(0, $index);
+        $column = '';
+
+        do {
+            $remainder = $index % 26;
+            $column = chr(65 + $remainder) . $column;
+            $index = intdiv($index, 26) - 1;
+        } while ($index >= 0);
+
+        return $column;
     }
 }

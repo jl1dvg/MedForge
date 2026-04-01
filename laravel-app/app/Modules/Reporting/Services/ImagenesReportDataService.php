@@ -1355,6 +1355,12 @@ class ImagenesReportDataService
             return 'paquimetria';
         }
         if (
+            str_contains($texto, '92100')
+            || (str_contains($texto, 'pio') && str_contains($texto, 'compens'))
+        ) {
+            return 'piocompensada';
+        }
+        if (
             str_contains($texto, 'oct')
             && (
                 str_contains($texto, 'cornea')
@@ -1655,6 +1661,13 @@ class ImagenesReportDataService
             return trim(implode("\n", $lines));
         }
 
+        if ($plantilla === 'piocompensada') {
+            $od = $this->buildPioCompensadaEyeBlock('OD', $payload);
+            $oi = $this->buildPioCompensadaEyeBlock('OI', $payload);
+
+            return trim(implode("\n\n", array_values(array_filter([$od, $oi], static fn(string $value): bool => $value !== ''))));
+        }
+
         if ($plantilla === 'octcornea') {
             $od = trim((string) ($payload['textOD'] ?? ''));
             $oi = trim((string) ($payload['textOI'] ?? ''));
@@ -1734,6 +1747,41 @@ class ImagenesReportDataService
             $lines[] = 'LECTURA: ' . $text;
         }
         $lines[] = 'CONCLUSIONES: CAMPO VISUAL FUERA DE LIMITES NORMALES';
+
+        return implode("\n", $lines);
+    }
+
+    private function buildPioCompensadaEyeBlock(string $eye, array $payload): string
+    {
+        $suffix = strtoupper($eye) === 'OI' ? 'OI' : 'OD';
+        $paquimetria = trim((string) ($payload['paquimetria' . $suffix] ?? ''));
+        $pioMedida = trim((string) ($payload['pioMedida' . $suffix] ?? ''));
+        $compensacion = trim((string) ($payload['compensacion' . $suffix] ?? ''));
+        $ajuste = trim((string) ($payload['ajuste' . $suffix] ?? ''));
+        $pioCompensada = trim((string) ($payload['pioCompensada' . $suffix] ?? ''));
+
+        if ($paquimetria === '' && $pioMedida === '' && $compensacion === '' && $ajuste === '' && $pioCompensada === '') {
+            return '';
+        }
+
+        $label = $suffix === 'OI' ? 'Ojo Izquierdo' : 'Ojo Derecho';
+        $lines = ['**' . $label . ':**'];
+
+        if ($paquimetria !== '') {
+            $lines[] = 'Paquimetria central: ' . $paquimetria . ' micras';
+        }
+        if ($pioMedida !== '') {
+            $lines[] = 'PIO medida: ' . $pioMedida . ' mmHg';
+        }
+        if ($compensacion !== '') {
+            $lines[] = 'Compensacion estimada: ' . $compensacion . ' mmHg';
+        }
+        if ($ajuste !== '') {
+            $lines[] = 'Ajuste sugerido: ' . $ajuste;
+        }
+        if ($pioCompensada !== '') {
+            $lines[] = 'PIO compensada: ' . $pioCompensada . ' mmHg';
+        }
 
         return implode("\n", $lines);
     }

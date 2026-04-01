@@ -690,6 +690,7 @@ function postToMedforgeViaBackground(endpoint, body) {
             cornea: 'TOPOGRAFIA CORNEAL',
             octcornea: '281032 - OCT DE CORNEA Y ESCLERA (AO)',
             paquimetria: '281229 - PAQUIMETRIA CORNEAL (AO)',
+            piocompensada: '92100 - PIO COMPENSADA (AO)',
             biometria: 'BIOMETRIA OCULAR',
             microespecular: '281197 - MICROSCOPIA ESPECULAR (AO)'
         };
@@ -709,6 +710,7 @@ function postToMedforgeViaBackground(endpoint, body) {
             cornea: 'cornea',
             octcornea: 'octcornea',
             paquimetria: 'paquimetria',
+            piocompensada: 'piocompensada',
             biometria: 'biometria',
             microespecular: 'microespecular'
         };
@@ -1196,6 +1198,37 @@ OI: ${OI}`;
                     lines.push('OI:');
                     lines.push('Espesor corneal central: ' + oi + ' micras');
                 }
+
+                recomendaciones.value = lines.join('\n');
+                finalizarFlujoExamen(item, result);
+            });
+        } else if (item.id === 'piocompensada') {
+            mostrarPopup('js/piocompensada/piocompensada.html').then((result) => {
+                if (!result) return;
+                const recomendaciones = document.getElementById('ordenexamen-0-recomendaciones');
+                if (!recomendaciones) return;
+
+                const payload = (result.payload && typeof result.payload === 'object') ? result.payload : {};
+                const lines = ['SE REALIZA CALCULO DE PIO COMPENSADA.'];
+
+                const appendEye = function (prefix, label) {
+                    const paq = (payload['paquimetria' + prefix] || '').toString().trim();
+                    const pio = (payload['pioMedida' + prefix] || '').toString().trim();
+                    const comp = (payload['compensacion' + prefix] || '').toString().trim();
+                    const ajuste = (payload['ajuste' + prefix] || '').toString().trim();
+                    const corregida = (payload['pioCompensada' + prefix] || '').toString().trim();
+                    if (!paq && !pio && !comp && !corregida) return;
+                    lines.push('');
+                    lines.push(label + ':');
+                    if (paq) lines.push('Paquimetria central: ' + paq + ' micras');
+                    if (pio) lines.push('PIO medida: ' + pio + ' mmHg');
+                    if (comp) lines.push('Compensacion estimada: ' + comp + ' mmHg');
+                    if (ajuste) lines.push('Ajuste sugerido: ' + ajuste);
+                    if (corregida) lines.push('PIO compensada: ' + corregida + ' mmHg');
+                };
+
+                appendEye('OD', 'OD');
+                appendEye('OI', 'OI');
 
                 recomendaciones.value = lines.join('\n');
                 finalizarFlujoExamen(item, result);

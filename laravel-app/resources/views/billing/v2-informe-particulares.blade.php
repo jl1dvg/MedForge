@@ -8,6 +8,7 @@
         'total' => 0,
         'total_consultas' => 0,
         'total_protocolos' => 0,
+        'objetivo_1' => ['segments' => [], 'alerts' => []],
         'economico' => [
             'total_produccion' => 0,
             'total_honorario_real' => 0,
@@ -103,6 +104,21 @@
     $exportParticularesPdfQuery = $exportParticularesQuery;
     $exportParticularesPdfQuery['export'] = 'pdf';
     $exportParticularesPdfUrl = '/v2/informes/particulares?' . http_build_query($exportParticularesPdfQuery);
+    $referidoStrategicQuery = array_filter([
+        'date_from' => $dateFromSeleccionado,
+        'date_to' => $dateToSeleccionado,
+        'empresa_seguro' => $empresaSeguroSeleccionada,
+        'categoria_cliente' => $categoriaClienteSeleccionada,
+        'tipo' => $tipoSeleccionado,
+        'sede' => $sedeSeleccionada,
+        'afiliacion' => $afiliacionSeleccionada,
+        'procedimiento' => $procedimientoSeleccionado,
+    ], static fn($value): bool => trim((string) $value) !== '');
+    $referidoStrategicUrl = static function (string $category) use ($referidoStrategicQuery): string {
+        $query = $referidoStrategicQuery;
+        $query['categoria_referido'] = strtoupper(trim($category));
+        return '/v2/informes/particulares/referidos?' . http_build_query($query);
+    };
 
     $procedimientoLegible = static function (string $texto): string {
         $texto = trim($texto);
@@ -498,6 +514,27 @@
             $topProcedimientoCount = (int) ($topProcedimientoLider['cantidad'] ?? 0);
             $topProcedimientoPct = (float) ($topProcedimientoLider['porcentaje'] ?? 0);
 
+            $objetivoUnoSummary = is_array($summary['objetivo_1'] ?? null) ? $summary['objetivo_1'] : ['segments' => [], 'alerts' => []];
+            $objetivoUnoSegments = is_array($objetivoUnoSummary['segments'] ?? null) ? $objetivoUnoSummary['segments'] : [];
+            $objetivoUnoAlerts = is_array($objetivoUnoSummary['alerts'] ?? null) ? $objetivoUnoSummary['alerts'] : [];
+            $objetivoUnoParticular = null;
+            $objetivoUnoPrivado = null;
+            foreach ($objetivoUnoSegments as $segmentItem) {
+                $segmentKey = strtolower(trim((string) ($segmentItem['key'] ?? '')));
+                if ($segmentKey === 'particular') {
+                    $objetivoUnoParticular = $segmentItem;
+                } elseif ($segmentKey === 'privado') {
+                    $objetivoUnoPrivado = $segmentItem;
+                }
+            }
+            $objetivoUnoSignalClass = static function (?string $signal): string {
+                return match (strtoupper(trim((string) $signal))) {
+                    'CRECIENDO' => 'success',
+                    'EN RETROCESO' => 'danger',
+                    default => 'warning',
+                };
+            };
+
             $hallazgosClave = [];
             if ($operativoEvaluadas > 0) {
                 $hallazgosClave[] = sprintf(
@@ -592,6 +629,151 @@
                 </div>
             </div>
         </div>
+
+        @if($objetivoUnoParticular !== null || $objetivoUnoPrivado !== null)
+            <div class="row">
+                <div class="col-12">
+                    <div class="box bg-lightest">
+                        <div class="box-body py-15">
+                            <div class="d-flex flex-wrap justify-content-between align-items-center gap-10">
+                                <div>
+                                    <h5 class="mb-0">Objetivo 1: crecimiento de Particular y Privado</h5>
+                                    <small class="text-muted">Señales ejecutivas con lo que ya podemos medir hoy: facturación, atenciones, ticket y promedio mensual por segmento.</small>
+                                </div>
+                                <div class="d-flex flex-wrap gap-2">
+                                    @if($objetivoUnoParticular !== null)
+                                        @php $particularSignalClass = $objetivoUnoSignalClass((string) ($objetivoUnoParticular['signal'] ?? '')); @endphp
+                                        <span class="badge bg-{{ $particularSignalClass }}-light text-{{ $particularSignalClass }}">
+                                            PARTICULAR: {{ $objetivoUnoParticular['signal'] ?? 'ESTABLE' }}
+                                        </span>
+                                    @endif
+                                    @if($objetivoUnoPrivado !== null)
+                                        @php $privadoSignalClass = $objetivoUnoSignalClass((string) ($objetivoUnoPrivado['signal'] ?? '')); @endphp
+                                        <span class="badge bg-{{ $privadoSignalClass }}-light text-{{ $privadoSignalClass }}">
+                                            PRIVADO: {{ $objetivoUnoPrivado['signal'] ?? 'ESTABLE' }}
+                                        </span>
+                                    @endif
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                @foreach($objetivoUnoSegments as $segment)
+                    @php
+                        $segmentSignalClass = $objetivoUnoSignalClass((string) ($segment['signal'] ?? ''));
+                        $segmentLabel = (string) ($segment['label'] ?? 'SEGMENTO');
+                        $segmentCurrentMonthLabel = (string) ($segment['current_month_label'] ?? 'N/D');
+                        $segmentPreviousMonthLabel = (string) ($segment['previous_month_label'] ?? 'N/D');
+                        $segmentLastYearMonthLabel = (string) ($segment['last_year_month_label'] ?? 'N/D');
+                        $segmentFactVsPrev = is_numeric($segment['facturacion_vs_previous_pct'] ?? null) ? (float) $segment['facturacion_vs_previous_pct'] : null;
+                        $segmentFactVsYear = is_numeric($segment['facturacion_vs_last_year_pct'] ?? null) ? (float) $segment['facturacion_vs_last_year_pct'] : null;
+                        $segmentTicketVsPrev = is_numeric($segment['ticket_vs_previous_pct'] ?? null) ? (float) $segment['ticket_vs_previous_pct'] : null;
+                    @endphp
+                    <div class="col-xl-6 col-12">
+                        <div class="box">
+                            <div class="box-header with-border d-flex justify-content-between align-items-center">
+                                <h5 class="box-title mb-0">{{ $segmentLabel }}</h5>
+                                <span class="badge bg-{{ $segmentSignalClass }}-light text-{{ $segmentSignalClass }}">{{ $segment['signal'] ?? 'ESTABLE' }}</span>
+                            </div>
+                            <div class="box-body">
+                                <div class="row">
+                                    <div class="col-md-4 col-6">
+                                        <div class="text-center mb-15">
+                                            <h6 class="mb-5">Facturación total</h6>
+                                            <div class="fs-24 fw-700 text-success">${{ number_format((float) ($segment['honorario_total'] ?? 0), 2) }}</div>
+                                            <small class="text-muted">Prom. mensual ${{ number_format((float) ($segment['monthly_avg_honorario'] ?? 0), 2) }}</small>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4 col-6">
+                                        <div class="text-center mb-15">
+                                            <h6 class="mb-5">Atenciones</h6>
+                                            <div class="fs-24 fw-700 text-primary">{{ number_format((float) ($segment['atenciones_total'] ?? 0), 0) }}</div>
+                                            <small class="text-muted">Prom. mensual {{ number_format((float) ($segment['monthly_avg_atenciones'] ?? 0), 1) }}</small>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4 col-12">
+                                        <div class="text-center mb-15">
+                                            <h6 class="mb-5">Ticket promedio</h6>
+                                            <div class="fs-24 fw-700 text-dark">${{ number_format((float) ($segment['ticket_promedio_total'] ?? 0), 2) }}</div>
+                                            <small class="text-muted">{{ number_format((float) ($segment['pacientes_unicos_total'] ?? 0), 0) }} pacientes únicos</small>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-striped mb-0">
+                                        <thead class="table-light">
+                                        <tr>
+                                            <th>KR operativo</th>
+                                            <th class="text-end">Actual</th>
+                                            <th class="text-end">Anterior</th>
+                                            <th class="text-end">Δ</th>
+                                        </tr>
+                                        </thead>
+                                        <tbody>
+                                        <tr>
+                                            <td>Facturación mensual</td>
+                                            <td class="text-end">{{ $segmentCurrentMonthLabel }}: ${{ number_format((float) ($segment['current_month_honorario'] ?? 0), 2) }}</td>
+                                            <td class="text-end">{{ $segmentPreviousMonthLabel }}: ${{ number_format((float) ($segment['previous_month_honorario'] ?? 0), 2) }}</td>
+                                            <td class="text-end {{ $segmentFactVsPrev !== null && $segmentFactVsPrev < 0 ? 'text-danger' : 'text-success' }}">
+                                                {{ $segmentFactVsPrev !== null ? number_format($segmentFactVsPrev, 2) . '%' : 'N/D' }}
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td>Atenciones mensuales</td>
+                                            <td class="text-end">{{ $segmentCurrentMonthLabel }}: {{ number_format((float) ($segment['current_month_atenciones'] ?? 0), 0) }}</td>
+                                            <td class="text-end">{{ $segmentPreviousMonthLabel }}: {{ number_format((float) ($segment['previous_month_atenciones'] ?? 0), 0) }}</td>
+                                            <td class="text-end {{ is_numeric($segment['atenciones_vs_previous_pct'] ?? null) && (float) $segment['atenciones_vs_previous_pct'] < 0 ? 'text-danger' : 'text-success' }}">
+                                                {{ is_numeric($segment['atenciones_vs_previous_pct'] ?? null) ? number_format((float) $segment['atenciones_vs_previous_pct'], 2) . '%' : 'N/D' }}
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td>Ticket mensual</td>
+                                            <td class="text-end">{{ $segmentCurrentMonthLabel }}: ${{ number_format((float) ($segment['current_month_ticket'] ?? 0), 2) }}</td>
+                                            <td class="text-end">{{ $segmentPreviousMonthLabel }}: ${{ number_format((float) ($segment['previous_month_ticket'] ?? 0), 2) }}</td>
+                                            <td class="text-end {{ $segmentTicketVsPrev !== null && $segmentTicketVsPrev < 0 ? 'text-danger' : 'text-success' }}">
+                                                {{ $segmentTicketVsPrev !== null ? number_format($segmentTicketVsPrev, 2) . '%' : 'N/D' }}
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td>Facturación vs mismo mes año anterior</td>
+                                            <td class="text-end">{{ $segmentCurrentMonthLabel }}: ${{ number_format((float) ($segment['current_month_honorario'] ?? 0), 2) }}</td>
+                                            <td class="text-end">{{ $segmentLastYearMonthLabel }}: ${{ number_format((float) ($segment['last_year_month_honorario'] ?? 0), 2) }}</td>
+                                            <td class="text-end {{ $segmentFactVsYear !== null && $segmentFactVsYear < 0 ? 'text-danger' : 'text-success' }}">
+                                                {{ $segmentFactVsYear !== null ? number_format($segmentFactVsYear, 2) . '%' : 'N/D' }}
+                                            </td>
+                                        </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                @endforeach
+            </div>
+
+            @if(!empty($objetivoUnoAlerts))
+                <div class="row">
+                    <div class="col-12">
+                        <div class="box">
+                            <div class="box-header with-border">
+                                <h5 class="box-title mb-0">Alertas automáticas del Objetivo 1</h5>
+                            </div>
+                            <div class="box-body">
+                                <ul class="mb-0 ps-20">
+                                    @foreach($objetivoUnoAlerts as $alerta)
+                                        <li class="mb-10">{{ $alerta }}</li>
+                                    @endforeach
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            @endif
+        @endif
 
         @if($cirugiasTotal > 0)
             <div class="row">
@@ -1511,7 +1693,15 @@
                                         }
                                     @endphp
                                     <tr>
-                                        <td>{{ strtoupper($valor) }}</td>
+                                        <td>
+                                            @if ($valor !== 'SIN DATO')
+                                                <a href="{{ $referidoStrategicUrl($valor) }}" class="text-primary fw-600">
+                                                    {{ strtoupper($valor) }}
+                                                </a>
+                                            @else
+                                                {{ strtoupper($valor) }}
+                                            @endif
+                                        </td>
                                         <td class="text-end">{{ (int) ($item['cantidad'] ?? 0) }}</td>
                                         <td class="text-end">{{ number_format((float) ($item['porcentaje'] ?? 0), 2) }}
                                             %
@@ -1568,7 +1758,15 @@
                                         }
                                     @endphp
                                     <tr>
-                                        <td>{{ strtoupper($valor) }}</td>
+                                        <td>
+                                            @if ($valor !== 'SIN DATO')
+                                                <a href="{{ $referidoStrategicUrl($valor) }}" class="text-primary fw-600">
+                                                    {{ strtoupper($valor) }}
+                                                </a>
+                                            @else
+                                                {{ strtoupper($valor) }}
+                                            @endif
+                                        </td>
                                         <td class="text-end">{{ (int) ($item['cantidad'] ?? 0) }}</td>
                                         <td class="text-end">{{ number_format((float) ($item['porcentaje'] ?? 0), 2) }}
                                             %
@@ -1625,7 +1823,15 @@
                                         }
                                     @endphp
                                     <tr>
-                                        <td>{{ strtoupper($valor) }}</td>
+                                        <td>
+                                            @if ($valor !== 'SIN DATO')
+                                                <a href="{{ $referidoStrategicUrl($valor) }}" class="text-primary fw-600">
+                                                    {{ strtoupper($valor) }}
+                                                </a>
+                                            @else
+                                                {{ strtoupper($valor) }}
+                                            @endif
+                                        </td>
                                         <td class="text-end">{{ (int) ($item['cantidad'] ?? 0) }}</td>
                                         <td class="text-end">{{ number_format((float) ($item['porcentaje'] ?? 0), 2) }}
                                             %
@@ -2892,7 +3098,7 @@
 
                 buildVerticalChart(
                     '#referidoPrefacturaChart',
-                    'Categorías madre (con valor: ' + referidoWithValue + ', sin valor: ' + referidoWithoutValue + ')',
+                    'Atenciones (con valor: ' + referidoWithValue + ', sin valor: ' + referidoWithoutValue + ')',
                     referidoValues,
                     '#3b82f6',
                     {
@@ -2903,7 +3109,7 @@
 
                 buildVerticalChart(
                     '#referidoPrefacturaPacientesUnicosChart',
-                    'Categorías madre por pacientes únicos (con valor: ' + referidoUniquePatientsWithValue + ', sin valor: ' + referidoUniquePatientsWithoutValue + ')',
+                    'Pacientes únicos (con valor: ' + referidoUniquePatientsWithValue + ', sin valor: ' + referidoUniquePatientsWithoutValue + ')',
                     referidoUniquePatientValues,
                     '#1d4ed8',
                     {
@@ -2914,7 +3120,7 @@
 
                 buildVerticalChart(
                     '#referidoPrefacturaNuevoPacienteChart',
-                    'Categorías madre en consulta oftalmológica nuevo paciente (con valor: ' + referidoNuevoPacienteWithValue + ', sin valor: ' + referidoNuevoPacienteWithoutValue + ')',
+                    'Nuevos pacientes (con valor: ' + referidoNuevoPacienteWithValue + ', sin valor: ' + referidoNuevoPacienteWithoutValue + ')',
                     referidoNuevoPacienteValues,
                     '#2563eb',
                     {

@@ -2414,6 +2414,12 @@ class ExamenesParityController
         if (str_contains($texto, '281229') || str_contains($texto, 'paquimetr')) {
             return 'paquimetria';
         }
+        if (
+            str_contains($texto, '92100')
+            || (str_contains($texto, 'pio') && str_contains($texto, 'compens'))
+        ) {
+            return 'piocompensada';
+        }
         if (str_contains($texto, 'oct') && (str_contains($texto, 'cornea') || str_contains($texto, 'corneal') || str_contains($texto, 'esclera'))) {
             return 'octcornea';
         }

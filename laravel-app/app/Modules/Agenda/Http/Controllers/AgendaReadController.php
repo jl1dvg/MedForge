@@ -2,6 +2,7 @@
 
 namespace App\Modules\Agenda\Http\Controllers;
 
+use App\Modules\Shared\Support\AfiliacionDimensionService;
 use App\Modules\Shared\Support\LegacyCurrentUser;
 use App\Modules\Shared\Support\LegacySessionAuth;
 use Illuminate\Contracts\View\View;
@@ -114,6 +115,9 @@ class AgendaReadController
      *     doctor:string,
      *     estado:string,
      *     sede:string,
+     *     tipo_afiliacion:string,
+     *     empresa_afiliacion:string,
+     *     afiliacion:string,
      *     solo_con_visita:bool
      * }
      */
@@ -138,6 +142,9 @@ class AgendaReadController
             'doctor' => trim((string) $request->query('doctor', '')),
             'estado' => trim((string) $request->query('estado', '')),
             'sede' => trim((string) $request->query('sede', '')),
+            'tipo_afiliacion' => trim((string) $request->query('tipo_afiliacion', '')),
+            'empresa_afiliacion' => trim((string) $request->query('empresa_afiliacion', '')),
+            'afiliacion' => trim((string) $request->query('afiliacion', '')),
             'solo_con_visita' => (string) $request->query('solo_con_visita', '0') !== '0',
         ];
     }
@@ -149,6 +156,9 @@ class AgendaReadController
      *     doctor:string,
      *     estado:string,
      *     sede:string,
+     *     tipo_afiliacion:string,
+     *     empresa_afiliacion:string,
+     *     afiliacion:string,
      *     solo_con_visita:bool
      * } $filters
      * @return array{data:array<int,object>,meta:array<string,mixed>}
@@ -156,6 +166,8 @@ class AgendaReadController
     private function buildAgendaPayload(array $filters): array
     {
         $doctorCatalog = $this->buildDoctorCatalog();
+        $afiliacionDimensions = new AfiliacionDimensionService(DB::connection()->getPdo());
+        $afiliacionContext = $afiliacionDimensions->buildContext("COALESCE(NULLIF(TRIM(pp.afiliacion), ''), '')", 'aca');
 
         $sql = "SELECT
                     pp.id, pp.form_id, pp.hc_number,
@@ -163,6 +175,12 @@ class AgendaReadController
                     pp.procedimiento_proyectado AS procedimiento,
                     pp.doctor, pp.fecha, pp.hora, pp.estado_agenda,
                     pp.sede_departamento, pp.id_sede, pp.afiliacion,
+                    COALESCE(NULLIF(TRIM(pp.sede_departamento), ''), NULLIF(TRIM(pp.id_sede), ''), '') AS sede,
+                    {$afiliacionContext['categoria_expr']} AS tipo_afiliacion,
+                    {$afiliacionContext['empresa_key_expr']} AS empresa_afiliacion_key,
+                    {$afiliacionContext['empresa_label_expr']} AS empresa_afiliacion,
+                    {$afiliacionContext['seguro_key_expr']} AS afiliacion_key,
+                    {$afiliacionContext['seguro_label_expr']} AS afiliacion_label,
                     CASE
                         WHEN EXISTS (
                             SELECT 1
@@ -177,6 +195,7 @@ class AgendaReadController
                 FROM procedimiento_proyectado pp
                 LEFT JOIN patient_data pd ON pd.hc_number = pp.hc_number
                 LEFT JOIN visitas v ON v.id = pp.visita_id
+                {$afiliacionContext['join']}
                 WHERE 1=1";
         $bind = [];
 
@@ -204,9 +223,20 @@ class AgendaReadController
             $bind[] = $filters['estado'];
         }
         if ($filters['sede'] !== '') {
-            $sql .= " AND (pp.id_sede = ? OR pp.sede_departamento = ?)";
+            $sql .= " AND COALESCE(NULLIF(TRIM(pp.sede_departamento), ''), NULLIF(TRIM(pp.id_sede), ''), '') = ?";
             $bind[] = $filters['sede'];
-            $bind[] = $filters['sede'];
+        }
+        if ($filters['tipo_afiliacion'] !== '') {
+            $sql .= " AND {$afiliacionContext['categoria_expr']} = ?";
+            $bind[] = $afiliacionDimensions->normalizeCategoriaFilter($filters['tipo_afiliacion']);
+        }
+        if ($filters['empresa_afiliacion'] !== '') {
+            $sql .= " AND {$afiliacionContext['empresa_key_expr']} = ?";
+            $bind[] = $afiliacionDimensions->normalizeEmpresaFilter($filters['empresa_afiliacion']);
+        }
+        if ($filters['afiliacion'] !== '') {
+            $sql .= " AND {$afiliacionContext['seguro_key_expr']} = ?";
+            $bind[] = $afiliacionDimensions->normalizeSeguroFilter($filters['afiliacion']);
         }
 
         $sql .= " ORDER BY fecha_agenda ASC, pp.hora ASC, pp.fecha ASC, v.hora_llegada ASC, pp.form_id ASC LIMIT 1000";
@@ -214,6 +244,12 @@ class AgendaReadController
         $rows = DB::select($sql, $bind);
         $rows = $this->decorateAgendaRows($rows, $doctorCatalog);
         $estados = DB::select("SELECT DISTINCT estado_agenda FROM procedimiento_proyectado WHERE estado_agenda IS NOT NULL AND estado_agenda != '' ORDER BY estado_agenda");
+        $sedes = DB::select(
+            "SELECT DISTINCT COALESCE(NULLIF(TRIM(sede_departamento), ''), NULLIF(TRIM(id_sede), ''), '') AS sede
+             FROM procedimiento_proyectado
+             WHERE COALESCE(NULLIF(TRIM(sede_departamento), ''), NULLIF(TRIM(id_sede), ''), '') != ''
+             ORDER BY sede ASC"
+        );
 
         return [
             'data' => $rows,
@@ -225,10 +261,17 @@ class AgendaReadController
                     'doctor' => $filters['doctor'] !== '' ? $filters['doctor'] : null,
                     'estado' => $filters['estado'] !== '' ? $filters['estado'] : null,
                     'sede' => $filters['sede'] !== '' ? $filters['sede'] : null,
+                    'tipo_afiliacion' => $filters['tipo_afiliacion'] !== '' ? $afiliacionDimensions->normalizeCategoriaFilter($filters['tipo_afiliacion']) : null,
+                    'empresa_afiliacion' => $filters['empresa_afiliacion'] !== '' ? $afiliacionDimensions->normalizeEmpresaFilter($filters['empresa_afiliacion']) : null,
+                    'afiliacion' => $filters['afiliacion'] !== '' ? $afiliacionDimensions->normalizeSeguroFilter($filters['afiliacion']) : null,
                     'solo_con_visita' => $filters['solo_con_visita'],
                 ],
                 'estados_disponibles' => array_map(fn ($r) => (string) ($r->estado_agenda ?? ''), $estados),
+                'sedes_disponibles' => array_map(fn ($r) => ['value' => (string) ($r->sede ?? ''), 'label' => (string) ($r->sede ?? '')], $sedes),
                 'doctores_disponibles' => $doctorCatalog['options'],
+                'tipo_afiliacion_opciones' => $afiliacionDimensions->getCategoriaOptions('Todos los tipos'),
+                'empresa_afiliacion_opciones' => $afiliacionDimensions->getEmpresaOptions('Todas las empresas'),
+                'afiliacion_opciones' => $afiliacionDimensions->getSeguroOptions('Todas las afiliaciones', (string) ($filters['empresa_afiliacion'] ?? '')),
             ],
         ];
     }
@@ -240,6 +283,9 @@ class AgendaReadController
      *     doctor:string,
      *     estado:string,
      *     sede:string,
+     *     tipo_afiliacion:string,
+     *     empresa_afiliacion:string,
+     *     afiliacion:string,
      *     solo_con_visita:bool
      * } $filters
      * @return array<string,mixed>
@@ -254,10 +300,17 @@ class AgendaReadController
                 'doctor' => $filters['doctor'] !== '' ? $filters['doctor'] : null,
                 'estado' => $filters['estado'] !== '' ? $filters['estado'] : null,
                 'sede' => $filters['sede'] !== '' ? $filters['sede'] : null,
+                'tipo_afiliacion' => $filters['tipo_afiliacion'] !== '' ? $filters['tipo_afiliacion'] : null,
+                'empresa_afiliacion' => $filters['empresa_afiliacion'] !== '' ? $filters['empresa_afiliacion'] : null,
+                'afiliacion' => $filters['afiliacion'] !== '' ? $filters['afiliacion'] : null,
                 'solo_con_visita' => $filters['solo_con_visita'],
             ],
             'estados_disponibles' => [],
+            'sedes_disponibles' => [],
             'doctores_disponibles' => [],
+            'tipo_afiliacion_opciones' => [],
+            'empresa_afiliacion_opciones' => [],
+            'afiliacion_opciones' => [],
         ];
     }
 
