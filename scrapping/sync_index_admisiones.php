@@ -14,37 +14,6 @@ function envValue(string $key): ?string
     return $value === '' ? null : $value;
 }
 
-function loadLaravelAppEnvFallback(): void
-{
-    static $loaded = false;
-    if ($loaded) {
-        return;
-    }
-    $loaded = true;
-
-    if (envValue('SIGCENTER_DB_USERNAME') !== null) {
-        return;
-    }
-
-    $laravelEnvDir = dirname(__DIR__) . '/laravel-app';
-    $laravelEnvFile = $laravelEnvDir . '/.env';
-
-    if (!is_file($laravelEnvFile) || !class_exists(\Dotenv\Dotenv::class)) {
-        return;
-    }
-
-    try {
-        $dotenv = \Dotenv\Dotenv::createImmutable($laravelEnvDir);
-        if (method_exists($dotenv, 'safeLoad')) {
-            $dotenv->safeLoad();
-        } else {
-            $dotenv->load();
-        }
-    } catch (Throwable $e) {
-        // Si el fallback falla, dejamos que la validación normal reporte el faltante.
-    }
-}
-
 function parseArgs(array $argv): array
 {
     $options = getopt('', ['start:', 'end:', 'api-url::', 'quiet']);
@@ -168,174 +137,139 @@ function splitGivenNames(?string $nombres): array
     ];
 }
 
-function createSigcenterPdo(): PDO
+function normalizeFechaGrupo(?string $value): string
 {
-    loadLaravelAppEnvFallback();
-
-    $host = envValue('SIGCENTER_DB_HOST') ?? '127.0.0.1';
-    $port = envValue('SIGCENTER_DB_PORT') ?? '3306';
-    $database = envValue('SIGCENTER_DB_DATABASE') ?? 'inmicrocsa';
-    $username = envValue('SIGCENTER_DB_USERNAME') ?? '';
-    $password = envValue('SIGCENTER_DB_PASSWORD') ?? '';
-    $charset = envValue('SIGCENTER_DB_CHARSET') ?? 'utf8mb4';
-    $socket = envValue('SIGCENTER_DB_SOCKET') ?? '';
-
-    if ($username === '') {
-        throw new RuntimeException('SIGCENTER_DB_USERNAME no configurado.');
+    $value = normalizeWhitespace($value);
+    if ($value === '') {
+        return '';
     }
 
-    $dsn = $socket !== ''
-        ? sprintf('mysql:unix_socket=%s;dbname=%s;charset=%s', $socket, $database, $charset)
-        : sprintf('mysql:host=%s;port=%s;dbname=%s;charset=%s', $host, $port, $database, $charset);
+    $date = DateTimeImmutable::createFromFormat('d-m-Y', $value);
+    if (!$date instanceof DateTimeImmutable) {
+        return '';
+    }
 
-    $pdo = new PDO($dsn, $username, $password, [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-        PDO::ATTR_EMULATE_PREPARES => false,
-    ]);
-
-    return $pdo;
+    return $date->format('Y-m-d');
 }
 
-function fetchIndexAdmisionesRows(PDO $pdo, string $startDate, string $endDate): array
+function extractJsonObject(string $output): array
 {
-    $sql = <<<'SQL'
-SELECT
-    CAST(dsp.id AS CHAR) AS pedido_id,
-    DATE_FORMAT(COALESCE(ad.FECHA_INICIO, dsp.fecha_registro), '%d-%m-%Y') AS fecha_grupo,
-    COALESCE(ad.FECHA_INICIO, dsp.fecha_registro) AS fecha_evento,
+    $trimmed = trim($output);
+    if ($trimmed === '') {
+        throw new RuntimeException('El extractor Python no devolvió salida.');
+    }
 
-    TRIM(COALESCE(p.numero_historia_clinica, '')) AS hc_number,
-    TRIM(COALESCE(oe.codigo_pedido, '')) AS codigo_examen,
+    $decoded = json_decode($trimmed, true);
+    if (is_array($decoded)) {
+        return $decoded;
+    }
 
-    TRIM(COALESCE(p.APELLIDOS, '')) AS apellidos,
-    TRIM(COALESCE(p.NOMBRES, '')) AS nombres,
-    TRIM(CONCAT_WS(' ', p.APELLIDOS, p.NOMBRES)) AS paciente_full,
-    TRIM(COALESCE(p.EMAIL, '')) AS email,
-    p.FECHA_NAC AS fecha_nac,
-    TRIM(COALESCE(p.SEXO, '')) AS sexo,
-    TRIM(COALESCE(ca.nombre, '')) AS ciudad,
-    TRIM(COALESCE(af.NOMBRE, '')) AS afiliacion,
-    TRIM(COALESCE(p.TELEFONO, '')) AS telefono,
+    $startPos = strrpos($trimmed, "\n{");
+    if ($startPos !== false) {
+        $candidate = trim(substr($trimmed, $startPos + 1));
+        $decoded = json_decode($candidate, true);
+        if (is_array($decoded)) {
+            return $decoded;
+        }
+    }
 
-    TRIM(CONCAT_WS(
-        '',
-        tp.NOMBRE,
-        ' - ',
-        prd.codigo,
-        ' - ',
-        proc.NOMBRE,
-        CASE WHEN ojo.NOMBRE IS NOT NULL THEN CONCAT(' - ', ojo.NOMBRE) ELSE '' END
-    )) AS procedimiento,
+    throw new RuntimeException('No se pudo parsear el JSON devuelto por el extractor Python.');
+}
 
-    TRIM(CONCAT_WS(' ', trab.APELLIDOS, trab.NOMBRES)) AS doctor_agenda,
-    TRIM(COALESCE(dptoAgenda.NOMBRE, '')) AS agenda_dpto,
+function runPythonExtractor(string $startDate, string $endDate): array
+{
+    $scriptPath = __DIR__ . '/scrape_index_admisiones.py';
+    if (!is_file($scriptPath)) {
+        throw new RuntimeException('No se encontró scrape_index_admisiones.py');
+    }
 
-    CASE
-        WHEN UPPER(COALESCE(dptoAgenda.NOMBRE, '')) LIKE '%CEIBOS%' THEN 'CEIBOS'
-        WHEN UPPER(COALESCE(dptoAgenda.NOMBRE, '')) LIKE '%MATRIZ%' THEN 'MATRIZ'
-        ELSE ''
-    END AS sede_departamento,
+    $pythonCandidates = ['python3', 'python'];
+    $output = null;
+    $exitCode = null;
+    $lastError = 'No se encontró un intérprete Python ejecutable.';
 
-    TRIM(COALESCE(cie.CIE10, '')) AS cie10,
-    TRIM(COALESCE(et.NOMBRE, '')) AS estado_agenda,
+    foreach ($pythonCandidates as $python) {
+        $command = sprintf(
+            '%s %s %s %s --quiet 2>&1',
+            escapeshellcmd($python),
+            escapeshellarg($scriptPath),
+            escapeshellarg($startDate),
+            escapeshellarg($endDate)
+        );
 
-    CASE dsp.estado_id
-        WHEN 1 THEN 'GENERADAS'
-        WHEN 2 THEN 'ATENDIDAS'
-        WHEN 3 THEN 'REVISADAS'
-        WHEN 4 THEN 'ENVIADAS'
-        ELSE CAST(dsp.estado_id AS CHAR)
-    END AS estado,
+        exec($command, $commandOutput, $commandExitCode);
+        $joinedOutput = implode(PHP_EOL, $commandOutput);
 
-    TRIM(COALESCE(procd.NOMBRE, '')) AS referido_prefactura_por,
-    TRIM(COALESCE(ref.nombre, '')) AS especificar_referido_prefactura,
-    TRIM(COALESCE(dspac.cod_derivacion, '')) AS codigo_derivacion,
-    TRIM(COALESCE(dspac.num_secuencial_derivacion, '')) AS num_secuencial_derivacion,
-    TRIM(COALESCE(dm.nroOda, '')) AS prefactura
+        if ($commandExitCode === 127) {
+            $lastError = sprintf('No se encontró el intérprete %s.', $python);
+            continue;
+        }
 
-FROM doc_solicitud_procedimientos dsp
-INNER JOIN doc_solicitud_paciente dspac
-    ON dspac.id = dsp.doc_solicitud_pacienteId
-INNER JOIN paciente p
-    ON p.ID_PACIENTE = dspac.pacienteId
-INNER JOIN procedimiento proc
-    ON proc.ID_PROCEDIMIENTO = dsp.procedimientoId
-INNER JOIN tipo_procedimiento tp
-    ON tp.ID_TIPO_PROCEDIMIENTO = proc.ID_TIPO_PROCEDIMIENTO
-LEFT JOIN ciudad_aux ca
-    ON ca.id = p.ciudad_id
-LEFT JOIN afiliacion af
-    ON af.ID_AFILIACION = dspac.afiliacionId
-LEFT JOIN agenda_doctor ad
-    ON ad.ID_AGENDA_DOCTOR = dsp.agenda_doctorId
-LEFT JOIN paciente_procedimiento pp
-    ON pp.ID_PACIENTE_PROCEDIMIENTO = ad.ID_PACIENTE_PROCEDIMIENTO
-LEFT JOIN estado_turno et
-    ON et.ID_ESTADO_TURNO = pp.ID_ESTADO_TURNO
-LEFT JOIN sede_departamento sd
-    ON sd.ID_SEDE_DEPARTAMENTO = ad.ID_SEDE_DEPARTAMENTO
-LEFT JOIN departamento dptoAgenda
-    ON dptoAgenda.ID_DEPARTAMENTO = sd.ID_DEPARTAMENTO
-LEFT JOIN trabajador trab
-    ON trab.ID_TRABAJADOR = ad.ID_TRABAJADOR
-LEFT JOIN procedencia procd
-    ON procd.ID_PROCEDENCIA = dspac.procedencia_id
-LEFT JOIN referido ref
-    ON ref.id = dspac.referido_id
-LEFT JOIN doc_motivo dm
-    ON dm.id = dspac.motivo_id
-LEFT JOIN orden_examen oe
-    ON oe.docSolicitudProcedimiento_id = dsp.id
-LEFT JOIN ojo
-    ON ojo.ID_OJO = dsp.ojo_id
-LEFT JOIN productos prd
-    ON prd.procedimiento_id = dsp.procedimientoId
-LEFT JOIN (
-    SELECT
-        dr.solicitud_id,
-        GROUP_CONCAT(DISTINCT CONCAT_WS(' - ', enf.codigo, enf.nombre, oj.descripcion) SEPARATOR ', ') AS CIE10
-    FROM diagnostico_reporte dr
-    INNER JOIN enfermedades enf
-        ON dr.diagnostico_id = enf.idEnfermedades
-    LEFT JOIN ojo oj
-        ON dr.ojo_id = oj.ID_OJO
-    GROUP BY dr.solicitud_id
-) cie
-    ON cie.solicitud_id = dsp.id
+        if ($commandExitCode !== 0) {
+            throw new RuntimeException(
+                sprintf('El extractor Python falló con código %d: %s', $commandExitCode, trim($joinedOutput))
+            );
+        }
 
-WHERE DATE(COALESCE(ad.FECHA_INICIO, dsp.fecha_registro))
-      BETWEEN :start_date AND :end_date
-GROUP BY dsp.id
-ORDER BY COALESCE(ad.FECHA_INICIO, dsp.fecha_registro), dsp.id
-SQL;
+        $output = $joinedOutput;
+        $exitCode = $commandExitCode;
+        break;
+    }
 
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute([
-        ':start_date' => $startDate,
-        ':end_date' => $endDate,
-    ]);
+    if ($exitCode !== 0 || $output === null) {
+        throw new RuntimeException($lastError);
+    }
 
-    return $stmt->fetchAll();
+    $decoded = extractJsonObject($output);
+    $rows = $decoded['rows'] ?? null;
+    if (!is_array($rows)) {
+        throw new RuntimeException('El extractor Python devolvió un JSON sin la clave rows.');
+    }
+
+    return $rows;
+}
+
+function resolveEventDateTime(array $row): array
+{
+    $fechaEventoRaw = normalizeWhitespace($row['fecha_evento'] ?? '');
+    if ($fechaEventoRaw !== '') {
+        try {
+            $fechaEvento = new DateTimeImmutable($fechaEventoRaw);
+            return [$fechaEvento->format('Y-m-d'), $fechaEvento->format('H:i:s')];
+        } catch (Throwable $e) {
+            // Seguimos con fallbacks basados en fecha_grupo y hora.
+        }
+    }
+
+    $fecha = normalizeFechaGrupo($row['fecha_grupo'] ?? '');
+    $hora = normalizeWhitespace($row['hora'] ?? '');
+
+    if ($fecha !== '' && $hora !== '') {
+        foreach (['Y-m-d H:i:s', 'Y-m-d H:i'] as $format) {
+            $dateTime = DateTimeImmutable::createFromFormat($format, $fecha . ' ' . $hora);
+            if ($dateTime instanceof DateTimeImmutable) {
+                return [$dateTime->format('Y-m-d'), $dateTime->format('H:i:s')];
+            }
+        }
+    }
+
+    return [$fecha, $hora];
 }
 
 function buildPayload(array $row): array
 {
-    $surnameParts = splitSurnames($row['apellidos'] ?? '');
-    $nameParts = splitGivenNames($row['nombres'] ?? '');
-    $fechaEventoRaw = trim((string) ($row['fecha_evento'] ?? ''));
-    $fecha = '';
-    $hora = '';
-
-    if ($fechaEventoRaw !== '') {
-        try {
-            $fechaEvento = new DateTimeImmutable($fechaEventoRaw);
-            $fecha = $fechaEvento->format('Y-m-d');
-            $hora = $fechaEvento->format('H:i:s');
-        } catch (Throwable $e) {
-            $fecha = '';
-        }
-    }
+    $apellidos = normalizeWhitespace($row['apellidos'] ?? '');
+    $nombres = normalizeWhitespace($row['nombres'] ?? '');
+    $pacienteFull = normalizeWhitespace($row['paciente_full'] ?? ($row['nombre_completo'] ?? ''));
+    $surnameParts = $apellidos !== '' ? splitSurnames($apellidos) : [
+        'lname' => normalizeWhitespace($row['lname'] ?? ''),
+        'lname2' => normalizeWhitespace($row['lname2'] ?? ''),
+    ];
+    $nameParts = $nombres !== '' ? splitGivenNames($nombres) : [
+        'fname' => normalizeWhitespace($row['fname'] ?? ''),
+        'mname' => normalizeWhitespace($row['mname'] ?? ''),
+    ];
+    [$fecha, $hora] = resolveEventDateTime($row);
 
     $sedeDepartamento = normalizeWhitespace($row['sede_departamento'] ?? '');
     if ($sedeDepartamento === '') {
@@ -346,12 +280,15 @@ function buildPayload(array $row): array
         'hcNumber' => normalizeWhitespace($row['hc_number'] ?? ''),
         'form_id' => normalizeWhitespace($row['pedido_id'] ?? ''),
         'procedimiento_proyectado' => normalizeWhitespace($row['procedimiento'] ?? ''),
+        'precio' => normalizeWhitespace($row['precio'] ?? ''),
         'doctor' => normalizeWhitespace($row['doctor_agenda'] ?? ''),
         'cie10' => normalizeWhitespace($row['cie10'] ?? ''),
         'estado_agenda' => normalizeWhitespace($row['estado_agenda'] ?? ''),
         'estado' => normalizeWhitespace($row['estado'] ?? ''),
         'codigo_derivacion' => normalizeWhitespace($row['codigo_derivacion'] ?? ''),
         'num_secuencial_derivacion' => normalizeWhitespace($row['num_secuencial_derivacion'] ?? ''),
+        'codigo_examen' => normalizeWhitespace($row['codigo_examen'] ?? ''),
+        'prefactura' => normalizeWhitespace($row['prefactura'] ?? ''),
         'fname' => $nameParts['fname'],
         'mname' => $nameParts['mname'],
         'lname' => $surnameParts['lname'],
@@ -364,7 +301,7 @@ function buildPayload(array $row): array
         'telefono' => normalizeWhitespace($row['telefono'] ?? ''),
         'fecha' => $fecha,
         'hora' => $hora,
-        'nombre_completo' => normalizeWhitespace($row['paciente_full'] ?? ''),
+        'nombre_completo' => $pacienteFull,
         'sede_departamento' => $sedeDepartamento,
         'referido_prefactura_por' => normalizeWhitespace($row['referido_prefactura_por'] ?? ''),
         'especificar_referido_prefactura' => normalizeWhitespace($row['especificar_referido_prefactura'] ?? ''),
@@ -446,8 +383,7 @@ try {
         throw new InvalidArgumentException('El rango es inválido: inicio mayor que fin.');
     }
 
-    $pdoSigcenter = createSigcenterPdo();
-    $rows = fetchIndexAdmisionesRows($pdoSigcenter, $startDate->format('Y-m-d'), $endDate->format('Y-m-d'));
+    $rows = runPythonExtractor($startDate->format('Y-m-d'), $endDate->format('Y-m-d'));
 
     $totalRows = count($rows);
     $sentRows = 0;

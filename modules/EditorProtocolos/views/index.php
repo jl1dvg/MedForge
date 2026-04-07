@@ -32,12 +32,12 @@ $scripts = array_merge($scripts ?? [], [
         <div class="col-12">
             <?php if ($mensajeExito): ?>
                 <div class="alert alert-success">
-                    <?= htmlspecialchars($mensajeExito, ENT_QUOTES, 'UTF-8') ?>
+                    <?= htmlspecialchars((string)($mensajeExito ?? ''), ENT_QUOTES, 'UTF-8') ?>
                 </div>
             <?php endif; ?>
             <?php if ($mensajeError): ?>
                 <div class="alert alert-danger">
-                    <?= htmlspecialchars($mensajeError, ENT_QUOTES, 'UTF-8') ?>
+                    <?= htmlspecialchars((string)($mensajeError ?? ''), ENT_QUOTES, 'UTF-8') ?>
                 </div>
             <?php endif; ?>
         </div>
@@ -82,7 +82,7 @@ $scripts = array_merge($scripts ?? [], [
                                                     data-bs-target="#collapse-<?= md5($categoria) ?>"
                                                     aria-expanded="false"
                                                     aria-controls="collapse-<?= md5($categoria) ?>">
-                                                <?= htmlspecialchars($categoria, ENT_QUOTES, 'UTF-8') ?>
+                                                <?= htmlspecialchars((string)($categoria ?? ''), ENT_QUOTES, 'UTF-8') ?>
                                                 (<?= count($procedimientos) ?>)
                                             </button>
                                         </div>
@@ -104,53 +104,61 @@ $scripts = array_merge($scripts ?? [], [
                                                 <?php $procedimientoId = trim((string)($procedimiento['id'] ?? '')); ?>
                                                 <div class="d-flex align-items-center mb-30 border-bottom pb-15">
                                                     <div class="me-15">
-                                                        <?php $imagen = $procedimiento['imagen_link'] ?? ''; ?>
-                                                        <img src="<?= htmlspecialchars($imagen ?: '/public/images/placeholder.png', ENT_QUOTES, 'UTF-8') ?>"
+                                                        <?php
+                                                        $imagen = trim((string)($procedimiento['imagen_link'] ?? ''));
+                                                        $placeholder = '/images/placeholder.png';
+                                                        $imagenSrc = $imagen !== '' ? $imagen : $placeholder;
+                                                        ?>
+                                                        <img src="<?= htmlspecialchars((string)($imagenSrc ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                                                              class="avatar avatar-lg rounded10 bg-primary-light"
-                                                             alt="<?= htmlspecialchars($procedimiento['membrete'] ?? 'Imagen protocolo', ENT_QUOTES, 'UTF-8') ?>"/>
+                                                             alt="<?= htmlspecialchars((string)($procedimiento['membrete'] ?? 'Imagen protocolo'), ENT_QUOTES, 'UTF-8') ?>"
+                                                             onerror="this.onerror=null;this.src='<?= htmlspecialchars((string)($placeholder ?? ''), ENT_QUOTES, 'UTF-8') ?>';" />
                                                     </div>
                                                     <div class="d-flex flex-column flex-grow-1 fw-500">
                                                         <?php if ($canManage && $procedimientoId !== ''): ?>
                                                             <a href="/protocolos/editar?id=<?= urlencode($procedimientoId) ?>"
                                                                class="text-dark hover-primary mb-1 fs-16"
                                                                data-bs-toggle="tooltip"
-                                                               title="<?= htmlspecialchars($procedimiento['membrete'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
-                                                                <?= htmlspecialchars($procedimiento['membrete'] ?? '', ENT_QUOTES, 'UTF-8') ?>
+                                                               title="<?= htmlspecialchars((string)($procedimiento['membrete'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+                                                                <?= htmlspecialchars((string)($procedimiento['membrete'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
                                                             </a>
                                                         <?php else: ?>
                                                             <span class="text-dark fw-600 mb-1 fs-16" data-bs-toggle="tooltip"
-                                                                  title="<?= htmlspecialchars($procedimiento['membrete'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
-                                                                <?= htmlspecialchars($procedimiento['membrete'] ?? '', ENT_QUOTES, 'UTF-8') ?>
+                                                                  title="<?= htmlspecialchars((string)($procedimiento['membrete'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+                                                                <?= htmlspecialchars((string)($procedimiento['membrete'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
                                                             </span>
                                                         <?php endif; ?>
                                                         <?php if ($canManage && $procedimientoId === ''): ?>
                                                             <span class="badge bg-warning text-dark d-inline-block mt-5">Sin ID</span>
                                                         <?php endif; ?>
                                                         <span class="text-fade" data-bs-toggle="tooltip"
-                                                              title="<?= htmlspecialchars($procedimiento['cirugia'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
-                                                    <?= htmlspecialchars($procedimiento['cirugia'] ?? '', ENT_QUOTES, 'UTF-8') ?>
+                                                              title="<?= htmlspecialchars((string)($procedimiento['cirugia'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+                                                    <?= htmlspecialchars((string)($procedimiento['cirugia'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
                                                 </span>
                                                     </div>
                                                     <?php if ($canManage): ?>
-                                                        <div class="dropdown">
-                                                            <a class="px-10 pt-5" href="#" data-bs-toggle="dropdown"><i
-                                                                        class="ti-more-alt"></i></a>
-                                                            <div class="dropdown-menu dropdown-menu-end">
+                                                        <div class="protocolo-actions-dropdown" data-protocolo-dropdown>
+                                                            <button type="button"
+                                                                    class="btn btn-sm btn-light protocolo-actions-toggle"
+                                                                    aria-expanded="false"
+                                                                    aria-label="Acciones del protocolo">
+                                                                <i class="ti-more-alt"></i>
+                                                            </button>
+                                                            <div class="protocolo-actions-menu" role="menu">
                                                                 <?php if ($procedimientoId !== ''): ?>
                                                                     <a class="dropdown-item"
                                                                        href="/protocolos/editar?id=<?= urlencode($procedimientoId) ?>">Editar</a>
                                                                     <a class="dropdown-item"
                                                                        href="/protocolos/editar?duplicar=<?= urlencode($procedimientoId) ?>">Duplicar</a>
-                                                                    <form method="POST" action="/protocolos/eliminar"
-                                                                          style="display:inline;"
+                                                                    <div class="dropdown-divider"></div>
+                                                                    <form method="POST"
+                                                                          action="/protocolos/eliminar"
                                                                           onsubmit="return confirm('¿Estás seguro de que deseas eliminar este protocolo?');">
                                                                         <input type="hidden" name="csrf_token"
-                                                                               value="<?= htmlspecialchars($csrfToken ?? '', ENT_QUOTES, 'UTF-8') ?>">
+                                                                               value="<?= htmlspecialchars((string)($csrfToken ?? ''), ENT_QUOTES, 'UTF-8') ?>">
                                                                         <input type="hidden" name="id"
-                                                                               value="<?= htmlspecialchars($procedimientoId, ENT_QUOTES, 'UTF-8') ?>">
-                                                                        <button type="submit"
-                                                                                class="dropdown-item text-danger">Eliminar
-                                                                        </button>
+                                                                               value="<?= htmlspecialchars((string)($procedimientoId ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+                                                                        <button type="submit" class="dropdown-item text-danger">Eliminar</button>
                                                                     </form>
                                                                 <?php else: ?>
                                                                     <span class="dropdown-item text-muted">ID no disponible</span>
@@ -174,11 +182,116 @@ $scripts = array_merge($scripts ?? [], [
 </section>
 
 
+
+<style>
+    .protocolo-actions-dropdown {
+        position: relative;
+        display: inline-block;
+    }
+
+    .protocolo-actions-toggle {
+        min-width: 38px;
+    }
+
+    .protocolo-actions-menu {
+        position: absolute;
+        top: calc(100% + 6px);
+        right: 0;
+        min-width: 180px;
+        background: #fff;
+        border: 1px solid rgba(0, 0, 0, 0.12);
+        border-radius: 0.5rem;
+        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+        padding: 0.35rem 0;
+        z-index: 2000;
+        display: none;
+    }
+
+    .protocolo-actions-dropdown.is-open .protocolo-actions-menu {
+        display: block;
+    }
+
+    .protocolo-actions-menu .dropdown-item {
+        display: block;
+        width: 100%;
+        padding: 0.5rem 1rem;
+        background: transparent;
+        border: 0;
+        text-align: left;
+        text-decoration: none;
+        color: inherit;
+        cursor: pointer;
+    }
+
+    .protocolo-actions-menu .dropdown-item:hover {
+        background: rgba(0, 0, 0, 0.05);
+    }
+
+    .protocolo-actions-menu form {
+        margin: 0;
+    }
+
+    .protocolo-actions-menu .dropdown-divider {
+        height: 1px;
+        margin: 0.35rem 0;
+        background: rgba(0, 0, 0, 0.1);
+    }
+</style>
+
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-        tooltipTriggerList.map(function (tooltipTriggerEl) {
-            return new bootstrap.Tooltip(tooltipTriggerEl);
+        if (window.bootstrap && bootstrap.Tooltip) {
+            tooltipTriggerList.map(function (tooltipTriggerEl) {
+                return new bootstrap.Tooltip(tooltipTriggerEl);
+            });
+        }
+
+        var dropdowns = [].slice.call(document.querySelectorAll('[data-protocolo-dropdown]'));
+
+        function closeAllDropdowns(exceptNode) {
+            dropdowns.forEach(function (dropdown) {
+                if (dropdown !== exceptNode) {
+                    dropdown.classList.remove('is-open');
+                    var button = dropdown.querySelector('.protocolo-actions-toggle');
+                    if (button) {
+                        button.setAttribute('aria-expanded', 'false');
+                    }
+                }
+            });
+        }
+
+        dropdowns.forEach(function (dropdown) {
+            var button = dropdown.querySelector('.protocolo-actions-toggle');
+            if (!button) {
+                return;
+            }
+
+            button.addEventListener('click', function (event) {
+                event.preventDefault();
+                event.stopPropagation();
+                var willOpen = !dropdown.classList.contains('is-open');
+                closeAllDropdowns(dropdown);
+                dropdown.classList.toggle('is-open', willOpen);
+                button.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+            });
+
+            var menu = dropdown.querySelector('.protocolo-actions-menu');
+            if (menu) {
+                menu.addEventListener('click', function (event) {
+                    event.stopPropagation();
+                });
+            }
+        });
+
+        document.addEventListener('click', function () {
+            closeAllDropdowns(null);
+        });
+
+        document.addEventListener('keydown', function (event) {
+            if (event.key === 'Escape') {
+                closeAllDropdowns(null);
+            }
         });
     });
 </script>

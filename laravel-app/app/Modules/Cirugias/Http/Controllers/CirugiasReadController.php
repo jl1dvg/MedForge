@@ -178,6 +178,8 @@ class CirugiasReadController
             }
         }
 
+        $auditoria = $this->service->obtenerAuditoriaProtocolo($cirugia);
+
         return response()->json([
             'fecha_inicio' => $cirugia->fecha_inicio,
             'hora_inicio' => $cirugia->hora_inicio,
@@ -191,6 +193,7 @@ class CirugiasReadController
             'diagnosticos' => $diagnosticos,
             'procedimientos' => $procedimientos,
             'staff' => $staff,
+            'auditoria' => $auditoria,
         ]);
     }
 

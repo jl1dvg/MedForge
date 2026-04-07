@@ -272,8 +272,12 @@ async function extraerDatosYEnviar() {
                     case 'anestesiologo':
                         data.anestesiologo = doctor;
                         break;
+                    case 'anestesiologo pp':
+                        data.anestesiologo = doctor;
+                        break;
                     case 'ayudante anestesiologo':
-                        data.ayudante_anestesiologo = doctor;
+                        data.ayudanteAnestesia = doctor;
+                        data.ayudante_anestesia = doctor;
                         break;
                     case 'primer ayudante':
                         data.primer_ayudante = doctor;

@@ -1,11 +1,8 @@
 <?php
 date_default_timezone_set('America/Guayaquil');
 // Habilitar errores en desarrollo y registrar logs de manera global
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
 ini_set('log_errors', 1);
 ini_set('error_log', __DIR__ . '/error_log_php.txt');
-error_reporting(E_ALL);
 
 // Iniciar sesión si aún no está iniciada
 if (session_status() === PHP_SESSION_NONE) {

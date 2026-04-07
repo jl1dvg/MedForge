@@ -311,6 +311,8 @@ class CirugiasController extends BaseController
             }
         }
 
+        $auditoria = $this->service->obtenerAuditoriaProtocolo($cirugia);
+
         $this->json([
             'fecha_inicio' => $cirugia->fecha_inicio,
             'hora_inicio' => $cirugia->hora_inicio,
@@ -324,6 +326,7 @@ class CirugiasController extends BaseController
             'diagnosticos' => $diagnosticos,
             'procedimientos' => $procedimientos,
             'staff' => $staff,
+            'auditoria' => $auditoria,
         ]);
     }
 

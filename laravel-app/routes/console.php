@@ -248,7 +248,8 @@ Artisan::command('index-admisiones:sync
     {--lookback=14 : Dias hacia atras desde hoy}
     {--lookahead=14 : Dias hacia adelante desde hoy}
     {--from-date= : Fecha inicial YYYY-MM-DD (inclusive). Si se usa, tiene prioridad sobre --lookback}
-    {--to-date= : Fecha final YYYY-MM-DD (inclusive). Si se usa, tiene prioridad sobre --lookahead}', function (): int {
+    {--to-date= : Fecha final YYYY-MM-DD (inclusive). Si se usa, tiene prioridad sobre --lookahead}
+    {--extractor=auto : Driver de extracción: auto, scraper o db}', function (): int {
     /** @var IndexAdmisionesSyncService $service */
     $service = app(IndexAdmisionesSyncService::class);
 
@@ -256,14 +257,16 @@ Artisan::command('index-admisiones:sync
     $toDate = $this->option('to-date');
     $lookback = (int) $this->option('lookback');
     $lookahead = (int) $this->option('lookahead');
+    $extractor = trim((string) ($this->option('extractor') ?? 'auto'));
 
     $this->line(sprintf(
-        '[%s] [start] index-admisiones:sync lookback=%d lookahead=%d from_date=%s to_date=%s',
+        '[%s] [start] index-admisiones:sync lookback=%d lookahead=%d from_date=%s to_date=%s extractor=%s',
         now()->format('Y-m-d H:i:s'),
         $lookback,
         $lookahead,
         $fromDate !== null && $fromDate !== '' ? (string) $fromDate : '—',
-        $toDate !== null && $toDate !== '' ? (string) $toDate : '—'
+        $toDate !== null && $toDate !== '' ? (string) $toDate : '—',
+        $extractor !== '' ? $extractor : 'auto'
     ));
 
     $result = $service->sync([
@@ -271,6 +274,7 @@ Artisan::command('index-admisiones:sync
         'lookahead' => $lookahead,
         'from_date' => $fromDate,
         'to_date' => $toDate,
+        'extractor' => $extractor,
     ], function (string $event, array $payload): void {
         if ($event === 'row') {
             $this->line(sprintf(
@@ -328,31 +332,38 @@ Artisan::command('index-admisiones:sync
     $this->line(sprintf('[%s] [done] index-admisiones:sync', now()->format('Y-m-d H:i:s')));
 
     return 0;
-})->purpose('Sincroniza index-admisiones desde Sigcenter hacia tablas locales sin usar el legacy');
+})->purpose('Sincroniza index-admisiones desde Sigcenter hacia tablas locales usando DB/SSH o scraper');
 
 Artisan::command('billing:facturacion-real-sync
     {--start= : Mes inicial YYYY-MM}
-    {--end= : Mes final YYYY-MM}', function (): int {
+    {--end= : Mes final YYYY-MM}
+    {--extractor=auto : Driver de extracción: auto, scraper, csv o db}
+    {--csv-path= : Ruta del CSV origen. Puede incluir {month} para reemplazar YYYY-MM}', function (): int {
     /** @var FacturacionRealSyncService $service */
     $service = app(FacturacionRealSyncService::class);
 
     $defaultMonth = now()->format('Y-m');
     $start = trim((string) ($this->option('start') ?? ''));
     $end = trim((string) ($this->option('end') ?? ''));
+    $extractor = trim((string) ($this->option('extractor') ?? 'auto'));
+    $csvPath = trim((string) ($this->option('csv-path') ?? ''));
     $start = $start !== '' ? $start : $defaultMonth;
     $end = $end !== '' ? $end : $start;
 
     $this->line(sprintf(
-        '[%s] [start] billing:facturacion-real-sync start=%s end=%s',
+        '[%s] [start] billing:facturacion-real-sync start=%s end=%s extractor=%s',
         now()->format('Y-m-d H:i:s'),
         $start,
-        $end
+        $end,
+        $extractor !== '' ? $extractor : 'auto'
     ));
 
     try {
         $result = $service->sync([
             'start' => $start,
             'end' => $end,
+            'extractor' => $extractor,
+            'csv_path' => $csvPath,
         ], function (string $event, array $payload): void {
             if ($event === 'row') {
                 $this->line(sprintf(

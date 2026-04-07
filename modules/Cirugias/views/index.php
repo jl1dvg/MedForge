@@ -212,6 +212,94 @@ $scripts = array_merge($scripts ?? [], [
     let currentFormId;
     let currentHcNumber;
 
+    function escapeHtml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    function renderProtocolAudit(auditoria) {
+        const panel = document.getElementById('protocol-audit-panel');
+        const summary = document.getElementById('protocol-audit-summary');
+        const checksContainer = document.getElementById('protocol-audit-checks');
+
+        if (!panel || !summary || !checksContainer) {
+            return;
+        }
+
+        const data = auditoria && typeof auditoria === 'object' ? auditoria : {};
+        const checks = Array.isArray(data.checks) ? data.checks : [];
+        const summaryData = data.summary && typeof data.summary === 'object' ? data.summary : {};
+        const status = String(data.status || 'warning');
+
+        const alertClassMap = {
+            ok: 'alert-success',
+            warning: 'alert-warning',
+            error: 'alert-danger'
+        };
+        const badgeClassMap = {
+            ok: 'badge bg-success',
+            warning: 'badge bg-warning text-dark',
+            error: 'badge bg-danger'
+        };
+        const statusLabelMap = {
+            ok: 'OK',
+            warning: 'Advertencia',
+            error: 'Alerta'
+        };
+
+        panel.style.display = checks.length > 0 ? '' : 'none';
+        summary.className = `alert mb-2 ${alertClassMap[status] || 'alert-secondary'}`;
+        summary.innerHTML = `
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div>
+                    <strong>Auditoría automática del protocolo</strong>
+                    <div class="small">Se validó concordancia con lo proyectado y la plantilla quirúrgica.</div>
+                </div>
+                <div class="d-flex gap-2 flex-wrap">
+                    <span class="${badgeClassMap[status] || 'badge bg-secondary'}">${statusLabelMap[status] || 'Estado'}</span>
+                    <span class="badge bg-success">OK: ${Number(summaryData.ok || 0)}</span>
+                    <span class="badge bg-warning text-dark">Advertencias: ${Number(summaryData.warning || 0)}</span>
+                    <span class="badge bg-danger">Alertas: ${Number(summaryData.error || 0)}</span>
+                </div>
+            </div>
+        `;
+
+        checksContainer.innerHTML = checks.map((check) => {
+            const details = check && typeof check.details === 'object' ? check.details : {};
+            const missingList = Array.isArray(details.faltantes) ? details.faltantes : [];
+            const projected = details.proyectado ? `<div><strong>Proyectado:</strong> ${escapeHtml(details.proyectado)}</div>` : '';
+            const registered = details.registrado ? `<div><strong>Registrado:</strong> ${escapeHtml(details.registrado)}</div>` : '';
+            const expected = Number.isFinite(Number(details.esperado)) ? `<div><strong>Esperado:</strong> ${escapeHtml(details.esperado)}</div>` : '';
+            const actual = Number.isFinite(Number(details.registrado)) ? `<div><strong>Registrado:</strong> ${escapeHtml(details.registrado)}</div>` : registered;
+            const missing = missingList.length > 0
+                ? `<div><strong>Faltantes:</strong> ${missingList.map((item) => escapeHtml(item)).join(', ')}</div>`
+                : '';
+
+            return `
+                <div class="border rounded p-2 mb-2">
+                    <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+                        <div>
+                            <div class="fw-600">${escapeHtml(check.title || 'Validación')}</div>
+                            <div class="small text-muted">${escapeHtml(check.message || '')}</div>
+                        </div>
+                        <span class="${badgeClassMap[check.status] || 'badge bg-secondary'}">${statusLabelMap[check.status] || 'Estado'}</span>
+                    </div>
+                    <div class="small mt-2">
+                        ${projected}
+                        ${actual}
+                        ${expected}
+                        ${registered && !actual ? registered : ''}
+                        ${missing}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
     function redirectToEditProtocol() {
         const endpoints = window.cirugiasEndpoints || {};
         const wizardEndpoint = endpoints.wizard || '/cirugias/wizard';
@@ -274,6 +362,8 @@ $scripts = array_merge($scripts ?? [], [
                 if (comment) {
                     comment.textContent = data.comentario ?? '';
                 }
+
+                renderProtocolAudit(data.auditoria);
             })
             .catch(() => {
                 Swal.fire('Error', 'No se pudo cargar el protocolo.', 'error');

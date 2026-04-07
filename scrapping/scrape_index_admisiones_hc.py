@@ -1,4 +1,5 @@
 from typing import Optional
+import os
 import requests
 from bs4 import BeautifulSoup
 import sys
@@ -13,9 +14,9 @@ from datetime import datetime, timedelta
 # =========================
 modo_quieto = "--quiet" in sys.argv
 
-USERNAME = "agsuper"
-PASSWORD = "123456"
-BASE = "https://cive.ddns.net:8085"
+USERNAME = os.getenv("SIGCENTER_SCRAPER_USERNAME", "agsuper")
+PASSWORD = os.getenv("SIGCENTER_SCRAPER_PASSWORD", "123456")
+BASE = os.getenv("SIGCENTER_SCRAPER_BASE_URL", "https://sigcenter.ddns.net:18093").rstrip("/")
 LOGIN_URL = f"{BASE}/site/login"
 
 headers = {"User-Agent": "Mozilla/5.0"}

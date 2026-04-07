@@ -7,6 +7,10 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
+                <div id="protocol-audit-panel" class="mb-3" style="display:none;">
+                    <div id="protocol-audit-summary" class="alert mb-2"></div>
+                    <div id="protocol-audit-checks"></div>
+                </div>
                 <div class="row justify-content-between">
                     <div class="col-md-7 col-12">
                         <h4 id="test-name">Diagnóstico</h4>

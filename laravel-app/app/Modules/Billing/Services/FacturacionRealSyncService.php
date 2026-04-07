@@ -8,6 +8,11 @@ use Throwable;
 
 class FacturacionRealSyncService
 {
+    private const EXTRACTOR_AUTO = 'auto';
+    private const EXTRACTOR_DB = 'db';
+    private const EXTRACTOR_SCRAPER = 'scraper';
+    private const EXTRACTOR_CSV = 'csv';
+
     private ?string $dbConnection;
     private ?string $dbHost;
     private int $dbPort;
@@ -19,8 +24,10 @@ class FacturacionRealSyncService
     private ?string $sshUser;
     private ?string $sshPass;
     private ?string $lastError = null;
+    private string $lastSource = self::EXTRACTOR_AUTO;
     private ?\phpseclib3\Net\SSH2 $ssh = null;
     private ?bool $directDbAvailable = null;
+    private ?string $csvPath = null;
 
     public function __construct()
     {
@@ -42,7 +49,7 @@ class FacturacionRealSyncService
     }
 
     /**
-     * @param array{start:string,end:string} $options
+     * @param array{start:string,end:string,extractor?:?string,csv_path?:?string} $options
      * @param callable(string,array<string,mixed>):void|null $onProgress
      * @return array<string,mixed>
      */
@@ -52,6 +59,8 @@ class FacturacionRealSyncService
         $startedAt = microtime(true);
         $start = $this->parseMonth((string) ($options['start'] ?? ''));
         $end = $this->parseMonth((string) ($options['end'] ?? ''));
+        $extractor = $this->normalizeExtractor((string) ($options['extractor'] ?? self::EXTRACTOR_AUTO));
+        $this->csvPath = $this->resolveCsvPath(trim((string) ($options['csv_path'] ?? '')));
         if ($start > $end) {
             throw new \InvalidArgumentException('Rango inválido: start es mayor que end.');
         }
@@ -64,14 +73,14 @@ class FacturacionRealSyncService
         ];
 
         foreach ($this->monthIter($start, $end) as $monthKey) {
-            $rows = $this->fetchRowsForMonth($monthKey);
+            $rows = $this->fetchRowsForMonth($monthKey, $extractor);
             if ($rows === [] && $this->lastError !== null) {
                 return [
                     'success' => false,
                     'error' => $this->lastError,
                     'from' => $start->format('Y-m'),
                     'to' => $end->format('Y-m'),
-                    'source' => $this->isDirectDbAvailable() ? 'sigcenter-db' : 'sigcenter-ssh',
+                    'source' => $this->lastSource,
                 ];
             }
 
@@ -111,7 +120,7 @@ class FacturacionRealSyncService
             'sent_rows' => $stats['sent_rows'],
             'error_rows' => $stats['error_rows'],
             'duration_ms' => (int) round((microtime(true) - $startedAt) * 1000),
-            'source' => $this->isDirectDbAvailable() ? 'sigcenter-db' : 'sigcenter-ssh',
+            'source' => $this->lastSource,
         ];
     }
 
@@ -140,7 +149,172 @@ class FacturacionRealSyncService
     /**
      * @return array<int,array<string,mixed>>
      */
-    private function fetchRowsForMonth(string $monthKey): array
+    private function fetchRowsForMonth(string $monthKey, string $extractor): array
+    {
+        if ($extractor === self::EXTRACTOR_SCRAPER) {
+            return $this->fetchRowsViaScraper($monthKey);
+        }
+
+        if ($extractor === self::EXTRACTOR_CSV) {
+            return $this->fetchRowsViaCsv($monthKey);
+        }
+
+        if ($extractor === self::EXTRACTOR_AUTO) {
+            $rows = $this->fetchRowsViaScraper($monthKey);
+            if ($rows !== [] || $this->lastError === null) {
+                return $rows;
+            }
+
+            $scraperError = $this->lastError;
+            $rows = $this->fetchRowsViaDatabase($monthKey);
+            if ($rows === [] && $this->lastError !== null && $scraperError !== null) {
+                $this->lastError = $scraperError . ' | fallback DB/SSH: ' . $this->lastError;
+            }
+
+            return $rows;
+        }
+
+        return $this->fetchRowsViaDatabase($monthKey);
+    }
+
+    /**
+     * @return array<int,array<string,mixed>>
+     */
+    private function fetchRowsViaCsv(string $monthKey): array
+    {
+        $path = $this->resolveCsvPathForMonth($monthKey);
+        if ($path !== null && !is_file($path)) {
+            $this->downloadCsvForMonth($monthKey, $path);
+        }
+
+        if ($path === null || !is_file($path)) {
+            $this->lastError = sprintf('No se encontró el CSV de facturación real para %s. Ruta probada: %s', $monthKey, (string) $path);
+            return [];
+        }
+
+        $handle = @fopen($path, 'rb');
+        if ($handle === false) {
+            $this->lastError = sprintf('No se pudo abrir el CSV de facturación real: %s', $path);
+            return [];
+        }
+
+        $rows = [];
+        $header = null;
+        $indexes = [];
+
+        try {
+            while (($data = fgetcsv($handle)) !== false) {
+                if ($data === [null] || $data === false) {
+                    continue;
+                }
+
+                $data = array_map(static function ($value): string {
+                    $value = (string) $value;
+                    if (str_starts_with($value, "\xEF\xBB\xBF")) {
+                        $value = substr($value, 3);
+                    }
+                    return trim($value);
+                }, $data);
+
+                if ($header === null) {
+                    if ($this->isCsvHeaderRow($data)) {
+                        $header = $data;
+                        $indexes = $this->buildCsvHeaderIndexes($header);
+                    }
+                    continue;
+                }
+
+                if ($this->isCsvTotalsRow($data) || !$this->hasNonEmptyCell($data)) {
+                    continue;
+                }
+
+                $row = $this->mapCsvRow($data, $indexes);
+                if ($row === null) {
+                    continue;
+                }
+
+                $rows[] = $row;
+            }
+        } finally {
+            fclose($handle);
+        }
+
+        if ($header === null) {
+            $this->lastError = sprintf('El CSV no contiene una fila de encabezados reconocible: %s', $path);
+            return [];
+        }
+
+        $this->lastError = null;
+        $this->lastSource = 'sigcenter-csv';
+        return $rows;
+    }
+
+    private function downloadCsvForMonth(string $monthKey, string $path): void
+    {
+        $directory = dirname($path);
+        if (!is_dir($directory) && !@mkdir($directory, 0775, true) && !is_dir($directory)) {
+            $this->lastError = sprintf('No se pudo crear el directorio para el CSV: %s', $directory);
+            return;
+        }
+
+        $script = $this->resolveScraperScriptPath();
+        if (!is_file($script)) {
+            $this->lastError = sprintf('No se encontró el script Python para descargar el CSV. Ruta probada: %s', $script);
+            return;
+        }
+
+        $commandCandidates = [
+            ['python3', $script, $monthKey, '--quiet', '--csv-out', $path],
+            ['python', $script, $monthKey, '--quiet', '--csv-out', $path],
+        ];
+
+        foreach ($commandCandidates as $command) {
+            $descriptors = [
+                0 => ['pipe', 'r'],
+                1 => ['pipe', 'w'],
+                2 => ['pipe', 'w'],
+            ];
+
+            $process = @proc_open($command, $descriptors, $pipes, base_path());
+            if (!is_resource($process)) {
+                $this->lastError = 'No fue posible iniciar el descargador Python del CSV.';
+                continue;
+            }
+
+            fclose($pipes[0]);
+            $stdout = stream_get_contents($pipes[1]) ?: '';
+            $stderr = stream_get_contents($pipes[2]) ?: '';
+            fclose($pipes[1]);
+            fclose($pipes[2]);
+
+            $code = proc_close($process);
+            $binary = (string) ($command[0] ?? 'python');
+
+            if ($code === 127) {
+                $this->lastError = sprintf('No se encontró el intérprete %s.', $binary);
+                continue;
+            }
+
+            if ($code !== 0) {
+                $message = trim($stderr !== '' ? $stderr : $stdout);
+                $this->lastError = $message !== '' ? $message : sprintf('El descargador Python del CSV finalizó con código %d.', $code);
+                return;
+            }
+
+            if (is_file($path)) {
+                $this->lastError = null;
+                return;
+            }
+
+            $this->lastError = sprintf('El descargador Python finalizó sin generar el CSV esperado: %s', $path);
+            return;
+        }
+    }
+
+    /**
+     * @return array<int,array<string,mixed>>
+     */
+    private function fetchRowsViaDatabase(string $monthKey): array
     {
         [$year, $month] = array_map('intval', explode('-', $monthKey, 2));
 
@@ -150,10 +324,85 @@ class FacturacionRealSyncService
                 'anio' => $year,
             ]);
 
+            $this->lastError = null;
+            $this->lastSource = 'sigcenter-db';
             return array_map(static fn ($row): array => (array) $row, $rows);
         }
 
         return $this->fetchRowsViaSsh($month, $year);
+    }
+
+    /**
+     * @return array<int,array<string,mixed>>
+     */
+    private function fetchRowsViaScraper(string $monthKey): array
+    {
+        $script = $this->resolveScraperScriptPath();
+        if (!is_file($script)) {
+            $this->lastError = sprintf('No se encontró el extractor Python de facturación real. Ruta probada: %s', $script);
+            return [];
+        }
+
+        $commandCandidates = [
+            ['python3', $script, $monthKey, '--quiet'],
+            ['python', $script, $monthKey, '--quiet'],
+        ];
+
+        $lastError = 'No se encontró un intérprete Python ejecutable.';
+
+        foreach ($commandCandidates as $command) {
+            $descriptors = [
+                0 => ['pipe', 'r'],
+                1 => ['pipe', 'w'],
+                2 => ['pipe', 'w'],
+            ];
+
+            $process = @proc_open($command, $descriptors, $pipes, base_path());
+            if (!is_resource($process)) {
+                $lastError = 'No fue posible iniciar el extractor Python.';
+                continue;
+            }
+
+            fclose($pipes[0]);
+            $stdout = stream_get_contents($pipes[1]) ?: '';
+            $stderr = stream_get_contents($pipes[2]) ?: '';
+            fclose($pipes[1]);
+            fclose($pipes[2]);
+
+            $code = proc_close($process);
+            $binary = (string) ($command[0] ?? 'python');
+
+            if ($code === 127) {
+                $lastError = sprintf('No se encontró el intérprete %s.', $binary);
+                continue;
+            }
+
+            if ($code !== 0) {
+                $message = trim($stderr !== '' ? $stderr : $stdout);
+                $this->lastError = $message !== '' ? $message : sprintf('El extractor Python finalizó con código %d.', $code);
+                return [];
+            }
+
+            try {
+                $decoded = $this->decodeScraperOutput($stdout);
+            } catch (Throwable $e) {
+                $this->lastError = $e->getMessage();
+                return [];
+            }
+
+            $rows = $decoded['rows'] ?? null;
+            if (!is_array($rows)) {
+                $this->lastError = 'El extractor Python devolvió un JSON sin la clave rows.';
+                return [];
+            }
+
+            $this->lastError = null;
+            $this->lastSource = 'sigcenter-scraper';
+            return array_values(array_filter($rows, static fn ($row): bool => is_array($row)));
+        }
+
+        $this->lastError = $lastError;
+        return [];
     }
 
     private function baseSql(): string
@@ -359,7 +608,66 @@ SQL;
         }
 
         $this->lastError = null;
+        $this->lastSource = 'sigcenter-ssh';
         return $rows;
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private function decodeScraperOutput(string $output): array
+    {
+        $trimmed = trim($output);
+        if ($trimmed === '') {
+            throw new \RuntimeException('El extractor Python no devolvió salida.');
+        }
+
+        $decoded = json_decode($trimmed, true);
+        if (!is_array($decoded)) {
+            throw new \RuntimeException('No se pudo parsear el JSON devuelto por el extractor Python.');
+        }
+
+        return $decoded;
+    }
+
+    private function resolveScraperScriptPath(): string
+    {
+        $override = $this->readEnv('BILLING_FACTURACION_REAL_SCRAPER_PATH');
+        if ($override !== null && $override !== '') {
+            return $override;
+        }
+
+        $basePath = base_path();
+        $candidates = [
+            $basePath . DIRECTORY_SEPARATOR . 'scrapping' . DIRECTORY_SEPARATOR . 'scrape_detalle_factura.py',
+            dirname($basePath) . DIRECTORY_SEPARATOR . 'scrapping' . DIRECTORY_SEPARATOR . 'scrape_detalle_factura.py',
+        ];
+
+        foreach ($candidates as $candidate) {
+            if (is_file($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return $candidates[1];
+    }
+
+    private function resolveCsvPath(?string $csvPath): ?string
+    {
+        if ($csvPath !== null && $csvPath !== '') {
+            return $csvPath;
+        }
+
+        return $this->readEnv('BILLING_FACTURACION_REAL_CSV_PATH');
+    }
+
+    private function resolveCsvPathForMonth(string $monthKey): ?string
+    {
+        if ($this->csvPath === null || $this->csvPath === '') {
+            return null;
+        }
+
+        return str_replace('{month}', $monthKey, $this->csvPath);
     }
 
     /**
@@ -463,6 +771,108 @@ SQL;
         return is_numeric($normalized) ? round((float) $normalized, 4) : null;
     }
 
+    /**
+     * @param array<int,string> $row
+     */
+    private function isCsvHeaderRow(array $row): bool
+    {
+        $normalized = array_map(fn (string $value): string => mb_strtolower(trim($value)), $row);
+        return in_array('pedido', $normalized, true)
+            && in_array('factura id', $normalized, true)
+            && in_array('número factura', $normalized, true);
+    }
+
+    /**
+     * @param array<int,string> $header
+     * @return array<string,int>
+     */
+    private function buildCsvHeaderIndexes(array $header): array
+    {
+        $indexes = [];
+        foreach ($header as $idx => $value) {
+            $indexes[mb_strtolower(trim($value))] = $idx;
+        }
+
+        return $indexes;
+    }
+
+    /**
+     * @param array<int,string> $row
+     */
+    private function isCsvTotalsRow(array $row): bool
+    {
+        $first = mb_strtolower(trim((string) ($row[0] ?? '')));
+        return str_starts_with($first, 'totales generales');
+    }
+
+    /**
+     * @param array<int,string> $row
+     */
+    private function hasNonEmptyCell(array $row): bool
+    {
+        foreach ($row as $value) {
+            if (trim((string) $value) !== '') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param array<int,string> $row
+     * @param array<string,int> $indexes
+     * @return array<string,mixed>|null
+     */
+    private function mapCsvRow(array $row, array $indexes): ?array
+    {
+        $formId = $this->csvValue($row, $indexes, 'pedido');
+        $facturaId = $this->csvValue($row, $indexes, 'factura id');
+        $numeroFactura = $this->csvValue($row, $indexes, 'número factura');
+
+        if ($formId === '' && $facturaId === '' && $numeroFactura === '') {
+            return null;
+        }
+
+        return [
+            'form_id' => $formId,
+            'detalle_factura_ids' => '',
+            'producto_ids' => '',
+            'codigos_producto' => '',
+            'factura_id' => $facturaId,
+            'numero_factura' => $numeroFactura,
+            'procedimiento' => $this->csvValue($row, $indexes, 'procedimiento'),
+            'realizado_por' => $this->csvValue($row, $indexes, 'realizado por'),
+            'afiliacion' => $this->csvValue($row, $indexes, 'afiliación'),
+            'paciente' => $this->csvValue($row, $indexes, 'paciente'),
+            'cliente' => $this->csvValue($row, $indexes, 'cliente'),
+            'fecha_agenda' => $this->csvValue($row, $indexes, 'fecha agenda'),
+            'fecha_facturacion' => $this->csvValue($row, $indexes, 'fecha facturación'),
+            'fecha_atencion' => $this->csvValue($row, $indexes, 'fecha atención'),
+            'formas_pago' => $this->csvValue($row, $indexes, 'formas pago'),
+            'codigo_nota' => $this->csvValue($row, $indexes, 'nc'),
+            'monto_honorario' => $this->csvValue($row, $indexes, 'monto honorario'),
+            'monto_facturado' => $this->csvValue($row, $indexes, 'monto facturado'),
+            'area' => $this->csvValue($row, $indexes, 'área'),
+            'departamento_factura' => $this->csvValue($row, $indexes, 'área'),
+            'estado' => $this->csvValue($row, $indexes, 'estado'),
+        ];
+    }
+
+    /**
+     * @param array<int,string> $row
+     * @param array<string,int> $indexes
+     */
+    private function csvValue(array $row, array $indexes, string $column): string
+    {
+        $index = $indexes[$column] ?? null;
+        if ($index === null) {
+            return '';
+        }
+
+        return trim((string) ($row[$index] ?? ''));
+    }
+
     private function nullableTrim(mixed $value, ?int $maxLength = null): ?string
     {
         $value = trim((string) ($value ?? ''));
@@ -540,5 +950,13 @@ SQL;
 
         $value = trim((string) $value);
         return $value !== '' ? $value : null;
+    }
+
+    private function normalizeExtractor(string $extractor): string
+    {
+        $extractor = strtolower(trim($extractor));
+        return in_array($extractor, [self::EXTRACTOR_AUTO, self::EXTRACTOR_DB, self::EXTRACTOR_SCRAPER, self::EXTRACTOR_CSV], true)
+            ? $extractor
+            : self::EXTRACTOR_AUTO;
     }
 }

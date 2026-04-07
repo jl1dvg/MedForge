@@ -44,6 +44,29 @@ def normalize_iso_date(value: str) -> Optional[str]:
         return None
 
 
+def resolve_event_date_time(row: Dict) -> tuple[Optional[str], Optional[str]]:
+    fecha_evento = (row.get("fecha_evento", "") or "").strip()
+    if fecha_evento:
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+            try:
+                parsed = datetime.strptime(fecha_evento, fmt)
+                return parsed.strftime("%Y-%m-%d"), parsed.strftime("%H:%M:%S")
+            except ValueError:
+                continue
+
+    fecha = normalize_fecha_grupo(row.get("fecha_grupo", ""))
+    hora = (row.get("hora", "") or "").strip()
+    if fecha and hora:
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+            try:
+                parsed = datetime.strptime(f"{fecha} {hora}", fmt)
+                return parsed.strftime("%Y-%m-%d"), parsed.strftime("%H:%M:%S")
+            except ValueError:
+                continue
+
+    return fecha, hora or None
+
+
 def infer_sede_from_agenda_dpto(value: str) -> Optional[str]:
     value = re.sub(r"\s+", " ", (value or "").strip()).upper()
     if not value:
@@ -69,6 +92,8 @@ def build_payload(row: Dict) -> Dict:
     if not sede_departamento:
         sede_departamento = infer_sede_from_agenda_dpto(row.get("agenda_dpto", "") or "") or ""
 
+    fecha, hora = resolve_event_date_time(row)
+
     payload = {
         "hcNumber": row.get("hc_number", "").strip(),
         "form_id": row.get("pedido_id", "").strip(),
@@ -80,6 +105,8 @@ def build_payload(row: Dict) -> Dict:
         "estado": row.get("estado", "").strip(),
         "codigo_derivacion": row.get("codigo_derivacion", "").strip(),
         "num_secuencial_derivacion": row.get("num_secuencial_derivacion", "").strip(),
+        "codigo_examen": row.get("codigo_examen", "").strip(),
+        "prefactura": row.get("prefactura", "").strip(),
         "referido_prefactura_por": row.get("referido_prefactura_por", "").strip(),
         "especificar_referido_prefactura": row.get("especificar_referido_prefactura", "").strip(),
         "fname": row.get("fname", "").strip(),
@@ -92,14 +119,14 @@ def build_payload(row: Dict) -> Dict:
         "ciudad": row.get("ciudad", "").strip(),
         "afiliacion": row.get("afiliacion", "").strip(),
         "telefono": row.get("telefono", "").strip(),
+        "nombre_completo": row.get("paciente_full", row.get("nombre_completo", "")).strip(),
         "sede_departamento": sede_departamento,
-        "referido_prefactura_por": row.get("referido_prefactura_por", "").strip(),
-        "especificar_referido_prefactura": row.get("especificar_referido_prefactura", "").strip(),
     }
 
-    fecha = normalize_fecha_grupo(row.get("fecha_grupo", ""))
     if fecha:
         payload["fecha"] = fecha
+    if hora:
+        payload["hora"] = hora
 
     return {k: v for k, v in payload.items() if v not in (None, "")}
 

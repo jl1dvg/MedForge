@@ -33,7 +33,7 @@ $scripts = array_merge($scripts ?? [], [
                         <li class="breadcrumb-item"><a href="/"><i class="mdi mdi-home-outline"></i> Inicio</a></li>
                         <li class="breadcrumb-item"><a href="/protocolos">Protocolos</a></li>
                         <li class="breadcrumb-item active" aria-current="page">
-                            <?= htmlspecialchars($protocolo['membrete'] ?: 'Sin título', ENT_QUOTES, 'UTF-8') ?>
+                            <?= htmlspecialchars((string)((($protocolo['membrete'] ?? '') !== '') ? $protocolo['membrete'] : 'Sin título'), ENT_QUOTES, 'UTF-8') ?>
                         </li>
                     </ol>
                 </nav>
@@ -41,7 +41,7 @@ $scripts = array_merge($scripts ?? [], [
             <?php if ($duplicando): ?>
                 <div class="alert alert-info mt-10">
                     <strong>Duplicando protocolo:</strong>
-                    estás creando una copia basada en <em><?= htmlspecialchars($duplicarId ?? '', ENT_QUOTES, 'UTF-8') ?></em>.
+                    estás creando una copia basada en <em><?= htmlspecialchars((string)($duplicarId ?? ''), ENT_QUOTES, 'UTF-8') ?></em>.
                 </div>
             <?php endif; ?>
         </div>
@@ -56,11 +56,11 @@ $scripts = array_merge($scripts ?? [], [
                     <h4 class="box-title"><?= $esNuevo ? 'Configurar protocolo' : 'Editar protocolo' ?></h4>
                 </div>
                 <form id="editarProtocoloForm" action="/protocolos/guardar" method="POST" class="form">
-                    <input type="hidden" name="id" value="<?= htmlspecialchars($protocolo['id'], ENT_QUOTES, 'UTF-8') ?>">
-                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken ?? '', ENT_QUOTES, 'UTF-8') ?>">
+                    <input type="hidden" name="id" value="<?= htmlspecialchars((string)($protocolo['id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars((string)($csrfToken ?? ''), ENT_QUOTES, 'UTF-8') ?>">
                     <input type="hidden" name="insumos" id="insumosInput" value='<?= json_encode($insumosPaciente, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>'>
                     <input type="hidden" name="medicamentos" id="medicamentosInput" value='<?= json_encode($medicamentos, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>'>
-                    <input type="hidden" name="operatorio" id="operatorioInput" value="<?= htmlspecialchars($protocolo['operatorio'], ENT_QUOTES, 'UTF-8') ?>">
+                    <input type="hidden" name="operatorio" id="operatorioInput" value="<?= htmlspecialchars((string)($protocolo['operatorio'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
 
                     <div class="box-body">
                         <div class="accordion mb-3" id="accordionGeneral">
@@ -171,11 +171,13 @@ $scripts = array_merge($scripts ?? [], [
 </section>
 
 <script>
-    const insumosDisponibles = <?= json_encode($insumosDisponibles, JSON_UNESCAPED_UNICODE) ?>;
-    const opcionesMedicamentos = <?= json_encode($opcionesMedicamentos, JSON_UNESCAPED_UNICODE) ?>;
-    const vias = <?= json_encode($vias, JSON_UNESCAPED_UNICODE) ?>;
-    const responsables = <?= json_encode($responsables, JSON_UNESCAPED_UNICODE) ?>;
-    const codigos = <?= json_encode($codigos, JSON_UNESCAPED_UNICODE) ?>;
-    const staff = <?= json_encode($staff, JSON_UNESCAPED_UNICODE) ?>;
+    const insumosDisponibles = <?= json_encode($insumosDisponibles ?? [], JSON_UNESCAPED_UNICODE) ?>;
+    const opcionesMedicamentos = <?= json_encode($opcionesMedicamentos ?? [], JSON_UNESCAPED_UNICODE) ?>;
+    const vias = <?= json_encode($vias ?? [], JSON_UNESCAPED_UNICODE) ?>;
+    const responsables = <?= json_encode($responsables ?? [], JSON_UNESCAPED_UNICODE) ?>;
+    const codigos = <?= json_encode($codigos ?? [], JSON_UNESCAPED_UNICODE) ?>;
+    const staff = <?= json_encode($staff ?? [], JSON_UNESCAPED_UNICODE) ?>;
+    const protocoloOperatorio = <?= json_encode((string)($protocolo['operatorio'] ?? ''), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
+    const listaInsumos = Object.values(insumosDisponibles || {}).flat();
 </script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>

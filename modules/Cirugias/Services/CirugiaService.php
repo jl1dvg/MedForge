@@ -629,6 +629,170 @@ class CirugiaService
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
+    /**
+     * @return array<string, mixed>
+     */
+    public function obtenerAuditoriaProtocolo(Cirugia $cirugia): array
+    {
+        $checks = [];
+
+        $projected = $this->obtenerProcedimientoProyectadoAuditoria(
+            (string) ($cirugia->form_id ?? ''),
+            (string) ($cirugia->hc_number ?? '')
+        );
+
+        $projectedDoctor = trim((string) ($projected['doctor'] ?? ''));
+        $surgeon = trim((string) ($cirugia->cirujano_1 ?? ''));
+        if ($projectedDoctor === '') {
+            $checks[] = $this->buildAuditCheck(
+                'doctor_proyectado',
+                'Doctor proyectado vs cirujano principal',
+                'warning',
+                'No se encontró doctor en procedimiento_proyectado para validar la concordancia.'
+            );
+        } else {
+            $matches = $surgeon !== '' && $this->comparePersonNames($projectedDoctor, $surgeon);
+            $checks[] = $this->buildAuditCheck(
+                'doctor_proyectado',
+                'Doctor proyectado vs cirujano principal',
+                $matches ? 'ok' : 'error',
+                $matches
+                    ? 'El doctor proyectado coincide con el cirujano principal registrado.'
+                    : 'El doctor proyectado no coincide con el cirujano principal registrado.',
+                [
+                    'proyectado' => $projectedDoctor,
+                    'registrado' => $surgeon !== '' ? $surgeon : 'Sin registrar',
+                ]
+            );
+        }
+
+        $projectedProcedure = trim((string) ($projected['procedimiento_proyectado'] ?? ''));
+        $projectedEye = $this->extractLateralidadFromProjectedProcedure($projectedProcedure);
+        $protocolEye = trim((string) ($cirugia->lateralidad ?? ''));
+        if ($projectedEye === '') {
+            $checks[] = $this->buildAuditCheck(
+                'ojo_proyectado',
+                'Ojo proyectado vs lateralidad de cirugía',
+                'warning',
+                'No se encontró lateralidad proyectada en procedimiento_proyectado para validar la concordancia.'
+            );
+        } else {
+            $projectedSides = $this->normalizeLateralidad($projectedEye);
+            $protocolSides = $this->normalizeLateralidad($protocolEye);
+            $matches = $this->lateralidadCompatible($projectedSides, $protocolSides);
+            $checks[] = $this->buildAuditCheck(
+                'ojo_proyectado',
+                'Ojo proyectado vs lateralidad de cirugía',
+                $matches ? 'ok' : 'error',
+                $matches
+                    ? 'La lateralidad proyectada coincide con la cirugía registrada.'
+                    : 'La lateralidad proyectada no coincide con la cirugía registrada.',
+                [
+                    'proyectado' => $projectedEye,
+                    'registrado' => $protocolEye !== '' ? $protocolEye : 'Sin registrar',
+                ]
+            );
+        }
+
+        $projectedLensType = $this->extractProjectedLensType($projectedProcedure);
+        $operatorio = trim((string) ($cirugia->operatorio ?? ''));
+        if ($projectedLensType !== null) {
+            $operatorioLensType = $this->extractProjectedLensType($operatorio);
+            $matches = $operatorioLensType === $projectedLensType;
+            $checks[] = $this->buildAuditCheck(
+                'lente_implantado',
+                'Tipo de lente proyectado vs implantado',
+                $matches ? 'ok' : 'error',
+                $matches
+                    ? 'El operatorio confirma el mismo tipo de lente proyectado.'
+                    : 'El operatorio no confirma el mismo tipo de lente proyectado.',
+                [
+                    'proyectado' => strtoupper($projectedLensType),
+                    'registrado' => $operatorioLensType !== null ? strtoupper($operatorioLensType) : 'No identificado en operatorio',
+                ]
+            );
+        }
+
+        $template = $this->obtenerPlantillaAuditoria((string) ($cirugia->procedimiento_id ?? ''));
+        if ($template === null) {
+            $checks[] = $this->buildAuditCheck(
+                'plantilla',
+                'Plantilla quirúrgica asociada',
+                'warning',
+                'No se encontró una plantilla quirúrgica asociada al protocolo para validar staff y códigos.'
+            );
+        } else {
+            $filledRoles = $this->getFilledProtocolRoleKeys($cirugia);
+            $expectedRoles = $template['roles'] ?? [];
+            $missingExpectedRoles = array_values(array_diff($expectedRoles, $filledRoles));
+
+            $checks[] = $this->buildAuditCheck(
+                'staff_plantilla',
+                'Staff requerido por plantilla',
+                $missingExpectedRoles === [] ? 'ok' : 'error',
+                $missingExpectedRoles === []
+                    ? 'Se cumple el staff esperado por la plantilla.'
+                    : 'Faltan roles del staff definidos en la plantilla.',
+                [
+                    'esperado' => count($expectedRoles),
+                    'registrado' => count($filledRoles),
+                    'faltantes' => array_map([$this, 'roleLabelFromKey'], $missingExpectedRoles),
+                ]
+            );
+
+            $actualCodeCount = $this->countFilledProcedimientos($cirugia->procedimientos ?? null);
+            $expectedCodeCount = count($template['codigos'] ?? []);
+            $checks[] = $this->buildAuditCheck(
+                'codigos_plantilla',
+                'Códigos requeridos por plantilla',
+                $expectedCodeCount === $actualCodeCount ? 'ok' : 'error',
+                $expectedCodeCount === $actualCodeCount
+                    ? 'La cantidad de códigos registrados coincide con la plantilla.'
+                    : 'La cantidad de códigos registrados no coincide con la plantilla.',
+                [
+                    'esperado' => $expectedCodeCount,
+                    'registrado' => $actualCodeCount,
+                ]
+            );
+        }
+
+        $missingFields = $this->getMissingProtocolFields($cirugia);
+        $checks[] = $this->buildAuditCheck(
+            'campos_obligatorios',
+            'Campos obligatorios completos',
+            $missingFields === [] ? 'ok' : 'error',
+            $missingFields === []
+                ? 'Todos los campos obligatorios del protocolo están completos.'
+                : 'Faltan campos obligatorios por completar en el protocolo.',
+            [
+                'faltantes' => $missingFields,
+            ]
+        );
+
+        $statusWeight = ['ok' => 0, 'warning' => 1, 'error' => 2];
+        $overallStatus = 'ok';
+        $summary = ['ok' => 0, 'warning' => 0, 'error' => 0];
+        foreach ($checks as $check) {
+            $status = (string) ($check['status'] ?? 'warning');
+            $summary[$status] = ($summary[$status] ?? 0) + 1;
+            if (($statusWeight[$status] ?? 0) > ($statusWeight[$overallStatus] ?? 0)) {
+                $overallStatus = $status;
+            }
+        }
+
+        return [
+            'status' => $overallStatus,
+            'summary' => $summary,
+            'checks' => $checks,
+            'plantilla' => $template,
+            'proyectado' => [
+                'doctor' => $projectedDoctor,
+                'ojo' => $projectedEye,
+                'procedimiento' => $projectedProcedure,
+            ],
+        ];
+    }
+
     public function guardar(array $data): bool
     {
         $this->resetError();
@@ -1143,6 +1307,388 @@ class CirugiaService
         $normalized = $this->normalizeSqlText($expr);
 
         return "REPLACE(REPLACE({$normalized}, ' ', '_'), '-', '_')";
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function obtenerProcedimientoProyectadoAuditoria(string $formId, string $hcNumber): array
+    {
+        if (
+            $formId === ''
+            || !$this->tableExists('procedimiento_proyectado')
+            || !$this->columnExists('procedimiento_proyectado', 'form_id')
+        ) {
+            return [];
+        }
+
+        $columns = ['procedimiento_proyectado'];
+        foreach (['doctor', 'ojo', 'hc_number'] as $column) {
+            if ($this->columnExists('procedimiento_proyectado', $column)) {
+                $columns[] = $column;
+            }
+        }
+
+        $sql = 'SELECT ' . implode(', ', $columns) . ' FROM procedimiento_proyectado WHERE form_id = :form_id';
+        $params = [':form_id' => $formId];
+
+        if ($hcNumber !== '' && $this->columnExists('procedimiento_proyectado', 'hc_number')) {
+            $sql .= ' AND hc_number = :hc_number';
+            $params[':hc_number'] = $hcNumber;
+        }
+
+        $sql .= ' ORDER BY form_id DESC LIMIT 1';
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+
+        return $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function obtenerPlantillaAuditoria(string $procedimientoId): ?array
+    {
+        $procedimientoId = trim($procedimientoId);
+        if (
+            $procedimientoId === ''
+            || !$this->tableExists('procedimientos')
+            || !$this->columnExists('procedimientos', 'id')
+        ) {
+            return null;
+        }
+
+        $stmt = $this->db->prepare('SELECT id, cirugia, membrete FROM procedimientos WHERE id = :id LIMIT 1');
+        $stmt->execute([':id' => $procedimientoId]);
+        $procedimiento = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$procedimiento) {
+            return null;
+        }
+
+        $codigos = [];
+        if ($this->tableExists('procedimientos_codigos')) {
+            $stmt = $this->db->prepare(
+                'SELECT nombre FROM procedimientos_codigos WHERE procedimiento_id = :id AND TRIM(COALESCE(nombre, "")) <> ""'
+            );
+            $stmt->execute([':id' => $procedimientoId]);
+            $codigos = array_values(array_filter(array_map(
+                static fn($value): string => trim((string) $value),
+                $stmt->fetchAll(PDO::FETCH_COLUMN) ?: []
+            )));
+        }
+
+        $roles = [];
+        if ($this->tableExists('procedimientos_tecnicos')) {
+            $stmt = $this->db->prepare(
+                'SELECT funcion FROM procedimientos_tecnicos WHERE procedimiento_id = :id AND TRIM(COALESCE(funcion, "")) <> ""'
+            );
+            $stmt->execute([':id' => $procedimientoId]);
+            $roles = array_values(array_filter(array_map(
+                fn($value): string => $this->normalizeRoleNameToKey((string) $value),
+                $stmt->fetchAll(PDO::FETCH_COLUMN) ?: []
+            )));
+        }
+
+        return [
+            'id' => (string) ($procedimiento['id'] ?? ''),
+            'cirugia' => trim((string) ($procedimiento['cirugia'] ?? '')),
+            'membrete' => trim((string) ($procedimiento['membrete'] ?? '')),
+            'codigos' => $codigos,
+            'roles' => array_values(array_unique($roles)),
+        ];
+    }
+
+    /**
+     * @return array<string>
+     */
+    private function getFilledProtocolRoleKeys(Cirugia $cirugia): array
+    {
+        $roleMap = [
+            'cirujano_1' => $cirugia->cirujano_1,
+            'cirujano_2' => $cirugia->cirujano_2,
+            'instrumentista' => $cirugia->instrumentista,
+            'circulante' => $cirugia->circulante,
+            'primer_ayudante' => $cirugia->primer_ayudante,
+            'segundo_ayudante' => $cirugia->segundo_ayudante,
+            'tercer_ayudante' => $cirugia->tercer_ayudante,
+            'anestesiologo' => $cirugia->anestesiologo,
+            'ayudante_anestesia' => $cirugia->ayudante_anestesia,
+        ];
+
+        $filled = [];
+        foreach ($roleMap as $key => $value) {
+            if ($this->hasMeaningfulValue($value)) {
+                $filled[] = $key;
+            }
+        }
+
+        return $filled;
+    }
+
+    private function countFilledProcedimientos(?string $procedimientosJson): int
+    {
+        $decoded = $this->decodeJsonArray($procedimientosJson);
+        if ($decoded === null) {
+            return 0;
+        }
+
+        $count = 0;
+        foreach ($decoded as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $value = trim((string) ($item['codigo'] ?? $item['procInterno'] ?? $item['nombre'] ?? ''));
+            if ($value !== '' && $this->normalizeComparableText($value) !== 'SELECCIONE') {
+                $count++;
+            }
+        }
+
+        return $count;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function getMissingProtocolFields(Cirugia $cirugia): array
+    {
+        $fieldMap = [
+            'membrete' => 'Plantilla / membrete',
+            'fecha_inicio' => 'Fecha de inicio',
+            'hora_inicio' => 'Hora de inicio',
+            'hora_fin' => 'Hora de fin',
+            'lateralidad' => 'Lateralidad',
+            'tipo_anestesia' => 'Tipo de anestesia',
+            'cirujano_1' => 'Cirujano principal',
+            'dieresis' => 'Diéresis',
+            'exposicion' => 'Exposición',
+            'hallazgo' => 'Hallazgo',
+            'operatorio' => 'Operatorio',
+            'complicaciones_operatorio' => 'Comentario / complicaciones',
+            'datos_cirugia' => 'Datos de cirugía',
+            'diagnosticos' => 'Diagnósticos',
+            'procedimientos' => 'Procedimientos',
+        ];
+
+        $missing = [];
+        foreach ($fieldMap as $field => $label) {
+            $value = $cirugia->{$field};
+            if (!$this->hasMeaningfulValue($value)) {
+                $missing[] = $label;
+            }
+        }
+
+        return $missing;
+    }
+
+    /**
+     * @param array<string, mixed> $details
+     * @return array<string, mixed>
+     */
+    private function buildAuditCheck(string $code, string $title, string $status, string $message, array $details = []): array
+    {
+        return [
+            'code' => $code,
+            'title' => $title,
+            'status' => $status,
+            'message' => $message,
+            'details' => $details,
+        ];
+    }
+
+    private function hasMeaningfulValue(mixed $value): bool
+    {
+        if ($value === null) {
+            return false;
+        }
+
+        if (is_array($value)) {
+            return $value !== [];
+        }
+
+        $trimmed = trim((string) $value);
+        if ($trimmed === '') {
+            return false;
+        }
+
+        $normalized = strtoupper($this->normalizeComparableText($trimmed));
+        if (in_array($normalized, ['UNDEFINED', 'NULL', 'CENTER', 'SELECCIONE', '[]', '{}'], true)) {
+            return false;
+        }
+
+        if (($trimmed[0] ?? '') === '[' || ($trimmed[0] ?? '') === '{') {
+            $decoded = json_decode($trimmed, true);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                return is_array($decoded) ? $decoded !== [] : true;
+            }
+        }
+
+        return true;
+    }
+
+    private function normalizeComparableText(string $value): string
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return '';
+        }
+
+        $converted = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value);
+        if (is_string($converted) && $converted !== '') {
+            $value = $converted;
+        }
+
+        $value = strtoupper($value);
+        $value = preg_replace('/[^A-Z0-9]+/', ' ', $value) ?? $value;
+
+        return trim(preg_replace('/\s+/', ' ', $value) ?? $value);
+    }
+
+    private function comparePersonNames(string $left, string $right): bool
+    {
+        $leftNormalized = $this->normalizeComparableText($left);
+        $rightNormalized = $this->normalizeComparableText($right);
+
+        if ($leftNormalized === '' || $rightNormalized === '') {
+            return false;
+        }
+
+        if ($leftNormalized === $rightNormalized) {
+            return true;
+        }
+
+        return $this->nameTokens($leftNormalized) === $this->nameTokens($rightNormalized);
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function nameTokens(string $normalizedName): array
+    {
+        $tokens = array_values(array_filter(explode(' ', $normalizedName), static fn(string $token): bool => $token !== ''));
+        sort($tokens);
+
+        return $tokens;
+    }
+
+    private function extractLateralidadFromProjectedProcedure(string $procedimiento): string
+    {
+        $normalized = $this->normalizeComparableText($procedimiento);
+        if ($normalized === '') {
+            return '';
+        }
+
+        if (preg_match('/(^|\s)AMBOS($|\s)|(^|\s)BILATERAL($|\s)/', $normalized)) {
+            return 'AMBOS';
+        }
+
+        if (preg_match('/(^|\s)DERECHO($|\s)/', $normalized)) {
+            return 'DERECHO';
+        }
+
+        if (preg_match('/(^|\s)IZQUIERDO($|\s)/', $normalized)) {
+            return 'IZQUIERDO';
+        }
+
+        return '';
+    }
+
+    private function extractProjectedLensType(string $text): ?string
+    {
+        $normalized = $this->normalizeComparableText($text);
+        if ($normalized === '') {
+            return null;
+        }
+
+        if (preg_match('/(^|\s)MULTIFOCAL($|\s)/', $normalized)) {
+            return 'multifocal';
+        }
+
+        if (preg_match('/(^|\s)TORICO($|\s)/', $normalized)) {
+            return 'torico';
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function normalizeLateralidad(string $raw): array
+    {
+        $normalized = $this->normalizeComparableText($raw);
+        if ($normalized === '') {
+            return [];
+        }
+
+        $result = [];
+        $map = [
+            'OD' => ['OD', 'DERECHO', 'D'],
+            'OI' => ['OI', 'IZQUIERDO', 'I'],
+            'AO' => ['AO', 'AMBOS', 'BILATERAL', 'OU'],
+        ];
+
+        foreach ($map as $canonical => $variants) {
+            foreach ($variants as $variant) {
+                if (preg_match('/(^|\s)' . preg_quote($variant, '/') . '($|\s)/', $normalized)) {
+                    if ($canonical === 'AO') {
+                        $result['OD'] = true;
+                        $result['OI'] = true;
+                    } else {
+                        $result[$canonical] = true;
+                    }
+                }
+            }
+        }
+
+        return array_keys($result);
+    }
+
+    /**
+     * @param array<int, string> $projectedSides
+     * @param array<int, string> $protocolSides
+     */
+    private function lateralidadCompatible(array $projectedSides, array $protocolSides): bool
+    {
+        if ($projectedSides === [] || $protocolSides === []) {
+            return false;
+        }
+
+        return array_intersect($projectedSides, $protocolSides) !== [];
+    }
+
+    private function normalizeRoleNameToKey(string $role): string
+    {
+        $role = $this->normalizeComparableText($role);
+
+        return match ($role) {
+            'CIRUJANO 1' => 'cirujano_1',
+            'CIRUJANO 2' => 'cirujano_2',
+            'INSTRUMENTISTA' => 'instrumentista',
+            'CIRCULANTE' => 'circulante',
+            'PRIMER AYUDANTE' => 'primer_ayudante',
+            'SEGUNDO AYUDANTE' => 'segundo_ayudante',
+            'TERCER AYUDANTE' => 'tercer_ayudante',
+            'ANESTESIOLOGO' => 'anestesiologo',
+            'AYUDANTE ANESTESIOLOGO', 'AYUDANTE ANESTESIA' => 'ayudante_anestesia',
+            default => strtolower(str_replace(' ', '_', $role)),
+        };
+    }
+
+    private function roleLabelFromKey(string $key): string
+    {
+        return match ($key) {
+            'cirujano_1' => 'Cirujano 1',
+            'cirujano_2' => 'Cirujano 2',
+            'instrumentista' => 'Instrumentista',
+            'circulante' => 'Circulante',
+            'primer_ayudante' => 'Primer ayudante',
+            'segundo_ayudante' => 'Segundo ayudante',
+            'tercer_ayudante' => 'Tercer ayudante',
+            'anestesiologo' => 'Anestesiólogo',
+            'ayudante_anestesia' => 'Ayudante anestesia',
+            default => ucwords(str_replace('_', ' ', $key)),
+        };
     }
 
     private function tableExists(string $table): bool

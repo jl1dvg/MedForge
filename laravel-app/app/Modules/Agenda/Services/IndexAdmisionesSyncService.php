@@ -8,6 +8,10 @@ use Throwable;
 
 class IndexAdmisionesSyncService
 {
+    private const EXTRACTOR_AUTO = 'auto';
+    private const EXTRACTOR_DB = 'db';
+    private const EXTRACTOR_SCRAPER = 'scraper';
+
     private ?string $dbConnection;
     private ?string $dbHost;
     private int $dbPort;
@@ -19,6 +23,7 @@ class IndexAdmisionesSyncService
     private ?string $sshUser;
     private ?string $sshPass;
     private ?string $lastError = null;
+    private string $lastSource = self::EXTRACTOR_AUTO;
     private ?\phpseclib3\Net\SSH2 $ssh = null;
     private ?bool $directDbAvailable = null;
 
@@ -52,7 +57,8 @@ class IndexAdmisionesSyncService
      *   lookback?:int,
      *   lookahead?:int,
      *   from_date?:?string,
-     *   to_date?:?string
+     *   to_date?:?string,
+     *   extractor?:?string
      * } $options
      * @param callable(string,array<string,mixed>):void|null $onProgress
      * @return array<string,mixed>
@@ -63,7 +69,7 @@ class IndexAdmisionesSyncService
         $startedAt = microtime(true);
         [$fromDate, $toDate] = $this->resolveDateRange($options);
 
-        $rows = $this->fetchRows($fromDate, $toDate);
+        $rows = $this->fetchRows($fromDate, $toDate, (string) ($options['extractor'] ?? self::EXTRACTOR_AUTO));
         if ($rows === [] && $this->lastError !== null) {
             return [
                 'success' => false,
@@ -135,7 +141,7 @@ class IndexAdmisionesSyncService
             'skipped_rows' => $stats['skipped'],
             'error_rows' => $stats['errors'],
             'duration_ms' => (int) round((microtime(true) - $startedAt) * 1000),
-            'source' => $this->isDirectDbAvailable() ? 'sigcenter-db' : 'sigcenter-ssh',
+            'source' => $this->lastSource,
         ];
     }
 
@@ -184,7 +190,33 @@ class IndexAdmisionesSyncService
     /**
      * @return array<int,array<string,mixed>>
      */
-    private function fetchRows(string $fromDate, string $toDate): array
+    private function fetchRows(string $fromDate, string $toDate, string $extractor): array
+    {
+        $extractor = $this->normalizeExtractor($extractor);
+
+        if ($extractor === self::EXTRACTOR_SCRAPER) {
+            return $this->fetchRowsViaScraper($fromDate, $toDate);
+        }
+
+        if ($extractor === self::EXTRACTOR_AUTO) {
+            $rows = $this->fetchRowsViaScraper($fromDate, $toDate);
+            if ($rows !== [] || $this->lastError === null) {
+                return $rows;
+            }
+
+            $scraperError = $this->lastError;
+            $rows = $this->fetchRowsViaDatabase($fromDate, $toDate);
+            if ($rows === [] && $this->lastError !== null && $scraperError !== null) {
+                $this->lastError = $scraperError . ' | fallback DB/SSH: ' . $this->lastError;
+            }
+
+            return $rows;
+        }
+
+        return $this->fetchRowsViaDatabase($fromDate, $toDate);
+    }
+
+    private function fetchRowsViaDatabase(string $fromDate, string $toDate): array
     {
         if ($this->isDirectDbAvailable()) {
             $rows = DB::connection($this->dbConnection)
@@ -193,10 +225,107 @@ class IndexAdmisionesSyncService
                     'end_date' => $toDate,
                 ]);
 
+            $this->lastError = null;
+            $this->lastSource = 'sigcenter-db';
             return array_map(static fn ($row): array => (array) $row, $rows);
         }
 
         return $this->fetchRowsViaSsh($fromDate, $toDate);
+    }
+
+    /**
+     * @return array<int,array<string,mixed>>
+     */
+    private function fetchRowsViaScraper(string $fromDate, string $toDate): array
+    {
+        $script = $this->resolveScraperScriptPath();
+        if (!is_file($script)) {
+            $this->lastError = sprintf('No se encontró el extractor Python de index-admisiones. Ruta probada: %s', $script);
+            return [];
+        }
+
+        $commandCandidates = [
+            ['python3', $script, $fromDate, $toDate, '--quiet'],
+            ['python', $script, $fromDate, $toDate, '--quiet'],
+        ];
+
+        $lastError = 'No se encontró un intérprete Python ejecutable.';
+
+        foreach ($commandCandidates as $command) {
+            $descriptors = [
+                0 => ['pipe', 'r'],
+                1 => ['pipe', 'w'],
+                2 => ['pipe', 'w'],
+            ];
+
+            $process = @proc_open($command, $descriptors, $pipes, base_path());
+            if (!is_resource($process)) {
+                $lastError = 'No fue posible iniciar el extractor Python.';
+                continue;
+            }
+
+            fclose($pipes[0]);
+            $stdout = stream_get_contents($pipes[1]) ?: '';
+            $stderr = stream_get_contents($pipes[2]) ?: '';
+            fclose($pipes[1]);
+            fclose($pipes[2]);
+
+            $code = proc_close($process);
+            $binary = (string) ($command[0] ?? 'python');
+
+            if ($code === 127) {
+                $lastError = sprintf('No se encontró el intérprete %s.', $binary);
+                continue;
+            }
+
+            if ($code !== 0) {
+                $message = trim($stderr !== '' ? $stderr : $stdout);
+                $this->lastError = $message !== '' ? $message : sprintf('El extractor Python finalizó con código %d.', $code);
+                return [];
+            }
+
+            try {
+                $decoded = $this->decodeScraperOutput($stdout);
+            } catch (Throwable $e) {
+                $this->lastError = $e->getMessage();
+                return [];
+            }
+
+            $rows = $decoded['rows'] ?? null;
+            if (!is_array($rows)) {
+                $this->lastError = 'El extractor Python devolvió un JSON sin la clave rows.';
+                return [];
+            }
+
+            $this->lastError = null;
+            $this->lastSource = 'sigcenter-scraper';
+            return array_values(array_filter($rows, static fn ($row): bool => is_array($row)));
+        }
+
+        $this->lastError = $lastError;
+        return [];
+    }
+
+    private function resolveScraperScriptPath(): string
+    {
+        $override = $this->readEnv('INDEX_ADMISIONES_SCRAPER_PATH');
+        if ($override !== null && $override !== '') {
+            return $override;
+        }
+
+        $basePath = base_path();
+        $candidates = [
+            $basePath . DIRECTORY_SEPARATOR . 'scrapping' . DIRECTORY_SEPARATOR . 'scrape_index_admisiones.py',
+            dirname($basePath) . DIRECTORY_SEPARATOR . 'scrapping' . DIRECTORY_SEPARATOR . 'scrape_index_admisiones.py',
+        ];
+
+        foreach ($candidates as $candidate) {
+            if (is_file($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return $candidates[1];
     }
 
     private function baseSql(): string
@@ -374,7 +503,45 @@ SQL;
         }
 
         $this->lastError = null;
+        $this->lastSource = 'sigcenter-ssh';
         return $rows;
+    }
+
+    private function normalizeExtractor(string $extractor): string
+    {
+        $normalized = strtolower(trim($extractor));
+        return match ($normalized) {
+            self::EXTRACTOR_DB,
+            self::EXTRACTOR_SCRAPER => $normalized,
+            default => self::EXTRACTOR_AUTO,
+        };
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private function decodeScraperOutput(string $output): array
+    {
+        $trimmed = trim($output);
+        if ($trimmed === '') {
+            throw new \RuntimeException('El extractor Python no devolvió salida.');
+        }
+
+        $decoded = json_decode($trimmed, true);
+        if (is_array($decoded)) {
+            return $decoded;
+        }
+
+        $startPos = strrpos($trimmed, "\n{");
+        if ($startPos !== false) {
+            $candidate = trim(substr($trimmed, $startPos + 1));
+            $decoded = json_decode($candidate, true);
+            if (is_array($decoded)) {
+                return $decoded;
+            }
+        }
+
+        throw new \RuntimeException('No se pudo parsear el JSON devuelto por el extractor Python.');
     }
 
     private function isDirectDbAvailable(): bool
@@ -449,7 +616,7 @@ SQL;
             'lname2' => $surnames['lname2'],
             'email' => $this->normalizeWhitespace($row['email'] ?? ''),
             'fecha_nacimiento' => $this->normalizeDateOnly($row['fecha_nac'] ?? ''),
-            'sexo' => $this->normalizeWhitespace($row['sexo'] ?? ''),
+            'sexo' => $this->normalizeSexo($row['sexo'] ?? ''),
             'ciudad' => $this->normalizeWhitespace($row['ciudad'] ?? ''),
             'afiliacion' => $this->normalizeWhitespace($row['afiliacion'] ?? ''),
             'telefono' => $this->normalizeWhitespace($row['telefono'] ?? ''),
@@ -737,6 +904,32 @@ SQL;
     {
         $value = $this->normalizeWhitespace($value);
         return $value !== '' ? $value : null;
+    }
+
+    private function normalizeSexo(?string $value): string
+    {
+        $value = mb_strtoupper($this->normalizeWhitespace($value), 'UTF-8');
+        if ($value === '') {
+            return '';
+        }
+
+        if (in_array($value, ['M', 'MASCULINO'], true)) {
+            return 'M';
+        }
+
+        if (in_array($value, ['F', 'FEMENINO'], true)) {
+            return 'F';
+        }
+
+        if (str_starts_with($value, 'MASC')) {
+            return 'M';
+        }
+
+        if (str_starts_with($value, 'FEM')) {
+            return 'F';
+        }
+
+        return '';
     }
 
     private function inferSedeFromAgendaDpto(?string $value): string

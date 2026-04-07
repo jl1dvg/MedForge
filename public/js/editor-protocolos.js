@@ -4,6 +4,8 @@ $(function () {
     "use strict";
 
     const operatorioEditor = document.getElementById('operatorio');
+    const operatorioInput = document.getElementById('operatorioInput');
+    const listaInsumos = Object.values(window.insumosDisponibles || {}).flat();
     const baseLateralidad = index => `#select2-consultasubsecuente-procedimientoprotocolo-${index}-lateralidadprocedimiento-container`;
     const baseSelector = index => `#select2-consultasubsecuente-procedimientoprotocolo-${index}-procinterno-container`;
     const regexIndice = /procedimientoprotocolo-(\d+)-/i;
@@ -75,9 +77,12 @@ $(function () {
     }
 
     // Render placeholders [[ID:x]] as spans
-    function renderOperatorioPlaceholders(raw) {
-        return raw.replace(/\[\[ID:(\d+)\]\]/g, (match, id) => {
-            const insumo = listaInsumos.find(i => String(i.id) === id);
+    function renderOperatorioPlaceholders(raw = '') {
+        return String(raw).replace(/\[\[ID:(\d+)\]\]/g, (match, id) => {
+            const insumo = Array.isArray(listaInsumos)
+                ? listaInsumos.find(i => String(i.id) === String(id))
+                : null;
+
             const nombre = insumo ? escapeHtml(insumo.nombre) : '';
             return `<span class="tag" data-id="${id}">${nombre}</span>&nbsp;`;
         });
@@ -322,8 +327,10 @@ $(function () {
         console.log("✅ INSUMOS JSON ACTUALIZADO:", json);
     };
 
-    const rawOperatorio = document.getElementById('operatorioInput').value || '';
-    operatorioEditor.innerHTML = renderOperatorioPlaceholders(rawOperatorio);
+    if (operatorioEditor && operatorioInput) {
+        const rawOperatorio = operatorioInput.value || '';
+        operatorioEditor.innerHTML = renderOperatorioPlaceholders(rawOperatorio);
+    }
 
     // Cargar códigos y staff si existen
     cargarCodigos();
@@ -338,7 +345,9 @@ $(function () {
         actualizarMedicamentos();
 
         // Populate hidden operatorio input with editor content converted to placeholders
-        document.getElementById('operatorioInput').value = getOperatorioValue();
+        if (operatorioInput) {
+            operatorioInput.value = getOperatorioValue();
+        }
         const form = document.getElementById('editarProtocoloForm');
         const formData = new FormData(form);
 
@@ -368,6 +377,7 @@ $(function () {
                 Swal.fire('Error', 'No se pudo actualizar el protocolo.', 'error');
             });
     });
+
     // Permite agregar filas de códigos quirúrgicos dinámicamente
     function agregarFilaCodigo(nombre = '', lateralidad = '', selector = '') {
         const indice = inferirIndice(lateralidad, selector, $('#tablaCodigos tbody tr').length);

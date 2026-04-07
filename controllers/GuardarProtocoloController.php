@@ -228,6 +228,11 @@ class GuardarProtocoloController
         $data['hora_inicio'] = $data['hora_inicio'] ?? $data['horaInicio'] ?? null;
         $data['hora_fin'] = $data['hora_fin'] ?? $data['horaFin'] ?? null;
         $data['tipo_anestesia'] = $data['tipo_anestesia'] ?? $data['tipoAnestesia'] ?? null;
+        $data['ayudanteAnestesia'] = $data['ayudanteAnestesia']
+            ?? $data['ayudante_anestesia']
+            ?? $data['ayudante_anestesiologo']
+            ?? null;
+        $data['anestesiologo'] = $data['anestesiologo'] ?? $data['anestesiólogo'] ?? null;
         if (empty($data['procedimiento_id'])) {
             return ["success" => false, "message" => "El campo procedimiento_id es obligatorio."];
         }
