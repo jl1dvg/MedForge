@@ -180,7 +180,7 @@ class ReportPdfService
     /**
      * @return array{content:string,filename:string}|null
      */
-    public function generateInforme012BPdf(string $formId, string $hcNumber): ?array
+    public function generateInforme012BPdf(string $formId, string $hcNumber, ?string $fechaDocumento = null): ?array
     {
         $data = $this->imagenesDataService->buildInforme012BData($formId, $hcNumber);
         if ($data === []) {
@@ -190,6 +190,10 @@ class ReportPdfService
         $reportPayload = is_array($data['report'] ?? null) ? $data['report'] : [];
         if ($reportPayload === []) {
             return null;
+        }
+
+        if ($fechaDocumento !== null && $fechaDocumento !== '') {
+            $reportPayload = $this->applyFechaDocumentoOverrideTo012BPayload($reportPayload, $fechaDocumento);
         }
 
         $resolvedHc = trim((string) ($data['hc_number'] ?? $hcNumber));
@@ -219,7 +223,8 @@ class ReportPdfService
         string $hcNumber,
         ?int $examenId = null,
         array $selectedItems = [],
-        bool $preserveBaseContext = false
+        bool $preserveBaseContext = false,
+        ?string $fechaDocumento = null
     ): ?array {
         $data = $this->imagenesDataService->buildCobertura012AData(
             $formId,
@@ -230,6 +235,10 @@ class ReportPdfService
         );
         if ($data === []) {
             return null;
+        }
+
+        if ($fechaDocumento !== null && $fechaDocumento !== '') {
+            $data = $this->applyFechaDocumentoOverrideTo012AData($data, $fechaDocumento);
         }
 
         $data = $this->enrichSolicitudData($data, $formId, $hcNumber);
@@ -250,7 +259,7 @@ class ReportPdfService
      * @param array<int, array<string, mixed>> $items
      * @return array{content:string,filename:string}|null
      */
-    public function generateInforme012BPackagePdf(array $items): ?array
+    public function generateInforme012BPackagePdf(array $items, ?string $fechaDocumento = null): ?array
     {
         $normalized = $this->normalizePackageItems($items);
         if ($normalized === []) {
@@ -292,7 +301,8 @@ class ReportPdfService
                     $baseHcNumber !== '' ? $baseHcNumber : $hcBase,
                     $baseExamenId,
                     $groupedItems,
-                    true
+                    true,
+                    $fechaDocumento
                 );
                 if (is_array($cobertura012A) && isset($cobertura012A['content'])) {
                     $tmp012A = $this->writeTempFile((string) $cobertura012A['content'], 'pdf');
@@ -313,7 +323,7 @@ class ReportPdfService
                         continue;
                     }
 
-                    $informe012B = $this->generateInforme012BPdf($formId, $hcNumber);
+                    $informe012B = $this->generateInforme012BPdf($formId, $hcNumber, $fechaDocumento);
                     if (is_array($informe012B) && isset($informe012B['content'])) {
                         $tmp012B = $this->writeTempFile((string) $informe012B['content'], 'pdf');
                         $tempFiles[] = $tmp012B;
@@ -342,7 +352,11 @@ class ReportPdfService
                             continue;
                         }
 
-                        $prepared = $this->prepareSigcenterFileForPackage($relativePath);
+                        $prepared = $this->prepareSigcenterFileForPackage($relativePath, [
+                            'tipo_examen' => (string) ($item['tipo_examen'] ?? ''),
+                            'form_id' => $formId,
+                            'hc_number' => $hcNumber,
+                        ], $fechaDocumento);
                         if (!is_array($prepared)) {
                             continue;
                         }
@@ -849,6 +863,75 @@ class ReportPdfService
     }
 
     /**
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
+    private function applyFechaDocumentoOverrideTo012AData(array $data, string $fechaDocumento): array
+    {
+        if ($fechaDocumento === '') {
+            return $data;
+        }
+
+        if (!isset($data['consulta']) || !is_array($data['consulta'])) {
+            $data['consulta'] = [];
+        }
+        $consultaCreatedAt = trim((string) ($data['consulta']['created_at'] ?? ''));
+        $consultaTime = $this->extractTimePart($consultaCreatedAt);
+        $data['consulta']['fecha'] = $fechaDocumento;
+        if ($consultaTime !== '') {
+            $data['consulta']['created_at'] = $fechaDocumento . ' ' . $consultaTime;
+        } else {
+            $data['consulta']['created_at'] = $fechaDocumento;
+        }
+
+        if (!isset($data['solicitud']) || !is_array($data['solicitud'])) {
+            $data['solicitud'] = [];
+        }
+        $solicitudTime = trim((string) ($data['solicitud']['created_at_time'] ?? ''));
+        $data['solicitud']['created_at_date'] = $fechaDocumento;
+        if ($solicitudTime !== '') {
+            $data['solicitud']['created_at'] = $fechaDocumento . ' ' . $solicitudTime;
+        } else {
+            $data['solicitud']['created_at'] = $fechaDocumento;
+        }
+
+        return $data;
+    }
+
+    /**
+     * @param array<string, mixed> $reportPayload
+     * @return array<string, mixed>
+     */
+    private function applyFechaDocumentoOverrideTo012BPayload(array $reportPayload, string $fechaDocumento): array
+    {
+        if ($fechaDocumento === '') {
+            return $reportPayload;
+        }
+
+        if (!isset($reportPayload['informe']) || !is_array($reportPayload['informe'])) {
+            $reportPayload['informe'] = [];
+        }
+        $reportPayload['informe']['fecha'] = $fechaDocumento;
+
+        return $reportPayload;
+    }
+
+    private function extractTimePart(string $value): string
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return '';
+        }
+
+        $timestamp = strtotime($value);
+        if ($timestamp === false) {
+            return '';
+        }
+
+        return date('H:i', $timestamp);
+    }
+
+    /**
      * @param array<int, array<string, mixed>> $items
      * @return array<int, array<int, array<string, mixed>>>
      */
@@ -961,7 +1044,11 @@ class ReportPdfService
     /**
      * @return array{path:string,ext:string}|null
      */
-    private function prepareSigcenterFileForPackage(string $relativePath): ?array
+    private function prepareSigcenterFileForPackage(
+        string $relativePath,
+        array $context = [],
+        ?string $fechaDocumento = null
+    ): ?array
     {
         $ext = strtolower((string) pathinfo($relativePath, PATHINFO_EXTENSION));
         if ($ext === '') {
@@ -972,6 +1059,19 @@ class ReportPdfService
         if (!$this->sigcenterImagenesService()->downloadRelativeFileToPath($relativePath, $tmpPath)) {
             @unlink($tmpPath);
             return null;
+        }
+
+        if ($ext === 'pdf' && $fechaDocumento !== null && $fechaDocumento !== '') {
+            $tipoExamen = (string) ($context['tipo_examen'] ?? '');
+            $maskContext = $context + [
+                'relative_path' => $relativePath,
+            ];
+
+            if ($this->isTopografiaCorneal($tipoExamen)) {
+                $this->maskTopografiaPdfDateInPlace($tmpPath, $maskContext);
+            } elseif ($this->isMicroespecular($tipoExamen)) {
+                $this->maskMicroespecularPdfDateInPlace($tmpPath, $maskContext);
+            }
         }
 
         return [
@@ -1044,6 +1144,144 @@ class ReportPdfService
             $pdf->AddPage($size['orientation'], [$size['width'], $size['height']]);
             $pdf->useTemplate($tplId);
         }
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     */
+    private function maskTopografiaPdfDateInPlace(string $path, array $context = []): void
+    {
+        try {
+            $masked = new Fpdi();
+            $masked->SetAutoPageBreak(false, 0);
+            $masked->setPrintHeader(false);
+            $masked->setPrintFooter(false);
+
+            $pageCount = $masked->setSourceFile($path);
+            for ($pageNo = 1; $pageNo <= $pageCount; $pageNo++) {
+                $tplId = $masked->importPage($pageNo);
+                $size = $masked->getTemplateSize($tplId);
+                $width = (float) ($size['width'] ?? 0.0);
+                $height = (float) ($size['height'] ?? 0.0);
+
+                if ($width <= 0.0 || $height <= 0.0) {
+                    continue;
+                }
+
+                $masked->AddPage($size['orientation'], [$width, $height]);
+                $masked->useTemplate($tplId);
+                $this->drawTopografiaDateMasks($masked, $width, $height);
+            }
+
+            $content = (string) $masked->Output('', 'S');
+            if ($this->isPdfContent($content)) {
+                file_put_contents($path, $content);
+                return;
+            }
+
+            Log::warning('reporting.pdf.topografia_mask_skipped', $context + [
+                'path' => $path,
+                'reason' => 'invalid_masked_pdf',
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('reporting.pdf.topografia_mask_skipped', $context + [
+                'path' => $path,
+                'reason' => 'mask_failed',
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    private function drawTopografiaDateMasks(Fpdi $pdf, float $pageWidth, float $pageHeight): void
+    {
+        $pdf->SetFillColor(255, 255, 255);
+
+        // Header date below "Mapeo corneal por Scheimpflug".
+        $pdf->Rect(
+            $pageWidth * 0.342,
+            $pageHeight * 0.041,
+            $pageWidth * 0.205,
+            $pageHeight * 0.038,
+            'F'
+        );
+
+        // Left sidebar date shown under "Mapeo corneal por Scheimpflug".
+        $pdf->Rect(
+            $pageWidth * 0.021,
+            $pageHeight * 0.27,
+            $pageWidth * 0.125,
+            $pageHeight * 0.030,
+            'F'
+        );
+
+        // Safety mask for the same left block when the export shifts a few pixels.
+        //$pdf->Rect(
+        //    $pageWidth * 0.014,
+        //    $pageHeight * 0.218,
+        //    $pageWidth * 0.135,
+        //    $pageHeight * 0.042,
+        //    'F'
+        //);
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     */
+    private function maskMicroespecularPdfDateInPlace(string $path, array $context = []): void
+    {
+        try {
+            $masked = new Fpdi();
+            $masked->SetAutoPageBreak(false, 0);
+            $masked->setPrintHeader(false);
+            $masked->setPrintFooter(false);
+
+            $pageCount = $masked->setSourceFile($path);
+            for ($pageNo = 1; $pageNo <= $pageCount; $pageNo++) {
+                $tplId = $masked->importPage($pageNo);
+                $size = $masked->getTemplateSize($tplId);
+                $width = (float) ($size['width'] ?? 0.0);
+                $height = (float) ($size['height'] ?? 0.0);
+
+                if ($width <= 0.0 || $height <= 0.0) {
+                    continue;
+                }
+
+                $masked->AddPage($size['orientation'], [$width, $height]);
+                $masked->useTemplate($tplId);
+                $this->drawMicroespecularDateMasks($masked, $width, $height);
+            }
+
+            $content = (string) $masked->Output('', 'S');
+            if ($this->isPdfContent($content)) {
+                file_put_contents($path, $content);
+                return;
+            }
+
+            Log::warning('reporting.pdf.microespecular_mask_skipped', $context + [
+                'path' => $path,
+                'reason' => 'invalid_masked_pdf',
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('reporting.pdf.microespecular_mask_skipped', $context + [
+                'path' => $path,
+                'reason' => 'mask_failed',
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    private function drawMicroespecularDateMasks(Fpdi $pdf, float $pageWidth, float $pageHeight): void
+    {
+        $pdf->SetFillColor(255, 255, 255);
+
+        // Header date/time in NIDEK endothelial microscopy reports.
+        $pdf->Rect(
+            $pageWidth * 0.72,
+            $pageHeight * 0.01,
+            $pageWidth * 0.22,
+            $pageHeight * 0.055,
+            'F'
+        );
     }
 
     /**
@@ -1122,6 +1360,36 @@ class ReportPdfService
         return str_contains($texto, 'angiografia retinal');
     }
 
+    private function isTopografiaCorneal(?string $tipoExamen): bool
+    {
+        $texto = $this->normalizeSearchText((string) ($tipoExamen ?? ''));
+        if ($texto === '') {
+            return false;
+        }
+
+        if (preg_match('/\b281186\b/', $texto) === 1) {
+            return true;
+        }
+
+        return str_contains($texto, 'topografia corneal');
+    }
+
+    private function isMicroespecular(?string $tipoExamen): bool
+    {
+        $texto = $this->normalizeSearchText((string) ($tipoExamen ?? ''));
+        if ($texto === '') {
+            return false;
+        }
+
+        if (preg_match('/\b281197\b/', $texto) === 1) {
+            return true;
+        }
+
+        return str_contains($texto, 'microscopia especular')
+            || str_contains($texto, 'recuento de celulas endoteliales')
+            || str_contains($texto, 'celulas endoteliales');
+    }
+
     private function normalizeSearchText(string $value): string
     {
         $value = trim($value);
@@ -1180,6 +1448,11 @@ class ReportPdfService
         if (!str_starts_with($content, '%PDF-')) {
             throw new RuntimeException('No se generó un PDF válido para ' . $context . '.');
         }
+    }
+
+    private function isPdfContent(string $content): bool
+    {
+        return str_starts_with($content, '%PDF-');
     }
 
     private function isPdfFile(string $path): bool
