@@ -1061,16 +1061,24 @@ class ReportPdfService
             return null;
         }
 
-        if ($ext === 'pdf' && $fechaDocumento !== null && $fechaDocumento !== '') {
+        if ($fechaDocumento !== null && $fechaDocumento !== '') {
             $tipoExamen = (string) ($context['tipo_examen'] ?? '');
             $maskContext = $context + [
                 'relative_path' => $relativePath,
+                'fecha_documento' => $fechaDocumento,
             ];
 
-            if ($this->isTopografiaCorneal($tipoExamen)) {
+            if ($ext === 'pdf' && $this->isTopografiaCorneal($tipoExamen)) {
+                Log::info('reporting.pdf.mask.topografia.attempt', $maskContext);
                 $this->maskTopografiaPdfDateInPlace($tmpPath, $maskContext);
-            } elseif ($this->isMicroespecular($tipoExamen)) {
+            } elseif ($ext === 'pdf' && $this->isMicroespecular($tipoExamen)) {
+                Log::info('reporting.pdf.mask.microespecular.attempt', $maskContext);
                 $this->maskMicroespecularPdfDateInPlace($tmpPath, $maskContext);
+            } elseif ($this->isImageExtension($ext) && $this->isMicroespecular($tipoExamen)) {
+                Log::info('reporting.image.mask.microespecular.attempt', $maskContext + [
+                    'ext' => $ext,
+                ]);
+                $this->maskMicroespecularImageDateInPlace($tmpPath, $ext, $maskContext);
             }
         }
 
@@ -1275,13 +1283,119 @@ class ReportPdfService
         $pdf->SetFillColor(255, 255, 255);
 
         // Header date/time in NIDEK endothelial microscopy reports.
+        if ($pageHeight > ($pageWidth * 0.82)) {
+            $pdf->Rect(
+                $pageWidth * 0.84,
+                $pageHeight * 0.012,
+                $pageWidth * 0.14,
+                $pageHeight * 0.028,
+                'F'
+            );
+            return;
+        }
+
         $pdf->Rect(
-            $pageWidth * 0.72,
-            $pageHeight * 0.01,
-            $pageWidth * 0.22,
-            $pageHeight * 0.055,
+            $pageWidth * 0.82,
+            $pageHeight * 0.012,
+            $pageWidth * 0.16,
+            $pageHeight * 0.032,
             'F'
         );
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     */
+    private function maskMicroespecularImageDateInPlace(string $path, string $ext, array $context = []): void
+    {
+        try {
+            $image = $this->loadImageResource($path, $ext);
+            if ($image === null) {
+                Log::warning('reporting.image.microespecular_mask_skipped', $context + [
+                    'path' => $path,
+                    'reason' => 'unsupported_image_loader',
+                    'ext' => $ext,
+                ]);
+                return;
+            }
+
+            $width = imagesx($image);
+            $height = imagesy($image);
+            if ($width <= 0 || $height <= 0) {
+                imagedestroy($image);
+                Log::warning('reporting.image.microespecular_mask_skipped', $context + [
+                    'path' => $path,
+                    'reason' => 'invalid_image_dimensions',
+                    'ext' => $ext,
+                ]);
+                return;
+            }
+
+            $white = imagecolorallocate($image, 255, 255, 255);
+            if ($height > (int) round($width * 0.82)) {
+                imagefilledrectangle(
+                    $image,
+                    (int) round($width * 0.84),
+                    (int) round($height * 0.012),
+                    (int) round($width * 0.98),
+                    (int) round($height * 0.04),
+                    $white
+                );
+            } else {
+                imagefilledrectangle(
+                    $image,
+                    (int) round($width * 0.82),
+                    (int) round($height * 0.012),
+                    (int) round($width * 0.98),
+                    (int) round($height * 0.044),
+                    $white
+                );
+            }
+
+            if (!$this->saveImageResource($image, $path, $ext)) {
+                imagedestroy($image);
+                Log::warning('reporting.image.microespecular_mask_skipped', $context + [
+                    'path' => $path,
+                    'reason' => 'save_failed',
+                    'ext' => $ext,
+                ]);
+                return;
+            }
+
+            imagedestroy($image);
+        } catch (\Throwable $e) {
+            Log::warning('reporting.image.microespecular_mask_skipped', $context + [
+                'path' => $path,
+                'reason' => 'mask_failed',
+                'ext' => $ext,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    private function isImageExtension(string $ext): bool
+    {
+        return in_array(strtolower($ext), ['jpg', 'jpeg', 'png', 'webp'], true);
+    }
+
+    private function loadImageResource(string $path, string $ext): mixed
+    {
+        return match (strtolower($ext)) {
+            'jpg', 'jpeg' => function_exists('imagecreatefromjpeg') ? @imagecreatefromjpeg($path) : null,
+            'png' => function_exists('imagecreatefrompng') ? @imagecreatefrompng($path) : null,
+            'webp' => function_exists('imagecreatefromwebp') ? @imagecreatefromwebp($path) : null,
+            default => null,
+        };
+    }
+
+    private function saveImageResource(mixed $image, string $path, string $ext): bool
+    {
+        return match (strtolower($ext)) {
+            'jpg', 'jpeg' => function_exists('imagejpeg') ? @imagejpeg($image, $path, 95) : false,
+            'png' => function_exists('imagepng') ? @imagepng($image, $path, 6) : false,
+            'webp' => function_exists('imagewebp') ? @imagewebp($image, $path, 95) : false,
+            default => false,
+        };
     }
 
     /**
