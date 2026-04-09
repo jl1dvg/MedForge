@@ -341,6 +341,9 @@ class ReportPdfService
                     if ($this->isAngiografiaRetinal((string) ($item['tipo_examen'] ?? null)) && count($files) > 2) {
                         $files = array_slice($files, 0, 2);
                     }
+                    if ($this->isBiometriaOcular((string) ($item['tipo_examen'] ?? null)) && count($files) > 1) {
+                        $files = [end($files)];
+                    }
 
                     foreach ($files as $file) {
                         if (!is_array($file)) {
@@ -1071,6 +1074,19 @@ class ReportPdfService
             if ($ext === 'pdf' && $this->isTopografiaCorneal($tipoExamen)) {
                 Log::info('reporting.pdf.mask.topografia.attempt', $maskContext);
                 $this->maskTopografiaPdfDateInPlace($tmpPath, $maskContext);
+            } elseif ($ext === 'pdf' && $this->isBiometriaOcular($tipoExamen)) {
+                Log::info('reporting.pdf.mask.biometria.attempt', $maskContext);
+                $this->maskBiometriaPdfDateInPlace($tmpPath, $maskContext);
+            } elseif ($this->isImageExtension($ext) && $this->isBiometriaOcular($tipoExamen)) {
+                Log::info('reporting.image.mask.biometria.attempt', $maskContext + [
+                    'ext' => $ext,
+                ]);
+                $this->maskBiometriaImageDateInPlace($tmpPath, $ext, $maskContext);
+            } elseif ($this->isImageExtension($ext) && $this->isEcografiaModoB($tipoExamen)) {
+                Log::info('reporting.image.mask.ecografia_modo_b.attempt', $maskContext + [
+                    'ext' => $ext,
+                ]);
+                $this->maskEcografiaModoBImageDateInPlace($tmpPath, $ext, $maskContext);
             } elseif ($ext === 'pdf' && $this->isMicroespecular($tipoExamen)) {
                 Log::info('reporting.pdf.mask.microespecular.attempt', $maskContext);
                 $this->maskMicroespecularPdfDateInPlace($tmpPath, $maskContext);
@@ -1230,6 +1246,184 @@ class ReportPdfService
         //    $pageHeight * 0.042,
         //    'F'
         //);
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     */
+    private function maskBiometriaPdfDateInPlace(string $path, array $context = []): void
+    {
+        try {
+            $masked = new Fpdi();
+            $masked->SetAutoPageBreak(false, 0);
+            $masked->setPrintHeader(false);
+            $masked->setPrintFooter(false);
+
+            $pageCount = $masked->setSourceFile($path);
+            for ($pageNo = 1; $pageNo <= $pageCount; $pageNo++) {
+                $tplId = $masked->importPage($pageNo);
+                $size = $masked->getTemplateSize($tplId);
+                $width = (float) ($size['width'] ?? 0.0);
+                $height = (float) ($size['height'] ?? 0.0);
+
+                if ($width <= 0.0 || $height <= 0.0) {
+                    continue;
+                }
+
+                $masked->AddPage($size['orientation'], [$width, $height]);
+                $masked->useTemplate($tplId);
+                $this->drawBiometriaDateMasks($masked, $width, $height);
+            }
+
+            $content = (string) $masked->Output('', 'S');
+            if ($this->isPdfContent($content)) {
+                file_put_contents($path, $content);
+                return;
+            }
+
+            Log::warning('reporting.pdf.biometria_mask_skipped', $context + [
+                'path' => $path,
+                'reason' => 'invalid_masked_pdf',
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('reporting.pdf.biometria_mask_skipped', $context + [
+                'path' => $path,
+                'reason' => 'mask_failed',
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    private function drawBiometriaDateMasks(Fpdi $pdf, float $pageWidth, float $pageHeight): void
+    {
+        $pdf->SetFillColor(255, 255, 255);
+
+        // EyeSuite / Haag-Streit biometric calculation page: hide only the date/time block.
+        $pdf->Rect(
+            $pageWidth * 0.83,
+            $pageHeight * 0.028,
+            $pageWidth * 1.15,
+            $pageHeight * 1.038,
+            'F'
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     */
+    private function maskBiometriaImageDateInPlace(string $path, string $ext, array $context = []): void
+    {
+        try {
+            $image = $this->loadImageResource($path, $ext);
+            if ($image === null) {
+                Log::warning('reporting.image.biometria_mask_skipped', $context + [
+                    'path' => $path,
+                    'reason' => 'unsupported_image_loader',
+                    'ext' => $ext,
+                ]);
+                return;
+            }
+
+            $width = imagesx($image);
+            $height = imagesy($image);
+            if ($width <= 0 || $height <= 0) {
+                imagedestroy($image);
+                Log::warning('reporting.image.biometria_mask_skipped', $context + [
+                    'path' => $path,
+                    'reason' => 'invalid_image_dimensions',
+                    'ext' => $ext,
+                ]);
+                return;
+            }
+
+            $white = imagecolorallocate($image, 255, 255, 255);
+            imagefilledrectangle(
+                $image,
+                (int) round($width * 0.75),
+                (int) round($height * 0.13),
+                (int) round($width * 0.98),
+                (int) round($height * 0.17),
+                $white
+            );
+
+            if (!$this->saveImageResource($image, $path, $ext)) {
+                imagedestroy($image);
+                Log::warning('reporting.image.biometria_mask_skipped', $context + [
+                    'path' => $path,
+                    'reason' => 'save_failed',
+                    'ext' => $ext,
+                ]);
+                return;
+            }
+
+            imagedestroy($image);
+        } catch (\Throwable $e) {
+            Log::warning('reporting.image.biometria_mask_skipped', $context + [
+                'path' => $path,
+                'reason' => 'mask_failed',
+                'ext' => $ext,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     */
+    private function maskEcografiaModoBImageDateInPlace(string $path, string $ext, array $context = []): void
+    {
+        try {
+            $image = $this->loadImageResource($path, $ext);
+            if ($image === null) {
+                Log::warning('reporting.image.ecografia_modo_b_mask_skipped', $context + [
+                    'path' => $path,
+                    'reason' => 'unsupported_image_loader',
+                    'ext' => $ext,
+                ]);
+                return;
+            }
+
+            $width = imagesx($image);
+            $height = imagesy($image);
+            if ($width <= 0 || $height <= 0) {
+                imagedestroy($image);
+                Log::warning('reporting.image.ecografia_modo_b_mask_skipped', $context + [
+                    'path' => $path,
+                    'reason' => 'invalid_image_dimensions',
+                    'ext' => $ext,
+                ]);
+                return;
+            }
+
+            $white = imagecolorallocate($image, 255, 255, 255);
+            imagefilledrectangle(
+                $image,
+                (int) round($width * 0.58),
+                (int) round($height * 0.11),
+                (int) round($width * 0.98),
+                (int) round($height * 0.125),
+                $white
+            );
+
+            if (!$this->saveImageResource($image, $path, $ext)) {
+                imagedestroy($image);
+                Log::warning('reporting.image.ecografia_modo_b_mask_skipped', $context + [
+                    'path' => $path,
+                    'reason' => 'save_failed',
+                    'ext' => $ext,
+                ]);
+                return;
+            }
+
+            imagedestroy($image);
+        } catch (\Throwable $e) {
+            Log::warning('reporting.image.ecografia_modo_b_mask_skipped', $context + [
+                'path' => $path,
+                'reason' => 'mask_failed',
+                'ext' => $ext,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
@@ -1486,6 +1680,38 @@ class ReportPdfService
         }
 
         return str_contains($texto, 'topografia corneal');
+    }
+
+    private function isBiometriaOcular(?string $tipoExamen): bool
+    {
+        $texto = $this->normalizeSearchText((string) ($tipoExamen ?? ''));
+        if ($texto === '') {
+            return false;
+        }
+
+        if (preg_match('/\b281230\b/', $texto) === 1) {
+            return true;
+        }
+
+        return str_contains($texto, 'biometria ocular')
+            || str_contains($texto, 'biometria de inmersion')
+            || str_contains($texto, 'biometria');
+    }
+
+    private function isEcografiaModoB(?string $tipoExamen): bool
+    {
+        $texto = $this->normalizeSearchText((string) ($tipoExamen ?? ''));
+        if ($texto === '') {
+            return false;
+        }
+
+        if (preg_match('/\b76512\b/', $texto) === 1) {
+            return true;
+        }
+
+        return str_contains($texto, 'ecografia modo b')
+            || str_contains($texto, 'ultrasonido de segmento anterior')
+            || str_contains($texto, 'ecografia');
     }
 
     private function isMicroespecular(?string $tipoExamen): bool
