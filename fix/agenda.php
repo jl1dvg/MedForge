@@ -101,7 +101,7 @@ foreach ($fechas as $fecha) {
     }
     require_once 'simple_html_dom.php';
 
-    $loginUrl = 'http://cive.ddns.net:8085/site/login';
+    $loginUrl = 'http://sigcenter.ddns.net:18093/site/login';
     $cookieFile = __DIR__ . '/cookie.txt';
 
     // 1. Obtener el CSRF token
@@ -158,7 +158,7 @@ foreach ($fechas as $fecha) {
     curl_close($ch);
 
     // 3. Acceder a la página protegida ya logueado
-    $url = "http://cive.ddns.net:8085/documentacion/doc-solicitud-procedimientos/index-doctor?DocSolicitudProcedimientosDoctorSearch%5BfechaBusqueda%5D={$fecha}&DocSolicitudProcedimientosDoctorSearch%5BtipoProcedimiento%5D=&DocSolicitudProcedimientosDoctorSearch%5Bsede%5D=&DocSolicitudProcedimientosDoctorSearch%5Bpagado%5D=&DocSolicitudProcedimientosDoctorSearch%5BconsultaPrevia%5D=&DocSolicitudProcedimientosDoctorSearch%5Bid%5D=&DocSolicitudProcedimientosDoctorSearch%5Bdoctor%5D=&DocSolicitudProcedimientosDoctorSearch%5Bhora%5D=&DocSolicitudProcedimientosDoctorSearch%5Bpaciente%5D=&DocSolicitudProcedimientosDoctorSearch%5BpacienteIdentificacion%5D=&DocSolicitudProcedimientosDoctorSearch%5Bciudad%5D=&DocSolicitudProcedimientosDoctorSearch%5BafiliacionId%5D=&DocSolicitudProcedimientosDoctorSearch%5Btelefono%5D=&DocSolicitudProcedimientosDoctorSearch%5BprocedimientoId%5D=&DocSolicitudProcedimientosDoctorSearch%5BanestesiaVal%5D=&DocSolicitudProcedimientosDoctorSearch%5BestadoAgenda%5D=&DocSolicitudProcedimientosDoctorSearch%5Bfecha_vigencia%5D=&DocSolicitudProcedimientosDoctorSearch%5Bnota_previa_doctor%5D=&_tog3213ef16=all";
+    $url = "http://sigcenter.ddns.net:18093/documentacion/doc-solicitud-procedimientos/index-doctor?DocSolicitudProcedimientosDoctorSearch%5BfechaBusqueda%5D={$fecha}&DocSolicitudProcedimientosDoctorSearch%5BtipoProcedimiento%5D=&DocSolicitudProcedimientosDoctorSearch%5Bsede%5D=&DocSolicitudProcedimientosDoctorSearch%5Bpagado%5D=&DocSolicitudProcedimientosDoctorSearch%5BconsultaPrevia%5D=&DocSolicitudProcedimientosDoctorSearch%5Bid%5D=&DocSolicitudProcedimientosDoctorSearch%5Bdoctor%5D=&DocSolicitudProcedimientosDoctorSearch%5Bhora%5D=&DocSolicitudProcedimientosDoctorSearch%5Bpaciente%5D=&DocSolicitudProcedimientosDoctorSearch%5BpacienteIdentificacion%5D=&DocSolicitudProcedimientosDoctorSearch%5Bciudad%5D=&DocSolicitudProcedimientosDoctorSearch%5BafiliacionId%5D=&DocSolicitudProcedimientosDoctorSearch%5Btelefono%5D=&DocSolicitudProcedimientosDoctorSearch%5BprocedimientoId%5D=&DocSolicitudProcedimientosDoctorSearch%5BanestesiaVal%5D=&DocSolicitudProcedimientosDoctorSearch%5BestadoAgenda%5D=&DocSolicitudProcedimientosDoctorSearch%5Bfecha_vigencia%5D=&DocSolicitudProcedimientosDoctorSearch%5Bnota_previa_doctor%5D=&_tog3213ef16=all";
 
     $ch = curl_init($url);
     curl_setopt_array($ch, [

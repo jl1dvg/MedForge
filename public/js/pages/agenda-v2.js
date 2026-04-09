@@ -1,4 +1,6 @@
 (function () {
+    const REFRESH_INTERVAL_MS = 60000;
+
     function initAgendaTable() {
         if (!window.jQuery || !window.jQuery.fn || typeof window.jQuery.fn.DataTable !== 'function') {
             return;
@@ -9,21 +11,85 @@
             return;
         }
 
+        const clearInlineTableWidth = function () {
+            const tableNode = $table.get(0);
+            if (!tableNode) {
+                return;
+            }
+
+            tableNode.style.width = '';
+        };
+
         $table.DataTable({
             language: window.medforgeDataTableLanguageEs ? window.medforgeDataTableLanguageEs() : {},
             pageLength: 25,
             lengthMenu: [[10, 25, 50, 100], [10, 25, 50, 100]],
             deferRender: true,
             responsive: false,
+            autoWidth: false,
             order: [[0, 'asc'], [1, 'asc']],
+            dom: 'Bfrtip',
+            buttons: [
+                {
+                    extend: 'collection',
+                    text: 'Columnas',
+                    autoClose: false,
+                    collectionLayout: 'fixed two-column',
+                    buttons: [
+                        {
+                            extend: 'columnsToggle',
+                            columns: ':not(.no-colvis)',
+                        },
+                        {
+                            extend: 'colvisRestore',
+                            text: 'Restaurar columnas',
+                        },
+                    ],
+                },
+                {
+                    extend: 'copy',
+                    exportOptions: {
+                        columns: ':visible:not(.not-export)',
+                    },
+                },
+                {
+                    extend: 'csv',
+                    exportOptions: {
+                        columns: ':visible:not(.not-export)',
+                    },
+                },
+                {
+                    extend: 'excel',
+                    exportOptions: {
+                        columns: ':visible:not(.not-export)',
+                    },
+                },
+                {
+                    extend: 'pdf',
+                    exportOptions: {
+                        columns: ':visible:not(.not-export)',
+                    },
+                    orientation: 'landscape',
+                    pageSize: 'A4',
+                },
+                {
+                    extend: 'print',
+                    exportOptions: {
+                        columns: ':visible:not(.not-export)',
+                    },
+                },
+            ],
             columnDefs: [
                 {
-                    targets: [12],
+                    targets: [14],
                     orderable: false,
                     searchable: false,
                 },
             ],
+            initComplete: clearInlineTableWidth,
         });
+
+        $table.on('draw.dt', clearInlineTableWidth);
     }
 
     initAgendaTable();
@@ -92,6 +158,30 @@
     function closeModal() {
         modal.style.display = 'none';
         modal.setAttribute('aria-hidden', 'true');
+    }
+
+    function isTypingInForm() {
+        const active = document.activeElement;
+        if (!active) {
+            return false;
+        }
+
+        return ['INPUT', 'SELECT', 'TEXTAREA'].includes(active.tagName);
+    }
+
+    function shouldAutoRefresh() {
+        return !document.hidden
+            && modal.getAttribute('aria-hidden') === 'true'
+            && !isTypingInForm();
+    }
+
+    function updateRefreshLabel() {
+        const label = document.querySelector('[data-agenda-refresh-label]');
+        if (!label) {
+            return;
+        }
+
+        label.textContent = `Actualizacion automatica cada ${Math.round(REFRESH_INTERVAL_MS / 1000)} segundos`;
     }
 
     function renderCards(visita) {
@@ -184,4 +274,14 @@
             closeModal();
         }
     });
+
+    updateRefreshLabel();
+
+    window.setInterval(function () {
+        if (!shouldAutoRefresh()) {
+            return;
+        }
+
+        window.location.reload();
+    }, REFRESH_INTERVAL_MS);
 })();

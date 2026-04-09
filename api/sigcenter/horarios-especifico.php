@@ -27,7 +27,7 @@ $requestPayload = [
     'FECHA' => $fecha,
 ];
 
-$endpoint = 'https://cive.ddns.net:8085/restful/api-agenda/horarios-disponibles-especifico';
+$endpoint = 'https://sigcenter.ddns.net:18093/restful/api-agenda/horarios-disponibles-especifico';
 $result = sigcenterRequest($endpoint, $requestPayload, 'GET');
 $ok = $result['http_code'] >= 200 && $result['http_code'] < 300;
 

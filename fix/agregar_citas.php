@@ -25,7 +25,7 @@ $fechaFin = $_GET['fecha_fin'] ?? date('Y-m-d');
 
 function sincronizarCitas($pdo, $fecha)
 {
-    $url = "http://cive.ddns.net:8085/restful/api-agenda/citas-agendadas";
+    $url = "http://sigcenter.ddns.net:18093/restful/api-agenda/citas-agendadas";
 
     $data = [
         "company_id" => "113",

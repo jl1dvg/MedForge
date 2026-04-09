@@ -99,7 +99,7 @@ if ($afiliacionId !== null) {
     $requestPayload['afiliacion_id'] = $afiliacionId;
 }
 
-$endpoint = 'https://cive.ddns.net:8085/restful/api-eva/agendar-facturar';
+$endpoint = 'https://sigcenter.ddns.net:18093/restful/api-eva/agendar-facturar';
 $result = sigcenterRequest($endpoint, $requestPayload, 'POST');
 
 $ok = $result['http_code'] >= 200 && $result['http_code'] < 300;
