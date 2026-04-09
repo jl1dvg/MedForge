@@ -1335,19 +1335,19 @@ class ReportPdfService
             if ($height > (int) round($width * 0.82)) {
                 imagefilledrectangle(
                     $image,
-                    (int) round($width * 0.84),
-                    (int) round($height * 0.012),
-                    (int) round($width * 0.98),
-                    (int) round($height * 0.04),
+                    (int) round($width * 0.50),
+                    (int) round($height * 0.008),
+                    (int) round($width * 0.982),
+                    (int) round($height * 0.027),
                     $white
                 );
             } else {
                 imagefilledrectangle(
                     $image,
-                    (int) round($width * 0.82),
+                    (int) round($width * 0.50),
                     (int) round($height * 0.012),
-                    (int) round($width * 0.98),
-                    (int) round($height * 0.044),
+                    (int) round($width * 0.982),
+                    (int) round($height * 0.043),
                     $white
                 );
             }
