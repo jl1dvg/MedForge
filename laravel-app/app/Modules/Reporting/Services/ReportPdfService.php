@@ -38,6 +38,8 @@ class ReportPdfService
     private ?SolicitudTemplateRegistry $solicitudTemplateRegistry = null;
     private ?SigcenterImagenesService $sigcenterImagenesService = null;
     private ?ImagenesSigcenterIndexService $imagenesSigcenterIndexService = null;
+    /** @var array<string, bool> */
+    private array $commandAvailability = [];
 
     public function __construct()
     {
@@ -373,6 +375,18 @@ class ReportPdfService
                         $tempFiles[] = $tmpPath;
 
                         if ($ext === 'pdf') {
+                            if ($this->isOctNervioOptico((string) ($item['tipo_examen'] ?? null))) {
+                                if ($this->safeAppendOctNervioOpticoPdfFile($pdf, $tmpPath, [
+                                    'source' => 'sigcenter_file',
+                                    'form_id' => $formId,
+                                    'hc_number' => $hcNumber,
+                                    'relative_path' => $relativePath,
+                                    'fecha_examen' => (string) ($item['fecha_examen'] ?? ''),
+                                ])) {
+                                    $hasPages = true;
+                                }
+                                continue;
+                            }
                             if ($this->safeAppendPdfFile($pdf, $tmpPath, [
                                 'source' => 'sigcenter_file',
                                 'form_id' => $formId,
@@ -1077,6 +1091,9 @@ class ReportPdfService
             } elseif ($ext === 'pdf' && $this->isBiometriaOcular($tipoExamen)) {
                 Log::info('reporting.pdf.mask.biometria.attempt', $maskContext);
                 $this->maskBiometriaPdfDateInPlace($tmpPath, $maskContext);
+            } elseif ($ext === 'pdf' && ($this->isOctNervioOptico($tipoExamen) || $this->isOctMacular($tipoExamen))) {
+                Log::info('reporting.pdf.mask.' . ($this->isOctMacular($tipoExamen) ? 'oct_macular' : 'oct_nervio') . '.attempt', $maskContext);
+                $this->maskOctNervioOpticoPdfDateInPlace($tmpPath, $maskContext);
             } elseif ($this->isImageExtension($ext) && $this->isBiometriaOcular($tipoExamen)) {
                 Log::info('reporting.image.mask.biometria.attempt', $maskContext + [
                     'ext' => $ext,
@@ -1087,6 +1104,11 @@ class ReportPdfService
                     'ext' => $ext,
                 ]);
                 $this->maskEcografiaModoBImageDateInPlace($tmpPath, $ext, $maskContext);
+            } elseif ($this->isImageExtension($ext) && ($this->isOctNervioOptico($tipoExamen) || $this->isOctMacular($tipoExamen))) {
+                Log::info('reporting.image.mask.' . ($this->isOctMacular($tipoExamen) ? 'oct_macular' : 'oct_nervio') . '.attempt', $maskContext + [
+                    'ext' => $ext,
+                ]);
+                $this->maskOctImageDateInPlace($tmpPath, $ext, $maskContext, $this->isOctMacular($tipoExamen));
             } elseif ($ext === 'pdf' && $this->isMicroespecular($tipoExamen)) {
                 Log::info('reporting.pdf.mask.microespecular.attempt', $maskContext);
                 $this->maskMicroespecularPdfDateInPlace($tmpPath, $maskContext);
@@ -1163,6 +1185,18 @@ class ReportPdfService
     {
         $pageCount = $pdf->setSourceFile($path);
         for ($pageNo = 1; $pageNo <= $pageCount; $pageNo++) {
+            $tplId = $pdf->importPage($pageNo);
+            $size = $pdf->getTemplateSize($tplId);
+            $pdf->AddPage($size['orientation'], [$size['width'], $size['height']]);
+            $pdf->useTemplate($tplId);
+        }
+    }
+
+    private function appendOctNervioOpticoPdfFile(Fpdi $pdf, string $path): void
+    {
+        $pageCount = $pdf->setSourceFile($path);
+        $pageNumbers = $this->resolveOctNervioOpticoPdfPages($path, $pageCount);
+        foreach ($pageNumbers as $pageNo) {
             $tplId = $pdf->importPage($pageNo);
             $size = $pdf->getTemplateSize($tplId);
             $pdf->AddPage($size['orientation'], [$size['width'], $size['height']]);
@@ -1306,6 +1340,159 @@ class ReportPdfService
             $pageHeight * 1.038,
             'F'
         );
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     */
+    private function maskOctNervioOpticoPdfDateInPlace(string $path, array $context = []): void
+    {
+        try {
+            $masked = new Fpdi();
+            $masked->SetAutoPageBreak(false, 0);
+            $masked->setPrintHeader(false);
+            $masked->setPrintFooter(false);
+
+            $pageCount = $masked->setSourceFile($path);
+            for ($pageNo = 1; $pageNo <= $pageCount; $pageNo++) {
+                $tplId = $masked->importPage($pageNo);
+                $size = $masked->getTemplateSize($tplId);
+                $width = (float) ($size['width'] ?? 0.0);
+                $height = (float) ($size['height'] ?? 0.0);
+                if ($width <= 0.0 || $height <= 0.0) {
+                    continue;
+                }
+
+                $masked->AddPage($size['orientation'], [$width, $height]);
+                $masked->useTemplate($tplId);
+                $this->drawOctNervioOpticoPdfDateMask($masked, $width, $height);
+            }
+
+            $content = (string) $masked->Output('', 'S');
+            if ($this->isPdfContent($content)) {
+                file_put_contents($path, $content);
+                return;
+            }
+
+            Log::warning('reporting.pdf.oct_nervio_mask_skipped', $context + [
+                'path' => $path,
+                'reason' => 'invalid_masked_pdf',
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('reporting.pdf.oct_nervio_mask_skipped', $context + [
+                'path' => $path,
+                'reason' => 'mask_failed',
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    private function drawOctNervioOpticoPdfDateMask(Fpdi $pdf, float $pageWidth, float $pageHeight): void
+    {
+        $pdf->SetFillColor(255, 255, 255);
+        $pdf->Rect(
+            $pageWidth * 0.39,
+            $pageHeight * 0.065,
+            $pageWidth * 0.26,
+            $pageHeight * 0.04,
+            'F'
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     */
+    private function maskOctNervioOpticoImageDateInPlace(string $path, string $ext, array $context = []): void
+    {
+        $this->maskOctImageDateInPlace($path, $ext, $context, false);
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     */
+    private function maskOctImageDateInPlace(string $path, string $ext, array $context = [], bool $isMacular = false): void
+    {
+        try {
+            $image = $this->loadImageResource($path, $ext);
+            if ($image === null) {
+                Log::warning('reporting.image.' . ($isMacular ? 'oct_macular' : 'oct_nervio') . '_mask_skipped', $context + [
+                    'path' => $path,
+                    'reason' => 'unsupported_image_loader',
+                    'ext' => $ext,
+                ]);
+                return;
+            }
+
+            $width = imagesx($image);
+            $height = imagesy($image);
+            if ($width <= 0 || $height <= 0) {
+                imagedestroy($image);
+                Log::warning('reporting.image.' . ($isMacular ? 'oct_macular' : 'oct_nervio') . '_mask_skipped', $context + [
+                    'path' => $path,
+                    'reason' => 'invalid_image_dimensions',
+                    'ext' => $ext,
+                ]);
+                return;
+            }
+
+            $white = imagecolorallocate($image, 255, 255, 255);
+            if ($isMacular && $width > $height) {
+                imagefilledrectangle(
+                    $image,
+                    (int) round($width * 0.37),
+                    (int) round($height * 0.073),
+                    (int) round($width * 0.67),
+                    (int) round($height * 0.118),
+                    $white
+                );
+
+                imagefilledrectangle(
+                    $image,
+                    (int)round($width * 0.043),
+                    (int)round($height * 0.965),
+                    (int)round($width * 0.67),
+                    (int)round($height * 0.934),
+                    $white
+                );
+            } else {
+                imagefilledrectangle(
+                    $image,
+                    (int) round($width * 0.42),
+                    (int) round($height * 0.058),
+                    (int) round($width * 0.70),
+                    (int) round($height * 0.086),
+                    $white
+                );
+
+                imagefilledrectangle(
+                    $image,
+                    (int)round($width * 0.06),
+                    (int)round($height * 0.969),
+                    (int)round($width * 0.70),
+                    (int)round($height * 0.949),
+                    $white
+                );
+            }
+
+            if (!$this->saveImageResource($image, $path, $ext)) {
+                imagedestroy($image);
+                Log::warning('reporting.image.' . ($isMacular ? 'oct_macular' : 'oct_nervio') . '_mask_skipped', $context + [
+                    'path' => $path,
+                    'reason' => 'save_failed',
+                    'ext' => $ext,
+                ]);
+                return;
+            }
+
+            imagedestroy($image);
+        } catch (\Throwable $e) {
+            Log::warning('reporting.image.' . ($isMacular ? 'oct_macular' : 'oct_nervio') . '_mask_skipped', $context + [
+                'path' => $path,
+                'reason' => 'mask_failed',
+                'ext' => $ext,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
@@ -1620,6 +1807,34 @@ class ReportPdfService
         }
     }
 
+    /**
+     * @param array<string, mixed> $context
+     */
+    private function safeAppendOctNervioOpticoPdfFile(Fpdi $pdf, string $path, array $context = []): bool
+    {
+        if (!$this->isPdfFile($path)) {
+            Log::warning('reporting.pdf.skip_invalid_pdf', $context + [
+                'path' => $path,
+                'reason' => 'missing_pdf_header',
+            ]);
+
+            return false;
+        }
+
+        try {
+            $this->appendOctNervioOpticoPdfFile($pdf, $path);
+            return true;
+        } catch (\Throwable $e) {
+            Log::warning('reporting.pdf.skip_invalid_pdf', $context + [
+                'path' => $path,
+                'reason' => 'append_failed',
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
+    }
+
     private function appendImageFile(Fpdi $pdf, string $path): void
     {
         $info = @getimagesize($path);
@@ -1714,6 +1929,39 @@ class ReportPdfService
             || str_contains($texto, 'ecografia');
     }
 
+    private function isOctNervioOptico(?string $tipoExamen): bool
+    {
+        $texto = $this->normalizeSearchText((string) ($tipoExamen ?? ''));
+        if ($texto === '') {
+            return false;
+        }
+
+        return (preg_match('/\b281032\b/', $texto) === 1 && (str_contains($texto, 'nervio') || str_contains($texto, 'papila') || str_contains($texto, 'rnfl') || str_contains($texto, 'cfnr')))
+            || str_contains($texto, 'oct del nervio')
+            || str_contains($texto, 'optic disc cube')
+            || str_contains($texto, 'rnfl')
+            || str_contains($texto, 'papila');
+    }
+
+    private function isOctMacular(?string $tipoExamen): bool
+    {
+        $texto = $this->normalizeSearchText((string) ($tipoExamen ?? ''));
+        if ($texto === '') {
+            return false;
+        }
+
+        return str_contains($texto, 'oct macular')
+            || str_contains($texto, 'macula thickness')
+            || str_contains($texto, 'macular cube')
+            || str_contains($texto, 'oct de macula')
+            || (preg_match('/\b281032\b/', $texto) === 1 && (
+                str_contains($texto, 'macular')
+                || str_contains($texto, 'macula')
+                || str_contains($texto, 'retina')
+                || str_contains($texto, 'fovea')
+            ));
+    }
+
     private function isMicroespecular(?string $tipoExamen): bool
     {
         $texto = $this->normalizeSearchText((string) ($tipoExamen ?? ''));
@@ -1749,6 +1997,91 @@ class ReportPdfService
         $value = preg_replace('/\s+/', ' ', $value) ?? $value;
 
         return trim($value);
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function resolveOctNervioOpticoPdfPages(string $path, int $pageCount): array
+    {
+        $selectedPages = $this->findOctNervioOpticoPdfPagesByText($path, $pageCount);
+        if ($selectedPages !== []) {
+            Log::info('reporting.pdf.select.oct_nervio.pages', [
+                'path' => $path,
+                'mode' => 'text_match',
+                'pages' => $selectedPages,
+            ]);
+
+            return $selectedPages;
+        }
+
+        $fallback = range(1, max(1, $pageCount));
+        Log::info('reporting.pdf.select.oct_nervio.pages', [
+            'path' => $path,
+            'mode' => 'fallback',
+            'pages' => $fallback,
+        ]);
+
+        return $fallback;
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function findOctNervioOpticoPdfPagesByText(string $path, int $pageCount): array
+    {
+        if (!$this->commandExists('pdftotext')) {
+            return [];
+        }
+
+        $matchedPages = [];
+        for ($pageNo = 1; $pageNo <= $pageCount; $pageNo++) {
+            $pageText = $this->extractPdfPageText($path, $pageNo);
+            if (!is_string($pageText) || trim($pageText) === '') {
+                continue;
+            }
+
+            $normalized = $this->normalizeSearchText($pageText);
+            if (
+                str_contains($normalized, 'onh and rnfl ou analysis')
+                && str_contains($normalized, 'optic disc cube 200x200')
+                && str_contains($normalized, 'neuro-retinal rim thickness')
+            ) {
+                $matchedPages[] = $pageNo;
+            }
+        }
+
+        return $matchedPages;
+    }
+
+    private function extractPdfPageText(string $path, int $pageNo): ?string
+    {
+        $command = sprintf(
+            'pdftotext -f %d -l %d -layout -enc UTF-8 -nopgbrk %s - 2>/dev/null',
+            $pageNo,
+            $pageNo,
+            escapeshellarg($path)
+        );
+
+        $output = @shell_exec($command);
+        if (!is_string($output)) {
+            return null;
+        }
+
+        return $output;
+    }
+
+    private function commandExists(string $command): bool
+    {
+        if (array_key_exists($command, $this->commandAvailability)) {
+            return $this->commandAvailability[$command];
+        }
+
+        $result = @shell_exec('command -v ' . escapeshellarg($command) . ' 2>/dev/null');
+        $available = is_string($result) && trim($result) !== '';
+        $this->commandAvailability[$command] = $available;
+
+        return $available;
     }
 
     private function buildPaqueteFilename(string $hcNumber): string
