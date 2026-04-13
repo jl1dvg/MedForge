@@ -8,7 +8,7 @@ from datetime import datetime
 import re
 from urllib.parse import urljoin
 
-BASE = "https://cive.ddns.net:8085"
+BASE = "https://sigcenter.ddns.net:18093"
 LOGIN_URL = f"{BASE}/site/login"
 CREATE_ENDPOINT = f"{BASE}/documentacion/agenda-doctor/create"
 INDEX_URL = f"{BASE}/documentacion/agenda-doctor/index"

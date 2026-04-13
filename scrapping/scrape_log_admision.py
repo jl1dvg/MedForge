@@ -8,7 +8,7 @@ modo_quieto = "--quiet" in sys.argv
 
 USERNAME = "calvarado"
 PASSWORD = "0923013940"
-LOGIN_URL = "https://cive.ddns.net:8085/site/login"
+LOGIN_URL = "https://sigcenter.ddns.net:18093/site/login"
 
 headers = {'User-Agent': 'Mozilla/5.0'}
 
@@ -50,7 +50,7 @@ def iniciar_sesion_y_extraer_log():
         return
 
     # Paso 2: Buscar el ID interno del paciente usando el número de historia clínica
-    buscar_url = f"https://cive.ddns.net:8085/documentacion/doc-documento/paciente-list?q={hc_number}"
+    buscar_url = f"https://sigcenter.ddns.net:18093/documentacion/doc-documento/paciente-list?q={hc_number}"
     r = session.get(buscar_url, headers=headers)
     match = re.search(r'"id":"(\d+)"', r.text)
     if not match:
@@ -60,7 +60,7 @@ def iniciar_sesion_y_extraer_log():
 
     # Paso 3: Buscar el enlace de modificación desde el form_id y el id del paciente
     form_id = sys.argv[1]
-    log_url = f"https://cive.ddns.net:8085/documentacion/doc-solicitud-procedimientos/view?id={form_id}"
+    log_url = f"https://sigcenter.ddns.net:18093/documentacion/doc-solicitud-procedimientos/view?id={form_id}"
 
     # Intento rápido: usar la vista de la solicitud (log_url) para encontrar el link update-solicitud
     # Esto evita una visita extra a ver-paciente?... cuando el link está disponible aquí.
@@ -71,7 +71,7 @@ def iniciar_sesion_y_extraer_log():
         link_tag = soup.find("a", href=re.compile(r"/documentacion/doc-documento/update-solicitud\?id=\d+"))
         if link_tag and link_tag.has_attr("href"):
             href = link_tag["href"]
-            update_url = "https://cive.ddns.net:8085" + href.replace("&amp;", "&")
+            update_url = "https://sigcenter.ddns.net:18093" + href.replace("&amp;", "&")
             if not modo_quieto:
                 print("⚡ update_url obtenido desde LOG_URL (se evitó ver-paciente extra)")
     except Exception:
@@ -80,7 +80,7 @@ def iniciar_sesion_y_extraer_log():
     # Fallback: si no se encontró en log_url, usamos el método anterior con ver-paciente?
     if not update_url:
         paciente_view_url = (
-            f"https://cive.ddns.net:8085/documentacion/doc-documento/ver-paciente"
+            f"https://sigcenter.ddns.net:18093/documentacion/doc-documento/ver-paciente"
             f"?DocSolicitudProcedimientosPrefacturaSearch[id]={form_id}&id={paciente_id}&view=1"
         )
         r = session.get(paciente_view_url, headers=headers)
@@ -90,7 +90,7 @@ def iniciar_sesion_y_extraer_log():
             print("❌ No se encontró el enlace de actualización.")
             return
         href = link_tag["href"]
-        update_url = "https://cive.ddns.net:8085" + href.replace("&amp;", "&")
+        update_url = "https://sigcenter.ddns.net:18093" + href.replace("&amp;", "&")
         if not modo_quieto:
             print("ℹ️ update_url obtenido por fallback ver-paciente")
 
@@ -133,7 +133,7 @@ def iniciar_sesion_y_extraer_log():
     # Una vez que ya tenemos todos los procedimientos proyectados desde el formulario de solicitud,
     # ahora vamos a buscar en otra página (la vista del paciente) información adicional de cada procedimiento.
     # Queremos saber cuándo se ejecutó, quién fue el doctor responsable y si ya fue dado de alta.
-    tabla_view_url = f"https://cive.ddns.net:8085/documentacion/doc-documento/ver-paciente?id={paciente_id}&view=1"
+    tabla_view_url = f"https://sigcenter.ddns.net:18093/documentacion/doc-documento/ver-paciente?id={paciente_id}&view=1"
     r = session.get(tabla_view_url, headers=headers)
     soup_tabla = BeautifulSoup(r.text, "html.parser")
 

@@ -16,8 +16,8 @@ ocr_habilitado = "--ocr" in sys.argv
 
 USERNAME = "calvarado"
 PASSWORD = "0923013940"
-LOGIN_URL = "https://cive.ddns.net:8085/site/login"
-LOG_URL = f"https://cive.ddns.net:8085/documentacion/doc-solicitud-procedimientos/view?id={sys.argv[1]}"
+LOGIN_URL = "https://sigcenter.ddns.net:18093/site/login"
+LOG_URL = f"https://sigcenter.ddns.net:18093/documentacion/doc-solicitud-procedimientos/view?id={sys.argv[1]}"
 
 headers = {'User-Agent': 'Mozilla/5.0'}
 
@@ -97,7 +97,7 @@ def descargar_pdf_totalizado(session, paciente_id, form_id, hc_number, codigo_de
     os.makedirs(output_dir, exist_ok=True)
 
     pdf_url = (
-        "https://cive.ddns.net:8085/documentacion/doc-multiple-documentos/imprimir-totalizado"
+        "https://sigcenter.ddns.net:18093/documentacion/doc-multiple-documentos/imprimir-totalizado"
         f"?id={paciente_id}&idSolicitud={form_id}&check=18"
     )
 
@@ -134,7 +134,7 @@ def descargar_pdf_totalizado(session, paciente_id, form_id, hc_number, codigo_de
 
     def normalizar_pdf_url(candidate_url):
         if candidate_url.startswith("/"):
-            candidate_url = f"https://cive.ddns.net:8085{candidate_url}"
+            candidate_url = f"https://sigcenter.ddns.net:18093{candidate_url}"
         return requests.utils.requote_uri(candidate_url)
 
     if not modo_quieto:
@@ -216,7 +216,7 @@ def iniciar_sesion_y_extraer_log():
         return
 
     # Paso 2: Buscar el ID interno del paciente usando el número de historia clínica
-    buscar_url = f"https://cive.ddns.net:8085/documentacion/doc-documento/paciente-list?q={hc_number}"
+    buscar_url = f"https://sigcenter.ddns.net:18093/documentacion/doc-documento/paciente-list?q={hc_number}"
     r = session.get(buscar_url, headers=headers)
     match = re.search(r'"id":"(\d+)"', r.text)
     if not match:
@@ -230,7 +230,7 @@ def iniciar_sesion_y_extraer_log():
     # A) VISTA DEL PACIENTE
     # =========================
     paciente_view_url = (
-        "https://cive.ddns.net:8085/documentacion/doc-documento/ver-paciente"
+        "https://sigcenter.ddns.net:18093/documentacion/doc-documento/ver-paciente"
         f"?DocSolicitudProcedimientosPrefacturaSearch[id]={form_id}&id={paciente_id}&view=1"
     )
     r_view = session.get(paciente_view_url, headers=headers)
@@ -244,7 +244,7 @@ def iniciar_sesion_y_extraer_log():
         print("❌ No se encontró el enlace de actualización (update-solicitud).")
         return
 
-    update_url = "https://cive.ddns.net:8085" + link_update["href"].replace("&amp;", "&")
+    update_url = "https://sigcenter.ddns.net:18093" + link_update["href"].replace("&amp;", "&")
     r_update = session.get(update_url, headers=headers)
     soup_update = BeautifulSoup(r_update.text, "html.parser")
 
@@ -277,7 +277,7 @@ def iniciar_sesion_y_extraer_log():
             })
 
     # Completar info de ejecución desde la tabla general (igual que antes)
-    tabla_view_url = f"https://cive.ddns.net:8085/documentacion/doc-documento/ver-paciente?id={paciente_id}&view=1"
+    tabla_view_url = f"https://sigcenter.ddns.net:18093/documentacion/doc-documento/ver-paciente?id={paciente_id}&view=1"
     r_tabla = session.get(tabla_view_url, headers=headers)
     soup_tabla = BeautifulSoup(r_tabla.text, "html.parser")
 

@@ -9,10 +9,10 @@ from datetime import date, timedelta
 from clasificar_procedimiento import clasificar_procedimiento
 
 # Credenciales
-USERNAME = "agsuper"
-PASSWORD = "123456"
-LOGIN_URL = "http://cive.ddns.net:8085/site/login"
-AGENDA_URL = "http://cive.ddns.net:8085/documentacion/doc-solicitud-procedimientos/index-doctor"
+USERNAME = "calvarado"
+PASSWORD = "0923013940"
+LOGIN_URL = "http://sigcenter.ddns.net:18093/site/login"
+AGENDA_URL = "http://sigcenter.ddns.net:18093/documentacion/doc-solicitud-procedimientos/index-doctor"
 
 # Sesión persistente
 session = requests.Session()

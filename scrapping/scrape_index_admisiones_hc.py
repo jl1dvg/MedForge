@@ -14,8 +14,8 @@ from datetime import datetime, timedelta
 # =========================
 modo_quieto = "--quiet" in sys.argv
 
-USERNAME = os.getenv("SIGCENTER_SCRAPER_USERNAME", "agsuper")
-PASSWORD = os.getenv("SIGCENTER_SCRAPER_PASSWORD", "123456")
+USERNAME = os.getenv("SIGCENTER_SCRAPER_USERNAME", "calvarado")
+PASSWORD = os.getenv("SIGCENTER_SCRAPER_PASSWORD", "0923013940")
 BASE = os.getenv("SIGCENTER_SCRAPER_BASE_URL", "https://sigcenter.ddns.net:18093").rstrip("/")
 LOGIN_URL = f"{BASE}/site/login"
 
