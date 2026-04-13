@@ -13,6 +13,7 @@ use App\Modules\Derivaciones\Http\Controllers\DerivacionesUiController;
 use App\Modules\Solicitudes\Http\Controllers\SolicitudesUiController;
 use App\Modules\Usuarios\Http\Controllers\RolesUiController;
 use App\Modules\Usuarios\Http\Controllers\UsuariosUiController;
+use App\Modules\Whatsapp\Http\Controllers\WhatsappUiController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -132,4 +133,15 @@ Route::middleware(['legacy.auth', 'legacy.permission:administrativo,codes.manage
     Route::post('/v2/codes/{id}/relate', [CodesWriteController::class, 'addRelation'])->whereNumber('id');
     Route::post('/v2/codes/{id}/relate/del', [CodesWriteController::class, 'removeRelation'])->whereNumber('id');
     Route::get('/v2/codes/packages', [CodesUiController::class, 'packages']);
+});
+
+Route::middleware(['legacy.auth', 'legacy.permission:administrativo,whatsapp.manage,whatsapp.chat.view,whatsapp.templates.manage,whatsapp.autoresponder.manage,settings.manage'])->group(function (): void {
+    Route::get('/v2/whatsapp/chat', [WhatsappUiController::class, 'chat'])
+        ->middleware('whatsapp.feature:ui,/whatsapp/chat');
+    Route::get('/v2/whatsapp/templates', [WhatsappUiController::class, 'templates'])
+        ->middleware('whatsapp.feature:ui,/whatsapp/templates');
+    Route::get('/v2/whatsapp/dashboard', [WhatsappUiController::class, 'dashboard'])
+        ->middleware('whatsapp.feature:ui,/whatsapp/dashboard');
+    Route::get('/v2/whatsapp/flowmaker', [WhatsappUiController::class, 'flowmaker'])
+        ->middleware('whatsapp.feature:ui,/whatsapp/flowmaker');
 });

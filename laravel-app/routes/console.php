@@ -9,6 +9,10 @@ use App\Modules\Examenes\Services\ImagenesSigcenterIndexService;
 use App\Modules\Examenes\Services\NasImagenesService;
 use App\Modules\Farmacia\Services\RecetasConciliacionSyncService;
 use App\Modules\Shared\Support\AfiliacionDimensionService;
+use App\Modules\Solicitudes\Services\SolicitudesPrefacturaService;
+use App\Modules\Whatsapp\Services\ConversationOpsService;
+use App\Models\WhatsappConversation;
+use App\Models\WhatsappMessage;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -17,6 +21,196 @@ use Illuminate\Support\Facades\Schedule;
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
+
+Artisan::command('whatsapp:phase1-smoke', function (): int {
+    $enabled = (bool) config('whatsapp.migration.enabled', false);
+    $uiEnabled = (bool) config('whatsapp.migration.ui.enabled', false);
+    $apiReadEnabled = (bool) config('whatsapp.migration.api.read_enabled', false);
+    $writeEnabled = (bool) config('whatsapp.migration.api.write_enabled', false);
+    $webhookEnabled = (bool) config('whatsapp.migration.api.webhook_enabled', false);
+    $fallback = (bool) config('whatsapp.migration.fallback_to_legacy', true);
+    $compare = (bool) config('whatsapp.migration.compare_with_legacy', true);
+
+    try {
+        $conversationCount = class_exists(WhatsappConversation::class) ? WhatsappConversation::query()->count() : 0;
+        $messageCount = class_exists(WhatsappMessage::class) ? WhatsappMessage::query()->count() : 0;
+        $dbStatus = 'ok';
+    } catch (\Throwable $e) {
+        $conversationCount = -1;
+        $messageCount = -1;
+        $dbStatus = 'unavailable: ' . $e->getMessage();
+    }
+
+    $this->table(
+        ['Flag', 'Value'],
+        [
+            ['WHATSAPP_LARAVEL_ENABLED', $enabled ? 'true' : 'false'],
+            ['WHATSAPP_LARAVEL_UI_ENABLED', $uiEnabled ? 'true' : 'false'],
+            ['WHATSAPP_LARAVEL_API_READ_ENABLED', $apiReadEnabled ? 'true' : 'false'],
+            ['WHATSAPP_LARAVEL_API_WRITE_ENABLED', $writeEnabled ? 'true' : 'false'],
+            ['WHATSAPP_LARAVEL_WEBHOOK_ENABLED', $webhookEnabled ? 'true' : 'false'],
+            ['WHATSAPP_LARAVEL_FALLBACK_TO_LEGACY', $fallback ? 'true' : 'false'],
+            ['WHATSAPP_LARAVEL_COMPARE_WITH_LEGACY', $compare ? 'true' : 'false'],
+            ['db_status', $dbStatus],
+            ['whatsapp_conversations', (string) $conversationCount],
+            ['whatsapp_messages', (string) $messageCount],
+        ]
+    );
+
+    $this->newLine();
+    $this->line('Rutas fase 1 esperadas:');
+    $this->line('GET /v2/whatsapp/chat');
+    $this->line('GET /v2/whatsapp/api/conversations');
+    $this->line('GET /v2/whatsapp/api/conversations/{id}');
+    $this->line('POST /v2/whatsapp/api/conversations/{id}/messages');
+    $this->line('GET /whatsapp/webhook');
+    $this->line('POST /whatsapp/webhook');
+    $this->line('GET /v2/whatsapp/webhook');
+    $this->line('POST /v2/whatsapp/webhook');
+
+    if (!$enabled || !$apiReadEnabled) {
+        $this->warn('La lectura Laravel de WhatsApp sigue desactivada. Se mantendrá fallback a legacy si está habilitado.');
+        return 0;
+    }
+
+    if (!$writeEnabled || !$webhookEnabled) {
+        $this->warn('Laravel ya puede leer conversaciones, pero escritura o webhook siguen parcialmente desactivados por flag.');
+        return 0;
+    }
+
+    $this->info('Fase 1 extendida de WhatsApp habilitada: lectura, escritura y webhook.');
+    return 0;
+})->purpose('Verifica flags y estado base de la fase 1 de WhatsApp');
+
+Artisan::command('whatsapp:handoff-requeue-expired {--dry-run : Solo muestra los handoffs vencidos sin reencolarlos}', function (): int {
+    /** @var ConversationOpsService $service */
+    $service = app(ConversationOpsService::class);
+
+    try {
+        if ((bool) $this->option('dry-run')) {
+            $preview = $service->previewExpiredHandoffs();
+            $this->table(
+                ['Expired handoffs', 'IDs'],
+                [[
+                    (int) ($preview['count'] ?? 0),
+                    implode(', ', array_map(static fn (int $id): string => (string) $id, $preview['ids'] ?? [])),
+                ]]
+            );
+
+            return 0;
+        }
+
+        $result = $service->requeueExpired();
+        $this->table(
+            ['Requeued', 'IDs'],
+            [[
+                (int) ($result['count'] ?? 0),
+                implode(', ', array_map(static fn (int $id): string => (string) $id, $result['ids'] ?? [])),
+            ]]
+        );
+
+        return 0;
+    } catch (\Throwable $e) {
+        $this->warn('No fue posible consultar o reencolar handoffs vencidos con la DB configurada.');
+        $this->line($e->getMessage());
+
+        return 0;
+    }
+})->purpose('Reencola handoffs vencidos del inbox WhatsApp Laravel');
+
+Artisan::command('derivaciones:scrape
+    {form_id : Form ID / pedido ID a consultar}
+    {hc_number : HC number del paciente}
+    {--solicitud-id= : Si se envía, también actualiza derivacion_* en solicitud_procedimiento}', function (): int {
+    $formId = trim((string) $this->argument('form_id'));
+    $hcNumber = trim((string) $this->argument('hc_number'));
+    $solicitudIdOption = trim((string) ($this->option('solicitud-id') ?? ''));
+    $solicitudId = $solicitudIdOption !== '' ? (int) $solicitudIdOption : null;
+
+    /** @var SolicitudesPrefacturaService $service */
+    $service = app(SolicitudesPrefacturaService::class);
+
+    try {
+        $result = $service->rescrapeDerivacion($formId, $hcNumber, $solicitudId);
+    } catch (\Throwable $e) {
+        $this->components->error($e->getMessage());
+        return 1;
+    }
+
+    $payload = is_array($result['payload'] ?? null) ? $result['payload'] : [];
+
+    $this->table(
+        ['Campo', 'Valor'],
+        [
+            ['form_id', (string) ($payload['form_id'] ?? $formId)],
+            ['hc_number', (string) ($payload['hc_number'] ?? $hcNumber)],
+            ['codigo_derivacion', (string) ($payload['codigo_derivacion'] ?? '')],
+            ['fecha_registro', (string) ($payload['fecha_registro'] ?? '')],
+            ['fecha_vigencia', (string) ($payload['fecha_vigencia'] ?? '')],
+            ['archivo_path', (string) ($payload['archivo_path'] ?? '')],
+            ['lookup_form_id', (string) ($result['lookup_form_id'] ?? '')],
+            ['saved_legacy', !empty($result['saved']) ? 'SI' : 'NO'],
+            ['exit_code', (string) ($result['exit_code'] ?? '')],
+        ]
+    );
+
+    $rawOutput = trim((string) ($result['raw_output'] ?? ''));
+    if ($rawOutput !== '') {
+        $this->newLine();
+        $this->line($rawOutput);
+    }
+
+    return 0;
+})->purpose('Ejecuta el scraper de derivaciones via Python y opcionalmente actualiza solicitud_procedimiento');
+
+Artisan::command('derivaciones:scrape-missing
+    {--limit=200 : Máximo de formularios por corrida}
+    {--max-attempts=3 : Máximo de intentos por form_id}
+    {--cooldown-hours=6 : Horas mínimas entre reintentos}', function (): int {
+    $syncServiceClass = 'Modules\\Derivaciones\\Services\\DerivacionesSyncService';
+    if (!defined('BASE_PATH')) {
+        define('BASE_PATH', dirname(base_path()));
+    }
+    if (!class_exists($syncServiceClass)) {
+        $syncServicePath = dirname(base_path()) . '/modules/Derivaciones/Services/DerivacionesSyncService.php';
+        if (!is_file($syncServicePath)) {
+            $this->components->error('No se encontró DerivacionesSyncService.');
+            return 1;
+        }
+
+        require_once $syncServicePath;
+    }
+
+    $pdo = DB::connection()->getPdo();
+    /** @var object{scrapeMissingDerivationsBatch:callable} $service */
+    $service = new $syncServiceClass($pdo);
+
+    try {
+        $result = $service->scrapeMissingDerivationsBatch(
+            (int) $this->option('limit'),
+            (int) $this->option('max-attempts'),
+            (int) $this->option('cooldown-hours')
+        );
+    } catch (\Throwable $e) {
+        $this->components->error($e->getMessage());
+        return 1;
+    }
+
+    $details = is_array($result['details'] ?? null) ? $result['details'] : [];
+    $this->table(
+        ['Status', 'Message', 'Processed', 'Success', 'Failed', 'Skipped'],
+        [[
+            (string) ($result['status'] ?? ''),
+            (string) ($result['message'] ?? ''),
+            (int) ($details['processed'] ?? 0),
+            (int) ($details['success'] ?? 0),
+            (int) ($details['failed'] ?? 0),
+            (int) ($details['skipped'] ?? 0),
+        ]]
+    );
+
+    return (($result['status'] ?? '') === 'success') ? 0 : 1;
+})->purpose('Scrapea derivaciones faltantes exclusivamente via Python batch');
 
 Artisan::command('imagenes:nas-index
     {--days=7 : Dias hacia atras para buscar candidatos}
@@ -725,6 +919,11 @@ SQL, $dimensionContext['join'], implode("\n  AND ", $conditions), $limitSql);
     return $errors > 0 ? 1 : 0;
 })->purpose('Sincroniza derivaciones faltantes priorizando billing_main ya facturado');
 
-Schedule::command('billing:sync-derivaciones --only-billed=1 --only-missing=1 --limit=200')
+Schedule::command('derivaciones:scrape-missing --limit=200 --max-attempts=3 --cooldown-hours=6')
     ->hourly()
     ->withoutOverlapping();
+
+Schedule::command('whatsapp:handoff-requeue-expired')
+    ->everyFiveMinutes()
+    ->withoutOverlapping()
+    ->when(static fn (): bool => (bool) config('whatsapp.migration.handoff.requeue_schedule_enabled', false));

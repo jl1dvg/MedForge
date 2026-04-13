@@ -822,18 +822,27 @@ class ReportingReadController
         }
 
         $items = $this->parseSelectedItems($request->input('items', $request->query('items', [])));
+        $fechaDocumentoRaw = $request->input('fecha_documento', $request->query('fecha_documento'));
+        $fechaDocumento = $this->parseFechaDocumento($fechaDocumentoRaw);
         if ($items === []) {
             return response()
                 ->json(['error' => 'No se recibieron exámenes para el paquete.'], 422)
                 ->header('X-Request-Id', $requestId);
         }
 
+        if (trim((string) ($fechaDocumentoRaw ?? '')) !== '' && $fechaDocumento === null) {
+            return response()
+                ->json(['error' => 'La fecha del documento debe tener formato YYYY-MM-DD.'], 422)
+                ->header('X-Request-Id', $requestId);
+        }
+
         try {
-            $pdf = $this->reportPdfService()->generateInforme012BPackagePdf($items);
+            $pdf = $this->reportPdfService()->generateInforme012BPackagePdf($items, $fechaDocumento);
         } catch (\Throwable $e) {
             Log::error('reporting.read.imagenes_012b_package_selection_pdf.error', [
                 'request_id' => $requestId,
                 'items' => count($items),
+                'fecha_documento' => $fechaDocumento,
                 'error' => $e->getMessage(),
             ]);
 
@@ -852,6 +861,7 @@ class ReportingReadController
             'request_id' => $requestId,
             'user_id' => LegacySessionAuth::userId($request),
             'items' => count($items),
+            'fecha_documento' => $fechaDocumento,
         ]);
 
         return $this->pdfResponse((string) $pdf['content'], (string) $pdf['filename'], $requestId, false);
@@ -938,6 +948,21 @@ class ReportingReadController
         }
 
         return array_values(array_filter($decoded, static fn($item): bool => is_array($item)));
+    }
+
+    private function parseFechaDocumento($raw): ?string
+    {
+        $value = trim((string) ($raw ?? ''));
+        if ($value === '') {
+            return null;
+        }
+
+        $dt = \DateTimeImmutable::createFromFormat('Y-m-d', $value);
+        if (!$dt || $dt->format('Y-m-d') !== $value) {
+            return null;
+        }
+
+        return $value;
     }
 
     private function requestId(Request $request): string

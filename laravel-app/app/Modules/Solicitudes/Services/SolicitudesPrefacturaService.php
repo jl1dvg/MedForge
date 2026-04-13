@@ -440,6 +440,16 @@ class SolicitudesPrefacturaService
             $saved = $derivacionId !== null;
         }
 
+        if ($solicitudId !== null && $solicitudId > 0 && $codDerivacion !== '' && $lookupFormId !== '') {
+            $this->guardarDerivacionPreseleccion($solicitudId, [
+                'codigo_derivacion' => $codDerivacion,
+                'pedido_id_mas_antiguo' => $lookupFormId,
+                'lateralidad' => $seleccion['derivacion_lateralidad'] ?? null,
+                'fecha_vigencia' => $parsed['fecha_vigencia'] ?? ($seleccion['derivacion_fecha_vigencia_sel'] ?? null),
+                'prefactura' => $seleccion['derivacion_prefactura'] ?? null,
+            ]);
+        }
+
         return [
             'success' => true,
             'saved' => $saved,

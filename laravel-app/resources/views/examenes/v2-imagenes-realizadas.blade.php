@@ -2411,17 +2411,47 @@
                     }
                 }
 
-                function descargarPaquete(items, triggerBtn) {
+                function solicitarFechaDocumento() {
+                    const today = new Date().toISOString().slice(0, 10);
+                    if (window.Swal && typeof window.Swal.fire === 'function') {
+                        return window.Swal.fire({
+                            title: 'Fecha para 12A y 12B',
+                            text: 'Ingresa la fecha que debe imprimirse en los documentos.',
+                            input: 'date',
+                            inputValue: today,
+                            showCancelButton: true,
+                            confirmButtonText: 'Descargar',
+                            cancelButtonText: 'Cancelar',
+                            inputValidator: function (value) {
+                                if (!value) {
+                                    return 'Debes seleccionar una fecha.';
+                                }
+                                return null;
+                            }
+                        }).then(function (result) {
+                            return result && result.isConfirmed ? (result.value || '') : '';
+                        });
+                    }
+
+                    const value = window.prompt('Ingresa la fecha del documento (YYYY-MM-DD):', today);
+                    return Promise.resolve((value || '').trim());
+                }
+
+                function descargarPaquete(items, triggerBtn, fechaDocumento) {
                     if (!items.length) {
                         alert('Selecciona al menos un examen informado.');
                         return;
                     }
                     let filename = 'paquete.pdf';
+                    const payload = {items: items};
+                    if (fechaDocumento) {
+                        payload.fecha_documento = fechaDocumento;
+                    }
                     setButtonLoading(triggerBtn, true);
                     fetch('/v2/reports/imagenes/012b/paquete/seleccion', {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({items: items})
+                        body: JSON.stringify(payload)
                     })
                         .then(function (res) {
                             if (!res.ok) {
@@ -2489,6 +2519,8 @@
                                 escapeHtml(group.key) + '">Seleccionar todo</button>';
                             extra += '<button type="button" class="btn btn-sm btn-outline-primary ms-2 btn-descargar-grupo" data-group-key="' +
                                 escapeHtml(group.key) + '">Descargar PDF paciente</button>';
+                            extra += '<button type="button" class="btn btn-sm btn-outline-warning ms-2 btn-descargar-grupo-fecha" data-group-key="' +
+                                escapeHtml(group.key) + '">Descargar PDF con cambio de fecha</button>';
                         }
                         td.innerHTML = '<strong>' + escapeHtml(group.label) + '</strong>' + extra;
                         tr.appendChild(td);
@@ -2514,7 +2546,25 @@
                                 alert('Selecciona los exámenes informados que deseas descargar.');
                                 return;
                             }
-                            descargarPaquete(items, btn);
+                            descargarPaquete(items, btn, null);
+                        });
+                    });
+
+                    tbody.querySelectorAll('.btn-descargar-grupo-fecha').forEach(function (btn) {
+                        btn.addEventListener('click', function () {
+                            const groupKey = btn.getAttribute('data-group-key') || '';
+                            const selectedRows = getSelectedRowsByGroup(groupKey);
+                            const items = buildItemsPayload(selectedRows);
+                            if (!items.length) {
+                                alert('Selecciona los exámenes informados que deseas descargar.');
+                                return;
+                            }
+                            solicitarFechaDocumento().then(function (fechaDocumento) {
+                                if (!fechaDocumento) {
+                                    return;
+                                }
+                                descargarPaquete(items, btn, fechaDocumento);
+                            });
                         });
                     });
                 }

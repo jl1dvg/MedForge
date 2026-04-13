@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\LegacySessionBridge;
+use App\Http\Middleware\EnsureWhatsappFeatureEnabled;
 use App\Http\Middleware\RequireAppPermission;
 use App\Http\Middleware\RequireAppSession;
 use App\Http\Middleware\ConsultasCors;
@@ -28,6 +29,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'legacy.auth' => RequireLegacySession::class,
             'legacy.permission' => RequireLegacyPermission::class,
             'consultas.cors' => ConsultasCors::class,
+            'whatsapp.feature' => EnsureWhatsappFeatureEnabled::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

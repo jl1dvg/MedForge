@@ -1,5 +1,6 @@
 <?php
 
+use App\Modules\Whatsapp\Http\Controllers\WebhookController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -18,6 +19,16 @@ Route::prefix('v2')->group(function (): void {
     require __DIR__ . '/v2/crm.php';
     require __DIR__ . '/v2/codes.php';
     require __DIR__ . '/v2/auth.php';
+    require __DIR__ . '/v2/whatsapp.php';
+});
+
+Route::middleware([
+    'whatsapp.feature:webhook,/whatsapp/webhook',
+])->group(function (): void {
+    Route::get('/whatsapp/webhook', [WebhookController::class, 'verify']);
+    Route::post('/whatsapp/webhook', [WebhookController::class, 'receive']);
+    Route::get('/v2/whatsapp/webhook', [WebhookController::class, 'verify']);
+    Route::post('/v2/whatsapp/webhook', [WebhookController::class, 'receive']);
 });
 
 $legacyRedirect = static function (Request $request, string $target, int $status = 302) {

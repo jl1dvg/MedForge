@@ -53,7 +53,7 @@ class BillingInformeDataService
         $this->sigcenterDbDatabase = $this->readEnv('SIGCENTER_DB_DATABASE') ?: 'inmicrocsa';
         $this->sigcenterDbUsername = $this->readEnv('SIGCENTER_DB_USERNAME');
         $this->sigcenterDbPassword = $this->readEnv('SIGCENTER_DB_PASSWORD');
-        $this->sigcenterBaseUrl = rtrim($this->readEnv('SIGCENTER_BASE_URL') ?: 'https://cive.ddns.net:8085', '/');
+        $this->sigcenterBaseUrl = rtrim($this->readEnv('SIGCENTER_BASE_URL') ?: 'https://sigcenter.ddns.net:18093', '/');
         $this->sigcenterSshHost = $this->readEnv('SIGCENTER_FILES_SSH_HOST');
         $this->sigcenterSshPort = (int) ($this->readEnv('SIGCENTER_FILES_SSH_PORT') ?: 22);
         $this->sigcenterSshUser = $this->readEnv('SIGCENTER_FILES_SSH_USER');

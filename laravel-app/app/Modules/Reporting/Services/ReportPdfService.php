@@ -340,8 +340,12 @@ class ReportPdfService
                     }
 
                     $files = $this->getSigcenterPackageFiles($formId, $hcNumber);
-                    if ($this->isAngiografiaRetinal((string) ($item['tipo_examen'] ?? null)) && count($files) > 2) {
-                        $files = array_slice($files, 0, 2);
+                    if ($this->isAngiografiaRetinal((string) ($item['tipo_examen'] ?? null))) {
+                        $files = $this->selectAngiografiaRetinalPackageFiles($files, [
+                            'form_id' => $formId,
+                            'hc_number' => $hcNumber,
+                            'tipo_examen' => (string) ($item['tipo_examen'] ?? ''),
+                        ]);
                     }
                     if ($this->isBiometriaOcular((string) ($item['tipo_examen'] ?? null)) && count($files) > 1) {
                         $files = [end($files)];
@@ -377,6 +381,18 @@ class ReportPdfService
                         if ($ext === 'pdf') {
                             if ($this->isOctNervioOptico((string) ($item['tipo_examen'] ?? null))) {
                                 if ($this->safeAppendOctNervioOpticoPdfFile($pdf, $tmpPath, [
+                                    'source' => 'sigcenter_file',
+                                    'form_id' => $formId,
+                                    'hc_number' => $hcNumber,
+                                    'relative_path' => $relativePath,
+                                    'fecha_examen' => (string) ($item['fecha_examen'] ?? ''),
+                                ])) {
+                                    $hasPages = true;
+                                }
+                                continue;
+                            }
+                            if ($this->isCampimetriaComputarizada((string) ($item['tipo_examen'] ?? null))) {
+                                if ($this->safeAppendCampimetriaPdfFile($pdf, $tmpPath, [
                                     'source' => 'sigcenter_file',
                                     'form_id' => $formId,
                                     'hc_number' => $hcNumber,
@@ -1059,6 +1075,139 @@ class ReportPdfService
     }
 
     /**
+     * @param array<int, array<string, mixed>> $files
+     * @param array<string, mixed> $context
+     * @return array<int, array<string, mixed>>
+     */
+    private function selectAngiografiaRetinalPackageFiles(array $files, array $context = []): array
+    {
+        if (count($files) <= 2) {
+            return $files;
+        }
+
+        $selected = [];
+        $scores = [];
+
+        foreach ($files as $index => $file) {
+            if (!is_array($file)) {
+                continue;
+            }
+
+            $relativePath = trim((string) ($file['relative_path'] ?? ''));
+            $ext = strtolower((string) ($file['ext'] ?? pathinfo((string) ($file['name'] ?? ''), PATHINFO_EXTENSION)));
+            if ($relativePath === '' || !$this->isImageExtension($ext)) {
+                continue;
+            }
+
+            $tmpPath = $this->createTempPath($ext !== '' ? $ext : 'bin');
+            try {
+                if (!$this->sigcenterImagenesService()->downloadRelativeFileToPath($relativePath, $tmpPath)) {
+                    continue;
+                }
+
+                $analysis = $this->analyzeAngiografiaRetinalReportImage($tmpPath, $ext);
+                if ($analysis === null) {
+                    continue;
+                }
+
+                $scores[] = [
+                    'index' => $index,
+                    'name' => (string) ($file['name'] ?? ''),
+                    'relative_path' => $relativePath,
+                ] + $analysis;
+
+                if (($analysis['is_report_like'] ?? false) === true) {
+                    $selected[$index] = $file;
+                }
+            } finally {
+                if (is_file($tmpPath)) {
+                    @unlink($tmpPath);
+                }
+            }
+        }
+
+        Log::info('reporting.angiografia.file_selection', $context + [
+            'total_files' => count($files),
+            'selected_files' => count($selected),
+            'scores' => $scores,
+        ]);
+
+        if ($selected !== []) {
+            ksort($selected);
+            return array_values($selected);
+        }
+
+        return $files;
+    }
+
+    /**
+     * @return array<string, int|float|bool>|null
+     */
+    private function analyzeAngiografiaRetinalReportImage(string $path, string $ext): ?array
+    {
+        $image = $this->loadImageResource($path, $ext);
+        if ($image === null) {
+            return null;
+        }
+
+        try {
+            $width = imagesx($image);
+            $height = imagesy($image);
+            if ($width <= 0 || $height <= 0) {
+                return null;
+            }
+
+            $sampleW = 120;
+            $sampleH = 120;
+            $sample = imagecreatetruecolor($sampleW, $sampleH);
+            if ($sample === false) {
+                return null;
+            }
+
+            imagecopyresampled($sample, $image, 0, 0, 0, 0, $sampleW, $sampleH, $width, $height);
+
+            $total = $sampleW * $sampleH;
+            $whitePixels = 0;
+            $darkPixels = 0;
+            $sum = 0.0;
+
+            for ($y = 0; $y < $sampleH; $y++) {
+                for ($x = 0; $x < $sampleW; $x++) {
+                    $rgb = imagecolorat($sample, $x, $y);
+                    $r = ($rgb >> 16) & 0xFF;
+                    $g = ($rgb >> 8) & 0xFF;
+                    $b = $rgb & 0xFF;
+                    $avg = ($r + $g + $b) / 3.0;
+                    $sum += $avg;
+
+                    if ($avg >= 225) {
+                        $whitePixels++;
+                    } elseif ($avg <= 40) {
+                        $darkPixels++;
+                    }
+                }
+            }
+
+            imagedestroy($sample);
+
+            $whiteRatio = $total > 0 ? $whitePixels / $total : 0.0;
+            $darkRatio = $total > 0 ? $darkPixels / $total : 0.0;
+            $meanLuma = $total > 0 ? $sum / $total : 0.0;
+
+            return [
+                'width' => $width,
+                'height' => $height,
+                'white_ratio' => round($whiteRatio, 4),
+                'dark_ratio' => round($darkRatio, 4),
+                'mean_luma' => round($meanLuma, 2),
+                'is_report_like' => $whiteRatio >= 0.35 && $darkRatio <= 0.45 && $meanLuma >= 140.0,
+            ];
+        } finally {
+            imagedestroy($image);
+        }
+    }
+
+    /**
      * @return array{path:string,ext:string}|null
      */
     private function prepareSigcenterFileForPackage(
@@ -1091,8 +1240,19 @@ class ReportPdfService
             } elseif ($ext === 'pdf' && $this->isBiometriaOcular($tipoExamen)) {
                 Log::info('reporting.pdf.mask.biometria.attempt', $maskContext);
                 $this->maskBiometriaPdfDateInPlace($tmpPath, $maskContext);
-            } elseif ($ext === 'pdf' && ($this->isOctNervioOptico($tipoExamen) || $this->isOctMacular($tipoExamen))) {
-                Log::info('reporting.pdf.mask.' . ($this->isOctMacular($tipoExamen) ? 'oct_macular' : 'oct_nervio') . '.attempt', $maskContext);
+            } elseif ($ext === 'pdf' && $this->isPaquimetriaZeiss($tipoExamen)) {
+                Log::info('reporting.pdf.mask.paquimetria.attempt', $maskContext);
+                $this->maskPaquimetriaPdfDateInPlace($tmpPath, $maskContext);
+            } elseif ($ext === 'pdf' && $this->isCampimetriaComputarizada($tipoExamen)) {
+                Log::info('reporting.pdf.mask.campimetria.attempt', $maskContext);
+                $this->maskCampimetriaPdfDateInPlace($tmpPath, $maskContext);
+            } elseif ($ext === 'pdf' && ($this->isOctNervioOptico($tipoExamen) || $this->isOctMacular($tipoExamen) || $this->isOctAngulo($tipoExamen) || $this->isOctCorneaEsclera($tipoExamen))) {
+                $octVariant = $this->isOctMacular($tipoExamen)
+                    ? 'oct_macular'
+                    : ($this->isOctAngulo($tipoExamen)
+                        ? 'oct_angulo'
+                        : ($this->isOctCorneaEsclera($tipoExamen) ? 'oct_cornea_esclera' : 'oct_nervio'));
+                Log::info('reporting.pdf.mask.' . $octVariant . '.attempt', $maskContext);
                 $this->maskOctNervioOpticoPdfDateInPlace($tmpPath, $maskContext);
             } elseif ($this->isImageExtension($ext) && $this->isBiometriaOcular($tipoExamen)) {
                 Log::info('reporting.image.mask.biometria.attempt', $maskContext + [
@@ -1104,11 +1264,24 @@ class ReportPdfService
                     'ext' => $ext,
                 ]);
                 $this->maskEcografiaModoBImageDateInPlace($tmpPath, $ext, $maskContext);
-            } elseif ($this->isImageExtension($ext) && ($this->isOctNervioOptico($tipoExamen) || $this->isOctMacular($tipoExamen))) {
-                Log::info('reporting.image.mask.' . ($this->isOctMacular($tipoExamen) ? 'oct_macular' : 'oct_nervio') . '.attempt', $maskContext + [
+            } elseif ($this->isImageExtension($ext) && ($this->isOctNervioOptico($tipoExamen) || $this->isOctMacular($tipoExamen) || $this->isOctAngulo($tipoExamen) || $this->isOctCorneaEsclera($tipoExamen) || $this->isAngiografiaRetinal($tipoExamen))) {
+                $octVariant = $this->isOctMacular($tipoExamen)
+                    ? 'oct_macular'
+                    : ($this->isOctAngulo($tipoExamen)
+                        ? 'oct_angulo'
+                        : ($this->isOctCorneaEsclera($tipoExamen)
+                            ? 'oct_cornea_esclera'
+                            : ($this->isAngiografiaRetinal($tipoExamen) ? 'angiografia_retinal' : 'oct_nervio')));
+                Log::info('reporting.image.mask.' . $octVariant . '.attempt', $maskContext + [
                     'ext' => $ext,
                 ]);
-                $this->maskOctImageDateInPlace($tmpPath, $ext, $maskContext, $this->isOctMacular($tipoExamen));
+                $this->maskOctImageDateInPlace(
+                    $tmpPath,
+                    $ext,
+                    $maskContext,
+                    $this->isOctMacular($tipoExamen) || $this->isOctAngulo($tipoExamen) || $this->isOctCorneaEsclera($tipoExamen) || $this->isAngiografiaRetinal($tipoExamen),
+                    $octVariant
+                );
             } elseif ($ext === 'pdf' && $this->isMicroespecular($tipoExamen)) {
                 Log::info('reporting.pdf.mask.microespecular.attempt', $maskContext);
                 $this->maskMicroespecularPdfDateInPlace($tmpPath, $maskContext);
@@ -1196,6 +1369,18 @@ class ReportPdfService
     {
         $pageCount = $pdf->setSourceFile($path);
         $pageNumbers = $this->resolveOctNervioOpticoPdfPages($path, $pageCount);
+        foreach ($pageNumbers as $pageNo) {
+            $tplId = $pdf->importPage($pageNo);
+            $size = $pdf->getTemplateSize($tplId);
+            $pdf->AddPage($size['orientation'], [$size['width'], $size['height']]);
+            $pdf->useTemplate($tplId);
+        }
+    }
+
+    private function appendCampimetriaPdfFile(Fpdi $pdf, string $path): void
+    {
+        $pageCount = $pdf->setSourceFile($path);
+        $pageNumbers = $this->resolvePortraitPdfPages($path, $pageCount);
         foreach ($pageNumbers as $pageNo) {
             $tplId = $pdf->importPage($pageNo);
             $size = $pdf->getTemplateSize($tplId);
@@ -1345,6 +1530,123 @@ class ReportPdfService
     /**
      * @param array<string, mixed> $context
      */
+    private function maskPaquimetriaPdfDateInPlace(string $path, array $context = []): void
+    {
+        try {
+            $masked = new Fpdi();
+            $masked->SetAutoPageBreak(false, 0);
+            $masked->setPrintHeader(false);
+            $masked->setPrintFooter(false);
+
+            $pageCount = $masked->setSourceFile($path);
+            for ($pageNo = 1; $pageNo <= $pageCount; $pageNo++) {
+                $tplId = $masked->importPage($pageNo);
+                $size = $masked->getTemplateSize($tplId);
+                $width = (float) ($size['width'] ?? 0.0);
+                $height = (float) ($size['height'] ?? 0.0);
+
+                if ($width <= 0.0 || $height <= 0.0) {
+                    continue;
+                }
+
+                $masked->AddPage($size['orientation'], [$width, $height]);
+                $masked->useTemplate($tplId);
+                $this->drawPaquimetriaPdfDateMask($masked, $width, $height);
+            }
+
+            $content = (string) $masked->Output('', 'S');
+            if ($this->isPdfContent($content)) {
+                file_put_contents($path, $content);
+                return;
+            }
+
+            Log::warning('reporting.pdf.paquimetria_mask_skipped', $context + [
+                'path' => $path,
+                'reason' => 'invalid_masked_pdf',
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('reporting.pdf.paquimetria_mask_skipped', $context + [
+                'path' => $path,
+                'reason' => 'mask_failed',
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    private function drawPaquimetriaPdfDateMask(Fpdi $pdf, float $pageWidth, float $pageHeight): void
+    {
+        $pdf->SetFillColor(255, 255, 255);
+        $pdf->Rect(
+            $pageWidth * 0.38,
+            $pageHeight * 0.082,
+            $pageWidth * 0.38,
+            $pageHeight * 0.045,
+            'F'
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     */
+    private function maskCampimetriaPdfDateInPlace(string $path, array $context = []): void
+    {
+        try {
+            $masked = new Fpdi();
+            $masked->SetAutoPageBreak(false, 0);
+            $masked->setPrintHeader(false);
+            $masked->setPrintFooter(false);
+
+            $pageCount = $masked->setSourceFile($path);
+            $pageNumbers = $this->resolvePortraitPdfPages($path, $pageCount);
+            foreach ($pageNumbers as $pageNo) {
+                $tplId = $masked->importPage($pageNo);
+                $size = $masked->getTemplateSize($tplId);
+                $width = (float) ($size['width'] ?? 0.0);
+                $height = (float) ($size['height'] ?? 0.0);
+
+                if ($width <= 0.0 || $height <= 0.0) {
+                    continue;
+                }
+
+                $masked->AddPage($size['orientation'], [$width, $height]);
+                $masked->useTemplate($tplId);
+                $this->drawCampimetriaPdfDateMask($masked, $width, $height);
+            }
+
+            $content = (string) $masked->Output('', 'S');
+            if ($this->isPdfContent($content)) {
+                file_put_contents($path, $content);
+                return;
+            }
+
+            Log::warning('reporting.pdf.campimetria_mask_skipped', $context + [
+                'path' => $path,
+                'reason' => 'invalid_masked_pdf',
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('reporting.pdf.campimetria_mask_skipped', $context + [
+                'path' => $path,
+                'reason' => 'mask_failed',
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    private function drawCampimetriaPdfDateMask(Fpdi $pdf, float $pageWidth, float $pageHeight): void
+    {
+        $pdf->SetFillColor(255, 255, 255);
+        $pdf->Rect(
+            $pageWidth * 0.77,
+            $pageHeight * 0.165,
+            $pageWidth * 0.170,
+            $pageHeight * 0.055,
+            'F'
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     */
     private function maskOctNervioOpticoPdfDateInPlace(string $path, array $context = []): void
     {
         try {
@@ -1404,18 +1706,18 @@ class ReportPdfService
      */
     private function maskOctNervioOpticoImageDateInPlace(string $path, string $ext, array $context = []): void
     {
-        $this->maskOctImageDateInPlace($path, $ext, $context, false);
+        $this->maskOctImageDateInPlace($path, $ext, $context, false, 'oct_nervio');
     }
 
     /**
      * @param array<string, mixed> $context
      */
-    private function maskOctImageDateInPlace(string $path, string $ext, array $context = [], bool $isMacular = false): void
+    private function maskOctImageDateInPlace(string $path, string $ext, array $context = [], bool $useHorizontalOctMask = false, string $variant = 'oct_nervio'): void
     {
         try {
             $image = $this->loadImageResource($path, $ext);
             if ($image === null) {
-                Log::warning('reporting.image.' . ($isMacular ? 'oct_macular' : 'oct_nervio') . '_mask_skipped', $context + [
+                Log::warning('reporting.image.' . $variant . '_mask_skipped', $context + [
                     'path' => $path,
                     'reason' => 'unsupported_image_loader',
                     'ext' => $ext,
@@ -1427,7 +1729,7 @@ class ReportPdfService
             $height = imagesy($image);
             if ($width <= 0 || $height <= 0) {
                 imagedestroy($image);
-                Log::warning('reporting.image.' . ($isMacular ? 'oct_macular' : 'oct_nervio') . '_mask_skipped', $context + [
+                Log::warning('reporting.image.' . $variant . '_mask_skipped', $context + [
                     'path' => $path,
                     'reason' => 'invalid_image_dimensions',
                     'ext' => $ext,
@@ -1436,7 +1738,7 @@ class ReportPdfService
             }
 
             $white = imagecolorallocate($image, 255, 255, 255);
-            if ($isMacular && $width > $height) {
+            if ($useHorizontalOctMask && $width > $height) {
                 imagefilledrectangle(
                     $image,
                     (int) round($width * 0.37),
@@ -1476,7 +1778,7 @@ class ReportPdfService
 
             if (!$this->saveImageResource($image, $path, $ext)) {
                 imagedestroy($image);
-                Log::warning('reporting.image.' . ($isMacular ? 'oct_macular' : 'oct_nervio') . '_mask_skipped', $context + [
+                Log::warning('reporting.image.' . $variant . '_mask_skipped', $context + [
                     'path' => $path,
                     'reason' => 'save_failed',
                     'ext' => $ext,
@@ -1486,7 +1788,7 @@ class ReportPdfService
 
             imagedestroy($image);
         } catch (\Throwable $e) {
-            Log::warning('reporting.image.' . ($isMacular ? 'oct_macular' : 'oct_nervio') . '_mask_skipped', $context + [
+            Log::warning('reporting.image.' . $variant . '_mask_skipped', $context + [
                 'path' => $path,
                 'reason' => 'mask_failed',
                 'ext' => $ext,
@@ -1835,6 +2137,34 @@ class ReportPdfService
         }
     }
 
+    /**
+     * @param array<string, mixed> $context
+     */
+    private function safeAppendCampimetriaPdfFile(Fpdi $pdf, string $path, array $context = []): bool
+    {
+        if (!$this->isPdfFile($path)) {
+            Log::warning('reporting.pdf.skip_invalid_pdf', $context + [
+                'path' => $path,
+                'reason' => 'missing_pdf_header',
+            ]);
+
+            return false;
+        }
+
+        try {
+            $this->appendCampimetriaPdfFile($pdf, $path);
+            return true;
+        } catch (\Throwable $e) {
+            Log::warning('reporting.pdf.skip_invalid_pdf', $context + [
+                'path' => $path,
+                'reason' => 'append_failed',
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
+    }
+
     private function appendImageFile(Fpdi $pdf, string $path): void
     {
         $info = @getimagesize($path);
@@ -1857,6 +2187,28 @@ class ReportPdfService
         }
 
         $pdf->Image($path, 0, 0, $pageWidth, $pageHeight);
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function resolvePortraitPdfPages(string $path, int $pageCount): array
+    {
+        $probe = new Fpdi();
+        $probe->setSourceFile($path);
+
+        $pages = [];
+        for ($pageNo = 1; $pageNo <= $pageCount; $pageNo++) {
+            $tplId = $probe->importPage($pageNo);
+            $size = $probe->getTemplateSize($tplId);
+            $width = (float) ($size['width'] ?? 0.0);
+            $height = (float) ($size['height'] ?? 0.0);
+            if ($height >= $width) {
+                $pages[] = $pageNo;
+            }
+        }
+
+        return $pages;
     }
 
     private function resolveMimeByFilename(string $filename): string
@@ -1913,6 +2265,18 @@ class ReportPdfService
             || str_contains($texto, 'biometria');
     }
 
+    private function isPaquimetriaZeiss(?string $tipoExamen): bool
+    {
+        $texto = $this->normalizeSearchText((string) ($tipoExamen ?? ''));
+        if ($texto === '') {
+            return false;
+        }
+
+        return str_contains($texto, 'paquimetria')
+            || str_contains($texto, 'pachymetry')
+            || str_contains($texto, 'espesor corneal');
+    }
+
     private function isEcografiaModoB(?string $tipoExamen): bool
     {
         $texto = $this->normalizeSearchText((string) ($tipoExamen ?? ''));
@@ -1927,6 +2291,20 @@ class ReportPdfService
         return str_contains($texto, 'ecografia modo b')
             || str_contains($texto, 'ultrasonido de segmento anterior')
             || str_contains($texto, 'ecografia');
+    }
+
+    private function isCampimetriaComputarizada(?string $tipoExamen): bool
+    {
+        $texto = $this->normalizeSearchText((string) ($tipoExamen ?? ''));
+        if ($texto === '') {
+            return false;
+        }
+
+        return preg_match('/\b281306\b/', $texto) === 1
+            || str_contains($texto, 'campo visual computarizado')
+            || str_contains($texto, 'campimetria')
+            || str_contains($texto, 'analisis de campo unico')
+            || str_contains($texto, 'análisis de campo único');
     }
 
     private function isOctNervioOptico(?string $tipoExamen): bool
@@ -1960,6 +2338,35 @@ class ReportPdfService
                 || str_contains($texto, 'retina')
                 || str_contains($texto, 'fovea')
             ));
+    }
+
+    private function isOctAngulo(?string $tipoExamen): bool
+    {
+        $texto = $this->normalizeSearchText((string) ($tipoExamen ?? ''));
+        if ($texto === '') {
+            return false;
+        }
+
+        return str_contains($texto, 'oct de angulo')
+            || str_contains($texto, 'oct del angulo')
+            || str_contains($texto, 'anterior chamber analysis')
+            || str_contains($texto, 'angulo iridocorneal')
+            || str_contains($texto, 'anterior chamber');
+    }
+
+    private function isOctCorneaEsclera(?string $tipoExamen): bool
+    {
+        $texto = $this->normalizeSearchText((string) ($tipoExamen ?? ''));
+        if ($texto === '') {
+            return false;
+        }
+
+        return str_contains($texto, 'oct de cornea')
+            || str_contains($texto, 'oct cornea')
+            || str_contains($texto, 'oct de esclera')
+            || str_contains($texto, 'cornea y esclera')
+            || str_contains($texto, 'hd cornea analysis')
+            || str_contains($texto, 'hd cornea');
     }
 
     private function isMicroespecular(?string $tipoExamen): bool

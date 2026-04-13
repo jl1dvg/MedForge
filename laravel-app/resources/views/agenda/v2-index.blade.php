@@ -10,12 +10,14 @@
         (array) ($agendaMeta['doctores_disponibles'] ?? []),
         static fn ($value) => is_array($value) && trim((string) ($value['label'] ?? '')) !== ''
     ));
+    $tiposAtencion = array_values(array_filter((array) ($agendaMeta['tipos_atencion_disponibles'] ?? []), static fn ($value) => is_array($value)));
     $tiposAfiliacion = array_values(array_filter((array) ($agendaMeta['tipo_afiliacion_opciones'] ?? []), static fn ($value) => is_array($value)));
     $empresasAfiliacion = array_values(array_filter((array) ($agendaMeta['empresa_afiliacion_opciones'] ?? []), static fn ($value) => is_array($value)));
     $afiliaciones = array_values(array_filter((array) ($agendaMeta['afiliacion_opciones'] ?? []), static fn ($value) => is_array($value)));
 
     $fechaInicio = (string) ($filters['fecha_inicio'] ?? '');
     $fechaFin = (string) ($filters['fecha_fin'] ?? '');
+    $tipoAtencionActual = (string) ($filters['tipo_atencion'] ?? '');
     $doctorActual = (string) ($filters['doctor'] ?? '');
     $estadoActual = (string) ($filters['estado'] ?? '');
     $sedeActual = (string) ($filters['sede'] ?? '');
@@ -53,13 +55,59 @@
         $normalized = strtoupper(trim((string) $estado));
 
         return match ($normalized) {
-            'AGENDADO', 'CONFIRMADO' => 'badge badge-primary',
-            'LLEGADO', 'EN ATENCION' => 'badge badge-info',
-            'REALIZADO', 'ATENDIDO' => 'badge badge-success',
-            'AUSENTE', 'NO SHOW' => 'badge badge-warning',
-            'CANCELADO' => 'badge badge-danger',
-            default => 'badge badge-secondary',
+            'AGENDADO' => 'agenda-status is-agendado',
+            'CONFIRMADO' => 'agenda-status is-confirmado',
+            'LLEGADO' => 'agenda-status is-llegado',
+            'EN ATENCION', 'CONSULTA', 'OPTOMETRIA' => 'agenda-status is-en-atencion',
+            'DILATAR' => 'agenda-status is-dilatar',
+            'REALIZADO', 'ATENDIDO', 'CONSULTA_TERMINADO', 'OPTOMETRIA_TERMINADO' => 'agenda-status is-realizado',
+            'AUSENTE', 'NO SHOW' => 'agenda-status is-ausente',
+            'CANCELADO' => 'agenda-status is-cancelado',
+            'REAGENDADO' => 'agenda-status is-reagendado',
+            default => 'agenda-status is-default',
         };
+    };
+
+    $colorIndexFor = static function (?string $value, int $bucketCount): int {
+        $normalized = mb_strtoupper(trim((string) $value), 'UTF-8');
+        if ($normalized === '' || $bucketCount <= 0) {
+            return 0;
+        }
+
+        return abs(crc32($normalized)) % $bucketCount;
+    };
+
+    $tipoAtencionBadgeClass = static function (?string $value) use ($colorIndexFor): string {
+        $variants = [
+            'agenda-tag agenda-tag-type-1',
+            'agenda-tag agenda-tag-type-2',
+            'agenda-tag agenda-tag-type-3',
+            'agenda-tag agenda-tag-type-4',
+        ];
+
+        return $variants[$colorIndexFor($value, count($variants))];
+    };
+
+    $sedeBadgeClass = static function (?string $value) use ($colorIndexFor): string {
+        $variants = [
+            'agenda-tag agenda-tag-sede-1',
+            'agenda-tag agenda-tag-sede-2',
+        ];
+
+        return $variants[$colorIndexFor($value, count($variants))];
+    };
+
+    $afiliacionBadgeClass = static function (?string $value) use ($colorIndexFor): string {
+        $variants = [
+            'agenda-tag agenda-tag-aff-1',
+            'agenda-tag agenda-tag-aff-2',
+            'agenda-tag agenda-tag-aff-3',
+            'agenda-tag agenda-tag-aff-4',
+            'agenda-tag agenda-tag-aff-5',
+            'agenda-tag agenda-tag-aff-6',
+        ];
+
+        return $variants[$colorIndexFor($value, count($variants))];
     };
 @endphp
 
@@ -80,23 +128,209 @@
     .agenda-table td,
     .agenda-table th {
         vertical-align: middle;
-        white-space: nowrap;
+        white-space: normal;
+    }
+
+    .agenda-table {
+        width: 100% !important;
+        font-size: 11px;
+        line-height: 1.2;
+    }
+
+    .agenda-table td {
+        padding: .4rem .45rem;
+    }
+
+    .agenda-table th {
+        padding: .55rem .45rem;
+        font-size: 10.5px;
+        letter-spacing: .02em;
     }
 
     .agenda-table .agenda-procedimiento {
-        min-width: 320px;
-        white-space: normal;
+        min-width: 180px;
+    }
+
+    .agenda-table .agenda-detalle {
+        min-width: 250px;
     }
 
     .agenda-table .agenda-paciente {
-        min-width: 220px;
-        white-space: normal;
+        min-width: 180px;
+    }
+
+    .agenda-status {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 110px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: .02em;
+        text-transform: uppercase;
+        border: 1px solid transparent;
+    }
+
+    .agenda-status.is-agendado {
+        background: #e0f2fe;
+        color: #075985;
+        border-color: #7dd3fc;
+    }
+
+    .agenda-status.is-confirmado {
+        background: #ede9fe;
+        color: #5b21b6;
+        border-color: #c4b5fd;
+    }
+
+    .agenda-status.is-llegado {
+        background: #dcfce7;
+        color: #166534;
+        border-color: #86efac;
+    }
+
+    .agenda-status.is-en-atencion {
+        background: #fef3c7;
+        color: #92400e;
+        border-color: #fcd34d;
+    }
+
+    .agenda-status.is-dilatar {
+        background: #fce7f3;
+        color: #9d174d;
+        border-color: #f9a8d4;
+    }
+
+    .agenda-status.is-realizado {
+        background: #dcfce7;
+        color: #166534;
+        border-color: #4ade80;
+    }
+
+    .agenda-status.is-ausente {
+        background: #fff7ed;
+        color: #9a3412;
+        border-color: #fdba74;
+    }
+
+    .agenda-status.is-cancelado {
+        background: #fee2e2;
+        color: #b91c1c;
+        border-color: #fca5a5;
+    }
+
+    .agenda-status.is-reagendado {
+        background: #ecfccb;
+        color: #3f6212;
+        border-color: #bef264;
+    }
+
+    .agenda-status.is-default {
+        background: #e5e7eb;
+        color: #374151;
+        border-color: #cbd5e1;
+    }
+
+    .agenda-tag {
+        display: inline-flex;
+        align-items: center;
+        max-width: 100%;
+        padding: 4px 8px;
+        border-radius: 999px;
+        font-size: 10.5px;
+        font-weight: 700;
+        line-height: 1.15;
+        border: 1px solid transparent;
+    }
+
+    .agenda-tag-type-1 {
+        background: #ecfeff;
+        color: #155e75;
+        border-color: #67e8f9;
+    }
+
+    .agenda-tag-type-2 {
+        background: #eff6ff;
+        color: #1d4ed8;
+        border-color: #93c5fd;
+    }
+
+    .agenda-tag-type-3 {
+        background: #f5f3ff;
+        color: #6d28d9;
+        border-color: #c4b5fd;
+    }
+
+    .agenda-tag-type-4 {
+        background: #fff7ed;
+        color: #c2410c;
+        border-color: #fdba74;
+    }
+
+    .agenda-tag-sede-1 {
+        background: #ecfccb;
+        color: #3f6212;
+        border-color: #a3e635;
+    }
+
+    .agenda-tag-sede-2 {
+        background: #ffe4e6;
+        color: #9f1239;
+        border-color: #fda4af;
+    }
+
+    .agenda-tag-aff-1 {
+        background: #fef3c7;
+        color: #92400e;
+        border-color: #fcd34d;
+    }
+
+    .agenda-tag-aff-2 {
+        background: #dcfce7;
+        color: #166534;
+        border-color: #86efac;
+    }
+
+    .agenda-tag-aff-3 {
+        background: #dbeafe;
+        color: #1d4ed8;
+        border-color: #93c5fd;
+    }
+
+    .agenda-tag-aff-4 {
+        background: #fce7f3;
+        color: #9d174d;
+        border-color: #f9a8d4;
+    }
+
+    .agenda-tag-aff-5 {
+        background: #ede9fe;
+        color: #5b21b6;
+        border-color: #c4b5fd;
+    }
+
+    .agenda-tag-aff-6 {
+        background: #e2e8f0;
+        color: #334155;
+        border-color: #cbd5e1;
     }
 
     .agenda-actions {
         display: flex;
         flex-wrap: wrap;
         gap: 6px;
+    }
+
+    .agenda-icon-button {
+        width: 28px;
+        height: 28px;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 999px;
     }
 
     .agenda-visit-backdrop {
@@ -159,6 +393,12 @@
         margin-bottom: 5px;
         font-weight: 700;
     }
+
+    .agenda-autorefresh {
+        color: #64748b;
+        font-size: 12px;
+        font-weight: 600;
+    }
 </style>
 @endpush
 
@@ -192,6 +432,17 @@
                             <div class="col-xl-2 col-md-4">
                                 <label for="fecha_fin" class="form-label">Hasta</label>
                                 <input type="date" id="fecha_fin" name="fecha_fin" class="form-control" value="{{ $fechaFin }}">
+                            </div>
+                            <div class="col-xl-3 col-md-4">
+                                <label for="tipo_atencion" class="form-label">Tipo atención</label>
+                                <select id="tipo_atencion" name="tipo_atencion" class="form-select">
+                                    <option value="">Todos</option>
+                                    @foreach($tiposAtencion as $option)
+                                        <option value="{{ (string) ($option['value'] ?? '') }}" @selected($tipoAtencionActual === (string) ($option['value'] ?? ''))>
+                                            {{ (string) ($option['label'] ?? '') }}
+                                        </option>
+                                    @endforeach
+                                </select>
                             </div>
                             <div class="col-xl-3 col-md-4">
                                 <label for="doctor" class="form-label">Doctor</label>
@@ -291,6 +542,9 @@
                                     Solo con visita
                                 </span>
                             @endif
+                            <span class="agenda-autorefresh" data-agenda-refresh-label>
+                                Actualización automática cada 60 segundos
+                            </span>
                         </div>
 
                         @if(!empty($loadError))
@@ -314,14 +568,16 @@
                                     <th>Form ID</th>
                                     <th>Historia</th>
                                     <th>Paciente</th>
-                                    <th>Procedimiento</th>
+                                    <th>Tipo atención</th>
+                                    <th>Código atención</th>
+                                    <th>Detalle atención</th>
                                     <th>Doctor</th>
                                     <th>Estado</th>
                                     <th>Sede</th>
                                     <th>Afiliación</th>
-                                    <th>Visita</th>
+                                    <th class="not-export no-colvis">Visita</th>
                                     <th>Historia clínica</th>
-                                    <th>Acciones</th>
+                                    <th class="not-export no-colvis">Acciones</th>
                                 </tr>
                                 </thead>
                                 <tbody>
@@ -333,6 +589,10 @@
                                         }
 
                                         $sede = trim((string) ($row->sede ?? ''));
+                                        $tipoAtencion = trim((string) ($row->atencion_tipo ?? ''));
+                                        $codigoAtencion = trim((string) ($row->atencion_codigo ?? ''));
+                                        $detalleAtencion = trim((string) ($row->atencion_detalle ?? ''));
+                                        $procedimientoCompleto = trim((string) ($row->procedimiento ?? ''));
 
                                         $tieneConsulta = (int) ($row->tiene_consulta ?? 0) === 1;
                                     @endphp
@@ -342,16 +602,54 @@
                                         <td>{{ (string) ($row->form_id ?? '-') }}</td>
                                         <td>{{ (string) ($row->hc_number ?? '-') }}</td>
                                         <td class="agenda-paciente">{{ (string) ($row->paciente ?? '-') }}</td>
-                                        <td class="agenda-procedimiento">{{ (string) ($row->procedimiento ?? '-') }}</td>
+                                        <td class="agenda-procedimiento">
+                                            @if($tipoAtencion !== '')
+                                                <span class="{{ $tipoAtencionBadgeClass($tipoAtencion) }}">{{ $tipoAtencion }}</span>
+                                            @else
+                                                -
+                                            @endif
+                                        </td>
+                                        <td>{{ $codigoAtencion !== '' ? $codigoAtencion : '-' }}</td>
+                                        <td class="agenda-detalle">{{ $detalleAtencion !== '' ? $detalleAtencion : ($procedimientoCompleto !== '' ? $procedimientoCompleto : '-') }}</td>
                                         <td>{{ (string) ($row->doctor_display ?? $row->doctor ?? '-') }}</td>
                                         <td>
                                             <span class="{{ $statusBadgeClass((string) ($row->estado_agenda ?? '')) }}">
                                                 {{ (string) ($row->estado_agenda ?? 'SIN ESTADO') }}
                                             </span>
                                         </td>
-                                        <td>{{ $sede !== '' ? $sede : '-' }}</td>
-                                        <td>{{ (string) ($row->afiliacion_label ?? $row->afiliacion ?? '-') }}</td>
-                                        <td>{{ (string) ($row->visita_id ?? '-') }}</td>
+                                        <td>
+                                            @if($sede !== '')
+                                                <span class="{{ $sedeBadgeClass($sede) }}">{{ $sede }}</span>
+                                            @else
+                                                -
+                                            @endif
+                                        </td>
+                                        <td>
+                                            @php
+                                                $afiliacionLabel = trim((string) ($row->afiliacion_label ?? $row->afiliacion ?? ''));
+                                            @endphp
+                                            @if($afiliacionLabel !== '')
+                                                <span class="{{ $afiliacionBadgeClass($afiliacionLabel) }}">{{ $afiliacionLabel }}</span>
+                                            @else
+                                                -
+                                            @endif
+                                        </td>
+                                        <td class="text-center">
+                                            @if(!empty($row->visita_id))
+                                                <button
+                                                    type="button"
+                                                    class="btn btn-sm btn-outline-primary agenda-icon-button"
+                                                    data-agenda-view-visita
+                                                    data-visita-id="{{ (int) $row->visita_id }}"
+                                                    title="Ver visita"
+                                                    aria-label="Ver visita"
+                                                >
+                                                    <i class="mdi mdi-eye-outline"></i>
+                                                </button>
+                                            @else
+                                                -
+                                            @endif
+                                        </td>
                                         <td data-order="{{ $tieneConsulta ? 1 : 0 }}">
                                             <span class="badge {{ $tieneConsulta ? 'badge-success' : 'badge-warning' }}">
                                                 {{ $tieneConsulta ? 'Con datos' : 'Sin datos' }}
@@ -359,23 +657,14 @@
                                         </td>
                                         <td>
                                             <div class="agenda-actions">
-                                                @if(!empty($row->visita_id))
-                                                    <button
-                                                        type="button"
-                                                        class="btn btn-sm btn-outline-primary"
-                                                        data-agenda-view-visita
-                                                        data-visita-id="{{ (int) $row->visita_id }}"
-                                                    >
-                                                        Ver visita
-                                                    </button>
-                                                @endif
-
                                                 @if(!empty($row->form_id) && !empty($row->hc_number))
                                                     <a
                                                         href="/v2/consultas?form_id={{ urlencode((string) $row->form_id) }}&hc_number={{ urlencode((string) $row->hc_number) }}"
-                                                        class="btn btn-sm btn-outline-success"
+                                                        class="btn btn-sm btn-outline-success agenda-icon-button"
+                                                        title="{{ $tieneConsulta ? 'Editar consulta' : 'Crear consulta' }}"
+                                                        aria-label="{{ $tieneConsulta ? 'Editar consulta' : 'Crear consulta' }}"
                                                     >
-                                                        {{ $tieneConsulta ? 'Editar consulta' : 'Crear consulta' }}
+                                                        <i class="mdi {{ $tieneConsulta ? 'mdi-file-document-edit-outline' : 'mdi-file-document-plus-outline' }}"></i>
                                                     </a>
                                                 @endif
                                             </div>
@@ -383,7 +672,7 @@
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="13" class="text-center text-muted py-30">
+                                        <td colspan="15" class="text-center text-muted py-30">
                                             No hay resultados para los filtros seleccionados.
                                         </td>
                                     </tr>

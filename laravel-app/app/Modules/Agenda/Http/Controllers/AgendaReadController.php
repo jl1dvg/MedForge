@@ -112,6 +112,7 @@ class AgendaReadController
      * @return array{
      *     fecha_inicio:string,
      *     fecha_fin:string,
+     *     tipo_atencion:string,
      *     doctor:string,
      *     estado:string,
      *     sede:string,
@@ -139,6 +140,7 @@ class AgendaReadController
         return [
             'fecha_inicio' => $start,
             'fecha_fin' => $end,
+            'tipo_atencion' => trim((string) $request->query('tipo_atencion', '')),
             'doctor' => trim((string) $request->query('doctor', '')),
             'estado' => trim((string) $request->query('estado', '')),
             'sede' => trim((string) $request->query('sede', '')),
@@ -153,6 +155,7 @@ class AgendaReadController
      * @param array{
      *     fecha_inicio:string,
      *     fecha_fin:string,
+     *     tipo_atencion:string,
      *     doctor:string,
      *     estado:string,
      *     sede:string,
@@ -208,6 +211,10 @@ class AgendaReadController
         if ($filters['solo_con_visita']) {
             $sql .= " AND pp.visita_id IS NOT NULL";
         }
+        if ($filters['tipo_atencion'] !== '') {
+            $sql .= " AND TRIM(SUBSTRING_INDEX(COALESCE(pp.procedimiento_proyectado, ''), ' - ', 1)) = ?";
+            $bind[] = $filters['tipo_atencion'];
+        }
         if ($filters['doctor'] !== '') {
             $doctorVariants = $doctorCatalog['variants_by_key'][$filters['doctor']] ?? [];
             if ($doctorVariants === []) {
@@ -243,6 +250,7 @@ class AgendaReadController
 
         $rows = DB::select($sql, $bind);
         $rows = $this->decorateAgendaRows($rows, $doctorCatalog);
+        $tiposAtencion = $this->buildAtencionTipoOptions();
         $estados = DB::select("SELECT DISTINCT estado_agenda FROM procedimiento_proyectado WHERE estado_agenda IS NOT NULL AND estado_agenda != '' ORDER BY estado_agenda");
         $sedes = DB::select(
             "SELECT DISTINCT COALESCE(NULLIF(TRIM(sede_departamento), ''), NULLIF(TRIM(id_sede), ''), '') AS sede
@@ -258,6 +266,7 @@ class AgendaReadController
                 'filters' => [
                     'fecha_inicio' => $filters['fecha_inicio'],
                     'fecha_fin' => $filters['fecha_fin'],
+                    'tipo_atencion' => $filters['tipo_atencion'] !== '' ? $filters['tipo_atencion'] : null,
                     'doctor' => $filters['doctor'] !== '' ? $filters['doctor'] : null,
                     'estado' => $filters['estado'] !== '' ? $filters['estado'] : null,
                     'sede' => $filters['sede'] !== '' ? $filters['sede'] : null,
@@ -268,6 +277,7 @@ class AgendaReadController
                 ],
                 'estados_disponibles' => array_map(fn ($r) => (string) ($r->estado_agenda ?? ''), $estados),
                 'sedes_disponibles' => array_map(fn ($r) => ['value' => (string) ($r->sede ?? ''), 'label' => (string) ($r->sede ?? '')], $sedes),
+                'tipos_atencion_disponibles' => $tiposAtencion,
                 'doctores_disponibles' => $doctorCatalog['options'],
                 'tipo_afiliacion_opciones' => $afiliacionDimensions->getCategoriaOptions('Todos los tipos'),
                 'empresa_afiliacion_opciones' => $afiliacionDimensions->getEmpresaOptions('Todas las empresas'),
@@ -280,6 +290,7 @@ class AgendaReadController
      * @param array{
      *     fecha_inicio:string,
      *     fecha_fin:string,
+     *     tipo_atencion:string,
      *     doctor:string,
      *     estado:string,
      *     sede:string,
@@ -297,6 +308,7 @@ class AgendaReadController
             'filters' => [
                 'fecha_inicio' => $filters['fecha_inicio'],
                 'fecha_fin' => $filters['fecha_fin'],
+                'tipo_atencion' => $filters['tipo_atencion'] !== '' ? $filters['tipo_atencion'] : null,
                 'doctor' => $filters['doctor'] !== '' ? $filters['doctor'] : null,
                 'estado' => $filters['estado'] !== '' ? $filters['estado'] : null,
                 'sede' => $filters['sede'] !== '' ? $filters['sede'] : null,
@@ -307,11 +319,40 @@ class AgendaReadController
             ],
             'estados_disponibles' => [],
             'sedes_disponibles' => [],
+            'tipos_atencion_disponibles' => [],
             'doctores_disponibles' => [],
             'tipo_afiliacion_opciones' => [],
             'empresa_afiliacion_opciones' => [],
             'afiliacion_opciones' => [],
         ];
+    }
+
+    /**
+     * @return array<int,array{value:string,label:string}>
+     */
+    private function buildAtencionTipoOptions(): array
+    {
+        $rows = DB::select(
+            "SELECT DISTINCT TRIM(SUBSTRING_INDEX(COALESCE(procedimiento_proyectado, ''), ' - ', 1)) AS tipo_atencion
+             FROM procedimiento_proyectado
+             WHERE COALESCE(TRIM(procedimiento_proyectado), '') != ''
+             ORDER BY tipo_atencion ASC"
+        );
+
+        return array_values(array_filter(array_map(
+            static function (object $row): ?array {
+                $value = trim((string) ($row->tipo_atencion ?? ''));
+                if ($value === '') {
+                    return null;
+                }
+
+                return [
+                    'value' => $value,
+                    'label' => $value,
+                ];
+            },
+            $rows
+        )));
     }
 
     /**
@@ -484,9 +525,64 @@ class AgendaReadController
             $row->doctor_filter_key = is_array($resolved)
                 ? (string) ($resolved['key'] ?? $this->doctorCanonicalKey($rawDoctor))
                 : $this->doctorCanonicalKey($rawDoctor);
+
+            $procedureParts = $this->splitProcedure((string) ($row->procedimiento ?? ''));
+            $row->atencion_tipo = $procedureParts['tipo'];
+            $row->atencion_codigo = $procedureParts['codigo'];
+            $row->atencion_detalle = $procedureParts['detalle'];
         }
 
         return $rows;
+    }
+
+    /**
+     * @return array{tipo:string,codigo:string,detalle:string}
+     */
+    private function splitProcedure(string $value): array
+    {
+        $normalized = $this->normalizeWhitespace($value);
+        if ($normalized === '') {
+            return [
+                'tipo' => '',
+                'codigo' => '',
+                'detalle' => '',
+            ];
+        }
+
+        $parts = array_values(array_filter(
+            preg_split('/\s+-\s+/u', $normalized) ?: [],
+            static fn ($part): bool => trim($part) !== ''
+        ));
+
+        if ($parts === []) {
+            return [
+                'tipo' => $normalized,
+                'codigo' => '',
+                'detalle' => '',
+            ];
+        }
+
+        if (count($parts) === 1) {
+            return [
+                'tipo' => $parts[0],
+                'codigo' => '',
+                'detalle' => '',
+            ];
+        }
+
+        if (count($parts) === 2) {
+            return [
+                'tipo' => $parts[0],
+                'codigo' => '',
+                'detalle' => $parts[1],
+            ];
+        }
+
+        return [
+            'tipo' => $parts[0],
+            'codigo' => $parts[1],
+            'detalle' => implode(' - ', array_slice($parts, 2)),
+        ];
     }
 
     private function choosePreferredDoctorLabel(array $variants): string
