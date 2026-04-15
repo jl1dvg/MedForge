@@ -533,7 +533,7 @@ class KpiDashboardService
         $filter = $this->handoffFilterSql('h', $roleId, $agentId, 'agent');
         $sql = 'SELECT
                     h.assigned_agent_id AS user_id,
-                    COALESCE(NULLIF(TRIM(CONCAT(u.first_name, " ", u.last_name)), ""), NULLIF(u.nombre, ""), u.username, CONCAT("Usuario #", h.assigned_agent_id)) AS agent_name,
+                    ' . $this->agentNameSql('u', 'h.assigned_agent_id', 'Usuario #') . ' AS agent_name,
                     COUNT(*) AS assigned_count,
                     SUM(CASE WHEN h.status = "assigned" THEN 1 ELSE 0 END) AS active_count,
                     SUM(CASE WHEN h.status = "resolved" THEN 1 ELSE 0 END) AS resolved_count
@@ -567,7 +567,7 @@ class KpiDashboardService
         $reply = $this->firstHumanReplyByAgentSubquery($scope, $roleId, $agentId, 'human_agent');
         $sql = 'SELECT
                     first_reply.assigned_agent_id AS user_id,
-                    COALESCE(NULLIF(TRIM(CONCAT(u.first_name, " ", u.last_name)), ""), NULLIF(u.nombre, ""), u.username, CONCAT("Usuario #", first_reply.assigned_agent_id)) AS agent_name,
+                    ' . $this->agentNameSql('u', 'first_reply.assigned_agent_id', 'Usuario #') . ' AS agent_name,
                     COUNT(*) AS attended_conversations,
                     ' . ($this->isSqlite()
                         ? 'AVG((julianday(first_reply.first_human_reply_at) - julianday(first_reply.first_inbound_at)) * 86400)'
@@ -739,7 +739,7 @@ class KpiDashboardService
         $total = (int) (DB::selectOne('SELECT COUNT(*) AS total ' . $base, $params)->total ?? 0);
         $rows = DB::select(
             'SELECT h.id, c.wa_number, c.display_name, h.status, r.name AS role_name,
-                    COALESCE(NULLIF(TRIM(CONCAT(u.first_name, " ", u.last_name)), ""), NULLIF(u.nombre, ""), u.username, "") AS agent_name,
+                    ' . $this->agentNameSql('u', null, null) . ' AS agent_name,
                     h.queued_at, h.assigned_until ' . $base . '
              ORDER BY h.queued_at DESC, h.id DESC
              LIMIT ? OFFSET ?',
@@ -865,7 +865,7 @@ class KpiDashboardService
         $total = (int) (DB::selectOne('SELECT COUNT(*) AS total ' . $base, $params)->total ?? 0);
         $rawRows = DB::select(
             'SELECT h.id, c.wa_number, c.display_name, r.name AS role_name,
-                    COALESCE(NULLIF(TRIM(CONCAT(u.first_name, " ", u.last_name)), ""), NULLIF(u.nombre, ""), u.username, "") AS agent_name,
+                    ' . $this->agentNameSql('u', null, null) . ' AS agent_name,
                     h.queued_at, h.assigned_at ' . $base . '
              ORDER BY h.queued_at DESC, h.id DESC
              LIMIT ? OFFSET ?',
@@ -924,7 +924,7 @@ class KpiDashboardService
         $total = (int) (DB::selectOne('SELECT COUNT(*) AS total ' . $base, $params)->total ?? 0);
         $rows = DB::select(
             'SELECT e.id, c.wa_number, c.display_name,
-                    COALESCE(NULLIF(TRIM(CONCAT(u.first_name, " ", u.last_name)), ""), NULLIF(u.nombre, ""), u.username, "Sistema") AS actor_name,
+                    ' . $this->agentNameSql('u', null, 'Sistema') . ' AS actor_name,
                     e.notes, e.created_at ' . $base . '
              ORDER BY e.created_at DESC, e.id DESC
              LIMIT ? OFFSET ?',
@@ -1044,7 +1044,51 @@ class KpiDashboardService
         return array_map(fn ($row) => [
             'id' => (int) ($row->id ?? 0),
             'name' => (string) ($row->agent_name ?? ''),
-        ], DB::select('SELECT id, COALESCE(NULLIF(TRIM(CONCAT(first_name, " ", last_name)), ""), NULLIF(nombre, ""), username, CONCAT("Usuario #", id)) AS agent_name FROM users ORDER BY agent_name ASC'));
+        ], DB::select('SELECT id, ' . $this->agentNameSql(null, 'id', 'Usuario #') . ' AS agent_name FROM users ORDER BY agent_name ASC'));
+    }
+
+    private function agentNameSql(?string $tableAlias, ?string $idExpression, ?string $fallbackLabel): string
+    {
+        $prefix = $tableAlias !== null && $tableAlias !== '' ? $tableAlias . '.' : '';
+        $fullName = $this->fullNameSql($prefix . 'first_name', $prefix . 'last_name');
+        $parts = [
+            'NULLIF(TRIM(' . $fullName . '), "")',
+            'NULLIF(' . $prefix . 'nombre, "")',
+            'NULLIF(' . $prefix . 'username, "")',
+        ];
+
+        if ($fallbackLabel !== null) {
+            if ($idExpression !== null && $idExpression !== '') {
+                $parts[] = $this->concatLabelSql($fallbackLabel, $idExpression);
+            } else {
+                $parts[] = $this->stringLiteral($fallbackLabel);
+            }
+        }
+
+        return 'COALESCE(' . implode(', ', $parts) . ')';
+    }
+
+    private function fullNameSql(string $firstNameExpression, string $lastNameExpression): string
+    {
+        if ($this->isSqlite()) {
+            return 'COALESCE(' . $firstNameExpression . ', "") || " " || COALESCE(' . $lastNameExpression . ', "")';
+        }
+
+        return 'CONCAT(COALESCE(' . $firstNameExpression . ', ""), " ", COALESCE(' . $lastNameExpression . ', ""))';
+    }
+
+    private function concatLabelSql(string $label, string $idExpression): string
+    {
+        if ($this->isSqlite()) {
+            return $this->stringLiteral($label) . ' || CAST(' . $idExpression . ' AS TEXT)';
+        }
+
+        return 'CONCAT(' . $this->stringLiteral($label) . ', CAST(' . $idExpression . ' AS CHAR))';
+    }
+
+    private function stringLiteral(string $value): string
+    {
+        return "'" . str_replace("'", "''", $value) . "'";
     }
 
     /**

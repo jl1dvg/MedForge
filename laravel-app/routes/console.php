@@ -11,6 +11,8 @@ use App\Modules\Farmacia\Services\RecetasConciliacionSyncService;
 use App\Modules\Shared\Support\AfiliacionDimensionService;
 use App\Modules\Solicitudes\Services\SolicitudesPrefacturaService;
 use App\Modules\Whatsapp\Services\ConversationOpsService;
+use App\Modules\Whatsapp\Services\FlowRuntimeShadowCompareService;
+use App\Modules\Whatsapp\Services\FlowRuntimeShadowObserverService;
 use App\Models\WhatsappConversation;
 use App\Models\WhatsappMessage;
 use Illuminate\Foundation\Inspiring;
@@ -30,6 +32,10 @@ Artisan::command('whatsapp:phase1-smoke', function (): int {
     $webhookEnabled = (bool) config('whatsapp.migration.api.webhook_enabled', false);
     $fallback = (bool) config('whatsapp.migration.fallback_to_legacy', true);
     $compare = (bool) config('whatsapp.migration.compare_with_legacy', true);
+    $automationEnabled = (bool) config('whatsapp.migration.automation.enabled', false);
+    $automationCompare = (bool) config('whatsapp.migration.automation.compare_with_legacy', true);
+    $automationFallback = (bool) config('whatsapp.migration.automation.fallback_to_legacy', true);
+    $automationDryRun = (bool) config('whatsapp.migration.automation.dry_run', true);
 
     try {
         $conversationCount = class_exists(WhatsappConversation::class) ? WhatsappConversation::query()->count() : 0;
@@ -51,6 +57,10 @@ Artisan::command('whatsapp:phase1-smoke', function (): int {
             ['WHATSAPP_LARAVEL_WEBHOOK_ENABLED', $webhookEnabled ? 'true' : 'false'],
             ['WHATSAPP_LARAVEL_FALLBACK_TO_LEGACY', $fallback ? 'true' : 'false'],
             ['WHATSAPP_LARAVEL_COMPARE_WITH_LEGACY', $compare ? 'true' : 'false'],
+            ['WHATSAPP_LARAVEL_AUTOMATION_ENABLED', $automationEnabled ? 'true' : 'false'],
+            ['WHATSAPP_LARAVEL_AUTOMATION_COMPARE_WITH_LEGACY', $automationCompare ? 'true' : 'false'],
+            ['WHATSAPP_LARAVEL_AUTOMATION_FALLBACK_TO_LEGACY', $automationFallback ? 'true' : 'false'],
+            ['WHATSAPP_LARAVEL_AUTOMATION_DRY_RUN', $automationDryRun ? 'true' : 'false'],
             ['db_status', $dbStatus],
             ['whatsapp_conversations', (string) $conversationCount],
             ['whatsapp_messages', (string) $messageCount],
@@ -81,6 +91,182 @@ Artisan::command('whatsapp:phase1-smoke', function (): int {
     $this->info('Fase 1 extendida de WhatsApp habilitada: lectura, escritura y webhook.');
     return 0;
 })->purpose('Verifica flags y estado base de la fase 1 de WhatsApp');
+
+Artisan::command('whatsapp:flowmaker-shadow
+    {wa_number : Número WhatsApp para simular}
+    {text : Mensaje entrante a comparar}
+    {--context= : JSON opcional de contexto a inyectar en la simulación}
+    {--json : Devuelve solo el payload JSON}', function (): int {
+    /** @var FlowRuntimeShadowCompareService $service */
+    $service = app(FlowRuntimeShadowCompareService::class);
+
+    $context = [];
+    $rawContext = trim((string) ($this->option('context') ?? ''));
+    if ($rawContext !== '') {
+        $decoded = json_decode($rawContext, true);
+        if (!is_array($decoded)) {
+            $this->error('El contexto debe ser un JSON válido.');
+            return 1;
+        }
+
+        $context = $decoded;
+    }
+
+    $result = $service->compare([
+        'wa_number' => trim((string) $this->argument('wa_number')),
+        'text' => trim((string) $this->argument('text')),
+        'context' => $context,
+    ]);
+
+    if ((bool) $this->option('json')) {
+        $this->line(json_encode($result, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT) ?: '{}');
+        return 0;
+    }
+
+    $this->table(
+        ['Check', 'Value'],
+        [
+            ['legacy_source', (string) ($result['sources']['legacy'] ?? 'unknown')],
+            ['same_match', !empty($result['parity']['same_match']) ? 'true' : 'false'],
+            ['same_scenario', !empty($result['parity']['same_scenario']) ? 'true' : 'false'],
+            ['same_handoff', !empty($result['parity']['same_handoff']) ? 'true' : 'false'],
+            ['same_action_types', !empty($result['parity']['same_action_types']) ? 'true' : 'false'],
+            ['laravel_scenario', (string) ($result['laravel']['scenario']['id'] ?? '-')],
+            ['legacy_scenario', (string) ($result['legacy']['scenario']['id'] ?? '-')],
+        ]
+    );
+
+    return 0;
+})->purpose('Compara en modo sombra la simulación Laravel del autorespondedor contra la fuente legacy');
+
+Artisan::command('whatsapp:flowmaker-shadow-runs
+    {--limit=25 : Número máximo de runs a mostrar}
+    {--mismatches : Solo muestra runs con diferencias}
+    {--json : Devuelve solo el payload JSON}', function (): int {
+    /** @var FlowRuntimeShadowObserverService $service */
+    $service = app(FlowRuntimeShadowObserverService::class);
+
+    $runs = $service->recent(
+        (int) $this->option('limit'),
+        (bool) $this->option('mismatches')
+    );
+
+    if ((bool) $this->option('json')) {
+        $this->line(json_encode($runs, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT) ?: '[]');
+        return 0;
+    }
+
+    $this->table(
+        ['ID', 'Fecha', 'Número', 'Laravel', 'Legacy', 'Match', 'Scenario', 'Handoff', 'Actions'],
+        array_map(static fn (array $run): array => [
+            (string) ($run['id'] ?? '-'),
+            (string) ($run['created_at'] ?? '-'),
+            (string) ($run['wa_number'] ?? '-'),
+            (string) ($run['laravel_scenario'] ?? '-'),
+            (string) ($run['legacy_scenario'] ?? '-'),
+            !empty($run['parity']['same_match']) ? 'true' : 'false',
+            !empty($run['parity']['same_scenario']) ? 'true' : 'false',
+            !empty($run['parity']['same_handoff']) ? 'true' : 'false',
+            !empty($run['parity']['same_action_types']) ? 'true' : 'false',
+        ], $runs)
+    );
+
+    return 0;
+})->purpose('Lista los runs recientes del shadow runtime del webhook de WhatsApp');
+
+Artisan::command('whatsapp:flowmaker-shadow-sync
+    {--limit=50 : Número máximo de mensajes inbound recientes a revisar}
+    {--json : Devuelve solo el payload JSON}', function (): int {
+    /** @var FlowRuntimeShadowObserverService $service */
+    $service = app(FlowRuntimeShadowObserverService::class);
+
+    $result = $service->syncRecentInboundMessages((int) $this->option('limit'));
+
+    if ((bool) $this->option('json')) {
+        $this->line(json_encode($result, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT) ?: '{}');
+        return 0;
+    }
+
+    $this->table(
+        ['Metric', 'Value'],
+        [
+            ['source', (string) ($result['source'] ?? '-')],
+            ['processed', (string) ($result['processed'] ?? 0)],
+            ['skipped', (string) ($result['skipped'] ?? 0)],
+        ]
+    );
+
+    return 0;
+})->purpose('Genera shadow-runs desde mensajes inbound ya persistidos por legacy/DB compartida');
+
+Artisan::command('whatsapp:flowmaker-shadow-summary
+    {--limit=250 : Número máximo de runs a considerar}
+    {--json : Devuelve solo el payload JSON}', function (): int {
+    /** @var FlowRuntimeShadowObserverService $service */
+    $service = app(FlowRuntimeShadowObserverService::class);
+
+    $summary = $service->summary((int) $this->option('limit'));
+
+    if ((bool) $this->option('json')) {
+        $this->line(json_encode($summary, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT) ?: '{}');
+        return 0;
+    }
+
+    $this->table(
+        ['Metric', 'Value'],
+        [
+            ['total_runs', (string) ($summary['total_runs'] ?? 0)],
+            ['mismatch_runs', (string) ($summary['mismatch_runs'] ?? 0)],
+            ['dry_run_runs', (string) ($summary['dry_run_runs'] ?? 0)],
+        ]
+    );
+
+    $this->newLine();
+    $this->line('Top mismatch reasons:');
+    foreach (($summary['top_mismatch_reasons'] ?? []) as $row) {
+        $this->line('- ' . ($row['reason'] ?? '-') . ': ' . ($row['count'] ?? 0));
+    }
+
+    $this->newLine();
+    $this->line('Top scenario gaps:');
+    foreach (($summary['top_scenario_gaps'] ?? []) as $row) {
+        $this->line('- ' . ($row['pair'] ?? '-') . ': ' . ($row['count'] ?? 0));
+    }
+
+    return 0;
+})->purpose('Resume mismatches y runs dry-run del shadow runtime de WhatsApp');
+
+Artisan::command('whatsapp:flowmaker-readiness
+    {--limit=250 : Número máximo de runs a considerar}
+    {--json : Devuelve solo el payload JSON}', function (): int {
+    /** @var FlowRuntimeShadowObserverService $service */
+    $service = app(FlowRuntimeShadowObserverService::class);
+
+    $readiness = $service->readiness((int) $this->option('limit'));
+
+    if ((bool) $this->option('json')) {
+        $this->line(json_encode($readiness, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT) ?: '{}');
+        return 0;
+    }
+
+    $this->table(
+        ['Check', 'Expected', 'Actual', 'Passed'],
+        array_map(static fn (array $check): array => [
+            (string) ($check['label'] ?? $check['key'] ?? '-'),
+            (string) ($check['expected'] ?? '-'),
+            (string) ($check['actual'] ?? '-'),
+            !empty($check['passed']) ? 'true' : 'false',
+        ], $readiness['checks'] ?? [])
+    );
+
+    $this->newLine();
+    $this->line('ready_for_phase_7: ' . (!empty($readiness['ready_for_phase_7']) ? 'true' : 'false'));
+    if (!empty($readiness['blocking_checks'])) {
+        $this->line('blocking_checks: ' . implode(', ', $readiness['blocking_checks']));
+    }
+
+    return !empty($readiness['ready_for_phase_7']) ? 0 : 1;
+})->purpose('Evalúa si la paridad del shadow runtime permite cerrar Fase 6');
 
 Artisan::command('whatsapp:handoff-requeue-expired {--dry-run : Solo muestra los handoffs vencidos sin reencolarlos}', function (): int {
     /** @var ConversationOpsService $service */
@@ -927,3 +1113,9 @@ Schedule::command('whatsapp:handoff-requeue-expired')
     ->everyFiveMinutes()
     ->withoutOverlapping()
     ->when(static fn (): bool => (bool) config('whatsapp.migration.handoff.requeue_schedule_enabled', false));
+
+Schedule::command('whatsapp:flowmaker-shadow-sync --limit=100')
+    ->everyFiveMinutes()
+    ->withoutOverlapping()
+    ->when(static fn (): bool => (bool) config('whatsapp.migration.automation.enabled', false)
+        && (bool) config('whatsapp.migration.automation.compare_with_legacy', true));

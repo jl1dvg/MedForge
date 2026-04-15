@@ -23,6 +23,12 @@ return [
         'handoff' => [
             'requeue_schedule_enabled' => (bool) env('WHATSAPP_LARAVEL_HANDOFF_REQUEUE_SCHEDULED', false),
         ],
+        'automation' => [
+            'enabled' => (bool) env('WHATSAPP_LARAVEL_AUTOMATION_ENABLED', false),
+            'compare_with_legacy' => (bool) env('WHATSAPP_LARAVEL_AUTOMATION_COMPARE_WITH_LEGACY', true),
+            'fallback_to_legacy' => (bool) env('WHATSAPP_LARAVEL_AUTOMATION_FALLBACK_TO_LEGACY', true),
+            'dry_run' => (bool) env('WHATSAPP_LARAVEL_AUTOMATION_DRY_RUN', true),
+        ],
     ],
     'transport' => [
         'graph_base_url' => env('WHATSAPP_GRAPH_BASE_URL', 'https://graph.facebook.com'),

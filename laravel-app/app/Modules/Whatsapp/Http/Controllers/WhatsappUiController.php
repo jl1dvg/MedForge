@@ -6,8 +6,10 @@ use App\Modules\Shared\Support\LegacyCurrentUser;
 use App\Modules\Shared\Support\LegacyPermissionResolver;
 use App\Modules\Whatsapp\Services\ConversationOpsService;
 use App\Modules\Whatsapp\Services\ConversationReadService;
+use App\Modules\Whatsapp\Services\CampaignService;
 use App\Modules\Whatsapp\Services\FlowmakerService;
 use App\Modules\Whatsapp\Services\KpiDashboardService;
+use App\Modules\Whatsapp\Services\ProductivityToolkitService;
 use App\Modules\Whatsapp\Services\TemplateCatalogService;
 use DateTimeImmutable;
 use Illuminate\Contracts\View\Factory;
@@ -19,9 +21,11 @@ class WhatsappUiController
     public function __construct(
         private readonly ConversationReadService $conversationReadService = new \App\Modules\Whatsapp\Services\ConversationReadService(),
         private readonly ConversationOpsService $conversationOpsService = new \App\Modules\Whatsapp\Services\ConversationOpsService(),
+        private readonly CampaignService $campaignService = new \App\Modules\Whatsapp\Services\CampaignService(),
         private readonly TemplateCatalogService $templateCatalogService = new \App\Modules\Whatsapp\Services\TemplateCatalogService(),
         private readonly KpiDashboardService $kpiDashboardService = new \App\Modules\Whatsapp\Services\KpiDashboardService(),
         private readonly FlowmakerService $flowmakerService = new \App\Modules\Whatsapp\Services\FlowmakerService(),
+        private readonly ProductivityToolkitService $productivityToolkitService = new \App\Modules\Whatsapp\Services\ProductivityToolkitService(),
     ) {
     }
 
@@ -112,6 +116,10 @@ class WhatsappUiController
                     is_numeric($currentUser['id'] ?? null) ? (int) $currentUser['id'] : null
                 )
                 : null,
+            'quickReplies' => $this->productivityToolkitService->listQuickReplies(limit: 12),
+            'conversationNotes' => $selectedConversation !== null
+                ? $this->productivityToolkitService->listConversationNotes((int) $selectedConversation->id, 12)
+                : [],
         ]);
     }
 
@@ -177,6 +185,16 @@ class WhatsappUiController
             'pageTitle' => 'WhatsApp V2 - Flowmaker',
             'flowmaker' => $this->flowmakerService->getOverview(),
             'contract' => $this->flowmakerService->getContract(),
+        ]);
+    }
+
+    public function campaigns(): View
+    {
+        return view('whatsapp.v2-campaigns', [
+            'pageTitle' => 'WhatsApp V2 - Campañas',
+            'campaigns' => $this->campaignService->listCampaigns(),
+            'templates' => $this->campaignService->listTemplateOptions(),
+            'audienceSuggestions' => $this->campaignService->audienceSuggestions(),
         ]);
     }
 

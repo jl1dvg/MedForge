@@ -15,6 +15,10 @@ class WhatsappWebhookControllerTest extends TestCase
         Schema::dropIfExists('whatsapp_inbox_messages');
         Schema::dropIfExists('whatsapp_messages');
         Schema::dropIfExists('whatsapp_conversations');
+        Schema::dropIfExists('whatsapp_flow_shadow_runs');
+        Schema::dropIfExists('whatsapp_autoresponder_sessions');
+        Schema::dropIfExists('whatsapp_autoresponder_flow_versions');
+        Schema::dropIfExists('whatsapp_autoresponder_flows');
         Schema::dropIfExists('app_settings');
 
         Schema::create('app_settings', function (Blueprint $table): void {
@@ -71,12 +75,73 @@ class WhatsappWebhookControllerTest extends TestCase
             $table->timestamp('created_at')->nullable();
         });
 
+        Schema::create('whatsapp_autoresponder_flows', function (Blueprint $table): void {
+            $table->id();
+            $table->string('flow_key')->unique();
+            $table->string('name');
+            $table->text('description')->nullable();
+            $table->string('status')->default('draft');
+            $table->string('timezone')->nullable();
+            $table->timestamp('active_from')->nullable();
+            $table->timestamp('active_until')->nullable();
+            $table->unsignedBigInteger('active_version_id')->nullable();
+            $table->unsignedBigInteger('created_by')->nullable();
+            $table->unsignedBigInteger('updated_by')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('whatsapp_autoresponder_flow_versions', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('flow_id');
+            $table->unsignedInteger('version');
+            $table->string('status')->default('draft');
+            $table->text('changelog')->nullable();
+            $table->json('audience_filters')->nullable();
+            $table->json('entry_settings')->nullable();
+            $table->timestamp('published_at')->nullable();
+            $table->unsignedBigInteger('published_by')->nullable();
+            $table->unsignedBigInteger('created_by')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('whatsapp_autoresponder_sessions', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('conversation_id');
+            $table->string('wa_number');
+            $table->string('scenario_id')->nullable();
+            $table->string('node_id')->nullable();
+            $table->string('awaiting')->nullable();
+            $table->json('context')->nullable();
+            $table->json('last_payload')->nullable();
+            $table->timestamp('last_interaction_at')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('whatsapp_flow_shadow_runs', function (Blueprint $table): void {
+            $table->id();
+            $table->string('source', 32)->default('webhook');
+            $table->string('wa_number', 32)->nullable();
+            $table->unsignedBigInteger('conversation_id')->nullable();
+            $table->string('inbound_message_id', 191)->nullable();
+            $table->longText('message_text')->nullable();
+            $table->boolean('same_match')->default(false);
+            $table->boolean('same_scenario')->default(false);
+            $table->boolean('same_handoff')->default(false);
+            $table->boolean('same_action_types')->default(false);
+            $table->json('input_payload')->nullable();
+            $table->json('parity_payload')->nullable();
+            $table->json('laravel_payload')->nullable();
+            $table->json('legacy_payload')->nullable();
+            $table->timestamps();
+        });
+
         \DB::table('app_settings')->insert([
             ['name' => 'whatsapp_webhook_verify_token', 'value' => 'verify-me', 'created_at' => now(), 'updated_at' => now()],
         ]);
 
         config()->set('whatsapp.migration.enabled', true);
         config()->set('whatsapp.migration.api.webhook_enabled', true);
+        config()->set('whatsapp.migration.automation.dry_run', true);
     }
 
     public function test_it_verifies_the_webhook_like_legacy(): void
@@ -212,5 +277,87 @@ class WhatsappWebhookControllerTest extends TestCase
 
         $this->assertNotNull($message?->delivered_at);
         $this->assertNotNull($message?->read_at);
+    }
+
+    public function test_it_records_shadow_run_for_inbound_automation_when_enabled(): void
+    {
+        config()->set('whatsapp.migration.automation.enabled', true);
+        config()->set('whatsapp.migration.automation.compare_with_legacy', true);
+
+        $payload = [
+            'entry' => [[
+                'changes' => [[
+                    'value' => [
+                        'contacts' => [[
+                            'wa_id' => '593999111222',
+                            'profile' => ['name' => 'Paciente Demo'],
+                        ]],
+                        'messages' => [[
+                            'from' => '593999111222',
+                            'id' => 'wamid.shadow.1',
+                            'timestamp' => '1712745600',
+                            'type' => 'text',
+                            'text' => [
+                                'body' => 'hola',
+                            ],
+                        ]],
+                    ],
+                ]],
+            ]],
+        ];
+
+        $this->postJson('/whatsapp/webhook', $payload)
+            ->assertOk()
+            ->assertJsonPath('ok', true);
+
+        $this->assertDatabaseCount('whatsapp_flow_shadow_runs', 1);
+        $this->assertDatabaseHas('whatsapp_flow_shadow_runs', [
+            'source' => 'webhook_dry_run',
+            'wa_number' => '593999111222',
+            'inbound_message_id' => 'wamid.shadow.1',
+            'message_text' => 'hola',
+        ]);
+    }
+
+    public function test_it_backfills_shadow_runs_from_inbound_messages_table(): void
+    {
+        config()->set('whatsapp.migration.automation.enabled', true);
+        config()->set('whatsapp.migration.automation.compare_with_legacy', true);
+
+        \DB::table('whatsapp_conversations')->insert([
+            'id' => 91,
+            'wa_number' => '593999111777',
+            'display_name' => 'Paciente Sync',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        \DB::table('whatsapp_messages')->insert([
+            'conversation_id' => 91,
+            'wa_message_id' => 'wamid.sync.1',
+            'direction' => 'inbound',
+            'message_type' => 'text',
+            'body' => 'hola',
+            'raw_payload' => json_encode([
+                'id' => 'wamid.sync.1',
+                'from' => '593999111777',
+                'text' => ['body' => 'hola'],
+                'type' => 'text',
+            ]),
+            'message_timestamp' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->artisan('whatsapp:flowmaker-shadow-sync', ['--limit' => 10])
+            ->expectsOutputToContain('processed')
+            ->assertExitCode(0);
+
+        $this->assertDatabaseHas('whatsapp_flow_shadow_runs', [
+            'source' => 'db_sync_dry_run',
+            'wa_number' => '593999111777',
+            'inbound_message_id' => 'wamid.sync.1',
+            'message_text' => 'hola',
+        ]);
     }
 }

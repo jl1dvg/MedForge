@@ -492,12 +492,22 @@ class ConversationOpsService
             return;
         }
 
-        WhatsappHandoffEvent::query()->create([
+        $payload = [
             'handoff_id' => $handoffId,
             'event_type' => $eventType,
             'actor_user_id' => $actorUserId,
             'notes' => $this->sanitizeNotes($notes),
-        ]);
+        ];
+
+        if (Schema::hasColumn('whatsapp_handoff_events', 'created_at')) {
+            $payload['created_at'] = now();
+        }
+
+        if (Schema::hasColumn('whatsapp_handoff_events', 'updated_at')) {
+            $payload['updated_at'] = now();
+        }
+
+        DB::table('whatsapp_handoff_events')->insert($payload);
     }
 
     private function resolveAssignedUntil(): CarbonImmutable

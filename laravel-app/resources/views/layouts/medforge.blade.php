@@ -63,6 +63,40 @@
     <script src="/js/pages/global-search.js"></script>
 @endif
 
+@php
+    $postLoginNotice = session('post_login_notice');
+@endphp
+
+@if (is_array($postLoginNotice) && !empty($postLoginNotice['message']))
+    <div class="modal fade" id="postLoginNoticeModal" tabindex="-1" aria-labelledby="postLoginNoticeLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="postLoginNoticeLabel">{{ $postLoginNotice['title'] ?? 'Aviso importante' }}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-0">{{ $postLoginNotice['message'] }}</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Entendido</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const modalElement = document.getElementById('postLoginNoticeModal');
+            if (!modalElement || typeof bootstrap === 'undefined' || !bootstrap.Modal) {
+                return;
+            }
+
+            const noticeModal = new bootstrap.Modal(modalElement);
+            noticeModal.show();
+        });
+    </script>
+@endif
+
 @stack('scripts')
 </body>
 </html>

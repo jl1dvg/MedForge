@@ -1,0 +1,570 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Http\Middleware\LegacySessionBridge;
+use App\Http\Middleware\RequireLegacyPermission;
+use App\Http\Middleware\RequireLegacySession;
+use App\Models\User;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+use Tests\TestCase;
+
+class WhatsappFlowmakerTest extends TestCase
+{
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        foreach ([
+            'whatsapp_autoresponder_sessions',
+            'whatsapp_autoresponder_step_transitions',
+            'whatsapp_autoresponder_step_actions',
+            'whatsapp_autoresponder_steps',
+            'whatsapp_autoresponder_schedules',
+            'whatsapp_autoresponder_version_filters',
+            'whatsapp_autoresponder_flow_versions',
+            'whatsapp_autoresponder_flows',
+            'whatsapp_flow_shadow_runs',
+            'roles',
+            'users',
+        ] as $table) {
+            Schema::dropIfExists($table);
+        }
+
+        Schema::create('roles', function (Blueprint $table): void {
+            $table->id();
+            $table->string('name');
+            $table->timestamps();
+        });
+
+        Schema::create('users', function (Blueprint $table): void {
+            $table->id();
+            $table->string('username');
+            $table->string('first_name')->default('');
+            $table->string('last_name')->default('');
+            $table->string('nombre')->default('');
+            $table->string('email')->nullable();
+            $table->string('profile_photo')->nullable();
+            $table->text('permisos')->nullable();
+            $table->unsignedBigInteger('role_id')->nullable();
+        });
+
+        Schema::create('whatsapp_autoresponder_flows', function (Blueprint $table): void {
+            $table->id();
+            $table->string('flow_key')->unique();
+            $table->string('name');
+            $table->text('description')->nullable();
+            $table->string('status')->default('draft');
+            $table->string('timezone')->nullable();
+            $table->timestamp('active_from')->nullable();
+            $table->timestamp('active_until')->nullable();
+            $table->unsignedBigInteger('active_version_id')->nullable();
+            $table->unsignedBigInteger('created_by')->nullable();
+            $table->unsignedBigInteger('updated_by')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('whatsapp_autoresponder_flow_versions', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('flow_id');
+            $table->unsignedInteger('version');
+            $table->string('status')->default('draft');
+            $table->text('changelog')->nullable();
+            $table->json('audience_filters')->nullable();
+            $table->json('entry_settings')->nullable();
+            $table->timestamp('published_at')->nullable();
+            $table->unsignedBigInteger('published_by')->nullable();
+            $table->unsignedBigInteger('created_by')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('whatsapp_autoresponder_steps', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('flow_version_id');
+            $table->string('step_key');
+            $table->string('step_type');
+            $table->string('name');
+            $table->text('description')->nullable();
+            $table->unsignedInteger('order_index')->default(0);
+            $table->boolean('is_entry_point')->default(false);
+            $table->json('settings')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('whatsapp_autoresponder_step_actions', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('step_id');
+            $table->string('action_type');
+            $table->unsignedBigInteger('template_revision_id')->nullable();
+            $table->text('message_body')->nullable();
+            $table->string('media_url')->nullable();
+            $table->unsignedInteger('delay_seconds')->nullable();
+            $table->json('metadata')->nullable();
+            $table->unsignedInteger('order_index')->default(0);
+            $table->timestamps();
+        });
+
+        Schema::create('whatsapp_autoresponder_step_transitions', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('step_id');
+            $table->unsignedBigInteger('target_step_id')->nullable();
+            $table->string('condition_label')->nullable();
+            $table->string('condition_type')->default('always');
+            $table->json('condition_payload')->nullable();
+            $table->unsignedInteger('priority')->default(0);
+            $table->timestamps();
+        });
+
+        Schema::create('whatsapp_autoresponder_version_filters', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('flow_version_id');
+            $table->string('filter_type');
+            $table->string('operator');
+            $table->json('value')->nullable();
+            $table->boolean('is_exclusion')->default(false);
+            $table->unsignedInteger('order_index')->default(0);
+            $table->timestamps();
+        });
+
+        Schema::create('whatsapp_autoresponder_schedules', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('flow_version_id');
+            $table->unsignedInteger('day_of_week')->nullable();
+            $table->timestamp('start_time')->nullable();
+            $table->timestamp('end_time')->nullable();
+            $table->string('timezone')->nullable();
+            $table->boolean('allow_holidays')->default(false);
+            $table->timestamps();
+        });
+
+        Schema::create('whatsapp_autoresponder_sessions', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('conversation_id');
+            $table->string('wa_number');
+            $table->string('scenario_id')->nullable();
+            $table->string('node_id')->nullable();
+            $table->string('awaiting')->nullable();
+            $table->json('context')->nullable();
+            $table->json('last_payload')->nullable();
+            $table->timestamp('last_interaction_at')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('whatsapp_flow_shadow_runs', function (Blueprint $table): void {
+            $table->id();
+            $table->string('source', 32)->default('webhook');
+            $table->string('wa_number', 32)->nullable();
+            $table->unsignedBigInteger('conversation_id')->nullable();
+            $table->string('inbound_message_id', 191)->nullable();
+            $table->longText('message_text')->nullable();
+            $table->boolean('same_match')->default(false);
+            $table->boolean('same_scenario')->default(false);
+            $table->boolean('same_handoff')->default(false);
+            $table->boolean('same_action_types')->default(false);
+            $table->json('input_payload')->nullable();
+            $table->json('parity_payload')->nullable();
+            $table->json('laravel_payload')->nullable();
+            $table->json('legacy_payload')->nullable();
+            $table->timestamps();
+        });
+
+        \DB::table('roles')->insert([
+            'id' => 1,
+            'name' => 'Call Center',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        \DB::table('users')->insert([
+            'id' => 44,
+            'username' => 'wa.admin',
+            'first_name' => 'Jorge',
+            'last_name' => 'Vera',
+            'nombre' => 'Jorge Vera',
+            'email' => 'jorge@example.test',
+            'profile_photo' => null,
+            'permisos' => json_encode(['whatsapp.manage', 'whatsapp.autoresponder.manage']),
+            'role_id' => 1,
+        ]);
+
+        \DB::table('whatsapp_autoresponder_sessions')->insert([
+            'conversation_id' => 1,
+            'wa_number' => '593999111222',
+            'scenario_id' => 'primer_contacto',
+            'node_id' => 'primer_contacto',
+            'awaiting' => 'response',
+            'context' => json_encode(['hc' => 'HC-001']),
+            'last_payload' => json_encode(['body' => 'Hola']),
+            'last_interaction_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        config()->set('whatsapp.migration.enabled', true);
+        config()->set('whatsapp.migration.ui.enabled', true);
+        config()->set('whatsapp.migration.api.read_enabled', true);
+        config()->set('whatsapp.migration.api.write_enabled', true);
+        config()->set('whatsapp.migration.automation.enabled', true);
+        config()->set('whatsapp.migration.automation.compare_with_legacy', true);
+        config()->set('whatsapp.migration.automation.fallback_to_legacy', true);
+        config()->set('whatsapp.migration.automation.dry_run', true);
+
+        $this->actingAs(User::query()->findOrFail(44));
+    }
+
+    public function test_it_returns_flowmaker_contract(): void
+    {
+        $response = $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->getJson('/v2/whatsapp/api/flowmaker/contract');
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('constraints.buttonLimit', 3)
+            ->assertJsonPath('storage.flow_key', 'default');
+    }
+
+    public function test_it_publishes_flowmaker_version_in_laravel_tables(): void
+    {
+        $response = $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->postJson('/v2/whatsapp/api/flowmaker/publish', $this->defaultFlowPayload());
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('status', 'ok')
+            ->assertJsonPath('active_version.version', 1);
+
+        $this->assertDatabaseCount('whatsapp_autoresponder_flows', 1);
+        $this->assertDatabaseCount('whatsapp_autoresponder_flow_versions', 1);
+        $this->assertDatabaseCount('whatsapp_autoresponder_steps', 2);
+        $this->assertDatabaseCount('whatsapp_autoresponder_step_actions', 2);
+        $this->assertDatabaseCount('whatsapp_autoresponder_step_transitions', 1);
+    }
+
+    public function test_it_simulates_message_against_active_flow(): void
+    {
+        $this->publishDefaultFlow();
+
+        $response = $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->getJson('/v2/whatsapp/api/flowmaker/simulate?wa_number=593999111222&text=hola');
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('matched', true)
+            ->assertJsonPath('scenario.id', 'primer_contacto')
+            ->assertJsonPath('actions.0.type', 'send_message');
+    }
+
+    public function test_it_compares_laravel_flow_against_legacy_source(): void
+    {
+        $this->publishDefaultFlow();
+
+        $response = $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->getJson('/v2/whatsapp/api/flowmaker/compare?wa_number=593999111222&text=hola');
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('sources.legacy', 'flow_tables')
+            ->assertJsonPath('parity.same_match', true)
+            ->assertJsonPath('parity.same_scenario', true)
+            ->assertJsonPath('parity.same_action_types', true);
+    }
+
+    public function test_it_runs_shadow_compare_from_console(): void
+    {
+        $this->publishDefaultFlow();
+
+        $this->artisan('whatsapp:flowmaker-shadow', [
+            'wa_number' => '593999111222',
+            'text' => 'hola',
+        ])
+            ->expectsOutputToContain('flow_tables')
+            ->expectsOutputToContain('same_scenario')
+            ->assertExitCode(0);
+    }
+
+    public function test_it_renders_flowmaker_ui_page(): void
+    {
+        $response = $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->get('/v2/whatsapp/flowmaker');
+
+        $response
+            ->assertOk()
+            ->assertSee('Flowmaker y automatización')
+            ->assertSee('Escenarios')
+            ->assertSee('Configuración del escenario')
+            ->assertSee('Secuencia de acciones')
+            ->assertSee('Agregar acción')
+            ->assertSee('Sesiones activas')
+            ->assertSee('Publicar JSON')
+            ->assertSee('Simular mensaje')
+            ->assertSee('Comparar con legacy')
+            ->assertSee('Fase 6 está lista para cierre')
+            ->assertSee('Shadow runs recientes');
+    }
+
+    public function test_it_lists_recent_shadow_runs(): void
+    {
+        \DB::table('whatsapp_flow_shadow_runs')->insert([
+            'source' => 'webhook_dry_run',
+            'wa_number' => '593999111222',
+            'conversation_id' => 1,
+            'inbound_message_id' => 'wamid.shadow.1',
+            'message_text' => 'hola',
+            'same_match' => 1,
+            'same_scenario' => 0,
+            'same_handoff' => 1,
+            'same_action_types' => 1,
+            'input_payload' => json_encode(['wa_number' => '593999111222', 'text' => 'hola']),
+            'parity_payload' => json_encode([
+                'same_match' => true,
+                'same_scenario' => false,
+                'same_handoff' => true,
+                'same_action_types' => true,
+                'mismatch_reasons' => ['scenario'],
+                'dry_run' => true,
+                'execution_preview' => [
+                    'mode' => 'dry_run',
+                    'action_types' => ['send_message'],
+                ],
+            ]),
+            'laravel_payload' => json_encode([
+                'scenario' => ['id' => 'primer_contacto'],
+                'execution_preview' => [
+                    'mode' => 'dry_run',
+                    'action_types' => ['send_message'],
+                ],
+            ]),
+            'legacy_payload' => json_encode(['scenario' => ['id' => 'menu_principal']]),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $response = $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->getJson('/v2/whatsapp/api/flowmaker/shadow-runs?mismatches_only=1');
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('data.0.inbound_message_id', 'wamid.shadow.1')
+            ->assertJsonPath('data.0.parity.same_scenario', false)
+            ->assertJsonPath('data.0.parity.mismatch_reasons.0', 'scenario')
+            ->assertJsonPath('data.0.execution_mode', 'dry_run')
+            ->assertJsonPath('data.0.execution_preview.action_types.0', 'send_message')
+            ->assertJsonPath('data.0.laravel_scenario', 'primer_contacto')
+            ->assertJsonPath('data.0.legacy_scenario', 'menu_principal');
+    }
+
+    public function test_it_summarizes_shadow_runtime_mismatches(): void
+    {
+        \DB::table('whatsapp_flow_shadow_runs')->insert([
+            [
+                'source' => 'webhook_dry_run',
+                'wa_number' => '593999111222',
+                'conversation_id' => 1,
+                'inbound_message_id' => 'wamid.shadow.1',
+                'message_text' => 'hola',
+                'same_match' => 1,
+                'same_scenario' => 0,
+                'same_handoff' => 1,
+                'same_action_types' => 1,
+                'input_payload' => json_encode(['wa_number' => '593999111222', 'text' => 'hola']),
+                'parity_payload' => json_encode([
+                    'same_match' => true,
+                    'same_scenario' => false,
+                    'same_handoff' => true,
+                    'same_action_types' => true,
+                    'mismatch_reasons' => ['scenario'],
+                    'dry_run' => true,
+                    'execution_preview' => ['mode' => 'dry_run'],
+                ]),
+                'laravel_payload' => json_encode(['scenario' => ['id' => 'primer_contacto']]),
+                'legacy_payload' => json_encode(['scenario' => ['id' => 'menu_principal']]),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'source' => 'webhook_dry_run',
+                'wa_number' => '593999111333',
+                'conversation_id' => 2,
+                'inbound_message_id' => 'wamid.shadow.2',
+                'message_text' => 'cita',
+                'same_match' => 0,
+                'same_scenario' => 0,
+                'same_handoff' => 1,
+                'same_action_types' => 0,
+                'input_payload' => json_encode(['wa_number' => '593999111333', 'text' => 'cita']),
+                'parity_payload' => json_encode([
+                    'same_match' => false,
+                    'same_scenario' => false,
+                    'same_handoff' => true,
+                    'same_action_types' => false,
+                    'mismatch_reasons' => ['match', 'scenario', 'action_types'],
+                    'dry_run' => true,
+                    'execution_preview' => ['mode' => 'dry_run'],
+                ]),
+                'laravel_payload' => json_encode(['scenario' => ['id' => 'primer_contacto']]),
+                'legacy_payload' => json_encode(['scenario' => ['id' => 'agendar_cita']]),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $response = $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->getJson('/v2/whatsapp/api/flowmaker/shadow-summary?limit=100');
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('data.total_runs', 2)
+            ->assertJsonPath('data.mismatch_runs', 2)
+            ->assertJsonPath('data.dry_run_runs', 2)
+            ->assertJsonPath('data.top_mismatch_reasons.0.reason', 'scenario')
+            ->assertJsonPath('data.top_mismatch_reasons.0.count', 2);
+    }
+
+    public function test_it_evaluates_phase_6_readiness(): void
+    {
+        \DB::table('whatsapp_flow_shadow_runs')->insert([
+            'source' => 'webhook_dry_run',
+            'wa_number' => '593999111222',
+            'conversation_id' => 1,
+            'inbound_message_id' => 'wamid.shadow.ready',
+            'message_text' => 'hola',
+            'same_match' => 1,
+            'same_scenario' => 1,
+            'same_handoff' => 1,
+            'same_action_types' => 1,
+            'input_payload' => json_encode(['wa_number' => '593999111222', 'text' => 'hola']),
+            'parity_payload' => json_encode([
+                'same_match' => true,
+                'same_scenario' => true,
+                'same_handoff' => true,
+                'same_action_types' => true,
+                'mismatch_reasons' => [],
+                'dry_run' => true,
+                'execution_preview' => ['mode' => 'dry_run'],
+            ]),
+            'laravel_payload' => json_encode(['scenario' => ['id' => 'primer_contacto']]),
+            'legacy_payload' => json_encode(['scenario' => ['id' => 'primer_contacto']]),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $response = $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->getJson('/v2/whatsapp/api/flowmaker/readiness?limit=100');
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('data.ready_for_phase_7', false)
+            ->assertJsonPath('data.blocking_checks.0', 'minimum_shadow_runs')
+            ->assertJsonPath('data.checks.1.key', 'dry_run_enabled')
+            ->assertJsonPath('data.checks.1.passed', true);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function defaultFlowPayload(): array
+    {
+        return [
+            'flow' => [
+                'name' => 'Flow principal',
+                'description' => 'Publicación de prueba',
+                'settings' => ['timezone' => 'America/Guayaquil'],
+                'scenarios' => [
+                    [
+                        'id' => 'primer_contacto',
+                        'name' => 'Primer contacto',
+                        'description' => 'Saludo',
+                        'stage' => 'arrival',
+                        'intercept_menu' => true,
+                        'actions' => [
+                            [
+                                'type' => 'send_message',
+                                'message' => [
+                                    'type' => 'text',
+                                    'body' => 'Hola desde Laravel',
+                                ],
+                            ],
+                        ],
+                    ],
+                    [
+                        'id' => 'menu',
+                        'name' => 'Menu',
+                        'description' => 'Opciones',
+                        'stage' => 'menu',
+                        'actions' => [
+                            [
+                                'type' => 'send_buttons',
+                                'message' => [
+                                    'type' => 'buttons',
+                                    'body' => 'Elige una opción',
+                                    'buttons' => [
+                                        ['id' => '1', 'title' => 'Uno'],
+                                        ['id' => '2', 'title' => 'Dos'],
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+    }
+
+    private function publishDefaultFlow(): void
+    {
+        $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->postJson('/v2/whatsapp/api/flowmaker/publish', $this->defaultFlowPayload())
+            ->assertOk();
+    }
+}

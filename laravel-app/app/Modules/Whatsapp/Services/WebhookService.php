@@ -11,6 +11,7 @@ class WebhookService
 {
     public function __construct(
         private readonly WhatsappConfigService $configService = new WhatsappConfigService(),
+        private readonly FlowRuntimeShadowObserverService $shadowObserver = new FlowRuntimeShadowObserverService(),
     ) {
     }
 
@@ -42,7 +43,9 @@ class WebhookService
 
         $messagesPersisted = 0;
         foreach ($this->extractMessages($payload) as $message) {
-            $messagesPersisted += $this->recordIncomingMessage($message) ? 1 : 0;
+            $persisted = $this->recordIncomingMessage($message);
+            $messagesPersisted += $persisted ? 1 : 0;
+            $this->observeAutomationShadow($message, $persisted);
         }
 
         return [
@@ -247,6 +250,35 @@ class WebhookService
         });
 
         return true;
+    }
+
+    /**
+     * @param array<string, mixed> $message
+     */
+    private function observeAutomationShadow(array $message, bool $persisted): void
+    {
+        if (!$persisted) {
+            return;
+        }
+
+        $number = $this->normalizePhoneNumber($message['from'] ?? null);
+        $text = $this->extractText($message);
+        if ($number === null || $text === null || trim($text) === '') {
+            return;
+        }
+
+        $context = [];
+        $conversation = WhatsappConversation::query()->where('wa_number', $number)->first();
+        if ($conversation?->whatsapp_autoresponder_session !== null) {
+            $sessionContext = $conversation->whatsapp_autoresponder_session->context;
+            $context = is_array($sessionContext) ? $sessionContext : [];
+        }
+
+        $this->shadowObserver->observeWebhookInput([
+            'wa_number' => $number,
+            'text' => $text,
+            'context' => $context,
+        ], $message);
     }
 
     /**

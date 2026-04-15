@@ -138,6 +138,8 @@ Route::middleware(['legacy.auth', 'legacy.permission:administrativo,codes.manage
 Route::middleware(['legacy.auth', 'legacy.permission:administrativo,whatsapp.manage,whatsapp.chat.view,whatsapp.templates.manage,whatsapp.autoresponder.manage,settings.manage'])->group(function (): void {
     Route::get('/v2/whatsapp/chat', [WhatsappUiController::class, 'chat'])
         ->middleware('whatsapp.feature:ui,/whatsapp/chat');
+    Route::get('/v2/whatsapp/campaigns', [WhatsappUiController::class, 'campaigns'])
+        ->middleware('whatsapp.feature:ui,/whatsapp/campaigns');
     Route::get('/v2/whatsapp/templates', [WhatsappUiController::class, 'templates'])
         ->middleware('whatsapp.feature:ui,/whatsapp/templates');
     Route::get('/v2/whatsapp/dashboard', [WhatsappUiController::class, 'dashboard'])

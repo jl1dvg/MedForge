@@ -531,24 +531,44 @@ Condición:
 Estado actual:
 
 - Fase 6 iniciada
-- `GET /v2/whatsapp/flowmaker` ya muestra overview real del flujo activo, versiones recientes y sesiones activas
+- `GET /v2/whatsapp/flowmaker` ya funciona como editor operativo: escenarios, configuración inline, condiciones, acciones, simulación, compare y shadow runs recientes
 - `GET /v2/whatsapp/api/flowmaker/contract` disponible para leer contrato y esquema actual desde Laravel
 - `POST /v2/whatsapp/api/flowmaker/publish` disponible para publicar nuevas versiones en las tablas canónicas
+- `GET /v2/whatsapp/api/flowmaker/simulate` disponible para previsualizar qué escenario y acciones dispararía Laravel con un mensaje dado
+- `GET /v2/whatsapp/api/flowmaker/compare` disponible para shadow compare entre el flujo activo de Laravel y la fuente legacy
+- `GET /v2/whatsapp/api/flowmaker/shadow-runs` disponible para revisar runs recientes del shadow runtime y filtrar mismatches
+- `GET /v2/whatsapp/api/flowmaker/shadow-summary` disponible para resumir motivos de mismatch y brechas de escenario
+- `GET /v2/whatsapp/api/flowmaker/readiness` disponible para evaluar si la paridad shadow ya permite cerrar Fase 6
+- comando `php artisan whatsapp:flowmaker-shadow "{numero}" "{mensaje}"` disponible para validación controlada desde terminal
+- comando `php artisan whatsapp:flowmaker-shadow-runs --mismatches` disponible para revisar diferencias recientes desde terminal
+- comando `php artisan whatsapp:flowmaker-shadow-summary` disponible para resumir la paridad reciente
+- comando `php artisan whatsapp:flowmaker-readiness` disponible para decidir de forma explícita si Fase 6 ya puede cerrarse
+- comando `php artisan whatsapp:flowmaker-shadow-sync` disponible para generar shadow-runs desde `whatsapp_messages` cuando Meta siga apuntando a legacy
 - la publicación ya escribe en `whatsapp_autoresponder_flows`, `whatsapp_autoresponder_flow_versions`, `whatsapp_autoresponder_steps`, `whatsapp_autoresponder_step_actions` y `whatsapp_autoresponder_step_transitions`
-- el runtime productivo legacy todavía se mantiene como ejecutor del webhook; Laravel por ahora cubre lectura, publicación y observabilidad básica
+- el webhook Laravel ya registra runs del shadow runtime en `whatsapp_flow_shadow_runs` cuando la automatización está habilitada y la comparación con legacy está activa
+- mientras el callback de Meta siga en legacy, Laravel puede completar el shadow runtime leyendo inbound recientes desde la DB compartida
+- flags específicos de automatización ya expuestos en `.env`: `WHATSAPP_LARAVEL_AUTOMATION_ENABLED`, `WHATSAPP_LARAVEL_AUTOMATION_COMPARE_WITH_LEGACY`, `WHATSAPP_LARAVEL_AUTOMATION_FALLBACK_TO_LEGACY` y `WHATSAPP_LARAVEL_AUTOMATION_DRY_RUN`
+- el runtime productivo legacy todavía se mantiene como ejecutor del webhook; Laravel por ahora cubre lectura, publicación, shadow compare y observabilidad sobre tráfico real
 
 Pendiente para cierre:
 
-- adapter de runtime con paridad frente a legacy
-- comparación controlada Laravel vs legacy para sesiones y escalado a humano
-- flags específicos de automatización para shadow mode y fallback
-- editor visual más completo sobre el contrato actual
+- ejecutar inbound reales hasta reunir al menos 20 shadow runs
+- bajar mismatch rate por debajo de 10%
+- revisar `whatsapp:flowmaker-readiness` y que no haya blocking checks antes de declarar Fase 6 cerrada
 
 ## Fase 7. Campañas y mejoras de producto
 
 Objetivo:
 
 - sumar capacidades que hoy no son core operativo pero sí valiosas
+
+Estado actual:
+
+- respuestas rápidas ya disponibles en `laravel-app` con tabla propia, endpoints `GET/POST /v2/whatsapp/api/quick-replies` y uso directo desde `/v2/whatsapp/chat`
+- notas internas por conversación ya disponibles con tabla propia, endpoints `GET/POST /v2/whatsapp/api/conversations/{id}/notes` y visualización integrada en el chat v2
+- campañas MVP ya disponibles con tablas propias, endpoint `GET /v2/whatsapp/api/campaigns`, creación por `POST /v2/whatsapp/api/campaigns`, dry run por `POST /v2/whatsapp/api/campaigns/{id}/dry-run` y pantalla `/v2/whatsapp/campaigns`
+- el MVP de campañas hoy cubre borrador, audiencia manual, template seleccionado y trazabilidad por destinatario en `dry_run`
+- panel contextual clínico ampliado e integración CRM siguen pendientes para siguientes bloques de Fase 7
 
 Incluye:
 

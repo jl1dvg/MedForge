@@ -10,18 +10,18 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
-class WhatsappChatUiTest extends TestCase
+class WhatsappProductivityControllerTest extends TestCase
 {
     protected function setUp(): void
     {
         parent::setUp();
 
-        Schema::dropIfExists('users');
-        Schema::dropIfExists('roles');
+        Schema::dropIfExists('whatsapp_conversation_notes');
+        Schema::dropIfExists('whatsapp_quick_replies');
         Schema::dropIfExists('whatsapp_messages');
         Schema::dropIfExists('whatsapp_conversations');
-        Schema::dropIfExists('whatsapp_quick_replies');
-        Schema::dropIfExists('whatsapp_conversation_notes');
+        Schema::dropIfExists('users');
+        Schema::dropIfExists('roles');
 
         Schema::create('roles', function (Blueprint $table): void {
             $table->id();
@@ -41,7 +41,6 @@ class WhatsappChatUiTest extends TestCase
             $table->string('password')->default('');
             $table->string('email')->default('');
             $table->string('nombre')->default('');
-            $table->string('profile_photo')->nullable();
             $table->string('cedula')->default('');
             $table->string('registro')->default('');
             $table->string('sede')->default('');
@@ -107,69 +106,99 @@ class WhatsappChatUiTest extends TestCase
         });
 
         \DB::table('users')->insert([
-            'id' => 40,
-            'username' => 'agent.ui',
+            'id' => 71,
+            'username' => 'agent.productivity',
             'password' => bcrypt('secret'),
-            'email' => 'agent-ui@example.com',
-            'nombre' => 'Agente UI',
-            'cedula' => '40',
-            'registro' => 'R40',
+            'email' => 'agent-productivity@example.com',
+            'nombre' => 'Agente Productividad',
+            'cedula' => '71',
+            'registro' => 'R71',
             'sede' => 'Matriz',
             'especialidad' => 'NA',
             'permisos' => json_encode(['whatsapp.chat.view', 'whatsapp.chat.send']),
         ]);
 
         \DB::table('whatsapp_conversations')->insert([
-            'id' => 840,
-            'wa_number' => '593999111840',
-            'display_name' => 'Paciente UI',
+            'id' => 971,
+            'wa_number' => '593999111971',
+            'display_name' => 'Paciente Productividad',
+            'assigned_user_id' => 71,
             'needs_human' => 1,
-            'assigned_user_id' => null,
-            'unread_count' => 1,
-            'last_message_preview' => 'Hola desde UI',
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-
-        \DB::table('whatsapp_quick_replies')->insert([
-            'title' => 'Saludo rápido',
-            'shortcut' => 'saludo',
-            'body' => 'Buenos días, con gusto te ayudo.',
-            'created_by_user_id' => 40,
-            'is_active' => 1,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-
-        \DB::table('whatsapp_conversation_notes')->insert([
-            'conversation_id' => 840,
-            'author_user_id' => 40,
-            'body' => 'Paciente pendiente de confirmación.',
             'created_at' => now(),
             'updated_at' => now(),
         ]);
 
         config()->set('whatsapp.migration.enabled', true);
-        config()->set('whatsapp.migration.ui.enabled', true);
         config()->set('whatsapp.migration.api.read_enabled', true);
+        config()->set('whatsapp.migration.api.write_enabled', true);
+        config()->set('whatsapp.migration.ui.enabled', true);
+
+        $this->actingAs(User::query()->findOrFail(71));
     }
 
-    public function test_send_permission_user_can_see_take_chat_button_in_v2_ui(): void
+    public function test_it_creates_and_lists_quick_replies(): void
     {
-        $this->actingAs(User::query()->findOrFail(40));
+        $create = $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->postJson('/v2/whatsapp/api/quick-replies', [
+                'title' => 'Saludo base',
+                'shortcut' => 'saludo',
+                'body' => 'Buenos días, con gusto te ayudo.',
+            ]);
 
-        $response = $this->withoutMiddleware([
-            LegacySessionBridge::class,
-            RequireLegacySession::class,
-            RequireLegacyPermission::class,
-        ])->get('/v2/whatsapp/chat?conversation=840');
-
-        $response
+        $create
             ->assertOk()
-            ->assertSee('Inbox operativo')
-            ->assertSee('Respuestas rápidas')
-            ->assertSee('Notas internas')
-            ->assertSee('Saludo rápido')
-            ->assertSee('Paciente pendiente de confirmación.');
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('data.shortcut', 'saludo');
+
+        $list = $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->getJson('/v2/whatsapp/api/quick-replies');
+
+        $list
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('data.0.title', 'Saludo base')
+            ->assertJsonPath('data.0.body', 'Buenos días, con gusto te ayudo.');
+    }
+
+    public function test_it_adds_and_lists_internal_notes_for_a_conversation(): void
+    {
+        $create = $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->postJson('/v2/whatsapp/api/conversations/971/notes', [
+                'body' => 'Paciente pidió datos de facturación antes de la consulta.',
+            ]);
+
+        $create
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('data.conversation_id', 971);
+
+        $list = $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->getJson('/v2/whatsapp/api/conversations/971/notes');
+
+        $list
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('data.0.body', 'Paciente pidió datos de facturación antes de la consulta.')
+            ->assertJsonPath('data.0.author_name', 'Agente Productividad');
     }
 }
