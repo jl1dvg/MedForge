@@ -14,6 +14,11 @@ use RuntimeException;
 
 class ConversationOpsService
 {
+    public function __construct(
+        private readonly WhatsappRealtimeService $realtime = new WhatsappRealtimeService(),
+    ) {
+    }
+
     /**
      * @return array{ids:array<int,int>,count:int}
      */
@@ -299,7 +304,12 @@ class ConversationOpsService
             $this->insertHandoffEvent($handoff?->id, 'assigned', $actorUserId, 'Asignación desde Laravel V2');
         });
 
-        return $this->serializeConversation($this->findConversation($conversationId)->fresh());
+        $freshConversation = $this->findConversation($conversationId)->fresh();
+        if ($freshConversation instanceof WhatsappConversation) {
+            $this->realtime->broadcastConversationUpdate($freshConversation, 'assigned', $actorUserId);
+        }
+
+        return $this->serializeConversation($freshConversation);
     }
 
     /**
@@ -343,7 +353,12 @@ class ConversationOpsService
             $this->insertHandoffEvent($handoff?->id, 'transferred', $actorUserId, $this->sanitizeNotes($note));
         });
 
-        return $this->serializeConversation($this->findConversation($conversationId)->fresh());
+        $freshConversation = $this->findConversation($conversationId)->fresh();
+        if ($freshConversation instanceof WhatsappConversation) {
+            $this->realtime->broadcastConversationUpdate($freshConversation, 'transferred', $actorUserId, $note);
+        }
+
+        return $this->serializeConversation($freshConversation);
     }
 
     /**
@@ -393,7 +408,12 @@ class ConversationOpsService
             $this->insertHandoffEvent($handoff?->id, 'queued', $actorUserId, $sanitizedNote);
         });
 
-        return $this->serializeConversation($this->findConversation($conversationId)->fresh());
+        $freshConversation = $this->findConversation($conversationId)->fresh();
+        if ($freshConversation instanceof WhatsappConversation) {
+            $this->realtime->broadcastConversationUpdate($freshConversation, 'queued', $actorUserId, $note);
+        }
+
+        return $this->serializeConversation($freshConversation);
     }
 
     /**
@@ -430,7 +450,12 @@ class ConversationOpsService
             }
         });
 
-        return $this->serializeConversation($this->findConversation($conversationId)->fresh());
+        $freshConversation = $this->findConversation($conversationId)->fresh();
+        if ($freshConversation instanceof WhatsappConversation) {
+            $this->realtime->broadcastConversationUpdate($freshConversation, 'closed', $actorUserId);
+        }
+
+        return $this->serializeConversation($freshConversation);
     }
 
     private function findConversation(int $conversationId): WhatsappConversation

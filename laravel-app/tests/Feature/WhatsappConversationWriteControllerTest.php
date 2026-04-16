@@ -9,6 +9,7 @@ use App\Http\Middleware\RequireLegacySession;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class WhatsappConversationWriteControllerTest extends TestCase
@@ -205,6 +206,44 @@ class WhatsappConversationWriteControllerTest extends TestCase
             ->assertJsonPath('ok', false);
     }
 
+    public function test_it_blocks_outbound_text_when_inbound_window_is_expired(): void
+    {
+        \DB::table('whatsapp_conversations')->insert([
+            'id' => 451,
+            'wa_number' => '0999111333',
+            'display_name' => 'Paciente Fuera de Ventana',
+            'assigned_user_id' => 99,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        \DB::table('whatsapp_messages')->insert([
+            'conversation_id' => 451,
+            'direction' => 'inbound',
+            'message_type' => 'text',
+            'body' => 'Hola hace días',
+            'status' => 'received',
+            'message_timestamp' => now()->subDays(2),
+            'created_at' => now()->subDays(2),
+            'updated_at' => now()->subDays(2),
+        ]);
+
+        $response = $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->postJson('/v2/whatsapp/api/conversations/451/messages', [
+                'message' => 'Buenos dias',
+            ]);
+
+        $response
+            ->assertStatus(422)
+            ->assertJsonPath('ok', false)
+            ->assertJsonPath('error', 'Este contacto no ha iniciado conversación. Debes enviar una plantilla aprobada para abrir la ventana de 24h.');
+    }
+
     public function test_it_blocks_outbound_text_when_conversation_is_not_taken(): void
     {
         \DB::table('whatsapp_conversations')->insert([
@@ -241,5 +280,132 @@ class WhatsappConversationWriteControllerTest extends TestCase
             ->assertStatus(422)
             ->assertJsonPath('ok', false)
             ->assertJsonPath('error', 'Debes tomar esta conversación antes de responder.');
+    }
+
+    public function test_it_sends_and_persists_an_outbound_document_message(): void
+    {
+        \DB::table('whatsapp_conversations')->insert([
+            'id' => 47,
+            'wa_number' => '0999111222',
+            'display_name' => 'Paciente Demo',
+            'assigned_user_id' => 99,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        \DB::table('whatsapp_messages')->insert([
+            'conversation_id' => 47,
+            'direction' => 'inbound',
+            'message_type' => 'text',
+            'body' => 'Necesito el archivo',
+            'status' => 'received',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        Http::fake([
+            'https://graph.facebook.com/*' => Http::response([
+                'messages' => [
+                    ['id' => 'wamid.test.doc.1'],
+                ],
+            ], 200),
+        ]);
+
+        $response = $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->postJson('/v2/whatsapp/api/conversations/47/messages', [
+                'message' => 'Adjunto orden médica',
+                'message_type' => 'document',
+                'media_url' => 'https://example.test/orden.pdf',
+                'filename' => 'orden.pdf',
+            ]);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('data.message.wa_message_id', 'wamid.test.doc.1')
+            ->assertJsonPath('data.message.message_type', 'document');
+
+        $this->assertDatabaseHas('whatsapp_messages', [
+            'conversation_id' => 47,
+            'direction' => 'outbound',
+            'message_type' => 'document',
+            'body' => 'Adjunto orden médica',
+            'wa_message_id' => 'wamid.test.doc.1',
+        ]);
+
+        $conversation = \DB::table('whatsapp_conversations')->where('id', 47)->first();
+        $this->assertSame('document', $conversation?->last_message_type);
+        $this->assertSame('Adjunto orden médica', $conversation?->last_message_preview);
+    }
+
+    public function test_it_uploads_local_media_to_meta_before_sending_document_message(): void
+    {
+        Storage::fake('public');
+        Storage::disk('public')->put('whatsapp-media/2026/04/orden-local.pdf', 'pdf-content');
+
+        \DB::table('whatsapp_conversations')->insert([
+            'id' => 48,
+            'wa_number' => '0999111222',
+            'display_name' => 'Paciente Demo',
+            'assigned_user_id' => 99,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        \DB::table('whatsapp_messages')->insert([
+            'conversation_id' => 48,
+            'direction' => 'inbound',
+            'message_type' => 'text',
+            'body' => 'Necesito el archivo',
+            'status' => 'received',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        Http::fake([
+            'https://graph.facebook.com/*/media' => Http::response([
+                'id' => 'meta-media-123',
+            ], 200),
+            'https://graph.facebook.com/*/messages' => Http::response([
+                'messages' => [
+                    ['id' => 'wamid.test.doc.local.1'],
+                ],
+            ], 200),
+        ]);
+
+        $response = $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->postJson('/v2/whatsapp/api/conversations/48/messages', [
+                'message' => 'Adjunto orden local',
+                'message_type' => 'document',
+                'media_url' => 'https://cive.consulmed.me/storage/whatsapp-media/2026/04/orden-local.pdf',
+                'filename' => 'orden-local.pdf',
+                'mime_type' => 'application/pdf',
+                'media_disk' => 'public',
+                'media_path' => 'whatsapp-media/2026/04/orden-local.pdf',
+            ]);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('data.message.wa_message_id', 'wamid.test.doc.local.1')
+            ->assertJsonPath('data.message.message_type', 'document');
+
+        Http::assertSent(function ($request) {
+            return str_contains($request->url(), '/media');
+        });
+
+        Http::assertSent(function ($request) {
+            return str_contains($request->url(), '/messages');
+        });
     }
 }

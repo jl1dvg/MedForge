@@ -19,10 +19,28 @@ class ConversationWriteController
     {
         $message = trim((string) $request->input('message', ''));
         $previewUrl = $request->boolean('preview_url');
+        $messageType = trim((string) $request->input('message_type', 'text'));
+        $mediaUrl = trim((string) $request->input('media_url', ''));
+        $filename = trim((string) $request->input('filename', ''));
+        $mimeType = trim((string) $request->input('mime_type', ''));
+        $mediaDisk = trim((string) $request->input('media_disk', ''));
+        $mediaPath = trim((string) $request->input('media_path', ''));
         $actorUserId = LegacySessionAuth::userId($request);
 
         try {
-            $result = $this->service->sendTextToConversation($conversationId, $message, $previewUrl, $actorUserId);
+            $result = $messageType === 'text'
+                ? $this->service->sendTextToConversation($conversationId, $message, $previewUrl, $actorUserId)
+                : $this->service->sendMediaToConversation(
+                    $conversationId,
+                    $messageType,
+                    $mediaUrl,
+                    $message !== '' ? $message : null,
+                    $filename !== '' ? $filename : null,
+                    $mimeType !== '' ? $mimeType : null,
+                    $mediaDisk !== '' ? $mediaDisk : null,
+                    $mediaPath !== '' ? $mediaPath : null,
+                    $actorUserId
+                );
 
             return response()->json([
                 'ok' => true,

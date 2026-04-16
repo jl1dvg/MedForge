@@ -14,78 +14,140 @@
 
 @push('styles')
 <style>
+    .wa-flow-pagebar {
+        border-radius: 28px;
+        padding: 24px 26px;
+        background:
+            radial-gradient(circle at top left, rgba(16, 185, 129, .16), transparent 34%),
+            radial-gradient(circle at top right, rgba(14, 165, 233, .14), transparent 28%),
+            linear-gradient(145deg, #0f172a 0%, #1e293b 48%, #115e59 100%);
+        color: #f8fafc;
+        box-shadow: 0 18px 40px rgba(15, 23, 42, .16);
+    }
+    .wa-flow-pagebar__top {
+        display: flex;
+        justify-content: space-between;
+        gap: 18px;
+        align-items: flex-start;
+    }
+    .wa-flow-pagebar__title {
+        font-size: 28px;
+        font-weight: 800;
+        line-height: 1.05;
+        letter-spacing: -.03em;
+    }
+    .wa-flow-pagebar__subtitle {
+        margin-top: 8px;
+        color: rgba(248, 250, 252, .82);
+        max-width: 780px;
+        font-size: 14px;
+        line-height: 1.6;
+    }
+    .wa-flow-pagebar__meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        justify-content: flex-end;
+    }
+    .wa-flow-hero-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        border-radius: 999px;
+        padding: 8px 12px;
+        background: rgba(255, 255, 255, .12);
+        border: 1px solid rgba(255, 255, 255, .14);
+        color: #f8fafc;
+        font-size: 12px;
+        font-weight: 700;
+    }
     .wa-flow-shell {
         display: grid;
-        grid-template-columns: 280px minmax(0, 1fr) 340px;
-        gap: 1rem;
+        grid-template-columns: 300px minmax(0, 1fr) 360px;
+        gap: 18px;
         align-items: start;
     }
     .wa-flow-panel {
-        background: #fff;
-        border: 1px solid rgba(15, 23, 42, .08);
-        border-radius: 18px;
+        background: linear-gradient(180deg, #fff 0%, #f8fafc 100%);
+        border: 1px solid rgba(148, 163, 184, .18);
+        border-radius: 24px;
+        box-shadow: 0 20px 40px rgba(15, 23, 42, .05);
         overflow: hidden;
     }
     .wa-flow-panel__head {
-        padding: 1rem 1rem .85rem;
-        border-bottom: 1px solid rgba(15, 23, 42, .08);
+        padding: 18px 20px;
+        border-bottom: 1px solid rgba(148, 163, 184, .14);
         background:
-            radial-gradient(circle at top right, rgba(15, 118, 110, .08), transparent 38%),
-            linear-gradient(180deg, #f8fafc, #ffffff);
+            radial-gradient(circle at top right, rgba(15, 118, 110, .08), transparent 40%),
+            #fff;
     }
     .wa-flow-panel__body {
-        padding: 1rem;
+        padding: 18px 20px;
     }
     .wa-flow-kpis {
         display: grid;
         grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: .85rem;
+        gap: 12px;
     }
     .wa-flow-kpi {
-        padding: .95rem 1rem;
-        border-radius: 16px;
-        background: linear-gradient(180deg, #ffffff, #f8fafc);
-        border: 1px solid rgba(15, 23, 42, .08);
+        padding: 16px;
+        border-radius: 20px;
+        background: linear-gradient(180deg, rgba(255,255,255,.98), rgba(248,250,252,.96));
+        border: 1px solid rgba(148, 163, 184, .16);
+        box-shadow: 0 10px 24px rgba(15, 23, 42, .04);
     }
     .wa-flow-kpi__label {
-        font-size: .72rem;
+        font-size: 12px;
         color: #64748b;
         text-transform: uppercase;
-        letter-spacing: .06em;
+        letter-spacing: .08em;
     }
     .wa-flow-kpi__value {
-        margin-top: .35rem;
-        font-size: 1.5rem;
-        font-weight: 700;
+        margin-top: .45rem;
+        font-size: 28px;
+        font-weight: 800;
+        letter-spacing: -.04em;
         color: #0f172a;
         line-height: 1;
     }
     .wa-flow-kpi__sub {
-        margin-top: .35rem;
-        font-size: .82rem;
+        margin-top: .45rem;
+        font-size: 12px;
         color: #64748b;
     }
+    .wa-flow-sideheading__title {
+        font-size: 18px;
+        font-weight: 800;
+        letter-spacing: -.02em;
+        color: #0f172a;
+    }
+    .wa-flow-sideheading__meta {
+        color: #64748b;
+        font-size: 13px;
+        line-height: 1.5;
+    }
     .wa-flow-search {
-        border-radius: 12px;
-        border: 1px solid rgba(15, 23, 42, .12);
+        border-radius: 14px;
+        border: 1px solid rgba(148, 163, 184, .18);
         background: #fff;
         width: 100%;
-        padding: .65rem .8rem;
-        font-size: .9rem;
+        padding: .8rem .9rem;
+        font-size: .92rem;
     }
     .wa-flow-list {
         display: flex;
         flex-direction: column;
-        gap: .6rem;
+        gap: 10px;
         max-height: 740px;
         overflow: auto;
     }
     .wa-flow-item {
-        border: 1px solid rgba(15, 23, 42, .08);
-        border-radius: 16px;
-        padding: .85rem;
+        border: 1px solid rgba(148, 163, 184, .16);
+        border-radius: 18px;
+        padding: 14px;
         background: #fff;
         cursor: pointer;
+        text-align: left;
         transition: border-color .18s ease, transform .18s ease, box-shadow .18s ease;
     }
     .wa-flow-item:hover {
@@ -105,7 +167,7 @@
         align-items: start;
     }
     .wa-flow-item__name {
-        font-weight: 700;
+        font-weight: 800;
         color: #0f172a;
         line-height: 1.2;
         margin-bottom: .25rem;
@@ -121,9 +183,9 @@
         align-items: center;
         gap: .25rem;
         border-radius: 999px;
-        padding: .18rem .55rem;
-        font-size: .72rem;
-        font-weight: 600;
+        padding: .22rem .6rem;
+        font-size: 11px;
+        font-weight: 700;
     }
     .wa-flow-badge--stage {
         background: rgba(37, 99, 235, .10);
@@ -140,7 +202,7 @@
     .wa-flow-canvas {
         display: flex;
         flex-direction: column;
-        gap: 1rem;
+        gap: 14px;
     }
     .wa-flow-stage {
         display: inline-flex;
@@ -156,22 +218,23 @@
         letter-spacing: .05em;
     }
     .wa-flow-block {
-        border: 1px solid rgba(15, 23, 42, .08);
-        border-radius: 18px;
+        border: 1px solid rgba(148, 163, 184, .16);
+        border-radius: 20px;
         background: #fff;
         overflow: hidden;
+        box-shadow: 0 10px 24px rgba(15, 23, 42, .04);
     }
     .wa-flow-block__head {
-        padding: .85rem 1rem;
-        border-bottom: 1px solid rgba(15, 23, 42, .08);
+        padding: 14px 16px;
+        border-bottom: 1px solid rgba(148, 163, 184, .14);
         display: flex;
         justify-content: space-between;
         align-items: center;
         gap: .75rem;
-        background: #f8fafc;
+        background: radial-gradient(circle at top left, rgba(14, 165, 233, .05), transparent 32%), #f8fafc;
     }
     .wa-flow-block__body {
-        padding: 1rem;
+        padding: 16px;
     }
     .wa-flow-chip-row {
         display: flex;
@@ -179,18 +242,18 @@
         gap: .5rem;
     }
     .wa-flow-chip {
-        border-radius: 12px;
-        padding: .55rem .75rem;
+        border-radius: 14px;
+        padding: .6rem .8rem;
         background: #f8fafc;
-        border: 1px solid rgba(15, 23, 42, .08);
-        font-size: .82rem;
+        border: 1px solid rgba(148, 163, 184, .14);
+        font-size: 12px;
         color: #0f172a;
     }
     .wa-flow-action {
-        border-radius: 16px;
-        border: 1px solid rgba(15, 23, 42, .08);
+        border-radius: 18px;
+        border: 1px solid rgba(148, 163, 184, .16);
         background: linear-gradient(180deg, #ffffff, #fbfdff);
-        padding: .9rem;
+        padding: 14px;
         display: flex;
         flex-direction: column;
         gap: .55rem;
@@ -202,13 +265,13 @@
         align-items: start;
     }
     .wa-flow-action__label {
-        font-weight: 700;
+        font-weight: 800;
         color: #0f172a;
     }
     .wa-flow-code {
         background: #0f172a;
         color: #e2e8f0;
-        border-radius: 14px;
+        border-radius: 16px;
         padding: 1rem;
         font-size: .78rem;
         line-height: 1.5;
@@ -218,9 +281,9 @@
         word-break: break-word;
     }
     .wa-flow-preview {
-        background: #f8fafc;
-        border: 1px solid rgba(15, 23, 42, .08);
-        border-radius: 14px;
+        background: radial-gradient(circle at top right, rgba(14,165,233,.05), transparent 24%), #f8fafc;
+        border: 1px solid rgba(148, 163, 184, .16);
+        border-radius: 16px;
         padding: 1rem;
         min-height: 200px;
         white-space: pre-wrap;
@@ -234,9 +297,9 @@
         color: #64748b;
     }
     .wa-flow-section-title {
-        font-size: .8rem;
+        font-size: 12px;
         text-transform: uppercase;
-        letter-spacing: .06em;
+        letter-spacing: .08em;
         color: #64748b;
         margin-bottom: .75rem;
     }
@@ -254,6 +317,10 @@
     .wa-flow-table td, .wa-flow-table th {
         font-size: .84rem;
         vertical-align: middle;
+    }
+    .wa-flow-stack {
+        display: grid;
+        gap: 18px;
     }
     .wa-flow-form-grid {
         display: grid;
@@ -289,7 +356,7 @@
     }
     @media (max-width: 1400px) {
         .wa-flow-shell {
-            grid-template-columns: 260px minmax(0, 1fr);
+            grid-template-columns: 280px minmax(0, 1fr);
         }
         .wa-flow-shell > .wa-flow-panel:last-child {
             grid-column: 1 / -1;
@@ -303,6 +370,22 @@
             grid-template-columns: 1fr;
         }
     }
+    @media (max-width: 767px) {
+        .wa-flow-pagebar {
+            padding: 20px 18px;
+            border-radius: 24px;
+        }
+        .wa-flow-pagebar__top {
+            flex-direction: column;
+        }
+        .wa-flow-panel__head,
+        .wa-flow-panel__body {
+            padding: 16px;
+        }
+        .wa-flow-kpis {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
 </style>
 @endpush
 
@@ -310,22 +393,24 @@
 <section class="content">
     <div class="row g-3">
         <div class="col-12">
-            <div class="box mb-0">
-                <div class="box-body d-flex flex-wrap justify-content-between align-items-start gap-15">
+            <div class="wa-flow-pagebar">
+                <div class="wa-flow-pagebar__top">
                     <div>
-                        <div class="text-uppercase text-muted" style="font-size:12px; letter-spacing:.08em;">WhatsApp V2</div>
-                        <h2 class="mb-5">Flowmaker y automatización</h2>
-                        <div class="text-muted">Editor operativo en Laravel para revisar escenarios, condiciones, acciones y publicar versiones sin romper el runtime legacy.</div>
+                        <div class="wa-flow-pagebar__title">Flowmaker y automatización</div>
+                        <div class="wa-flow-pagebar__subtitle">
+                            Consola operativa para revisar escenarios, editar condiciones y acciones, publicar versiones y medir paridad con legacy antes del corte real.
+                        </div>
                     </div>
-                    <div class="text-end">
-                        <div class="fw-700">{{ $flow['name'] ?? 'Sin flujo activo' }}</div>
-                        <div class="text-muted" style="font-size:12px;">{{ $flow['status'] ?? 'sin-configurar' }} · versión {{ $activeVersion['version'] ?? '—' }}</div>
+                    <div class="wa-flow-pagebar__meta">
+                        <span class="wa-flow-hero-pill"><i class="mdi mdi-graph-outline"></i> {{ $flow['status'] ?? 'sin-configurar' }}</span>
+                        <span class="wa-flow-hero-pill"><i class="mdi mdi-source-branch"></i> versión {{ $activeVersion['version'] ?? '—' }}</span>
+                        <span class="wa-flow-hero-pill"><i class="mdi mdi-lightning-bolt-outline"></i> shadow listo</span>
                     </div>
                 </div>
-                <div class="box-footer bg-transparent d-flex flex-wrap gap-10 align-items-center">
+                <div class="d-flex flex-wrap gap-10 align-items-center mt-18">
                     <a href="/v2/whatsapp/api/flowmaker/contract" target="_blank" rel="noopener" class="btn btn-primary">Ver contrato JSON</a>
                     <button type="button" class="btn btn-success" id="wa-flow-publish-btn">Publicar JSON</button>
-                    <span id="wa-flow-status" class="text-muted" style="font-size:.84rem;"></span>
+                    <span id="wa-flow-status" class="text-light" style="font-size:.84rem;"></span>
                 </div>
             </div>
         </div>
@@ -361,8 +446,8 @@
                     <div class="wa-flow-panel__head">
                         <div class="d-flex justify-content-between align-items-center gap-10">
                             <div>
-                                <div class="fw-700">Escenarios</div>
-                                <div class="text-muted" style="font-size:.82rem;">Lista operativa parecida al editor legacy.</div>
+                                <div class="wa-flow-sideheading__title">Escenarios</div>
+                                <div class="wa-flow-sideheading__meta">Selector lateral con la lógica publicada y acceso rápido al editor.</div>
                             </div>
                             <button type="button" class="btn btn-sm btn-outline-primary" id="wa-flow-add-scenario-btn">Nuevo</button>
                         </div>
@@ -376,8 +461,8 @@
                 <div class="wa-flow-panel">
                     <div class="wa-flow-panel__head d-flex justify-content-between align-items-center gap-10">
                         <div>
-                            <div class="fw-700" id="wa-flow-canvas-title">Escenario</div>
-                            <div class="text-muted" style="font-size:.82rem;" id="wa-flow-canvas-subtitle">Selecciona un escenario para revisar condiciones y acciones.</div>
+                            <div class="wa-flow-sideheading__title" id="wa-flow-canvas-title">Escenario</div>
+                            <div class="wa-flow-sideheading__meta" id="wa-flow-canvas-subtitle">Selecciona un escenario para revisar condiciones y acciones.</div>
                         </div>
                         <span class="wa-flow-stage" id="wa-flow-stage-badge">Sin stage</span>
                     </div>
@@ -390,60 +475,83 @@
 
                 <div class="wa-flow-panel">
                     <div class="wa-flow-panel__head">
-                        <div class="fw-700">Inspector</div>
-                        <div class="text-muted" style="font-size:.82rem;">Propiedades, payload y simulación contextual.</div>
+                        <div class="wa-flow-sideheading__title">Inspector</div>
+                        <div class="wa-flow-sideheading__meta">Payload, simulación, shadow compare y readiness en un solo bloque operativo.</div>
                     </div>
                     <div class="wa-flow-panel__body">
-                        <div class="wa-flow-section-title">Resumen</div>
-                        <div class="wa-flow-chip-row mb-15" id="wa-flow-inspector-summary">
-                            <div class="wa-flow-chip">Sin selección</div>
-                        </div>
+                        <div class="wa-flow-stack">
+                            <div>
+                                <div class="wa-flow-section-title">Resumen</div>
+                                <div class="wa-flow-chip-row" id="wa-flow-inspector-summary">
+                                    <div class="wa-flow-chip">Sin selección</div>
+                                </div>
+                            </div>
 
-                        <div class="wa-flow-section-title">Payload a publicar</div>
-                        <textarea id="wa-flow-payload" class="form-control mb-15" rows="12">{{ json_encode($schema, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) }}</textarea>
+                            <div>
+                                <div class="wa-flow-section-title">Payload a publicar</div>
+                                <textarea id="wa-flow-payload" class="form-control" rows="12">{{ json_encode($schema, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) }}</textarea>
+                            </div>
 
-                        <div class="wa-flow-section-title">Simular mensaje</div>
-                        <div class="mb-10">
-                            <label class="form-label">Número</label>
-                            <input id="wa-flow-sim-number" class="form-control" value="{{ $sessions[0]['wa_number'] ?? '593999111222' }}">
-                        </div>
-                        <div class="mb-10">
-                            <label class="form-label">Mensaje</label>
-                            <input id="wa-flow-sim-text" class="form-control" value="hola">
-                        </div>
-                        <div class="mb-10">
-                            <label class="form-label">Contexto JSON opcional</label>
-                            <textarea id="wa-flow-sim-context" class="form-control" rows="5">{}</textarea>
-                        </div>
-                        <div class="d-flex flex-wrap gap-10 mb-15">
-                            <button type="button" class="btn btn-primary" id="wa-flow-sim-btn">Simular mensaje</button>
-                            <button type="button" class="btn btn-outline-dark" id="wa-flow-compare-btn">Comparar con legacy</button>
-                        </div>
+                            <div>
+                                <div class="wa-flow-section-title">Simular mensaje</div>
+                                <div class="mb-10">
+                                    <label class="form-label">Número</label>
+                                    <input id="wa-flow-sim-number" class="form-control" value="{{ $sessions[0]['wa_number'] ?? '593999111222' }}">
+                                </div>
+                                <div class="mb-10">
+                                    <label class="form-label">Mensaje</label>
+                                    <input id="wa-flow-sim-text" class="form-control" value="hola">
+                                </div>
+                                <div class="mb-10">
+                                    <label class="form-label">Contexto JSON opcional</label>
+                                    <textarea id="wa-flow-sim-context" class="form-control" rows="5">{}</textarea>
+                                </div>
+                                <div class="d-flex flex-wrap gap-10">
+                                    <button type="button" class="btn btn-primary" id="wa-flow-sim-btn">Simular mensaje</button>
+                                    <button type="button" class="btn btn-outline-dark" id="wa-flow-compare-btn">Comparar con legacy</button>
+                                </div>
+                            </div>
 
-                        <div class="wa-flow-section-title">Resultado de simulación</div>
-                        <div class="wa-flow-preview mb-15" id="wa-flow-sim-output">Ejecuta una simulación para ver escenario matcheado, facts y acciones disparadas sin tocar el webhook real.</div>
+                            <div>
+                                <div class="wa-flow-section-title">Resultado de simulación</div>
+                                <div class="wa-flow-preview" id="wa-flow-sim-output">Ejecuta una simulación para ver escenario matcheado, facts y acciones disparadas sin tocar el webhook real.</div>
+                            </div>
 
-                        <div class="wa-flow-section-title">Shadow compare</div>
-                        <div class="wa-flow-preview" id="wa-flow-compare-output">Compara el flujo activo de Laravel contra la fuente legacy antes de mover el runtime del webhook.</div>
+                            <div>
+                                <div class="wa-flow-section-title">Shadow compare</div>
+                                <div class="wa-flow-preview" id="wa-flow-compare-output">Comparar con legacy ayuda a validar paridad antes de mover el runtime del webhook.</div>
+                            </div>
 
-                        <div class="wa-flow-section-title mt-15 d-flex justify-content-between align-items-center">
-                            <span>Shadow runs recientes</span>
-                            <button type="button" class="btn btn-xs btn-outline-dark" id="wa-flow-shadow-refresh-btn">Actualizar</button>
+                            <div>
+                                <div class="wa-flow-section-title d-flex justify-content-between align-items-center">
+                                    <span>Fase 6 está lista para cierre</span>
+                                    <button type="button" class="btn btn-xs btn-outline-dark" id="wa-flow-shadow-refresh-btn">Actualizar</button>
+                                </div>
+                                <div class="wa-flow-preview" id="wa-flow-readiness-output">Todavía no se evaluó si Fase 6 está lista para cierre.</div>
+                            </div>
+
+                            <div>
+                                <div class="wa-flow-section-title">Paridad del shadow runtime</div>
+                                <div class="wa-flow-preview" id="wa-flow-shadow-summary-output">Todavía no se cargó el resumen de paridad del shadow runtime.</div>
+                            </div>
+
+                            <div>
+                                <div class="wa-flow-section-title">Shadow runs recientes</div>
+                                <div class="wa-flow-preview" id="wa-flow-shadow-runs-output">Todavía no se cargan runs del webhook en modo sombra.</div>
+                            </div>
                         </div>
-                        <div class="wa-flow-preview mb-15" id="wa-flow-readiness-output">Todavía no se evaluó si Fase 6 está lista para cierre.</div>
-                        <div class="wa-flow-preview mb-15" id="wa-flow-shadow-summary-output">Todavía no se cargó el resumen de paridad del shadow runtime.</div>
-                        <div class="wa-flow-preview" id="wa-flow-shadow-runs-output">Todavía no se cargan runs del webhook en modo sombra.</div>
                     </div>
                 </div>
             </div>
         </div>
 
         <div class="col-xl-6 col-12">
-            <div class="box mb-0">
-                <div class="box-header with-border">
-                    <h4 class="box-title mb-0">Versiones recientes</h4>
+            <div class="wa-flow-panel">
+                <div class="wa-flow-panel__head">
+                    <div class="wa-flow-sideheading__title">Versiones recientes</div>
+                    <div class="wa-flow-sideheading__meta">Historial rápido de publicación y estado.</div>
                 </div>
-                <div class="box-body p-0">
+                <div class="wa-flow-panel__body p-0">
                     <div class="table-responsive">
                         <table class="table table-striped wa-flow-table mb-0">
                             <thead>
@@ -473,11 +581,12 @@
         </div>
 
         <div class="col-xl-6 col-12">
-            <div class="box mb-0">
-                <div class="box-header with-border">
-                    <h4 class="box-title mb-0">Sesiones activas</h4>
+            <div class="wa-flow-panel">
+                <div class="wa-flow-panel__head">
+                    <div class="wa-flow-sideheading__title">Sesiones activas</div>
+                    <div class="wa-flow-sideheading__meta">Conversaciones en curso y punto actual del runtime.</div>
                 </div>
-                <div class="box-body">
+                <div class="wa-flow-panel__body">
                     <div class="wa-flow-timeline">
                         @forelse($sessions as $session)
                             <div class="wa-flow-timeline__item">

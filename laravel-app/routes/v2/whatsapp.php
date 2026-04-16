@@ -8,6 +8,8 @@ use App\Modules\Whatsapp\Http\Controllers\CampaignWriteController;
 use App\Modules\Whatsapp\Http\Controllers\FlowmakerReadController;
 use App\Modules\Whatsapp\Http\Controllers\FlowmakerWriteController;
 use App\Modules\Whatsapp\Http\Controllers\KpiReadController;
+use App\Modules\Whatsapp\Http\Controllers\MediaReadController;
+use App\Modules\Whatsapp\Http\Controllers\MediaWriteController;
 use App\Modules\Whatsapp\Http\Controllers\ProductivityReadController;
 use App\Modules\Whatsapp\Http\Controllers\ProductivityWriteController;
 use App\Modules\Whatsapp\Http\Controllers\TemplateReadController;
@@ -21,6 +23,7 @@ Route::middleware([
 ])->prefix('/whatsapp/api')->group(function (): void {
     Route::get('/conversations', [ConversationReadController::class, 'index']);
     Route::get('/conversations/{conversationId}', [ConversationReadController::class, 'show'])->whereNumber('conversationId');
+    Route::get('/messages/{messageId}/media', [MediaReadController::class, 'download'])->whereNumber('messageId');
     Route::get('/campaigns', [CampaignReadController::class, 'index']);
     Route::get('/campaigns/audience-suggestions', [CampaignReadController::class, 'audienceSuggestions']);
     Route::get('/agents', [ConversationOpsController::class, 'listAgents']);
@@ -47,6 +50,7 @@ Route::middleware([
     'whatsapp.feature:api-write,/whatsapp/chat',
 ])->prefix('/whatsapp/api')->group(function (): void {
     Route::post('/conversations/{conversationId}/messages', [ConversationWriteController::class, 'sendMessage'])->whereNumber('conversationId');
+    Route::post('/media/upload', [MediaWriteController::class, 'upload']);
     Route::post('/campaigns', [CampaignWriteController::class, 'store']);
     Route::post('/campaigns/{campaignId}/dry-run', [CampaignWriteController::class, 'dryRun'])->whereNumber('campaignId');
     Route::post('/conversations/{conversationId}/notes', [ProductivityWriteController::class, 'storeConversationNote'])->whereNumber('conversationId');

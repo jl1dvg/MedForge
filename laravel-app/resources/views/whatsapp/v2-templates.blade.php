@@ -13,14 +13,92 @@
 <style>
     .wa-v2-shell {
         display: grid;
-        grid-template-columns: minmax(320px, 1.2fr) minmax(340px, 1fr);
-        gap: 1rem;
+        grid-template-columns: minmax(320px, 380px) minmax(0, 1fr);
+        gap: 18px;
     }
 
     .wa-v2-template-card {
-        border: 1px solid rgba(15, 23, 42, .08);
-        border-radius: 16px;
-        background: #fff;
+        border: 1px solid rgba(148, 163, 184, .18);
+        border-radius: 24px;
+        background: linear-gradient(180deg, #fff 0%, #f8fafc 100%);
+        box-shadow: 0 20px 40px rgba(15, 23, 42, .05);
+        overflow: hidden;
+    }
+
+    .wa-v2-templates-pagebar {
+        border-radius: 28px;
+        padding: 24px 26px;
+        background:
+            radial-gradient(circle at top left, rgba(14, 165, 233, .16), transparent 34%),
+            radial-gradient(circle at top right, rgba(37, 99, 235, .14), transparent 28%),
+            linear-gradient(145deg, #0f172a 0%, #1e293b 48%, #1d4ed8 100%);
+        color: #f8fafc;
+        box-shadow: 0 18px 40px rgba(15, 23, 42, .16);
+    }
+
+    .wa-v2-templates-pagebar__top {
+        display: flex;
+        justify-content: space-between;
+        gap: 18px;
+        align-items: flex-start;
+    }
+
+    .wa-v2-templates-pagebar__title {
+        font-size: 28px;
+        font-weight: 800;
+        line-height: 1.05;
+        letter-spacing: -.03em;
+    }
+
+    .wa-v2-templates-pagebar__subtitle {
+        margin-top: 8px;
+        color: rgba(248, 250, 252, .82);
+        max-width: 760px;
+        font-size: 14px;
+        line-height: 1.6;
+    }
+
+    .wa-v2-templates-pagebar__meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        justify-content: flex-end;
+    }
+
+    .wa-v2-hero-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        border-radius: 999px;
+        padding: 8px 12px;
+        background: rgba(255, 255, 255, .12);
+        border: 1px solid rgba(255, 255, 255, .14);
+        color: #f8fafc;
+        font-size: 12px;
+        font-weight: 700;
+    }
+
+    .wa-v2-panel-head {
+        padding: 18px 20px;
+        border-bottom: 1px solid rgba(148, 163, 184, .14);
+        background: radial-gradient(circle at top left, rgba(14,165,233,.06), transparent 34%), #fff;
+    }
+
+    .wa-v2-panel-body {
+        padding: 18px 20px;
+    }
+
+    .wa-v2-sideheading__title {
+        font-size: 18px;
+        font-weight: 800;
+        letter-spacing: -.02em;
+        color: #0f172a;
+    }
+
+    .wa-v2-sideheading__meta {
+        color: #64748b;
+        font-size: 13px;
+        line-height: 1.5;
     }
 
     .wa-v2-template-list {
@@ -29,29 +107,32 @@
     }
 
     .wa-v2-template-item {
-        border: 1px solid rgba(148, 163, 184, .25);
-        border-radius: 14px;
+        border: 1px solid rgba(148, 163, 184, .18);
+        border-radius: 18px;
         padding: 14px 16px;
         cursor: pointer;
         transition: .18s ease;
+        background: #fff;
+        box-shadow: 0 10px 24px rgba(15, 23, 42, .04);
     }
 
     .wa-v2-template-item:hover,
     .wa-v2-template-item.is-active {
-        border-color: #0d6efd;
-        box-shadow: 0 8px 24px rgba(13, 110, 253, .12);
+        border-color: #2563eb;
+        box-shadow: 0 14px 28px rgba(37, 99, 235, .12);
+        transform: translateY(-1px);
     }
 
     .wa-v2-preview {
-        border-radius: 18px;
+        border-radius: 22px;
         background: linear-gradient(180deg, #e7f1ff 0%, #f8fbff 100%);
-        padding: 18px;
-        min-height: 360px;
+        padding: 20px;
+        min-height: 420px;
     }
 
     .wa-v2-message {
         background: #fff;
-        border-radius: 18px 18px 6px 18px;
+        border-radius: 20px 20px 8px 20px;
         padding: 16px;
         box-shadow: 0 14px 30px rgba(15, 23, 42, .08);
     }
@@ -64,22 +145,86 @@
 
     .wa-v2-empty {
         border: 1px dashed rgba(148, 163, 184, .5);
-        border-radius: 16px;
+        border-radius: 18px;
         padding: 24px;
         text-align: center;
         color: #64748b;
     }
 
+    .wa-v2-filter-shell {
+        border-radius: 22px;
+        border: 1px solid rgba(148, 163, 184, .18);
+        background: linear-gradient(180deg, #fff 0%, #f8fafc 100%);
+        box-shadow: 0 20px 40px rgba(15, 23, 42, .05);
+        padding: 18px 20px;
+    }
+
+    .wa-v2-template-stats {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+    }
+
+    .wa-v2-template-stat {
+        border-radius: 18px;
+        padding: 16px;
+        border: 1px solid rgba(148, 163, 184, .16);
+        background: linear-gradient(180deg, rgba(255,255,255,.98), rgba(248,250,252,.96));
+    }
+
+    .wa-v2-template-stat__value {
+        font-size: 26px;
+        font-weight: 800;
+        letter-spacing: -.04em;
+        color: #0f172a;
+    }
+
+    .wa-v2-template-stat__label {
+        margin-top: 4px;
+        color: #64748b;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: .08em;
+    }
+
+    .wa-v2-template-meta {
+        margin-top: 4px;
+        color: #64748b;
+        font-size: 12px;
+    }
+
+    .wa-v2-template-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 12px;
+    }
+
+    .wa-v2-preview-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 12px;
+        margin-bottom: 16px;
+    }
+
+    .wa-v2-preview-title {
+        font-size: 20px;
+        font-weight: 800;
+        letter-spacing: -.02em;
+        color: #0f172a;
+    }
+
     .wa-v2-builder-preview {
         background: #f8fbff;
         border: 1px solid rgba(13, 110, 253, .1);
-        border-radius: 16px;
+        border-radius: 18px;
         padding: 14px;
     }
 
     .wa-v2-builder-message {
         background: #fff;
-        border-radius: 16px 16px 8px 16px;
+        border-radius: 18px 18px 8px 18px;
         padding: 14px;
         box-shadow: 0 10px 24px rgba(15, 23, 42, .08);
     }
@@ -87,6 +232,31 @@
     @media (max-width: 991px) {
         .wa-v2-shell {
             grid-template-columns: 1fr;
+        }
+
+        .wa-v2-template-stats {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
+
+    @media (max-width: 767px) {
+        .wa-v2-templates-pagebar {
+            padding: 20px 18px;
+            border-radius: 24px;
+        }
+
+        .wa-v2-templates-pagebar__top {
+            flex-direction: column;
+        }
+
+        .wa-v2-template-stats {
+            grid-template-columns: 1fr 1fr;
+        }
+
+        .wa-v2-panel-head,
+        .wa-v2-panel-body,
+        .wa-v2-filter-shell {
+            padding: 16px;
         }
     }
 </style>
@@ -96,19 +266,22 @@
 <section class="content">
     <div class="row g-3">
         <div class="col-12">
-            <div class="box mb-0">
-                <div class="box-body d-flex flex-wrap justify-content-between align-items-center gap-15">
+            <div class="wa-v2-templates-pagebar">
+                <div class="wa-v2-templates-pagebar__top">
                     <div>
-                        <div class="text-uppercase text-muted" style="font-size:12px; letter-spacing:.08em;">WhatsApp V2</div>
-                        <h2 class="mb-5">Templates</h2>
-                        <div class="text-muted">Listado real en Laravel con preview y sync manual hacia el cache local.</div>
+                        <div class="wa-v2-templates-pagebar__title">Templates</div>
+                        <div class="wa-v2-templates-pagebar__subtitle">
+                            Catálogo operativo con preview, historial local, clonación y publicación controlada.
+                            La meta aquí es que la pantalla se sienta como producto, no como listado administrativo.
+                        </div>
                     </div>
-                    <div class="text-end">
-                        <div class="fw-700">{{ $integration['brand'] ?? 'MedForge' }}</div>
-                        <div class="text-muted" style="font-size:12px;">Fuente actual: {{ $source ?? 'local-cache' }}</div>
+                    <div class="wa-v2-templates-pagebar__meta">
+                        <span class="wa-v2-hero-pill"><i class="mdi mdi-domain"></i> {{ $integration['brand'] ?? 'MedForge' }}</span>
+                        <span class="wa-v2-hero-pill"><i class="mdi mdi-database-outline"></i> {{ $source ?? 'local-cache' }}</span>
+                        <span class="wa-v2-hero-pill"><i class="mdi mdi-message-badge-outline"></i> {{ count($templates) }} plantillas</span>
                     </div>
                 </div>
-                <div class="box-footer bg-transparent d-flex flex-wrap gap-10 justify-content-between align-items-center">
+                <div class="d-flex flex-wrap gap-10 justify-content-between align-items-center mt-18">
                     <div class="wa-v2-badge-row">
                         <span class="badge {{ !empty($integration['ready']) ? 'bg-success-light text-success' : 'bg-danger-light text-danger' }}">
                             {{ !empty($integration['ready']) ? 'Meta listo' : 'Meta incompleto' }}
@@ -143,9 +316,27 @@
         @endif
 
         <div class="col-12">
-            <div class="box mb-0">
-                <div class="box-body">
-                    <form method="GET" action="/v2/whatsapp/templates" class="row g-2 align-items-end">
+            <div class="wa-v2-filter-shell">
+                <div class="wa-v2-template-stats mb-15">
+                    <div class="wa-v2-template-stat">
+                        <div class="wa-v2-template-stat__value">{{ count($templates) }}</div>
+                        <div class="wa-v2-template-stat__label">Visibles</div>
+                    </div>
+                    <div class="wa-v2-template-stat">
+                        <div class="wa-v2-template-stat__value">{{ collect($templates)->where('source', 'local')->count() }}</div>
+                        <div class="wa-v2-template-stat__label">Locales</div>
+                    </div>
+                    <div class="wa-v2-template-stat">
+                        <div class="wa-v2-template-stat__value">{{ collect($templates)->where('status', 'APPROVED')->count() }}</div>
+                        <div class="wa-v2-template-stat__label">Approved</div>
+                    </div>
+                    <div class="wa-v2-template-stat">
+                        <div class="wa-v2-template-stat__value">{{ collect($templates)->filter(fn($template) => !empty($template['can_publish']))->count() }}</div>
+                        <div class="wa-v2-template-stat__label">Publicables</div>
+                    </div>
+                </div>
+
+                <form method="GET" action="/v2/whatsapp/templates" class="row g-2 align-items-end">
                         <div class="col-xl-4 col-md-6">
                             <label class="form-label">Buscar</label>
                             <input type="text" name="search" value="{{ $filters['search'] }}" class="form-control" placeholder="Nombre, idioma, categoría">
@@ -186,17 +377,17 @@
                             <a href="/v2/whatsapp/templates" class="btn btn-light">Limpiar</a>
                         </div>
                     </form>
-                </div>
             </div>
         </div>
 
         <div class="col-12">
             <div class="wa-v2-shell">
                 <div class="wa-v2-template-card">
-                    <div class="box-header with-border">
-                        <h4 class="box-title mb-0">Plantillas</h4>
+                    <div class="wa-v2-panel-head">
+                        <div class="wa-v2-sideheading__title">Plantillas</div>
+                        <div class="wa-v2-sideheading__meta">Lista lateral con estado, origen, calidad y acciones rápidas.</div>
                     </div>
-                    <div class="box-body wa-v2-template-list">
+                    <div class="wa-v2-panel-body wa-v2-template-list">
                         @if($templates === [])
                             <div class="wa-v2-empty">
                                 No hay plantillas para los filtros actuales.
@@ -208,7 +399,7 @@
                                         <div class="d-flex justify-content-between gap-10">
                                             <div>
                                                 <div class="fw-700">{{ $template['display_name'] ?? $template['name'] }}</div>
-                                                <div class="text-muted" style="font-size:12px;">{{ $template['name'] }}</div>
+                                                <div class="wa-v2-template-meta">{{ $template['name'] }}</div>
                                             </div>
                                             <span class="badge bg-light text-dark">{{ $template['status'] }}</span>
                                         </div>
@@ -223,10 +414,10 @@
                                                 {{ $template['editorial_label'] ?? 'Plantilla' }}
                                             </span>
                                         </div>
-                                        <div class="text-muted mt-10" style="font-size:12px;">
+                                        <div class="wa-v2-template-meta mt-10">
                                             {{ \Illuminate\Support\Str::limit($template['preview']['body_text'] ?? '', 150) }}
                                         </div>
-                                        <div class="d-flex gap-10 mt-10">
+                                        <div class="wa-v2-template-actions">
                                             <button type="button" class="btn btn-light btn-sm" data-wa-template-edit='@json($template)' {{ empty($template['is_editable']) ? 'disabled' : '' }}>
                                                 Editar
                                             </button>
@@ -245,14 +436,15 @@
                 </div>
 
                 <div class="wa-v2-template-card">
-                    <div class="box-header with-border">
-                        <h4 class="box-title mb-0">Preview</h4>
+                    <div class="wa-v2-panel-head">
+                        <div class="wa-v2-sideheading__title">Preview</div>
+                        <div class="wa-v2-sideheading__meta">Lectura operativa del template, variables y revisiones locales.</div>
                     </div>
-                    <div class="box-body">
+                    <div class="wa-v2-panel-body">
                         <div class="wa-v2-preview">
-                            <div class="d-flex justify-content-between align-items-start gap-10 mb-15">
+                            <div class="wa-v2-preview-header">
                                 <div>
-                                    <div class="fw-700" id="wa-v2-preview-name">{{ $selectedTemplate['display_name'] ?? 'Sin selección' }}</div>
+                                    <div class="wa-v2-preview-title" id="wa-v2-preview-name">{{ $selectedTemplate['display_name'] ?? 'Sin selección' }}</div>
                                     <div class="text-muted" id="wa-v2-preview-code">{{ $selectedTemplate['name'] ?? '' }}</div>
                                 </div>
                                 <div class="text-end">

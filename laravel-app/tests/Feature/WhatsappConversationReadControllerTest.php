@@ -209,7 +209,7 @@ class WhatsappConversationReadControllerTest extends TestCase
                 'wa_number' => '593999111221',
                 'display_name' => 'Pendiente Uno',
                 'needs_human' => 1,
-                'assigned_user_id' => 7,
+                'assigned_user_id' => null,
                 'unread_count' => 2,
                 'created_at' => now(),
                 'updated_at' => now(),
@@ -226,6 +226,27 @@ class WhatsappConversationReadControllerTest extends TestCase
             ],
         ]);
 
+        \DB::table('whatsapp_messages')->insert([
+            [
+                'conversation_id' => 21,
+                'direction' => 'inbound',
+                'message_type' => 'text',
+                'body' => 'Hola reciente',
+                'message_timestamp' => now()->subHours(2),
+                'created_at' => now()->subHours(2),
+                'updated_at' => now()->subHours(2),
+            ],
+            [
+                'conversation_id' => 22,
+                'direction' => 'inbound',
+                'message_type' => 'text',
+                'body' => 'Hola viejo',
+                'message_timestamp' => now()->subDays(2),
+                'created_at' => now()->subDays(2),
+                'updated_at' => now()->subDays(2),
+            ],
+        ]);
+
         $response = $this->withoutMiddleware()->getJson('/v2/whatsapp/api/conversations?filter=handoff');
 
         $response
@@ -235,7 +256,71 @@ class WhatsappConversationReadControllerTest extends TestCase
             ->assertJsonPath('meta.tab_counts.all', 2)
             ->assertJsonPath('meta.tab_counts.unread', 1)
             ->assertJsonPath('meta.tab_counts.handoff', 1)
+            ->assertJsonPath('meta.tab_counts.window_open', 1)
+            ->assertJsonPath('meta.tab_counts.needs_template', 0)
             ->assertJsonPath('meta.tab_counts.resolved', 1);
+    }
+
+    public function test_it_filters_by_window_open_and_needs_template(): void
+    {
+        \DB::table('whatsapp_conversations')->insert([
+            [
+                'id' => 41,
+                'wa_number' => '593999111241',
+                'display_name' => 'Ventana abierta',
+                'needs_human' => 1,
+                'assigned_user_id' => 7,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'id' => 42,
+                'wa_number' => '593999111242',
+                'display_name' => 'Necesita plantilla',
+                'needs_human' => 1,
+                'assigned_user_id' => 7,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        \DB::table('whatsapp_messages')->insert([
+            [
+                'conversation_id' => 41,
+                'direction' => 'inbound',
+                'message_type' => 'text',
+                'body' => 'Hola reciente',
+                'message_timestamp' => now()->subHours(3),
+                'created_at' => now()->subHours(3),
+                'updated_at' => now()->subHours(3),
+            ],
+            [
+                'conversation_id' => 42,
+                'direction' => 'inbound',
+                'message_type' => 'text',
+                'body' => 'Hola antiguo',
+                'message_timestamp' => now()->subDays(3),
+                'created_at' => now()->subDays(3),
+                'updated_at' => now()->subDays(3),
+            ],
+        ]);
+
+        $windowOpen = $this->withoutMiddleware()->getJson('/v2/whatsapp/api/conversations?filter=window_open');
+        $needsTemplate = $this->withoutMiddleware()->getJson('/v2/whatsapp/api/conversations?filter=needs_template');
+
+        $windowOpen
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', 41)
+            ->assertJsonPath('data.0.messaging_window_state', 'window_open')
+            ->assertJsonPath('data.0.can_send_freeform', true);
+
+        $needsTemplate
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', 42)
+            ->assertJsonPath('data.0.messaging_window_state', 'needs_template')
+            ->assertJsonPath('data.0.can_send_freeform', false);
     }
 
     public function test_it_exposes_ownership_labels_and_supervisor_filters(): void

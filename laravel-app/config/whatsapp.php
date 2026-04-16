@@ -35,4 +35,29 @@ return [
         'timeout' => (int) env('WHATSAPP_GRAPH_TIMEOUT', 15),
         'dry_run' => (bool) env('WHATSAPP_LARAVEL_TRANSPORT_DRY_RUN', false),
     ],
+    'media' => [
+        'image' => [
+            'max_kb' => 5 * 1024,
+            'mime_types' => ['image/jpeg', 'image/png', 'image/webp'],
+        ],
+        'video' => [
+            'max_kb' => 16 * 1024,
+            'mime_types' => ['video/mp4', 'video/3gpp'],
+        ],
+        'audio' => [
+            'max_kb' => 16 * 1024,
+            'mime_types' => ['audio/mpeg', 'audio/mp4', 'audio/aac', 'audio/ogg', 'audio/amr', 'audio/webm', 'application/ogg'],
+        ],
+        'document' => [
+            'max_kb' => 100 * 1024,
+            'mime_types' => [
+                'application/pdf',
+                'application/msword',
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                'application/vnd.ms-excel',
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'text/plain',
+            ],
+        ],
+    ],
 ];

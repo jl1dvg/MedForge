@@ -18,33 +18,89 @@
 
 @push('styles')
 <style>
+    .wa-dashboard-pagebar {
+        border-radius: 28px;
+        padding: 24px 26px;
+        background:
+            radial-gradient(circle at top left, rgba(14, 165, 233, .16), transparent 34%),
+            radial-gradient(circle at top right, rgba(16, 185, 129, .14), transparent 28%),
+            linear-gradient(145deg, #0f172a 0%, #1e293b 48%, #115e59 100%);
+        color: #f8fafc;
+        box-shadow: 0 18px 40px rgba(15, 23, 42, .16);
+    }
+    .wa-dashboard-pagebar__top {
+        display: flex;
+        justify-content: space-between;
+        gap: 18px;
+        align-items: flex-start;
+    }
+    .wa-dashboard-pagebar__title {
+        font-size: 28px;
+        font-weight: 800;
+        line-height: 1.05;
+        letter-spacing: -.03em;
+    }
+    .wa-dashboard-pagebar__subtitle {
+        margin-top: 8px;
+        color: rgba(248, 250, 252, .82);
+        max-width: 780px;
+        font-size: 14px;
+        line-height: 1.6;
+    }
+    .wa-dashboard-pagebar__meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        justify-content: flex-end;
+    }
+    .wa-dashboard-hero-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        border-radius: 999px;
+        padding: 8px 12px;
+        background: rgba(255, 255, 255, .12);
+        border: 1px solid rgba(255, 255, 255, .14);
+        color: #f8fafc;
+        font-size: 12px;
+        font-weight: 700;
+    }
+    .wa-dashboard-filter-shell {
+        border-radius: 24px;
+        border: 1px solid rgba(148, 163, 184, .18);
+        background: linear-gradient(180deg, #fff 0%, #f8fafc 100%);
+        box-shadow: 0 20px 40px rgba(15, 23, 42, .05);
+        padding: 18px 20px;
+    }
     .wa-kpi-grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-        gap: .75rem;
+        gap: 12px;
     }
     .wa-kpi-card {
-        background: #fff;
-        border: 1px solid rgba(15, 23, 42, .08);
-        border-radius: 16px;
-        padding: 1rem;
+        background: linear-gradient(180deg, rgba(255,255,255,.98), rgba(248,250,252,.96));
+        border: 1px solid rgba(148, 163, 184, .16);
+        border-radius: 20px;
+        padding: 16px;
+        box-shadow: 0 10px 24px rgba(15, 23, 42, .04);
     }
     .wa-kpi-label {
-        font-size: .75rem;
+        font-size: 12px;
         color: #64748b;
         text-transform: uppercase;
-        letter-spacing: .06em;
+        letter-spacing: .08em;
     }
     .wa-kpi-value {
-        font-size: 1.6rem;
-        font-weight: 700;
+        font-size: 28px;
+        font-weight: 800;
+        letter-spacing: -.04em;
         color: #0f172a;
         line-height: 1.1;
-        margin-top: .35rem;
+        margin-top: .45rem;
     }
     .wa-kpi-sub {
-        margin-top: .35rem;
-        font-size: .82rem;
+        margin-top: .45rem;
+        font-size: 12px;
         color: #64748b;
     }
     .wa-kpi-table td, .wa-kpi-table th {
@@ -75,9 +131,10 @@
     .wa-kpi-band {
         background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
         color: #fff;
-        border-radius: 18px;
-        padding: 1rem 1.1rem;
+        border-radius: 22px;
+        padding: 18px 20px;
         min-height: 100%;
+        box-shadow: 0 16px 30px rgba(15, 23, 42, .12);
     }
     .wa-kpi-band h5 {
         margin: 0 0 .35rem;
@@ -96,6 +153,46 @@
         align-items: center;
         margin: 0 .5rem .5rem 0;
     }
+    .wa-kpi-panel {
+        border-radius: 24px;
+        border: 1px solid rgba(148, 163, 184, .18);
+        background: linear-gradient(180deg, #fff 0%, #f8fafc 100%);
+        box-shadow: 0 20px 40px rgba(15, 23, 42, .05);
+        overflow: hidden;
+    }
+    .wa-kpi-panel__head {
+        padding: 18px 20px;
+        border-bottom: 1px solid rgba(148, 163, 184, .14);
+        background: radial-gradient(circle at top left, rgba(14,165,233,.06), transparent 34%), #fff;
+    }
+    .wa-kpi-panel__body {
+        padding: 18px 20px;
+    }
+    .wa-kpi-sideheading__title {
+        font-size: 18px;
+        font-weight: 800;
+        letter-spacing: -.02em;
+        color: #0f172a;
+    }
+    .wa-kpi-sideheading__meta {
+        color: #64748b;
+        font-size: 13px;
+        line-height: 1.5;
+    }
+    @media (max-width: 767px) {
+        .wa-dashboard-pagebar {
+            padding: 20px 18px;
+            border-radius: 24px;
+        }
+        .wa-dashboard-pagebar__top {
+            flex-direction: column;
+        }
+        .wa-dashboard-filter-shell,
+        .wa-kpi-panel__head,
+        .wa-kpi-panel__body {
+            padding: 16px;
+        }
+    }
 </style>
 @endpush
 
@@ -103,16 +200,27 @@
 <section class="content">
     <div class="row g-3">
         <div class="col-12">
-            <div class="box mb-0">
-                <div class="box-body d-flex flex-wrap justify-content-between align-items-start gap-15">
+            <div class="wa-dashboard-pagebar">
+                <div class="wa-dashboard-pagebar__top">
                     <div>
-                        <div class="text-uppercase text-muted" style="font-size:12px; letter-spacing:.08em;">WhatsApp V2</div>
-                        <h2 class="mb-5">KPI y reportes</h2>
-                        <div class="text-muted">Primera paridad del dashboard legacy sobre Laravel, priorizando atención humana, SLA, cola y transferencias.</div>
+                        <div class="wa-dashboard-pagebar__title">KPI y reportes</div>
+                        <div class="wa-dashboard-pagebar__subtitle">
+                            Vista operativa sobre Laravel para atención humana, SLA, cola, ventana de 24 horas y transferencias.
+                            El objetivo aquí es leer salud operativa rápido, no navegar tablas sueltas.
+                        </div>
+                    </div>
+                    <div class="wa-dashboard-pagebar__meta">
+                        <span class="wa-dashboard-hero-pill"><i class="mdi mdi-chart-line"></i> atención {{ $summary['attention_rate'] ?? 0 }}%</span>
+                        <span class="wa-dashboard-hero-pill"><i class="mdi mdi-timer-outline"></i> SLA {{ $summary['sla_assignments_rate'] ?? 0 }}%</span>
+                        <span class="wa-dashboard-hero-pill"><i class="mdi mdi-tray-arrow-down"></i> cola {{ $summary['live_queue_total'] ?? 0 }}</span>
                     </div>
                 </div>
-                <div class="box-footer bg-transparent">
-                    <form method="GET" action="/v2/whatsapp/dashboard" class="row g-2 align-items-end">
+            </div>
+        </div>
+
+        <div class="col-12">
+            <div class="wa-dashboard-filter-shell">
+                <form method="GET" action="/v2/whatsapp/dashboard" class="row g-2 align-items-end">
                         <div class="col-md-2">
                             <label class="form-label">Desde</label>
                             <input type="date" class="form-control" name="date_from" value="{{ $filters['date_from'] ?? '' }}">
@@ -149,7 +257,6 @@
                             <a href="/v2/whatsapp/api/kpis/export?{{ $exportQuery }}" class="btn btn-success">Exportar CSV</a>
                         </div>
                     </form>
-                </div>
             </div>
         </div>
 
@@ -215,11 +322,12 @@
         </div>
 
         <div class="col-xl-6 col-12">
-            <div class="box mb-0">
-                <div class="box-header with-border">
-                    <h4 class="box-title mb-0">Series del periodo</h4>
+            <div class="wa-kpi-panel">
+                <div class="wa-kpi-panel__head">
+                    <div class="wa-kpi-sideheading__title">Series del periodo</div>
+                    <div class="wa-kpi-sideheading__meta">Lectura rápida del volumen de conversaciones en el rango seleccionado.</div>
                 </div>
-                <div class="box-body">
+                <div class="wa-kpi-panel__body">
                     @php
                         $series = is_array($trends['conversations'] ?? null) ? $trends['conversations'] : [];
                         $labels = is_array($trends['labels'] ?? null) ? $trends['labels'] : [];
@@ -243,11 +351,12 @@
         </div>
 
         <div class="col-xl-6 col-12">
-            <div class="box mb-0">
-                <div class="box-header with-border">
-                    <h4 class="box-title mb-0">Atención humana por agente</h4>
+            <div class="wa-kpi-panel">
+                <div class="wa-kpi-panel__head">
+                    <div class="wa-kpi-sideheading__title">Atención humana por agente</div>
+                    <div class="wa-kpi-sideheading__meta">Quién absorbió más conversaciones y cómo respondió en primera intervención.</div>
                 </div>
-                <div class="box-body p-0">
+                <div class="wa-kpi-panel__body p-0">
                     <div class="table-responsive">
                         <table class="table table-striped wa-kpi-table mb-0">
                             <thead>
@@ -277,11 +386,12 @@
         </div>
 
         <div class="col-xl-6 col-12">
-            <div class="box mb-0">
-                <div class="box-header with-border">
-                    <h4 class="box-title mb-0">Handoffs por equipo</h4>
+            <div class="wa-kpi-panel">
+                <div class="wa-kpi-panel__head">
+                    <div class="wa-kpi-sideheading__title">Handoffs por equipo</div>
+                    <div class="wa-kpi-sideheading__meta">Distribución de cola, asignación y resolución por equipo operativo.</div>
                 </div>
-                <div class="box-body p-0">
+                <div class="wa-kpi-panel__body p-0">
                     <div class="table-responsive">
                         <table class="table table-striped wa-kpi-table mb-0">
                             <thead>
@@ -315,11 +425,12 @@
         </div>
 
         <div class="col-xl-6 col-12">
-            <div class="box mb-0">
-                <div class="box-header with-border">
-                    <h4 class="box-title mb-0">Carga por agente</h4>
+            <div class="wa-kpi-panel">
+                <div class="wa-kpi-panel__head">
+                    <div class="wa-kpi-sideheading__title">Carga por agente</div>
+                    <div class="wa-kpi-sideheading__meta">Lectura de workload para saber quién está tomado, activo o ya resolvió.</div>
                 </div>
-                <div class="box-body p-0">
+                <div class="wa-kpi-panel__body p-0">
                     <div class="table-responsive">
                         <table class="table table-striped wa-kpi-table mb-0">
                             <thead>

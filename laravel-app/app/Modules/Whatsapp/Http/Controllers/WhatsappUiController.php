@@ -12,12 +12,19 @@ use App\Modules\Whatsapp\Services\KpiDashboardService;
 use App\Modules\Whatsapp\Services\ProductivityToolkitService;
 use App\Modules\Whatsapp\Services\TemplateCatalogService;
 use DateTimeImmutable;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Contracts\View\Factory;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\Request;
+use Throwable;
 
 class WhatsappUiController
 {
+    private const REALTIME_EVENTS = [
+        'inbound_message' => 'whatsapp.inbound-message',
+        'conversation_updated' => 'whatsapp.conversation-updated',
+    ];
+
     public function __construct(
         private readonly ConversationReadService $conversationReadService = new \App\Modules\Whatsapp\Services\ConversationReadService(),
         private readonly ConversationOpsService $conversationOpsService = new \App\Modules\Whatsapp\Services\ConversationOpsService(),
@@ -120,6 +127,8 @@ class WhatsappUiController
             'conversationNotes' => $selectedConversation !== null
                 ? $this->productivityToolkitService->listConversationNotes((int) $selectedConversation->id, 12)
                 : [],
+            'realtimeConfig' => $this->buildRealtimeConfig(),
+            'whatsappAssetVersion' => (string) filemtime(resource_path('views/whatsapp/v2-chat.blade.php')),
         ]);
     }
 
@@ -296,5 +305,94 @@ class WhatsappUiController
         }
 
         return (int) $value;
+    }
+
+    /**
+     * @return array{
+     *     enabled: bool,
+     *     key: string,
+     *     cluster: string,
+     *     channel: string,
+     *     event: string,
+     *     desktop_notifications: bool,
+     *     auto_dismiss_seconds: int,
+     *     toast_auto_dismiss_seconds: int,
+     *     panel_retention_days: int,
+     *     events: array<string,string>,
+     *     channels: array{email: bool, sms: bool, daily_summary: bool}
+     * }
+     */
+    private function buildRealtimeConfig(): array
+    {
+        $options = $this->settingsOptions([
+            'pusher_app_id',
+            'pusher_app_key',
+            'pusher_app_secret',
+            'pusher_cluster',
+            'pusher_realtime_notifications',
+            'desktop_notifications',
+            'auto_dismiss_desktop_notifications_after',
+            'notifications_toast_auto_dismiss_seconds',
+            'notifications_panel_retention_days',
+            'notifications_email_enabled',
+            'notifications_sms_enabled',
+            'notifications_daily_summary',
+        ]);
+
+        $appId = trim((string) ($options['pusher_app_id'] ?? ''));
+        $appKey = trim((string) ($options['pusher_app_key'] ?? ''));
+        $appSecret = trim((string) ($options['pusher_app_secret'] ?? ''));
+        $cluster = trim((string) ($options['pusher_cluster'] ?? ''));
+        $featureEnabled = ((string) ($options['pusher_realtime_notifications'] ?? '0')) === '1';
+
+        return [
+            'enabled' => $featureEnabled && $appId !== '' && $appKey !== '' && $appSecret !== '',
+            'key' => $appKey,
+            'cluster' => $cluster,
+            'channel' => 'whatsapp-ops',
+            'event' => self::REALTIME_EVENTS['inbound_message'],
+            'desktop_notifications' => ((string) ($options['desktop_notifications'] ?? '0')) === '1',
+            'auto_dismiss_seconds' => max(0, (int) ($options['auto_dismiss_desktop_notifications_after'] ?? 0)),
+            'toast_auto_dismiss_seconds' => max(0, (int) ($options['notifications_toast_auto_dismiss_seconds'] ?? 4)),
+            'panel_retention_days' => max(0, (int) ($options['notifications_panel_retention_days'] ?? 7)),
+            'events' => self::REALTIME_EVENTS,
+            'channels' => [
+                'email' => ((string) ($options['notifications_email_enabled'] ?? '0')) === '1',
+                'sms' => ((string) ($options['notifications_sms_enabled'] ?? '0')) === '1',
+                'daily_summary' => ((string) ($options['notifications_daily_summary'] ?? '0')) === '1',
+            ],
+        ];
+    }
+
+    /**
+     * @param array<int,string> $keys
+     * @return array<string,string>
+     */
+    private function settingsOptions(array $keys): array
+    {
+        if ($keys === []) {
+            return [];
+        }
+
+        $placeholders = implode(',', array_fill(0, count($keys), '?'));
+        try {
+            $rows = DB::select(
+                'SELECT name, value FROM settings WHERE name IN (' . $placeholders . ')',
+                array_values($keys)
+            );
+        } catch (Throwable) {
+            return [];
+        }
+
+        $options = [];
+        foreach ($rows as $row) {
+            $name = (string) ($row->name ?? '');
+            if ($name === '') {
+                continue;
+            }
+            $options[$name] = (string) ($row->value ?? '');
+        }
+
+        return $options;
     }
 }

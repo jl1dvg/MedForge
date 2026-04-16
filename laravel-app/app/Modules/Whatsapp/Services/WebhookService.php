@@ -12,6 +12,7 @@ class WebhookService
     public function __construct(
         private readonly WhatsappConfigService $configService = new WhatsappConfigService(),
         private readonly FlowRuntimeShadowObserverService $shadowObserver = new FlowRuntimeShadowObserverService(),
+        private readonly WhatsappRealtimeService $realtime = new WhatsappRealtimeService(),
     ) {
     }
 
@@ -207,9 +208,14 @@ class WebhookService
         $body = $this->extractText($message);
         $timestamp = $this->resolveTimestamp($message['timestamp'] ?? null) ?? now()->toImmutable();
         $displayName = trim((string) ($message['profile']['name'] ?? ''));
-        $inboxBody = $body !== null && trim($body) !== '' ? $body : '[' . $type . ']';
+        $mediaPreview = $this->extractMediaPreview($message, $type);
+        $previewText = $body !== null && trim($body) !== '' ? $body : $mediaPreview;
+        $inboxBody = $previewText !== null && trim($previewText) !== '' ? $previewText : '[' . $type . ']';
 
-        DB::transaction(function () use ($number, $displayName, $type, $body, $timestamp, $messageId, $message, $inboxBody): void {
+        $persistedConversation = null;
+        $persistedMessage = null;
+
+        DB::transaction(function () use ($number, $displayName, $type, $body, $timestamp, $messageId, $message, $inboxBody, $previewText, &$persistedConversation, &$persistedMessage): void {
             $conversation = WhatsappConversation::query()->firstOrNew([
                 'wa_number' => $number,
             ]);
@@ -223,11 +229,11 @@ class WebhookService
             $conversation->last_message_at = $timestamp;
             $conversation->last_message_direction = 'inbound';
             $conversation->last_message_type = $type;
-            $conversation->last_message_preview = $body !== null ? mb_substr($body, 0, 512) : null;
+            $conversation->last_message_preview = $previewText !== null ? mb_substr($previewText, 0, 512) : null;
             $conversation->unread_count = (int) $conversation->unread_count + 1;
             $conversation->save();
 
-            WhatsappMessage::query()->create([
+            $persistedMessage = WhatsappMessage::query()->create([
                 'conversation_id' => $conversation->id,
                 'wa_message_id' => $messageId !== '' ? $messageId : null,
                 'direction' => 'inbound',
@@ -247,7 +253,13 @@ class WebhookService
                 'payload' => json_encode($message, JSON_UNESCAPED_UNICODE),
                 'created_at' => $timestamp->toDateTimeString(),
             ]);
+
+            $persistedConversation = $conversation;
         });
+
+        if ($persistedConversation instanceof WhatsappConversation && $persistedMessage instanceof WhatsappMessage) {
+            $this->realtime->broadcastInboundMessage($persistedConversation, $persistedMessage);
+        }
 
         return true;
     }
@@ -344,5 +356,32 @@ class WebhookService
         }
 
         return null;
+    }
+
+    /**
+     * @param array<string, mixed> $message
+     */
+    private function extractMediaPreview(array $message, string $type): ?string
+    {
+        if (!in_array($type, ['image', 'video', 'document', 'audio'], true)) {
+            return null;
+        }
+
+        $media = is_array($message[$type] ?? null) ? $message[$type] : [];
+        $caption = trim((string) ($media['caption'] ?? ''));
+        if ($caption !== '') {
+            return $caption;
+        }
+
+        $filename = trim((string) ($media['filename'] ?? ''));
+        if ($filename !== '') {
+            return $filename;
+        }
+
+        if ($type === 'audio' && !empty($media['voice'])) {
+            return '[voice]';
+        }
+
+        return '[' . $type . ']';
     }
 }

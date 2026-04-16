@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Models\WhatsappConversation;
 use App\Models\WhatsappMessage;
 use App\Models\Role;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Schema;
@@ -30,9 +31,9 @@ class ConversationReadService
         $query = $this->baseVisibleQuery($viewerUserId, $includeAssignedOthers, $assignedUserId, $roleId);
         $query = $this->applyFilter($query, $filter, $viewerUserId);
         $query = $this->applySearch($query, $search);
+        $query = $this->applyPriorityOrdering($query, $viewerUserId);
 
         return $query
-            ->orderByDesc('last_message_at')
             ->orderByDesc('id')
             ->paginate($perPage);
     }
@@ -91,9 +92,11 @@ class ConversationReadService
             'all' => (clone $base)->count(),
             'unread' => (clone $base)->where('unread_count', '>', 0)->count(),
             'mine' => $viewerUserId !== null && $viewerUserId > 0
-                ? (clone $base)->where('assigned_user_id', $viewerUserId)->count()
+                ? (clone $base)->where('assigned_user_id', $viewerUserId)->where('needs_human', true)->count()
                 : 0,
-            'handoff' => (clone $base)->where('needs_human', true)->count(),
+            'handoff' => (clone $base)->where('needs_human', true)->whereNull('assigned_user_id')->count(),
+            'window_open' => $this->applyWindowOpenFilter((clone $base)->where('needs_human', true))->count(),
+            'needs_template' => $this->applyNeedsTemplateFilter((clone $base)->where('needs_human', true))->count(),
             'resolved' => (clone $base)->where('needs_human', false)->count(),
         ];
     }
@@ -121,18 +124,7 @@ class ConversationReadService
         $messages = $conversation->whatsapp_messages
             ->sortBy('id')
             ->values()
-            ->map(fn (WhatsappMessage $message): array => [
-                'id' => $message->id,
-                'wa_message_id' => $message->wa_message_id,
-                'direction' => $message->direction,
-                'message_type' => $message->message_type,
-                'body' => $message->body,
-                'status' => $message->status,
-                'message_timestamp' => optional($message->message_timestamp)?->toISOString(),
-                'sent_at' => optional($message->sent_at)?->toISOString(),
-                'delivered_at' => optional($message->delivered_at)?->toISOString(),
-                'read_at' => optional($message->read_at)?->toISOString(),
-            ])
+            ->map(fn (WhatsappMessage $message): array => $this->serializeMessage($message))
             ->all();
 
         $assignedUsers = $this->resolveAssignedUsers([(int) $conversation->assigned_user_id]);
@@ -178,6 +170,9 @@ class ConversationReadService
             'handoff_role_name' => $handoffRoleName,
             'ownership_state' => $this->resolveOwnershipState($conversation, $viewerUserId),
             'ownership_label' => $this->resolveOwnershipLabel($conversation, $viewerUserId, $assignedUser, $handoffRoleName),
+            'messaging_window_state' => $this->resolveMessagingWindowState($conversation),
+            'messaging_window_label' => $this->resolveMessagingWindowLabel($conversation),
+            'can_send_freeform' => $this->resolveMessagingWindowState($conversation) === 'window_open',
             'assigned_at' => optional($conversation->assigned_at)?->toISOString(),
             'handoff_requested_at' => optional($conversation->handoff_requested_at)?->toISOString(),
             'unread_count' => (int) $conversation->unread_count,
@@ -192,7 +187,13 @@ class ConversationReadService
         ?int $roleId = null,
     ): Builder
     {
-        $query = WhatsappConversation::query();
+        $query = WhatsappConversation::query()
+            ->select('whatsapp_conversations.*')
+            ->withMax([
+                'whatsapp_messages as latest_inbound_at' => function ($query): void {
+                    $query->where('direction', 'inbound');
+                },
+            ], 'message_timestamp');
 
         if (!$includeAssignedOthers && $viewerUserId !== null && $viewerUserId > 0) {
             $query->where(function (Builder $builder) use ($viewerUserId): void {
@@ -239,12 +240,66 @@ class ConversationReadService
         return match (trim($filter) !== '' ? trim($filter) : 'all') {
             'unread' => $query->where('unread_count', '>', 0),
             'mine' => $viewerUserId !== null && $viewerUserId > 0
-                ? $query->where('assigned_user_id', $viewerUserId)
+                ? $query->where('assigned_user_id', $viewerUserId)->where('needs_human', true)
                 : $query->whereRaw('1 = 0'),
-            'handoff' => $query->where('needs_human', true),
+            'handoff', 'pending' => $query->where('needs_human', true)->whereNull('assigned_user_id'),
+            'window_open' => $this->applyWindowOpenFilter($query->where('needs_human', true)),
+            'needs_template' => $this->applyNeedsTemplateFilter($query->where('needs_human', true)),
             'resolved' => $query->where('needs_human', false),
             default => $query,
         };
+    }
+
+    private function applyPriorityOrdering(Builder $query, ?int $viewerUserId): Builder
+    {
+        $threshold = $this->windowThreshold()->format('Y-m-d H:i:s');
+        $viewerUserId = $viewerUserId !== null && $viewerUserId > 0 ? $viewerUserId : 0;
+
+        return $query
+            ->orderByRaw(
+                'CASE
+                    WHEN needs_human = 1 AND assigned_user_id IS NULL AND unread_count > 0 THEN 120
+                    WHEN needs_human = 1 AND assigned_user_id IS NULL THEN 110
+                    WHEN ? > 0 AND needs_human = 1 AND assigned_user_id = ? AND unread_count > 0 THEN 100
+                    WHEN ? > 0 AND needs_human = 1 AND assigned_user_id = ? THEN 90
+                    WHEN needs_human = 1 AND unread_count > 0 AND latest_inbound_at IS NOT NULL AND latest_inbound_at >= ? THEN 80
+                    WHEN needs_human = 1 AND latest_inbound_at IS NOT NULL AND latest_inbound_at >= ? THEN 70
+                    WHEN needs_human = 1 AND unread_count > 0 THEN 60
+                    WHEN needs_human = 1 THEN 50
+                    ELSE 10
+                END DESC',
+                [$viewerUserId, $viewerUserId, $viewerUserId, $viewerUserId, $threshold, $threshold]
+            )
+            ->orderByDesc('unread_count')
+            ->orderByDesc('last_message_at');
+    }
+
+    private function applyWindowOpenFilter(Builder $query): Builder
+    {
+        $threshold = $this->windowThreshold()->format('Y-m-d H:i:s');
+
+        return $query->whereExists(function ($subquery) use ($threshold): void {
+            $subquery
+                ->selectRaw('1')
+                ->from('whatsapp_messages as wm')
+                ->whereColumn('wm.conversation_id', 'whatsapp_conversations.id')
+                ->where('wm.direction', 'inbound')
+                ->whereRaw('COALESCE(wm.message_timestamp, wm.created_at) >= ?', [$threshold]);
+        });
+    }
+
+    private function applyNeedsTemplateFilter(Builder $query): Builder
+    {
+        $threshold = $this->windowThreshold()->format('Y-m-d H:i:s');
+
+        return $query->whereNotExists(function ($subquery) use ($threshold): void {
+            $subquery
+                ->selectRaw('1')
+                ->from('whatsapp_messages as wm')
+                ->whereColumn('wm.conversation_id', 'whatsapp_conversations.id')
+                ->where('wm.direction', 'inbound')
+                ->whereRaw('COALESCE(wm.message_timestamp, wm.created_at) >= ?', [$threshold]);
+        });
     }
 
     /**
@@ -292,6 +347,43 @@ class ConversationReadService
             ->all();
     }
 
+    /**
+     * @return array<string, mixed>
+     */
+    private function serializeMessage(WhatsappMessage $message): array
+    {
+        $rawPayload = is_array($message->raw_payload) ? $message->raw_payload : [];
+        $messageType = (string) ($message->message_type ?? 'text');
+        $media = is_array($rawPayload[$messageType] ?? null) ? $rawPayload[$messageType] : [];
+        $isMedia = in_array($messageType, ['image', 'video', 'document', 'audio'], true);
+        $mediaId = $isMedia ? trim((string) ($media['id'] ?? '')) : '';
+        $directLink = $isMedia ? trim((string) ($media['link'] ?? '')) : '';
+        $caption = trim((string) ($media['caption'] ?? ''));
+        $filename = trim((string) ($media['filename'] ?? ''));
+        $mimeType = trim((string) ($media['mime_type'] ?? ''));
+
+        return [
+            'id' => $message->id,
+            'wa_message_id' => $message->wa_message_id,
+            'direction' => $message->direction,
+            'message_type' => $message->message_type,
+            'body' => $message->body,
+            'status' => $message->status,
+            'message_timestamp' => optional($message->message_timestamp)?->toISOString(),
+            'sent_at' => optional($message->sent_at)?->toISOString(),
+            'delivered_at' => optional($message->delivered_at)?->toISOString(),
+            'read_at' => optional($message->read_at)?->toISOString(),
+            'media' => $isMedia ? [
+                'id' => $mediaId !== '' ? $mediaId : null,
+                'mime_type' => $mimeType !== '' ? $mimeType : null,
+                'filename' => $filename !== '' ? $filename : null,
+                'caption' => $caption !== '' ? $caption : null,
+                'voice' => (bool) ($media['voice'] ?? false),
+                'download_url' => $mediaId !== '' || $directLink !== '' ? '/v2/whatsapp/api/messages/' . $message->id . '/media' : null,
+            ] : null,
+        ];
+    }
+
     private function resolveOwnershipState(WhatsappConversation $conversation, ?int $viewerUserId): string
     {
         if (!(bool) $conversation->needs_human) {
@@ -308,6 +400,32 @@ class ConversationReadService
         }
 
         return 'assigned';
+    }
+
+    private function resolveMessagingWindowState(WhatsappConversation $conversation): string
+    {
+        $latestInbound = $conversation->getAttribute('latest_inbound_at');
+        if ($latestInbound === null || $latestInbound === '') {
+            return 'needs_template';
+        }
+
+        $latestInboundAt = CarbonImmutable::parse((string) $latestInbound);
+
+        return $latestInboundAt->greaterThanOrEqualTo($this->windowThreshold())
+            ? 'window_open'
+            : 'needs_template';
+    }
+
+    private function resolveMessagingWindowLabel(WhatsappConversation $conversation): string
+    {
+        return $this->resolveMessagingWindowState($conversation) === 'window_open'
+            ? '24h abierta'
+            : 'Requiere plantilla';
+    }
+
+    private function windowThreshold(): CarbonImmutable
+    {
+        return now()->toImmutable()->subHours(24);
     }
 
     /**

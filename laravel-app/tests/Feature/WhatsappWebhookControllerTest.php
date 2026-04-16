@@ -319,6 +319,83 @@ class WhatsappWebhookControllerTest extends TestCase
         ]);
     }
 
+    public function test_it_persists_media_preview_for_inbound_document_and_voice_note(): void
+    {
+        $payload = [
+            'entry' => [[
+                'changes' => [[
+                    'value' => [
+                        'contacts' => [[
+                            'wa_id' => '593999111333',
+                            'profile' => ['name' => 'Paciente Media'],
+                        ]],
+                        'messages' => [
+                            [
+                                'from' => '593999111333',
+                                'id' => 'wamid.media.doc',
+                                'timestamp' => '1712745600',
+                                'type' => 'document',
+                                'document' => [
+                                    'id' => 'doc-media-id',
+                                    'mime_type' => 'application/pdf',
+                                    'filename' => 'orden-medica.pdf',
+                                ],
+                            ],
+                            [
+                                'from' => '593999111333',
+                                'id' => 'wamid.media.voice',
+                                'timestamp' => '1712745660',
+                                'type' => 'audio',
+                                'audio' => [
+                                    'id' => 'audio-media-id',
+                                    'mime_type' => 'audio/ogg',
+                                    'voice' => true,
+                                ],
+                            ],
+                        ],
+                    ],
+                ]],
+            ]],
+        ];
+
+        $this->postJson('/whatsapp/webhook', $payload)
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('data.messages_persisted', 2);
+
+        $this->assertDatabaseHas('whatsapp_messages', [
+            'wa_message_id' => 'wamid.media.doc',
+            'message_type' => 'document',
+            'body' => null,
+        ]);
+
+        $this->assertDatabaseHas('whatsapp_messages', [
+            'wa_message_id' => 'wamid.media.voice',
+            'message_type' => 'audio',
+            'body' => null,
+        ]);
+
+        $this->assertDatabaseHas('whatsapp_inbox_messages', [
+            'message_id' => 'wamid.media.doc',
+            'message_type' => 'document',
+            'message_body' => 'orden-medica.pdf',
+        ]);
+
+        $this->assertDatabaseHas('whatsapp_inbox_messages', [
+            'message_id' => 'wamid.media.voice',
+            'message_type' => 'audio',
+            'message_body' => '[voice]',
+        ]);
+
+        $conversation = \DB::table('whatsapp_conversations')
+            ->where('wa_number', '593999111333')
+            ->first();
+
+        $this->assertSame('audio', $conversation?->last_message_type);
+        $this->assertSame('[voice]', $conversation?->last_message_preview);
+        $this->assertSame(2, $conversation?->unread_count);
+    }
+
     public function test_it_backfills_shadow_runs_from_inbound_messages_table(): void
     {
         config()->set('whatsapp.migration.automation.enabled', true);
