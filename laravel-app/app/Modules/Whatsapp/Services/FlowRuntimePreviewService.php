@@ -9,6 +9,7 @@ class FlowRuntimePreviewService
 {
     public function __construct(
         private readonly FlowmakerService $flowmakerService = new FlowmakerService(),
+        private readonly FlowAiAgentPreviewService $aiAgentPreviewService = new FlowAiAgentPreviewService(),
     ) {
     }
 
@@ -56,7 +57,7 @@ class FlowRuntimePreviewService
                 continue;
             }
 
-            $result = $this->simulateActions($scenario['actions'] ?? [], $context);
+            $result = $this->simulateActions($scenario['actions'] ?? [], $context, $input, (string) ($scenario['id'] ?? ''));
 
             return [
                 'ok' => true,
@@ -140,13 +141,14 @@ class FlowRuntimePreviewService
     /**
      * @param array<int, mixed> $actions
      * @param array<string, mixed> $context
+     * @param array<string, mixed> $input
      * @return array{actions: array<int, array<string, mixed>>, context: array<string, mixed>}
      */
-    private function simulateActions(array $actions, array $context): array
+    private function simulateActions(array $actions, array $context, array $input, string $scenarioId): array
     {
         $emitted = [];
 
-        foreach ($actions as $action) {
+        foreach ($actions as $index => $action) {
             if (!is_array($action)) {
                 continue;
             }
@@ -204,6 +206,38 @@ class FlowRuntimePreviewService
 
             if ($type === 'conditional') {
                 $emitted[] = ['type' => $type, 'condition' => $action['condition'] ?? null];
+                continue;
+            }
+
+            if ($type === 'ai_agent') {
+                $preview = $this->aiAgentPreviewService->preview(
+                    array_merge($action, [
+                        'scenario_id' => $scenarioId,
+                        'action_index' => $index,
+                    ]),
+                    $input,
+                    $context
+                );
+                $context = is_array($preview['context_after'] ?? null) ? $preview['context_after'] : $context;
+                if (!empty($preview['suggested_handoff'])) {
+                    $context['handoff_requested'] = true;
+                    $context['handoff_note'] = 'AI Agent sugirió handoff por baja confianza o regla del nodo.';
+                }
+                $emitted[] = [
+                    'type' => $type,
+                    'response' => $preview['response'] ?? null,
+                    'classification' => $preview['classification'] ?? null,
+                    'confidence' => $preview['confidence'] ?? null,
+                    'suggested_handoff' => (bool) ($preview['suggested_handoff'] ?? false),
+                    'sources' => array_map(
+                        static fn (array $document): array => [
+                            'id' => $document['id'] ?? null,
+                            'title' => $document['title'] ?? null,
+                        ],
+                        array_values(array_filter($preview['sources'] ?? [], 'is_array'))
+                    ),
+                    'run_id' => $preview['run_id'] ?? null,
+                ];
                 continue;
             }
 

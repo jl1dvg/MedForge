@@ -8,6 +8,8 @@ use App\Modules\Whatsapp\Http\Controllers\CampaignWriteController;
 use App\Modules\Whatsapp\Http\Controllers\FlowmakerReadController;
 use App\Modules\Whatsapp\Http\Controllers\FlowmakerWriteController;
 use App\Modules\Whatsapp\Http\Controllers\KpiReadController;
+use App\Modules\Whatsapp\Http\Controllers\KnowledgeBaseReadController;
+use App\Modules\Whatsapp\Http\Controllers\KnowledgeBaseWriteController;
 use App\Modules\Whatsapp\Http\Controllers\MediaReadController;
 use App\Modules\Whatsapp\Http\Controllers\MediaWriteController;
 use App\Modules\Whatsapp\Http\Controllers\ProductivityReadController;
@@ -41,6 +43,8 @@ Route::middleware([
     Route::get('/flowmaker/shadow-runs', [FlowmakerReadController::class, 'shadowRuns']);
     Route::get('/flowmaker/shadow-summary', [FlowmakerReadController::class, 'shadowSummary']);
     Route::get('/flowmaker/readiness', [FlowmakerReadController::class, 'readiness']);
+    Route::get('/flowmaker/ai-runs', [FlowmakerReadController::class, 'aiRuns']);
+    Route::get('/knowledge-base', [KnowledgeBaseReadController::class, 'index']);
     Route::get('/templates', [TemplateReadController::class, 'index']);
     Route::get('/templates/sync', [TemplateWriteController::class, 'syncLanding']);
 });
@@ -63,6 +67,7 @@ Route::middleware([
     Route::post('/presence', [ConversationOpsController::class, 'updatePresence']);
     Route::post('/handoffs/requeue-expired', [ConversationOpsController::class, 'requeueExpired']);
     Route::post('/flowmaker/publish', [FlowmakerWriteController::class, 'publish']);
+    Route::post('/knowledge-base', [KnowledgeBaseWriteController::class, 'store']);
     Route::post('/quick-replies', [ProductivityWriteController::class, 'storeQuickReply']);
     Route::post('/templates', [TemplateWriteController::class, 'store']);
     Route::post('/templates/clone', [TemplateWriteController::class, 'clone']);

@@ -7,6 +7,12 @@
     $versions = is_array($flowmaker['versions'] ?? null) ? $flowmaker['versions'] : [];
     $stats = is_array($flowmaker['stats'] ?? null) ? $flowmaker['stats'] : [];
     $sessions = is_array($flowmaker['sessions'] ?? null) ? $flowmaker['sessions'] : [];
+    $aiAgentPreview = is_array($aiAgentPreview ?? null) ? $aiAgentPreview : [];
+    $aiAgentStats = is_array($aiAgentPreview['stats'] ?? null) ? $aiAgentPreview['stats'] : [];
+    $aiAgentRuns = is_array($aiAgentPreview['runs'] ?? null) ? $aiAgentPreview['runs'] : [];
+    $knowledgeBase = is_array($knowledgeBase ?? null) ? $knowledgeBase : [];
+    $knowledgeStats = is_array($knowledgeBase['stats'] ?? null) ? $knowledgeBase['stats'] : [];
+    $knowledgeDocuments = is_array($knowledgeBase['documents'] ?? null) ? $knowledgeBase['documents'] : [];
     $contract = is_array($contract ?? null) ? $contract : [];
     $schema = is_array($contract['schema'] ?? null) ? $contract['schema'] : [];
     $scenarios = is_array($schema['scenarios'] ?? null) ? array_values(array_filter($schema['scenarios'], 'is_array')) : [];
@@ -644,6 +650,72 @@
         line-height: 1.65;
         white-space: pre-wrap;
     }
+    .wa-kb-grid {
+        display: grid;
+        grid-template-columns: 1.1fr .9fr;
+        gap: 18px;
+    }
+    .wa-kb-list {
+        display: grid;
+        gap: 10px;
+        max-height: 420px;
+        overflow: auto;
+    }
+    .wa-kb-card {
+        border: 1px solid rgba(148, 163, 184, .16);
+        border-radius: 18px;
+        background: #fff;
+        padding: 14px;
+    }
+    .wa-kb-card__title {
+        font-size: 15px;
+        font-weight: 800;
+        color: #0f172a;
+        line-height: 1.2;
+    }
+    .wa-kb-card__summary {
+        margin-top: .5rem;
+        font-size: 13px;
+        color: #475569;
+        line-height: 1.55;
+    }
+    .wa-kb-card__meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: .35rem;
+        margin-top: .65rem;
+    }
+    .wa-ai-run-card {
+        border-radius: 18px;
+        border: 1px solid rgba(148, 163, 184, .18);
+        background: linear-gradient(180deg, #fff 0%, #f8fafc 100%);
+        padding: 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+    .wa-ai-run-card__top {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        align-items: flex-start;
+    }
+    .wa-ai-run-card__title {
+        font-size: 14px;
+        font-weight: 700;
+        color: #0f172a;
+    }
+    .wa-ai-run-card__meta,
+    .wa-ai-run-card__response {
+        font-size: 12px;
+        color: #64748b;
+        line-height: 1.5;
+    }
+    .wa-ai-run-card__sources {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
     .wa-flow-timeline__item {
         border-left: 3px solid rgba(15, 118, 110, .35);
         padding-left: .75rem;
@@ -707,6 +779,9 @@
             grid-template-columns: 1fr;
         }
         .wa-flow-version-compare__grid {
+            grid-template-columns: 1fr;
+        }
+        .wa-kb-grid {
             grid-template-columns: 1fr;
         }
     }
@@ -970,6 +1045,165 @@
                             </div>
                         </div>
                     </div>
+
+                    <div class="wa-flow-panel">
+                        <div class="wa-flow-panel__head">
+                            <div class="wa-flow-sideheading__title">Knowledge Base IA</div>
+                            <div class="wa-flow-sideheading__meta">Base documental inicial para FAQs, sedes, seguros, pre y post operatorios, lista para alimentar el nodo AI Agent.</div>
+                        </div>
+                        <div class="wa-flow-panel__body">
+                            <div class="wa-flow-kpis mb-15">
+                                <div class="wa-flow-kpi">
+                                    <div class="wa-flow-kpi__label">Documentos</div>
+                                    <div class="wa-flow-kpi__value" id="wa-kb-total">{{ $knowledgeStats['total'] ?? 0 }}</div>
+                                    <div class="wa-flow-kpi__sub">Base total indexada</div>
+                                </div>
+                                <div class="wa-flow-kpi">
+                                    <div class="wa-flow-kpi__label">Publicados</div>
+                                    <div class="wa-flow-kpi__value" id="wa-kb-published">{{ $knowledgeStats['published'] ?? 0 }}</div>
+                                    <div class="wa-flow-kpi__sub">Listos para consulta</div>
+                                </div>
+                                <div class="wa-flow-kpi">
+                                    <div class="wa-flow-kpi__label">Draft</div>
+                                    <div class="wa-flow-kpi__value" id="wa-kb-draft">{{ $knowledgeStats['draft'] ?? 0 }}</div>
+                                    <div class="wa-flow-kpi__sub">Pendientes de curación</div>
+                                </div>
+                                <div class="wa-flow-kpi">
+                                    <div class="wa-flow-kpi__label">Fuentes</div>
+                                    <div class="wa-flow-kpi__value" id="wa-kb-sources">{{ $knowledgeStats['sources'] ?? 0 }}</div>
+                                    <div class="wa-flow-kpi__sub">Tipos de origen documentado</div>
+                                </div>
+                            </div>
+
+                            <div class="wa-kb-grid">
+                                <div>
+                                    <div class="wa-flow-section-title">Documentos recientes</div>
+                                    <div class="wa-kb-list" id="wa-kb-list">
+                                        @forelse($knowledgeDocuments as $document)
+                                            <div class="wa-kb-card">
+                                                <div class="wa-kb-card__title">{{ $document['title'] ?? 'Documento KB' }}</div>
+                                                <div class="wa-kb-card__summary">{{ $document['summary'] ?? 'Sin resumen.' }}</div>
+                                                <div class="wa-kb-card__meta">
+                                                    <span class="wa-flow-badge wa-flow-badge--stage">{{ $document['status'] ?? 'draft' }}</span>
+                                                    <span class="wa-flow-badge wa-flow-badge--count">{{ $document['metadata']['tipo_contenido'] ?? 'faq' }}</span>
+                                                    <span class="wa-flow-badge wa-flow-badge--count">{{ $document['metadata']['audiencia'] ?? 'paciente' }}</span>
+                                                    <span class="wa-flow-badge wa-flow-badge--count">{{ $document['metadata']['sede'] ?? 'global' }}</span>
+                                                </div>
+                                            </div>
+                                        @empty
+                                            <div class="wa-flow-empty">Todavía no hay documentos en la Knowledge Base.</div>
+                                        @endforelse
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <div class="wa-flow-section-title">Alta rápida de documento</div>
+                                    <div class="wa-flow-stack">
+                                        <div class="wa-flow-form-grid">
+                                            <div class="wa-flow-editor-field">
+                                                <label>Título</label>
+                                                <input type="text" id="wa-kb-title" placeholder="Consentimiento y uso de datos">
+                                            </div>
+                                            <div class="wa-flow-editor-field">
+                                                <label>Estado</label>
+                                                <select id="wa-kb-status">
+                                                    <option value="draft">draft</option>
+                                                    <option value="published">published</option>
+                                                </select>
+                                            </div>
+                                            <div class="wa-flow-editor-field">
+                                                <label>Sede</label>
+                                                <input type="text" id="wa-kb-sede" placeholder="Matriz">
+                                            </div>
+                                            <div class="wa-flow-editor-field">
+                                                <label>Especialidad</label>
+                                                <input type="text" id="wa-kb-especialidad" placeholder="Oftalmología">
+                                            </div>
+                                            <div class="wa-flow-editor-field">
+                                                <label>Tipo de contenido</label>
+                                                <select id="wa-kb-type">
+                                                    <option value="faq">faq</option>
+                                                    <option value="policy">policy</option>
+                                                    <option value="preoperatorio">preoperatorio</option>
+                                                    <option value="postoperatorio">postoperatorio</option>
+                                                    <option value="seguros">seguros</option>
+                                                    <option value="consentimiento">consentimiento</option>
+                                                </select>
+                                            </div>
+                                            <div class="wa-flow-editor-field">
+                                                <label>Audiencia</label>
+                                                <select id="wa-kb-audiencia">
+                                                    <option value="paciente">paciente</option>
+                                                    <option value="agente">agente</option>
+                                                    <option value="supervisor">supervisor</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="wa-flow-editor-field">
+                                            <label>Contenido</label>
+                                            <textarea id="wa-kb-content" placeholder="Texto base para grounding controlado del AI Agent."></textarea>
+                                        </div>
+                                        <div class="d-flex flex-wrap gap-10 align-items-center">
+                                            <button type="button" class="btn btn-primary" id="wa-kb-save-btn">Guardar documento KB</button>
+                                            <span class="small text-muted" id="wa-kb-status-node">La base documental todavía no tiene integración con AI Agent.</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="wa-flow-panel">
+                        <div class="wa-flow-panel__head">
+                            <div class="wa-flow-sideheading__title">AI Agent preview</div>
+                            <div class="wa-flow-sideheading__meta">Runs recientes del nodo `AI Agent` en modo preview. Todavía no ejecuta webhook real ni tools sensibles.</div>
+                        </div>
+                        <div class="wa-flow-panel__body">
+                            <div class="wa-flow-kpis mb-15">
+                                <div class="wa-flow-kpi">
+                                    <div class="wa-flow-kpi__label">Runs</div>
+                                    <div class="wa-flow-kpi__value" id="wa-ai-total">{{ $aiAgentStats['total_runs'] ?? 0 }}</div>
+                                    <div class="wa-flow-kpi__sub">Preview persistido</div>
+                                </div>
+                                <div class="wa-flow-kpi">
+                                    <div class="wa-flow-kpi__label">Handoff sugerido</div>
+                                    <div class="wa-flow-kpi__value" id="wa-ai-handoff">{{ $aiAgentStats['handoff_suggested'] ?? 0 }}</div>
+                                    <div class="wa-flow-kpi__sub">Por baja confianza</div>
+                                </div>
+                                <div class="wa-flow-kpi">
+                                    <div class="wa-flow-kpi__label">Alta confianza</div>
+                                    <div class="wa-flow-kpi__value" id="wa-ai-high">{{ $aiAgentStats['high_confidence'] ?? 0 }}</div>
+                                    <div class="wa-flow-kpi__sub">>= 0.75</div>
+                                </div>
+                                <div class="wa-flow-kpi">
+                                    <div class="wa-flow-kpi__label">Confianza media</div>
+                                    <div class="wa-flow-kpi__value" id="wa-ai-avg">{{ $aiAgentStats['avg_confidence'] ?? 0 }}</div>
+                                    <div class="wa-flow-kpi__sub">Preview</div>
+                                </div>
+                            </div>
+                            <div class="wa-kb-list" id="wa-ai-runs-list">
+                                @forelse($aiAgentRuns as $run)
+                                    <div class="wa-ai-run-card">
+                                        <div class="wa-ai-run-card__top">
+                                            <div>
+                                                <div class="wa-ai-run-card__title">{{ $run['scenario_id'] ?? 'AI Agent' }} · {{ $run['classification'] ?? 'general' }}</div>
+                                                <div class="wa-ai-run-card__meta">{{ $run['wa_number'] ?? 'sin número' }} · conf {{ $run['confidence'] ?? 0 }} · {{ $run['created_at'] ?? '—' }}</div>
+                                            </div>
+                                            <span class="wa-flow-node-badge wa-flow-node-badge--{{ !empty($run['suggested_handoff']) ? 'warning' : 'match' }}">{{ !empty($run['suggested_handoff']) ? 'handoff sugerido' : 'preview ok' }}</span>
+                                        </div>
+                                        <div class="wa-ai-run-card__response">{{ $run['response_text'] ?? 'Sin respuesta sugerida todavía.' }}</div>
+                                        <div class="wa-ai-run-card__sources">
+                                            @foreach(($run['matched_documents'] ?? []) as $document)
+                                                <span class="wa-flow-badge wa-flow-badge--count">{{ $document['title'] ?? 'doc' }}</span>
+                                            @endforeach
+                                        </div>
+                                    </div>
+                                @empty
+                                    <div class="wa-flow-empty">Todavía no hay ejecuciones del nodo AI Agent.</div>
+                                @endforelse
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1008,6 +1242,25 @@ document.addEventListener('DOMContentLoaded', function () {
     const versionList = document.getElementById('wa-flow-version-list');
     const versionStats = document.getElementById('wa-flow-version-stats');
     const versionDiff = document.getElementById('wa-flow-version-diff');
+    const kbList = document.getElementById('wa-kb-list');
+    const kbSaveButton = document.getElementById('wa-kb-save-btn');
+    const kbStatusNode = document.getElementById('wa-kb-status-node');
+    const kbTitle = document.getElementById('wa-kb-title');
+    const kbContent = document.getElementById('wa-kb-content');
+    const kbStatus = document.getElementById('wa-kb-status');
+    const kbSede = document.getElementById('wa-kb-sede');
+    const kbEspecialidad = document.getElementById('wa-kb-especialidad');
+    const kbType = document.getElementById('wa-kb-type');
+    const kbAudiencia = document.getElementById('wa-kb-audiencia');
+    const kbTotal = document.getElementById('wa-kb-total');
+    const kbPublished = document.getElementById('wa-kb-published');
+    const kbDraft = document.getElementById('wa-kb-draft');
+    const kbSources = document.getElementById('wa-kb-sources');
+    const aiRunsList = document.getElementById('wa-ai-runs-list');
+    const aiTotal = document.getElementById('wa-ai-total');
+    const aiHandoff = document.getElementById('wa-ai-handoff');
+    const aiHigh = document.getElementById('wa-ai-high');
+    const aiAvg = document.getElementById('wa-ai-avg');
 
     let editorSchema = JSON.parse(JSON.stringify(initialSchema || {}));
     if (!Array.isArray(editorSchema.scenarios)) {
@@ -1018,6 +1271,14 @@ document.addEventListener('DOMContentLoaded', function () {
     let latestShadowRows = [];
     let latestSimulation = null;
     let latestCompare = null;
+    let knowledgeBaseState = {
+        documents: @json($knowledgeDocuments, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+        stats: @json($knowledgeStats, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+    };
+    let aiAgentState = {
+        runs: @json($aiAgentRuns, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+        stats: @json($aiAgentStats, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+    };
 
     const escapeHtml = (value) => {
         return String(value ?? '')
@@ -1035,6 +1296,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const actionLabel = (action) => {
         const type = String(action?.type || 'accion');
+        if (type === 'ai_agent') {
+            return 'AI Agent';
+        }
         return type.replaceAll('_', ' ');
     };
     const extractVersionFlow = (version) => {
@@ -1099,6 +1363,9 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         if (type === 'handoff_agent') {
             return 'handoff';
+        }
+        if (type === 'ai_agent') {
+            return 'template';
         }
         if (['set_state', 'set_context', 'store_consent'].includes(type)) {
             return 'state';
@@ -1217,6 +1484,111 @@ document.addEventListener('DOMContentLoaded', function () {
             </div>
         `;
         versionDiff.textContent = summarizeVersionDiff(draftFlow, versionFlow);
+    };
+    const renderKnowledgeBase = () => {
+        if (!kbList) {
+            return;
+        }
+        const documents = Array.isArray(knowledgeBaseState.documents) ? knowledgeBaseState.documents : [];
+        const stats = knowledgeBaseState.stats || {};
+
+        if (kbTotal) kbTotal.textContent = String(stats.total || 0);
+        if (kbPublished) kbPublished.textContent = String(stats.published || 0);
+        if (kbDraft) kbDraft.textContent = String(stats.draft || 0);
+        if (kbSources) kbSources.textContent = String(stats.sources || 0);
+
+        if (!documents.length) {
+            kbList.innerHTML = '<div class="wa-flow-empty">Todavía no hay documentos en la Knowledge Base.</div>';
+            return;
+        }
+
+        kbList.innerHTML = documents.map((document) => `
+            <div class="wa-kb-card">
+                <div class="wa-kb-card__title">${escapeHtml(document.title || 'Documento KB')}</div>
+                <div class="wa-kb-card__summary">${escapeHtml(document.summary || 'Sin resumen.')}</div>
+                <div class="wa-kb-card__meta">
+                    <span class="wa-flow-badge wa-flow-badge--stage">${escapeHtml(document.status || 'draft')}</span>
+                    <span class="wa-flow-badge wa-flow-badge--count">${escapeHtml(document.metadata?.tipo_contenido || 'faq')}</span>
+                    <span class="wa-flow-badge wa-flow-badge--count">${escapeHtml(document.metadata?.audiencia || 'paciente')}</span>
+                    <span class="wa-flow-badge wa-flow-badge--count">${escapeHtml(document.metadata?.sede || 'global')}</span>
+                </div>
+            </div>
+        `).join('');
+    };
+    const renderAiRuns = () => {
+        if (aiTotal) aiTotal.textContent = String(aiAgentState?.stats?.total_runs || 0);
+        if (aiHandoff) aiHandoff.textContent = String(aiAgentState?.stats?.handoff_suggested || 0);
+        if (aiHigh) aiHigh.textContent = String(aiAgentState?.stats?.high_confidence || 0);
+        if (aiAvg) aiAvg.textContent = String(aiAgentState?.stats?.avg_confidence || 0);
+        if (!aiRunsList) {
+            return;
+        }
+
+        const runs = Array.isArray(aiAgentState?.runs) ? aiAgentState.runs : [];
+        if (!runs.length) {
+            aiRunsList.innerHTML = '<div class="wa-flow-empty">Todavía no hay ejecuciones del nodo AI Agent.</div>';
+            return;
+        }
+
+        aiRunsList.innerHTML = runs.map((run) => `
+            <div class="wa-ai-run-card">
+                <div class="wa-ai-run-card__top">
+                    <div>
+                        <div class="wa-ai-run-card__title">${escapeHtml(run.scenario_id || 'AI Agent')} · ${escapeHtml(run.classification || 'general')}</div>
+                        <div class="wa-ai-run-card__meta">${escapeHtml(run.wa_number || 'sin número')} · conf ${escapeHtml(run.confidence ?? 0)} · ${escapeHtml(run.created_at || '—')}</div>
+                    </div>
+                    <span class="wa-flow-node-badge wa-flow-node-badge--${run.suggested_handoff ? 'warning' : 'match'}">${run.suggested_handoff ? 'handoff sugerido' : 'preview ok'}</span>
+                </div>
+                <div class="wa-ai-run-card__response">${escapeHtml(run.response_text || 'Sin respuesta sugerida todavía.')}</div>
+                <div class="wa-ai-run-card__sources">
+                    ${(Array.isArray(run.matched_documents) ? run.matched_documents : []).map((document) => `
+                        <span class="wa-flow-badge wa-flow-badge--count">${escapeHtml(document.title || 'doc')}</span>
+                    `).join('')}
+                </div>
+            </div>
+        `).join('');
+    };
+    const loadKnowledgeBase = async () => {
+        if (!kbList) {
+            return;
+        }
+        try {
+            const response = await fetch('/v2/whatsapp/api/knowledge-base?limit=8', {credentials: 'same-origin'});
+            const data = await response.json();
+            knowledgeBaseState = {
+                documents: Array.isArray(data?.data) ? data.data : [],
+                stats: data?.stats || {},
+            };
+            renderKnowledgeBase();
+        } catch (error) {
+            if (kbStatusNode) {
+                kbStatusNode.textContent = 'No fue posible cargar la Knowledge Base.';
+            }
+        }
+    };
+    const loadAiRuns = async () => {
+        try {
+            const response = await fetch('/v2/whatsapp/api/flowmaker/ai-runs?limit=8', {credentials: 'same-origin'});
+            const data = await response.json();
+            const runs = Array.isArray(data?.data) ? data.data : [];
+            aiAgentState = {
+                runs,
+                stats: {
+                    total_runs: runs.length,
+                    handoff_suggested: runs.filter((run) => Boolean(run?.suggested_handoff)).length,
+                    high_confidence: runs.filter((run) => Number(run?.confidence || 0) >= 0.75).length,
+                    avg_confidence: runs.length
+                        ? (runs.reduce((carry, run) => carry + Number(run?.confidence || 0), 0) / runs.length).toFixed(2)
+                        : '0.00',
+                },
+            };
+        } catch (error) {
+            aiAgentState = {
+                runs: Array.isArray(aiAgentState?.runs) ? aiAgentState.runs : [],
+                stats: aiAgentState?.stats || {},
+            };
+        }
+        renderAiRuns();
     };
 
     const syncPayloadField = () => {
@@ -1541,7 +1913,7 @@ document.addEventListener('DOMContentLoaded', function () {
             ? actions.map((action, index) => {
                 const messageBody = action?.message?.body ?? action?.message ?? '';
                 const templateName = action?.template?.name ?? action?.template ?? '';
-                const actionValue = messageBody || templateName || action?.state || '';
+                const actionValue = messageBody || templateName || action?.instructions || action?.state || '';
                 const type = String(action?.type || 'accion');
                 const tone = actionTone(type);
                 const isRuntimeHit = activeActionTypes.includes(type);
@@ -1561,7 +1933,7 @@ document.addEventListener('DOMContentLoaded', function () {
                         <div class="wa-flow-editor-field">
                             <label>Tipo</label>
                             <select data-action-field="${index}" data-field="type">
-                                ${['send_message','send_buttons','send_list','send_template','send_sequence','set_state','set_context','store_consent','handoff_agent'].map((type) => `
+                                ${['send_message','send_buttons','send_list','send_template','send_sequence','set_state','set_context','store_consent','handoff_agent','ai_agent'].map((type) => `
                                     <option value="${type}" ${action.type === type ? 'selected' : ''}>${type}</option>
                                 `).join('')}
                             </select>
@@ -1800,6 +2172,8 @@ document.addEventListener('DOMContentLoaded', function () {
                     const raw = node.value;
                     if (action.type === 'send_template') {
                         action.template = {name: raw};
+                    } else if (action.type === 'ai_agent') {
+                        action.instructions = raw;
                     } else if (action.type === 'set_state') {
                         action.state = raw;
                     } else {
@@ -1918,6 +2292,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 renderScenarioCanvas();
             }
             simOutput.textContent = `${formatSimulationSummary(data)}\n\n${JSON.stringify(data, null, 2)}`;
+            await loadAiRuns();
         } catch (error) {
             simOutput.textContent = 'No fue posible ejecutar la simulación.';
         }
@@ -2037,12 +2412,60 @@ document.addEventListener('DOMContentLoaded', function () {
     searchInput?.addEventListener('input', renderScenarioList);
     addScenarioButton?.addEventListener('click', addScenario);
     shadowRefreshButton?.addEventListener('click', loadShadowRuns);
+    kbSaveButton?.addEventListener('click', async function () {
+        if (!kbTitle || !kbContent) {
+            return;
+        }
+
+        kbStatusNode.textContent = 'Guardando documento KB...';
+        kbSaveButton.disabled = true;
+
+        try {
+            const response = await fetch('/v2/whatsapp/api/knowledge-base', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                },
+                body: JSON.stringify({
+                    title: kbTitle.value,
+                    content: kbContent.value,
+                    status: kbStatus?.value || 'draft',
+                    sede: kbSede?.value || '',
+                    especialidad: kbEspecialidad?.value || '',
+                    tipo_contenido: kbType?.value || 'faq',
+                    audiencia: kbAudiencia?.value || 'paciente',
+                    source_type: 'manual',
+                    source_label: 'Flowmaker KB',
+                }),
+            });
+            const data = await response.json();
+            if (!response.ok || !data?.ok) {
+                kbStatusNode.textContent = data?.error || 'No fue posible guardar el documento KB.';
+                return;
+            }
+
+            kbTitle.value = '';
+            kbContent.value = '';
+            kbStatusNode.textContent = 'Documento KB guardado correctamente.';
+            await loadKnowledgeBase();
+        } catch (error) {
+            kbStatusNode.textContent = 'No fue posible guardar el documento KB.';
+        } finally {
+            kbSaveButton.disabled = false;
+        }
+    });
 
     syncPayloadField();
     renderScenarioList();
     renderScenarioCanvas();
     renderVersionWorkspace();
+    renderKnowledgeBase();
+    renderAiRuns();
     loadShadowRuns();
+    loadKnowledgeBase();
+    loadAiRuns();
 });
 </script>
 @endpush

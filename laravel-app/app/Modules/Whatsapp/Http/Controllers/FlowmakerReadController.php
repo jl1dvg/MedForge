@@ -3,6 +3,7 @@
 namespace App\Modules\Whatsapp\Http\Controllers;
 
 use App\Modules\Whatsapp\Services\FlowmakerService;
+use App\Modules\Whatsapp\Services\FlowAiAgentPreviewService;
 use App\Modules\Whatsapp\Services\FlowRuntimePreviewService;
 use App\Modules\Whatsapp\Services\FlowRuntimeShadowCompareService;
 use App\Modules\Whatsapp\Services\FlowRuntimeShadowObserverService;
@@ -13,6 +14,7 @@ class FlowmakerReadController
 {
     public function __construct(
         private readonly FlowmakerService $service = new FlowmakerService(),
+        private readonly FlowAiAgentPreviewService $aiAgentService = new FlowAiAgentPreviewService(),
         private readonly FlowRuntimePreviewService $previewService = new FlowRuntimePreviewService(),
         private readonly FlowRuntimeShadowCompareService $compareService = new FlowRuntimeShadowCompareService(),
         private readonly FlowRuntimeShadowObserverService $shadowObserver = new FlowRuntimeShadowObserverService(),
@@ -74,6 +76,16 @@ class FlowmakerReadController
         return response()->json([
             'ok' => true,
             'data' => $this->shadowObserver->readiness($limit),
+        ]);
+    }
+
+    public function aiRuns(Request $request): JsonResponse
+    {
+        $limit = (int) $request->integer('limit', 8);
+
+        return response()->json([
+            'ok' => true,
+            'data' => $this->aiAgentService->recent($limit),
         ]);
     }
 

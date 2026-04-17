@@ -7,7 +7,9 @@ use App\Modules\Shared\Support\LegacyPermissionResolver;
 use App\Modules\Whatsapp\Services\ConversationOpsService;
 use App\Modules\Whatsapp\Services\ConversationReadService;
 use App\Modules\Whatsapp\Services\CampaignService;
+use App\Modules\Whatsapp\Services\FlowAiAgentPreviewService;
 use App\Modules\Whatsapp\Services\FlowmakerService;
+use App\Modules\Whatsapp\Services\KnowledgeBaseService;
 use App\Modules\Whatsapp\Services\KpiDashboardService;
 use App\Modules\Whatsapp\Services\ProductivityToolkitService;
 use App\Modules\Whatsapp\Services\TemplateCatalogService;
@@ -32,6 +34,8 @@ class WhatsappUiController
         private readonly TemplateCatalogService $templateCatalogService = new \App\Modules\Whatsapp\Services\TemplateCatalogService(),
         private readonly KpiDashboardService $kpiDashboardService = new \App\Modules\Whatsapp\Services\KpiDashboardService(),
         private readonly FlowmakerService $flowmakerService = new \App\Modules\Whatsapp\Services\FlowmakerService(),
+        private readonly FlowAiAgentPreviewService $aiAgentPreviewService = new \App\Modules\Whatsapp\Services\FlowAiAgentPreviewService(),
+        private readonly KnowledgeBaseService $knowledgeBaseService = new \App\Modules\Whatsapp\Services\KnowledgeBaseService(),
         private readonly ProductivityToolkitService $productivityToolkitService = new \App\Modules\Whatsapp\Services\ProductivityToolkitService(),
     ) {
     }
@@ -197,6 +201,8 @@ class WhatsappUiController
             'pageTitle' => 'WhatsApp V2 - Flowmaker',
             'flowmaker' => $this->flowmakerService->getOverview(),
             'contract' => $this->flowmakerService->getContract(),
+            'aiAgentPreview' => $this->aiAgentPreviewService->overview(),
+            'knowledgeBase' => $this->knowledgeBaseService->overview(),
         ]);
     }
 

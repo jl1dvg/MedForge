@@ -17,6 +17,8 @@ class WhatsappFlowmakerTest extends TestCase
         parent::setUp();
 
         foreach ([
+            'whatsapp_ai_agent_runs',
+            'whatsapp_knowledge_documents',
             'whatsapp_autoresponder_sessions',
             'whatsapp_autoresponder_step_transitions',
             'whatsapp_autoresponder_step_actions',
@@ -169,6 +171,40 @@ class WhatsappFlowmakerTest extends TestCase
             $table->timestamps();
         });
 
+        Schema::create('whatsapp_knowledge_documents', function (Blueprint $table): void {
+            $table->id();
+            $table->string('title', 191);
+            $table->string('slug', 191)->unique();
+            $table->text('summary')->nullable();
+            $table->longText('content');
+            $table->string('status', 32)->default('draft');
+            $table->string('source_type', 32)->default('manual');
+            $table->string('source_label', 191)->nullable();
+            $table->json('metadata')->nullable();
+            $table->unsignedBigInteger('created_by_user_id')->nullable();
+            $table->unsignedBigInteger('updated_by_user_id')->nullable();
+            $table->timestamp('published_at')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('whatsapp_ai_agent_runs', function (Blueprint $table): void {
+            $table->id();
+            $table->string('wa_number', 32)->nullable();
+            $table->string('scenario_id', 191)->nullable();
+            $table->unsignedInteger('action_index')->default(0);
+            $table->longText('input_text')->nullable();
+            $table->json('filters')->nullable();
+            $table->json('matched_documents')->nullable();
+            $table->longText('response_text')->nullable();
+            $table->string('classification', 64)->nullable();
+            $table->decimal('confidence', 5, 2)->default(0);
+            $table->boolean('suggested_handoff')->default(false);
+            $table->json('context_before')->nullable();
+            $table->json('context_after')->nullable();
+            $table->string('source', 32)->default('preview');
+            $table->timestamps();
+        });
+
         \DB::table('roles')->insert([
             'id' => 1,
             'name' => 'Call Center',
@@ -197,6 +233,26 @@ class WhatsappFlowmakerTest extends TestCase
             'context' => json_encode(['hc' => 'HC-001']),
             'last_payload' => json_encode(['body' => 'Hola']),
             'last_interaction_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        \DB::table('whatsapp_knowledge_documents')->insert([
+            'title' => 'FAQ Agenda',
+            'slug' => 'faq-agenda',
+            'summary' => 'Información operativa para agendar citas y orientar al paciente.',
+            'content' => 'Para agendar una cita se debe validar la sede, disponibilidad y antecedentes básicos del paciente.',
+            'status' => 'published',
+            'source_type' => 'manual',
+            'source_label' => 'Flowmaker KB',
+            'metadata' => json_encode([
+                'sede' => 'Matriz',
+                'especialidad' => 'Oftalmología',
+                'tipo_contenido' => 'faq',
+                'audiencia' => 'paciente',
+                'vigencia' => 'vigente',
+            ]),
+            'published_at' => now(),
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -327,7 +383,79 @@ class WhatsappFlowmakerTest extends TestCase
             ->assertSee('Simular mensaje')
             ->assertSee('Comparar con legacy')
             ->assertSee('Fase 6 está lista para cierre')
-            ->assertSee('Shadow runs recientes');
+            ->assertSee('Shadow runs recientes')
+            ->assertSee('AI Agent preview');
+    }
+
+    public function test_it_previews_ai_agent_actions_and_logs_runs(): void
+    {
+        $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->postJson('/v2/whatsapp/api/flowmaker/publish', [
+                'flow' => [
+                    'name' => 'AI Agent preview',
+                    'description' => 'Preview con KB',
+                    'settings' => ['timezone' => 'America/Guayaquil'],
+                    'scenarios' => [
+                        [
+                            'id' => 'faq_agenda',
+                            'name' => 'FAQ Agenda',
+                            'description' => 'Nodo IA',
+                            'stage' => 'custom',
+                            'conditions' => [
+                                ['type' => 'message_contains', 'keywords' => ['cita', 'agendar']],
+                            ],
+                            'actions' => [
+                                [
+                                    'type' => 'ai_agent',
+                                    'instructions' => 'Responder con grounding de agenda.',
+                                    'kb_filters' => [
+                                        'tipo_contenido' => 'faq',
+                                        'audiencia' => 'paciente',
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ])
+            ->assertOk();
+
+        $response = $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->getJson('/v2/whatsapp/api/flowmaker/simulate?wa_number=593999111222&text=quiero agendar una cita');
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('matched', true)
+            ->assertJsonPath('scenario.id', 'faq_agenda')
+            ->assertJsonPath('actions.0.type', 'ai_agent')
+            ->assertJsonPath('actions.0.classification', 'scheduling');
+
+        $this->assertDatabaseCount('whatsapp_ai_agent_runs', 1);
+
+        $runs = $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->getJson('/v2/whatsapp/api/flowmaker/ai-runs');
+
+        $runs
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('data.0.scenario_id', 'faq_agenda')
+            ->assertJsonPath('data.0.classification', 'scheduling');
     }
 
     public function test_it_lists_recent_shadow_runs(): void
