@@ -147,6 +147,78 @@ class CloudApiTransportService
         ];
     }
 
+    /**
+     * @param array<int, array<string, mixed>> $components
+     * @return array{wa_message_id:string,status:string,raw:array<string,mixed>}
+     */
+    public function sendTemplate(
+        string $phoneNumberId,
+        string $accessToken,
+        string $apiVersion,
+        string $recipient,
+        string $templateName,
+        string $languageCode,
+        array $components = [],
+    ): array {
+        if ((bool) config('whatsapp.transport.dry_run', false)) {
+            return [
+                'wa_message_id' => 'dry-run-' . bin2hex(random_bytes(8)),
+                'status' => 'accepted',
+                'raw' => [
+                    'ok' => true,
+                    'dry_run' => true,
+                    'type' => 'template',
+                    'template' => [
+                        'name' => $templateName,
+                        'language' => ['code' => $languageCode],
+                        'components' => $components,
+                    ],
+                ],
+            ];
+        }
+
+        $baseUrl = rtrim((string) config('whatsapp.transport.graph_base_url', 'https://graph.facebook.com'), '/');
+        $timeout = max(5, (int) config('whatsapp.transport.timeout', 15));
+        $endpoint = sprintf('%s/%s/%s/messages', $baseUrl, trim($apiVersion, '/'), rawurlencode($phoneNumberId));
+
+        $payload = [
+            'messaging_product' => 'whatsapp',
+            'to' => $recipient,
+            'type' => 'template',
+            'template' => [
+                'name' => $templateName,
+                'language' => [
+                    'code' => $languageCode,
+                ],
+            ],
+        ];
+
+        if ($components !== []) {
+            $payload['template']['components'] = $components;
+        }
+
+        $response = Http::timeout($timeout)
+            ->withToken($accessToken)
+            ->acceptJson()
+            ->post($endpoint, $payload);
+
+        $responsePayload = $response->json();
+        if (!$response->successful()) {
+            throw new RuntimeException('WhatsApp Cloud API error: ' . $response->status() . ' ' . json_encode($responsePayload, JSON_UNESCAPED_UNICODE));
+        }
+
+        $waMessageId = (string) data_get($responsePayload, 'messages.0.id', '');
+        if ($waMessageId === '') {
+            throw new RuntimeException('WhatsApp Cloud API respondió sin message id.');
+        }
+
+        return [
+            'wa_message_id' => $waMessageId,
+            'status' => 'accepted',
+            'raw' => is_array($responsePayload) ? $responsePayload : [],
+        ];
+    }
+
     private function uploadMediaAsset(
         string $phoneNumberId,
         string $accessToken,

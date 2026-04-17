@@ -22,6 +22,7 @@ class WhatsappChatUiTest extends TestCase
         Schema::dropIfExists('whatsapp_conversations');
         Schema::dropIfExists('whatsapp_quick_replies');
         Schema::dropIfExists('whatsapp_conversation_notes');
+        Schema::dropIfExists('whatsapp_message_templates');
 
         Schema::create('roles', function (Blueprint $table): void {
             $table->id();
@@ -106,6 +107,24 @@ class WhatsappChatUiTest extends TestCase
             $table->timestamps();
         });
 
+        Schema::create('whatsapp_message_templates', function (Blueprint $table): void {
+            $table->id();
+            $table->string('template_code');
+            $table->string('display_name');
+            $table->string('language')->default('es');
+            $table->string('category')->default('marketing');
+            $table->string('status')->default('approved');
+            $table->unsignedBigInteger('current_revision_id')->nullable();
+            $table->string('wa_business_account')->nullable();
+            $table->text('description')->nullable();
+            $table->timestamp('approval_requested_at')->nullable();
+            $table->timestamp('approved_at')->nullable();
+            $table->timestamp('rejected_at')->nullable();
+            $table->unsignedBigInteger('created_by')->nullable();
+            $table->unsignedBigInteger('updated_by')->nullable();
+            $table->timestamps();
+        });
+
         \DB::table('users')->insert([
             'id' => 40,
             'username' => 'agent.ui',
@@ -149,6 +168,16 @@ class WhatsappChatUiTest extends TestCase
             'updated_at' => now(),
         ]);
 
+        \DB::table('whatsapp_message_templates')->insert([
+            'id' => 12,
+            'template_code' => 'consent_request',
+            'display_name' => 'Consentimiento',
+            'language' => 'es',
+            'status' => 'approved',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
         config()->set('whatsapp.migration.enabled', true);
         config()->set('whatsapp.migration.ui.enabled', true);
         config()->set('whatsapp.migration.api.read_enabled', true);
@@ -169,6 +198,8 @@ class WhatsappChatUiTest extends TestCase
             ->assertSee('Inbox operativo')
             ->assertSee('Respuestas rápidas')
             ->assertSee('Notas internas')
+            ->assertSee('Nuevo chat')
+            ->assertSee('Nuevo chat con plantilla')
             ->assertSee('Saludo rápido')
             ->assertSee('Paciente pendiente de confirmación.');
     }

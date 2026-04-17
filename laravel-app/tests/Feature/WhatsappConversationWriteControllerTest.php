@@ -20,6 +20,10 @@ class WhatsappConversationWriteControllerTest extends TestCase
 
         Schema::dropIfExists('whatsapp_messages');
         Schema::dropIfExists('whatsapp_conversations');
+        Schema::dropIfExists('whatsapp_message_templates');
+        Schema::dropIfExists('whatsapp_contact_consent');
+        Schema::dropIfExists('crm_leads');
+        Schema::dropIfExists('patient_data');
         Schema::dropIfExists('app_settings');
         Schema::dropIfExists('users');
         Schema::dropIfExists('roles');
@@ -95,6 +99,86 @@ class WhatsappConversationWriteControllerTest extends TestCase
             $table->timestamps();
         });
 
+        Schema::create('whatsapp_message_templates', function (Blueprint $table): void {
+            $table->id();
+            $table->string('template_code');
+            $table->string('display_name');
+            $table->string('language')->default('es');
+            $table->string('category')->default('marketing');
+            $table->string('status')->default('approved');
+            $table->unsignedBigInteger('current_revision_id')->nullable();
+            $table->string('wa_business_account')->nullable();
+            $table->text('description')->nullable();
+            $table->timestamp('approval_requested_at')->nullable();
+            $table->timestamp('approved_at')->nullable();
+            $table->timestamp('rejected_at')->nullable();
+            $table->unsignedBigInteger('created_by')->nullable();
+            $table->unsignedBigInteger('updated_by')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('patient_data', function (Blueprint $table): void {
+            $table->id();
+            $table->string('hc_number')->nullable();
+            $table->dateTime('fecha_caducidad')->nullable();
+            $table->string('lname')->default('');
+            $table->string('lname2')->nullable();
+            $table->string('fname')->default('');
+            $table->string('mname')->nullable();
+            $table->string('afiliacion')->nullable();
+            $table->dateTime('fecha_nacimiento')->nullable();
+            $table->string('sexo')->nullable();
+            $table->string('celular')->nullable();
+            $table->string('ciudad')->nullable();
+            $table->string('estado_civil')->nullable();
+            $table->string('email')->nullable();
+            $table->string('direccion')->nullable();
+            $table->string('ocupacion')->nullable();
+            $table->string('lugar_trabajo')->nullable();
+            $table->string('parroquia')->nullable();
+            $table->string('nacionalidad')->nullable();
+            $table->string('id_procedencia')->nullable();
+            $table->string('id_referido')->nullable();
+            $table->string('created_by_type')->nullable();
+            $table->string('created_by_identifier')->nullable();
+            $table->string('updated_by_type')->nullable();
+            $table->string('updated_by_identifier')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('whatsapp_contact_consent', function (Blueprint $table): void {
+            $table->id();
+            $table->string('wa_number');
+            $table->string('cedula');
+            $table->string('patient_hc_number')->nullable();
+            $table->string('patient_full_name')->nullable();
+            $table->string('consent_status')->default('pending');
+            $table->string('consent_source')->default('legacy');
+            $table->timestamp('consent_asked_at')->nullable();
+            $table->timestamp('consent_responded_at')->nullable();
+            $table->json('extra_payload')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('crm_leads', function (Blueprint $table): void {
+            $table->id();
+            $table->string('hc_number')->nullable();
+            $table->unsignedBigInteger('customer_id')->nullable();
+            $table->string('name')->default('');
+            $table->string('first_name')->nullable();
+            $table->string('last_name')->nullable();
+            $table->string('email')->nullable();
+            $table->string('phone')->nullable();
+            $table->string('status')->default('open');
+            $table->string('last_stage_notified')->nullable();
+            $table->timestamp('last_stage_notified_at')->nullable();
+            $table->string('source')->nullable();
+            $table->text('notes')->nullable();
+            $table->unsignedBigInteger('assigned_to')->nullable();
+            $table->unsignedBigInteger('created_by')->nullable();
+            $table->timestamps();
+        });
+
         \DB::table('app_settings')->insert([
             ['name' => 'whatsapp_cloud_enabled', 'value' => '1', 'created_at' => now(), 'updated_at' => now()],
             ['name' => 'whatsapp_cloud_phone_number_id', 'value' => '1234567890', 'created_at' => now(), 'updated_at' => now()],
@@ -120,6 +204,7 @@ class WhatsappConversationWriteControllerTest extends TestCase
         ]);
 
         config()->set('whatsapp.migration.enabled', true);
+        config()->set('whatsapp.migration.api.read_enabled', true);
         config()->set('whatsapp.migration.api.write_enabled', true);
         config()->set('whatsapp.transport.dry_run', false);
 
@@ -407,5 +492,146 @@ class WhatsappConversationWriteControllerTest extends TestCase
         Http::assertSent(function ($request) {
             return str_contains($request->url(), '/messages');
         });
+    }
+
+    public function test_it_searches_contacts_in_patient_data_for_new_chat(): void
+    {
+        \DB::table('patient_data')->insert([
+            'hc_number' => 'HC-9981',
+            'fname' => 'Maria',
+            'lname' => 'Lopez',
+            'celular' => '0999887766',
+            'email' => 'maria@example.com',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $response = $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->getJson('/v2/whatsapp/api/contacts/search?q=9981');
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('data.0.hc_number', 'HC-9981')
+            ->assertJsonPath('data.0.wa_number', '593999887766');
+    }
+
+    public function test_it_searches_contacts_across_multiple_sources_with_existing_conversation_priority(): void
+    {
+        \DB::table('patient_data')->insert([
+            'hc_number' => 'HC-200',
+            'fname' => 'Carlos',
+            'lname' => 'Mena',
+            'celular' => '0999000200',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        \DB::table('whatsapp_conversations')->insert([
+            'id' => 900,
+            'wa_number' => '593999000200',
+            'display_name' => 'Carlos Mena',
+            'patient_hc_number' => 'HC-200',
+            'patient_full_name' => 'Carlos Mena',
+            'last_message_preview' => 'Seguimiento',
+            'last_message_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        \DB::table('crm_leads')->insert([
+            'hc_number' => 'HC-200',
+            'name' => 'Carlos CRM',
+            'phone' => '0999000200',
+            'email' => 'carlos@example.com',
+            'status' => 'open',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        \DB::table('whatsapp_contact_consent')->insert([
+            'wa_number' => '593999000200',
+            'cedula' => '0102030405',
+            'patient_hc_number' => 'HC-200',
+            'patient_full_name' => 'Carlos Consent',
+            'consent_status' => 'accepted',
+            'consent_source' => 'legacy',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $response = $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->getJson('/v2/whatsapp/api/contacts/search?q=Carlos');
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('data.0.wa_number', '593999000200')
+            ->assertJsonPath('data.0.source', 'conversation')
+            ->assertJsonPath('data.0.hc_number', 'HC-200');
+    }
+
+    public function test_it_starts_a_new_conversation_by_sending_a_template(): void
+    {
+        \DB::table('whatsapp_message_templates')->insert([
+            'id' => 5,
+            'template_code' => 'consent_request',
+            'display_name' => 'Consentimiento',
+            'language' => 'es',
+            'status' => 'approved',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        Http::fake([
+            'https://graph.facebook.com/*' => Http::response([
+                'messages' => [
+                    ['id' => 'wamid.template.1'],
+                ],
+            ], 200),
+        ]);
+
+        $response = $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->postJson('/v2/whatsapp/api/conversations/start-template', [
+                'wa_number' => '0999555444',
+                'template_id' => 5,
+                'contact_name' => 'Paciente Nuevo',
+                'patient_full_name' => 'Paciente Nuevo',
+                'patient_hc_number' => 'HC-55',
+            ]);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('data.conversation.wa_number', '593999555444')
+            ->assertJsonPath('data.message.message_type', 'template')
+            ->assertJsonPath('data.message.template_id', 5);
+
+        $this->assertDatabaseHas('whatsapp_conversations', [
+            'wa_number' => '593999555444',
+            'assigned_user_id' => 99,
+            'last_message_type' => 'template',
+        ]);
+
+        $this->assertDatabaseHas('whatsapp_messages', [
+            'direction' => 'outbound',
+            'message_type' => 'template',
+            'wa_message_id' => 'wamid.template.1',
+        ]);
     }
 }

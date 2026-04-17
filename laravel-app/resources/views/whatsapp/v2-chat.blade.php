@@ -16,6 +16,7 @@
     $selectedRoleId = isset($selectedRoleId) && $selectedRoleId !== null ? (int) $selectedRoleId : null;
     $quickReplies = is_array($quickReplies ?? null) ? $quickReplies : [];
     $conversationNotes = is_array($conversationNotes ?? null) ? $conversationNotes : [];
+    $templateOptions = is_array($templateOptions ?? null) ? $templateOptions : [];
     $tabs = [
         'mine' => 'Mis chats',
         'handoff' => 'Pendientes',
@@ -106,11 +107,96 @@
             color: #fff;
         }
 
+        .wa-v2-modal-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, .52);
+            backdrop-filter: blur(3px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            z-index: 1200;
+        }
+
+        .wa-v2-modal-backdrop.is-open {
+            display: flex;
+        }
+
+        .wa-v2-modal {
+            width: min(720px, 100%);
+            max-height: min(88vh, 860px);
+            overflow: auto;
+            border-radius: 24px;
+            background: #fff;
+            border: 1px solid var(--wa-border);
+            box-shadow: 0 28px 70px rgba(15, 23, 42, .22);
+        }
+
+        .wa-v2-modal__header,
+        .wa-v2-modal__body,
+        .wa-v2-modal__footer {
+            padding: 18px 20px;
+        }
+
+        .wa-v2-modal__header,
+        .wa-v2-modal__footer {
+            border-bottom: 1px solid var(--wa-border);
+        }
+
+        .wa-v2-modal__footer {
+            border-top: 1px solid var(--wa-border);
+            border-bottom: 0;
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .wa-v2-picker-results {
+            display: grid;
+            gap: 10px;
+            margin-top: 12px;
+            max-height: 220px;
+            overflow: auto;
+        }
+
+        .wa-v2-picker-card {
+            border: 1px solid var(--wa-border);
+            border-radius: 16px;
+            padding: 12px 14px;
+            background: var(--wa-surface-soft);
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .wa-v2-picker-card.is-active {
+            border-color: rgba(15, 118, 110, .55);
+            box-shadow: 0 0 0 2px rgba(15, 118, 110, .12);
+        }
+
+        .wa-v2-picker-card__source {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 8px;
+            border-radius: 999px;
+            background: rgba(15, 118, 110, .08);
+            color: var(--wa-accent);
+            font-size: 11px;
+            font-weight: 700;
+        }
+
         .wa-v2-shell {
             display: grid;
             grid-template-columns: 390px minmax(0, 1fr);
             gap: 20px;
-            align-items: start;
+            align-items: stretch;
+            height: calc(100vh - 0px);
+            max-height: calc(100vh - 0px);
+            overflow: hidden;
         }
 
         .wa-v2-panel {
@@ -119,6 +205,10 @@
             background: linear-gradient(180deg, rgba(255, 255, 255, .96) 0%, rgba(246, 251, 248, .98) 100%);
             overflow: hidden;
             box-shadow: var(--wa-shadow);
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            height: 100%;
         }
 
         .wa-v2-panel__header {
@@ -245,7 +335,9 @@
         }
 
         .wa-v2-list {
-            max-height: 76vh;
+            flex: 1 1 auto;
+            min-height: 0;
+            height: 100%;
             overflow: auto;
             padding: 10px;
             background: linear-gradient(180deg, rgba(241, 245, 249, .46) 0%, rgba(255, 255, 255, .24) 100%);
@@ -438,7 +530,10 @@
         .wa-v2-chat {
             display: grid;
             grid-template-rows: auto minmax(0, 1fr) auto;
-            min-height: 78vh;
+            min-height: 0;
+            height: 100%;
+            max-height: 100%;
+            overflow: hidden;
             background: linear-gradient(180deg, rgba(248, 250, 252, .9) 0%, rgba(232, 244, 241, .96) 100%),
             radial-gradient(circle at top left, rgba(16, 185, 129, .08), transparent 26%);
         }
@@ -894,6 +989,48 @@
             line-height: 1;
         }
 
+        .wa-v2-collapse {
+            margin-bottom: 15px;
+            border: 1px solid rgba(148, 163, 184, .16);
+            border-radius: 18px;
+            background: rgba(255, 255, 255, .75);
+            overflow: hidden;
+        }
+
+        .wa-v2-collapse summary {
+            list-style: none;
+            cursor: pointer;
+            padding: 12px 14px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            font-size: 13px;
+            font-weight: 800;
+            color: var(--wa-text);
+        }
+
+        .wa-v2-collapse summary::-webkit-details-marker {
+            display: none;
+        }
+
+        .wa-v2-collapse summary::after {
+            content: "\F0140";
+            font-family: "Material Design Icons";
+            font-size: 18px;
+            color: var(--wa-muted);
+            transition: transform .16s ease;
+        }
+
+        .wa-v2-collapse[open] summary::after {
+            transform: rotate(180deg);
+        }
+
+        .wa-v2-collapse__body {
+            padding: 0 14px 14px;
+            border-top: 1px solid rgba(148, 163, 184, .12);
+        }
+
         @media (max-width: 991px) {
             .wa-v2-pagebar {
                 padding: 18px;
@@ -919,9 +1056,12 @@
             }
 
             .wa-v2-list,
+            .wa-v2-shell,
             .wa-v2-chat {
                 max-height: none;
                 min-height: auto;
+                height: auto;
+                overflow: visible;
             }
 
             .wa-v2-chat-header,
@@ -984,6 +1124,9 @@
                         </div>
                     </div>
                     <div class="wa-v2-pagebar__meta">
+                        <button type="button" class="btn btn-light btn-sm" id="wa-v2-open-start-chat">
+                            <i class="mdi mdi-message-plus-outline"></i> Nuevo chat
+                        </button>
                         <span class="wa-v2-hero-pill"><i class="mdi mdi-account-circle-outline"></i> {{ $currentUser['display_name'] ?? 'Usuario' }}</span>
                         <span class="wa-v2-hero-pill"><i class="mdi mdi-layers-outline"></i> {{ $canSupervise ? 'Modo supervisor' : 'Vista de agente' }}</span>
                         <span class="wa-v2-hero-pill"><i class="mdi mdi-access-point"></i> Realtime listo</span>
@@ -1019,6 +1162,69 @@
             </div>
         </div>
 
+        <div class="wa-v2-modal-backdrop" id="wa-v2-start-chat-modal" aria-hidden="true">
+            <div class="wa-v2-modal">
+                <div class="wa-v2-modal__header d-flex justify-content-between align-items-start gap-10">
+                    <div>
+                        <div class="wa-v2-sideheading__title" style="font-size:20px;">Nuevo chat con plantilla</div>
+                        <div class="text-muted" style="font-size:13px;">Busca en pacientes, o escribe el número, y abre la conversación con un template aprobado.</div>
+                    </div>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="wa-v2-close-start-chat">
+                        Cerrar
+                    </button>
+                </div>
+                <div class="wa-v2-modal__body">
+                    <div class="row g-12">
+                        <div class="col-lg-7">
+                            <label for="wa-v2-start-search" class="form-label">Buscar paciente o número</label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="wa-v2-start-search"
+                                       placeholder="Celular, HC, nombres o apellidos">
+                                <button type="button" class="btn btn-outline-secondary" id="wa-v2-start-search-button">Buscar</button>
+                            </div>
+                            <div class="wa-v2-picker-results" id="wa-v2-start-results"></div>
+                        </div>
+                        <div class="col-lg-5">
+                            <div class="row g-10">
+                                <div class="col-12">
+                                    <label for="wa-v2-start-number" class="form-label">Número WhatsApp</label>
+                                    <input type="text" class="form-control" id="wa-v2-start-number" placeholder="593999111222">
+                                </div>
+                                <div class="col-12">
+                                    <label for="wa-v2-start-contact-name" class="form-label">Nombre visible</label>
+                                    <input type="text" class="form-control" id="wa-v2-start-contact-name" placeholder="Nombre del contacto">
+                                </div>
+                                <div class="col-12">
+                                    <label for="wa-v2-start-patient-name" class="form-label">Paciente</label>
+                                    <input type="text" class="form-control" id="wa-v2-start-patient-name" placeholder="Nombres y apellidos">
+                                </div>
+                                <div class="col-12">
+                                    <label for="wa-v2-start-hc" class="form-label">HC</label>
+                                    <input type="text" class="form-control" id="wa-v2-start-hc" placeholder="Historia clínica">
+                                </div>
+                                <div class="col-12">
+                                    <label for="wa-v2-start-template" class="form-label">Template aprobado</label>
+                                    <select class="form-select" id="wa-v2-start-template">
+                                        <option value="">Selecciona un template</option>
+                                        @foreach($templateOptions as $template)
+                                            <option value="{{ $template['id'] }}">{{ $template['name'] }} · {{ $template['language'] ?: 'n/a' }} · {{ $template['status'] ?: 'n/a' }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="alert alert-light mt-15 mb-0" id="wa-v2-start-chat-feedback">
+                        Selecciona un contacto o escribe el número manualmente para iniciar con plantilla.
+                    </div>
+                </div>
+                <div class="wa-v2-modal__footer">
+                    <div class="text-muted" style="font-size:12px;">Esto crea o reutiliza la conversación y la deja abierta en tu inbox.</div>
+                    <button type="button" class="btn btn-primary" id="wa-v2-start-submit">Iniciar con plantilla</button>
+                </div>
+            </div>
+        </div>
+
         <div class="wa-v2-shell">
             <div class="wa-v2-panel">
                 <div class="wa-v2-panel__header">
@@ -1031,6 +1237,7 @@
 
                     <form method="GET" action="/v2/whatsapp/chat" class="mb-15 wa-v2-searchbar">
                         <input type="hidden" name="filter" value="{{ $selectedFilter }}">
+                        <input type="hidden" name="per_page" value="{{ (int) ($perPage ?? 100) }}">
                         @if($selectedAgentId !== null)
                             <input type="hidden" name="agent_id" value="{{ $selectedAgentId }}">
                         @endif
@@ -1052,99 +1259,108 @@
                         @php
                             $summaryTotals = is_array($agentSummary['totals'] ?? null) ? $agentSummary['totals'] : [];
                         @endphp
-                        <div class="wa-v2-statgrid">
-                            <div class="wa-v2-statcard">
-                                <div
-                                    class="wa-v2-statcard__value">{{ (int) ($summaryTotals['queued_open_count'] ?? 0) }}</div>
-                                <div class="wa-v2-statcard__label">Cola abierta</div>
-                            </div>
-                            <div class="wa-v2-statcard">
-                                <div
-                                    class="wa-v2-statcard__value">{{ (int) ($summaryTotals['assigned_open_count'] ?? 0) }}</div>
-                                <div class="wa-v2-statcard__label">Asignados</div>
-                            </div>
-                            <div class="wa-v2-statcard">
-                                <div
-                                    class="wa-v2-statcard__value">{{ (int) ($summaryTotals['unread_open_count'] ?? 0) }}</div>
-                                <div class="wa-v2-statcard__label">Con unread</div>
-                            </div>
-                            <div class="wa-v2-statcard">
-                                <div
-                                    class="wa-v2-statcard__value">{{ (int) ($summaryTotals['expiring_soon_count'] ?? 0) }}</div>
-                                <div class="wa-v2-statcard__label">TTL por vencer</div>
-                            </div>
-                        </div>
-
-                        <form method="GET" action="/v2/whatsapp/chat" class="row g-10 mb-15">
-                            <input type="hidden" name="filter" value="{{ $selectedFilter }}">
-                            <input type="hidden" name="search" value="{{ $search }}">
-                            <div class="col-12">
-                                <div class="text-uppercase text-muted mb-5"
-                                     style="font-size:11px; letter-spacing:.08em;">Filtros supervisor
+                        <details class="wa-v2-collapse">
+                            <summary>
+                                <span>Panel supervisor</span>
+                                <span class="text-muted" style="font-size:12px;">Cola, filtros y carga</span>
+                            </summary>
+                            <div class="wa-v2-collapse__body">
+                                <div class="wa-v2-statgrid">
+                                    <div class="wa-v2-statcard">
+                                        <div
+                                            class="wa-v2-statcard__value">{{ (int) ($summaryTotals['queued_open_count'] ?? 0) }}</div>
+                                        <div class="wa-v2-statcard__label">Cola abierta</div>
+                                    </div>
+                                    <div class="wa-v2-statcard">
+                                        <div
+                                            class="wa-v2-statcard__value">{{ (int) ($summaryTotals['assigned_open_count'] ?? 0) }}</div>
+                                        <div class="wa-v2-statcard__label">Asignados</div>
+                                    </div>
+                                    <div class="wa-v2-statcard">
+                                        <div
+                                            class="wa-v2-statcard__value">{{ (int) ($summaryTotals['unread_open_count'] ?? 0) }}</div>
+                                        <div class="wa-v2-statcard__label">Con unread</div>
+                                    </div>
+                                    <div class="wa-v2-statcard">
+                                        <div
+                                            class="wa-v2-statcard__value">{{ (int) ($summaryTotals['expiring_soon_count'] ?? 0) }}</div>
+                                        <div class="wa-v2-statcard__label">TTL por vencer</div>
+                                    </div>
                                 </div>
-                            </div>
-                            <div class="col-sm-4">
-                                <select name="agent_id" class="form-select form-select-sm">
-                                    <option value="">Todos los agentes</option>
-                                    <option value="0" {{ $selectedAgentId === 0 ? 'selected' : '' }}>Sin asignar
-                                    </option>
-                                    @foreach($agents as $agent)
-                                        <option
-                                            value="{{ $agent['id'] }}" {{ $selectedAgentId === (int) $agent['id'] ? 'selected' : '' }}>
-                                            {{ $agent['name'] }}
-                                        </option>
-                                    @endforeach
-                                </select>
-                            </div>
-                            <div class="col-sm-4">
-                                <select name="role_id" class="form-select form-select-sm">
-                                    <option value="">Todos los roles</option>
-                                    @foreach($roleOptions as $role)
-                                        <option
-                                            value="{{ $role['id'] }}" {{ $selectedRoleId === (int) $role['id'] ? 'selected' : '' }}>
-                                            {{ $role['name'] }}
-                                        </option>
-                                    @endforeach
-                                </select>
-                            </div>
-                            <div class="col-sm-4">
-                                <button type="submit" class="btn btn-primary btn-sm"><i
-                                        class="mdi mdi-check-circle-outline"></i>
-                                </button>
-                                <a href="{{ '/v2/whatsapp/chat?' . http_build_query(['filter' => $selectedFilter, 'search' => $search]) }}"
-                                   class="btn btn-danger btn-sm"><i class="mdi mdi-filter-off"></i>
-                                </a>
-                            </div>
-                        </form>
 
-                        @if(!empty($agentSummary['agents']))
-                            <div class="mb-15">
-                                <div class="text-uppercase text-muted mb-5"
-                                     style="font-size:11px; letter-spacing:.08em;">Carga por agente
-                                </div>
-                                <div class="d-grid gap-8">
-                                    @foreach(array_slice($agentSummary['agents'], 0, 4) as $agent)
-                                        <div class="wa-v2-panel p-10" style="border-radius:14px;">
-                                            <div class="d-flex justify-content-between align-items-center gap-10">
-                                                <div>
-                                                    <div class="fw-700">{{ $agent['name'] }}</div>
-                                                    <div class="text-muted"
-                                                         style="font-size:12px;">{{ $agent['role_name'] ?: 'Sin rol' }}
-                                                        · {{ $agent['presence_status'] }}</div>
-                                                </div>
-                                                <div class="text-end" style="font-size:12px;">
-                                                    <div>{{ (int) ($agent['assigned_open_count'] ?? 0) }}asignados
-                                                    </div>
-                                                    <div>{{ (int) ($agent['unread_open_count'] ?? 0) }} con unread</div>
-                                                    <div>{{ (int) ($agent['expiring_soon_count'] ?? 0) }} por vencer
-                                                    </div>
-                                                </div>
-                                            </div>
+                                <form method="GET" action="/v2/whatsapp/chat" class="row g-10 mb-15">
+                                    <input type="hidden" name="filter" value="{{ $selectedFilter }}">
+                                    <input type="hidden" name="search" value="{{ $search }}">
+                                    <input type="hidden" name="per_page" value="{{ (int) ($perPage ?? 100) }}">
+                                    <div class="col-12">
+                                        <div class="text-uppercase text-muted mb-5"
+                                             style="font-size:11px; letter-spacing:.08em;">Filtros supervisor
                                         </div>
-                                    @endforeach
-                                </div>
+                                    </div>
+                                    <div class="col-sm-4">
+                                        <select name="agent_id" class="form-select form-select-sm">
+                                            <option value="">Todos los agentes</option>
+                                            <option value="0" {{ $selectedAgentId === 0 ? 'selected' : '' }}>Sin asignar
+                                            </option>
+                                            @foreach($agents as $agent)
+                                                <option
+                                                    value="{{ $agent['id'] }}" {{ $selectedAgentId === (int) $agent['id'] ? 'selected' : '' }}>
+                                                    {{ $agent['name'] }}
+                                                </option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                    <div class="col-sm-4">
+                                        <select name="role_id" class="form-select form-select-sm">
+                                            <option value="">Todos los roles</option>
+                                            @foreach($roleOptions as $role)
+                                                <option
+                                                    value="{{ $role['id'] }}" {{ $selectedRoleId === (int) $role['id'] ? 'selected' : '' }}>
+                                                    {{ $role['name'] }}
+                                                </option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                    <div class="col-sm-4">
+                                        <button type="submit" class="btn btn-primary btn-sm"><i
+                                                class="mdi mdi-check-circle-outline"></i>
+                                        </button>
+                                        <a href="{{ '/v2/whatsapp/chat?' . http_build_query(['filter' => $selectedFilter, 'search' => $search, 'per_page' => $perPage ?? 100]) }}"
+                                           class="btn btn-danger btn-sm"><i class="mdi mdi-filter-off"></i>
+                                        </a>
+                                    </div>
+                                </form>
+
+                                @if(!empty($agentSummary['agents']))
+                                    <div>
+                                        <div class="text-uppercase text-muted mb-5"
+                                             style="font-size:11px; letter-spacing:.08em;">Carga por agente
+                                        </div>
+                                        <div class="d-grid gap-8">
+                                            @foreach(array_slice($agentSummary['agents'], 0, 4) as $agent)
+                                                <div class="wa-v2-panel p-10" style="border-radius:14px;">
+                                                    <div class="d-flex justify-content-between align-items-center gap-10">
+                                                        <div>
+                                                            <div class="fw-700">{{ $agent['name'] }}</div>
+                                                            <div class="text-muted"
+                                                                 style="font-size:12px;">{{ $agent['role_name'] ?: 'Sin rol' }}
+                                                                · {{ $agent['presence_status'] }}</div>
+                                                        </div>
+                                                        <div class="text-end" style="font-size:12px;">
+                                                            <div>{{ (int) ($agent['assigned_open_count'] ?? 0) }}asignados
+                                                            </div>
+                                                            <div>{{ (int) ($agent['unread_open_count'] ?? 0) }} con unread</div>
+                                                            <div>{{ (int) ($agent['expiring_soon_count'] ?? 0) }} por vencer
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            @endforeach
+                                        </div>
+                                    </div>
+                                @endif
                             </div>
-                        @endif
+                        </details>
                     @endif
 
                     <div class="wa-v2-tabs">
@@ -1162,7 +1378,7 @@
                                 $icon = $tabIcons[$key] ?? 'mdi mdi-circle-small';
                             @endphp
                             <a
-                                href="{{ '/v2/whatsapp/chat?' . http_build_query(array_filter(['filter' => $key, 'search' => $search, 'agent_id' => $selectedAgentId, 'role_id' => $selectedRoleId], static fn ($value) => $value !== null && $value !== '')) }}"
+                                href="{{ '/v2/whatsapp/chat?' . http_build_query(array_filter(['filter' => $key, 'search' => $search, 'per_page' => $perPage ?? 100, 'agent_id' => $selectedAgentId, 'role_id' => $selectedRoleId], static fn ($value) => $value !== null && $value !== '')) }}"
                                 class="wa-v2-tab {{ $selectedFilter === $key ? 'is-active' : '' }}">
                                 <span class="wa-v2-icon-label">
                                     <i class="{{ $icon }}"></i>
@@ -1200,7 +1416,7 @@
                             };
                         @endphp
                         <a
-                            href="{{ '/v2/whatsapp/chat?' . http_build_query(array_filter(['filter' => $selectedFilter, 'search' => $search, 'agent_id' => $selectedAgentId, 'role_id' => $selectedRoleId, 'conversation' => $conversation['id']], static fn ($value) => $value !== null && $value !== '')) }}"
+                            href="{{ '/v2/whatsapp/chat?' . http_build_query(array_filter(['filter' => $selectedFilter, 'search' => $search, 'per_page' => $perPage ?? 100, 'agent_id' => $selectedAgentId, 'role_id' => $selectedRoleId, 'conversation' => $conversation['id']], static fn ($value) => $value !== null && $value !== '')) }}"
                             class="wa-v2-conversation {{ $isActive ? 'is-active' : '' }}"
                             data-priority-state="{{ $priorityState }}"
                             data-wa-conversation-item="{{ (int) $conversation['id'] }}">
@@ -1289,6 +1505,22 @@
                                         <i class="mdi mdi-whatsapp"></i>
                                     </span>
                                 </a>
+
+                                @if(($selectedConversation['messaging_window_state'] ?? '') !== 'window_open')
+                                    <button type="button"
+                                            class="btn btn-outline-primary"
+                                            data-wa-open-start-template="1"
+                                            data-wa-number="{{ $selectedConversation['wa_number'] }}"
+                                            data-wa-contact-name="{{ $selectedConversation['display_name'] ?: $selectedConversation['wa_number'] }}"
+                                            data-wa-patient-name="{{ $selectedConversation['patient_full_name'] ?? '' }}"
+                                            data-wa-hc-number="{{ $selectedConversation['patient_hc_number'] ?? '' }}"
+                                            title="Enviar plantilla"
+                                            aria-label="Enviar plantilla">
+                                        <span class="wa-v2-icon-label">
+                                            <i class="mdi mdi-file-document-edit-outline"></i>
+                                        </span>
+                                    </button>
+                                @endif
 
                                 @if($canOperateConversation)
                                     <button
@@ -1476,80 +1708,90 @@
                     </div>
 
                     <div class="wa-v2-tools">
-                        <div class="wa-v2-tool-card">
-                            <div class="d-flex justify-content-between align-items-center gap-10 mb-10">
+                        <details class="wa-v2-collapse wa-v2-tool-card">
+                            <summary>
                                 <div>
                                     <div class="fw-700">Respuestas rápidas</div>
+                                    <div class="text-muted" style="font-size:12px;">Snippets y guardado</div>
                                 </div>
-                            </div>
-                            @if(!empty($quickReplies))
-                                <div class="wa-v2-chip-list mb-12">
-                                    @foreach($quickReplies as $reply)
-                                        <button
-                                            type="button"
-                                            class="wa-v2-chip"
-                                            data-wa-quick-reply="{{ e($reply['body'] ?? '') }}"
-                                            title="{{ $reply['shortcut'] ? '/' . $reply['shortcut'] : ($reply['title'] ?? 'Respuesta rápida') }}">
-                                            {{ $reply['title'] ?? 'Respuesta' }}
-                                        </button>
-                                    @endforeach
-                                </div>
-                            @else
-                                <div class="text-muted mb-10" style="font-size:12px;">Todavía no hay respuestas rápidas
-                                    cargadas.
-                                </div>
-                            @endif
+                            </summary>
+                            <div class="wa-v2-collapse__body">
+                                @if(!empty($quickReplies))
+                                    <div class="wa-v2-chip-list mb-12">
+                                        @foreach($quickReplies as $reply)
+                                            <button
+                                                type="button"
+                                                class="wa-v2-chip"
+                                                data-wa-quick-reply="{{ e($reply['body'] ?? '') }}"
+                                                title="{{ $reply['shortcut'] ? '/' . $reply['shortcut'] : ($reply['title'] ?? 'Respuesta rápida') }}">
+                                                {{ $reply['title'] ?? 'Respuesta' }}
+                                            </button>
+                                        @endforeach
+                                    </div>
+                                @else
+                                    <div class="text-muted mb-10" style="font-size:12px;">Todavía no hay respuestas rápidas
+                                        cargadas.
+                                    </div>
+                                @endif
 
-                            <form id="wa-v2-quick-reply-form" class="d-grid gap-8">
-                                <div class="row g-8">
-                                    <div class="col-md-4">
-                                        <input type="text" class="form-control form-control-sm" id="wa-v2-quick-title"
-                                               placeholder="Título">
-                                    </div>
-                                    <div class="col-md-3">
-                                        <input type="text" class="form-control form-control-sm"
-                                               id="wa-v2-quick-shortcut" placeholder="/atajo">
-                                    </div>
-                                    <div class="col-md-5">
-                                        <input type="text" class="form-control form-control-sm" id="wa-v2-quick-body"
-                                               placeholder="Texto reusable">
-                                    </div>
-                                </div>
-                                <div class="d-flex justify-content-end">
-                                    <button type="submit" class="btn btn-outline-secondary btn-sm">Guardar respuesta
-                                        rápida
-                                    </button>
-                                </div>
-                            </form>
-                        </div>
-
-                        <div class="wa-v2-tool-card">
-                            <div class="fw-700 mb-10">Notas internas</div>
-                            <div class="wa-v2-note-list mb-10">
-                                @forelse($conversationNotes as $note)
-                                    <div class="wa-v2-note">
-                                        <div>{{ $note['body'] ?? '' }}</div>
-                                        <div class="wa-v2-note__meta">
-                                            {{ $note['author_name'] ?? 'Usuario' }}
-                                            @if(!empty($note['created_at']))
-                                                · {{ \Illuminate\Support\Carbon::parse($note['created_at'])->format('d/m H:i') }}
-                                            @endif
+                                <form id="wa-v2-quick-reply-form" class="d-grid gap-8">
+                                    <div class="row g-8">
+                                        <div class="col-md-4">
+                                            <input type="text" class="form-control form-control-sm" id="wa-v2-quick-title"
+                                                   placeholder="Título">
+                                        </div>
+                                        <div class="col-md-3">
+                                            <input type="text" class="form-control form-control-sm"
+                                                   id="wa-v2-quick-shortcut" placeholder="/atajo">
+                                        </div>
+                                        <div class="col-md-5">
+                                            <input type="text" class="form-control form-control-sm" id="wa-v2-quick-body"
+                                                   placeholder="Texto reusable">
                                         </div>
                                     </div>
-                                @empty
-                                    <div class="text-muted" style="font-size:12px;">Sin notas internas en esta
-                                        conversación.
+                                    <div class="d-flex justify-content-end">
+                                        <button type="submit" class="btn btn-outline-secondary btn-sm">Guardar respuesta
+                                            rápida
+                                        </button>
                                     </div>
-                                @endforelse
+                                </form>
                             </div>
-                            <form id="wa-v2-note-form" data-conversation-id="{{ $selectedConversation['id'] }}">
-                                <div class="input-group">
-                                    <textarea class="form-control" id="wa-v2-note-input" rows="2"
-                                              placeholder="Agregar nota interna para el equipo"></textarea>
-                                    <button type="submit" class="btn btn-outline-warning">Guardar nota</button>
+                        </details>
+
+                        <details class="wa-v2-collapse wa-v2-tool-card">
+                            <summary>
+                                <div>
+                                    <div class="fw-700">Notas internas</div>
+                                    <div class="text-muted" style="font-size:12px;">Historial y nueva nota</div>
                                 </div>
-                            </form>
-                        </div>
+                            </summary>
+                            <div class="wa-v2-collapse__body">
+                                <div class="wa-v2-note-list mb-10">
+                                    @forelse($conversationNotes as $note)
+                                        <div class="wa-v2-note">
+                                            <div>{{ $note['body'] ?? '' }}</div>
+                                            <div class="wa-v2-note__meta">
+                                                {{ $note['author_name'] ?? 'Usuario' }}
+                                                @if(!empty($note['created_at']))
+                                                    · {{ \Illuminate\Support\Carbon::parse($note['created_at'])->format('d/m H:i') }}
+                                                @endif
+                                            </div>
+                                        </div>
+                                    @empty
+                                        <div class="text-muted" style="font-size:12px;">Sin notas internas en esta
+                                            conversación.
+                                        </div>
+                                    @endforelse
+                                </div>
+                                <form id="wa-v2-note-form" data-conversation-id="{{ $selectedConversation['id'] }}">
+                                    <div class="input-group">
+                                        <textarea class="form-control" id="wa-v2-note-input" rows="2"
+                                                  placeholder="Agregar nota interna para el equipo"></textarea>
+                                        <button type="submit" class="btn btn-outline-warning">Guardar nota</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </details>
                     </div>
 
                     <div class="wa-v2-compose">
@@ -1796,6 +2038,19 @@
             const quickReplyBody = document.getElementById('wa-v2-quick-body');
             const noteForm = document.getElementById('wa-v2-note-form');
             const noteInput = document.getElementById('wa-v2-note-input');
+            const startChatModal = document.getElementById('wa-v2-start-chat-modal');
+            const startChatOpenButton = document.getElementById('wa-v2-open-start-chat');
+            const startChatCloseButton = document.getElementById('wa-v2-close-start-chat');
+            const startChatSearch = document.getElementById('wa-v2-start-search');
+            const startChatSearchButton = document.getElementById('wa-v2-start-search-button');
+            const startChatResults = document.getElementById('wa-v2-start-results');
+            const startChatNumber = document.getElementById('wa-v2-start-number');
+            const startChatContactName = document.getElementById('wa-v2-start-contact-name');
+            const startChatPatientName = document.getElementById('wa-v2-start-patient-name');
+            const startChatHc = document.getElementById('wa-v2-start-hc');
+            const startChatTemplate = document.getElementById('wa-v2-start-template');
+            const startChatSubmit = document.getElementById('wa-v2-start-submit');
+            const startChatFeedback = document.getElementById('wa-v2-start-chat-feedback');
             const presenceSelect = document.getElementById('wa-v2-presence');
             const requeueExpiredButton = document.getElementById('wa-v2-requeue-expired');
             const audioPickerButton = document.querySelector('[data-wa-picker="audio"]');
@@ -1810,6 +2065,8 @@
             let recordingTimer = null;
             const defaultTitle = document.title;
             let unseenMessageCount = 0;
+            let startChatSearchInFlight = false;
+            let startChatSearchTimer = null;
 
             const setFeedback = function (message, tone) {
                 if (!feedback) {
@@ -1818,6 +2075,196 @@
 
                 feedback.textContent = message;
                 feedback.className = `mt-10 text-${tone}`;
+            };
+
+            const setStartChatFeedback = function (message, tone) {
+                if (!startChatFeedback) {
+                    return;
+                }
+
+                startChatFeedback.className = 'alert mt-15 mb-0';
+                startChatFeedback.classList.add(
+                    tone === 'danger'
+                        ? 'alert-danger'
+                        : (tone === 'success' ? 'alert-success' : 'alert-light')
+                );
+                startChatFeedback.textContent = message;
+            };
+
+            const openStartChatModal = function (payload) {
+                if (!startChatModal) {
+                    return;
+                }
+
+                if (payload && typeof payload === 'object') {
+                    if (startChatNumber) startChatNumber.value = payload.waNumber || '';
+                    if (startChatContactName) startChatContactName.value = payload.contactName || '';
+                    if (startChatPatientName) startChatPatientName.value = payload.patientName || '';
+                    if (startChatHc) startChatHc.value = payload.hcNumber || '';
+                }
+
+                startChatModal.classList.add('is-open');
+                startChatModal.setAttribute('aria-hidden', 'false');
+                setStartChatFeedback('Selecciona un template aprobado y dispara el primer mensaje.', 'muted');
+            };
+
+            const closeStartChatModal = function () {
+                if (!startChatModal) {
+                    return;
+                }
+
+                startChatModal.classList.remove('is-open');
+                startChatModal.setAttribute('aria-hidden', 'true');
+            };
+
+            const renderStartChatResults = function (rows) {
+                if (!startChatResults) {
+                    return;
+                }
+
+                if (!Array.isArray(rows) || rows.length === 0) {
+                    startChatResults.innerHTML = '<div class="text-muted" style="font-size:12px;">Sin resultados con número WhatsApp utilizable.</div>';
+                    return;
+                }
+
+                startChatResults.innerHTML = rows.map(function (row, index) {
+                    const title = row.display_name || row.wa_number || 'Contacto';
+                    const meta = [row.wa_number || '', row.hc_number ? `HC ${row.hc_number}` : ''].filter(Boolean).join(' · ');
+                    const sourceMap = {
+                        conversation: 'Conversación',
+                        patient_data: 'Paciente',
+                        consent: 'Consentimiento',
+                        crm_lead: 'CRM',
+                    };
+                    const sourceLabel = sourceMap[row.source] || 'Fuente';
+
+                    return `
+                        <button type="button"
+                                class="wa-v2-picker-card ${index === 0 ? 'is-active' : ''}"
+                                data-wa-select-contact="1"
+                                data-wa-number="${row.wa_number || ''}"
+                                data-wa-contact-name="${title}"
+                                data-wa-patient-name="${title}"
+                                data-wa-hc-number="${row.hc_number || ''}">
+                            <div>
+                                <div class="fw-700">${title}</div>
+                                <div class="text-muted" style="font-size:12px;">${meta || 'Sin meta'}</div>
+                            </div>
+                            <div class="d-flex align-items-center gap-8">
+                                <span class="wa-v2-picker-card__source">${sourceLabel}</span>
+                                <span class="btn btn-outline-secondary btn-sm">Usar</span>
+                            </div>
+                        </button>
+                    `;
+                }).join('');
+
+                startChatResults.querySelectorAll('[data-wa-select-contact]').forEach(function (button) {
+                    button.addEventListener('click', function () {
+                        startChatResults.querySelectorAll('.wa-v2-picker-card').forEach(function (row) {
+                            row.classList.remove('is-active');
+                        });
+                        button.classList.add('is-active');
+                        if (startChatNumber) startChatNumber.value = button.getAttribute('data-wa-number') || '';
+                        if (startChatContactName) startChatContactName.value = button.getAttribute('data-wa-contact-name') || '';
+                        if (startChatPatientName) startChatPatientName.value = button.getAttribute('data-wa-patient-name') || '';
+                        if (startChatHc) startChatHc.value = button.getAttribute('data-wa-hc-number') || '';
+                    });
+                });
+            };
+
+            const runContactSearch = async function () {
+                if (!startChatSearch || !startChatResults || startChatSearchInFlight) {
+                    return;
+                }
+
+                const query = (startChatSearch.value || '').trim();
+                if (!query) {
+                    renderStartChatResults([]);
+                    setStartChatFeedback('Escribe celular, HC o nombres para buscar.', 'muted');
+                    return;
+                }
+
+                startChatSearchInFlight = true;
+                setStartChatFeedback('Buscando contacto...', 'muted');
+
+                try {
+                    const response = await fetch(`/v2/whatsapp/api/contacts/search?q=${encodeURIComponent(query)}`, {
+                        headers: {
+                            'Accept': 'application/json'
+                        }
+                    });
+                    const data = await response.json();
+                    if (!response.ok || !data.ok) {
+                        throw new Error(data.error || 'No fue posible buscar contactos.');
+                    }
+
+                    renderStartChatResults(Array.isArray(data.data) ? data.data : []);
+                    setStartChatFeedback('Selecciona un resultado o ajusta el número manualmente.', 'success');
+                } catch (error) {
+                    renderStartChatResults([]);
+                    setStartChatFeedback(error.message || 'No fue posible buscar contactos.', 'danger');
+                } finally {
+                    startChatSearchInFlight = false;
+                }
+            };
+
+            const submitStartChat = async function () {
+                if (!startChatNumber || !startChatTemplate || requestInFlight) {
+                    return;
+                }
+
+                const waNumber = (startChatNumber.value || '').trim();
+                const templateId = Number(startChatTemplate.value || 0);
+                if (!waNumber) {
+                    setStartChatFeedback('Debes indicar un número WhatsApp.', 'danger');
+                    return;
+                }
+                if (!templateId) {
+                    setStartChatFeedback('Debes seleccionar un template aprobado.', 'danger');
+                    return;
+                }
+
+                requestInFlight = true;
+                setStartChatFeedback('Iniciando conversación con plantilla...', 'muted');
+
+                try {
+                    const response = await fetch('/v2/whatsapp/api/conversations/start-template', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            wa_number: waNumber,
+                            template_id: templateId,
+                            contact_name: (startChatContactName?.value || '').trim(),
+                            patient_full_name: (startChatPatientName?.value || '').trim(),
+                            patient_hc_number: (startChatHc?.value || '').trim(),
+                        })
+                    });
+                    const data = await response.json();
+                    if (!response.ok || !data.ok) {
+                        throw new Error(data.error || 'No fue posible iniciar la conversación.');
+                    }
+
+                    const conversationId = Number(data?.data?.conversation?.id || 0);
+                    setStartChatFeedback('Conversación iniciada. Abriendo chat...', 'success');
+                    if (conversationId > 0) {
+                        const target = new URL('/v2/whatsapp/chat', window.location.origin);
+                        target.searchParams.set('conversation', String(conversationId));
+                        target.searchParams.set('filter', '{{ $selectedFilter }}');
+                        target.searchParams.set('search', '{{ $search }}');
+                        target.searchParams.set('per_page', '{{ (int) ($perPage ?? 100) }}');
+                        window.location.href = target.toString();
+                        return;
+                    }
+
+                    window.location.reload();
+                } catch (error) {
+                    setStartChatFeedback(error.message || 'No fue posible iniciar la conversación.', 'danger');
+                } finally {
+                    requestInFlight = false;
+                }
             };
 
             const setUploadStatus = function (message, tone) {
@@ -2676,6 +3123,74 @@
                     resetNotificationHint();
                 });
             }
+
+            if (startChatOpenButton) {
+                startChatOpenButton.addEventListener('click', function () {
+                    openStartChatModal();
+                });
+            }
+
+            if (startChatCloseButton) {
+                startChatCloseButton.addEventListener('click', function () {
+                    closeStartChatModal();
+                });
+            }
+
+            if (startChatModal) {
+                startChatModal.addEventListener('click', function (event) {
+                    if (event.target === startChatModal) {
+                        closeStartChatModal();
+                    }
+                });
+            }
+
+            if (startChatSearchButton) {
+                startChatSearchButton.addEventListener('click', function () {
+                    runContactSearch();
+                });
+            }
+
+            if (startChatSearch) {
+                startChatSearch.addEventListener('keydown', function (event) {
+                    if (event.key === 'Enter') {
+                        event.preventDefault();
+                        runContactSearch();
+                    }
+                });
+                startChatSearch.addEventListener('input', function () {
+                    if (startChatSearchTimer) {
+                        window.clearTimeout(startChatSearchTimer);
+                    }
+
+                    const value = (startChatSearch.value || '').trim();
+                    if (value.length < 2) {
+                        renderStartChatResults([]);
+                        setStartChatFeedback('Escribe al menos 2 caracteres para buscar en tiempo real.', 'muted');
+                        return;
+                    }
+
+                    startChatSearchTimer = window.setTimeout(function () {
+                        runContactSearch();
+                    }, 220);
+                });
+            }
+
+            if (startChatSubmit) {
+                startChatSubmit.addEventListener('click', function () {
+                    submitStartChat();
+                });
+            }
+
+            document.querySelectorAll('[data-wa-open-start-template]').forEach(function (button) {
+                button.addEventListener('click', function () {
+                    openStartChatModal({
+                        waNumber: button.getAttribute('data-wa-number') || '',
+                        contactName: button.getAttribute('data-wa-contact-name') || '',
+                        patientName: button.getAttribute('data-wa-patient-name') || '',
+                        hcNumber: button.getAttribute('data-wa-hc-number') || '',
+                    });
+                });
+            });
 
             document.querySelectorAll('[data-wa-quick-reply]').forEach(function (button) {
                 button.addEventListener('click', function () {

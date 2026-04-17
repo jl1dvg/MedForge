@@ -43,6 +43,7 @@ class WhatsappUiController
         $selectedConversationId = max(0, (int) $request->query('conversation', 0));
         $filter = trim((string) $request->query('filter', 'all'));
         $search = trim((string) $request->query('search', ''));
+        $perPage = max(25, min((int) $request->query('per_page', 100), 250));
         $selectedAgentId = $this->nullableIntQuery($request, 'agent_id');
         $selectedRoleId = $this->nullableIntQuery($request, 'role_id');
         $canSupervise = in_array('administrativo', $permissions, true)
@@ -58,7 +59,7 @@ class WhatsappUiController
 
         $paginator = $this->conversationReadService->paginateConversations(
             $search,
-            25,
+            $perPage,
             $filter !== '' ? $filter : 'all',
             is_numeric($currentUser['id'] ?? null) ? (int) $currentUser['id'] : null,
             $canSupervise,
@@ -102,6 +103,7 @@ class WhatsappUiController
             ),
             'selectedFilter' => $filter !== '' ? $filter : 'all',
             'search' => $search,
+            'perPage' => $perPage,
             'selectedAgentId' => $selectedAgentId,
             'selectedRoleId' => $selectedRoleId,
             'listData' => $this->conversationReadService->serializeConversationPage(
@@ -124,6 +126,7 @@ class WhatsappUiController
                 )
                 : null,
             'quickReplies' => $this->productivityToolkitService->listQuickReplies(limit: 12),
+            'templateOptions' => $this->campaignService->listTemplateOptions(),
             'conversationNotes' => $selectedConversation !== null
                 ? $this->productivityToolkitService->listConversationNotes((int) $selectedConversation->id, 12)
                 : [],
