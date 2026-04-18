@@ -176,6 +176,11 @@ class WhatsappKnowledgeBaseTest extends TestCase
             $table->string('classification', 64)->nullable();
             $table->decimal('confidence', 5, 2)->default(0);
             $table->boolean('suggested_handoff')->default(false);
+            $table->string('decision', 32)->nullable();
+            $table->boolean('fallback_used')->default(false);
+            $table->json('handoff_reasons')->nullable();
+            $table->json('scorecard')->nullable();
+            $table->json('evaluation')->nullable();
             $table->json('context_before')->nullable();
             $table->json('context_after')->nullable();
             $table->string('source', 32)->default('preview');

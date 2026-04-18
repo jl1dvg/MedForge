@@ -2259,8 +2259,15 @@ document.addEventListener('DOMContentLoaded', function () {
                 body: JSON.stringify({flow: payload}),
                 credentials: 'same-origin',
             });
-            const data = await response.json();
-            statusNode.textContent = data.message || (data.status === 'ok' ? 'Publicado.' : 'Error al publicar.');
+            const raw = await response.text();
+            let data = null;
+            try {
+                data = raw ? JSON.parse(raw) : null;
+            } catch (error) {
+                data = null;
+            }
+            statusNode.textContent = data?.message
+                || (!response.ok ? (raw.trim() || `Error HTTP ${response.status}`) : 'Publicado.');
             if (response.ok) {
                 window.setTimeout(function () { window.location.reload(); }, 800);
             }

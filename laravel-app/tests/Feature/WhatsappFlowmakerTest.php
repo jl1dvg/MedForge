@@ -17,6 +17,10 @@ class WhatsappFlowmakerTest extends TestCase
         parent::setUp();
 
         foreach ([
+            'whatsapp_messages',
+            'whatsapp_conversations',
+            'whatsapp_message_templates',
+            'patient_data',
             'whatsapp_ai_agent_runs',
             'whatsapp_knowledge_documents',
             'whatsapp_autoresponder_sessions',
@@ -187,6 +191,72 @@ class WhatsappFlowmakerTest extends TestCase
             $table->timestamps();
         });
 
+        Schema::create('whatsapp_conversations', function (Blueprint $table): void {
+            $table->id();
+            $table->string('wa_number');
+            $table->string('display_name')->nullable();
+            $table->string('patient_hc_number')->nullable();
+            $table->string('patient_full_name')->nullable();
+            $table->timestamp('last_message_at')->nullable();
+            $table->string('last_message_direction')->nullable();
+            $table->string('last_message_type')->nullable();
+            $table->text('last_message_preview')->nullable();
+            $table->boolean('needs_human')->default(true);
+            $table->text('handoff_notes')->nullable();
+            $table->unsignedBigInteger('handoff_role_id')->nullable();
+            $table->unsignedBigInteger('assigned_user_id')->nullable();
+            $table->timestamp('assigned_at')->nullable();
+            $table->timestamp('handoff_requested_at')->nullable();
+            $table->unsignedInteger('unread_count')->default(0);
+            $table->timestamps();
+        });
+
+        Schema::create('whatsapp_messages', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('conversation_id');
+            $table->string('wa_message_id')->nullable();
+            $table->string('direction');
+            $table->string('message_type');
+            $table->text('body')->nullable();
+            $table->json('raw_payload')->nullable();
+            $table->string('status')->nullable();
+            $table->timestamp('message_timestamp')->nullable();
+            $table->timestamp('sent_at')->nullable();
+            $table->timestamp('delivered_at')->nullable();
+            $table->timestamp('read_at')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('whatsapp_message_templates', function (Blueprint $table): void {
+            $table->id();
+            $table->string('template_code');
+            $table->string('display_name');
+            $table->string('language')->default('es');
+            $table->string('category')->default('utility');
+            $table->string('status')->default('approved');
+            $table->unsignedBigInteger('current_revision_id')->nullable();
+            $table->string('wa_business_account')->nullable();
+            $table->text('description')->nullable();
+            $table->timestamp('approval_requested_at')->nullable();
+            $table->timestamp('approved_at')->nullable();
+            $table->timestamp('rejected_at')->nullable();
+            $table->unsignedBigInteger('created_by')->nullable();
+            $table->unsignedBigInteger('updated_by')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('patient_data', function (Blueprint $table): void {
+            $table->id();
+            $table->string('hc_number')->nullable();
+            $table->string('lname')->default('');
+            $table->string('lname2')->nullable();
+            $table->string('fname')->default('');
+            $table->string('mname')->nullable();
+            $table->string('celular')->nullable();
+            $table->string('email')->nullable();
+            $table->timestamps();
+        });
+
         Schema::create('whatsapp_ai_agent_runs', function (Blueprint $table): void {
             $table->id();
             $table->string('wa_number', 32)->nullable();
@@ -199,6 +269,11 @@ class WhatsappFlowmakerTest extends TestCase
             $table->string('classification', 64)->nullable();
             $table->decimal('confidence', 5, 2)->default(0);
             $table->boolean('suggested_handoff')->default(false);
+            $table->string('decision', 32)->nullable();
+            $table->boolean('fallback_used')->default(false);
+            $table->json('handoff_reasons')->nullable();
+            $table->json('scorecard')->nullable();
+            $table->json('evaluation')->nullable();
             $table->json('context_before')->nullable();
             $table->json('context_after')->nullable();
             $table->string('source', 32)->default('preview');
@@ -233,6 +308,59 @@ class WhatsappFlowmakerTest extends TestCase
             'context' => json_encode(['hc' => 'HC-001']),
             'last_payload' => json_encode(['body' => 'Hola']),
             'last_interaction_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        \DB::table('whatsapp_conversations')->insert([
+            'id' => 1,
+            'wa_number' => '593999111222',
+            'display_name' => 'Paciente Demo',
+            'patient_hc_number' => 'HC-001',
+            'patient_full_name' => 'Paciente Demo',
+            'last_message_at' => now(),
+            'last_message_direction' => 'inbound',
+            'last_message_type' => 'text',
+            'last_message_preview' => 'hola',
+            'needs_human' => 1,
+            'assigned_user_id' => 44,
+            'assigned_at' => now(),
+            'unread_count' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        \DB::table('whatsapp_messages')->insert([
+            'conversation_id' => 1,
+            'wa_message_id' => 'wamid.demo.1',
+            'direction' => 'inbound',
+            'message_type' => 'text',
+            'body' => 'hola',
+            'raw_payload' => json_encode(['text' => ['body' => 'hola']]),
+            'message_timestamp' => now()->subMinutes(10),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        \DB::table('whatsapp_message_templates')->insert([
+            'id' => 1,
+            'template_code' => 'recordatorio_cita',
+            'display_name' => 'Recordatorio Cita',
+            'language' => 'es',
+            'category' => 'utility',
+            'status' => 'approved',
+            'approved_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        \DB::table('patient_data')->insert([
+            'id' => 1,
+            'hc_number' => 'HC-001',
+            'lname' => 'Demo',
+            'fname' => 'Paciente',
+            'celular' => '593999111222',
+            'email' => 'paciente@example.test',
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -305,6 +433,51 @@ class WhatsappFlowmakerTest extends TestCase
         $this->assertDatabaseCount('whatsapp_autoresponder_steps', 2);
         $this->assertDatabaseCount('whatsapp_autoresponder_step_actions', 2);
         $this->assertDatabaseCount('whatsapp_autoresponder_step_transitions', 1);
+    }
+
+    public function test_it_publishes_flowmaker_version_with_ai_agent_action(): void
+    {
+        $response = $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->postJson('/v2/whatsapp/api/flowmaker/publish', [
+                'flow' => [
+                    'name' => 'Flow IA',
+                    'description' => 'Publicación con AI Agent',
+                    'settings' => ['timezone' => 'America/Guayaquil'],
+                    'scenarios' => [
+                        [
+                            'id' => 'ia_preview',
+                            'name' => 'IA Preview',
+                            'description' => 'Nodo IA',
+                            'stage' => 'custom',
+                            'actions' => [
+                                [
+                                    'type' => 'ai_agent',
+                                    'instructions' => 'Responder con grounding controlado.',
+                                    'tools' => ['conversation_state', 'window_status'],
+                                    'kb_filters' => [
+                                        'tipo_contenido' => 'faq',
+                                        'audiencia' => 'paciente',
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ]);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('status', 'ok')
+            ->assertJsonPath('active_version.version', 1);
+
+        $this->assertDatabaseHas('whatsapp_autoresponder_step_actions', [
+            'action_type' => 'ai_agent',
+        ]);
     }
 
     public function test_it_simulates_message_against_active_flow(): void
@@ -431,7 +604,7 @@ class WhatsappFlowmakerTest extends TestCase
                 RequireLegacySession::class,
                 RequireLegacyPermission::class,
             ])
-            ->getJson('/v2/whatsapp/api/flowmaker/simulate?wa_number=593999111222&text=quiero agendar una cita');
+            ->getJson('/v2/whatsapp/api/flowmaker/simulate?wa_number=593999111222&text=agendar una cita');
 
         $response
             ->assertOk()
@@ -439,9 +612,22 @@ class WhatsappFlowmakerTest extends TestCase
             ->assertJsonPath('matched', true)
             ->assertJsonPath('scenario.id', 'faq_agenda')
             ->assertJsonPath('actions.0.type', 'ai_agent')
-            ->assertJsonPath('actions.0.classification', 'scheduling');
+            ->assertJsonPath('actions.0.decision', 'respond')
+            ->assertJsonPath('actions.0.fallback_used', false)
+            ->assertJsonPath('actions.0.classification', 'scheduling')
+            ->assertJsonPath('actions.0.tools.window_status.state', 'window_open')
+            ->assertJsonPath('actions.0.tools.conversation_state.ownership_state', 'assigned')
+            ->assertJsonPath('actions.0.tools.suggest_template.suggested.code', 'recordatorio_cita')
+            ->assertJsonPath('actions.0.tools.search_patient.matches.0.hc_number', 'HC-001')
+            ->assertJsonPath('actions.0.evaluation.grounding.status', 'strong')
+            ->assertJsonPath('actions.0.evaluation.safety.status', 'safe');
 
         $this->assertDatabaseCount('whatsapp_ai_agent_runs', 1);
+        $this->assertDatabaseHas('whatsapp_ai_agent_runs', [
+            'scenario_id' => 'faq_agenda',
+            'decision' => 'respond',
+            'fallback_used' => 0,
+        ]);
 
         $runs = $this
             ->withoutMiddleware([
@@ -455,7 +641,69 @@ class WhatsappFlowmakerTest extends TestCase
             ->assertOk()
             ->assertJsonPath('ok', true)
             ->assertJsonPath('data.0.scenario_id', 'faq_agenda')
-            ->assertJsonPath('data.0.classification', 'scheduling');
+            ->assertJsonPath('data.0.classification', 'scheduling')
+            ->assertJsonPath('data.0.decision', 'respond');
+    }
+
+    public function test_it_falls_back_and_records_guardrail_reasons_for_low_confidence_ai_runs(): void
+    {
+        $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->postJson('/v2/whatsapp/api/flowmaker/publish', [
+                'flow' => [
+                    'name' => 'AI Agent guardrails',
+                    'description' => 'Preview con fallback explícito',
+                    'settings' => ['timezone' => 'America/Guayaquil'],
+                    'scenarios' => [
+                        [
+                            'id' => 'ayuda_humana',
+                            'name' => 'Ayuda humana',
+                            'description' => 'Nodo IA con guardrails',
+                            'stage' => 'custom',
+                            'conditions' => [
+                                ['type' => 'message_contains', 'keywords' => ['ayuda']],
+                            ],
+                            'actions' => [
+                                [
+                                    'type' => 'ai_agent',
+                                    'instructions' => 'Responder solo si hay grounding.',
+                                    'kb_filters' => [
+                                        'tipo_contenido' => 'consentimiento',
+                                    ],
+                                    'handoff' => true,
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ])
+            ->assertOk();
+
+        $response = $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->getJson('/v2/whatsapp/api/flowmaker/simulate?wa_number=593999111222&text=ayuda');
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('actions.0.type', 'ai_agent')
+            ->assertJsonPath('actions.0.decision', 'fallback_handoff')
+            ->assertJsonPath('actions.0.fallback_used', true)
+            ->assertJsonPath('actions.0.suggested_handoff', true)
+            ->assertJsonPath('actions.0.handoff_reasons.0', 'node_requested_handoff')
+            ->assertJsonPath('actions.0.evaluation.grounding.status', 'weak')
+            ->assertJsonPath('handoff_requested', true);
+
+        $run = \DB::table('whatsapp_ai_agent_runs')->first();
+        $this->assertNotNull($run);
+        $this->assertSame('fallback_handoff', $run->decision);
     }
 
     public function test_it_lists_recent_shadow_runs(): void

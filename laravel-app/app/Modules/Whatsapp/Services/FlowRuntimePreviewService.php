@@ -221,7 +221,8 @@ class FlowRuntimePreviewService
                 $context = is_array($preview['context_after'] ?? null) ? $preview['context_after'] : $context;
                 if (!empty($preview['suggested_handoff'])) {
                     $context['handoff_requested'] = true;
-                    $context['handoff_note'] = 'AI Agent sugirió handoff por baja confianza o regla del nodo.';
+                    $context['handoff_reasons'] = is_array($preview['handoff_reasons'] ?? null) ? $preview['handoff_reasons'] : [];
+                    $context['handoff_note'] = $this->buildAiHandoffNote($context['handoff_reasons']);
                 }
                 $emitted[] = [
                     'type' => $type,
@@ -229,6 +230,12 @@ class FlowRuntimePreviewService
                     'classification' => $preview['classification'] ?? null,
                     'confidence' => $preview['confidence'] ?? null,
                     'suggested_handoff' => (bool) ($preview['suggested_handoff'] ?? false),
+                    'decision' => $preview['decision'] ?? null,
+                    'fallback_used' => (bool) ($preview['fallback_used'] ?? false),
+                    'handoff_reasons' => $preview['handoff_reasons'] ?? [],
+                    'scores' => $preview['scores'] ?? [],
+                    'evaluation' => $preview['evaluation'] ?? [],
+                    'tools' => $preview['tools'] ?? [],
                     'sources' => array_map(
                         static fn (array $document): array => [
                             'id' => $document['id'] ?? null,
@@ -245,6 +252,18 @@ class FlowRuntimePreviewService
         }
 
         return ['actions' => $emitted, 'context' => $context];
+    }
+
+    /**
+     * @param array<int, string> $reasons
+     */
+    private function buildAiHandoffNote(array $reasons): string
+    {
+        if ($reasons === []) {
+            return 'AI Agent sugirió handoff.';
+        }
+
+        return 'AI Agent sugirió handoff por: ' . implode(', ', $reasons) . '.';
     }
 
     /**
