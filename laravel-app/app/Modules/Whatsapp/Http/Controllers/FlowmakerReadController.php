@@ -82,10 +82,12 @@ class FlowmakerReadController
     public function aiRuns(Request $request): JsonResponse
     {
         $limit = (int) $request->integer('limit', 8);
+        $overview = $this->aiAgentService->overview($limit);
 
         return response()->json([
             'ok' => true,
-            'data' => $this->aiAgentService->recent($limit),
+            'stats' => $overview['stats'] ?? [],
+            'data' => $overview['runs'] ?? [],
         ]);
     }
 

@@ -14,6 +14,8 @@
     $presenceStatus = (string) ($presenceStatus ?? 'available');
     $selectedAgentId = isset($selectedAgentId) && $selectedAgentId !== null ? (int) $selectedAgentId : null;
     $selectedRoleId = isset($selectedRoleId) && $selectedRoleId !== null ? (int) $selectedRoleId : null;
+    $dateFrom = (string) ($dateFrom ?? '');
+    $dateTo = (string) ($dateTo ?? '');
     $quickReplies = is_array($quickReplies ?? null) ? $quickReplies : [];
     $conversationNotes = is_array($conversationNotes ?? null) ? $conversationNotes : [];
     $templateOptions = is_array($templateOptions ?? null) ? $templateOptions : [];
@@ -1237,7 +1239,6 @@
 
                     <form method="GET" action="/v2/whatsapp/chat" class="mb-15 wa-v2-searchbar">
                         <input type="hidden" name="filter" value="{{ $selectedFilter }}">
-                        <input type="hidden" name="per_page" value="{{ (int) ($perPage ?? 100) }}">
                         @if($selectedAgentId !== null)
                             <input type="hidden" name="agent_id" value="{{ $selectedAgentId }}">
                         @endif
@@ -1252,6 +1253,35 @@
                                 value="{{ $search }}"
                                 placeholder="Buscar por nombre, HC, número o mensaje">
                             <button type="submit" class="btn btn-primary">Buscar</button>
+                        </div>
+                    </form>
+
+                    <form method="GET" action="/v2/whatsapp/chat" class="row g-10 mb-15">
+                        <input type="hidden" name="filter" value="{{ $selectedFilter }}">
+                        <input type="hidden" name="search" value="{{ $search }}">
+                        @if($selectedAgentId !== null)
+                            <input type="hidden" name="agent_id" value="{{ $selectedAgentId }}">
+                        @endif
+                        @if($selectedRoleId !== null)
+                            <input type="hidden" name="role_id" value="{{ $selectedRoleId }}">
+                        @endif
+                        <div class="col-12">
+                            <div class="text-uppercase text-muted mb-5" style="font-size:11px; letter-spacing:.08em;">Última interacción</div>
+                        </div>
+                        <div class="col-sm-5">
+                            <input type="date" name="date_from" class="form-control form-control-sm" value="{{ $dateFrom }}">
+                        </div>
+                        <div class="col-sm-5">
+                            <input type="date" name="date_to" class="form-control form-control-sm" value="{{ $dateTo }}">
+                        </div>
+                        <div class="col-sm-2 d-flex gap-8">
+                            <button type="submit" class="btn btn-outline-primary btn-sm flex-fill" title="Aplicar rango">
+                                <i class="mdi mdi-calendar-filter-outline"></i>
+                            </button>
+                            <a href="{{ '/v2/whatsapp/chat?' . http_build_query(array_filter(['filter' => $selectedFilter, 'search' => $search, 'agent_id' => $selectedAgentId, 'role_id' => $selectedRoleId], static fn ($value) => $value !== null && $value !== '')) }}"
+                               class="btn btn-outline-danger btn-sm" title="Limpiar fechas">
+                                <i class="mdi mdi-filter-off"></i>
+                            </a>
                         </div>
                     </form>
 
@@ -1291,7 +1321,8 @@
                                 <form method="GET" action="/v2/whatsapp/chat" class="row g-10 mb-15">
                                     <input type="hidden" name="filter" value="{{ $selectedFilter }}">
                                     <input type="hidden" name="search" value="{{ $search }}">
-                                    <input type="hidden" name="per_page" value="{{ (int) ($perPage ?? 100) }}">
+                                    <input type="hidden" name="date_from" value="{{ $dateFrom }}">
+                                    <input type="hidden" name="date_to" value="{{ $dateTo }}">
                                     <div class="col-12">
                                         <div class="text-uppercase text-muted mb-5"
                                              style="font-size:11px; letter-spacing:.08em;">Filtros supervisor
@@ -1325,7 +1356,7 @@
                                         <button type="submit" class="btn btn-primary btn-sm"><i
                                                 class="mdi mdi-check-circle-outline"></i>
                                         </button>
-                                        <a href="{{ '/v2/whatsapp/chat?' . http_build_query(['filter' => $selectedFilter, 'search' => $search, 'per_page' => $perPage ?? 100]) }}"
+                                        <a href="{{ '/v2/whatsapp/chat?' . http_build_query(array_filter(['filter' => $selectedFilter, 'search' => $search, 'date_from' => $dateFrom, 'date_to' => $dateTo], static fn ($value) => $value !== null && $value !== '')) }}"
                                            class="btn btn-danger btn-sm"><i class="mdi mdi-filter-off"></i>
                                         </a>
                                     </div>
@@ -1378,7 +1409,7 @@
                                 $icon = $tabIcons[$key] ?? 'mdi mdi-circle-small';
                             @endphp
                             <a
-                                href="{{ '/v2/whatsapp/chat?' . http_build_query(array_filter(['filter' => $key, 'search' => $search, 'per_page' => $perPage ?? 100, 'agent_id' => $selectedAgentId, 'role_id' => $selectedRoleId], static fn ($value) => $value !== null && $value !== '')) }}"
+                                href="{{ '/v2/whatsapp/chat?' . http_build_query(array_filter(['filter' => $key, 'search' => $search, 'date_from' => $dateFrom, 'date_to' => $dateTo, 'agent_id' => $selectedAgentId, 'role_id' => $selectedRoleId], static fn ($value) => $value !== null && $value !== '')) }}"
                                 class="wa-v2-tab {{ $selectedFilter === $key ? 'is-active' : '' }}">
                                 <span class="wa-v2-icon-label">
                                     <i class="{{ $icon }}"></i>
@@ -1416,7 +1447,7 @@
                             };
                         @endphp
                         <a
-                            href="{{ '/v2/whatsapp/chat?' . http_build_query(array_filter(['filter' => $selectedFilter, 'search' => $search, 'per_page' => $perPage ?? 100, 'agent_id' => $selectedAgentId, 'role_id' => $selectedRoleId, 'conversation' => $conversation['id']], static fn ($value) => $value !== null && $value !== '')) }}"
+                            href="{{ '/v2/whatsapp/chat?' . http_build_query(array_filter(['filter' => $selectedFilter, 'search' => $search, 'date_from' => $dateFrom, 'date_to' => $dateTo, 'agent_id' => $selectedAgentId, 'role_id' => $selectedRoleId, 'conversation' => $conversation['id']], static fn ($value) => $value !== null && $value !== '')) }}"
                             class="wa-v2-conversation {{ $isActive ? 'is-active' : '' }}"
                             data-priority-state="{{ $priorityState }}"
                             data-wa-conversation-item="{{ (int) $conversation['id'] }}">
@@ -2254,7 +2285,18 @@
                         target.searchParams.set('conversation', String(conversationId));
                         target.searchParams.set('filter', '{{ $selectedFilter }}');
                         target.searchParams.set('search', '{{ $search }}');
-                        target.searchParams.set('per_page', '{{ (int) ($perPage ?? 100) }}');
+                        @if($dateFrom !== '')
+                        target.searchParams.set('date_from', '{{ $dateFrom }}');
+                        @endif
+                        @if($dateTo !== '')
+                        target.searchParams.set('date_to', '{{ $dateTo }}');
+                        @endif
+                        @if($selectedAgentId !== null)
+                        target.searchParams.set('agent_id', '{{ $selectedAgentId }}');
+                        @endif
+                        @if($selectedRoleId !== null)
+                        target.searchParams.set('role_id', '{{ $selectedRoleId }}');
+                        @endif
                         window.location.href = target.toString();
                         return;
                     }

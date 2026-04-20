@@ -13,6 +13,7 @@ use App\Modules\Whatsapp\Services\KnowledgeBaseService;
 use App\Modules\Whatsapp\Services\KpiDashboardService;
 use App\Modules\Whatsapp\Services\ProductivityToolkitService;
 use App\Modules\Whatsapp\Services\TemplateCatalogService;
+use Carbon\CarbonImmutable;
 use DateTimeImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Contracts\View\Factory;
@@ -47,9 +48,10 @@ class WhatsappUiController
         $selectedConversationId = max(0, (int) $request->query('conversation', 0));
         $filter = trim((string) $request->query('filter', 'all'));
         $search = trim((string) $request->query('search', ''));
-        $perPage = max(25, min((int) $request->query('per_page', 100), 250));
         $selectedAgentId = $this->nullableIntQuery($request, 'agent_id');
         $selectedRoleId = $this->nullableIntQuery($request, 'role_id');
+        $dateFrom = $this->nullableDateQuery($request, 'date_from');
+        $dateTo = $this->nullableDateQuery($request, 'date_to');
         $canSupervise = in_array('administrativo', $permissions, true)
             || in_array('whatsapp.manage', $permissions, true)
             || in_array('whatsapp.chat.supervise', $permissions, true);
@@ -63,12 +65,14 @@ class WhatsappUiController
 
         $paginator = $this->conversationReadService->paginateConversations(
             $search,
-            $perPage,
+            null,
             $filter !== '' ? $filter : 'all',
             is_numeric($currentUser['id'] ?? null) ? (int) $currentUser['id'] : null,
             $canSupervise,
             $selectedAgentId,
-            $selectedRoleId
+            $selectedRoleId,
+            $dateFrom,
+            $dateTo
         );
 
         $selectedConversation = $selectedConversationId > 0
@@ -107,7 +111,8 @@ class WhatsappUiController
             ),
             'selectedFilter' => $filter !== '' ? $filter : 'all',
             'search' => $search,
-            'perPage' => $perPage,
+            'dateFrom' => $dateFrom?->format('Y-m-d'),
+            'dateTo' => $dateTo?->format('Y-m-d'),
             'selectedAgentId' => $selectedAgentId,
             'selectedRoleId' => $selectedRoleId,
             'listData' => $this->conversationReadService->serializeConversationPage(
@@ -118,7 +123,9 @@ class WhatsappUiController
                 is_numeric($currentUser['id'] ?? null) ? (int) $currentUser['id'] : null,
                 $canSupervise,
                 $selectedAgentId,
-                $selectedRoleId
+                $selectedRoleId,
+                $dateFrom,
+                $dateTo
             ),
             'agents' => $agents,
             'agentSummary' => $agentSummary,
@@ -203,6 +210,7 @@ class WhatsappUiController
             'contract' => $this->flowmakerService->getContract(),
             'aiAgentPreview' => $this->aiAgentPreviewService->overview(),
             'knowledgeBase' => $this->knowledgeBaseService->overview(),
+            'templates' => $this->campaignService->listTemplateOptions(),
         ]);
     }
 
@@ -216,18 +224,32 @@ class WhatsappUiController
         ]);
     }
 
+    public function hub(): View
+    {
+        return $this->renderSection('dashboard');
+    }
+
     private function renderSection(string $section): View
     {
         $sections = [
             'chat' => [
                 'title' => 'Chat',
-                'goal' => 'Migrar primero el inbox operativo, conversaciones, mensajes, filtros, búsqueda y acciones rápidas.',
+                'goal' => 'El chat sigue operando en legacy mientras el resto del stack de WhatsApp migra a Laravel V2.',
                 'scope' => [
-                    'Lista de conversaciones y detalle de conversación',
-                    'Búsqueda por nombre, HC y número',
-                    'Envío manual de texto y adjuntos',
-                    'Contadores de cola, mis chats, sin leer y resueltos',
-                    'Panel lateral con contexto clínico y acciones',
+                    'Inbox y conversación siguen en /whatsapp/chat',
+                    'Se mantiene handoff, presencia y reglas actuales del chat legacy',
+                    'No se fuerza operación del inbox V2 en esta fase',
+                    'V2 se usa para dashboard, templates, campañas y flowmaker',
+                ],
+            ],
+            'campaigns' => [
+                'title' => 'Campañas',
+                'goal' => 'Operar campañas y dry-runs desde Laravel V2 sin depender del stack legacy.',
+                'scope' => [
+                    'Creación y listado de campañas',
+                    'Selección de audiencia sugerida',
+                    'Dry-run operativo',
+                    'Uso de templates oficiales publicados',
                 ],
             ],
             'templates' => [
@@ -264,32 +286,31 @@ class WhatsappUiController
 
         $statusCards = [
             [
-                'label' => 'Legacy MedForge',
+                'label' => 'Chat legacy',
                 'state' => 'Operativo',
                 'tone' => 'success',
-                'detail' => 'Reglas reales de negocio, handoff, presencia, KPIs y contexto paciente.',
+                'detail' => 'El inbox y la conversación siguen en /whatsapp/chat mientras estabilizamos V2.',
             ],
             [
-                'label' => 'Whatsbox',
-                'state' => 'Referencia',
-                'tone' => 'info',
-                'detail' => 'Fuente de patrones UX y modularidad para chat, templates, agentes, campañas y flowmaker.',
-            ],
-            [
-                'label' => 'Laravel App',
-                'state' => 'En migración',
+                'label' => 'WhatsApp V2',
+                'state' => 'Operativo parcial',
                 'tone' => 'warning',
-                'detail' => 'Ya tiene modelos y tablas base; falta capa operativa, servicios, rutas y UI final.',
+                'detail' => 'Dashboard, templates, campañas y flowmaker listos para operación en Laravel.',
+            ],
+            [
+                'label' => 'Chat V2',
+                'state' => 'Standby',
+                'tone' => 'info',
+                'detail' => 'Se mantiene disponible para pruebas y ajuste, pero no como inbox principal.',
             ],
         ];
 
         $phases = [
             'Fase 1: Core WhatsApp y webhook',
-            'Fase 2: Chat operativo',
-            'Fase 3: Handoff, presencia y agentes',
-            'Fase 4: Templates',
-            'Fase 5: KPI y reportes',
-            'Fase 6: Flowmaker y automatización',
+            'Fase 2: Templates y campañas en V2',
+            'Fase 3: KPI y reportes en V2',
+            'Fase 4: Flowmaker y automatización en V2',
+            'Fase 5: Chat V2 cuando cierre validación operativa',
         ];
 
         return view('whatsapp.v2-hub', [
@@ -314,6 +335,24 @@ class WhatsappUiController
         }
 
         return (int) $value;
+    }
+
+    private function nullableDateQuery(Request $request, string $key): ?CarbonImmutable
+    {
+        if (!$request->query->has($key)) {
+            return null;
+        }
+
+        $value = trim((string) $request->query($key));
+        if ($value === '') {
+            return null;
+        }
+
+        try {
+            return CarbonImmutable::createFromFormat('Y-m-d', $value);
+        } catch (Throwable) {
+            return null;
+        }
     }
 
     /**

@@ -52,6 +52,9 @@ class FlowRuntimePreviewService
             if (!is_array($scenario)) {
                 continue;
             }
+            if (!$this->scenarioIsPublished($scenario)) {
+                continue;
+            }
 
             if (!$this->scenarioMatches($scenario, $facts)) {
                 continue;
@@ -264,6 +267,14 @@ class FlowRuntimePreviewService
         }
 
         return 'AI Agent sugirió handoff por: ' . implode(', ', $reasons) . '.';
+    }
+
+    /**
+     * @param array<string, mixed> $scenario
+     */
+    private function scenarioIsPublished(array $scenario): bool
+    {
+        return (string) ($scenario['status'] ?? 'published') === 'published';
     }
 
     /**

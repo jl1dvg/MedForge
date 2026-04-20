@@ -9,6 +9,19 @@ use Tests\TestCase;
 
 class WhatsappFeatureFlagTest extends TestCase
 {
+    public function test_v2_hub_route_is_available(): void
+    {
+        $response = $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->get('/v2/whatsapp');
+
+        $response->assertOk();
+    }
+
     public function test_ui_route_redirects_to_legacy_when_flag_is_disabled(): void
     {
         config()->set('whatsapp.migration.enabled', false);

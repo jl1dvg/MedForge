@@ -480,6 +480,63 @@ class WhatsappFlowmakerTest extends TestCase
         ]);
     }
 
+    public function test_it_does_not_publish_draft_scenarios_into_runtime_tables(): void
+    {
+        $response = $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->postJson('/v2/whatsapp/api/flowmaker/publish', [
+                'flow' => [
+                    'name' => 'Flow con draft',
+                    'description' => 'Solo publica escenarios activos',
+                    'settings' => ['timezone' => 'America/Guayaquil'],
+                    'scenarios' => [
+                        [
+                            'id' => 'escenario_activo',
+                            'name' => 'Escenario activo',
+                            'status' => 'published',
+                            'stage' => 'arrival',
+                            'actions' => [
+                                [
+                                    'type' => 'send_message',
+                                    'message' => ['type' => 'text', 'body' => 'Hola desde activo'],
+                                ],
+                            ],
+                        ],
+                        [
+                            'id' => 'escenario_borrador',
+                            'name' => 'Escenario borrador',
+                            'status' => 'draft',
+                            'stage' => 'custom',
+                            'conditions' => [
+                                ['type' => 'message_contains', 'keywords' => ['borrador']],
+                            ],
+                            'actions' => [
+                                [
+                                    'type' => 'send_message',
+                                    'message' => ['type' => 'text', 'body' => 'Hola desde draft'],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ]);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('status', 'ok');
+
+        $this->assertDatabaseHas('whatsapp_autoresponder_steps', [
+            'step_key' => 'escenario_activo',
+        ]);
+        $this->assertDatabaseMissing('whatsapp_autoresponder_steps', [
+            'step_key' => 'escenario_borrador',
+        ]);
+    }
+
     public function test_it_simulates_message_against_active_flow(): void
     {
         $this->publishDefaultFlow();

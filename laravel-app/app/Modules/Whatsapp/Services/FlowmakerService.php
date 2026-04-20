@@ -181,7 +181,12 @@ class FlowmakerService
             ]);
 
             $stepMap = [];
-            foreach ($sanitized['scenarios'] as $index => $scenario) {
+            $publishedScenarios = array_values(array_filter(
+                $sanitized['scenarios'],
+                fn (array $scenario): bool => $this->scenarioIsPublished($scenario)
+            ));
+
+            foreach ($publishedScenarios as $index => $scenario) {
                 $step = WhatsappAutoresponderStep::query()->create([
                     'flow_version_id' => $version->id,
                     'step_key' => (string) $scenario['id'],
@@ -213,13 +218,13 @@ class FlowmakerService
                 }
             }
 
-            foreach ($sanitized['scenarios'] as $index => $scenario) {
+            foreach ($publishedScenarios as $index => $scenario) {
                 $currentStepId = $stepMap[(string) $scenario['id']] ?? null;
                 if (!$currentStepId) {
                     continue;
                 }
 
-                $nextKey = $sanitized['scenarios'][$index + 1]['id'] ?? null;
+                $nextKey = $publishedScenarios[$index + 1]['id'] ?? null;
                 if ($nextKey !== null && isset($stepMap[(string) $nextKey])) {
                     WhatsappAutoresponderStepTransition::query()->create([
                         'step_id' => $currentStepId,
@@ -263,6 +268,7 @@ class FlowmakerService
 
         $usedIds = [];
         $normalized = [];
+        $publishedCount = 0;
         foreach ($scenarios as $index => $scenario) {
             $id = trim((string) ($scenario['id'] ?? ''));
             if ($id === '') {
@@ -289,10 +295,19 @@ class FlowmakerService
                 throw new InvalidArgumentException('Cada escenario debe incluir al menos una acción.');
             }
 
+            $status = trim((string) ($scenario['status'] ?? 'published'));
+            if (!in_array($status, ['draft', 'published', 'paused'], true)) {
+                $status = 'published';
+            }
+            if ($status === 'published') {
+                $publishedCount++;
+            }
+
             $normalized[] = [
                 'id' => $id,
                 'name' => $name,
                 'description' => trim((string) ($scenario['description'] ?? '')),
+                'status' => $status,
                 'stage' => $stage,
                 'stage_id' => $stage,
                 'stageId' => $stage,
@@ -300,6 +315,10 @@ class FlowmakerService
                 'conditions' => array_values(array_filter($scenario['conditions'] ?? [], static fn ($condition) => is_array($condition))),
                 'actions' => $actions,
             ];
+        }
+
+        if ($publishedCount <= 0) {
+            throw new InvalidArgumentException('Debes dejar al menos un escenario en estado published para publicar el flujo.');
         }
 
         return [
@@ -326,6 +345,7 @@ class FlowmakerService
                     'id' => 'primer_contacto',
                     'name' => 'Primer contacto',
                     'description' => 'Saludo inicial',
+                    'status' => 'published',
                     'stage' => 'arrival',
                     'stage_id' => 'arrival',
                     'stageId' => 'arrival',
@@ -375,6 +395,14 @@ class FlowmakerService
         }
 
         return 'message';
+    }
+
+    /**
+     * @param array<string, mixed> $scenario
+     */
+    private function scenarioIsPublished(array $scenario): bool
+    {
+        return (string) ($scenario['status'] ?? 'published') === 'published';
     }
 
     /**

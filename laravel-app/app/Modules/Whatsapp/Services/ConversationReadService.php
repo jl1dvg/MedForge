@@ -18,20 +18,25 @@ class ConversationReadService
      */
     public function paginateConversations(
         string $search = '',
-        int $perPage = 25,
+        ?int $perPage = null,
         string $filter = 'all',
         ?int $viewerUserId = null,
         bool $includeAssignedOthers = true,
         ?int $assignedUserId = null,
         ?int $roleId = null,
+        ?CarbonImmutable $dateFrom = null,
+        ?CarbonImmutable $dateTo = null,
     ): LengthAwarePaginator
     {
-        $perPage = max(1, min($perPage, 100));
-
         $query = $this->baseVisibleQuery($viewerUserId, $includeAssignedOthers, $assignedUserId, $roleId);
         $query = $this->applyFilter($query, $filter, $viewerUserId);
         $query = $this->applySearch($query, $search);
+        $query = $this->applyDateRange($query, $dateFrom, $dateTo);
         $query = $this->applyPriorityOrdering($query, $viewerUserId);
+
+        if ($perPage === null || $perPage <= 0) {
+            $perPage = max(1, (clone $query)->count());
+        }
 
         return $query
             ->orderByDesc('id')
@@ -84,9 +89,12 @@ class ConversationReadService
         bool $includeAssignedOthers = true,
         ?int $assignedUserId = null,
         ?int $roleId = null,
+        ?CarbonImmutable $dateFrom = null,
+        ?CarbonImmutable $dateTo = null,
     ): array
     {
         $base = $this->baseVisibleQuery($viewerUserId, $includeAssignedOthers, $assignedUserId, $roleId);
+        $base = $this->applyDateRange($base, $dateFrom, $dateTo);
 
         return [
             'all' => (clone $base)->count(),
@@ -99,6 +107,19 @@ class ConversationReadService
             'needs_template' => $this->applyNeedsTemplateFilter((clone $base)->where('needs_human', true))->count(),
             'resolved' => (clone $base)->where('needs_human', false)->count(),
         ];
+    }
+
+    private function applyDateRange(Builder $query, ?CarbonImmutable $dateFrom, ?CarbonImmutable $dateTo): Builder
+    {
+        if ($dateFrom !== null) {
+            $query->where('last_message_at', '>=', $dateFrom->startOfDay());
+        }
+
+        if ($dateTo !== null) {
+            $query->where('last_message_at', '<=', $dateTo->endOfDay());
+        }
+
+        return $query;
     }
 
     /**

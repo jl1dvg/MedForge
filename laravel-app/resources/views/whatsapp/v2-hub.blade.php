@@ -1,12 +1,13 @@
 @extends('layouts.medforge')
 
 @php
-    $sectionKey = (string) ($section ?? 'chat');
-    $sectionMeta = is_array($sectionMeta ?? null) ? $sectionMeta : ['title' => 'Chat', 'goal' => '', 'scope' => []];
+    $sectionKey = (string) ($section ?? 'dashboard');
+    $sectionMeta = is_array($sectionMeta ?? null) ? $sectionMeta : ['title' => 'Dashboard', 'goal' => '', 'scope' => []];
     $statusCards = is_array($statusCards ?? null) ? $statusCards : [];
     $phases = is_array($phases ?? null) ? $phases : [];
     $links = [
-        'chat' => '/v2/whatsapp/chat',
+        'chat legacy' => '/whatsapp/chat',
+        'campaigns' => '/v2/whatsapp/campaigns',
         'templates' => '/v2/whatsapp/templates',
         'dashboard' => '/v2/whatsapp/dashboard',
         'flowmaker' => '/v2/whatsapp/flowmaker',
@@ -66,8 +67,16 @@
 
                     <div class="wa-v2-nav d-flex flex-wrap gap-10 mt-20">
                         @foreach($links as $key => $href)
-                            <a href="{{ $href }}" class="btn {{ $sectionKey === $key ? 'btn-primary' : 'btn-light' }}">
+                            @php
+                                $normalizedKey = str_replace(' ', '_', strtolower($key));
+                                $isLegacyChat = $normalizedKey === 'chat_legacy';
+                                $isActive = !$isLegacyChat && $sectionKey === $normalizedKey;
+                            @endphp
+                            <a href="{{ $href }}" class="btn {{ $isActive ? 'btn-primary' : 'btn-light' }}">
                                 {{ ucfirst($key) }}
+                                @if($isLegacyChat)
+                                    <span class="badge bg-warning-light text-warning ms-5">legacy</span>
+                                @endif
                             </a>
                         @endforeach
                     </div>
