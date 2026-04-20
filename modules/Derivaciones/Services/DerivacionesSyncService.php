@@ -8,6 +8,9 @@ use RuntimeException;
 
 class DerivacionesSyncService
 {
+    /** @var array<string, array<string, bool>> */
+    private array $tableColumnCache = [];
+
     public function __construct(private PDO $db)
     {
     }
@@ -392,6 +395,12 @@ class DerivacionesSyncService
                     'cod_derivacion' => $codigo,
                     'form_id' => $formId,
                     'hc_number' => $hcNumber,
+                    'fecha_registro' => $this->normalizeNullable($result['fecha_registro'] ?? null),
+                    'fecha_vigencia' => $this->normalizeNullable($result['fecha_vigencia'] ?? null),
+                    'referido' => $this->normalizeNullable($result['referido'] ?? null),
+                    'diagnostico' => $this->normalizeNullable($result['diagnostico'] ?? null),
+                    'sede' => $this->normalizeNullable($result['sede'] ?? null),
+                    'parentesco' => $this->normalizeNullable($result['parentesco'] ?? null),
                 ];
                 $success++;
                 $this->markScrapeAttempt($queueMeta[$formId]['queue_id'], 'success', null, $queueMeta[$formId]['attempts'], $maxAttempts);
@@ -613,21 +622,38 @@ class DerivacionesSyncService
     }
 
     /**
-     * @param array<int, array{cod_derivacion:string,form_id:string,hc_number:?string}> $rows
+     * @param array<int, array{
+     *   cod_derivacion:string,
+     *   form_id:string,
+     *   hc_number:?string,
+     *   fecha_registro:?string,
+     *   fecha_vigencia:?string,
+     *   referido:?string,
+     *   diagnostico:?string,
+     *   sede:?string,
+     *   parentesco:?string
+     * }> $rows
      */
     private function bulkUpsertLegacyDerivations(array $rows, int $chunkSize = 200): void
     {
         $chunks = array_chunk($rows, $chunkSize);
+        $legacyHasUpdatedAt = $this->tableHasColumn('derivaciones_form_id', 'updated_at');
 
         foreach ($chunks as $chunk) {
             $placeholders = [];
             $values = [];
 
             foreach ($chunk as $row) {
-                $placeholders[] = '(?, ?, ?, NULL, NULL, NULL, NULL, NULL, NULL, NULL)';
+                $placeholders[] = '(?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)';
                 $values[] = $row['cod_derivacion'];
                 $values[] = $row['form_id'];
                 $values[] = $row['hc_number'];
+                $values[] = $row['fecha_registro'] ?? null;
+                $values[] = $row['fecha_vigencia'] ?? null;
+                $values[] = $row['referido'] ?? null;
+                $values[] = $row['diagnostico'] ?? null;
+                $values[] = $row['sede'] ?? null;
+                $values[] = $row['parentesco'] ?? null;
             }
 
             $sql = 'INSERT INTO derivaciones_form_id (
@@ -636,7 +662,13 @@ class DerivacionesSyncService
                     ON DUPLICATE KEY UPDATE
                         cod_derivacion = VALUES(cod_derivacion),
                         hc_number = VALUES(hc_number),
-                        updated_at = CURRENT_TIMESTAMP';
+                        fecha_registro = VALUES(fecha_registro),
+                        fecha_vigencia = VALUES(fecha_vigencia),
+                        referido = VALUES(referido),
+                        diagnostico = VALUES(diagnostico),
+                        sede = VALUES(sede),
+                        parentesco = VALUES(parentesco)' . ($legacyHasUpdatedAt ? ',
+                        updated_at = CURRENT_TIMESTAMP' : '');
 
             $stmt = $this->db->prepare($sql);
             $stmt->execute($values);
@@ -698,6 +730,8 @@ class DerivacionesSyncService
 
     private function startSyncRun(string $jobName, ?int $lastCursor): void
     {
+        $syncRunsHasUpdatedAt = $this->tableHasColumn('derivaciones_sync_runs', 'updated_at');
+
         $stmt = $this->db->prepare(
             'INSERT INTO derivaciones_sync_runs (job_name, started_at, finished_at, status, items_processed, last_cursor, message)
              VALUES (:job, NOW(), NULL, "running", 0, :last_cursor, "En ejecución")
@@ -707,8 +741,8 @@ class DerivacionesSyncService
                 status = "running",
                 items_processed = 0,
                 last_cursor = COALESCE(VALUES(last_cursor), last_cursor),
-                message = "En ejecución",
-                updated_at = CURRENT_TIMESTAMP'
+                message = "En ejecución"' . ($syncRunsHasUpdatedAt ? ',
+                updated_at = CURRENT_TIMESTAMP' : '')
         );
 
         $stmt->execute([
@@ -719,6 +753,8 @@ class DerivacionesSyncService
 
     private function finishSyncRun(string $jobName, string $status, int $processed, ?int $lastCursor, string $message): void
     {
+        $syncRunsHasUpdatedAt = $this->tableHasColumn('derivaciones_sync_runs', 'updated_at');
+
         $stmt = $this->db->prepare(
             'INSERT INTO derivaciones_sync_runs (job_name, started_at, finished_at, status, items_processed, last_cursor, message)
              VALUES (:job, NOW(), NOW(), :status, :items_processed, :last_cursor, :message)
@@ -727,8 +763,8 @@ class DerivacionesSyncService
                 status = VALUES(status),
                 items_processed = VALUES(items_processed),
                 last_cursor = VALUES(last_cursor),
-                message = VALUES(message),
-                updated_at = CURRENT_TIMESTAMP'
+                message = VALUES(message)' . ($syncRunsHasUpdatedAt ? ',
+                updated_at = CURRENT_TIMESTAMP' : '')
         );
 
         $stmt->execute([
@@ -797,12 +833,14 @@ class DerivacionesSyncService
 
     private function upsertScrapeQueueEntry(string $formId, ?string $hcNumber): int
     {
+        $queueHasUpdatedAt = $this->tableHasColumn('derivaciones_scrape_queue', 'updated_at');
+
         $stmt = $this->db->prepare(
             'INSERT INTO derivaciones_scrape_queue (form_id, hc_number, status, attempts, last_error, next_retry_at, last_attempt_at)
              VALUES (:form_id, :hc_number, "pending", 0, NULL, NULL, NULL)
              ON DUPLICATE KEY UPDATE
-                hc_number = COALESCE(VALUES(hc_number), hc_number),
-                updated_at = CURRENT_TIMESTAMP'
+                hc_number = COALESCE(VALUES(hc_number), hc_number)' . ($queueHasUpdatedAt ? ',
+                updated_at = CURRENT_TIMESTAMP' : '')
         );
 
         $stmt->execute([
@@ -825,6 +863,7 @@ class DerivacionesSyncService
     {
         $attempts = $previousAttempts + 1;
         $nextRetry = null;
+        $queueHasUpdatedAt = $this->tableHasColumn('derivaciones_scrape_queue', 'updated_at');
 
         if ($status !== 'success' && $attempts < $maxAttempts) {
             $nextRetry = $this->buildRetryTimestamp($status, $attempts);
@@ -836,8 +875,8 @@ class DerivacionesSyncService
                  attempts = :attempts,
                  last_error = :last_error,
                  next_retry_at = :next_retry,
-                 last_attempt_at = NOW(),
-                 updated_at = CURRENT_TIMESTAMP
+                 last_attempt_at = NOW()' . ($queueHasUpdatedAt ? ',
+                 updated_at = CURRENT_TIMESTAMP' : '') . '
              WHERE id = :id'
         );
 
@@ -857,6 +896,23 @@ class DerivacionesSyncService
         }
 
         return date('Y-m-d H:i:s', strtotime(sprintf('+%d minutes', max(15, $attempts * 10))));
+    }
+
+    private function tableHasColumn(string $table, string $column): bool
+    {
+        if (isset($this->tableColumnCache[$table][$column])) {
+            return $this->tableColumnCache[$table][$column];
+        }
+
+        $stmt = $this->db->query('SHOW COLUMNS FROM `' . str_replace('`', '``', $table) . '`');
+        $columns = $stmt !== false ? ($stmt->fetchAll(PDO::FETCH_COLUMN) ?: []) : [];
+
+        $this->tableColumnCache[$table] = [];
+        foreach ($columns as $name) {
+            $this->tableColumnCache[$table][(string) $name] = true;
+        }
+
+        return isset($this->tableColumnCache[$table][$column]);
     }
 
     /**

@@ -58,8 +58,8 @@ class BillingParticularesReportService
      */
     public function resolveDateRange(?string $dateFrom = null, ?string $dateTo = null): array
     {
-        $dateFrom = trim((string) $dateFrom);
-        $dateTo = trim((string) $dateTo);
+        $dateFrom = trim((string)$dateFrom);
+        $dateTo = trim((string)$dateTo);
 
         $start = $this->parseDateInput($dateFrom, false);
         $end = $this->parseDateInput($dateTo, true);
@@ -379,47 +379,47 @@ class BillingParticularesReportService
 
         $enrichedRows = [];
         foreach ($rows as $row) {
-            $mappedAffiliation = $this->resolveMappedAffiliation((string) ($row['afiliacion'] ?? ''));
+            $mappedAffiliation = $this->resolveMappedAffiliation((string)($row['afiliacion'] ?? ''));
             if ($mappedAffiliation === null) {
                 continue;
             }
 
-            $categoriaCliente = strtolower(trim((string) ($mappedAffiliation['categoria'] ?? '')));
+            $categoriaCliente = strtolower(trim((string)($mappedAffiliation['categoria'] ?? '')));
             if (!$this->isParticularReportCategory($categoriaCliente)) {
                 continue;
             }
 
-            $mappedRawAffiliation = trim((string) ($mappedAffiliation['afiliacion_raw'] ?? ''));
+            $mappedRawAffiliation = trim((string)($mappedAffiliation['afiliacion_raw'] ?? ''));
             $row['afiliacion_original'] = $row['afiliacion'] ?? null;
             if ($mappedRawAffiliation !== '') {
                 $row['afiliacion'] = $mappedRawAffiliation;
             }
-            $empresaSeguro = trim((string) ($mappedAffiliation['empresa_seguro'] ?? ''));
+            $empresaSeguro = trim((string)($mappedAffiliation['empresa_seguro'] ?? ''));
             if ($empresaSeguro === '') {
-                $empresaSeguro = $this->resolveEmpresaSeguroLabel((string) ($row['afiliacion'] ?? ''));
+                $empresaSeguro = $this->resolveEmpresaSeguroLabel((string)($row['afiliacion'] ?? ''));
             }
             $row['empresa_seguro'] = $empresaSeguro;
             $row['empresa_seguro_key'] = $this->afiliacionDimensions->normalizeEmpresaFilter($empresaSeguro);
             $row['categoria_cliente'] = $categoriaCliente;
-            $tipoAtencion = $this->resolveAttentionType((string) ($row['procedimiento_proyectado'] ?? ''));
+            $tipoAtencion = $this->resolveAttentionType((string)($row['procedimiento_proyectado'] ?? ''));
             if ($this->isExcludedAttentionType($tipoAtencion)) {
                 continue;
             }
             if (
                 $this->isOphthalmologyServiceAttentionType($tipoAtencion)
-                && !$this->isAllowedOphthalmologyServiceProcedure((string) ($row['procedimiento_proyectado'] ?? ''))
+                && !$this->isAllowedOphthalmologyServiceProcedure((string)($row['procedimiento_proyectado'] ?? ''))
             ) {
                 continue;
             }
 
             $row['tipo_atencion'] = $tipoAtencion;
-            $row['monto_honorario_real'] = round((float) ($row['monto_honorario_real'] ?? 0), 2);
-            $row['monto_facturado_real'] = round((float) ($row['monto_facturado_real'] ?? 0), 2);
-            $row['total_produccion'] = round((float) ($row['total_produccion'] ?? 0), 2);
-            $row['procedimientos_facturados'] = (int) ($row['procedimientos_facturados'] ?? 0);
-            $billingId = trim((string) ($row['billing_id'] ?? ''));
-            $facturaId = trim((string) ($row['factura_id'] ?? ''));
-            $numeroFactura = trim((string) ($row['numero_factura'] ?? ''));
+            $row['monto_honorario_real'] = round((float)($row['monto_honorario_real'] ?? 0), 2);
+            $row['monto_facturado_real'] = round((float)($row['monto_facturado_real'] ?? 0), 2);
+            $row['total_produccion'] = round((float)($row['total_produccion'] ?? 0), 2);
+            $row['procedimientos_facturados'] = (int)($row['procedimientos_facturados'] ?? 0);
+            $billingId = trim((string)($row['billing_id'] ?? ''));
+            $facturaId = trim((string)($row['factura_id'] ?? ''));
+            $numeroFactura = trim((string)($row['numero_factura'] ?? ''));
             $hasBillingEvidence = $this->hasBillingEvidence($row);
             $row['facturado'] = $hasBillingEvidence;
             $row['estado_realizacion'] = 'ATENDIDA';
@@ -450,9 +450,9 @@ class BillingParticularesReportService
             $row['estado_informe_operativo'] = '';
 
             if ($this->isPniAttentionType($tipoAtencion)) {
-                [$codigoTarifario, $detalleTarifario] = $this->parseProcedureCodeDetail((string) ($row['procedimiento_proyectado'] ?? ''));
+                [$codigoTarifario, $detalleTarifario] = $this->parseProcedureCodeDetail((string)($row['procedimiento_proyectado'] ?? ''));
                 $tarifaDiagnostic = $this->resolveTarifaDiagnostic($codigoTarifario, $row);
-                $montoTarifario = (float) ($tarifaDiagnostic['amount'] ?? 0.0);
+                $montoTarifario = (float)($tarifaDiagnostic['amount'] ?? 0.0);
                 $estadoRealizacion = $this->resolvePniRealizationState($row, $hasBillingEvidence);
                 $estadoFacturacion = $this->resolvePniBillingState($estadoRealizacion);
                 $alertaRevision = $this->resolvePniReviewAlert($row, $estadoRealizacion, $hasBillingEvidence);
@@ -462,12 +462,12 @@ class BillingParticularesReportService
                 $row['alerta_revision'] = $alertaRevision;
                 $row['tarifa_codigo'] = $codigoTarifario;
                 $row['tarifa_detalle'] = $detalleTarifario;
-                $row['tarifa_lookup_status'] = (string) ($tarifaDiagnostic['status'] ?? '');
-                $row['tarifa_lookup_reason'] = (string) ($tarifaDiagnostic['reason'] ?? '');
-                $row['tarifa_level_key'] = (string) ($tarifaDiagnostic['level_key'] ?? '');
-                $row['tarifa_level_title'] = (string) ($tarifaDiagnostic['level_title'] ?? '');
-                $row['tarifa_codigo_match'] = (string) ($tarifaDiagnostic['matched_codigo'] ?? '');
-                $row['tarifa_descripcion_match'] = (string) ($tarifaDiagnostic['matched_descripcion'] ?? '');
+                $row['tarifa_lookup_status'] = (string)($tarifaDiagnostic['status'] ?? '');
+                $row['tarifa_lookup_reason'] = (string)($tarifaDiagnostic['reason'] ?? '');
+                $row['tarifa_level_key'] = (string)($tarifaDiagnostic['level_key'] ?? '');
+                $row['tarifa_level_title'] = (string)($tarifaDiagnostic['level_title'] ?? '');
+                $row['tarifa_codigo_match'] = (string)($tarifaDiagnostic['matched_codigo'] ?? '');
+                $row['tarifa_descripcion_match'] = (string)($tarifaDiagnostic['matched_descripcion'] ?? '');
                 $row['tarifa_sin_costo_configurado'] = $this->isZeroCostTarifaDiagnostic($tarifaDiagnostic);
                 $row['monto_estimado_tarifario'] = round($montoTarifario, 2);
                 $row['pni_realizada'] = in_array($estadoRealizacion, ['FACTURADA', 'REALIZADA_CONSULTA'], true);
@@ -493,9 +493,9 @@ class BillingParticularesReportService
             }
 
             if ($this->isOphthalmologyServiceAttentionType($tipoAtencion)) {
-                [$codigoTarifario, $detalleTarifario] = $this->parseProcedureCodeDetail((string) ($row['procedimiento_proyectado'] ?? ''));
+                [$codigoTarifario, $detalleTarifario] = $this->parseProcedureCodeDetail((string)($row['procedimiento_proyectado'] ?? ''));
                 $tarifaDiagnostic = $this->resolveTarifaDiagnostic($codigoTarifario, $row);
-                $montoTarifario = (float) ($tarifaDiagnostic['amount'] ?? 0.0);
+                $montoTarifario = (float)($tarifaDiagnostic['amount'] ?? 0.0);
                 $estadoRealizacion = $this->resolveOphthalmologyServiceRealizationState($row, $hasBillingEvidence);
                 $estadoFacturacion = $this->resolveOphthalmologyServiceBillingState($estadoRealizacion);
                 $alertaRevision = $this->resolveOphthalmologyServiceReviewAlert($row, $estadoRealizacion, $hasBillingEvidence);
@@ -505,12 +505,12 @@ class BillingParticularesReportService
                 $row['alerta_revision'] = $alertaRevision;
                 $row['tarifa_codigo'] = $codigoTarifario;
                 $row['tarifa_detalle'] = $detalleTarifario;
-                $row['tarifa_lookup_status'] = (string) ($tarifaDiagnostic['status'] ?? '');
-                $row['tarifa_lookup_reason'] = (string) ($tarifaDiagnostic['reason'] ?? '');
-                $row['tarifa_level_key'] = (string) ($tarifaDiagnostic['level_key'] ?? '');
-                $row['tarifa_level_title'] = (string) ($tarifaDiagnostic['level_title'] ?? '');
-                $row['tarifa_codigo_match'] = (string) ($tarifaDiagnostic['matched_codigo'] ?? '');
-                $row['tarifa_descripcion_match'] = (string) ($tarifaDiagnostic['matched_descripcion'] ?? '');
+                $row['tarifa_lookup_status'] = (string)($tarifaDiagnostic['status'] ?? '');
+                $row['tarifa_lookup_reason'] = (string)($tarifaDiagnostic['reason'] ?? '');
+                $row['tarifa_level_key'] = (string)($tarifaDiagnostic['level_key'] ?? '');
+                $row['tarifa_level_title'] = (string)($tarifaDiagnostic['level_title'] ?? '');
+                $row['tarifa_codigo_match'] = (string)($tarifaDiagnostic['matched_codigo'] ?? '');
+                $row['tarifa_descripcion_match'] = (string)($tarifaDiagnostic['matched_descripcion'] ?? '');
                 $row['tarifa_sin_costo_configurado'] = $this->isZeroCostTarifaDiagnostic($tarifaDiagnostic);
                 $row['monto_estimado_tarifario'] = round($montoTarifario, 2);
                 $row['servicio_oftalmologico_realizada'] = in_array($estadoRealizacion, ['FACTURADA', 'REALIZADA_CONSULTA'], true);
@@ -536,9 +536,9 @@ class BillingParticularesReportService
             }
 
             if ($this->isImageAttentionType($tipoAtencion)) {
-                [$codigoTarifario, $detalleTarifario] = $this->parseProcedureCodeDetail((string) ($row['procedimiento_proyectado'] ?? ''));
+                [$codigoTarifario, $detalleTarifario] = $this->parseProcedureCodeDetail((string)($row['procedimiento_proyectado'] ?? ''));
                 $tarifaDiagnostic = $this->resolveTarifaDiagnostic($codigoTarifario, $row);
-                $montoTarifario = (float) ($tarifaDiagnostic['amount'] ?? 0.0);
+                $montoTarifario = (float)($tarifaDiagnostic['amount'] ?? 0.0);
                 $estadoRealizacion = $this->resolveImageRealizationState($row, $hasBillingEvidence);
                 $estadoFacturacion = $this->resolveImageBillingState($estadoRealizacion);
                 $estadoInforme = $this->resolveImageReportState($row);
@@ -550,12 +550,12 @@ class BillingParticularesReportService
                 $row['alerta_revision'] = $alertaRevision;
                 $row['tarifa_codigo'] = $codigoTarifario;
                 $row['tarifa_detalle'] = $detalleTarifario;
-                $row['tarifa_lookup_status'] = (string) ($tarifaDiagnostic['status'] ?? '');
-                $row['tarifa_lookup_reason'] = (string) ($tarifaDiagnostic['reason'] ?? '');
-                $row['tarifa_level_key'] = (string) ($tarifaDiagnostic['level_key'] ?? '');
-                $row['tarifa_level_title'] = (string) ($tarifaDiagnostic['level_title'] ?? '');
-                $row['tarifa_codigo_match'] = (string) ($tarifaDiagnostic['matched_codigo'] ?? '');
-                $row['tarifa_descripcion_match'] = (string) ($tarifaDiagnostic['matched_descripcion'] ?? '');
+                $row['tarifa_lookup_status'] = (string)($tarifaDiagnostic['status'] ?? '');
+                $row['tarifa_lookup_reason'] = (string)($tarifaDiagnostic['reason'] ?? '');
+                $row['tarifa_level_key'] = (string)($tarifaDiagnostic['level_key'] ?? '');
+                $row['tarifa_level_title'] = (string)($tarifaDiagnostic['level_title'] ?? '');
+                $row['tarifa_codigo_match'] = (string)($tarifaDiagnostic['matched_codigo'] ?? '');
+                $row['tarifa_descripcion_match'] = (string)($tarifaDiagnostic['matched_descripcion'] ?? '');
                 $row['tarifa_sin_costo_configurado'] = $this->isZeroCostTarifaDiagnostic($tarifaDiagnostic);
                 $row['monto_estimado_tarifario'] = round($montoTarifario, 2);
                 $row['imagen_realizada'] = in_array($estadoRealizacion, ['FACTURADA', 'REALIZADA_CON_ARCHIVOS', 'REALIZADA_INFORMADA'], true);
@@ -582,9 +582,9 @@ class BillingParticularesReportService
             }
 
             if ($this->isSurgeryAttentionType($tipoAtencion)) {
-                [$codigoTarifario, $detalleTarifario] = $this->parseProcedureCodeDetail((string) ($row['procedimiento_proyectado'] ?? ''));
+                [$codigoTarifario, $detalleTarifario] = $this->parseProcedureCodeDetail((string)($row['procedimiento_proyectado'] ?? ''));
                 $tarifaDiagnostic = $this->resolveTarifaDiagnostic($codigoTarifario, $row);
-                $montoTarifario = (float) ($tarifaDiagnostic['amount'] ?? 0.0);
+                $montoTarifario = (float)($tarifaDiagnostic['amount'] ?? 0.0);
                 $estadoRealizacion = $this->resolveSurgeryRealizationState($row, $hasBillingEvidence);
                 $estadoFacturacion = $this->resolveSurgeryBillingState($estadoRealizacion, $hasBillingEvidence);
                 $alertaRevision = $this->resolveSurgeryReviewAlert($row, $estadoRealizacion, $estadoFacturacion);
@@ -594,12 +594,12 @@ class BillingParticularesReportService
                 $row['alerta_revision'] = $alertaRevision;
                 $row['tarifa_codigo'] = $codigoTarifario;
                 $row['tarifa_detalle'] = $detalleTarifario;
-                $row['tarifa_lookup_status'] = (string) ($tarifaDiagnostic['status'] ?? '');
-                $row['tarifa_lookup_reason'] = (string) ($tarifaDiagnostic['reason'] ?? '');
-                $row['tarifa_level_key'] = (string) ($tarifaDiagnostic['level_key'] ?? '');
-                $row['tarifa_level_title'] = (string) ($tarifaDiagnostic['level_title'] ?? '');
-                $row['tarifa_codigo_match'] = (string) ($tarifaDiagnostic['matched_codigo'] ?? '');
-                $row['tarifa_descripcion_match'] = (string) ($tarifaDiagnostic['matched_descripcion'] ?? '');
+                $row['tarifa_lookup_status'] = (string)($tarifaDiagnostic['status'] ?? '');
+                $row['tarifa_lookup_reason'] = (string)($tarifaDiagnostic['reason'] ?? '');
+                $row['tarifa_level_key'] = (string)($tarifaDiagnostic['level_key'] ?? '');
+                $row['tarifa_level_title'] = (string)($tarifaDiagnostic['level_title'] ?? '');
+                $row['tarifa_codigo_match'] = (string)($tarifaDiagnostic['matched_codigo'] ?? '');
+                $row['tarifa_descripcion_match'] = (string)($tarifaDiagnostic['matched_descripcion'] ?? '');
                 $row['tarifa_sin_costo_configurado'] = $this->isZeroCostTarifaDiagnostic($tarifaDiagnostic);
                 $row['monto_estimado_tarifario'] = round($montoTarifario, 2);
                 $row['cirugia_realizada'] = in_array($estadoRealizacion, ['OPERADA_CONFIRMADA', 'OPERADA_CON_PROTOCOLO', 'OPERADA_OTRO_CENTRO'], true);
@@ -633,15 +633,15 @@ class BillingParticularesReportService
      */
     public function aplicarFiltros(array $rows, array $filters): array
     {
-        $afiliacion = strtolower(trim((string) ($filters['afiliacion'] ?? '')));
-        $empresaSeguro = $this->afiliacionDimensions->normalizeEmpresaFilter((string) ($filters['empresa_seguro'] ?? ''));
+        $afiliacion = strtolower(trim((string)($filters['afiliacion'] ?? '')));
+        $empresaSeguro = $this->afiliacionDimensions->normalizeEmpresaFilter((string)($filters['empresa_seguro'] ?? ''));
         $sede = $this->normalizeSedeFilter($filters['sede'] ?? null);
-        $tipoAtencion = strtoupper(trim((string) ($filters['tipo'] ?? '')));
-        $procedimiento = strtolower(trim((string) ($filters['procedimiento'] ?? '')));
-        $categoriaCliente = strtolower(trim((string) ($filters['categoria_cliente'] ?? '')));
+        $tipoAtencion = strtoupper(trim((string)($filters['tipo'] ?? '')));
+        $procedimiento = strtolower(trim((string)($filters['procedimiento'] ?? '')));
+        $categoriaCliente = strtolower(trim((string)($filters['categoria_cliente'] ?? '')));
         $categoriaMadreReferido = $this->normalizeReferralValue($filters['categoria_madre_referido'] ?? null);
-        $dateFromTs = $this->parseDateTimestamp((string) ($filters['date_from'] ?? ''), false);
-        $dateToTs = $this->parseDateTimestamp((string) ($filters['date_to'] ?? ''), true);
+        $dateFromTs = $this->parseDateTimestamp((string)($filters['date_from'] ?? ''), false);
+        $dateToTs = $this->parseDateTimestamp((string)($filters['date_to'] ?? ''), true);
 
         if ($categoriaCliente !== '' && !$this->isParticularReportCategory($categoriaCliente)) {
             $categoriaCliente = '';
@@ -649,19 +649,19 @@ class BillingParticularesReportService
 
         $resultado = [];
         foreach ($rows as $row) {
-            $timestamp = strtotime((string) ($row['fecha'] ?? ''));
+            $timestamp = strtotime((string)($row['fecha'] ?? ''));
             if ($timestamp === false) {
                 continue;
             }
 
-            $afiliacionRow = strtolower(trim((string) ($row['afiliacion'] ?? '')));
-            $empresaSeguroRow = $this->afiliacionDimensions->normalizeEmpresaFilter((string) ($row['empresa_seguro_key'] ?? $row['empresa_seguro'] ?? ''));
+            $afiliacionRow = strtolower(trim((string)($row['afiliacion'] ?? '')));
+            $empresaSeguroRow = $this->afiliacionDimensions->normalizeEmpresaFilter((string)($row['empresa_seguro_key'] ?? $row['empresa_seguro'] ?? ''));
             $sedeRow = $this->normalizeSedeFilter($row['sede'] ?? null);
-            $tipoAtencionRow = strtoupper(trim((string) ($row['tipo_atencion'] ?? '')));
-            $procedimientoRow = strtolower((string) ($row['procedimiento_proyectado'] ?? ''));
-            $categoriaRow = strtolower(trim((string) ($row['categoria_cliente'] ?? '')));
+            $tipoAtencionRow = strtoupper(trim((string)($row['tipo_atencion'] ?? '')));
+            $procedimientoRow = strtolower((string)($row['procedimiento_proyectado'] ?? ''));
+            $categoriaRow = strtolower(trim((string)($row['categoria_cliente'] ?? '')));
             $categoriaMadreReferidoRow = $this->normalizeReferralValue($row['referido_prefactura_por'] ?? null);
-            $estadoEncuentro = (string) ($row['estado_encuentro'] ?? '');
+            $estadoEncuentro = (string)($row['estado_encuentro'] ?? '');
 
             if ($dateFromTs !== null && $timestamp < $dateFromTs) {
                 continue;
@@ -708,7 +708,7 @@ class BillingParticularesReportService
     {
         $grouped = [];
         foreach ($rows as $row) {
-            $timestamp = strtotime((string) ($row['fecha'] ?? ''));
+            $timestamp = strtotime((string)($row['fecha'] ?? ''));
             if ($timestamp === false) {
                 continue;
             }
@@ -839,6 +839,7 @@ class BillingParticularesReportService
         $conteoAfiliacion = [];
         $conteoEmpresaSeguro = [];
         $pacientesUnicos = [];
+        $pacientesUnicosRealizados = [];
         $pacienteAtenciones = [];
         $produccionTotal = 0.0;
         $honorarioRealTotal = 0.0;
@@ -850,6 +851,10 @@ class BillingParticularesReportService
             'privado' => 0.0,
         ];
         $categoriaPacientes = [
+            'particular' => [],
+            'privado' => [],
+        ];
+        $categoriaPacientesRealizados = [
             'particular' => [],
             'privado' => [],
         ];
@@ -957,6 +962,8 @@ class BillingParticularesReportService
         $referidoUniquePatientAmounts = [];
         $referidoUniquePatientsWithValue = [];
         $referidoUniquePatientsWithoutValue = [];
+        $referidoUniquePatientCategoryAssignment = [];
+        $referidoUniquePatientTotals = [];
         $referidoNewPatientConsultationCounts = [];
         $referidoNewPatientConsultationAmounts = [];
         $referidoNewPatientConsultationPatientsByCategory = [];
@@ -985,7 +992,7 @@ class BillingParticularesReportService
         $operativoPerdidaEstimada = 0.0;
 
         foreach ($rows as $row) {
-            $afiliacion = strtoupper(trim((string) ($row['afiliacion'] ?? '')));
+            $afiliacion = strtoupper(trim((string)($row['afiliacion'] ?? '')));
             if ($afiliacion === '') {
                 $afiliacion = 'SIN AFILIACION';
             }
@@ -994,7 +1001,7 @@ class BillingParticularesReportService
             }
             $conteoAfiliacion[$afiliacion]++;
 
-            $empresaSeguro = strtoupper(trim((string) ($row['empresa_seguro'] ?? '')));
+            $empresaSeguro = strtoupper(trim((string)($row['empresa_seguro'] ?? '')));
             if ($empresaSeguro === '') {
                 $empresaSeguro = 'SIN CONVENIO';
             }
@@ -1003,7 +1010,7 @@ class BillingParticularesReportService
             }
             $conteoEmpresaSeguro[$empresaSeguro]++;
 
-            $hcNumber = trim((string) ($row['hc_number'] ?? ''));
+            $hcNumber = trim((string)($row['hc_number'] ?? ''));
             if ($hcNumber !== '') {
                 $pacientesUnicos[$hcNumber] = true;
                 if (!isset($pacienteAtenciones[$hcNumber])) {
@@ -1012,20 +1019,20 @@ class BillingParticularesReportService
                 $pacienteAtenciones[$hcNumber]++;
             }
 
-            $tipo = strtolower(trim((string) ($row['tipo'] ?? '')));
+            $tipo = strtolower(trim((string)($row['tipo'] ?? '')));
             if ($tipo === 'consulta') {
                 $totalConsultas++;
             } elseif ($tipo === 'protocolo') {
                 $totalProtocolos++;
             }
 
-            $produccionRow = (float) ($row['total_produccion'] ?? 0);
-            $honorarioRealRow = (float) ($row['monto_honorario_real'] ?? 0);
+            $produccionRow = (float)($row['total_produccion'] ?? 0);
+            $honorarioRealRow = (float)($row['monto_honorario_real'] ?? 0);
             $produccionBaseRow = $honorarioRealRow > 0 ? $honorarioRealRow : $produccionRow;
             $produccionTotal += $produccionBaseRow;
             $honorarioRealTotal += $produccionBaseRow;
-            $procedimientosFacturados += (int) ($row['procedimientos_facturados'] ?? 0);
-            $facturadoRow = (bool) ($row['facturado'] ?? false);
+            $procedimientosFacturados += (int)($row['procedimientos_facturados'] ?? 0);
+            $facturadoRow = (bool)($row['facturado'] ?? false);
             if ($facturadoRow) {
                 $atencionesFacturadas++;
             }
@@ -1033,10 +1040,10 @@ class BillingParticularesReportService
                 $atencionesConHonorario++;
             }
 
-            $categoria = strtolower(trim((string) ($row['categoria_cliente'] ?? '')));
+            $categoria = strtolower(trim((string)($row['categoria_cliente'] ?? '')));
             if ($this->isParticularReportCategory($categoria)) {
-                $categoriaCounts[$categoria] = (int) ($categoriaCounts[$categoria] ?? 0) + 1;
-                $produccionPorCategoria[$categoria] = (float) ($produccionPorCategoria[$categoria] ?? 0) + $produccionBaseRow;
+                $categoriaCounts[$categoria] = (int)($categoriaCounts[$categoria] ?? 0) + 1;
+                $produccionPorCategoria[$categoria] = (float)($produccionPorCategoria[$categoria] ?? 0) + $produccionBaseRow;
                 if ($hcNumber !== '') {
                     $categoriaPacientes[$categoria][$hcNumber] = true;
                 }
@@ -1047,7 +1054,7 @@ class BillingParticularesReportService
                 $categoriaGerencialCounts[$categoriaGerencial]++;
             }
 
-            $sede = strtoupper(trim((string) ($row['sede'] ?? '')));
+            $sede = strtoupper(trim((string)($row['sede'] ?? '')));
             if ($sede === '') {
                 $sede = 'SIN SEDE';
             }
@@ -1056,7 +1063,7 @@ class BillingParticularesReportService
             }
             $sedeCounts[$sede]++;
 
-            $doctor = strtoupper(trim((string) ($row['doctor'] ?? '')));
+            $doctor = strtoupper(trim((string)($row['doctor'] ?? '')));
             if ($doctor === '') {
                 $doctor = 'SIN DOCTOR';
             }
@@ -1071,14 +1078,14 @@ class BillingParticularesReportService
                 $doctorCountsConHonorario[$doctor]++;
             }
 
-            $procedure = $this->resolveProcedureVolumeLabel((string) ($row['procedimiento_proyectado'] ?? ''));
+            $procedure = $this->resolveProcedureVolumeLabel((string)($row['procedimiento_proyectado'] ?? ''));
             if (!isset($procedureCounts[$procedure])) {
                 $procedureCounts[$procedure] = 0;
             }
             $procedureCounts[$procedure]++;
 
-            if ($this->isPniAttentionType((string) ($row['tipo_atencion'] ?? ''))) {
-                $estadoRealizacionPni = strtoupper(trim((string) ($row['estado_realizacion'] ?? '')));
+            if ($this->isPniAttentionType((string)($row['tipo_atencion'] ?? ''))) {
+                $estadoRealizacionPni = strtoupper(trim((string)($row['estado_realizacion'] ?? '')));
                 if ($estadoRealizacionPni === '') {
                     $estadoRealizacionPni = 'AUSENTE';
                 }
@@ -1087,11 +1094,11 @@ class BillingParticularesReportService
                 }
                 $pniEstadoCounts[$estadoRealizacionPni]++;
 
-                $estadoFacturacionPni = strtoupper(trim((string) ($row['estado_facturacion_operativa'] ?? '')));
-                $montoPorCobrarPniRow = round((float) ($row['monto_por_cobrar_estimado'] ?? 0), 2);
-                $montoPerdidaPniRow = round((float) ($row['monto_perdida_estimada'] ?? 0), 2);
-                $sinTarifaEstimablePni = (bool) ($row['sin_tarifa_estimable'] ?? false);
-                $sinCostoConfiguradoPni = (bool) ($row['tarifa_sin_costo_configurado'] ?? false);
+                $estadoFacturacionPni = strtoupper(trim((string)($row['estado_facturacion_operativa'] ?? '')));
+                $montoPorCobrarPniRow = round((float)($row['monto_por_cobrar_estimado'] ?? 0), 2);
+                $montoPerdidaPniRow = round((float)($row['monto_perdida_estimada'] ?? 0), 2);
+                $sinTarifaEstimablePni = (bool)($row['sin_tarifa_estimable'] ?? false);
+                $sinCostoConfiguradoPni = (bool)($row['tarifa_sin_costo_configurado'] ?? false);
 
                 if ($estadoRealizacionPni === 'FACTURADA') {
                     $pniHonorarioReal += $produccionBaseRow;
@@ -1117,8 +1124,8 @@ class BillingParticularesReportService
                 }
             }
 
-            if ($this->isImageAttentionType((string) ($row['tipo_atencion'] ?? ''))) {
-                $estadoRealizacionImagen = strtoupper(trim((string) ($row['estado_realizacion'] ?? '')));
+            if ($this->isImageAttentionType((string)($row['tipo_atencion'] ?? ''))) {
+                $estadoRealizacionImagen = strtoupper(trim((string)($row['estado_realizacion'] ?? '')));
                 if ($estadoRealizacionImagen === '') {
                     $estadoRealizacionImagen = 'SIN_CIERRE_OPERATIVO';
                 }
@@ -1127,7 +1134,7 @@ class BillingParticularesReportService
                 }
                 $imagenesEstadoCounts[$estadoRealizacionImagen]++;
 
-                $estadoInformeImagen = strtoupper(trim((string) ($row['estado_informe_operativo'] ?? '')));
+                $estadoInformeImagen = strtoupper(trim((string)($row['estado_informe_operativo'] ?? '')));
                 if ($estadoInformeImagen === '') {
                     $estadoInformeImagen = 'SIN_EVIDENCIA_TECNICA';
                 }
@@ -1136,11 +1143,11 @@ class BillingParticularesReportService
                 }
                 $imagenesInformeEstadoCounts[$estadoInformeImagen]++;
 
-                $estadoFacturacionImagen = strtoupper(trim((string) ($row['estado_facturacion_operativa'] ?? '')));
-                $montoPorCobrarImagenRow = round((float) ($row['monto_por_cobrar_estimado'] ?? 0), 2);
-                $montoPerdidaImagenRow = round((float) ($row['monto_perdida_estimada'] ?? 0), 2);
-                $sinTarifaEstimableImagen = (bool) ($row['sin_tarifa_estimable'] ?? false);
-                $sinCostoConfiguradoImagen = (bool) ($row['tarifa_sin_costo_configurado'] ?? false);
+                $estadoFacturacionImagen = strtoupper(trim((string)($row['estado_facturacion_operativa'] ?? '')));
+                $montoPorCobrarImagenRow = round((float)($row['monto_por_cobrar_estimado'] ?? 0), 2);
+                $montoPerdidaImagenRow = round((float)($row['monto_perdida_estimada'] ?? 0), 2);
+                $sinTarifaEstimableImagen = (bool)($row['sin_tarifa_estimable'] ?? false);
+                $sinCostoConfiguradoImagen = (bool)($row['tarifa_sin_costo_configurado'] ?? false);
 
                 if ($estadoRealizacionImagen === 'FACTURADA') {
                     $imagenesHonorarioReal += $produccionBaseRow;
@@ -1170,8 +1177,8 @@ class BillingParticularesReportService
                 }
             }
 
-            if ($this->isOphthalmologyServiceAttentionType((string) ($row['tipo_atencion'] ?? ''))) {
-                $estadoRealizacionServicio = strtoupper(trim((string) ($row['estado_realizacion'] ?? '')));
+            if ($this->isOphthalmologyServiceAttentionType((string)($row['tipo_atencion'] ?? ''))) {
+                $estadoRealizacionServicio = strtoupper(trim((string)($row['estado_realizacion'] ?? '')));
                 if ($estadoRealizacionServicio === '') {
                     $estadoRealizacionServicio = 'AUSENTE';
                 }
@@ -1180,11 +1187,11 @@ class BillingParticularesReportService
                 }
                 $serviciosOftalmologicosEstadoCounts[$estadoRealizacionServicio]++;
 
-                $estadoFacturacionServicio = strtoupper(trim((string) ($row['estado_facturacion_operativa'] ?? '')));
-                $montoPorCobrarServicioRow = round((float) ($row['monto_por_cobrar_estimado'] ?? 0), 2);
-                $montoPerdidaServicioRow = round((float) ($row['monto_perdida_estimada'] ?? 0), 2);
-                $sinTarifaEstimableServicio = (bool) ($row['sin_tarifa_estimable'] ?? false);
-                $sinCostoConfiguradoServicio = (bool) ($row['tarifa_sin_costo_configurado'] ?? false);
+                $estadoFacturacionServicio = strtoupper(trim((string)($row['estado_facturacion_operativa'] ?? '')));
+                $montoPorCobrarServicioRow = round((float)($row['monto_por_cobrar_estimado'] ?? 0), 2);
+                $montoPerdidaServicioRow = round((float)($row['monto_perdida_estimada'] ?? 0), 2);
+                $sinTarifaEstimableServicio = (bool)($row['sin_tarifa_estimable'] ?? false);
+                $sinCostoConfiguradoServicio = (bool)($row['tarifa_sin_costo_configurado'] ?? false);
 
                 if ($estadoRealizacionServicio === 'FACTURADA') {
                     $serviciosOftalmologicosHonorarioReal += $produccionBaseRow;
@@ -1210,8 +1217,8 @@ class BillingParticularesReportService
                 }
             }
 
-            if ($this->isSurgeryAttentionType((string) ($row['tipo_atencion'] ?? ''))) {
-                $estadoRealizacion = strtoupper(trim((string) ($row['estado_realizacion'] ?? '')));
+            if ($this->isSurgeryAttentionType((string)($row['tipo_atencion'] ?? ''))) {
+                $estadoRealizacion = strtoupper(trim((string)($row['estado_realizacion'] ?? '')));
                 if ($estadoRealizacion === '') {
                     $estadoRealizacion = 'SIN_CIERRE_OPERATIVO';
                 }
@@ -1220,11 +1227,11 @@ class BillingParticularesReportService
                 }
                 $cirugiasEstadoCounts[$estadoRealizacion]++;
 
-                $estadoFacturacionCirugia = strtoupper(trim((string) ($row['estado_facturacion_operativa'] ?? '')));
-                $montoPorCobrarRow = round((float) ($row['monto_por_cobrar_estimado'] ?? 0), 2);
-                $montoPerdidaRow = round((float) ($row['monto_perdida_estimada'] ?? 0), 2);
-                $sinTarifaEstimable = (bool) ($row['sin_tarifa_estimable'] ?? false);
-                $sinCostoConfiguradoCirugia = (bool) ($row['tarifa_sin_costo_configurado'] ?? false);
+                $estadoFacturacionCirugia = strtoupper(trim((string)($row['estado_facturacion_operativa'] ?? '')));
+                $montoPorCobrarRow = round((float)($row['monto_por_cobrar_estimado'] ?? 0), 2);
+                $montoPerdidaRow = round((float)($row['monto_perdida_estimada'] ?? 0), 2);
+                $sinTarifaEstimable = (bool)($row['sin_tarifa_estimable'] ?? false);
+                $sinCostoConfiguradoCirugia = (bool)($row['tarifa_sin_costo_configurado'] ?? false);
 
                 if ($estadoRealizacion === 'OPERADA_CONFIRMADA' || $estadoRealizacion === 'OPERADA_CON_PROTOCOLO') {
                     $cirugiasHonorarioReal += $produccionBaseRow;
@@ -1255,11 +1262,11 @@ class BillingParticularesReportService
                 }
             }
 
-            $estadoRealizacionGlobal = strtoupper(trim((string) ($row['estado_realizacion'] ?? '')));
-            $estadoFacturacionGlobal = strtoupper(trim((string) ($row['estado_facturacion_operativa'] ?? '')));
-            $tipoAtencionGlobal = (string) ($row['tipo_atencion'] ?? '');
-            $montoPorCobrarGlobal = round((float) ($row['monto_por_cobrar_estimado'] ?? 0), 2);
-            $montoPerdidaGlobal = round((float) ($row['monto_perdida_estimada'] ?? 0), 2);
+            $estadoRealizacionGlobal = strtoupper(trim((string)($row['estado_realizacion'] ?? '')));
+            $estadoFacturacionGlobal = strtoupper(trim((string)($row['estado_facturacion_operativa'] ?? '')));
+            $tipoAtencionGlobal = (string)($row['tipo_atencion'] ?? '');
+            $montoPorCobrarGlobal = round((float)($row['monto_por_cobrar_estimado'] ?? 0), 2);
+            $montoPerdidaGlobal = round((float)($row['monto_perdida_estimada'] ?? 0), 2);
 
             $esRealizada = false;
             $esPerdida = false;
@@ -1282,13 +1289,19 @@ class BillingParticularesReportService
                 $esPerdida = in_array($estadoRealizacionGlobal, ['CANCELADA', 'SIN_CIERRE_OPERATIVO'], true);
                 $esSinCierre = $estadoRealizacionGlobal === 'SIN_CIERRE_OPERATIVO';
             } else {
-                $esRealizada = $this->isEncounterAttended((string) ($row['estado_encuentro'] ?? '')) || $esFacturada || $produccionBaseRow > 0;
-                $esPerdida = $this->isEncounterCancelled((string) ($row['estado_encuentro'] ?? ''))
-                    || $this->isEncounterAbsent((string) ($row['estado_encuentro'] ?? ''));
+                $esRealizada = $this->isEncounterAttended((string)($row['estado_encuentro'] ?? '')) || $esFacturada || $produccionBaseRow > 0;
+                $esPerdida = $this->isEncounterCancelled((string)($row['estado_encuentro'] ?? ''))
+                    || $this->isEncounterAbsent((string)($row['estado_encuentro'] ?? ''));
             }
 
             if ($esRealizada) {
                 $operativoRealizadas++;
+                if ($hcNumber !== '') {
+                    $pacientesUnicosRealizados[$hcNumber] = true;
+                    if ($this->isParticularReportCategory($categoria)) {
+                        $categoriaPacientesRealizados[$categoria][$hcNumber] = true;
+                    }
+                }
             }
             if ($esFacturada) {
                 $operativoFacturadas++;
@@ -1305,7 +1318,7 @@ class BillingParticularesReportService
                 $operativoSinCierre++;
             }
 
-            $timestamp = strtotime((string) ($row['fecha'] ?? ''));
+            $timestamp = strtotime((string)($row['fecha'] ?? ''));
             if ($timestamp !== false) {
                 $monthKey = date('Y-m', $timestamp);
                 if (!isset($monthCounts[$monthKey])) {
@@ -1325,19 +1338,19 @@ class BillingParticularesReportService
                     $categoriaMonthHonorarios[$categoria][$monthKey] += $produccionBaseRow;
                 }
 
-                $dayName = $this->weekdayName((int) date('N', $timestamp));
+                $dayName = $this->weekdayName((int)date('N', $timestamp));
                 if (!isset($dayCounts[$dayName])) {
                     $dayCounts[$dayName] = 0;
                 }
                 $dayCounts[$dayName]++;
 
-                $hour = (int) date('G', $timestamp);
+                $hour = (int)date('G', $timestamp);
                 if (isset($hourCounts[$hour])) {
                     $hourCounts[$hour]++;
                 }
             }
 
-            $economicoTimestamp = strtotime((string) ($row['fecha_facturacion'] ?? ''));
+            $economicoTimestamp = strtotime((string)($row['fecha_facturacion'] ?? ''));
             if ($economicoTimestamp === false) {
                 $economicoTimestamp = $timestamp;
             }
@@ -1350,7 +1363,7 @@ class BillingParticularesReportService
             }
 
             if ($facturadoRow || $produccionBaseRow > 0) {
-                $formasPagoRaw = trim((string) ($row['formas_pago'] ?? ''));
+                $formasPagoRaw = trim((string)($row['formas_pago'] ?? ''));
                 foreach ($this->explodePipeValues($formasPagoRaw) as $formaPago) {
                     if (!isset($formasPagoCounts[$formaPago])) {
                         $formasPagoCounts[$formaPago] = 0;
@@ -1358,7 +1371,7 @@ class BillingParticularesReportService
                     $formasPagoCounts[$formaPago]++;
                 }
 
-                $cliente = strtoupper(trim((string) ($row['cliente_facturacion'] ?? '')));
+                $cliente = strtoupper(trim((string)($row['cliente_facturacion'] ?? '')));
                 if ($cliente === '') {
                     $cliente = 'SIN CLIENTE';
                 }
@@ -1367,7 +1380,7 @@ class BillingParticularesReportService
                 }
                 $clienteHonorario[$cliente] += $produccionBaseRow;
 
-                $area = strtoupper(trim((string) ($row['area_facturacion'] ?? '')));
+                $area = strtoupper(trim((string)($row['area_facturacion'] ?? '')));
                 if ($area === '') {
                     $area = 'SIN AREA';
                 }
@@ -1381,9 +1394,9 @@ class BillingParticularesReportService
                 }
                 $doctorHonorario[$doctor] += $produccionBaseRow;
 
-                $facturaKey = trim((string) ($row['factura_id'] ?? ''));
+                $facturaKey = trim((string)($row['factura_id'] ?? ''));
                 if ($facturaKey === '') {
-                    $facturaKey = trim((string) ($row['numero_factura'] ?? ''));
+                    $facturaKey = trim((string)($row['numero_factura'] ?? ''));
                 }
                 if ($facturaKey !== '') {
                     $facturasEmitidas[$facturaKey] = true;
@@ -1405,24 +1418,24 @@ class BillingParticularesReportService
                 $referidoAmounts[$referidoValue] += $produccionBaseRow;
             }
             if ($hcNumber !== '') {
-                if ($referidoValue === '') {
-                    $referidoUniquePatientsWithoutValue[$hcNumber] = true;
-                } else {
-                    if (!isset($referidoUniquePatientsByCategory[$referidoValue])) {
-                        $referidoUniquePatientsByCategory[$referidoValue] = [];
+                $referidoUniquePatientTotals[$hcNumber] = ($referidoUniquePatientTotals[$hcNumber] ?? 0.0) + $produccionBaseRow;
+
+                if ($referidoValue !== '') {
+                    $assignmentTimestamp = $timestamp !== false ? (int)$timestamp : 0;
+                    $existingAssignment = $referidoUniquePatientCategoryAssignment[$hcNumber] ?? null;
+                    $existingTimestamp = (int)($existingAssignment['timestamp'] ?? PHP_INT_MIN);
+                    if (!is_array($existingAssignment) || $assignmentTimestamp >= $existingTimestamp) {
+                        $referidoUniquePatientCategoryAssignment[$hcNumber] = [
+                            'category' => $referidoValue,
+                            'timestamp' => $assignmentTimestamp,
+                        ];
                     }
-                    $referidoUniquePatientsByCategory[$referidoValue][$hcNumber] = true;
-                    $referidoUniquePatientsWithValue[$hcNumber] = true;
-                    if (!isset($referidoUniquePatientAmounts[$referidoValue])) {
-                        $referidoUniquePatientAmounts[$referidoValue] = 0.0;
-                    }
-                    $referidoUniquePatientAmounts[$referidoValue] += $produccionBaseRow;
                 }
             }
             if ($this->isNewPatientConsultationProcedure($procedure)) {
                 $newPatientUniqueKey = $hcNumber !== ''
                     ? 'HC:' . $hcNumber
-                    : ('FORM:' . trim((string) ($row['form_id'] ?? '')));
+                    : ('FORM:' . trim((string)($row['form_id'] ?? '')));
 
                 if ($referidoValue === '') {
                     if ($newPatientUniqueKey !== 'FORM:' && $newPatientUniqueKey !== '') {
@@ -1476,13 +1489,13 @@ class BillingParticularesReportService
         $referidoNewPatientConsultationWithValue = count($referidoNewPatientConsultationWithValuePatients);
         $referidoNewPatientConsultationWithoutValue = count($referidoNewPatientConsultationWithoutValuePatients);
 
-        $empresaSeguroFilter = $this->afiliacionDimensions->normalizeEmpresaFilter((string) ($filters['empresa_seguro'] ?? ''));
+        $empresaSeguroFilter = $this->afiliacionDimensions->normalizeEmpresaFilter((string)($filters['empresa_seguro'] ?? ''));
         $selectedEmpresaSeguro = '';
         if ($empresaSeguroFilter !== '') {
             foreach ($rows as $row) {
-                $rowEmpresaLabel = trim((string) ($row['empresa_seguro'] ?? ''));
+                $rowEmpresaLabel = trim((string)($row['empresa_seguro'] ?? ''));
                 $rowEmpresaKey = $this->afiliacionDimensions->normalizeEmpresaFilter(
-                    (string) ($row['empresa_seguro_key'] ?? $rowEmpresaLabel)
+                    (string)($row['empresa_seguro_key'] ?? $rowEmpresaLabel)
                 );
                 if ($rowEmpresaKey === $empresaSeguroFilter) {
                     $selectedEmpresaSeguro = strtoupper($rowEmpresaLabel !== '' ? $rowEmpresaLabel : 'SIN CONVENIO');
@@ -1507,7 +1520,7 @@ class BillingParticularesReportService
         foreach ($top as $afiliacion => $cantidad) {
             $topAfiliaciones[] = [
                 'afiliacion' => $afiliacion,
-                'cantidad' => (int) $cantidad,
+                'cantidad' => (int)$cantidad,
             ];
         }
 
@@ -1532,16 +1545,16 @@ class BillingParticularesReportService
         $economicTrendLabels = array_map(fn(string $monthKey): string => $this->monthLabel($monthKey), $economicMonthKeys);
         $economicTrendHonorarios = [];
         foreach ($economicMonthKeys as $monthKey) {
-            $economicTrendHonorarios[] = round((float) ($monthHonorarios[$monthKey] ?? 0), 2);
+            $economicTrendHonorarios[] = round((float)($monthHonorarios[$monthKey] ?? 0), 2);
         }
 
         $monthKeys = array_keys($monthCounts);
-        $currentMonthKey = !empty($monthKeys) ? (string) end($monthKeys) : '';
-        $currentMonthCount = $currentMonthKey !== '' ? (int) ($monthCounts[$currentMonthKey] ?? 0) : 0;
+        $currentMonthKey = !empty($monthKeys) ? (string)end($monthKeys) : '';
+        $currentMonthCount = $currentMonthKey !== '' ? (int)($monthCounts[$currentMonthKey] ?? 0) : 0;
         $previousMonthKey = $currentMonthKey !== '' ? date('Y-m', strtotime($currentMonthKey . '-01 -1 month')) : '';
-        $previousMonthCount = $previousMonthKey !== '' ? (int) ($monthCounts[$previousMonthKey] ?? 0) : 0;
+        $previousMonthCount = $previousMonthKey !== '' ? (int)($monthCounts[$previousMonthKey] ?? 0) : 0;
         $lastYearMonthKey = $currentMonthKey !== '' ? date('Y-m', strtotime($currentMonthKey . '-01 -1 year')) : '';
-        $lastYearMonthCount = $lastYearMonthKey !== '' ? (int) ($monthCounts[$lastYearMonthKey] ?? 0) : 0;
+        $lastYearMonthCount = $lastYearMonthKey !== '' ? (int)($monthCounts[$lastYearMonthKey] ?? 0) : 0;
 
         $sortedProcedureCounts = $procedureCounts;
         arsort($sortedProcedureCounts);
@@ -1555,7 +1568,7 @@ class BillingParticularesReportService
         $pacientesNuevos = 0;
         $pacientesRecurrentes = 0;
         foreach ($pacienteAtenciones as $attentions) {
-            if ((int) $attentions <= 1) {
+            if ((int)$attentions <= 1) {
                 $pacientesNuevos++;
             } else {
                 $pacientesRecurrentes++;
@@ -1565,27 +1578,27 @@ class BillingParticularesReportService
         $hourRows = [];
         foreach ($hourCounts as $hour => $count) {
             $hourRows[] = [
-                'valor' => sprintf('%02d:00', (int) $hour),
-                'cantidad' => (int) $count,
-                'porcentaje' => $totalRows > 0 ? round((((int) $count) / $totalRows) * 100, 2) : 0.0,
+                'valor' => sprintf('%02d:00', (int)$hour),
+                'cantidad' => (int)$count,
+                'porcentaje' => $totalRows > 0 ? round((((int)$count) / $totalRows) * 100, 2) : 0.0,
             ];
         }
 
         $peakDay = 'LUNES';
         $peakDayCount = 0;
         foreach ($dayCounts as $day => $count) {
-            if ((int) $count > $peakDayCount) {
+            if ((int)$count > $peakDayCount) {
                 $peakDay = $day;
-                $peakDayCount = (int) $count;
+                $peakDayCount = (int)$count;
             }
         }
 
         $peakHour = '00:00';
         $peakHourCount = 0;
         foreach ($hourRows as $item) {
-            $count = (int) ($item['cantidad'] ?? 0);
+            $count = (int)($item['cantidad'] ?? 0);
             if ($count > $peakHourCount) {
-                $peakHour = (string) ($item['valor'] ?? '00:00');
+                $peakHour = (string)($item['valor'] ?? '00:00');
                 $peakHourCount = $count;
             }
         }
@@ -1594,18 +1607,18 @@ class BillingParticularesReportService
         $hierarchyPairs = [];
 
         foreach ($hierarchy as $category => $meta) {
-            $categoryTotal = (int) ($meta['cantidad'] ?? 0);
+            $categoryTotal = (int)($meta['cantidad'] ?? 0);
             $children = is_array($meta['subcategorias'] ?? null) ? $meta['subcategorias'] : [];
             arsort($children);
 
             $childrenPayload = [];
             foreach ($children as $subcategory => $count) {
-                $countInt = (int) $count;
+                $countInt = (int)$count;
                 $pctInCategory = $categoryTotal > 0 ? round(($countInt / $categoryTotal) * 100, 2) : 0.0;
                 $pctTotal = $totalRows > 0 ? round(($countInt / $totalRows) * 100, 2) : 0.0;
 
                 $childItem = [
-                    'subcategoria' => (string) $subcategory,
+                    'subcategoria' => (string)$subcategory,
                     'cantidad' => $countInt,
                     'porcentaje_en_categoria' => $pctInCategory,
                     'porcentaje_total' => $pctTotal,
@@ -1613,9 +1626,9 @@ class BillingParticularesReportService
 
                 $childrenPayload[] = $childItem;
                 $hierarchyPairs[] = [
-                    'categoria' => (string) $category,
+                    'categoria' => (string)$category,
                     'categoria_total' => $categoryTotal,
-                    'subcategoria' => (string) $subcategory,
+                    'subcategoria' => (string)$subcategory,
                     'cantidad' => $countInt,
                     'porcentaje_en_categoria' => $pctInCategory,
                     'porcentaje_total' => $pctTotal,
@@ -1623,7 +1636,7 @@ class BillingParticularesReportService
             }
 
             $hierarchyCategories[] = [
-                'categoria' => (string) $category,
+                'categoria' => (string)$category,
                 'cantidad' => $categoryTotal,
                 'porcentaje_total' => $totalRows > 0 ? round(($categoryTotal / $totalRows) * 100, 2) : 0.0,
                 'subcategorias' => $childrenPayload,
@@ -1631,64 +1644,82 @@ class BillingParticularesReportService
         }
 
         usort($hierarchyCategories, static function (array $a, array $b): int {
-            $countCmp = ((int) ($b['cantidad'] ?? 0)) <=> ((int) ($a['cantidad'] ?? 0));
+            $countCmp = ((int)($b['cantidad'] ?? 0)) <=> ((int)($a['cantidad'] ?? 0));
             if ($countCmp !== 0) {
                 return $countCmp;
             }
 
-            return strcmp((string) ($a['categoria'] ?? ''), (string) ($b['categoria'] ?? ''));
+            return strcmp((string)($a['categoria'] ?? ''), (string)($b['categoria'] ?? ''));
         });
 
         usort($hierarchyPairs, static function (array $a, array $b): int {
-            $categoryTotalCmp = ((int) ($b['categoria_total'] ?? 0)) <=> ((int) ($a['categoria_total'] ?? 0));
+            $categoryTotalCmp = ((int)($b['categoria_total'] ?? 0)) <=> ((int)($a['categoria_total'] ?? 0));
             if ($categoryTotalCmp !== 0) {
                 return $categoryTotalCmp;
             }
 
-            $categoryCmp = strcmp((string) ($a['categoria'] ?? ''), (string) ($b['categoria'] ?? ''));
+            $categoryCmp = strcmp((string)($a['categoria'] ?? ''), (string)($b['categoria'] ?? ''));
             if ($categoryCmp !== 0) {
                 return $categoryCmp;
             }
 
-            $countCmp = ((int) ($b['cantidad'] ?? 0)) <=> ((int) ($a['cantidad'] ?? 0));
+            $countCmp = ((int)($b['cantidad'] ?? 0)) <=> ((int)($a['cantidad'] ?? 0));
             if ($countCmp !== 0) {
                 return $countCmp;
             }
 
-            return strcmp((string) ($a['subcategoria'] ?? ''), (string) ($b['subcategoria'] ?? ''));
+            return strcmp((string)($a['subcategoria'] ?? ''), (string)($b['subcategoria'] ?? ''));
         });
 
         $referidoUniquePatientCounts = [];
-        foreach ($referidoUniquePatientsByCategory as $category => $patients) {
-            $referidoUniquePatientCounts[(string) $category] = count($patients);
+        foreach ($referidoUniquePatientTotals as $hcNumber => $totalAmount) {
+            $assignment = $referidoUniquePatientCategoryAssignment[$hcNumber] ?? null;
+            if (is_array($assignment) && trim((string)($assignment['category'] ?? '')) !== '') {
+                $category = (string)$assignment['category'];
+                if (!isset($referidoUniquePatientsByCategory[$category])) {
+                    $referidoUniquePatientsByCategory[$category] = [];
+                }
+                $referidoUniquePatientsByCategory[$category][$hcNumber] = true;
+                $referidoUniquePatientsWithValue[$hcNumber] = true;
+                if (!isset($referidoUniquePatientCounts[$category])) {
+                    $referidoUniquePatientCounts[$category] = 0;
+                }
+                $referidoUniquePatientCounts[$category]++;
+                if (!isset($referidoUniquePatientAmounts[$category])) {
+                    $referidoUniquePatientAmounts[$category] = 0.0;
+                }
+                $referidoUniquePatientAmounts[$category] += (float)$totalAmount;
+            } else {
+                $referidoUniquePatientsWithoutValue[$hcNumber] = true;
+            }
         }
         $referidoUniquePatientsWithValueCount = count($referidoUniquePatientsWithValue);
         $referidoUniquePatientsWithoutValueCount = count($referidoUniquePatientsWithoutValue);
-        $pniRealizadas = (int) ($pniEstadoCounts['FACTURADA'] ?? 0)
-            + (int) ($pniEstadoCounts['REALIZADA_CONSULTA'] ?? 0);
-        $pniCanceladas = (int) ($pniEstadoCounts['CANCELADA'] ?? 0);
-        $pniAusentes = (int) ($pniEstadoCounts['AUSENTE'] ?? 0);
+        $pniRealizadas = (int)($pniEstadoCounts['FACTURADA'] ?? 0)
+            + (int)($pniEstadoCounts['REALIZADA_CONSULTA'] ?? 0);
+        $pniCanceladas = (int)($pniEstadoCounts['CANCELADA'] ?? 0);
+        $pniAusentes = (int)($pniEstadoCounts['AUSENTE'] ?? 0);
         $pniTotal = array_sum($pniEstadoCounts);
-        $imagenesRealizadas = (int) ($imagenesEstadoCounts['FACTURADA'] ?? 0)
-            + (int) ($imagenesEstadoCounts['REALIZADA_CON_ARCHIVOS'] ?? 0)
-            + (int) ($imagenesEstadoCounts['REALIZADA_INFORMADA'] ?? 0);
-        $imagenesCanceladas = (int) ($imagenesEstadoCounts['CANCELADA'] ?? 0);
-        $imagenesAusentes = (int) ($imagenesEstadoCounts['AUSENTE'] ?? 0);
-        $imagenesSinCierre = (int) ($imagenesEstadoCounts['SIN_CIERRE_OPERATIVO'] ?? 0);
-        $imagenesConArchivos = (int) ($imagenesEstadoCounts['REALIZADA_CON_ARCHIVOS'] ?? 0);
-        $imagenesRealizadaInformada = (int) ($imagenesEstadoCounts['REALIZADA_INFORMADA'] ?? 0);
-        $imagenesInformadas = (int) ($imagenesInformeEstadoCounts['INFORMADA'] ?? 0);
+        $imagenesRealizadas = (int)($imagenesEstadoCounts['FACTURADA'] ?? 0)
+            + (int)($imagenesEstadoCounts['REALIZADA_CON_ARCHIVOS'] ?? 0)
+            + (int)($imagenesEstadoCounts['REALIZADA_INFORMADA'] ?? 0);
+        $imagenesCanceladas = (int)($imagenesEstadoCounts['CANCELADA'] ?? 0);
+        $imagenesAusentes = (int)($imagenesEstadoCounts['AUSENTE'] ?? 0);
+        $imagenesSinCierre = (int)($imagenesEstadoCounts['SIN_CIERRE_OPERATIVO'] ?? 0);
+        $imagenesConArchivos = (int)($imagenesEstadoCounts['REALIZADA_CON_ARCHIVOS'] ?? 0);
+        $imagenesRealizadaInformada = (int)($imagenesEstadoCounts['REALIZADA_INFORMADA'] ?? 0);
+        $imagenesInformadas = (int)($imagenesInformeEstadoCounts['INFORMADA'] ?? 0);
         $imagenesTotal = array_sum($imagenesEstadoCounts);
-        $serviciosOftalmologicosRealizadas = (int) ($serviciosOftalmologicosEstadoCounts['FACTURADA'] ?? 0)
-            + (int) ($serviciosOftalmologicosEstadoCounts['REALIZADA_CONSULTA'] ?? 0);
-        $serviciosOftalmologicosCanceladas = (int) ($serviciosOftalmologicosEstadoCounts['CANCELADA'] ?? 0);
-        $serviciosOftalmologicosAusentes = (int) ($serviciosOftalmologicosEstadoCounts['AUSENTE'] ?? 0);
+        $serviciosOftalmologicosRealizadas = (int)($serviciosOftalmologicosEstadoCounts['FACTURADA'] ?? 0)
+            + (int)($serviciosOftalmologicosEstadoCounts['REALIZADA_CONSULTA'] ?? 0);
+        $serviciosOftalmologicosCanceladas = (int)($serviciosOftalmologicosEstadoCounts['CANCELADA'] ?? 0);
+        $serviciosOftalmologicosAusentes = (int)($serviciosOftalmologicosEstadoCounts['AUSENTE'] ?? 0);
         $serviciosOftalmologicosTotal = array_sum($serviciosOftalmologicosEstadoCounts);
-        $cirugiasRealizadas = (int) ($cirugiasEstadoCounts['OPERADA_CONFIRMADA'] ?? 0)
-            + (int) ($cirugiasEstadoCounts['OPERADA_CON_PROTOCOLO'] ?? 0)
-            + (int) ($cirugiasEstadoCounts['OPERADA_OTRO_CENTRO'] ?? 0);
-        $cirugiasCanceladas = (int) ($cirugiasEstadoCounts['CANCELADA'] ?? 0);
-        $cirugiasSinCierre = (int) ($cirugiasEstadoCounts['SIN_CIERRE_OPERATIVO'] ?? 0);
+        $cirugiasRealizadas = (int)($cirugiasEstadoCounts['OPERADA_CONFIRMADA'] ?? 0)
+            + (int)($cirugiasEstadoCounts['OPERADA_CON_PROTOCOLO'] ?? 0)
+            + (int)($cirugiasEstadoCounts['OPERADA_OTRO_CENTRO'] ?? 0);
+        $cirugiasCanceladas = (int)($cirugiasEstadoCounts['CANCELADA'] ?? 0);
+        $cirugiasSinCierre = (int)($cirugiasEstadoCounts['SIN_CIERRE_OPERATIVO'] ?? 0);
         $cirugiasTotal = array_sum($cirugiasEstadoCounts);
         $operativoPotencialCapturable = $honorarioRealTotal + $operativoPorCobrarEstimado;
         $ticketPromedioFacturadoReal = $operativoFacturadas > 0 ? round($honorarioRealTotal / $operativoFacturadas, 2) : 0.0;
@@ -1724,12 +1755,12 @@ class BillingParticularesReportService
                 'procedimientos_facturados' => $procedimientosFacturados,
                 'facturas_emitidas' => count($facturasEmitidas),
                 'produccion_por_categoria' => [
-                    'particular' => round((float) ($produccionPorCategoria['particular'] ?? 0), 2),
-                    'privado' => round((float) ($produccionPorCategoria['privado'] ?? 0), 2),
+                    'particular' => round((float)($produccionPorCategoria['particular'] ?? 0), 2),
+                    'privado' => round((float)($produccionPorCategoria['privado'] ?? 0), 2),
                 ],
                 'honorario_por_categoria' => [
-                    'particular' => round((float) ($produccionPorCategoria['particular'] ?? 0), 2),
-                    'privado' => round((float) ($produccionPorCategoria['privado'] ?? 0), 2),
+                    'particular' => round((float)($produccionPorCategoria['particular'] ?? 0), 2),
+                    'privado' => round((float)($produccionPorCategoria['privado'] ?? 0), 2),
                 ],
                 'formas_pago' => [
                     'values' => $this->metricValues($formasPagoCounts, 8, $atencionesFacturadas),
@@ -1763,6 +1794,11 @@ class BillingParticularesReportService
                 'ticket_pendiente' => $ticketPromedioPendiente,
             ],
             'pacientes_unicos' => count($pacientesUnicos),
+            'pacientes_unicos_realizados' => count($pacientesUnicosRealizados),
+            'pacientes_unicos_realizados_categoria' => [
+                'particular' => count($categoriaPacientesRealizados['particular']),
+                'privado' => count($categoriaPacientesRealizados['privado']),
+            ],
             'categoria_counts' => $categoriaCounts,
             'categoria_share' => $categoriaShare,
             'insurance_breakdown' => [
@@ -1839,8 +1875,8 @@ class BillingParticularesReportService
                 'concentracion' => [
                     'top_3_pct' => $totalRows > 0 ? round(($top3ProcedureCount / $totalRows) * 100, 2) : 0.0,
                     'top_5_pct' => $totalRows > 0 ? round(($top5ProcedureCount / $totalRows) * 100, 2) : 0.0,
-                    'top_3_count' => (int) $top3ProcedureCount,
-                    'top_5_count' => (int) $top5ProcedureCount,
+                    'top_3_count' => (int)$top3ProcedureCount,
+                    'top_5_count' => (int)$top5ProcedureCount,
                 ],
             ],
             'desglose_gerencial' => [
@@ -1870,8 +1906,8 @@ class BillingParticularesReportService
             'pni' => [
                 'total' => $pniTotal,
                 'realizadas' => $pniRealizadas,
-                'facturadas' => (int) ($pniEstadoCounts['FACTURADA'] ?? 0),
-                'realizada_consulta' => (int) ($pniEstadoCounts['REALIZADA_CONSULTA'] ?? 0),
+                'facturadas' => (int)($pniEstadoCounts['FACTURADA'] ?? 0),
+                'realizada_consulta' => (int)($pniEstadoCounts['REALIZADA_CONSULTA'] ?? 0),
                 'canceladas' => $pniCanceladas,
                 'ausentes' => $pniAusentes,
                 'pendientes_facturar' => $pniPendientesFacturar,
@@ -1909,8 +1945,8 @@ class BillingParticularesReportService
             'servicios_oftalmologicos' => [
                 'total' => $serviciosOftalmologicosTotal,
                 'realizadas' => $serviciosOftalmologicosRealizadas,
-                'facturadas' => (int) ($serviciosOftalmologicosEstadoCounts['FACTURADA'] ?? 0),
-                'realizada_consulta' => (int) ($serviciosOftalmologicosEstadoCounts['REALIZADA_CONSULTA'] ?? 0),
+                'facturadas' => (int)($serviciosOftalmologicosEstadoCounts['FACTURADA'] ?? 0),
+                'realizada_consulta' => (int)($serviciosOftalmologicosEstadoCounts['REALIZADA_CONSULTA'] ?? 0),
                 'canceladas' => $serviciosOftalmologicosCanceladas,
                 'ausentes' => $serviciosOftalmologicosAusentes,
                 'pendientes_facturar' => $serviciosOftalmologicosPendientesFacturar,
@@ -1926,9 +1962,9 @@ class BillingParticularesReportService
             'cirugias' => [
                 'total' => $cirugiasTotal,
                 'realizadas' => $cirugiasRealizadas,
-                'operada_confirmada' => (int) ($cirugiasEstadoCounts['OPERADA_CONFIRMADA'] ?? 0),
-                'operada_con_protocolo' => (int) ($cirugiasEstadoCounts['OPERADA_CON_PROTOCOLO'] ?? 0),
-                'operada_otro_centro' => (int) ($cirugiasEstadoCounts['OPERADA_OTRO_CENTRO'] ?? 0),
+                'operada_confirmada' => (int)($cirugiasEstadoCounts['OPERADA_CONFIRMADA'] ?? 0),
+                'operada_con_protocolo' => (int)($cirugiasEstadoCounts['OPERADA_CON_PROTOCOLO'] ?? 0),
+                'operada_otro_centro' => (int)($cirugiasEstadoCounts['OPERADA_OTRO_CENTRO'] ?? 0),
                 'canceladas' => $cirugiasCanceladas,
                 'sin_cierre' => $cirugiasSinCierre,
                 'pendientes_facturar' => $cirugiasPendientesFacturar,
@@ -1968,10 +2004,10 @@ class BillingParticularesReportService
         $sedes = [];
         $categorias = [];
         $categoriasMadreReferido = [];
-        $empresaSeguroFilter = $this->afiliacionDimensions->normalizeEmpresaFilter((string) ($filters['empresa_seguro'] ?? ''));
+        $empresaSeguroFilter = $this->afiliacionDimensions->normalizeEmpresaFilter((string)($filters['empresa_seguro'] ?? ''));
 
         foreach ($rows as $row) {
-            $timestamp = strtotime((string) ($row['fecha'] ?? ''));
+            $timestamp = strtotime((string)($row['fecha'] ?? ''));
             if ($timestamp !== false) {
                 $value = date('Y-m', $timestamp);
                 $meses[$value] = [
@@ -1980,15 +2016,15 @@ class BillingParticularesReportService
                 ];
             }
 
-            $empresaSeguroLabel = trim((string) ($row['empresa_seguro'] ?? ''));
+            $empresaSeguroLabel = trim((string)($row['empresa_seguro'] ?? ''));
             $empresaSeguroKey = $this->afiliacionDimensions->normalizeEmpresaFilter(
-                (string) ($row['empresa_seguro_key'] ?? $empresaSeguroLabel)
+                (string)($row['empresa_seguro_key'] ?? $empresaSeguroLabel)
             );
             if ($empresaSeguroLabel !== '' && $empresaSeguroKey !== '') {
                 $empresasSeguro[$empresaSeguroKey] = strtoupper($empresaSeguroLabel);
             }
 
-            $afiliacion = strtolower(trim((string) ($row['afiliacion'] ?? '')));
+            $afiliacion = strtolower(trim((string)($row['afiliacion'] ?? '')));
             if (
                 $afiliacion !== ''
                 && ($empresaSeguroFilter === '' || $empresaSeguroKey === $empresaSeguroFilter)
@@ -1996,12 +2032,12 @@ class BillingParticularesReportService
                 $afiliaciones[$afiliacion] = $afiliacion;
             }
 
-            $tipoAtencion = strtoupper(trim((string) ($row['tipo_atencion'] ?? '')));
+            $tipoAtencion = strtoupper(trim((string)($row['tipo_atencion'] ?? '')));
             if ($tipoAtencion !== '') {
                 $tiposAtencion[$tipoAtencion] = $tipoAtencion;
             }
 
-            $categoria = strtolower(trim((string) ($row['categoria_cliente'] ?? '')));
+            $categoria = strtolower(trim((string)($row['categoria_cliente'] ?? '')));
             if ($this->isParticularReportCategory($categoria)) {
                 $categorias[$categoria] = $categoria;
             }
@@ -2063,8 +2099,8 @@ class BillingParticularesReportService
             return $yyyyMm;
         }
 
-        $year = (int) $matches[1];
-        $month = (int) $matches[2];
+        $year = (int)$matches[1];
+        $month = (int)$matches[2];
         $label = self::MONTH_LABELS[$month] ?? $yyyyMm;
 
         return $label . ' ' . $year;
@@ -2140,18 +2176,18 @@ class BillingParticularesReportService
 
         $map = [];
         foreach ($rows as $row) {
-            $key = $this->normalizeAffiliationKey((string) ($row['afiliacion_norm'] ?? ''));
+            $key = $this->normalizeAffiliationKey((string)($row['afiliacion_norm'] ?? ''));
             if ($key === '') {
                 continue;
             }
 
             $map[$key] = [
-                'categoria' => $this->normalizeClientCategory((string) ($row['categoria'] ?? '')),
-                'afiliacion_raw' => trim((string) ($row['afiliacion_raw'] ?? '')),
+                'categoria' => $this->normalizeClientCategory((string)($row['categoria'] ?? '')),
+                'afiliacion_raw' => trim((string)($row['afiliacion_raw'] ?? '')),
                 'empresa_seguro' => $this->resolveEmpresaSeguroLabel(
-                    trim((string) ($row['empresa_seguro'] ?? '')) !== ''
-                        ? (string) ($row['empresa_seguro'] ?? '')
-                        : (string) ($row['afiliacion_raw'] ?? '')
+                    trim((string)($row['empresa_seguro'] ?? '')) !== ''
+                        ? (string)($row['empresa_seguro'] ?? '')
+                        : (string)($row['afiliacion_raw'] ?? '')
                 ),
             ];
         }
@@ -2265,7 +2301,7 @@ class BillingParticularesReportService
         }
 
         $parts = preg_split('/\s*-\s*/', $raw, 2);
-        $type = strtoupper(trim((string) ($parts[0] ?? '')));
+        $type = strtoupper(trim((string)($parts[0] ?? '')));
 
         return $type !== '' ? $type : 'SIN TIPO';
     }
@@ -2278,7 +2314,7 @@ class BillingParticularesReportService
 
     private function normalizeSedeFilter(mixed $value): string
     {
-        $raw = strtolower(trim((string) $value));
+        $raw = strtolower(trim((string)$value));
         if ($raw === '') {
             return '';
         }
@@ -2395,7 +2431,7 @@ class BillingParticularesReportService
             ':column' => $column,
         ]);
 
-        $exists = ((int) $stmt->fetchColumn()) > 0;
+        $exists = ((int)$stmt->fetchColumn()) > 0;
         $this->columnExistsCache[$key] = $exists;
 
         return $exists;
@@ -2468,18 +2504,18 @@ class BillingParticularesReportService
      */
     private function shouldIncludeRowForReport(array $row): bool
     {
-        $tipoAtencion = (string) ($row['tipo_atencion'] ?? '');
+        $tipoAtencion = (string)($row['tipo_atencion'] ?? '');
         if (
             $this->isSurgeryAttentionType($tipoAtencion)
             || $this->isPniAttentionType($tipoAtencion)
             || $this->isOphthalmologyServiceAttentionType($tipoAtencion)
             || $this->isImageAttentionType($tipoAtencion)
         ) {
-            $estadoRealizacion = strtoupper(trim((string) ($row['estado_realizacion'] ?? '')));
+            $estadoRealizacion = strtoupper(trim((string)($row['estado_realizacion'] ?? '')));
             return $estadoRealizacion !== '';
         }
 
-        return $this->isEncounterAttended((string) ($row['estado_encuentro'] ?? ''));
+        return $this->isEncounterAttended((string)($row['estado_encuentro'] ?? ''));
     }
 
     private function isSurgeryAttentionType(string $type): bool
@@ -2521,13 +2557,13 @@ class BillingParticularesReportService
      */
     private function hasBillingEvidence(array $row): bool
     {
-        $billingId = trim((string) ($row['billing_id'] ?? ''));
-        $facturaId = trim((string) ($row['factura_id'] ?? ''));
-        $numeroFactura = trim((string) ($row['numero_factura'] ?? ''));
-        $fechaFacturacion = trim((string) ($row['fecha_facturacion'] ?? ''));
-        $fechaAtencion = trim((string) ($row['fecha_atencion'] ?? ''));
-        $procedimientosFacturados = (int) ($row['procedimientos_facturados'] ?? 0);
-        $honorarioReal = (float) ($row['monto_honorario_real'] ?? 0);
+        $billingId = trim((string)($row['billing_id'] ?? ''));
+        $facturaId = trim((string)($row['factura_id'] ?? ''));
+        $numeroFactura = trim((string)($row['numero_factura'] ?? ''));
+        $fechaFacturacion = trim((string)($row['fecha_facturacion'] ?? ''));
+        $fechaAtencion = trim((string)($row['fecha_atencion'] ?? ''));
+        $procedimientosFacturados = (int)($row['procedimientos_facturados'] ?? 0);
+        $honorarioReal = (float)($row['monto_honorario_real'] ?? 0);
 
         return $billingId !== ''
             || $facturaId !== ''
@@ -2543,8 +2579,8 @@ class BillingParticularesReportService
      */
     private function hasConsultaUtil(array $row): bool
     {
-        $consultaFecha = trim((string) ($row['consulta_fecha'] ?? ''));
-        $consultaDiagnosticos = trim((string) ($row['consulta_diagnosticos'] ?? ''));
+        $consultaFecha = trim((string)($row['consulta_fecha'] ?? ''));
+        $consultaDiagnosticos = trim((string)($row['consulta_diagnosticos'] ?? ''));
 
         return $consultaFecha !== '' || $consultaDiagnosticos !== '';
     }
@@ -2554,8 +2590,8 @@ class BillingParticularesReportService
      */
     private function hasImageNasFiles(array $row): bool
     {
-        return (int) ($row['imagen_nas_has_files'] ?? 0) === 1
-            || (int) ($row['imagen_nas_files_count'] ?? 0) > 0;
+        return (int)($row['imagen_nas_has_files'] ?? 0) === 1
+            || (int)($row['imagen_nas_files_count'] ?? 0) > 0;
     }
 
     /**
@@ -2563,8 +2599,8 @@ class BillingParticularesReportService
      */
     private function hasImageReport(array $row): bool
     {
-        return trim((string) ($row['imagen_informe_id'] ?? '')) !== ''
-            || (int) ($row['imagen_informes_total'] ?? 0) > 0;
+        return trim((string)($row['imagen_informe_id'] ?? '')) !== ''
+            || (int)($row['imagen_informes_total'] ?? 0) > 0;
     }
 
     /**
@@ -2576,7 +2612,7 @@ class BillingParticularesReportService
             return 'FACTURADA';
         }
 
-        $estadoEncuentro = strtoupper(trim((string) ($row['estado_encuentro'] ?? '')));
+        $estadoEncuentro = strtoupper(trim((string)($row['estado_encuentro'] ?? '')));
 
         if ($this->hasConsultaUtil($row) && $this->isEncounterAttended($estadoEncuentro)) {
             return 'REALIZADA_CONSULTA';
@@ -2632,7 +2668,7 @@ class BillingParticularesReportService
             return 'REALIZADA_INFORMADA';
         }
 
-        $estadoEncuentro = (string) ($row['estado_encuentro'] ?? '');
+        $estadoEncuentro = (string)($row['estado_encuentro'] ?? '');
         if ($this->isEncounterCancelled($estadoEncuentro)) {
             return 'CANCELADA';
         }
@@ -2682,10 +2718,10 @@ class BillingParticularesReportService
      */
     private function resolvePniReviewAlert(array $row, string $estadoRealizacion, bool $hasBillingEvidence): ?string
     {
-        $estadoEncuentro = strtoupper(trim((string) ($row['estado_encuentro'] ?? '')));
-        $fechaAtencion = trim((string) ($row['fecha_atencion'] ?? ''));
-        $fechaProgramada = trim((string) ($row['fecha'] ?? ''));
-        $honorarioReal = (float) ($row['monto_honorario_real'] ?? 0);
+        $estadoEncuentro = strtoupper(trim((string)($row['estado_encuentro'] ?? '')));
+        $fechaAtencion = trim((string)($row['fecha_atencion'] ?? ''));
+        $fechaProgramada = trim((string)($row['fecha'] ?? ''));
+        $honorarioReal = (float)($row['monto_honorario_real'] ?? 0);
 
         if ($estadoRealizacion === 'FACTURADA') {
             if ($fechaAtencion === '') {
@@ -2761,13 +2797,13 @@ class BillingParticularesReportService
      */
     private function resolveSurgeryRealizationState(array $row, bool $hasBillingEvidence): string
     {
-        $hasProtocol = trim((string) ($row['fuente_atencion'] ?? '')) === 'protocolo'
-            || trim((string) ($row['protocolo_id'] ?? '')) !== ''
-            || (int) ($row['protocolo_status_ok'] ?? 0) === 1
-            || (int) ($row['protocolo_firmado'] ?? 0) === 1;
+        $hasProtocol = trim((string)($row['fuente_atencion'] ?? '')) === 'protocolo'
+            || trim((string)($row['protocolo_id'] ?? '')) !== ''
+            || (int)($row['protocolo_status_ok'] ?? 0) === 1
+            || (int)($row['protocolo_firmado'] ?? 0) === 1;
 
         if ($hasProtocol) {
-            if ((int) ($row['protocolo_status_ok'] ?? 0) === 1 || (int) ($row['protocolo_firmado'] ?? 0) === 1) {
+            if ((int)($row['protocolo_status_ok'] ?? 0) === 1 || (int)($row['protocolo_firmado'] ?? 0) === 1) {
                 return 'OPERADA_CONFIRMADA';
             }
 
@@ -2778,7 +2814,7 @@ class BillingParticularesReportService
             return 'OPERADA_OTRO_CENTRO';
         }
 
-        $estadoEncuentro = strtoupper(trim((string) ($row['estado_encuentro'] ?? '')));
+        $estadoEncuentro = strtoupper(trim((string)($row['estado_encuentro'] ?? '')));
         if ($estadoEncuentro === 'CANCELADO' || $estadoEncuentro === 'CANCELADA') {
             return 'CANCELADA';
         }
@@ -2804,7 +2840,7 @@ class BillingParticularesReportService
      */
     private function resolveSurgeryReviewAlert(array $row, string $estadoRealizacion, string $estadoFacturacion): ?string
     {
-        $estadoEncuentro = strtoupper(trim((string) ($row['estado_encuentro'] ?? '')));
+        $estadoEncuentro = strtoupper(trim((string)($row['estado_encuentro'] ?? '')));
         if (
             in_array($estadoRealizacion, ['OPERADA_CONFIRMADA', 'OPERADA_CON_PROTOCOLO'], true)
             && in_array($estadoEncuentro, ['CONFIRMADO', 'AGENDADO', 'LLEGADO'], true)
@@ -2876,11 +2912,11 @@ class BillingParticularesReportService
                 $matches
             ) === 1
         ) {
-            return [strtoupper(trim((string) $matches[1])), trim((string) $matches[2])];
+            return [strtoupper(trim((string)$matches[1])), trim((string)$matches[2])];
         }
 
         if (preg_match('/-\s*(\d{5,6})\s*-\s*(.+)$/', $text, $matches) === 1) {
-            return [trim((string) $matches[1]), trim((string) $matches[2])];
+            return [trim((string)$matches[1]), trim((string)$matches[2])];
         }
 
         return ['', $text];
@@ -2958,7 +2994,7 @@ class BillingParticularesReportService
      */
     private function lookupTarifa(string $codigo, array $row = []): float
     {
-        return (float) ($this->resolveTarifaDiagnostic($codigo, $row)['amount'] ?? 0.0);
+        return (float)($this->resolveTarifaDiagnostic($codigo, $row)['amount'] ?? 0.0);
     }
 
     /**
@@ -3013,7 +3049,7 @@ class BillingParticularesReportService
                 ];
             }
 
-            $prices = $this->codePriceService()->pricesForCode((int) $codeRow['id'], $this->codePriceLevels());
+            $prices = $this->codePriceService()->pricesForCode((int)$codeRow['id'], $this->codePriceLevels());
             if (!array_key_exists($levelKey, $prices)) {
                 return $this->tarifaDiagnosticCache[$cacheKey] = [
                     'amount' => 0.0,
@@ -3021,12 +3057,12 @@ class BillingParticularesReportService
                     'reason' => 'El codigo existe, pero no tiene precio configurado para la afiliacion/nivel resuelto.',
                     'level_key' => $levelKey,
                     'level_title' => $levelTitle,
-                    'matched_codigo' => (string) ($codeRow['codigo'] ?? ''),
-                    'matched_descripcion' => (string) ($codeRow['descripcion'] ?? ''),
+                    'matched_codigo' => (string)($codeRow['codigo'] ?? ''),
+                    'matched_descripcion' => (string)($codeRow['descripcion'] ?? ''),
                 ];
             }
 
-            $price = round((float) $prices[$levelKey], 2);
+            $price = round((float)$prices[$levelKey], 2);
 
             if ($price === 0.0) {
                 return $this->tarifaDiagnosticCache[$cacheKey] = [
@@ -3035,8 +3071,8 @@ class BillingParticularesReportService
                     'reason' => 'El codigo existe y tiene precio 0 configurado para la afiliacion/nivel resuelto.',
                     'level_key' => $levelKey,
                     'level_title' => $levelTitle,
-                    'matched_codigo' => (string) ($codeRow['codigo'] ?? ''),
-                    'matched_descripcion' => (string) ($codeRow['descripcion'] ?? ''),
+                    'matched_codigo' => (string)($codeRow['codigo'] ?? ''),
+                    'matched_descripcion' => (string)($codeRow['descripcion'] ?? ''),
                 ];
             }
 
@@ -3046,8 +3082,8 @@ class BillingParticularesReportService
                 'reason' => 'Codigo y precio resueltos correctamente.',
                 'level_key' => $levelKey,
                 'level_title' => $levelTitle,
-                'matched_codigo' => (string) ($codeRow['codigo'] ?? ''),
-                'matched_descripcion' => (string) ($codeRow['descripcion'] ?? ''),
+                'matched_codigo' => (string)($codeRow['codigo'] ?? ''),
+                'matched_descripcion' => (string)($codeRow['descripcion'] ?? ''),
             ];
         } catch (Throwable) {
             return $this->tarifaDiagnosticCache[$cacheKey] = [
@@ -3065,8 +3101,8 @@ class BillingParticularesReportService
     private function resolveTarifaLevelTitle(string $levelKey): string
     {
         foreach ($this->codePriceLevels() as $level) {
-            if (trim((string) ($level['level_key'] ?? '')) === $levelKey) {
-                return trim((string) ($level['title'] ?? $levelKey));
+            if (trim((string)($level['level_key'] ?? '')) === $levelKey) {
+                return trim((string)($level['title'] ?? $levelKey));
             }
         }
 
@@ -3078,7 +3114,7 @@ class BillingParticularesReportService
      */
     private function isNonEstimableTarifaDiagnostic(array $tarifaDiagnostic): bool
     {
-        $status = strtoupper(trim((string) ($tarifaDiagnostic['status'] ?? '')));
+        $status = strtoupper(trim((string)($tarifaDiagnostic['status'] ?? '')));
 
         return in_array($status, [
             'SIN_CODIGO',
@@ -3094,7 +3130,7 @@ class BillingParticularesReportService
      */
     private function isZeroCostTarifaDiagnostic(array $tarifaDiagnostic): bool
     {
-        return strtoupper(trim((string) ($tarifaDiagnostic['status'] ?? ''))) === 'PRECIO_CERO';
+        return strtoupper(trim((string)($tarifaDiagnostic['status'] ?? ''))) === 'PRECIO_CERO';
     }
 
     /**
@@ -3109,9 +3145,9 @@ class BillingParticularesReportService
 
         $candidates = [];
         foreach ([
-            (string) ($row['afiliacion_original'] ?? ''),
-            (string) ($row['afiliacion'] ?? ''),
-        ] as $candidate) {
+                     (string)($row['afiliacion_original'] ?? ''),
+                     (string)($row['afiliacion'] ?? ''),
+                 ] as $candidate) {
             $candidate = trim($candidate);
             if ($candidate === '') {
                 continue;
@@ -3121,7 +3157,7 @@ class BillingParticularesReportService
 
             $mapped = $this->resolveMappedAffiliation($candidate);
             if ($mapped !== null) {
-                $mappedRaw = trim((string) ($mapped['afiliacion_raw'] ?? ''));
+                $mappedRaw = trim((string)($mapped['afiliacion_raw'] ?? ''));
                 if ($mappedRaw !== '') {
                     $candidates[] = $mappedRaw;
                 }
@@ -3169,9 +3205,9 @@ class BillingParticularesReportService
         }
 
         $resolved = [
-            'id' => (int) $code->id,
-            'codigo' => trim((string) ($code->codigo ?? '')),
-            'descripcion' => trim((string) ($code->descripcion ?? '')),
+            'id' => (int)$code->id,
+            'codigo' => trim((string)($code->codigo ?? '')),
+            'descripcion' => trim((string)($code->descripcion ?? '')),
         ];
 
         $this->tarifaCodeCache[$codigo] = $resolved;
@@ -3247,7 +3283,7 @@ class BillingParticularesReportService
 
     private function normalizeReferralValue(mixed $value): string
     {
-        $normalized = preg_replace('/\s+/', ' ', trim((string) $value)) ?? '';
+        $normalized = preg_replace('/\s+/', ' ', trim((string)$value)) ?? '';
         if ($normalized === '') {
             return '';
         }
@@ -3262,7 +3298,8 @@ class BillingParticularesReportService
             'MARKETING',
             'MEDIOS',
             'MARKETING (PROMOCIONES)',
-        ];
+            'MARKETING.',
+            ];
         if (in_array($upper, $marketingTokens, true)) {
             return 'MARKETING';
         }
@@ -3293,9 +3330,9 @@ class BillingParticularesReportService
         $result = [];
         foreach ($counts as $valor => $cantidad) {
             $result[] = [
-                'valor' => (string) $valor,
-                'cantidad' => (int) $cantidad,
-                'porcentaje' => $total > 0 ? round((((int) $cantidad) / $total) * 100, 2) : 0.0,
+                'valor' => (string)$valor,
+                'cantidad' => (int)$cantidad,
+                'porcentaje' => $total > 0 ? round((((int)$cantidad) / $total) * 100, 2) : 0.0,
             ];
         }
 
@@ -3316,15 +3353,15 @@ class BillingParticularesReportService
 
         $result = [];
         foreach ($items as $item) {
-            $label = (string) ($item['valor'] ?? '');
-            $count = (int) ($item['cantidad'] ?? 0);
-            $amount = round((float) ($amounts[$label] ?? 0), 2);
-            $divisor = (int) ($ticketDivisors[$label] ?? $count);
+            $label = (string)($item['valor'] ?? '');
+            $count = (int)($item['cantidad'] ?? 0);
+            $amount = round((float)($amounts[$label] ?? 0), 2);
+            $divisor = (int)($ticketDivisors[$label] ?? $count);
 
             $result[] = [
                 'valor' => $label,
                 'cantidad' => $count,
-                'porcentaje' => (float) ($item['porcentaje'] ?? 0),
+                'porcentaje' => (float)($item['porcentaje'] ?? 0),
                 'monto' => $amount,
                 'ticket_promedio' => $divisor > 0 ? round($amount / $divisor, 2) : 0.0,
                 'divisor_ticket' => $divisor,
@@ -3342,7 +3379,7 @@ class BillingParticularesReportService
     {
         $divisors = [];
         foreach ($patientsByCategory as $label => $patients) {
-            $divisors[(string) $label] = count($patients);
+            $divisors[(string)$label] = count($patients);
         }
 
         return $divisors;
@@ -3370,9 +3407,9 @@ class BillingParticularesReportService
 
         $result = [];
         foreach ($amounts as $valor => $monto) {
-            $amount = round((float) $monto, 2);
+            $amount = round((float)$monto, 2);
             $result[] = [
-                'valor' => (string) $valor,
+                'valor' => (string)$valor,
                 'monto' => $amount,
                 'porcentaje' => $total > 0 ? round(($amount / $total) * 100, 2) : 0.0,
             ];
@@ -3400,8 +3437,9 @@ class BillingParticularesReportService
         array $totalCounts,
         array $billableCounts,
         array $amounts,
-        ?int $limit = null
-    ): array {
+        ?int  $limit = null
+    ): array
+    {
         $labels = array_values(array_unique(array_merge(array_keys($totalCounts), array_keys($amounts))));
         if (empty($labels)) {
             return [];
@@ -3414,24 +3452,24 @@ class BillingParticularesReportService
 
         $rows = [];
         foreach ($labels as $label) {
-            $normalizedLabel = strtoupper(trim((string) $label));
+            $normalizedLabel = strtoupper(trim((string)$label));
             if (isset($excludedDoctors[$normalizedLabel])) {
                 continue;
             }
 
-            $monto = round((float) ($amounts[$label] ?? 0), 2);
-            $cantidadConHonorario = (int) ($billableCounts[$label] ?? 0);
+            $monto = round((float)($amounts[$label] ?? 0), 2);
+            $cantidadConHonorario = (int)($billableCounts[$label] ?? 0);
             if ($monto <= 0 || $cantidadConHonorario <= 0) {
                 continue;
             }
 
-            $cantidadTotal = (int) ($totalCounts[$label] ?? 0);
+            $cantidadTotal = (int)($totalCounts[$label] ?? 0);
             $tasaCero = $cantidadTotal > 0
                 ? round(max($cantidadTotal - $cantidadConHonorario, 0) / $cantidadTotal, 4)
                 : 1.0;
 
             $rows[] = [
-                'valor' => (string) $label,
+                'valor' => (string)$label,
                 'cantidad_total' => $cantidadTotal,
                 'cantidad_con_honorario' => $cantidadConHonorario,
                 'monto' => $monto,
@@ -3454,10 +3492,10 @@ class BillingParticularesReportService
             return ($value - $min) / ($max - $min);
         };
 
-        $amountsOnly = array_map(static fn(array $row): float => (float) ($row['monto'] ?? 0), $rows);
-        $ticketsOnly = array_map(static fn(array $row): float => (float) ($row['ticket_promedio'] ?? 0), $rows);
-        $countsOnly = array_map(static fn(array $row): float => (float) ($row['cantidad_con_honorario'] ?? 0), $rows);
-        $zeroRatesOnly = array_map(static fn(array $row): float => (float) ($row['tasa_cero'] ?? 0), $rows);
+        $amountsOnly = array_map(static fn(array $row): float => (float)($row['monto'] ?? 0), $rows);
+        $ticketsOnly = array_map(static fn(array $row): float => (float)($row['ticket_promedio'] ?? 0), $rows);
+        $countsOnly = array_map(static fn(array $row): float => (float)($row['cantidad_con_honorario'] ?? 0), $rows);
+        $zeroRatesOnly = array_map(static fn(array $row): float => (float)($row['tasa_cero'] ?? 0), $rows);
 
         $minAmount = min($amountsOnly);
         $maxAmount = max($amountsOnly);
@@ -3469,17 +3507,17 @@ class BillingParticularesReportService
         $maxZeroRate = max($zeroRatesOnly);
 
         foreach ($rows as &$row) {
-            $amountNorm = $normalize((float) ($row['monto'] ?? 0), $minAmount, $maxAmount);
-            $ticketNorm = $normalize((float) ($row['ticket_promedio'] ?? 0), $minTicket, $maxTicket);
-            $countNorm = $normalize((float) ($row['cantidad_con_honorario'] ?? 0), $minCount, $maxCount);
-            $zeroNorm = $normalize((float) ($row['tasa_cero'] ?? 0), $minZeroRate, $maxZeroRate);
+            $amountNorm = $normalize((float)($row['monto'] ?? 0), $minAmount, $maxAmount);
+            $ticketNorm = $normalize((float)($row['ticket_promedio'] ?? 0), $minTicket, $maxTicket);
+            $countNorm = $normalize((float)($row['cantidad_con_honorario'] ?? 0), $minCount, $maxCount);
+            $zeroNorm = $normalize((float)($row['tasa_cero'] ?? 0), $minZeroRate, $maxZeroRate);
 
             $score = (
-                (0.4 * $amountNorm) +
-                (0.3 * $ticketNorm) +
-                (0.2 * $countNorm) -
-                (0.1 * $zeroNorm)
-            ) * 100;
+                    (0.4 * $amountNorm) +
+                    (0.3 * $ticketNorm) +
+                    (0.2 * $countNorm) -
+                    (0.1 * $zeroNorm)
+                ) * 100;
 
             $row['score_rendimiento'] = round($score, 2);
             $row['clasificacion'] = $score >= 70
@@ -3489,22 +3527,22 @@ class BillingParticularesReportService
         unset($row);
 
         usort($rows, static function (array $a, array $b): int {
-            $scoreCmp = ((float) ($b['score_rendimiento'] ?? 0)) <=> ((float) ($a['score_rendimiento'] ?? 0));
+            $scoreCmp = ((float)($b['score_rendimiento'] ?? 0)) <=> ((float)($a['score_rendimiento'] ?? 0));
             if ($scoreCmp !== 0) {
                 return $scoreCmp;
             }
 
-            $ticketCmp = ((float) ($b['ticket_promedio'] ?? 0)) <=> ((float) ($a['ticket_promedio'] ?? 0));
+            $ticketCmp = ((float)($b['ticket_promedio'] ?? 0)) <=> ((float)($a['ticket_promedio'] ?? 0));
             if ($ticketCmp !== 0) {
                 return $ticketCmp;
             }
 
-            $billableCmp = ((int) ($b['cantidad_con_honorario'] ?? 0)) <=> ((int) ($a['cantidad_con_honorario'] ?? 0));
+            $billableCmp = ((int)($b['cantidad_con_honorario'] ?? 0)) <=> ((int)($a['cantidad_con_honorario'] ?? 0));
             if ($billableCmp !== 0) {
                 return $billableCmp;
             }
 
-            return strcmp((string) ($a['valor'] ?? ''), (string) ($b['valor'] ?? ''));
+            return strcmp((string)($a['valor'] ?? ''), (string)($b['valor'] ?? ''));
         });
 
         if ($limit !== null && $limit > 0) {
@@ -3528,7 +3566,8 @@ class BillingParticularesReportService
         array $categoriaPacientes,
         array $categoriaMonthCounts,
         array $categoriaMonthHonorarios
-    ): array {
+    ): array
+    {
         $segments = [];
         foreach (['particular' => 'PARTICULAR', 'privado' => 'PRIVADO'] as $key => $label) {
             $countsByMonth = $categoriaMonthCounts[$key] ?? [];
@@ -3539,24 +3578,24 @@ class BillingParticularesReportService
             $monthKeys = array_values(array_unique(array_merge(array_keys($countsByMonth), array_keys($honorariosByMonth))));
             sort($monthKeys);
 
-            $currentMonthKey = !empty($monthKeys) ? (string) end($monthKeys) : '';
+            $currentMonthKey = !empty($monthKeys) ? (string)end($monthKeys) : '';
             $previousMonthKey = $currentMonthKey !== '' ? date('Y-m', strtotime($currentMonthKey . '-01 -1 month')) : '';
             $lastYearMonthKey = $currentMonthKey !== '' ? date('Y-m', strtotime($currentMonthKey . '-01 -1 year')) : '';
 
-            $currentMonthAtenciones = $currentMonthKey !== '' ? (int) ($countsByMonth[$currentMonthKey] ?? 0) : 0;
-            $previousMonthAtenciones = $previousMonthKey !== '' ? (int) ($countsByMonth[$previousMonthKey] ?? 0) : 0;
-            $lastYearMonthAtenciones = $lastYearMonthKey !== '' ? (int) ($countsByMonth[$lastYearMonthKey] ?? 0) : 0;
+            $currentMonthAtenciones = $currentMonthKey !== '' ? (int)($countsByMonth[$currentMonthKey] ?? 0) : 0;
+            $previousMonthAtenciones = $previousMonthKey !== '' ? (int)($countsByMonth[$previousMonthKey] ?? 0) : 0;
+            $lastYearMonthAtenciones = $lastYearMonthKey !== '' ? (int)($countsByMonth[$lastYearMonthKey] ?? 0) : 0;
 
-            $currentMonthHonorario = $currentMonthKey !== '' ? round((float) ($honorariosByMonth[$currentMonthKey] ?? 0), 2) : 0.0;
-            $previousMonthHonorario = $previousMonthKey !== '' ? round((float) ($honorariosByMonth[$previousMonthKey] ?? 0), 2) : 0.0;
-            $lastYearMonthHonorario = $lastYearMonthKey !== '' ? round((float) ($honorariosByMonth[$lastYearMonthKey] ?? 0), 2) : 0.0;
+            $currentMonthHonorario = $currentMonthKey !== '' ? round((float)($honorariosByMonth[$currentMonthKey] ?? 0), 2) : 0.0;
+            $previousMonthHonorario = $previousMonthKey !== '' ? round((float)($honorariosByMonth[$previousMonthKey] ?? 0), 2) : 0.0;
+            $lastYearMonthHonorario = $lastYearMonthKey !== '' ? round((float)($honorariosByMonth[$lastYearMonthKey] ?? 0), 2) : 0.0;
 
             $currentMonthTicket = $currentMonthAtenciones > 0 ? round($currentMonthHonorario / $currentMonthAtenciones, 2) : 0.0;
             $previousMonthTicket = $previousMonthAtenciones > 0 ? round($previousMonthHonorario / $previousMonthAtenciones, 2) : 0.0;
             $lastYearMonthTicket = $lastYearMonthAtenciones > 0 ? round($lastYearMonthHonorario / $lastYearMonthAtenciones, 2) : 0.0;
 
-            $totalAtenciones = (int) ($categoriaCounts[$key] ?? 0);
-            $totalHonorario = round((float) ($produccionPorCategoria[$key] ?? 0), 2);
+            $totalAtenciones = (int)($categoriaCounts[$key] ?? 0);
+            $totalHonorario = round((float)($produccionPorCategoria[$key] ?? 0), 2);
             $totalPacientes = count($categoriaPacientes[$key] ?? []);
             $ticketPromedio = $totalAtenciones > 0 ? round($totalHonorario / $totalAtenciones, 2) : 0.0;
             $monthlyAvgHonorario = !empty($honorariosByMonth) ? round(array_sum($honorariosByMonth) / count($honorariosByMonth), 2) : 0.0;
@@ -3605,18 +3644,18 @@ class BillingParticularesReportService
 
         $alerts = [];
         foreach ($segments as $segment) {
-            $label = (string) ($segment['label'] ?? 'SEGMENTO');
+            $label = (string)($segment['label'] ?? 'SEGMENTO');
             $facturacionVsPreviousPct = $segment['facturacion_vs_previous_pct'];
             $atencionesVsPreviousPct = $segment['atenciones_vs_previous_pct'];
             $ticketVsPreviousPct = $segment['ticket_vs_previous_pct'];
 
-            if (is_numeric($facturacionVsPreviousPct) && is_numeric($ticketVsPreviousPct) && (float) $facturacionVsPreviousPct > 0 && (float) $ticketVsPreviousPct < 0) {
+            if (is_numeric($facturacionVsPreviousPct) && is_numeric($ticketVsPreviousPct) && (float)$facturacionVsPreviousPct > 0 && (float)$ticketVsPreviousPct < 0) {
                 $alerts[] = sprintf(
                     '%s crece en facturación mensual, pero cae en ticket promedio (%s%%).',
                     $label,
-                    number_format((float) $ticketVsPreviousPct, 2)
+                    number_format((float)$ticketVsPreviousPct, 2)
                 );
-            } elseif (is_numeric($facturacionVsPreviousPct) && is_numeric($atencionesVsPreviousPct) && (float) $facturacionVsPreviousPct < 0 && (float) $atencionesVsPreviousPct > 0) {
+            } elseif (is_numeric($facturacionVsPreviousPct) && is_numeric($atencionesVsPreviousPct) && (float)$facturacionVsPreviousPct < 0 && (float)$atencionesVsPreviousPct > 0) {
                 $alerts[] = sprintf(
                     '%s sube en volumen mensual, pero la facturación cae; revisar calidad del mix o descuentos.',
                     $label
@@ -3626,21 +3665,21 @@ class BillingParticularesReportService
 
         if (count($segments) === 2) {
             [$segmentA, $segmentB] = $segments;
-            if ((float) ($segmentA['ticket_promedio_total'] ?? 0) >= (float) ($segmentB['ticket_promedio_total'] ?? 0)) {
+            if ((float)($segmentA['ticket_promedio_total'] ?? 0) >= (float)($segmentB['ticket_promedio_total'] ?? 0)) {
                 $alerts[] = sprintf(
                     '%s mantiene un ticket promedio superior a %s ($%s vs $%s).',
-                    (string) ($segmentA['label'] ?? 'A'),
-                    (string) ($segmentB['label'] ?? 'B'),
-                    number_format((float) ($segmentA['ticket_promedio_total'] ?? 0), 2),
-                    number_format((float) ($segmentB['ticket_promedio_total'] ?? 0), 2)
+                    (string)($segmentA['label'] ?? 'A'),
+                    (string)($segmentB['label'] ?? 'B'),
+                    number_format((float)($segmentA['ticket_promedio_total'] ?? 0), 2),
+                    number_format((float)($segmentB['ticket_promedio_total'] ?? 0), 2)
                 );
             } else {
                 $alerts[] = sprintf(
                     '%s mantiene un ticket promedio superior a %s ($%s vs $%s).',
-                    (string) ($segmentB['label'] ?? 'B'),
-                    (string) ($segmentA['label'] ?? 'A'),
-                    number_format((float) ($segmentB['ticket_promedio_total'] ?? 0), 2),
-                    number_format((float) ($segmentA['ticket_promedio_total'] ?? 0), 2)
+                    (string)($segmentB['label'] ?? 'B'),
+                    (string)($segmentA['label'] ?? 'A'),
+                    number_format((float)($segmentB['ticket_promedio_total'] ?? 0), 2),
+                    number_format((float)($segmentA['ticket_promedio_total'] ?? 0), 2)
                 );
             }
         }
@@ -3673,7 +3712,7 @@ class BillingParticularesReportService
         $parts = preg_split('/\s*\|\s*/', $value) ?: [];
         $result = [];
         foreach ($parts as $part) {
-            $normalized = strtoupper(trim((string) $part));
+            $normalized = strtoupper(trim((string)$part));
             if ($normalized === '') {
                 continue;
             }

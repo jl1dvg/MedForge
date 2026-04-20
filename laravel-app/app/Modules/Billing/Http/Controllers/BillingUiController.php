@@ -1586,7 +1586,7 @@ class BillingUiController
             return '';
         }
 
-        if (in_array($upper, ['MARKETING', 'MEDIOS', 'MARKETING (PROMOCIONES)'], true)) {
+        if (in_array($upper, ['MARKETING', 'MEDIOS', 'MARKETING (PROMOCIONES)', 'MARKETING.'], true)) {
             return 'MARKETING';
         }
 

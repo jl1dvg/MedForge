@@ -28,6 +28,8 @@ class FacturacionRealSyncService
     private ?\phpseclib3\Net\SSH2 $ssh = null;
     private ?bool $directDbAvailable = null;
     private ?string $csvPath = null;
+    /** @var array<int,string>|null */
+    private ?array $billingFacturacionRealColumns = null;
 
     public function __construct()
     {
@@ -712,10 +714,67 @@ SQL;
             'raw_payload' => json_encode($row, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
         ];
 
-        DB::table('billing_facturacion_real')->updateOrInsert(
-            ['form_id' => $formId],
-            $params + ['updated_at' => now()]
-        );
+        $dedupeKey = (string) ($params['dedupe_key'] ?? '');
+        if ($dedupeKey === '') {
+            return;
+        }
+
+        $timestamp = now();
+        $columns = $this->billingFacturacionRealColumns();
+        $exists = DB::table('billing_facturacion_real')
+            ->where('dedupe_key', $dedupeKey)
+            ->exists();
+
+        if ($exists) {
+            $updatePayload = $params;
+            if (in_array('updated_at', $columns, true)) {
+                $updatePayload['updated_at'] = $timestamp;
+            }
+            if (in_array('scraped_at', $columns, true)) {
+                $updatePayload['scraped_at'] = $timestamp;
+            }
+
+            DB::table('billing_facturacion_real')
+                ->where('dedupe_key', $dedupeKey)
+                ->update($updatePayload);
+
+            return;
+        }
+
+        $insertPayload = $params;
+        if (in_array('created_at', $columns, true)) {
+            $insertPayload['created_at'] = $timestamp;
+        }
+        if (in_array('updated_at', $columns, true)) {
+            $insertPayload['updated_at'] = $timestamp;
+        }
+        if (in_array('scraped_at', $columns, true)) {
+            $insertPayload['scraped_at'] = $timestamp;
+        }
+
+        DB::table('billing_facturacion_real')->insert($insertPayload);
+    }
+
+    /**
+     * @return array<int,string>
+     */
+    private function billingFacturacionRealColumns(): array
+    {
+        if ($this->billingFacturacionRealColumns !== null) {
+            return $this->billingFacturacionRealColumns;
+        }
+
+        try {
+            $columns = DB::getSchemaBuilder()->getColumnListing('billing_facturacion_real');
+            $this->billingFacturacionRealColumns = array_map(
+                static fn (mixed $column): string => (string) $column,
+                is_array($columns) ? $columns : []
+            );
+        } catch (Throwable) {
+            $this->billingFacturacionRealColumns = [];
+        }
+
+        return $this->billingFacturacionRealColumns;
     }
 
     private function normalizeDateTime(mixed $value): ?string
