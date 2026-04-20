@@ -217,13 +217,13 @@ class MedforgeNavigation
             ])
                 : null,
             $canConfigureWhatsApp
-                ? $link('Bot de WhatsApp', '/whatsapp/autoresponder', 'mdi mdi-robot-outline', [
-                'prefix' => ['/whatsapp/autoresponder'],
+                ? $link('Flowmaker WhatsApp', '/v2/whatsapp/flowmaker', 'mdi mdi-robot-outline', [
+                'prefix' => ['/v2/whatsapp/flowmaker'],
             ])
                 : null,
             $canConfigureWhatsApp
-                ? $link('Plantillas de WhatsApp', '/whatsapp/templates', 'mdi mdi-message-badge-outline', [
-                'prefix' => ['/whatsapp/templates'],
+                ? $link('Plantillas de WhatsApp', '/v2/whatsapp/templates', 'mdi mdi-message-badge-outline', [
+                'prefix' => ['/v2/whatsapp/templates'],
             ])
                 : null,
         ]));
@@ -261,8 +261,13 @@ class MedforgeNavigation
             ])
                 : null,
             $canAccessWhatsAppChat
-                ? $link('Dashboard WhatsApp', '/whatsapp/dashboard', 'mdi mdi-chart-line', [
-                'prefix' => ['/whatsapp/dashboard'],
+                ? $link('Dashboard WhatsApp', '/v2/whatsapp/dashboard', 'mdi mdi-chart-line', [
+                'prefix' => ['/v2/whatsapp/dashboard'],
+            ])
+                : null,
+            $canAccessWhatsAppChat
+                ? $link('Campañas WhatsApp', '/v2/whatsapp/campaigns', 'mdi mdi-bullhorn-outline', [
+                'prefix' => ['/v2/whatsapp/campaigns'],
             ])
                 : null,
             $canAccessMailbox

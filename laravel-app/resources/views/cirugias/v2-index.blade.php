@@ -132,7 +132,7 @@
         };
 
         function emitirCertificadoDescanso(formId, hcNumber) {
-            const value = window.prompt('Ingrese los dias de descanso postquirurgico', '5');
+            const value = window.prompt('Ingrese los dias de reposo del certificado medico', '5');
             if (value === null) {
                 return;
             }

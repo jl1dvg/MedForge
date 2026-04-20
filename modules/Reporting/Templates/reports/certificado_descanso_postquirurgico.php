@@ -67,7 +67,6 @@ body {
 
 .cert-top {
     width: 100%;
-    border: none;
     border-collapse: collapse;
     margin-bottom: 8mm;
 }
@@ -175,9 +174,9 @@ body {
 
 .footer-note {
     margin-top: 8mm;
+    text-align: center;
     font-size: 8pt;
     color: #5f6f8a;
-    text-align: center;
 }
 CSS;
 

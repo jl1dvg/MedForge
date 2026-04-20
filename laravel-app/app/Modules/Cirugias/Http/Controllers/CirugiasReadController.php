@@ -233,9 +233,9 @@ class CirugiasReadController
 
         $descansoOnClick = 'emitirCertificadoDescanso(' . $formIdJs . ', ' . $hcNumberJs . ')';
         $descansoHtml = '<a class="btn btn-app btn-warning" '
-            . 'title="Generar certificado de descanso postquirurgico" '
+            . 'title="Generar certificado medico" '
             . 'onclick="' . $esc($descansoOnClick) . '">'
-            . '<i class="mdi mdi-file-document-box"></i> Descanso</a>';
+            . '<i class="mdi mdi-file-document-box"></i> Certificado</a>';
 
         $printOnClick = $estado === 'revisado'
             ? 'togglePrintStatus(' . $formIdJs . ', ' . $hcNumberJs . ', this, ' . $printed . ')'

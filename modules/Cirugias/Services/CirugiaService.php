@@ -7,6 +7,7 @@ use PDO;
 
 class CirugiaService
 {
+    private const AUTOFILL_AUDIT_SOURCE = 'cive_extension_protocolos';
     private const IESS_AFFILIATIONS = [
         'contribuyente voluntario',
         'conyuge',
@@ -1035,12 +1036,26 @@ class CirugiaService
             return ['success' => false, 'message' => 'Datos no válidos'];
         }
 
+        $auditUserId = $this->resolveAutofillAuditUserId($data);
+        if ($this->requiresAutofillAudit($data) && $auditUserId === null) {
+            return ['success' => false, 'message' => $this->lastError ?? 'No se pudo validar la auditoría del protocolo.'];
+        }
+
         $ok = $this->guardar($data);
 
         if ($ok) {
             $stmt = $this->db->prepare("SELECT id FROM protocolo_data WHERE form_id = :form_id");
             $stmt->execute([':form_id' => $data['form_id']]);
             $protocoloId = (int)$stmt->fetchColumn();
+
+            if ($auditUserId !== null) {
+                $this->registrarAutofillAudit(
+                    $protocoloId > 0 ? $protocoloId : null,
+                    (string) $data['form_id'],
+                    (string) $data['hc_number'],
+                    $auditUserId
+                );
+            }
 
             return ['success' => true, 'message' => 'Datos guardados correctamente', 'protocolo_id' => $protocoloId];
         }
@@ -1745,5 +1760,98 @@ class CirugiaService
 
         [$year, $month, $day] = array_map('intval', explode('-', $value));
         return checkdate($month, $day, $year);
+    }
+
+    private function requiresAutofillAudit(array $data): bool
+    {
+        return trim((string) ($data['audit_source'] ?? '')) === self::AUTOFILL_AUDIT_SOURCE;
+    }
+
+    private function resolveAutofillAuditUserId(array $data): ?int
+    {
+        if (!$this->requiresAutofillAudit($data)) {
+            return null;
+        }
+
+        if (!$this->tableExists('users')) {
+            $this->lastError = 'No existe la tabla de usuarios para validar la auditoría.';
+            return null;
+        }
+
+        $username = trim((string) ($data['audit_username'] ?? ''));
+        $password = (string) ($data['audit_password'] ?? '');
+
+        if ($username === '' || $password === '') {
+            $this->lastError = 'Debes ingresar usuario y contraseña para registrar la auditoría del protocolo.';
+            return null;
+        }
+
+        $stmt = $this->db->prepare(
+            'SELECT id, password
+             FROM users
+             WHERE username = :username
+             LIMIT 1'
+        );
+        $stmt->execute([':username' => $username]);
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$user || !password_verify($password, (string) ($user['password'] ?? ''))) {
+            $this->lastError = 'Usuario o contraseña inválidos para registrar la auditoría del protocolo.';
+            return null;
+        }
+
+        $userId = isset($user['id']) ? (int) $user['id'] : 0;
+        if ($userId <= 0) {
+            $this->lastError = 'No se pudo identificar al usuario de auditoría.';
+            return null;
+        }
+
+        return $userId;
+    }
+
+    private function registrarAutofillAudit(?int $protocoloId, string $formId, string $hcNumber, int $userId): void
+    {
+        if (!$this->tableExists('protocolo_auditoria')) {
+            error_log('⚠️ No existe protocolo_auditoria para registrar autollenado CIVE.');
+            return;
+        }
+
+        try {
+            $status = 0;
+            $version = 0;
+
+            $stmt = $this->db->prepare(
+                'SELECT status, version
+                 FROM protocolo_data
+                 WHERE form_id = :form_id AND hc_number = :hc_number
+                 LIMIT 1'
+            );
+            $stmt->execute([
+                ':form_id' => $formId,
+                ':hc_number' => $hcNumber,
+            ]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+            $status = isset($row['status']) ? (int) $row['status'] : 0;
+            $version = isset($row['version']) ? (int) $row['version'] : 0;
+
+            $auditStmt = $this->db->prepare(
+                'INSERT INTO protocolo_auditoria
+                    (protocolo_id, form_id, hc_number, evento, status, version, usuario_id, creado_en)
+                 VALUES
+                    (:protocolo_id, :form_id, :hc_number, :evento, :status, :version, :usuario_id, NOW())'
+            );
+            $auditStmt->execute([
+                ':protocolo_id' => $protocoloId,
+                ':form_id' => $formId,
+                ':hc_number' => $hcNumber,
+                ':evento' => 'autollenado_cive',
+                ':status' => $status,
+                ':version' => $version,
+                ':usuario_id' => $userId,
+            ]);
+        } catch (\Throwable $exception) {
+            error_log('❌ Error al registrar auditoría de autollenado CIVE: ' . $exception->getMessage());
+        }
     }
 }

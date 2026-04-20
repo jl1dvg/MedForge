@@ -51,33 +51,61 @@ class PostSurgeryRestReportDataService
             $age = $birthDate->diff($referenceDate)->y;
         }
 
-        $diagnosticos = $this->extractDiagnoses($surgery['diagnosticos'] ?? null);
+        $diagnosticosIngreso = $this->extractDiagnoses($surgery['diagnosticos_previos'] ?? null);
+        $diagnosticosEgreso = $this->extractDiagnoses($surgery['diagnosticos'] ?? null);
+        $diagnosticos = $diagnosticosEgreso !== [] ? $diagnosticosEgreso : $diagnosticosIngreso;
         if ($diagnosticos === []) {
-            $diagnosticos = $this->extractDiagnoses($surgery['diagnosticos_previos'] ?? null);
+            $diagnosticos = ['Diagnostico postquirurgico.'];
         }
 
-        $doctor = $this->resolveDoctor((string) ($surgery['cirujano_1'] ?? ''));
+        $doctorName = trim((string) ($surgery['doctor_proyectado'] ?? ''));
+        if ($doctorName === '') {
+            $doctorName = trim((string) ($surgery['cirujano_1'] ?? ''));
+        }
+
+        $doctor = $this->resolveDoctor($doctorName);
         $observaciones = $this->normalizeObservaciones($options['observaciones'] ?? null);
+        $patientDocument = $this->resolvePatientDocument($surgery, $hcNumber);
+        $patientAddress = $this->resolvePatientAddress($surgery);
+        $patientPhone = $this->resolvePatientPhone($surgery);
+        $patientInstitution = $this->resolveInstitution($surgery);
+        $patientOccupation = $this->resolveOccupation($surgery);
+        $issueCity = $this->resolveIssueCity($surgery);
+        $dischargeDate = $this->parseDate($surgery['fecha_fin'] ?? null) ?? $surgeryDate ?? $today;
+        $contingency = trim((string) ($options['tipo_contingencia'] ?? ''));
 
         return [
             'certificado_numero' => $this->buildCertificateNumber($formId, $hcNumber),
             'fecha_emision' => $today->format('Y-m-d'),
             'fecha_emision_legible' => $this->formatDateSpanish($today),
+            'ciudad_emision' => $issueCity,
             'form_id' => (string) ($surgery['form_id'] ?? $formId),
             'hc_number' => (string) ($surgery['hc_number'] ?? $hcNumber),
             'paciente' => [
                 'nombre' => $patientName,
-                'identificacion' => (string) ($surgery['hc_number'] ?? $hcNumber),
+                'identificacion' => $patientDocument,
+                'historia_clinica' => (string) ($surgery['hc_number'] ?? $hcNumber),
                 'edad' => $age,
                 'sexo' => $this->normalizeSexLabel((string) ($surgery['sexo'] ?? '')),
-                'afiliacion' => trim((string) ($surgery['afiliacion'] ?? '')),
+                'afiliacion' => $patientInstitution,
+                'domicilio' => $patientAddress,
+                'telefono' => $patientPhone,
+                'empresa_institucion' => $patientInstitution,
+                'puesto_trabajo' => $patientOccupation,
             ],
             'procedimiento' => $this->extractProcedureName($surgery),
             'fecha_cirugia' => $surgeryDate?->format('Y-m-d'),
             'fecha_cirugia_legible' => $surgeryDate ? $this->formatDateSpanish($surgeryDate) : '',
+            'fecha_egreso' => $dischargeDate->format('Y-m-d'),
+            'fecha_egreso_legible' => $this->formatDateSpanish($dischargeDate),
             'diagnosticos' => $diagnosticos,
+            'diagnostico_ingreso' => $diagnosticosIngreso[0] ?? ($diagnosticos[0] ?? ''),
+            'diagnostico_egreso' => $diagnosticosEgreso[0] ?? ($diagnosticos[0] ?? ''),
+            'tipo_contingencia' => $contingency,
+            'tratamiento' => $observaciones,
             'reposo' => [
                 'dias' => $restDays,
+                'dias_en_letras' => $this->numberToSpanishWords($restDays),
                 'desde' => $restStart->format('Y-m-d'),
                 'desde_legible' => $this->formatDateSpanish($restStart),
                 'hasta' => $restEnd->format('Y-m-d'),
@@ -95,22 +123,19 @@ class PostSurgeryRestReportDataService
     {
         $sql = <<<'SQL'
             SELECT
-                p.hc_number,
-                p.fname,
-                p.mname,
-                p.lname,
-                p.lname2,
-                p.fecha_nacimiento,
-                p.sexo,
-                p.afiliacion,
+                p.*,
                 pr.form_id,
                 pr.fecha_inicio,
+                pr.fecha_fin,
                 pr.cirujano_1,
                 pr.membrete,
                 pr.procedimientos,
                 pr.diagnosticos,
                 pr.diagnosticos_previos,
-                pp.procedimiento_proyectado
+                pp.doctor AS doctor_proyectado,
+                pp.procedimiento_proyectado,
+                pp.sede_departamento,
+                pp.afiliacion AS proyeccion_afiliacion
             FROM protocolo_data pr
             INNER JOIN patient_data p ON p.hc_number = pr.hc_number
             LEFT JOIN procedimiento_proyectado pp
@@ -260,36 +285,225 @@ class PostSurgeryRestReportDataService
     private function resolveDoctor(string $doctorName): array
     {
         $fallbackName = trim($doctorName);
-
         $doctor = [];
         if ($fallbackName !== '') {
-            $stmt = $this->db->prepare('SELECT * FROM users WHERE nombre COLLATE utf8mb4_unicode_ci LIKE ? LIMIT 1');
-            $stmt->execute(['%' . $fallbackName . '%']);
-            $found = $stmt->fetch(PDO::FETCH_ASSOC);
-            $doctor = is_array($found) ? $found : [];
+            $doctor = $this->findDoctorByExactName($fallbackName)
+                ?? $this->findDoctorByTokenName($fallbackName)
+                ?? [];
         }
 
-        $name = trim((string) ($doctor['nombre'] ?? ''));
-        if ($name === '') {
-            $name = trim(implode(' ', array_filter([
-                trim((string) ($doctor['first_name'] ?? '')),
-                trim((string) ($doctor['middle_name'] ?? '')),
-                trim((string) ($doctor['last_name'] ?? '')),
-                trim((string) ($doctor['second_last_name'] ?? '')),
-            ])));
-        }
-
-        if ($name === '') {
-            $name = $fallbackName !== '' ? $fallbackName : 'Medico tratante';
-        }
+        $name = $fallbackName !== '' ? $fallbackName : 'Medico tratante';
 
         return [
             'nombre' => $name,
             'cedula' => trim((string) ($doctor['cedula'] ?? '')),
+            'registro' => trim((string) ($doctor['registro'] ?? '')),
             'especialidad' => trim((string) ($doctor['especialidad'] ?? 'CIRUGIA OFTALMOLOGICA')),
             'firma' => trim((string) ($doctor['firma'] ?? '')),
             'signature_path' => trim((string) ($doctor['signature_path'] ?? '')),
         ];
+    }
+
+    private function resolvePatientDocument(array $row, string $hcNumber): string
+    {
+        foreach (['cedula', 'ci', 'identificacion'] as $field) {
+            $value = trim((string) ($row[$field] ?? ''));
+            if ($value !== '') {
+                return $value;
+            }
+        }
+
+        return (string) ($row['hc_number'] ?? $hcNumber);
+    }
+
+    private function resolvePatientAddress(array $row): string
+    {
+        foreach (['direccion', 'address', 'ciudad'] as $field) {
+            $value = trim((string) ($row[$field] ?? ''));
+            if ($value !== '') {
+                return $value;
+            }
+        }
+
+        return '';
+    }
+
+    private function resolvePatientPhone(array $row): string
+    {
+        foreach (['celular', 'telefono', 'phone'] as $field) {
+            $value = trim((string) ($row[$field] ?? ''));
+            if ($value !== '') {
+                return $value;
+            }
+        }
+
+        return '';
+    }
+
+    private function resolveInstitution(array $row): string
+    {
+        return trim((string) ($row['lugar_trabajo'] ?? ''));
+    }
+
+    private function resolveOccupation(array $row): string
+    {
+        foreach (['ocupacion', 'puesto_trabajo', 'lugar_trabajo', 'trabajo'] as $field) {
+            $value = trim((string) ($row[$field] ?? ''));
+            if ($value !== '') {
+                return $value;
+            }
+        }
+
+        return '';
+    }
+
+    private function resolveIssueCity(array $row): string
+    {
+        $sede = $this->normalizeSiteName((string) ($row['sede_departamento'] ?? $row['sede'] ?? ''));
+        if ($sede === 'MATRIZ') {
+            return 'Daule';
+        }
+        if ($sede === 'CEIBOS') {
+            return 'Guayaquil';
+        }
+
+        $city = trim((string) ($row['ciudad'] ?? ''));
+        if ($city !== '') {
+            return $city;
+        }
+
+        return '';
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function findDoctorByExactName(string $doctorName): ?array
+    {
+        $normalizedTarget = $this->normalizePersonName($doctorName);
+        if ($normalizedTarget === '') {
+            return null;
+        }
+
+        $stmt = $this->db->query('SELECT * FROM users WHERE nombre IS NOT NULL AND TRIM(nombre) <> ""');
+        $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+        foreach ($rows as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+
+            $candidate = $this->extractDoctorDisplayName($row);
+            if ($candidate === '') {
+                continue;
+            }
+
+            if ($this->normalizePersonName($candidate) === $normalizedTarget) {
+                return $row;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function findDoctorByTokenName(string $doctorName): ?array
+    {
+        $targetTokens = $this->personNameTokens($doctorName);
+        if ($targetTokens === []) {
+            return null;
+        }
+
+        $stmt = $this->db->query('SELECT * FROM users WHERE nombre IS NOT NULL AND TRIM(nombre) <> ""');
+        $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+        foreach ($rows as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+
+            $candidateTokens = $this->personNameTokens($this->extractDoctorDisplayName($row));
+            if ($candidateTokens === []) {
+                continue;
+            }
+
+            if ($candidateTokens === $targetTokens) {
+                return $row;
+            }
+        }
+
+        return null;
+    }
+
+    private function extractDoctorDisplayName(array $doctor): string
+    {
+        $name = trim((string) ($doctor['nombre'] ?? ''));
+        if ($name !== '') {
+            return $name;
+        }
+
+        return trim(implode(' ', array_filter([
+            trim((string) ($doctor['first_name'] ?? '')),
+            trim((string) ($doctor['middle_name'] ?? '')),
+            trim((string) ($doctor['last_name'] ?? '')),
+            trim((string) ($doctor['second_last_name'] ?? '')),
+        ])));
+    }
+
+    private function normalizePersonName(string $value): string
+    {
+        $value = $this->asciiUpper($value);
+        $value = preg_replace('/[^A-Z0-9 ]+/', ' ', $value) ?? $value;
+        $value = preg_replace('/\s+/', ' ', trim($value)) ?? trim($value);
+
+        return $value;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function personNameTokens(string $value): array
+    {
+        $normalized = $this->normalizePersonName($value);
+        if ($normalized === '') {
+            return [];
+        }
+
+        $tokens = preg_split('/\s+/', $normalized) ?: [];
+        $tokens = array_values(array_filter($tokens, static fn(string $token): bool => $token !== ''));
+        sort($tokens);
+
+        return $tokens;
+    }
+
+    private function normalizeSiteName(string $value): string
+    {
+        $normalized = $this->asciiUpper($value);
+
+        if (str_contains($normalized, 'CEIB')) {
+            return 'CEIBOS';
+        }
+
+        if (str_contains($normalized, 'MATRIZ')) {
+            return 'MATRIZ';
+        }
+
+        return trim($normalized);
+    }
+
+    private function asciiUpper(string $value): string
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return '';
+        }
+
+        $transliterated = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value);
+        if (is_string($transliterated) && $transliterated !== '') {
+            $value = $transliterated;
+        }
+
+        return strtoupper($value);
     }
 
     private function normalizeObservaciones(mixed $value): string
@@ -388,5 +602,44 @@ class PostSurgeryRestReportDataService
         }
 
         return $decoded;
+    }
+
+    private function numberToSpanishWords(int $number): string
+    {
+        $map = [
+            0 => 'cero',
+            1 => 'uno',
+            2 => 'dos',
+            3 => 'tres',
+            4 => 'cuatro',
+            5 => 'cinco',
+            6 => 'seis',
+            7 => 'siete',
+            8 => 'ocho',
+            9 => 'nueve',
+            10 => 'diez',
+            11 => 'once',
+            12 => 'doce',
+            13 => 'trece',
+            14 => 'catorce',
+            15 => 'quince',
+            16 => 'dieciseis',
+            17 => 'diecisiete',
+            18 => 'dieciocho',
+            19 => 'diecinueve',
+            20 => 'veinte',
+            21 => 'veintiuno',
+            22 => 'veintidos',
+            23 => 'veintitres',
+            24 => 'veinticuatro',
+            25 => 'veinticinco',
+            26 => 'veintiseis',
+            27 => 'veintisiete',
+            28 => 'veintiocho',
+            29 => 'veintinueve',
+            30 => 'treinta',
+        ];
+
+        return $map[$number] ?? (string) $number;
     }
 }
