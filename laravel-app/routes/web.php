@@ -11,6 +11,7 @@ use App\Modules\Codes\Http\Controllers\CodesUiController;
 use App\Modules\Codes\Http\Controllers\CodesWriteController;
 use App\Modules\Derivaciones\Http\Controllers\DerivacionesUiController;
 use App\Modules\Solicitudes\Http\Controllers\SolicitudesUiController;
+use App\Modules\Shared\Http\Controllers\FeedbackWriteController;
 use App\Modules\Usuarios\Http\Controllers\RolesUiController;
 use App\Modules\Usuarios\Http\Controllers\UsuariosUiController;
 use App\Modules\Whatsapp\Http\Controllers\WhatsappUiController;
@@ -24,6 +25,10 @@ Route::get('/auth/login', [LoginController::class, 'show'])->name('login');
 Route::post('/auth/login', [LoginController::class, 'login']);
 Route::get('/auth/logout', [UnifiedLogoutController::class, 'logout']);
 Route::get('/v2/auth/logout', [UnifiedLogoutController::class, 'logout']);
+
+Route::middleware(['legacy.auth'])->group(function (): void {
+    Route::post('/feedback/api/report', [FeedbackWriteController::class, 'store']);
+});
 
 Route::middleware(['legacy.auth', 'legacy.permission:administrativo,dashboard.view'])->group(function (): void {
     Route::get('/v2/dashboard', [DashboardUiController::class, 'index']);
@@ -136,6 +141,7 @@ Route::middleware(['legacy.auth', 'legacy.permission:administrativo,codes.manage
 });
 
 Route::middleware(['legacy.auth', 'legacy.permission:administrativo,whatsapp.manage,whatsapp.chat.view,whatsapp.templates.manage,whatsapp.autoresponder.manage,settings.manage'])->group(function (): void {
+    Route::get('/v2/whatsapp', [WhatsappUiController::class, 'hub']);
     Route::get('/v2/whatsapp/chat', [WhatsappUiController::class, 'chat'])
         ->middleware('whatsapp.feature:ui,/whatsapp/chat');
     Route::get('/v2/whatsapp/campaigns', [WhatsappUiController::class, 'campaigns'])

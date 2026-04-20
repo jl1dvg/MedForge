@@ -75,10 +75,7 @@ class LoginController
             'sigcenter_password' => $password,
         ], LegacySessionAuth::sessionId($request) ?: null);
 
-        $request->session()->flash('post_login_notice', [
-            'title' => 'Aviso importante sobre disponibilidad',
-            'message' => 'Medforge operará con normalidad únicamente hasta el 19 de abril de 2026. A partir de esa fecha, se procederá a la suspensión del servicio debido a limitaciones críticas de capacidad en la infraestructura y almacenamiento de base de datos, generadas por el incremento sostenido en la demanda y operación.',
-        ]);
+        $request->session()->flash('post_login_feedback_prompt', true);
 
         return redirect()->intended('/dashboard');
     }

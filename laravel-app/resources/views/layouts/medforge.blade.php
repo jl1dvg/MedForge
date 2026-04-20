@@ -7,6 +7,7 @@
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta name="description" content="">
     <meta name="author" content="">
     <link rel="icon" href="/images/favicon.ico">
@@ -22,6 +23,7 @@
         <link rel="stylesheet" href="/css/skin_color.css">
         <link rel="stylesheet" href="/css/pages/medforge-datatables.css">
     @endif
+    <link rel="stylesheet" href="/css/feedback-widget.css">
 
     @stack('styles')
 </head>
@@ -38,6 +40,8 @@
             @yield('content')
         </div>
     </div>
+
+    @include('layouts.partials.feedback_widget')
 
     <footer class="main-footer">
         <script>document.write(new Date().getFullYear())</script>
@@ -62,37 +66,27 @@
     @endif
     <script src="/js/pages/global-search.js"></script>
 @endif
+<script src="/js/pages/feedback-widget.js"></script>
 
-@php
-    $postLoginNotice = session('post_login_notice');
-@endphp
-
-@if (is_array($postLoginNotice) && !empty($postLoginNotice['message']))
-    <div class="modal fade" id="postLoginNoticeModal" tabindex="-1" aria-labelledby="postLoginNoticeLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content border-0 shadow">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="postLoginNoticeLabel">{{ $postLoginNotice['title'] ?? 'Aviso importante' }}</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="mb-0">{{ $postLoginNotice['message'] }}</p>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Entendido</button>
-                </div>
-            </div>
-        </div>
-    </div>
+@if (session('post_login_feedback_prompt'))
     <script>
         document.addEventListener('DOMContentLoaded', function () {
-            const modalElement = document.getElementById('postLoginNoticeModal');
+            const modalElement = document.getElementById('feedbackWidgetModal');
             if (!modalElement || typeof bootstrap === 'undefined' || !bootstrap.Modal) {
                 return;
             }
 
-            const noticeModal = new bootstrap.Modal(modalElement);
-            noticeModal.show();
+            let feedbackModal = null;
+
+            if (typeof bootstrap.Modal.getOrCreateInstance === 'function') {
+                feedbackModal = bootstrap.Modal.getOrCreateInstance(modalElement);
+            } else if (typeof bootstrap.Modal.getInstance === 'function') {
+                feedbackModal = bootstrap.Modal.getInstance(modalElement) || new bootstrap.Modal(modalElement);
+            } else {
+                feedbackModal = new bootstrap.Modal(modalElement);
+            }
+
+            feedbackModal.show();
         });
     </script>
 @endif
