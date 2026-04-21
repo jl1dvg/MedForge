@@ -141,9 +141,11 @@ class WhatsappUiController
             'conversationNotes' => $selectedConversation !== null
                 ? $this->productivityToolkitService->listConversationNotes((int) $selectedConversation->id, 12)
                 : [],
-            'realtimeConfig' => $this->buildRealtimeConfig(),
-            'whatsappAssetVersion' => (string) filemtime(resource_path('views/whatsapp/v2-chat.blade.php')),
-        ]);
+        ] + $this->buildWhatsappNotificationViewData($request, [
+            'currentConversationId' => (int) ($selectedConversation['id'] ?? 0),
+            'canSupervise' => $canSupervise,
+            'scope' => 'chat',
+        ]));
     }
 
     public function templates(Request $request): View
@@ -169,7 +171,9 @@ class WhatsappUiController
                 'category' => trim((string) $request->query('category', '')),
                 'language' => trim((string) $request->query('language', '')),
             ],
-        ]);
+        ] + $this->buildWhatsappNotificationViewData($request, [
+            'scope' => 'templates',
+        ]));
     }
 
     public function dashboard(Request $request): View
@@ -199,10 +203,12 @@ class WhatsappUiController
                 'agent_id' => $agentId,
                 'sla_target_minutes' => $slaTargetMinutes,
             ],
-        ]);
+        ] + $this->buildWhatsappNotificationViewData($request, [
+            'scope' => 'dashboard',
+        ]));
     }
 
-    public function flowmaker(): View
+    public function flowmaker(Request $request): View
     {
         return view('whatsapp.v2-flowmaker', [
             'pageTitle' => 'WhatsApp V2 - Flowmaker',
@@ -211,25 +217,29 @@ class WhatsappUiController
             'aiAgentPreview' => $this->aiAgentPreviewService->overview(),
             'knowledgeBase' => $this->knowledgeBaseService->overview(),
             'templates' => $this->campaignService->listTemplateOptions(),
-        ]);
+        ] + $this->buildWhatsappNotificationViewData($request, [
+            'scope' => 'flowmaker',
+        ]));
     }
 
-    public function campaigns(): View
+    public function campaigns(Request $request): View
     {
         return view('whatsapp.v2-campaigns', [
             'pageTitle' => 'WhatsApp V2 - Campañas',
             'campaigns' => $this->campaignService->listCampaigns(),
             'templates' => $this->campaignService->listTemplateOptions(),
             'audienceSuggestions' => $this->campaignService->audienceSuggestions(),
-        ]);
+        ] + $this->buildWhatsappNotificationViewData($request, [
+            'scope' => 'campaigns',
+        ]));
     }
 
-    public function hub(): View
+    public function hub(Request $request): View
     {
-        return $this->renderSection('dashboard');
+        return $this->renderSection('dashboard', $request);
     }
 
-    private function renderSection(string $section): View
+    private function renderSection(string $section, ?Request $request = null): View
     {
         $sections = [
             'chat' => [
@@ -320,7 +330,9 @@ class WhatsappUiController
             'statusCards' => $statusCards,
             'phases' => $phases,
             'planDocPath' => '/docs/strangler/whatsapp-migration-plan-2026-04-10.md',
-        ]);
+        ] + ($request instanceof Request
+            ? $this->buildWhatsappNotificationViewData($request, ['scope' => 'hub'])
+            : []));
     }
 
     private function nullableIntQuery(Request $request, string $key): ?int
@@ -410,6 +422,65 @@ class WhatsappUiController
                 'daily_summary' => ((string) ($options['notifications_daily_summary'] ?? '0')) === '1',
             ],
         ];
+    }
+
+    /**
+     * @param array<string,mixed> $runtimeOverrides
+     * @return array<string,mixed>
+     */
+    private function buildWhatsappNotificationViewData(Request $request, array $runtimeOverrides = []): array
+    {
+        $currentUser = LegacyCurrentUser::resolve($request);
+        $notificationsEnabled = $this->canCurrentUserReceiveWhatsappNotifications($request);
+
+        return [
+            'whatsappNotificationPanelEnabled' => $notificationsEnabled,
+            'realtimeConfig' => $this->buildRealtimeConfig(),
+            'whatsappNotificationCurrentUser' => [
+                'id' => (int) ($currentUser['id'] ?? 0),
+                'name' => (string) ($currentUser['display_name'] ?? $currentUser['nombre'] ?? $currentUser['username'] ?? 'Usuario'),
+            ],
+            'whatsappRealtimeRuntime' => array_merge([
+                'currentConversationId' => 0,
+                'canSupervise' => false,
+                'scope' => 'general',
+            ], $runtimeOverrides),
+            'whatsappAssetVersion' => (string) max(
+                @filemtime(public_path('js/pages/whatsapp/v2-notifications.js')) ?: 0,
+                @filemtime(resource_path('views/layouts/partials/notification_panel.blade.php')) ?: 0,
+                @filemtime(resource_path('views/layouts/medforge.blade.php')) ?: 0,
+                @filemtime(resource_path('views/whatsapp/v2-chat.blade.php')) ?: 0,
+            ),
+        ];
+    }
+
+    private function canCurrentUserReceiveWhatsappNotifications(Request $request): bool
+    {
+        $permissions = LegacyPermissionResolver::resolve($request);
+        $userId = (int) (LegacyCurrentUser::resolve($request)['id'] ?? 0);
+
+        if ($userId <= 0) {
+            return false;
+        }
+
+        $hasPermission = \App\Modules\Shared\Support\LegacyPermissionCatalog::containsAny($permissions, [
+            'administrativo',
+            'whatsapp.manage',
+            'whatsapp.chat.supervise',
+            'whatsapp.notifications.receive',
+        ]);
+
+        if (!$hasPermission) {
+            return false;
+        }
+
+        try {
+            return (bool) DB::table('users')
+                ->where('id', $userId)
+                ->value('whatsapp_notify');
+        } catch (Throwable) {
+            return false;
+        }
     }
 
     /**

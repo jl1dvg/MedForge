@@ -131,11 +131,27 @@ class MedforgeNavigation
         );
         $canAccessWhatsAppChat = LegacyPermissionCatalog::containsAny(
             $permissions,
-            ['administrativo', 'whatsapp.manage', 'whatsapp.chat.view', 'settings.manage']
+            ['administrativo', 'whatsapp.manage', 'whatsapp.chat.view', 'whatsapp.chat.send', 'whatsapp.chat.assign', 'whatsapp.chat.supervise', 'settings.manage']
+        );
+        $canAccessWhatsAppDashboard = LegacyPermissionCatalog::containsAny(
+            $permissions,
+            ['administrativo', 'whatsapp.manage', 'whatsapp.chat.view', 'whatsapp.chat.supervise', 'settings.manage']
+        );
+        $canAccessWhatsAppCampaigns = LegacyPermissionCatalog::containsAny(
+            $permissions,
+            ['administrativo', 'whatsapp.manage', 'whatsapp.chat.send', 'whatsapp.templates.manage', 'settings.manage']
         );
         $canConfigureWhatsApp = LegacyPermissionCatalog::containsAny(
             $permissions,
             ['administrativo', 'whatsapp.manage', 'whatsapp.templates.manage', 'whatsapp.autoresponder.manage', 'settings.manage']
+        );
+        $canAccessWhatsAppTemplates = LegacyPermissionCatalog::containsAny(
+            $permissions,
+            ['administrativo', 'whatsapp.manage', 'whatsapp.templates.manage', 'settings.manage']
+        );
+        $canAccessWhatsAppFlowmaker = LegacyPermissionCatalog::containsAny(
+            $permissions,
+            ['administrativo', 'whatsapp.manage', 'whatsapp.autoresponder.manage', 'settings.manage']
         );
         $canAccessCronManager = LegacyPermissionCatalog::containsAny(
             $permissions,
@@ -216,12 +232,12 @@ class MedforgeNavigation
                 'prefix' => ['/leads'],
             ])
                 : null,
-            $canConfigureWhatsApp
+            $canAccessWhatsAppFlowmaker
                 ? $link('Flowmaker WhatsApp', '/v2/whatsapp/flowmaker', 'mdi mdi-robot-outline', [
                 'prefix' => ['/v2/whatsapp/flowmaker'],
             ])
                 : null,
-            $canConfigureWhatsApp
+            $canAccessWhatsAppTemplates
                 ? $link('Plantillas de WhatsApp', '/v2/whatsapp/templates', 'mdi mdi-message-badge-outline', [
                 'prefix' => ['/v2/whatsapp/templates'],
             ])
@@ -260,12 +276,12 @@ class MedforgeNavigation
                 'prefix' => ['/whatsapp/chat'],
             ])
                 : null,
-            $canAccessWhatsAppChat
+            $canAccessWhatsAppDashboard
                 ? $link('Dashboard WhatsApp', '/v2/whatsapp/dashboard', 'mdi mdi-chart-line', [
                 'prefix' => ['/v2/whatsapp/dashboard'],
             ])
                 : null,
-            $canAccessWhatsAppChat
+            $canAccessWhatsAppCampaigns
                 ? $link('Campañas WhatsApp', '/v2/whatsapp/campaigns', 'mdi mdi-bullhorn-outline', [
                 'prefix' => ['/v2/whatsapp/campaigns'],
             ])

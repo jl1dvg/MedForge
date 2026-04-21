@@ -39,6 +39,8 @@ class WhatsappKpiDashboardTest extends TestCase
             $table->string('first_name')->default('');
             $table->string('last_name')->default('');
             $table->string('nombre')->default('');
+            $table->string('email')->default('');
+            $table->string('profile_photo')->nullable();
             $table->text('permisos')->nullable();
             $table->unsignedBigInteger('role_id')->nullable();
         });
@@ -102,6 +104,7 @@ class WhatsappKpiDashboardTest extends TestCase
             'first_name' => 'Jorge',
             'last_name' => 'Vera',
             'nombre' => 'Jorge Vera',
+            'email' => 'jorge@example.com',
             'permisos' => json_encode(['whatsapp.manage', 'whatsapp.chat.view']),
             'role_id' => 1,
         ]);
