@@ -53,6 +53,7 @@ class PermissionRegistry
                 'whatsapp.chat.supervise' => 'WhatsApp - Supervisar, reasignar y cerrar chats',
                 'whatsapp.templates.manage' => 'WhatsApp - Gestionar plantillas',
                 'whatsapp.autoresponder.manage' => 'WhatsApp - Gestionar automatizaciones',
+                'whatsapp.notifications.receive' => 'WhatsApp - Recibir notificaciones operativas',
                 'whatsapp.manage' => 'WhatsApp - Acceso total (atajo)',
             ],
             'Inteligencia Artificial' => [

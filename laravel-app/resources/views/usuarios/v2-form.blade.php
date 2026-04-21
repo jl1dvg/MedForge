@@ -123,10 +123,10 @@
 
                         <div class="col-md-6">
                             <label class="form-label d-block">Notificaciones WhatsApp</label>
-                            <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" role="switch" id="whatsapp_notify" name="whatsapp_notify" {{ $isChecked('whatsapp_notify') }}>
-                                <label class="form-check-label" for="whatsapp_notify">Recibir alertas de handoff</label>
-                            </div>
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" role="switch" id="whatsapp_notify" name="whatsapp_notify" {{ $isChecked('whatsapp_notify') }}>
+                                    <label class="form-check-label" for="whatsapp_notify">Recibir notificaciones operativas de WhatsApp</label>
+                                </div>
                         </div>
 
                         <div class="col-md-6">

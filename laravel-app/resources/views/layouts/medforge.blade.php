@@ -34,6 +34,9 @@
 <div class="wrapper">
     @include('layouts.partials.header')
     @include('layouts.partials.navbar')
+    @if (!empty($whatsappNotificationPanelEnabled))
+        @include('layouts.partials.notification_panel')
+    @endif
 
     <div class="content-wrapper">
         <div class="container-full">
@@ -89,6 +92,21 @@
             feedbackModal.show();
         });
     </script>
+@endif
+
+@if (!empty($whatsappNotificationPanelEnabled))
+    <script>
+        window.MEDF = window.MEDF || {};
+        window.MEDF.currentUser = @json($whatsappNotificationCurrentUser ?? ['id' => 0, 'name' => 'Usuario']);
+        window.MEDF.defaultNotificationChannels = @json(($realtimeConfig['channels'] ?? ['email' => false, 'sms' => false, 'daily_summary' => false]));
+        window.MEDF_PusherConfig = @json($realtimeConfig ?? []);
+        window.__WHATSAPP_V2_NOTIFICATIONS__ = @json($whatsappRealtimeRuntime ?? ['currentConversationId' => 0, 'canSupervise' => false, 'scope' => 'general']);
+    </script>
+    @if(!empty($realtimeConfig['enabled']) && !empty($realtimeConfig['key']))
+        <script src="/assets/vendor_components/pusher/pusher.min.js"></script>
+    @endif
+    <script type="module"
+            src="/js/pages/whatsapp/v2-notifications.js?v={{ urlencode((string) ($whatsappAssetVersion ?? '1')) }}"></script>
 @endif
 
 @stack('scripts')
