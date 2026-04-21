@@ -596,9 +596,20 @@
                     <h5 class="box-title mb-1">Conciliación cirugía solicitada vs protocolo</h5>
                     <small class="text-muted">Solicitudes creadas en el mes actual.</small>
                 </div>
-                <button type="button" id="solicitudesConciliacionRefresh" class="btn btn-outline-primary btn-sm">
-                    <i class="mdi mdi-refresh"></i> Actualizar
-                </button>
+                <div class="d-flex align-items-center gap-3 flex-wrap">
+                    <div class="d-flex align-items-center gap-2">
+                        <label for="solicitudesConciliacionQuickFilter" class="small text-muted mb-0">Filtro rápido</label>
+                        <select id="solicitudesConciliacionQuickFilter" class="form-select form-select-sm">
+                            <option value="matched">Solo con match</option>
+                            <option value="confirmed">Ver confirmadas</option>
+                            <option value="unmatched">Ver sin match</option>
+                            <option value="all">Ver todo</option>
+                        </select>
+                    </div>
+                    <button type="button" id="solicitudesConciliacionRefresh" class="btn btn-outline-primary btn-sm">
+                        <i class="mdi mdi-refresh"></i> Actualizar
+                    </button>
+                </div>
             </div>
             <div class="box-body">
                 <p id="solicitudesConciliacionSummary" class="text-muted small mb-2"></p>

@@ -27,8 +27,12 @@ class ListarProcedimientosController
             $diagnosticos = $this->fetchAll("SELECT * FROM procedimientos_diagnosticos WHERE procedimiento_id = ?", [$id]);
 
             $operatorio = $this->procesarOperatorio($row['operatorio'] ?? '', $afiliacion);
+            $staffCount = $this->countFilledRows($tecnicos, 'funcion');
+            $codigoCount = $this->countFilledRows($codigos, 'nombre');
 
             $procedimientos[] = array_merge($row, [
+                'staffCount' => $staffCount,
+                'codigoCount' => $codigoCount,
                 'tecnicos' => $tecnicos,
                 'codigos' => $codigos,
                 'diagnosticos' => $diagnosticos,
@@ -58,5 +62,22 @@ class ListarProcedimientosController
             }
             return $row['nombre'];
         }, $texto);
+    }
+
+    private function countFilledRows(array $rows, string $field): int
+    {
+        $count = 0;
+
+        foreach ($rows as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+
+            if (trim((string)($row[$field] ?? '')) !== '') {
+                $count++;
+            }
+        }
+
+        return $count;
     }
 }
