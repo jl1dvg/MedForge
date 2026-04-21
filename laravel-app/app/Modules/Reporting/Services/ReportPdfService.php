@@ -391,6 +391,18 @@ class ReportPdfService
                                 }
                                 continue;
                             }
+                            if ($this->isOctMacular((string) ($item['tipo_examen'] ?? null))) {
+                                if ($this->safeAppendOctMacularPdfFile($pdf, $tmpPath, [
+                                    'source' => 'sigcenter_file',
+                                    'form_id' => $formId,
+                                    'hc_number' => $hcNumber,
+                                    'relative_path' => $relativePath,
+                                    'fecha_examen' => (string) ($item['fecha_examen'] ?? ''),
+                                ])) {
+                                    $hasPages = true;
+                                }
+                                continue;
+                            }
                             if ($this->isCampimetriaComputarizada((string) ($item['tipo_examen'] ?? null))) {
                                 if ($this->safeAppendCampimetriaPdfFile($pdf, $tmpPath, [
                                     'source' => 'sigcenter_file',
@@ -1081,10 +1093,6 @@ class ReportPdfService
      */
     private function selectAngiografiaRetinalPackageFiles(array $files, array $context = []): array
     {
-        if (count($files) <= 2) {
-            return $files;
-        }
-
         $selected = [];
         $scores = [];
 
@@ -1137,7 +1145,12 @@ class ReportPdfService
             return array_values($selected);
         }
 
-        return $files;
+        Log::warning('reporting.angiografia.file_selection.empty', $context + [
+            'total_files' => count($files),
+            'reason' => 'no_overview_detected',
+        ]);
+
+        return [];
     }
 
     /**
@@ -1369,6 +1382,18 @@ class ReportPdfService
     {
         $pageCount = $pdf->setSourceFile($path);
         $pageNumbers = $this->resolveOctNervioOpticoPdfPages($path, $pageCount);
+        foreach ($pageNumbers as $pageNo) {
+            $tplId = $pdf->importPage($pageNo);
+            $size = $pdf->getTemplateSize($tplId);
+            $pdf->AddPage($size['orientation'], [$size['width'], $size['height']]);
+            $pdf->useTemplate($tplId);
+        }
+    }
+
+    private function appendOctMacularPdfFile(Fpdi $pdf, string $path): void
+    {
+        $pageCount = $pdf->setSourceFile($path);
+        $pageNumbers = $this->resolveOctMacularPdfPages($path, $pageCount);
         foreach ($pageNumbers as $pageNo) {
             $tplId = $pdf->importPage($pageNo);
             $size = $pdf->getTemplateSize($tplId);
@@ -2140,6 +2165,34 @@ class ReportPdfService
     /**
      * @param array<string, mixed> $context
      */
+    private function safeAppendOctMacularPdfFile(Fpdi $pdf, string $path, array $context = []): bool
+    {
+        if (!$this->isPdfFile($path)) {
+            Log::warning('reporting.pdf.skip_invalid_pdf', $context + [
+                'path' => $path,
+                'reason' => 'missing_pdf_header',
+            ]);
+
+            return false;
+        }
+
+        try {
+            $this->appendOctMacularPdfFile($pdf, $path);
+            return true;
+        } catch (\Throwable $e) {
+            Log::warning('reporting.pdf.skip_invalid_pdf', $context + [
+                'path' => $path,
+                'reason' => 'append_failed',
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     */
     private function safeAppendCampimetriaPdfFile(Fpdi $pdf, string $path, array $context = []): bool
     {
         if (!$this->isPdfFile($path)) {
@@ -2435,6 +2488,32 @@ class ReportPdfService
     /**
      * @return list<int>
      */
+    private function resolveOctMacularPdfPages(string $path, int $pageCount): array
+    {
+        $selectedPages = $this->findOctMacularPdfPagesByText($path, $pageCount);
+        if ($selectedPages !== []) {
+            Log::info('reporting.pdf.select.oct_macular.pages', [
+                'path' => $path,
+                'mode' => 'text_match',
+                'pages' => $selectedPages,
+            ]);
+
+            return $selectedPages;
+        }
+
+        $fallback = range(1, max(1, $pageCount));
+        Log::info('reporting.pdf.select.oct_macular.pages', [
+            'path' => $path,
+            'mode' => 'fallback',
+            'pages' => $fallback,
+        ]);
+
+        return $fallback;
+    }
+
+    /**
+     * @return list<int>
+     */
     private function findOctNervioOpticoPdfPagesByText(string $path, int $pageCount): array
     {
         if (!$this->commandExists('pdftotext')) {
@@ -2453,6 +2532,34 @@ class ReportPdfService
                 str_contains($normalized, 'onh and rnfl ou analysis')
                 && str_contains($normalized, 'optic disc cube 200x200')
                 && str_contains($normalized, 'neuro-retinal rim thickness')
+            ) {
+                $matchedPages[] = $pageNo;
+            }
+        }
+
+        return $matchedPages;
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function findOctMacularPdfPagesByText(string $path, int $pageCount): array
+    {
+        if (!$this->commandExists('pdftotext')) {
+            return [];
+        }
+
+        $matchedPages = [];
+        for ($pageNo = 1; $pageNo <= $pageCount; $pageNo++) {
+            $pageText = $this->extractPdfPageText($path, $pageNo);
+            if (!is_string($pageText) || trim($pageText) === '') {
+                continue;
+            }
+
+            $normalized = $this->normalizeSearchText($pageText);
+            if (
+                str_contains($normalized, 'macula thickness')
+                && str_contains($normalized, 'macular cube')
             ) {
                 $matchedPages[] = $pageNo;
             }
