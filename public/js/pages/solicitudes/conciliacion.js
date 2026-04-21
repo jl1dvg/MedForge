@@ -203,6 +203,7 @@ export const initSolicitudesConciliacion = ({ showToast, onConfirmed, getFilters
     const tableBody = document.getElementById('solicitudesConciliacionBody');
     const emptyState = document.getElementById('solicitudesConciliacionEmpty');
     const refreshButton = document.getElementById('solicitudesConciliacionRefresh');
+    const quickFilter = document.getElementById('solicitudesConciliacionQuickFilter');
 
     if (!section || !summary || !tableBody || !emptyState) {
         return {
@@ -226,21 +227,82 @@ export const initSolicitudesConciliacion = ({ showToast, onConfirmed, getFilters
         if (refreshButton) {
             refreshButton.disabled = loading;
         }
+        if (quickFilter) {
+            quickFilter.disabled = loading;
+        }
         summary.textContent = loading ? 'Cargando conciliación...' : summary.textContent;
+    };
+
+    let lastPayload = {
+        data: [],
+        totales: {},
+        periodo: {},
+    };
+
+    const rowHasMatch = (row) => {
+        const confirmed = row?.protocolo_confirmado || null;
+        const candidate = row?.protocolo_posterior_compatible || null;
+        const estado = String(row?.estado || '').trim().toLowerCase();
+
+        return Boolean(confirmed || candidate || estado === 'completado');
+    };
+
+    const rowIsConfirmed = (row) => {
+        const confirmed = row?.protocolo_confirmado || null;
+        const estado = String(row?.estado || '').trim().toLowerCase();
+
+        return Boolean(confirmed || estado === 'completado');
+    };
+
+    const filterRows = (rows = []) => {
+        const mode = String(quickFilter?.value || 'all').trim().toLowerCase();
+
+        if (mode === 'matched') {
+            return rows.filter((row) => rowHasMatch(row) && !rowIsConfirmed(row));
+        }
+
+        if (mode === 'confirmed') {
+            return rows.filter(rowIsConfirmed);
+        }
+
+        if (mode === 'unmatched') {
+            return rows.filter((row) => !rowHasMatch(row));
+        }
+
+        return rows;
     };
 
     const render = ({ data = [], totales = {}, periodo = {} } = {}) => {
         const rows = Array.isArray(data) ? data : [];
-        summary.textContent = buildSummary(totales, periodo);
+        const visibleRows = filterRows(rows);
+        const hiddenRows = rows.length - visibleRows.length;
+        const mode = String(quickFilter?.value || 'all').trim().toLowerCase();
+        const modeLabel = {
+            all: 'viendo todo',
+            matched: 'solo con match',
+            confirmed: 'solo confirmadas',
+            unmatched: 'solo sin match',
+        }[mode] || 'viendo todo';
 
-        if (!rows.length) {
+        const summaryBase = buildSummary(totales, periodo);
+        summary.textContent = hiddenRows > 0
+            ? `${summaryBase} · ${modeLabel}: ${visibleRows.length} visibles, ${hiddenRows} ocultas.`
+            : summaryBase;
+
+        if (!visibleRows.length) {
             tableBody.innerHTML = '';
+            emptyState.textContent = {
+                matched: 'No hay solicitudes con match para el periodo seleccionado.',
+                confirmed: 'No hay solicitudes confirmadas para el periodo seleccionado.',
+                unmatched: 'No hay solicitudes sin match para el periodo seleccionado.',
+                all: 'No hay solicitudes del periodo para conciliación.',
+            }[mode] || 'No hay solicitudes del periodo para conciliación.';
             emptyState.classList.remove('d-none');
             return;
         }
 
         emptyState.classList.add('d-none');
-        tableBody.innerHTML = rows.map(renderRow).join('');
+        tableBody.innerHTML = visibleRows.map(renderRow).join('');
     };
 
     const load = async () => {
@@ -309,6 +371,11 @@ export const initSolicitudesConciliacion = ({ showToast, onConfirmed, getFilters
                 console.groupEnd();
             }
 
+            lastPayload = {
+                data: Array.isArray(payload?.data) ? payload.data : [],
+                totales: payload?.totales || {},
+                periodo: payload?.periodo || {},
+            };
             render(payload);
         } catch (error) {
             tableBody.innerHTML = '';
@@ -415,6 +482,12 @@ export const initSolicitudesConciliacion = ({ showToast, onConfirmed, getFilters
     if (refreshButton) {
         refreshButton.addEventListener('click', () => {
             load();
+        });
+    }
+
+    if (quickFilter) {
+        quickFilter.addEventListener('change', () => {
+            render(lastPayload);
         });
     }
 

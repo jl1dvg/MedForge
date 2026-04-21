@@ -51,6 +51,8 @@
             'ticket_pendiente' => 0,
         ],
         'pacientes_unicos' => 0,
+        'pacientes_unicos_realizados' => 0,
+        'pacientes_unicos_realizados_categoria' => ['particular' => 0, 'privado' => 0],
         'categoria_counts' => ['particular' => 0, 'privado' => 0],
         'categoria_share' => ['particular' => 0, 'privado' => 0],
         'top_afiliaciones' => [],
@@ -119,6 +121,48 @@
         $query['categoria_referido'] = strtoupper(trim($category));
         return '/v2/informes/particulares/referidos?' . http_build_query($query);
     };
+    $detalleBloqueSeleccionado = strtolower(trim((string) request()->query('detalle_bloque', '')));
+    $detalleSegmentoSeleccionado = strtolower(trim((string) request()->query('detalle_segmento', '')));
+    if ($detalleBloqueSeleccionado === '' && trim((string) request()->query('cirugias_segmento', '')) !== '') {
+        $detalleBloqueSeleccionado = 'cirugias';
+        $detalleSegmentoSeleccionado = strtolower(trim((string) request()->query('cirugias_segmento', '')));
+    }
+    $detailSegmentUrl = static function (string $block = '', string $segment = ''): string {
+        $query = request()->query();
+        unset($query['cirugias_segmento'], $query['detalle_bloque'], $query['detalle_segmento']);
+        if (trim($block) !== '' && trim($segment) !== '') {
+            $query['detalle_bloque'] = trim($block);
+            $query['detalle_segmento'] = trim($segment);
+        }
+
+        $queryString = http_build_query($query);
+        return $queryString !== '' ? (url()->current() . '?' . $queryString) : url()->current();
+    };
+    $patientDetailsUrl = static function (?string $hcNumber): string {
+        $hc = trim((string) $hcNumber);
+        if ($hc === '') {
+            return '#';
+        }
+
+        return '/v2/pacientes/detalles?hc_number=' . urlencode($hc);
+    };
+    $operationalAlertLabel = static function (?string $alert): string {
+        $normalized = strtoupper(trim((string) $alert));
+
+        return match ($normalized) {
+            'SIN_CIERRE' => 'Sin evidencia operativa suficiente para cerrar el caso.',
+            'AGENDA_DESACTUALIZADA' => 'Existe evidencia clínica, pero la agenda quedó sin actualizar.',
+            'PENDIENTE_FACTURAR' => 'El caso tiene respaldo clínico, pero aún no tiene billing real.',
+            'FACTURADA_SIN_PROTOCOLO_LOCAL' => 'Se facturó, pero no existe protocolo local asociado.',
+            'ARCHIVOS_SIN_INFORME' => 'Hay archivos técnicos, pero falta informe.',
+            'INFORMADA_SIN_ARCHIVOS_NAS' => 'Existe informe, pero no se encontraron archivos en NAS.',
+            'FACTURADA_SIN_ARCHIVOS_NI_INFORME' => 'Se facturó sin archivos ni informe disponibles.',
+            'FACTURADA_SIN_FECHA_ATENCION' => 'Se facturó, pero falta registrar la fecha real de atención.',
+            'FACTURADA_SIN_HONORARIO' => 'Se facturó, pero el honorario real quedó en 0.',
+            'ATENCION_POSTERIOR_A_FECHA_PROGRAMADA' => 'La fecha de atención registrada es posterior a la programada.',
+            default => 'Sin observación operativa adicional.',
+        };
+    };
 
     $procedimientoLegible = static function (string $texto): string {
         $texto = trim($texto);
@@ -134,6 +178,323 @@
         return $detalle !== '' ? ucfirst(strtolower($detalle)) : '—';
     };
 @endphp
+
+@push('styles')
+    <style>
+        .kpi-filter-card {
+            position: relative;
+            cursor: pointer;
+            transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+            border: 1px solid transparent;
+        }
+
+        .kpi-filter-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+        }
+
+        .kpi-filter-card.kpi-filter-card-active {
+            border-color: #2563eb;
+            box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12), 0 10px 24px rgba(15, 23, 42, 0.10);
+            background: linear-gradient(180deg, rgba(37, 99, 235, 0.05), rgba(255, 255, 255, 0.96));
+        }
+
+        .kpi-filter-actions {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 2;
+            display: flex;
+            gap: 6px;
+        }
+
+        .kpi-filter-actions .btn {
+            padding: 0.25rem 0.45rem;
+            line-height: 1;
+        }
+
+        .kpi-filter-badge {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 2;
+        }
+
+        .kpi-filter-body {
+            padding-top: 24px;
+        }
+
+        .kpi-inline-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .detail-segment-modal .modal-content {
+            border: 0;
+            border-radius: 22px;
+            overflow: hidden;
+            box-shadow: 0 28px 60px rgba(15, 23, 42, 0.22);
+            background: linear-gradient(180deg, #f8fbff 0%, #ffffff 18%);
+        }
+
+        .detail-segment-modal .modal-header {
+            border-bottom: 1px solid rgba(148, 163, 184, 0.22);
+            background:
+                radial-gradient(circle at top right, rgba(59, 130, 246, 0.12), transparent 34%),
+                linear-gradient(135deg, rgba(15, 23, 42, 0.98), rgba(30, 41, 59, 0.94));
+            color: #f8fafc;
+            padding: 20px 24px;
+        }
+
+        .detail-segment-modal .modal-title {
+            font-size: 1.05rem;
+            font-weight: 700;
+            letter-spacing: 0.01em;
+        }
+
+        .detail-segment-modal .btn-close {
+            filter: invert(1) grayscale(1) brightness(2);
+            opacity: 0.85;
+        }
+
+        .detail-segment-modal-subtitle {
+            display: block;
+            margin-top: 4px;
+            color: rgba(226, 232, 240, 0.84) !important;
+        }
+
+        .detail-segment-modal-body {
+            padding: 22px 24px 18px;
+            background:
+                linear-gradient(180deg, rgba(248, 250, 252, 0.9), rgba(255, 255, 255, 1));
+        }
+
+        .detail-segment-metrics {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .detail-segment-metric {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            padding: 14px 16px;
+            border-radius: 16px;
+            border: 1px solid rgba(148, 163, 184, 0.14);
+            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+            background: #fff;
+        }
+
+        .detail-segment-metric-label {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            opacity: 0.72;
+        }
+
+        .detail-segment-metric-value {
+            font-size: 20px;
+            font-weight: 800;
+            line-height: 1.1;
+        }
+
+        .detail-segment-metric-success {
+            background: linear-gradient(180deg, rgba(34, 197, 94, 0.09), rgba(255, 255, 255, 0.98));
+        }
+
+        .detail-segment-metric-success .detail-segment-metric-value,
+        .detail-segment-metric-success .detail-segment-metric-label {
+            color: #166534;
+        }
+
+        .detail-segment-metric-warning {
+            background: linear-gradient(180deg, rgba(245, 158, 11, 0.09), rgba(255, 255, 255, 0.98));
+        }
+
+        .detail-segment-metric-warning .detail-segment-metric-value,
+        .detail-segment-metric-warning .detail-segment-metric-label {
+            color: #b45309;
+        }
+
+        .detail-segment-metric-danger {
+            background: linear-gradient(180deg, rgba(239, 68, 68, 0.09), rgba(255, 255, 255, 0.98));
+        }
+
+        .detail-segment-metric-danger .detail-segment-metric-value,
+        .detail-segment-metric-danger .detail-segment-metric-label {
+            color: #b91c1c;
+        }
+
+        .detail-segment-table-wrap {
+            border: 1px solid rgba(148, 163, 184, 0.18);
+            border-radius: 18px;
+            overflow: auto;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(248, 250, 252, 0.92));
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+        }
+
+        .detail-segment-table {
+            margin-bottom: 0;
+        }
+
+        .detail-segment-table thead th {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            padding-top: 12px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+            background: rgba(241, 245, 249, 0.95);
+            backdrop-filter: blur(8px);
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            color: #475569;
+        }
+
+        .detail-segment-table tbody tr {
+            transition: background-color 0.16s ease, transform 0.16s ease;
+        }
+
+        .detail-segment-table tbody tr:hover {
+            background: rgba(37, 99, 235, 0.035);
+        }
+
+        .detail-segment-table tbody td {
+            padding-top: 12px;
+            padding-bottom: 12px;
+            vertical-align: middle;
+            border-color: rgba(226, 232, 240, 0.75);
+        }
+
+        .detail-cell-stack {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            min-width: 120px;
+        }
+
+        .detail-cell-main {
+            font-weight: 700;
+            color: #0f172a;
+            line-height: 1.2;
+        }
+
+        .detail-cell-sub {
+            font-size: 11px;
+            color: #64748b;
+            line-height: 1.2;
+        }
+
+        .detail-cell-sub-strong {
+            font-size: 11px;
+            color: #475569;
+            line-height: 1.3;
+        }
+
+        .detail-code-pill {
+            display: inline-flex;
+            align-items: center;
+            border-radius: 999px;
+            padding: 5px 10px;
+            background: #e2e8f0;
+            color: #0f172a;
+            font-size: 12px;
+            font-weight: 800;
+            letter-spacing: 0.04em;
+        }
+
+        .detail-chip {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 999px;
+            padding: 5px 10px;
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            white-space: nowrap;
+        }
+
+        .detail-chip-slate {
+            background: #e2e8f0;
+            color: #334155;
+        }
+
+        .detail-chip-sky {
+            background: rgba(14, 165, 233, 0.12);
+            color: #0369a1;
+        }
+
+        .detail-chip-amber {
+            background: rgba(245, 158, 11, 0.13);
+            color: #b45309;
+        }
+
+        .detail-chip-emerald {
+            background: rgba(16, 185, 129, 0.12);
+            color: #047857;
+        }
+
+        .detail-chip-rose {
+            background: rgba(244, 63, 94, 0.11);
+            color: #be123c;
+        }
+
+        .detail-chip-indigo {
+            background: rgba(99, 102, 241, 0.12);
+            color: #4338ca;
+        }
+
+        .detail-amount {
+            font-weight: 800;
+            letter-spacing: 0.01em;
+        }
+
+        .detail-amount-neutral {
+            color: #0f172a;
+        }
+
+        .detail-amount-warning {
+            color: #b45309;
+        }
+
+        .detail-amount-danger {
+            color: #b91c1c;
+        }
+
+        .detail-patient-link {
+            color: #2563eb;
+            font-weight: 700;
+            text-decoration: none;
+            transition: color 0.16s ease, opacity 0.16s ease;
+        }
+
+        .detail-patient-link:hover {
+            color: #1d4ed8;
+            text-decoration: underline;
+        }
+
+        .detail-segment-empty {
+            padding: 28px 16px !important;
+            color: #64748b;
+            background: linear-gradient(180deg, rgba(248, 250, 252, 0.9), rgba(255, 255, 255, 1));
+        }
+
+        @media (max-width: 991.98px) {
+            .detail-segment-metrics {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+@endpush
 
 @section('content')
     <div class="content-header">
@@ -408,6 +769,10 @@
             $cirugiasDoctoresPorCobrar = is_array($cirugiasSummary['doctores_por_cobrar'] ?? null) ? $cirugiasSummary['doctores_por_cobrar'] : [];
             $cirugiasDoctoresPerdida = is_array($cirugiasSummary['doctores_perdida'] ?? null) ? $cirugiasSummary['doctores_perdida'] : [];
             $pacientesUnicos = (int) ($summary['pacientes_unicos'] ?? 0);
+            $pacientesUnicosRealizados = (int) ($summary['pacientes_unicos_realizados'] ?? $pacientesUnicos);
+            $pacientesUnicosRealizadosCategoria = is_array($summary['pacientes_unicos_realizados_categoria'] ?? null)
+                ? $summary['pacientes_unicos_realizados_categoria']
+                : ['particular' => 0, 'privado' => 0];
             $categoriaCounts = is_array($summary['categoria_counts'] ?? null) ? $summary['categoria_counts'] : ['particular' => 0, 'privado' => 0];
             $categoriaShare = is_array($summary['categoria_share'] ?? null) ? $summary['categoria_share'] : ['particular' => 0, 'privado' => 0];
             $insuranceBreakdown = is_array($summary['insurance_breakdown'] ?? null) ? $summary['insurance_breakdown'] : [];
@@ -416,6 +781,8 @@
             $insuranceBreakdownItemLabel = trim((string) ($insuranceBreakdown['item_label'] ?? 'Empresa de seguro'));
             $particularCount = (int) ($categoriaCounts['particular'] ?? 0);
             $privadoCount = (int) ($categoriaCounts['privado'] ?? 0);
+            $particularPacientesUnicosRealizados = (int) ($pacientesUnicosRealizadosCategoria['particular'] ?? 0);
+            $privadoPacientesUnicosRealizados = (int) ($pacientesUnicosRealizadosCategoria['privado'] ?? 0);
             $particularShare = (float) ($categoriaShare['particular'] ?? 0);
             $privadoShare = (float) ($categoriaShare['privado'] ?? 0);
 
@@ -571,27 +938,67 @@
 
         <div class="row">
             <div class="col-xl-2 col-md-4 col-6">
-                <div class="box box-inverse box-success">
-                    <div class="box-body text-center">
-                        <h6 class="mb-5">Evaluadas</h6>
+                <div class="box box-inverse box-primary kpi-filter-card"
+                     data-detail-block="operativo"
+                     data-detail-segment="pipeline"
+                     data-bs-toggle="tooltip"
+                     title="Universo completo del informe dentro del filtro aplicado. Incluye realizadas, pendientes y casos no concretados.">
+                    <div class="kpi-filter-actions">
+                        <button type="button" class="btn btn-light btn-sm border" data-detail-modal="operativo:pipeline" data-bs-toggle="tooltip" title="Abrir resumen rápido del pipeline">
+                            <i class="mdi mdi-magnify"></i>
+                        </button>
+                        <a href="{{ $detailSegmentUrl('operativo', 'pipeline') }}" class="btn btn-light btn-sm border" data-detail-link="operativo:pipeline" data-bs-toggle="tooltip" title="Abrir esta página con el filtro persistido">
+                            <i class="mdi mdi-open-in-new"></i>
+                        </a>
+                    </div>
+                    <div class="box-body text-center kpi-filter-body">
+                        <span class="badge bg-primary-light text-primary kpi-filter-badge d-none">Filtro activo</span>
+                        <h6 class="mb-5">Casos del pipeline</h6>
                         <div class="fs-32 fw-700">{{ $operativoEvaluadas }}</div>
+                        <small class="text-white">Universo operativo total del informe</small>
                     </div>
                 </div>
             </div>
             <div class="col-xl-2 col-md-4 col-6">
-                <div class="box">
-                    <div class="box-body text-center">
-                        <h6 class="mb-5">Realizadas</h6>
+                <div class="box kpi-filter-card"
+                     data-detail-block="operativo"
+                     data-detail-segment="realizada"
+                     data-bs-toggle="tooltip"
+                     title="Atenciones con evidencia real de ejecución clínica, técnica o quirúrgica.">
+                    <div class="kpi-filter-actions">
+                        <button type="button" class="btn btn-light btn-sm border" data-detail-modal="operativo:realizada" data-bs-toggle="tooltip" title="Abrir resumen rápido de atenciones realizadas">
+                            <i class="mdi mdi-magnify"></i>
+                        </button>
+                        <a href="{{ $detailSegmentUrl('operativo', 'realizada') }}" class="btn btn-light btn-sm border" data-detail-link="operativo:realizada" data-bs-toggle="tooltip" title="Abrir esta página con el filtro persistido">
+                            <i class="mdi mdi-open-in-new"></i>
+                        </a>
+                    </div>
+                    <div class="box-body text-center kpi-filter-body">
+                        <span class="badge bg-primary-light text-primary kpi-filter-badge d-none">Filtro activo</span>
+                        <h6 class="mb-5">Atenciones realizadas</h6>
                         <div class="fs-30 fw-700 text-success">{{ $operativoRealizadas }}</div>
                         <small class="text-muted">{{ number_format($operativoRealizacionRate, 2) }}% del total
-                            evaluado</small>
+                            del pipeline</small>
                     </div>
                 </div>
             </div>
             <div class="col-xl-2 col-md-4 col-6">
-                <div class="box">
-                    <div class="box-body text-center">
-                        <h6 class="mb-5">Facturadas</h6>
+                <div class="box kpi-filter-card"
+                     data-detail-block="operativo"
+                     data-detail-segment="facturada"
+                     data-bs-toggle="tooltip"
+                     title="Casos con facturación real local o externa ya registrada.">
+                    <div class="kpi-filter-actions">
+                        <button type="button" class="btn btn-light btn-sm border" data-detail-modal="operativo:facturada" data-bs-toggle="tooltip" title="Abrir resumen rápido de atenciones facturadas">
+                            <i class="mdi mdi-magnify"></i>
+                        </button>
+                        <a href="{{ $detailSegmentUrl('operativo', 'facturada') }}" class="btn btn-light btn-sm border" data-detail-link="operativo:facturada" data-bs-toggle="tooltip" title="Abrir esta página con el filtro persistido">
+                            <i class="mdi mdi-open-in-new"></i>
+                        </a>
+                    </div>
+                    <div class="box-body text-center kpi-filter-body">
+                        <span class="badge bg-primary-light text-primary kpi-filter-badge d-none">Filtro activo</span>
+                        <h6 class="mb-5">Atenciones facturadas</h6>
                         <div class="fs-30 fw-700 text-info">{{ $operativoFacturadas }}</div>
                         <small class="text-muted">{{ number_format($operativoFacturacionRate, 2) }}% de las
                             realizadas</small>
@@ -599,9 +1006,22 @@
                 </div>
             </div>
             <div class="col-xl-2 col-md-4 col-6">
-                <div class="box">
-                    <div class="box-body text-center">
-                        <h6 class="mb-5">Pendientes</h6>
+                <div class="box kpi-filter-card"
+                     data-detail-block="operativo"
+                     data-detail-segment="pendiente_facturar"
+                     data-bs-toggle="tooltip"
+                     title="Casos ya realizados que todavía no tienen billing real.">
+                    <div class="kpi-filter-actions">
+                        <button type="button" class="btn btn-light btn-sm border" data-detail-modal="operativo:pendiente_facturar" data-bs-toggle="tooltip" title="Abrir resumen rápido de pendientes de facturar">
+                            <i class="mdi mdi-magnify"></i>
+                        </button>
+                        <a href="{{ $detailSegmentUrl('operativo', 'pendiente_facturar') }}" class="btn btn-light btn-sm border" data-detail-link="operativo:pendiente_facturar" data-bs-toggle="tooltip" title="Abrir esta página con el filtro persistido">
+                            <i class="mdi mdi-open-in-new"></i>
+                        </a>
+                    </div>
+                    <div class="box-body text-center kpi-filter-body">
+                        <span class="badge bg-primary-light text-primary kpi-filter-badge d-none">Filtro activo</span>
+                        <h6 class="mb-5">Pendientes de facturar</h6>
                         <div class="fs-30 fw-700 text-warning">{{ $operativoPendientesFacturar }}</div>
                         <small class="text-muted">{{ number_format($operativoPendienteRate, 2) }}% de las
                             realizadas</small>
@@ -609,22 +1029,61 @@
                 </div>
             </div>
             <div class="col-xl-2 col-md-4 col-6">
-                <div class="box">
-                    <div class="box-body text-center">
-                        <h6 class="mb-5">Pérdida</h6>
+                <div class="box kpi-filter-card"
+                     data-detail-block="operativo"
+                     data-detail-segment="perdida"
+                     data-bs-toggle="tooltip"
+                     title="Casos que no se concretaron. Incluye canceladas, ausentes y cierres operativos perdidos según el tipo de atención.">
+                    <div class="kpi-filter-actions">
+                        <button type="button" class="btn btn-light btn-sm border" data-detail-modal="operativo:perdida" data-bs-toggle="tooltip" title="Abrir resumen rápido de casos no concretados">
+                            <i class="mdi mdi-magnify"></i>
+                        </button>
+                        <a href="{{ $detailSegmentUrl('operativo', 'perdida') }}" class="btn btn-light btn-sm border" data-detail-link="operativo:perdida" data-bs-toggle="tooltip" title="Abrir esta página con el filtro persistido">
+                            <i class="mdi mdi-open-in-new"></i>
+                        </a>
+                    </div>
+                    <div class="box-body text-center kpi-filter-body">
+                        <span class="badge bg-primary-light text-primary kpi-filter-badge d-none">Filtro activo</span>
+                        <h6 class="mb-5">Casos no concretados</h6>
                         <div class="fs-30 fw-700 text-danger">{{ $operativoPerdidas }}</div>
                         <small class="text-muted">{{ number_format($operativoPerdidaRate, 2) }}% del total
-                            evaluado</small>
+                            del pipeline</small>
                     </div>
                 </div>
             </div>
             <div class="col-xl-2 col-md-4 col-6">
-                <div class="box">
-                    <div class="box-body text-center">
-                        <h6 class="mb-5">Pacientes únicos</h6>
-                        <div class="fs-30 fw-700 text-primary">{{ $pacientesUnicos }}</div>
-                        <small class="text-muted">{{ $particularCount }} particulares / {{ $privadoCount }}
-                            privadas</small>
+                <div class="box kpi-filter-card"
+                     data-detail-block="operativo"
+                     data-detail-segment="pacientes_unicos_realizados"
+                     data-bs-toggle="tooltip"
+                     title="Pacientes únicos que sí tuvieron al menos una atención realizada dentro del período filtrado. El modal agrupa por HC para que el conteo coincida con el KPI.">
+                    <div class="kpi-filter-actions">
+                        <button type="button" class="btn btn-light btn-sm border" data-detail-modal="operativo:pacientes_unicos_realizados" data-bs-toggle="tooltip" title="Abrir resumen rápido de pacientes únicos atendidos">
+                            <i class="mdi mdi-magnify"></i>
+                        </button>
+                        <a href="{{ $detailSegmentUrl('operativo', 'pacientes_unicos_realizados') }}" class="btn btn-light btn-sm border" data-detail-link="operativo:pacientes_unicos_realizados" data-bs-toggle="tooltip" title="Abrir esta página con el filtro persistido">
+                            <i class="mdi mdi-open-in-new"></i>
+                        </a>
+                    </div>
+                    <div class="box-body text-center kpi-filter-body">
+                        <span class="badge bg-primary-light text-primary kpi-filter-badge d-none">Filtro activo</span>
+                        <h6 class="mb-5">Pacientes únicos atendidos</h6>
+                        <div class="fs-30 fw-700 text-primary">{{ $pacientesUnicosRealizados }}</div>
+                        <small class="text-muted">{{ $pacientesUnicos }} únicos en el pipeline | {{ $particularPacientesUnicosRealizados }}
+                            particular / {{ $privadoPacientesUnicosRealizados }} privado</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mb-5">
+            <div class="col-12">
+                <div class="d-flex justify-content-end">
+                    <div class="kpi-inline-toolbar">
+                        <span class="badge bg-primary-light text-primary d-none" data-detail-filter-badge="operativo"></span>
+                        <button type="button" class="btn btn-outline-secondary btn-sm d-none" data-detail-clear="operativo">
+                            Limpiar filtro
+                        </button>
                     </div>
                 </div>
             </div>
@@ -786,7 +1245,11 @@
                                     <small class="text-muted">Esta capa usa protocolo, billing real y fallback de
                                         tarifario solo para cirugías.</small>
                                 </div>
-                                <div class="d-flex flex-wrap gap-2">
+                                <div class="kpi-inline-toolbar">
+                                    <span class="badge bg-primary-light text-primary d-none" data-detail-filter-badge="cirugias"></span>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm d-none" data-detail-clear="cirugias">
+                                        Limpiar filtro
+                                    </button>
                                     <span class="badge bg-success-light text-success">{{ $cirugiasRealizadas }} realizadas</span>
                                     <span class="badge bg-warning-light text-warning">{{ $cirugiasPendientesFacturar }} pendientes de facturar</span>
                                     <span class="badge bg-danger-light text-danger">{{ $cirugiasCanceladas + $cirugiasSinCierre }} pérdida / sin cierre</span>
@@ -799,8 +1262,21 @@
 
             <div class="row">
                 <div class="col-xl-3 col-md-6 col-12">
-                    <div class="box">
-                        <div class="box-body text-center">
+                    <div class="box kpi-filter-card"
+                         data-detail-block="cirugias"
+                         data-detail-segment="realizada"
+                         data-bs-toggle="tooltip"
+                         title="Filtra cirugías realizadas. Breakdown: {{ $cirugiasConfirmadas }} confirmadas, {{ $cirugiasConProtocolo }} con protocolo, {{ $cirugiasOtroCentro }} externas.">
+                        <div class="kpi-filter-actions">
+                            <button type="button" class="btn btn-light btn-sm border" data-detail-modal="cirugias:realizada" data-bs-toggle="tooltip" title="Abrir resumen rápido de cirugías realizadas">
+                                <i class="mdi mdi-magnify"></i>
+                            </button>
+                            <a href="{{ $detailSegmentUrl('cirugias', 'realizada') }}" class="btn btn-light btn-sm border" data-detail-link="cirugias:realizada" data-bs-toggle="tooltip" title="Abrir esta página con el filtro persistido">
+                                <i class="mdi mdi-open-in-new"></i>
+                            </a>
+                        </div>
+                        <div class="box-body text-center kpi-filter-body">
+                            <span class="badge bg-primary-light text-primary kpi-filter-badge d-none">Filtro activo</span>
                             <h6 class="mb-5">Cirugías realizadas</h6>
                             <div class="fs-28 fw-700 text-success">{{ $cirugiasRealizadas }}</div>
                             <small class="text-muted">{{ $cirugiasConfirmadas }}
@@ -810,8 +1286,21 @@
                     </div>
                 </div>
                 <div class="col-xl-3 col-md-6 col-12">
-                    <div class="box">
-                        <div class="box-body text-center">
+                    <div class="box kpi-filter-card"
+                         data-detail-block="cirugias"
+                         data-detail-segment="pendiente_facturar"
+                         data-bs-toggle="tooltip"
+                         title="Filtra cirugías con estado de facturación pendiente.">
+                        <div class="kpi-filter-actions">
+                            <button type="button" class="btn btn-light btn-sm border" data-detail-modal="cirugias:pendiente_facturar" data-bs-toggle="tooltip" title="Abrir resumen rápido de cirugías pendientes de facturar">
+                                <i class="mdi mdi-magnify"></i>
+                            </button>
+                            <a href="{{ $detailSegmentUrl('cirugias', 'pendiente_facturar') }}" class="btn btn-light btn-sm border" data-detail-link="cirugias:pendiente_facturar" data-bs-toggle="tooltip" title="Abrir esta página con el filtro persistido">
+                                <i class="mdi mdi-open-in-new"></i>
+                            </a>
+                        </div>
+                        <div class="box-body text-center kpi-filter-body">
+                            <span class="badge bg-primary-light text-primary kpi-filter-badge d-none">Filtro activo</span>
                             <h6 class="mb-5">Pendiente de facturar</h6>
                             <div class="fs-28 fw-700 text-warning">{{ $cirugiasPendientesFacturar }}</div>
                             <small class="text-muted">{{ $cirugiasFacturadasLocales }} locales
@@ -820,8 +1309,21 @@
                     </div>
                 </div>
                 <div class="col-xl-3 col-md-6 col-12">
-                    <div class="box">
-                        <div class="box-body text-center">
+                    <div class="box kpi-filter-card"
+                         data-detail-block="cirugias"
+                         data-detail-segment="cancelada"
+                         data-bs-toggle="tooltip"
+                         title="Filtra cirugías canceladas y también las que quedaron en sin cierre operativo.">
+                        <div class="kpi-filter-actions">
+                            <button type="button" class="btn btn-light btn-sm border" data-detail-modal="cirugias:cancelada" data-bs-toggle="tooltip" title="Abrir resumen rápido de cirugías canceladas">
+                                <i class="mdi mdi-magnify"></i>
+                            </button>
+                            <a href="{{ $detailSegmentUrl('cirugias', 'cancelada') }}" class="btn btn-light btn-sm border" data-detail-link="cirugias:cancelada" data-bs-toggle="tooltip" title="Abrir esta página con el filtro persistido">
+                                <i class="mdi mdi-open-in-new"></i>
+                            </a>
+                        </div>
+                        <div class="box-body text-center kpi-filter-body">
+                            <span class="badge bg-primary-light text-primary kpi-filter-badge d-none">Filtro activo</span>
                             <h6 class="mb-5">Canceladas</h6>
                             <div class="fs-28 fw-700 text-danger">{{ $cirugiasCanceladas }}</div>
                             <small class="text-muted">{{ $cirugiasSinCierre }} sin cierre operativo</small>
@@ -829,8 +1331,21 @@
                     </div>
                 </div>
                 <div class="col-xl-3 col-md-6 col-12">
-                    <div class="box">
-                        <div class="box-body text-center">
+                    <div class="box kpi-filter-card"
+                         data-detail-block="cirugias"
+                         data-detail-segment="sin_tarifa_estimable"
+                         data-bs-toggle="tooltip"
+                         title="Filtra cirugías sin tarifa estimable. {{ $cirugiasSinCostoConfigurado }} con costo 0 configurado quedan fuera de este filtro.">
+                        <div class="kpi-filter-actions">
+                            <button type="button" class="btn btn-light btn-sm border" data-detail-modal="cirugias:sin_tarifa_estimable" data-bs-toggle="tooltip" title="Abrir resumen rápido de cirugías sin tarifa estimable">
+                                <i class="mdi mdi-magnify"></i>
+                            </button>
+                            <a href="{{ $detailSegmentUrl('cirugias', 'sin_tarifa_estimable') }}" class="btn btn-light btn-sm border" data-detail-link="cirugias:sin_tarifa_estimable" data-bs-toggle="tooltip" title="Abrir esta página con el filtro persistido">
+                                <i class="mdi mdi-open-in-new"></i>
+                            </a>
+                        </div>
+                        <div class="box-body text-center kpi-filter-body">
+                            <span class="badge bg-primary-light text-primary kpi-filter-badge d-none">Filtro activo</span>
                             <h6 class="mb-5">Sin tarifa estimable</h6>
                             <div class="fs-28 fw-700 text-dark">{{ $cirugiasSinTarifaEstimable }}</div>
                             <small class="text-muted">Solo faltantes reales de
@@ -901,6 +1416,69 @@
                     </div>
                 </div>
             </div>
+
+            <div class="modal fade detail-segment-modal" id="detailSegmentModal" tabindex="-1" aria-labelledby="detailSegmentModalLabel" aria-hidden="true">
+                <div class="modal-dialog modal-xl modal-dialog-scrollable">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <div>
+                                <h5 class="modal-title" id="detailSegmentModalLabel">Resumen del segmento</h5>
+                                <small class="detail-segment-modal-subtitle" id="detailSegmentModalSubtitle">Casos filtrados del bloque seleccionado.</small>
+                            </div>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                        </div>
+                        <div class="modal-body detail-segment-modal-body">
+                            <div class="detail-segment-metrics">
+                                <div class="detail-segment-metric detail-segment-metric-success">
+                                    <span class="detail-segment-metric-label" id="detailSegmentModalCountLabel">Casos</span>
+                                    <span class="detail-segment-metric-value" id="detailSegmentModalCount">0 casos</span>
+                                </div>
+                                <div class="detail-segment-metric detail-segment-metric-warning">
+                                    <span class="detail-segment-metric-label">Por cobrar</span>
+                                    <span class="detail-segment-metric-value" id="detailSegmentModalPorCobrar">$0.00 por cobrar</span>
+                                </div>
+                                <div class="detail-segment-metric detail-segment-metric-danger">
+                                    <span class="detail-segment-metric-label">Pérdida</span>
+                                    <span class="detail-segment-metric-value" id="detailSegmentModalPerdida">$0.00 pérdida</span>
+                                </div>
+                            </div>
+                            <div class="table-responsive detail-segment-table-wrap">
+                                <table class="table table-sm detail-segment-table">
+                                    <thead id="detailSegmentModalHead">
+                                    <tr>
+                                        <th>HC</th>
+                                        <th>Paciente</th>
+                                        <th>Fecha</th>
+                                        <th>Sede</th>
+                                        <th>Categoría</th>
+                                        <th>Afiliación</th>
+                                        <th>Procedimiento</th>
+                                        <th>Doctor</th>
+                                        <th>Estado real</th>
+                                        <th>Motivo operativo</th>
+                                        <th>Facturación</th>
+                                        <th class="text-end">Honorario</th>
+                                        <th class="text-end">Por cobrar</th>
+                                        <th class="text-end">Pérdida</th>
+                                    </tr>
+                                    </thead>
+                                    <tbody id="detailSegmentModalBody">
+                                    <tr>
+                                        <td colspan="14" class="text-center detail-segment-empty">Sin datos disponibles.</td>
+                                    </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cerrar</button>
+                            <button type="button" class="btn btn-outline-success" id="detailSegmentModalExport">Exportar CSV</button>
+                            <button type="button" class="btn btn-outline-primary" id="detailSegmentModalDetail">Ver detalle completo</button>
+                            <a href="{{ $detailSegmentUrl() }}" class="btn btn-primary" id="detailSegmentModalDeepLink">Abrir URL filtrada</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
         @endif
 
         @if($pniTotal > 0)
@@ -914,7 +1492,11 @@
                                     <small class="text-muted">Esta capa usa consulta_data como evidencia clínica y
                                         billing real para cierres económicos.</small>
                                 </div>
-                                <div class="d-flex flex-wrap gap-2">
+                                <div class="kpi-inline-toolbar">
+                                    <span class="badge bg-primary-light text-primary d-none" data-detail-filter-badge="pni"></span>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm d-none" data-detail-clear="pni">
+                                        Limpiar filtro
+                                    </button>
                                     <span
                                         class="badge bg-success-light text-success">{{ $pniRealizadas }} realizadas</span>
                                     <span class="badge bg-warning-light text-warning">{{ $pniPendientesFacturar }} pendientes de facturar</span>
@@ -928,8 +1510,21 @@
 
             <div class="row">
                 <div class="col-xl-3 col-md-6 col-12">
-                    <div class="box">
-                        <div class="box-body text-center">
+                    <div class="box kpi-filter-card"
+                         data-detail-block="pni"
+                         data-detail-segment="realizada"
+                         data-bs-toggle="tooltip"
+                         title="Filtra PNI realizadas. Breakdown: {{ $pniFacturadas }} facturadas, {{ $pniRealizadaConsulta }} con consulta.">
+                        <div class="kpi-filter-actions">
+                            <button type="button" class="btn btn-light btn-sm border" data-detail-modal="pni:realizada" data-bs-toggle="tooltip" title="Abrir resumen rápido de PNI realizadas">
+                                <i class="mdi mdi-magnify"></i>
+                            </button>
+                            <a href="{{ $detailSegmentUrl('pni', 'realizada') }}" class="btn btn-light btn-sm border" data-detail-link="pni:realizada" data-bs-toggle="tooltip" title="Abrir esta página con el filtro persistido">
+                                <i class="mdi mdi-open-in-new"></i>
+                            </a>
+                        </div>
+                        <div class="box-body text-center kpi-filter-body">
+                            <span class="badge bg-primary-light text-primary kpi-filter-badge d-none">Filtro activo</span>
                             <h6 class="mb-5">PNI realizadas</h6>
                             <div class="fs-28 fw-700 text-success">{{ $pniRealizadas }}</div>
                             <small class="text-muted">{{ $pniFacturadas }} facturadas, {{ $pniRealizadaConsulta }} con
@@ -938,8 +1533,21 @@
                     </div>
                 </div>
                 <div class="col-xl-3 col-md-6 col-12">
-                    <div class="box">
-                        <div class="box-body text-center">
+                    <div class="box kpi-filter-card"
+                         data-detail-block="pni"
+                         data-detail-segment="pendiente_facturar"
+                         data-bs-toggle="tooltip"
+                         title="Filtra PNI pendientes de facturar con respaldo clínico.">
+                        <div class="kpi-filter-actions">
+                            <button type="button" class="btn btn-light btn-sm border" data-detail-modal="pni:pendiente_facturar" data-bs-toggle="tooltip" title="Abrir resumen rápido de PNI pendientes de facturar">
+                                <i class="mdi mdi-magnify"></i>
+                            </button>
+                            <a href="{{ $detailSegmentUrl('pni', 'pendiente_facturar') }}" class="btn btn-light btn-sm border" data-detail-link="pni:pendiente_facturar" data-bs-toggle="tooltip" title="Abrir esta página con el filtro persistido">
+                                <i class="mdi mdi-open-in-new"></i>
+                            </a>
+                        </div>
+                        <div class="box-body text-center kpi-filter-body">
+                            <span class="badge bg-primary-light text-primary kpi-filter-badge d-none">Filtro activo</span>
                             <h6 class="mb-5">Pendiente de facturar</h6>
                             <div class="fs-28 fw-700 text-warning">{{ $pniPendientesFacturar }}</div>
                             <small class="text-muted">Atenciones PNI con respaldo clínico aún sin billing real</small>
@@ -947,8 +1555,21 @@
                     </div>
                 </div>
                 <div class="col-xl-3 col-md-6 col-12">
-                    <div class="box">
-                        <div class="box-body text-center">
+                    <div class="box kpi-filter-card"
+                         data-detail-block="pni"
+                         data-detail-segment="cancelada"
+                         data-bs-toggle="tooltip"
+                         title="Filtra PNI canceladas y ausentes.">
+                        <div class="kpi-filter-actions">
+                            <button type="button" class="btn btn-light btn-sm border" data-detail-modal="pni:cancelada" data-bs-toggle="tooltip" title="Abrir resumen rápido de PNI canceladas o ausentes">
+                                <i class="mdi mdi-magnify"></i>
+                            </button>
+                            <a href="{{ $detailSegmentUrl('pni', 'cancelada') }}" class="btn btn-light btn-sm border" data-detail-link="pni:cancelada" data-bs-toggle="tooltip" title="Abrir esta página con el filtro persistido">
+                                <i class="mdi mdi-open-in-new"></i>
+                            </a>
+                        </div>
+                        <div class="box-body text-center kpi-filter-body">
+                            <span class="badge bg-primary-light text-primary kpi-filter-badge d-none">Filtro activo</span>
                             <h6 class="mb-5">Canceladas</h6>
                             <div class="fs-28 fw-700 text-danger">{{ $pniCanceladas }}</div>
                             <small class="text-muted">{{ $pniAusentes }} ausentes / sin atención</small>
@@ -956,8 +1577,21 @@
                     </div>
                 </div>
                 <div class="col-xl-3 col-md-6 col-12">
-                    <div class="box">
-                        <div class="box-body text-center">
+                    <div class="box kpi-filter-card"
+                         data-detail-block="pni"
+                         data-detail-segment="sin_tarifa_estimable"
+                         data-bs-toggle="tooltip"
+                         title="Filtra PNI sin tarifa estimable. {{ $pniSinCostoConfigurado }} con precio 0 van aparte.">
+                        <div class="kpi-filter-actions">
+                            <button type="button" class="btn btn-light btn-sm border" data-detail-modal="pni:sin_tarifa_estimable" data-bs-toggle="tooltip" title="Abrir resumen rápido de PNI sin tarifa estimable">
+                                <i class="mdi mdi-magnify"></i>
+                            </button>
+                            <a href="{{ $detailSegmentUrl('pni', 'sin_tarifa_estimable') }}" class="btn btn-light btn-sm border" data-detail-link="pni:sin_tarifa_estimable" data-bs-toggle="tooltip" title="Abrir esta página con el filtro persistido">
+                                <i class="mdi mdi-open-in-new"></i>
+                            </a>
+                        </div>
+                        <div class="box-body text-center kpi-filter-body">
+                            <span class="badge bg-primary-light text-primary kpi-filter-badge d-none">Filtro activo</span>
                             <h6 class="mb-5">Sin tarifa estimable</h6>
                             <div class="fs-28 fw-700 text-dark">{{ $pniSinTarifaEstimable }}</div>
                             <small class="text-muted">Solo faltantes reales de pricing. {{ $pniSinCostoConfigurado }}
@@ -1039,7 +1673,11 @@
                                     <small class="text-muted">Esta capa usa NAS, informes de imágenes y billing real;
                                         el estado de agenda solo define canceladas, ausentes y sin cierre.</small>
                                 </div>
-                                <div class="d-flex flex-wrap gap-2">
+                                <div class="kpi-inline-toolbar">
+                                    <span class="badge bg-primary-light text-primary d-none" data-detail-filter-badge="imagenes"></span>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm d-none" data-detail-clear="imagenes">
+                                        Limpiar filtro
+                                    </button>
                                     <span class="badge bg-success-light text-success">{{ $imagenesRealizadas }} realizadas</span>
                                     <span class="badge bg-warning-light text-warning">{{ $imagenesPendientesFacturar }} pendientes de facturar</span>
                                     <span class="badge bg-info-light text-info">{{ $imagenesPendientesInformar }} pendientes de informar</span>
@@ -1053,8 +1691,21 @@
 
             <div class="row">
                 <div class="col-xl-3 col-md-6 col-12">
-                    <div class="box">
-                        <div class="box-body text-center">
+                    <div class="box kpi-filter-card"
+                         data-detail-block="imagenes"
+                         data-detail-segment="realizada"
+                         data-bs-toggle="tooltip"
+                         title="Filtra imágenes realizadas. Breakdown: {{ $imagenesFacturadas }} facturadas, {{ $imagenesConArchivos }} con archivos, {{ $imagenesRealizadaInformada }} informadas.">
+                        <div class="kpi-filter-actions">
+                            <button type="button" class="btn btn-light btn-sm border" data-detail-modal="imagenes:realizada" data-bs-toggle="tooltip" title="Abrir resumen rápido de imágenes realizadas">
+                                <i class="mdi mdi-magnify"></i>
+                            </button>
+                            <a href="{{ $detailSegmentUrl('imagenes', 'realizada') }}" class="btn btn-light btn-sm border" data-detail-link="imagenes:realizada" data-bs-toggle="tooltip" title="Abrir esta página con el filtro persistido">
+                                <i class="mdi mdi-open-in-new"></i>
+                            </a>
+                        </div>
+                        <div class="box-body text-center kpi-filter-body">
+                            <span class="badge bg-primary-light text-primary kpi-filter-badge d-none">Filtro activo</span>
                             <h6 class="mb-5">Imágenes realizadas</h6>
                             <div class="fs-28 fw-700 text-success">{{ $imagenesRealizadas }}</div>
                             <small class="text-muted">{{ $imagenesFacturadas }} facturadas, {{ $imagenesConArchivos }}
@@ -1063,8 +1714,21 @@
                     </div>
                 </div>
                 <div class="col-xl-3 col-md-6 col-12">
-                    <div class="box">
-                        <div class="box-body text-center">
+                    <div class="box kpi-filter-card"
+                         data-detail-block="imagenes"
+                         data-detail-segment="pendiente_facturar"
+                         data-bs-toggle="tooltip"
+                         title="Filtra imágenes pendientes de facturar.">
+                        <div class="kpi-filter-actions">
+                            <button type="button" class="btn btn-light btn-sm border" data-detail-modal="imagenes:pendiente_facturar" data-bs-toggle="tooltip" title="Abrir resumen rápido de imágenes pendientes de facturar">
+                                <i class="mdi mdi-magnify"></i>
+                            </button>
+                            <a href="{{ $detailSegmentUrl('imagenes', 'pendiente_facturar') }}" class="btn btn-light btn-sm border" data-detail-link="imagenes:pendiente_facturar" data-bs-toggle="tooltip" title="Abrir esta página con el filtro persistido">
+                                <i class="mdi mdi-open-in-new"></i>
+                            </a>
+                        </div>
+                        <div class="box-body text-center kpi-filter-body">
+                            <span class="badge bg-primary-light text-primary kpi-filter-badge d-none">Filtro activo</span>
                             <h6 class="mb-5">Pendiente de facturar</h6>
                             <div class="fs-28 fw-700 text-warning">{{ $imagenesPendientesFacturar }}</div>
                             <small class="text-muted">Realizadas con evidencia técnica aún sin billing real</small>
@@ -1072,8 +1736,21 @@
                     </div>
                 </div>
                 <div class="col-xl-3 col-md-6 col-12">
-                    <div class="box">
-                        <div class="box-body text-center">
+                    <div class="box kpi-filter-card"
+                         data-detail-block="imagenes"
+                         data-detail-segment="cancelada"
+                         data-bs-toggle="tooltip"
+                         title="Filtra imágenes en pérdida operativa: canceladas, ausentes y sin cierre.">
+                        <div class="kpi-filter-actions">
+                            <button type="button" class="btn btn-light btn-sm border" data-detail-modal="imagenes:cancelada" data-bs-toggle="tooltip" title="Abrir resumen rápido de imágenes en pérdida operativa">
+                                <i class="mdi mdi-magnify"></i>
+                            </button>
+                            <a href="{{ $detailSegmentUrl('imagenes', 'cancelada') }}" class="btn btn-light btn-sm border" data-detail-link="imagenes:cancelada" data-bs-toggle="tooltip" title="Abrir esta página con el filtro persistido">
+                                <i class="mdi mdi-open-in-new"></i>
+                            </a>
+                        </div>
+                        <div class="box-body text-center kpi-filter-body">
+                            <span class="badge bg-primary-light text-primary kpi-filter-badge d-none">Filtro activo</span>
                             <h6 class="mb-5">Pérdida</h6>
                             <div
                                 class="fs-28 fw-700 text-danger">{{ $imagenesCanceladas + $imagenesAusentes + $imagenesSinCierre }}</div>
@@ -1083,8 +1760,21 @@
                     </div>
                 </div>
                 <div class="col-xl-3 col-md-6 col-12">
-                    <div class="box">
-                        <div class="box-body text-center">
+                    <div class="box kpi-filter-card"
+                         data-detail-block="imagenes"
+                         data-detail-segment="sin_tarifa_estimable"
+                         data-bs-toggle="tooltip"
+                         title="Filtra imágenes sin tarifa estimable. {{ $imagenesSinCostoConfigurado }} con precio 0 van aparte.">
+                        <div class="kpi-filter-actions">
+                            <button type="button" class="btn btn-light btn-sm border" data-detail-modal="imagenes:sin_tarifa_estimable" data-bs-toggle="tooltip" title="Abrir resumen rápido de imágenes sin tarifa estimable">
+                                <i class="mdi mdi-magnify"></i>
+                            </button>
+                            <a href="{{ $detailSegmentUrl('imagenes', 'sin_tarifa_estimable') }}" class="btn btn-light btn-sm border" data-detail-link="imagenes:sin_tarifa_estimable" data-bs-toggle="tooltip" title="Abrir esta página con el filtro persistido">
+                                <i class="mdi mdi-open-in-new"></i>
+                            </a>
+                        </div>
+                        <div class="box-body text-center kpi-filter-body">
+                            <span class="badge bg-primary-light text-primary kpi-filter-badge d-none">Filtro activo</span>
                             <h6 class="mb-5">Sin tarifa estimable</h6>
                             <div class="fs-28 fw-700 text-dark">{{ $imagenesSinTarifaEstimable }}</div>
                             <small class="text-muted">Solo faltantes reales de
@@ -1168,7 +1858,11 @@
                                     <small class="text-muted">Esta capa usa consulta_data como respaldo clínico,
                                         billing real para cierres y excluye optometría.</small>
                                 </div>
-                                <div class="d-flex flex-wrap gap-2">
+                                <div class="kpi-inline-toolbar">
+                                    <span class="badge bg-primary-light text-primary d-none" data-detail-filter-badge="servicios_oftalmologicos"></span>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm d-none" data-detail-clear="servicios_oftalmologicos">
+                                        Limpiar filtro
+                                    </button>
                                     <span class="badge bg-success-light text-success">{{ $serviciosOftalmologicosRealizadas }} realizadas</span>
                                     <span class="badge bg-warning-light text-warning">{{ $serviciosOftalmologicosPendientesFacturar }} pendientes de facturar</span>
                                     <span class="badge bg-danger-light text-danger">{{ $serviciosOftalmologicosCanceladas + $serviciosOftalmologicosAusentes }} pérdida</span>
@@ -1181,8 +1875,21 @@
 
             <div class="row">
                 <div class="col-xl-3 col-md-6 col-12">
-                    <div class="box">
-                        <div class="box-body text-center">
+                    <div class="box kpi-filter-card"
+                         data-detail-block="servicios_oftalmologicos"
+                         data-detail-segment="realizada"
+                         data-bs-toggle="tooltip"
+                         title="Filtra servicios oftalmológicos realizados. Breakdown: {{ $serviciosOftalmologicosFacturadas }} facturadas, {{ $serviciosOftalmologicosRealizadaConsulta }} con consulta.">
+                        <div class="kpi-filter-actions">
+                            <button type="button" class="btn btn-light btn-sm border" data-detail-modal="servicios_oftalmologicos:realizada" data-bs-toggle="tooltip" title="Abrir resumen rápido de servicios realizados">
+                                <i class="mdi mdi-magnify"></i>
+                            </button>
+                            <a href="{{ $detailSegmentUrl('servicios_oftalmologicos', 'realizada') }}" class="btn btn-light btn-sm border" data-detail-link="servicios_oftalmologicos:realizada" data-bs-toggle="tooltip" title="Abrir esta página con el filtro persistido">
+                                <i class="mdi mdi-open-in-new"></i>
+                            </a>
+                        </div>
+                        <div class="box-body text-center kpi-filter-body">
+                            <span class="badge bg-primary-light text-primary kpi-filter-badge d-none">Filtro activo</span>
                             <h6 class="mb-5">Servicios realizados</h6>
                             <div class="fs-28 fw-700 text-success">{{ $serviciosOftalmologicosRealizadas }}</div>
                             <small class="text-muted">{{ $serviciosOftalmologicosFacturadas }}
@@ -1191,8 +1898,21 @@
                     </div>
                 </div>
                 <div class="col-xl-3 col-md-6 col-12">
-                    <div class="box">
-                        <div class="box-body text-center">
+                    <div class="box kpi-filter-card"
+                         data-detail-block="servicios_oftalmologicos"
+                         data-detail-segment="pendiente_facturar"
+                         data-bs-toggle="tooltip"
+                         title="Filtra servicios oftalmológicos pendientes de facturar.">
+                        <div class="kpi-filter-actions">
+                            <button type="button" class="btn btn-light btn-sm border" data-detail-modal="servicios_oftalmologicos:pendiente_facturar" data-bs-toggle="tooltip" title="Abrir resumen rápido de servicios pendientes de facturar">
+                                <i class="mdi mdi-magnify"></i>
+                            </button>
+                            <a href="{{ $detailSegmentUrl('servicios_oftalmologicos', 'pendiente_facturar') }}" class="btn btn-light btn-sm border" data-detail-link="servicios_oftalmologicos:pendiente_facturar" data-bs-toggle="tooltip" title="Abrir esta página con el filtro persistido">
+                                <i class="mdi mdi-open-in-new"></i>
+                            </a>
+                        </div>
+                        <div class="box-body text-center kpi-filter-body">
+                            <span class="badge bg-primary-light text-primary kpi-filter-badge d-none">Filtro activo</span>
                             <h6 class="mb-5">Pendiente de facturar</h6>
                             <div
                                 class="fs-28 fw-700 text-warning">{{ $serviciosOftalmologicosPendientesFacturar }}</div>
@@ -1201,8 +1921,21 @@
                     </div>
                 </div>
                 <div class="col-xl-3 col-md-6 col-12">
-                    <div class="box">
-                        <div class="box-body text-center">
+                    <div class="box kpi-filter-card"
+                         data-detail-block="servicios_oftalmologicos"
+                         data-detail-segment="cancelada"
+                         data-bs-toggle="tooltip"
+                         title="Filtra servicios oftalmológicos cancelados y ausentes.">
+                        <div class="kpi-filter-actions">
+                            <button type="button" class="btn btn-light btn-sm border" data-detail-modal="servicios_oftalmologicos:cancelada" data-bs-toggle="tooltip" title="Abrir resumen rápido de servicios cancelados o ausentes">
+                                <i class="mdi mdi-magnify"></i>
+                            </button>
+                            <a href="{{ $detailSegmentUrl('servicios_oftalmologicos', 'cancelada') }}" class="btn btn-light btn-sm border" data-detail-link="servicios_oftalmologicos:cancelada" data-bs-toggle="tooltip" title="Abrir esta página con el filtro persistido">
+                                <i class="mdi mdi-open-in-new"></i>
+                            </a>
+                        </div>
+                        <div class="box-body text-center kpi-filter-body">
+                            <span class="badge bg-primary-light text-primary kpi-filter-badge d-none">Filtro activo</span>
                             <h6 class="mb-5">Canceladas</h6>
                             <div class="fs-28 fw-700 text-danger">{{ $serviciosOftalmologicosCanceladas }}</div>
                             <small class="text-muted">{{ $serviciosOftalmologicosAusentes }} ausentes / sin
@@ -1211,8 +1944,21 @@
                     </div>
                 </div>
                 <div class="col-xl-3 col-md-6 col-12">
-                    <div class="box">
-                        <div class="box-body text-center">
+                    <div class="box kpi-filter-card"
+                         data-detail-block="servicios_oftalmologicos"
+                         data-detail-segment="sin_tarifa_estimable"
+                         data-bs-toggle="tooltip"
+                         title="Filtra servicios oftalmológicos sin tarifa estimable. {{ $serviciosOftalmologicosSinCostoConfigurado }} con precio 0 van aparte.">
+                        <div class="kpi-filter-actions">
+                            <button type="button" class="btn btn-light btn-sm border" data-detail-modal="servicios_oftalmologicos:sin_tarifa_estimable" data-bs-toggle="tooltip" title="Abrir resumen rápido de servicios sin tarifa estimable">
+                                <i class="mdi mdi-magnify"></i>
+                            </button>
+                            <a href="{{ $detailSegmentUrl('servicios_oftalmologicos', 'sin_tarifa_estimable') }}" class="btn btn-light btn-sm border" data-detail-link="servicios_oftalmologicos:sin_tarifa_estimable" data-bs-toggle="tooltip" title="Abrir esta página con el filtro persistido">
+                                <i class="mdi mdi-open-in-new"></i>
+                            </a>
+                        </div>
+                        <div class="box-body text-center kpi-filter-body">
+                            <span class="badge bg-primary-light text-primary kpi-filter-badge d-none">Filtro activo</span>
                             <h6 class="mb-5">Sin tarifa estimable</h6>
                             <div class="fs-28 fw-700 text-dark">{{ $serviciosOftalmologicosSinTarifaEstimable }}</div>
                             <small class="text-muted">Solo faltantes reales de
@@ -1669,6 +2415,8 @@
                         <div id="referidoPrefacturaChart" style="min-height: 300px;"></div>
                         <div class="alert alert-info py-10 px-15 mt-15 mb-0">
                             <small>
+                                `Con categoría` / `Sin categoría` se basa solo en si `referido_prefactura_por` fue
+                                llenado o quedó vacío. No distingue si el paciente asistió, faltó o no generó cobro.
                                 `USD` suma el honorario de todas las atenciones del período en esa categoría.
                                 `Ticket prom.` = `USD acumulado / total de atenciones` de la categoría.
                             </small>
@@ -1733,6 +2481,8 @@
                         <div id="referidoPrefacturaPacientesUnicosChart" style="min-height: 320px;"></div>
                         <div class="alert alert-info py-10 px-15 mt-15 mb-0">
                             <small>
+                                `Con categoría` / `Sin categoría` se basa solo en si `referido_prefactura_por` fue
+                                llenado o quedó vacío. No distingue si el paciente asistió, faltó o no generó cobro.
                                 `USD` suma el honorario de todas las evaluaciones del período hechas por esos pacientes
                                 únicos.
                                 `Ticket prom.` = `USD acumulado / pacientes únicos` de la categoría.
@@ -1798,6 +2548,8 @@
                         <div id="referidoPrefacturaNuevoPacienteChart" style="min-height: 320px;"></div>
                         <div class="alert alert-info py-10 px-15 mt-15 mb-0">
                             <small>
+                                `Con categoría` / `Sin categoría` se basa solo en si `referido_prefactura_por` fue
+                                llenado o quedó vacío. No distingue si el paciente asistió, faltó o no generó cobro.
                                 `USD` suma el honorario de todas las atenciones de nuevo paciente del período en esa
                                 categoría.
                                 `Ticket prom.` = `USD acumulado / número de pacientes nuevos únicos` de la categoría.
@@ -2003,11 +2755,97 @@
                                         $formasPagoRow = trim((string) ($row['formas_pago'] ?? ''));
                                         $clienteFacturacionRow = trim((string) ($row['cliente_facturacion'] ?? ''));
                                         $areaFacturacionRow = trim((string) ($row['area_facturacion'] ?? ''));
+                                        $estadoRealizacionData = strtoupper(trim((string) ($row['estado_realizacion'] ?? '')));
+                                        $estadoFacturacionData = strtoupper(trim((string) ($row['estado_facturacion_operativa'] ?? '')));
+                                        $sinTarifaEstimableData = (bool) ($row['sin_tarifa_estimable'] ?? false);
+                                        $sinCostoConfiguradoData = (bool) ($row['tarifa_sin_costo_configurado'] ?? false);
+                                        $alertaRevision = strtoupper(trim((string) ($row['alerta_revision'] ?? '')));
+                                        $alertaRevisionLabel = $operationalAlertLabel($alertaRevision);
+                                        $hasProtocolData = trim((string) ($row['protocolo_id'] ?? '')) !== ''
+                                            || (int) ($row['protocolo_status_ok'] ?? 0) === 1
+                                            || (int) ($row['protocolo_firmado'] ?? 0) === 1;
+                                        $hasConsultaUtilData = trim((string) ($row['consulta_fecha'] ?? '')) !== ''
+                                            || trim((string) ($row['consulta_diagnosticos'] ?? '')) !== '';
+                                        $hasImageNasFilesData = (int) ($row['imagen_nas_has_files'] ?? 0) === 1
+                                            || (int) ($row['imagen_nas_files_count'] ?? 0) > 0;
+                                        $hasImageReportData = trim((string) ($row['imagen_informe_id'] ?? '')) !== ''
+                                            || (int) ($row['imagen_informes_total'] ?? 0) > 0;
+                                        $estadoEncuentroOperativo = $estadoEncuentro !== '—' ? strtoupper($estadoEncuentro) : 'SIN ESTADO DE AGENDA';
+                                        $operationalReasonDetailed = $alertaRevisionLabel;
+
+                                        if ($tipoAtencion === 'CIRUGIAS' && $estadoRealizacion === 'SIN_CIERRE_OPERATIVO') {
+                                            $operationalReasonDetailed = 'Sin protocolo local y sin facturación registrada. La agenda quedó en ' . $estadoEncuentroOperativo . '.';
+                                        } elseif ($tipoAtencion === 'IMAGENES' && $estadoRealizacion === 'SIN_CIERRE_OPERATIVO') {
+                                            $operationalReasonDetailed = 'Sin archivos NAS, sin informe y sin facturación registrada. La agenda quedó en ' . $estadoEncuentroOperativo . '.';
+                                        } elseif (in_array($tipoAtencion, ['PNI', 'SERVICIOS OFTALMOLOGICOS GENERALES'], true) && $alertaRevision === 'SIN_CIERRE') {
+                                            $operationalReasonDetailed = 'No hay facturación registrada ni evidencia clínica suficiente de consulta. La agenda quedó en ' . $estadoEncuentroOperativo . '.';
+                                        } elseif ($alertaRevision === 'AGENDA_DESACTUALIZADA') {
+                                            $operationalReasonDetailed = 'Sí existe evidencia clínica o quirúrgica, pero la agenda siguió en ' . $estadoEncuentroOperativo . '.';
+                                        } elseif ($alertaRevision === 'PENDIENTE_FACTURAR') {
+                                            if ($tipoAtencion === 'CIRUGIAS') {
+                                                $operationalReasonDetailed = 'La cirugía tiene respaldo clínico/protocolo, pero todavía no existe facturación real.';
+                                            } elseif ($tipoAtencion === 'IMAGENES') {
+                                                $operationalReasonDetailed = 'La imagen tiene evidencia técnica (' . ($hasImageReportData ? 'informe' : 'archivos NAS') . '), pero todavía no existe facturación real.';
+                                            } else {
+                                                $operationalReasonDetailed = 'La atención tiene respaldo clínico de consulta, pero todavía no existe facturación real.';
+                                            }
+                                        } elseif ($alertaRevision === 'ARCHIVOS_SIN_INFORME') {
+                                            $operationalReasonDetailed = 'Hay archivos técnicos disponibles en NAS, pero todavía falta el informe.';
+                                        } elseif ($alertaRevision === 'INFORMADA_SIN_ARCHIVOS_NAS') {
+                                            $operationalReasonDetailed = 'Existe informe cargado, pero no se encontraron archivos técnicos en NAS.';
+                                        } elseif ($alertaRevision === 'FACTURADA_SIN_ARCHIVOS_NI_INFORME') {
+                                            $operationalReasonDetailed = 'Se encontró facturación, pero no hay ni archivos NAS ni informe disponibles.';
+                                        } elseif ($alertaRevision === 'FACTURADA_SIN_PROTOCOLO_LOCAL') {
+                                            $operationalReasonDetailed = 'Hay facturación real, pero no existe protocolo local asociado en CIVE.';
+                                        } elseif ($alertaRevision === 'FACTURADA_SIN_FECHA_ATENCION') {
+                                            $operationalReasonDetailed = 'Hay facturación real, pero falta registrar la fecha de atención.';
+                                        } elseif ($alertaRevision === 'FACTURADA_SIN_HONORARIO') {
+                                            $operationalReasonDetailed = 'Hay registro de facturación, pero el honorario real quedó en 0.';
+                                        } elseif ($alertaRevision === 'ATENCION_POSTERIOR_A_FECHA_PROGRAMADA') {
+                                            $operationalReasonDetailed = 'La fecha real de atención quedó posterior a la fecha programada.';
+                                        }
                                     @endphp
-                                    <tr>
+                                    <tr
+                                        data-tipo-atencion="{{ e($tipoAtencion) }}"
+                                        data-estado-realizacion="{{ e($estadoRealizacionData) }}"
+                                        data-estado-facturacion="{{ e($estadoFacturacionData) }}"
+                                        data-sin-tarifa-estimable="{{ $sinTarifaEstimableData ? '1' : '0' }}"
+                                        data-sin-costo-configurado="{{ $sinCostoConfiguradoData ? '1' : '0' }}"
+                                        data-hc-number="{{ e((string) ($row['hc_number'] ?? '')) }}"
+                                        data-paciente="{{ e(trim((string) ($row['nombre_completo'] ?? ''))) }}"
+                                        data-fecha="{{ e($fechaFmt) }}"
+                                        data-sede="{{ e($sede) }}"
+                                        data-categoria-cliente="{{ e(strtoupper($categoriaCliente)) }}"
+                                        data-afiliacion="{{ e($afiliacion) }}"
+                                        data-procedimiento="{{ e($procedimientoLegible((string) ($row['procedimiento_proyectado'] ?? ''))) }}"
+                                        data-doctor="{{ e(trim((string) ($row['doctor'] ?? '')) !== '' ? ucwords(strtolower((string) $row['doctor'])) : '—') }}"
+                                        data-honorario-real="{{ e((string) round($honorarioRealRow, 2)) }}"
+                                        data-por-cobrar="{{ e((string) round((float) ($row['monto_por_cobrar_estimado'] ?? 0), 2)) }}"
+                                        data-perdida="{{ e((string) round((float) ($row['monto_perdida_estimada'] ?? 0), 2)) }}"
+                                        data-fecha-raw="{{ e($fecha) }}"
+                                        data-facturado="{{ $facturado ? '1' : '0' }}"
+                                        data-patient-url="{{ e($patientDetailsUrl((string) ($row['hc_number'] ?? ''))) }}"
+                                        data-alerta-revision="{{ e($alertaRevision) }}"
+                                        data-alerta-revision-label="{{ e($alertaRevisionLabel) }}"
+                                        data-operational-reason="{{ e($operationalReasonDetailed) }}"
+                                        data-estado-encuentro="{{ e($estadoEncuentro) }}"
+                                        data-estado-informe-operativo="{{ e(strtoupper(trim((string) ($row['estado_informe_operativo'] ?? '')))) }}"
+                                    >
                                         <td>{{ $index + 1 }}</td>
                                         <td>{{ (string) ($row['hc_number'] ?? '—') }}</td>
-                                        <td>{{ ucwords(strtolower(trim((string) ($row['nombre_completo'] ?? '—')))) }}</td>
+                                        <td>
+                                            @php
+                                                $patientName = ucwords(strtolower(trim((string) ($row['nombre_completo'] ?? '—'))));
+                                                $patientUrl = $patientDetailsUrl((string) ($row['hc_number'] ?? ''));
+                                            @endphp
+                                            @if($patientUrl !== '#')
+                                                <a href="{{ $patientUrl }}" class="detail-patient-link" target="_blank" rel="noopener noreferrer">
+                                                    {{ $patientName }}
+                                                </a>
+                                            @else
+                                                {{ $patientName }}
+                                            @endif
+                                        </td>
                                         <td><span class="badge {{ $badgeClass }}">{{ $afiliacion }}</span></td>
                                         <td>
                                                 <span
@@ -2157,6 +2995,8 @@
                 const cirugiasEstados = @json($cirugiasEstados);
                 const cirugiasDoctoresPorCobrar = @json($cirugiasDoctoresPorCobrar);
                 const cirugiasDoctoresPerdida = @json($cirugiasDoctoresPerdida);
+                const initialDetailBlock = @json($detalleBloqueSeleccionado);
+                const initialDetailSegment = @json($detalleSegmentoSeleccionado);
 
                 const truncateLabel = function (value, maxLength) {
                     const text = String(value || '').trim();
@@ -2167,20 +3007,110 @@
                     return text.length > maxLength ? text.slice(0, maxLength) + '...' : text;
                 };
 
+                const formatUsd = function (value) {
+                    const amount = Number(value || 0);
+                    const safeAmount = Number.isFinite(amount) ? amount : 0;
+                    return '$' + safeAmount.toLocaleString('en-US', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                    });
+                };
+
+                const escapeHtml = function (value) {
+                    return String(value || '')
+                        .replaceAll('&', '&amp;')
+                        .replaceAll('<', '&lt;')
+                        .replaceAll('>', '&gt;')
+                        .replaceAll('"', '&quot;')
+                        .replaceAll("'", '&#039;');
+                };
+
+                const prettifyStatusLabel = function (value) {
+                    return String(value || '—').replaceAll('_', ' ');
+                };
+
+                const buildDetailChip = function (label, tone) {
+                    return '<span class="detail-chip detail-chip-' + tone + '">' + escapeHtml(label || '—') + '</span>';
+                };
+
+                const getSedeChipTone = function (value) {
+                    const normalized = String(value || '').trim().toUpperCase();
+                    if (normalized === 'CEIBOS') {
+                        return 'sky';
+                    }
+                    if (normalized === 'MATRIZ') {
+                        return 'amber';
+                    }
+                    return 'slate';
+                };
+
+                const getCategoriaChipTone = function (value) {
+                    const normalized = String(value || '').trim().toUpperCase();
+                    if (normalized === 'PARTICULAR') {
+                        return 'emerald';
+                    }
+                    if (normalized === 'PRIVADO') {
+                        return 'rose';
+                    }
+                    return 'slate';
+                };
+
+                const getEstadoRealChipTone = function (value) {
+                    const normalized = String(value || '').trim().toUpperCase();
+                    if (['FACTURADA', 'REALIZADA_CONSULTA', 'REALIZADA_CON_ARCHIVOS', 'REALIZADA_INFORMADA', 'OPERADA_CONFIRMADA', 'OPERADA_CON_PROTOCOLO', 'OPERADA_OTRO_CENTRO'].includes(normalized)) {
+                        return 'emerald';
+                    }
+                    if (normalized === 'SIN_CIERRE_OPERATIVO' || normalized === 'PENDIENTE_FACTURAR') {
+                        return 'amber';
+                    }
+                    if (normalized === 'CANCELADA' || normalized === 'AUSENTE') {
+                        return 'rose';
+                    }
+                    return 'slate';
+                };
+
+                const getFacturacionChipTone = function (value) {
+                    const normalized = String(value || '').trim().toUpperCase();
+                    if (normalized.includes('FACTURADA')) {
+                        return 'emerald';
+                    }
+                    if (normalized === 'PENDIENTE_FACTURAR') {
+                        return 'amber';
+                    }
+                    return 'slate';
+                };
+
+                const buildAmountCell = function (value, toneClass) {
+                    return '<span class="detail-amount ' + toneClass + '">' + formatUsd(value || 0) + '</span>';
+                };
+
+                const explainOperationalAlert = function (item) {
+                    if (String(item.operationalReason || '').trim() !== '') {
+                        return item.operationalReason;
+                    }
+
+                    const alert = String(item.alertaRevision || '').trim().toUpperCase();
+                    if (alert !== '' && item.alertaRevisionLabel !== '') {
+                        return item.alertaRevisionLabel;
+                    }
+
+                    if (item.estadoRealizacion === 'SIN_CIERRE_OPERATIVO') {
+                        if (item.block === 'cirugias') {
+                            return 'No hay protocolo, no hay facturación y la agenda no quedó marcada como cancelada.';
+                        }
+                        if (item.block === 'imagenes') {
+                            return 'No hay archivos NAS, no hay informe, no hay facturación y la agenda no quedó como cancelada o ausente.';
+                        }
+                    }
+
+                    return 'Sin observación operativa adicional.';
+                };
+
                 const buildVerticalChart = function (selector, title, values, color, config) {
                     const container = document.querySelector(selector);
                     if (!container) {
                         return;
                     }
-
-                    const formatUsd = function (value) {
-                        const amount = Number(value || 0);
-                        const safeAmount = Number.isFinite(amount) ? amount : 0;
-                        return '$' + safeAmount.toLocaleString('en-US', {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                        });
-                    };
 
                     const categories = values.map(function (item) {
                         const raw = (item && item.valor ? String(item.valor) : '').trim();
@@ -2947,23 +3877,6 @@
                     xTitle: 'Pérdida estimada',
                     color: '#dc2626',
                 });
-                buildHorizontalChart(
-                    '#cirugiasEstadoChart',
-                    'Cirugías por estado real',
-                    Array.isArray(cirugiasEstados) ? cirugiasEstados : [],
-                    '#ef4444'
-                );
-                buildHorizontalMoneyChart('#cirugiasPorCobrarDoctorChart', cirugiasDoctoresPorCobrar, {
-                    seriesName: 'Por cobrar estimado',
-                    xTitle: 'Por cobrar estimado',
-                    color: '#f59e0b',
-                });
-                buildHorizontalMoneyChart('#cirugiasPerdidaDoctorChart', cirugiasDoctoresPerdida, {
-                    seriesName: 'Pérdida estimada',
-                    xTitle: 'Pérdida estimada',
-                    color: '#dc2626',
-                });
-
                 const topAfiliacionesContainer = document.querySelector('#topAfiliacionesChart');
                 if (topAfiliacionesContainer) {
                     const afiliacionesRows = Array.isArray(topAfiliaciones) ? topAfiliaciones : [];
@@ -3098,7 +4011,7 @@
 
                 buildVerticalChart(
                     '#referidoPrefacturaChart',
-                    'Atenciones (con valor: ' + referidoWithValue + ', sin valor: ' + referidoWithoutValue + ')',
+                    'Atenciones (con categoría: ' + referidoWithValue + ', sin categoría: ' + referidoWithoutValue + ')',
                     referidoValues,
                     '#3b82f6',
                     {
@@ -3109,7 +4022,7 @@
 
                 buildVerticalChart(
                     '#referidoPrefacturaPacientesUnicosChart',
-                    'Pacientes únicos (con valor: ' + referidoUniquePatientsWithValue + ', sin valor: ' + referidoUniquePatientsWithoutValue + ')',
+                    'Pacientes únicos (con categoría: ' + referidoUniquePatientsWithValue + ', sin categoría: ' + referidoUniquePatientsWithoutValue + ')',
                     referidoUniquePatientValues,
                     '#1d4ed8',
                     {
@@ -3120,7 +4033,7 @@
 
                 buildVerticalChart(
                     '#referidoPrefacturaNuevoPacienteChart',
-                    'Nuevos pacientes (con valor: ' + referidoNuevoPacienteWithValue + ', sin valor: ' + referidoNuevoPacienteWithoutValue + ')',
+                    'Nuevos pacientes (con categoría: ' + referidoNuevoPacienteWithValue + ', sin categoría: ' + referidoNuevoPacienteWithoutValue + ')',
                     referidoNuevoPacienteValues,
                     '#2563eb',
                     {
@@ -3285,21 +4198,964 @@
                     renderHierarchySubcategories('');
                 }
 
+                const initBootstrapTooltips = function () {
+                    if (!window.bootstrap || typeof window.bootstrap.Tooltip !== 'function') {
+                        return;
+                    }
+
+                    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (element) {
+                        if (!window.bootstrap.Tooltip.getInstance(element)) {
+                            new window.bootstrap.Tooltip(element);
+                        }
+                    });
+                };
+
+                const detailBlockConfigs = {
+                    operativo: {
+                        label: 'Resumen operativo',
+                        labelLower: 'resumen operativo',
+                        type: '',
+                        stateColor: '#2563eb',
+                        moneyColors: {
+                            porCobrar: '#f59e0b',
+                            perdida: '#dc2626',
+                        },
+                        chartSelectors: {
+                            state: '',
+                            porCobrar: '',
+                            perdida: '',
+                        },
+                        chartTitles: {
+                            state: '',
+                            porCobrar: '',
+                            perdida: '',
+                        },
+                        segmentMeta: {
+                            pipeline: {label: 'Casos del pipeline', chartLabel: 'pipeline'},
+                            realizada: {label: 'Atenciones realizadas', chartLabel: 'realizadas'},
+                            facturada: {label: 'Atenciones facturadas', chartLabel: 'facturadas'},
+                            pendiente_facturar: {label: 'Pendientes de facturar', chartLabel: 'pendientes de facturar'},
+                            perdida: {label: 'Casos no concretados', chartLabel: 'no concretados'},
+                            pacientes_unicos_realizados: {label: 'Pacientes únicos atendidos', chartLabel: 'pacientes únicos atendidos'},
+                        },
+                    },
+                    cirugias: {
+                        label: 'Cirugías',
+                        labelLower: 'cirugías',
+                        type: 'CIRUGIAS',
+                        stateColor: '#ef4444',
+                        moneyColors: {
+                            porCobrar: '#f59e0b',
+                            perdida: '#dc2626',
+                        },
+                        chartSelectors: {
+                            state: '#cirugiasEstadoChart',
+                            porCobrar: '#cirugiasPorCobrarDoctorChart',
+                            perdida: '#cirugiasPerdidaDoctorChart',
+                        },
+                        chartTitles: {
+                            state: 'Cirugías por estado real',
+                            porCobrar: 'Cirujanos con mayor por cobrar',
+                            perdida: 'Cirujanos con mayor pérdida estimada',
+                        },
+                        segmentMeta: {
+                            realizada: {label: 'Cirugías realizadas', chartLabel: 'realizadas'},
+                            pendiente_facturar: {label: 'Pendientes de facturar', chartLabel: 'pendientes de facturar'},
+                            cancelada: {label: 'Cirugías canceladas / sin cierre', chartLabel: 'canceladas / sin cierre'},
+                            sin_tarifa_estimable: {label: 'Sin tarifa estimable', chartLabel: 'sin tarifa estimable'},
+                        },
+                    },
+                    pni: {
+                        label: 'PNI',
+                        labelLower: 'PNI',
+                        type: 'PNI',
+                        stateColor: '#10b981',
+                        moneyColors: {
+                            porCobrar: '#f59e0b',
+                            perdida: '#dc2626',
+                        },
+                        chartSelectors: {
+                            state: '#pniEstadoChart',
+                            porCobrar: '#pniPorCobrarDoctorChart',
+                            perdida: '#pniPerdidaDoctorChart',
+                        },
+                        chartTitles: {
+                            state: 'PNI por estado real',
+                            porCobrar: 'PNI con mayor por cobrar',
+                            perdida: 'PNI con mayor pérdida estimada',
+                        },
+                        segmentMeta: {
+                            realizada: {label: 'PNI realizadas', chartLabel: 'realizadas'},
+                            pendiente_facturar: {label: 'PNI pendientes de facturar', chartLabel: 'pendientes de facturar'},
+                            cancelada: {label: 'PNI canceladas / ausentes', chartLabel: 'canceladas / ausentes'},
+                            sin_tarifa_estimable: {label: 'PNI sin tarifa estimable', chartLabel: 'sin tarifa estimable'},
+                        },
+                    },
+                    imagenes: {
+                        label: 'Imágenes',
+                        labelLower: 'imágenes',
+                        type: 'IMAGENES',
+                        stateColor: '#06b6d4',
+                        moneyColors: {
+                            porCobrar: '#f59e0b',
+                            perdida: '#dc2626',
+                        },
+                        chartSelectors: {
+                            state: '#imagenesEstadoChart',
+                            porCobrar: '#imagenesPorCobrarDoctorChart',
+                            perdida: '#imagenesPerdidaDoctorChart',
+                        },
+                        chartTitles: {
+                            state: 'Imágenes por estado real',
+                            porCobrar: 'Imágenes con mayor por cobrar',
+                            perdida: 'Imágenes con mayor pérdida estimada',
+                        },
+                        segmentMeta: {
+                            realizada: {label: 'Imágenes realizadas', chartLabel: 'realizadas'},
+                            pendiente_facturar: {label: 'Imágenes pendientes de facturar', chartLabel: 'pendientes de facturar'},
+                            cancelada: {label: 'Imágenes en pérdida operativa', chartLabel: 'pérdida operativa'},
+                            sin_tarifa_estimable: {label: 'Imágenes sin tarifa estimable', chartLabel: 'sin tarifa estimable'},
+                        },
+                    },
+                    servicios_oftalmologicos: {
+                        label: 'Servicios oftalmológicos',
+                        labelLower: 'servicios oftalmológicos',
+                        type: 'SERVICIOS OFTALMOLOGICOS GENERALES',
+                        stateColor: '#2563eb',
+                        moneyColors: {
+                            porCobrar: '#f59e0b',
+                            perdida: '#dc2626',
+                        },
+                        chartSelectors: {
+                            state: '#serviciosOftalmologicosEstadoChart',
+                            porCobrar: '#serviciosOftalmologicosPorCobrarDoctorChart',
+                            perdida: '#serviciosOftalmologicosPerdidaDoctorChart',
+                        },
+                        chartTitles: {
+                            state: 'Servicios oftalmológicos por estado real',
+                            porCobrar: 'Servicios con mayor por cobrar',
+                            perdida: 'Servicios con mayor pérdida estimada',
+                        },
+                        segmentMeta: {
+                            realizada: {label: 'Servicios realizados', chartLabel: 'realizados'},
+                            pendiente_facturar: {label: 'Servicios pendientes de facturar', chartLabel: 'pendientes de facturar'},
+                            cancelada: {label: 'Servicios cancelados / ausentes', chartLabel: 'cancelados / ausentes'},
+                            sin_tarifa_estimable: {label: 'Servicios sin tarifa estimable', chartLabel: 'sin tarifa estimable'},
+                        },
+                    },
+                };
+
+                const normalizeDetailBlock = function (value) {
+                    const normalized = String(value || '').trim().toLowerCase();
+                    return Object.prototype.hasOwnProperty.call(detailBlockConfigs, normalized) ? normalized : '';
+                };
+
+                const normalizeDetailSegment = function (block, value) {
+                    const normalizedBlock = normalizeDetailBlock(block);
+                    if (normalizedBlock === '') {
+                        return '';
+                    }
+
+                    const normalized = String(value || '').trim().toLowerCase();
+                    return Object.prototype.hasOwnProperty.call(detailBlockConfigs[normalizedBlock].segmentMeta, normalized) ? normalized : '';
+                };
+
+                const rowDatasetToDetailItem = function (row) {
+                    return {
+                        tipoAtencion: String(row.dataset.tipoAtencion || '').trim().toUpperCase(),
+                        estadoRealizacion: String(row.dataset.estadoRealizacion || '').trim().toUpperCase(),
+                        estadoFacturacion: String(row.dataset.estadoFacturacion || '').trim().toUpperCase(),
+                        sinTarifaEstimable: String(row.dataset.sinTarifaEstimable || '0') === '1',
+                        sinCostoConfigurado: String(row.dataset.sinCostoConfigurado || '0') === '1',
+                        hcNumber: String(row.dataset.hcNumber || '').trim(),
+                        paciente: String(row.dataset.paciente || '').trim(),
+                        fecha: String(row.dataset.fecha || '').trim(),
+                        sede: String(row.dataset.sede || '').trim(),
+                        categoriaCliente: String(row.dataset.categoriaCliente || '').trim(),
+                        afiliacion: String(row.dataset.afiliacion || '').trim(),
+                        procedimiento: String(row.dataset.procedimiento || '').trim(),
+                        doctor: String(row.dataset.doctor || '').trim() || '—',
+                        honorarioReal: Number(row.dataset.honorarioReal || 0),
+                        porCobrar: Number(row.dataset.porCobrar || 0),
+                        perdida: Number(row.dataset.perdida || 0),
+                        fechaRaw: String(row.dataset.fechaRaw || '').trim(),
+                        facturado: String(row.dataset.facturado || '0') === '1',
+                        patientUrl: String(row.dataset.patientUrl || '').trim(),
+                        alertaRevision: String(row.dataset.alertaRevision || '').trim().toUpperCase(),
+                        alertaRevisionLabel: String(row.dataset.alertaRevisionLabel || '').trim(),
+                        operationalReason: String(row.dataset.operationalReason || '').trim(),
+                        estadoEncuentro: String(row.dataset.estadoEncuentro || '').trim().toUpperCase(),
+                        estadoInformeOperativo: String(row.dataset.estadoInformeOperativo || '').trim().toUpperCase(),
+                    };
+                };
+
+                const mapTipoAtencionToBlock = function (tipoAtencion) {
+                    const normalized = String(tipoAtencion || '').trim().toUpperCase();
+                    if (normalized === 'CIRUGIAS') {
+                        return 'cirugias';
+                    }
+                    if (normalized === 'PNI') {
+                        return 'pni';
+                    }
+                    if (normalized === 'IMAGENES') {
+                        return 'imagenes';
+                    }
+                    if (normalized === 'SERVICIOS OFTALMOLOGICOS GENERALES') {
+                        return 'servicios_oftalmologicos';
+                    }
+
+                    return '';
+                };
+
+                const allRenderedRows = Array.from(document.querySelectorAll('#tablaAtencionesRango tbody tr[data-tipo-atencion]'));
+                const allDetailRows = allRenderedRows.map(function (row) {
+                    const item = rowDatasetToDetailItem(row);
+                    item.block = mapTipoAtencionToBlock(item.tipoAtencion);
+                    return item;
+                });
+                const detailRows = allDetailRows.filter(function (item) {
+                    return item.block !== '';
+                });
+
+                const attendedEncounterStates = ['ATENDIDO', 'ATENDIDA', 'REALIZADO', 'REALIZADA', 'COMPLETADO', 'COMPLETADA', 'ASISTIO', 'ASISTIÓ'];
+                const cancelledEncounterStates = ['CANCELADO', 'CANCELADA'];
+                const absentEncounterStates = ['AUSENTE', 'NO ASISTIO', 'NO ASISTIÓ', 'NO SHOW', 'NO-SHOW'];
+
+                const isOperationalFactured = function (item) {
+                    return item.facturado === true || ['FACTURADA', 'FACTURADA_EXTERNA'].includes(item.estadoFacturacion);
+                };
+
+                const isOperationalRealized = function (item) {
+                    if (item.block === 'cirugias') {
+                        return ['OPERADA_CONFIRMADA', 'OPERADA_CON_PROTOCOLO', 'OPERADA_OTRO_CENTRO'].includes(item.estadoRealizacion);
+                    }
+                    if (item.block === 'pni' || item.block === 'servicios_oftalmologicos') {
+                        return ['FACTURADA', 'REALIZADA_CONSULTA'].includes(item.estadoRealizacion);
+                    }
+                    if (item.block === 'imagenes') {
+                        return ['FACTURADA', 'REALIZADA_CON_ARCHIVOS', 'REALIZADA_INFORMADA'].includes(item.estadoRealizacion);
+                    }
+
+                    return attendedEncounterStates.includes(item.estadoEncuentro) || isOperationalFactured(item) || Number(item.honorarioReal || 0) > 0;
+                };
+
+                const isOperationalLost = function (item) {
+                    if (item.block === 'cirugias') {
+                        return ['CANCELADA', 'SIN_CIERRE_OPERATIVO'].includes(item.estadoRealizacion);
+                    }
+                    if (item.block === 'pni' || item.block === 'servicios_oftalmologicos') {
+                        return ['CANCELADA', 'AUSENTE'].includes(item.estadoRealizacion);
+                    }
+                    if (item.block === 'imagenes') {
+                        return ['CANCELADA', 'AUSENTE', 'SIN_CIERRE_OPERATIVO'].includes(item.estadoRealizacion);
+                    }
+
+                    return cancelledEncounterStates.includes(item.estadoEncuentro) || absentEncounterStates.includes(item.estadoEncuentro);
+                };
+
+                const rowMatchesDetailSegment = function (item, block, segment) {
+                    const normalizedBlock = normalizeDetailBlock(block);
+                    if (normalizedBlock === '') {
+                        return false;
+                    }
+
+                    const normalizedSegment = normalizeDetailSegment(normalizedBlock, segment);
+
+                    if (normalizedBlock === 'operativo') {
+                        if (normalizedSegment === '') {
+                            return true;
+                        }
+                        if (normalizedSegment === 'pipeline') {
+                            return true;
+                        }
+                        if (normalizedSegment === 'realizada' || normalizedSegment === 'pacientes_unicos_realizados') {
+                            return isOperationalRealized(item);
+                        }
+                        if (normalizedSegment === 'facturada') {
+                            return isOperationalFactured(item);
+                        }
+                        if (normalizedSegment === 'pendiente_facturar') {
+                            return item.estadoFacturacion === 'PENDIENTE_FACTURAR';
+                        }
+                        if (normalizedSegment === 'perdida') {
+                            return isOperationalLost(item);
+                        }
+
+                        return true;
+                    }
+
+                    if (item.block !== normalizedBlock) {
+                        return false;
+                    }
+                    if (normalizedSegment === '') {
+                        return true;
+                    }
+
+                    if (normalizedBlock === 'cirugias') {
+                        if (normalizedSegment === 'realizada') {
+                            return ['OPERADA_CONFIRMADA', 'OPERADA_CON_PROTOCOLO', 'OPERADA_OTRO_CENTRO'].includes(item.estadoRealizacion);
+                        }
+                        if (normalizedSegment === 'pendiente_facturar') {
+                            return item.estadoFacturacion === 'PENDIENTE_FACTURAR';
+                        }
+                        if (normalizedSegment === 'cancelada') {
+                            return item.estadoRealizacion === 'CANCELADA' || item.estadoRealizacion === 'SIN_CIERRE_OPERATIVO';
+                        }
+                        if (normalizedSegment === 'sin_tarifa_estimable') {
+                            return item.sinTarifaEstimable === true;
+                        }
+                    }
+
+                    if (normalizedBlock === 'pni') {
+                        if (normalizedSegment === 'realizada') {
+                            return ['FACTURADA', 'REALIZADA_CONSULTA'].includes(item.estadoRealizacion);
+                        }
+                        if (normalizedSegment === 'pendiente_facturar') {
+                            return item.estadoFacturacion === 'PENDIENTE_FACTURAR';
+                        }
+                        if (normalizedSegment === 'cancelada') {
+                            return item.estadoRealizacion === 'CANCELADA' || item.estadoRealizacion === 'AUSENTE';
+                        }
+                        if (normalizedSegment === 'sin_tarifa_estimable') {
+                            return item.sinTarifaEstimable === true;
+                        }
+                    }
+
+                    if (normalizedBlock === 'imagenes') {
+                        if (normalizedSegment === 'realizada') {
+                            return ['FACTURADA', 'REALIZADA_CON_ARCHIVOS', 'REALIZADA_INFORMADA'].includes(item.estadoRealizacion);
+                        }
+                        if (normalizedSegment === 'pendiente_facturar') {
+                            return item.estadoFacturacion === 'PENDIENTE_FACTURAR';
+                        }
+                        if (normalizedSegment === 'cancelada') {
+                            return ['CANCELADA', 'AUSENTE', 'SIN_CIERRE_OPERATIVO'].includes(item.estadoRealizacion);
+                        }
+                        if (normalizedSegment === 'sin_tarifa_estimable') {
+                            return item.sinTarifaEstimable === true;
+                        }
+                    }
+
+                    if (normalizedBlock === 'servicios_oftalmologicos') {
+                        if (normalizedSegment === 'realizada') {
+                            return ['FACTURADA', 'REALIZADA_CONSULTA'].includes(item.estadoRealizacion);
+                        }
+                        if (normalizedSegment === 'pendiente_facturar') {
+                            return item.estadoFacturacion === 'PENDIENTE_FACTURAR';
+                        }
+                        if (normalizedSegment === 'cancelada') {
+                            return item.estadoRealizacion === 'CANCELADA' || item.estadoRealizacion === 'AUSENTE';
+                        }
+                        if (normalizedSegment === 'sin_tarifa_estimable') {
+                            return item.sinTarifaEstimable === true;
+                        }
+                    }
+
+                    return true;
+                };
+
+                const getFilteredDetailRows = function (block, segment) {
+                    const normalizedBlock = normalizeDetailBlock(block);
+                    const normalizedSegment = normalizeDetailSegment(normalizedBlock, segment);
+                    if (normalizedBlock === '') {
+                        return [];
+                    }
+
+                    const sourceRows = normalizedBlock === 'operativo' ? allDetailRows : detailRows;
+                    return sourceRows.filter(function (item) {
+                        return rowMatchesDetailSegment(item, normalizedBlock, normalizedSegment);
+                    });
+                };
+
+                const summarizeUniqueValues = function (values, limit) {
+                    const uniqueValues = Array.from(new Set(values.map(function (value) {
+                        return String(value || '').trim();
+                    }).filter(function (value) {
+                        return value !== '' && value !== '—';
+                    })));
+
+                    if (uniqueValues.length === 0) {
+                        return '—';
+                    }
+
+                    const maxItems = Number(limit || 2);
+                    if (uniqueValues.length <= maxItems) {
+                        return uniqueValues.join(', ');
+                    }
+
+                    return uniqueValues.slice(0, maxItems).join(', ') + ' +' + (uniqueValues.length - maxItems);
+                };
+
+                const buildUniquePatientRows = function (rows) {
+                    const patientsMap = new Map();
+
+                    rows.filter(function (item) {
+                        return isOperationalRealized(item);
+                    }).forEach(function (item) {
+                        const key = String(item.hcNumber || '').trim();
+                        if (key === '') {
+                            return;
+                        }
+
+                        if (!patientsMap.has(key)) {
+                            patientsMap.set(key, {
+                                hcNumber: key,
+                                paciente: item.paciente || '—',
+                                patientUrl: item.patientUrl || '',
+                                fechaRaw: item.fechaRaw || '',
+                                fecha: item.fecha || '—',
+                                sedes: [],
+                                categorias: [],
+                                afiliaciones: [],
+                                procedimientos: [],
+                                doctores: [],
+                                atenciones: 0,
+                                facturadas: 0,
+                                honorarioReal: 0,
+                                porCobrar: 0,
+                                perdida: 0,
+                            });
+                        }
+
+                        const patient = patientsMap.get(key);
+                        patient.atenciones += 1;
+                        patient.facturadas += isOperationalFactured(item) ? 1 : 0;
+                        patient.honorarioReal += Number(item.honorarioReal || 0);
+                        patient.porCobrar += Number(item.porCobrar || 0);
+                        patient.perdida += Number(item.perdida || 0);
+                        patient.sedes.push(item.sede || '');
+                        patient.categorias.push(item.categoriaCliente || '');
+                        patient.afiliaciones.push(item.afiliacion || '');
+                        patient.procedimientos.push(item.procedimiento || '');
+                        patient.doctores.push(item.doctor || '');
+
+                        const currentDate = String(item.fechaRaw || '').trim();
+                        if (currentDate !== '' && (patient.fechaRaw === '' || currentDate > patient.fechaRaw)) {
+                            patient.fechaRaw = currentDate;
+                            patient.fecha = item.fecha || patient.fecha;
+                        }
+                    });
+
+                    return Array.from(patientsMap.values()).map(function (patient) {
+                        return Object.assign({}, patient, {
+                            sedeResumen: summarizeUniqueValues(patient.sedes, 2),
+                            categoriaResumen: summarizeUniqueValues(patient.categorias, 2),
+                            afiliacionResumen: summarizeUniqueValues(patient.afiliaciones, 2),
+                            procedimientoResumen: summarizeUniqueValues(patient.procedimientos, 2),
+                            doctorResumen: summarizeUniqueValues(patient.doctores, 2),
+                        });
+                    }).sort(function (a, b) {
+                        return Number(b.honorarioReal || 0) - Number(a.honorarioReal || 0);
+                    });
+                };
+
+                const mapCountsToMetricValues = function (countsMap) {
+                    const entries = Array.from(countsMap.entries()).sort(function (a, b) {
+                        return Number(b[1] || 0) - Number(a[1] || 0);
+                    });
+                    const total = entries.reduce(function (carry, entry) {
+                        return carry + Number(entry[1] || 0);
+                    }, 0);
+
+                    return entries.map(function (entry) {
+                        const label = String(entry[0] || 'SIN DATO').replaceAll('_', ' ');
+                        const count = Number(entry[1] || 0);
+                        return {
+                            valor: label,
+                            cantidad: count,
+                            porcentaje: total > 0 ? Number(((count / total) * 100).toFixed(2)) : 0,
+                        };
+                    });
+                };
+
+                const mapAmountsToMetricValues = function (amountsMap) {
+                    const entries = Array.from(amountsMap.entries()).sort(function (a, b) {
+                        return Number(b[1] || 0) - Number(a[1] || 0);
+                    });
+                    const total = entries.reduce(function (carry, entry) {
+                        return carry + Number(entry[1] || 0);
+                    }, 0);
+
+                    return entries.map(function (entry) {
+                        const label = String(entry[0] || 'SIN DATO');
+                        const amount = Number(entry[1] || 0);
+                        return {
+                            valor: label,
+                            monto: Number(amount.toFixed(2)),
+                            porcentaje: total > 0 ? Number(((amount / total) * 100).toFixed(2)) : 0,
+                        };
+                    });
+                };
+
+                const destroyChartIfNeeded = function (chart) {
+                    if (chart && typeof chart.destroy === 'function') {
+                        chart.destroy();
+                    }
+                };
+
+                const detailCharts = Object.keys(detailBlockConfigs).reduce(function (carry, block) {
+                    carry[block] = {state: null, porCobrar: null, perdida: null};
+                    return carry;
+                }, {});
+
+                const renderDetailStateChart = function (block, rows, segment) {
+                    const config = detailBlockConfigs[block];
+                    const container = config ? document.querySelector(config.chartSelectors.state) : null;
+                    if (!config || !container) {
+                        return;
+                    }
+
+                    destroyChartIfNeeded(detailCharts[block].state);
+                    detailCharts[block].state = null;
+                    container.innerHTML = '';
+
+                    const countsMap = new Map();
+                    rows.forEach(function (item) {
+                        const key = String(item.estadoRealizacion || 'SIN DATO').trim().toUpperCase() || 'SIN DATO';
+                        countsMap.set(key, Number(countsMap.get(key) || 0) + 1);
+                    });
+
+                    const values = mapCountsToMetricValues(countsMap);
+                    if (values.length === 0) {
+                        container.innerHTML = '<div class="text-muted text-center py-30">Sin datos para graficar.</div>';
+                        return;
+                    }
+
+                    const counts = values.map(function (item) {
+                        return Number(item.cantidad || 0);
+                    });
+                    const dynamicHeight = Math.max(320, (counts.length * 28) + 90);
+                    container.style.minHeight = dynamicHeight + 'px';
+
+                    detailCharts[block].state = new ApexCharts(container, {
+                        chart: {
+                            type: 'bar',
+                            height: dynamicHeight,
+                            toolbar: {show: false},
+                        },
+                        series: [{
+                            name: 'Cantidad',
+                            data: counts,
+                        }],
+                        xaxis: {
+                            categories: values.map(function (item) {
+                                return String(item.valor || 'SIN DATO').toUpperCase();
+                            }),
+                        },
+                        plotOptions: {
+                            bar: {
+                                horizontal: true,
+                                borderRadius: 4,
+                            },
+                        },
+                        colors: [config.stateColor],
+                        title: {
+                            text: segment !== '' ? (config.chartTitles.state + ': ' + config.segmentMeta[segment].chartLabel) : config.chartTitles.state,
+                            align: 'left',
+                            style: {fontSize: '13px'},
+                        },
+                        dataLabels: {
+                            enabled: true,
+                        },
+                        tooltip: {
+                            y: {
+                                formatter: function (value) {
+                                    return value + ' registros';
+                                },
+                            },
+                        },
+                        grid: {
+                            borderColor: '#eef1f4',
+                        },
+                    });
+
+                    detailCharts[block].state.render();
+                };
+
+                const renderDetailMoneyChart = function (block, rows, amountKey, segment) {
+                    const config = detailBlockConfigs[block];
+                    const selector = config ? config.chartSelectors[amountKey] : '';
+                    const container = selector ? document.querySelector(selector) : null;
+                    if (!config || !container) {
+                        return;
+                    }
+
+                    destroyChartIfNeeded(detailCharts[block][amountKey]);
+                    detailCharts[block][amountKey] = null;
+                    container.innerHTML = '';
+
+                    const amountsMap = new Map();
+                    rows.forEach(function (item) {
+                        const amount = Number(item[amountKey] || 0);
+                        if (amount <= 0) {
+                            return;
+                        }
+                        const doctor = String(item.doctor || 'SIN DOCTOR').trim() || 'SIN DOCTOR';
+                        amountsMap.set(doctor, Number(amountsMap.get(doctor) || 0) + amount);
+                    });
+
+                    const values = mapAmountsToMetricValues(amountsMap);
+                    if (values.length === 0) {
+                        container.innerHTML = '<div class="text-muted text-center py-30">Sin datos para graficar.</div>';
+                        return;
+                    }
+
+                    const dynamicHeight = Math.max(320, (values.length * 42) + 70);
+                    container.style.minHeight = dynamicHeight + 'px';
+                    const titleSuffix = segment !== '' ? (' (' + config.segmentMeta[segment].chartLabel + ')') : '';
+
+                    detailCharts[block][amountKey] = new ApexCharts(container, {
+                        chart: {
+                            type: 'bar',
+                            height: dynamicHeight,
+                            toolbar: {show: false},
+                        },
+                        series: [{
+                            name: amountKey === 'porCobrar' ? 'Por cobrar estimado' : 'Pérdida estimada',
+                            data: values.map(function (item) {
+                                return Number(item.monto || 0);
+                            }),
+                        }],
+                        xaxis: {
+                            categories: values.map(function (item) {
+                                return truncateLabel(String(item.valor || 'SIN DOCTOR').toUpperCase(), 32);
+                            }),
+                            labels: {
+                                formatter: function (value) {
+                                    return '$' + Number(value || 0).toFixed(0);
+                                },
+                            },
+                            title: {
+                                text: amountKey === 'porCobrar' ? 'Por cobrar estimado' : 'Pérdida estimada',
+                            },
+                        },
+                        yaxis: {
+                            labels: {
+                                maxWidth: 260,
+                            },
+                        },
+                        plotOptions: {
+                            bar: {
+                                horizontal: true,
+                                borderRadius: 5,
+                                barHeight: '68%',
+                            },
+                        },
+                        colors: [config.moneyColors[amountKey]],
+                        title: {
+                            text: config.chartTitles[amountKey] + titleSuffix,
+                            align: 'left',
+                            style: {fontSize: '13px'},
+                        },
+                        dataLabels: {
+                            enabled: true,
+                            textAnchor: 'start',
+                            offsetX: 6,
+                            formatter: function (value, opts) {
+                                const row = values[opts.dataPointIndex] || {porcentaje: 0};
+                                return '$' + Number(value || 0).toFixed(2) + ' (' + Number(row.porcentaje || 0).toFixed(2) + '%)';
+                            },
+                            style: {
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                colors: ['#334155'],
+                            },
+                        },
+                        tooltip: {
+                            y: {
+                                formatter: function (value, opts) {
+                                    const row = values[opts.dataPointIndex] || {porcentaje: 0};
+                                    return '$' + Number(value || 0).toFixed(2) + ' | ' + Number(row.porcentaje || 0).toFixed(2) + '% del total';
+                                },
+                            },
+                        },
+                        grid: {
+                            borderColor: '#eef1f4',
+                        },
+                    });
+
+                    detailCharts[block][amountKey].render();
+                };
+
+                const renderBlockCharts = function (block, segment) {
+                    const normalizedBlock = normalizeDetailBlock(block);
+                    const normalizedSegment = normalizeDetailSegment(normalizedBlock, segment);
+                    if (normalizedBlock === '') {
+                        return;
+                    }
+
+                    const rows = getFilteredDetailRows(normalizedBlock, normalizedSegment);
+                    renderDetailStateChart(normalizedBlock, rows, normalizedSegment);
+                    renderDetailMoneyChart(normalizedBlock, rows, 'porCobrar', normalizedSegment);
+                    renderDetailMoneyChart(normalizedBlock, rows, 'perdida', normalizedSegment);
+                };
+
+                const renderAllDetailCharts = function (activeBlock, activeSegment) {
+                    Object.keys(detailBlockConfigs).forEach(function (block) {
+                        const segment = activeBlock === block ? activeSegment : '';
+                        renderBlockCharts(block, segment);
+                    });
+                };
+
+                const buildDetailSegmentUrl = function (block, segment) {
+                    const url = new URL(window.location.href);
+                    url.searchParams.delete('cirugias_segmento');
+                    url.searchParams.delete('detalle_bloque');
+                    url.searchParams.delete('detalle_segmento');
+
+                    const normalizedBlock = normalizeDetailBlock(block);
+                    const normalizedSegment = normalizeDetailSegment(normalizedBlock, segment);
+                    if (normalizedBlock !== '' && normalizedSegment !== '') {
+                        url.searchParams.set('detalle_bloque', normalizedBlock);
+                        url.searchParams.set('detalle_segmento', normalizedSegment);
+                    }
+
+                    return url.toString();
+                };
+
+                const updateDetailFilterUrl = function (block, segment) {
+                    window.history.replaceState({}, '', buildDetailSegmentUrl(block, segment));
+                };
+
+                const detailCards = Array.from(document.querySelectorAll('[data-detail-block][data-detail-segment]'));
+                const detailFilterBadges = Object.fromEntries(Object.keys(detailBlockConfigs).map(function (block) {
+                    return [block, document.querySelector('[data-detail-filter-badge="' + block + '"]')];
+                }));
+                const detailClearButtons = Object.fromEntries(Object.keys(detailBlockConfigs).map(function (block) {
+                    return [block, document.querySelector('[data-detail-clear="' + block + '"]')];
+                }));
+
+                const detailSegmentModalElement = document.getElementById('detailSegmentModal');
+                const detailSegmentModal = window.bootstrap && detailSegmentModalElement ? new window.bootstrap.Modal(detailSegmentModalElement) : null;
+                const detailSegmentModalTitle = document.getElementById('detailSegmentModalLabel');
+                const detailSegmentModalSubtitle = document.getElementById('detailSegmentModalSubtitle');
+                const detailSegmentModalHead = document.getElementById('detailSegmentModalHead');
+                const detailSegmentModalBody = document.getElementById('detailSegmentModalBody');
+                const detailSegmentModalCountLabel = document.getElementById('detailSegmentModalCountLabel');
+                const detailSegmentModalCount = document.getElementById('detailSegmentModalCount');
+                const detailSegmentModalPorCobrar = document.getElementById('detailSegmentModalPorCobrar');
+                const detailSegmentModalPerdida = document.getElementById('detailSegmentModalPerdida');
+                const detailSegmentModalDetail = document.getElementById('detailSegmentModalDetail');
+                const detailSegmentModalDeepLink = document.getElementById('detailSegmentModalDeepLink');
+                const detailSegmentModalExport = document.getElementById('detailSegmentModalExport');
+
+                let currentDetailBlock = normalizeDetailBlock(initialDetailBlock);
+                let currentDetailSegment = normalizeDetailSegment(currentDetailBlock, initialDetailSegment);
+                let modalDetailBlock = '';
+                let modalDetailSegment = '';
+                let modalDetailRows = [];
+                let modalDetailMode = 'rows';
+
+                const updateDetailFilterUi = function (block, segment) {
+                    detailCards.forEach(function (card) {
+                        const cardBlock = normalizeDetailBlock(card.getAttribute('data-detail-block'));
+                        const cardSegment = normalizeDetailSegment(cardBlock, card.getAttribute('data-detail-segment'));
+                        const isActive = block !== '' && segment !== '' && cardBlock === block && cardSegment === segment;
+                        card.classList.toggle('kpi-filter-card-active', isActive);
+                        const badge = card.querySelector('.kpi-filter-badge');
+                        if (badge) {
+                            badge.classList.toggle('d-none', !isActive);
+                        }
+                    });
+
+                    Object.keys(detailBlockConfigs).forEach(function (configBlock) {
+                        const isActiveBlock = block === configBlock && segment !== '';
+                        const badge = detailFilterBadges[configBlock];
+                        const clearButton = detailClearButtons[configBlock];
+                        if (badge) {
+                            badge.classList.toggle('d-none', !isActiveBlock);
+                            badge.textContent = isActiveBlock ? ('Filtro activo: ' + detailBlockConfigs[configBlock].segmentMeta[segment].label) : '';
+                        }
+                        if (clearButton) {
+                            clearButton.classList.toggle('d-none', !isActiveBlock);
+                        }
+                    });
+                };
+
+                const renderDetailModal = function (block, segment) {
+                    modalDetailBlock = normalizeDetailBlock(block);
+                    modalDetailSegment = normalizeDetailSegment(modalDetailBlock, segment);
+                    modalDetailRows = modalDetailBlock !== '' ? getFilteredDetailRows(modalDetailBlock, modalDetailSegment) : [];
+                    modalDetailMode = modalDetailBlock === 'operativo' && modalDetailSegment === 'pacientes_unicos_realizados' ? 'patients' : 'rows';
+                    if (!detailSegmentModalBody || !detailSegmentModalHead || modalDetailBlock === '') {
+                        return;
+                    }
+
+                    const config = detailBlockConfigs[modalDetailBlock];
+                    const label = modalDetailSegment !== '' ? config.segmentMeta[modalDetailSegment].label : ('Todos los casos de ' + config.labelLower);
+                    const displayRows = modalDetailMode === 'patients' ? buildUniquePatientRows(modalDetailRows) : modalDetailRows;
+                    const totalPorCobrar = displayRows.reduce(function (carry, item) { return carry + Number(item.porCobrar || 0); }, 0);
+                    const totalPerdida = displayRows.reduce(function (carry, item) { return carry + Number(item.perdida || 0); }, 0);
+
+                    if (detailSegmentModalTitle) {
+                        detailSegmentModalTitle.textContent = label;
+                    }
+                    if (detailSegmentModalSubtitle) {
+                        detailSegmentModalSubtitle.textContent = modalDetailMode === 'patients'
+                            ? 'Resumen agrupado por HC para que el conteo coincida con el KPI de pacientes únicos atendidos.'
+                            : 'Resumen rápido del subconjunto seleccionado dentro del bloque de ' + config.labelLower + '.';
+                    }
+                    if (detailSegmentModalCountLabel) {
+                        detailSegmentModalCountLabel.textContent = modalDetailMode === 'patients' ? 'Pacientes' : 'Casos';
+                    }
+                    if (detailSegmentModalCount) {
+                        detailSegmentModalCount.textContent = displayRows.length + (modalDetailMode === 'patients' ? ' pacientes' : ' casos');
+                    }
+                    if (detailSegmentModalPorCobrar) {
+                        detailSegmentModalPorCobrar.textContent = formatUsd(totalPorCobrar) + ' por cobrar';
+                    }
+                    if (detailSegmentModalPerdida) {
+                        detailSegmentModalPerdida.textContent = formatUsd(totalPerdida) + ' pérdida';
+                    }
+                    if (detailSegmentModalDeepLink) {
+                        detailSegmentModalDeepLink.href = buildDetailSegmentUrl(modalDetailBlock, modalDetailSegment);
+                    }
+
+                    if (displayRows.length === 0) {
+                        detailSegmentModalHead.innerHTML = modalDetailMode === 'patients'
+                            ? '<tr><th>HC</th><th>Paciente</th><th>Última atención</th><th>Sede</th><th>Categoría</th><th>Afiliación</th><th>Procedimientos</th><th>Doctores</th><th class="text-end">Atenciones</th><th class="text-end">Facturadas</th><th class="text-end">Honorario</th><th class="text-end">Por cobrar</th><th class="text-end">Pérdida</th></tr>'
+                            : '<tr><th>HC</th><th>Paciente</th><th>Fecha</th><th>Sede</th><th>Categoría</th><th>Afiliación</th><th>Procedimiento</th><th>Doctor</th><th>Estado real</th><th>Motivo operativo</th><th>Facturación</th><th class="text-end">Honorario</th><th class="text-end">Por cobrar</th><th class="text-end">Pérdida</th></tr>';
+                        detailSegmentModalBody.innerHTML = '<tr><td colspan="' + (modalDetailMode === 'patients' ? '13' : '14') + '" class="text-center detail-segment-empty">Sin casos en este segmento.</td></tr>';
+                        return;
+                    }
+
+                    if (modalDetailMode === 'patients') {
+                        detailSegmentModalHead.innerHTML = '<tr><th>HC</th><th>Paciente</th><th>Última atención</th><th>Sede</th><th>Categoría</th><th>Afiliación</th><th>Procedimientos</th><th>Doctores</th><th class="text-end">Atenciones</th><th class="text-end">Facturadas</th><th class="text-end">Honorario</th><th class="text-end">Por cobrar</th><th class="text-end">Pérdida</th></tr>';
+                        detailSegmentModalBody.innerHTML = displayRows.map(function (item) {
+                            const patientLabel = escapeHtml(item.paciente || '—');
+                            const patientContent = item.patientUrl !== ''
+                                ? ('<a href="' + escapeHtml(item.patientUrl) + '" class="detail-patient-link" target="_blank" rel="noopener noreferrer">' + patientLabel + '</a>')
+                                : patientLabel;
+
+                            return '<tr>' +
+                                '<td><span class="detail-code-pill">' + escapeHtml(item.hcNumber || '—') + '</span></td>' +
+                                '<td><div class="detail-cell-stack"><span class="detail-cell-main">' + patientContent + '</span></div></td>' +
+                                '<td><div class="detail-cell-stack"><span class="detail-cell-main">' + escapeHtml(item.fecha || '—') + '</span><span class="detail-cell-sub">Última atención registrada</span></div></td>' +
+                                '<td>' + buildDetailChip(item.sedeResumen || '—', getSedeChipTone(item.sedeResumen)) + '</td>' +
+                                '<td>' + buildDetailChip(item.categoriaResumen || '—', getCategoriaChipTone(item.categoriaResumen)) + '</td>' +
+                                '<td><div class="detail-cell-stack"><span class="detail-cell-main">' + escapeHtml(item.afiliacionResumen || '—') + '</span></div></td>' +
+                                '<td><div class="detail-cell-stack"><span class="detail-cell-main">' + escapeHtml(item.procedimientoResumen || '—') + '</span></div></td>' +
+                                '<td><div class="detail-cell-stack"><span class="detail-cell-main">' + escapeHtml(item.doctorResumen || '—') + '</span></div></td>' +
+                                '<td class="text-end"><span class="detail-code-pill">' + Number(item.atenciones || 0) + '</span></td>' +
+                                '<td class="text-end"><span class="detail-code-pill">' + Number(item.facturadas || 0) + '</span></td>' +
+                                '<td class="text-end">' + buildAmountCell(item.honorarioReal || 0, 'detail-amount-neutral') + '</td>' +
+                                '<td class="text-end">' + buildAmountCell(item.porCobrar || 0, 'detail-amount-warning') + '</td>' +
+                                '<td class="text-end">' + buildAmountCell(item.perdida || 0, 'detail-amount-danger') + '</td>' +
+                                '</tr>';
+                        }).join('');
+                        return;
+                    }
+
+                    detailSegmentModalHead.innerHTML = '<tr><th>HC</th><th>Paciente</th><th>Fecha</th><th>Sede</th><th>Categoría</th><th>Afiliación</th><th>Procedimiento</th><th>Doctor</th><th>Estado real</th><th>Motivo operativo</th><th>Facturación</th><th class="text-end">Honorario</th><th class="text-end">Por cobrar</th><th class="text-end">Pérdida</th></tr>';
+                    detailSegmentModalBody.innerHTML = displayRows.map(function (item) {
+                        const patientLabel = escapeHtml(item.paciente || '—');
+                        const patientContent = item.patientUrl !== ''
+                            ? ('<a href="' + escapeHtml(item.patientUrl) + '" class="detail-patient-link" target="_blank" rel="noopener noreferrer">' + patientLabel + '</a>')
+                            : patientLabel;
+                        const operationalReason = explainOperationalAlert(item);
+                        return '<tr>' +
+                            '<td><span class="detail-code-pill">' + escapeHtml(item.hcNumber || '—') + '</span></td>' +
+                            '<td><div class="detail-cell-stack"><span class="detail-cell-main">' + patientContent + '</span></div></td>' +
+                            '<td><div class="detail-cell-stack"><span class="detail-cell-main">' + escapeHtml(item.fecha || '—') + '</span><span class="detail-cell-sub">Fecha de atención</span></div></td>' +
+                            '<td>' + buildDetailChip(item.sede || '—', getSedeChipTone(item.sede)) + '</td>' +
+                            '<td>' + buildDetailChip(item.categoriaCliente || '—', getCategoriaChipTone(item.categoriaCliente)) + '</td>' +
+                            '<td><div class="detail-cell-stack"><span class="detail-cell-main">' + escapeHtml(item.afiliacion || '—') + '</span></div></td>' +
+                            '<td><div class="detail-cell-stack"><span class="detail-cell-main">' + escapeHtml(item.procedimiento || '—') + '</span><span class="detail-cell-sub">' + escapeHtml(config.label) + '</span></div></td>' +
+                            '<td><div class="detail-cell-stack"><span class="detail-cell-main">' + escapeHtml(item.doctor || '—') + '</span></div></td>' +
+                            '<td>' + buildDetailChip(prettifyStatusLabel(item.estadoRealizacion || '—'), getEstadoRealChipTone(item.estadoRealizacion)) + '</td>' +
+                            '<td><div class="detail-cell-stack"><span class="detail-cell-sub-strong">' + escapeHtml(operationalReason) + '</span></div></td>' +
+                            '<td>' + buildDetailChip(prettifyStatusLabel(item.estadoFacturacion || '—'), getFacturacionChipTone(item.estadoFacturacion)) + '</td>' +
+                            '<td class="text-end">' + buildAmountCell(item.honorarioReal || 0, 'detail-amount-neutral') + '</td>' +
+                            '<td class="text-end">' + buildAmountCell(item.porCobrar || 0, 'detail-amount-warning') + '</td>' +
+                            '<td class="text-end">' + buildAmountCell(item.perdida || 0, 'detail-amount-danger') + '</td>' +
+                            '</tr>';
+                    }).join('');
+                };
+
+                const exportDetailRowsToCsv = function (rows, block, segment) {
+                    const isPatientMode = block === 'operativo' && segment === 'pacientes_unicos_realizados';
+                    const exportRows = isPatientMode ? buildUniquePatientRows(rows) : rows;
+                    const header = isPatientMode
+                        ? ['HC', 'Paciente', 'Ultima atencion', 'Sede', 'Categoria', 'Afiliacion', 'Procedimientos', 'Doctores', 'Atenciones realizadas', 'Facturadas', 'Honorario', 'Por cobrar', 'Perdida']
+                        : ['HC', 'Paciente', 'Fecha', 'Sede', 'Categoria', 'Afiliacion', 'Procedimiento', 'Doctor', 'Estado real', 'Motivo operativo', 'Estado facturacion', 'Honorario', 'Por cobrar', 'Perdida'];
+                    const csvRows = [header].concat(rows.map(function (item) {
+                        if (isPatientMode) {
+                            return [];
+                        }
+
+                        return [
+                            item.hcNumber || '',
+                            item.paciente || '',
+                            item.fecha || '',
+                            item.sede || '',
+                            item.categoriaCliente || '',
+                            item.afiliacion || '',
+                            item.procedimiento || '',
+                            item.doctor || '',
+                            String(item.estadoRealizacion || '').replaceAll('_', ' '),
+                            explainOperationalAlert(item),
+                            String(item.estadoFacturacion || '').replaceAll('_', ' '),
+                            Number(item.honorarioReal || 0).toFixed(2),
+                            Number(item.porCobrar || 0).toFixed(2),
+                            Number(item.perdida || 0).toFixed(2),
+                        ];
+                    })).filter(function (row) {
+                        return row.length > 0;
+                    });
+
+                    if (isPatientMode) {
+                        exportRows.forEach(function (item) {
+                            csvRows.push([
+                                item.hcNumber || '',
+                                item.paciente || '',
+                                item.fecha || '',
+                                item.sedeResumen || '',
+                                item.categoriaResumen || '',
+                                item.afiliacionResumen || '',
+                                item.procedimientoResumen || '',
+                                item.doctorResumen || '',
+                                Number(item.atenciones || 0),
+                                Number(item.facturadas || 0),
+                                Number(item.honorarioReal || 0).toFixed(2),
+                                Number(item.porCobrar || 0).toFixed(2),
+                                Number(item.perdida || 0).toFixed(2),
+                            ]);
+                        });
+                    }
+
+                    const csvContent = csvRows.map(function (row) {
+                        return row.map(function (value) {
+                            const text = String(value || '');
+                            return '"' + text.replaceAll('"', '""') + '"';
+                        }).join(',');
+                    }).join('\n');
+
+                    const blob = new Blob([csvContent], {type: 'text/csv;charset=utf-8;'});
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = (block || 'detalle') + '-' + (segment || 'todos') + '.csv';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(url);
+                };
+
                 const initDataTable = function (selector, options) {
                     if (!window.jQuery || !window.jQuery.fn || typeof window.jQuery.fn.DataTable !== 'function') {
-                        return;
+                        return null;
                     }
 
                     const $table = window.jQuery(selector);
                     if (!$table.length) {
-                        return;
+                        return null;
                     }
 
                     if (window.jQuery.fn.dataTable.isDataTable($table)) {
                         $table.DataTable().destroy();
                     }
 
-                    $table.DataTable(Object.assign({
+                    return $table.DataTable(Object.assign({
                         language: window.medforgeDataTableLanguageEs ? window.medforgeDataTableLanguageEs() : {},
                         pageLength: 10,
                         lengthMenu: [[10, 25, 50, 100], [10, 25, 50, 100]],
@@ -3307,11 +5163,119 @@
                     }, options || {}));
                 };
 
-                initDataTable('#tablaAtencionesRango', {
+                const tablaAtencionesRangoDataTable = initDataTable('#tablaAtencionesRango', {
                     pageLength: 25,
                     lengthMenu: [[10, 25, 50, 100], [10, 25, 50, 100]],
                     order: [[8, 'desc']],
                 });
+
+                if (window.jQuery && window.jQuery.fn && window.jQuery.fn.dataTable && window.jQuery.fn.dataTable.ext && Array.isArray(window.jQuery.fn.dataTable.ext.search)) {
+                    window.jQuery.fn.dataTable.ext.search.push(function (settings, searchData, dataIndex) {
+                        if (!settings || !settings.nTable || settings.nTable.id !== 'tablaAtencionesRango') {
+                            return true;
+                        }
+                        if (currentDetailBlock === '' || currentDetailSegment === '') {
+                            return true;
+                        }
+
+                        const rowMeta = settings.aoData && settings.aoData[dataIndex] ? settings.aoData[dataIndex].nTr : null;
+                        if (!rowMeta || !rowMeta.dataset) {
+                            return true;
+                        }
+
+                        const item = rowDatasetToDetailItem(rowMeta);
+                        item.block = mapTipoAtencionToBlock(item.tipoAtencion);
+                        return rowMatchesDetailSegment(item, currentDetailBlock, currentDetailSegment);
+                    });
+                }
+
+                const applyDetailFilter = function (block, segment, syncUrl) {
+                    currentDetailBlock = normalizeDetailBlock(block);
+                    currentDetailSegment = normalizeDetailSegment(currentDetailBlock, segment);
+                    updateDetailFilterUi(currentDetailBlock, currentDetailSegment);
+                    renderAllDetailCharts(currentDetailBlock, currentDetailSegment);
+
+                    if (tablaAtencionesRangoDataTable) {
+                        tablaAtencionesRangoDataTable.draw();
+                    } else {
+                        allRenderedRows.forEach(function (row) {
+                            if (currentDetailBlock === '' || currentDetailSegment === '') {
+                                row.classList.remove('d-none');
+                                return;
+                            }
+                            const item = rowDatasetToDetailItem(row);
+                            item.block = mapTipoAtencionToBlock(item.tipoAtencion);
+                            row.classList.toggle('d-none', !rowMatchesDetailSegment(item, currentDetailBlock, currentDetailSegment));
+                        });
+                    }
+
+                    if (syncUrl === true) {
+                        updateDetailFilterUrl(currentDetailBlock, currentDetailSegment);
+                    }
+                };
+
+                detailCards.forEach(function (card) {
+                    card.addEventListener('click', function (event) {
+                        if (event.target.closest('[data-detail-modal]') || event.target.closest('[data-detail-link]')) {
+                            return;
+                        }
+
+                        const block = normalizeDetailBlock(card.getAttribute('data-detail-block'));
+                        const segment = normalizeDetailSegment(block, card.getAttribute('data-detail-segment'));
+                        const isSameFilter = currentDetailBlock === block && currentDetailSegment === segment;
+                        applyDetailFilter(isSameFilter ? '' : block, isSameFilter ? '' : segment, true);
+                    });
+                });
+
+                Array.from(document.querySelectorAll('[data-detail-modal]')).forEach(function (button) {
+                    button.addEventListener('click', function (event) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        const target = String(button.getAttribute('data-detail-modal') || '');
+                        const parts = target.split(':');
+                        const block = normalizeDetailBlock(parts[0] || '');
+                        const segment = normalizeDetailSegment(block, parts[1] || '');
+                        renderDetailModal(block, segment);
+                        if (detailSegmentModal) {
+                            detailSegmentModal.show();
+                        }
+                    });
+                });
+
+                Object.keys(detailClearButtons).forEach(function (block) {
+                    const button = detailClearButtons[block];
+                    if (!button) {
+                        return;
+                    }
+
+                    button.addEventListener('click', function (event) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        applyDetailFilter('', '', true);
+                    });
+                });
+
+                if (detailSegmentModalDetail) {
+                    detailSegmentModalDetail.addEventListener('click', function () {
+                        applyDetailFilter(modalDetailBlock, modalDetailSegment, true);
+                        if (detailSegmentModal) {
+                            detailSegmentModal.hide();
+                        }
+                        const detailTable = document.getElementById('tablaAtencionesRango');
+                        if (detailTable && typeof detailTable.scrollIntoView === 'function') {
+                            detailTable.scrollIntoView({behavior: 'smooth', block: 'start'});
+                        }
+                    });
+                }
+
+                if (detailSegmentModalExport) {
+                    detailSegmentModalExport.addEventListener('click', function () {
+                        exportDetailRowsToCsv(modalDetailRows, modalDetailBlock || 'detalle', modalDetailSegment || 'todos');
+                    });
+                }
+
+                applyDetailFilter(currentDetailBlock, currentDetailSegment, false);
+                initBootstrapTooltips();
 
             };
 
