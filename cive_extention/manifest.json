@@ -1,12 +1,14 @@
 {
   "manifest_version": 3,
   "name": "Asistente CIVE",
-  "version": "7.5.2",
+  "version": "7.7",
   "description": "Descripción de mi extensión",
   "permissions": ["activeTab", "scripting", "storage", "alarms"],
   "host_permissions": [
     "http://asistentecive.consulmed.me/*",
     "https://asistentecive.consulmed.me/*",
+    "http://cive.consulmed.me/*",
+    "https://cive.consulmed.me/*",
     "http://cive.ddns.net/*",
     "https://cive.ddns.net/*",
     "http://cive.ddns.net:8085/*",

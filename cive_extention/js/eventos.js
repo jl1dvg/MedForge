@@ -87,6 +87,13 @@ window.inicializarEventos = function () {
             }
         },
         {
+            id: "btnBackOptometria", evento: () => {
+                console.log("Botón Back Optometría clickeado");
+                registrarAccion('back_optometria');
+                mostrarSeccion("inicio");
+            }
+        },
+        {
             id: "btnBackProtocolos", evento: () => {
                 console.log("Botón Back Protocolos clickeado");
                 mostrarSeccion("inicio");
@@ -197,6 +204,16 @@ window.inicializarEventos = function () {
                 const hc = inputHcCirugia.value || '';
                 registrarAccion('consultar_cirugia_enter');
                 if (window.consultarCirugias) window.consultarCirugias(hc);
+            }
+        });
+    }
+
+    const btnToggleOptometriaFloat = document.getElementById("btnToggleOptometriaFloat");
+    if (btnToggleOptometriaFloat) {
+        btnToggleOptometriaFloat.addEventListener("click", () => {
+            registrarAccion('toggle_optometria_float');
+            if (typeof window.toggleOptometriaFloatingPanel === "function") {
+                window.toggleOptometriaFloatingPanel();
             }
         });
     }

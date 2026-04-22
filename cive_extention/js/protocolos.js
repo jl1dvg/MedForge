@@ -169,6 +169,55 @@ function notifySwal({icon = 'info', title = '', text = '', timer = 2000}) {
     }
 }
 
+async function solicitarCredencialesAuditoriaProtocolo() {
+    if (typeof Swal !== 'undefined' && typeof Swal.fire === 'function') {
+        const result = await Swal.fire({
+            title: 'Huella de auditoría',
+            html: `
+                <div style="text-align:left">
+                    <p style="margin-bottom:12px;">Ingresa tu usuario y contraseña de MedForge para registrar quién guardó este protocolo.</p>
+                    <input id="cive-audit-username" class="swal2-input" placeholder="Usuario" autocomplete="username">
+                    <input id="cive-audit-password" type="password" class="swal2-input" placeholder="Contraseña" autocomplete="current-password">
+                </div>
+            `,
+            icon: 'info',
+            focusConfirm: false,
+            showCancelButton: true,
+            confirmButtonText: 'Guardar protocolo',
+            cancelButtonText: 'Cancelar',
+            preConfirm: () => {
+                const username = document.getElementById('cive-audit-username')?.value?.trim() || '';
+                const password = document.getElementById('cive-audit-password')?.value || '';
+
+                if (!username || !password) {
+                    Swal.showValidationMessage('Debes ingresar usuario y contraseña.');
+                    return false;
+                }
+
+                return {username, password};
+            }
+        });
+
+        if (!result.isConfirmed || !result.value) {
+            return null;
+        }
+
+        return result.value;
+    }
+
+    const username = (window.prompt('Usuario de MedForge para auditoría:') || '').trim();
+    if (!username) {
+        return null;
+    }
+
+    const password = window.prompt('Contraseña de MedForge para auditoría:') || '';
+    if (!password) {
+        return null;
+    }
+
+    return {username, password};
+}
+
 // Función para extraer datos del div y enviar al servidor
 
 async function extraerDatosYEnviar() {
@@ -543,6 +592,24 @@ async function extraerDatosYEnviar() {
     // Enviar los datos al backend
     console.log('Datos a enviar:', data);
     try {
+        if (isProtocoloQuirurgico) {
+            const credencialesAuditoria = await solicitarCredencialesAuditoriaProtocolo();
+
+            if (!credencialesAuditoria) {
+                notifySwal({
+                    icon: 'info',
+                    title: 'Guardado cancelado',
+                    text: 'No se registró la huella de auditoría del protocolo.',
+                    timer: 2500
+                });
+                return;
+            }
+
+            data.audit_source = 'cive_extension_protocolos';
+            data.audit_username = credencialesAuditoria.username;
+            data.audit_password = credencialesAuditoria.password;
+        }
+
         const resultado = isProtocoloQuirurgico
             ? await window.CiveApiClient.post('/protocolos/guardar.php', {body: data})
             : await postConsultaConFallback(data);

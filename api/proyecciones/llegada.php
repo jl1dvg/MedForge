@@ -33,7 +33,7 @@ if ($formId) {
     $procedimiento = $datos['procedimiento'] ?? 'Procedimiento no definido';
     $doctor = $datos['doctor'] ?? '';
     $frase = "$nombre ha llegado para $procedimiento con $doctor, ";
-    if ($resultado['success']) {
+    if (($resultado['success'] ?? false) && ($resultado['changed'] ?? false)) {
         $token = $_ENV['WHATSAPP_API_TOKEN'] ?? getenv('WHATSAPP_API_TOKEN') ?: '';
         $phone_number_id = $_ENV['WHATSAPP_PHONE_NUMBER_ID'] ?? getenv('WHATSAPP_PHONE_NUMBER_ID') ?: '';
         $recipientList = $_ENV['WHATSAPP_RECIPIENT_PHONE'] ?? getenv('WHATSAPP_RECIPIENT_PHONE') ?: '';
@@ -86,6 +86,8 @@ if ($formId) {
         } else {
             error_log('Notificación de llegada omitida: faltan credenciales o destinatarios de WhatsApp.');
         }
+    } elseif (($resultado['success'] ?? false) && !($resultado['changed'] ?? false)) {
+        error_log(sprintf('Notificación de llegada omitida para form_id %s: estado LLEGADO ya estaba registrado.', (string) $formId));
     }
     echo json_encode($resultado);
 } else {

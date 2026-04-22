@@ -87,6 +87,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action'])) {
         ]);
         exit;
     }
+
+    if ($accion === 'cola') {
+        $fecha = $_GET['fecha'] ?? date('Y-m-d');
+        $cola = method_exists($controller, 'obtenerColaPriorizadaOptometria')
+            ? $controller->obtenerColaPriorizadaOptometria($fecha)
+            : ['fecha' => $fecha, 'resumen' => ['total' => 0], 'cola' => []];
+
+        echo json_encode([
+            "success" => true,
+            "fecha" => $fecha,
+            "resumen" => $cola['resumen'] ?? ['total' => 0],
+            "cola" => $cola['cola'] ?? [],
+        ]);
+        exit;
+    }
 }
 
 // ✅ 3) POST: aceptar JSON y form-encoded

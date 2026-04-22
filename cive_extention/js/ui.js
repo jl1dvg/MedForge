@@ -1,5 +1,6 @@
 const NAV_SECTIONS = [
     {id: 'inicio', icon: 'fas fa-compass', label: 'Inicio'},
+    {id: 'optometria', icon: 'fas fa-eye', label: 'Optometría'},
     {id: 'protocolos', icon: 'fas fa-file-medical', label: 'Protocolos'},
     {id: 'procedimientos', icon: 'fas fa-briefcase-medical', label: 'Procedimientos'},
     {id: 'recetas', icon: 'fas fa-prescription-bottle-alt', label: 'Recetas'},
@@ -87,6 +88,25 @@ function buildPopupTemplate(isLocal) {
                         <div class="shortcut-grid" role="list">
                             ${shortcutCards.map(createShortcutCard).join('')}
                         </div>
+                    `,
+                })}
+                ${createSectionShell({
+                    id: 'optometria',
+                    title: 'Cola de optometría',
+                    tools: `
+                        <button id="btnToggleOptometriaFloat" class="btn-secondary" type="button">
+                            <i class="fas fa-window-restore" aria-hidden="true"></i>
+                            <span>Panel flotante</span>
+                        </button>
+                    `,
+                    body: '<div id="contenedorOptometriaCola" class="card-grid" role="list"></div>',
+                    footer: `
+                        <footer class="section-footer">
+                            <button id="btnBackOptometria" class="btn-secondary" type="button">
+                                <i class="fas fa-arrow-alt-circle-left" aria-hidden="true"></i>
+                                <span>Volver</span>
+                            </button>
+                        </footer>
                     `,
                 })}
                 ${createSectionShell({

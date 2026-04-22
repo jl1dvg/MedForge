@@ -375,11 +375,30 @@ function ejecutarProtocoloEnPagina(item) {
         });
     }
 
+    function contarFilasValidas(items, field = 'nombre') {
+        if (!Array.isArray(items)) {
+            return 0;
+        }
+
+        return items.filter((item) => {
+            if (!item || typeof item !== 'object') {
+                return false;
+            }
+
+            const value = String(item[field] ?? '').trim();
+            return value !== '';
+        }).length;
+    }
+
     const ejecutarAcciones = (item) => {
         if (!item || !item.membrete || !item.dieresis) {
             console.error('El objeto item o alguna de sus propiedades necesarias están indefinidos:', item);
             return Promise.reject('Item inválido');
         }
+
+        const staffNecesario = contarFilasValidas(item.tecnicos, 'funcion');
+        const codigosNecesarios = contarFilasValidas(item.codigos, 'nombre');
+
         // Llenar campos de texto
         return Promise.all([
             llenarCampoTexto(SELECTORS.membrete, `${item.membrete} en ${ojoATratar.descripcion}`),
@@ -399,20 +418,28 @@ function ejecutarProtocoloEnPagina(item) {
             llenarCampoTexto('#consultasubsecuente-heridas', 'No'),
             llenarCampoTexto(SELECTORS.complicacionesoperatorio, item.complicacionesoperatorio),
             llenarCampoTexto(SELECTORS.perdidasanguineat, item.perdidasanguineat),
-            hacerClickEnBoton('#trabajadorprotocolo-input-subsecuente .multiple-input-list__item .js-input-plus', item.staffCount),
             (() => {
-                const yaCreados = Array.from(
-                    document.querySelectorAll('#procedimientoprotocolo-input-subsecuente .multiple-input-list__item')
-                ).filter(row => {
-                    const select = row.querySelector('select[id^="consultasubsecuente-procedimientoprotocolo-"][id$="-procinterno"]');
-                    return select && select.value && select.value !== '';
-                }).length;
+                const slotsExistentes = document.querySelectorAll(
+                    '#trabajadorprotocolo-input-subsecuente .multiple-input-list__item'
+                ).length;
 
-                const necesarios = Array.isArray(item.codigos) ? item.codigos.length : 0;
-                const faltantes = Math.max(necesarios - yaCreados, 0);
+                const faltantes = Math.max(staffNecesario - slotsExistentes, 0);
 
-                // 🪵 Log de depuración
-                console.log(`🧮 Procedimientos: necesarios=${necesarios}, yaCreados=${yaCreados}, faltantes=${faltantes}`);
+                console.log(`🧮 Staff: necesarios=${staffNecesario}, slotsExistentes=${slotsExistentes}, faltantes=${faltantes}`);
+
+                return hacerClickEnBoton(
+                    '#trabajadorprotocolo-input-subsecuente .multiple-input-list__item .js-input-plus',
+                    faltantes
+                );
+            })(),
+            (() => {
+                const slotsExistentes = document.querySelectorAll(
+                    '#procedimientoprotocolo-input-subsecuente .multiple-input-list__item'
+                ).length;
+
+                const faltantes = Math.max(codigosNecesarios - slotsExistentes, 0);
+
+                console.log(`🧮 Procedimientos: necesarios=${codigosNecesarios}, slotsExistentes=${slotsExistentes}, faltantes=${faltantes}`);
 
                 return hacerClickEnBoton(
                     '#procedimientoprotocolo-input-subsecuente .multiple-input-list__item .js-input-plus',

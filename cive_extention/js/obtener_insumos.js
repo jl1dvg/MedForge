@@ -108,7 +108,7 @@ function generarTiempoAnestesia(afiliacion, codigoCirugia, duracion = "01:00") {
 window.erroresInsumosNoIngresados = [];
 window.detectarInsumosPaciente = () => {
     // Validación de URL permitida
-    const allowedHosts = new Set(['cive.ddns.net:8085', '192.168.1.13:8085']);
+    const allowedHosts = new Set(['sigcenter.ddns.net:18093', '192.168.1.13:8085']);
     const matchesHost = allowedHosts.has(window.location.host);
     const matchesPath = /^\/documentacion\/doc-/i.test(window.location.pathname);
     if (!matchesHost || !matchesPath) {

@@ -604,6 +604,369 @@ class GuardarProyeccionController
         return true;
     }
 
+    private function esProcedimientoOptometria(?string $procedimiento): bool
+    {
+        if ($procedimiento === null) {
+            return false;
+        }
+
+        return str_contains($this->normalizarTexto($procedimiento), 'OPTOMETR');
+    }
+
+    private function normalizarTexto(?string $texto): string
+    {
+        $texto = trim((string) $texto);
+        if ($texto === '') {
+            return '';
+        }
+
+        $texto = mb_strtoupper($texto, 'UTF-8');
+        $reemplazos = [
+            'Á' => 'A',
+            'É' => 'E',
+            'Í' => 'I',
+            'Ó' => 'O',
+            'Ú' => 'U',
+            'Ü' => 'U',
+            'Ñ' => 'N',
+        ];
+
+        return strtr($texto, $reemplazos);
+    }
+
+    private function clasificarAfiliacionOptometria(?string $afiliacion, ?string $categoriaMapa = null): array
+    {
+        $normalizada = $this->normalizarTexto($afiliacion);
+        if ($normalizada === '') {
+            return [
+                'categoria' => 'sin-definir',
+                'peso' => 25,
+                'label' => 'Afiliación no definida',
+            ];
+        }
+
+        $publicas = [
+            'CONTRIBUYENTE VOLUNTARIO',
+            'CONYUGE',
+            'CONYUGE PENSIONISTA',
+            'ISSFA',
+            'ISSPOL',
+            'MSP',
+            'SEGURO CAMPESINO',
+            'SEGURO CAMPESINO JUBILADO',
+            'SEGURO GENERAL',
+            'SEGURO GENERAL JUBILADO',
+            'SEGURO GENERAL POR MONTEPIO',
+            'SEGURO GENERAL TIEMPO PARCIAL',
+            'IESS',
+        ];
+
+        $categoriaMapa = $categoriaMapa !== null ? strtolower(trim($categoriaMapa)) : null;
+
+        if ($categoriaMapa === 'particular') {
+            return [
+                'categoria' => 'particular',
+                'peso' => -40,
+                'label' => 'Particular',
+            ];
+        }
+
+        if ($categoriaMapa === 'privado') {
+            return [
+                'categoria' => 'privado',
+                'peso' => -25,
+                'label' => 'Seguro privado / convenio',
+            ];
+        }
+
+        if ($categoriaMapa === 'fundacional') {
+            return [
+                'categoria' => 'fundacional',
+                'peso' => -10,
+                'label' => 'Fundación / ayuda social',
+            ];
+        }
+
+        if ($categoriaMapa === 'publico') {
+            return [
+                'categoria' => 'publico',
+                'peso' => 20,
+                'label' => 'Cobertura pública',
+            ];
+        }
+
+        if (str_contains($normalizada, 'PARTICULAR')) {
+            return [
+                'categoria' => 'particular',
+                'peso' => -40,
+                'label' => 'Particular',
+            ];
+        }
+
+        if (
+            str_contains($normalizada, 'PRIVAD')
+            || str_contains($normalizada, 'SEGURO PRIVADO')
+        ) {
+            return [
+                'categoria' => 'privado',
+                'peso' => -25,
+                'label' => 'Seguro privado / convenio',
+            ];
+        }
+
+        foreach ($publicas as $publica) {
+            if (str_contains($normalizada, $publica)) {
+                return [
+                    'categoria' => 'publico',
+                    'peso' => 20,
+                    'label' => 'Cobertura pública',
+                ];
+            }
+        }
+
+        return [
+            'categoria' => 'convenio',
+            'peso' => -15,
+            'label' => 'Convenio / seguro no público',
+        ];
+    }
+
+    private function obtenerReglaPuntualidadOptometria(?string $citaProgramada, ?string $horaLlegadaReal): array
+    {
+        if (!$horaLlegadaReal) {
+            return [
+                'categoria' => 'sin-llegada',
+                'peso' => 70,
+                'rank' => 3,
+                'delta_minutos' => null,
+                'label' => 'Aún no registra llegada',
+            ];
+        }
+
+        $delta = $this->minutosEntreFechas($citaProgramada, $horaLlegadaReal);
+        if ($delta === null) {
+            return [
+                'categoria' => 'sin-referencia',
+                'peso' => 15,
+                'rank' => 1,
+                'delta_minutos' => null,
+                'label' => 'Llegada registrada',
+            ];
+        }
+
+        if ($delta >= -5 && $delta <= 10) {
+            return [
+                'categoria' => 'puntual',
+                'peso' => -20,
+                'rank' => 0,
+                'delta_minutos' => $delta,
+                'label' => 'Llegó a tiempo',
+            ];
+        }
+
+        if ($delta < -5) {
+            return [
+                'categoria' => 'temprano',
+                'peso' => 8,
+                'rank' => 2,
+                'delta_minutos' => $delta,
+                'label' => 'Llegó muy temprano',
+            ];
+        }
+
+        return [
+            'categoria' => 'tarde',
+            'peso' => 28,
+            'rank' => 1,
+            'delta_minutos' => $delta,
+            'label' => 'Llegó tarde',
+        ];
+    }
+
+    public function obtenerColaPriorizadaOptometria(?string $fecha = null): array
+    {
+        $fecha = $fecha ?: date('Y-m-d');
+        $hasAfiliacionCategoriaMap = $this->schemaInspector->tableHasColumn('afiliacion_categoria_map', 'categoria');
+
+        $sql = "
+            SELECT
+                pp.form_id,
+                pp.hc_number,
+                pp.procedimiento_proyectado,
+                pp.doctor,
+                pp.afiliacion,
+                pp.estado_agenda,
+                pp.fecha,
+                pp.hora,
+                pd.fname,
+                pd.mname,
+                pd.lname,
+                pd.lname2,
+                hist.hora_llegada_real,
+                hist.hora_inicio_optometria,
+                hist.hora_fin_optometria,"
+                . ($hasAfiliacionCategoriaMap ? "
+                acm.categoria AS afiliacion_categoria_map" : "
+                NULL AS afiliacion_categoria_map") . "
+            FROM procedimiento_proyectado pp
+            INNER JOIN patient_data pd ON pd.hc_number = pp.hc_number
+            LEFT JOIN (
+                SELECT
+                    form_id,
+                    MIN(CASE WHEN estado = 'LLEGADO' THEN fecha_hora_cambio END) AS hora_llegada_real,
+                    MIN(CASE WHEN estado = 'OPTOMETRIA' THEN fecha_hora_cambio END) AS hora_inicio_optometria,
+                    MIN(CASE WHEN estado IN ('OPTOMETRIA_TERMINADO', 'DILATAR') THEN fecha_hora_cambio END) AS hora_fin_optometria
+                FROM procedimiento_proyectado_estado
+                GROUP BY form_id
+            ) hist ON hist.form_id = pp.form_id"
+            . ($hasAfiliacionCategoriaMap ? "
+            LEFT JOIN afiliacion_categoria_map acm
+                ON TRIM(acm.afiliacion_raw) = TRIM(pp.afiliacion)" : "") . "
+            WHERE pp.fecha = :fecha
+            ORDER BY pp.hora ASC, pp.form_id ASC
+        ";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([':fecha' => $fecha]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $cola = [];
+        $now = date('Y-m-d H:i:s');
+
+        foreach ($rows as $row) {
+            if (!$this->esProcedimientoOptometria($row['procedimiento_proyectado'] ?? null)) {
+                continue;
+            }
+
+            $estadoActual = $this->normalizarEstado($row['estado_agenda'] ?? null) ?? 'AGENDADO';
+            if (in_array($estadoActual, ['OPTOMETRIA_TERMINADO', 'DILATAR', 'REALIZADO', 'CANCELADO'], true)) {
+                continue;
+            }
+
+            $nombre = trim(implode(' ', array_filter([
+                $row['fname'] ?? '',
+                $row['mname'] ?? '',
+                $row['lname'] ?? '',
+                $row['lname2'] ?? '',
+            ], static fn($valor) => trim((string) $valor) !== '')));
+
+            $citaProgramada = (!empty($row['fecha']) && !empty($row['hora']))
+                ? trim($row['fecha'] . ' ' . $row['hora'])
+                : null;
+
+            $afiliacionMeta = $this->clasificarAfiliacionOptometria(
+                $row['afiliacion'] ?? null,
+                $row['afiliacion_categoria_map'] ?? null
+            );
+            $puntualidadMeta = $this->obtenerReglaPuntualidadOptometria($citaProgramada, $row['hora_llegada_real'] ?? null);
+
+            $esperaDesdeLlegada = $this->minutosEntreFechas($row['hora_llegada_real'] ?? null, $now);
+            $esperaDesdeCita = $this->minutosEntreFechas($citaProgramada, $now);
+            $inicioPrioridad = $row['hora_llegada_real'] ?? null;
+            if ($citaProgramada && $inicioPrioridad && strcmp($inicioPrioridad, $citaProgramada) < 0) {
+                $inicioPrioridad = $citaProgramada;
+            } elseif (!$inicioPrioridad) {
+                $inicioPrioridad = $citaProgramada;
+            }
+            $esperaPriorizable = $this->minutosEntreFechas($inicioPrioridad, $now);
+
+            $estadoPeso = match ($estadoActual) {
+                'OPTOMETRIA' => -200,
+                'LLEGADO' => 0,
+                'AGENDADO' => 80,
+                default => 40,
+            };
+
+            $score = $estadoPeso + $afiliacionMeta['peso'] + $puntualidadMeta['peso'];
+            if ($esperaPriorizable !== null) {
+                $score -= min((int) floor(max($esperaPriorizable, 0) / 5), 18);
+            } elseif ($esperaDesdeCita !== null) {
+                $score -= min((int) floor(max($esperaDesdeCita, 0) / 15), 6);
+            }
+
+            $motivos = [];
+            $motivos[] = $afiliacionMeta['label'];
+            $motivos[] = $puntualidadMeta['label'];
+            if ($esperaPriorizable !== null) {
+                $motivos[] = sprintf('Espera %d min priorizable', (int) max($esperaPriorizable, 0));
+            }
+
+            $cola[] = [
+                'form_id' => (string) $row['form_id'],
+                'hc_number' => (string) ($row['hc_number'] ?? ''),
+                'nombre' => $nombre,
+                'doctor' => trim((string) ($row['doctor'] ?? '')),
+                'afiliacion' => trim((string) ($row['afiliacion'] ?? '')),
+                'procedimiento' => trim((string) ($row['procedimiento_proyectado'] ?? '')),
+                'estado_actual' => $estadoActual,
+                'estado_visual' => $estadoActual === 'OPTOMETRIA' ? 'en_atencion' : ($estadoActual === 'LLEGADO' ? 'en_cola' : 'sin_llegada'),
+                'fecha' => $row['fecha'],
+                'hora_cita' => $row['hora'],
+                'cita_programada' => $citaProgramada,
+                'hora_llegada_real' => $row['hora_llegada_real'],
+                'hora_inicio_optometria' => $row['hora_inicio_optometria'],
+                'score_prioridad' => $score,
+                'espera_desde_llegada_min' => $esperaDesdeLlegada !== null ? (int) floor($esperaDesdeLlegada) : null,
+                'espera_desde_cita_min' => $esperaDesdeCita !== null ? (int) floor($esperaDesdeCita) : null,
+                'espera_priorizable_min' => $esperaPriorizable !== null ? (int) floor(max($esperaPriorizable, 0)) : null,
+                'puntualidad' => $puntualidadMeta['categoria'],
+                'ventana_prioridad_rank' => (int) ($puntualidadMeta['rank'] ?? 3),
+                'puntualidad_delta_min' => $puntualidadMeta['delta_minutos'] !== null ? (int) round($puntualidadMeta['delta_minutos']) : null,
+                'afiliacion_categoria' => $afiliacionMeta['categoria'],
+                'motivos_prioridad' => $motivos,
+            ];
+        }
+
+        usort($cola, static function (array $a, array $b): int {
+            $ventanaDiff = ($a['ventana_prioridad_rank'] ?? 99) <=> ($b['ventana_prioridad_rank'] ?? 99);
+            if ($ventanaDiff !== 0) {
+                return $ventanaDiff;
+            }
+
+            $scoreDiff = ($a['score_prioridad'] ?? 0) <=> ($b['score_prioridad'] ?? 0);
+            if ($scoreDiff !== 0) {
+                return $scoreDiff;
+            }
+
+            $citaDiff = strcmp((string) ($a['cita_programada'] ?? ''), (string) ($b['cita_programada'] ?? ''));
+            if ($citaDiff !== 0) {
+                return $citaDiff;
+            }
+
+            return strcmp((string) ($a['form_id'] ?? ''), (string) ($b['form_id'] ?? ''));
+        });
+
+        $turnoVisual = 0;
+        foreach ($cola as &$item) {
+            if (($item['estado_visual'] ?? '') === 'en_atencion') {
+                $item['turno_visual'] = 'ATENDIENDO';
+                $item['nivel_visual'] = 'atencion';
+                continue;
+            }
+
+            $turnoVisual++;
+            $item['turno_visual'] = $turnoVisual;
+            $item['nivel_visual'] = $turnoVisual <= 3 ? 'alta' : ($turnoVisual <= 6 ? 'media' : 'baja');
+        }
+        unset($item);
+
+        $enAtencion = array_values(array_filter($cola, static fn(array $item): bool => ($item['estado_visual'] ?? '') === 'en_atencion'));
+        $enCola = array_values(array_filter($cola, static fn(array $item): bool => ($item['estado_visual'] ?? '') === 'en_cola'));
+        $sinLlegada = array_values(array_filter($cola, static fn(array $item): bool => ($item['estado_visual'] ?? '') === 'sin_llegada'));
+
+        return [
+            'fecha' => $fecha,
+            'resumen' => [
+                'total' => count($cola),
+                'en_atencion' => count($enAtencion),
+                'en_cola' => count($enCola),
+                'sin_llegada' => count($sinLlegada),
+                'siguiente_form_id' => $enCola[0]['form_id'] ?? null,
+            ],
+            'cola' => $cola,
+        ];
+    }
+
     public function obtenerFlujoPacientesPorVisita($fecha = null): array
     {
         // 1. Saca todas las visitas del día (con info de paciente)
@@ -869,7 +1232,14 @@ class GuardarProyeccionController
 
             if ($estadoActual === $nuevoEstado) {
                 error_log("🟠 El estado solicitado ya estaba registrado. No se realizan cambios adicionales.");
-                return ['success' => true, 'message' => 'Estado ya estaba registrado'];
+                return [
+                    'success' => true,
+                    'message' => 'Estado ya estaba registrado',
+                    'changed' => false,
+                    'previous_state' => $estadoActual,
+                    'current_state' => $estadoActual,
+                    'form_id' => $resolvedFormId,
+                ];
             }
 
             $sql = "UPDATE procedimiento_proyectado SET estado_agenda = :estado_set WHERE form_id = :form_id AND estado_agenda <> :estado_compare";
@@ -882,11 +1252,25 @@ class GuardarProyeccionController
             error_log("🔵 UPDATE ejecutado. Filas afectadas: " . $stmt->rowCount());
             if ($stmt->rowCount() > 0) {
                 $this->registrarEstadoHistorialSiCambio((string) $resolvedFormId, $nuevoEstado);
-                return ['success' => true, 'message' => 'Estado actualizado'];
+                return [
+                    'success' => true,
+                    'message' => 'Estado actualizado',
+                    'changed' => true,
+                    'previous_state' => $estadoActual ?: null,
+                    'current_state' => $nuevoEstado,
+                    'form_id' => $resolvedFormId,
+                ];
             }
 
             error_log("🟤 No se registraron cambios de estado para form_id $formId");
-            return ['success' => false, 'message' => 'No se pudo actualizar el estado.'];
+            return [
+                'success' => false,
+                'message' => 'No se pudo actualizar el estado.',
+                'changed' => false,
+                'previous_state' => $estadoActual ?: null,
+                'current_state' => $estadoActual ?: null,
+                'form_id' => $resolvedFormId,
+            ];
         } catch (\Throwable $e) {
             error_log('🔴 actualizarEstado error: ' . $e->getMessage());
             return [
@@ -894,6 +1278,8 @@ class GuardarProyeccionController
                 'message' => 'Error interno al actualizar estado: '
                     . $e->getMessage()
                     . ' (' . basename($e->getFile()) . ':' . $e->getLine() . ')',
+                'changed' => false,
+                'form_id' => (string) $formId,
             ];
         }
     }
