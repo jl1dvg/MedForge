@@ -16,7 +16,7 @@ class LoginController
     public function show(Request $request): View|RedirectResponse
     {
         if (Auth::check()) {
-            return redirect()->intended('/v2/solicitudes');
+            return redirect()->intended('/v2/dashboard');
         }
 
         return view('auth.login', [
@@ -27,7 +27,7 @@ class LoginController
     public function login(Request $request): RedirectResponse
     {
         if (Auth::check()) {
-            return redirect()->intended('/v2/solicitudes');
+            return redirect()->intended('/v2/dashboard');
         }
 
         $validated = $request->validate([
@@ -79,7 +79,7 @@ class LoginController
 
         $request->session()->flash('post_login_feedback_prompt', true);
 
-        return redirect()->intended('/v2/solicitudes');
+        return redirect()->intended('/v2/dashboard');
     }
 
     private function shouldWriteLegacyCompatibilitySession(): bool
