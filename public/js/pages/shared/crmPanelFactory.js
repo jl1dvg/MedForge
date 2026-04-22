@@ -98,6 +98,7 @@ let formsBound = false;
 let currentData = null;
 let currentLead = null;
 let currentDetalle = null;
+let checklistTasksBySlug = {};
 
 function parsePositiveInt(value) {
     const parsed = Number.parseInt(String(value ?? ''), 10);
@@ -452,8 +453,25 @@ function collectCamposPersonalizados() {
         return [];
     }
 
-    const rows = Array.from(container.querySelectorAll('.crm-campo'));
-    return rows
+    const readonlyRows = Array.from(container.querySelectorAll('.crm-campo-readonly'));
+    const editableRows = Array.from(container.querySelectorAll('.crm-campo'));
+
+    const persisted = readonlyRows
+        .map(row => {
+            const key = String(row.dataset.key || '').trim();
+            if (key === '') {
+                return null;
+            }
+
+            return {
+                key,
+                value: String(row.dataset.value || '').trim(),
+                type: String(row.dataset.type || 'texto').trim() || 'texto',
+            };
+        })
+        .filter(Boolean);
+
+    const draft = editableRows
         .map(row => {
             const key = row.querySelector('.crm-campo-key')?.value ?? '';
             const value = row.querySelector('.crm-campo-value')?.value ?? '';
@@ -471,6 +489,8 @@ function collectCamposPersonalizados() {
             };
         })
         .filter(Boolean);
+
+    return [...persisted, ...draft];
 }
 
 function collectBloqueoPayload(form) {
@@ -862,11 +882,54 @@ function renderCrmData(data) {
 
     updateLeadControls(currentDetalle, currentLead);
     renderResumen(data.detalle, currentLead);
+    loadChecklistState(currentEntityId);
     renderNotas(data.notas ?? []);
+    renderCobertura(data.cobertura_mails ?? []);
     renderAdjuntos(data.adjuntos ?? []);
     renderTareas(data.tareas ?? []);
+    renderChecklistFallbackFromTasks(data.tareas ?? []);
     renderCampos(data.campos_personalizados ?? []);
     renderBloqueos(data.bloqueos_agenda ?? []);
+}
+
+async function loadChecklistState(entityId) {
+    const list = document.getElementById('crmChecklistList');
+    const resumen = document.getElementById('crmChecklistResumen');
+    if (!list || !entityId) {
+        return;
+    }
+
+    list.innerHTML = '<div class="crm-list-empty">Cargando checklist...</div>';
+    if (resumen) {
+        resumen.textContent = '';
+    }
+
+    try {
+        const basePath = resolveBasePath();
+        const response = await fetch(resolveReadPath(`${basePath}/${entityId}/crm/checklist-state`), {
+            credentials: 'same-origin',
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data?.success === false) {
+            throw new Error(data?.error || 'No se pudo cargar el checklist');
+        }
+
+        const tasks = Array.isArray(data.tasks) ? data.tasks : [];
+        checklistTasksBySlug = tasks.reduce((carry, task) => {
+            const slug = String(task?.checklist_slug || '').trim();
+            if (slug !== '') {
+                carry[slug] = task;
+            }
+
+            return carry;
+        }, {});
+
+        renderChecklist(data.checklist || [], data.checklist_progress || {}, tasks);
+        renderTareas(tasks);
+    } catch (error) {
+        checklistTasksBySlug = {};
+        list.innerHTML = `<div class="crm-list-empty">${escapeHtml(error?.message || 'No se pudo cargar el checklist')}</div>`;
+    }
 }
 
 function renderResumen(detalle, lead) {
@@ -1026,6 +1089,58 @@ function renderNotas(notas) {
     });
 }
 
+function renderCobertura(correos) {
+    const list = document.getElementById('crmCoberturaList');
+    const resumen = document.getElementById('crmCoberturaResumen');
+    if (!list) {
+        return;
+    }
+
+    list.innerHTML = '';
+
+    if (!Array.isArray(correos) || correos.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'crm-list-empty';
+        empty.textContent = 'Sin correos de cobertura registrados';
+        list.appendChild(empty);
+        if (resumen) {
+            resumen.textContent = '0 correo(s)';
+        }
+        return;
+    }
+
+    correos.forEach((correo) => {
+        const item = document.createElement('div');
+        item.className = 'list-group-item';
+
+        const title = document.createElement('h6');
+        title.className = 'mb-1';
+        title.textContent = correo.subject || correo.asunto || 'Correo de cobertura';
+        item.appendChild(title);
+
+        const meta = document.createElement('p');
+        meta.className = 'mb-1 text-muted small';
+        const destinatario = correo.to_email || correo.destinatario || 'Sin destinatario';
+        const fecha = correo.created_at ? formatDateTime(correo.created_at) : 'Fecha no disponible';
+        meta.textContent = `${destinatario} • ${fecha}`;
+        item.appendChild(meta);
+
+        const body = String(correo.body_text || correo.body || correo.descripcion || '').trim();
+        if (body !== '') {
+            const preview = document.createElement('div');
+            preview.className = 'small text-muted';
+            preview.textContent = body.length > 180 ? `${body.slice(0, 180)}...` : body;
+            item.appendChild(preview);
+        }
+
+        list.appendChild(item);
+    });
+
+    if (resumen) {
+        resumen.textContent = `${correos.length} correo(s)`;
+    }
+}
+
 function renderAdjuntos(adjuntos) {
     const list = document.getElementById('crmAdjuntosList');
     if (!list) {
@@ -1093,9 +1208,32 @@ function renderTareas(tareas) {
     }
 
     const currentUserId = resolveCurrentUserId();
-    tareas.forEach(tarea => {
+    const sorted = [...tareas].sort((left, right) => {
+        const leftDone = String(left?.estado || '').trim().toLowerCase() === 'completada';
+        const rightDone = String(right?.estado || '').trim().toLowerCase() === 'completada';
+        if (leftDone !== rightDone) {
+            return leftDone ? 1 : -1;
+        }
+
+        const leftDue = String(left?.due_date || left?.due_at || '');
+        const rightDue = String(right?.due_date || right?.due_at || '');
+        if (leftDue && rightDue && leftDue !== rightDue) {
+            return leftDue.localeCompare(rightDue);
+        }
+        if (leftDue && !rightDue) {
+            return -1;
+        }
+        if (!leftDue && rightDue) {
+            return 1;
+        }
+
+        return String(right?.created_at || '').localeCompare(String(left?.created_at || ''));
+    });
+
+    sorted.forEach(tarea => {
         const item = document.createElement('div');
         item.className = 'list-group-item crm-task-item d-flex justify-content-between align-items-start gap-3';
+        item.classList.add(tarea.estado === 'completada' ? 'is-done' : 'is-open');
 
         const cuerpo = document.createElement('div');
         cuerpo.className = 'flex-grow-1';
@@ -1129,14 +1267,32 @@ function renderTareas(tareas) {
             cuerpo.appendChild(descripcion);
         }
 
-        const meta = document.createElement('p');
-        meta.className = 'mb-0 text-muted small';
         const asignado = tarea.assigned_name || 'Sin asignar';
         const asignadoTexto = assignedToCurrentUser ? `${asignado} (tú)` : asignado;
         const creador = tarea.created_name || 'Equipo';
         const due = tarea.due_date ? formatDate(tarea.due_date) : 'Sin fecha límite';
-        meta.textContent = `Responsable: ${asignadoTexto} • Creador: ${creador} • Límite: ${due}`;
-        cuerpo.appendChild(meta);
+
+        const chips = document.createElement('div');
+        chips.className = 'crm-task-meta-row';
+
+        const responsableChip = document.createElement('span');
+        responsableChip.className = 'crm-task-chip';
+        responsableChip.textContent = `Responsable: ${asignadoTexto}`;
+        chips.appendChild(responsableChip);
+
+        const creadorChip = document.createElement('span');
+        creadorChip.className = 'crm-task-chip';
+        creadorChip.textContent = `Creador: ${creador}`;
+        chips.appendChild(creadorChip);
+
+        const dueChip = document.createElement('span');
+        const hasDue = Boolean(tarea.due_date);
+        const isDone = tarea.estado === 'completada';
+        dueChip.className = `crm-task-chip${hasDue && !isDone ? ' is-alert' : isDone ? ' is-success' : ''}`;
+        dueChip.textContent = `Límite: ${due}`;
+        chips.appendChild(dueChip);
+
+        cuerpo.appendChild(chips);
 
         item.appendChild(cuerpo);
 
@@ -1167,6 +1323,141 @@ function renderTareas(tareas) {
         item.appendChild(acciones);
         list.appendChild(item);
     });
+}
+
+function renderChecklist(checklist, progress, tasks = []) {
+    const list = document.getElementById('crmChecklistList');
+    const resumen = document.getElementById('crmChecklistResumen');
+    const progressBar = document.getElementById('crmChecklistProgressBar');
+    const next = document.getElementById('crmChecklistNext');
+    if (!list) {
+        return;
+    }
+
+    list.innerHTML = '';
+
+    const items = Array.isArray(checklist) ? checklist : [];
+    const total = Number(progress?.total ?? items.length ?? 0);
+    const completed = Number(progress?.completed ?? 0);
+    const percent = total > 0 ? Math.max(0, Math.min(100, Math.round((completed / total) * 100))) : 0;
+
+    if (resumen) {
+        resumen.textContent = total > 0 ? `${completed}/${total} completadas` : 'Sin checklist';
+    }
+    if (progressBar) {
+        progressBar.style.width = `${percent}%`;
+    }
+    if (next) {
+        if (progress?.next_label) {
+            next.innerHTML = `<span class="badge text-bg-primary">Siguiente</span><strong>${escapeHtml(progress.next_label)}</strong>`;
+        } else if (total > 0 && completed === total) {
+            next.innerHTML = '<span class="badge text-bg-success">Completado</span><strong>Checklist finalizado</strong>';
+        } else {
+            next.innerHTML = '';
+        }
+    }
+
+    if (!items.length) {
+        const empty = document.createElement('div');
+        empty.className = 'crm-list-empty';
+        empty.textContent = 'Sin checklist disponible';
+        list.appendChild(empty);
+        return;
+    }
+
+    items.forEach((item) => {
+        const task = checklistTasksBySlug[item?.slug || ''];
+        const card = document.createElement('div');
+        card.className = `crm-checklist-item${item?.completed ? ' is-completed' : ''}`;
+        if (!item?.completed) {
+            card.classList.add('is-pending');
+        }
+        if (progress?.next_slug && item?.slug === progress.next_slug) {
+            card.classList.add('is-current');
+        }
+
+        const topline = document.createElement('div');
+        topline.className = 'crm-checklist-item-topline';
+        topline.innerHTML = `<span class="crm-checklist-dot"></span><span>${item?.completed ? 'Paso completado' : progress?.next_slug === item?.slug ? 'En curso' : 'Pendiente'}</span>`;
+        card.appendChild(topline);
+
+        const head = document.createElement('div');
+        head.className = 'crm-checklist-item-head';
+
+        const title = document.createElement('div');
+        title.className = 'crm-checklist-item-title';
+        title.textContent = item?.label || item?.slug || 'Paso';
+
+        const badge = document.createElement('span');
+        badge.className = item?.completed ? 'badge text-bg-success' : 'badge text-bg-light text-dark';
+        badge.textContent = item?.completed ? 'Completada' : 'Pendiente';
+
+        head.appendChild(title);
+        head.appendChild(badge);
+        card.appendChild(head);
+
+        const meta = document.createElement('div');
+        meta.className = 'crm-checklist-item-meta';
+        meta.textContent = item?.completado_at
+            ? `Completada el ${formatDateTime(item.completado_at)}`
+            : 'Aún no completada';
+        card.appendChild(meta);
+
+        if (task) {
+            const taskMeta = document.createElement('div');
+            taskMeta.className = 'crm-checklist-item-meta';
+            taskMeta.textContent = `Tarea CRM #${task.id} · ${task.estado || task.status || 'pendiente'}`;
+            card.appendChild(taskMeta);
+        }
+
+        const note = String(item?.nota || '').trim();
+        if (note) {
+            const noteNode = document.createElement('div');
+            noteNode.className = 'crm-checklist-item-note';
+            noteNode.textContent = note;
+            card.appendChild(noteNode);
+        }
+
+        list.appendChild(card);
+    });
+}
+
+function renderChecklistFallbackFromTasks(tasks) {
+    const list = document.getElementById('crmChecklistList');
+    const resumen = document.getElementById('crmChecklistResumen');
+    if (!list || list.children.length > 0 || !Array.isArray(tasks) || tasks.length === 0) {
+        return;
+    }
+
+    const items = tasks.map((task, index) => ({
+        slug: String(task?.checklist_slug || task?.title || task?.titulo || `task-${index + 1}`),
+        label: String(task?.title || task?.titulo || `Paso ${index + 1}`),
+        completed: String(task?.estado || task?.status || '').trim().toLowerCase() === 'completada',
+        completado_at: task?.completed_at || null,
+        nota: null,
+    }));
+
+    const completed = items.filter(item => item.completed).length;
+    renderChecklist(items, {
+        total: items.length,
+        completed,
+    }, tasks);
+
+    if (resumen) {
+        resumen.textContent = `${completed}/${items.length} completadas`;
+    }
+}
+
+function formatCampoTypeLabel(type) {
+    const normalized = String(type || 'texto').trim().toLowerCase();
+    const labels = {
+        texto: 'Texto',
+        numero: 'Número',
+        fecha: 'Fecha',
+        lista: 'Lista',
+    };
+
+    return labels[normalized] || 'Texto';
 }
 
 function renderBloqueos(bloqueos) {
@@ -1262,13 +1553,48 @@ function renderCampos(campos) {
         return;
     }
 
-    campos.forEach(campo => {
-        addCampoPersonalizado({
-            key: campo.key,
-            value: campo.value,
-            type: campo.type,
-        });
+    const items = Array.isArray(campos)
+        ? campos.filter(campo => String(campo?.key || '').trim() !== '')
+        : [];
+
+    if (!items.length) {
+        const texto = container.dataset.emptyText || 'Sin campos adicionales';
+        const empty = document.createElement('div');
+        empty.className = 'crm-list-empty';
+        empty.textContent = texto;
+        container.appendChild(empty);
+        return;
+    }
+
+    const list = document.createElement('div');
+    list.className = 'crm-campos-readonly';
+
+    items.forEach(campo => {
+        const row = document.createElement('div');
+        row.className = 'crm-campo-readonly';
+        row.dataset.key = String(campo.key || '').trim();
+        row.dataset.value = String(campo.value ?? '').trim();
+        row.dataset.type = String(campo.type || 'texto').trim() || 'texto';
+
+        const label = document.createElement('div');
+        label.className = 'crm-campo-readonly-label';
+        label.textContent = campo.key || 'Campo';
+
+        const value = document.createElement('div');
+        value.className = 'crm-campo-readonly-value';
+        value.textContent = String(campo.value ?? '').trim() || '—';
+
+        const meta = document.createElement('div');
+        meta.className = 'crm-campo-readonly-meta';
+        meta.textContent = formatCampoTypeLabel(campo.type);
+
+        row.appendChild(label);
+        row.appendChild(value);
+        row.appendChild(meta);
+        list.appendChild(row);
     });
+
+    container.appendChild(list);
 }
 
 function addCampoPersonalizado(campo = {}) {
@@ -1337,12 +1663,36 @@ function clearCrmSections() {
         header.innerHTML = '';
     }
 
-    ['crmNotasList', 'crmAdjuntosList', 'crmTareasList'].forEach(id => {
+    ['crmChecklistList', 'crmNotasList', 'crmCoberturaList', 'crmAdjuntosList', 'crmTareasList'].forEach(id => {
         const element = document.getElementById(id);
         if (element) {
             element.innerHTML = '';
         }
     });
+
+    ['crmChecklistResumen', 'crmNotasResumen', 'crmCoberturaResumen', 'crmAdjuntosResumen', 'crmTareasResumen'].forEach(id => {
+        const element = document.getElementById(id);
+        if (element) {
+            element.textContent = '';
+        }
+    });
+
+    const progressBar = document.getElementById('crmChecklistProgressBar');
+    if (progressBar) {
+        progressBar.style.width = '0%';
+    }
+
+    const next = document.getElementById('crmChecklistNext');
+    if (next) {
+        next.innerHTML = '';
+    }
+
+    const campos = document.getElementById('crmCamposContainer');
+    if (campos) {
+        campos.innerHTML = '';
+    }
+
+    checklistTasksBySlug = {};
 }
 
 function toggleLoading(active) {

@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace App\Modules\Solicitudes\Http\Controllers;
 
-use App\Modules\Shared\Support\LegacySessionAuth;
 use App\Modules\Solicitudes\Services\SolicitudesReadParityService;
 use DateTimeImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
@@ -24,16 +24,6 @@ class SolicitudesReadController
     public function kanbanData(Request $request): JsonResponse
     {
         $requestId = $this->requestId($request);
-        if (!LegacySessionAuth::isAuthenticated($request)) {
-            return response()->json([
-                'data' => [],
-                'options' => [
-                    'afiliaciones' => [],
-                    'doctores' => [],
-                ],
-                'error' => 'Sesion expirada',
-            ], 401)->header('X-Request-Id', $requestId);
-        }
 
         try {
             $payload = $this->payload($request);
@@ -41,7 +31,7 @@ class SolicitudesReadController
         } catch (\Throwable $e) {
             Log::error('solicitudes.read.kanban_data.error', [
                 'request_id' => $requestId,
-                'user_id' => LegacySessionAuth::userId($request),
+                'user_id' => $this->actorId(),
                 'error' => $e->getMessage(),
             ]);
 
@@ -61,9 +51,6 @@ class SolicitudesReadController
     public function dashboardData(Request $request): JsonResponse
     {
         $requestId = $this->requestId($request);
-        if (!LegacySessionAuth::isAuthenticated($request)) {
-            return response()->json(['error' => 'Sesion expirada'], 401)->header('X-Request-Id', $requestId);
-        }
 
         try {
             $payload = $this->payload($request);
@@ -71,7 +58,7 @@ class SolicitudesReadController
         } catch (\Throwable $e) {
             Log::error('solicitudes.read.dashboard_data.error', [
                 'request_id' => $requestId,
-                'user_id' => LegacySessionAuth::userId($request),
+                'user_id' => $this->actorId(),
                 'error' => $e->getMessage(),
             ]);
 
@@ -85,11 +72,6 @@ class SolicitudesReadController
     public function turneroData(Request $request): JsonResponse
     {
         $requestId = $this->requestId($request);
-        if (!LegacySessionAuth::isAuthenticated($request)) {
-            return response()->json(['data' => [], 'error' => 'Sesion expirada'], 401)
-                ->header('X-Request-Id', $requestId);
-        }
-
         $estadoRaw = trim((string) $request->query('estado', ''));
         $requestedStates = $estadoRaw === ''
             ? []
@@ -100,7 +82,7 @@ class SolicitudesReadController
         } catch (\Throwable $e) {
             Log::error('solicitudes.read.turnero_data.error', [
                 'request_id' => $requestId,
-                'user_id' => LegacySessionAuth::userId($request),
+                'user_id' => $this->actorId(),
                 'error' => $e->getMessage(),
                 'estado_filter' => $requestedStates,
             ]);
@@ -115,10 +97,6 @@ class SolicitudesReadController
     public function crmResumen(Request $request, int $id): JsonResponse
     {
         $requestId = $this->requestId($request);
-        if (!LegacySessionAuth::isAuthenticated($request)) {
-            return response()->json(['success' => false, 'error' => 'Sesion expirada'], 401)
-                ->header('X-Request-Id', $requestId);
-        }
 
         try {
             $result = $this->service->crmResumen($id);
@@ -130,7 +108,7 @@ class SolicitudesReadController
         } catch (\Throwable $e) {
             Log::error('solicitudes.read.crm_resumen.error', [
                 'request_id' => $requestId,
-                'user_id' => LegacySessionAuth::userId($request),
+                'user_id' => $this->actorId(),
                 'solicitud_id' => $id,
                 'error' => $e->getMessage(),
             ]);
@@ -145,11 +123,6 @@ class SolicitudesReadController
     public function conciliacionCirugias(Request $request): JsonResponse
     {
         $requestId = $this->requestId($request);
-        if (!LegacySessionAuth::isAuthenticated($request)) {
-            return response()->json(['success' => false, 'error' => 'Sesion expirada'], 401)
-                ->header('X-Request-Id', $requestId);
-        }
-
         $dateFromRaw = trim((string) $request->query('date_from', ''));
         $dateToRaw = trim((string) $request->query('date_to', ''));
         $mes = trim((string) $request->query('mes', ''));
@@ -213,11 +186,13 @@ class SolicitudesReadController
         }
 
         try {
+            $filters = $this->payload($request);
             $data = $this->service->conciliacionCirugiasMes($inicio, $fin);
+            $data = $this->service->aplicarFiltrosConciliacion($data, $filters);
         } catch (\Throwable $e) {
             Log::error('solicitudes.read.conciliacion_cirugias.error', [
                 'request_id' => $requestId,
-                'user_id' => LegacySessionAuth::userId($request),
+                'user_id' => $this->actorId(),
                 'date_from' => $inicio->format('Y-m-d'),
                 'date_to' => $fin->format('Y-m-d'),
                 'mes' => $mes !== '' ? $mes : $inicio->format('Y-m'),
@@ -304,6 +279,13 @@ class SolicitudesReadController
         }
 
         return 'v2-' . bin2hex(random_bytes(8));
+    }
+
+    private function actorId(): ?int
+    {
+        $id = Auth::id();
+
+        return is_numeric($id) ? (int) $id : null;
     }
 
     private function parseDateInput(string $value): ?DateTimeImmutable

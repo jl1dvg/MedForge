@@ -1606,7 +1606,7 @@ class SolicitudesWriteParityService
             return [];
         }
 
-        $stmt = $this->db->prepare('SELECT etapa_slug, completado_at FROM solicitud_checklist WHERE solicitud_id = :id ORDER BY id');
+        $stmt = $this->db->prepare('SELECT etapa_slug, completado_at, nota FROM solicitud_checklist WHERE solicitud_id = :id ORDER BY id');
         $stmt->execute([':id' => $solicitudId]);
 
         return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
@@ -1628,6 +1628,7 @@ class SolicitudesWriteParityService
             $bySlug[$slug] = [
                 'completed' => !empty($row['completado_at']),
                 'completado_at' => $row['completado_at'] !== null ? (string) $row['completado_at'] : null,
+                'nota' => isset($row['nota']) ? trim((string) $row['nota']) : null,
             ];
         }
 
@@ -1640,6 +1641,10 @@ class SolicitudesWriteParityService
             $fromDb = $bySlug[$slug] ?? null;
             $completed = $fromDb['completed'] ?? false;
 
+            if ($legacySlug === 'completado') {
+                $completed = true;
+            }
+
             if ($fromDb === null && $stageIndex !== null) {
                 $completed = $index <= $stageIndex;
             }
@@ -1651,6 +1656,7 @@ class SolicitudesWriteParityService
                 'required' => $stage['required'],
                 'completed' => $completed,
                 'completado_at' => $fromDb['completado_at'] ?? null,
+                'nota' => $fromDb['nota'] ?? null,
                 'can_toggle' => true,
             ];
         }
@@ -1660,10 +1666,12 @@ class SolicitudesWriteParityService
         $percent = $total > 0 ? round(($completedCount / $total) * 100, 1) : 0.0;
 
         $next = null;
-        foreach ($checklist as $item) {
-            if (!empty($item['required']) && empty($item['completed'])) {
-                $next = $item;
-                break;
+        if ($legacySlug !== 'completado') {
+            foreach ($checklist as $item) {
+                if (!empty($item['required']) && empty($item['completed'])) {
+                    $next = $item;
+                    break;
+                }
             }
         }
 

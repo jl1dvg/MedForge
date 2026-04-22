@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Solicitudes\Services;
 
+use App\Modules\Shared\Support\AfiliacionDimensionService;
 use DateInterval;
 use DateTimeImmutable;
 use Illuminate\Support\Facades\DB;
@@ -57,6 +58,13 @@ class SolicitudesReadParityService
      * @var array<string, bool>
      */
     private array $tableExistsCache = [];
+
+    private AfiliacionDimensionService $afiliacionDimensions;
+
+    public function __construct()
+    {
+        $this->afiliacionDimensions = new AfiliacionDimensionService(DB::connection()->getPdo());
+    }
 
     public function dashboardData(array $payload): array
     {
@@ -139,6 +147,9 @@ class SolicitudesReadParityService
             'data' => $kanban,
             'options' => [
                 'afiliaciones' => $afiliaciones,
+                'afiliacion_categorias' => $this->afiliacionDimensions->getCategoriaOptions(),
+                'empresas_seguro' => $this->afiliacionDimensions->getEmpresaOptions(),
+                'planes_seguro' => $this->afiliacionDimensions->getSeguroOptions('Todos los planes', $filters['empresa_seguro']),
                 'sedes' => $sedes,
                 'doctores' => $doctores,
                 'crm' => [
@@ -255,6 +266,8 @@ class SolicitudesReadParityService
     public function conciliacionCirugiasMes(DateTimeImmutable $desde, DateTimeImmutable $hasta): array
     {
         $derivacionLateralidadExpr = $this->selectSolicitudColumn('derivacion_lateralidad');
+        $afiliacionExpr = "COALESCE(NULLIF(TRIM(sp.afiliacion), ''), NULLIF(TRIM(pd.afiliacion), ''))";
+        $afiliacionContext = $this->afiliacionDimensions->buildContext($afiliacionExpr, 'acm_con');
         $hasMetaTable = $this->tableExists('solicitud_crm_meta');
         $metaPlaceholders = implode(', ', array_fill(0, count(self::META_CIRUGIA_CONFIRMADA_KEYS), '?'));
 
@@ -292,14 +305,20 @@ class SolicitudesReadParityService
             );
         }
 
-        $sql = sprintf(
-            "SELECT
+        $sql = "
+            SELECT
                 sp.id,
                 sp.form_id,
                 sp.hc_number,
                 sp.procedimiento,
+                {$afiliacionExpr} AS afiliacion,
+                {$afiliacionContext['categoria_expr']} AS afiliacion_categoria_key,
+                {$afiliacionContext['empresa_key_expr']} AS empresa_seguro_key,
+                {$afiliacionContext['empresa_label_expr']} AS empresa_seguro,
+                {$afiliacionContext['seguro_key_expr']} AS plan_seguro_key,
+                {$afiliacionContext['seguro_label_expr']} AS plan_seguro,
                 sp.ojo,
-                %s,
+                {$derivacionLateralidadExpr},
                 sp.estado,
                 COALESCE(sp.created_at, sp.fecha, cd.fecha) AS fecha_solicitud,
                 TRIM(CONCAT_WS(' ',
@@ -308,24 +327,21 @@ class SolicitudesReadParityService
                     NULLIF(TRIM(pd.lname), ''),
                     NULLIF(TRIM(pd.lname2), '')
                 )) AS full_name,
-                %s
+                {$metaSelect}
             FROM solicitud_procedimiento sp
             LEFT JOIN patient_data pd ON pd.hc_number = sp.hc_number
+            {$afiliacionContext['join']}
             LEFT JOIN (
                 SELECT hc_number, form_id, MAX(fecha) AS fecha
                 FROM consulta_data
                 GROUP BY hc_number, form_id
             ) cd ON cd.hc_number = sp.hc_number AND cd.form_id = sp.form_id
-            %s
+            {$metaJoin}
             WHERE COALESCE(sp.created_at, sp.fecha, cd.fecha) BETWEEN ? AND ?
               AND sp.procedimiento IS NOT NULL
               AND TRIM(sp.procedimiento) <> ''
               AND UPPER(TRIM(sp.procedimiento)) <> 'SELECCIONE'
-            ORDER BY fecha_solicitud DESC, sp.id DESC",
-            $derivacionLateralidadExpr,
-            $metaSelect,
-            $metaJoin
-        );
+            ORDER BY fecha_solicitud DESC, sp.id DESC";
 
         $params = array_merge(
             $hasMetaTable ? self::META_CIRUGIA_CONFIRMADA_KEYS : [],
@@ -462,6 +478,10 @@ class SolicitudesReadParityService
             $nombre = trim((string) ($row['full_name'] ?? ''));
             $row['full_name'] = $nombre !== '' ? $nombre : null;
             $row['ojo_resuelto'] = $this->resolverLateralidadSolicitud($row);
+            $categoriaKey = strtolower(trim((string) ($row['afiliacion_categoria_key'] ?? '')));
+            $row['afiliacion_categoria'] = $categoriaKey !== ''
+                ? $this->afiliacionDimensions->formatCategoriaLabel($categoriaKey)
+                : '';
             $estado = strtolower(trim((string) ($row['estado'] ?? '')));
             if ($row['protocolo_confirmado'] === null && $estado === 'completado' && $row['protocolo_posterior_compatible'] !== null) {
                 $row['protocolo_confirmado'] = $row['protocolo_posterior_compatible'];
@@ -470,6 +490,45 @@ class SolicitudesReadParityService
         unset($row);
 
         return $rows;
+    }
+
+    /**
+     * @param array<int,array<string,mixed>> $rows
+     * @param array<string,mixed> $filters
+     * @return array<int,array<string,mixed>>
+     */
+    public function aplicarFiltrosConciliacion(array $rows, array $filters): array
+    {
+        $afiliacion = mb_strtolower(trim((string) ($filters['afiliacion'] ?? '')));
+        $categoria = $this->afiliacionDimensions->normalizeCategoriaFilter((string) ($filters['afiliacion_categoria'] ?? ''));
+        $empresa = $this->afiliacionDimensions->normalizeEmpresaFilter((string) ($filters['empresa_seguro'] ?? ''));
+        $plan = $this->afiliacionDimensions->normalizeSeguroFilter((string) ($filters['plan_seguro'] ?? ''));
+
+        if ($afiliacion === '' && $categoria === '' && $empresa === '' && $plan === '') {
+            return $rows;
+        }
+
+        return array_values(array_filter($rows, function (array $row) use ($afiliacion, $categoria, $empresa, $plan): bool {
+            $rowAfiliacion = mb_strtolower(trim((string) ($row['afiliacion'] ?? '')));
+            $rowCategoria = $this->afiliacionDimensions->normalizeCategoriaFilter((string) ($row['afiliacion_categoria_key'] ?? ''));
+            $rowEmpresa = $this->afiliacionDimensions->normalizeEmpresaFilter((string) ($row['empresa_seguro_key'] ?? ($row['empresa_seguro'] ?? '')));
+            $rowPlan = $this->afiliacionDimensions->normalizeSeguroFilter((string) ($row['plan_seguro_key'] ?? ($row['plan_seguro'] ?? '')));
+
+            if ($afiliacion !== '' && !str_contains($rowAfiliacion, $afiliacion)) {
+                return false;
+            }
+            if ($categoria !== '' && $rowCategoria !== $categoria) {
+                return false;
+            }
+            if ($empresa !== '' && $rowEmpresa !== $empresa) {
+                return false;
+            }
+            if ($plan !== '' && $rowPlan !== $plan) {
+                return false;
+            }
+
+            return true;
+        }));
     }
 
     /**
@@ -852,7 +911,7 @@ class SolicitudesReadParityService
 
     /**
      * @param array<string,mixed> $payload
-     * @return array{afiliacion:string,sede:string,doctor:string,prioridad:string,fechaTexto:string,date_from:?string,date_to:?string,search:string}
+     * @return array{afiliacion:string,afiliacion_categoria:string,empresa_seguro:string,plan_seguro:string,sede:string,doctor:string,prioridad:string,fechaTexto:string,date_from:?string,date_to:?string,search:string}
      */
     private function sanitizeFilters(array $payload): array
     {
@@ -868,6 +927,9 @@ class SolicitudesReadParityService
 
         return [
             'afiliacion' => trim((string) ($payload['afiliacion'] ?? '')),
+            'afiliacion_categoria' => $this->afiliacionDimensions->normalizeCategoriaFilter((string) ($payload['afiliacion_categoria'] ?? '')),
+            'empresa_seguro' => $this->afiliacionDimensions->normalizeEmpresaFilter((string) ($payload['empresa_seguro'] ?? '')),
+            'plan_seguro' => $this->afiliacionDimensions->normalizeSeguroFilter((string) ($payload['plan_seguro'] ?? '')),
             'sede' => $this->normalizeSedeFilter((string) ($payload['sede'] ?? '')),
             'doctor' => trim((string) ($payload['doctor'] ?? '')),
             'prioridad' => trim((string) ($payload['prioridad'] ?? '')),
@@ -942,13 +1004,20 @@ class SolicitudesReadParityService
     private function querySolicitudesKanban(array $filters): array
     {
         $sedeExpr = $this->sedeExpression('pp');
+        $afiliacionExpr = 'COALESCE(NULLIF(TRIM(sp.afiliacion), ""), NULLIF(TRIM(pd.afiliacion), ""))';
+        $afiliacionContext = $this->afiliacionDimensions->buildContext($afiliacionExpr, 'acm_sol');
         $sql = 'SELECT
                 sp.id,
                 sp.hc_number,
                 sp.form_id,
                 TRIM(CONCAT_WS(" ", NULLIF(TRIM(pd.fname), ""), NULLIF(TRIM(pd.mname), ""), NULLIF(TRIM(pd.lname), ""), NULLIF(TRIM(pd.lname2), ""))) AS full_name,
                 sp.tipo,
-                COALESCE(NULLIF(TRIM(sp.afiliacion), ""), NULLIF(TRIM(pd.afiliacion), "")) AS afiliacion,
+                ' . $afiliacionExpr . ' AS afiliacion,
+                ' . $afiliacionContext['categoria_expr'] . ' AS afiliacion_categoria_key,
+                ' . $afiliacionContext['empresa_key_expr'] . ' AS empresa_seguro_key,
+                ' . $afiliacionContext['empresa_label_expr'] . ' AS empresa_seguro,
+                ' . $afiliacionContext['seguro_key_expr'] . ' AS plan_seguro_key,
+                ' . $afiliacionContext['seguro_label_expr'] . ' AS plan_seguro,
                 ' . $sedeExpr . ' AS sede,
                 pd.celular AS paciente_celular,
                 sp.procedimiento,
@@ -989,6 +1058,7 @@ class SolicitudesReadParityService
             FROM solicitud_procedimiento sp
             INNER JOIN patient_data pd ON sp.hc_number = pd.hc_number
             LEFT JOIN procedimiento_proyectado pp ON pp.form_id = sp.form_id AND pp.hc_number = sp.hc_number
+            ' . $afiliacionContext['join'] . '
             LEFT JOIN (
                 SELECT c.hc_number, c.form_id, MAX(c.fecha) AS fecha
                 FROM consulta_data c
@@ -1022,8 +1092,23 @@ class SolicitudesReadParityService
         $params = [];
 
         if ($filters['afiliacion'] !== '') {
-            $sql .= ' AND COALESCE(NULLIF(TRIM(sp.afiliacion), ""), NULLIF(TRIM(pd.afiliacion), "")) LIKE ?';
+            $sql .= ' AND ' . $afiliacionExpr . ' LIKE ?';
             $params[] = '%' . $filters['afiliacion'] . '%';
+        }
+
+        if ($filters['afiliacion_categoria'] !== '') {
+            $sql .= ' AND ' . $afiliacionContext['categoria_expr'] . ' = ?';
+            $params[] = $filters['afiliacion_categoria'];
+        }
+
+        if ($filters['empresa_seguro'] !== '') {
+            $sql .= ' AND ' . $afiliacionContext['empresa_key_expr'] . ' = ?';
+            $params[] = $filters['empresa_seguro'];
+        }
+
+        if ($filters['plan_seguro'] !== '') {
+            $sql .= ' AND ' . $afiliacionContext['seguro_key_expr'] . ' = ?';
+            $params[] = $filters['plan_seguro'];
         }
 
         if ($filters['sede'] !== '') {
@@ -1139,6 +1224,10 @@ class SolicitudesReadParityService
             $fromDb = $bySlug[$slug] ?? null;
             $completed = $fromDb['completed'] ?? false;
 
+            if ($legacySlug === 'completado') {
+                $completed = true;
+            }
+
             // Fallback cuando no hay filas de checklist: inferir por estado legacy.
             if ($fromDb === null && $stageIndex !== null) {
                 $completed = $index <= $stageIndex;
@@ -1159,10 +1248,12 @@ class SolicitudesReadParityService
         $percent = $total > 0 ? round(($completed / $total) * 100, 1) : 0.0;
 
         $next = null;
-        foreach ($checklist as $item) {
-            if (empty($item['completed']) && !empty($item['required'])) {
-                $next = $item;
-                break;
+        if ($legacySlug !== 'completado') {
+            foreach ($checklist as $item) {
+                if (empty($item['completed']) && !empty($item['required'])) {
+                    $next = $item;
+                    break;
+                }
             }
         }
 
@@ -1205,6 +1296,10 @@ class SolicitudesReadParityService
     {
         $row['crm_responsable_avatar'] = $this->formatProfilePhoto($row['crm_responsable_avatar'] ?? null);
         $row['doctor_avatar'] = $this->formatProfilePhoto($row['doctor_avatar'] ?? null);
+        $categoriaKey = strtolower(trim((string) ($row['afiliacion_categoria_key'] ?? '')));
+        $row['afiliacion_categoria'] = $categoriaKey !== ''
+            ? $this->afiliacionDimensions->formatCategoriaLabel($categoriaKey)
+            : '';
 
         return $row;
     }
@@ -2032,9 +2127,13 @@ class SolicitudesReadParityService
         $result = [];
         foreach ($rows as $row) {
             $item = (array) $row;
+            $key = (string) ($item['meta_key'] ?? '');
+            if (in_array($key, self::META_CIRUGIA_CONFIRMADA_KEYS, true)) {
+                continue;
+            }
             $result[] = [
                 'id' => (int) ($item['id'] ?? 0),
-                'key' => (string) ($item['meta_key'] ?? ''),
+                'key' => $key,
                 'value' => $item['meta_value'] ?? null,
                 'type' => (string) ($item['meta_type'] ?? ''),
                 'created_at' => $item['created_at'] ?? null,

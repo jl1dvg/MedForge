@@ -57,6 +57,8 @@
     const board = document.getElementById('solV2Kanban');
     const toast = document.getElementById('solV2Toast');
     const afiliacionSelect = document.getElementById('solAfiliacion');
+    const afiliacionCategoriaSelect = document.getElementById('solAfiliacionCategoria');
+    const empresaSeguroSelect = document.getElementById('solEmpresaSeguro');
     const sedeSelect = document.getElementById('solSede');
     const doctorSelect = document.getElementById('solDoctor');
     const prioridadSelect = document.getElementById('solPrioridad');
@@ -272,6 +274,8 @@
     const getFilters = () => ({
         search: searchInput ? searchInput.value.trim() : '',
         afiliacion: afiliacionSelect ? afiliacionSelect.value.trim() : '',
+        afiliacion_categoria: afiliacionCategoriaSelect ? afiliacionCategoriaSelect.value.trim() : '',
+        empresa_seguro: empresaSeguroSelect ? empresaSeguroSelect.value.trim() : '',
         sede: sedeSelect ? sedeSelect.value.trim() : '',
         doctor: doctorSelect ? doctorSelect.value.trim() : '',
         prioridad: prioridadSelect ? prioridadSelect.value.trim() : '',
@@ -430,6 +434,12 @@
         if (prioridadSelect && typeof initialFilters.prioridad === 'string') {
             prioridadSelect.value = initialFilters.prioridad;
         }
+        if (afiliacionCategoriaSelect && typeof initialFilters.afiliacion_categoria === 'string') {
+            afiliacionCategoriaSelect.value = initialFilters.afiliacion_categoria;
+        }
+        if (empresaSeguroSelect && typeof initialFilters.empresa_seguro === 'string') {
+            empresaSeguroSelect.value = initialFilters.empresa_seguro;
+        }
         if (sedeSelect && typeof initialFilters.sede === 'string') {
             sedeSelect.value = initialFilters.sede;
         }
@@ -488,12 +498,14 @@
     };
 
     const fetchJson = async (url, payload) => {
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
         const response = await fetch(url, {
             method: 'POST',
             credentials: 'same-origin',
             headers: {
                 'Accept': 'application/json',
                 'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrfToken,
                 'X-Request-Id': requestId(),
             },
             body: JSON.stringify(payload || {}),
@@ -511,17 +523,28 @@
         const current = selectedValue || '';
         const first = selectNode.querySelector('option');
         const firstLabel = first ? first.textContent : 'Todas';
+        const normalizedValues = Array.isArray(values) ? [...values] : [];
+
+        normalizedValues.sort((a, b) => {
+            const aIsObject = a && typeof a === 'object';
+            const bIsObject = b && typeof b === 'object';
+            const aLabel = String(aIsObject ? (a.label ?? a.value ?? '') : (a ?? '')).trim();
+            const bLabel = String(bIsObject ? (b.label ?? b.value ?? '') : (b ?? '')).trim();
+            return aLabel.localeCompare(bLabel, 'es', { sensitivity: 'base' });
+        });
 
         selectNode.innerHTML = `<option value="">${firstLabel || 'Todas'}</option>`;
-        (values || []).forEach((value) => {
-            const label = String(value || '').trim();
-            if (!label) {
+        normalizedValues.forEach((value) => {
+            const isObject = value && typeof value === 'object';
+            const optionValue = String(isObject ? (value.value ?? '') : (value || '')).trim();
+            const label = String(isObject ? (value.label ?? optionValue) : (value || '')).trim();
+            if (!optionValue || !label) {
                 return;
             }
             const option = document.createElement('option');
-            option.value = label;
+            option.value = optionValue;
             option.textContent = label;
-            if (label === current) {
+            if (optionValue === current) {
                 option.selected = true;
             }
             selectNode.appendChild(option);
@@ -1400,6 +1423,8 @@
                 search: filters.search,
                 doctor: filters.doctor,
                 afiliacion: filters.afiliacion,
+                afiliacion_categoria: filters.afiliacion_categoria,
+                empresa_seguro: filters.empresa_seguro,
                 sede: filters.sede,
                 responsable_id: responsableSelect ? String(responsableSelect.value || '').trim() : '',
                 date_from: range.from,
@@ -1614,6 +1639,8 @@
             syncLegacyKanbanBridge();
 
             renderSelectOptions(afiliacionSelect, state.options.afiliaciones || [], filters.afiliacion);
+            renderSelectOptions(afiliacionCategoriaSelect, state.options.afiliacion_categorias || [], filters.afiliacion_categoria);
+            renderSelectOptions(empresaSeguroSelect, state.options.empresas_seguro || [], filters.empresa_seguro);
             renderSelectOptions(sedeSelect, state.options.sedes || ['MATRIZ', 'CEIBOS'], filters.sede);
             renderSelectOptions(doctorSelect, state.options.doctores || [], filters.doctor);
             syncResponsableOptions((state.options.crm && state.options.crm.responsables) || [], state.rows);

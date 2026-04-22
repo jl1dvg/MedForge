@@ -4,6 +4,7 @@ namespace App\Modules\Shared\Support;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
 
 class LegacyCurrentUser
 {
@@ -12,7 +13,8 @@ class LegacyCurrentUser
      */
     public static function resolve(Request $request): array
     {
-        $userId = LegacySessionAuth::userId($request);
+        $authId = Auth::id();
+        $userId = is_numeric($authId) ? (int) $authId : LegacySessionAuth::userId($request);
         if ($userId === null) {
             return [
                 'id' => null,
@@ -44,4 +46,3 @@ class LegacyCurrentUser
         ];
     }
 }
-

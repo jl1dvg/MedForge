@@ -3,7 +3,6 @@
 namespace App\Modules\Solicitudes\Http\Controllers;
 
 use App\Modules\Shared\Support\LegacyCurrentUser;
-use App\Modules\Shared\Support\LegacySessionAuth;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -49,10 +48,6 @@ class SolicitudesUiController
 
     public function index(Request $request): View|RedirectResponse
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
-            return redirect('/auth/login?auth_required=1');
-        }
-
         $currentUser = LegacyCurrentUser::resolve($request);
         $realtimeConfig = $this->buildRealtimeConfig();
 
@@ -63,6 +58,8 @@ class SolicitudesUiController
             'initialFilters' => [
                 'search' => trim((string) $request->query('search', '')),
                 'afiliacion' => trim((string) $request->query('afiliacion', '')),
+                'afiliacion_categoria' => trim((string) $request->query('afiliacion_categoria', '')),
+                'empresa_seguro' => trim((string) $request->query('empresa_seguro', '')),
                 'sede' => trim((string) $request->query('sede', '')),
                 'doctor' => trim((string) $request->query('doctor', '')),
                 'prioridad' => trim((string) $request->query('prioridad', '')),
@@ -79,10 +76,6 @@ class SolicitudesUiController
 
     public function dashboard(Request $request): View|RedirectResponse
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
-            return redirect('/auth/login?auth_required=1');
-        }
-
         return view('solicitudes.v2-dashboard', [
             'pageTitle' => 'Dashboard de Solicitudes v2',
             'currentUser' => LegacyCurrentUser::resolve($request),
@@ -92,10 +85,6 @@ class SolicitudesUiController
 
     public function turnero(Request $request): View|RedirectResponse
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
-            return redirect('/auth/login?auth_required=1');
-        }
-
         return view('solicitudes.v2-turnero', [
             'pageTitle' => 'Turnero Coordinación Quirúrgica',
             'currentUser' => LegacyCurrentUser::resolve($request),

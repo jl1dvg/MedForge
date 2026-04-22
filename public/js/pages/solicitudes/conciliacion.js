@@ -317,6 +317,13 @@ export const initSolicitudesConciliacion = ({ showToast, onConfirmed, getFilters
             if (range.to) {
                 params.set('date_to', range.to);
             }
+            const filters = typeof getFilters === 'function' ? (getFilters() || {}) : {};
+            ['afiliacion', 'afiliacion_categoria', 'empresa_seguro'].forEach((key) => {
+                const value = String(filters[key] || '').trim();
+                if (value) {
+                    params.set(key, value);
+                }
+            });
             if (debug.enabled) {
                 params.set('debug', '1');
                 if (debug.hc) {

@@ -15,8 +15,8 @@ class LoginController
 {
     public function show(Request $request): View|RedirectResponse
     {
-        if (Auth::check() || LegacySessionAuth::bootstrapLaravelAuth($request)) {
-            return redirect()->intended('/dashboard');
+        if (Auth::check()) {
+            return redirect()->intended('/v2/solicitudes');
         }
 
         return view('auth.login', [
@@ -26,8 +26,8 @@ class LoginController
 
     public function login(Request $request): RedirectResponse
     {
-        if (Auth::check() || LegacySessionAuth::bootstrapLaravelAuth($request)) {
-            return redirect()->intended('/dashboard');
+        if (Auth::check()) {
+            return redirect()->intended('/v2/solicitudes');
         }
 
         $validated = $request->validate([
@@ -64,19 +64,26 @@ class LoginController
             $user->role?->permissions ?? []
         );
 
-        LegacySessionAuth::writeCompatibilitySession([
-            'user_id' => (int) $user->id,
-            'permisos' => $permissions,
-            'role_id' => $user->role_id !== null ? (int) $user->role_id : null,
-            'session_active' => true,
-            'session_start_time' => time(),
-            'last_activity_time' => time(),
-            'username' => (string) ($user->username ?? $identifier),
-            'sigcenter_password' => $password,
-        ], LegacySessionAuth::sessionId($request) ?: null);
+        if ($this->shouldWriteLegacyCompatibilitySession()) {
+            LegacySessionAuth::writeCompatibilitySession([
+                'user_id' => (int) $user->id,
+                'permisos' => $permissions,
+                'role_id' => $user->role_id !== null ? (int) $user->role_id : null,
+                'session_active' => true,
+                'session_start_time' => time(),
+                'last_activity_time' => time(),
+                'username' => (string) ($user->username ?? $identifier),
+                'sigcenter_password' => $password,
+            ], LegacySessionAuth::sessionId($request) ?: null);
+        }
 
         $request->session()->flash('post_login_feedback_prompt', true);
 
-        return redirect()->intended('/dashboard');
+        return redirect()->intended('/v2/solicitudes');
+    }
+
+    private function shouldWriteLegacyCompatibilitySession(): bool
+    {
+        return filter_var((string) env('AUTH_WRITE_LEGACY_COMPAT_SESSION', '1'), FILTER_VALIDATE_BOOL);
     }
 }

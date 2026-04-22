@@ -6,8 +6,8 @@ use App\Modules\Solicitudes\Http\Controllers\SolicitudesWriteController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware([
-    'legacy.auth',
-    'legacy.permission:administrativo,solicitudes.view,solicitudes.update,solicitudes.turnero,solicitudes.dashboard.view,solicitudes.manage',
+    'app.auth',
+    'app.permission:administrativo,solicitudes.view,solicitudes.update,solicitudes.turnero,solicitudes.dashboard.view,solicitudes.manage',
 ])->group(function (): void {
 // Legacy mirror paths (reads)
 Route::match(['GET', 'POST'], '/solicitudes/kanban-data', [SolicitudesReadController::class, 'kanbanData']);

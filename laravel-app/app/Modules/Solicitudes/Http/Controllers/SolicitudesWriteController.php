@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace App\Modules\Solicitudes\Http\Controllers;
 
-use App\Modules\Shared\Support\LegacySessionAuth;
 use App\Modules\Solicitudes\Services\SolicitudesReadParityService;
 use App\Modules\Solicitudes\Services\SolicitudesWriteParityService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use PDO;
@@ -31,11 +31,6 @@ class SolicitudesWriteController
     public function apiEstadoGet(Request $request): JsonResponse
     {
         $requestId = $this->requestId($request);
-        if (!LegacySessionAuth::isAuthenticated($request)) {
-            return response()->json(['success' => false, 'message' => 'Sesión expirada'], 401)
-                ->header('X-Request-Id', $requestId);
-        }
-
         $hcNumber = trim((string) ($request->query('hcNumber', $request->query('hc_number', ''))));
         if ($hcNumber === '') {
             return response()->json(['success' => false, 'message' => 'Parámetro hcNumber requerido'], 400)
@@ -64,11 +59,6 @@ class SolicitudesWriteController
     public function apiEstadoPost(Request $request): JsonResponse
     {
         $requestId = $this->requestId($request);
-        if (!LegacySessionAuth::isAuthenticated($request)) {
-            return response()->json(['success' => false, 'message' => 'Sesión expirada'], 401)
-                ->header('X-Request-Id', $requestId);
-        }
-
         $payload = $this->payload($request);
 
         try {
@@ -98,11 +88,6 @@ class SolicitudesWriteController
     public function actualizarEstado(Request $request): JsonResponse
     {
         $requestId = $this->requestId($request);
-        if (!LegacySessionAuth::isAuthenticated($request)) {
-            return response()->json(['success' => false, 'error' => 'Sesión expirada'], 401)
-                ->header('X-Request-Id', $requestId);
-        }
-
         $payload = $this->payload($request);
         $id = isset($payload['id']) ? (int) $payload['id'] : 0;
         $formId = isset($payload['form_id']) ? (int) $payload['form_id'] : 0;
@@ -118,7 +103,7 @@ class SolicitudesWriteController
                 $estado,
                 $completado,
                 $force,
-                LegacySessionAuth::userId($request),
+                $this->actorId(),
                 $nota,
             );
 
@@ -155,11 +140,6 @@ class SolicitudesWriteController
     public function turneroLlamar(Request $request): JsonResponse
     {
         $requestId = $this->requestId($request);
-        if (!LegacySessionAuth::isAuthenticated($request)) {
-            return response()->json(['success' => false, 'error' => 'Sesión expirada'], 401)
-                ->header('X-Request-Id', $requestId);
-        }
-
         $payload = $this->payload($request);
         $id = isset($payload['id']) ? (int) $payload['id'] : null;
         $turno = isset($payload['turno']) ? (int) $payload['turno'] : null;
@@ -208,11 +188,6 @@ class SolicitudesWriteController
     public function guardarDetallesCirugia(Request $request, int $id): JsonResponse
     {
         $requestId = $this->requestId($request);
-        if (!LegacySessionAuth::isAuthenticated($request)) {
-            return response()->json(['success' => false, 'error' => 'Sesión expirada'], 401)
-                ->header('X-Request-Id', $requestId);
-        }
-
         $payload = $this->payload($request);
 
         try {
@@ -241,11 +216,6 @@ class SolicitudesWriteController
     public function guardarDerivacionPreseleccion(Request $request): JsonResponse
     {
         $requestId = $this->requestId($request);
-        if (!LegacySessionAuth::isAuthenticated($request)) {
-            return response()->json(['success' => false, 'error' => 'Sesión expirada'], 401)
-                ->header('X-Request-Id', $requestId);
-        }
-
         $payload = $this->payload($request);
 
         try {
@@ -282,13 +252,8 @@ class SolicitudesWriteController
     public function crmBootstrap(Request $request, int $id): JsonResponse
     {
         $requestId = $this->requestId($request);
-        if (!LegacySessionAuth::isAuthenticated($request)) {
-            return response()->json(['success' => false, 'error' => 'Sesión expirada'], 401)
-                ->header('X-Request-Id', $requestId);
-        }
-
         try {
-            $result = $this->service->crmBootstrap($id, $this->payload($request), LegacySessionAuth::userId($request));
+            $result = $this->service->crmBootstrap($id, $this->payload($request), $this->actorId());
         } catch (RuntimeException $e) {
             return response()->json(['success' => false, 'error' => $e->getMessage()], $this->runtimeStatus($e))
                 ->header('X-Request-Id', $requestId);
@@ -309,11 +274,6 @@ class SolicitudesWriteController
     public function crmChecklistState(Request $request, int $id): JsonResponse
     {
         $requestId = $this->requestId($request);
-        if (!LegacySessionAuth::isAuthenticated($request)) {
-            return response()->json(['success' => false, 'error' => 'Sesión expirada'], 401)
-                ->header('X-Request-Id', $requestId);
-        }
-
         try {
             $result = $this->service->crmChecklistState($id);
         } catch (RuntimeException $e) {
@@ -336,11 +296,6 @@ class SolicitudesWriteController
     public function crmActualizarChecklist(Request $request, int $id): JsonResponse
     {
         $requestId = $this->requestId($request);
-        if (!LegacySessionAuth::isAuthenticated($request)) {
-            return response()->json(['success' => false, 'error' => 'Sesión expirada'], 401)
-                ->header('X-Request-Id', $requestId);
-        }
-
         $payload = $this->payload($request);
         $etapa = trim((string) ($payload['etapa_slug'] ?? ($payload['etapa'] ?? '')));
         $completado = isset($payload['completado']) ? (bool) $payload['completado'] : true;
@@ -351,7 +306,7 @@ class SolicitudesWriteController
         }
 
         try {
-            $result = $this->service->crmActualizarChecklist($id, $etapa, $completado, LegacySessionAuth::userId($request));
+            $result = $this->service->crmActualizarChecklist($id, $etapa, $completado, $this->actorId());
         } catch (RuntimeException $e) {
             return response()->json(['success' => false, 'error' => $e->getMessage()], $this->runtimeStatus($e))
                 ->header('X-Request-Id', $requestId);
@@ -373,16 +328,11 @@ class SolicitudesWriteController
     public function confirmarConciliacionCirugia(Request $request, int $id): JsonResponse
     {
         $requestId = $this->requestId($request);
-        if (!LegacySessionAuth::isAuthenticated($request)) {
-            return response()->json(['success' => false, 'error' => 'Sesión expirada'], 401)
-                ->header('X-Request-Id', $requestId);
-        }
-
         $payload = $this->payload($request);
         $protocoloFormId = trim((string) ($payload['protocolo_form_id'] ?? ''));
 
         try {
-            $result = $this->service->confirmarConciliacionCirugia($id, $protocoloFormId, LegacySessionAuth::userId($request));
+            $result = $this->service->confirmarConciliacionCirugia($id, $protocoloFormId, $this->actorId());
         } catch (RuntimeException $e) {
             return response()->json(['success' => false, 'error' => $e->getMessage()], $this->runtimeStatus($e))
                 ->header('X-Request-Id', $requestId);
@@ -404,11 +354,6 @@ class SolicitudesWriteController
     public function crmAgregarNota(Request $request, int $id): JsonResponse
     {
         $requestId = $this->requestId($request);
-        if (!LegacySessionAuth::isAuthenticated($request)) {
-            return response()->json(['success' => false, 'error' => 'Sesión expirada'], 401)
-                ->header('X-Request-Id', $requestId);
-        }
-
         $nota = trim((string) ($this->payload($request)['nota'] ?? ''));
         if ($nota === '') {
             return response()->json(['success' => false, 'error' => 'La nota no puede estar vacía'], 422)
@@ -416,7 +361,7 @@ class SolicitudesWriteController
         }
 
         try {
-            $summary = $this->service->crmAgregarNota($id, $nota, LegacySessionAuth::userId($request));
+            $summary = $this->service->crmAgregarNota($id, $nota, $this->actorId());
         } catch (RuntimeException $e) {
             return response()->json(['success' => false, 'error' => $e->getMessage()], $this->runtimeStatus($e))
                 ->header('X-Request-Id', $requestId);
@@ -455,11 +400,6 @@ class SolicitudesWriteController
     public function crmSubirAdjunto(Request $request, int $id): JsonResponse
     {
         $requestId = $this->requestId($request);
-        if (!LegacySessionAuth::isAuthenticated($request)) {
-            return response()->json(['success' => false, 'error' => 'Sesión expirada'], 401)
-                ->header('X-Request-Id', $requestId);
-        }
-
         $file = $request->file('archivo');
         if (!$file instanceof UploadedFile) {
             return response()->json(['success' => false, 'error' => 'No se recibió el archivo'], 422)
@@ -504,7 +444,7 @@ class SolicitudesWriteController
                 $relativePath,
                 is_string($mimeType) && $mimeType !== '' ? $mimeType : null,
                 is_numeric($size) ? (int) $size : null,
-                LegacySessionAuth::userId($request),
+                $this->actorId(),
                 $description !== '' ? $description : null,
             );
         } catch (RuntimeException $e) {
@@ -535,11 +475,6 @@ class SolicitudesWriteController
     public function crmActualizarTarea(Request $request, int $id): JsonResponse
     {
         $requestId = $this->requestId($request);
-        if (!LegacySessionAuth::isAuthenticated($request)) {
-            return response()->json(['success' => false, 'error' => 'Sesión expirada'], 401)
-                ->header('X-Request-Id', $requestId);
-        }
-
         $payload = $this->payload($request);
         $taskId = isset($payload['tarea_id']) ? (int) $payload['tarea_id'] : 0;
         $estado = trim((string) ($payload['estado'] ?? ''));
@@ -576,13 +511,8 @@ class SolicitudesWriteController
     private function crmWriteResponse(Request $request, int $id, callable $callback): JsonResponse
     {
         $requestId = $this->requestId($request);
-        if (!LegacySessionAuth::isAuthenticated($request)) {
-            return response()->json(['success' => false, 'error' => 'Sesión expirada'], 401)
-                ->header('X-Request-Id', $requestId);
-        }
-
         try {
-            $summary = $callback($this->payload($request), LegacySessionAuth::userId($request));
+            $summary = $callback($this->payload($request), $this->actorId());
         } catch (RuntimeException $e) {
             return response()->json(['success' => false, 'error' => $e->getMessage()], $this->runtimeStatus($e))
                 ->header('X-Request-Id', $requestId);
@@ -656,5 +586,12 @@ class SolicitudesWriteController
         }
 
         return public_path();
+    }
+
+    private function actorId(): ?int
+    {
+        $id = Auth::id();
+
+        return is_numeric($id) ? (int) $id : null;
     }
 }

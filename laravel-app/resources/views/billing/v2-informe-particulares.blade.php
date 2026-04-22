@@ -4700,8 +4700,9 @@
 
                 const renderDetailStateChart = function (block, rows, segment) {
                     const config = detailBlockConfigs[block];
-                    const container = config ? document.querySelector(config.chartSelectors.state) : null;
-                    if (!config || !container) {
+                    const selector = config ? config.chartSelectors.state : '';
+                    const container = selector ? document.querySelector(selector) : null;
+                    if (!config || !selector || !container) {
                         return;
                     }
 

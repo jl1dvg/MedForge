@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace App\Modules\Solicitudes\Http\Controllers;
 
-use App\Modules\Shared\Support\LegacySessionAuth;
 use App\Modules\Solicitudes\Services\SolicitudesPrefacturaService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Throwable;
@@ -25,10 +25,6 @@ class SolicitudesPrefacturaController
 
     public function prefactura(Request $request): Response
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
-            return response('<p class="text-danger mb-0">Sesión expirada.</p>', 401);
-        }
-
         $hcNumber = trim((string) $request->query('hc_number', ''));
         $formId = trim((string) $request->query('form_id', ''));
 
@@ -61,11 +57,6 @@ class SolicitudesPrefacturaController
     public function derivacion(Request $request): JsonResponse
     {
         $requestId = $this->requestId($request);
-
-        if (!LegacySessionAuth::isAuthenticated($request)) {
-            return response()->json(['success' => false, 'error' => 'Sesion expirada'], 401)
-                ->header('X-Request-Id', $requestId);
-        }
 
         $hcNumber = trim((string) $request->query('hc_number', ''));
         $formId = trim((string) $request->query('form_id', ''));
@@ -120,11 +111,6 @@ class SolicitudesPrefacturaController
     {
         $requestId = $this->requestId($request);
 
-        if (!LegacySessionAuth::isAuthenticated($request)) {
-            return response()->json(['success' => false, 'error' => 'Sesion expirada'], 401)
-                ->header('X-Request-Id', $requestId);
-        }
-
         $payload = $this->payload($request);
         $hcNumber = trim((string) ($payload['hc_number'] ?? ''));
         $formId = trim((string) ($payload['form_id'] ?? ''));
@@ -165,11 +151,6 @@ class SolicitudesPrefacturaController
     public function rescrapeDerivacion(Request $request): JsonResponse
     {
         $requestId = $this->requestId($request);
-
-        if (!LegacySessionAuth::isAuthenticated($request)) {
-            return response()->json(['success' => false, 'error' => 'Sesion expirada'], 401)
-                ->header('X-Request-Id', $requestId);
-        }
 
         $payload = $this->payload($request);
         $formId = trim((string) ($payload['form_id'] ?? ''));
@@ -212,11 +193,6 @@ class SolicitudesPrefacturaController
     {
         $requestId = $this->requestId($request);
 
-        if (!LegacySessionAuth::isAuthenticated($request)) {
-            return response()->json(['success' => false, 'error' => 'Sesion expirada'], 401)
-                ->header('X-Request-Id', $requestId);
-        }
-
         $payload = $this->payload($request);
 
         /** @var UploadedFile|null $attachment */
@@ -226,7 +202,7 @@ class SolicitudesPrefacturaController
             $result = $this->service->sendCoberturaMail(
                 $payload,
                 $attachment,
-                LegacySessionAuth::userId($request)
+                $this->actorId()
             );
         } catch (RuntimeException $e) {
             $status = (int) $e->getCode();
@@ -295,5 +271,12 @@ class SolicitudesPrefacturaController
         }
 
         return 'v2-' . bin2hex(random_bytes(8));
+    }
+
+    private function actorId(): ?int
+    {
+        $id = Auth::id();
+
+        return is_numeric($id) ? (int) $id : null;
     }
 }

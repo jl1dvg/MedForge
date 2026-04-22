@@ -2,7 +2,6 @@
 
 namespace App\Http\Middleware;
 
-use App\Modules\Shared\Support\LegacySessionAuth;
 use Closure;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -13,10 +12,6 @@ class RequireAppSession
 {
     public function handle(Request $request, Closure $next): Response|RedirectResponse
     {
-        if (!Auth::check()) {
-            LegacySessionAuth::bootstrapLaravelAuth($request);
-        }
-
         if (Auth::check()) {
             return $next($request);
         }

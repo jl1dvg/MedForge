@@ -38,15 +38,15 @@ Route::middleware(['legacy.auth', 'legacy.permission:administrativo,derivaciones
     Route::get('/v2/derivaciones', [DerivacionesUiController::class, 'index']);
 });
 
-Route::middleware(['legacy.auth', 'legacy.permission:administrativo,solicitudes.view,solicitudes.update,solicitudes.manage'])->group(function (): void {
+Route::middleware(['app.auth', 'app.permission:administrativo,solicitudes.view,solicitudes.update,solicitudes.manage'])->group(function (): void {
     Route::get('/v2/solicitudes', [SolicitudesUiController::class, 'index']);
 });
 
-Route::middleware(['legacy.auth', 'legacy.permission:administrativo,solicitudes.dashboard.view,solicitudes.view,solicitudes.update,solicitudes.manage'])->group(function (): void {
+Route::middleware(['app.auth', 'app.permission:administrativo,solicitudes.dashboard.view,solicitudes.view,solicitudes.update,solicitudes.manage'])->group(function (): void {
     Route::get('/v2/solicitudes/dashboard', [SolicitudesUiController::class, 'dashboard']);
 });
 
-Route::middleware(['legacy.auth', 'legacy.permission:administrativo,solicitudes.turnero,solicitudes.update,solicitudes.manage,solicitudes.view'])->group(function (): void {
+Route::middleware(['app.auth', 'app.permission:administrativo,solicitudes.turnero,solicitudes.update,solicitudes.manage,solicitudes.view'])->group(function (): void {
     Route::get('/v2/solicitudes/turnero', [SolicitudesUiController::class, 'turnero']);
 });
 
