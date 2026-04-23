@@ -247,7 +247,7 @@ Resultado esperado:
 - una sola verdad de estado;
 - menos lógica implícita heredada.
 
-Estado: `siguiente fase activa`
+Estado: `cerrada`
 
 ### Fase 4. Unificar CRM y Kanban
 
@@ -257,6 +257,21 @@ Estado: `siguiente fase activa`
 Resultado esperado:
 
 - el panel CRM y el kanban reflejan exactamente la misma realidad operativa.
+
+Estado: `cerrada en backend`
+
+Implementado:
+
+- `crm_tasks.checklist_slug` ya se expone en lectura CRM;
+- al actualizar el estado de una tarea CRM ligada a checklist:
+  - `completada` completa la etapa operativa equivalente;
+  - `pendiente` reabre la etapa operativa equivalente;
+- la sincronización usa la misma transición canónica del checklist (`transitionChecklistStage`), no una lógica paralela.
+
+Pendiente fuera del alcance de este cierre:
+
+- enriquecer UI/auditoría para mostrar explícitamente que la transición vino de una tarea CRM;
+- mapear otros estados de tarea (`en_progreso`, `cancelada`) a semántica operativa solo si negocio lo necesita.
 
 ### Fase 5. Cerrar integraciones Laravel
 

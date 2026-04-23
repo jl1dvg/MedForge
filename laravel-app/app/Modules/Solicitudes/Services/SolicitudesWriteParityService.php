@@ -13,21 +13,6 @@ use Throwable;
 
 class SolicitudesWriteParityService
 {
-    /**
-     * @var array<int, array{slug:string,label:string,order:int,column:string,required:bool}>
-     */
-    private const DEFAULT_STAGES = [
-        ['slug' => 'recibida', 'label' => 'Recibida', 'order' => 10, 'column' => 'recibida', 'required' => true],
-        ['slug' => 'llamado', 'label' => 'Llamado', 'order' => 20, 'column' => 'llamado', 'required' => true],
-        ['slug' => 'en-atencion', 'label' => 'En atencion', 'order' => 30, 'column' => 'revision-codigos', 'required' => true],
-        ['slug' => 'revision-codigos', 'label' => 'Cobertura', 'order' => 40, 'column' => 'revision-codigos', 'required' => true],
-        ['slug' => 'espera-documentos', 'label' => 'Documentacion', 'order' => 50, 'column' => 'espera-documentos', 'required' => true],
-        ['slug' => 'apto-oftalmologo', 'label' => 'Apto oftalmologo', 'order' => 60, 'column' => 'apto-oftalmologo', 'required' => true],
-        ['slug' => 'apto-anestesia', 'label' => 'Apto anestesia', 'order' => 70, 'column' => 'apto-anestesia', 'required' => true],
-        ['slug' => 'listo-para-agenda', 'label' => 'Listo para agenda', 'order' => 80, 'column' => 'listo-para-agenda', 'required' => true],
-        ['slug' => 'programada', 'label' => 'Programada', 'order' => 90, 'column' => 'programada', 'required' => true],
-    ];
-
     private const TURNERO_STATE_MAP = [
         'recibido' => 'Recibido',
         'recibida' => 'Recibido',
@@ -54,11 +39,14 @@ class SolicitudesWriteParityService
     private array $tableExistsCache = [];
 
     private ?int $companyIdCache = null;
+    private SolicitudesStateMachineService $stateMachine;
 
     public function __construct(
         private readonly PDO $db,
         private readonly SolicitudesReadParityService $readService,
+        ?SolicitudesStateMachineService $stateMachine = null,
     ) {
+        $this->stateMachine = $stateMachine ?? new SolicitudesStateMachineService();
     }
 
     /**
@@ -145,31 +133,19 @@ class SolicitudesWriteParityService
             throw new RuntimeException('Solicitud no encontrada');
         }
 
-        if (!$force && $completado && !$this->canCompleteStage($id, $stageSlug, (string) ($row['estado'] ?? ''))) {
-            throw new RuntimeException('Debe completar etapas previas antes de continuar.');
-        }
-
-        $this->upsertChecklistRow($id, $stageSlug, $completado, $userId, $nota);
-
         $legacyState = (string) ($row['estado'] ?? '');
-        $hasChecklistTable = $this->tableExists('solicitud_checklist');
-        if ($hasChecklistTable) {
-            $checklistRows = $this->queryChecklistRows($id);
-            [$checklist, $progress, $kanbanState] = $this->buildChecklistContext($legacyState, $checklistRows);
-            $nextState = (string) ($kanbanState['slug'] ?? $stageSlug);
-            $nextStateLabel = (string) ($kanbanState['label'] ?? $this->kanbanLabel($nextState));
-        } else {
-            [$checklist, $progress] = $this->buildChecklistContext($stageSlug, []);
-            $nextState = $stageSlug;
-            $nextStateLabel = $this->kanbanLabel($nextState);
-        }
+        [$checklist, $progress, $kanbanState, $transitionMeta] = $this->transitionChecklistStage(
+            $id,
+            $stageSlug,
+            $completado,
+            $userId,
+            $nota,
+            $force,
+            $legacyState
+        );
 
-        $updatePayload = ['estado' => $nextState];
-        if ($this->hasColumn('solicitud_procedimiento', 'updated_at')) {
-            $updatePayload['updated_at'] = date('Y-m-d H:i:s');
-        }
-
-        $this->updateRow('solicitud_procedimiento', $updatePayload, 'id = :id', [':id' => $id]);
+        $nextState = (string) ($kanbanState['slug'] ?? $stageSlug);
+        $nextStateLabel = (string) ($kanbanState['label'] ?? $this->kanbanLabel($nextState));
 
         $fresh = $this->fetchSolicitudById($id);
 
@@ -182,6 +158,7 @@ class SolicitudesWriteParityService
             'checklist' => $checklist,
             'checklist_progress' => $progress,
             'estado_anterior' => $legacyState,
+            'transition' => $transitionMeta,
         ];
     }
 
@@ -729,6 +706,8 @@ class SolicitudesWriteParityService
             throw new RuntimeException('Tabla crm_tasks no disponible');
         }
 
+        $taskRow = $this->crmTaskRow($solicitudId, $tareaId, $columns);
+
         $payload = [];
         if (in_array('status', $columns, true)) {
             $payload['status'] = $estado;
@@ -760,6 +739,20 @@ class SolicitudesWriteParityService
             throw new RuntimeException('No se pudo actualizar la tarea');
         }
 
+        $checklistSlug = $this->normalizeKanbanSlug((string) ($taskRow['checklist_slug'] ?? ''));
+        if ($checklistSlug !== '' && in_array($estado, ['completada', 'pendiente'], true)) {
+            $rows = $this->queryChecklistRows($solicitudId);
+            $this->transitionChecklistStage(
+                $solicitudId,
+                $checklistSlug,
+                $estado === 'completada',
+                null,
+                null,
+                false,
+                $this->operationalFallbackState($solicitudId, $rows)
+            );
+        }
+
         return $this->readService->crmResumen($solicitudId);
     }
 
@@ -772,16 +765,15 @@ class SolicitudesWriteParityService
         $this->assertSolicitudExists($solicitudId);
 
         $legacyState = $this->legacyStateBySolicitud($solicitudId);
-        $stageIndex = $this->stageIndex($this->normalizeKanbanSlug($legacyState));
 
-        foreach (self::DEFAULT_STAGES as $index => $stage) {
+        foreach ($this->stateMachine->bootstrapStagesFromLegacyState($legacyState) as $stage) {
             $slug = $stage['slug'];
             $exists = $this->checklistRowExists($solicitudId, $slug);
             if ($exists) {
                 continue;
             }
 
-            $completed = $stageIndex !== null && $index <= $stageIndex;
+            $completed = (bool) ($stage['completed'] ?? false);
             $this->upsertChecklistRow($solicitudId, $slug, $completed, $userId, null);
         }
 
@@ -802,9 +794,15 @@ class SolicitudesWriteParityService
     {
         $this->assertSolicitudExists($solicitudId);
 
-        $legacyState = $this->legacyStateBySolicitud($solicitudId);
         $rows = $this->queryChecklistRows($solicitudId);
-        [$checklist, $progress] = $this->buildChecklistContext($legacyState, $rows);
+        [$checklist, $progress] = $this->stateMachine->resolvePersistedChecklistContext(
+            $rows,
+            $this->operationalFallbackState($solicitudId, $rows),
+            [
+            'include_nota' => true,
+            'include_can_toggle' => true,
+            ]
+        );
 
         $resumen = $this->readService->crmResumen($solicitudId);
         $detalle = is_array($resumen['detalle'] ?? null) ? (array) $resumen['detalle'] : [];
@@ -830,20 +828,16 @@ class SolicitudesWriteParityService
             throw new RuntimeException('Etapa requerida');
         }
 
-        if (!$this->tableExists('solicitud_checklist')) {
-            if ($completado) {
-                $payload = ['estado' => $slug];
-                if ($this->hasColumn('solicitud_procedimiento', 'updated_at')) {
-                    $payload['updated_at'] = date('Y-m-d H:i:s');
-                }
-                $this->updateRow('solicitud_procedimiento', $payload, 'id = :id', [':id' => $solicitudId]);
-            }
-
-            return $this->crmChecklistState($solicitudId);
-        }
-
-        $this->upsertChecklistRow($solicitudId, $slug, $completado, $userId, null);
-        $this->syncSolicitudEstadoFromChecklist($solicitudId);
+        $rows = $this->queryChecklistRows($solicitudId);
+        $this->transitionChecklistStage(
+            $solicitudId,
+            $slug,
+            $completado,
+            $userId,
+            null,
+            false,
+            $this->operationalFallbackState($solicitudId, $rows)
+        );
 
         return $this->crmChecklistState($solicitudId);
     }
@@ -901,17 +895,14 @@ class SolicitudesWriteParityService
         $this->completarChecklistConciliacion($solicitudId, $userId, $nota);
         $tareasActualizadas = $this->completarTodasLasTareasConciliacion($solicitudId);
 
-        $updatePayload = ['estado' => 'completado'];
-        if ($this->hasColumn('solicitud_procedimiento', 'updated_at')) {
-            $updatePayload['updated_at'] = date('Y-m-d H:i:s');
-        }
-        $this->updateRow('solicitud_procedimiento', $updatePayload, 'id = :id', [':id' => $solicitudId]);
+        $completedState = $this->stateMachine->completedTerminalState();
+        $this->persistOperationalState($solicitudId, (string) ($completedState['slug'] ?? SolicitudesStateMachineService::STATE_COMPLETADO));
 
         $checklistState = $this->crmChecklistState($solicitudId);
 
         return [
             'message' => 'Solicitud confirmada y marcada como completada.',
-            'estado' => 'completado',
+            'estado' => (string) ($completedState['slug'] ?? SolicitudesStateMachineService::STATE_COMPLETADO),
             'checklist' => $checklistState['checklist'] ?? [],
             'checklist_progress' => $checklistState['checklist_progress'] ?? [],
             'tareas_actualizadas' => $tareasActualizadas,
@@ -934,7 +925,7 @@ class SolicitudesWriteParityService
             return;
         }
 
-        foreach (self::DEFAULT_STAGES as $stage) {
+        foreach ($this->stateMachine->stages() as $stage) {
             $slug = (string) ($stage['slug'] ?? '');
             if ($slug === '') {
                 continue;
@@ -1314,16 +1305,85 @@ class SolicitudesWriteParityService
 
     private function syncSolicitudEstadoFromChecklist(int $solicitudId): void
     {
-        $legacyState = $this->legacyStateBySolicitud($solicitudId);
         $rows = $this->queryChecklistRows($solicitudId);
-        [, , $kanban] = $this->buildChecklistContext($legacyState, $rows);
+        $fallbackState = $this->operationalFallbackState($solicitudId, $rows);
+        [, , $kanban] = $this->stateMachine->resolvePersistedChecklistContext($rows, $fallbackState, [
+            'include_nota' => true,
+            'include_can_toggle' => true,
+        ]);
 
-        $payload = ['estado' => $kanban['slug'] ?? $legacyState];
+        $this->persistOperationalState($solicitudId, (string) ($kanban['slug'] ?? $fallbackState));
+    }
+
+    private function persistOperationalState(int $solicitudId, string $stateSlug): void
+    {
+        $payload = ['estado' => $stateSlug];
         if ($this->hasColumn('solicitud_procedimiento', 'updated_at')) {
             $payload['updated_at'] = date('Y-m-d H:i:s');
         }
 
         $this->updateRow('solicitud_procedimiento', $payload, 'id = :id', [':id' => $solicitudId]);
+    }
+
+    /**
+     * @return array{0:array<int,array<string,mixed>>,1:array<string,mixed>,2:array{slug:string,label:string},3:array<string,mixed>}
+     */
+    private function transitionChecklistStage(
+        int $solicitudId,
+        string $stageSlug,
+        bool $completed,
+        ?int $userId,
+        ?string $note,
+        bool $force,
+        string $fallbackState
+    ): array {
+        if (!$this->tableExists('solicitud_checklist')) {
+            $nextState = $completed ? $stageSlug : $fallbackState;
+            if ($nextState !== '') {
+                $this->persistOperationalState($solicitudId, $nextState);
+            }
+
+            [$checklist, $progress] = $this->buildChecklistContext($nextState !== '' ? $nextState : $stageSlug, []);
+
+            $transitionMeta = $this->stateMachine->describeTransition($fallbackState, $nextState !== '' ? $nextState : $stageSlug);
+
+            return [
+                $checklist,
+                $progress,
+                [
+                    'slug' => $nextState !== '' ? $nextState : $stageSlug,
+                    'label' => $this->kanbanLabel($nextState !== '' ? $nextState : $stageSlug),
+                ],
+                $transitionMeta,
+            ];
+        }
+
+        $currentRows = $this->queryChecklistRows($solicitudId);
+        $previousState = (string) ($this->stateMachine->resolveOperationalState($currentRows, $fallbackState, [
+            'include_nota' => true,
+            'include_can_toggle' => true,
+        ])['slug'] ?? $fallbackState);
+
+        if (!$force && $completed && !$this->canCompleteStage($currentRows, $stageSlug, $fallbackState)) {
+            throw new RuntimeException('Debe completar etapas previas antes de continuar.');
+        }
+
+        $this->upsertChecklistRow($solicitudId, $stageSlug, $completed, $userId, $note);
+
+        $rows = $this->queryChecklistRows($solicitudId);
+        [$checklist, $progress, $kanbanState] = $this->stateMachine->resolvePersistedChecklistContext($rows, $fallbackState, [
+            'include_nota' => true,
+            'include_can_toggle' => true,
+        ]);
+
+        $nextState = (string) ($kanbanState['slug'] ?? $fallbackState);
+        if ($nextState !== '') {
+            $this->persistOperationalState($solicitudId, $nextState);
+        }
+
+        $transitionMeta = $this->stateMachine->describeTransition($previousState, $nextState);
+
+        return [$checklist, $progress, $kanbanState, $transitionMeta];
     }
 
     private function checklistRowExists(int $solicitudId, string $slug): bool
@@ -1506,12 +1566,18 @@ class SolicitudesWriteParityService
         return array_values(array_unique($ids));
     }
 
-    private function canCompleteStage(int $solicitudId, string $targetSlug, string $legacyState): bool
+    /**
+     * @param array<int,array<string,mixed>> $rows
+     */
+    private function canCompleteStage(array $rows, string $targetSlug, string $fallbackState): bool
     {
-        [$checklist] = $this->buildChecklistContext($legacyState, $this->queryChecklistRows($solicitudId));
+        [$checklist] = $this->stateMachine->resolvePersistedChecklistContext($rows, $fallbackState, [
+            'include_nota' => true,
+            'include_can_toggle' => true,
+        ]);
 
         $targetOrder = null;
-        foreach (self::DEFAULT_STAGES as $stage) {
+        foreach ($this->stateMachine->stages() as $stage) {
             if ($stage['slug'] === $targetSlug) {
                 $targetOrder = (int) $stage['order'];
                 break;
@@ -1534,6 +1600,63 @@ class SolicitudesWriteParityService
         }
 
         return true;
+    }
+
+    /**
+     * @param array<int,array<string,mixed>>|null $rows
+     */
+    private function operationalFallbackState(int $solicitudId, ?array $rows = null): string
+    {
+        $checklistRows = $rows ?? $this->queryChecklistRows($solicitudId);
+
+        return $checklistRows === [] ? $this->legacyStateBySolicitud($solicitudId) : '';
+    }
+
+    /**
+     * @param array<int,string> $columns
+     * @return array<string,mixed>
+     */
+    private function crmTaskRow(int $solicitudId, int $tareaId, array $columns): array
+    {
+        $select = ['id'];
+        if (in_array('checklist_slug', $columns, true)) {
+            $select[] = 'checklist_slug';
+        }
+        if (in_array('status', $columns, true)) {
+            $select[] = 'status';
+        }
+
+        $where = 'id = :id';
+        $bindings = [':id' => $tareaId];
+
+        if (in_array('source_module', $columns, true)) {
+            $where .= ' AND source_module = :source_module';
+            $bindings[':source_module'] = 'solicitudes';
+        }
+        if (in_array('source_ref_id', $columns, true)) {
+            $where .= ' AND source_ref_id = :source_ref_id';
+            $bindings[':source_ref_id'] = (string) $solicitudId;
+        }
+        if (in_array('company_id', $columns, true)) {
+            $where .= ' AND company_id = :company_id';
+            $bindings[':company_id'] = $this->resolveCompanyId();
+        }
+
+        $sql = sprintf(
+            'SELECT %s FROM crm_tasks WHERE %s LIMIT 1',
+            implode(', ', $select),
+            $where
+        );
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($bindings);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!is_array($row)) {
+            throw new RuntimeException('No se encontró la tarea CRM.');
+        }
+
+        return $row;
     }
 
     private function upsertChecklistRow(int $solicitudId, string $slug, bool $completed, ?int $userId, ?string $note): void
@@ -1618,107 +1741,15 @@ class SolicitudesWriteParityService
      */
     private function buildChecklistContext(string $legacyState, array $checklistRows): array
     {
-        $bySlug = [];
-        foreach ($checklistRows as $row) {
-            $slug = $this->normalizeKanbanSlug((string) ($row['etapa_slug'] ?? ''));
-            if ($slug === '') {
-                continue;
-            }
-
-            $bySlug[$slug] = [
-                'completed' => !empty($row['completado_at']),
-                'completado_at' => $row['completado_at'] !== null ? (string) $row['completado_at'] : null,
-                'nota' => isset($row['nota']) ? trim((string) $row['nota']) : null,
-            ];
-        }
-
-        $legacySlug = $this->normalizeKanbanSlug($legacyState);
-        $stageIndex = $this->stageIndex($legacySlug);
-
-        $checklist = [];
-        foreach (self::DEFAULT_STAGES as $index => $stage) {
-            $slug = $stage['slug'];
-            $fromDb = $bySlug[$slug] ?? null;
-            $completed = $fromDb['completed'] ?? false;
-
-            if ($legacySlug === 'completado') {
-                $completed = true;
-            }
-
-            if ($fromDb === null && $stageIndex !== null) {
-                $completed = $index <= $stageIndex;
-            }
-
-            $checklist[] = [
-                'slug' => $slug,
-                'label' => $stage['label'],
-                'order' => $stage['order'],
-                'required' => $stage['required'],
-                'completed' => $completed,
-                'completado_at' => $fromDb['completado_at'] ?? null,
-                'nota' => $fromDb['nota'] ?? null,
-                'can_toggle' => true,
-            ];
-        }
-
-        $total = count($checklist);
-        $completedCount = count(array_filter($checklist, static fn(array $item): bool => !empty($item['completed'])));
-        $percent = $total > 0 ? round(($completedCount / $total) * 100, 1) : 0.0;
-
-        $next = null;
-        if ($legacySlug !== 'completado') {
-            foreach ($checklist as $item) {
-                if (!empty($item['required']) && empty($item['completed'])) {
-                    $next = $item;
-                    break;
-                }
-            }
-        }
-
-        $progress = [
-            'total' => $total,
-            'completed' => $completedCount,
-            'percent' => $percent,
-            'next_slug' => $next['slug'] ?? null,
-            'next_label' => $next['label'] ?? null,
-        ];
-
-        if ($legacySlug === 'completado') {
-            $kanbanSlug = 'completado';
-        } elseif ($legacySlug === 'programada') {
-            $kanbanSlug = 'programada';
-        } elseif (in_array($legacySlug, ['recibida', 'llamado'], true)) {
-            $kanbanSlug = $legacySlug;
-        } elseif ($next !== null) {
-            $stage = $this->stageBySlug((string) $next['slug']);
-            $kanbanSlug = (string) ($stage['column'] ?? $next['slug']);
-        } else {
-            $kanbanSlug = 'programada';
-        }
-
-        return [
-            $checklist,
-            $progress,
-            [
-                'slug' => $kanbanSlug,
-                'label' => $this->kanbanLabel($kanbanSlug),
-            ],
-        ];
+        return $this->stateMachine->buildChecklistContext($legacyState, $checklistRows, [
+            'include_nota' => true,
+            'include_can_toggle' => true,
+        ]);
     }
 
     private function stageIndex(string $slug): ?int
     {
-        if ($slug === '') {
-            return null;
-        }
-
-        foreach (self::DEFAULT_STAGES as $index => $stage) {
-            if ($stage['slug'] === $slug || $stage['column'] === $slug) {
-                return $index;
-            }
-        }
-
-        return null;
+        return $this->stateMachine->stageIndex($slug);
     }
 
     /**
@@ -1726,60 +1757,17 @@ class SolicitudesWriteParityService
      */
     private function stageBySlug(string $slug): ?array
     {
-        foreach (self::DEFAULT_STAGES as $stage) {
-            if ($stage['slug'] === $slug) {
-                return $stage;
-            }
-        }
-
-        return null;
+        return $this->stateMachine->stageBySlug($slug);
     }
 
     private function kanbanLabel(string $slug): string
     {
-        foreach (self::DEFAULT_STAGES as $stage) {
-            if ($stage['column'] === $slug || $stage['slug'] === $slug) {
-                return $stage['label'];
-            }
-        }
-
-        return ucfirst(str_replace('-', ' ', $slug));
+        return $this->stateMachine->kanbanLabel($slug);
     }
 
     private function normalizeKanbanSlug(string $value): string
     {
-        $value = trim($value);
-        if ($value === '') {
-            return '';
-        }
-
-        if (class_exists(\Normalizer::class)) {
-            $normalized = \Normalizer::normalize($value, \Normalizer::FORM_D);
-            if (is_string($normalized)) {
-                $value = preg_replace('/\p{Mn}/u', '', $normalized) ?? $value;
-            }
-        }
-
-        $value = strtr($value, [
-            'á' => 'a',
-            'é' => 'e',
-            'í' => 'i',
-            'ó' => 'o',
-            'ú' => 'u',
-            'Á' => 'a',
-            'É' => 'e',
-            'Í' => 'i',
-            'Ó' => 'o',
-            'Ú' => 'u',
-            'ñ' => 'n',
-            'Ñ' => 'n',
-        ]);
-
-        $value = function_exists('mb_strtolower') ? mb_strtolower($value, 'UTF-8') : strtolower($value);
-        $value = preg_replace('/[^a-z0-9\s\-]/u', ' ', $value) ?? $value;
-        $value = preg_replace('/\s+/', '-', trim($value)) ?? $value;
-
-        return trim($value, '-');
+        return $this->stateMachine->normalizeKanbanSlug($value);
     }
 
     private function normalizeTurneroEstado(string $estado): ?string

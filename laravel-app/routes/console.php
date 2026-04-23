@@ -9,6 +9,7 @@ use App\Modules\Examenes\Services\ImagenesSigcenterIndexService;
 use App\Modules\Examenes\Services\NasImagenesService;
 use App\Modules\Farmacia\Services\RecetasConciliacionSyncService;
 use App\Modules\Shared\Support\AfiliacionDimensionService;
+use App\Modules\Solicitudes\Services\SolicitudesChecklistBackfillService;
 use App\Modules\Solicitudes\Services\SolicitudesPrefacturaService;
 use App\Modules\Whatsapp\Services\ConversationOpsService;
 use App\Modules\Whatsapp\Services\FlowRuntimeShadowCompareService;
@@ -23,6 +24,49 @@ use Illuminate\Support\Facades\Schedule;
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
+
+Artisan::command('solicitudes:phase3-backfill-checklist
+    {--dry-run : Solo calcula cuántas solicitudes requieren backfill}
+    {--limit=0 : Limita cuántas solicitudes procesa}', function (): int {
+    /** @var SolicitudesChecklistBackfillService $service */
+    $service = app(SolicitudesChecklistBackfillService::class);
+
+    $summary = $service->summary();
+    $dryRun = (bool) $this->option('dry-run');
+    $limit = max(0, (int) $this->option('limit'));
+
+    $this->table(
+        ['Métrica', 'Valor'],
+        [
+            ['Solicitudes totales', (string) ($summary['total'] ?? 0)],
+            ['Solicitudes candidatas', (string) ($summary['candidatas'] ?? 0)],
+            ['Etapas esperadas por solicitud', (string) ($summary['esperadas_por_solicitud'] ?? 0)],
+            ['Modo', $dryRun ? 'dry-run' : 'write'],
+            ['Límite', $limit > 0 ? (string) $limit : 'sin límite'],
+        ]
+    );
+
+    $result = $service->run($dryRun, $limit);
+
+    $this->newLine();
+    $this->table(
+        ['Resultado', 'Valor'],
+        [
+            ['Candidatas evaluadas', (string) ($result['candidatas'] ?? 0)],
+            ['Solicitudes procesadas', (string) ($result['procesadas'] ?? 0)],
+            ['Filas de checklist insertadas', (string) ($result['filas_insertadas'] ?? 0)],
+            ['Estados normalizados', (string) ($result['estados_actualizados'] ?? 0)],
+        ]
+    );
+
+    if ($dryRun) {
+        $this->info('Dry-run completado. No se escribieron cambios.');
+        return 0;
+    }
+
+    $this->info('Backfill de checklist completado.');
+    return 0;
+})->purpose('Siembra o completa checklist operativo de Solicitudes para cerrar la fase 3');
 
 Artisan::command('whatsapp:phase1-smoke', function (): int {
     $enabled = (bool) config('whatsapp.migration.enabled', false);

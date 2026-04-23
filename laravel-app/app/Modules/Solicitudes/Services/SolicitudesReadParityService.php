@@ -24,21 +24,6 @@ class SolicitudesReadParityService
         'Perdido',
     ];
 
-    /**
-     * @var array<int, array{slug:string,label:string,order:int,column:string,required:bool}>
-     */
-    private const DEFAULT_STAGES = [
-        ['slug' => 'recibida', 'label' => 'Recibida', 'order' => 10, 'column' => 'recibida', 'required' => true],
-        ['slug' => 'llamado', 'label' => 'Llamado', 'order' => 20, 'column' => 'llamado', 'required' => true],
-        ['slug' => 'en-atencion', 'label' => 'En atencion', 'order' => 30, 'column' => 'revision-codigos', 'required' => true],
-        ['slug' => 'revision-codigos', 'label' => 'Cobertura', 'order' => 40, 'column' => 'revision-codigos', 'required' => true],
-        ['slug' => 'espera-documentos', 'label' => 'Documentacion', 'order' => 50, 'column' => 'espera-documentos', 'required' => true],
-        ['slug' => 'apto-oftalmologo', 'label' => 'Apto oftalmologo', 'order' => 60, 'column' => 'apto-oftalmologo', 'required' => true],
-        ['slug' => 'apto-anestesia', 'label' => 'Apto anestesia', 'order' => 70, 'column' => 'apto-anestesia', 'required' => true],
-        ['slug' => 'listo-para-agenda', 'label' => 'Listo para agenda', 'order' => 80, 'column' => 'listo-para-agenda', 'required' => true],
-        ['slug' => 'programada', 'label' => 'Programada', 'order' => 90, 'column' => 'programada', 'required' => true],
-    ];
-
     private const META_CIRUGIA_CONFIRMADA_KEYS = [
         'cirugia_confirmada_form_id',
         'cirugia_confirmada_hc_number',
@@ -60,10 +45,12 @@ class SolicitudesReadParityService
     private array $tableExistsCache = [];
 
     private AfiliacionDimensionService $afiliacionDimensions;
+    private SolicitudesStateMachineService $stateMachine;
 
-    public function __construct()
+    public function __construct(?SolicitudesStateMachineService $stateMachine = null)
     {
         $this->afiliacionDimensions = new AfiliacionDimensionService(DB::connection()->getPdo());
+        $this->stateMachine = $stateMachine ?? new SolicitudesStateMachineService();
     }
 
     public function dashboardData(array $payload): array
@@ -119,7 +106,10 @@ class SolicitudesReadParityService
             $row = $this->normalizeSolicitudRow($row);
             $solicitudId = (int) ($row['id'] ?? 0);
             $checklistRows = $checklistMap[$solicitudId] ?? [];
-            [$checklist, $progress, $kanbanState] = $this->buildChecklistContext((string) ($row['estado'] ?? ''), $checklistRows);
+            [$checklist, $progress, $kanbanState] = $this->stateMachine->resolvePersistedChecklistContext(
+                $checklistRows,
+                (string) ($row['estado'] ?? '')
+            );
 
             $row['checklist'] = $checklist;
             $row['checklist_progress'] = $progress;
@@ -1203,89 +1193,7 @@ class SolicitudesReadParityService
      */
     private function buildChecklistContext(string $legacyState, array $checklistRows): array
     {
-        $bySlug = [];
-        foreach ($checklistRows as $row) {
-            $slug = $this->normalizeKanbanSlug((string) ($row['etapa_slug'] ?? ''));
-            if ($slug === '') {
-                continue;
-            }
-            $bySlug[$slug] = [
-                'completed' => !empty($row['completado_at']),
-                'completado_at' => $row['completado_at'] !== null ? (string) $row['completado_at'] : null,
-            ];
-        }
-
-        $legacySlug = $this->normalizeKanbanSlug($legacyState);
-        $stageIndex = $this->stageIndex($legacySlug);
-
-        $checklist = [];
-        foreach (self::DEFAULT_STAGES as $index => $stage) {
-            $slug = $stage['slug'];
-            $fromDb = $bySlug[$slug] ?? null;
-            $completed = $fromDb['completed'] ?? false;
-
-            if ($legacySlug === 'completado') {
-                $completed = true;
-            }
-
-            // Fallback cuando no hay filas de checklist: inferir por estado legacy.
-            if ($fromDb === null && $stageIndex !== null) {
-                $completed = $index <= $stageIndex;
-            }
-
-            $checklist[] = [
-                'slug' => $slug,
-                'label' => $stage['label'],
-                'order' => $stage['order'],
-                'required' => $stage['required'],
-                'completed' => $completed,
-                'completado_at' => $fromDb['completado_at'] ?? null,
-            ];
-        }
-
-        $total = count($checklist);
-        $completed = count(array_filter($checklist, static fn(array $item): bool => !empty($item['completed'])));
-        $percent = $total > 0 ? round(($completed / $total) * 100, 1) : 0.0;
-
-        $next = null;
-        if ($legacySlug !== 'completado') {
-            foreach ($checklist as $item) {
-                if (empty($item['completed']) && !empty($item['required'])) {
-                    $next = $item;
-                    break;
-                }
-            }
-        }
-
-        $progress = [
-            'total' => $total,
-            'completed' => $completed,
-            'percent' => $percent,
-            'next_slug' => $next['slug'] ?? null,
-            'next_label' => $next['label'] ?? null,
-        ];
-
-        if ($legacySlug === 'completado') {
-            $kanbanSlug = 'completado';
-        } elseif ($legacySlug === 'programada') {
-            $kanbanSlug = 'programada';
-        } elseif (in_array($legacySlug, ['recibida', 'llamado'], true)) {
-            $kanbanSlug = $legacySlug;
-        } elseif ($next !== null) {
-            $stage = $this->stageBySlug((string) $next['slug']);
-            $kanbanSlug = (string) ($stage['column'] ?? $next['slug']);
-        } else {
-            $kanbanSlug = 'programada';
-        }
-
-        return [
-            $checklist,
-            $progress,
-            [
-                'slug' => $kanbanSlug,
-                'label' => $this->kanbanLabel($kanbanSlug),
-            ],
-        ];
+        return $this->stateMachine->buildChecklistContext($legacyState, $checklistRows);
     }
 
     /**
@@ -1767,7 +1675,7 @@ class SolicitudesReadParityService
         $checklistMap = $this->queryChecklistMap(array_values(array_map(static fn(array $item): int => (int) $item['id'], $solicitudes)));
 
         $wip = [];
-        foreach (self::DEFAULT_STAGES as $stage) {
+        foreach ($this->stateMachine->stages() as $stage) {
             $column = (string) $stage['column'];
             $wip[$column] = ['label' => $this->kanbanLabel($column), 'total' => 0];
         }
@@ -1780,7 +1688,10 @@ class SolicitudesReadParityService
         $completedCount = 0;
 
         foreach ($solicitudes as $row) {
-            [$checklist, $progress, $kanbanState] = $this->buildChecklistContext((string) ($row['estado'] ?? ''), $checklistMap[(int) $row['id']] ?? []);
+            [$checklist, $progress, $kanbanState] = $this->stateMachine->resolvePersistedChecklistContext(
+                $checklistMap[(int) $row['id']] ?? [],
+                (string) ($row['estado'] ?? '')
+            );
             unset($checklist);
 
             $slug = (string) ($kanbanState['slug'] ?? '');
@@ -2079,6 +1990,8 @@ class SolicitudesReadParityService
                         t.title AS titulo,
                         t.description AS descripcion,
                         t.status AS estado,
+                        t.checklist_slug,
+                        t.task_key,
                         t.assigned_to,
                         t.created_by,
                         COALESCE(t.due_date, DATE(t.due_at)) AS due_date,
@@ -2726,66 +2639,22 @@ class SolicitudesReadParityService
 
     private function normalizeKanbanSlug(string $value): string
     {
-        $slug = mb_strtolower(trim($value), 'UTF-8');
-        $slug = str_replace('_', '-', $slug);
-        $slug = preg_replace('/[^\p{L}\p{N}-]+/u', '-', $slug) ?? $slug;
-        $slug = trim($slug, '-');
-
-        $aliases = [
-            'recibido' => 'recibida',
-            'en-atencion' => 'en-atencion',
-            'en-atenci-n' => 'en-atencion',
-            'revision-de-codigos' => 'revision-codigos',
-            'docs-completos' => 'espera-documentos',
-            'documentos-completos' => 'espera-documentos',
-            'apto-oftalmologo' => 'apto-oftalmologo',
-            'apto-oftalm-logo' => 'apto-oftalmologo',
-            'apto-anestesia' => 'apto-anestesia',
-            'listo-para-agenda' => 'listo-para-agenda',
-            'protocolo-completo' => 'programada',
-            'facturado' => 'programada',
-            'facturada-cerrada' => 'programada',
-            'cerrado' => 'programada',
-            'cerrada' => 'programada',
-            'completa' => 'completado',
-        ];
-
-        return $aliases[$slug] ?? $slug;
+        return $this->stateMachine->normalizeKanbanSlug($value);
     }
 
     private function stageBySlug(string $slug): ?array
     {
-        foreach (self::DEFAULT_STAGES as $stage) {
-            if ($stage['slug'] === $slug) {
-                return $stage;
-            }
-        }
-
-        return null;
+        return $this->stateMachine->stageBySlug($slug);
     }
 
     private function stageIndex(string $slug): ?int
     {
-        foreach (self::DEFAULT_STAGES as $index => $stage) {
-            if ($stage['slug'] === $slug || $stage['column'] === $slug) {
-                return $index;
-            }
-        }
-
-        return null;
+        return $this->stateMachine->stageIndex($slug);
     }
 
     private function kanbanLabel(string $slug): string
     {
-        $slug = $this->normalizeKanbanSlug($slug);
-
-        foreach (self::DEFAULT_STAGES as $stage) {
-            if ($stage['slug'] === $slug || $stage['column'] === $slug) {
-                return (string) $stage['label'];
-            }
-        }
-
-        return $slug !== '' ? ucfirst(str_replace('-', ' ', $slug)) : 'Sin estado';
+        return $this->stateMachine->kanbanLabel($slug, 'Sin estado');
     }
 
     private function tableExists(string $table): bool
