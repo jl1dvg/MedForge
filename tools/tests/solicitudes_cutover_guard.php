@@ -10,6 +10,9 @@ if (!is_string($root) || $root === '') {
 }
 
 $legacyPath = 'modules/solicitudes/';
+$legacyRetirementAllowlist = [
+    'modules/solicitudes/routes.php',
+];
 $solicitudesScopes = [
     'laravel-app/app/Modules/Solicitudes/',
     'laravel-app/resources/views/solicitudes/',
@@ -55,11 +58,31 @@ foreach ($statusOutput as $line) {
     }
 }
 
-$legacyChanges = array_values(array_filter($changedFiles, static fn(string $path): bool => str_starts_with($path, $legacyPath)));
+$legacyChanges = array_values(array_filter(
+    $changedFiles,
+    static fn(string $path): bool => str_starts_with($path, $legacyPath)
+        && !in_array($path, $legacyRetirementAllowlist, true)
+));
 if ($legacyChanges !== []) {
     $errors[] = "Se detectaron cambios en Solicitudes legacy:";
     foreach ($legacyChanges as $path) {
         $errors[] = "  - {$path}";
+    }
+}
+
+foreach ($legacyRetirementAllowlist as $path) {
+    if (!in_array($path, $changedFiles, true)) {
+        continue;
+    }
+
+    $content = @file_get_contents($root . '/' . $path);
+    if (!is_string($content)) {
+        $errors[] = "No se pudo leer {$path} para validar el retiro legacy.";
+        continue;
+    }
+
+    if (str_contains($content, 'SolicitudController')) {
+        $errors[] = "{$path} no debe ejecutar SolicitudController durante Fase 6.";
     }
 }
 
@@ -113,7 +136,7 @@ if ($matches !== []) {
 if ($errors !== []) {
     fwrite(STDERR, "Solicitudes cutover guard: FAIL\n\n");
     fwrite(STDERR, implode("\n", $errors) . "\n\n");
-    fwrite(STDERR, "Regla activa: Fase 1 congela legacy y evita nuevas dependencias a LegacySessionAuth.\n");
+    fwrite(STDERR, "Regla activa: Fase 1 congela legacy; Fase 6 solo permite retirar rutas legacy sin ejecutar SolicitudController.\n");
     exit(1);
 }
 

@@ -9,7 +9,7 @@ Route::middleware([
     'app.auth',
     'app.permission:administrativo,solicitudes.view,solicitudes.update,solicitudes.turnero,solicitudes.dashboard.view,solicitudes.manage',
 ])->group(function (): void {
-// Legacy mirror paths (reads)
+// Canonical Solicitudes v2 paths (reads)
 Route::match(['GET', 'POST'], '/solicitudes/kanban-data', [SolicitudesReadController::class, 'kanbanData']);
 Route::post('/solicitudes/dashboard-data', [SolicitudesReadController::class, 'dashboardData']);
 Route::get('/solicitudes/turnero-data', [SolicitudesReadController::class, 'turneroData']);
@@ -17,11 +17,13 @@ Route::get('/solicitudes/{id}/crm', [SolicitudesReadController::class, 'crmResum
 Route::get('/solicitudes/conciliacion-cirugias', [SolicitudesReadController::class, 'conciliacionCirugias']);
 Route::get('/solicitudes/prefactura', [SolicitudesPrefacturaController::class, 'prefactura']);
 Route::get('/solicitudes/derivacion', [SolicitudesPrefacturaController::class, 'derivacion']);
+Route::post('/solicitudes/reportes/pdf', [SolicitudesReadController::class, 'reportePdf']);
+Route::post('/solicitudes/reportes/excel', [SolicitudesReadController::class, 'reporteExcel']);
 Route::post('/solicitudes/derivacion-preseleccion', [SolicitudesPrefacturaController::class, 'derivacionPreseleccion']);
 Route::post('/solicitudes/re-scrape-derivacion', [SolicitudesPrefacturaController::class, 'rescrapeDerivacion']);
 Route::post('/solicitudes/cobertura-mail', [SolicitudesPrefacturaController::class, 'coberturaMail']);
 
-// Legacy mirror paths (writes)
+// Canonical Solicitudes v2 paths (writes)
 Route::post('/solicitudes/actualizar-estado', [SolicitudesWriteController::class, 'actualizarEstado']);
 Route::post('/solicitudes/turnero-llamar', [SolicitudesWriteController::class, 'turneroLlamar']);
 Route::get('/solicitudes/api/estado', [SolicitudesWriteController::class, 'apiEstadoGet']);

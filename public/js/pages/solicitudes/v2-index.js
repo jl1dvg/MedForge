@@ -457,7 +457,7 @@
         return acc;
     }, {});
 
-    const syncLegacyKanbanBridge = () => {
+    const syncKanbanRuntimeConfig = () => {
         const existing = window.__KANBAN_MODULE__ && typeof window.__KANBAN_MODULE__ === 'object'
             ? window.__KANBAN_MODULE__
             : {};
@@ -1448,7 +1448,7 @@
             return;
         }
 
-        const endpoint = format === 'excel' ? '/solicitudes/reportes/excel' : '/solicitudes/reportes/pdf';
+        const endpoint = format === 'excel' ? '/v2/solicitudes/reportes/excel' : '/v2/solicitudes/reportes/pdf';
         const expectedContentType = format === 'excel'
             ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
             : 'application/pdf';
@@ -1532,7 +1532,7 @@
         }
 
         if (!state.conciliacionPanel.loadingPromise) {
-            syncLegacyKanbanBridge();
+            syncKanbanRuntimeConfig();
             state.conciliacionPanel.loadingPromise = import('/js/pages/solicitudes/conciliacion.js')
                 .then((module) => {
                     if (!module || typeof module.initSolicitudesConciliacion !== 'function') {
@@ -1636,7 +1636,7 @@
 
             state.rows = Array.isArray(json.data) ? json.data : [];
             state.options = json.options || {};
-            syncLegacyKanbanBridge();
+            syncKanbanRuntimeConfig();
 
             renderSelectOptions(afiliacionSelect, state.options.afiliaciones || [], filters.afiliacion);
             renderSelectOptions(afiliacionCategoriaSelect, state.options.afiliacion_categorias || [], filters.afiliacion_categoria);
@@ -1764,7 +1764,7 @@
             return;
         }
 
-        syncLegacyKanbanBridge();
+        syncKanbanRuntimeConfig();
         attachPrefacturaCrmProxy();
         await ensurePrefacturaInteractions();
 
@@ -1906,7 +1906,7 @@
     });
 
     applyInitialFilters();
-    syncLegacyKanbanBridge();
+    syncKanbanRuntimeConfig();
     initTooltips();
     initRealtimeNotifications();
     switchView(state.view, false);

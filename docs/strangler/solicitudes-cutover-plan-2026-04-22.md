@@ -283,7 +283,7 @@ Resultado esperado:
 
 - `Solicitudes` ya no depende de módulos runtime legacy para operación.
 
-Estado: `parcial`
+Estado: `cerrada para Solicitudes`
 
 Implementado:
 
@@ -305,10 +305,16 @@ Pendiente:
 
 ### Fase 6. Ejecutar corte
 
-- apagar rutas legacy de `modules/solicitudes/routes.php`;
-- eliminar vistas legacy de solicitudes de la navegación;
-- remover bridges JS heredados;
-- dejar solo `/v2/solicitudes`.
+Estado: `cerrada`
+
+Implementado:
+
+- `modules/solicitudes/routes.php` ya no ejecuta `SolicitudController`;
+- las rutas legacy de lectura/escritura redirigen a sus equivalentes `/v2/solicitudes` con `307` cuando deben preservar método y body;
+- el endpoint legacy de recordatorios sin equivalente v2 queda retirado con `410`;
+- reportes PDF/Excel del tablero operan desde `/v2/solicitudes/reportes/...`;
+- el runtime JS del Kanban v2 dejó de exponer el bridge legacy por nombre;
+- navegación y enlaces Laravel relevantes apuntan a `/v2/solicitudes`.
 
 ## 8. Go / No-Go
 

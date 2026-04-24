@@ -212,7 +212,7 @@
     <script>
         window.__KANBAN_MODULE__ = {
             key: 'solicitudes',
-            basePath: '/solicitudes',
+            basePath: '/v2/solicitudes',
             readPrefix: '/v2',
             v2ReadsEnabled: true,
             turnero: {

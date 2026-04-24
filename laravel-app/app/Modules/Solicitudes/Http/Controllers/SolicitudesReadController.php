@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Solicitudes\Http\Controllers;
 
 use App\Modules\Solicitudes\Services\SolicitudesReadParityService;
+use App\Modules\Solicitudes\Services\SolicitudesReportService;
 use DateTimeImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -15,10 +16,12 @@ use RuntimeException;
 class SolicitudesReadController
 {
     private SolicitudesReadParityService $service;
+    private SolicitudesReportService $reportService;
 
     public function __construct()
     {
         $this->service = new SolicitudesReadParityService();
+        $this->reportService = new SolicitudesReportService($this->service);
     }
 
     public function kanbanData(Request $request): JsonResponse
@@ -46,6 +49,16 @@ class SolicitudesReadController
         }
 
         return response()->json($result)->header('X-Request-Id', $requestId);
+    }
+
+    public function reportePdf(Request $request): \Symfony\Component\HttpFoundation\Response|JsonResponse
+    {
+        return $this->downloadReport($request, 'pdf');
+    }
+
+    public function reporteExcel(Request $request): \Symfony\Component\HttpFoundation\Response|JsonResponse
+    {
+        return $this->downloadReport($request, 'excel');
     }
 
     public function dashboardData(Request $request): JsonResponse
@@ -269,6 +282,39 @@ class SolicitudesReadController
         }
 
         return array_merge($all, $json);
+    }
+
+    private function downloadReport(Request $request, string $format): \Symfony\Component\HttpFoundation\Response|JsonResponse
+    {
+        $requestId = $this->requestId($request);
+
+        try {
+            $payload = $this->payload($request);
+            $payload['format'] = $format;
+            $result = $format === 'excel'
+                ? $this->reportService->generateExcel($payload)
+                : $this->reportService->generatePdf($payload);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['error' => $e->getMessage()], 422)->header('X-Request-Id', $requestId);
+        } catch (\Throwable $e) {
+            Log::error('solicitudes.read.reporte.error', [
+                'request_id' => $requestId,
+                'user_id' => $this->actorId(),
+                'format' => $format,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json(['error' => 'No se pudo generar el reporte.'], 500)
+                ->header('X-Request-Id', $requestId);
+        }
+
+        return response($result['content'], 200, [
+            'Content-Type' => $result['content_type'],
+            'Content-Length' => (string) strlen($result['content']),
+            'Content-Disposition' => $result['disposition'] . '; filename="' . $result['filename'] . '"',
+            'X-Content-Type-Options' => 'nosniff',
+            'X-Request-Id' => $requestId,
+        ]);
     }
 
     private function requestId(Request $request): string

@@ -1,16 +1,24 @@
 <?php
 
-use Modules\Solicitudes\Controllers\SolicitudController;
 use Core\Router;
 
 return function (Router $router) {
-    $redirectToV2 = static function (string $target): void {
+    $redirectToV2 = static function (string $target, int $status = 302): void {
         $queryString = trim((string) ($_SERVER['QUERY_STRING'] ?? ''));
         if ($queryString !== '') {
-            $target .= '?' . $queryString;
+            $target .= (str_contains($target, '?') ? '&' : '?') . $queryString;
         }
 
-        header('Location: ' . $target, true, 302);
+        header('Location: ' . $target, true, $status);
+        exit;
+    };
+
+    $retiredJson = static function (): void {
+        header('Content-Type: application/json; charset=utf-8', true, 410);
+        echo json_encode([
+            'success' => false,
+            'error' => 'Endpoint legacy de Solicitudes retirado. Usa /v2/solicitudes.',
+        ], JSON_UNESCAPED_UNICODE);
         exit;
     };
 
@@ -26,124 +34,127 @@ return function (Router $router) {
         $redirectToV2('/v2/solicitudes/turnero');
     });
 
-    $router->get('/turneros/unificado', function (\PDO $pdo) {
-        (new SolicitudController($pdo))->turneroUnificado();
+    $router->get('/turneros/unificado', function (\PDO $pdo) use ($redirectToV2) {
+        $redirectToV2('/v2/solicitudes/turnero');
     });
 
-    $router->get('/solicitudes/kanban-data', function (\PDO $pdo) {
-        (new SolicitudController($pdo))->kanbanData();
+    $router->get('/solicitudes/kanban-data', function (\PDO $pdo) use ($redirectToV2) {
+        $redirectToV2('/v2/solicitudes/kanban-data');
     });
 
-    $router->post('/solicitudes/kanban-data', function (\PDO $pdo) {
-        (new SolicitudController($pdo))->kanbanData();
+    $router->post('/solicitudes/kanban-data', function (\PDO $pdo) use ($redirectToV2) {
+        $redirectToV2('/v2/solicitudes/kanban-data', 307);
     });
 
-    $router->get('/solicitudes/conciliacion-cirugias', function (\PDO $pdo) {
-        (new SolicitudController($pdo))->conciliacionCirugiasMes();
+    $router->get('/solicitudes/conciliacion-cirugias', function (\PDO $pdo) use ($redirectToV2) {
+        $redirectToV2('/v2/solicitudes/conciliacion-cirugias');
     });
 
-    $router->post('/solicitudes/{id}/conciliacion-cirugia/confirmar', function (\PDO $pdo, $solicitudId) {
-        (new SolicitudController($pdo))->confirmarConciliacionCirugia((int)$solicitudId);
+    $router->post('/solicitudes/{id}/conciliacion-cirugia/confirmar', function (\PDO $pdo, $solicitudId) use ($redirectToV2) {
+        $redirectToV2('/v2/solicitudes/' . rawurlencode((string) $solicitudId) . '/conciliacion-cirugia/confirmar', 307);
     });
 
-    $router->post('/solicitudes/reportes/pdf', function (\PDO $pdo) {
-        (new SolicitudController($pdo))->reportePdf();
+    $router->post('/solicitudes/reportes/pdf', function (\PDO $pdo) use ($redirectToV2) {
+        $redirectToV2('/v2/solicitudes/reportes/pdf', 307);
     });
 
-    $router->post('/solicitudes/reportes/excel', function (\PDO $pdo) {
-        (new SolicitudController($pdo))->reporteExcel();
+    $router->post('/solicitudes/reportes/excel', function (\PDO $pdo) use ($redirectToV2) {
+        $redirectToV2('/v2/solicitudes/reportes/excel', 307);
     });
 
-    $router->post('/solicitudes/actualizar-estado', function (\PDO $pdo) {
-        (new SolicitudController($pdo))->actualizarEstado();
+    $router->post('/solicitudes/actualizar-estado', function (\PDO $pdo) use ($redirectToV2) {
+        $redirectToV2('/v2/solicitudes/actualizar-estado', 307);
     });
 
-    $router->post('/solicitudes/re-scrape-derivacion', function (\PDO $pdo) {
-        (new SolicitudController($pdo))->rescrapeDerivacion();
+    $router->post('/solicitudes/re-scrape-derivacion', function (\PDO $pdo) use ($redirectToV2) {
+        $redirectToV2('/v2/solicitudes/re-scrape-derivacion', 307);
     });
 
-    $router->post('/solicitudes/derivacion-preseleccion', function (\PDO $pdo) {
-        (new SolicitudController($pdo))->derivacionPreseleccion();
+    $router->post('/solicitudes/derivacion-preseleccion', function (\PDO $pdo) use ($redirectToV2) {
+        $redirectToV2('/v2/solicitudes/derivacion-preseleccion', 307);
     });
 
-    $router->post('/solicitudes/derivacion-preseleccion/guardar', function (\PDO $pdo) {
-        (new SolicitudController($pdo))->guardarDerivacionPreseleccion();
+    $router->post('/solicitudes/derivacion-preseleccion/guardar', function (\PDO $pdo) use ($redirectToV2) {
+        $redirectToV2('/v2/solicitudes/derivacion-preseleccion/guardar', 307);
     });
 
-    $router->post('/solicitudes/cobertura-mail', function (\PDO $pdo) {
-        (new SolicitudController($pdo))->enviarCoberturaMail();
+    $router->post('/solicitudes/cobertura-mail', function (\PDO $pdo) use ($redirectToV2) {
+        $redirectToV2('/v2/solicitudes/cobertura-mail', 307);
     });
 
-    $router->post('/solicitudes/notificaciones/recordatorios', function (\PDO $pdo) {
-        (new SolicitudController($pdo))->enviarRecordatorios();
+    $router->post('/solicitudes/notificaciones/recordatorios', function (\PDO $pdo) use ($retiredJson) {
+        $retiredJson();
     });
 
-    $router->get('/solicitudes/api/estado', function (\PDO $pdo) {
-        (new SolicitudController($pdo))->apiEstadoGet();
+    $router->get('/solicitudes/api/estado', function (\PDO $pdo) use ($redirectToV2) {
+        $redirectToV2('/v2/solicitudes/api/estado');
     });
 
-    $router->post('/solicitudes/api/estado', function (\PDO $pdo) {
-        (new SolicitudController($pdo))->apiEstadoPost();
+    $router->post('/solicitudes/api/estado', function (\PDO $pdo) use ($redirectToV2) {
+        $redirectToV2('/v2/solicitudes/api/estado', 307);
     });
 
-    $router->get('/solicitudes/prefactura', function (\PDO $pdo) {
-        (new SolicitudController($pdo))->prefactura();
+    $router->get('/solicitudes/prefactura', function (\PDO $pdo) use ($redirectToV2) {
+        $redirectToV2('/v2/solicitudes/prefactura');
     });
 
-    $router->get('/solicitudes/derivacion', function (\PDO $pdo) {
-        (new SolicitudController($pdo))->derivacionDetalle();
+    $router->get('/solicitudes/derivacion', function (\PDO $pdo) use ($redirectToV2) {
+        $redirectToV2('/v2/solicitudes/derivacion');
     });
 
-    $router->get('/solicitudes/turnero-data', function (\PDO $pdo) {
-        (new SolicitudController($pdo))->turneroData();
+    $router->get('/solicitudes/turnero-data', function (\PDO $pdo) use ($redirectToV2) {
+        $redirectToV2('/v2/solicitudes/turnero-data');
     });
 
-    $router->post('/solicitudes/turnero-llamar', function (\PDO $pdo) {
-        (new SolicitudController($pdo))->turneroLlamar();
+    $router->post('/solicitudes/turnero-llamar', function (\PDO $pdo) use ($redirectToV2) {
+        $redirectToV2('/v2/solicitudes/turnero-llamar', 307);
     });
 
-    $router->post('/solicitudes/dashboard-data', function (\PDO $pdo) {
-        (new SolicitudController($pdo))->dashboardData();
+    $router->post('/solicitudes/dashboard-data', function (\PDO $pdo) use ($redirectToV2) {
+        $redirectToV2('/v2/solicitudes/dashboard-data', 307);
     });
 
-    $router->get('/solicitudes/{id}/crm', function (\PDO $pdo, $solicitudId) {
-        (new SolicitudController($pdo))->crmResumen((int)$solicitudId);
+    $router->get('/solicitudes/{id}/crm', function (\PDO $pdo, $solicitudId) use ($redirectToV2) {
+        $redirectToV2('/v2/solicitudes/' . rawurlencode((string) $solicitudId) . '/crm');
     });
 
-    $router->post('/solicitudes/{id}/crm', function (\PDO $pdo, $solicitudId) {
-        (new SolicitudController($pdo))->crmGuardarDetalles((int)$solicitudId);
-    });
-    $router->post('/solicitudes/{id}/crm/bootstrap', function (\PDO $pdo, $solicitudId) {
-        (new SolicitudController($pdo))->crmBootstrap((int)$solicitudId);
-    });
-    $router->get('/solicitudes/{id}/crm/checklist-state', function (\PDO $pdo, $solicitudId) {
-        (new SolicitudController($pdo))->crmChecklistState((int)$solicitudId);
-    });
-    $router->post('/solicitudes/{id}/crm/checklist', function (\PDO $pdo, $solicitudId) {
-        (new SolicitudController($pdo))->crmActualizarChecklist((int)$solicitudId);
+    $router->post('/solicitudes/{id}/crm', function (\PDO $pdo, $solicitudId) use ($redirectToV2) {
+        $redirectToV2('/v2/solicitudes/' . rawurlencode((string) $solicitudId) . '/crm', 307);
     });
 
-    $router->post('/solicitudes/{id}/crm/notas', function (\PDO $pdo, $solicitudId) {
-        (new SolicitudController($pdo))->crmAgregarNota((int)$solicitudId);
+    $router->post('/solicitudes/{id}/crm/bootstrap', function (\PDO $pdo, $solicitudId) use ($redirectToV2) {
+        $redirectToV2('/v2/solicitudes/' . rawurlencode((string) $solicitudId) . '/crm/bootstrap', 307);
     });
 
-    $router->post('/solicitudes/{id}/crm/bloqueo', function (\PDO $pdo, $solicitudId) {
-        (new SolicitudController($pdo))->crmRegistrarBloqueo((int)$solicitudId);
+    $router->get('/solicitudes/{id}/crm/checklist-state', function (\PDO $pdo, $solicitudId) use ($redirectToV2) {
+        $redirectToV2('/v2/solicitudes/' . rawurlencode((string) $solicitudId) . '/crm/checklist-state');
     });
 
-    $router->post('/solicitudes/{id}/crm/tareas', function (\PDO $pdo, $solicitudId) {
-        (new SolicitudController($pdo))->crmGuardarTarea((int)$solicitudId);
+    $router->post('/solicitudes/{id}/crm/checklist', function (\PDO $pdo, $solicitudId) use ($redirectToV2) {
+        $redirectToV2('/v2/solicitudes/' . rawurlencode((string) $solicitudId) . '/crm/checklist', 307);
     });
 
-    $router->post('/solicitudes/{id}/crm/tareas/estado', function (\PDO $pdo, $solicitudId) {
-        (new SolicitudController($pdo))->crmActualizarTarea((int)$solicitudId);
+    $router->post('/solicitudes/{id}/crm/notas', function (\PDO $pdo, $solicitudId) use ($redirectToV2) {
+        $redirectToV2('/v2/solicitudes/' . rawurlencode((string) $solicitudId) . '/crm/notas', 307);
     });
 
-    $router->post('/solicitudes/{id}/crm/adjuntos', function (\PDO $pdo, $solicitudId) {
-        (new SolicitudController($pdo))->crmSubirAdjunto((int)$solicitudId);
+    $router->post('/solicitudes/{id}/crm/bloqueo', function (\PDO $pdo, $solicitudId) use ($redirectToV2) {
+        $redirectToV2('/v2/solicitudes/' . rawurlencode((string) $solicitudId) . '/crm/bloqueo', 307);
     });
 
-    $router->post('/solicitudes/{id}/cirugia', function (\PDO $pdo, $solicitudId) {
-        (new SolicitudController($pdo))->guardarDetallesCirugia((int)$solicitudId);
+    $router->post('/solicitudes/{id}/crm/tareas', function (\PDO $pdo, $solicitudId) use ($redirectToV2) {
+        $redirectToV2('/v2/solicitudes/' . rawurlencode((string) $solicitudId) . '/crm/tareas', 307);
+    });
+
+    $router->post('/solicitudes/{id}/crm/tareas/estado', function (\PDO $pdo, $solicitudId) use ($redirectToV2) {
+        $redirectToV2('/v2/solicitudes/' . rawurlencode((string) $solicitudId) . '/crm/tareas/estado', 307);
+    });
+
+    $router->post('/solicitudes/{id}/crm/adjuntos', function (\PDO $pdo, $solicitudId) use ($redirectToV2) {
+        $redirectToV2('/v2/solicitudes/' . rawurlencode((string) $solicitudId) . '/crm/adjuntos', 307);
+    });
+
+    $router->post('/solicitudes/{id}/cirugia', function (\PDO $pdo, $solicitudId) use ($redirectToV2) {
+        $redirectToV2('/v2/solicitudes/' . rawurlencode((string) $solicitudId) . '/cirugia', 307);
     });
 };

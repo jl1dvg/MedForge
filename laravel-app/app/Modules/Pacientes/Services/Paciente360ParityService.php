@@ -906,9 +906,9 @@ class Paciente360ParityService
         ];
 
         if (in_array($section, ['solicitudes', 'prefacturas'], true)) {
-            $links['modulo'] = '/solicitudes';
+            $links['modulo'] = '/v2/solicitudes';
             if ($formId !== '') {
-                $links['derivacion'] = '/solicitudes/derivacion?hc_number=' . rawurlencode($hcNumber) . '&form_id=' . rawurlencode($formId);
+                $links['derivacion'] = '/v2/solicitudes/derivacion?hc_number=' . rawurlencode($hcNumber) . '&form_id=' . rawurlencode($formId);
             }
         } elseif ($section === 'examenes') {
             $links['modulo'] = '/examenes';
@@ -922,7 +922,7 @@ class Paciente360ParityService
         } elseif ($section === 'derivaciones') {
             $links['modulo'] = '/derivaciones';
             if ($formId !== '') {
-                $links['detalle'] = '/solicitudes/derivacion?hc_number=' . rawurlencode($hcNumber) . '&form_id=' . rawurlencode($formId);
+                $links['detalle'] = '/v2/solicitudes/derivacion?hc_number=' . rawurlencode($hcNumber) . '&form_id=' . rawurlencode($formId);
             }
             if ($recordId !== '') {
                 $links['archivo'] = '/derivaciones/archivo/' . rawurlencode($recordId);
