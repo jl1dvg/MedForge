@@ -2,11 +2,11 @@
 
 namespace App\Modules\Whatsapp\Http\Controllers;
 
-use App\Modules\Shared\Support\LegacySessionAuth;
 use App\Modules\Whatsapp\Services\ConversationStartService;
 use App\Modules\Whatsapp\Services\ConversationWriteService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use RuntimeException;
 
 class ConversationWriteController
@@ -46,7 +46,7 @@ class ConversationWriteController
         $mimeType = trim((string) $request->input('mime_type', ''));
         $mediaDisk = trim((string) $request->input('media_disk', ''));
         $mediaPath = trim((string) $request->input('media_path', ''));
-        $actorUserId = LegacySessionAuth::userId($request);
+        $actorUserId = $this->actorUserId();
 
         try {
             $result = $messageType === 'text'
@@ -83,7 +83,7 @@ class ConversationWriteController
 
     public function startWithTemplate(Request $request): JsonResponse
     {
-        $actorUserId = LegacySessionAuth::userId($request);
+        $actorUserId = $this->actorUserId();
 
         try {
             $result = $this->startService->startConversationWithTemplate(
@@ -111,5 +111,12 @@ class ConversationWriteController
                 'detail' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    private function actorUserId(): ?int
+    {
+        $id = Auth::id();
+
+        return is_numeric($id) ? (int) $id : null;
     }
 }

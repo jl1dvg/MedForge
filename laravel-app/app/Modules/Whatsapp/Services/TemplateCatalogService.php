@@ -234,7 +234,7 @@ class TemplateCatalogService
 
         $payload = $response->json();
         if (!$response->successful()) {
-            throw new RuntimeException('Meta respondió con error al publicar la plantilla: ' . $response->status());
+            throw new RuntimeException($this->formatMetaPublishError($response->status(), $payload));
         }
 
         $template->forceFill([
@@ -668,6 +668,8 @@ class TemplateCatalogService
     private function buildComponentsFromRevision(WhatsappTemplateRevision $revision): array
     {
         $components = [];
+        $normalizedHeader = $this->normalizeHeaderForPublish((string) ($revision->header_text ?? ''));
+        $normalizedBody = $this->normalizeBodyForPublish((string) $revision->body_text);
 
         if ($revision->header_type !== 'none' && $revision->header_text !== null && $revision->header_text !== '') {
             $header = [
@@ -676,7 +678,12 @@ class TemplateCatalogService
             ];
 
             if ($revision->header_type === 'text') {
-                $header['text'] = $revision->header_text;
+                $header['text'] = $normalizedHeader['text'];
+                if ($normalizedHeader['examples'] !== []) {
+                    $header['example'] = [
+                        'header_text' => $normalizedHeader['examples'],
+                    ];
+                }
             } else {
                 $header['example'] = $revision->header_text;
             }
@@ -686,8 +693,14 @@ class TemplateCatalogService
 
         $components[] = [
             'type' => 'BODY',
-            'text' => $revision->body_text,
+            'text' => $normalizedBody['text'],
         ];
+
+        if ($normalizedBody['examples'] !== []) {
+            $components[count($components) - 1]['example'] = [
+                'body_text' => [$normalizedBody['examples']],
+            ];
+        }
 
         if ($revision->footer_text !== null && $revision->footer_text !== '') {
             $components[] = [
@@ -705,6 +718,153 @@ class TemplateCatalogService
         }
 
         return $components;
+    }
+
+    /**
+     * @param array<string, mixed>|null $payload
+     */
+    private function formatMetaPublishError(int $status, ?array $payload): string
+    {
+        $message = null;
+
+        if (is_array($payload)) {
+            $message = trim((string) data_get($payload, 'error.error_user_msg'));
+
+            if ($message === '') {
+                $message = trim((string) data_get($payload, 'error.message'));
+            }
+
+            $errorCode = data_get($payload, 'error.code');
+            $errorSubcode = data_get($payload, 'error.error_subcode');
+
+            if ($message !== '') {
+                $suffix = [];
+                if ($errorCode !== null && $errorCode !== '') {
+                    $suffix[] = 'code ' . $errorCode;
+                }
+                if ($errorSubcode !== null && $errorSubcode !== '') {
+                    $suffix[] = 'subcode ' . $errorSubcode;
+                }
+
+                return 'Meta respondió con error al publicar la plantilla: ' . $message
+                    . ($suffix === [] ? '' : ' (' . implode(', ', $suffix) . ')');
+            }
+        }
+
+        return 'Meta respondió con error al publicar la plantilla: ' . $status;
+    }
+
+    /**
+     * @return array{text: string, examples: array<int, string>}
+     */
+    private function normalizeHeaderForPublish(string $headerText): array
+    {
+        if ($headerText === '') {
+            return ['text' => '', 'examples' => []];
+        }
+
+        $variables = $this->extractVariables($headerText);
+        if ($variables === []) {
+            return ['text' => $headerText, 'examples' => []];
+        }
+
+        return [
+            'text' => preg_replace('/\s+/', ' ', trim($headerText)) ?? trim($headerText),
+            'examples' => array_map(
+                static fn (int $index): string => 'ejemplo_' . ($index + 1),
+                array_keys($variables)
+            ),
+        ];
+    }
+
+    /**
+     * @return array{text: string, examples: array<int, string>}
+     */
+    private function normalizeBodyForPublish(string $bodyText): array
+    {
+        $variables = $this->extractVariables($bodyText);
+        if ($variables === []) {
+            return [
+                'text' => preg_replace('/[ \t]+/u', ' ', trim($bodyText)) ?? trim($bodyText),
+                'examples' => [],
+            ];
+        }
+
+        $examples = array_fill(0, count($variables), null);
+        $result = '';
+        $offset = 0;
+
+        if (preg_match_all('/\{\{(\d+)\}\}/', $bodyText, $matches, PREG_OFFSET_CAPTURE) !== false) {
+            foreach ($matches[0] as $index => $matchData) {
+                $match = (string) ($matchData[0] ?? '');
+                $position = (int) ($matchData[1] ?? 0);
+                $result .= substr($bodyText, $offset, $position - $offset) . $match;
+                $offset = $position + strlen($match);
+
+                [$capturedExample, $consumedLength] = $this->extractInlineVariableExample(substr($bodyText, $offset));
+                if ($capturedExample !== null) {
+                    $examples[$index] = $capturedExample;
+                    $offset += $consumedLength;
+                }
+            }
+        }
+
+        $result .= substr($bodyText, $offset);
+        $normalizedText = preg_replace("/[ \t]+\n/u", "\n", $result) ?? $result;
+        $normalizedText = preg_replace('/[ \t]{2,}/u', ' ', $normalizedText) ?? $normalizedText;
+        $normalizedText = preg_replace('/\n{3,}/u', "\n\n", $normalizedText) ?? $normalizedText;
+        $normalizedText = trim($normalizedText);
+
+        foreach ($examples as $index => $example) {
+            if ($example === null || $example === '') {
+                $examples[$index] = 'ejemplo_' . ($index + 1);
+            }
+        }
+
+        return [
+            'text' => $normalizedText,
+            'examples' => array_values($examples),
+        ];
+    }
+
+    /**
+     * @return array{0: string|null, 1: int}
+     */
+    private function extractInlineVariableExample(string $text): array
+    {
+        if (!preg_match('/^\s*:\s*/u', $text, $prefixMatch)) {
+            return [null, 0];
+        }
+
+        $prefixLength = strlen((string) ($prefixMatch[0] ?? ''));
+        $remainder = substr($text, $prefixLength);
+        if ($remainder === false || $remainder === '') {
+            return [null, 0];
+        }
+
+        $stops = [",", ".", "!", "?", ";", "\n", ' y ', ' o ', ' para ', ' que ', ' nos ', ' me ', ' se ', ' al '];
+        $cutAt = null;
+
+        foreach ($stops as $needle) {
+            $position = mb_stripos($remainder, $needle, 0, 'UTF-8');
+            if ($position === false) {
+                continue;
+            }
+
+            if ($cutAt === null || $position < $cutAt) {
+                $cutAt = $position;
+            }
+        }
+
+        $sample = $cutAt === null ? $remainder : mb_substr($remainder, 0, $cutAt, 'UTF-8');
+        $sample = trim((string) $sample);
+        if ($sample === '') {
+            return [null, 0];
+        }
+
+        $consumed = $prefixLength + strlen((string) mb_substr($remainder, 0, mb_strlen($sample, 'UTF-8'), 'UTF-8'));
+
+        return [$sample, $consumed];
     }
 
     private function isEditableLocalDraft(WhatsappMessageTemplate $template): bool
@@ -802,10 +962,22 @@ class TemplateCatalogService
             if ($type === 'BUTTONS') {
                 $preview['buttons'] = collect($component['buttons'] ?? [])
                     ->filter(fn ($button): bool => is_array($button))
-                    ->map(fn (array $button): array => [
-                        'type' => (string) ($button['type'] ?? ''),
-                        'text' => (string) ($button['text'] ?? ''),
-                    ])
+                    ->map(function (array $button): array {
+                        $normalized = [
+                            'type' => (string) ($button['type'] ?? ''),
+                            'text' => (string) ($button['text'] ?? ''),
+                        ];
+
+                        if (isset($button['phone_number']) && trim((string) $button['phone_number']) !== '') {
+                            $normalized['phone_number'] = trim((string) $button['phone_number']);
+                        }
+
+                        if (isset($button['url']) && trim((string) $button['url']) !== '') {
+                            $normalized['url'] = trim((string) $button['url']);
+                        }
+
+                        return $normalized;
+                    })
                     ->values()
                     ->all();
             }

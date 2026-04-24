@@ -881,7 +881,7 @@ function renderCrmData(data) {
     currentLead = data.lead ?? null;
 
     updateLeadControls(currentDetalle, currentLead);
-    renderResumen(data.detalle, currentLead);
+    renderResumen(data.detalle, currentLead, data.whatsapp_context || null);
     loadChecklistState(currentEntityId);
     renderNotas(data.notas ?? []);
     renderCobertura(data.cobertura_mails ?? []);
@@ -932,7 +932,7 @@ async function loadChecklistState(entityId) {
     }
 }
 
-function renderResumen(detalle, lead) {
+function renderResumen(detalle, lead, whatsappContext = null) {
     const header = document.getElementById('crmResumenCabecera');
     if (!header) {
         return;
@@ -967,6 +967,13 @@ function renderResumen(detalle, lead) {
     const leadInfo = leadId
         ? `Lead #${escapeHtml(String(leadId))} · ${escapeHtml(leadStatus)} · ${escapeHtml(leadSource)}`
         : 'Sin lead vinculado aún';
+    const wa = whatsappContext && typeof whatsappContext === 'object' ? whatsappContext : null;
+    const waLabel = wa?.matched
+        ? `Conversación #${escapeHtml(String(wa.conversation_id || ''))}${wa.unread_count ? ` · ${escapeHtml(String(wa.unread_count))} sin leer` : ''}${wa.last_message_at ? ` · Último mensaje ${escapeHtml(formatDateTime(wa.last_message_at))}` : ''}`
+        : wa?.search
+            ? `Buscar ${escapeHtml(String(wa.search))} en WhatsApp`
+            : 'Sin teléfono utilizable para WhatsApp';
+    const waUrl = wa?.conversation_url || wa?.search_url || null;
 
     header.innerHTML = `
         <div class="d-flex flex-column gap-2">
@@ -995,6 +1002,7 @@ function renderResumen(detalle, lead) {
                 <div class="col-6"><strong>Próx. vencimiento:</strong> ${escapeHtml(proximoVencimiento)}</div>
                 <div class="col-12"><strong>Seguimiento:</strong> ${escapeHtml(dias)}</div>
                 <div class="col-12"><strong>Lead CRM:</strong> ${leadUrl ? `<a href="${escapeHtml(leadUrl)}" target="_blank" rel="noopener">${leadInfo}</a>` : escapeHtml(leadInfo)}</div>
+                <div class="col-12"><strong>WhatsApp:</strong> ${waUrl ? `<a href="${escapeHtml(waUrl)}" target="_blank" rel="noopener">${waLabel}</a>` : waLabel}</div>
             </div>
         </div>
     `;

@@ -2,10 +2,10 @@
 
 namespace App\Modules\Whatsapp\Http\Controllers;
 
-use App\Modules\Shared\Support\LegacyCurrentUser;
 use App\Modules\Whatsapp\Services\FlowmakerService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use InvalidArgumentException;
 
 class FlowmakerWriteController
@@ -23,8 +23,7 @@ class FlowmakerWriteController
                 $payload = $request->all();
             }
 
-            $currentUser = LegacyCurrentUser::resolve($request);
-            $userId = is_numeric($currentUser['id'] ?? null) ? (int) $currentUser['id'] : null;
+            $userId = $this->actorUserId();
 
             return response()->json($this->service->publish($payload, $userId));
         } catch (InvalidArgumentException $exception) {
@@ -33,5 +32,12 @@ class FlowmakerWriteController
                 'message' => $exception->getMessage(),
             ], 422);
         }
+    }
+
+    private function actorUserId(): ?int
+    {
+        $id = Auth::id();
+
+        return is_numeric($id) ? (int) $id : null;
     }
 }

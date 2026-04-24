@@ -247,6 +247,7 @@ class SolicitudesReadParityService
             'project' => null,
             'bloqueos_agenda' => $this->queryBloqueosAgenda($solicitudId),
             'cobertura_mails' => $this->queryCoberturaMails($solicitudId),
+            'whatsapp_context' => $this->queryWhatsappContext($detalle),
         ];
     }
 
@@ -1926,6 +1927,100 @@ class SolicitudesReadParityService
         unset($row['crm_followers']);
 
         return $row;
+    }
+
+    /**
+     * @param array<string,mixed> $detalle
+     * @return array<string,mixed>
+     */
+    private function queryWhatsappContext(array $detalle): array
+    {
+        $telefono = trim((string) ($detalle['crm_contacto_telefono'] ?? $detalle['paciente_celular'] ?? ''));
+        $hcNumber = trim((string) ($detalle['hc_number'] ?? ''));
+        $normalized = $this->normalizeWhatsappPhone($telefono);
+        $search = $normalized !== '' ? $normalized : preg_replace('/\D+/', '', $telefono);
+        $searchUrl = $search !== '' ? '/v2/whatsapp/chat?search=' . urlencode($search) : null;
+
+        $context = [
+            'available' => false,
+            'matched' => false,
+            'search' => $search !== '' ? $search : null,
+            'search_url' => $searchUrl,
+            'conversation_id' => null,
+            'conversation_url' => null,
+            'wa_number' => null,
+            'display_name' => null,
+            'last_message_at' => null,
+            'unread_count' => 0,
+        ];
+
+        if (!$this->tableExists('whatsapp_conversations')) {
+            return $context;
+        }
+
+        try {
+            $row = DB::selectOne(
+                'SELECT id, wa_number, display_name, patient_full_name, last_message_at, unread_count
+                 FROM whatsapp_conversations
+                 WHERE (? <> "" AND patient_hc_number = ?)
+                    OR (? <> "" AND (wa_number = ? OR wa_number = CONCAT("+", ?) OR RIGHT(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(wa_number, "+", ""), " ", ""), "-", ""), "(", ""), ")", ""), 10) = RIGHT(?, 10)))
+                 ORDER BY
+                    CASE WHEN ? <> "" AND patient_hc_number = ? THEN 0 ELSE 1 END,
+                    last_message_at DESC,
+                    id DESC
+                 LIMIT 1',
+                [
+                    $hcNumber,
+                    $hcNumber,
+                    $normalized,
+                    $normalized,
+                    $normalized,
+                    $normalized,
+                    $hcNumber,
+                    $hcNumber,
+                ]
+            );
+        } catch (Throwable) {
+            return $context;
+        }
+
+        if (!is_object($row)) {
+            return $context;
+        }
+
+        $conversationId = (int) ($row->id ?? 0);
+        $waNumber = trim((string) ($row->wa_number ?? ''));
+
+        return [
+            'available' => true,
+            'matched' => $conversationId > 0,
+            'search' => $search !== '' ? $search : null,
+            'search_url' => $searchUrl,
+            'conversation_id' => $conversationId > 0 ? $conversationId : null,
+            'conversation_url' => $conversationId > 0 ? '/v2/whatsapp/chat?conversation=' . $conversationId : $searchUrl,
+            'wa_number' => $waNumber !== '' ? $waNumber : null,
+            'display_name' => trim((string) (($row->display_name ?? '') ?: ($row->patient_full_name ?? ''))) ?: null,
+            'last_message_at' => $row->last_message_at ?? null,
+            'unread_count' => (int) ($row->unread_count ?? 0),
+        ];
+    }
+
+    private function normalizeWhatsappPhone(?string $value): string
+    {
+        $number = preg_replace('/\D+/', '', (string) $value);
+        if ($number === '') {
+            return '';
+        }
+
+        if (str_starts_with($number, '0')) {
+            $number = ltrim($number, '0');
+        }
+
+        if (!str_starts_with($number, '593') && strlen($number) <= 10) {
+            $number = '593' . $number;
+        }
+
+        return $number;
     }
 
     /**

@@ -283,6 +283,44 @@
             letter-spacing: .08em;
         }
 
+        .wa-v2-tabs-shell {
+            display: grid;
+            grid-template-columns: auto minmax(0, 1fr) auto;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .wa-v2-tabs-nav {
+            width: 34px;
+            height: 34px;
+            border-radius: 999px;
+            border: 1px solid #dbe4ee;
+            background: rgba(255, 255, 255, .92);
+            color: #334155;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 8px 18px rgba(15, 23, 42, .06);
+            transition: opacity .14s ease, transform .14s ease, box-shadow .14s ease;
+        }
+
+        .wa-v2-tabs-nav:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 12px 22px rgba(15, 23, 42, .10);
+        }
+
+        .wa-v2-tabs-nav:disabled {
+            opacity: .38;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .wa-v2-tabs-viewport {
+            min-width: 0;
+            overflow: hidden;
+        }
+
         .wa-v2-tabs {
             display: flex;
             flex-wrap: nowrap;
@@ -290,6 +328,7 @@
             overflow: auto;
             padding-bottom: 2px;
             scrollbar-width: none;
+            scroll-behavior: smooth;
         }
 
         .wa-v2-tabs::-webkit-scrollbar {
@@ -334,6 +373,20 @@
 
         .wa-v2-tab.is-active .wa-v2-counter {
             background: rgba(255, 255, 255, .18);
+        }
+
+        @media (max-width: 767.98px) {
+            .wa-v2-tabs-shell {
+                grid-template-columns: minmax(0, 1fr);
+            }
+
+            .wa-v2-tabs-nav {
+                display: none;
+            }
+
+            .wa-v2-tabs-viewport {
+                overflow: auto;
+            }
         }
 
         .wa-v2-list {
@@ -1394,29 +1447,43 @@
                         </details>
                     @endif
 
-                    <div class="wa-v2-tabs">
-                        @foreach($tabs as $key => $label)
-                            @php
-                                $tabIcons = [
-                                    'mine' => 'mdi mdi-account-outline',
-                                    'handoff' => 'mdi mdi-tray-arrow-down',
-                                    'window_open' => 'mdi mdi-timer-sand',
-                                    'unread' => 'mdi mdi-bell-outline',
-                                    'needs_template' => 'mdi mdi-file-document-edit-outline',
-                                    'resolved' => 'mdi mdi-check-circle-outline',
-                                    'all' => 'mdi mdi-message-text-outline',
-                                ];
-                                $icon = $tabIcons[$key] ?? 'mdi mdi-circle-small';
-                            @endphp
-                            <a
-                                href="{{ '/v2/whatsapp/chat?' . http_build_query(array_filter(['filter' => $key, 'search' => $search, 'date_from' => $dateFrom, 'date_to' => $dateTo, 'agent_id' => $selectedAgentId, 'role_id' => $selectedRoleId], static fn ($value) => $value !== null && $value !== '')) }}"
-                                class="wa-v2-tab {{ $selectedFilter === $key ? 'is-active' : '' }}">
-                                <span class="wa-v2-icon-label">
-                                    <i class="{{ $icon }}"></i>
-                                </span>
-                                <span class="wa-v2-counter">{{ (int) ($tabCounts[$key] ?? 0) }}</span>
-                            </a>
-                        @endforeach
+                    <div class="wa-v2-tabs-shell">
+                        <button type="button" class="wa-v2-tabs-nav" data-wa-tabs-nav="left" aria-label="Ver filtros anteriores">
+                            <i class="mdi mdi-chevron-left"></i>
+                        </button>
+                        <div class="wa-v2-tabs-viewport">
+                            <div class="wa-v2-tabs" id="wa-v2-filter-tabs" tabindex="0" aria-label="Filtros de conversaciones">
+                                @foreach($tabs as $key => $label)
+                                    @php
+                                        $tabIcons = [
+                                            'mine' => 'mdi mdi-account-outline',
+                                            'handoff' => 'mdi mdi-tray-arrow-down',
+                                            'window_open' => 'mdi mdi-timer-sand',
+                                            'unread' => 'mdi mdi-bell-outline',
+                                            'needs_template' => 'mdi mdi-file-document-edit-outline',
+                                            'resolved' => 'mdi mdi-check-circle-outline',
+                                            'all' => 'mdi mdi-message-text-outline',
+                                        ];
+                                        $icon = $tabIcons[$key] ?? 'mdi mdi-circle-small';
+                                    @endphp
+                                    <a
+                                        href="{{ '/v2/whatsapp/chat?' . http_build_query(array_filter(['filter' => $key, 'search' => $search, 'date_from' => $dateFrom, 'date_to' => $dateTo, 'agent_id' => $selectedAgentId, 'role_id' => $selectedRoleId], static fn ($value) => $value !== null && $value !== '')) }}"
+                                        class="wa-v2-tab {{ $selectedFilter === $key ? 'is-active' : '' }}"
+                                        title="{{ $label }}"
+                                        aria-label="{{ $label }}"
+                                        data-bs-toggle="tooltip"
+                                        data-bs-placement="top">
+                                        <span class="wa-v2-icon-label">
+                                            <i class="{{ $icon }}"></i>
+                                        </span>
+                                        <span class="wa-v2-counter">{{ (int) ($tabCounts[$key] ?? 0) }}</span>
+                                    </a>
+                                @endforeach
+                            </div>
+                        </div>
+                        <button type="button" class="wa-v2-tabs-nav" data-wa-tabs-nav="right" aria-label="Ver más filtros">
+                            <i class="mdi mdi-chevron-right"></i>
+                        </button>
                     </div>
                 </div>
 
@@ -1965,6 +2032,7 @@
             const presenceSelect = document.getElementById('wa-v2-presence');
             const requeueExpiredButton = document.getElementById('wa-v2-requeue-expired');
             const audioPickerButton = document.querySelector('[data-wa-picker="audio"]');
+            const tabsScroller = document.getElementById('wa-v2-filter-tabs');
             const realtimeConfig = window.MEDF_PusherConfig || {};
             let requestInFlight = false;
             let pollingInFlight = false;
@@ -1978,6 +2046,61 @@
             let unseenMessageCount = 0;
             let startChatSearchInFlight = false;
             let startChatSearchTimer = null;
+
+            const initTabsScroller = function () {
+                if (!tabsScroller) {
+                    return;
+                }
+
+                const shell = tabsScroller.closest('.wa-v2-tabs-shell');
+                if (!shell) {
+                    return;
+                }
+
+                const leftButton = shell.querySelector('[data-wa-tabs-nav="left"]');
+                const rightButton = shell.querySelector('[data-wa-tabs-nav="right"]');
+                if (!leftButton || !rightButton) {
+                    return;
+                }
+
+                const updateButtons = function () {
+                    const maxScrollLeft = Math.max(0, tabsScroller.scrollWidth - tabsScroller.clientWidth);
+                    leftButton.disabled = tabsScroller.scrollLeft <= 4;
+                    rightButton.disabled = tabsScroller.scrollLeft >= (maxScrollLeft - 4);
+                };
+
+                const scrollTabs = function (direction) {
+                    const step = Math.max(220, Math.round(tabsScroller.clientWidth * 0.7));
+                    tabsScroller.scrollBy({ left: direction * step, behavior: 'smooth' });
+                };
+
+                leftButton.addEventListener('click', function () {
+                    scrollTabs(-1);
+                });
+
+                rightButton.addEventListener('click', function () {
+                    scrollTabs(1);
+                });
+
+                tabsScroller.addEventListener('scroll', updateButtons, { passive: true });
+                window.addEventListener('resize', updateButtons);
+
+                tabsScroller.addEventListener('keydown', function (event) {
+                    if (event.key === 'ArrowLeft') {
+                        event.preventDefault();
+                        scrollTabs(-1);
+                    }
+
+                    if (event.key === 'ArrowRight') {
+                        event.preventDefault();
+                        scrollTabs(1);
+                    }
+                });
+
+                updateButtons();
+            };
+
+            initTabsScroller();
 
             const setFeedback = function (message, tone) {
                 if (!feedback) {

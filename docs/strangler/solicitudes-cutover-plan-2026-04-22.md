@@ -283,6 +283,26 @@ Resultado esperado:
 
 - `Solicitudes` ya no depende de módulos runtime legacy para operación.
 
+Estado: `parcial`
+
+Implementado:
+
+- el CRM de `Solicitudes` ya expone `whatsapp_context` con búsqueda o conversación enlazada por teléfono/HC;
+- el header del CRM ya muestra acceso directo a `/v2/whatsapp/chat` por conversación o búsqueda;
+- `Solicitudes` ya puede operar cobertura mail desde Laravel y mostrar historial en `solicitud_mail_log` sin requerir navegación a `Mailbox`.
+- rutas web y API v2 de `WhatsApp` ya quedaron montadas sobre `app.auth` / `app.permission` y sesión `web`, alineadas con el acceso Laravel de `Solicitudes`.
+
+Decisión actual:
+
+- `Mailbox` no es requisito runtime para `Solicitudes`;
+- el módulo de `Solicitudes` conserva solo historial/evidencia de correos de cobertura y su envío desde Laravel;
+- migrar o no el buzón completo queda como frente aparte, no como bloqueo del cutover de `Solicitudes`.
+
+Pendiente:
+
+- retirar el uso residual de helpers legacy dentro de algunos controladores de `WhatsApp` si se quiere dejar ese módulo completamente Laravel-native por implementación, no solo por entrada;
+- si negocio lo pide, agregar acciones CRM sobre conversación WhatsApp dentro del panel, no solo navegación contextual.
+
 ### Fase 6. Ejecutar corte
 
 - apagar rutas legacy de `modules/solicitudes/routes.php`;

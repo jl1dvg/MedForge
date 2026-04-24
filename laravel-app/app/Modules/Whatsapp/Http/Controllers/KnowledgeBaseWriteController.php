@@ -2,10 +2,10 @@
 
 namespace App\Modules\Whatsapp\Http\Controllers;
 
-use App\Modules\Shared\Support\LegacySessionAuth;
 use App\Modules\Whatsapp\Services\KnowledgeBaseService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use RuntimeException;
 
 class KnowledgeBaseWriteController
@@ -20,7 +20,7 @@ class KnowledgeBaseWriteController
         try {
             return response()->json([
                 'ok' => true,
-                'data' => $this->service->createDocument($request->all(), LegacySessionAuth::userId($request)),
+                'data' => $this->service->createDocument($request->all(), $this->actorUserId()),
             ]);
         } catch (RuntimeException $e) {
             return response()->json([
@@ -34,5 +34,12 @@ class KnowledgeBaseWriteController
                 'detail' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    private function actorUserId(): ?int
+    {
+        $id = Auth::id();
+
+        return is_numeric($id) ? (int) $id : null;
     }
 }

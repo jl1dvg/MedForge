@@ -455,6 +455,18 @@
                             <div class="alert alert-info py-10 px-15 mb-15" id="wa-v2-preview-editorial">
                                 {{ $selectedTemplate['editorial_label'] ?? 'Plantilla' }}
                             </div>
+                            <div
+                                class="alert alert-warning py-10 px-15 mb-15 {{ empty($selectedTemplate['rejected_reason']) ? 'd-none' : '' }}"
+                                id="wa-v2-preview-rejection"
+                            >
+                                <div class="fw-700 mb-5">Motivo del rechazo</div>
+                                <div id="wa-v2-preview-rejection-text">{{ $selectedTemplate['rejected_reason'] ?? '' }}</div>
+                            </div>
+                            <div class="d-flex gap-10 align-items-center mb-15" id="wa-v2-preview-metrics">
+                                <span class="badge bg-success-light text-success" id="wa-v2-preview-quality">
+                                    Calidad: {{ $selectedTemplate['quality_score'] ?: 'n/a' }}
+                                </span>
+                            </div>
 
                             <div class="wa-v2-message">
                                 <div class="small text-muted mb-10" id="wa-v2-preview-header-type">
@@ -638,6 +650,9 @@ document.addEventListener('DOMContentLoaded', () => {
         status: document.getElementById('wa-v2-preview-status'),
         source: document.getElementById('wa-v2-preview-source'),
         editorial: document.getElementById('wa-v2-preview-editorial'),
+        rejection: document.getElementById('wa-v2-preview-rejection'),
+        rejectionText: document.getElementById('wa-v2-preview-rejection-text'),
+        quality: document.getElementById('wa-v2-preview-quality'),
         headerType: document.getElementById('wa-v2-preview-header-type'),
         header: document.getElementById('wa-v2-preview-header'),
         body: document.getElementById('wa-v2-preview-body'),
@@ -678,6 +693,14 @@ document.addEventListener('DOMContentLoaded', () => {
         previewNodes.status.textContent = template.status || '-';
         previewNodes.source.textContent = template.source || '-';
         previewNodes.editorial.textContent = template.editorial_label || 'Plantilla';
+        previewNodes.quality.textContent = `Calidad: ${template.quality_score || 'n/a'}`;
+        if ((template.rejected_reason || '').trim()) {
+            previewNodes.rejectionText.textContent = template.rejected_reason;
+            previewNodes.rejection.classList.remove('d-none');
+        } else {
+            previewNodes.rejectionText.textContent = '';
+            previewNodes.rejection.classList.add('d-none');
+        }
         previewNodes.currentVersion.textContent = `v${template.current_revision_version || 0}`;
         previewNodes.headerType.textContent = String(preview.header_type || 'none').toUpperCase();
         previewNodes.header.textContent = ['image', 'video', 'document'].includes(String(preview.header_type || '').toLowerCase())

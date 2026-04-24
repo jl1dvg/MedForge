@@ -7,6 +7,7 @@ use App\Http\Middleware\RequireLegacyPermission;
 use App\Http\Middleware\RequireLegacySession;
 use App\Models\User;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
@@ -347,6 +348,44 @@ class WhatsappTemplateCatalogTest extends TestCase
         ]);
     }
 
+    public function test_it_preserves_phone_button_fields_in_local_draft(): void
+    {
+        $response = $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->postJson('/v2/whatsapp/api/templates', [
+                'name' => 'call_center_followup',
+                'language' => 'es_EC',
+                'category' => 'UTILITY',
+                'components' => [
+                    ['type' => 'BODY', 'text' => 'Hola {{1}}, te contactamos para reagendar.'],
+                    ['type' => 'BUTTONS', 'buttons' => [
+                        ['type' => 'PHONE_NUMBER', 'text' => 'Call Center', 'phone_number' => '+59343710160'],
+                    ]],
+                ],
+            ]);
+
+        $response
+            ->assertCreated()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('data.template.preview.buttons.0.type', 'PHONE_NUMBER')
+            ->assertJsonPath('data.template.preview.buttons.0.text', 'Call Center')
+            ->assertJsonPath('data.template.preview.buttons.0.phone_number', '+59343710160');
+
+        $templateId = (int) $response->json('data.template.id');
+        $buttons = \DB::table('whatsapp_template_revisions')
+            ->where('template_id', $templateId)
+            ->value('buttons');
+
+        $this->assertSame(
+            [['type' => 'PHONE_NUMBER', 'text' => 'Call Center', 'phone_number' => '+59343710160']],
+            json_decode((string) $buttons, true, 512, JSON_THROW_ON_ERROR)
+        );
+    }
+
     public function test_it_blocks_editing_synced_meta_template_in_place(): void
     {
         $templateId = \DB::table('whatsapp_message_templates')->insertGetId([
@@ -503,6 +542,16 @@ class WhatsappTemplateCatalogTest extends TestCase
             ->assertJsonPath('ok', true)
             ->assertJsonPath('data.template.status', 'PENDING');
 
+        Http::assertSent(function (Request $request): bool {
+            $components = $request->data()['components'] ?? [];
+
+            return ($request->data()['name'] ?? null) === 'results_notice'
+                && ($components[0]['type'] ?? null) === 'HEADER'
+                && ($components[1]['type'] ?? null) === 'BODY'
+                && ($components[1]['text'] ?? null) === 'Hola {{1}}, tus resultados estan listos.'
+                && ($components[1]['example']['body_text'][0][0] ?? null) === 'ejemplo_1';
+        });
+
         $this->assertDatabaseHas('whatsapp_message_templates', [
             'id' => $templateId,
             'status' => 'PENDING',
@@ -512,6 +561,179 @@ class WhatsappTemplateCatalogTest extends TestCase
             'id' => $revisionId,
             'status' => 'pending',
         ]);
+    }
+
+    public function test_it_normalizes_inline_variable_examples_when_publishing_to_meta(): void
+    {
+        $templateId = \DB::table('whatsapp_message_templates')->insertGetId([
+            'template_code' => 'reagendamiento_citas',
+            'display_name' => 'Reagendamiento citas',
+            'language' => 'es_EC',
+            'category' => 'UTILITY',
+            'status' => 'DRAFT',
+            'wa_business_account' => 'waba-test-1',
+            'description' => 'Base',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $revisionId = \DB::table('whatsapp_template_revisions')->insertGetId([
+            'template_id' => $templateId,
+            'version' => 1,
+            'status' => 'draft',
+            'header_type' => 'none',
+            'body_text' => "Hola {{1}}: Juan Pérez,\nReciba un cordial saludo.\nNotamos que no pudo acompañarnos a su cita programada el {{2}}: 25 de octubre y nos gustaría dar seguimiento.",
+            'footer_text' => 'El equipo de CIVE.',
+            'buttons' => json_encode([['type' => 'PHONE_NUMBER', 'text' => 'Call Center', 'phone_number' => '+59343710160']]),
+            'variables' => json_encode(['{{1}}', '{{2}}']),
+            'quality_rating' => 'unknown',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        \DB::table('whatsapp_message_templates')->where('id', $templateId)->update([
+            'current_revision_id' => $revisionId,
+        ]);
+
+        Http::fake([
+            'https://graph.facebook.com/*' => Http::response([
+                'id' => 'meta-template-id-2',
+                'status' => 'PENDING',
+            ], 200),
+        ]);
+
+        $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->postJson('/v2/whatsapp/api/templates/' . $templateId . '/publish')
+            ->assertOk()
+            ->assertJsonPath('ok', true);
+
+        Http::assertSent(function (Request $request): bool {
+            $components = $request->data()['components'] ?? [];
+            $body = collect($components)->firstWhere('type', 'BODY');
+
+            return ($request->data()['language'] ?? null) === 'es_EC'
+                && ($body['text'] ?? null) === "Hola {{1}},\nReciba un cordial saludo.\nNotamos que no pudo acompañarnos a su cita programada el {{2}} y nos gustaría dar seguimiento."
+                && ($body['example']['body_text'][0] ?? null) === ['Juan Pérez', '25 de octubre'];
+        });
+    }
+
+    public function test_it_publishes_phone_button_with_phone_number(): void
+    {
+        $templateId = \DB::table('whatsapp_message_templates')->insertGetId([
+            'template_code' => 'phone_button_template',
+            'display_name' => 'Phone button template',
+            'language' => 'es_EC',
+            'category' => 'UTILITY',
+            'status' => 'DRAFT',
+            'wa_business_account' => 'waba-test-1',
+            'description' => 'Base',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $revisionId = \DB::table('whatsapp_template_revisions')->insertGetId([
+            'template_id' => $templateId,
+            'version' => 1,
+            'status' => 'draft',
+            'header_type' => 'none',
+            'body_text' => 'Hola {{1}}, te ayudamos a reagendar.',
+            'footer_text' => 'El equipo de CIVE.',
+            'buttons' => json_encode([['type' => 'PHONE_NUMBER', 'text' => 'Call Center', 'phone_number' => '+59343710160']]),
+            'variables' => json_encode(['{{1}}']),
+            'quality_rating' => 'unknown',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        \DB::table('whatsapp_message_templates')->where('id', $templateId)->update([
+            'current_revision_id' => $revisionId,
+        ]);
+
+        Http::fake([
+            'https://graph.facebook.com/*' => Http::response([
+                'id' => 'meta-template-id-3',
+                'status' => 'PENDING',
+            ], 200),
+        ]);
+
+        $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->postJson('/v2/whatsapp/api/templates/' . $templateId . '/publish')
+            ->assertOk()
+            ->assertJsonPath('ok', true);
+
+        Http::assertSent(function (Request $request): bool {
+            $components = $request->data()['components'] ?? [];
+            $buttons = collect($components)->firstWhere('type', 'BUTTONS');
+
+            return ($buttons['buttons'][0]['type'] ?? null) === 'PHONE_NUMBER'
+                && ($buttons['buttons'][0]['text'] ?? null) === 'Call Center'
+                && ($buttons['buttons'][0]['phone_number'] ?? null) === '+59343710160';
+        });
+    }
+
+    public function test_it_surfaces_meta_graph_error_details_when_publish_fails(): void
+    {
+        $templateId = \DB::table('whatsapp_message_templates')->insertGetId([
+            'template_code' => 'bad_template',
+            'display_name' => 'Bad template',
+            'language' => 'es',
+            'category' => 'UTILITY',
+            'status' => 'DRAFT',
+            'wa_business_account' => 'waba-test-1',
+            'description' => 'Base',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $revisionId = \DB::table('whatsapp_template_revisions')->insertGetId([
+            'template_id' => $templateId,
+            'version' => 1,
+            'status' => 'draft',
+            'header_type' => 'none',
+            'body_text' => 'Hola {{1}}, tu cita es {{2}}.',
+            'quality_rating' => 'unknown',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        \DB::table('whatsapp_message_templates')->where('id', $templateId)->update([
+            'current_revision_id' => $revisionId,
+        ]);
+
+        Http::fake([
+            'https://graph.facebook.com/*' => Http::response([
+                'error' => [
+                    'message' => 'Invalid parameter',
+                    'code' => 100,
+                    'error_subcode' => 2494073,
+                    'error_user_msg' => 'Faltan ejemplos para las variables del cuerpo.',
+                ],
+            ], 400),
+        ]);
+
+        $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->postJson('/v2/whatsapp/api/templates/' . $templateId . '/publish')
+            ->assertStatus(422)
+            ->assertJsonPath('ok', false)
+            ->assertJsonPath(
+                'error',
+                'Meta respondió con error al publicar la plantilla: Faltan ejemplos para las variables del cuerpo. (code 100, subcode 2494073)'
+            );
     }
 
     public function test_it_creates_a_local_template_draft_with_media_header(): void
@@ -617,10 +839,11 @@ class WhatsappTemplateCatalogTest extends TestCase
         $revisionId = \DB::table('whatsapp_template_revisions')->insertGetId([
             'template_id' => $templateId,
             'version' => 1,
-            'status' => 'approved',
+            'status' => 'rejected',
             'header_type' => 'none',
             'body_text' => 'Mensaje base.',
             'quality_rating' => 'GREEN',
+            'rejection_reason' => 'Contenido promocional no permitido para la categoría Utility.',
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -641,6 +864,8 @@ class WhatsappTemplateCatalogTest extends TestCase
             ->assertOk()
             ->assertSee('Templates')
             ->assertSee('Sincronizar con Meta')
-            ->assertSee('Historial de revisiones');
+            ->assertSee('Historial de revisiones')
+            ->assertSee('Motivo del rechazo')
+            ->assertSee('Contenido promocional no permitido para la categoría Utility.');
     }
 }

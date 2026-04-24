@@ -2,12 +2,14 @@
 
 namespace App\Modules\Whatsapp\Http\Controllers;
 
-use App\Modules\Shared\Support\LegacyPermissionResolver;
-use App\Modules\Shared\Support\LegacySessionAuth;
+use App\Modules\Shared\Support\LegacyPermissionCatalog;
 use App\Modules\Whatsapp\Services\ConversationOpsService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
 use RuntimeException;
+use Throwable;
 
 class ConversationOpsController
 {
@@ -26,7 +28,7 @@ class ConversationOpsController
 
     public function agentSummary(Request $request): JsonResponse
     {
-        $canSupervise = LegacyPermissionResolver::canAny($request, ['whatsapp.chat.supervise', 'whatsapp.manage', 'administrativo']);
+        $canSupervise = $this->canSupervise();
         if (!$canSupervise) {
             return response()->json([
                 'ok' => false,
@@ -42,7 +44,7 @@ class ConversationOpsController
 
     public function getPresence(Request $request): JsonResponse
     {
-        $userId = LegacySessionAuth::userId($request) ?? 0;
+        $userId = $this->actorUserId();
 
         return response()->json([
             'ok' => true,
@@ -56,7 +58,7 @@ class ConversationOpsController
     public function updatePresence(Request $request): JsonResponse
     {
         return $this->runAction(function () use ($request): array {
-            $userId = LegacySessionAuth::userId($request) ?? 0;
+            $userId = $this->actorUserId();
             $status = (string) $request->input('status', 'available');
 
             return [
@@ -69,9 +71,9 @@ class ConversationOpsController
     public function assign(int $conversationId, Request $request): JsonResponse
     {
         return $this->runAction(function () use ($conversationId, $request): array {
-            $actorUserId = LegacySessionAuth::userId($request) ?? 0;
+            $actorUserId = $this->actorUserId();
             $targetUserId = (int) $request->input('user_id', $actorUserId);
-            $canSupervise = LegacyPermissionResolver::canAny($request, ['whatsapp.chat.supervise', 'whatsapp.manage', 'administrativo']);
+            $canSupervise = $this->canSupervise();
 
             return $this->service->assignConversation($conversationId, $targetUserId, $actorUserId, $canSupervise);
         });
@@ -80,10 +82,10 @@ class ConversationOpsController
     public function transfer(int $conversationId, Request $request): JsonResponse
     {
         return $this->runAction(function () use ($conversationId, $request): array {
-            $actorUserId = LegacySessionAuth::userId($request) ?? 0;
+            $actorUserId = $this->actorUserId();
             $targetUserId = (int) $request->input('user_id', 0);
             $note = trim((string) $request->input('note', ''));
-            $canSupervise = LegacyPermissionResolver::canAny($request, ['whatsapp.chat.supervise', 'whatsapp.manage', 'administrativo']);
+            $canSupervise = $this->canSupervise();
 
             return $this->service->transferConversation($conversationId, $targetUserId, $actorUserId, $canSupervise, $note !== '' ? $note : null);
         });
@@ -92,10 +94,10 @@ class ConversationOpsController
     public function queueByRole(int $conversationId, Request $request): JsonResponse
     {
         return $this->runAction(function () use ($conversationId, $request): array {
-            $actorUserId = LegacySessionAuth::userId($request) ?? 0;
+            $actorUserId = $this->actorUserId();
             $roleId = (int) $request->input('role_id', 0);
             $note = trim((string) $request->input('note', ''));
-            $canSupervise = LegacyPermissionResolver::canAny($request, ['whatsapp.chat.supervise', 'whatsapp.manage', 'administrativo']);
+            $canSupervise = $this->canSupervise();
 
             return $this->service->enqueueConversationToRole($conversationId, $roleId, $actorUserId, $canSupervise, $note !== '' ? $note : null);
         });
@@ -104,8 +106,8 @@ class ConversationOpsController
     public function close(int $conversationId, Request $request): JsonResponse
     {
         return $this->runAction(function () use ($conversationId, $request): array {
-            $actorUserId = LegacySessionAuth::userId($request) ?? 0;
-            $canSupervise = LegacyPermissionResolver::canAny($request, ['whatsapp.chat.supervise', 'whatsapp.manage', 'administrativo']);
+            $actorUserId = $this->actorUserId();
+            $canSupervise = $this->canSupervise();
 
             return $this->service->closeConversation($conversationId, $actorUserId, $canSupervise);
         });
@@ -114,7 +116,7 @@ class ConversationOpsController
     public function requeueExpired(Request $request): JsonResponse
     {
         return $this->runAction(function () use ($request): array {
-            $canSupervise = LegacyPermissionResolver::canAny($request, ['whatsapp.chat.supervise', 'whatsapp.manage', 'administrativo']);
+            $canSupervise = $this->canSupervise();
             if (!$canSupervise) {
                 throw new RuntimeException('No tienes permisos para reencolar handoffs vencidos.');
             }
@@ -144,6 +146,43 @@ class ConversationOpsController
                 'error' => 'No fue posible ejecutar la acción del chat en Laravel.',
                 'detail' => $e->getMessage(),
             ], 500);
+        }
+    }
+
+    private function actorUserId(): int
+    {
+        $id = Auth::id();
+
+        return is_numeric($id) ? (int) $id : 0;
+    }
+
+    private function canSupervise(): bool
+    {
+        $userId = $this->actorUserId();
+        if ($userId <= 0) {
+            return false;
+        }
+
+        try {
+            $row = DB::table('users as u')
+                ->leftJoin('roles as r', 'r.id', '=', 'u.role_id')
+                ->select(['u.permisos as user_permissions', 'r.permissions as role_permissions'])
+                ->where('u.id', $userId)
+                ->first();
+
+            $permissions = LegacyPermissionCatalog::merge(
+                [],
+                $row->user_permissions ?? [],
+                $row->role_permissions ?? []
+            );
+
+            return LegacyPermissionCatalog::containsAny($permissions, [
+                'whatsapp.chat.supervise',
+                'whatsapp.manage',
+                'administrativo',
+            ]);
+        } catch (Throwable) {
+            return false;
         }
     }
 }

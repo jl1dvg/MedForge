@@ -2,8 +2,7 @@
 
 namespace App\Modules\Whatsapp\Http\Controllers;
 
-use App\Modules\Shared\Support\LegacyCurrentUser;
-use App\Modules\Shared\Support\LegacyPermissionResolver;
+use App\Modules\Shared\Support\LegacyPermissionCatalog;
 use App\Modules\Whatsapp\Services\ConversationOpsService;
 use App\Modules\Whatsapp\Services\ConversationReadService;
 use App\Modules\Whatsapp\Services\CampaignService;
@@ -16,6 +15,7 @@ use App\Modules\Whatsapp\Services\TemplateCatalogService;
 use Carbon\CarbonImmutable;
 use DateTimeImmutable;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Contracts\View\Factory;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\Request;
@@ -43,8 +43,8 @@ class WhatsappUiController
 
     public function chat(Request $request): View|Factory
     {
-        $currentUser = LegacyCurrentUser::resolve($request);
-        $permissions = LegacyPermissionResolver::resolve($request);
+        $currentUser = $this->resolveCurrentUser();
+        $permissions = $this->resolvePermissions();
         $selectedConversationId = max(0, (int) $request->query('conversation', 0));
         $filter = trim((string) $request->query('filter', 'all'));
         $search = trim((string) $request->query('search', ''));
@@ -430,7 +430,7 @@ class WhatsappUiController
      */
     private function buildWhatsappNotificationViewData(Request $request, array $runtimeOverrides = []): array
     {
-        $currentUser = LegacyCurrentUser::resolve($request);
+        $currentUser = $this->resolveCurrentUser();
         $notificationsEnabled = $this->canCurrentUserReceiveWhatsappNotifications($request);
 
         return [
@@ -456,14 +456,14 @@ class WhatsappUiController
 
     private function canCurrentUserReceiveWhatsappNotifications(Request $request): bool
     {
-        $permissions = LegacyPermissionResolver::resolve($request);
-        $userId = (int) (LegacyCurrentUser::resolve($request)['id'] ?? 0);
+        $permissions = $this->resolvePermissions();
+        $userId = (int) ($this->resolveCurrentUser()['id'] ?? 0);
 
         if ($userId <= 0) {
             return false;
         }
 
-        $hasPermission = \App\Modules\Shared\Support\LegacyPermissionCatalog::containsAny($permissions, [
+        $hasPermission = LegacyPermissionCatalog::containsAny($permissions, [
             'administrativo',
             'whatsapp.manage',
             'whatsapp.chat.supervise',
@@ -513,5 +513,75 @@ class WhatsappUiController
         }
 
         return $options;
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private function resolveCurrentUser(): array
+    {
+        $userId = $this->actorUserId();
+        if ($userId <= 0) {
+            return [
+                'id' => 0,
+                'display_name' => 'Usuario',
+                'role_name' => 'Usuario',
+                'profile_photo_url' => null,
+            ];
+        }
+
+        $row = DB::table('users as u')
+            ->leftJoin('roles as r', 'r.id', '=', 'u.role_id')
+            ->select(['u.id', 'u.username', 'u.nombre', 'u.email', 'u.profile_photo', 'r.name as role_name'])
+            ->where('u.id', $userId)
+            ->first();
+
+        $displayName = trim((string) ($row->nombre ?? $row->username ?? 'Usuario'));
+        if ($displayName === '') {
+            $displayName = 'Usuario';
+        }
+
+        $profilePhoto = trim((string) ($row->profile_photo ?? ''));
+
+        return [
+            'id' => (int) ($row->id ?? $userId),
+            'display_name' => $displayName,
+            'role_name' => (string) ($row->role_name ?? 'Usuario'),
+            'profile_photo_url' => $profilePhoto !== '' ? '/' . ltrim($profilePhoto, '/') : null,
+        ];
+    }
+
+    /**
+     * @return array<int,string>
+     */
+    private function resolvePermissions(): array
+    {
+        $userId = $this->actorUserId();
+        if ($userId <= 0) {
+            return [];
+        }
+
+        try {
+            $row = DB::table('users as u')
+                ->leftJoin('roles as r', 'r.id', '=', 'u.role_id')
+                ->select(['u.permisos as user_permissions', 'r.permissions as role_permissions'])
+                ->where('u.id', $userId)
+                ->first();
+
+            return LegacyPermissionCatalog::merge(
+                [],
+                $row->user_permissions ?? [],
+                $row->role_permissions ?? []
+            );
+        } catch (Throwable) {
+            return [];
+        }
+    }
+
+    private function actorUserId(): int
+    {
+        $id = Auth::id();
+
+        return is_numeric($id) ? (int) $id : 0;
     }
 }

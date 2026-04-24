@@ -2,11 +2,13 @@
 
 namespace App\Modules\Whatsapp\Http\Controllers;
 
-use App\Modules\Shared\Support\LegacyPermissionResolver;
-use App\Modules\Shared\Support\LegacySessionAuth;
+use App\Modules\Shared\Support\LegacyPermissionCatalog;
 use App\Modules\Whatsapp\Services\ConversationReadService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
+use Throwable;
 
 class ConversationReadController
 {
@@ -22,8 +24,8 @@ class ConversationReadController
         $filter = trim((string) $request->query('filter', 'all'));
         $assignedUserId = $this->nullableIntQuery($request, 'agent_id');
         $roleId = $this->nullableIntQuery($request, 'role_id');
-        $viewerUserId = LegacySessionAuth::userId($request);
-        $canViewAssignedOthers = LegacyPermissionResolver::canAny($request, ['whatsapp.chat.supervise', 'whatsapp.manage', 'administrativo']);
+        $viewerUserId = $this->actorUserId();
+        $canViewAssignedOthers = $this->canViewAssignedOthers();
         if (!$canViewAssignedOthers) {
             $assignedUserId = null;
             $roleId = null;
@@ -63,8 +65,8 @@ class ConversationReadController
         $limit = (int) $request->query('message_limit', 150);
         $assignedUserId = $this->nullableIntQuery($request, 'agent_id');
         $roleId = $this->nullableIntQuery($request, 'role_id');
-        $viewerUserId = LegacySessionAuth::userId($request);
-        $canViewAssignedOthers = LegacyPermissionResolver::canAny($request, ['whatsapp.chat.supervise', 'whatsapp.manage', 'administrativo']);
+        $viewerUserId = $this->actorUserId();
+        $canViewAssignedOthers = $this->canViewAssignedOthers();
         if (!$canViewAssignedOthers) {
             $assignedUserId = null;
             $roleId = null;
@@ -104,5 +106,42 @@ class ConversationReadController
         }
 
         return (int) $value;
+    }
+
+    private function actorUserId(): ?int
+    {
+        $id = Auth::id();
+
+        return is_numeric($id) ? (int) $id : null;
+    }
+
+    private function canViewAssignedOthers(): bool
+    {
+        $userId = $this->actorUserId();
+        if ($userId === null || $userId <= 0) {
+            return false;
+        }
+
+        try {
+            $row = DB::table('users as u')
+                ->leftJoin('roles as r', 'r.id', '=', 'u.role_id')
+                ->select(['u.permisos as user_permissions', 'r.permissions as role_permissions'])
+                ->where('u.id', $userId)
+                ->first();
+
+            $permissions = LegacyPermissionCatalog::merge(
+                [],
+                $row->user_permissions ?? [],
+                $row->role_permissions ?? []
+            );
+
+            return LegacyPermissionCatalog::containsAny($permissions, [
+                'whatsapp.chat.supervise',
+                'whatsapp.manage',
+                'administrativo',
+            ]);
+        } catch (Throwable) {
+            return false;
+        }
     }
 }

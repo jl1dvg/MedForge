@@ -140,22 +140,22 @@ Route::middleware(['legacy.auth', 'legacy.permission:administrativo,codes.manage
     Route::get('/v2/codes/packages', [CodesUiController::class, 'packages']);
 });
 
-Route::middleware(['legacy.auth'])->group(function (): void {
+Route::middleware(['app.auth'])->group(function (): void {
     Route::get('/v2/whatsapp', [WhatsappUiController::class, 'hub'])
-        ->middleware('legacy.permission:administrativo,whatsapp.manage,whatsapp.chat.view,whatsapp.chat.send,whatsapp.chat.assign,whatsapp.chat.supervise,whatsapp.templates.manage,whatsapp.autoresponder.manage,settings.manage');
+        ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.view,whatsapp.chat.send,whatsapp.chat.assign,whatsapp.chat.supervise,whatsapp.templates.manage,whatsapp.autoresponder.manage,settings.manage');
     Route::get('/v2/whatsapp/chat', [WhatsappUiController::class, 'chat'])
-        ->middleware('legacy.permission:administrativo,whatsapp.manage,whatsapp.chat.view,whatsapp.chat.send,whatsapp.chat.assign,whatsapp.chat.supervise,settings.manage')
+        ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.view,whatsapp.chat.send,whatsapp.chat.assign,whatsapp.chat.supervise,settings.manage')
         ->middleware('whatsapp.feature:ui,/whatsapp/chat');
     Route::get('/v2/whatsapp/campaigns', [WhatsappUiController::class, 'campaigns'])
-        ->middleware('legacy.permission:administrativo,whatsapp.manage,whatsapp.chat.send,whatsapp.templates.manage,settings.manage')
+        ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.send,whatsapp.templates.manage,settings.manage')
         ->middleware('whatsapp.feature:ui,/whatsapp/campaigns');
     Route::get('/v2/whatsapp/templates', [WhatsappUiController::class, 'templates'])
-        ->middleware('legacy.permission:administrativo,whatsapp.manage,whatsapp.templates.manage,settings.manage')
+        ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.templates.manage,settings.manage')
         ->middleware('whatsapp.feature:ui,/whatsapp/templates');
     Route::get('/v2/whatsapp/dashboard', [WhatsappUiController::class, 'dashboard'])
-        ->middleware('legacy.permission:administrativo,whatsapp.manage,whatsapp.chat.view,whatsapp.chat.supervise,settings.manage')
+        ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.view,whatsapp.chat.supervise,settings.manage')
         ->middleware('whatsapp.feature:ui,/whatsapp/dashboard');
     Route::get('/v2/whatsapp/flowmaker', [WhatsappUiController::class, 'flowmaker'])
-        ->middleware('legacy.permission:administrativo,whatsapp.manage,whatsapp.autoresponder.manage,settings.manage')
+        ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.autoresponder.manage,settings.manage')
         ->middleware('whatsapp.feature:ui,/whatsapp/flowmaker');
 });

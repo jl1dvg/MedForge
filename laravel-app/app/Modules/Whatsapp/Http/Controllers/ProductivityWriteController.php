@@ -2,10 +2,10 @@
 
 namespace App\Modules\Whatsapp\Http\Controllers;
 
-use App\Modules\Shared\Support\LegacySessionAuth;
 use App\Modules\Whatsapp\Services\ProductivityToolkitService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use RuntimeException;
 
 class ProductivityWriteController
@@ -24,7 +24,7 @@ class ProductivityWriteController
                     trim((string) $request->input('title', '')),
                     trim((string) $request->input('body', '')),
                     $request->input('shortcut'),
-                    LegacySessionAuth::userId($request)
+                    $this->actorUserId()
                 ),
             ]);
         } catch (RuntimeException $e) {
@@ -49,7 +49,7 @@ class ProductivityWriteController
                 'data' => $this->service->addConversationNote(
                     $conversationId,
                     trim((string) $request->input('body', '')),
-                    LegacySessionAuth::userId($request)
+                    $this->actorUserId()
                 ),
             ]);
         } catch (RuntimeException $e) {
@@ -64,5 +64,12 @@ class ProductivityWriteController
                 'detail' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    private function actorUserId(): ?int
+    {
+        $id = Auth::id();
+
+        return is_numeric($id) ? (int) $id : null;
     }
 }
