@@ -3,6 +3,7 @@
 namespace App\Modules\Whatsapp\Http\Controllers;
 
 use App\Modules\Shared\Support\LegacyPermissionCatalog;
+use App\Modules\Shared\Support\SettingsOptionResolver;
 use App\Modules\Whatsapp\Services\ConversationOpsService;
 use App\Modules\Whatsapp\Services\ConversationReadService;
 use App\Modules\Whatsapp\Services\CampaignService;
@@ -27,6 +28,8 @@ class WhatsappUiController
         'inbound_message' => 'whatsapp.inbound-message',
         'conversation_updated' => 'whatsapp.conversation-updated',
     ];
+
+    private ?SettingsOptionResolver $settingsResolver = null;
 
     public function __construct(
         private readonly ConversationReadService $conversationReadService = new \App\Modules\Whatsapp\Services\ConversationReadService(),
@@ -489,30 +492,11 @@ class WhatsappUiController
      */
     private function settingsOptions(array $keys): array
     {
-        if ($keys === []) {
-            return [];
+        if ($this->settingsResolver === null) {
+            $this->settingsResolver = new SettingsOptionResolver();
         }
 
-        $placeholders = implode(',', array_fill(0, count($keys), '?'));
-        try {
-            $rows = DB::select(
-                'SELECT name, value FROM settings WHERE name IN (' . $placeholders . ')',
-                array_values($keys)
-            );
-        } catch (Throwable) {
-            return [];
-        }
-
-        $options = [];
-        foreach ($rows as $row) {
-            $name = (string) ($row->name ?? '');
-            if ($name === '') {
-                continue;
-            }
-            $options[$name] = (string) ($row->value ?? '');
-        }
-
-        return $options;
+        return $this->settingsResolver->getOptions($keys);
     }
 
     /**

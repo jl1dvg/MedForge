@@ -2,11 +2,11 @@
 
 namespace App\Modules\Whatsapp\Services;
 
+use App\Modules\Shared\Support\SettingsOptionResolver;
 use App\Models\User;
 use App\Models\WhatsappConversation;
 use App\Models\WhatsappMessage;
 use Illuminate\Support\Facades\DB;
-use Throwable;
 
 class WhatsappRealtimeService
 {
@@ -18,6 +18,7 @@ class WhatsappRealtimeService
      * @var array<string,mixed>|null
      */
     private ?array $configCache = null;
+    private ?SettingsOptionResolver $settingsResolver = null;
 
     public function broadcastInboundMessage(WhatsappConversation $conversation, WhatsappMessage $message): void
     {
@@ -140,46 +141,34 @@ class WhatsappRealtimeService
             ],
         ];
 
-        try {
-            $rows = DB::select(
-                'SELECT name, value FROM settings WHERE name IN (?, ?, ?, ?, ?, ?, ?, ?)',
-                [
-                    'pusher_app_id',
-                    'pusher_app_key',
-                    'pusher_app_secret',
-                    'pusher_cluster',
-                    'pusher_realtime_notifications',
-                    'notifications_email_enabled',
-                    'notifications_sms_enabled',
-                    'notifications_daily_summary',
-                ]
-            );
-
-            $options = [];
-            foreach ($rows as $row) {
-                $name = (string) ($row->name ?? '');
-                if ($name === '') {
-                    continue;
-                }
-                $options[$name] = (string) ($row->value ?? '');
-            }
-
-            $config['app_id'] = trim((string) ($options['pusher_app_id'] ?? ''));
-            $config['key'] = trim((string) ($options['pusher_app_key'] ?? ''));
-            $config['secret'] = trim((string) ($options['pusher_app_secret'] ?? ''));
-            $config['cluster'] = trim((string) ($options['pusher_cluster'] ?? ''));
-            $config['enabled'] = ((string) ($options['pusher_realtime_notifications'] ?? '0')) === '1'
-                && $config['app_id'] !== ''
-                && $config['key'] !== ''
-                && $config['secret'] !== '';
-            $config['channels'] = [
-                'email' => ((string) ($options['notifications_email_enabled'] ?? '0')) === '1',
-                'sms' => ((string) ($options['notifications_sms_enabled'] ?? '0')) === '1',
-                'daily_summary' => ((string) ($options['notifications_daily_summary'] ?? '0')) === '1',
-            ];
-        } catch (Throwable) {
-            $config['enabled'] = false;
+        if ($this->settingsResolver === null) {
+            $this->settingsResolver = new SettingsOptionResolver();
         }
+
+        $options = $this->settingsResolver->getOptions([
+            'pusher_app_id',
+            'pusher_app_key',
+            'pusher_app_secret',
+            'pusher_cluster',
+            'pusher_realtime_notifications',
+            'notifications_email_enabled',
+            'notifications_sms_enabled',
+            'notifications_daily_summary',
+        ]);
+
+        $config['app_id'] = trim((string) ($options['pusher_app_id'] ?? ''));
+        $config['key'] = trim((string) ($options['pusher_app_key'] ?? ''));
+        $config['secret'] = trim((string) ($options['pusher_app_secret'] ?? ''));
+        $config['cluster'] = trim((string) ($options['pusher_cluster'] ?? ''));
+        $config['enabled'] = ((string) ($options['pusher_realtime_notifications'] ?? '0')) === '1'
+            && $config['app_id'] !== ''
+            && $config['key'] !== ''
+            && $config['secret'] !== '';
+        $config['channels'] = [
+            'email' => ((string) ($options['notifications_email_enabled'] ?? '0')) === '1',
+            'sms' => ((string) ($options['notifications_sms_enabled'] ?? '0')) === '1',
+            'daily_summary' => ((string) ($options['notifications_daily_summary'] ?? '0')) === '1',
+        ];
 
         $this->configCache = $config;
 
