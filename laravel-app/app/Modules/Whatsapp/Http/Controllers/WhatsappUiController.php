@@ -48,13 +48,14 @@ class WhatsappUiController
     {
         $currentUser = $this->resolveCurrentUser();
         $permissions = $this->resolvePermissions();
+        $today = CarbonImmutable::today();
         $selectedConversationId = max(0, (int) $request->query('conversation', 0));
         $filter = trim((string) $request->query('filter', 'all'));
         $search = trim((string) $request->query('search', ''));
         $selectedAgentId = $this->nullableIntQuery($request, 'agent_id');
         $selectedRoleId = $this->nullableIntQuery($request, 'role_id');
-        $dateFrom = $this->nullableDateQuery($request, 'date_from');
-        $dateTo = $this->nullableDateQuery($request, 'date_to');
+        $dateFrom = $this->nullableDateQuery($request, 'date_from') ?? $today->subDays(6);
+        $dateTo = $this->nullableDateQuery($request, 'date_to') ?? $today;
         $canSupervise = in_array('administrativo', $permissions, true)
             || in_array('whatsapp.manage', $permissions, true)
             || in_array('whatsapp.chat.supervise', $permissions, true);

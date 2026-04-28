@@ -6,6 +6,7 @@ use App\Http\Middleware\LegacySessionBridge;
 use App\Http\Middleware\RequireLegacyPermission;
 use App\Http\Middleware\RequireLegacySession;
 use App\Models\User;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
@@ -202,5 +203,26 @@ class WhatsappChatUiTest extends TestCase
             ->assertSee('Nuevo chat con plantilla')
             ->assertSee('Saludo rápido')
             ->assertSee('Paciente pendiente de confirmación.');
+    }
+
+    public function test_chat_defaults_to_last_seven_days_when_no_date_filter_is_provided(): void
+    {
+        CarbonImmutable::setTestNow('2026-04-28 10:00:00');
+        $this->actingAs(User::query()->findOrFail(40));
+
+        try {
+            $response = $this->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])->get('/v2/whatsapp/chat');
+
+            $response
+                ->assertOk()
+                ->assertSee('value="2026-04-22"', false)
+                ->assertSee('value="2026-04-28"', false);
+        } finally {
+            CarbonImmutable::setTestNow();
+        }
     }
 }
