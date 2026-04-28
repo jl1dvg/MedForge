@@ -51,7 +51,7 @@ class CirugiaService
             return null;
         }
 
-        $trimmed = trim((string) $value);
+        $trimmed = trim((string)$value);
 
         return $trimmed === '' ? null : $trimmed;
     }
@@ -127,8 +127,8 @@ class CirugiaService
 
                 if (
                     ($id !== null && $id !== '') ||
-                    ($cantidad !== null && (int) $cantidad > 0) ||
-                    ($nombre !== null && trim((string) $nombre) !== '')
+                    ($cantidad !== null && (int)$cantidad > 0) ||
+                    ($nombre !== null && trim((string)$nombre) !== '')
                 ) {
                     return true;
                 }
@@ -154,11 +154,11 @@ class CirugiaService
 
             if (
                 ($id !== null && $id !== '') ||
-                ($nombre !== null && trim((string) $nombre) !== '') ||
-                ($dosis !== null && trim((string) $dosis) !== '') ||
-                ($frecuencia !== null && trim((string) $frecuencia) !== '') ||
-                ($via !== null && trim((string) $via) !== '') ||
-                ($responsable !== null && trim((string) $responsable) !== '')
+                ($nombre !== null && trim((string)$nombre) !== '') ||
+                ($dosis !== null && trim((string)$dosis) !== '') ||
+                ($frecuencia !== null && trim((string)$frecuencia) !== '') ||
+                ($via !== null && trim((string)$via) !== '') ||
+                ($responsable !== null && trim((string)$responsable) !== '')
             ) {
                 return true;
             }
@@ -230,13 +230,14 @@ class CirugiaService
      * }
      */
     public function obtenerCirugiasPaginadas(
-        int $start,
-        int $length,
+        int    $start,
+        int    $length,
         string $search,
         string $orderColumn,
         string $orderDir,
-        array $filters = []
-    ): array {
+        array  $filters = []
+    ): array
+    {
         $start = max(0, $start);
         $length = $length > 0 ? min($length, 500) : 25;
         $search = trim($search);
@@ -541,7 +542,7 @@ class CirugiaService
         $stmt->execute($params);
         $id = $stmt->fetchColumn();
 
-        return $id !== false ? (int) $id : null;
+        return $id !== false ? (int)$id : null;
     }
 
     public function obtenerInsumosDisponibles(string $afiliacion): array
@@ -637,12 +638,12 @@ class CirugiaService
         $checks = [];
 
         $projected = $this->obtenerProcedimientoProyectadoAuditoria(
-            (string) ($cirugia->form_id ?? ''),
-            (string) ($cirugia->hc_number ?? '')
+            (string)($cirugia->form_id ?? ''),
+            (string)($cirugia->hc_number ?? '')
         );
 
-        $projectedDoctor = trim((string) ($projected['doctor'] ?? ''));
-        $surgeon = trim((string) ($cirugia->cirujano_1 ?? ''));
+        $projectedDoctor = trim((string)($projected['doctor'] ?? ''));
+        $surgeon = trim((string)($cirugia->cirujano_1 ?? ''));
         if ($projectedDoctor === '') {
             $checks[] = $this->buildAuditCheck(
                 'doctor_proyectado',
@@ -666,9 +667,9 @@ class CirugiaService
             );
         }
 
-        $projectedProcedure = trim((string) ($projected['procedimiento_proyectado'] ?? ''));
+        $projectedProcedure = trim((string)($projected['procedimiento_proyectado'] ?? ''));
         $projectedEye = $this->extractLateralidadFromProjectedProcedure($projectedProcedure);
-        $protocolEye = trim((string) ($cirugia->lateralidad ?? ''));
+        $protocolEye = trim((string)($cirugia->lateralidad ?? ''));
         if ($projectedEye === '') {
             $checks[] = $this->buildAuditCheck(
                 'ojo_proyectado',
@@ -695,7 +696,7 @@ class CirugiaService
         }
 
         $projectedLensType = $this->extractProjectedLensType($projectedProcedure);
-        $operatorio = trim((string) ($cirugia->operatorio ?? ''));
+        $operatorio = trim((string)($cirugia->operatorio ?? ''));
         if ($projectedLensType !== null) {
             $operatorioLensType = $this->extractProjectedLensType($operatorio);
             $matches = $operatorioLensType === $projectedLensType;
@@ -713,7 +714,7 @@ class CirugiaService
             );
         }
 
-        $template = $this->obtenerPlantillaAuditoria((string) ($cirugia->procedimiento_id ?? ''));
+        $template = $this->obtenerPlantillaAuditoria((string)($cirugia->procedimiento_id ?? ''));
         if ($template === null) {
             $checks[] = $this->buildAuditCheck(
                 'plantilla',
@@ -773,7 +774,7 @@ class CirugiaService
         $overallStatus = 'ok';
         $summary = ['ok' => 0, 'warning' => 0, 'error' => 0];
         foreach ($checks as $check) {
-            $status = (string) ($check['status'] ?? 'warning');
+            $status = (string)($check['status'] ?? 'warning');
             $summary[$status] = ($summary[$status] ?? 0) + 1;
             if (($statusWeight[$status] ?? 0) > ($statusWeight[$overallStatus] ?? 0)) {
                 $overallStatus = $status;
@@ -949,9 +950,27 @@ class CirugiaService
                         continue;
                     }
 
-                    $parts = explode(' - ', $dx['idDiagnostico'], 2);
-                    $codigo = trim($parts[0] ?? '');
-                    $descripcion = trim($parts[1] ?? '');
+                    $idDiagnostico = trim((string)($dx['idDiagnostico'] ?? ''));
+                    $codigo = '';
+                    $descripcion = '';
+
+                    if (preg_match('/^([A-Z]\d{2,3}[A-Z0-9]*)\s*-\s*(.+)$/i', $idDiagnostico, $matches)) {
+                        $codigo = strtoupper(trim($matches[1]));
+                        $descripcion = trim($matches[2]);
+                    } else {
+                        $parts = preg_split('/\s+-\s+/', $idDiagnostico, 2);
+                        $codigo = trim((string)($parts[0] ?? ''));
+                        $descripcion = trim((string)($parts[1] ?? ''));
+                    }
+
+                    if ($codigo === '' || strlen($codigo) > 10) {
+                        $descripcion = $descripcion !== '' ? $descripcion : $idDiagnostico;
+                        $codigo = substr(preg_replace('/[^A-Z0-9]/i', '', $codigo) ?? '', 0, 10);
+                    }
+
+                    if ($codigo === '') {
+                        continue;
+                    }
 
                     $dxCodigosNuevos[] = $codigo;
 
@@ -1080,9 +1099,9 @@ class CirugiaService
                 return false;
             }
 
-            $protocoloId = (int) ($protocolo['id'] ?? 0);
-            $currentVersion = isset($protocolo['version']) ? (int) $protocolo['version'] : 0;
-            $currentStatus = isset($protocolo['status']) ? (int) $protocolo['status'] : 0;
+            $protocoloId = (int)($protocolo['id'] ?? 0);
+            $currentVersion = isset($protocolo['version']) ? (int)$protocolo['version'] : 0;
+            $currentStatus = isset($protocolo['status']) ? (int)$protocolo['status'] : 0;
             $needsSignature = $status === 1
                 && ($currentStatus !== 1 || empty($protocolo['fecha_firma']));
 
@@ -1372,7 +1391,7 @@ class CirugiaService
             );
             $stmt->execute([':id' => $procedimientoId]);
             $codigos = array_values(array_filter(array_map(
-                static fn($value): string => trim((string) $value),
+                static fn($value): string => trim((string)$value),
                 $stmt->fetchAll(PDO::FETCH_COLUMN) ?: []
             )));
         }
@@ -1384,15 +1403,15 @@ class CirugiaService
             );
             $stmt->execute([':id' => $procedimientoId]);
             $roles = array_values(array_filter(array_map(
-                fn($value): string => $this->normalizeRoleNameToKey((string) $value),
+                fn($value): string => $this->normalizeRoleNameToKey((string)$value),
                 $stmt->fetchAll(PDO::FETCH_COLUMN) ?: []
             )));
         }
 
         return [
-            'id' => (string) ($procedimiento['id'] ?? ''),
-            'cirugia' => trim((string) ($procedimiento['cirugia'] ?? '')),
-            'membrete' => trim((string) ($procedimiento['membrete'] ?? '')),
+            'id' => (string)($procedimiento['id'] ?? ''),
+            'cirugia' => trim((string)($procedimiento['cirugia'] ?? '')),
+            'membrete' => trim((string)($procedimiento['membrete'] ?? '')),
             'codigos' => $codigos,
             'roles' => array_values(array_unique($roles)),
         ];
@@ -1438,7 +1457,7 @@ class CirugiaService
                 continue;
             }
 
-            $value = trim((string) ($item['codigo'] ?? $item['procInterno'] ?? $item['nombre'] ?? ''));
+            $value = trim((string)($item['codigo'] ?? $item['procInterno'] ?? $item['nombre'] ?? ''));
             if ($value !== '' && $this->normalizeComparableText($value) !== 'SELECCIONE') {
                 $count++;
             }
@@ -1506,7 +1525,7 @@ class CirugiaService
             return $value !== [];
         }
 
-        $trimmed = trim((string) $value);
+        $trimmed = trim((string)$value);
         if ($trimmed === '') {
             return false;
         }

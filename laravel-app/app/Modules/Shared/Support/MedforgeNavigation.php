@@ -454,6 +454,11 @@ class MedforgeNavigation
                 'prefix' => ['/mail-templates'],
             ])
                 : null,
+            $canAccessSettings
+                ? $link('Sugerencias y errores', '/v2/feedback', 'mdi mdi-message-alert-outline', [
+                'prefix' => ['/v2/feedback'],
+            ])
+                : null,
             $canAccessCronManager
                 ? $link('Cron Manager', '/cron-manager', 'mdi mdi-timer-cog-outline', [
                 'prefix' => ['/cron-manager'],

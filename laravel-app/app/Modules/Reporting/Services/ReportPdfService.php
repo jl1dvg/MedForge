@@ -341,11 +341,17 @@ class ReportPdfService
 
                     $files = $this->getSigcenterPackageFiles($formId, $hcNumber);
                     if ($this->isAngiografiaRetinal((string) ($item['tipo_examen'] ?? null))) {
-                        $files = $this->selectAngiografiaRetinalPackageFiles($files, [
+                        $files = $this->selectRetinalOverviewPackageFiles($files, [
                             'form_id' => $formId,
                             'hc_number' => $hcNumber,
                             'tipo_examen' => (string) ($item['tipo_examen'] ?? ''),
-                        ]);
+                        ], 'angiografia');
+                    } elseif ($this->isRetinografiaOAutofluorescenciaZeiss((string) ($item['tipo_examen'] ?? null))) {
+                        $files = $this->selectRetinalOverviewPackageFiles($files, [
+                            'form_id' => $formId,
+                            'hc_number' => $hcNumber,
+                            'tipo_examen' => (string) ($item['tipo_examen'] ?? ''),
+                        ], 'retinografia_autofluorescencia');
                     }
                     if ($this->isBiometriaOcular((string) ($item['tipo_examen'] ?? null)) && count($files) > 1) {
                         $files = [end($files)];
@@ -1091,10 +1097,11 @@ class ReportPdfService
      * @param array<string, mixed> $context
      * @return array<int, array<string, mixed>>
      */
-    private function selectAngiografiaRetinalPackageFiles(array $files, array $context = []): array
+    private function selectRetinalOverviewPackageFiles(array $files, array $context = [], string $logKey = 'retinal'): array
     {
         $selected = [];
         $scores = [];
+        $fallbackCandidates = [];
 
         foreach ($files as $index => $file) {
             if (!is_array($file)) {
@@ -1118,11 +1125,16 @@ class ReportPdfService
                     continue;
                 }
 
-                $scores[] = [
+                $score = [
                     'index' => $index,
                     'name' => (string) ($file['name'] ?? ''),
                     'relative_path' => $relativePath,
                 ] + $analysis;
+                $scores[] = $score;
+                $fallbackCandidates[$index] = [
+                    'file' => $file,
+                    'score' => $score,
+                ];
 
                 if (($analysis['is_report_like'] ?? false) === true) {
                     $selected[$index] = $file;
@@ -1134,7 +1146,7 @@ class ReportPdfService
             }
         }
 
-        Log::info('reporting.angiografia.file_selection', $context + [
+        Log::info('reporting.' . $logKey . '.file_selection', $context + [
             'total_files' => count($files),
             'selected_files' => count($selected),
             'scores' => $scores,
@@ -1145,12 +1157,58 @@ class ReportPdfService
             return array_values($selected);
         }
 
-        Log::warning('reporting.angiografia.file_selection.empty', $context + [
+        $fallback = $this->selectBestRetinalFallbackImage($fallbackCandidates);
+        if ($fallback !== null) {
+            Log::warning('reporting.' . $logKey . '.file_selection.fallback', $context + [
+                'total_files' => count($files),
+                'reason' => 'no_overview_detected',
+                'selected_file' => (string) ($fallback['name'] ?? ''),
+                'relative_path' => (string) ($fallback['relative_path'] ?? ''),
+            ]);
+
+            return [$fallback];
+        }
+
+        Log::warning('reporting.' . $logKey . '.file_selection.empty', $context + [
             'total_files' => count($files),
-            'reason' => 'no_overview_detected',
+            'reason' => 'no_image_candidates',
         ]);
 
         return [];
+    }
+
+    /**
+     * @param array<int, array{file:array<string,mixed>,score:array<string,mixed>}> $candidates
+     * @return array<string, mixed>|null
+     */
+    private function selectBestRetinalFallbackImage(array $candidates): ?array
+    {
+        $bestFile = null;
+        $bestScore = null;
+
+        foreach ($candidates as $candidate) {
+            $file = $candidate['file'] ?? null;
+            $score = $candidate['score'] ?? null;
+            if (!is_array($file) || !is_array($score)) {
+                continue;
+            }
+
+            $width = (int) ($score['width'] ?? 0);
+            $height = (int) ($score['height'] ?? 0);
+            $pixels = max(1, $width * $height);
+            $meanLuma = (float) ($score['mean_luma'] ?? 0.0);
+            $darkRatio = (float) ($score['dark_ratio'] ?? 1.0);
+            $whiteRatio = (float) ($score['white_ratio'] ?? 0.0);
+            $areaPenalty = min(1.0, $pixels / 45000000);
+
+            $candidateScore = $meanLuma - ($darkRatio * 55.0) + ($whiteRatio * 25.0) - ($areaPenalty * 20.0);
+            if ($bestScore === null || $candidateScore > $bestScore) {
+                $bestScore = $candidateScore;
+                $bestFile = $file;
+            }
+        }
+
+        return $bestFile;
     }
 
     /**
@@ -1240,8 +1298,14 @@ class ReportPdfService
             return null;
         }
 
+        $tipoExamen = (string) ($context['tipo_examen'] ?? '');
+        if ($this->isImageExtension($ext) && ($this->isAngiografiaRetinal($tipoExamen) || $this->isRetinografiaOAutofluorescenciaZeiss($tipoExamen))) {
+            $this->downsampleRetinalImageInPlace($tmpPath, $ext, $context + [
+                'relative_path' => $relativePath,
+            ]);
+        }
+
         if ($fechaDocumento !== null && $fechaDocumento !== '') {
-            $tipoExamen = (string) ($context['tipo_examen'] ?? '');
             $maskContext = $context + [
                 'relative_path' => $relativePath,
                 'fecha_documento' => $fechaDocumento,
@@ -1390,16 +1454,20 @@ class ReportPdfService
         }
     }
 
-    private function appendOctMacularPdfFile(Fpdi $pdf, string $path): void
+    private function appendOctMacularPdfFile(Fpdi $pdf, string $path): int
     {
         $pageCount = $pdf->setSourceFile($path);
         $pageNumbers = $this->resolveOctMacularPdfPages($path, $pageCount);
+        $appended = 0;
         foreach ($pageNumbers as $pageNo) {
             $tplId = $pdf->importPage($pageNo);
             $size = $pdf->getTemplateSize($tplId);
             $pdf->AddPage($size['orientation'], [$size['width'], $size['height']]);
             $pdf->useTemplate($tplId);
+            $appended++;
         }
+
+        return $appended;
     }
 
     private function appendCampimetriaPdfFile(Fpdi $pdf, string $path): void
@@ -2109,6 +2177,55 @@ class ReportPdfService
     /**
      * @param array<string, mixed> $context
      */
+    private function downsampleRetinalImageInPlace(string $path, string $ext, array $context = []): void
+    {
+        $image = $this->loadImageResource($path, $ext);
+        if ($image === null) {
+            return;
+        }
+
+        try {
+            $width = imagesx($image);
+            $height = imagesy($image);
+            $maxSide = 1800;
+            if ($width <= $maxSide && $height <= $maxSide) {
+                return;
+            }
+
+            $ratio = min($maxSide / max(1, $width), $maxSide / max(1, $height));
+            $targetWidth = max(1, (int) round($width * $ratio));
+            $targetHeight = max(1, (int) round($height * $ratio));
+            $resized = imagecreatetruecolor($targetWidth, $targetHeight);
+            if ($resized === false) {
+                return;
+            }
+
+            imagecopyresampled($resized, $image, 0, 0, 0, 0, $targetWidth, $targetHeight, $width, $height);
+            $saved = match (strtolower($ext)) {
+                'jpg', 'jpeg' => function_exists('imagejpeg') ? @imagejpeg($resized, $path, 82) : false,
+                'png' => function_exists('imagepng') ? @imagepng($resized, $path, 7) : false,
+                'webp' => function_exists('imagewebp') ? @imagewebp($resized, $path, 82) : false,
+                default => false,
+            };
+            imagedestroy($resized);
+
+            if ($saved) {
+                Log::info('reporting.retinal.image_downsampled', $context + [
+                    'original_width' => $width,
+                    'original_height' => $height,
+                    'width' => $targetWidth,
+                    'height' => $targetHeight,
+                    'ext' => $ext,
+                ]);
+            }
+        } finally {
+            imagedestroy($image);
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     */
     private function safeAppendPdfFile(Fpdi $pdf, string $path, array $context = []): bool
     {
         if (!$this->isPdfFile($path)) {
@@ -2177,8 +2294,7 @@ class ReportPdfService
         }
 
         try {
-            $this->appendOctMacularPdfFile($pdf, $path);
-            return true;
+            return $this->appendOctMacularPdfFile($pdf, $path) > 0;
         } catch (\Throwable $e) {
             Log::warning('reporting.pdf.skip_invalid_pdf', $context + [
                 'path' => $path,
@@ -2286,6 +2402,25 @@ class ReportPdfService
         }
 
         return str_contains($texto, 'angiografia retinal');
+    }
+
+    private function isRetinografiaOAutofluorescenciaZeiss(?string $tipoExamen): bool
+    {
+        $texto = $this->normalizeSearchText((string) ($tipoExamen ?? ''));
+        if ($texto === '') {
+            return false;
+        }
+
+        return str_contains($texto, 'retinografia')
+            || str_contains($texto, 'retinografia retinal')
+            || str_contains($texto, 'fotografia a color de segmento posterior')
+            || str_contains($texto, 'fotografias a color de segmento posterior')
+            || str_contains($texto, 'autofluorescencia')
+            || str_contains($texto, 'autoflourescencia')
+            || str_contains($texto, 'autofluor')
+            || str_contains($texto, 'autofluorescence')
+            || str_contains($texto, 'fundus autofluorescence')
+            || preg_match('/\bfaf\b/', $texto) === 1;
     }
 
     private function isTopografiaCorneal(?string $tipoExamen): bool
@@ -2501,10 +2636,20 @@ class ReportPdfService
             return $selectedPages;
         }
 
-        $fallback = range(1, max(1, $pageCount));
+        if ($pageCount === 9) {
+            Log::info('reporting.pdf.select.oct_macular.pages', [
+                'path' => $path,
+                'mode' => 'fallback_first_page_zeiss_macular',
+                'pages' => [1],
+            ]);
+
+            return [1];
+        }
+
+        $fallback = [];
         Log::info('reporting.pdf.select.oct_macular.pages', [
             'path' => $path,
-            'mode' => 'fallback',
+            'mode' => $pageCount === 21 ? 'skip_zeiss_hd_21_line' : 'no_text_match',
             'pages' => $fallback,
         ]);
 
@@ -2557,10 +2702,7 @@ class ReportPdfService
             }
 
             $normalized = $this->normalizeSearchText($pageText);
-            if (
-                str_contains($normalized, 'macula thickness')
-                && str_contains($normalized, 'macular cube')
-            ) {
+            if (preg_match('/macula thickness(?:\\s+ou)?\\s*:?\\s*macular cube\\s*512x128/', $normalized) === 1) {
                 $matchedPages[] = $pageNo;
             }
         }

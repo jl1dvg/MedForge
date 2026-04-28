@@ -3,6 +3,7 @@
 namespace App\Modules\Examenes\Services;
 
 use App\Models\ImagenNasIndex;
+use App\Models\ImagenSigcenterIndex;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -127,6 +128,7 @@ class ImagenesNasIndexService
                         'last_scanned_at' => now(),
                     ]
                 );
+                $this->mirrorSummaryToSigcenterIndex($form, $hc, $summary);
 
                 $result['processed']++;
                 if ($summary['has_files']) {
@@ -353,5 +355,44 @@ class ImagenesNasIndexService
             'scan_status' => $scanStatus,
             'last_error' => $lastError,
         ];
+    }
+
+    /**
+     * @param array<string,mixed> $summary
+     */
+    private function mirrorSummaryToSigcenterIndex(string $formId, string $hcNumber, array $summary): void
+    {
+        if (!$this->tableExists('imagenes_sigcenter_index')) {
+            return;
+        }
+
+        ImagenSigcenterIndex::query()->updateOrCreate(
+            ['form_id' => $formId],
+            [
+                'hc_number' => $hcNumber,
+                'has_files' => $summary['has_files'],
+                'has_db_rows' => $summary['has_files'],
+                'files_count' => $summary['files_count'],
+                'image_count' => $summary['image_count'],
+                'pdf_count' => $summary['pdf_count'],
+                'verified_files_count' => $summary['files_count'],
+                'total_bytes' => $summary['total_bytes'],
+                'latest_file_mtime' => $summary['latest_file_mtime'],
+                'sample_file' => $summary['sample_file'],
+                'scan_status' => $summary['scan_status'],
+                'last_error' => $summary['last_error'],
+                'scan_duration_ms' => $summary['scan_duration_ms'],
+                'files_meta' => null,
+                'last_scanned_at' => now(),
+            ]
+        );
+    }
+
+    private function tableExists(string $table): bool
+    {
+        return DB::table('information_schema.TABLES')
+            ->whereRaw('TABLE_SCHEMA = DATABASE()')
+            ->where('TABLE_NAME', $table)
+            ->exists();
     }
 }
