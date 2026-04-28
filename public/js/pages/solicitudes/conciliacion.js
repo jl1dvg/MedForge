@@ -17,6 +17,12 @@ const escapeHtml = (value) => {
     return String(value).replace(/[&<>"'`]/g, character => ESCAPE_MAP[character]);
 };
 
+const csrfHeaders = () => {
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+
+    return csrfToken ? { 'X-CSRF-TOKEN': csrfToken } : {};
+};
+
 const formatDateTime = (value) => {
     if (!value) {
         return '—';
@@ -432,6 +438,7 @@ export const initSolicitudesConciliacion = ({ showToast, onConfirmed, getFilters
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
+                            ...csrfHeaders(),
                         },
                         credentials: 'same-origin',
                         body: JSON.stringify({

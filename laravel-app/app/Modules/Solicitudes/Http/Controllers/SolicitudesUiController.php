@@ -3,14 +3,15 @@
 namespace App\Modules\Solicitudes\Http\Controllers;
 
 use App\Modules\Shared\Support\LegacyCurrentUser;
+use App\Modules\Shared\Support\SettingsOptionResolver;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Throwable;
 
 class SolicitudesUiController
 {
+    private ?SettingsOptionResolver $settingsResolver = null;
+
     /**
      * @var array<int,array<string,string>>
      */
@@ -156,29 +157,10 @@ class SolicitudesUiController
      */
     private function settingsOptions(array $keys): array
     {
-        if ($keys === []) {
-            return [];
+        if ($this->settingsResolver === null) {
+            $this->settingsResolver = new SettingsOptionResolver();
         }
 
-        $placeholders = implode(',', array_fill(0, count($keys), '?'));
-        try {
-            $rows = DB::select(
-                'SELECT name, value FROM settings WHERE name IN (' . $placeholders . ')',
-                array_values($keys)
-            );
-        } catch (Throwable) {
-            return [];
-        }
-
-        $options = [];
-        foreach ($rows as $row) {
-            $name = (string) ($row->name ?? '');
-            if ($name === '') {
-                continue;
-            }
-            $options[$name] = (string) ($row->value ?? '');
-        }
-
-        return $options;
+        return $this->settingsResolver->getOptions($keys);
     }
 }

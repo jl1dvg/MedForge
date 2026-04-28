@@ -774,9 +774,15 @@
                             Atajo
                             <span class="badge bg-light text-muted">local</span>
                         </label>
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="solCrmSinResponsable">
-                            <label class="form-check-label" for="solCrmSinResponsable">Sin responsable asignado</label>
+                        <div class="d-flex flex-wrap gap-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="solCrmSinResponsable">
+                                <label class="form-check-label" for="solCrmSinResponsable">Sin responsable asignado</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="solMostrarCompletados" name="mostrar_completados" value="1" {{ !empty($filters['mostrar_completados']) ? 'checked' : '' }}>
+                                <label class="form-check-label" for="solMostrarCompletados">Mostrar completados</label>
+                            </div>
                         </div>
                     </div>
                 </form>
@@ -1170,6 +1176,54 @@
                             <div class="d-flex justify-content-end">
                                 <button type="submit" class="btn btn-primary">
                                     <i class="mdi mdi-comment-plus-outline me-1"></i>Guardar nota
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </details>
+
+                <details class="crm-section-card" open>
+                    <summary>
+                        <span class="crm-section-title">Comunicaciones</span>
+                        <span class="crm-section-summary">
+                            <small class="text-muted">WhatsApp y correo</small>
+                            <i class="mdi mdi-chevron-down crm-section-chevron"></i>
+                        </span>
+                    </summary>
+                    <div class="crm-section-body">
+                        <form id="crmWhatsappForm" class="mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <label for="crmWhatsappMensaje" class="form-label mb-0">Mensaje WhatsApp</label>
+                                <a href="#" id="crmWhatsappOpen" class="btn btn-sm btn-outline-success d-none" target="_blank" rel="noopener">
+                                    <i class="mdi mdi-whatsapp me-1"></i>Abrir chat
+                                </a>
+                            </div>
+                            <input type="hidden" id="crmWhatsappConversationId">
+                            <input type="hidden" id="crmWhatsappPhone">
+                            <textarea id="crmWhatsappMensaje" class="form-control mb-2" rows="3" placeholder="Escribe un mensaje para el paciente"></textarea>
+                            <div class="d-flex justify-content-end">
+                                <button type="submit" class="btn btn-outline-success">
+                                    <i class="mdi mdi-send-outline me-1"></i>Enviar WhatsApp
+                                </button>
+                            </div>
+                        </form>
+
+                        <form id="crmEmailForm" class="row g-2">
+                            <div class="col-md-6">
+                                <label for="crmEmailTo" class="form-label">Correo destino</label>
+                                <input type="email" id="crmEmailTo" class="form-control" placeholder="correo@ejemplo.com">
+                            </div>
+                            <div class="col-md-6">
+                                <label for="crmEmailSubject" class="form-label">Asunto</label>
+                                <input type="text" id="crmEmailSubject" class="form-control" placeholder="Seguimiento de solicitud">
+                            </div>
+                            <div class="col-12">
+                                <label for="crmEmailBody" class="form-label">Mensaje</label>
+                                <textarea id="crmEmailBody" class="form-control" rows="4" placeholder="Escribe el correo para el paciente"></textarea>
+                            </div>
+                            <div class="col-12 d-flex justify-content-end">
+                                <button type="submit" class="btn btn-outline-primary">
+                                    <i class="mdi mdi-email-send-outline me-1"></i>Enviar correo
                                 </button>
                             </div>
                         </form>

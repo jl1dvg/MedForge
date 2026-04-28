@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Solicitudes\Services;
 
 use App\Modules\Shared\Support\AfiliacionDimensionService;
+use App\Modules\Shared\Support\SettingsOptionResolver;
 use DateInterval;
 use DateTimeImmutable;
 use Illuminate\Support\Facades\DB;
@@ -46,6 +47,7 @@ class SolicitudesReadParityService
 
     private AfiliacionDimensionService $afiliacionDimensions;
     private SolicitudesStateMachineService $stateMachine;
+    private ?SettingsOptionResolver $settingsResolver = null;
 
     public function __construct(?SolicitudesStateMachineService $stateMachine = null)
     {
@@ -121,6 +123,13 @@ class SolicitudesReadParityService
             ];
 
             $kanban[] = array_merge($row, $this->computeOperationalMetadata($row));
+        }
+
+        if (($filters['mostrar_completados'] ?? false) !== true) {
+            $kanban = array_values(array_filter(
+                $kanban,
+                static fn(array $row): bool => (string) ($row['kanban_estado'] ?? '') !== SolicitudesStateMachineService::STATE_COMPLETADO
+            ));
         }
 
         $kanban = $this->sortSolicitudes($kanban, $this->kanbanPreferences()['sort'] ?? 'fecha_desc');
@@ -902,7 +911,7 @@ class SolicitudesReadParityService
 
     /**
      * @param array<string,mixed> $payload
-     * @return array{afiliacion:string,afiliacion_categoria:string,empresa_seguro:string,plan_seguro:string,sede:string,doctor:string,prioridad:string,fechaTexto:string,date_from:?string,date_to:?string,search:string}
+     * @return array{afiliacion:string,afiliacion_categoria:string,empresa_seguro:string,plan_seguro:string,sede:string,doctor:string,prioridad:string,fechaTexto:string,date_from:?string,date_to:?string,search:string,mostrar_completados:bool}
      */
     private function sanitizeFilters(array $payload): array
     {
@@ -928,6 +937,7 @@ class SolicitudesReadParityService
             'date_from' => $dateFrom,
             'date_to' => $dateTo,
             'search' => trim((string) ($payload['search'] ?? '')),
+            'mostrar_completados' => filter_var($payload['mostrar_completados'] ?? false, FILTER_VALIDATE_BOOLEAN),
         ];
     }
 
@@ -1497,31 +1507,11 @@ class SolicitudesReadParityService
      */
     private function settingsOptions(array $keys): array
     {
-        if ($keys === []) {
-            return [];
+        if ($this->settingsResolver === null) {
+            $this->settingsResolver = new SettingsOptionResolver();
         }
 
-        $placeholders = implode(',', array_fill(0, count($keys), '?'));
-
-        try {
-            $rows = DB::select(
-                'SELECT name, value FROM settings WHERE name IN (' . $placeholders . ')',
-                array_values($keys)
-            );
-        } catch (Throwable) {
-            return [];
-        }
-
-        $options = [];
-        foreach ($rows as $row) {
-            $name = (string) ($row->name ?? '');
-            if ($name === '') {
-                continue;
-            }
-            $options[$name] = (string) ($row->value ?? '');
-        }
-
-        return $options;
+        return $this->settingsResolver->getOptions($keys);
     }
 
     /**

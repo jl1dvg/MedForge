@@ -116,7 +116,9 @@ class SolicitudesStateMachineService
             'next_label' => $next['label'] ?? null,
         ];
 
-        if ($legacySlug === self::STATE_COMPLETADO) {
+        $allCompleted = $total > 0 && $completedCount >= $total;
+
+        if ($legacySlug === self::STATE_COMPLETADO || $allCompleted) {
             $kanbanSlug = self::STATE_COMPLETADO;
         } elseif ($legacySlug === self::STATE_PROGRAMADA) {
             $kanbanSlug = self::STATE_PROGRAMADA;

@@ -325,6 +325,71 @@ function bindForms() {
         });
     }
 
+    const whatsappForm = document.getElementById('crmWhatsappForm');
+    if (whatsappForm) {
+        whatsappForm.addEventListener('submit', async event => {
+            event.preventDefault();
+            if (!currentEntityId) {
+                notify(selectionMessage('enviar WhatsApp'), false);
+                return;
+            }
+
+            const message = document.getElementById('crmWhatsappMensaje')?.value?.trim() ?? '';
+            if (message === '') {
+                notify('Escribe un mensaje de WhatsApp antes de enviar', false);
+                return;
+            }
+
+            const payload = {
+                message,
+                conversation_id: document.getElementById('crmWhatsappConversationId')?.value || null,
+                phone: document.getElementById('crmWhatsappPhone')?.value || '',
+            };
+            const basePath = resolveBasePath();
+            const ok = await submitJson(
+                resolveWritePath(`${basePath}/${currentEntityId}/crm/whatsapp`),
+                payload,
+                'WhatsApp enviado'
+            );
+            if (ok) {
+                whatsappForm.reset();
+                renderCommunicationDefaults(currentDetalle, currentData?.whatsapp_context || null);
+            }
+        });
+    }
+
+    const emailForm = document.getElementById('crmEmailForm');
+    if (emailForm) {
+        emailForm.addEventListener('submit', async event => {
+            event.preventDefault();
+            if (!currentEntityId) {
+                notify(selectionMessage('enviar correo'), false);
+                return;
+            }
+
+            const payload = {
+                to: document.getElementById('crmEmailTo')?.value?.trim() ?? '',
+                subject: document.getElementById('crmEmailSubject')?.value?.trim() ?? '',
+                body: document.getElementById('crmEmailBody')?.value?.trim() ?? '',
+            };
+            if (!payload.to || !payload.subject || !payload.body) {
+                notify('Completa destinatario, asunto y mensaje del correo', false);
+                return;
+            }
+
+            const basePath = resolveBasePath();
+            const ok = await submitJson(
+                resolveWritePath(`${basePath}/${currentEntityId}/crm/email`),
+                payload,
+                'Correo enviado'
+            );
+            if (ok) {
+                emailForm.reset();
+                renderCommunicationDefaults(currentDetalle, currentData?.whatsapp_context || null);
+            }
+        });
+    }
+
     const adjuntoForm = document.getElementById('crmAdjuntoForm');
     if (adjuntoForm) {
         adjuntoForm.addEventListener('submit', async event => {
@@ -647,6 +712,7 @@ async function submitJson(url, payload, successMessage) {
             credentials: 'same-origin',
             headers: {
                 'Content-Type': 'application/json',
+                ...csrfHeaders(),
             },
             body: JSON.stringify(payload),
         });
@@ -685,12 +751,21 @@ async function submitJson(url, payload, successMessage) {
     }
 }
 
+function csrfHeaders() {
+    const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+
+    return token ? {'X-CSRF-TOKEN': token} : {};
+}
+
 async function submitFormData(url, formData, successMessage) {
     try {
         toggleLoading(true);
         const response = await fetch(url, {
             method: 'POST',
             credentials: 'same-origin',
+            headers: {
+                ...csrfHeaders(),
+            },
             body: formData,
         });
 
@@ -882,6 +957,7 @@ function renderCrmData(data) {
 
     updateLeadControls(currentDetalle, currentLead);
     renderResumen(data.detalle, currentLead, data.whatsapp_context || null);
+    renderCommunicationDefaults(data.detalle, data.whatsapp_context || null);
     loadChecklistState(currentEntityId);
     renderNotas(data.notas ?? []);
     renderCobertura(data.cobertura_mails ?? []);
@@ -914,7 +990,7 @@ async function loadChecklistState(entityId) {
             throw new Error(data?.error || 'No se pudo cargar el checklist');
         }
 
-        const tasks = Array.isArray(data.tasks) ? data.tasks : [];
+        const tasks = mergeCrmTasks(currentData?.tareas ?? [], Array.isArray(data.tasks) ? data.tasks : []);
         checklistTasksBySlug = tasks.reduce((carry, task) => {
             const slug = String(task?.checklist_slug || '').trim();
             if (slug !== '') {
@@ -925,11 +1001,32 @@ async function loadChecklistState(entityId) {
         }, {});
 
         renderChecklist(data.checklist || [], data.checklist_progress || {}, tasks);
-        renderTareas(tasks);
+        if (tasks.length > 0) {
+            renderTareas(tasks);
+        }
     } catch (error) {
         checklistTasksBySlug = {};
         list.innerHTML = `<div class="crm-list-empty">${escapeHtml(error?.message || 'No se pudo cargar el checklist')}</div>`;
     }
+}
+
+function mergeCrmTasks(primaryTasks, secondaryTasks) {
+    const merged = new Map();
+
+    [...(Array.isArray(primaryTasks) ? primaryTasks : []), ...(Array.isArray(secondaryTasks) ? secondaryTasks : [])]
+        .filter(task => task && typeof task === 'object')
+        .forEach((task, index) => {
+            const key = task.id !== undefined && task.id !== null && String(task.id).trim() !== ''
+                ? `id:${task.id}`
+                : `fallback:${task.checklist_slug || task.task_key || task.titulo || task.title || index}`;
+
+            merged.set(key, {
+                ...(merged.get(key) || {}),
+                ...task,
+            });
+        });
+
+    return Array.from(merged.values());
 }
 
 function renderResumen(detalle, lead, whatsappContext = null) {
@@ -1059,6 +1156,50 @@ function renderResumen(detalle, lead, whatsappContext = null) {
     const tareasResumen = document.getElementById('crmTareasResumen');
     if (tareasResumen) {
         tareasResumen.textContent = tareasTotales > 0 ? `${tareasPendientes} pendientes de ${tareasTotales}` : 'Sin tareas registradas';
+    }
+}
+
+function renderCommunicationDefaults(detalle, whatsappContext = null) {
+    if (!detalle || typeof detalle !== 'object') {
+        return;
+    }
+
+    const whatsappMessage = document.getElementById('crmWhatsappMensaje');
+    const whatsappConversation = document.getElementById('crmWhatsappConversationId');
+    const whatsappPhone = document.getElementById('crmWhatsappPhone');
+    const whatsappOpen = document.getElementById('crmWhatsappOpen');
+    const emailTo = document.getElementById('crmEmailTo');
+    const emailSubject = document.getElementById('crmEmailSubject');
+    const emailBody = document.getElementById('crmEmailBody');
+
+    const paciente = detalle.paciente_nombre || detalle.full_name || 'paciente';
+    const procedimiento = detalle.procedimiento || 'su procedimiento';
+    const telefono = detalle.crm_contacto_telefono || detalle.paciente_celular || '';
+    const correo = detalle.crm_contacto_email || '';
+    const wa = whatsappContext && typeof whatsappContext === 'object' ? whatsappContext : {};
+
+    if (whatsappConversation) {
+        whatsappConversation.value = wa.conversation_id ? String(wa.conversation_id) : '';
+    }
+    if (whatsappPhone) {
+        whatsappPhone.value = telefono;
+    }
+    if (whatsappOpen) {
+        const url = wa.conversation_url || wa.search_url || '';
+        whatsappOpen.href = url || '#';
+        whatsappOpen.classList.toggle('d-none', url === '');
+    }
+    if (whatsappMessage && whatsappMessage.value.trim() === '') {
+        whatsappMessage.value = `Hola ${paciente}, le escribimos de Consulmed para dar seguimiento a su solicitud de ${procedimiento}.`;
+    }
+    if (emailTo && emailTo.value.trim() === '') {
+        emailTo.value = correo;
+    }
+    if (emailSubject && emailSubject.value.trim() === '') {
+        emailSubject.value = 'Seguimiento de solicitud quirúrgica';
+    }
+    if (emailBody && emailBody.value.trim() === '') {
+        emailBody.value = `Estimado/a ${paciente},\n\nLe escribimos de Consulmed para dar seguimiento a su solicitud de ${procedimiento}.\n\nSaludos cordiales.`;
     }
 }
 

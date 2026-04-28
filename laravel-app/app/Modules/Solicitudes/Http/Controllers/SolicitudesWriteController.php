@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Solicitudes\Http\Controllers;
 
 use App\Modules\Solicitudes\Services\SolicitudesReadParityService;
+use App\Modules\Solicitudes\Services\SolicitudesCommunicationService;
 use App\Modules\Solicitudes\Services\SolicitudesWriteParityService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -19,6 +20,7 @@ use Throwable;
 class SolicitudesWriteController
 {
     private SolicitudesWriteParityService $service;
+    private SolicitudesCommunicationService $communicationService;
 
     public function __construct()
     {
@@ -26,6 +28,7 @@ class SolicitudesWriteController
         $pdo = DB::connection()->getPdo();
         $readService = new SolicitudesReadParityService();
         $this->service = new SolicitudesWriteParityService($pdo, $readService);
+        $this->communicationService = new SolicitudesCommunicationService($readService);
     }
 
     public function apiEstadoGet(Request $request): JsonResponse
@@ -208,6 +211,54 @@ class SolicitudesWriteController
                 'success' => false,
                 'error' => 'Error interno (ref: ' . $errorRef . ')',
             ], 500)->header('X-Request-Id', $requestId);
+        }
+
+        return response()->json($result)->header('X-Request-Id', $requestId);
+    }
+
+    public function crmEnviarWhatsapp(Request $request, int $id): JsonResponse
+    {
+        $requestId = $this->requestId($request);
+        $payload = $this->payload($request);
+
+        try {
+            $result = $this->communicationService->sendWhatsapp($id, $payload, $this->actorId());
+        } catch (RuntimeException $e) {
+            return response()->json(['success' => false, 'error' => $e->getMessage()], 422)
+                ->header('X-Request-Id', $requestId);
+        } catch (Throwable $e) {
+            Log::error('solicitudes.write.crm_whatsapp.error', [
+                'request_id' => $requestId,
+                'solicitud_id' => $id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json(['success' => false, 'error' => 'No se pudo enviar el WhatsApp.'], 500)
+                ->header('X-Request-Id', $requestId);
+        }
+
+        return response()->json($result)->header('X-Request-Id', $requestId);
+    }
+
+    public function crmEnviarEmail(Request $request, int $id): JsonResponse
+    {
+        $requestId = $this->requestId($request);
+        $payload = $this->payload($request);
+
+        try {
+            $result = $this->communicationService->sendEmail($id, $payload, $this->actorId());
+        } catch (RuntimeException $e) {
+            return response()->json(['success' => false, 'error' => $e->getMessage()], 422)
+                ->header('X-Request-Id', $requestId);
+        } catch (Throwable $e) {
+            Log::error('solicitudes.write.crm_email.error', [
+                'request_id' => $requestId,
+                'solicitud_id' => $id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json(['success' => false, 'error' => 'No se pudo enviar el correo.'], 500)
+                ->header('X-Request-Id', $requestId);
         }
 
         return response()->json($result)->header('X-Request-Id', $requestId);

@@ -138,6 +138,14 @@ return function (Router $router) {
         $redirectToV2('/v2/solicitudes/' . rawurlencode((string) $solicitudId) . '/crm/notas', 307);
     });
 
+    $router->post('/solicitudes/{id}/crm/whatsapp', function (\PDO $pdo, $solicitudId) use ($redirectToV2) {
+        $redirectToV2('/v2/solicitudes/' . rawurlencode((string) $solicitudId) . '/crm/whatsapp', 307);
+    });
+
+    $router->post('/solicitudes/{id}/crm/email', function (\PDO $pdo, $solicitudId) use ($redirectToV2) {
+        $redirectToV2('/v2/solicitudes/' . rawurlencode((string) $solicitudId) . '/crm/email', 307);
+    });
+
     $router->post('/solicitudes/{id}/crm/bloqueo', function (\PDO $pdo, $solicitudId) use ($redirectToV2) {
         $redirectToV2('/v2/solicitudes/' . rawurlencode((string) $solicitudId) . '/crm/bloqueo', 307);
     });

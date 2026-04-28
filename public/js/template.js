@@ -85,10 +85,61 @@ throw new Error('template requires jQuery')
     return isLoginUrl(xhr.responseURL || '')
   }
 
+  function csrfToken() {
+    var meta = document.querySelector('meta[name="csrf-token"]')
+    return meta ? meta.getAttribute('content') || '' : ''
+  }
+
+  function isSameOriginFetch(input) {
+    var rawUrl = ''
+
+    if (typeof input === 'string') {
+      rawUrl = input
+    } else if (input && typeof input.url === 'string') {
+      rawUrl = input.url
+    }
+
+    if (!rawUrl) {
+      return true
+    }
+
+    try {
+      return new URL(rawUrl, window.location.origin).origin === window.location.origin
+    } catch (error) {
+      return true
+    }
+  }
+
+  function fetchMethod(input, init) {
+    return String((init && init.method) || (input && input.method) || 'GET').toUpperCase()
+  }
+
+  function withCsrfHeader(input, init) {
+    var method = fetchMethod(input, init)
+    var token = csrfToken()
+
+    if (!token || method === 'GET' || method === 'HEAD' || !isSameOriginFetch(input)) {
+      return [input, init]
+    }
+
+    var nextInit = Object.assign({}, init || {})
+    var headers = new Headers(nextInit.headers || (input && input.headers) || {})
+
+    if (!headers.has('X-CSRF-TOKEN')) {
+      headers.set('X-CSRF-TOKEN', token)
+    }
+
+    nextInit.headers = headers
+
+    return [input, nextInit]
+  }
+
   if (typeof window.fetch === 'function') {
     var nativeFetch = window.fetch.bind(window)
     window.fetch = function () {
-      return nativeFetch.apply(window, arguments).then(function (response) {
+      var args = withCsrfHeader(arguments[0], arguments[1])
+
+      return nativeFetch.apply(window, args).then(function (response) {
         if (responseHasExpiredSession(response)) {
           window.setTimeout(redirectToLogin, 0)
         }
@@ -102,6 +153,18 @@ throw new Error('template requires jQuery')
     if (xhrHasExpiredSession(xhr)) {
       redirectToLogin()
     }
+  })
+
+  $(document).ajaxSend(function (event, xhr, settings) {
+    var token = csrfToken()
+    var method = String((settings && settings.type) || (settings && settings.method) || 'GET').toUpperCase()
+    var url = settings && settings.url ? settings.url : ''
+
+    if (!token || method === 'GET' || method === 'HEAD' || !isSameOriginFetch(url)) {
+      return
+    }
+
+    xhr.setRequestHeader('X-CSRF-TOKEN', token)
   })
 
   $(document).ajaxError(function (event, xhr) {

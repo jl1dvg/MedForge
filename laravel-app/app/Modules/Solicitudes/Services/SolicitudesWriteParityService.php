@@ -751,6 +751,7 @@ class SolicitudesWriteParityService
                 false,
                 $this->operationalFallbackState($solicitudId, $rows)
             );
+            $this->syncChecklistLinkedTasks($solicitudId, $checklistSlug);
         }
 
         return $this->readService->crmResumen($solicitudId);
@@ -803,6 +804,8 @@ class SolicitudesWriteParityService
             'include_can_toggle' => true,
             ]
         );
+
+        $this->syncChecklistLinkedTasks($solicitudId, null, $rows, $checklist);
 
         $resumen = $this->readService->crmResumen($solicitudId);
         $detalle = is_array($resumen['detalle'] ?? null) ? (array) $resumen['detalle'] : [];
@@ -1718,6 +1721,198 @@ class SolicitudesWriteParityService
         }
 
         $this->insertRow('solicitud_checklist', $payload);
+    }
+
+    /**
+     * @param array<int,array<string,mixed>>|null $rows
+     * @param array<int,array<string,mixed>>|null $checklist
+     */
+    private function syncChecklistLinkedTasks(
+        int $solicitudId,
+        ?string $targetSlug = null,
+        ?array $rows = null,
+        ?array $checklist = null
+    ): int {
+        if (!$this->tableExists('crm_tasks')) {
+            return 0;
+        }
+
+        $columns = $this->tableColumns('crm_tasks');
+        if ($columns === [] || !in_array('checklist_slug', $columns, true)) {
+            return 0;
+        }
+
+        $checklistRows = $rows ?? $this->queryChecklistRows($solicitudId);
+        $resolvedChecklist = $checklist;
+        if (!is_array($resolvedChecklist)) {
+            [$resolvedChecklist] = $this->stateMachine->resolvePersistedChecklistContext(
+                $checklistRows,
+                $this->operationalFallbackState($solicitudId, $checklistRows),
+                [
+                    'include_nota' => true,
+                    'include_can_toggle' => true,
+                ]
+            );
+        }
+
+        $items = array_values(array_filter(
+            is_array($resolvedChecklist) ? $resolvedChecklist : [],
+            function (array $item) use ($targetSlug): bool {
+                $slug = $this->normalizeKanbanSlug((string) ($item['slug'] ?? ''));
+                if ($slug === '') {
+                    return false;
+                }
+
+                return $targetSlug === null || $slug === $targetSlug;
+            }
+        ));
+
+        if ($items === []) {
+            return 0;
+        }
+
+        $where = [
+            'source_module = :source_module',
+            'source_ref_id = :source_ref_id',
+        ];
+        $bindings = [
+            ':source_module' => 'solicitudes',
+            ':source_ref_id' => (string) $solicitudId,
+        ];
+
+        if (in_array('company_id', $columns, true)) {
+            $where[] = 'company_id = :company_id';
+            $bindings[':company_id'] = $this->resolveCompanyId();
+        }
+
+        $select = ['id', 'checklist_slug'];
+        foreach (['status', 'completed_at', 'title', 'description', 'task_key'] as $column) {
+            if (in_array($column, $columns, true)) {
+                $select[] = $column;
+            }
+        }
+
+        $stmt = $this->db->prepare(sprintf(
+            'SELECT %s FROM crm_tasks WHERE %s',
+            implode(', ', array_unique($select)),
+            implode(' AND ', $where)
+        ));
+        $stmt->execute($bindings);
+
+        $existingBySlug = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+            $slug = $this->normalizeKanbanSlug((string) ($row['checklist_slug'] ?? ''));
+            if ($slug === '') {
+                continue;
+            }
+
+            $existingBySlug[$slug][] = $row;
+        }
+
+        $updatedCount = 0;
+        $now = date('Y-m-d H:i:s');
+
+        foreach ($items as $item) {
+            $slug = $this->normalizeKanbanSlug((string) ($item['slug'] ?? ''));
+            if ($slug === '') {
+                continue;
+            }
+
+            $title = trim((string) ($item['label'] ?? $slug));
+            $isCompleted = !empty($item['completed']);
+            $targetStatus = $isCompleted ? 'completada' : 'pendiente';
+            $targetCompletedAt = $isCompleted
+                ? ($this->normalizeDateTime($item['completado_at'] ?? null) ?? $now)
+                : null;
+            $description = 'Checklist de solicitud';
+
+            $rowsForSlug = $existingBySlug[$slug] ?? [];
+            if ($rowsForSlug === []) {
+                $task = [];
+                if (in_array('company_id', $columns, true)) {
+                    $task['company_id'] = $this->resolveCompanyId();
+                }
+                if (in_array('source_module', $columns, true)) {
+                    $task['source_module'] = 'solicitudes';
+                }
+                if (in_array('source_ref_id', $columns, true)) {
+                    $task['source_ref_id'] = (string) $solicitudId;
+                }
+                if (in_array('title', $columns, true)) {
+                    $task['title'] = $title;
+                }
+                if (in_array('description', $columns, true)) {
+                    $task['description'] = $description;
+                }
+                if (in_array('status', $columns, true)) {
+                    $task['status'] = $targetStatus;
+                }
+                if (in_array('checklist_slug', $columns, true)) {
+                    $task['checklist_slug'] = $slug;
+                }
+                if (in_array('task_key', $columns, true)) {
+                    $task['task_key'] = 'checklist:' . $slug;
+                }
+                if (in_array('completed_at', $columns, true)) {
+                    $task['completed_at'] = $targetCompletedAt;
+                }
+                if (in_array('created_at', $columns, true)) {
+                    $task['created_at'] = $now;
+                }
+                if (in_array('updated_at', $columns, true)) {
+                    $task['updated_at'] = $now;
+                }
+
+                $this->insertRow('crm_tasks', $task);
+                $updatedCount++;
+                continue;
+            }
+
+            foreach ($rowsForSlug as $row) {
+                $payload = [];
+                if (in_array('status', $columns, true) && (string) ($row['status'] ?? '') !== $targetStatus) {
+                    $payload['status'] = $targetStatus;
+                }
+                if (in_array('completed_at', $columns, true) && (($row['completed_at'] ?? null) !== $targetCompletedAt)) {
+                    $payload['completed_at'] = $targetCompletedAt;
+                }
+                if (in_array('title', $columns, true) && trim((string) ($row['title'] ?? '')) !== $title) {
+                    $payload['title'] = $title;
+                }
+                if (in_array('description', $columns, true) && trim((string) ($row['description'] ?? '')) === '') {
+                    $payload['description'] = $description;
+                }
+                if (in_array('task_key', $columns, true) && trim((string) ($row['task_key'] ?? '')) === '') {
+                    $payload['task_key'] = 'checklist:' . $slug;
+                }
+                if ($payload !== [] && in_array('updated_at', $columns, true)) {
+                    $payload['updated_at'] = $now;
+                }
+
+                if ($payload === []) {
+                    continue;
+                }
+
+                $taskWhere = 'id = :id';
+                $taskBindings = [':id' => (int) $row['id']];
+                if (in_array('source_module', $columns, true)) {
+                    $taskWhere .= ' AND source_module = :source_module';
+                    $taskBindings[':source_module'] = 'solicitudes';
+                }
+                if (in_array('source_ref_id', $columns, true)) {
+                    $taskWhere .= ' AND source_ref_id = :source_ref_id';
+                    $taskBindings[':source_ref_id'] = (string) $solicitudId;
+                }
+                if (in_array('company_id', $columns, true)) {
+                    $taskWhere .= ' AND company_id = :company_id';
+                    $taskBindings[':company_id'] = $this->resolveCompanyId();
+                }
+
+                $updatedCount += $this->updateRow('crm_tasks', $payload, $taskWhere, $taskBindings);
+            }
+        }
+
+        return $updatedCount;
     }
 
     /**

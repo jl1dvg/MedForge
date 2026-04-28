@@ -21,7 +21,7 @@ if (strncmp($requestPath, $basePath, strlen($basePath)) === 0) {
 }
 
 $laravelBridgeExact = ['/auth/login', '/auth/logout'];
-$laravelBridgePrefixes = ['/v2', '/usuarios', '/roles'];
+$laravelBridgePrefixes = ['/v2', '/usuarios', '/roles', '/feedback'];
 
 if (in_array($requestPath, $laravelBridgeExact, true)) {
     require __DIR__ . '/v2_kernel.php';

@@ -35,6 +35,8 @@ Route::post('/solicitudes/{id}/crm/bootstrap', [SolicitudesWriteController::clas
 Route::get('/solicitudes/{id}/crm/checklist-state', [SolicitudesWriteController::class, 'crmChecklistState'])->whereNumber('id');
 Route::post('/solicitudes/{id}/crm/checklist', [SolicitudesWriteController::class, 'crmActualizarChecklist'])->whereNumber('id');
 Route::post('/solicitudes/{id}/crm/notas', [SolicitudesWriteController::class, 'crmAgregarNota'])->whereNumber('id');
+Route::post('/solicitudes/{id}/crm/whatsapp', [SolicitudesWriteController::class, 'crmEnviarWhatsapp'])->whereNumber('id');
+Route::post('/solicitudes/{id}/crm/email', [SolicitudesWriteController::class, 'crmEnviarEmail'])->whereNumber('id');
 Route::post('/solicitudes/{id}/crm/tareas', [SolicitudesWriteController::class, 'crmGuardarTarea'])->whereNumber('id');
 Route::post('/solicitudes/{id}/crm/tareas/estado', [SolicitudesWriteController::class, 'crmActualizarTarea'])->whereNumber('id');
 Route::post('/solicitudes/{id}/crm/bloqueo', [SolicitudesWriteController::class, 'crmRegistrarBloqueo'])->whereNumber('id');
@@ -66,6 +68,8 @@ Route::post('/api/solicitudes/{id}/crm/bootstrap', [SolicitudesWriteController::
 Route::get('/api/solicitudes/{id}/crm/checklist-state', [SolicitudesWriteController::class, 'crmChecklistState'])->whereNumber('id');
 Route::post('/api/solicitudes/{id}/crm/checklist', [SolicitudesWriteController::class, 'crmActualizarChecklist'])->whereNumber('id');
 Route::post('/api/solicitudes/{id}/crm/notas', [SolicitudesWriteController::class, 'crmAgregarNota'])->whereNumber('id');
+Route::post('/api/solicitudes/{id}/crm/whatsapp', [SolicitudesWriteController::class, 'crmEnviarWhatsapp'])->whereNumber('id');
+Route::post('/api/solicitudes/{id}/crm/email', [SolicitudesWriteController::class, 'crmEnviarEmail'])->whereNumber('id');
 Route::post('/api/solicitudes/{id}/crm/tareas', [SolicitudesWriteController::class, 'crmGuardarTarea'])->whereNumber('id');
 Route::post('/api/solicitudes/{id}/crm/tareas/estado', [SolicitudesWriteController::class, 'crmActualizarTarea'])->whereNumber('id');
 Route::post('/api/solicitudes/{id}/crm/bloqueo', [SolicitudesWriteController::class, 'crmRegistrarBloqueo'])->whereNumber('id');

@@ -68,6 +68,7 @@
     const tipoSelect = document.getElementById('solTipo');
     const responsableSelect = document.getElementById('solResponsable');
     const sinResponsableCheckbox = document.getElementById('solCrmSinResponsable');
+    const mostrarCompletadosCheckbox = document.getElementById('solMostrarCompletados');
     const derivacionVencidaCheckbox = document.getElementById('solDerivacionVencida');
     const derivacionPorVencerCheckbox = document.getElementById('solDerivacionPorVencer');
     const derivacionDiasInput = document.getElementById('solDerivacionDias');
@@ -281,6 +282,7 @@
         prioridad: prioridadSelect ? prioridadSelect.value.trim() : '',
         date_from: dateFromInput ? dateFromInput.value.trim() : '',
         date_to: dateToInput ? dateToInput.value.trim() : '',
+        mostrar_completados: Boolean(mostrarCompletadosCheckbox && mostrarCompletadosCheckbox.checked),
     });
 
     const asFechaTexto = (filters) => {
@@ -378,12 +380,18 @@
         const diasPorVencer = Number.isFinite(derivacionDiasRaw) ? Math.max(0, derivacionDiasRaw) : 0;
         const filtrarSinResponsable = Boolean(sinResponsableCheckbox && sinResponsableCheckbox.checked);
         const responsableSeleccionado = String(responsableSelect ? responsableSelect.value : '').trim();
+        const mostrarCompletados = Boolean(mostrarCompletadosCheckbox && mostrarCompletadosCheckbox.checked);
 
         const today = new Date();
         const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
         const msPerDay = 24 * 60 * 60 * 1000;
 
         return items.filter((item) => {
+            const estadoKanban = String(item?.kanban_estado || item?.estado || '').trim().toLowerCase();
+            if (!mostrarCompletados && estadoKanban === 'completado') {
+                return false;
+            }
+
             if (tipoSeleccionado && normalizeUpper(item?.tipo) !== tipoSeleccionado) {
                 return false;
             }
@@ -443,6 +451,9 @@
         if (sedeSelect && typeof initialFilters.sede === 'string') {
             sedeSelect.value = initialFilters.sede;
         }
+        if (mostrarCompletadosCheckbox) {
+            mostrarCompletadosCheckbox.checked = Boolean(initialFilters.mostrar_completados);
+        }
     };
 
     const buildEstadosMeta = () => columns.reduce((acc, column) => {
@@ -497,15 +508,20 @@
         };
     };
 
-    const fetchJson = async (url, payload) => {
+    const csrfHeaders = () => {
         const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+
+        return csrfToken ? {'X-CSRF-TOKEN': csrfToken} : {};
+    };
+
+    const fetchJson = async (url, payload) => {
         const response = await fetch(url, {
             method: 'POST',
             credentials: 'same-origin',
             headers: {
                 'Accept': 'application/json',
                 'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': csrfToken,
+                ...csrfHeaders(),
                 'X-Request-Id': requestId(),
             },
             body: JSON.stringify(payload || {}),
@@ -1429,6 +1445,7 @@
                 responsable_id: responsableSelect ? String(responsableSelect.value || '').trim() : '',
                 date_from: range.from,
                 date_to: range.to,
+                mostrar_completados: filters.mostrar_completados,
             },
             quickMetric: null,
             format,
@@ -1460,9 +1477,11 @@
                 headers: {
                     'Content-Type': 'application/json',
                     'Accept': '*/*',
+                    ...csrfHeaders(),
+                    'X-Request-Id': requestId(),
                 },
                 credentials: 'same-origin',
-                body: JSON.stringify(buildReportPayload(format)),
+            body: JSON.stringify(buildReportPayload(format)),
             });
 
             const contentType = response.headers.get('content-type') || '';
@@ -1845,6 +1864,7 @@
         tipoSelect,
         responsableSelect,
         sinResponsableCheckbox,
+        mostrarCompletadosCheckbox,
         derivacionVencidaCheckbox,
         derivacionPorVencerCheckbox,
     ].forEach((element) => {
@@ -1852,6 +1872,11 @@
             return;
         }
         element.addEventListener('change', () => {
+            if (element === mostrarCompletadosCheckbox) {
+                loadKanban();
+                return;
+            }
+
             rerenderFromLocalFilters();
         });
     });
