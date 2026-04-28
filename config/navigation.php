@@ -99,8 +99,8 @@ return static function (array $context): array {
             ])
             : null,
         $canAccessWhatsAppChat
-            ? $link('Chat de WhatsApp', '/whatsapp/chat', 'mdi mdi-message-text-outline', [
-                'prefix' => ['/whatsapp/chat'],
+            ? $link('Chat de WhatsApp', '/v2/whatsapp/chat', 'mdi mdi-message-text-outline', [
+                'prefix' => ['/v2/whatsapp/chat'],
             ])
             : null,
         $canAccessWhatsAppChat

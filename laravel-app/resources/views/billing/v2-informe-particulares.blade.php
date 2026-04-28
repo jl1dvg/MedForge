@@ -90,6 +90,7 @@
     $categoriaMadreReferidoSeleccionada = strtoupper(trim((string) ($filters['categoria_madre_referido'] ?? '')));
     $tipoSeleccionado = strtoupper(trim((string) ($filters['tipo'] ?? '')));
     $procedimientoSeleccionado = trim((string) ($filters['procedimiento'] ?? ''));
+    $auditoriaSeleccionada = strtolower(trim((string) ($filters['auditoria'] ?? '')));
     $exportParticularesQuery = array_filter([
         'date_from' => $dateFromSeleccionado,
         'date_to' => $dateToSeleccionado,
@@ -100,6 +101,7 @@
         'sede' => $sedeSeleccionada,
         'afiliacion' => $afiliacionSeleccionada,
         'procedimiento' => $procedimientoSeleccionado,
+        'auditoria' => $auditoriaSeleccionada,
         'export' => 'excel',
     ], static fn($value): bool => trim((string) $value) !== '');
     $exportParticularesUrl = '/v2/informes/particulares?' . http_build_query($exportParticularesQuery);
@@ -115,6 +117,7 @@
         'sede' => $sedeSeleccionada,
         'afiliacion' => $afiliacionSeleccionada,
         'procedimiento' => $procedimientoSeleccionado,
+        'auditoria' => $auditoriaSeleccionada,
     ], static fn($value): bool => trim((string) $value) !== '');
     $referidoStrategicUrl = static function (string $category) use ($referidoStrategicQuery): string {
         $query = $referidoStrategicQuery;
@@ -644,6 +647,14 @@
                             placeholder="Ej: consulta oftalmologica"
                         >
                     </div>
+                    <div class="col-md-3">
+                        <label for="auditoria" class="form-label">Auditoría</label>
+                        <select name="auditoria" id="auditoria" class="form-select">
+                            <option value="">Todos</option>
+                            <option value="si" {{ $auditoriaSeleccionada === 'si' ? 'selected' : '' }}>Solo alertas</option>
+                            <option value="no" {{ $auditoriaSeleccionada === 'no' ? 'selected' : '' }}>Solo sin alertas</option>
+                        </select>
+                    </div>
                     <div class="col-md-2">
                         <button type="submit" class="btn btn-primary btn-sm">
                             <i class="mdi mdi-filter-variant"></i> Aplicar filtros
@@ -756,6 +767,7 @@
             $cirugiasConProtocolo = (int) ($cirugiasSummary['operada_con_protocolo'] ?? 0);
             $cirugiasOtroCentro = (int) ($cirugiasSummary['operada_otro_centro'] ?? 0);
             $cirugiasCanceladas = (int) ($cirugiasSummary['canceladas'] ?? 0);
+            $cirugiasAusentes = (int) ($cirugiasSummary['ausentes'] ?? 0);
             $cirugiasSinCierre = (int) ($cirugiasSummary['sin_cierre'] ?? 0);
             $cirugiasPendientesFacturar = (int) ($cirugiasSummary['pendientes_facturar'] ?? 0);
             $cirugiasFacturadasLocales = (int) ($cirugiasSummary['facturadas_locales'] ?? 0);
@@ -1252,7 +1264,7 @@
                                     </button>
                                     <span class="badge bg-success-light text-success">{{ $cirugiasRealizadas }} realizadas</span>
                                     <span class="badge bg-warning-light text-warning">{{ $cirugiasPendientesFacturar }} pendientes de facturar</span>
-                                    <span class="badge bg-danger-light text-danger">{{ $cirugiasCanceladas + $cirugiasSinCierre }} pérdida / sin cierre</span>
+                                    <span class="badge bg-danger-light text-danger">{{ $cirugiasCanceladas + $cirugiasAusentes + $cirugiasSinCierre }} pérdida / sin cierre</span>
                                 </div>
                             </div>
                         </div>
@@ -1313,7 +1325,7 @@
                          data-detail-block="cirugias"
                          data-detail-segment="cancelada"
                          data-bs-toggle="tooltip"
-                         title="Filtra cirugías canceladas y también las que quedaron en sin cierre operativo.">
+                         title="Filtra cirugías canceladas, ausentes y también las que quedaron en sin cierre operativo.">
                         <div class="kpi-filter-actions">
                             <button type="button" class="btn btn-light btn-sm border" data-detail-modal="cirugias:cancelada" data-bs-toggle="tooltip" title="Abrir resumen rápido de cirugías canceladas">
                                 <i class="mdi mdi-magnify"></i>
@@ -1326,7 +1338,7 @@
                             <span class="badge bg-primary-light text-primary kpi-filter-badge d-none">Filtro activo</span>
                             <h6 class="mb-5">Canceladas</h6>
                             <div class="fs-28 fw-700 text-danger">{{ $cirugiasCanceladas }}</div>
-                            <small class="text-muted">{{ $cirugiasSinCierre }} sin cierre operativo</small>
+                            <small class="text-muted">{{ $cirugiasAusentes }} ausentes / {{ $cirugiasSinCierre }} sin cierre operativo</small>
                         </div>
                     </div>
                 </div>
@@ -2657,6 +2669,7 @@
                                     <th>HC</th>
                                     <th>Nombre</th>
                                     <th>Afiliación</th>
+                                    <th>Auditoría</th>
                                     <th>Sede</th>
                                     <th>Categoría</th>
                                     <th>Estado encuentro</th>
@@ -2683,6 +2696,15 @@
                                         if ($afiliacion === '') {
                                             $afiliacion = '—';
                                         }
+                                        $alertaAuditoria = strtoupper(trim((string) ($row['alerta_auditoria'] ?? '')));
+                                        $motivoAlertaAuditoria = trim((string) ($row['motivo_alerta_auditoria'] ?? ''));
+                                        $requiereAuditoria = (bool) ($row['requiere_auditoria'] ?? false);
+                                        $afiliacionesPeriodo = trim((string) ($row['afiliaciones_hc_periodo'] ?? ''));
+                                        if ($afiliacionesPeriodo !== '' && $requiereAuditoria) {
+                                            $motivoAlertaAuditoria = trim($motivoAlertaAuditoria . ' Afiliaciones del HC en el período: ' . $afiliacionesPeriodo . '.');
+                                        }
+                                        $auditoriaBadgeClass = $requiereAuditoria ? 'bg-danger' : 'bg-success';
+                                        $auditoriaLabel = $requiereAuditoria ? 'REVISAR' : 'OK';
                                         $sede = strtoupper(trim((string) ($row['sede'] ?? '')));
                                         if ($sede === '') {
                                             $sede = '—';
@@ -2773,7 +2795,9 @@
                                         $estadoEncuentroOperativo = $estadoEncuentro !== '—' ? strtoupper($estadoEncuentro) : 'SIN ESTADO DE AGENDA';
                                         $operationalReasonDetailed = $alertaRevisionLabel;
 
-                                        if ($tipoAtencion === 'CIRUGIAS' && $estadoRealizacion === 'SIN_CIERRE_OPERATIVO') {
+                                        if ($tipoAtencion === 'CIRUGIAS' && $estadoRealizacion === 'AUSENTE') {
+                                            $operationalReasonDetailed = 'Sin protocolo local y sin facturación registrada. La agenda quedó en ' . $estadoEncuentroOperativo . ', por eso se clasifica como ausencia/no concretado.';
+                                        } elseif ($tipoAtencion === 'CIRUGIAS' && $estadoRealizacion === 'SIN_CIERRE_OPERATIVO') {
                                             $operationalReasonDetailed = 'Sin protocolo local y sin facturación registrada. La agenda quedó en ' . $estadoEncuentroOperativo . '.';
                                         } elseif ($tipoAtencion === 'IMAGENES' && $estadoRealizacion === 'SIN_CIERRE_OPERATIVO') {
                                             $operationalReasonDetailed = 'Sin archivos NAS, sin informe y sin facturación registrada. La agenda quedó en ' . $estadoEncuentroOperativo . '.';
@@ -2830,6 +2854,8 @@
                                         data-operational-reason="{{ e($operationalReasonDetailed) }}"
                                         data-estado-encuentro="{{ e($estadoEncuentro) }}"
                                         data-estado-informe-operativo="{{ e(strtoupper(trim((string) ($row['estado_informe_operativo'] ?? '')))) }}"
+                                        data-alerta-auditoria="{{ e($alertaAuditoria) }}"
+                                        data-motivo-alerta-auditoria="{{ e($motivoAlertaAuditoria) }}"
                                     >
                                         <td>{{ $index + 1 }}</td>
                                         <td>{{ (string) ($row['hc_number'] ?? '—') }}</td>
@@ -2847,6 +2873,14 @@
                                             @endif
                                         </td>
                                         <td><span class="badge {{ $badgeClass }}">{{ $afiliacion }}</span></td>
+                                        <td>
+                                            <span class="badge {{ $auditoriaBadgeClass }}" @if($motivoAlertaAuditoria !== '') title="{{ $motivoAlertaAuditoria }}" @endif>
+                                                {{ $auditoriaLabel }}
+                                            </span>
+                                            @if($alertaAuditoria !== '')
+                                                <small class="d-block text-danger mt-5">{{ $alertaAuditoria }}</small>
+                                            @endif
+                                        </td>
                                         <td>
                                                 <span
                                                     class="badge {{ $sede === 'CEIBOS' ? 'bg-info' : ($sede === 'MATRIZ' ? 'bg-warning' : 'bg-secondary') }}">
@@ -4441,7 +4475,7 @@
 
                 const isOperationalLost = function (item) {
                     if (item.block === 'cirugias') {
-                        return ['CANCELADA', 'SIN_CIERRE_OPERATIVO'].includes(item.estadoRealizacion);
+                        return ['CANCELADA', 'AUSENTE', 'SIN_CIERRE_OPERATIVO'].includes(item.estadoRealizacion);
                     }
                     if (item.block === 'pni' || item.block === 'servicios_oftalmologicos') {
                         return ['CANCELADA', 'AUSENTE'].includes(item.estadoRealizacion);
@@ -4499,7 +4533,7 @@
                             return item.estadoFacturacion === 'PENDIENTE_FACTURAR';
                         }
                         if (normalizedSegment === 'cancelada') {
-                            return item.estadoRealizacion === 'CANCELADA' || item.estadoRealizacion === 'SIN_CIERRE_OPERATIVO';
+                            return ['CANCELADA', 'AUSENTE', 'SIN_CIERRE_OPERATIVO'].includes(item.estadoRealizacion);
                         }
                         if (normalizedSegment === 'sin_tarifa_estimable') {
                             return item.sinTarifaEstimable === true;

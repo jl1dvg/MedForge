@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Http\Middleware\LegacySessionBridge;
+use App\Http\Middleware\RequireAppPermission;
+use App\Http\Middleware\RequireAppSession;
 use App\Http\Middleware\RequireLegacyPermission;
 use App\Http\Middleware\RequireLegacySession;
 use Tests\TestCase;
@@ -13,6 +15,8 @@ class WhatsappFeatureFlagTest extends TestCase
     {
         $response = $this
             ->withoutMiddleware([
+                RequireAppSession::class,
+                RequireAppPermission::class,
                 LegacySessionBridge::class,
                 RequireLegacySession::class,
                 RequireLegacyPermission::class,
@@ -30,6 +34,8 @@ class WhatsappFeatureFlagTest extends TestCase
 
         $response = $this
             ->withoutMiddleware([
+                RequireAppSession::class,
+                RequireAppPermission::class,
                 LegacySessionBridge::class,
                 RequireLegacySession::class,
                 RequireLegacyPermission::class,
@@ -47,6 +53,8 @@ class WhatsappFeatureFlagTest extends TestCase
 
         $response = $this
             ->withoutMiddleware([
+                RequireAppSession::class,
+                RequireAppPermission::class,
                 LegacySessionBridge::class,
                 RequireLegacySession::class,
                 RequireLegacyPermission::class,

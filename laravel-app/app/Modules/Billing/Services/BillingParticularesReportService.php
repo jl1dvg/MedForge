@@ -32,6 +32,14 @@ class BillingParticularesReportService
     ];
 
     /** @var array<int, string> */
+    private const AUDIT_SENSITIVE_AFFILIATIONS = [
+        'PARTICULAR',
+        'ALQUILER',
+        'CORTESIA',
+        'CANJE',
+    ];
+
+    /** @var array<int, string> */
     private const MONTH_LABELS = [
         1 => 'Enero',
         2 => 'Febrero',
@@ -118,6 +126,8 @@ class BillingParticularesReportService
                 atenciones.form_id,
                 atenciones.fecha,
                 atenciones.afiliacion,
+                atenciones.afiliacion_atencion,
+                atenciones.afiliacion_paciente_master,
                 atenciones.sede,
                 atenciones.estado_encuentro,
                 atenciones.procedimiento_proyectado,
@@ -160,7 +170,9 @@ class BillingParticularesReportService
                     'consulta' AS fuente_atencion,
                     cd.form_id,
                     cd.fecha AS fecha,
-                    p.afiliacion,
+                    COALESCE(NULLIF(TRIM(pp.afiliacion), ''), p.afiliacion) AS afiliacion,
+                    NULLIF(TRIM(pp.afiliacion), '') AS afiliacion_atencion,
+                    p.afiliacion AS afiliacion_paciente_master,
                     %SEDE_EXPR% AS sede,
                     %ESTADO_EXPR% AS estado_encuentro,
                     pp.procedimiento_proyectado,
@@ -189,7 +201,9 @@ class BillingParticularesReportService
                     'protocolo' AS fuente_atencion,
                     pd.form_id,
                     pd.fecha_inicio AS fecha,
-                    p.afiliacion,
+                    COALESCE(NULLIF(TRIM(pp.afiliacion), ''), p.afiliacion) AS afiliacion,
+                    NULLIF(TRIM(pp.afiliacion), '') AS afiliacion_atencion,
+                    p.afiliacion AS afiliacion_paciente_master,
                     %SEDE_EXPR% AS sede,
                     %ESTADO_EXPR% AS estado_encuentro,
                     pp.procedimiento_proyectado,
@@ -222,7 +236,9 @@ class BillingParticularesReportService
                     'agenda_cirugia' AS fuente_atencion,
                     pp.form_id,
                     pp.fecha AS fecha,
-                    p.afiliacion,
+                    COALESCE(NULLIF(TRIM(pp.afiliacion), ''), p.afiliacion) AS afiliacion,
+                    NULLIF(TRIM(pp.afiliacion), '') AS afiliacion_atencion,
+                    p.afiliacion AS afiliacion_paciente_master,
                     %SEDE_EXPR% AS sede,
                     %ESTADO_EXPR% AS estado_encuentro,
                     pp.procedimiento_proyectado,
@@ -252,7 +268,9 @@ class BillingParticularesReportService
                     'agenda_pni' AS fuente_atencion,
                     pp.form_id,
                     pp.fecha AS fecha,
-                    p.afiliacion,
+                    COALESCE(NULLIF(TRIM(pp.afiliacion), ''), p.afiliacion) AS afiliacion,
+                    NULLIF(TRIM(pp.afiliacion), '') AS afiliacion_atencion,
+                    p.afiliacion AS afiliacion_paciente_master,
                     %SEDE_EXPR% AS sede,
                     %ESTADO_EXPR% AS estado_encuentro,
                     pp.procedimiento_proyectado,
@@ -285,7 +303,9 @@ class BillingParticularesReportService
                     'agenda_servicio_oftalmo' AS fuente_atencion,
                     pp.form_id,
                     pp.fecha AS fecha,
-                    p.afiliacion,
+                    COALESCE(NULLIF(TRIM(pp.afiliacion), ''), p.afiliacion) AS afiliacion,
+                    NULLIF(TRIM(pp.afiliacion), '') AS afiliacion_atencion,
+                    p.afiliacion AS afiliacion_paciente_master,
                     %SEDE_EXPR% AS sede,
                     %ESTADO_EXPR% AS estado_encuentro,
                     pp.procedimiento_proyectado,
@@ -318,7 +338,9 @@ class BillingParticularesReportService
                     'agenda_imagenes' AS fuente_atencion,
                     pp.form_id,
                     pp.fecha AS fecha,
-                    p.afiliacion,
+                    COALESCE(NULLIF(TRIM(pp.afiliacion), ''), p.afiliacion) AS afiliacion,
+                    NULLIF(TRIM(pp.afiliacion), '') AS afiliacion_atencion,
+                    p.afiliacion AS afiliacion_paciente_master,
                     %SEDE_EXPR% AS sede,
                     %ESTADO_EXPR% AS estado_encuentro,
                     pp.procedimiento_proyectado,
@@ -379,14 +401,27 @@ class BillingParticularesReportService
 
         $enrichedRows = [];
         foreach ($rows as $row) {
+            $attentionAffiliationRaw = trim((string)($row['afiliacion_atencion'] ?? ''));
+            $masterAffiliationRaw = trim((string)($row['afiliacion_paciente_master'] ?? ''));
             $mappedAffiliation = $this->resolveMappedAffiliation((string)($row['afiliacion'] ?? ''));
-            if ($mappedAffiliation === null) {
+            $mappedMasterAffiliation = $this->resolveMappedAffiliation($masterAffiliationRaw);
+            if ($mappedAffiliation === null && $mappedMasterAffiliation === null) {
                 continue;
             }
 
             $categoriaCliente = strtolower(trim((string)($mappedAffiliation['categoria'] ?? '')));
-            if (!$this->isParticularReportCategory($categoriaCliente)) {
+            $categoriaClienteMaster = strtolower(trim((string)($mappedMasterAffiliation['categoria'] ?? '')));
+            $isReportCategory = $this->isParticularReportCategory($categoriaCliente);
+            $isMasterReportCategory = $this->isParticularReportCategory($categoriaClienteMaster);
+            $attentionAffiliationForAudit = $this->normalizeAuditAffiliation(
+                $attentionAffiliationRaw !== '' ? $attentionAffiliationRaw : (string)($row['afiliacion'] ?? '')
+            );
+            $isSensitiveAttentionAffiliation = in_array($attentionAffiliationForAudit, self::AUDIT_SENSITIVE_AFFILIATIONS, true);
+            if (!$isReportCategory && !($isMasterReportCategory && $isSensitiveAttentionAffiliation)) {
                 continue;
+            }
+            if (!$isReportCategory && $isMasterReportCategory) {
+                $categoriaCliente = $categoriaClienteMaster;
             }
 
             $mappedRawAffiliation = trim((string)($mappedAffiliation['afiliacion_raw'] ?? ''));
@@ -398,8 +433,14 @@ class BillingParticularesReportService
             if ($empresaSeguro === '') {
                 $empresaSeguro = $this->resolveEmpresaSeguroLabel((string)($row['afiliacion'] ?? ''));
             }
+            $empresaSeguroMaster = trim((string)($mappedMasterAffiliation['empresa_seguro'] ?? ''));
+            if ($empresaSeguroMaster === '' && $masterAffiliationRaw !== '') {
+                $empresaSeguroMaster = $this->resolveEmpresaSeguroLabel($masterAffiliationRaw);
+            }
             $row['empresa_seguro'] = $empresaSeguro;
             $row['empresa_seguro_key'] = $this->afiliacionDimensions->normalizeEmpresaFilter($empresaSeguro);
+            $row['empresa_seguro_master'] = $empresaSeguroMaster;
+            $row['empresa_seguro_master_key'] = $this->afiliacionDimensions->normalizeEmpresaFilter($empresaSeguroMaster);
             $row['categoria_cliente'] = $categoriaCliente;
             $tipoAtencion = $this->resolveAttentionType((string)($row['procedimiento_proyectado'] ?? ''));
             if ($this->isExcludedAttentionType($tipoAtencion)) {
@@ -603,7 +644,7 @@ class BillingParticularesReportService
                 $row['tarifa_sin_costo_configurado'] = $this->isZeroCostTarifaDiagnostic($tarifaDiagnostic);
                 $row['monto_estimado_tarifario'] = round($montoTarifario, 2);
                 $row['cirugia_realizada'] = in_array($estadoRealizacion, ['OPERADA_CONFIRMADA', 'OPERADA_CON_PROTOCOLO', 'OPERADA_OTRO_CENTRO'], true);
-                $row['cirugia_perdida'] = in_array($estadoRealizacion, ['CANCELADA', 'SIN_CIERRE_OPERATIVO'], true);
+                $row['cirugia_perdida'] = in_array($estadoRealizacion, ['CANCELADA', 'AUSENTE', 'SIN_CIERRE_OPERATIVO'], true);
 
                 if ($estadoFacturacion === 'PENDIENTE_FACTURAR') {
                     $row['monto_por_cobrar_estimado'] = round($montoTarifario, 2);
@@ -623,7 +664,209 @@ class BillingParticularesReportService
             $enrichedRows[] = $row;
         }
 
-        return $enrichedRows;
+        return $this->annotateAuditAlerts($enrichedRows);
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $rows
+     * @return array<int, array<string, mixed>>
+     */
+    private function annotateAuditAlerts(array $rows): array
+    {
+        $statsByHc = [];
+
+        foreach ($rows as $row) {
+            $hc = trim((string) ($row['hc_number'] ?? ''));
+            if ($hc === '') {
+                continue;
+            }
+
+            $affiliation = $this->normalizeAuditAffiliation(
+                (string) (($row['afiliacion_atencion'] ?? '') !== '' ? $row['afiliacion_atencion'] : ($row['afiliacion'] ?? ''))
+            );
+            $masterAffiliation = $this->normalizeAuditAffiliation((string) ($row['afiliacion_paciente_master'] ?? ''));
+            $auditGroup = $this->auditAffiliationGroup($affiliation);
+            $timestamp = strtotime((string) ($row['fecha'] ?? '')) ?: null;
+
+            if (!isset($statsByHc[$hc])) {
+                $statsByHc[$hc] = [
+                    'affiliations' => [],
+                    'audit_groups' => [],
+                    'master_affiliations' => [],
+                    'events' => [],
+                ];
+            }
+
+            if ($affiliation !== '') {
+                $statsByHc[$hc]['affiliations'][$affiliation] = true;
+            }
+            if ($auditGroup['key'] !== '') {
+                $statsByHc[$hc]['audit_groups'][$auditGroup['key']] = $auditGroup['label'];
+            }
+            if ($masterAffiliation !== '') {
+                $statsByHc[$hc]['master_affiliations'][$masterAffiliation] = true;
+            }
+
+            $statsByHc[$hc]['events'][] = [
+                'timestamp' => $timestamp,
+                'affiliation' => $affiliation,
+                'audit_group_key' => $auditGroup['key'],
+                'audit_group_label' => $auditGroup['label'],
+                'tipo_atencion' => strtoupper(trim((string) ($row['tipo_atencion'] ?? ''))),
+            ];
+        }
+
+        foreach ($statsByHc as &$stats) {
+            usort($stats['events'], static function (array $left, array $right): int {
+                return ($left['timestamp'] ?? 0) <=> ($right['timestamp'] ?? 0);
+            });
+        }
+        unset($stats);
+
+        $annotated = [];
+        foreach ($rows as $row) {
+            $hc = trim((string) ($row['hc_number'] ?? ''));
+            $stats = $hc !== '' ? ($statsByHc[$hc] ?? null) : null;
+
+            $affiliation = $this->normalizeAuditAffiliation(
+                (string) (($row['afiliacion_atencion'] ?? '') !== '' ? $row['afiliacion_atencion'] : ($row['afiliacion'] ?? ''))
+            );
+            $masterAffiliation = $this->normalizeAuditAffiliation((string) ($row['afiliacion_paciente_master'] ?? ''));
+            $auditGroup = $this->auditAffiliationGroup($affiliation);
+            $masterAuditGroup = $this->auditAffiliationGroup($masterAffiliation);
+            $tipoAtencion = strtoupper(trim((string) ($row['tipo_atencion'] ?? '')));
+            $timestamp = strtotime((string) ($row['fecha'] ?? '')) ?: null;
+
+            $affiliationList = $stats !== null ? array_keys($stats['affiliations']) : [];
+            sort($affiliationList, SORT_NATURAL | SORT_FLAG_CASE);
+            $auditGroupList = $stats !== null ? array_values(array_unique(array_filter($stats['audit_groups'] ?? []))) : [];
+            sort($auditGroupList, SORT_NATURAL | SORT_FLAG_CASE);
+            $masterAffiliationList = $stats !== null ? array_keys($stats['master_affiliations']) : [];
+            sort($masterAffiliationList, SORT_NATURAL | SORT_FLAG_CASE);
+
+            $alertCodes = [];
+            $reasons = [];
+
+            if (count($auditGroupList) > 1) {
+                $alertCodes[] = 'AFILIACION_MULTIPLE_PERIODO';
+                $reasons[] = 'El HC registra múltiples grupos de afiliación en el período: ' . implode(', ', $auditGroupList) . '. Afiliaciones observadas: ' . implode(', ', $affiliationList) . '.';
+            }
+
+            if ($tipoAtencion === 'CIRUGIAS' && in_array($affiliation, self::AUDIT_SENSITIVE_AFFILIATIONS, true)) {
+                $alertCodes[] = 'CIRUGIA_AFILIACION_SENSIBLE';
+                $reasons[] = 'La cirugía quedó registrada con afiliación sensible: ' . $affiliation . '.';
+            }
+
+            if (
+                $tipoAtencion === 'CIRUGIAS'
+                && $masterAffiliation !== ''
+                && $affiliation !== ''
+                && $masterAuditGroup['key'] !== ''
+                && $auditGroup['key'] !== ''
+                && $masterAuditGroup['key'] !== $auditGroup['key']
+            ) {
+                $alertCodes[] = 'CIRUGIA_DIFIERE_AFILIACION_MAESTRA';
+                $reasons[] = 'La afiliación de la atención (' . $affiliation . ') difiere de la afiliación maestra del paciente (' . $masterAffiliation . ').';
+            }
+
+            if ($tipoAtencion === 'CIRUGIAS' && $timestamp !== null && $stats !== null) {
+                $closestDifferent = $this->findClosestDifferentAffiliationEvent($stats['events'], $timestamp, $auditGroup['key']);
+                if ($closestDifferent !== null) {
+                    $alertCodes[] = 'CAMBIO_AFILIACION_CERCANO';
+                    $days = (int) floor(abs(($closestDifferent['timestamp'] - $timestamp) / 86400));
+                    $dateLabel = date('d/m/Y', (int) $closestDifferent['timestamp']);
+                    $reasons[] = 'Existe otra atención del mismo HC con afiliación ' . $closestDifferent['affiliation'] . ' a ' . $days . ' día(s) de distancia (' . $dateLabel . ').';
+                }
+            }
+
+            $alertCodes = array_values(array_unique($alertCodes));
+            $reasons = array_values(array_unique($reasons));
+
+            $row['afiliacion_atencion'] = $affiliation !== '' ? $affiliation : null;
+            $row['afiliacion_paciente_master'] = $masterAffiliation !== '' ? $masterAffiliation : null;
+            $row['afiliaciones_hc_periodo'] = implode(' | ', $affiliationList);
+            $row['afiliaciones_hc_periodo_total'] = count($affiliationList);
+            $row['afiliaciones_maestras_hc_periodo'] = implode(' | ', $masterAffiliationList);
+            $row['requiere_auditoria'] = $alertCodes !== [];
+            $row['alerta_auditoria'] = implode(' | ', $alertCodes);
+            $row['motivo_alerta_auditoria'] = implode(' ', $reasons);
+
+            $annotated[] = $row;
+        }
+
+        return $annotated;
+    }
+
+    private function normalizeAuditAffiliation(string $value): string
+    {
+        return strtoupper(trim(preg_replace('/\s+/u', ' ', $value) ?: ''));
+    }
+
+    /**
+     * @return array{key:string,label:string}
+     */
+    private function auditAffiliationGroup(string $affiliation): array
+    {
+        $normalized = $this->normalizeAuditAffiliation($affiliation);
+        if ($normalized === '') {
+            return ['key' => '', 'label' => ''];
+        }
+
+        $mapped = $this->resolveMappedAffiliation($normalized);
+        $category = strtolower(trim((string) ($mapped['categoria'] ?? '')));
+        if ($category === 'privado') {
+            $company = $this->resolveEmpresaSeguroLabel((string) ($mapped['empresa_seguro'] ?? $normalized));
+            $companyKey = $this->afiliacionDimensions->normalizeEmpresaFilter($company);
+
+            return [
+                'key' => 'privado:' . ($companyKey !== '' ? $companyKey : $this->normalizeAffiliationKey($company)),
+                'label' => 'PRIVADO / ' . $company,
+            ];
+        }
+
+        if ($category === 'particular') {
+            return ['key' => 'particular:particular', 'label' => 'PARTICULAR'];
+        }
+
+        return [
+            'key' => ($category !== '' ? $category : 'sin_categoria') . ':' . $this->normalizeAffiliationKey($normalized),
+            'label' => $normalized,
+        ];
+    }
+
+    /**
+     * @param array<int, array{timestamp:int|null,affiliation:string,audit_group_key:string,audit_group_label:string,tipo_atencion:string}> $events
+     * @return array{timestamp:int,affiliation:string,tipo_atencion:string}|null
+     */
+    private function findClosestDifferentAffiliationEvent(array $events, int $referenceTimestamp, string $currentAuditGroupKey): ?array
+    {
+        $closest = null;
+        $closestDistance = null;
+
+        foreach ($events as $event) {
+            $eventTimestamp = $event['timestamp'] ?? null;
+            $eventAffiliation = strtoupper(trim((string) ($event['affiliation'] ?? '')));
+            $eventAuditGroupKey = trim((string) ($event['audit_group_key'] ?? ''));
+            if ($eventTimestamp === null || $eventAffiliation === '' || $eventAuditGroupKey === '' || $eventAuditGroupKey === $currentAuditGroupKey) {
+                continue;
+            }
+
+            $distance = abs($eventTimestamp - $referenceTimestamp);
+            if ($distance > 30 * 86400) {
+                continue;
+            }
+
+            if ($closestDistance === null || $distance < $closestDistance) {
+                $closestDistance = $distance;
+                $closest = [
+                    'timestamp' => $eventTimestamp,
+                    'affiliation' => $eventAffiliation,
+                    'tipo_atencion' => (string) ($event['tipo_atencion'] ?? ''),
+                ];
+            }
+        }
+
+        return $closest;
     }
 
     /**
@@ -640,6 +883,7 @@ class BillingParticularesReportService
         $procedimiento = strtolower(trim((string)($filters['procedimiento'] ?? '')));
         $categoriaCliente = strtolower(trim((string)($filters['categoria_cliente'] ?? '')));
         $categoriaMadreReferido = $this->normalizeReferralValue($filters['categoria_madre_referido'] ?? null);
+        $auditoria = strtolower(trim((string)($filters['auditoria'] ?? '')));
         $dateFromTs = $this->parseDateTimestamp((string)($filters['date_from'] ?? ''), false);
         $dateToTs = $this->parseDateTimestamp((string)($filters['date_to'] ?? ''), true);
 
@@ -655,13 +899,18 @@ class BillingParticularesReportService
             }
 
             $afiliacionRow = strtolower(trim((string)($row['afiliacion'] ?? '')));
+            $afiliacionMaestraRow = strtolower(trim((string)($row['afiliacion_paciente_master'] ?? '')));
             $empresaSeguroRow = $this->afiliacionDimensions->normalizeEmpresaFilter((string)($row['empresa_seguro_key'] ?? $row['empresa_seguro'] ?? ''));
+            $empresaSeguroMaestraRow = $this->afiliacionDimensions->normalizeEmpresaFilter(
+                (string)($row['empresa_seguro_master_key'] ?? $row['empresa_seguro_master'] ?? '')
+            );
             $sedeRow = $this->normalizeSedeFilter($row['sede'] ?? null);
             $tipoAtencionRow = strtoupper(trim((string)($row['tipo_atencion'] ?? '')));
             $procedimientoRow = strtolower((string)($row['procedimiento_proyectado'] ?? ''));
             $categoriaRow = strtolower(trim((string)($row['categoria_cliente'] ?? '')));
             $categoriaMadreReferidoRow = $this->normalizeReferralValue($row['referido_prefactura_por'] ?? null);
             $estadoEncuentro = (string)($row['estado_encuentro'] ?? '');
+            $requiereAuditoria = (bool)($row['requiere_auditoria'] ?? false);
 
             if ($dateFromTs !== null && $timestamp < $dateFromTs) {
                 continue;
@@ -672,10 +921,18 @@ class BillingParticularesReportService
             if (!$this->shouldIncludeRowForReport($row)) {
                 continue;
             }
-            if ($afiliacion !== '' && $afiliacionRow !== $afiliacion) {
+            if (
+                $afiliacion !== ''
+                && $afiliacionRow !== $afiliacion
+                && !($requiereAuditoria && $afiliacionMaestraRow === $afiliacion)
+            ) {
                 continue;
             }
-            if ($empresaSeguro !== '' && $empresaSeguroRow !== $empresaSeguro) {
+            if (
+                $empresaSeguro !== ''
+                && $empresaSeguroRow !== $empresaSeguro
+                && !($requiereAuditoria && $empresaSeguroMaestraRow === $empresaSeguro)
+            ) {
                 continue;
             }
             if ($sede !== '' && $sedeRow !== $sede) {
@@ -688,6 +945,12 @@ class BillingParticularesReportService
                 continue;
             }
             if ($categoriaMadreReferido !== '' && $categoriaMadreReferidoRow !== $categoriaMadreReferido) {
+                continue;
+            }
+            if ($auditoria === 'si' && !$requiereAuditoria) {
+                continue;
+            }
+            if ($auditoria === 'no' && $requiereAuditoria) {
                 continue;
             }
             if ($procedimiento !== '' && !str_contains($procedimientoRow, $procedimiento)) {
@@ -937,6 +1200,7 @@ class BillingParticularesReportService
             'OPERADA_CON_PROTOCOLO' => 0,
             'OPERADA_OTRO_CENTRO' => 0,
             'CANCELADA' => 0,
+            'AUSENTE' => 0,
             'SIN_CIERRE_OPERATIVO' => 0,
         ];
         $cirugiasPorCobrarDoctor = [];
@@ -1249,7 +1513,7 @@ class BillingParticularesReportService
                     $cirugiasFacturadasExternas++;
                 }
 
-                if (in_array($estadoRealizacion, ['CANCELADA', 'SIN_CIERRE_OPERATIVO'], true)) {
+                if (in_array($estadoRealizacion, ['CANCELADA', 'AUSENTE', 'SIN_CIERRE_OPERATIVO'], true)) {
                     $cirugiasPerdidaEstimada += $montoPerdidaRow;
                     $cirugiasPerdidaDoctor[$doctor] = ($cirugiasPerdidaDoctor[$doctor] ?? 0.0) + $montoPerdidaRow;
                 }
@@ -1286,7 +1550,7 @@ class BillingParticularesReportService
                 $esSinCierre = $estadoRealizacionGlobal === 'SIN_CIERRE_OPERATIVO';
             } elseif ($this->isSurgeryAttentionType($tipoAtencionGlobal)) {
                 $esRealizada = in_array($estadoRealizacionGlobal, ['OPERADA_CONFIRMADA', 'OPERADA_CON_PROTOCOLO', 'OPERADA_OTRO_CENTRO'], true);
-                $esPerdida = in_array($estadoRealizacionGlobal, ['CANCELADA', 'SIN_CIERRE_OPERATIVO'], true);
+                $esPerdida = in_array($estadoRealizacionGlobal, ['CANCELADA', 'AUSENTE', 'SIN_CIERRE_OPERATIVO'], true);
                 $esSinCierre = $estadoRealizacionGlobal === 'SIN_CIERRE_OPERATIVO';
             } else {
                 $esRealizada = $this->isEncounterAttended((string)($row['estado_encuentro'] ?? '')) || $esFacturada || $produccionBaseRow > 0;
@@ -1719,6 +1983,7 @@ class BillingParticularesReportService
             + (int)($cirugiasEstadoCounts['OPERADA_CON_PROTOCOLO'] ?? 0)
             + (int)($cirugiasEstadoCounts['OPERADA_OTRO_CENTRO'] ?? 0);
         $cirugiasCanceladas = (int)($cirugiasEstadoCounts['CANCELADA'] ?? 0);
+        $cirugiasAusentes = (int)($cirugiasEstadoCounts['AUSENTE'] ?? 0);
         $cirugiasSinCierre = (int)($cirugiasEstadoCounts['SIN_CIERRE_OPERATIVO'] ?? 0);
         $cirugiasTotal = array_sum($cirugiasEstadoCounts);
         $operativoPotencialCapturable = $honorarioRealTotal + $operativoPorCobrarEstimado;
@@ -1966,6 +2231,7 @@ class BillingParticularesReportService
                 'operada_con_protocolo' => (int)($cirugiasEstadoCounts['OPERADA_CON_PROTOCOLO'] ?? 0),
                 'operada_otro_centro' => (int)($cirugiasEstadoCounts['OPERADA_OTRO_CENTRO'] ?? 0),
                 'canceladas' => $cirugiasCanceladas,
+                'ausentes' => $cirugiasAusentes,
                 'sin_cierre' => $cirugiasSinCierre,
                 'pendientes_facturar' => $cirugiasPendientesFacturar,
                 'facturadas_locales' => $cirugiasFacturadasLocales,
@@ -2024,12 +2290,29 @@ class BillingParticularesReportService
                 $empresasSeguro[$empresaSeguroKey] = strtoupper($empresaSeguroLabel);
             }
 
+            $empresaSeguroMasterLabel = trim((string)($row['empresa_seguro_master'] ?? ''));
+            $empresaSeguroMasterKey = $this->afiliacionDimensions->normalizeEmpresaFilter(
+                (string)($row['empresa_seguro_master_key'] ?? $empresaSeguroMasterLabel)
+            );
+            if ($empresaSeguroMasterLabel !== '' && $empresaSeguroMasterKey !== '') {
+                $empresasSeguro[$empresaSeguroMasterKey] = strtoupper($empresaSeguroMasterLabel);
+            }
+
             $afiliacion = strtolower(trim((string)($row['afiliacion'] ?? '')));
             if (
                 $afiliacion !== ''
                 && ($empresaSeguroFilter === '' || $empresaSeguroKey === $empresaSeguroFilter)
             ) {
                 $afiliaciones[$afiliacion] = $afiliacion;
+            }
+
+            $afiliacionMaestra = strtolower(trim((string)($row['afiliacion_paciente_master'] ?? '')));
+            if (
+                (bool)($row['requiere_auditoria'] ?? false)
+                && $afiliacionMaestra !== ''
+                && ($empresaSeguroFilter === '' || $empresaSeguroMasterKey === $empresaSeguroFilter)
+            ) {
+                $afiliaciones[$afiliacionMaestra] = $afiliacionMaestra;
             }
 
             $tipoAtencion = strtoupper(trim((string)($row['tipo_atencion'] ?? '')));
@@ -2815,8 +3098,12 @@ class BillingParticularesReportService
         }
 
         $estadoEncuentro = strtoupper(trim((string)($row['estado_encuentro'] ?? '')));
-        if ($estadoEncuentro === 'CANCELADO' || $estadoEncuentro === 'CANCELADA') {
+        if ($this->isEncounterCancelled($estadoEncuentro)) {
             return 'CANCELADA';
+        }
+
+        if ($this->isEncounterAbsent($estadoEncuentro) || $this->isSurgeryOperationalAbsence($estadoEncuentro)) {
+            return 'AUSENTE';
         }
 
         return 'SIN_CIERRE_OPERATIVO';
@@ -2856,6 +3143,10 @@ class BillingParticularesReportService
             return 'FACTURADA_SIN_PROTOCOLO_LOCAL';
         }
 
+        if ($estadoRealizacion === 'AUSENTE') {
+            return 'AUSENCIA_OPERATIVA';
+        }
+
         if ($estadoRealizacion === 'SIN_CIERRE_OPERATIVO') {
             return 'SIN_CIERRE';
         }
@@ -2893,6 +3184,13 @@ class BillingParticularesReportService
         $normalized = $this->normalizeEncounterStatus($status);
 
         return in_array($normalized, ['confirmado', 'agendado', 'llegado'], true);
+    }
+
+    private function isSurgeryOperationalAbsence(string $status): bool
+    {
+        $normalized = $this->normalizeEncounterStatus($status);
+
+        return in_array($normalized, ['confirmado', 'agendado', 'llegado', 'generada', 'generadas'], true);
     }
 
     /**

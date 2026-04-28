@@ -65,6 +65,58 @@ class BillingParticularesReportServiceTest extends TestCase
         );
     }
 
+    public function test_audited_alquiler_rows_survive_master_affiliation_filters(): void
+    {
+        $service = new BillingParticularesReportService(new PDO('sqlite::memory:'));
+        $rows = [[
+            'fecha' => '2026-04-10 08:00:00',
+            'hc_number' => '99',
+            'tipo' => 'agenda_cirugia',
+            'tipo_atencion' => 'CIRUGIAS',
+            'afiliacion' => 'ALQUILER',
+            'afiliacion_atencion' => 'ALQUILER',
+            'afiliacion_paciente_master' => 'PARTICULAR',
+            'empresa_seguro' => 'ALQUILER',
+            'empresa_seguro_key' => 'alquiler',
+            'empresa_seguro_master' => 'PARTICULAR',
+            'empresa_seguro_master_key' => 'particular',
+            'categoria_cliente' => 'particular',
+            'estado_encuentro' => 'ATENDIDO',
+            'estado_realizacion' => 'SIN_CIERRE_OPERATIVO',
+            'sede' => 'CEIBOS',
+            'doctor' => 'DR. AUDITORIA',
+            'procedimiento_proyectado' => 'CIRUGIA DE PRUEBA',
+            'requiere_auditoria' => true,
+        ]];
+
+        $filteredByPlan = $service->aplicarFiltros($rows, [
+            'afiliacion' => 'particular',
+        ]);
+        $filteredByCompany = $service->aplicarFiltros($rows, [
+            'empresa_seguro' => 'particular',
+        ]);
+        $catalogs = $service->catalogos($rows, [
+            'empresa_seguro' => 'particular',
+        ]);
+
+        $this->assertCount(1, $filteredByPlan);
+        $this->assertSame('ALQUILER', $filteredByPlan[0]['afiliacion']);
+        $this->assertCount(1, $filteredByCompany);
+        $this->assertContains('particular', $catalogs['afiliaciones']);
+    }
+
+    public function test_surgery_without_protocol_or_billing_in_scheduled_states_is_absent(): void
+    {
+        $service = new BillingParticularesReportService(new PDO('sqlite::memory:'));
+
+        $this->assertSame('AUSENTE', $this->invokeResolveSurgeryRealizationState($service, [
+            'estado_encuentro' => 'AGENDADO',
+        ]));
+        $this->assertSame('AUSENTE', $this->invokeResolveSurgeryRealizationState($service, [
+            'estado_encuentro' => 'GENERADAS',
+        ]));
+    }
+
     public function test_summary_switches_from_company_breakdown_to_plan_breakdown_when_a_company_is_selected(): void
     {
         $service = new BillingParticularesReportService(new PDO('sqlite::memory:'));
@@ -244,5 +296,23 @@ class BillingParticularesReportServiceTest extends TestCase
         );
 
         return $resolver($tarifaDiagnostic);
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    private function invokeResolveSurgeryRealizationState(
+        BillingParticularesReportService $service,
+        array $row
+    ): string {
+        $resolver = \Closure::bind(
+            function (array $row): string {
+                return $this->resolveSurgeryRealizationState($row, false);
+            },
+            $service,
+            BillingParticularesReportService::class
+        );
+
+        return $resolver($row);
     }
 }

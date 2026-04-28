@@ -316,6 +316,7 @@ class BillingUiController
             'categoria_madre_referido' => (string) $request->query('categoria_madre_referido', ''),
             'tipo' => (string) $request->query('tipo', ''),
             'procedimiento' => (string) $request->query('procedimiento', ''),
+            'auditoria' => (string) $request->query('auditoria', ''),
         ];
 
         try {
@@ -393,6 +394,7 @@ class BillingUiController
             'categoria_madre_referido' => '',
             'tipo' => (string) $request->query('tipo', ''),
             'procedimiento' => (string) $request->query('procedimiento', ''),
+            'auditoria' => (string) $request->query('auditoria', ''),
         ];
 
         $selectedCategory = $this->normalizeReferralDashboardCategory(
@@ -2767,6 +2769,7 @@ class BillingUiController
                 'Facturacion', 'Estado facturacion operativa', 'Monto estimado', 'Honorario real', 'Billing ID',
                 'Fecha facturacion', 'Numero factura', 'Factura ID', 'Formas pago', 'Cliente facturacion',
                 'Area facturacion', 'Referido prefactura por', 'Especificar referido prefactura',
+                'Requiere auditoria', 'Alerta auditoria', 'Motivo alerta auditoria', 'Afiliaciones HC periodo',
             ];
 
             foreach ($headers as $index => $header) {
@@ -2816,6 +2819,10 @@ class BillingUiController
                     trim((string) ($item['area_facturacion'] ?? '')),
                     trim((string) ($item['referido_prefactura_por'] ?? '')),
                     trim((string) ($item['especificar_referido_prefactura'] ?? '')),
+                    !empty($item['requiere_auditoria']) ? 'SI' : 'NO',
+                    trim((string) ($item['alerta_auditoria'] ?? '')),
+                    trim((string) ($item['motivo_alerta_auditoria'] ?? '')),
+                    trim((string) ($item['afiliaciones_hc_periodo'] ?? '')),
                 ];
 
                 foreach ($values as $index => $value) {
@@ -2896,6 +2903,10 @@ class BillingUiController
             'Area facturacion',
             'Referido prefactura por',
             'Especificar referido prefactura',
+            'Requiere auditoria',
+            'Alerta auditoria',
+            'Motivo alerta auditoria',
+            'Afiliaciones HC periodo',
             'Sin tarifa estimable',
             'Sin costo configurado',
             'Codigo tarifario',
@@ -2948,6 +2959,10 @@ class BillingUiController
                 trim((string) ($row['area_facturacion'] ?? '')),
                 trim((string) ($row['referido_prefactura_por'] ?? '')),
                 trim((string) ($row['especificar_referido_prefactura'] ?? '')),
+                (bool) ($row['requiere_auditoria'] ?? false) ? 'SI' : 'NO',
+                trim((string) ($row['alerta_auditoria'] ?? '')),
+                trim((string) ($row['motivo_alerta_auditoria'] ?? '')),
+                trim((string) ($row['afiliaciones_hc_periodo'] ?? '')),
                 (bool) ($row['sin_tarifa_estimable'] ?? false) ? 'SI' : 'NO',
                 (bool) ($row['tarifa_sin_costo_configurado'] ?? false) ? 'SI' : 'NO',
                 trim((string) ($row['tarifa_codigo'] ?? '')),

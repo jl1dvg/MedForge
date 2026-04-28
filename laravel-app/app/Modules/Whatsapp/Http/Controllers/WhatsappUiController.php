@@ -247,12 +247,12 @@ class WhatsappUiController
         $sections = [
             'chat' => [
                 'title' => 'Chat',
-                'goal' => 'El chat sigue operando en legacy mientras el resto del stack de WhatsApp migra a Laravel V2.',
+                'goal' => 'Operar inbox, conversación, handoff y presencia directamente desde Laravel WhatsApp V2.',
                 'scope' => [
-                    'Inbox y conversación siguen en /whatsapp/chat',
-                    'Se mantiene handoff, presencia y reglas actuales del chat legacy',
-                    'No se fuerza operación del inbox V2 en esta fase',
-                    'V2 se usa para dashboard, templates, campañas y flowmaker',
+                    'Inbox y conversación operan en /v2/whatsapp/chat',
+                    'Se mantienen handoff, presencia, notas, filtros y colas operativas',
+                    'El chat V2 pasa a ser el acceso principal para operación diaria',
+                    'Dashboard, templates, campañas y flowmaker siguen en V2 dentro del mismo stack',
                 ],
             ],
             'campaigns' => [
@@ -299,22 +299,22 @@ class WhatsappUiController
 
         $statusCards = [
             [
-                'label' => 'Chat legacy',
+                'label' => 'Chat V2',
                 'state' => 'Operativo',
                 'tone' => 'success',
-                'detail' => 'El inbox y la conversación siguen en /whatsapp/chat mientras estabilizamos V2.',
+                'detail' => 'El inbox principal de operación diaria ya corre en /v2/whatsapp/chat.',
             ],
             [
                 'label' => 'WhatsApp V2',
-                'state' => 'Operativo parcial',
-                'tone' => 'warning',
-                'detail' => 'Dashboard, templates, campañas y flowmaker listos para operación en Laravel.',
+                'state' => 'Operativo',
+                'tone' => 'success',
+                'detail' => 'Dashboard, templates, campañas, flowmaker y chat operan dentro del stack Laravel V2.',
             ],
             [
-                'label' => 'Chat V2',
-                'state' => 'Standby',
-                'tone' => 'info',
-                'detail' => 'Se mantiene disponible para pruebas y ajuste, pero no como inbox principal.',
+                'label' => 'Legacy',
+                'state' => 'Fallback',
+                'tone' => 'warning',
+                'detail' => 'Legacy queda como respaldo operativo y referencia mientras termina el corte de uso.',
             ],
         ];
 
@@ -323,7 +323,7 @@ class WhatsappUiController
             'Fase 2: Templates y campañas en V2',
             'Fase 3: KPI y reportes en V2',
             'Fase 4: Flowmaker y automatización en V2',
-            'Fase 5: Chat V2 cuando cierre validación operativa',
+            'Fase 5: Corte operativo del chat en V2',
         ];
 
         return view('whatsapp.v2-hub', [
