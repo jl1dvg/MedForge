@@ -10,6 +10,7 @@ use App\Modules\Auth\Http\Controllers\UnifiedLogoutController;
 use App\Modules\Codes\Http\Controllers\CodesUiController;
 use App\Modules\Codes\Http\Controllers\CodesWriteController;
 use App\Modules\Derivaciones\Http\Controllers\DerivacionesUiController;
+use App\Modules\Shared\Http\Controllers\FeedbackUiController;
 use App\Modules\Solicitudes\Http\Controllers\SolicitudesUiController;
 use App\Modules\Shared\Http\Controllers\FeedbackWriteController;
 use App\Modules\Usuarios\Http\Controllers\RolesUiController;
@@ -28,6 +29,11 @@ Route::get('/v2/auth/logout', [UnifiedLogoutController::class, 'logout']);
 
 Route::middleware(['legacy.auth'])->group(function (): void {
     Route::post('/feedback/api/report', [FeedbackWriteController::class, 'store']);
+});
+
+Route::middleware(['legacy.auth', 'legacy.permission:administrativo,settings.manage,settings.view'])->group(function (): void {
+    Route::get('/v2/feedback', [FeedbackUiController::class, 'index']);
+    Route::post('/v2/feedback/{id}/status', [FeedbackUiController::class, 'updateStatus'])->whereNumber('id');
 });
 
 Route::middleware(['legacy.auth', 'legacy.permission:administrativo,dashboard.view'])->group(function (): void {
