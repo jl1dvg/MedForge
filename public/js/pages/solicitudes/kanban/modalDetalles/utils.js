@@ -191,6 +191,9 @@ export function buildSlaInfo(solicitud = {}) {
     }
     const hours = formatHoursRemaining(hoursSource);
     const detailParts = [];
+    if (solicitud.sla_label) {
+        detailParts.push(String(solicitud.sla_label));
+    }
     if (deadline) {
         detailParts.push(`Vence ${deadline}`);
     }

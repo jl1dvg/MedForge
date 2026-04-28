@@ -60,6 +60,24 @@ export const ALERT_TEMPLATES = [
         className: "badge bg-info text-dark",
     },
     {
+        field: "alert_derivacion_vencida",
+        label: "Derivación vencida",
+        icon: "mdi-file-cancel-outline",
+        className: "badge bg-danger text-white",
+    },
+    {
+        field: "alert_derivacion_por_vencer",
+        label: "Derivación por vencer",
+        icon: "mdi-file-clock-outline",
+        className: "badge bg-warning text-dark",
+    },
+    {
+        field: "alert_derivacion_pendiente",
+        label: "Derivación pendiente",
+        icon: "mdi-file-search-outline",
+        className: "badge bg-warning text-dark",
+    },
+    {
         field: "alert_tarea_vencida",
         label: "Tarea vencida",
         icon: "mdi-clipboard-alert-outline",

@@ -7,6 +7,7 @@ let panelConfig = {
     entityArticle: 'la',
     entitySelectionSuffix: 'seleccionada',
     datasetIdKey: 'solicitudId',
+    buttonSelector: '.btn-open-crm',
 };
 
 function resolveBasePath() {
@@ -151,9 +152,10 @@ function getCrmKanbanPreferences() {
 }
 
 function initCrmInteractions() {
-    const buttons = document.querySelectorAll('.btn-open-crm');
+    const buttonSelector = panelConfig.buttonSelector || '.btn-open-crm';
+    const buttons = document.querySelectorAll(buttonSelector);
     if (!buttons.length) {
-        console.warn('CRM ▶ No se encontraron botones .btn-open-crm en el DOM');
+        console.warn(`CRM ▶ No se encontraron botones ${buttonSelector} en el DOM`);
     }
     buttons.forEach(button => {
         if (button.dataset.crmBound === '1') {

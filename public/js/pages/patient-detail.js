@@ -1208,15 +1208,25 @@
 
             var checkboxId = 'patientSolicitudItem_' + index + '_' + formId.replace(/[^a-z0-9_-]/gi, '');
             var actionHtml = '';
-            if (formId !== '') {
+            if (formId !== '' || solicitudId !== '') {
                 actionHtml = '<div class="dropdown">'
                     + '<a class="px-10 pt-5" href="#" data-bs-toggle="dropdown"><i class="mdi mdi-dots-vertical"></i></a>'
-                    + '<div class="dropdown-menu dropdown-menu-end">'
-                    + '<a class="dropdown-item flexbox" href="#" data-prefactura-trigger="1"'
+                    + '<div class="dropdown-menu dropdown-menu-end">';
+
+                if (formId !== '') {
+                    actionHtml += '<a class="dropdown-item flexbox" href="#" data-prefactura-trigger="1"'
                     + ' data-solicitud-id="' + escapeHtml(solicitudId) + '"'
                     + ' data-form-id="' + escapeHtml(formId) + '" data-hc="' + escapeHtml(hcNumber) + '">'
-                    + '<span>Ver detalles</span></a>'
-                    + '</div></div>';
+                    + '<span>Ver detalles</span></a>';
+                }
+
+                if (solicitudId !== '') {
+                    actionHtml += '<a class="dropdown-item flexbox btn-open-solicitud-crm" href="#"'
+                    + ' data-solicitud-id="' + escapeHtml(solicitudId) + '">'
+                    + '<span>Gestionar CRM</span></a>';
+                }
+
+                actionHtml += '</div></div>';
             }
 
             var procedimientoHtml = '<a href="#" class="text-dark fw-500 fs-16"'
@@ -1237,6 +1247,7 @@
                 + '<div class="mt-5">'
                 + '<span class="badge ' + escapeHtml(estadoBadgeClass) + '">' + escapeHtml(estado) + '</span>'
                 + ' <span class="badge ' + escapeHtml(prioridadBadgeClass) + '">Prioridad: ' + escapeHtml(prioridad) + '</span>'
+                + (solicitudId !== '' ? ' <button type="button" class="btn btn-xs btn-outline-primary btn-open-solicitud-crm ms-1" data-solicitud-id="' + escapeHtml(solicitudId) + '">CRM</button>' : '')
                 + '</div>'
                 + '</div>'
                 + actionHtml

@@ -13,6 +13,7 @@ Route::middleware([
 Route::match(['GET', 'POST'], '/solicitudes/kanban-data', [SolicitudesReadController::class, 'kanbanData']);
 Route::post('/solicitudes/dashboard-data', [SolicitudesReadController::class, 'dashboardData']);
 Route::get('/solicitudes/turnero-data', [SolicitudesReadController::class, 'turneroData']);
+Route::get('/solicitudes/crm/options', [SolicitudesReadController::class, 'crmOptions']);
 Route::get('/solicitudes/{id}/crm', [SolicitudesReadController::class, 'crmResumen'])->whereNumber('id');
 Route::get('/solicitudes/conciliacion-cirugias', [SolicitudesReadController::class, 'conciliacionCirugias']);
 Route::get('/solicitudes/prefactura', [SolicitudesPrefacturaController::class, 'prefactura']);
@@ -55,6 +56,7 @@ Route::post('/api/solicitudes/estado.php', [SolicitudesWriteController::class, '
 Route::match(['GET', 'POST'], '/api/solicitudes/kanban', [SolicitudesReadController::class, 'kanbanData']);
 Route::post('/api/solicitudes/dashboard', [SolicitudesReadController::class, 'dashboardData']);
 Route::get('/api/solicitudes/turnero', [SolicitudesReadController::class, 'turneroData']);
+Route::get('/api/solicitudes/crm/options', [SolicitudesReadController::class, 'crmOptions']);
 Route::get('/api/solicitudes/{id}/crm', [SolicitudesReadController::class, 'crmResumen'])->whereNumber('id');
 Route::get('/api/solicitudes/conciliacion-cirugias', [SolicitudesReadController::class, 'conciliacionCirugias']);
 Route::get('/api/solicitudes/estado', [SolicitudesWriteController::class, 'apiEstadoGet']);

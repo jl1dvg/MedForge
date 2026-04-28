@@ -35,6 +35,49 @@ class SolicitudesReadParityService
         'cirugia_confirmada_at',
     ];
 
+    private const DEFAULT_OPERATIONAL_SLA_RULES = [
+        'publico' => [
+            'label' => 'Vigencia derivación',
+            'action' => 'Validar vigencia o renovar derivación',
+            'source' => 'derivacion',
+            'missing_derivacion_hours' => 4,
+            'warning_hours' => 72,
+            'critical_hours' => 24,
+        ],
+        'privado' => [
+            'label' => 'Validar cobertura',
+            'action' => 'Confirmar cobertura con aseguradora',
+            'source' => 'cobertura',
+            'hours' => 48,
+            'warning_hours' => 24,
+            'critical_hours' => 6,
+        ],
+        'particular' => [
+            'label' => 'Contactar y confirmar pago',
+            'action' => 'Contactar paciente y confirmar forma de pago',
+            'source' => 'contacto_pago',
+            'hours' => 24,
+            'warning_hours' => 12,
+            'critical_hours' => 4,
+        ],
+        'fundacional' => [
+            'label' => 'Validar autorización',
+            'action' => 'Confirmar autorización del convenio o fundación',
+            'source' => 'autorizacion',
+            'hours' => 72,
+            'warning_hours' => 24,
+            'critical_hours' => 6,
+        ],
+        'otros' => [
+            'label' => 'Seguimiento operativo',
+            'action' => 'Definir siguiente acción de la solicitud',
+            'source' => 'seguimiento',
+            'hours' => 48,
+            'warning_hours' => 24,
+            'critical_hours' => 6,
+        ],
+    ];
+
     /**
      * @var array<string, bool>
      */
@@ -156,8 +199,25 @@ class SolicitudesReadParityService
                     'etapas' => $this->pipelineStages(),
                     'fuentes' => $this->sources(),
                     'kanban' => $this->kanbanPreferences(),
+                    'operational_sla_rules' => $this->operationalSlaRules(),
                 ],
                 'metrics' => $this->buildOperationalMetrics($kanban),
+            ],
+        ];
+    }
+
+    /**
+     * @return array{crm:array<string,mixed>}
+     */
+    public function crmOptions(): array
+    {
+        return [
+            'crm' => [
+                'responsables' => $this->assignableUsers(),
+                'etapas' => $this->pipelineStages(),
+                'fuentes' => $this->sources(),
+                'kanban' => $this->kanbanPreferences(),
+                'operational_sla_rules' => $this->operationalSlaRules(),
             ],
         ];
     }
@@ -1230,26 +1290,10 @@ class SolicitudesReadParityService
     private function computeOperationalMetadata(array $row): array
     {
         $now = new DateTimeImmutable('now');
-        $deadline = $this->parseDate($row['fecha_programada'] ?? ($row['fecha'] ?? null))
-            ?? $this->parseDate($row['created_at'] ?? null);
-
-        $warningHours = max(1, (int) ($this->settingsOptions(['solicitudes_sla_warning_hours'])['solicitudes_sla_warning_hours'] ?? 24));
-        $criticalHours = max(1, (int) ($this->settingsOptions(['solicitudes_sla_critical_hours'])['solicitudes_sla_critical_hours'] ?? 6));
-
-        $hoursRemaining = null;
-        $slaStatus = 'sin_fecha';
-        if ($deadline instanceof DateTimeImmutable) {
-            $hoursRemaining = ($deadline->getTimestamp() - $now->getTimestamp()) / 3600;
-            if ($hoursRemaining < 0) {
-                $slaStatus = 'vencido';
-            } elseif ($hoursRemaining <= $criticalHours) {
-                $slaStatus = 'critico';
-            } elseif ($hoursRemaining <= $warningHours) {
-                $slaStatus = 'advertencia';
-            } else {
-                $slaStatus = 'en_rango';
-            }
-        }
+        $sla = $this->resolveOperationalSla($row, $now);
+        $deadline = $sla['deadline'];
+        $hoursRemaining = $sla['hours_remaining'];
+        $slaStatus = $sla['status'];
 
         $autoPriority = 'normal';
         if (in_array($slaStatus, ['vencido', 'critico'], true)) {
@@ -1277,6 +1321,20 @@ class SolicitudesReadParityService
             $alerts[] = 'Autorizacion pendiente';
         }
 
+        $alertDerivacionVencida = ($sla['source'] ?? '') === 'derivacion' && $slaStatus === 'vencido';
+        if ($alertDerivacionVencida) {
+            $alerts[] = 'Derivacion vencida';
+        }
+
+        $alertDerivacionPorVencer = ($sla['source'] ?? '') === 'derivacion' && in_array($slaStatus, ['critico', 'advertencia'], true);
+        if ($alertDerivacionPorVencer) {
+            $alerts[] = 'Derivacion por vencer';
+        }
+
+        if (($sla['source'] ?? '') === 'derivacion_pendiente') {
+            $alerts[] = 'Scrapear o seleccionar derivacion';
+        }
+
         return [
             'prioridad' => $showPriority,
             'prioridad_origen' => $manualPriority !== '' ? 'manual' : 'automatico',
@@ -1285,12 +1343,172 @@ class SolicitudesReadParityService
             'sla_status' => $slaStatus,
             'sla_deadline' => $deadline?->format(DateTimeImmutable::ATOM),
             'sla_hours_remaining' => $hoursRemaining !== null ? round($hoursRemaining, 2) : null,
+            'sla_source' => $sla['source'],
+            'sla_label' => $sla['label'],
+            'sla_action' => $sla['action'],
+            'sla_rule_key' => $sla['rule_key'],
+            'derivacion_vigencia_status' => $sla['derivacion_status'],
+            'derivacion_dias_restantes' => $sla['derivacion_days_remaining'],
             'alert_reprogramacion' => $alertReprogramacion,
             'alert_pendiente_consentimiento' => false,
             'alert_documentos_faltantes' => $alertDocs,
             'alert_autorizacion_pendiente' => $alertAuth,
+            'alert_derivacion_vencida' => $alertDerivacionVencida,
+            'alert_derivacion_por_vencer' => $alertDerivacionPorVencer,
+            'alert_derivacion_pendiente' => ($sla['source'] ?? '') === 'derivacion_pendiente',
             'alertas_operativas' => $alerts,
         ];
+    }
+
+    /**
+     * @param array<string,mixed> $row
+     * @return array{
+     *   deadline:DateTimeImmutable|null,
+     *   hours_remaining:float|null,
+     *   status:string,
+     *   source:string,
+     *   label:string,
+     *   action:string,
+     *   rule_key:string,
+     *   derivacion_status:string|null,
+     *   derivacion_days_remaining:int|null
+     * }
+     */
+    private function resolveOperationalSla(array $row, DateTimeImmutable $now): array
+    {
+        $rules = $this->operationalSlaRules();
+        $ruleKey = $this->resolveOperationalSlaRuleKey($row);
+        $rule = $rules[$ruleKey] ?? $rules['otros'];
+        $createdAt = $this->parseDate($row['created_at'] ?? null)
+            ?? $this->parseDate($row['fecha'] ?? null)
+            ?? $now;
+        $deadline = null;
+        $source = (string) ($rule['source'] ?? $ruleKey);
+        $label = (string) ($rule['label'] ?? 'Seguimiento operativo');
+        $action = (string) ($rule['action'] ?? 'Definir siguiente acción');
+        $derivacionStatus = null;
+        $derivacionDaysRemaining = null;
+
+        if ($ruleKey === 'publico') {
+            $derivacionDeadline = $this->parseDateEndOfDay($row['derivacion_fecha_vigencia'] ?? null);
+            if ($derivacionDeadline instanceof DateTimeImmutable) {
+                $deadline = $derivacionDeadline;
+                $source = 'derivacion';
+                $label = 'Vigencia derivación';
+                $action = 'Validar vigencia o renovar derivación';
+                $derivacionDaysRemaining = (int) floor(($deadline->getTimestamp() - $now->getTimestamp()) / 86400);
+            } else {
+                $deadline = $createdAt->add(new DateInterval('PT' . max(1, (int) ($rule['missing_derivacion_hours'] ?? 4)) . 'H'));
+                $source = 'derivacion_pendiente';
+                $label = 'Derivación pendiente';
+                $action = 'Scrapear o seleccionar derivación vigente';
+            }
+        } else {
+            $deadline = $createdAt->add(new DateInterval('PT' . max(1, (int) ($rule['hours'] ?? 48)) . 'H'));
+        }
+
+        [$status, $hoursRemaining] = $this->resolveSlaStatus(
+            $deadline,
+            $now,
+            max(1, (int) ($rule['warning_hours'] ?? 24)),
+            max(1, (int) ($rule['critical_hours'] ?? 6))
+        );
+
+        if ($source === 'derivacion') {
+            $derivacionStatus = $status === 'vencido'
+                ? 'vencida'
+                : (in_array($status, ['critico', 'advertencia'], true) ? 'por_vencer' : 'vigente');
+        }
+
+        return [
+            'deadline' => $deadline,
+            'hours_remaining' => $hoursRemaining,
+            'status' => $status,
+            'source' => $source,
+            'label' => $label,
+            'action' => $action,
+            'rule_key' => $ruleKey,
+            'derivacion_status' => $derivacionStatus,
+            'derivacion_days_remaining' => $derivacionDaysRemaining,
+        ];
+    }
+
+    /**
+     * @return array{0:string,1:float|null}
+     */
+    private function resolveSlaStatus(?DateTimeImmutable $deadline, DateTimeImmutable $now, int $warningHours, int $criticalHours): array
+    {
+        if (!$deadline instanceof DateTimeImmutable) {
+            return ['sin_fecha', null];
+        }
+
+        $hoursRemaining = ($deadline->getTimestamp() - $now->getTimestamp()) / 3600;
+        if ($hoursRemaining < 0) {
+            return ['vencido', $hoursRemaining];
+        }
+
+        if ($hoursRemaining <= $criticalHours) {
+            return ['critico', $hoursRemaining];
+        }
+
+        if ($hoursRemaining <= $warningHours) {
+            return ['advertencia', $hoursRemaining];
+        }
+
+        return ['en_rango', $hoursRemaining];
+    }
+
+    /**
+     * @param array<string,mixed> $row
+     */
+    private function resolveOperationalSlaRuleKey(array $row): string
+    {
+        $categoria = strtolower(trim((string) ($row['afiliacion_categoria_key'] ?? '')));
+        if (in_array($categoria, ['publico', 'privado', 'particular', 'fundacional'], true)) {
+            return $categoria;
+        }
+
+        $afiliacion = strtoupper(trim((string) ($row['afiliacion'] ?? '')));
+        if (preg_match('/\b(IESS|ISSFA|ISSPOL|MSP)\b/', $afiliacion)) {
+            return 'publico';
+        }
+        if (str_contains($afiliacion, 'PARTICULAR') || preg_match('/\bPAR\b/', $afiliacion)) {
+            return 'particular';
+        }
+        if (str_contains($afiliacion, 'FUNDACION') || str_contains($afiliacion, 'FUNDACIÓN')) {
+            return 'fundacional';
+        }
+
+        return 'privado';
+    }
+
+    /**
+     * @return array<string,array<string,mixed>>
+     */
+    private function operationalSlaRules(): array
+    {
+        $rules = self::DEFAULT_OPERATIONAL_SLA_RULES;
+        $options = $this->settingsOptions(['solicitudes_operational_sla_rules']);
+        $raw = trim((string) ($options['solicitudes_operational_sla_rules'] ?? ''));
+        if ($raw === '') {
+            return $rules;
+        }
+
+        $decoded = json_decode($raw, true);
+        if (!is_array($decoded)) {
+            return $rules;
+        }
+
+        foreach ($decoded as $key => $config) {
+            $key = strtolower(trim((string) $key));
+            if ($key === '' || !is_array($config)) {
+                continue;
+            }
+
+            $rules[$key] = array_merge($rules[$key] ?? [], $config);
+        }
+
+        return $rules;
     }
 
     /**
@@ -2693,6 +2911,21 @@ class SolicitudesReadParityService
         } catch (Throwable) {
             return null;
         }
+    }
+
+    private function parseDateEndOfDay(mixed $value): ?DateTimeImmutable
+    {
+        $date = $this->parseDate($value);
+        if (!$date instanceof DateTimeImmutable) {
+            return null;
+        }
+
+        $raw = trim((string) $value);
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$|^\d{2}-\d{2}-\d{4}$|^\d{2}\/\d{2}\/\d{4}$/', $raw) === 1) {
+            return $date->setTime(23, 59, 59);
+        }
+
+        return $date;
     }
 
     private function normalizeTurneroKey(string $state): string

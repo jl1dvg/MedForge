@@ -51,6 +51,30 @@ class SolicitudesReadController
         return response()->json($result)->header('X-Request-Id', $requestId);
     }
 
+    public function crmOptions(Request $request): JsonResponse
+    {
+        $requestId = $this->requestId($request);
+
+        try {
+            $result = [
+                'options' => $this->service->crmOptions(),
+            ];
+        } catch (\Throwable $e) {
+            Log::error('solicitudes.read.crm_options.error', [
+                'request_id' => $requestId,
+                'user_id' => $this->actorId(),
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'options' => ['crm' => []],
+                'error' => 'No se pudieron cargar las opciones CRM de solicitudes',
+            ], 500)->header('X-Request-Id', $requestId);
+        }
+
+        return response()->json($result)->header('X-Request-Id', $requestId);
+    }
+
     public function reportePdf(Request $request): \Symfony\Component\HttpFoundation\Response|JsonResponse
     {
         return $this->downloadReport($request, 'pdf');

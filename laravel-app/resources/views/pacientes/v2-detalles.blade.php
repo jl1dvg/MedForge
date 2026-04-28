@@ -65,6 +65,9 @@
     $solicitudPdfBaseUrl = '/views/reports/solicitud_quirurgica/solicitud_qx_pdf.php';
     $patientDetailAssetFiles = [
         public_path('js/pages/patient-detail.js'),
+        public_path('js/pages/solicitudes/crm-global.js'),
+        public_path('js/pages/shared/crmPanelFactory.js'),
+        public_path('css/pages/solicitudes-crm-panel.css'),
         public_path('js/pages/solicitudes/kanban/botonesModal.js'),
         public_path('js/pages/solicitudes/kanban/modalDetalles.js'),
         public_path('js/pages/solicitudes/kanban/modalDetalles/prefactura.js'),
@@ -528,6 +531,8 @@
             </div>
         </div>
     </div>
+
+    @include('solicitudes.partials.crm_panel')
 @endsection
 
 @push('scripts')
@@ -540,6 +545,12 @@
             series: @json(array_values($statsRows)),
             labels: @json(array_keys($statsRows)),
         };
+
+        window.__SOLICITUDES_CRM_PANEL__ = Object.assign({}, window.__SOLICITUDES_CRM_PANEL__ || {}, {
+            basePath: '/v2/solicitudes',
+            optionsEndpoint: '/v2/solicitudes/crm/options',
+            buttonSelector: '.btn-open-solicitud-crm'
+        });
     </script>
     @if (\App\Modules\Shared\Support\MedforgeAssets::hasViteBuild())
         @vite('resources/js/v2/patient-detail.js')
@@ -548,4 +559,5 @@
         <script src="/assets/vendor_components/horizontal-timeline/js/horizontal-timeline.js"></script>
         <script src="{{ $patientDetailScriptSrc }}"></script>
     @endif
+    <script type="module" src="/js/pages/solicitudes/crm-global.js?v={{ rawurlencode($patientDetailAssetVersion) }}"></script>
 @endpush

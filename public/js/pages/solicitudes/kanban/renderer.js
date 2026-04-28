@@ -518,6 +518,30 @@ function getAlertBadges(item = {}) {
         });
     }
 
+    if (item.alert_derivacion_vencida) {
+        alerts.push({
+            label: "Derivación vencida",
+            icon: "mdi-file-cancel-outline",
+            className: "badge bg-danger text-white",
+        });
+    }
+
+    if (item.alert_derivacion_por_vencer) {
+        alerts.push({
+            label: "Derivación por vencer",
+            icon: "mdi-file-clock-outline",
+            className: "badge bg-warning text-dark",
+        });
+    }
+
+    if (item.alert_derivacion_pendiente) {
+        alerts.push({
+            label: "Derivación pendiente",
+            icon: "mdi-file-search-outline",
+            className: "badge bg-warning text-dark",
+        });
+    }
+
     if (item.alert_tarea_vencida) {
         alerts.push({
             label: "Tarea vencida",
@@ -676,6 +700,9 @@ export function renderKanban(data, callbackEstadoActualizado) {
         const slaDeadlineLabel = formatIsoDate(solicitud.sla_deadline);
         const slaHoursLabel = formatHours(solicitud.sla_hours_remaining);
         const slaSubtitleParts = [];
+        if (solicitud.sla_label) {
+            slaSubtitleParts.push(solicitud.sla_label);
+        }
         if (slaDeadlineLabel) {
             slaSubtitleParts.push(`Vence ${slaDeadlineLabel}`);
         }

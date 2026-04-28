@@ -902,6 +902,30 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
+        if (item.alert_derivacion_vencida) {
+            alerts.push({
+                label: 'Derivación vencida',
+                variant: 'text-bg-danger',
+                icon: 'mdi-file-cancel-outline',
+            });
+        }
+
+        if (item.alert_derivacion_por_vencer) {
+            alerts.push({
+                label: 'Derivación por vencer',
+                variant: 'text-bg-warning text-dark',
+                icon: 'mdi-file-clock-outline',
+            });
+        }
+
+        if (item.alert_derivacion_pendiente) {
+            alerts.push({
+                label: 'Derivación pendiente',
+                variant: 'text-bg-warning text-dark',
+                icon: 'mdi-file-search-outline',
+            });
+        }
+
         if (item.alert_tarea_vencida) {
             alerts.push({
                 label: 'Tarea vencida',
@@ -1264,6 +1288,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const slaDeadlineLabel = formatIsoDate(item?.sla_deadline);
             const slaHoursLabel = formatHours(item?.sla_hours_remaining);
             const slaSummaryParts = [];
+            if (item?.sla_label) {
+                slaSummaryParts.push(item.sla_label);
+            }
             if (slaDeadlineLabel) {
                 slaSummaryParts.push(`Vence: ${slaDeadlineLabel}`);
             }
