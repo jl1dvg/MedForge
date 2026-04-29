@@ -267,6 +267,12 @@ class Paciente360ParityService
                       AND (
                         LOWER(TRIM(u.nombre)) = LOWER(TRIM(pp.doctor))
                         OR LOWER(TRIM(pp.doctor)) LIKE CONCAT('%', LOWER(TRIM(u.nombre)), '%')
+                        OR LOWER(TRIM(COALESCE(u.full_name, ''))) = LOWER(TRIM(pp.doctor))
+                        OR LOWER(TRIM(pp.doctor)) LIKE CONCAT('%', LOWER(TRIM(COALESCE(u.full_name, ''))), '%')
+                        OR LOWER(TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name, u.second_last_name))) = LOWER(TRIM(pp.doctor))
+                        OR LOWER(TRIM(pp.doctor)) LIKE CONCAT('%', LOWER(TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name, u.second_last_name))), '%')
+                        OR LOWER(TRIM(CONCAT_WS(' ', u.last_name, u.second_last_name, u.first_name, u.middle_name))) = LOWER(TRIM(pp.doctor))
+                        OR LOWER(TRIM(pp.doctor)) LIKE CONCAT('%', LOWER(TRIM(CONCAT_WS(' ', u.last_name, u.second_last_name, u.first_name, u.middle_name))), '%')
                         OR LOWER(TRIM(u.username)) = LOWER(TRIM(pp.doctor))
                         OR LOWER(TRIM(u.email)) = LOWER(TRIM(pp.doctor))
                       )
@@ -299,6 +305,7 @@ class Paciente360ParityService
                 return [
                     'form_id' => $formId,
                     'fecha' => (string)($row['fecha'] ?? ($row['fecha_visita'] ?? '')),
+                    'fecha_display' => $this->formatDateDisplay((string)($row['fecha'] ?? ($row['fecha_visita'] ?? ''))),
                     'hora' => (string)($row['hora'] ?? ($row['hora_llegada'] ?? '')),
                     'estado' => (string)($row['estado_agenda'] ?? ''),
                     'procedimiento' => (string)($row['procedimiento'] ?? ''),
@@ -970,6 +977,7 @@ class Paciente360ParityService
             $result[$formId][] = [
                 'estado' => (string)($row['estado'] ?? ''),
                 'fecha_hora_cambio' => (string)($row['fecha_hora_cambio'] ?? ''),
+                'fecha_display' => $this->formatDateDisplay((string)($row['fecha_hora_cambio'] ?? '')),
             ];
         }
 
@@ -1007,5 +1015,20 @@ class Paciente360ParityService
         }
 
         return '/' . ltrim($path, '/');
+    }
+
+    private function formatDateDisplay(string $value): string
+    {
+        $value = trim($value);
+        if ($value === '' || $value === '0000-00-00' || $value === '0000-00-00 00:00:00') {
+            return '—';
+        }
+
+        $timestamp = strtotime($value);
+        if ($timestamp === false) {
+            return $value;
+        }
+
+        return date('j/n/Y', $timestamp);
     }
 }

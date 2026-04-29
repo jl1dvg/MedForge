@@ -259,10 +259,10 @@
 
         var color = 'gray';
         if (estado && estado.toLowerCase() === 'recibido' && fechaStr) {
-            var fechaSolicitud = new Date(fechaStr);
+            var fechaSolicitudTs = parseDateTimestamp(fechaStr);
             var hoy = new Date();
-            if (!isNaN(fechaSolicitud)) {
-                var diffDias = Math.floor((hoy - fechaSolicitud) / (1000 * 60 * 60 * 24));
+            if (fechaSolicitudTs !== null) {
+                var diffDias = Math.floor((hoy.getTime() - fechaSolicitudTs) / (1000 * 60 * 60 * 24));
                 if (diffDias > 14) {
                     color = 'red';
                 } else if (diffDias > 7) {
@@ -276,13 +276,48 @@
         semaforo.style.backgroundColor = color;
     }
 
+    function parseDateValue(fecha) {
+        if (!fecha) {
+            return null;
+        }
+
+        var value = String(fecha).trim();
+        if (value === '' || value === '0000-00-00' || value === '0000-00-00 00:00:00') {
+            return null;
+        }
+
+        var isoDateTime = value.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/);
+        if (isoDateTime) {
+            var isoYear = parseInt(isoDateTime[1], 10);
+            var isoMonth = parseInt(isoDateTime[2], 10) - 1;
+            var isoDay = parseInt(isoDateTime[3], 10);
+            var isoHour = parseInt(isoDateTime[4] || '0', 10);
+            var isoMinute = parseInt(isoDateTime[5] || '0', 10);
+            var isoSecond = parseInt(isoDateTime[6] || '0', 10);
+            var isoLocalDate = new Date(isoYear, isoMonth, isoDay, isoHour, isoMinute, isoSecond);
+            return isNaN(isoLocalDate.getTime()) ? null : isoLocalDate;
+        }
+
+        var uiDate = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+        if (uiDate) {
+            var uiDay = parseInt(uiDate[1], 10);
+            var uiMonth = parseInt(uiDate[2], 10) - 1;
+            var uiYear = parseInt(uiDate[3], 10);
+            var uiLocalDate = new Date(uiYear, uiMonth, uiDay);
+            return isNaN(uiLocalDate.getTime()) ? null : uiLocalDate;
+        }
+
+        var parsed = new Date(value);
+        return isNaN(parsed.getTime()) ? null : parsed;
+    }
+
     function formatFecha(fecha) {
         if (!fecha) {
             return '—';
         }
 
-        var date = new Date(fecha);
-        if (isNaN(date)) {
+        var date = parseDateValue(fecha);
+        if (!(date instanceof Date) || isNaN(date.getTime())) {
             return String(fecha);
         }
 
@@ -299,21 +334,12 @@
             return null;
         }
 
-        var parsed = Date.parse(value);
-        if (!isNaN(parsed)) {
-            return parsed;
-        }
-
-        var parts = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-        if (!parts) {
+        var parsed = parseDateValue(value);
+        if (!(parsed instanceof Date) || isNaN(parsed.getTime())) {
             return null;
         }
 
-        var day = parseInt(parts[1], 10);
-        var month = parseInt(parts[2], 10) - 1;
-        var year = parseInt(parts[3], 10);
-        var localDate = new Date(year, month, day);
-        return isNaN(localDate.getTime()) ? null : localDate.getTime();
+        return parsed.getTime();
     }
 
     function formatRelativeDays(fecha) {
@@ -333,6 +359,20 @@
         return 'Hace ' + diff + ' días';
     }
 
+    function summarizeAgendaHistory(items) {
+        if (!Array.isArray(items) || items.length === 0) {
+            return '—';
+        }
+
+        var lastItem = items[items.length - 1] || {};
+        var lastEstado = lastItem && lastItem.estado ? String(lastItem.estado).trim() : '—';
+        var lastFecha = lastItem && lastItem.fecha_display
+            ? String(lastItem.fecha_display).trim()
+            : (lastItem && lastItem.fecha_hora_cambio ? formatFecha(lastItem.fecha_hora_cambio) : '—');
+
+        return items.length + ' cambios | Último: ' + lastEstado + ' (' + lastFecha + ')';
+    }
+
     function formatValue(value, key) {
         if (value === null || value === undefined) {
             return '—';
@@ -340,15 +380,7 @@
 
         if (Array.isArray(value)) {
             if (key === 'historial_estados') {
-                if (value.length === 0) {
-                    return '—';
-                }
-
-                return value.map(function (item) {
-                    var estado = item && item.estado ? item.estado : '—';
-                    var fechaCambio = item && item.fecha_hora_cambio ? formatFecha(item.fecha_hora_cambio) : '—';
-                    return estado + ' (' + fechaCambio + ')';
-                }).join(' | ');
+                return summarizeAgendaHistory(value);
             }
 
             return value.join(', ');
@@ -537,6 +569,36 @@
         };
     }
 
+    function escapeAttributeSelectorValue(value) {
+        var normalized = String(value || '');
+        if (typeof CSS !== 'undefined' && CSS && typeof CSS.escape === 'function') {
+            return CSS.escape(normalized);
+        }
+
+        return normalized.replace(/["\\]/g, '\\$&');
+    }
+
+    function openTimelineEventByFormId(formId) {
+        var normalizedFormId = String(formId || '').trim();
+        if (normalizedFormId === '') {
+            return false;
+        }
+
+        var trigger = document.querySelector('.cd-horizontal-timeline .events a[data-form-id="' + escapeAttributeSelectorValue(normalizedFormId) + '"]');
+        if (!trigger) {
+            return false;
+        }
+
+        trigger.click();
+
+        var timelineSection = trigger.closest('.cd-horizontal-timeline');
+        if (timelineSection && typeof timelineSection.scrollIntoView === 'function') {
+            timelineSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+
+        return true;
+    }
+
     function renderAgendaCards(panel, rows, totalRows) {
         if (!panel) {
             return;
@@ -550,9 +612,8 @@
             var estado = formatValue(row.estado, 'estado');
             var doctor = formatValue(row.doctor, 'doctor');
             var sede = formatValue(row.sede, 'sede');
-            var fecha = formatValue(row.fecha, 'fecha');
+            var fecha = row && row.fecha_display ? String(row.fecha_display).trim() : formatValue(row.fecha, 'fecha');
             var hora = formatAgendaTime(row.hora);
-            var historial = formatValue(row.historial_estados, 'historial_estados');
             var formId = formatValue(row.form_id, 'form_id');
             var presentation = agendaStatusPresentation(estado);
             var theme = agendaProcedureTheme(procedimientoRaw, presentation);
@@ -562,18 +623,17 @@
             var accentStyle = theme.accentStyle !== '' ? ' style="' + escapeHtml(theme.accentStyle) + '"' : '';
             var rowBorderClass = index < rows.length - 1 ? ' bb-gray-1' : '';
 
-            return '<div class="py-25 d-flex justify-content-between align-items-center px-25' + rowBorderClass + '">'
-                + '<div class="w-p100 rounded10 justify-content-between align-items-center d-flex">'
-                + '<div class="d-flex justify-content-between align-items-center">'
+            return '<div class="py-10 d-flex justify-content-between align-items-center px-10 js-agenda-timeline-trigger" data-action="open-timeline-event" data-form-id="' + escapeHtml(formId) + '"' + rowBorderClass + '" style="cursor:pointer;">'
+                + '<div class="w-p100 rounded10 justify-content-between align-items-center d-flex" style="min-width:0;">'
+                + '<div class="d-flex justify-content-between align-items-center flex-grow-1" style="min-width:0;">'
                 + '<img src="' + escapeHtml(avatarSrc) + '" class="me-20 avatar bg-light rounded-circle" alt="Doctor" onerror="this.onerror=null;this.src=\'/images/avatar/avatar-13.png\';">'
-                + '<div' + accentStyle + '>'
-                + '<p class="m-0 fs-16 fw-600 ' + escapeHtml(titleClass) + '">' + escapeHtml(procedimiento) + '</p>'
-                + '<p class="m-0 fs-12 fw-600 text-fade">Doctor: ' + escapeHtml(doctor) + ' | Sede: ' + escapeHtml(sede) + '</p>'
-                + '<p class="m-0 fs-12 fw-600 text-fade">Fecha: ' + escapeHtml(fecha) + ' | Formulario: ' + escapeHtml(formId) + '</p>'
-                + '<p class="m-0 fs-11 fw-500 text-fade text-truncate" style="max-width: 620px;">Historial: ' + escapeHtml(historial) + '</p>'
+                + '<div class="pe-10 flex-grow-1" style="min-width:0;"' + accentStyle + '>'
+                + '<p class="m-0 fs-16 fw-600 text-truncate ' + escapeHtml(titleClass) + '" style="max-width: 520px;" title="' + escapeHtml(procedimiento) + '">' + escapeHtml(procedimiento) + '</p>'
+                + '<p class="m-0 fs-12 fw-600 text-fade"><i class="mdi mdi-account-outline me-5" aria-hidden="true"></i>' + escapeHtml(doctor) + ' <span class="mx-5">|</span> <i class="mdi mdi-hospital-building me-5" aria-hidden="true"></i>' + escapeHtml(sede) + '</p>'
+                + '<p class="m-0 fs-12 fw-600 text-fade"><i class="mdi mdi-calendar-month-outline me-5" aria-hidden="true"></i>' + escapeHtml(fecha) + ' <span class="mx-5">|</span> <i class="mdi mdi-file-document-outline me-5" aria-hidden="true"></i>' + escapeHtml(formId) + '</p>'
                 + '</div>'
                 + '</div>'
-                + '<div class="text-end ms-20">'
+                + '<div class="text-end ms-20 flex-shrink-0">'
                 + '<p class="mb-0 fs-16"><i class="mdi ' + escapeHtml(presentation.icon) + ' ' + escapeHtml(iconClass) + ' fs-18 me-5" aria-hidden="true"></i> ' + escapeHtml(hora) + '</p>'
                 + '<p class="m-0 fs-12 fw-600 ' + escapeHtml(textClass) + '">' + escapeHtml(estado) + '</p>'
                 + '</div>'
@@ -1416,25 +1476,25 @@
         items.forEach(function (item) {
             var dateElement = item.querySelector('.text-fade');
             var dateText = dateElement ? dateElement.textContent.trim() : '';
-            var itemDate = dateText ? new Date(dateText) : null;
+            var itemTs = parseDateTimestamp(dateText);
             var showItem = true;
 
-            if (itemDate instanceof Date && !isNaN(itemDate)) {
+            if (itemTs !== null) {
                 switch (filter) {
                     case 'ultimo_mes':
                         var lastMonth = new Date(now);
                         lastMonth.setMonth(now.getMonth() - 1);
-                        showItem = itemDate >= lastMonth;
+                        showItem = itemTs >= lastMonth.getTime();
                         break;
                     case 'ultimos_3_meses':
                         var last3Months = new Date(now);
                         last3Months.setMonth(now.getMonth() - 3);
-                        showItem = itemDate >= last3Months;
+                        showItem = itemTs >= last3Months.getTime();
                         break;
                     case 'ultimos_6_meses':
                         var last6Months = new Date(now);
                         last6Months.setMonth(now.getMonth() - 6);
-                        showItem = itemDate >= last6Months;
+                        showItem = itemTs >= last6Months.getTime();
                         break;
                     default:
                         showItem = true;
@@ -1522,6 +1582,14 @@
             if (prefacturaTrigger) {
                 event.preventDefault();
                 openSolicitudPrefactura(prefacturaTrigger);
+                return;
+            }
+
+            var timelineTrigger = event.target.closest('[data-action="open-timeline-event"]');
+            if (timelineTrigger) {
+                if (openTimelineEventByFormId(timelineTrigger.getAttribute('data-form-id') || '')) {
+                    event.preventDefault();
+                }
                 return;
             }
 

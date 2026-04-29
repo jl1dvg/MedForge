@@ -270,6 +270,7 @@
                                                         <a href="#0"
                                                            style="display: inline-block; padding: 6px 10px;"
                                                            data-date="{{ $dataDate }}"
+                                                           data-form-id="{{ (string) ($row['form_id'] ?? '') }}"
                                                            class="{{ $index === 0 ? 'selected' : '' }}">
                                                             {{ $fechaCorta }}
                                                         </a>
@@ -306,7 +307,7 @@
                                                 $contenido = trim((string) ($row['contenido'] ?? ''));
                                                 $hasStructuredContent = $motivoConsulta !== '' || $enfermedadActual !== '' || $examenFisico !== '' || $planConsulta !== '';
                                             @endphp
-                                            <li data-date="{{ $dataDate }}" class="{{ $index === 0 ? 'selected' : '' }}">
+                                            <li data-date="{{ $dataDate }}" data-form-id="{{ (string) ($row['form_id'] ?? '') }}" class="{{ $index === 0 ? 'selected' : '' }}">
                                                 <h2>{{ $nombreProcedimiento }}</h2>
                                                 <small>{{ $fechaLarga }}</small>
                                                 <hr class="my-30">
