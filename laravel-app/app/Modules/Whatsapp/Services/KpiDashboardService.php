@@ -189,6 +189,7 @@ class KpiDashboardService
             'attention_rate' => 'Tasa de atención',
             'loss_rate' => 'Tasa de pérdida',
             'avg_first_human_response_minutes' => '1ra respuesta humana (min)',
+            'median_first_human_response_minutes' => '1ra respuesta humana mediana (min)',
             'conversations_abandoned' => 'Conversaciones abandonadas',
             'conversations_resolved' => 'Conversaciones resueltas',
             'live_queue_total' => 'Cola activa',
@@ -288,7 +289,7 @@ class KpiDashboardService
                 if ($waNumber !== '') {
                     $peopleAttendedSet[$waNumber] = true;
                 }
-                if ($firstInbound !== null) {
+                if ($firstInbound !== null && $firstReply->greaterThanOrEqualTo($firstInbound)) {
                     $responseSeconds[] = $firstInbound->diffInSeconds($firstReply);
                 }
                 if ($lastInbound !== null && $lastInbound->lessThanOrEqualTo($threshold24h)) {
@@ -309,6 +310,7 @@ class KpiDashboardService
         $peopleAttended = count($peopleAttendedSet);
         $peopleLost = count($peopleLostSet);
         $avgSeconds = $responseSeconds !== [] ? array_sum($responseSeconds) / count($responseSeconds) : null;
+        $medianSeconds = $this->median($responseSeconds);
 
         $intervalPeak = $this->peakOpenConversations($fromSql, $toSql, $roleId, $agentId);
 
@@ -326,6 +328,8 @@ class KpiDashboardService
             'conversations_resolved' => $resolved,
             'avg_first_human_response_seconds' => $avgSeconds !== null ? round($avgSeconds, 2) : null,
             'avg_first_human_response_minutes' => $avgSeconds !== null ? round($avgSeconds / 60, 2) : null,
+            'median_first_human_response_seconds' => $medianSeconds !== null ? round($medianSeconds, 2) : null,
+            'median_first_human_response_minutes' => $medianSeconds !== null ? round($medianSeconds / 60, 2) : null,
             'peak_open_conversations' => $intervalPeak['count'],
             'peak_open_at' => $intervalPeak['at'],
         ];
@@ -1212,5 +1216,25 @@ class KpiDashboardService
         $sql .= ' GROUP BY inbound.conversation_id, inbound.first_inbound_at, h.assigned_agent_id';
 
         return ['sql' => $sql, 'params' => $params];
+    }
+
+    /**
+     * @param array<int, int|float> $values
+     */
+    private function median(array $values): ?float
+    {
+        if ($values === []) {
+            return null;
+        }
+
+        sort($values, SORT_NUMERIC);
+        $count = count($values);
+        $middle = intdiv($count, 2);
+
+        if ($count % 2 === 1) {
+            return (float) $values[$middle];
+        }
+
+        return ((float) $values[$middle - 1] + (float) $values[$middle]) / 2;
     }
 }

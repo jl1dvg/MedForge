@@ -30,8 +30,12 @@ class SettingsOptionResolver
         }
 
         $table = $this->resolveTable();
+        if ($table === null) {
+            return [];
+        }
+
         $columns = $this->resolveColumns($table);
-        if ($table === null || $columns === null) {
+        if ($columns === null) {
             return [];
         }
 

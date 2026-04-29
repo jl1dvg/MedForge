@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Http\Middleware\LegacySessionBridge;
+use App\Http\Middleware\RequireAppPermission;
 use App\Http\Middleware\RequireLegacyPermission;
 use App\Http\Middleware\RequireLegacySession;
 use App\Models\User;
@@ -178,6 +179,7 @@ class WhatsappKpiDashboardTest extends TestCase
     {
         $response = $this
             ->withoutMiddleware([
+                RequireAppPermission::class,
                 LegacySessionBridge::class,
                 RequireLegacySession::class,
                 RequireLegacyPermission::class,
@@ -190,6 +192,9 @@ class WhatsappKpiDashboardTest extends TestCase
             ->assertJsonPath('data.summary.people_inbound', 1)
             ->assertJsonPath('data.summary.messages_inbound', 1)
             ->assertJsonPath('data.summary.messages_outbound', 1)
+            ->assertJsonPath('data.summary.avg_first_human_response_minutes', 3)
+            ->assertJsonPath('data.summary.median_first_human_response_minutes', 3)
+            ->assertJsonPath('data.summary.sla_target_minutes', 15)
             ->assertJsonPath('data.summary.handoff_transfers', 1);
     }
 
@@ -197,6 +202,7 @@ class WhatsappKpiDashboardTest extends TestCase
     {
         $response = $this
             ->withoutMiddleware([
+                RequireAppPermission::class,
                 LegacySessionBridge::class,
                 RequireLegacySession::class,
                 RequireLegacyPermission::class,
@@ -215,6 +221,7 @@ class WhatsappKpiDashboardTest extends TestCase
     {
         $response = $this
             ->withoutMiddleware([
+                RequireAppPermission::class,
                 LegacySessionBridge::class,
                 RequireLegacySession::class,
                 RequireLegacyPermission::class,
@@ -233,6 +240,7 @@ class WhatsappKpiDashboardTest extends TestCase
     {
         $response = $this
             ->withoutMiddleware([
+                RequireAppPermission::class,
                 LegacySessionBridge::class,
                 RequireLegacySession::class,
                 RequireLegacyPermission::class,
@@ -253,6 +261,7 @@ class WhatsappKpiDashboardTest extends TestCase
     {
         $response = $this
             ->withoutMiddleware([
+                RequireAppPermission::class,
                 LegacySessionBridge::class,
                 RequireLegacySession::class,
                 RequireLegacyPermission::class,
@@ -263,6 +272,8 @@ class WhatsappKpiDashboardTest extends TestCase
             ->assertOk()
             ->assertSee('KPI y reportes')
             ->assertSee('Personas que escribieron')
+            ->assertSee('Promedio · mediana 3 min')
+            ->assertSee('SLA asignación (objetivo: 15 min)')
             ->assertSee('Atención humana por agente')
             ->assertSee('Exportar CSV');
     }

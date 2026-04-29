@@ -292,18 +292,21 @@
         <div class="col-12">
             <div class="wa-kpi-grid">
                 @php
+                    $slaTargetMinutes = (int) ($summary['sla_target_minutes'] ?? ($filters['sla_target_minutes'] ?? 15));
+                    $firstHumanAvg = isset($summary['avg_first_human_response_minutes']) ? $summary['avg_first_human_response_minutes'] . ' min' : '—';
+                    $firstHumanMedian = isset($summary['median_first_human_response_minutes']) ? $summary['median_first_human_response_minutes'] . ' min' : '—';
                     $cards = [
                         ['label' => 'Personas que escribieron', 'value' => $summary['people_inbound'] ?? 0, 'sub' => 'Números únicos inbound'],
                         ['label' => 'Conversaciones atendidas', 'value' => $summary['conversations_attended_human'] ?? 0, 'sub' => ($summary['people_attended_human'] ?? 0) . ' personas atendidas'],
                         ['label' => 'Conversaciones perdidas', 'value' => $summary['conversations_lost'] ?? 0, 'sub' => ($summary['people_lost'] ?? 0) . ' personas · ' . ($summary['loss_rate'] ?? 0) . '%'],
                         ['label' => 'Tasa de atención', 'value' => ($summary['attention_rate'] ?? 0) . '%', 'sub' => 'Atendidas / personas inbound'],
-                        ['label' => '1ra respuesta humana', 'value' => isset($summary['avg_first_human_response_minutes']) ? $summary['avg_first_human_response_minutes'] . ' min' : '—', 'sub' => 'Promedio'],
+                        ['label' => '1ra respuesta humana', 'value' => $firstHumanAvg, 'sub' => 'Promedio · mediana ' . $firstHumanMedian],
                         ['label' => 'Conversaciones abandonadas', 'value' => $summary['conversations_abandoned'] ?? 0, 'sub' => ($summary['abandonment_rate'] ?? 0) . '%'],
                         ['label' => 'Conversaciones resueltas', 'value' => $summary['conversations_resolved'] ?? 0, 'sub' => 'Sin actividad inbound 24h'],
                         ['label' => 'Pico simultáneo', 'value' => $summary['peak_open_conversations'] ?? 0, 'sub' => $summary['peak_open_at'] ?? 'Sin dato'],
                         ['label' => 'Mensajes inbound', 'value' => $summary['messages_inbound'] ?? 0, 'sub' => 'Recibidos'],
                         ['label' => 'Mensajes outbound', 'value' => $summary['messages_outbound'] ?? 0, 'sub' => 'Enviados'],
-                        ['label' => 'SLA asignación', 'value' => ($summary['sla_assignments_rate'] ?? 0) . '%', 'sub' => ($summary['sla_assignments_in_target'] ?? 0) . '/' . ($summary['sla_assignments_total'] ?? 0) . ' en meta'],
+                        ['label' => 'SLA asignación (objetivo: ' . $slaTargetMinutes . ' min)', 'value' => ($summary['sla_assignments_rate'] ?? 0) . '%', 'sub' => ($summary['sla_assignments_in_target'] ?? 0) . '/' . ($summary['sla_assignments_total'] ?? 0) . ' en meta'],
                         ['label' => 'Cola activa', 'value' => $summary['live_queue_total'] ?? 0, 'sub' => 'Cola ' . ($summary['live_queue_queued'] ?? 0) . ' · Asignadas ' . ($summary['live_queue_assigned'] ?? 0)],
                         ['label' => 'Ventana 24h abierta', 'value' => $summary['queue_window_open'] ?? 0, 'sub' => ($summary['queue_window_open_rate'] ?? 0) . '% del total'],
                         ['label' => 'Requiere plantilla', 'value' => $summary['queue_needs_template'] ?? 0, 'sub' => ($summary['queue_needs_template_rate'] ?? 0) . '% del total'],
