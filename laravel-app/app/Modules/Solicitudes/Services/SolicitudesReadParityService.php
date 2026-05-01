@@ -314,6 +314,7 @@ class SolicitudesReadParityService
             'lead' => null,
             'crm_resumen' => null,
             'project' => null,
+            'propuestas' => $this->queryCrmPropuestas($detalle),
             'bloqueos_agenda' => $this->queryBloqueosAgenda($solicitudId),
             'cobertura_mails' => $this->queryCoberturaMails($solicitudId),
             'whatsapp_context' => $this->queryWhatsappContext($detalle),
@@ -2321,6 +2322,76 @@ class SolicitudesReadParityService
         }
 
         return array_map(static fn(object $row): array => (array) $row, $rows);
+    }
+
+    /**
+     * @param array<string,mixed> $detalle
+     * @return array<int,array<string,mixed>>
+     */
+    private function queryCrmPropuestas(array $detalle): array
+    {
+        $leadId = (int) ($detalle['crm_lead_id'] ?? 0);
+        if ($leadId <= 0 || !$this->tableExists('crm_proposals')) {
+            return [];
+        }
+
+        $itemsJoin = $this->tableExists('crm_proposal_items')
+            ? 'LEFT JOIN (
+                    SELECT proposal_id, COUNT(*) AS items_count
+                    FROM crm_proposal_items
+                    GROUP BY proposal_id
+                ) items ON items.proposal_id = p.id'
+            : 'LEFT JOIN (SELECT NULL AS proposal_id, 0 AS items_count) items ON 1 = 0';
+
+        try {
+            $rows = DB::select(
+                "SELECT
+                    p.id,
+                    " . ($this->tableHasColumn('crm_proposals', 'public_hash') ? 'p.public_hash,' : "NULL AS public_hash,") . "
+                    p.proposal_number,
+                    p.lead_id,
+                    p.customer_id,
+                    p.title,
+                    p.status,
+                    p.currency,
+                    p.subtotal,
+                    p.discount_total,
+                    p.tax_rate,
+                    p.tax_total,
+                    p.total,
+                    p.valid_until,
+                    p.sent_at,
+                    p.accepted_at,
+                    p.rejected_at,
+                    p.created_at,
+                    p.updated_at,
+                    COALESCE(items.items_count, 0) AS items_count
+                 FROM crm_proposals p
+                 {$itemsJoin}
+                 WHERE p.lead_id = ?
+                 ORDER BY COALESCE(p.updated_at, p.created_at) DESC, p.id DESC
+                 LIMIT 10",
+                [$leadId]
+            );
+        } catch (Throwable) {
+            return [];
+        }
+
+        return array_map(static function (object $row): array {
+            $item = (array) $row;
+            $item['items_count'] = (int) ($item['items_count'] ?? 0);
+            $item['subtotal'] = (float) ($item['subtotal'] ?? 0);
+            $item['discount_total'] = (float) ($item['discount_total'] ?? 0);
+            $item['tax_total'] = (float) ($item['tax_total'] ?? 0);
+            $item['total'] = (float) ($item['total'] ?? 0);
+            $item['url'] = '/crm?proposal=' . urlencode((string) ($item['id'] ?? ''));
+            $item['pdf_url'] = '/v2/crm/proposals/' . urlencode((string) ($item['id'] ?? '')) . '/pdf';
+            $item['public_url'] = !empty($item['public_hash'])
+                ? '/proposal/' . urlencode((string) ($item['id'] ?? '')) . '/' . urlencode((string) $item['public_hash'])
+                : null;
+
+            return $item;
+        }, $rows);
     }
 
     /**

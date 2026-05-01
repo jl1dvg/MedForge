@@ -392,6 +392,86 @@ function bindForms() {
         });
     }
 
+    const propuestaForm = document.getElementById('crmPropuestaForm');
+    if (propuestaForm) {
+        propuestaForm.addEventListener('submit', async event => {
+            event.preventDefault();
+            if (!currentEntityId) {
+                notify(selectionMessage('crear propuestas'), false);
+                return;
+            }
+
+            const payload = collectPropuestaPayload(propuestaForm);
+            if (!payload.lead_id) {
+                notify('Vincula o crea un lead CRM antes de crear la propuesta', false);
+                return;
+            }
+            if (!payload.title) {
+                notify('La propuesta necesita un título', false);
+                return;
+            }
+            if (!payload.items.length) {
+                notify('Agrega al menos un ítem a la propuesta', false);
+                return;
+            }
+
+            const basePath = resolveBasePath();
+            const ok = await submitJson(
+                resolveWritePath(`${basePath}/${currentEntityId}/crm/propuestas`),
+                payload,
+                'Propuesta CRM creada'
+            );
+            if (ok) {
+                resetPropuestaForm(propuestaForm);
+            }
+        });
+    }
+
+    const addProposalItemButton = document.getElementById('crmPropuestaAgregarItem');
+    if (addProposalItemButton) {
+        addProposalItemButton.addEventListener('click', () => addPropuestaItemRow());
+    }
+
+    const searchCodeButton = document.getElementById('crmPropuestaBuscarCodigo');
+    if (searchCodeButton) {
+        searchCodeButton.addEventListener('click', () => togglePropuestaSearchPanel('code'));
+    }
+
+    const searchPackageButton = document.getElementById('crmPropuestaBuscarPaquete');
+    if (searchPackageButton) {
+        searchPackageButton.addEventListener('click', () => togglePropuestaSearchPanel('package'));
+    }
+
+    const codeSearchSubmit = document.getElementById('crmPropuestaCodeSearchBtn');
+    if (codeSearchSubmit) {
+        codeSearchSubmit.addEventListener('click', () => searchPropuestaCodes());
+    }
+
+    const packageSearchSubmit = document.getElementById('crmPropuestaPackageSearchBtn');
+    if (packageSearchSubmit) {
+        packageSearchSubmit.addEventListener('click', () => searchPropuestaPackages());
+    }
+
+    const codeSearchInput = document.getElementById('crmPropuestaCodeSearch');
+    if (codeSearchInput) {
+        codeSearchInput.addEventListener('keyup', event => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                searchPropuestaCodes();
+            }
+        });
+    }
+
+    const packageSearchInput = document.getElementById('crmPropuestaPackageSearch');
+    if (packageSearchInput) {
+        packageSearchInput.addEventListener('keyup', event => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                searchPropuestaPackages();
+            }
+        });
+    }
+
     const adjuntoForm = document.getElementById('crmAdjuntoForm');
     if (adjuntoForm) {
         adjuntoForm.addEventListener('submit', async event => {
@@ -589,6 +669,265 @@ function collectTareaPayload(form) {
     };
 }
 
+function collectPropuestaPayload(form) {
+    return {
+        lead_id: document.getElementById('crmLeadId')?.value || currentDetalle?.crm_lead_id || null,
+        title: form.querySelector('#crmPropuestaTitulo')?.value?.trim() ?? '',
+        valid_until: form.querySelector('#crmPropuestaVigencia')?.value ?? '',
+        tax_rate: Number(form.querySelector('#crmPropuestaImpuesto')?.value || 0),
+        notes: form.querySelector('#crmPropuestaNotas')?.value?.trim() ?? '',
+        items: collectPropuestaItems(form),
+    };
+}
+
+function collectPropuestaItems(form) {
+    return Array.from(form.querySelectorAll('.crm-proposal-item'))
+        .map(row => ({
+            description: row.querySelector('.crm-proposal-item-description')?.value?.trim() ?? '',
+            quantity: Number(row.querySelector('.crm-proposal-item-quantity')?.value || 1),
+            unit_price: Number(row.querySelector('.crm-proposal-item-price')?.value || 0),
+            discount_percent: Number(row.querySelector('.crm-proposal-item-discount')?.value || 0),
+            code_id: row.dataset.codeId || null,
+            package_id: row.dataset.packageId || null,
+        }))
+        .filter(item => item.description !== '');
+}
+
+function resetPropuestaForm(form) {
+    form.reset();
+    const taxInput = form.querySelector('#crmPropuestaImpuesto');
+    if (taxInput) {
+        taxInput.value = '0';
+    }
+    const items = form.querySelector('#crmPropuestaItems');
+    if (items) {
+        items.innerHTML = '';
+    }
+    addPropuestaItemRow();
+    renderPropuestaControls();
+}
+
+function addPropuestaItemRow(item = {}) {
+    const container = document.getElementById('crmPropuestaItems');
+    if (!container) {
+        return;
+    }
+
+    const row = document.createElement('div');
+    row.className = 'crm-proposal-item row g-2 align-items-end mb-2';
+    if (item.code_id) {
+        row.dataset.codeId = String(item.code_id);
+    }
+    if (item.package_id) {
+        row.dataset.packageId = String(item.package_id);
+    }
+    row.innerHTML = `
+        <div class="col-md-5">
+            <input type="text" class="form-control crm-proposal-item-description" placeholder="Descripción del ítem" value="${escapeHtml(item.description || '')}">
+        </div>
+        <div class="col-md-2">
+            <input type="number" class="form-control crm-proposal-item-quantity" min="0.01" step="0.01" value="${escapeHtml(item.quantity || '1')}" aria-label="Cantidad">
+        </div>
+        <div class="col-md-2">
+            <input type="number" class="form-control crm-proposal-item-price" min="0" step="0.01" value="${escapeHtml(item.unit_price || '')}" placeholder="Precio" aria-label="Precio unitario">
+        </div>
+        <div class="col-md-2">
+            <input type="number" class="form-control crm-proposal-item-discount" min="0" max="100" step="0.01" value="${escapeHtml(item.discount_percent || '')}" placeholder="% desc." aria-label="Descuento">
+        </div>
+        <div class="col-md-1 d-grid">
+            <button type="button" class="btn btn-outline-danger crm-proposal-item-remove" title="Quitar ítem" aria-label="Quitar ítem">
+                <i class="mdi mdi-close"></i>
+            </button>
+        </div>
+    `;
+
+    row.querySelector('.crm-proposal-item-remove')?.addEventListener('click', () => {
+        row.remove();
+        if (container.querySelectorAll('.crm-proposal-item').length === 0) {
+            addPropuestaItemRow();
+        }
+    });
+
+    container.appendChild(row);
+}
+
+function togglePropuestaSearchPanel(type) {
+    const codePanel = document.getElementById('crmPropuestaCodePanel');
+    const packagePanel = document.getElementById('crmPropuestaPackagePanel');
+    const target = type === 'package' ? packagePanel : codePanel;
+    const other = type === 'package' ? codePanel : packagePanel;
+
+    other?.classList.add('d-none');
+    target?.classList.toggle('d-none');
+
+    if (type === 'package' && target && !target.classList.contains('d-none')) {
+        searchPropuestaPackages(true);
+        document.getElementById('crmPropuestaPackageSearch')?.focus();
+    }
+    if (type === 'code' && target && !target.classList.contains('d-none')) {
+        document.getElementById('crmPropuestaCodeSearch')?.focus();
+    }
+}
+
+async function searchPropuestaCodes() {
+    const input = document.getElementById('crmPropuestaCodeSearch');
+    const results = document.getElementById('crmPropuestaCodeResults');
+    const query = input?.value?.trim() ?? '';
+    if (!results) {
+        return;
+    }
+    if (query === '') {
+        results.innerHTML = '<div class="crm-list-empty">Escribe un código o descripción para buscar</div>';
+        return;
+    }
+
+    results.innerHTML = '<div class="crm-list-empty">Buscando códigos...</div>';
+    try {
+        const basePath = resolveBasePath();
+        const response = await fetch(resolveReadPath(`${basePath}/crm/catalog/codes?q=${encodeURIComponent(query)}&limit=20`), {
+            credentials: 'same-origin',
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || payload?.success === false) {
+            throw new Error(payload?.error || 'No se pudieron buscar códigos');
+        }
+        renderPropuestaCodeResults(Array.isArray(payload.data) ? payload.data : []);
+    } catch (error) {
+        results.innerHTML = `<div class="crm-list-empty">${escapeHtml(error?.message || 'No se pudieron buscar códigos')}</div>`;
+    }
+}
+
+async function searchPropuestaPackages(loadDefault = false) {
+    const input = document.getElementById('crmPropuestaPackageSearch');
+    const results = document.getElementById('crmPropuestaPackageResults');
+    const query = input?.value?.trim() ?? '';
+    if (!results) {
+        return;
+    }
+    if (!loadDefault && query === '') {
+        results.innerHTML = '<div class="crm-list-empty">Escribe el nombre del paquete o presiona buscar para ver activos</div>';
+        return;
+    }
+
+    results.innerHTML = '<div class="crm-list-empty">Buscando paquetes...</div>';
+    try {
+        const basePath = resolveBasePath();
+        const response = await fetch(resolveReadPath(`${basePath}/crm/catalog/packages?q=${encodeURIComponent(query)}&limit=20`), {
+            credentials: 'same-origin',
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || payload?.success === false) {
+            throw new Error(payload?.error || 'No se pudieron buscar paquetes');
+        }
+        renderPropuestaPackageResults(Array.isArray(payload.data) ? payload.data : []);
+    } catch (error) {
+        results.innerHTML = `<div class="crm-list-empty">${escapeHtml(error?.message || 'No se pudieron buscar paquetes')}</div>`;
+    }
+}
+
+function renderPropuestaCodeResults(codes) {
+    const results = document.getElementById('crmPropuestaCodeResults');
+    if (!results) {
+        return;
+    }
+    results.innerHTML = '';
+
+    if (codes.length === 0) {
+        results.innerHTML = '<div class="crm-list-empty">Sin códigos encontrados</div>';
+        return;
+    }
+
+    codes.forEach(code => {
+        const price = Number(code.valor_facturar_nivel1 ?? code.valor_facturar_nivel2 ?? code.valor_facturar_nivel3 ?? 0) || 0;
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'crm-proposal-search-item';
+        item.innerHTML = `
+            <span>
+                <strong>${escapeHtml(code.codigo || `Código #${code.id || ''}`)}</strong>
+                <small>${escapeHtml(code.descripcion || code.short_description || 'Sin descripción')}</small>
+            </span>
+            <span class="badge text-bg-light text-dark">${escapeHtml(formatCurrency(price))}</span>
+        `;
+        item.addEventListener('click', () => {
+            addPropuestaItemRow({
+                description: `${code.codigo || ''} - ${code.descripcion || code.short_description || ''}`.trim(),
+                quantity: 1,
+                unit_price: price,
+                discount_percent: 0,
+                code_id: code.id || null,
+            });
+            document.getElementById('crmPropuestaCodePanel')?.classList.add('d-none');
+        });
+        results.appendChild(item);
+    });
+}
+
+function renderPropuestaPackageResults(packages) {
+    const results = document.getElementById('crmPropuestaPackageResults');
+    if (!results) {
+        return;
+    }
+    results.innerHTML = '';
+
+    if (packages.length === 0) {
+        results.innerHTML = '<div class="crm-list-empty">Sin paquetes encontrados</div>';
+        return;
+    }
+
+    packages.forEach(pkg => {
+        const items = Array.isArray(pkg.items) ? pkg.items : [];
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'crm-proposal-search-item';
+        item.innerHTML = `
+            <span>
+                <strong>${escapeHtml(pkg.name || `Paquete #${pkg.id || ''}`)}</strong>
+                <small>${escapeHtml(pkg.description || 'Sin descripción')} · ${items.length || pkg.items_count || pkg.total_items || 0} ítem(s)</small>
+            </span>
+            <span class="badge text-bg-light text-dark">${escapeHtml(formatCurrency(pkg.total_amount || pkg.computed_total || 0))}</span>
+        `;
+        item.addEventListener('click', () => {
+            if (items.length === 0) {
+                notify('El paquete no tiene ítems para agregar', false);
+                return;
+            }
+            items.forEach(packageItem => {
+                addPropuestaItemRow({
+                    description: packageItem.description || 'Ítem de paquete',
+                    quantity: packageItem.quantity || 1,
+                    unit_price: packageItem.unit_price || 0,
+                    discount_percent: packageItem.discount_percent || 0,
+                    code_id: packageItem.code_id || null,
+                    package_id: pkg.id || null,
+                });
+            });
+            document.getElementById('crmPropuestaPackagePanel')?.classList.add('d-none');
+        });
+        results.appendChild(item);
+    });
+}
+
+function renderPropuestaControls() {
+    const form = document.getElementById('crmPropuestaForm');
+    const help = document.getElementById('crmPropuestaHelp');
+    const submit = form?.querySelector('button[type="submit"]');
+    const leadId = document.getElementById('crmLeadId')?.value || currentDetalle?.crm_lead_id || '';
+    const hasLead = String(leadId || '').trim() !== '';
+
+    if (help) {
+        help.textContent = hasLead
+            ? `Se creará como borrador vinculado al lead #${leadId}.`
+            : 'Vincula o crea un lead CRM antes de crear una propuesta.';
+    }
+    if (submit) {
+        submit.disabled = !hasLead;
+    }
+    if (form && !form.querySelector('.crm-proposal-item')) {
+        addPropuestaItemRow();
+    }
+}
+
 function bindLeadControls() {
     const leadInput = document.getElementById('crmLeadIdInput');
     const leadHidden = document.getElementById('crmLeadId');
@@ -704,6 +1043,8 @@ function updateLeadControls(detalle, lead, overrideId = null) {
             currentDetalle.crm_lead_source = null;
         }
     }
+
+    renderPropuestaControls();
 }
 
 async function submitJson(url, payload, successMessage) {
@@ -960,9 +1301,11 @@ function renderCrmData(data) {
     updateLeadControls(currentDetalle, currentLead);
     renderResumen(data.detalle, currentLead, data.whatsapp_context || null);
     renderCommunicationDefaults(data.detalle, data.whatsapp_context || null);
+    renderPropuestaControls();
     loadChecklistState(currentEntityId);
     renderNotas(data.notas ?? []);
     renderCobertura(data.cobertura_mails ?? []);
+    renderPropuestas(data.propuestas ?? []);
     renderAdjuntos(data.adjuntos ?? []);
     renderTareas(data.tareas ?? []);
     renderChecklistFallbackFromTasks(data.tareas ?? []);
@@ -1159,6 +1502,13 @@ function renderResumen(detalle, lead, whatsappContext = null) {
     if (tareasResumen) {
         tareasResumen.textContent = tareasTotales > 0 ? `${tareasPendientes} pendientes de ${tareasTotales}` : 'Sin tareas registradas';
     }
+
+    const propuestasResumen = document.getElementById('crmPropuestasResumen');
+    if (propuestasResumen) {
+        const propuestas = Array.isArray(currentData?.propuestas) ? currentData.propuestas : [];
+        const abiertas = propuestas.filter(propuesta => !['accepted', 'rejected', 'cancelled', 'anulada', 'rechazada'].includes(String(propuesta.status || '').toLowerCase())).length;
+        propuestasResumen.textContent = propuestas.length > 0 ? `${abiertas} activa(s) de ${propuestas.length}` : 'Sin propuestas';
+    }
 }
 
 function renderCommunicationDefaults(detalle, whatsappContext = null) {
@@ -1289,6 +1639,150 @@ function renderCobertura(correos) {
 
     if (resumen) {
         resumen.textContent = `${correos.length} correo(s)`;
+    }
+}
+
+function renderPropuestas(propuestas) {
+    const list = document.getElementById('crmPropuestasList');
+    const resumen = document.getElementById('crmPropuestasResumen');
+    if (!list) {
+        return;
+    }
+
+    list.innerHTML = '';
+
+    if (!Array.isArray(propuestas) || propuestas.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'crm-list-empty';
+        empty.textContent = 'Sin propuestas CRM vinculadas al lead';
+        list.appendChild(empty);
+        if (resumen) {
+            resumen.textContent = 'Sin propuestas';
+        }
+        return;
+    }
+
+    const abiertas = propuestas.filter(propuesta => !['accepted', 'rejected', 'cancelled', 'anulada', 'rechazada'].includes(String(propuesta.status || '').toLowerCase())).length;
+    if (resumen) {
+        resumen.textContent = `${abiertas} activa(s) de ${propuestas.length}`;
+    }
+
+    propuestas.forEach(propuesta => {
+        const item = document.createElement('div');
+        item.className = 'list-group-item d-flex justify-content-between align-items-start gap-3';
+
+        const cuerpo = document.createElement('div');
+        cuerpo.className = 'flex-grow-1';
+
+        const titulo = document.createElement('h6');
+        titulo.className = 'mb-1 d-flex align-items-center gap-2 flex-wrap';
+        titulo.textContent = propuesta.proposal_number || `Propuesta #${propuesta.id || ''}`;
+
+        const estado = document.createElement('span');
+        estado.className = `badge ${proposalStatusBadgeClass(propuesta.status)}`;
+        estado.textContent = proposalStatusLabel(propuesta.status);
+        titulo.appendChild(estado);
+        cuerpo.appendChild(titulo);
+
+        const descripcion = document.createElement('p');
+        descripcion.className = 'mb-1 text-muted';
+        descripcion.textContent = propuesta.title || 'Propuesta sin título';
+        cuerpo.appendChild(descripcion);
+
+        const meta = document.createElement('div');
+        meta.className = 'crm-task-meta-row';
+
+        const total = document.createElement('span');
+        total.className = 'crm-task-chip is-success';
+        total.textContent = `Total: ${formatCurrency(propuesta.total, propuesta.currency || 'USD')}`;
+        meta.appendChild(total);
+
+        const items = document.createElement('span');
+        items.className = 'crm-task-chip';
+        items.textContent = `${Number.parseInt(propuesta.items_count ?? 0, 10) || 0} ítem(s)`;
+        meta.appendChild(items);
+
+        const vigencia = document.createElement('span');
+        vigencia.className = 'crm-task-chip';
+        vigencia.textContent = propuesta.valid_until ? `Vigencia: ${formatDate(propuesta.valid_until)}` : 'Sin vigencia';
+        meta.appendChild(vigencia);
+
+        cuerpo.appendChild(meta);
+        item.appendChild(cuerpo);
+
+        const actions = document.createElement('div');
+        actions.className = 'd-flex flex-column gap-2 align-items-end';
+        actions.innerHTML = `
+            <button type="button" class="btn btn-sm btn-outline-danger" data-crm-proposal-action="pdf">
+                <i class="mdi mdi-file-pdf-box"></i> PDF
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-success" data-crm-proposal-action="whatsapp">
+                <i class="mdi mdi-whatsapp"></i> WhatsApp
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-primary" data-crm-proposal-action="email">
+                <i class="mdi mdi-email-send-outline"></i> Correo
+            </button>
+        `;
+        actions.querySelector('[data-crm-proposal-action="pdf"]')?.addEventListener('click', () => {
+            window.open(propuesta.pdf_url || `/v2/crm/proposals/${encodeURIComponent(String(propuesta.id || ''))}/pdf`, '_blank', 'noopener');
+        });
+        actions.querySelector('[data-crm-proposal-action="whatsapp"]')?.addEventListener('click', () => sendProposalByWhatsapp(propuesta));
+        actions.querySelector('[data-crm-proposal-action="email"]')?.addEventListener('click', () => sendProposalByEmail(propuesta));
+        item.appendChild(actions);
+
+        list.appendChild(item);
+    });
+}
+
+async function sendProposalByWhatsapp(propuesta) {
+    if (!propuesta?.id) {
+        notify('Propuesta no disponible', false);
+        return;
+    }
+
+    const ok = window.confirm('Se enviará la propuesta por WhatsApp usando el link público. ¿Continuar?');
+    if (!ok) {
+        return;
+    }
+
+    await submitJson(
+        resolveWritePath(`/v2/crm/proposals/${encodeURIComponent(String(propuesta.id))}/send-whatsapp`),
+        {solicitud_id: currentEntityId},
+        'Propuesta enviada por WhatsApp'
+    );
+    if (currentEntityId) {
+        loadCrmData(currentEntityId);
+    }
+}
+
+async function sendProposalByEmail(propuesta) {
+    if (!propuesta?.id) {
+        notify('Propuesta no disponible', false);
+        return;
+    }
+
+    const defaultEmail = currentDetalle?.crm_contacto_email || '';
+    const to = window.prompt('Correo de destino', defaultEmail);
+    if (to === null) {
+        return;
+    }
+    const email = to.trim();
+    if (email === '') {
+        notify('Indica un correo para enviar la propuesta', false);
+        return;
+    }
+
+    await submitJson(
+        resolveWritePath(`/v2/crm/proposals/${encodeURIComponent(String(propuesta.id))}/send-email`),
+        {
+            to: email,
+            subject: `Propuesta ${propuesta.proposal_number || ''}`.trim(),
+            attach_pdf: true,
+        },
+        'Propuesta enviada por correo'
+    );
+    if (currentEntityId) {
+        loadCrmData(currentEntityId);
     }
 }
 
@@ -1814,14 +2308,14 @@ function clearCrmSections() {
         header.innerHTML = '';
     }
 
-    ['crmChecklistList', 'crmNotasList', 'crmCoberturaList', 'crmAdjuntosList', 'crmTareasList'].forEach(id => {
+    ['crmChecklistList', 'crmNotasList', 'crmCoberturaList', 'crmPropuestasList', 'crmAdjuntosList', 'crmTareasList'].forEach(id => {
         const element = document.getElementById(id);
         if (element) {
             element.innerHTML = '';
         }
     });
 
-    ['crmChecklistResumen', 'crmNotasResumen', 'crmCoberturaResumen', 'crmAdjuntosResumen', 'crmTareasResumen'].forEach(id => {
+    ['crmChecklistResumen', 'crmNotasResumen', 'crmCoberturaResumen', 'crmPropuestasResumen', 'crmAdjuntosResumen', 'crmTareasResumen'].forEach(id => {
         const element = document.getElementById(id);
         if (element) {
             element.textContent = '';
@@ -1896,6 +2390,56 @@ function estadoBadgeClass(estado) {
             return 'text-bg-secondary';
         default:
             return 'text-bg-warning';
+    }
+}
+
+function proposalStatusLabel(status) {
+    const normalized = String(status || 'draft').trim().toLowerCase();
+    const labels = {
+        draft: 'Borrador',
+        sent: 'Enviada',
+        accepted: 'Aceptada',
+        rejected: 'Rechazada',
+        expired: 'Vencida',
+        cancelled: 'Cancelada',
+        anulada: 'Anulada',
+        rechazada: 'Rechazada',
+    };
+
+    return labels[normalized] || normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
+function proposalStatusBadgeClass(status) {
+    switch (String(status || '').trim().toLowerCase()) {
+        case 'accepted':
+            return 'text-bg-success';
+        case 'sent':
+            return 'text-bg-primary';
+        case 'rejected':
+        case 'expired':
+        case 'rechazada':
+            return 'text-bg-danger';
+        case 'cancelled':
+        case 'anulada':
+            return 'text-bg-secondary';
+        default:
+            return 'text-bg-warning text-dark';
+    }
+}
+
+function formatCurrency(value, currency = 'USD') {
+    const amount = Number.parseFloat(value);
+    if (!Number.isFinite(amount)) {
+        return '—';
+    }
+
+    try {
+        return new Intl.NumberFormat('es-EC', {
+            style: 'currency',
+            currency: currency || 'USD',
+        }).format(amount);
+    } catch {
+        return `${currency || 'USD'} ${amount.toFixed(2)}`;
     }
 }
 

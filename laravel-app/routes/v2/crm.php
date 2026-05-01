@@ -1,8 +1,22 @@
 <?php
 
 use App\Modules\CRM\Http\Controllers\CrmReadController;
+use App\Modules\CRM\Http\Controllers\CrmProposalController;
 use App\Modules\CRM\Http\Controllers\CrmWriteController;
 use Illuminate\Support\Facades\Route;
+
+Route::middleware([
+    'web',
+    'app.auth',
+    'app.permission:administrativo,crm.view,crm.manage,solicitudes.view,solicitudes.update,solicitudes.manage',
+])->group(function (): void {
+    Route::get('/crm/proposals/{id}/pdf', [CrmProposalController::class, 'pdf'])->whereNumber('id');
+    Route::post('/crm/proposals/{id}/send-email', [CrmProposalController::class, 'sendEmail'])->whereNumber('id');
+    Route::post('/crm/proposals/{id}/send-whatsapp', [CrmProposalController::class, 'sendWhatsapp'])->whereNumber('id');
+    Route::get('/api/crm/proposals/{id}/pdf', [CrmProposalController::class, 'pdf'])->whereNumber('id');
+    Route::post('/api/crm/proposals/{id}/send-email', [CrmProposalController::class, 'sendEmail'])->whereNumber('id');
+    Route::post('/api/crm/proposals/{id}/send-whatsapp', [CrmProposalController::class, 'sendWhatsapp'])->whereNumber('id');
+});
 
 Route::middleware([
     'legacy.auth',

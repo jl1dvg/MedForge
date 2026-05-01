@@ -7,6 +7,7 @@ use App\Modules\Examenes\Http\Controllers\ImagenesUiController;
 use App\Modules\Farmacia\Http\Controllers\FarmaciaUiController;
 use App\Modules\Auth\Http\Controllers\LoginController;
 use App\Modules\Auth\Http\Controllers\UnifiedLogoutController;
+use App\Modules\CRM\Http\Controllers\CrmProposalController;
 use App\Modules\Codes\Http\Controllers\CodesUiController;
 use App\Modules\Codes\Http\Controllers\CodesWriteController;
 use App\Modules\Derivaciones\Http\Controllers\DerivacionesUiController;
@@ -26,6 +27,8 @@ Route::get('/auth/login', [LoginController::class, 'show'])->name('login');
 Route::post('/auth/login', [LoginController::class, 'login']);
 Route::get('/auth/logout', [UnifiedLogoutController::class, 'logout']);
 Route::get('/v2/auth/logout', [UnifiedLogoutController::class, 'logout']);
+Route::get('/proposal/{id}/{hash}', [CrmProposalController::class, 'publicView'])->whereNumber('id');
+Route::get('/proposal/{id}/{hash}/pdf', [CrmProposalController::class, 'publicPdf'])->whereNumber('id');
 
 Route::middleware(['legacy.auth'])->group(function (): void {
     Route::post('/feedback/api/report', [FeedbackWriteController::class, 'store']);

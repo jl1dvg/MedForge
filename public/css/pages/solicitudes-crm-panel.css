@@ -270,6 +270,59 @@
     padding: 14px 16px 16px;
 }
 
+.crm-proposal-form {
+    border: 1px dashed rgba(148, 163, 184, 0.7);
+    border-radius: 12px;
+    background: #f8fafc;
+    padding: 12px;
+}
+
+.crm-proposal-item {
+    border-radius: 10px;
+    background: #fff;
+    padding: 8px;
+    border: 1px solid rgba(226, 232, 240, 0.9);
+}
+
+.crm-proposal-search {
+    border: 1px solid rgba(226, 232, 240, 0.9);
+    border-radius: 12px;
+    background: #fff;
+    padding: 10px;
+    margin-bottom: 10px;
+}
+
+.crm-proposal-search-results {
+    display: grid;
+    gap: 8px;
+    max-height: 240px;
+    overflow: auto;
+}
+
+.crm-proposal-search-item {
+    width: 100%;
+    border: 1px solid rgba(226, 232, 240, 0.9);
+    border-radius: 10px;
+    background: #f8fafc;
+    padding: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    text-align: left;
+}
+
+.crm-proposal-search-item:hover {
+    background: #eef6ff;
+    border-color: rgba(59, 130, 246, 0.45);
+}
+
+.crm-proposal-search-item small {
+    display: block;
+    color: #64748b;
+    margin-top: 2px;
+}
+
 .solicitudes-crm-toast {
     position: fixed;
     right: 14px;

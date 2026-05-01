@@ -247,6 +247,74 @@
                 </div>
             </details>
 
+            <details class="crm-section-card" open>
+                <summary>
+                    <span class="crm-section-title">Propuestas CRM</span>
+                    <span class="crm-section-summary">
+                        <small class="text-muted" id="crmPropuestasResumen"></small>
+                        <i class="mdi mdi-chevron-down crm-section-chevron"></i>
+                    </span>
+                </summary>
+                <div class="crm-section-body">
+                    <div id="crmPropuestasList" class="list-group mb-3"></div>
+                    <form id="crmPropuestaForm" class="crm-proposal-form row g-2">
+                        <div class="col-md-7">
+                            <label for="crmPropuestaTitulo" class="form-label">Título</label>
+                            <input type="text" id="crmPropuestaTitulo" class="form-control" placeholder="Propuesta quirúrgica / paquete" required>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="crmPropuestaVigencia" class="form-label">Vigencia</label>
+                            <input type="date" id="crmPropuestaVigencia" class="form-control">
+                        </div>
+                        <div class="col-md-2">
+                            <label for="crmPropuestaImpuesto" class="form-label">IVA %</label>
+                            <input type="number" id="crmPropuestaImpuesto" class="form-control" min="0" max="100" step="0.01" value="0">
+                        </div>
+                        <div class="col-12">
+                            <div class="card-header d-flex flex-wrap align-items-center gap-2 px-0 pt-0 pb-2 bg-transparent border-0">
+                                <strong>Ítems de la propuesta</strong>
+                                <div class="ms-auto d-flex gap-2 flex-wrap">
+                                    <button type="button" class="btn btn-sm btn-outline-primary" id="crmPropuestaAgregarItem">
+                                        <i class="mdi mdi-plus-circle-outline"></i> Línea manual
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-outline-primary" id="crmPropuestaBuscarCodigo">
+                                        <i class="mdi mdi-clipboard-plus-outline"></i> Buscar código
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-outline-primary" id="crmPropuestaBuscarPaquete">
+                                        <i class="mdi mdi-package-variant-plus"></i> Agregar paquete
+                                    </button>
+                                </div>
+                            </div>
+                            <div id="crmPropuestaCodePanel" class="crm-proposal-search d-none">
+                                <div class="input-group input-group-sm mb-2">
+                                    <input type="search" id="crmPropuestaCodeSearch" class="form-control" placeholder="Buscar código o descripción">
+                                    <button type="button" class="btn btn-outline-primary" id="crmPropuestaCodeSearchBtn">Buscar</button>
+                                </div>
+                                <div id="crmPropuestaCodeResults" class="crm-proposal-search-results"></div>
+                            </div>
+                            <div id="crmPropuestaPackagePanel" class="crm-proposal-search d-none">
+                                <div class="input-group input-group-sm mb-2">
+                                    <input type="search" id="crmPropuestaPackageSearch" class="form-control" placeholder="Buscar paquete">
+                                    <button type="button" class="btn btn-outline-primary" id="crmPropuestaPackageSearchBtn">Buscar</button>
+                                </div>
+                                <div id="crmPropuestaPackageResults" class="crm-proposal-search-results"></div>
+                            </div>
+                            <div id="crmPropuestaItems" class="crm-proposal-items"></div>
+                        </div>
+                        <div class="col-12">
+                            <label for="crmPropuestaNotas" class="form-label">Notas</label>
+                            <textarea id="crmPropuestaNotas" class="form-control" rows="2" placeholder="Condiciones, observaciones o alcance"></textarea>
+                        </div>
+                        <div class="col-12 d-flex justify-content-between align-items-center gap-2">
+                            <small class="text-muted" id="crmPropuestaHelp">Se creará como borrador vinculado al lead CRM.</small>
+                            <button type="submit" class="btn btn-outline-primary">
+                                <i class="mdi mdi-file-document-plus-outline me-1"></i>Crear propuesta
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </details>
+
             <details class="crm-section-card">
                 <summary>
                     <span class="crm-section-title">Correos de cobertura</span>

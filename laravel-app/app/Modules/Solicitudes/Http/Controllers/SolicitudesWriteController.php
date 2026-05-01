@@ -439,6 +439,15 @@ class SolicitudesWriteController
         );
     }
 
+    public function crmCrearPropuesta(Request $request, int $id): JsonResponse
+    {
+        return $this->crmWriteResponse(
+            $request,
+            $id,
+            fn(array $payload, ?int $userId): array => $this->service->crmCrearPropuesta($id, $payload, $userId)
+        );
+    }
+
     public function crmRegistrarBloqueo(Request $request, int $id): JsonResponse
     {
         return $this->crmWriteResponse(

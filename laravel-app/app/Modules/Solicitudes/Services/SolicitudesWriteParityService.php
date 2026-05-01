@@ -690,6 +690,120 @@ class SolicitudesWriteParityService
     }
 
     /**
+     * @param array<string,mixed> $payload
+     * @return array<string,mixed>
+     */
+    public function crmCrearPropuesta(int $solicitudId, array $payload, ?int $autorId): array
+    {
+        $this->assertSolicitudExists($solicitudId);
+
+        $proposalColumns = $this->tableColumns('crm_proposals');
+        $itemColumns = $this->tableColumns('crm_proposal_items');
+        if ($proposalColumns === [] || $itemColumns === []) {
+            throw new RuntimeException('Tablas de propuestas CRM no disponibles');
+        }
+
+        $leadId = $this->nullableInt($payload['lead_id'] ?? null);
+        if ($leadId === null) {
+            $detalle = $this->fetchCrmDetalleRow($solicitudId);
+            $leadId = $this->nullableInt($detalle['crm_lead_id'] ?? null);
+        }
+
+        if ($leadId === null) {
+            throw new RuntimeException('Vincula o crea un lead CRM antes de crear la propuesta');
+        }
+
+        $lead = $this->fetchCrmLead($leadId);
+        if ($lead === null) {
+            throw new RuntimeException('El lead CRM vinculado no existe');
+        }
+
+        $title = $this->nullableString($payload['title'] ?? null);
+        if ($title === null) {
+            throw new RuntimeException('La propuesta necesita un título');
+        }
+
+        $items = $this->normalizeProposalItems($payload['items'] ?? []);
+        if ($items === []) {
+            throw new RuntimeException('La propuesta debe incluir al menos un ítem');
+        }
+
+        $taxRate = max(0.0, min(100.0, (float) ($payload['tax_rate'] ?? 0)));
+        $totals = $this->calculateProposalTotals($items, $taxRate);
+        $number = $this->nextProposalNumber();
+        $now = date('Y-m-d H:i:s');
+        $currency = strtoupper(substr(trim((string) ($payload['currency'] ?? 'USD')), 0, 3)) ?: 'USD';
+
+        $this->db->beginTransaction();
+
+        try {
+            $proposal = [
+                'proposal_number' => $number['number'],
+                'proposal_year' => $number['year'],
+                'sequence' => $number['sequence'],
+                'lead_id' => $leadId,
+                'customer_id' => $this->nullableInt($payload['customer_id'] ?? ($lead['customer_id'] ?? null)),
+                'title' => $title,
+                'status' => 'draft',
+                'currency' => $currency,
+                'subtotal' => $totals['subtotal'],
+                'discount_total' => $totals['discount'],
+                'tax_rate' => $taxRate,
+                'tax_total' => $totals['tax'],
+                'total' => $totals['total'],
+                'valid_until' => $this->normalizeDate($payload['valid_until'] ?? null),
+                'notes' => $this->nullableString($payload['notes'] ?? null),
+                'terms' => $this->nullableString($payload['terms'] ?? null),
+                'packages_snapshot' => null,
+                'created_by' => $autorId,
+                'updated_by' => $autorId,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+
+            $this->insertRow('crm_proposals', $this->filterColumns($proposal, $proposalColumns));
+            $proposalId = (int) $this->db->lastInsertId();
+            if ($proposalId <= 0) {
+                throw new RuntimeException('No se pudo crear la propuesta CRM');
+            }
+
+            foreach ($items as $index => $item) {
+                $row = [
+                    'proposal_id' => $proposalId,
+                    'code_id' => $item['code_id'],
+                    'package_id' => $item['package_id'],
+                    'description' => $item['description'],
+                    'quantity' => $item['quantity'],
+                    'unit_price' => $item['unit_price'],
+                    'discount_percent' => $item['discount_percent'],
+                    'sort_order' => $index,
+                    'metadata' => null,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ];
+                $this->insertRow('crm_proposal_items', $this->filterColumns($row, $itemColumns));
+            }
+
+            $this->db->commit();
+        } catch (Throwable $e) {
+            $this->db->rollBack();
+            throw $e;
+        }
+
+        $summary = $this->readService->crmResumen($solicitudId);
+        $summary['ultima_propuesta'] = [
+            'id' => $proposalId,
+            'proposal_number' => $number['number'],
+            'lead_id' => $leadId,
+            'total' => $totals['total'],
+            'currency' => $currency,
+            'url' => '/crm?proposal=' . $proposalId,
+        ];
+
+        return $summary;
+    }
+
+    /**
      * @return array<string,mixed>
      */
     public function crmActualizarTareaEstado(int $solicitudId, int $tareaId, string $estado): array
@@ -2310,6 +2424,114 @@ class SolicitudesWriteParityService
         } catch (Throwable) {
             return null;
         }
+    }
+
+    /**
+     * @return array<string,mixed>|null
+     */
+    private function fetchCrmLead(int $leadId): ?array
+    {
+        if ($leadId <= 0 || !$this->tableExists('crm_leads')) {
+            return null;
+        }
+
+        $stmt = $this->db->prepare('SELECT * FROM crm_leads WHERE id = :id LIMIT 1');
+        $stmt->execute([':id' => $leadId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        return $row !== false ? $row : null;
+    }
+
+    /**
+     * @param mixed $items
+     * @return array<int,array<string,mixed>>
+     */
+    private function normalizeProposalItems(mixed $items): array
+    {
+        if (!is_array($items)) {
+            return [];
+        }
+
+        $clean = [];
+        foreach ($items as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $description = trim((string) ($item['description'] ?? ''));
+            if ($description === '') {
+                continue;
+            }
+
+            $clean[] = [
+                'description' => $description,
+                'quantity' => max(0.01, (float) ($item['quantity'] ?? 1)),
+                'unit_price' => max(0.0, (float) ($item['unit_price'] ?? 0)),
+                'discount_percent' => max(0.0, min(100.0, (float) ($item['discount_percent'] ?? 0))),
+                'code_id' => $this->nullableInt($item['code_id'] ?? null),
+                'package_id' => $this->nullableInt($item['package_id'] ?? null),
+            ];
+        }
+
+        return $clean;
+    }
+
+    /**
+     * @param array<int,array<string,mixed>> $items
+     * @return array{subtotal: float, discount: float, tax: float, total: float}
+     */
+    private function calculateProposalTotals(array $items, float $taxRate): array
+    {
+        $subtotal = 0.0;
+        $discountTotal = 0.0;
+
+        foreach ($items as $item) {
+            $lineSubtotal = (float) $item['quantity'] * (float) $item['unit_price'];
+            $lineDiscount = $lineSubtotal * ((float) $item['discount_percent'] / 100);
+            $subtotal += $lineSubtotal;
+            $discountTotal += $lineDiscount;
+        }
+
+        $taxable = max(0.0, $subtotal - $discountTotal);
+        $tax = $taxable * ($taxRate / 100);
+
+        return [
+            'subtotal' => round($subtotal, 2),
+            'discount' => round($discountTotal, 2),
+            'tax' => round($tax, 2),
+            'total' => round($taxable + $tax, 2),
+        ];
+    }
+
+    /**
+     * @return array{number: string, sequence: int, year: int}
+     */
+    private function nextProposalNumber(): array
+    {
+        $year = (int) date('Y');
+        $stmt = $this->db->prepare('SELECT MAX(sequence) FROM crm_proposals WHERE proposal_year = :year');
+        $stmt->execute([':year' => $year]);
+        $sequence = (int) $stmt->fetchColumn() + 1;
+
+        return [
+            'number' => sprintf('PROP-%d-%04d', $year, $sequence),
+            'sequence' => $sequence,
+            'year' => $year,
+        ];
+    }
+
+    /**
+     * @param array<string,mixed> $payload
+     * @param array<int,string> $columns
+     * @return array<string,mixed>
+     */
+    private function filterColumns(array $payload, array $columns): array
+    {
+        return array_filter(
+            $payload,
+            static fn(string $column): bool => in_array($column, $columns, true),
+            ARRAY_FILTER_USE_KEY
+        );
     }
 
     /**

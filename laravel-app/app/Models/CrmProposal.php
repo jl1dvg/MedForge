@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Model;
  * Class CrmProposal
  * 
  * @property int $id
+ * @property string|null $public_hash
  * @property string $proposal_number
  * @property int $proposal_year
  * @property int $sequence
@@ -70,6 +71,7 @@ class CrmProposal extends Model
 	];
 
 	protected $fillable = [
+		'public_hash',
 		'proposal_number',
 		'proposal_year',
 		'sequence',

@@ -14,6 +14,8 @@ Route::match(['GET', 'POST'], '/solicitudes/kanban-data', [SolicitudesReadContro
 Route::post('/solicitudes/dashboard-data', [SolicitudesReadController::class, 'dashboardData']);
 Route::get('/solicitudes/turnero-data', [SolicitudesReadController::class, 'turneroData']);
 Route::get('/solicitudes/crm/options', [SolicitudesReadController::class, 'crmOptions']);
+Route::get('/solicitudes/crm/catalog/codes', [SolicitudesReadController::class, 'crmBuscarCodigos']);
+Route::get('/solicitudes/crm/catalog/packages', [SolicitudesReadController::class, 'crmBuscarPaquetes']);
 Route::get('/solicitudes/{id}/crm', [SolicitudesReadController::class, 'crmResumen'])->whereNumber('id');
 Route::get('/solicitudes/conciliacion-cirugias', [SolicitudesReadController::class, 'conciliacionCirugias']);
 Route::get('/solicitudes/prefactura', [SolicitudesPrefacturaController::class, 'prefactura']);
@@ -38,6 +40,7 @@ Route::post('/solicitudes/{id}/crm/checklist', [SolicitudesWriteController::clas
 Route::post('/solicitudes/{id}/crm/notas', [SolicitudesWriteController::class, 'crmAgregarNota'])->whereNumber('id');
 Route::post('/solicitudes/{id}/crm/whatsapp', [SolicitudesWriteController::class, 'crmEnviarWhatsapp'])->whereNumber('id');
 Route::post('/solicitudes/{id}/crm/email', [SolicitudesWriteController::class, 'crmEnviarEmail'])->whereNumber('id');
+Route::post('/solicitudes/{id}/crm/propuestas', [SolicitudesWriteController::class, 'crmCrearPropuesta'])->whereNumber('id');
 Route::post('/solicitudes/{id}/crm/tareas', [SolicitudesWriteController::class, 'crmGuardarTarea'])->whereNumber('id');
 Route::post('/solicitudes/{id}/crm/tareas/estado', [SolicitudesWriteController::class, 'crmActualizarTarea'])->whereNumber('id');
 Route::post('/solicitudes/{id}/crm/bloqueo', [SolicitudesWriteController::class, 'crmRegistrarBloqueo'])->whereNumber('id');
@@ -57,6 +60,8 @@ Route::match(['GET', 'POST'], '/api/solicitudes/kanban', [SolicitudesReadControl
 Route::post('/api/solicitudes/dashboard', [SolicitudesReadController::class, 'dashboardData']);
 Route::get('/api/solicitudes/turnero', [SolicitudesReadController::class, 'turneroData']);
 Route::get('/api/solicitudes/crm/options', [SolicitudesReadController::class, 'crmOptions']);
+Route::get('/api/solicitudes/crm/catalog/codes', [SolicitudesReadController::class, 'crmBuscarCodigos']);
+Route::get('/api/solicitudes/crm/catalog/packages', [SolicitudesReadController::class, 'crmBuscarPaquetes']);
 Route::get('/api/solicitudes/{id}/crm', [SolicitudesReadController::class, 'crmResumen'])->whereNumber('id');
 Route::get('/api/solicitudes/conciliacion-cirugias', [SolicitudesReadController::class, 'conciliacionCirugias']);
 Route::get('/api/solicitudes/estado', [SolicitudesWriteController::class, 'apiEstadoGet']);
@@ -72,6 +77,7 @@ Route::post('/api/solicitudes/{id}/crm/checklist', [SolicitudesWriteController::
 Route::post('/api/solicitudes/{id}/crm/notas', [SolicitudesWriteController::class, 'crmAgregarNota'])->whereNumber('id');
 Route::post('/api/solicitudes/{id}/crm/whatsapp', [SolicitudesWriteController::class, 'crmEnviarWhatsapp'])->whereNumber('id');
 Route::post('/api/solicitudes/{id}/crm/email', [SolicitudesWriteController::class, 'crmEnviarEmail'])->whereNumber('id');
+Route::post('/api/solicitudes/{id}/crm/propuestas', [SolicitudesWriteController::class, 'crmCrearPropuesta'])->whereNumber('id');
 Route::post('/api/solicitudes/{id}/crm/tareas', [SolicitudesWriteController::class, 'crmGuardarTarea'])->whereNumber('id');
 Route::post('/api/solicitudes/{id}/crm/tareas/estado', [SolicitudesWriteController::class, 'crmActualizarTarea'])->whereNumber('id');
 Route::post('/api/solicitudes/{id}/crm/bloqueo', [SolicitudesWriteController::class, 'crmRegistrarBloqueo'])->whereNumber('id');

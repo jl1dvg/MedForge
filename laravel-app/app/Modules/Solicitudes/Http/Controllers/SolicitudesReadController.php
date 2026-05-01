@@ -4,13 +4,17 @@ declare(strict_types=1);
 
 namespace App\Modules\Solicitudes\Http\Controllers;
 
+use App\Modules\Codes\Services\CodesCatalogService;
+use App\Modules\Codes\Services\CodesPackageService;
 use App\Modules\Solicitudes\Services\SolicitudesReadParityService;
 use App\Modules\Solicitudes\Services\SolicitudesReportService;
 use DateTimeImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use PDO;
 use RuntimeException;
 
 class SolicitudesReadController
@@ -155,6 +159,61 @@ class SolicitudesReadController
         }
 
         return response()->json(['success' => true, 'data' => $result])->header('X-Request-Id', $requestId);
+    }
+
+    public function crmBuscarCodigos(Request $request): JsonResponse
+    {
+        $requestId = $this->requestId($request);
+
+        try {
+            $query = trim((string) $request->query('q', ''));
+            $limit = max(1, min(50, (int) $request->query('limit', 15)));
+            $data = $query === '' ? [] : (new CodesCatalogService())->quickSearch($query, $limit);
+        } catch (\Throwable $e) {
+            Log::error('solicitudes.read.crm_codigos.error', [
+                'request_id' => $requestId,
+                'user_id' => $this->actorId(),
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json(['success' => false, 'error' => 'No se pudieron buscar códigos'], 500)
+                ->header('X-Request-Id', $requestId);
+        }
+
+        return response()->json(['success' => true, 'data' => $data])->header('X-Request-Id', $requestId);
+    }
+
+    public function crmBuscarPaquetes(Request $request): JsonResponse
+    {
+        $requestId = $this->requestId($request);
+
+        try {
+            /** @var PDO $pdo */
+            $pdo = DB::connection()->getPdo();
+            $packages = new CodesPackageService($pdo);
+            $rows = $packages->list([
+                'active' => 1,
+                'search' => trim((string) $request->query('q', '')),
+                'limit' => max(1, min(50, (int) $request->query('limit', 20))),
+                'offset' => 0,
+            ]);
+
+            $data = array_map(
+                fn(array $package): array => $packages->find((int) ($package['id'] ?? 0)) ?? $package,
+                $rows
+            );
+        } catch (\Throwable $e) {
+            Log::error('solicitudes.read.crm_paquetes.error', [
+                'request_id' => $requestId,
+                'user_id' => $this->actorId(),
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json(['success' => false, 'error' => 'No se pudieron buscar paquetes'], 500)
+                ->header('X-Request-Id', $requestId);
+        }
+
+        return response()->json(['success' => true, 'data' => $data])->header('X-Request-Id', $requestId);
     }
 
     public function conciliacionCirugias(Request $request): JsonResponse
