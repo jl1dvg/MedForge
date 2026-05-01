@@ -8,6 +8,7 @@ use App\Models\WhatsappConversation;
 use App\Models\WhatsappContactConsent;
 use App\Models\WhatsappMessage;
 use App\Models\WhatsappMessageTemplate;
+use App\Models\WhatsappTemplateRevision;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use RuntimeException;
@@ -75,6 +76,7 @@ class ConversationStartService
         ?string $contactName = null,
         ?string $patientHcNumber = null,
         ?string $patientFullName = null,
+        array $templateVariables = [],
     ): array {
         $config = $this->configService->get();
         if (!$config['enabled'] || $config['phone_number_id'] === '' || $config['access_token'] === '') {
@@ -105,13 +107,22 @@ class ConversationStartService
         }
 
         $sentAt = now();
+        $templateComponents = $this->buildTemplateSendComponents(
+            $template,
+            $contactName,
+            $patientHcNumber,
+            $patientFullName,
+            $recipient,
+            $templateVariables
+        );
         $transportResult = $this->transport->sendTemplate(
             $config['phone_number_id'],
             $config['access_token'],
             $config['api_version'],
             $recipient,
             (string) $template->template_code,
-            (string) $template->language
+            (string) $template->language,
+            $templateComponents
         );
 
         $conversation = DB::transaction(function () use (
@@ -123,6 +134,7 @@ class ConversationStartService
             $actorUserId,
             $sentAt,
             $template,
+            $templateComponents,
             $transportResult
         ): WhatsappConversation {
             $displayName = $this->truncate($contactName ?: $patientFullName ?: $recipient, 191);
@@ -172,6 +184,7 @@ class ConversationStartService
                         'name' => $template->template_code,
                         'display_name' => $template->display_name,
                         'language' => $template->language,
+                        'components' => $templateComponents,
                     ],
                     'transport' => $transportResult['raw'],
                 ],
@@ -212,6 +225,180 @@ class ConversationStartService
                 'template_name' => (string) ($template->display_name ?: $template->template_code),
             ],
         ];
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function buildTemplateSendComponents(
+        WhatsappMessageTemplate $template,
+        ?string $contactName,
+        ?string $patientHcNumber,
+        ?string $patientFullName,
+        string $recipient,
+        array $templateVariables = []
+    ): array {
+        if (!Schema::hasTable('whatsapp_template_revisions')) {
+            return [];
+        }
+
+        $revision = $template->relationLoaded('whatsapp_template_revision')
+            ? $template->whatsapp_template_revision
+            : $template->whatsapp_template_revision()->first();
+
+        if (!$revision instanceof WhatsappTemplateRevision) {
+            return [];
+        }
+
+        $components = [];
+        $headerParameters = $this->buildTextParameterValues(
+            (string) ($revision->header_text ?? ''),
+            $contactName,
+            $patientHcNumber,
+            $patientFullName,
+            $recipient,
+            $templateVariables
+        );
+
+        if ($revision->header_type === 'text' && $headerParameters !== []) {
+            $components[] = [
+                'type' => 'header',
+                'parameters' => array_map(
+                    static fn (string $value): array => ['type' => 'text', 'text' => $value],
+                    $headerParameters
+                ),
+            ];
+        }
+
+        $bodyParameters = $this->buildTextParameterValues(
+            (string) $revision->body_text,
+            $contactName,
+            $patientHcNumber,
+            $patientFullName,
+            $recipient,
+            $templateVariables
+        );
+
+        if ($bodyParameters !== []) {
+            $components[] = [
+                'type' => 'body',
+                'parameters' => array_map(
+                    static fn (string $value): array => ['type' => 'text', 'text' => $value],
+                    $bodyParameters
+                ),
+            ];
+        }
+
+        return $components;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function buildTextParameterValues(
+        string $text,
+        ?string $contactName,
+        ?string $patientHcNumber,
+        ?string $patientFullName,
+        string $recipient,
+        array $templateVariables = []
+    ): array {
+        preg_match_all('/\{\{(\d+)\}\}/', $text, $matches);
+        $variables = array_values(array_unique(array_map('intval', $matches[1] ?? [])));
+        sort($variables);
+
+        if ($variables === []) {
+            return [];
+        }
+
+        $examples = $this->extractInlineExamples($text, count($variables));
+        $preferred = array_values(array_filter([
+            $this->truncate(trim((string) ($patientFullName ?: $contactName)), 60),
+            $this->truncate(trim((string) $patientHcNumber), 60),
+            $this->truncate(trim((string) $recipient), 60),
+        ], static fn (?string $value): bool => $value !== null && $value !== ''));
+
+        $parameters = [];
+        foreach (array_keys($variables) as $index) {
+            $manualValue = isset($templateVariables[$index]) ? $this->truncate(trim((string) $templateVariables[$index]), 60) : '';
+            $parameters[] = ($manualValue !== '' ? $manualValue : null)
+                ?? $preferred[$index]
+                ?? $examples[$index]
+                ?? ('ejemplo_' . ($index + 1));
+        }
+
+        return $parameters;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function extractInlineExamples(string $text, int $expectedCount): array
+    {
+        $examples = array_fill(0, $expectedCount, null);
+        $offset = 0;
+
+        if (preg_match_all('/\{\{(\d+)\}\}/', $text, $matches, PREG_OFFSET_CAPTURE) === false) {
+            return array_map(
+                static fn (int $index): string => 'ejemplo_' . ($index + 1),
+                array_keys($examples)
+            );
+        }
+
+        foreach ($matches[0] as $index => $matchData) {
+            $match = (string) ($matchData[0] ?? '');
+            $position = (int) ($matchData[1] ?? 0);
+            $offset = $position + strlen($match);
+
+            [$capturedExample, $consumedLength] = $this->extractInlineVariableExample(substr($text, $offset));
+            if ($capturedExample !== null) {
+                $examples[$index] = $this->truncate($capturedExample, 60);
+                $offset += $consumedLength;
+            }
+        }
+
+        foreach ($examples as $index => $example) {
+            if ($example === null || $example === '') {
+                $examples[$index] = 'ejemplo_' . ($index + 1);
+            }
+        }
+
+        return array_values($examples);
+    }
+
+    /**
+     * @return array{0: string|null, 1: int}
+     */
+    private function extractInlineVariableExample(string $text): array
+    {
+        if (!preg_match('/^\s*:\s*/u', $text, $prefixMatch)) {
+            return [null, 0];
+        }
+
+        $prefixLength = strlen((string) ($prefixMatch[0] ?? ''));
+        $remainder = substr($text, $prefixLength);
+        if ($remainder === false || $remainder === '') {
+            return [null, 0];
+        }
+
+        $nextVariablePos = strpos($remainder, '{{');
+        $lineBreakPos = strcspn($remainder, "\r\n");
+        $sliceLength = strlen($remainder);
+
+        if ($nextVariablePos !== false) {
+            $sliceLength = min($sliceLength, $nextVariablePos);
+        }
+
+        if ($lineBreakPos < $sliceLength) {
+            $sliceLength = $lineBreakPos;
+        }
+
+        $example = trim(substr($remainder, 0, $sliceLength));
+        if ($example === '') {
+            return [null, 0];
+        }
+
+        return [$example, $prefixLength + $sliceLength];
     }
 
     /**

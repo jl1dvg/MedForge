@@ -664,6 +664,130 @@
         font-size: .82rem;
         color: #0f172a;
     }
+    .wa-flow-sim-card {
+        display: grid;
+        gap: 14px;
+    }
+    .wa-flow-sim-hero {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    .wa-flow-sim-title {
+        font-size: 18px;
+        font-weight: 800;
+        color: #0f172a;
+        letter-spacing: -.02em;
+    }
+    .wa-flow-sim-copy {
+        font-size: 13px;
+        color: #475569;
+        line-height: 1.6;
+    }
+    .wa-flow-sim-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+    }
+    .wa-flow-sim-panel {
+        border: 1px solid rgba(148, 163, 184, .14);
+        border-radius: 16px;
+        background: rgba(255, 255, 255, .92);
+        padding: 14px;
+        display: grid;
+        gap: 10px;
+    }
+    .wa-flow-sim-panel__label {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: .08em;
+        color: #64748b;
+        font-weight: 700;
+    }
+    .wa-flow-sim-panel__value {
+        font-size: 14px;
+        color: #0f172a;
+        line-height: 1.55;
+    }
+    .wa-flow-sim-facts {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    .wa-flow-sim-fact {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border-radius: 999px;
+        padding: .35rem .65rem;
+        background: rgba(15, 23, 42, .06);
+        color: #334155;
+        font-size: 12px;
+        font-weight: 700;
+    }
+    .wa-flow-sim-actions {
+        display: grid;
+        gap: 10px;
+    }
+    .wa-flow-sim-action {
+        border-left: 3px solid rgba(15, 118, 110, .35);
+        border-radius: 0 14px 14px 0;
+        background: rgba(255, 255, 255, .9);
+        border-top: 1px solid rgba(148, 163, 184, .12);
+        border-right: 1px solid rgba(148, 163, 184, .12);
+        border-bottom: 1px solid rgba(148, 163, 184, .12);
+        padding: 12px 14px;
+        display: grid;
+        gap: 8px;
+    }
+    .wa-flow-sim-action__title {
+        font-size: 14px;
+        font-weight: 800;
+        color: #0f172a;
+    }
+    .wa-flow-sim-action__body {
+        font-size: 13px;
+        color: #334155;
+        line-height: 1.6;
+        white-space: pre-wrap;
+    }
+    .wa-flow-sim-button-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    .wa-flow-sim-button {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border-radius: 999px;
+        padding: .35rem .65rem;
+        background: rgba(37, 99, 235, .09);
+        color: #1d4ed8;
+        font-size: 12px;
+        font-weight: 700;
+    }
+    .wa-flow-sim-details {
+        border-top: 1px dashed rgba(148, 163, 184, .24);
+        padding-top: 10px;
+    }
+    .wa-flow-sim-details summary {
+        cursor: pointer;
+        color: #475569;
+        font-size: 12px;
+        font-weight: 700;
+    }
+    .wa-flow-sim-json {
+        margin-top: 10px;
+        background: #0f172a;
+        color: #e2e8f0;
+        border-radius: 14px;
+        padding: 12px;
+        font-size: 12px;
+        line-height: 1.6;
+        white-space: pre-wrap;
+        overflow: auto;
+    }
     .wa-flow-empty {
         padding: 2rem 1rem;
         text-align: center;
@@ -880,6 +1004,41 @@
         flex-wrap: wrap;
         gap: .6rem;
     }
+    .wa-flow-repeater {
+        display: grid;
+        gap: 12px;
+        grid-column: 1 / -1;
+    }
+    .wa-flow-repeater-item {
+        display: grid;
+        gap: 12px;
+        padding: 14px;
+        border-radius: 16px;
+        border: 1px solid rgba(148, 163, 184, .18);
+        background: linear-gradient(180deg, rgba(248, 250, 252, .96), rgba(255, 255, 255, 1));
+    }
+    .wa-flow-repeater-item__title {
+        font-size: .78rem;
+        font-weight: 800;
+        letter-spacing: .04em;
+        text-transform: uppercase;
+        color: #334155;
+    }
+    .wa-flow-repeater-item__grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto;
+        gap: .85rem;
+        align-items: end;
+    }
+    .wa-flow-repeater-item__grid--list {
+        grid-template-columns: minmax(0, 1.2fr) minmax(0, .85fr) minmax(0, 1.4fr) auto;
+    }
+    .wa-flow-repeater-item__grid .wa-flow-editor-field {
+        min-width: 0;
+    }
+    .wa-flow-repeater-item__grid .btn {
+        min-width: 138px;
+    }
     .wa-flow-editor-field label {
         display: block;
         font-size: .76rem;
@@ -917,6 +1076,9 @@
         .wa-flow-shell {
             grid-template-columns: 1fr;
         }
+        .wa-flow-sim-grid {
+            grid-template-columns: 1fr;
+        }
         .wa-flow-inspector-grid {
             grid-template-columns: 1fr;
         }
@@ -925,6 +1087,14 @@
         }
         .wa-kb-grid {
             grid-template-columns: 1fr;
+        }
+        .wa-flow-repeater-item__grid,
+        .wa-flow-repeater-item__grid--list {
+            grid-template-columns: 1fr;
+        }
+        .wa-flow-repeater-item__grid .btn,
+        .wa-flow-repeater-item__grid--list .btn {
+            width: 100%;
         }
     }
     @media (max-width: 767px) {
@@ -1873,17 +2043,177 @@ document.addEventListener('DOMContentLoaded', function () {
         && String(latestSimulation?.scenario?.id || '') === String(scenario?.id || '');
     const compareMatchesScenario = (scenario) => Boolean(latestCompare?.laravel?.matched)
         && String(latestCompare?.laravel?.scenario?.id || '') === String(scenario?.id || '');
-    const formatSimulationSummary = (result) => {
-        if (!result || !result.matched) {
-            return 'No hubo match para esta entrada.';
+    const humanizeActionType = (type) => {
+        const map = {
+            send_message: 'Enviaría un mensaje',
+            send_buttons: 'Enviaría botones',
+            send_list: 'Enviaría una lista',
+            send_template: 'Enviaría una plantilla',
+            send_sequence: 'Enviaría una secuencia',
+            set_state: 'Cambiaría el estado',
+            set_context: 'Guardaría datos en contexto',
+            store_consent: 'Registraría consentimiento',
+            handoff_agent: 'Derivaría a un agente',
+            ai_agent: 'Respondería con IA',
+            conditional: 'Evaluaría una condición',
+        };
+
+        return map[type] || `Ejecutaría ${type || 'una acción'}`;
+    };
+    const stringifyValue = (value) => {
+        if (value === null || value === undefined || value === '') {
+            return '—';
         }
-        const actionTypes = Array.isArray(result.actions) ? result.actions.map((action) => action?.type).filter(Boolean) : [];
-        return [
-            `Escenario: ${result.scenario?.id || '—'}`,
-            `Acciones: ${actionTypes.length ? actionTypes.join(', ') : 'none'}`,
-            `Handoff: ${result.handoff_requested ? 'sí' : 'no'}`,
-            `State final: ${result.context_after?.state || result.facts?.state || '—'}`,
-        ].join('\n');
+        if (typeof value === 'object') {
+            return JSON.stringify(value);
+        }
+        return String(value);
+    };
+    const renderSimulationFactChips = (result) => {
+        const facts = result?.facts || {};
+        const chips = [
+            ['Mensaje', facts.message || '—'],
+            ['Estado inicial', result?.context_before?.state || facts.state || '—'],
+            ['Primer contacto', facts.is_first_time ? 'Sí' : 'No'],
+            ['Consentimiento', facts.has_consent ? 'Sí' : 'No'],
+            ['Paciente identificado', facts.patient_found ? 'Sí' : 'No'],
+        ];
+
+        return chips.map(([label, value]) => `
+            <span class="wa-flow-sim-fact">
+                <strong>${escapeHtml(label)}:</strong> ${escapeHtml(value)}
+            </span>
+        `).join('');
+    };
+    const renderSimulationAction = (action, index) => {
+        if (!action || typeof action !== 'object') {
+            return '';
+        }
+
+        const type = String(action.type || '');
+        let body = '';
+
+        if (type === 'send_message') {
+            body = escapeHtml(action?.message?.body || 'Sin texto');
+        } else if (type === 'send_buttons') {
+            const buttons = Array.isArray(action?.message?.buttons) ? action.message.buttons : [];
+            body = `
+                <div class="wa-flow-sim-action__body">${escapeHtml(action?.message?.body || 'Sin texto')}</div>
+                <div class="wa-flow-sim-button-row">
+                    ${buttons.map((button) => `<span class="wa-flow-sim-button">${escapeHtml(button?.title || button?.id || 'Botón')}</span>`).join('')}
+                </div>
+            `;
+        } else if (type === 'send_list') {
+            body = `<div class="wa-flow-sim-action__body">${escapeHtml(action?.message?.body || 'Enviaría un menú interactivo')}</div>`;
+        } else if (type === 'send_template') {
+            body = `<div class="wa-flow-sim-action__body">Usaría la plantilla <strong>${escapeHtml(action?.template?.name || action?.template?.code || 'sin nombre')}</strong>.</div>`;
+        } else if (type === 'set_state') {
+            body = `<div class="wa-flow-sim-action__body">El contacto pasaría al estado <strong>${escapeHtml(action?.state || '—')}</strong>.</div>`;
+        } else if (type === 'set_context') {
+            const values = action?.values && typeof action.values === 'object'
+                ? Object.entries(action.values).map(([key, value]) => `<span class="wa-flow-sim-button">${escapeHtml(key)}: ${escapeHtml(stringifyValue(value))}</span>`).join('')
+                : '<span class="text-muted">Sin datos adicionales</span>';
+            body = `<div class="wa-flow-sim-button-row">${values}</div>`;
+        } else if (type === 'store_consent') {
+            body = `<div class="wa-flow-sim-action__body">Guardaría el consentimiento como <strong>${action?.value ? 'aceptado' : 'rechazado'}</strong>.</div>`;
+        } else if (type === 'handoff_agent') {
+            body = `<div class="wa-flow-sim-action__body">Solicitaría handoff${action?.role_id ? ` al rol ${escapeHtml(action.role_id)}` : ''}${action?.note ? `. Nota: ${escapeHtml(action.note)}` : ''}.</div>`;
+        } else if (type === 'ai_agent') {
+            const reasons = Array.isArray(action?.handoff_reasons) && action.handoff_reasons.length
+                ? action.handoff_reasons.join(', ')
+                : 'sin motivos adicionales';
+            body = `
+                <div class="wa-flow-sim-action__body">${escapeHtml(action?.response || 'Sin respuesta generada')}</div>
+                <div class="wa-flow-sim-button-row">
+                    <span class="wa-flow-sim-button">Decisión: ${escapeHtml(action?.decision || '—')}</span>
+                    <span class="wa-flow-sim-button">Confianza: ${escapeHtml(action?.confidence ?? '—')}</span>
+                    <span class="wa-flow-sim-button">Handoff: ${action?.suggested_handoff ? 'Sí' : 'No'}</span>
+                    <span class="wa-flow-sim-button">Motivos: ${escapeHtml(reasons)}</span>
+                </div>
+            `;
+        } else {
+            body = `<div class="wa-flow-sim-action__body">Acción ejecutada: <strong>${escapeHtml(type || 'desconocida')}</strong>.</div>`;
+        }
+
+        return `
+            <div class="wa-flow-sim-action">
+                <div class="wa-flow-sim-action__title">Paso ${index + 1}. ${escapeHtml(humanizeActionType(type))}</div>
+                ${body}
+            </div>
+        `;
+    };
+    const renderSimulationResult = (result) => {
+        if (!result || typeof result !== 'object') {
+            return '<div class="wa-flow-empty">No se recibió resultado de simulación.</div>';
+        }
+
+        if (!result.matched) {
+            return `
+                <div class="wa-flow-sim-card">
+                    <div class="wa-flow-sim-title">No se activó ningún escenario</div>
+                    <div class="wa-flow-sim-copy">Con este mensaje y este contexto, el flujo no encontró reglas suficientes para continuar.</div>
+                    <div class="wa-flow-sim-panel">
+                        <div class="wa-flow-sim-panel__label">Entrada evaluada</div>
+                        <div class="wa-flow-sim-facts">${renderSimulationFactChips(result)}</div>
+                    </div>
+                    <details class="wa-flow-sim-details">
+                        <summary>Ver detalle técnico</summary>
+                        <pre class="wa-flow-sim-json">${escapeHtml(JSON.stringify(result, null, 2))}</pre>
+                    </details>
+                </div>
+            `;
+        }
+
+        const actions = Array.isArray(result.actions) ? result.actions : [];
+        const stage = result?.scenario?.stage || 'Sin stage';
+        const scenarioName = result?.scenario?.name || result?.scenario?.id || 'Escenario';
+        const finalState = result?.context_after?.state || result?.facts?.state || '—';
+        const handoffLabel = result?.handoff_requested ? 'Sí' : 'No';
+        const beforeEntries = Object.entries(result?.context_before || {});
+        const afterEntries = Object.entries(result?.context_after || {});
+
+        return `
+            <div class="wa-flow-sim-card">
+                <div>
+                    <div class="wa-flow-sim-title">${escapeHtml(scenarioName)}</div>
+                    <div class="wa-flow-sim-copy">El flujo encontró este escenario y ejecutaría <strong>${actions.length}</strong> paso${actions.length === 1 ? '' : 's'} para este contacto.</div>
+                </div>
+                <div class="wa-flow-sim-hero">
+                    <span class="wa-flow-badge wa-flow-badge--stage">${escapeHtml(stage)}</span>
+                    <span class="wa-flow-badge wa-flow-badge--count">${actions.length} acciones</span>
+                    <span class="wa-flow-badge ${result?.handoff_requested ? 'wa-flow-badge--menu' : 'wa-flow-badge--count'}">Handoff: ${escapeHtml(handoffLabel)}</span>
+                    <span class="wa-flow-badge wa-flow-badge--menu">Estado final: ${escapeHtml(finalState)}</span>
+                </div>
+                <div class="wa-flow-sim-panel">
+                    <div class="wa-flow-sim-panel__label">Entrada evaluada</div>
+                    <div class="wa-flow-sim-facts">${renderSimulationFactChips(result)}</div>
+                </div>
+                <div class="wa-flow-sim-panel">
+                    <div class="wa-flow-sim-panel__label">Qué haría el flujo</div>
+                    <div class="wa-flow-sim-actions">
+                        ${actions.length ? actions.map((action, index) => renderSimulationAction(action, index)).join('') : '<div class="text-muted">Este escenario no ejecutó acciones visibles.</div>'}
+                    </div>
+                </div>
+                <div class="wa-flow-sim-grid">
+                    <div class="wa-flow-sim-panel">
+                        <div class="wa-flow-sim-panel__label">Antes</div>
+                        <div class="wa-flow-sim-panel__value">
+                            ${beforeEntries.length ? beforeEntries.map(([key, value]) => `<div><strong>${escapeHtml(key)}:</strong> ${escapeHtml(stringifyValue(value))}</div>`).join('') : 'Sin contexto previo'}
+                        </div>
+                    </div>
+                    <div class="wa-flow-sim-panel">
+                        <div class="wa-flow-sim-panel__label">Después</div>
+                        <div class="wa-flow-sim-panel__value">
+                            ${afterEntries.length ? afterEntries.map(([key, value]) => `<div><strong>${escapeHtml(key)}:</strong> ${escapeHtml(stringifyValue(value))}</div>`).join('') : 'Sin cambios de contexto'}
+                        </div>
+                    </div>
+                </div>
+                <details class="wa-flow-sim-details">
+                    <summary>Ver detalle técnico</summary>
+                    <pre class="wa-flow-sim-json">${escapeHtml(JSON.stringify(result, null, 2))}</pre>
+                </details>
+            </div>
+        `;
     };
     const formatCompareSummary = (result) => {
         if (!result || !result.parity) {
@@ -2525,20 +2855,27 @@ document.addEventListener('DOMContentLoaded', function () {
                             <label>Texto del mensaje</label>
                             <textarea data-action-field="${index}" data-field="value">${escapeHtml(action?.message?.body || '')}</textarea>
                         </div>
-                        ${(Array.isArray(action?.message?.buttons) ? action.message.buttons : []).map((button, buttonIndex) => `
-                            <div class="wa-flow-editor-field">
-                                <label>Botón ${buttonIndex + 1} · título</label>
-                                <input type="text" data-action-config="${index}" data-field="message.buttons.${buttonIndex}.title" value="${escapeHtml(button?.title || '')}">
-                            </div>
-                            <div class="wa-flow-editor-field">
-                                <label>Botón ${buttonIndex + 1} · id</label>
-                                <input type="text" data-action-config="${index}" data-field="message.buttons.${buttonIndex}.id" value="${escapeHtml(button?.id || '')}">
-                            </div>
-                            <div class="wa-flow-editor-field">
-                                <label>&nbsp;</label>
-                                <button type="button" class="btn btn-outline-danger" data-action-remove-button="${index}" data-button-index="${buttonIndex}">Quitar botón</button>
-                            </div>
-                        `).join('')}
+                        <div class="wa-flow-repeater">
+                            ${(Array.isArray(action?.message?.buttons) ? action.message.buttons : []).map((button, buttonIndex) => `
+                                <div class="wa-flow-repeater-item">
+                                    <div class="wa-flow-repeater-item__title">Botón ${buttonIndex + 1}</div>
+                                    <div class="wa-flow-repeater-item__grid">
+                                        <div class="wa-flow-editor-field">
+                                            <label>Título</label>
+                                            <input type="text" data-action-config="${index}" data-field="message.buttons.${buttonIndex}.title" value="${escapeHtml(button?.title || '')}">
+                                        </div>
+                                        <div class="wa-flow-editor-field">
+                                            <label>ID interno</label>
+                                            <input type="text" data-action-config="${index}" data-field="message.buttons.${buttonIndex}.id" value="${escapeHtml(button?.id || '')}">
+                                        </div>
+                                        <div class="wa-flow-editor-field">
+                                            <label>&nbsp;</label>
+                                            <button type="button" class="btn btn-outline-danger" data-action-remove-button="${index}" data-button-index="${buttonIndex}">Quitar botón</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
                     </div>
                     <div class="wa-flow-inline-actions mt-10">
                         <button type="button" class="btn btn-sm btn-outline-primary" data-action-add-button="${index}">Agregar botón</button>
@@ -2558,24 +2895,31 @@ document.addEventListener('DOMContentLoaded', function () {
                             <label>Título de sección</label>
                             <input type="text" data-action-config="${index}" data-field="message.sections.0.title" value="${escapeHtml(action?.message?.sections?.[0]?.title || '')}">
                         </div>
-                        ${(Array.isArray(action?.message?.sections?.[0]?.rows) ? action.message.sections[0].rows : []).map((row, rowIndex) => `
-                            <div class="wa-flow-editor-field">
-                                <label>Fila ${rowIndex + 1} · título</label>
-                                <input type="text" data-action-config="${index}" data-field="message.sections.0.rows.${rowIndex}.title" value="${escapeHtml(row?.title || '')}">
-                            </div>
-                            <div class="wa-flow-editor-field">
-                                <label>Fila ${rowIndex + 1} · id</label>
-                                <input type="text" data-action-config="${index}" data-field="message.sections.0.rows.${rowIndex}.id" value="${escapeHtml(row?.id || '')}">
-                            </div>
-                            <div class="wa-flow-editor-field">
-                                <label>Fila ${rowIndex + 1} · descripción</label>
-                                <input type="text" data-action-config="${index}" data-field="message.sections.0.rows.${rowIndex}.description" value="${escapeHtml(row?.description || '')}">
-                            </div>
-                            <div class="wa-flow-editor-field">
-                                <label>&nbsp;</label>
-                                <button type="button" class="btn btn-outline-danger" data-action-remove-row="${index}" data-row-index="${rowIndex}">Quitar fila</button>
-                            </div>
-                        `).join('')}
+                        <div class="wa-flow-repeater">
+                            ${(Array.isArray(action?.message?.sections?.[0]?.rows) ? action.message.sections[0].rows : []).map((row, rowIndex) => `
+                                <div class="wa-flow-repeater-item">
+                                    <div class="wa-flow-repeater-item__title">Opción ${rowIndex + 1}</div>
+                                    <div class="wa-flow-repeater-item__grid wa-flow-repeater-item__grid--list">
+                                        <div class="wa-flow-editor-field">
+                                            <label>Título</label>
+                                            <input type="text" data-action-config="${index}" data-field="message.sections.0.rows.${rowIndex}.title" value="${escapeHtml(row?.title || '')}">
+                                        </div>
+                                        <div class="wa-flow-editor-field">
+                                            <label>ID interno</label>
+                                            <input type="text" data-action-config="${index}" data-field="message.sections.0.rows.${rowIndex}.id" value="${escapeHtml(row?.id || '')}">
+                                        </div>
+                                        <div class="wa-flow-editor-field">
+                                            <label>Descripción</label>
+                                            <input type="text" data-action-config="${index}" data-field="message.sections.0.rows.${rowIndex}.description" value="${escapeHtml(row?.description || '')}">
+                                        </div>
+                                        <div class="wa-flow-editor-field">
+                                            <label>&nbsp;</label>
+                                            <button type="button" class="btn btn-outline-danger" data-action-remove-row="${index}" data-row-index="${rowIndex}">Quitar fila</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
                     </div>
                     <div class="wa-flow-inline-actions mt-10">
                         <button type="button" class="btn btn-sm btn-outline-primary" data-action-add-row="${index}">Agregar opción</button>
@@ -2880,7 +3224,6 @@ document.addEventListener('DOMContentLoaded', function () {
             selectedScenarioId = scenario.id;
             syncPayloadField();
             renderScenarioList();
-            renderScenarioCanvas();
         });
         canvas.querySelector('#wa-flow-edit-name')?.addEventListener('input', (event) => {
             scenario.name = event.target.value;
@@ -2989,7 +3332,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
                 syncPayloadField();
                 renderScenarioList();
-                renderScenarioCanvas();
+                if (node.tagName === 'SELECT') {
+                    renderScenarioCanvas();
+                }
             });
         });
         canvas.querySelectorAll('[data-action-config]').forEach((node) => {
@@ -3003,7 +3348,9 @@ document.addEventListener('DOMContentLoaded', function () {
                 updateActionConfig(action, field, node.value);
                 syncPayloadField();
                 renderScenarioList();
-                renderScenarioCanvas();
+                if (node.tagName === 'SELECT') {
+                    renderScenarioCanvas();
+                }
             });
         });
         canvas.querySelectorAll('[data-action-add-button]').forEach((node) => {
@@ -3112,7 +3459,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
                 syncPayloadField();
                 renderScenarioList();
-                renderScenarioCanvas();
+                if (node.tagName === 'SELECT') {
+                    renderScenarioCanvas();
+                }
             });
         });
         canvas.querySelectorAll('[data-remove-transition]').forEach((node) => {
@@ -3188,7 +3537,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 renderScenarioList();
                 renderScenarioCanvas();
             }
-            simOutput.textContent = `${formatSimulationSummary(data)}\n\n${JSON.stringify(data, null, 2)}`;
+            simOutput.innerHTML = renderSimulationResult(data);
             await loadAiRuns();
         } catch (error) {
             simOutput.textContent = 'No fue posible ejecutar la simulación.';

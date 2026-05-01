@@ -20,6 +20,7 @@ class WhatsappConversationWriteControllerTest extends TestCase
 
         Schema::dropIfExists('whatsapp_messages');
         Schema::dropIfExists('whatsapp_conversations');
+        Schema::dropIfExists('whatsapp_template_revisions');
         Schema::dropIfExists('whatsapp_message_templates');
         Schema::dropIfExists('whatsapp_contact_consent');
         Schema::dropIfExists('crm_leads');
@@ -114,6 +115,26 @@ class WhatsappConversationWriteControllerTest extends TestCase
             $table->timestamp('rejected_at')->nullable();
             $table->unsignedBigInteger('created_by')->nullable();
             $table->unsignedBigInteger('updated_by')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('whatsapp_template_revisions', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('template_id');
+            $table->unsignedInteger('version')->default(1);
+            $table->string('status')->default('approved');
+            $table->string('header_type')->default('none');
+            $table->text('header_text')->nullable();
+            $table->longText('body_text');
+            $table->text('footer_text')->nullable();
+            $table->json('buttons')->nullable();
+            $table->json('variables')->nullable();
+            $table->string('quality_rating')->default('unknown');
+            $table->text('rejection_reason')->nullable();
+            $table->timestamp('submitted_at')->nullable();
+            $table->timestamp('approved_at')->nullable();
+            $table->timestamp('rejected_at')->nullable();
+            $table->unsignedBigInteger('created_by')->nullable();
             $table->timestamps();
         });
 
@@ -633,5 +654,129 @@ class WhatsappConversationWriteControllerTest extends TestCase
             'message_type' => 'template',
             'wa_message_id' => 'wamid.template.1',
         ]);
+    }
+
+    public function test_it_sends_body_parameters_when_starting_a_conversation_with_variable_template(): void
+    {
+        \DB::table('whatsapp_message_templates')->insert([
+            'id' => 8,
+            'template_code' => 'seguimiento_campana_visual',
+            'display_name' => 'Seguimiento campaña visual',
+            'language' => 'es',
+            'status' => 'approved',
+            'current_revision_id' => 80,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        \DB::table('whatsapp_template_revisions')->insert([
+            'id' => 80,
+            'template_id' => 8,
+            'version' => 1,
+            'status' => 'approved',
+            'header_type' => 'none',
+            'body_text' => 'Estimado(a) {{1}}: Juan Pérez, gracias por su interés.',
+            'variables' => json_encode(['{{1}}']),
+            'quality_rating' => 'green',
+            'approved_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        Http::fake([
+            'https://graph.facebook.com/*' => Http::response([
+                'messages' => [
+                    ['id' => 'wamid.template.variable.1'],
+                ],
+            ], 200),
+        ]);
+
+        $response = $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->postJson('/v2/whatsapp/api/conversations/start-template', [
+                'wa_number' => '0991135567',
+                'template_id' => 8,
+                'contact_name' => 'Johnny Yuquilema',
+                'patient_full_name' => 'Johnny Yuquilema',
+                'patient_hc_number' => 'HC-900',
+            ]);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('data.message.wa_message_id', 'wamid.template.variable.1');
+
+        Http::assertSent(function (\Illuminate\Http\Client\Request $request): bool {
+            $payload = $request->data();
+
+            return data_get($payload, 'template.name') === 'seguimiento_campana_visual'
+                && data_get($payload, 'template.components.0.type') === 'body'
+                && data_get($payload, 'template.components.0.parameters.0.type') === 'text'
+                && data_get($payload, 'template.components.0.parameters.0.text') === 'Johnny Yuquilema';
+        });
+    }
+
+    public function test_it_prefers_manual_template_variables_when_provided(): void
+    {
+        \DB::table('whatsapp_message_templates')->insert([
+            'id' => 9,
+            'template_code' => 'seguimiento_manual',
+            'display_name' => 'Seguimiento manual',
+            'language' => 'es',
+            'status' => 'approved',
+            'current_revision_id' => 90,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        \DB::table('whatsapp_template_revisions')->insert([
+            'id' => 90,
+            'template_id' => 9,
+            'version' => 1,
+            'status' => 'approved',
+            'header_type' => 'none',
+            'body_text' => 'Hola {{1}}: ejemplo',
+            'variables' => json_encode(['{{1}}']),
+            'quality_rating' => 'green',
+            'approved_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        Http::fake([
+            'https://graph.facebook.com/*' => Http::response([
+                'messages' => [
+                    ['id' => 'wamid.template.manual.1'],
+                ],
+            ], 200),
+        ]);
+
+        $response = $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->postJson('/v2/whatsapp/api/conversations/start-template', [
+                'wa_number' => '0991135568',
+                'template_id' => 9,
+                'contact_name' => 'Johnny Yuquilema',
+                'patient_full_name' => 'Johnny Yuquilema',
+                'patient_hc_number' => 'HC-901',
+                'template_variables' => ['Valor escrito manualmente'],
+            ]);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('data.message.wa_message_id', 'wamid.template.manual.1');
+
+        Http::assertSent(function (\Illuminate\Http\Client\Request $request): bool {
+            return data_get($request->data(), 'template.components.0.parameters.0.text') === 'Valor escrito manualmente';
+        });
     }
 }

@@ -1266,6 +1266,12 @@
                                         @endforeach
                                     </select>
                                 </div>
+                                <div class="col-12">
+                                    <div id="wa-v2-start-template-variables" class="d-none">
+                                        <div class="text-muted" style="font-size:12px; margin-bottom:8px;">Completa las variables del template antes de enviarlo.</div>
+                                        <div class="row g-10" id="wa-v2-start-template-variables-fields"></div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -2027,6 +2033,8 @@
             const startChatPatientName = document.getElementById('wa-v2-start-patient-name');
             const startChatHc = document.getElementById('wa-v2-start-hc');
             const startChatTemplate = document.getElementById('wa-v2-start-template');
+            const startChatTemplateVariables = document.getElementById('wa-v2-start-template-variables');
+            const startChatTemplateVariablesFields = document.getElementById('wa-v2-start-template-variables-fields');
             const startChatSubmit = document.getElementById('wa-v2-start-submit');
             const startChatFeedback = document.getElementById('wa-v2-start-chat-feedback');
             const presenceSelect = document.getElementById('wa-v2-presence');
@@ -2046,6 +2054,7 @@
             let unseenMessageCount = 0;
             let startChatSearchInFlight = false;
             let startChatSearchTimer = null;
+            const startChatTemplates = @json($templateOptions);
 
             const initTabsScroller = function () {
                 if (!tabsScroller) {
@@ -2125,6 +2134,57 @@
                 startChatFeedback.textContent = message;
             };
 
+            const selectedStartTemplateMeta = function () {
+                if (!startChatTemplate) {
+                    return null;
+                }
+
+                const templateId = Number(startChatTemplate.value || 0);
+                if (!templateId) {
+                    return null;
+                }
+
+                return Array.isArray(startChatTemplates)
+                    ? (startChatTemplates.find(function (template) {
+                        return Number(template.id || 0) === templateId;
+                    }) || null)
+                    : null;
+            };
+
+            const renderStartTemplateVariables = function () {
+                if (!startChatTemplateVariables || !startChatTemplateVariablesFields) {
+                    return;
+                }
+
+                const template = selectedStartTemplateMeta();
+                const variables = Array.isArray(template?.variables) ? template.variables : [];
+                const examples = Array.isArray(template?.variable_examples) ? template.variable_examples : [];
+
+                if (variables.length === 0) {
+                    startChatTemplateVariables.classList.add('d-none');
+                    startChatTemplateVariablesFields.innerHTML = '';
+                    return;
+                }
+
+                startChatTemplateVariables.classList.remove('d-none');
+                startChatTemplateVariablesFields.innerHTML = variables.map(function (variable, index) {
+                    const example = (examples[index] || '').trim();
+                    const placeholder = example || `Valor para ${variable}`;
+                    return `
+                        <div class="col-12">
+                            <label class="form-label" for="wa-v2-start-template-variable-${index}">
+                                Variable ${index + 1} <span class="text-muted">${variable}</span>
+                            </label>
+                            <input type="text"
+                                   class="form-control"
+                                   id="wa-v2-start-template-variable-${index}"
+                                   data-wa-template-variable="${index}"
+                                   placeholder="${placeholder.replace(/"/g, '&quot;')}">
+                        </div>
+                    `;
+                }).join('');
+            };
+
             const openStartChatModal = function (payload) {
                 if (!startChatModal) {
                     return;
@@ -2137,6 +2197,7 @@
                     if (startChatHc) startChatHc.value = payload.hcNumber || '';
                 }
 
+                renderStartTemplateVariables();
                 startChatModal.classList.add('is-open');
                 startChatModal.setAttribute('aria-hidden', 'false');
                 setStartChatFeedback('Selecciona un template aprobado y dispara el primer mensaje.', 'muted');
@@ -2274,6 +2335,11 @@
                             contact_name: (startChatContactName?.value || '').trim(),
                             patient_full_name: (startChatPatientName?.value || '').trim(),
                             patient_hc_number: (startChatHc?.value || '').trim(),
+                            template_variables: startChatTemplateVariablesFields
+                                ? Array.from(startChatTemplateVariablesFields.querySelectorAll('[data-wa-template-variable]')).map(function (input) {
+                                    return (input.value || '').trim();
+                                })
+                                : [],
                         })
                     });
                     const data = await response.json();
@@ -3192,6 +3258,12 @@
             if (startChatSearchButton) {
                 startChatSearchButton.addEventListener('click', function () {
                     runContactSearch();
+                });
+            }
+
+            if (startChatTemplate) {
+                startChatTemplate.addEventListener('change', function () {
+                    renderStartTemplateVariables();
                 });
             }
 

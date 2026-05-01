@@ -93,6 +93,10 @@ class ConversationWriteController
                 $request->filled('contact_name') ? (string) $request->input('contact_name') : null,
                 $request->filled('patient_hc_number') ? (string) $request->input('patient_hc_number') : null,
                 $request->filled('patient_full_name') ? (string) $request->input('patient_full_name') : null,
+                array_values(array_filter(
+                    is_array($request->input('template_variables')) ? $request->input('template_variables') : [],
+                    static fn ($value): bool => trim((string) $value) !== ''
+                )),
             );
 
             return response()->json([

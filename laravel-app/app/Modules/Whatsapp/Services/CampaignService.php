@@ -182,17 +182,88 @@ class CampaignService
         }
 
         return WhatsappMessageTemplate::query()
+            ->with('whatsapp_template_revision')
             ->orderBy('display_name')
             ->limit(100)
             ->get()
-            ->map(fn (WhatsappMessageTemplate $template): array => [
-                'id' => (int) $template->id,
-                'name' => (string) ($template->display_name ?: $template->template_code),
-                'code' => (string) $template->template_code,
-                'status' => (string) ($template->status ?? ''),
-                'language' => (string) ($template->language ?? ''),
-            ])
+            ->map(function (WhatsappMessageTemplate $template): array {
+                $revision = $template->whatsapp_template_revision;
+                $bodyText = (string) ($revision?->body_text ?? '');
+
+                return [
+                    'id' => (int) $template->id,
+                    'name' => (string) ($template->display_name ?: $template->template_code),
+                    'code' => (string) $template->template_code,
+                    'status' => (string) ($template->status ?? ''),
+                    'language' => (string) ($template->language ?? ''),
+                    'body_text' => $bodyText,
+                    'variables' => $this->extractTemplateVariables($bodyText, $revision?->variables),
+                    'variable_examples' => $this->extractInlineExamples($bodyText),
+                ];
+            })
             ->all();
+    }
+
+    /**
+     * @param mixed $storedVariables
+     * @return array<int, string>
+     */
+    private function extractTemplateVariables(string $bodyText, mixed $storedVariables): array
+    {
+        if (is_array($storedVariables) && $storedVariables !== []) {
+            return array_values(array_map(static fn ($value): string => (string) $value, $storedVariables));
+        }
+
+        preg_match_all('/\{\{(\d+)\}\}/', $bodyText, $matches);
+
+        return array_values(array_map(
+            static fn (string $match): string => '{{' . $match . '}}',
+            array_unique($matches[1] ?? [])
+        ));
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function extractInlineExamples(string $text): array
+    {
+        preg_match_all('/\{\{(\d+)\}\}/', $text, $matches, PREG_OFFSET_CAPTURE);
+        if (($matches[0] ?? []) === []) {
+            return [];
+        }
+
+        $examples = [];
+        foreach ($matches[0] as $index => $matchData) {
+            $match = (string) ($matchData[0] ?? '');
+            $position = (int) ($matchData[1] ?? 0);
+            $offset = $position + strlen($match);
+            $remainder = substr($text, $offset);
+            if ($remainder === false || !preg_match('/^\s*:\s*/u', $remainder, $prefixMatch)) {
+                $examples[] = '';
+                continue;
+            }
+
+            $prefixLength = strlen((string) ($prefixMatch[0] ?? ''));
+            $candidate = substr($remainder, $prefixLength);
+            if ($candidate === false || $candidate === '') {
+                $examples[] = '';
+                continue;
+            }
+
+            $nextVariablePos = strpos($candidate, '{{');
+            $lineBreakPos = strcspn($candidate, "\r\n");
+            $sliceLength = strlen($candidate);
+            if ($nextVariablePos !== false) {
+                $sliceLength = min($sliceLength, $nextVariablePos);
+            }
+            if ($lineBreakPos < $sliceLength) {
+                $sliceLength = $lineBreakPos;
+            }
+
+            $examples[] = trim(substr($candidate, 0, $sliceLength));
+        }
+
+        return $examples;
     }
 
     /**
