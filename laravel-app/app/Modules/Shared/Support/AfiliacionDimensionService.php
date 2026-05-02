@@ -145,7 +145,7 @@ class AfiliacionDimensionService
     {
         $options = [
             ['value' => '', 'label' => $allLabel],
-            ['value' => 'sin_convenio', 'label' => 'Sin convenio'],
+            ['value' => 'sin_convenio', 'label' => 'Sin convenio', 'categorias' => ['otros']],
         ];
 
         if (!$this->tableExists('afiliacion_categoria_map')) {
@@ -156,31 +156,37 @@ class AfiliacionDimensionService
             ? "COALESCE(NULLIF(TRIM(empresa_seguro), ''), NULLIF(TRIM(afiliacion_raw), ''), 'Sin convenio') AS empresa_label"
             : "COALESCE(NULLIF(TRIM(afiliacion_raw), ''), 'Sin convenio') AS empresa_label";
 
-        $stmt = $this->db->query("SELECT {$select} FROM afiliacion_categoria_map ORDER BY empresa_label ASC");
+        $stmt = $this->db->query("SELECT {$select}, categoria FROM afiliacion_categoria_map ORDER BY empresa_label ASC");
         if (!$stmt) {
             return $options;
         }
 
-        $seen = [];
+        $byKey = [];
         foreach ($options as $option) {
-            $seen[(string) ($option['value'] ?? '')] = true;
+            $byKey[(string) ($option['value'] ?? '')] = $option;
         }
 
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
             $label = $this->resolveEmpresaLabelFromRaw(trim((string) ($row['empresa_label'] ?? '')));
             $value = $this->normalizeEmpresaFilter($label);
+            $categoria = $this->normalizeCategoriaFilter((string) ($row['categoria'] ?? ''));
             if ($label === '') {
                 $label = 'Sin convenio';
             }
-            if ($value === '' || isset($seen[$value])) {
+            if ($value === '') {
                 continue;
             }
 
-            $options[] = ['value' => $value, 'label' => $label];
-            $seen[$value] = true;
+            if (!isset($byKey[$value])) {
+                $byKey[$value] = ['value' => $value, 'label' => $label, 'categorias' => []];
+            }
+            if ($categoria !== '') {
+                $byKey[$value]['categorias'][] = $categoria;
+                $byKey[$value]['categorias'] = array_values(array_unique($byKey[$value]['categorias']));
+            }
         }
 
-        return $options;
+        return array_values($byKey);
     }
 
     /**
@@ -190,7 +196,7 @@ class AfiliacionDimensionService
     {
         $options = [
             ['value' => '', 'label' => $allLabel],
-            ['value' => 'sin_convenio', 'label' => 'Sin convenio'],
+            ['value' => 'sin_convenio', 'label' => 'Sin convenio', 'categoria' => 'otros', 'empresa_seguro' => 'sin_convenio'],
         ];
         $empresaFilter = $this->normalizeEmpresaFilter($empresaFilter);
 
@@ -208,6 +214,7 @@ class AfiliacionDimensionService
         $stmt = $this->db->query(
             "SELECT afiliacion_norm,
                     COALESCE(NULLIF(TRIM(afiliacion_raw), ''), 'Sin convenio') AS afiliacion_label,
+                    categoria,
                     {$empresaSeguroSelect}
              FROM afiliacion_categoria_map
              ORDER BY afiliacion_label ASC"
@@ -240,7 +247,12 @@ class AfiliacionDimensionService
                 continue;
             }
 
-            $options[] = ['value' => $value, 'label' => $label];
+            $options[] = [
+                'value' => $value,
+                'label' => $label,
+                'categoria' => $this->normalizeCategoriaFilter((string) ($row['categoria'] ?? '')),
+                'empresa_seguro' => $empresaKey,
+            ];
             $seen[$value] = true;
         }
 

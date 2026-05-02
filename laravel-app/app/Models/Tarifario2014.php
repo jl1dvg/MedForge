@@ -21,6 +21,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property float|null $valor_facturar_nivel1
  * @property float|null $valor_facturar_nivel2
  * @property float|null $valor_facturar_nivel3
+ * @property float|null $honorario_medico
  * @property float|null $anestesia_nivel1
  * @property float|null $anestesia_nivel2
  * @property float|null $anestesia_nivel3
@@ -54,6 +55,7 @@ class Tarifario2014 extends Model
 		'valor_facturar_nivel1' => 'float',
 		'valor_facturar_nivel2' => 'float',
 		'valor_facturar_nivel3' => 'float',
+		'honorario_medico' => 'float',
 		'anestesia_nivel1' => 'float',
 		'anestesia_nivel2' => 'float',
 		'anestesia_nivel3' => 'float',
@@ -71,6 +73,7 @@ class Tarifario2014 extends Model
 		'valor_facturar_nivel1',
 		'valor_facturar_nivel2',
 		'valor_facturar_nivel3',
+		'honorario_medico',
 		'anestesia_nivel1',
 		'anestesia_nivel2',
 		'anestesia_nivel3',

@@ -186,6 +186,12 @@
                             <input name="precio_nivel3" type="number" step="0.0001" class="form-control form-control-sm"
                                    value="{{ old('precio_nivel3', $code['valor_facturar_nivel3'] ?? '') }}">
                         </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Honorario médico por código</label>
+                            <input name="honorario_medico" type="number" step="0.0001" min="0" class="form-control form-control-sm"
+                                   value="{{ old('honorario_medico', $code['honorario_medico'] ?? '') }}"
+                                   placeholder="Aplica a Cirugías/PNI no públicas">
+                        </div>
 
                         @if(!empty($priceLevels))
                             <div class="col-12">

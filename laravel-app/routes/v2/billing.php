@@ -30,6 +30,11 @@ Route::middleware(['legacy.auth'])->group(function (): void {
         Route::post('/billing/honorarios-data', [BillingUiController::class, 'honorariosData']);
     });
 
+    Route::middleware(['legacy.permission:administrativo,settings.manage,billing.manage'])->group(function (): void {
+        Route::get('/billing/honorarios/settings', [BillingUiController::class, 'honorariosSettings']);
+        Route::post('/billing/honorarios/settings', [BillingUiController::class, 'saveHonorariosSettings']);
+    });
+
     Route::middleware(['legacy.permission:administrativo,billing.particulares.view,billing.manage'])->group(function (): void {
         Route::get('/informes/particulares', [BillingUiController::class, 'informeParticulares']);
         Route::get('/informes/particulares/referidos', [BillingUiController::class, 'informeParticularesReferidos']);

@@ -39,6 +39,8 @@
                 d.q = getFormValue('q');
                 d.code_type = getFormValue('code_type');
                 d.superbill = getFormValue('superbill');
+                d.tipo_seguro = getFormValue('tipo_seguro');
+                d.empresa_seguro = getFormValue('empresa_seguro');
                 d.active = filterForm && filterForm.querySelector('#f_active')?.checked ? 1 : 0;
                 d.reportable = filterForm && filterForm.querySelector('#f_reportable')?.checked ? 1 : 0;
                 d.financial_reporting = filterForm && filterForm.querySelector('#f_finrep')?.checked ? 1 : 0;
@@ -58,6 +60,7 @@
             { data: 'valor1', className: 'text-end' },
             { data: 'valor2', className: 'text-end' },
             { data: 'valor3', className: 'text-end' },
+            { data: 'honorario_medico', className: 'text-end' },
             { data: 'acciones', orderable: false, searchable: false },
         ],
         columnDefs: [

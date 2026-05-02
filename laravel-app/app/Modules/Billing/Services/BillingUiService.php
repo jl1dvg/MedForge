@@ -102,6 +102,55 @@ class BillingUiService
     }
 
     /**
+     * @return array<int, array{value:string,label:string}>
+     */
+    public function listarDoctoresHonorarios(): array
+    {
+        $rawDoctors = [];
+        try {
+            $rows = DB::select(
+                "SELECT DISTINCT NULLIF(TRIM(nombre), '') AS doctor
+                 FROM users
+                 WHERE nombre IS NOT NULL
+                   AND TRIM(nombre) <> ''
+                   AND (
+                     UPPER(TRIM(especialidad)) = 'CIRUJANO OFTALMÓLOGO'
+                     OR UPPER(TRIM(especialidad)) = 'CIRUJANO OFTALMOLOGO'
+                   )
+                 ORDER BY doctor ASC"
+            );
+            foreach ($rows as $row) {
+                $rawDoctors[] = (string) ($row->doctor ?? '');
+            }
+        } catch (\Throwable $exception) {
+            \Illuminate\Support\Facades\Log::error('billing.honorarios.doctores_query_error', [
+                'message' => $exception->getMessage(),
+            ]);
+
+            return [];
+        }
+
+        $options = [];
+        foreach ($rawDoctors as $rawDoctor) {
+            $raw = $this->normalizeWhitespace($rawDoctor);
+            $key = $this->doctorCanonicalKey($raw);
+            if ($raw === '' || $key === '') {
+                continue;
+            }
+            if (!isset($options[$key])) {
+                $options[$key] = [
+                    'value' => $key,
+                    'label' => $this->formatDoctorLabel($raw),
+                ];
+            }
+        }
+
+        usort($options, static fn(array $a, array $b): int => strcasecmp((string) $a['label'], (string) $b['label']));
+
+        return array_values($options);
+    }
+
+    /**
      * @return array<string, mixed>|null
      */
     public function obtenerDetalleFactura(string $formId): ?array
@@ -471,5 +520,121 @@ class BillingUiService
         $this->tableExistsCache[$table] = $exists;
 
         return $exists;
+    }
+
+    private function doctorCanonicalKey(string $value): string
+    {
+        $normalized = $this->normalizeDoctorReference($value);
+        if ($normalized === '') {
+            return '';
+        }
+
+        $tokens = preg_split('/\s+/u', $normalized) ?: [];
+        $tokens = array_values(array_filter($tokens, static fn($token): bool => $token !== ''));
+        sort($tokens, SORT_STRING);
+
+        return implode(' ', $tokens);
+    }
+
+    private function normalizeDoctorReference(string $value): string
+    {
+        $normalized = $this->normalizeWhitespace($value);
+        if ($normalized === '') {
+            return '';
+        }
+
+        $ascii = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $normalized);
+        if (is_string($ascii) && $ascii !== '') {
+            $normalized = $ascii;
+        }
+
+        $normalized = mb_strtoupper($normalized, 'UTF-8');
+        $normalized = preg_replace('/[^\p{L}\p{N}\s]+/u', ' ', $normalized) ?? $normalized;
+
+        return $this->normalizeWhitespace($normalized);
+    }
+
+    private function normalizeWhitespace(string $value): string
+    {
+        $normalized = preg_replace('/\s+/u', ' ', trim($value));
+
+        return $normalized !== null ? trim($normalized) : trim($value);
+    }
+
+    private function formatDoctorLabel(string $value): string
+    {
+        $normalized = $this->normalizeWhitespace($value);
+        if ($normalized === '') {
+            return '';
+        }
+
+        if (mb_strtoupper($normalized, 'UTF-8') === 'OPT OPTOMETRIA') {
+            return 'OPT OPTOMETRIA';
+        }
+
+        $formatted = mb_convert_case(mb_strtolower($normalized, 'UTF-8'), MB_CASE_TITLE, 'UTF-8');
+        $tokens = preg_split('/\s+/u', $formatted) ?: [];
+        $lowercaseParticles = ['De', 'Del', 'La', 'Las', 'Los', 'Y', 'Da', 'Das', 'Do', 'Dos'];
+        $upperTokens = ['SNS'];
+
+        foreach ($tokens as $index => $token) {
+            if ($index > 0 && in_array($token, $lowercaseParticles, true)) {
+                $tokens[$index] = mb_strtolower($token, 'UTF-8');
+                continue;
+            }
+
+            if (in_array(mb_strtoupper($token, 'UTF-8'), $upperTokens, true)) {
+                $tokens[$index] = mb_strtoupper($token, 'UTF-8');
+            }
+        }
+
+        return implode(' ', $tokens);
+    }
+
+    private function isDoctorLikeValue(string $value): bool
+    {
+        $rawNormalized = mb_strtoupper($this->normalizeWhitespace($value), 'UTF-8');
+        if ($rawNormalized === '') {
+            return false;
+        }
+
+        if ($rawNormalized === 'OPT OPTOMETRIA') {
+            return true;
+        }
+
+        if (preg_match('/^\d{1,2}:\d{2}(:\d{2})?$/', $rawNormalized) === 1) {
+            return false;
+        }
+
+        if (preg_match('/\d/', $rawNormalized) === 1) {
+            return false;
+        }
+
+        $blockedPatterns = [
+            '/\bRETINOGRAFIA\b/u',
+            '/\bNERVIO\s+OPTICO\b/u',
+            '/\bAMBOS\s+OJOS\b/u',
+            '/\b(DERECHO|IZQUIERDO)\b/u',
+            '/\b(AO|OD|OI)\b/u',
+            '/\bCONSULTA\b/u',
+            '/\bPROCEDIMIENTO\b/u',
+            '/\bDOCTOR\s+EJEMPLO\b/u',
+            '/^HC\b/u',
+            '/\bOPTOMETRIA\b/u',
+        ];
+
+        foreach ($blockedPatterns as $pattern) {
+            if (preg_match($pattern, $rawNormalized) === 1) {
+                return false;
+            }
+        }
+
+        if (str_contains($rawNormalized, '(') || str_contains($rawNormalized, ')') || str_contains($rawNormalized, '-')) {
+            return false;
+        }
+
+        $tokens = preg_split('/\s+/u', $this->normalizeDoctorReference($value)) ?: [];
+
+        return count(array_filter($tokens, static fn($token): bool => $token !== '')) >= 2;
     }
 }

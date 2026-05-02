@@ -40,7 +40,8 @@ class CodesReadController
             10 => 'valor_facturar_nivel1',
             11 => 'valor_facturar_nivel2',
             12 => 'valor_facturar_nivel3',
-            13 => 'id',
+            13 => 'honorario_medico',
+            14 => 'id',
         ];
         $orderBy = $columns[$orderIndex] ?? 'codigo';
 
@@ -80,6 +81,7 @@ class CodesReadController
                 'valor1' => number_format((float) ($row['valor_facturar_nivel1'] ?? 0), 2),
                 'valor2' => number_format((float) ($row['valor_facturar_nivel2'] ?? 0), 2),
                 'valor3' => number_format((float) ($row['valor_facturar_nivel3'] ?? 0), 2),
+                'honorario_medico' => $row['honorario_medico'] !== null ? number_format((float) $row['honorario_medico'], 2) : '—',
                 'acciones' => '<a href="/v2/codes/' . $id . '/edit" class="btn btn-sm btn-outline-primary">Editar</a>',
             ];
         }

@@ -10,6 +10,7 @@ use App\Modules\Billing\Services\BillingInformePacienteService;
 use App\Modules\Billing\Services\BillingParticularesReportService;
 use App\Modules\Billing\Services\BillingProcedimientosKpiService;
 use App\Modules\Billing\Services\HonorariosDashboardDataService;
+use App\Modules\Billing\Services\HonorariosSettingsService;
 use App\Modules\Billing\Services\BillingUiService;
 use App\Modules\Shared\Support\AfiliacionDimensionService;
 use App\Modules\Shared\Support\LegacyCurrentUser;
@@ -204,13 +205,17 @@ class BillingUiController
             return redirect('/auth/login?auth_required=1');
         }
 
-        $cirujanos = $this->service->listarCirujanos();
+        $doctores = $this->service->listarDoctoresHonorarios();
+        Log::info('billing.honorarios.doctores_options', [
+            'count' => count($doctores),
+            'sample' => array_slice($doctores, 0, 5),
+        ]);
 
         if ($request->expectsJson()) {
             return response()->json([
                 'data' => [
                     'honorarios_data' => '/v2/billing/honorarios-data',
-                    'cirujanos' => $cirujanos,
+                    'doctores' => $doctores,
                 ],
             ]);
         }
@@ -218,7 +223,7 @@ class BillingUiController
         return view('billing.v2-honorarios', [
             'pageTitle' => 'Honorarios médicos',
             'currentUser' => LegacyCurrentUser::resolve($request),
-            'cirujanos' => $cirujanos,
+            'doctores' => $doctores,
             'afiliacionCategoriaOptions' => $this->insuranceDimensionOptions('categoria'),
             'empresaSeguroOptions' => $this->insuranceDimensionOptions('empresa'),
             'seguroOptions' => $this->insuranceDimensionOptions('seguro'),
@@ -502,35 +507,92 @@ class BillingUiController
         $payload = $request->all();
         $range = $this->resolveDashboardRange(is_array($payload) ? $payload : []);
         $filters = [
-            'cirujano' => $payload['cirujano'] ?? null,
+            'doctor' => $payload['doctor'] ?? ($payload['cirujano'] ?? null),
+            'sede' => $payload['sede'] ?? null,
+            'tipo_procedimiento' => $payload['tipo_procedimiento'] ?? null,
             'categoria_seguro' => $payload['categoria_seguro'] ?? null,
             'empresa_seguro' => $payload['empresa_seguro'] ?? null,
             'seguro' => $payload['seguro'] ?? null,
         ];
-        $rules = is_array($payload['reglas'] ?? null) ? $payload['reglas'] : [];
 
         try {
             $data = $this->honorariosDashboardService->buildSummary(
                 $range['start']->format('Y-m-d 00:00:00'),
                 $range['end']->format('Y-m-d 23:59:59'),
                 $filters,
-                $rules
+                []
             );
-        } catch (\Throwable) {
-            return response()->json(['error' => 'No se pudo cargar el dashboard de honorarios.'], 500);
+        } catch (\Throwable $exception) {
+            Log::error('billing.honorarios.data_error', [
+                'message' => $exception->getMessage(),
+                'filters' => $filters,
+            ]);
+
+            return response()->json([
+                'error' => 'No se pudo cargar el dashboard de honorarios.',
+                'message' => $exception->getMessage(),
+            ], 500);
         }
 
         return response()->json([
             'filters' => [
                 'date_from' => $range['from'],
                 'date_to' => $range['to'],
-                'cirujano' => $filters['cirujano'],
+                'doctor' => $filters['doctor'],
+                'sede' => $filters['sede'],
+                'tipo_procedimiento' => $filters['tipo_procedimiento'],
                 'categoria_seguro' => $filters['categoria_seguro'],
                 'empresa_seguro' => $filters['empresa_seguro'],
                 'seguro' => $filters['seguro'],
             ],
             'data' => $data,
         ]);
+    }
+
+    public function honorariosSettings(Request $request): JsonResponse|RedirectResponse|View
+    {
+        if (!$this->isLegacyAuthenticated($request)) {
+            if ($request->expectsJson()) {
+                return response()->json(['error' => 'Sesión expirada'], 401);
+            }
+
+            return redirect('/auth/login?auth_required=1');
+        }
+
+        $settings = new HonorariosSettingsService();
+        $rules = $settings->rules();
+
+        if ($request->expectsJson()) {
+            return response()->json(['data' => ['rules' => $rules]]);
+        }
+
+        return view('billing.v2-honorarios-settings', [
+            'pageTitle' => 'Settings Honorarios',
+            'currentUser' => LegacyCurrentUser::resolve($request),
+            'rules' => $rules,
+            'tipoOptions' => $this->honorariosTipoOptions(),
+            'categoriaOptions' => $this->insuranceDimensionOptions('categoria'),
+        ]);
+    }
+
+    public function saveHonorariosSettings(Request $request): JsonResponse|RedirectResponse
+    {
+        if (!$this->isLegacyAuthenticated($request)) {
+            return response()->json(['error' => 'Sesión expirada'], 401);
+        }
+
+        $rules = $request->input('rules', []);
+        if (!is_array($rules)) {
+            $rules = [];
+        }
+
+        (new HonorariosSettingsService())->saveRules($rules);
+
+        if ($request->expectsJson()) {
+            return response()->json(['ok' => true]);
+        }
+
+        return redirect('/v2/billing/honorarios/settings')->with('status', 'Reglas de honorarios actualizadas.');
     }
 
     public function kpisProcedimientos(Request $request): Response
@@ -644,6 +706,20 @@ class BillingUiController
             'seguro' => $service->getSeguroOptions('Todos los seguros'),
             default => [],
         };
+    }
+
+    /**
+     * @return array<int,array{value:string,label:string}>
+     */
+    private function honorariosTipoOptions(): array
+    {
+        return [
+            ['value' => '*', 'label' => 'Todos los tipos'],
+            ['value' => 'cirugias', 'label' => 'Cirugías'],
+            ['value' => 'imagenes', 'label' => 'Imágenes'],
+            ['value' => 'pni', 'label' => 'PNI'],
+            ['value' => 'servicios_oftalmologicos', 'label' => 'Servicios Oftalmológicos'],
+        ];
     }
 
     private function isLegacyAuthenticated(Request $request): bool

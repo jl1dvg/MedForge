@@ -3,6 +3,8 @@
 @php
     $types = is_array($types ?? null) ? $types : [];
     $cats = is_array($cats ?? null) ? $cats : [];
+    $tipoSeguroOptions = is_array($tipoSeguroOptions ?? null) ? $tipoSeguroOptions : [];
+    $empresaSeguroOptions = is_array($empresaSeguroOptions ?? null) ? $empresaSeguroOptions : [];
     $f = is_array($f ?? null) ? $f : [];
     $totalFormatted = number_format((int) ($total ?? 0), 0, '', '.');
 @endphp
@@ -62,7 +64,7 @@
                     <div class="box-body">
                         <form class="card card-body mb-3" method="get" action="/v2/codes" id="codes-filter-form">
                             <div class="row g-2 align-items-end">
-                                <div class="col-md-3">
+                                <div class="col-md-2">
                                     <label class="form-label mb-0">Buscar</label>
                                     <input type="text"
                                            name="q"
@@ -70,7 +72,7 @@
                                            value="{{ (string) ($f['q'] ?? '') }}"
                                            placeholder="Código o descripción">
                                 </div>
-                                <div class="col-md-3">
+                                <div class="col-md-2">
                                     <label class="form-label mb-0">Tipo</label>
                                     <select name="code_type" class="form-select form-select-sm">
                                         <option value="">— Todos —</option>
@@ -82,7 +84,7 @@
                                         @endforeach
                                     </select>
                                 </div>
-                                <div class="col-md-3">
+                                <div class="col-md-2">
                                     <label class="form-label mb-0">Categoría (superbill)</label>
                                     <select name="superbill" class="form-select form-select-sm">
                                         <option value="">— Todas —</option>
@@ -94,7 +96,29 @@
                                         @endforeach
                                     </select>
                                 </div>
-                                <div class="col-md-3">
+                                <div class="col-md-2">
+                                    <label class="form-label mb-0">Tipo de seguro</label>
+                                    <select name="tipo_seguro" class="form-select form-select-sm">
+                                        @foreach($tipoSeguroOptions as $option)
+                                            @php $value = (string) ($option['value'] ?? ''); @endphp
+                                            <option value="{{ $value }}" @selected((string) ($f['tipo_seguro'] ?? '') === $value)>
+                                                {{ (string) ($option['label'] ?? $value) }}
+                                            </option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label mb-0">Empresa de seguro</label>
+                                    <select name="empresa_seguro" class="form-select form-select-sm">
+                                        @foreach($empresaSeguroOptions as $option)
+                                            @php $value = (string) ($option['value'] ?? ''); @endphp
+                                            <option value="{{ $value }}" @selected((string) ($f['empresa_seguro'] ?? '') === $value)>
+                                                {{ (string) ($option['label'] ?? $value) }}
+                                            </option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                <div class="col-md-2">
                                     <div class="d-flex gap-3 flex-wrap">
                                         <div class="form-check">
                                             <input class="form-check-input" type="checkbox" id="f_active" name="active" value="1" @checked(!empty($f['active']))>
@@ -139,6 +163,7 @@
                                     <th class="text-end">Precio N1</th>
                                     <th class="text-end">Precio N2</th>
                                     <th class="text-end">Precio N3</th>
+                                    <th class="text-end">Honorario</th>
                                     <th>Acciones</th>
                                 </tr>
                                 </thead>

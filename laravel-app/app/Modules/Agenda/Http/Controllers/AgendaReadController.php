@@ -648,6 +648,10 @@ class AgendaReadController
             return '';
         }
 
+        if (mb_strtoupper($normalized, 'UTF-8') === 'OPT OPTOMETRIA') {
+            return 'OPT OPTOMETRIA';
+        }
+
         $formatted = mb_convert_case(mb_strtolower($normalized, 'UTF-8'), MB_CASE_TITLE, 'UTF-8');
         $tokens = preg_split('/\s+/u', $formatted) ?: [];
         $lowercaseParticles = ['De', 'Del', 'La', 'Las', 'Los', 'Y', 'Da', 'Das', 'Do', 'Dos'];
@@ -672,6 +676,10 @@ class AgendaReadController
         $rawNormalized = mb_strtoupper($this->normalizeWhitespace($value), 'UTF-8');
         if ($rawNormalized === '') {
             return false;
+        }
+
+        if ($rawNormalized === 'OPT OPTOMETRIA') {
+            return true;
         }
 
         if (preg_match('/^\d{1,2}:\d{2}(:\d{2})?$/', $rawNormalized) === 1) {

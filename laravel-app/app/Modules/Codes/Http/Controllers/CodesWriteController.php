@@ -315,6 +315,7 @@ class CodesWriteController
             'precio_nivel1' => ['nullable', 'numeric'],
             'precio_nivel2' => ['nullable', 'numeric'],
             'precio_nivel3' => ['nullable', 'numeric'],
+            'honorario_medico' => ['nullable', 'numeric', 'min:0'],
             'anestesia_nivel1' => ['nullable', 'numeric'],
             'anestesia_nivel2' => ['nullable', 'numeric'],
             'anestesia_nivel3' => ['nullable', 'numeric'],

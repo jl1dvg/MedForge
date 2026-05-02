@@ -7,6 +7,7 @@ namespace App\Modules\Codes\Services;
 use App\Models\CodeCategory;
 use App\Models\CodeType;
 use App\Models\Tarifario2014;
+use App\Modules\Shared\Support\AfiliacionDimensionService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -26,6 +27,7 @@ class CodesCatalogService
         'valor_facturar_nivel1',
         'valor_facturar_nivel2',
         'valor_facturar_nivel3',
+        'honorario_medico',
     ];
 
     /**
@@ -83,7 +85,7 @@ class CodesCatalogService
     }
 
     /**
-     * @return array{q:string,code_type:string,superbill:string,active:int,reportable:int,financial_reporting:int}
+     * @return array{q:string,code_type:string,superbill:string,tipo_seguro:string,empresa_seguro:string,active:int,reportable:int,financial_reporting:int}
      */
     public function filtersFromRequest(Request $request): array
     {
@@ -91,6 +93,8 @@ class CodesCatalogService
             'q' => trim((string) $request->query('q', '')),
             'code_type' => trim((string) $request->query('code_type', '')),
             'superbill' => trim((string) $request->query('superbill', '')),
+            'tipo_seguro' => trim((string) $request->query('tipo_seguro', '')),
+            'empresa_seguro' => trim((string) $request->query('empresa_seguro', '')),
             'active' => $request->boolean('active') ? 1 : 0,
             'reportable' => $request->boolean('reportable') ? 1 : 0,
             'financial_reporting' => $request->boolean('financial_reporting') ? 1 : 0,
@@ -103,7 +107,7 @@ class CodesCatalogService
     }
 
     /**
-     * @param array{q:string,code_type:string,superbill:string,active:int,reportable:int,financial_reporting:int} $filters
+     * @param array{q:string,code_type:string,superbill:string,tipo_seguro:string,empresa_seguro:string,active:int,reportable:int,financial_reporting:int} $filters
      */
     public function filteredCount(array $filters): int
     {
@@ -111,7 +115,7 @@ class CodesCatalogService
     }
 
     /**
-     * @param array{q:string,code_type:string,superbill:string,active:int,reportable:int,financial_reporting:int} $filters
+     * @param array{q:string,code_type:string,superbill:string,tipo_seguro:string,empresa_seguro:string,active:int,reportable:int,financial_reporting:int} $filters
      * @return array<int, array<string, mixed>>
      */
     public function search(array $filters, int $offset, int $limit, string $orderBy = 'codigo', string $orderDir = 'ASC'): array
@@ -325,7 +329,7 @@ class CodesCatalogService
     }
 
     /**
-     * @param array{q:string,code_type:string,superbill:string,active:int,reportable:int,financial_reporting:int} $filters
+     * @param array{q:string,code_type:string,superbill:string,tipo_seguro:string,empresa_seguro:string,active:int,reportable:int,financial_reporting:int} $filters
      */
     private function applyFilters($query, array $filters)
     {
@@ -346,6 +350,21 @@ class CodesCatalogService
             $query->where('t.superbill', $filters['superbill']);
         }
 
+        if ($filters['tipo_seguro'] !== '' || $filters['empresa_seguro'] !== '') {
+            $levelKeys = $this->insuranceLevelKeys($filters['tipo_seguro'], $filters['empresa_seguro']);
+            if ($levelKeys === []) {
+                $query->whereRaw('1 = 0');
+            } else {
+                $query->whereExists(function ($subquery) use ($levelKeys): void {
+                    $subquery
+                        ->selectRaw('1')
+                        ->from('prices as insurance_prices')
+                        ->whereColumn('insurance_prices.code_id', 't.id')
+                        ->whereIn('insurance_prices.level_key', $levelKeys);
+                });
+            }
+        }
+
         if (!empty($filters['active'])) {
             $query->where('t.active', 1);
         }
@@ -359,6 +378,57 @@ class CodesCatalogService
         }
 
         return $query;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function insuranceLevelKeys(string $tipoSeguro, string $empresaSeguro): array
+    {
+        try {
+            if (!DB::getSchemaBuilder()->hasTable('afiliacion_categoria_map')) {
+                return [];
+            }
+
+            $service = new AfiliacionDimensionService(DB::connection()->getPdo());
+            $tipoSeguro = $service->normalizeCategoriaFilter($tipoSeguro);
+            $empresaSeguro = $service->normalizeEmpresaFilter($empresaSeguro);
+
+            $columns = ['afiliacion_norm', 'afiliacion_raw', 'categoria'];
+            if (DB::getSchemaBuilder()->hasColumn('afiliacion_categoria_map', 'empresa_seguro')) {
+                $columns[] = 'empresa_seguro';
+            }
+
+            $rows = DB::table('afiliacion_categoria_map')
+                ->select($columns)
+                ->whereRaw("TRIM(COALESCE(afiliacion_norm, '')) <> ''")
+                ->get();
+
+            $keys = [];
+            foreach ($rows as $row) {
+                $rowCategoria = $service->normalizeCategoriaFilter((string) ($row->categoria ?? ''));
+                if ($tipoSeguro !== '' && $rowCategoria !== $tipoSeguro) {
+                    continue;
+                }
+
+                $rowEmpresa = trim((string) ($row->empresa_seguro ?? ''));
+                if ($rowEmpresa === '') {
+                    $rowEmpresa = trim((string) ($row->afiliacion_raw ?? ''));
+                }
+                if ($empresaSeguro !== '' && $service->normalizeEmpresaFilter($rowEmpresa) !== $empresaSeguro) {
+                    continue;
+                }
+
+                $key = trim((string) ($row->afiliacion_norm ?? ''));
+                if ($key !== '') {
+                    $keys[$key] = true;
+                }
+            }
+
+            return array_keys($keys);
+        } catch (\Throwable) {
+            return [];
+        }
     }
 
     /**
@@ -381,6 +451,7 @@ class CodesCatalogService
             'valor_facturar_nivel1' => $this->decimalOrNull($input['precio_nivel1'] ?? null),
             'valor_facturar_nivel2' => $this->decimalOrNull($input['precio_nivel2'] ?? null),
             'valor_facturar_nivel3' => $this->decimalOrNull($input['precio_nivel3'] ?? null),
+            'honorario_medico' => $this->decimalOrNull($input['honorario_medico'] ?? null),
             'anestesia_nivel1' => $this->decimalOrNull($input['anestesia_nivel1'] ?? null),
             'anestesia_nivel2' => $this->decimalOrNull($input['anestesia_nivel2'] ?? null),
             'anestesia_nivel3' => $this->decimalOrNull($input['anestesia_nivel3'] ?? null),

@@ -8,6 +8,7 @@ use App\Modules\Codes\Services\CodePriceService;
 use App\Modules\Codes\Services\CodesBulkImportService;
 use App\Modules\Codes\Services\CodesCatalogService;
 use App\Modules\Codes\Services\CodesPackageService;
+use App\Modules\Shared\Support\AfiliacionDimensionService;
 use App\Modules\Shared\Support\LegacyCurrentUser;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
@@ -42,6 +43,8 @@ class CodesUiController
             'currentUser' => LegacyCurrentUser::resolve($request),
             'types' => $this->catalog->listTypes(),
             'cats' => $this->catalog->listCategories(),
+            'tipoSeguroOptions' => $this->insuranceDimensionOptions('categoria'),
+            'empresaSeguroOptions' => $this->insuranceDimensionOptions('empresa'),
             'f' => $filters,
             'total' => $this->catalog->filteredCount($filters),
             'status' => session('status'),
@@ -104,5 +107,19 @@ class CodesUiController
             'currentUser' => LegacyCurrentUser::resolve($request),
             'initialPackages' => $this->packages->list(['limit' => 25]),
         ]);
+    }
+
+    /**
+     * @return array<int,array{value:string,label:string}>
+     */
+    private function insuranceDimensionOptions(string $type): array
+    {
+        $service = new AfiliacionDimensionService(DB::connection()->getPdo());
+
+        return match ($type) {
+            'categoria' => $service->getCategoriaOptions('Todos los tipos'),
+            'empresa' => $service->getEmpresaOptions('Todas las empresas'),
+            default => [],
+        };
     }
 }

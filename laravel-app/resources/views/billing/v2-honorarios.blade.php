@@ -1,7 +1,7 @@
 @extends('layouts.medforge')
 
 @php
-    $cirujanosList = is_array($cirujanos ?? null) ? $cirujanos : [];
+    $doctoresList = is_array($doctores ?? null) ? $doctores : [];
     $afiliacionCategoriaOptions = is_array($afiliacionCategoriaOptions ?? null) ? $afiliacionCategoriaOptions : [];
     $empresaSeguroOptions = is_array($empresaSeguroOptions ?? null) ? $empresaSeguroOptions : [];
     $seguroOptions = is_array($seguroOptions ?? null) ? $seguroOptions : [];
@@ -54,7 +54,32 @@
             color: #64748b;
         }
 
-        .chart-container { min-height: 280px; }
+        .chart-container {
+            min-height: 280px;
+        }
+
+        .honorarios-filter {
+            min-width: 190px;
+        }
+
+        .honorarios-filter .form-label {
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+            margin-bottom: 0.25rem;
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: #475569;
+        }
+
+        .honorarios-filter .form-select,
+        .honorarios-filter .form-control {
+            min-width: 100%;
+        }
+
+        .honorarios-filter select[multiple] {
+            min-height: 72px;
+        }
     </style>
 @endpush
 
@@ -66,7 +91,8 @@
                 <div class="d-inline-block align-items-center">
                     <nav>
                         <ol class="breadcrumb mb-0">
-                            <li class="breadcrumb-item"><a href="/v2/dashboard"><i class="mdi mdi-home-outline"></i></a></li>
+                            <li class="breadcrumb-item"><a href="/v2/dashboard"><i class="mdi mdi-home-outline"></i></a>
+                            </li>
                             <li class="breadcrumb-item"><a href="/v2/billing">Billing</a></li>
                             <li class="breadcrumb-item active" aria-current="page">Honorarios</li>
                         </ol>
@@ -82,70 +108,180 @@
     <section class="content">
         <div class="honorarios-header">
             <div>
-                <h4 class="mb-1">Producción quirúrgica por cirujano</h4>
-                <div class="text-muted">Consulta sobre datos migrados vía endpoint v2.</div>
+                <h4 class="mb-1">Producción por doctor</h4>
             </div>
-            <div class="ms-auto d-flex flex-wrap gap-2">
-                <input type="text" class="form-control" id="honorarios-range-input" placeholder="Selecciona rango" autocomplete="off" style="min-width: 260px;">
-                <select class="form-select" id="honorarios-cirujano" style="min-width: 210px;">
-                    <option value="">Todos los cirujanos</option>
-                    @foreach($cirujanosList as $cirujano)
-                        <option value="{{ $cirujano }}">{{ $cirujano }}</option>
-                    @endforeach
-                </select>
-                <select class="form-select" id="honorarios-categoria" style="min-width: 190px;">
-                    @foreach($afiliacionCategoriaOptions as $option)
-                        <option value="{{ (string) ($option['value'] ?? '') }}">{{ (string) ($option['label'] ?? '') }}</option>
-                    @endforeach
-                </select>
-                <select class="form-select" id="honorarios-empresa-seguro" style="min-width: 220px;">
-                    @foreach($empresaSeguroOptions as $option)
-                        <option value="{{ (string) ($option['value'] ?? '') }}">{{ (string) ($option['label'] ?? '') }}</option>
-                    @endforeach
-                </select>
-                <select class="form-select" id="honorarios-seguro" style="min-width: 240px;">
-                    @foreach($seguroOptions as $option)
-                        <option value="{{ (string) ($option['value'] ?? '') }}">{{ (string) ($option['label'] ?? '') }}</option>
-                    @endforeach
-                </select>
-                <button type="button" class="btn btn-primary" id="honorarios-refresh"><i class="mdi mdi-refresh"></i> Actualizar</button>
-            </div>
-        </div>
+            <div class="ms-auto" style="width:100%;">
+                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:10px;">
+                    <div class="honorarios-filter">
+                        <label for="honorarios-range-input" class="form-label"><i class="mdi mdi-calendar-range"></i>
+                            Rango</label>
+                        <input type="text" class="form-control" id="honorarios-range-input"
+                               placeholder="Selecciona rango" autocomplete="off">
+                    </div>
 
-        <div class="box mb-15">
-            <div class="box-body">
-                <div class="row g-2">
-                    <div class="col-md-3"><label class="form-label">IESS (%)</label><input type="number" class="form-control" value="30" min="0" max="100" step="0.5" data-rule-key="IESS"></div>
-                    <div class="col-md-3"><label class="form-label">ISSFA (%)</label><input type="number" class="form-control" value="35" min="0" max="100" step="0.5" data-rule-key="ISSFA"></div>
-                    <div class="col-md-3"><label class="form-label">ISSPOL (%)</label><input type="number" class="form-control" value="35" min="0" max="100" step="0.5" data-rule-key="ISSPOL"></div>
-                    <div class="col-md-3"><label class="form-label">Default (%)</label><input type="number" class="form-control" value="30" min="0" max="100" step="0.5" data-rule-key="DEFAULT"></div>
+                    <div class="honorarios-filter">
+                        <label for="honorarios-doctor" class="form-label"><i class="mdi mdi-doctor"></i> Doctor</label>
+                        <select class="form-select" id="honorarios-doctor"
+                                data-server-options-count="{{ count($doctoresList) }}">
+                            <option value="">Todos los doctores</option>
+                            @foreach($doctoresList as $doctor)
+                                <option
+                                    value="{{ (string) ($doctor['value'] ?? '') }}">{{ (string) ($doctor['label'] ?? '') }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+
+                    <div class="honorarios-filter">
+                        <label for="honorarios-sede" class="form-label"><i class="mdi mdi-hospital-building"></i> Sede</label>
+                        <select class="form-select" id="honorarios-sede">
+                            <option value="">Todas las sedes</option>
+                            <option value="MATRIZ">MATRIZ</option>
+                            <option value="CEIBOS">CEIBOS</option>
+                        </select>
+                    </div>
+
+                    <div class="honorarios-filter">
+                        <label for="honorarios-tipo" class="form-label"><i
+                                class="mdi mdi-format-list-bulleted-type"></i> Tipo</label>
+                        <select class="form-select" id="honorarios-tipo" multiple size="3">
+                            <option value="cirugias">Cirugías</option>
+                            <option value="imagenes">Imágenes</option>
+                            <option value="pni">PNI</option>
+                            <option value="servicios_oftalmologicos">Servicios</option>
+                        </select>
+                    </div>
+
+                    <div class="honorarios-filter">
+                        <label for="honorarios-categoria" class="form-label"><i
+                                class="mdi mdi-account-group-outline"></i> Categoría</label>
+                        <select class="form-select" id="honorarios-categoria" multiple size="3">
+                            @foreach($afiliacionCategoriaOptions as $option)
+                                @php $value = (string) ($option['value'] ?? ''); @endphp
+                                @if($value !== '')
+                                    <option value="{{ $value }}">{{ (string) ($option['label'] ?? '') }}</option>
+                                @endif
+                            @endforeach
+                        </select>
+                    </div>
+
+                    <div class="honorarios-filter">
+                        <label for="honorarios-empresa-seguro" class="form-label"><i class="mdi mdi-domain"></i> Empresa</label>
+                        <select class="form-select" id="honorarios-empresa-seguro" multiple size="3">
+                            @foreach($empresaSeguroOptions as $option)
+                                @php
+                                    $value = (string) ($option['value'] ?? '');
+                                    $categorias = is_array($option['categorias'] ?? null) ? $option['categorias'] : [];
+                                @endphp
+                                @if($value !== '')
+                                    <option value="{{ $value }}"
+                                            data-categorias="{{ implode(',', array_map('strval', $categorias)) }}">{{ (string) ($option['label'] ?? '') }}</option>
+                                @endif
+                            @endforeach
+                        </select>
+                    </div>
+
+                    <div class="honorarios-filter">
+                        <label for="honorarios-seguro" class="form-label"><i class="mdi mdi-shield-check-outline"></i>
+                            Seguro</label>
+                        <select class="form-select" id="honorarios-seguro" multiple size="3">
+                            @foreach($seguroOptions as $option)
+                                @php $value = (string) ($option['value'] ?? ''); @endphp
+                                @if($value !== '')
+                                    <option value="{{ $value }}"
+                                            data-categoria="{{ (string) ($option['categoria'] ?? '') }}"
+                                            data-empresa="{{ (string) ($option['empresa_seguro'] ?? '') }}">{{ (string) ($option['label'] ?? '') }}</option>
+                                @endif
+                            @endforeach
+                        </select>
+                    </div>
+
+                    <div class="d-flex align-items-end gap-2">
+                        <a class="btn btn-outline-primary" href="/v2/billing/honorarios/settings" title="Configurar reglas de honorarios">
+                            <i class="mdi mdi-cog-outline"></i>
+                        </a>
+                        <button type="button" class="btn btn-primary w-100" id="honorarios-refresh">
+                            <i class="mdi mdi-refresh"></i> Actualizar
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
 
         <div class="honorarios-grid">
-            <div class="metric-card"><h6>Total casos</h6><div class="metric-value" id="metric-casos">—</div><div class="metric-subtext">Cirugías con procedimientos</div></div>
-            <div class="metric-card"><h6>Procedimientos</h6><div class="metric-value" id="metric-procedimientos">—</div><div class="metric-subtext">Cantidad total</div></div>
-            <div class="metric-card"><h6>Producción quirúrgica</h6><div class="metric-value" id="metric-produccion">—</div><div class="metric-subtext">Facturado procedimientos</div></div>
-            <div class="metric-card"><h6>Honorarios estimados</h6><div class="metric-value" id="metric-honorarios">—</div><div class="metric-subtext">Aplicando reglas</div></div>
-            <div class="metric-card"><h6>Ticket promedio</h6><div class="metric-value" id="metric-ticket">—</div><div class="metric-subtext">Producción por caso</div></div>
-            <div class="metric-card"><h6>Honorario promedio</h6><div class="metric-value" id="metric-honorario-promedio">—</div><div class="metric-subtext">Honorario por caso</div></div>
+            <div class="metric-card"><h6>Total casos</h6>
+                <div class="metric-value" id="metric-casos">—</div>
+                <div class="metric-subtext">Cirugías con procedimientos</div>
+            </div>
+            <div class="metric-card"><h6>Procedimientos</h6>
+                <div class="metric-value" id="metric-procedimientos">—</div>
+                <div class="metric-subtext">Cantidad total</div>
+            </div>
+            <div class="metric-card"><h6>Producción quirúrgica</h6>
+                <div class="metric-value" id="metric-produccion">—</div>
+                <div class="metric-subtext">Facturado procedimientos</div>
+            </div>
+            <div class="metric-card"><h6>Honorarios estimados</h6>
+                <div class="metric-value" id="metric-honorarios">—</div>
+                <div class="metric-subtext">Aplicando reglas</div>
+            </div>
+            <div class="metric-card"><h6>Ticket promedio</h6>
+                <div class="metric-value" id="metric-ticket">—</div>
+                <div class="metric-subtext">Producción por caso</div>
+            </div>
+            <div class="metric-card"><h6>Honorario promedio</h6>
+                <div class="metric-value" id="metric-honorario-promedio">—</div>
+                <div class="metric-subtext">Honorario por caso</div>
+            </div>
         </div>
 
         <div class="row">
-            <div class="col-xl-6 col-12"><div class="box"><div class="box-header with-border"><h4 class="box-title">Producción por afiliación</h4></div><div class="box-body"><div id="chart-honorarios-afiliacion" class="chart-container"></div></div></div></div>
-            <div class="col-xl-6 col-12"><div class="box"><div class="box-header with-border"><h4 class="box-title">Producción por cirujano</h4></div><div class="box-body"><div id="chart-honorarios-cirujano" class="chart-container"></div></div></div></div>
-        </div>
-
-        <div class="row">
-            <div class="col-xl-6 col-12"><div class="box"><div class="box-header with-border"><h4 class="box-title">Top procedimientos</h4></div><div class="box-body"><div id="chart-honorarios-procedimientos" class="chart-container"></div></div></div></div>
-            <div class="col-xl-6 col-12">
+            <div class="col-xl-4 col-12">
                 <div class="box">
-                    <div class="box-header with-border"><h4 class="box-title">Detalle por cirujano</h4></div>
+                    <div class="box-header with-border"><h4 class="box-title">Producción por afiliación</h4></div>
+                    <div class="box-body">
+                        <div id="chart-honorarios-afiliacion" class="chart-container"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-xl-4 col-12">
+                <div class="box">
+                    <div class="box-header with-border"><h4 class="box-title">Producción por doctor</h4></div>
+                    <div class="box-body">
+                        <div id="chart-honorarios-cirujano" class="chart-container"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-xl-4 col-12">
+                <div class="box">
+                    <div class="box-header with-border"><h4 class="box-title">Top procedimientos</h4></div>
+                    <div class="box-body">
+                        <div id="chart-honorarios-procedimientos" class="chart-container"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-xl-12 col-12">
+                <div class="box">
+                    <div class="box-header with-border"><h4 class="box-title">Detalle por doctor</h4></div>
                     <div class="box-body table-responsive">
                         <table class="table table-striped table-hover mb-0">
-                            <thead class="bg-primary-light"><tr><th>Cirujano</th><th class="text-end">Casos</th><th class="text-end">Procedimientos</th><th class="text-end">Producción</th><th class="text-end">Honorarios</th></tr></thead>
-                            <tbody id="table-honorarios"><tr><td colspan="5" class="text-center text-muted">Sin datos</td></tr></tbody>
+                            <thead class="bg-primary-light">
+                            <tr>
+                                <th>Médico</th>
+                                <th>Tipo</th>
+                                <th class="text-end">Casos</th>
+                                <th class="text-end">Procedimientos</th>
+                                <th class="text-end">Producción</th>
+                                <th class="text-end">Honorarios</th>
+                            </tr>
+                            </thead>
+                            <tbody id="table-honorarios">
+                            <tr>
+                                <td colspan="6" class="text-center text-muted">Sin datos</td>
+                            </tr>
+                            </tbody>
                         </table>
                     </div>
                 </div>
@@ -155,12 +291,19 @@
 @endsection
 
 @push('scripts')
+    <script>
+        window.medforgeHonorariosDoctorDebug = {
+            serverOptionsCount: {{ count($doctoresList) }},
+            serverOptionsSample: @json(array_slice($doctoresList, 0, 5)),
+        };
+        console.info('[Honorarios] doctores enviados por Blade', window.medforgeHonorariosDoctorDebug);
+    </script>
     @if (\App\Modules\Shared\Support\MedforgeAssets::hasViteBuild())
         @vite('resources/js/v2/billing-honorarios.js')
     @else
         <script src="/assets/vendor_components/moment/moment.js"></script>
         <script src="/assets/vendor_components/bootstrap-daterangepicker/daterangepicker.js"></script>
         <script src="/assets/vendor_components/apexcharts-bundle/dist/apexcharts.js"></script>
-        <script src="/js/pages/billing/v2-honorarios.js"></script>
+        <script src="/js/pages/billing/v2-honorarios.js?v=20260501-honorarios-code-placeholders"></script>
     @endif
 @endpush
