@@ -304,6 +304,6 @@
         <script src="/assets/vendor_components/moment/moment.js"></script>
         <script src="/assets/vendor_components/bootstrap-daterangepicker/daterangepicker.js"></script>
         <script src="/assets/vendor_components/apexcharts-bundle/dist/apexcharts.js"></script>
-        <script src="/js/pages/billing/v2-honorarios.js?v=20260501-honorarios-code-placeholders"></script>
+        <script src="/js/pages/billing/v2-honorarios.js?v=20260501-honorarios-cancel-proc"></script>
     @endif
 @endpush

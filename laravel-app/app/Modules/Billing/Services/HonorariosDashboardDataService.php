@@ -60,10 +60,12 @@ class HonorariosDashboardDataService
         $dateExpr = $this->safeAttentionDateExpr();
         $rawAfiliacionExpr = $this->rawAttentionAffiliationExpr();
         $dimensionContext = $this->afiliacionDimensions->buildContext($rawAfiliacionExpr, 'acm');
+        $patientJoin = $this->patientJoinDefinition();
         $atencionIdExpr = $this->columnExists('procedimiento_proyectado', 'id') ? 'pp.id' : 'pp.form_id';
         $hcExpr = $this->columnExists('procedimiento_proyectado', 'hc_number') ? 'pp.hc_number' : "''";
         $sedeExpr = $this->sedeExpr();
-        $estadoAgendaExpr = $this->columnExists('procedimiento_proyectado', 'estado_agenda') ? "COALESCE(pp.estado_agenda, '')" : "''";
+        $estadoAgendaExpr = "COALESCE(pp.estado_agenda, '')";
+        $patientNameExpr = $this->patientNameExpr();
         $bfrPacienteExpr = "NULLIF(TRIM(bfr.paciente), '')";
         $bfrProcedimientoExpr = "COALESCE(NULLIF(TRIM(bfr.procedimiento), ''), '')";
         $bfrCodigoExpr = "SUBSTRING_INDEX(COALESCE(NULLIF(TRIM(bfr.procedimiento), ''), ''), ' | ', 1)";
@@ -76,16 +78,16 @@ class HonorariosDashboardDataService
         $sql = "
             SELECT
                 {$atencionIdExpr} AS atencion_id,
-                bfr.form_id,
+                pp.form_id,
                 {$hcExpr} AS hc_number,
                 {$sedeExpr} AS sede,
-                bfr.form_id AS billing_id,
+                pp.form_id AS billing_id,
                 {$dateExpr} AS fecha,
                 COALESCE(NULLIF(TRIM({$rawAfiliacionExpr}), ''), 'Sin afiliación') AS afiliacion,
                 {$dimensionContext['categoria_expr']} AS categoria_seguro,
                 {$dimensionContext['empresa_label_expr']} AS empresa_seguro,
                 COALESCE(NULLIF(TRIM(pp.doctor), ''), 'Sin doctor') AS doctor,
-                {$bfrPacienteExpr} AS paciente,
+                COALESCE({$bfrPacienteExpr}, {$patientNameExpr}) AS paciente,
                 {$bfrCodigoExpr} AS proc_codigo,
                 {$bfrProcedimientoExpr} AS proc_detalle,
                 COALESCE(NULLIF(TRIM(pp.procedimiento_proyectado), ''), '') AS procedimiento_proyectado,
@@ -98,19 +100,17 @@ class HonorariosDashboardDataService
                 {$bfrFacturaIdExpr} AS factura_id,
                 {$bfrEstadoExpr} AS estado_facturacion,
                 {$bfrRealizadoPorExpr} AS realizado_por,
-                1 AS has_facturacion,
+                CASE WHEN bfr.form_id IS NULL THEN 0 ELSE 1 END AS has_facturacion,
                 {$estadoAgendaExpr} AS estado_agenda,
                 NULL AS honorario_codigo
-            FROM billing_facturacion_real bfr
-            LEFT JOIN procedimiento_proyectado pp
-              ON TRIM(CAST(pp.form_id AS CHAR)) = TRIM(CAST(bfr.form_id AS CHAR))
+            FROM procedimiento_proyectado pp
+            LEFT JOIN billing_facturacion_real bfr
+              ON TRIM(CAST(bfr.form_id AS CHAR)) = TRIM(CAST(pp.form_id AS CHAR))
+            {$patientJoin}
             {$dimensionContext['join']}
             WHERE {$dateExpr} BETWEEN :inicio AND :fin
-              AND pp.form_id IS NOT NULL
         ";
-        if ($this->columnExists('procedimiento_proyectado', 'estado_agenda')) {
-            $sql .= " AND UPPER(TRIM(COALESCE(pp.estado_agenda, ''))) NOT LIKE 'CANCELADO%'";
-        }
+        $sql .= " AND UPPER(TRIM(COALESCE(pp.estado_agenda, ''))) NOT LIKE 'CANCELADO%'";
 
         $params = [
             ':inicio' => $start,
@@ -186,7 +186,9 @@ class HonorariosDashboardDataService
                 $row['proc_codigo'] = $codigoTarifario;
             }
             if (trim((string) ($row['proc_detalle'] ?? '')) === '' && $detalleTarifario !== '') {
-                $row['proc_detalle'] = $detalleTarifario;
+                $row['proc_detalle'] = $codigoTarifario !== ''
+                    ? $codigoTarifario . ' | ' . $detalleTarifario
+                    : $detalleTarifario;
             }
             $row['honorario_codigo'] = $this->honorarioCodigoPorCodigo((string) ($row['proc_codigo'] ?? ''));
             $output[] = $row;
@@ -390,7 +392,7 @@ class HonorariosDashboardDataService
                 'form_id' => (string) ($row['form_id'] ?? ''),
                 'hc_number' => (string) ($row['hc_number'] ?? ''),
                 'sede' => (string) ($row['sede'] ?? ''),
-                'paciente' => trim((string) ($row['paciente'] ?? '')) ?: 'Sin paciente en facturación',
+                'paciente' => trim((string) ($row['paciente'] ?? '')) ?: 'Paciente sin nombre',
                 'cirujano' => (string) ($row['doctor'] ?? 'Sin doctor'),
                 'realizado_por' => trim((string) ($row['realizado_por'] ?? '')),
                 'tipo' => $this->formatTipo((string) ($row['tipo_procedimiento'] ?? 'otros')),
@@ -403,6 +405,9 @@ class HonorariosDashboardDataService
                 'numero_factura' => (string) ($row['numero_factura'] ?? ''),
                 'factura_id' => (string) ($row['factura_id'] ?? ''),
                 'has_facturacion' => (int) ($row['has_facturacion'] ?? 0),
+                'estado_facturacion' => (int) ($row['has_facturacion'] ?? 0) === 1
+                    ? (trim((string) ($row['estado_facturacion'] ?? '')) ?: 'Facturada')
+                    : 'Pendiente facturación',
             ];
         }
 
@@ -558,6 +563,10 @@ class HonorariosDashboardDataService
      */
     private function calcularHonorarioLinea(array $row, array $rules): float
     {
+        if ((int) ($row['has_facturacion'] ?? 0) === 0) {
+            return 0.0;
+        }
+
         $produccion = (float) ($row['total_procedimientos'] ?? 0);
         $tipo = (string) ($row['tipo_procedimiento'] ?? 'otros');
         $categoriaSeguro = strtolower(trim((string) ($row['categoria_seguro'] ?? '')));
@@ -785,47 +794,19 @@ class HonorariosDashboardDataService
 
     private function patientNameExpr(): string
     {
-        $parts = [];
-        foreach (['lname', 'lname2', 'fname', 'mname'] as $column) {
-            if ($this->columnExists('patient_data', $column)) {
-                $parts[] = "pa.{$column}";
-            }
-        }
-
-        if ($parts === []) {
-            return "NULL";
-        }
-
-        return "NULLIF(TRIM(CONCAT_WS(' ', " . implode(', ', $parts) . ")), '')";
+        return "NULLIF(TRIM(CONCAT_WS(' ', pa.lname, pa.lname2, pa.fname, pa.mname)), '')";
     }
 
     private function patientJoinDefinition(): string
     {
-        if (!$this->columnExists('patient_data', 'hc_number')) {
-            return "
-                LEFT JOIN (
-                    SELECT
-                        CAST(NULL AS CHAR(50)) AS hc_number,
-                        CAST(NULL AS CHAR(100)) AS lname,
-                        CAST(NULL AS CHAR(100)) AS lname2,
-                        CAST(NULL AS CHAR(100)) AS fname,
-                        CAST(NULL AS CHAR(100)) AS mname
-                    WHERE 1 = 0
-                ) pa ON pa.hc_number = TRIM(CAST(pp.hc_number AS CHAR))
-            ";
-        }
-
-        $selects = ["TRIM(CAST(hc_number AS CHAR)) AS hc_number"];
-        foreach (['lname', 'lname2', 'fname', 'mname'] as $column) {
-            $selects[] = $this->columnExists('patient_data', $column)
-                ? "MAX(NULLIF(TRIM({$column}), '')) AS {$column}"
-                : "CAST(NULL AS CHAR(100)) AS {$column}";
-        }
-
         return "
             LEFT JOIN (
                 SELECT
-                    " . implode(",\n                    ", $selects) . "
+                    TRIM(CAST(hc_number AS CHAR)) AS hc_number,
+                    MAX(NULLIF(TRIM(lname), '')) AS lname,
+                    MAX(NULLIF(TRIM(lname2), '')) AS lname2,
+                    MAX(NULLIF(TRIM(fname), '')) AS fname,
+                    MAX(NULLIF(TRIM(mname), '')) AS mname
                 FROM patient_data
                 GROUP BY TRIM(CAST(hc_number AS CHAR))
             ) pa ON pa.hc_number = TRIM(CAST(pp.hc_number AS CHAR))

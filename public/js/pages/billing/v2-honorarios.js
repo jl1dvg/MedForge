@@ -10,7 +10,7 @@
     const refreshButton = document.getElementById('honorarios-refresh');
 
     console.info('[Honorarios] script v2-honorarios cargado', {
-        scriptVersion: '20260501-honorarios-code-placeholders',
+        scriptVersion: '20260501-honorarios-cancel-proc',
         hasRangeInput: Boolean(rangeInput),
         hasDoctorSelect: Boolean(doctorSelect),
         doctorOptionsCount: doctorSelect ? doctorSelect.options.length : 0,
@@ -50,12 +50,12 @@
         const thead = table ? table.querySelector('thead') : null;
         if (thead) {
             thead.innerHTML = mode === 'detalle'
-                ? '<tr><th>Fecha</th><th>Sede</th><th>Doctor</th><th>Paciente</th><th>Tipo</th><th>Procedimiento</th><th>Afiliación</th><th class="text-end">Recolectado</th><th class="text-end">Honorario</th></tr>'
+                ? '<tr><th>Fecha</th><th>Sede</th><th>Doctor</th><th>Paciente</th><th>Tipo</th><th>Procedimiento</th><th>Afiliación</th><th>Facturación</th><th class="text-end">Recolectado</th><th class="text-end">Honorario</th></tr>'
                 : '<tr><th>Médico</th><th>Tipo</th><th class="text-end">Atenciones</th><th class="text-end">Procedimientos</th><th class="text-end">Recolectado</th><th class="text-end">Honorarios</th></tr>';
         }
 
         if (!Array.isArray(rows) || rows.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="${mode === 'detalle' ? 9 : 6}" class="text-center text-muted">Sin datos</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="${mode === 'detalle' ? 10 : 6}" class="text-center text-muted">Sin datos</td></tr>`;
             return;
         }
 
@@ -70,7 +70,7 @@
                     </td>
                     <td>
                         <div>${row.paciente ?? '—'}</div>
-                        <small class="text-muted">${row.has_facturacion ? (row.hc_number ?? '') : 'Sin match en facturación real'}</small>
+                        <small class="text-muted">${row.hc_number ?? ''}</small>
                     </td>
                     <td>${row.tipo ?? '—'}</td>
                     <td>
@@ -81,6 +81,7 @@
                         <div>${row.afiliacion ?? '—'}</div>
                         <small class="text-muted">${row.empresa_seguro ?? ''}</small>
                     </td>
+                    <td>${row.estado_facturacion ?? (row.has_facturacion ? 'Facturada' : 'Pendiente facturación')}</td>
                     <td class="text-end">${formatCurrency(row.produccion ?? 0)}</td>
                     <td class="text-end">${formatCurrency(row.honorarios ?? 0)}</td>
                 </tr>
