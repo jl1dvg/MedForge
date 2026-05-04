@@ -10,6 +10,7 @@
 @push('styles')
     @unless (\App\Modules\Shared\Support\MedforgeAssets::hasViteBuild())
         <link rel="stylesheet" href="/assets/vendor_components/bootstrap-daterangepicker/daterangepicker.css">
+        <link rel="stylesheet" href="/assets/vendor_components/datatable/datatables.min.css">
     @endunless
     <style>
         .honorarios-header {
@@ -79,6 +80,98 @@
 
         .honorarios-filter select[multiple] {
             min-height: 72px;
+        }
+
+        .honorarios-table-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .honorarios-quick-filters {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.4rem;
+        }
+
+        .honorarios-quick-filter {
+            border: 1px solid #cbd5e1;
+            background: #fff;
+            color: #334155;
+            border-radius: 999px;
+            padding: 0.32rem 0.7rem;
+            font-size: 0.78rem;
+            font-weight: 600;
+            line-height: 1;
+        }
+
+        .honorarios-quick-filter.active {
+            border-color: #0ea5e9;
+            background: #e0f2fe;
+            color: #0369a1;
+        }
+
+        .honorarios-visible-summary {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            font-size: 0.78rem;
+            color: #475569;
+        }
+
+        .honorarios-visible-summary span {
+            border: 1px solid #e2e8f0;
+            border-radius: 999px;
+            padding: 0.3rem 0.65rem;
+            background: #f8fafc;
+        }
+
+        .honorarios-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            border-radius: 999px;
+            padding: 0.24rem 0.55rem;
+            font-size: 0.74rem;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+
+        .honorarios-badge-success { background: #dcfce7; color: #166534; }
+        .honorarios-badge-warning { background: #fef3c7; color: #92400e; }
+        .honorarios-badge-muted { background: #f1f5f9; color: #475569; }
+        .honorarios-badge-danger { background: #fee2e2; color: #991b1b; }
+
+        #honorarios-table.dataTable tbody tr.honorarios-row-alert {
+            --bs-table-accent-bg: #fff7ed;
+        }
+
+        #honorarios-table {
+            font-size: 0.78rem;
+        }
+
+        #honorarios-table thead th {
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+            white-space: nowrap;
+        }
+
+        #honorarios-table tbody td {
+            padding-top: 0.45rem;
+            padding-bottom: 0.45rem;
+            vertical-align: top;
+        }
+
+        #honorarios-table small {
+            font-size: 0.68rem;
+        }
+
+        #honorarios-table .honorarios-badge {
+            font-size: 0.68rem;
         }
     </style>
 @endpush
@@ -266,7 +359,22 @@
                 <div class="box">
                     <div class="box-header with-border"><h4 class="box-title">Detalle por doctor</h4></div>
                     <div class="box-body table-responsive">
-                        <table class="table table-striped table-hover mb-0">
+                        <div class="honorarios-table-toolbar">
+                            <div class="honorarios-quick-filters" id="honorarios-table-filters">
+                                <button type="button" class="honorarios-quick-filter active" data-filter="all">Todas</button>
+                                <button type="button" class="honorarios-quick-filter" data-filter="facturadas">Facturadas</button>
+                                <button type="button" class="honorarios-quick-filter" data-filter="pendientes">Pendientes</button>
+                                <button type="button" class="honorarios-quick-filter" data-filter="con_honorario">Con honorario</button>
+                                <button type="button" class="honorarios-quick-filter" data-filter="honorario_cero">Honorario $0</button>
+                            </div>
+                            <div class="honorarios-visible-summary" id="honorarios-visible-summary">
+                                <span>Filas: 0</span>
+                                <span>Recolectado: $0,00</span>
+                                <span>Honorarios: $0,00</span>
+                                <span>Pendientes: 0</span>
+                            </div>
+                        </div>
+                        <table class="table table-striped table-hover mb-0" id="honorarios-table">
                             <thead class="bg-primary-light">
                             <tr>
                                 <th>Médico</th>
@@ -304,6 +412,8 @@
         <script src="/assets/vendor_components/moment/moment.js"></script>
         <script src="/assets/vendor_components/bootstrap-daterangepicker/daterangepicker.js"></script>
         <script src="/assets/vendor_components/apexcharts-bundle/dist/apexcharts.js"></script>
-        <script src="/js/pages/billing/v2-honorarios.js?v=20260501-honorarios-cancel-proc"></script>
+        <script src="/assets/vendor_components/datatable/datatables.min.js"></script>
+        <script src="/js/pages/shared/datatables-language-es.js"></script>
+        <script src="/js/pages/billing/v2-honorarios.js?v=20260503-honorarios-datatable"></script>
     @endif
 @endpush

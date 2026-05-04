@@ -8,9 +8,15 @@
     const empresaSeguroSelect = document.getElementById('honorarios-empresa-seguro');
     const seguroSelect = document.getElementById('honorarios-seguro');
     const refreshButton = document.getElementById('honorarios-refresh');
+    const quickFilters = document.getElementById('honorarios-table-filters');
+    const visibleSummary = document.getElementById('honorarios-visible-summary');
+    let honorariosDataTable = null;
+    let currentTableFilter = 'all';
+    let lastTableRows = [];
+    let lastTableMode = 'resumen';
 
     console.info('[Honorarios] script v2-honorarios cargado', {
-        scriptVersion: '20260501-honorarios-cancel-proc',
+        scriptVersion: '20260503-honorarios-datatable',
         hasRangeInput: Boolean(rangeInput),
         hasDoctorSelect: Boolean(doctorSelect),
         doctorOptionsCount: doctorSelect ? doctorSelect.options.length : 0,
@@ -34,6 +40,183 @@
 
     const formatNumber = value => new Intl.NumberFormat('es-EC').format(Number(value || 0));
 
+    const escapeHtml = value => String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+
+    const badge = (label, tone, icon = '') => `
+        <span class="honorarios-badge honorarios-badge-${tone}">
+            ${icon ? `<i class="mdi ${icon}"></i>` : ''}${escapeHtml(label)}
+        </span>
+    `;
+
+    const rowMatchesQuickFilter = (row, mode = 'detalle') => {
+        if (mode !== 'detalle' && ['facturadas', 'pendientes'].includes(currentTableFilter)) {
+            return true;
+        }
+        const hasFacturacion = Number(row?.has_facturacion || 0) === 1;
+        const honorario = Number(row?.honorarios || 0);
+        if (currentTableFilter === 'facturadas') {
+            return hasFacturacion;
+        }
+        if (currentTableFilter === 'pendientes') {
+            return !hasFacturacion;
+        }
+        if (currentTableFilter === 'con_honorario') {
+            return honorario > 0;
+        }
+        if (currentTableFilter === 'honorario_cero') {
+            return honorario <= 0;
+        }
+        return true;
+    };
+
+    const updateVisibleSummary = () => {
+        if (!visibleSummary || !honorariosDataTable) {
+            return;
+        }
+
+        const visibleRows = honorariosDataTable.rows({ search: 'applied' }).data().toArray();
+        const totals = visibleRows.reduce((acc, row) => {
+            acc.produccion += Number(row.produccion || 0);
+            acc.honorarios += Number(row.honorarios || 0);
+            if (Number(row.has_facturacion || 0) !== 1) {
+                acc.pendientes += 1;
+            }
+            return acc;
+        }, { produccion: 0, honorarios: 0, pendientes: 0 });
+
+        visibleSummary.innerHTML = `
+            <span>Filas: ${formatNumber(visibleRows.length)}</span>
+            <span>Recolectado: ${formatCurrency(totals.produccion)}</span>
+            <span>Honorarios: ${formatCurrency(totals.honorarios)}</span>
+            <span>Pendientes: ${formatNumber(totals.pendientes)}</span>
+        `;
+    };
+
+    const destroyDataTable = () => {
+        if (honorariosDataTable && typeof honorariosDataTable.destroy === 'function') {
+            honorariosDataTable.destroy();
+        }
+        honorariosDataTable = null;
+    };
+
+    const initDataTable = (table, rows, mode) => {
+        if (!window.jQuery || !window.jQuery.fn || typeof window.jQuery.fn.DataTable !== 'function') {
+            return false;
+        }
+
+        const $ = window.jQuery;
+        const $table = $(table);
+        if ($.fn.dataTable && $.fn.dataTable.isDataTable(table)) {
+            $table.DataTable().destroy();
+        }
+
+        const language = typeof window.medforgeDataTableLanguageEs === 'function'
+            ? window.medforgeDataTableLanguageEs()
+            : {};
+        const hasButtons = Boolean($.fn.dataTable?.Buttons);
+        const commonOptions = {
+            data: rows,
+            language,
+            pageLength: 25,
+            lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, 'Todos']],
+            deferRender: true,
+            autoWidth: false,
+            scrollX: true,
+            order: [[0, 'asc']],
+            dom: hasButtons ? 'Bfrtip' : 'frtip',
+            buttons: hasButtons ? [
+                { extend: 'csvHtml5', text: 'CSV', title: 'honorarios_medicos' },
+                { extend: 'excelHtml5', text: 'Excel', title: 'honorarios_medicos' },
+            ] : [],
+            createdRow: (row, data) => {
+                if (Number(data.has_facturacion || 0) !== 1 || Number(data.honorarios || 0) <= 0) {
+                    row.classList.add('honorarios-row-alert');
+                }
+            },
+            drawCallback: updateVisibleSummary,
+        };
+
+        const detailColumns = [
+            { data: 'fecha', defaultContent: '' },
+            { data: 'sede', defaultContent: '' },
+            {
+                data: null,
+                render: row => `
+                    <div>${escapeHtml(row.cirujano || '')}</div>
+                    <small class="text-muted">${escapeHtml(row.realizado_por || '')}</small>
+                `,
+            },
+            {
+                data: null,
+                render: row => `
+                    <div>${escapeHtml(row.paciente || '')}</div>
+                    <small class="text-muted">${escapeHtml(row.hc_number || '')}</small>
+                `,
+            },
+            { data: 'tipo', defaultContent: '' },
+            {
+                data: null,
+                render: row => `
+                    <div>${escapeHtml(row.procedimiento || '')}</div>
+                    <small class="text-muted">${escapeHtml(row.form_id || '')}</small>
+                `,
+            },
+            {
+                data: null,
+                render: row => `
+                    <div>${escapeHtml(row.afiliacion || '')}</div>
+                    <small class="text-muted">${escapeHtml(row.empresa_seguro || '')}</small>
+                `,
+            },
+            {
+                data: null,
+                render: row => Number(row.has_facturacion || 0) === 1
+                    ? badge(row.estado_facturacion || 'Facturada', Number(row.honorarios || 0) > 0 ? 'success' : 'muted', 'mdi-check-circle-outline')
+                    : badge('Pendiente', 'warning', 'mdi-clock-outline'),
+            },
+            {
+                data: 'produccion',
+                className: 'text-end',
+                render: (value, type) => type === 'sort' || type === 'type' ? Number(value || 0) : formatCurrency(value || 0),
+            },
+            {
+                data: 'honorarios',
+                className: 'text-end',
+                render: (value, type, row) => {
+                    const amount = Number(value || 0);
+                    if (type === 'sort' || type === 'type') {
+                        return amount;
+                    }
+                    if (amount <= 0 && Number(row.has_facturacion || 0) === 1) {
+                        return badge(formatCurrency(amount), 'danger', 'mdi-alert-circle-outline');
+                    }
+                    return formatCurrency(amount);
+                },
+            },
+        ];
+
+        const summaryColumns = [
+            { data: 'cirujano', defaultContent: '' },
+            { data: 'tipo', defaultContent: '' },
+            { data: 'casos', className: 'text-end', render: (value, type) => type === 'sort' || type === 'type' ? Number(value || 0) : formatNumber(value || 0) },
+            { data: 'procedimientos', className: 'text-end', render: (value, type) => type === 'sort' || type === 'type' ? Number(value || 0) : formatNumber(value || 0) },
+            { data: 'produccion', className: 'text-end', render: (value, type) => type === 'sort' || type === 'type' ? Number(value || 0) : formatCurrency(value || 0) },
+            { data: 'honorarios', className: 'text-end', render: (value, type) => type === 'sort' || type === 'type' ? Number(value || 0) : formatCurrency(value || 0) },
+        ];
+
+        honorariosDataTable = $table.DataTable(Object.assign({}, commonOptions, {
+            columns: mode === 'detalle' ? detailColumns : summaryColumns,
+        }));
+        updateVisibleSummary();
+
+        return true;
+    };
+
     const metric = (id, value) => {
         const node = document.getElementById(id);
         if (node) {
@@ -42,46 +225,58 @@
     };
 
     const setTable = (rows, mode = 'resumen') => {
+        lastTableRows = Array.isArray(rows) ? rows : [];
+        lastTableMode = mode;
         const tbody = document.getElementById('table-honorarios');
         if (!tbody) {
             return;
         }
         const table = tbody.closest('table');
         const thead = table ? table.querySelector('thead') : null;
+        destroyDataTable();
         if (thead) {
             thead.innerHTML = mode === 'detalle'
                 ? '<tr><th>Fecha</th><th>Sede</th><th>Doctor</th><th>Paciente</th><th>Tipo</th><th>Procedimiento</th><th>Afiliación</th><th>Facturación</th><th class="text-end">Recolectado</th><th class="text-end">Honorario</th></tr>'
                 : '<tr><th>Médico</th><th>Tipo</th><th class="text-end">Atenciones</th><th class="text-end">Procedimientos</th><th class="text-end">Recolectado</th><th class="text-end">Honorarios</th></tr>';
         }
 
-        if (!Array.isArray(rows) || rows.length === 0) {
+        const filteredRows = Array.isArray(rows) ? rows.filter(row => rowMatchesQuickFilter(row, mode)) : [];
+        if (!Array.isArray(rows) || filteredRows.length === 0) {
             tbody.innerHTML = `<tr><td colspan="${mode === 'detalle' ? 10 : 6}" class="text-center text-muted">Sin datos</td></tr>`;
+            if (visibleSummary) {
+                visibleSummary.innerHTML = '<span>Filas: 0</span><span>Recolectado: $0,00</span><span>Honorarios: $0,00</span><span>Pendientes: 0</span>';
+            }
+            return;
+        }
+
+        tbody.innerHTML = '';
+        if (initDataTable(table, filteredRows, mode)) {
             return;
         }
 
         if (mode === 'detalle') {
-            tbody.innerHTML = rows.map(row => `
+            tbody.innerHTML = filteredRows.map(row => `
                 <tr>
-                    <td>${row.fecha ?? '—'}</td>
-                    <td>${row.sede ?? '—'}</td>
+                    <td>${escapeHtml(row.fecha ?? '—')}</td>
+                    <td>${escapeHtml(row.sede ?? '—')}</td>
                     <td>
-                        <div>${row.cirujano ?? '—'}</div>
-                        <small class="text-muted">${row.realizado_por ?? ''}</small>
+                        <div>${escapeHtml(row.cirujano ?? '—')}</div>
+                        <small class="text-muted">${escapeHtml(row.realizado_por ?? '')}</small>
                     </td>
                     <td>
-                        <div>${row.paciente ?? '—'}</div>
-                        <small class="text-muted">${row.hc_number ?? ''}</small>
+                        <div>${escapeHtml(row.paciente ?? '—')}</div>
+                        <small class="text-muted">${escapeHtml(row.hc_number ?? '')}</small>
                     </td>
-                    <td>${row.tipo ?? '—'}</td>
+                    <td>${escapeHtml(row.tipo ?? '—')}</td>
                     <td>
-                        <div>${row.procedimiento ?? '—'}</div>
-                        <small class="text-muted">${row.form_id ?? ''}</small>
+                        <div>${escapeHtml(row.procedimiento ?? '—')}</div>
+                        <small class="text-muted">${escapeHtml(row.form_id ?? '')}</small>
                     </td>
                     <td>
-                        <div>${row.afiliacion ?? '—'}</div>
-                        <small class="text-muted">${row.empresa_seguro ?? ''}</small>
+                        <div>${escapeHtml(row.afiliacion ?? '—')}</div>
+                        <small class="text-muted">${escapeHtml(row.empresa_seguro ?? '')}</small>
                     </td>
-                    <td>${row.estado_facturacion ?? (row.has_facturacion ? 'Facturada' : 'Pendiente facturación')}</td>
+                    <td>${escapeHtml(row.estado_facturacion ?? (row.has_facturacion ? 'Facturada' : 'Pendiente facturación'))}</td>
                     <td class="text-end">${formatCurrency(row.produccion ?? 0)}</td>
                     <td class="text-end">${formatCurrency(row.honorarios ?? 0)}</td>
                 </tr>
@@ -89,16 +284,32 @@
             return;
         }
 
-        tbody.innerHTML = rows.map(row => `
+        tbody.innerHTML = filteredRows.map(row => `
             <tr>
-                <td>${row.cirujano ?? '—'}</td>
-                <td>${row.tipo ?? '—'}</td>
+                <td>${escapeHtml(row.cirujano ?? '—')}</td>
+                <td>${escapeHtml(row.tipo ?? '—')}</td>
                 <td class="text-end">${formatNumber(row.casos ?? 0)}</td>
                 <td class="text-end">${formatNumber(row.procedimientos ?? 0)}</td>
                 <td class="text-end">${formatCurrency(row.produccion ?? 0)}</td>
                 <td class="text-end">${formatCurrency(row.honorarios ?? 0)}</td>
             </tr>
         `).join('');
+        if (visibleSummary) {
+            const totals = filteredRows.reduce((acc, row) => {
+                acc.produccion += Number(row.produccion || 0);
+                acc.honorarios += Number(row.honorarios || 0);
+                if (Number(row.has_facturacion || 0) !== 1) {
+                    acc.pendientes += 1;
+                }
+                return acc;
+            }, { produccion: 0, honorarios: 0, pendientes: 0 });
+            visibleSummary.innerHTML = `
+                <span>Filas: ${formatNumber(filteredRows.length)}</span>
+                <span>Recolectado: ${formatCurrency(totals.produccion)}</span>
+                <span>Honorarios: ${formatCurrency(totals.honorarios)}</span>
+                <span>Pendientes: ${formatNumber(totals.pendientes)}</span>
+            `;
+        }
     };
 
     const renderBar = (id, labels, series, color) => {
@@ -362,6 +573,19 @@
     }
     if (sedeSelect) {
         sedeSelect.addEventListener('change', fetchData);
+    }
+    if (quickFilters) {
+        quickFilters.addEventListener('click', event => {
+            const button = event.target.closest('[data-filter]');
+            if (!button) {
+                return;
+            }
+            currentTableFilter = String(button.dataset.filter || 'all');
+            quickFilters.querySelectorAll('[data-filter]').forEach(node => {
+                node.classList.toggle('active', node === button);
+            });
+            setTable(lastTableRows, lastTableMode);
+        });
     }
     [tipoSelect, categoriaSelect, empresaSeguroSelect, seguroSelect].forEach(select => {
         if (!select) {
