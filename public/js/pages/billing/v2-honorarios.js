@@ -16,7 +16,7 @@
     let lastTableMode = 'resumen';
 
     console.info('[Honorarios] script v2-honorarios cargado', {
-        scriptVersion: '20260503-honorarios-datatable',
+        scriptVersion: '20260503-honorarios-sede-filter',
         hasRangeInput: Boolean(rangeInput),
         hasDoctorSelect: Boolean(doctorSelect),
         doctorOptionsCount: doctorSelect ? doctorSelect.options.length : 0,

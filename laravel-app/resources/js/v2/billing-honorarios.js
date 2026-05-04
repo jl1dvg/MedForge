@@ -14,7 +14,7 @@ Promise.all([
     ensureDataTables(),
     ensureDataTableLanguage(),
 ])
-    .then(() => loadLegacyScript('/js/pages/billing/v2-honorarios.js?v=20260503-honorarios-datatable'))
+    .then(() => loadLegacyScript('/js/pages/billing/v2-honorarios.js?v=20260503-honorarios-sede-filter'))
     .catch((error) => {
     console.error('Unable to initialize the billing honorarios page bundle.', error);
     });

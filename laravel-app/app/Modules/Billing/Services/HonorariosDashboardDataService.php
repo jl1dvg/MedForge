@@ -815,15 +815,13 @@ class HonorariosDashboardDataService
 
     private function sedeExpr(): string
     {
-        $parts = [];
-        if ($this->columnExists('procedimiento_proyectado', 'sede_departamento')) {
-            $parts[] = "NULLIF(TRIM(pp.sede_departamento), '')";
-        }
-        if ($this->columnExists('procedimiento_proyectado', 'id_sede')) {
-            $parts[] = "NULLIF(TRIM(CAST(pp.id_sede AS CHAR)), '')";
-        }
+        $rawExpr = "LOWER(TRIM(COALESCE(NULLIF(pp.sede_departamento, ''), NULLIF(CAST(pp.id_sede AS CHAR), ''), '')))";
 
-        return $parts === [] ? "''" : 'COALESCE(' . implode(', ', $parts) . ", '')";
+        return "CASE
+            WHEN {$rawExpr} LIKE '%ceib%' THEN 'CEIBOS'
+            WHEN {$rawExpr} LIKE '%matriz%' OR {$rawExpr} LIKE '%villa%' THEN 'MATRIZ'
+            ELSE ''
+        END";
     }
 
     private function normalizeSedeFilter(mixed $value): string
