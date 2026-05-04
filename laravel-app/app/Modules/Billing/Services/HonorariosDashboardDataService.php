@@ -62,7 +62,7 @@ class HonorariosDashboardDataService
         $dimensionContext = $this->afiliacionDimensions->buildContext($rawAfiliacionExpr, 'acm');
         $patientJoin = $this->patientJoinDefinition();
         $atencionIdExpr = $this->columnExists('procedimiento_proyectado', 'id') ? 'pp.id' : 'pp.form_id';
-        $hcExpr = $this->columnExists('procedimiento_proyectado', 'hc_number') ? 'pp.hc_number' : "''";
+        $hcExpr = 'pp.hc_number';
         $sedeExpr = $this->sedeExpr();
         $estadoAgendaExpr = "COALESCE(pp.estado_agenda, '')";
         $patientNameExpr = $this->patientNameExpr();

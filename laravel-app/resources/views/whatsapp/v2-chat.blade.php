@@ -223,6 +223,30 @@
             font-weight: 700;
         }
 
+        .wa-v2-template-preview {
+            display: grid;
+            gap: 8px;
+            padding: 12px 14px;
+            border-radius: 16px;
+            border: 1px solid rgba(15, 118, 110, .16);
+            background: linear-gradient(180deg, #f0fdfa 0%, #ffffff 100%);
+        }
+
+        .wa-v2-template-preview__label {
+            font-size: 11px;
+            font-weight: 800;
+            color: #0f766e;
+            text-transform: uppercase;
+            letter-spacing: .06em;
+        }
+
+        .wa-v2-template-preview__body {
+            white-space: pre-wrap;
+            color: #0f172a;
+            font-size: 13px;
+            line-height: 1.45;
+        }
+
         .wa-v2-shell {
             display: grid;
             grid-template-columns: 390px minmax(0, 1fr);
@@ -1470,6 +1494,12 @@
                                 </button>
                             </div>
                             <div class="wa-v2-picker-results" id="wa-v2-start-results"></div>
+                            <div class="wa-v2-template-preview mt-12" id="wa-v2-start-template-preview">
+                                <div class="wa-v2-template-preview__label">Preview del mensaje</div>
+                                <div class="wa-v2-template-preview__body" id="wa-v2-start-template-preview-body">
+                                    Selecciona un template para revisar el mensaje final.
+                                </div>
+                            </div>
                         </div>
                         <div class="col-lg-5">
                             <div class="row g-10">
@@ -1861,22 +1891,6 @@
                             </div>
 
                             <div class="wa-v2-actions__row wa-v2-actions__row--header">
-                                @if(($selectedConversation['messaging_window_state'] ?? '') !== 'window_open')
-                                    <button type="button"
-                                            class="btn btn-outline-primary"
-                                            data-wa-open-start-template="1"
-                                            data-wa-number="{{ $selectedConversation['wa_number'] }}"
-                                            data-wa-contact-name="{{ $selectedConversation['display_name'] ?: $selectedConversation['wa_number'] }}"
-                                            data-wa-patient-name="{{ $selectedConversation['patient_full_name'] ?? '' }}"
-                                            data-wa-hc-number="{{ $selectedConversation['patient_hc_number'] ?? '' }}"
-                                            title="Enviar plantilla"
-                                            aria-label="Enviar plantilla">
-                                        <span class="wa-v2-icon-label">
-                                            <i class="mdi mdi-file-document-edit-outline"></i>
-                                        </span>
-                                    </button>
-                                @endif
-
                                 @if($canOperateConversation)
                                     <button
                                         type="button"
@@ -2198,11 +2212,25 @@
                                 </div>
                                 <div class="wa-v2-composer-inputgroup">
                                     <div class="wa-v2-compose-actions">
-                                        <details class="wa-v2-attachment-menu {{ $canReplyHere ? '' : 'is-disabled' }}">
+                                        <details class="wa-v2-attachment-menu">
                                             <summary title="Más opciones" aria-label="Más opciones">
                                                 <i class="mdi mdi-plus"></i>
                                             </summary>
                                             <div class="wa-v2-attachment-menu__items">
+                                                <div class="wa-v2-attachment-menu__section">
+                                                    <div class="wa-v2-attachment-menu__title">Plantilla</div>
+                                                    <button type="button"
+                                                            class="wa-v2-chip"
+                                                            data-wa-open-start-template="1"
+                                                            data-wa-number="{{ $selectedConversation['wa_number'] }}"
+                                                            data-wa-contact-name="{{ $selectedConversation['display_name'] ?: $selectedConversation['wa_number'] }}"
+                                                            data-wa-patient-name="{{ $selectedConversation['patient_full_name'] ?? '' }}"
+                                                            data-wa-hc-number="{{ $selectedConversation['patient_hc_number'] ?? '' }}"
+                                                            title="Enviar plantilla">
+                                                        <i class="mdi mdi-file-document-edit-outline"></i> Enviar plantilla
+                                                    </button>
+                                                </div>
+
                                                 <div class="wa-v2-attachment-menu__section">
                                                     <div class="wa-v2-attachment-menu__title">Adjuntar</div>
                                                     <div class="wa-v2-attachment-menu__media">
@@ -2328,6 +2356,7 @@
             const startChatTemplate = document.getElementById('wa-v2-start-template');
             const startChatTemplateVariables = document.getElementById('wa-v2-start-template-variables');
             const startChatTemplateVariablesFields = document.getElementById('wa-v2-start-template-variables-fields');
+            const startChatTemplatePreviewBody = document.getElementById('wa-v2-start-template-preview-body');
             const startChatSubmit = document.getElementById('wa-v2-start-submit');
             const startChatFeedback = document.getElementById('wa-v2-start-chat-feedback');
             const presenceSelect = document.getElementById('wa-v2-presence');
@@ -2446,6 +2475,42 @@
                     : null;
             };
 
+            const currentStartTemplateValues = function () {
+                if (!startChatTemplateVariablesFields) {
+                    return [];
+                }
+
+                return Array.from(startChatTemplateVariablesFields.querySelectorAll('[data-wa-template-variable]')).map(function (input) {
+                    return (input.value || '').trim();
+                });
+            };
+
+            const renderStartTemplatePreview = function () {
+                if (!startChatTemplatePreviewBody) {
+                    return;
+                }
+
+                const template = selectedStartTemplateMeta();
+                if (!template) {
+                    startChatTemplatePreviewBody.textContent = 'Selecciona un template para revisar el mensaje final.';
+                    return;
+                }
+
+                const examples = Array.isArray(template.variable_examples) ? template.variable_examples : [];
+                const values = currentStartTemplateValues();
+                const body = String(template.body_text || '').trim();
+
+                if (body === '') {
+                    startChatTemplatePreviewBody.textContent = 'Este template no tiene cuerpo de mensaje registrado.';
+                    return;
+                }
+
+                startChatTemplatePreviewBody.textContent = body.replace(/\{\{\s*(\d+)\s*\}\}/g, function (match, index) {
+                    const position = Math.max(0, Number(index) - 1);
+                    return values[position] || examples[position] || match;
+                });
+            };
+
             const renderStartTemplateVariables = function () {
                 if (!startChatTemplateVariables || !startChatTemplateVariablesFields) {
                     return;
@@ -2458,6 +2523,7 @@
                 if (variables.length === 0) {
                     startChatTemplateVariables.classList.add('d-none');
                     startChatTemplateVariablesFields.innerHTML = '';
+                    renderStartTemplatePreview();
                     return;
                 }
 
@@ -2478,6 +2544,11 @@
                         </div>
                     `;
                 }).join('');
+
+                startChatTemplateVariablesFields.querySelectorAll('[data-wa-template-variable]').forEach(function (input) {
+                    input.addEventListener('input', renderStartTemplatePreview);
+                });
+                renderStartTemplatePreview();
             };
 
             const openStartChatModal = function (payload) {
@@ -3625,6 +3696,11 @@
 
             document.querySelectorAll('[data-wa-open-start-template]').forEach(function (button) {
                 button.addEventListener('click', function () {
+                    const templateMenu = button.closest('.wa-v2-attachment-menu');
+                    if (templateMenu) {
+                        templateMenu.removeAttribute('open');
+                    }
+
                     openStartChatModal({
                         waNumber: button.getAttribute('data-wa-number') || '',
                         contactName: button.getAttribute('data-wa-contact-name') || '',
