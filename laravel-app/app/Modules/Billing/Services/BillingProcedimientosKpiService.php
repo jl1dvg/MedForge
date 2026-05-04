@@ -229,7 +229,7 @@ class BillingProcedimientosKpiService
             FROM billing_procedimientos bp
             INNER JOIN billing_main bm ON bm.id = bp.billing_id
             LEFT JOIN protocolo_data pd ON pd.form_id = bm.form_id
-            LEFT JOIN procedimiento_proyectado pp ON pp.form_id = bm.form_id
+            LEFT JOIN procedimiento_proyectado pp ON pp.form_id = bm.form_id AND COALESCE(pp.sigcenter_present, 1) = 1
             $derivacionesJoin
             LEFT JOIN procedimientos pr ON pr.id = bp.procedimiento_id
             $catalogJoin
@@ -386,7 +386,7 @@ class BillingProcedimientosKpiService
             FROM billing_procedimientos bp
             INNER JOIN billing_main bm ON bm.id = bp.billing_id
             LEFT JOIN protocolo_data pd ON pd.form_id = bm.form_id
-            LEFT JOIN procedimiento_proyectado pp ON pp.form_id = bm.form_id
+            LEFT JOIN procedimiento_proyectado pp ON pp.form_id = bm.form_id AND COALESCE(pp.sigcenter_present, 1) = 1
             $derivacionesJoin
             LEFT JOIN patient_data pa ON pa.hc_number = bm.hc_number
             LEFT JOIN procedimientos pr ON pr.id = bp.procedimiento_id

@@ -194,7 +194,7 @@ class FarmaciaDashboardService
                 {$this->patientDocumentExpression()} AS cedula_paciente,
                 {$this->patientBirthdateExpression()} AS fecha_nacimiento
             FROM recetas_items re
-            LEFT JOIN procedimiento_proyectado pp ON pp.form_id = re.form_id
+            LEFT JOIN procedimiento_proyectado pp ON pp.form_id = re.form_id AND COALESCE(pp.sigcenter_present, 1) = 1
             {$afiliacionContext['join']}
             {$joinDerivaciones}
             {$joinConsulta}
@@ -277,7 +277,7 @@ class FarmaciaDashboardService
             FROM recetas_items ri
             LEFT JOIN farmacia_recetas_conciliacion frc
               ON CAST(ri.id_ui AS UNSIGNED) = CAST(frc.receta_id AS UNSIGNED)
-            LEFT JOIN procedimiento_proyectado pp ON pp.form_id = ri.form_id
+            LEFT JOIN procedimiento_proyectado pp ON pp.form_id = ri.form_id AND COALESCE(pp.sigcenter_present, 1) = 1
             {$afiliacionContext['join']}
             WHERE 1 = 1
         ";
@@ -368,7 +368,7 @@ class FarmaciaDashboardService
         $sql = "
             SELECT DISTINCT {$this->doctorExpression()} AS doctor
             FROM recetas_items re
-            LEFT JOIN procedimiento_proyectado pp ON re.form_id = pp.form_id
+            LEFT JOIN procedimiento_proyectado pp ON re.form_id = pp.form_id AND COALESCE(pp.sigcenter_present, 1) = 1
             WHERE 1 = 1
         ";
 
@@ -459,7 +459,7 @@ class FarmaciaDashboardService
         $sql = "
             SELECT DISTINCT {$this->sedeExpression()} AS sede
             FROM recetas_items re
-            LEFT JOIN procedimiento_proyectado pp ON re.form_id = pp.form_id
+            LEFT JOIN procedimiento_proyectado pp ON re.form_id = pp.form_id AND COALESCE(pp.sigcenter_present, 1) = 1
             WHERE 1 = 1
         ";
 
@@ -484,7 +484,7 @@ class FarmaciaDashboardService
         $sql = "
             SELECT DISTINCT {$this->departamentoExpression()} AS departamento
             FROM recetas_items re
-            LEFT JOIN procedimiento_proyectado pp ON re.form_id = pp.form_id
+            LEFT JOIN procedimiento_proyectado pp ON re.form_id = pp.form_id AND COALESCE(pp.sigcenter_present, 1) = 1
             WHERE 1 = 1
         ";
 

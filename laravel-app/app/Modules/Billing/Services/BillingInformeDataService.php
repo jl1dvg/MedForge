@@ -88,7 +88,7 @@ class BillingInformeDataService
                 COALESCE(pd.fecha_inicio, pp.fecha) AS fecha_ordenada
             FROM billing_main bm
             LEFT JOIN protocolo_data pd ON bm.form_id = pd.form_id
-            LEFT JOIN procedimiento_proyectado pp ON bm.form_id = pp.form_id
+            LEFT JOIN procedimiento_proyectado pp ON bm.form_id = pp.form_id AND COALESCE(pp.sigcenter_present, 1) = 1
         SQL;
 
         $params = [];
@@ -123,7 +123,7 @@ class BillingInformeDataService
         }
 
         $stmt = $this->db->prepare(
-            'SELECT sede_departamento, id_sede FROM procedimiento_proyectado WHERE form_id = ? ORDER BY fecha DESC LIMIT 1'
+            'SELECT sede_departamento, id_sede FROM procedimiento_proyectado WHERE form_id = ? AND COALESCE(sigcenter_present, 1) = 1 ORDER BY fecha DESC LIMIT 1'
         );
         $stmt->execute([$formId]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
@@ -863,6 +863,7 @@ class BillingInformeDataService
             FROM procedimiento_proyectado pp
             INNER JOIN patient_data pd ON pp.hc_number = pd.hc_number
             WHERE pp.form_id = ?
+              AND COALESCE(pp.sigcenter_present, 1) = 1
             LIMIT 1
             SQL
         );
@@ -917,7 +918,7 @@ class BillingInformeDataService
                 pp.procedimiento_proyectado,
                 pr.procedimiento_id
             FROM protocolo_data pr
-            LEFT JOIN procedimiento_proyectado pp ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number
+            LEFT JOIN procedimiento_proyectado pp ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number AND COALESCE(pp.sigcenter_present, 1) = 1
             WHERE pr.form_id = ? AND pr.hc_number = ?
             LIMIT 1
             SQL
@@ -1167,7 +1168,7 @@ class BillingInformeDataService
                     pp.procedimiento_proyectado,
                     pp.tipo
                 FROM protocolo_data pd
-                LEFT JOIN procedimiento_proyectado pp ON pp.form_id = pd.form_id
+                LEFT JOIN procedimiento_proyectado pp ON pp.form_id = pd.form_id AND COALESCE(pp.sigcenter_present, 1) = 1
                 WHERE pd.form_id IN (%s)
                 SQL,
                 $placeholders
@@ -1341,6 +1342,7 @@ class BillingInformeDataService
                     FROM procedimiento_proyectado pp
                     LEFT JOIN visitas v ON v.id = pp.visita_id
                     WHERE pp.form_id = :form_id
+                      AND COALESCE(pp.sigcenter_present, 1) = 1
                     ORDER BY COALESCE(pp.fecha, v.fecha_visita) DESC,
                              COALESCE(pp.hora, v.hora_llegada) DESC,
                              pp.form_id DESC
@@ -1367,6 +1369,7 @@ class BillingInformeDataService
                     LEFT JOIN derivaciones_referral_forms rf ON rf.form_id = df.id
                     LEFT JOIN derivaciones_referrals dr ON dr.id = rf.referral_id
                     WHERE pp.hc_number = :hc
+                      AND COALESCE(pp.sigcenter_present, 1) = 1
                       AND dr.referral_code = :codigo
                     ORDER BY COALESCE(pp.fecha, v.fecha_visita) DESC,
                              COALESCE(pp.hora, v.hora_llegada) DESC,
@@ -1392,6 +1395,7 @@ class BillingInformeDataService
                     FROM procedimiento_proyectado pp
                     LEFT JOIN visitas v ON v.id = pp.visita_id
                     WHERE pp.hc_number = :hc
+                      AND COALESCE(pp.sigcenter_present, 1) = 1
                     ORDER BY COALESCE(pp.fecha, v.fecha_visita) DESC,
                              COALESCE(pp.hora, v.hora_llegada) DESC,
                              pp.form_id DESC
@@ -2491,7 +2495,7 @@ SQL,
         $raw = is_array($protocoloExtendido) ? (string) ($protocoloExtendido['procedimiento_proyectado'] ?? '') : '';
         if ($raw === '') {
             try {
-                $stmt = $this->db->prepare('SELECT procedimiento_proyectado FROM procedimiento_proyectado WHERE form_id = ? LIMIT 1');
+                $stmt = $this->db->prepare('SELECT procedimiento_proyectado FROM procedimiento_proyectado WHERE form_id = ? AND COALESCE(sigcenter_present, 1) = 1 LIMIT 1');
                 $stmt->execute([$formId]);
                 $raw = (string) ($stmt->fetchColumn() ?: '');
             } catch (\Throwable) {

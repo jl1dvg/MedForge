@@ -111,6 +111,7 @@ class BillingLeakageService
                 INNER JOIN patient_data pa ON pa.hc_number = pr.hc_number
                 LEFT JOIN protocolo_data pd ON pd.form_id = pr.form_id
                 WHERE pd.form_id IS NULL
+                  AND COALESCE(pr.sigcenter_present, 1) = 1
                   AND NOT EXISTS (SELECT 1 FROM billing_main bm WHERE bm.form_id = pr.form_id)
                   AND (
                         UPPER(pr.procedimiento_proyectado) NOT LIKE 'SERVICIOS OFTALMOLOGICOS GENERALES%'
@@ -142,7 +143,7 @@ class BillingLeakageService
                         ELSE 'quirurgico'
                     END AS tipo
                 FROM protocolo_data pd
-                INNER JOIN procedimiento_proyectado pr ON pr.form_id = pd.form_id
+                INNER JOIN procedimiento_proyectado pr ON pr.form_id = pd.form_id AND COALESCE(pr.sigcenter_present, 1) = 1
                 INNER JOIN patient_data pa ON pa.hc_number = pd.hc_number
                 WHERE NOT EXISTS (SELECT 1 FROM billing_main bm WHERE bm.form_id = pd.form_id)
                   AND (

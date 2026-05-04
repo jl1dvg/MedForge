@@ -104,7 +104,7 @@ class Paciente360ParityService
                 [':hc' => $hcNumber]
             ),
             'agenda' => $this->safeCount(
-                'SELECT COUNT(*) FROM procedimiento_proyectado WHERE hc_number = :hc',
+                'SELECT COUNT(*) FROM procedimiento_proyectado WHERE hc_number = :hc AND COALESCE(sigcenter_present, 1) = 1',
                 [':hc' => $hcNumber]
             ),
             'consultas' => $this->safeCount(
@@ -134,6 +134,7 @@ class Paciente360ParityService
                     FROM procedimiento_proyectado pp
                     WHERE pp.form_id = re.form_id
                       AND pp.hc_number = :hc
+                      AND COALESCE(pp.sigcenter_present, 1) = 1
                  )',
                 [':hc' => $hcNumber]
             ),
@@ -282,6 +283,7 @@ class Paciente360ParityService
             FROM procedimiento_proyectado pp
             LEFT JOIN visitas v ON v.id = pp.visita_id
             WHERE pp.hc_number = :hc
+              AND COALESCE(pp.sigcenter_present, 1) = 1
             ORDER BY COALESCE(pp.fecha, v.fecha_visita) DESC, pp.form_id DESC
             LIMIT :limit
         SQL;
@@ -576,6 +578,7 @@ class Paciente360ParityService
                     FROM procedimiento_proyectado pp
                     WHERE pp.form_id = re.form_id
                       AND pp.hc_number = :hc_doctor
+                      AND COALESCE(pp.sigcenter_present, 1) = 1
                     ORDER BY pp.id DESC
                     LIMIT 1
                 ) AS doctor,
@@ -584,6 +587,7 @@ class Paciente360ParityService
                     FROM procedimiento_proyectado pp
                     WHERE pp.form_id = re.form_id
                       AND pp.hc_number = :hc_proc
+                      AND COALESCE(pp.sigcenter_present, 1) = 1
                     ORDER BY pp.id DESC
                     LIMIT 1
                 ) AS procedimiento
@@ -593,6 +597,7 @@ class Paciente360ParityService
                 FROM procedimiento_proyectado pp_exists
                 WHERE pp_exists.form_id = re.form_id
                   AND pp_exists.hc_number = :hc_exists
+                  AND COALESCE(pp_exists.sigcenter_present, 1) = 1
             )
             ORDER BY re.created_at DESC, re.id DESC
             LIMIT :limit

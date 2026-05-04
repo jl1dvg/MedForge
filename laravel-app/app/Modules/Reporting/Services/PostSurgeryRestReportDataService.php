@@ -141,6 +141,7 @@ class PostSurgeryRestReportDataService
             LEFT JOIN procedimiento_proyectado pp
                 ON pp.form_id = pr.form_id
                AND pp.hc_number = pr.hc_number
+               AND COALESCE(pp.sigcenter_present, 1) = 1
             WHERE pr.form_id = :form_id
               AND pr.hc_number = :hc_number
             LIMIT 1

@@ -183,7 +183,7 @@ class CirugiaService
                        CASE WHEN bm.id IS NOT NULL THEN 1 ELSE 0 END AS existeBilling
                 FROM patient_data p
                 INNER JOIN protocolo_data pr ON p.hc_number = pr.hc_number
-                LEFT JOIN procedimiento_proyectado pp ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number
+                LEFT JOIN procedimiento_proyectado pp ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number AND COALESCE(pp.sigcenter_present, 1) = 1
                 LEFT JOIN billing_main bm ON bm.form_id = pr.form_id
                 ORDER BY pr.fecha_inicio DESC, pr.id DESC";
 
@@ -515,7 +515,7 @@ class CirugiaService
                    pr.segundo_ayudante, pr.ayudante_anestesia, pr.tercer_ayudante, pr.status, pr.insumos, pr.medicamentos
             FROM patient_data p
             INNER JOIN protocolo_data pr ON p.hc_number = pr.hc_number
-            LEFT JOIN procedimiento_proyectado pp ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number
+            LEFT JOIN procedimiento_proyectado pp ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number AND COALESCE(pp.sigcenter_present, 1) = 1
             WHERE pr.form_id = ? AND p.hc_number = ?
             LIMIT 1";
 
@@ -1348,7 +1348,7 @@ class CirugiaService
             }
         }
 
-        $sql = 'SELECT ' . implode(', ', $columns) . ' FROM procedimiento_proyectado WHERE form_id = :form_id';
+        $sql = 'SELECT ' . implode(', ', $columns) . ' FROM procedimiento_proyectado WHERE form_id = :form_id AND COALESCE(sigcenter_present, 1) = 1';
         $params = [':form_id' => $formId];
 
         if ($hcNumber !== '' && $this->columnExists('procedimiento_proyectado', 'hc_number')) {

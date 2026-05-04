@@ -113,7 +113,7 @@ class BillingDashboardDataService
                     + COALESCE(ane.items_count, 0) + COALESCE(oxi.items_count, 0) AS total_items
             FROM billing_main bm
             LEFT JOIN protocolo_data pd ON pd.form_id = bm.form_id
-            LEFT JOIN procedimiento_proyectado pp ON pp.form_id = bm.form_id
+            LEFT JOIN procedimiento_proyectado pp ON pp.form_id = bm.form_id AND COALESCE(pp.sigcenter_present, 1) = 1
             LEFT JOIN patient_data pa ON pa.hc_number = bm.hc_number
             {$dimensionContext['join']}
             LEFT JOIN (
@@ -267,7 +267,7 @@ class BillingDashboardDataService
                 FROM billing_procedimientos bp
                 INNER JOIN billing_main bm ON bm.id = bp.billing_id
                 LEFT JOIN protocolo_data pd ON pd.form_id = bm.form_id
-                LEFT JOIN procedimiento_proyectado pp ON pp.form_id = bm.form_id
+                LEFT JOIN procedimiento_proyectado pp ON pp.form_id = bm.form_id AND COALESCE(pp.sigcenter_present, 1) = 1
                 LEFT JOIN patient_data pa ON pa.hc_number = bm.hc_number
                 {$dimensionContext['join']}
                 WHERE {$dateExpr} BETWEEN :inicio AND :fin

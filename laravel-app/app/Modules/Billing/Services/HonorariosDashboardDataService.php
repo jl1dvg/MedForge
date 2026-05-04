@@ -109,6 +109,7 @@ class HonorariosDashboardDataService
             {$patientJoin}
             {$dimensionContext['join']}
             WHERE {$dateExpr} BETWEEN :inicio AND :fin
+              AND COALESCE(pp.sigcenter_present, 1) = 1
         ";
         $sql .= " AND UPPER(TRIM(COALESCE(pp.estado_agenda, ''))) NOT LIKE 'CANCELADO%'";
 
@@ -506,7 +507,7 @@ class HonorariosDashboardDataService
             FROM billing_procedimientos bp
             INNER JOIN billing_main bm ON bm.id = bp.billing_id
             LEFT JOIN protocolo_data pd ON pd.form_id = bm.form_id
-            LEFT JOIN procedimiento_proyectado pp ON pp.form_id = bm.form_id
+            LEFT JOIN procedimiento_proyectado pp ON pp.form_id = bm.form_id AND COALESCE(pp.sigcenter_present, 1) = 1
             LEFT JOIN patient_data pa ON pa.hc_number = bm.hc_number
             {$dimensionContext['join']}
             WHERE {$dateExpr} BETWEEN :inicio AND :fin

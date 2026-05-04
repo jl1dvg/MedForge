@@ -414,6 +414,6 @@
         <script src="/assets/vendor_components/apexcharts-bundle/dist/apexcharts.js"></script>
         <script src="/assets/vendor_components/datatable/datatables.min.js"></script>
         <script src="/js/pages/shared/datatables-language-es.js"></script>
-        <script src="/js/pages/billing/v2-honorarios.js?v=20260503-honorarios-sede-filter"></script>
+        <script src="/js/pages/billing/v2-honorarios.js?v=20260504-honorarios-detail-header"></script>
     @endif
 @endpush

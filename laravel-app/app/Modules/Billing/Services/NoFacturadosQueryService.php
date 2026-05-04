@@ -76,6 +76,7 @@ class NoFacturadosQueryService
                 LEFT JOIN imagenes_informes ii ON ii.form_id = pr.form_id
                 LEFT JOIN consulta_data cd ON cd.hc_number = pr.hc_number AND cd.form_id = pr.form_id
                 WHERE pd.form_id IS NULL
+                  AND COALESCE(pr.sigcenter_present, 1) = 1
                   AND NOT EXISTS (SELECT 1 FROM billing_main bm WHERE bm.form_id = pr.form_id)
                   AND (
                         UPPER(pr.procedimiento_proyectado) NOT LIKE 'SERVICIOS OFTALMOLOGICOS GENERALES%'
@@ -117,7 +118,7 @@ class NoFacturadosQueryService
                     cd.fecha AS consulta_fecha,
                     NULLIF(TRIM(COALESCE(cd.diagnosticos, '')), '') AS consulta_diagnosticos
                 FROM protocolo_data pd
-                INNER JOIN procedimiento_proyectado pr ON pr.form_id = pd.form_id
+                INNER JOIN procedimiento_proyectado pr ON pr.form_id = pd.form_id AND COALESCE(pr.sigcenter_present, 1) = 1
                 INNER JOIN patient_data pa ON pa.hc_number = pd.hc_number
                 %DIMENSION_PD_JOIN%
                 LEFT JOIN imagenes_informes ii ON ii.form_id = pd.form_id

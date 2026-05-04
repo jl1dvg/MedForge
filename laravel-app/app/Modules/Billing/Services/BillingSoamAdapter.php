@@ -45,7 +45,7 @@ class BillingSoamAdapter
                 continue;
             }
 
-            $stmt = $this->db->prepare('SELECT fecha FROM procedimiento_proyectado WHERE form_id = ?');
+            $stmt = $this->db->prepare('SELECT fecha FROM procedimiento_proyectado WHERE form_id = ? AND COALESCE(sigcenter_present, 1) = 1');
             $stmt->execute([$formId]);
             while ($procRow = $stmt->fetch(PDO::FETCH_ASSOC)) {
                 $fecha = (string) ($procRow['fecha'] ?? '');
@@ -103,4 +103,3 @@ class BillingSoamAdapter
         return $this->dataService->obtenerValorAnestesia($codigo);
     }
 }
-

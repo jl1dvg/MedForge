@@ -221,7 +221,7 @@ class DashboardParityService
                     pr.cirujano_1, pr.instrumentista, pr.cirujano_2, pr.circulante, pr.primer_ayudante,
                     pr.anestesiologo, pr.segundo_ayudante, pr.ayudante_anestesia, pr.tercer_ayudante
              FROM protocolo_data pr
-             LEFT JOIN procedimiento_proyectado pp ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number
+             LEFT JOIN procedimiento_proyectado pp ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number AND COALESCE(pp.sigcenter_present, 1) = 1
              WHERE pr.fecha_inicio BETWEEN ? AND ?
              ORDER BY pr.fecha_inicio DESC, pr.id DESC',
             [$start->format('Y-m-d 00:00:00'), $end->format('Y-m-d 23:59:59')]

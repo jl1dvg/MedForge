@@ -365,7 +365,8 @@ class ConsultasParityService
              FROM procedimiento_proyectado AS pp
              LEFT JOIN consulta_data AS cd
                     ON pp.form_id = cd.form_id
-             WHERE pp.hc_number = :hcNumber';
+             WHERE pp.hc_number = :hcNumber
+               AND COALESCE(pp.sigcenter_present, 1) = 1';
 
             $params = [':hcNumber' => $hcNumber];
 
@@ -591,6 +592,7 @@ class ConsultasParityService
                 LEFT JOIN patient_data pd ON pd.hc_number = pp.hc_number
                 LEFT JOIN visitas v ON v.id = pp.visita_id
                 WHERE pp.form_id = :form_id AND pp.hc_number = :hc_number
+                  AND COALESCE(pp.sigcenter_present, 1) = 1
                 LIMIT 1";
 
         $stmt = $this->db->prepare($sql);
@@ -627,6 +629,7 @@ class ConsultasParityService
             LEFT JOIN patient_data pd ON pd.hc_number = pp.hc_number
             LEFT JOIN visitas v ON v.id = pp.visita_id
             WHERE pp.form_id = :form_id
+              AND COALESCE(pp.sigcenter_present, 1) = 1
             LIMIT 1"
         );
         $stmt->execute([':form_id' => $formId]);

@@ -87,7 +87,9 @@ class IndexAdmisionesSyncService
             'sent' => 0,
             'skipped' => 0,
             'errors' => 0,
+            'missing_marked' => 0,
         ];
+        $seenFormIds = [];
 
         foreach ($rows as $row) {
             $stats['processed']++;
@@ -114,6 +116,7 @@ class IndexAdmisionesSyncService
                 });
 
                 $stats['sent']++;
+                $seenFormIds[] = (int) $normalized['form_id'];
                 $onProgress && $onProgress('row', [
                     'form_id' => $normalized['form_id'],
                     'hc_number' => $normalized['hcNumber'],
@@ -131,6 +134,17 @@ class IndexAdmisionesSyncService
             }
         }
 
+        if ($stats['errors'] === 0 && $this->shouldReconcileMissing($options, $fromDate, $toDate)) {
+            $stats['missing_marked'] = $this->markMissingProcedimientos($fromDate, $toDate, $seenFormIds);
+            if ($stats['missing_marked'] > 0) {
+                $onProgress && $onProgress('missing', [
+                    'count' => $stats['missing_marked'],
+                    'from' => $fromDate,
+                    'to' => $toDate,
+                ]);
+            }
+        }
+
         return [
             'success' => true,
             'from' => $fromDate,
@@ -140,6 +154,7 @@ class IndexAdmisionesSyncService
             'sent_rows' => $stats['sent'],
             'skipped_rows' => $stats['skipped'],
             'error_rows' => $stats['errors'],
+            'missing_marked_rows' => $stats['missing_marked'],
             'duration_ms' => (int) round((microtime(true) - $startedAt) * 1000),
             'source' => $this->lastSource,
         ];
@@ -760,6 +775,9 @@ SQL;
             'afiliacion' => $this->nullableString($normalized['afiliacion'] ?? null),
             'fecha' => $normalized['fecha'] ?: null,
             'hora' => $normalized['hora'] ?: null,
+            'sigcenter_present' => true,
+            'sigcenter_last_seen_at' => now(),
+            'sigcenter_missing_at' => null,
         ];
 
         foreach ($base as $key => $value) {
@@ -828,6 +846,15 @@ SQL;
         if (isset($insert['hora'])) {
             $updates[] = 'hora = VALUES(hora)';
         }
+        if (isset($insert['sigcenter_present'])) {
+            $updates[] = 'sigcenter_present = VALUES(sigcenter_present)';
+        }
+        if (isset($insert['sigcenter_last_seen_at'])) {
+            $updates[] = 'sigcenter_last_seen_at = VALUES(sigcenter_last_seen_at)';
+        }
+        if (array_key_exists('sigcenter_missing_at', $insert)) {
+            $updates[] = 'sigcenter_missing_at = VALUES(sigcenter_missing_at)';
+        }
         if (isset($this->procedimientoColumns['updated_at'])) {
             $updates[] = 'updated_at = CURRENT_TIMESTAMP';
         }
@@ -853,6 +880,68 @@ SQL;
         }
 
         return null;
+    }
+
+    /**
+     * @param array<string,mixed> $options
+     */
+    private function shouldReconcileMissing(array $options, string $fromDate, string $toDate): bool
+    {
+        if (
+            !isset($this->procedimientoColumns['sigcenter_present'])
+            || !isset($this->procedimientoColumns['sigcenter_last_seen_at'])
+            || !isset($this->procedimientoColumns['sigcenter_missing_at'])
+        ) {
+            return false;
+        }
+
+        $lookback = max(0, (int) ($options['lookback'] ?? 0));
+        $lookahead = max(0, (int) ($options['lookahead'] ?? 0));
+        if ($lookback >= 7 && $lookahead >= 7) {
+            return true;
+        }
+
+        $fromOption = trim((string) ($options['from_date'] ?? ''));
+        $toOption = trim((string) ($options['to_date'] ?? ''));
+        if ($fromOption === '' || $toOption === '') {
+            return false;
+        }
+
+        try {
+            $from = new DateTimeImmutable($fromDate);
+            $to = new DateTimeImmutable($toDate);
+        } catch (Throwable) {
+            return false;
+        }
+
+        return $from->diff($to)->days >= 13;
+    }
+
+    /**
+     * @param array<int,int> $seenFormIds
+     */
+    private function markMissingProcedimientos(string $fromDate, string $toDate, array $seenFormIds): int
+    {
+        $query = DB::table('procedimiento_proyectado')
+            ->whereBetween('fecha', [$fromDate, $toDate])
+            ->whereNotNull('form_id')
+            ->where(function ($subQuery): void {
+                $subQuery
+                    ->where('sigcenter_present', true)
+                    ->orWhereNotNull('sigcenter_last_seen_at')
+                    ->orWhereNotNull('sigcenter_missing_at');
+            });
+
+        $seenFormIds = array_values(array_unique(array_filter($seenFormIds, static fn ($value): bool => $value > 0)));
+        if ($seenFormIds !== []) {
+            $query->whereNotIn('form_id', $seenFormIds);
+        }
+
+        return $query->update([
+            'sigcenter_present' => false,
+            'sigcenter_missing_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 
     /**

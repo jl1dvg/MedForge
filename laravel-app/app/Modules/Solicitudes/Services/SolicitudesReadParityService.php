@@ -1119,7 +1119,7 @@ class SolicitudesReadParityService
                 tareas.proximo_vencimiento AS crm_proximo_vencimiento
             FROM solicitud_procedimiento sp
             INNER JOIN patient_data pd ON sp.hc_number = pd.hc_number
-            LEFT JOIN procedimiento_proyectado pp ON pp.form_id = sp.form_id AND pp.hc_number = sp.hc_number
+            LEFT JOIN procedimiento_proyectado pp ON pp.form_id = sp.form_id AND pp.hc_number = sp.hc_number AND COALESCE(pp.sigcenter_present, 1) = 1
             ' . $afiliacionContext['join'] . '
             LEFT JOIN (
                 SELECT c.hc_number, c.form_id, MAX(c.fecha) AS fecha

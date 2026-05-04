@@ -374,6 +374,7 @@ class CoberturaReportDataService
                     FROM procedimiento_proyectado pp2
                     WHERE pp2.form_id = cd.form_id
                       AND pp2.hc_number = cd.hc_number
+                      AND COALESCE(pp2.sigcenter_present, 1) = 1
                       AND pp2.doctor IS NOT NULL
                       AND TRIM(pp2.doctor) <> ''
                     ORDER BY pp2.id DESC
@@ -448,6 +449,7 @@ class CoberturaReportDataService
                     FROM procedimiento_proyectado pp2
                     WHERE pp2.form_id = cd.form_id
                       AND pp2.hc_number = cd.hc_number
+                      AND COALESCE(pp2.sigcenter_present, 1) = 1
                       AND pp2.doctor IS NOT NULL
                       AND TRIM(pp2.doctor) <> ''
                     ORDER BY pp2.id DESC
@@ -967,7 +969,7 @@ class CoberturaReportDataService
         $stmt = $this->db->prepare(
             'SELECT id, form_id, hc_number, procedimiento_proyectado, doctor, fecha, hora, afiliacion
              FROM procedimiento_proyectado
-             WHERE form_id = ? AND hc_number = ?
+             WHERE form_id = ? AND hc_number = ? AND COALESCE(sigcenter_present, 1) = 1
              ORDER BY id DESC
              LIMIT 1'
         );
@@ -985,7 +987,7 @@ class CoberturaReportDataService
         $stmt = $this->db->prepare(
             'SELECT id, form_id, hc_number, procedimiento_proyectado, doctor, fecha, hora, afiliacion
              FROM procedimiento_proyectado
-             WHERE form_id = ?
+             WHERE form_id = ? AND COALESCE(sigcenter_present, 1) = 1
              ORDER BY id DESC
              LIMIT 1'
         );

@@ -139,7 +139,7 @@ class ConsultaReportDataService
                 u.full_name AS doctor_full_name
             FROM consulta_data cd
             LEFT JOIN procedimiento_proyectado pp
-                ON pp.form_id = cd.form_id AND pp.hc_number = cd.hc_number
+                ON pp.form_id = cd.form_id AND pp.hc_number = cd.hc_number AND COALESCE(pp.sigcenter_present, 1) = 1
             LEFT JOIN users u
                 ON {$doctorJoin}
             WHERE cd.form_id = ? AND cd.hc_number = ?
@@ -181,7 +181,7 @@ class ConsultaReportDataService
                 u.full_name AS doctor_full_name
             FROM consulta_data cd
             LEFT JOIN procedimiento_proyectado pp
-                ON pp.form_id = cd.form_id AND pp.hc_number = cd.hc_number
+                ON pp.form_id = cd.form_id AND pp.hc_number = cd.hc_number AND COALESCE(pp.sigcenter_present, 1) = 1
             LEFT JOIN users u
                 ON {$doctorJoin}
             WHERE cd.form_id = ?
@@ -223,7 +223,7 @@ class ConsultaReportDataService
                 u.full_name AS doctor_full_name
             FROM consulta_data cd
             LEFT JOIN procedimiento_proyectado pp
-                ON pp.form_id = cd.form_id AND pp.hc_number = cd.hc_number
+                ON pp.form_id = cd.form_id AND pp.hc_number = cd.hc_number AND COALESCE(pp.sigcenter_present, 1) = 1
             LEFT JOIN users u
                 ON {$doctorJoin}
             WHERE cd.hc_number = ?
@@ -605,7 +605,7 @@ class ConsultaReportDataService
         $stmt = $this->db->prepare(
             'SELECT id, form_id, hc_number, procedimiento_proyectado, doctor, fecha, hora, afiliacion
              FROM procedimiento_proyectado
-             WHERE form_id = ? AND hc_number = ?
+             WHERE form_id = ? AND hc_number = ? AND COALESCE(sigcenter_present, 1) = 1
              ORDER BY id DESC
              LIMIT 1'
         );
@@ -623,7 +623,7 @@ class ConsultaReportDataService
         $stmt = $this->db->prepare(
             'SELECT id, form_id, hc_number, procedimiento_proyectado, doctor, fecha, hora, afiliacion
              FROM procedimiento_proyectado
-             WHERE form_id = ?
+             WHERE form_id = ? AND COALESCE(sigcenter_present, 1) = 1
              ORDER BY id DESC
              LIMIT 1'
         );

@@ -257,7 +257,7 @@ class PacientesParityService
     private function getDoctoresAsignados(string $hcNumber): array
     {
         $stmt = $this->db->prepare(
-            "SELECT doctor, form_id FROM procedimiento_proyectado WHERE hc_number = ? AND doctor IS NOT NULL AND doctor != '' AND doctor NOT LIKE '%optometría%' ORDER BY form_id DESC"
+            "SELECT doctor, form_id FROM procedimiento_proyectado WHERE hc_number = ? AND COALESCE(sigcenter_present, 1) = 1 AND doctor IS NOT NULL AND doctor != '' AND doctor NOT LIKE '%optometría%' ORDER BY form_id DESC"
         );
         $stmt->execute([$hcNumber]);
 
@@ -315,6 +315,7 @@ class PacientesParityService
                     MAX(procedimiento_proyectado) AS procedimiento_proyectado,
                     MAX(fecha) AS fecha
                 FROM procedimiento_proyectado
+                WHERE COALESCE(sigcenter_present, 1) = 1
                 GROUP BY hc_number, form_id
             ) pp
               ON pp.hc_number = pd.hc_number
@@ -334,6 +335,7 @@ class PacientesParityService
                 MAX(pp.fecha) AS created_at
             FROM procedimiento_proyectado pp
             WHERE pp.hc_number = ?
+              AND COALESCE(pp.sigcenter_present, 1) = 1
               AND pp.form_id IS NOT NULL
               AND TRIM(pp.form_id) <> ''
               AND pp.procedimiento_proyectado IS NOT NULL
@@ -408,7 +410,7 @@ class PacientesParityService
             FROM procedimiento_proyectado pp
             LEFT JOIN consulta_data cd ON pp.hc_number = cd.hc_number AND pp.form_id = cd.form_id
             LEFT JOIN protocolo_data pr ON pp.hc_number = pr.hc_number AND pp.form_id = pr.form_id
-            WHERE pp.hc_number = ? AND pp.procedimiento_proyectado NOT LIKE '%optometría%'
+            WHERE pp.hc_number = ? AND COALESCE(pp.sigcenter_present, 1) = 1 AND pp.procedimiento_proyectado NOT LIKE '%optometría%'
             ORDER BY fecha ASC
             SQL
         );
@@ -451,7 +453,7 @@ class PacientesParityService
     private function getEstadisticasProcedimientos(string $hcNumber): array
     {
         $stmt = $this->db->prepare(
-            'SELECT procedimiento_proyectado FROM procedimiento_proyectado WHERE hc_number = ?'
+            'SELECT procedimiento_proyectado FROM procedimiento_proyectado WHERE hc_number = ? AND COALESCE(sigcenter_present, 1) = 1'
         );
         $stmt->execute([$hcNumber]);
 

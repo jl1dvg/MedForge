@@ -16,7 +16,7 @@
     let lastTableMode = 'resumen';
 
     console.info('[Honorarios] script v2-honorarios cargado', {
-        scriptVersion: '20260503-honorarios-sede-filter',
+        scriptVersion: '20260504-honorarios-detail-header',
         hasRangeInput: Boolean(rangeInput),
         hasDoctorSelect: Boolean(doctorSelect),
         doctorOptionsCount: doctorSelect ? doctorSelect.options.length : 0,
@@ -97,9 +97,18 @@
         `;
     };
 
-    const destroyDataTable = () => {
+    const destroyDataTable = table => {
         if (honorariosDataTable && typeof honorariosDataTable.destroy === 'function') {
             honorariosDataTable.destroy();
+        }
+        if (table && table.id) {
+            const wrapper = document.getElementById(`${table.id}_wrapper`);
+            if (wrapper && wrapper.contains(table) && wrapper.parentNode) {
+                wrapper.parentNode.insertBefore(table, wrapper);
+                wrapper.remove();
+            }
+            table.removeAttribute('style');
+            table.classList.remove('dataTable', 'no-footer');
         }
         honorariosDataTable = null;
     };
@@ -179,6 +188,7 @@
                     ? badge(row.estado_facturacion || 'Facturada', Number(row.honorarios || 0) > 0 ? 'success' : 'muted', 'mdi-check-circle-outline')
                     : badge('Pendiente', 'warning', 'mdi-clock-outline'),
             },
+            { data: 'factura_id', defaultContent: '' },
             {
                 data: 'produccion',
                 className: 'text-end',
@@ -233,16 +243,16 @@
         }
         const table = tbody.closest('table');
         const thead = table ? table.querySelector('thead') : null;
-        destroyDataTable();
+        destroyDataTable(table);
         if (thead) {
             thead.innerHTML = mode === 'detalle'
-                ? '<tr><th>Fecha</th><th>Sede</th><th>Doctor</th><th>Paciente</th><th>Tipo</th><th>Procedimiento</th><th>Afiliación</th><th>Facturación</th><th class="text-end">Recolectado</th><th class="text-end">Honorario</th></tr>'
+                ? '<tr><th>Fecha</th><th>Sede</th><th>Doctor</th><th>Paciente</th><th>Tipo</th><th>Procedimiento</th><th>Afiliación</th><th>Facturación</th><th>Factura ID</th><th class="text-end">Recolectado</th><th class="text-end">Honorario</th></tr>'
                 : '<tr><th>Médico</th><th>Tipo</th><th class="text-end">Atenciones</th><th class="text-end">Procedimientos</th><th class="text-end">Recolectado</th><th class="text-end">Honorarios</th></tr>';
         }
 
         const filteredRows = Array.isArray(rows) ? rows.filter(row => rowMatchesQuickFilter(row, mode)) : [];
         if (!Array.isArray(rows) || filteredRows.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="${mode === 'detalle' ? 10 : 6}" class="text-center text-muted">Sin datos</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="${mode === 'detalle' ? 11 : 6}" class="text-center text-muted">Sin datos</td></tr>`;
             if (visibleSummary) {
                 visibleSummary.innerHTML = '<span>Filas: 0</span><span>Recolectado: $0,00</span><span>Honorarios: $0,00</span><span>Pendientes: 0</span>';
             }
@@ -277,6 +287,7 @@
                         <small class="text-muted">${escapeHtml(row.empresa_seguro ?? '')}</small>
                     </td>
                     <td>${escapeHtml(row.estado_facturacion ?? (row.has_facturacion ? 'Facturada' : 'Pendiente facturación'))}</td>
+                    <td>${escapeHtml(row.factura_id ?? '')}</td>
                     <td class="text-end">${formatCurrency(row.produccion ?? 0)}</td>
                     <td class="text-end">${formatCurrency(row.honorarios ?? 0)}</td>
                 </tr>
@@ -524,8 +535,20 @@
                 const kpis = data.kpis || {};
                 const series = data.series || {};
 
+                const rows = Array.isArray(data.table) ? data.table : [];
+                const rowsLookDetailed = rows.some(row => row && (
+                    Object.prototype.hasOwnProperty.call(row, 'form_id')
+                    || Object.prototype.hasOwnProperty.call(row, 'paciente')
+                    || Object.prototype.hasOwnProperty.call(row, 'fecha')
+                ));
+                const tableMode = payload.doctor !== '' || rowsLookDetailed
+                    ? 'detalle'
+                    : (data.table_mode || 'resumen');
+
                 console.info('[Honorarios] respuesta honorarios-data', {
                     tableMode: data.table_mode || 'resumen',
+                    appliedTableMode: tableMode,
+                    doctorPayload: payload.doctor,
                     tableCount: Array.isArray(data.table) ? data.table.length : null,
                     kpis,
                     firstRows: Array.isArray(data.table) ? data.table.slice(0, 5) : [],
@@ -541,7 +564,7 @@
                 renderBar('chart-honorarios-afiliacion', series.por_afiliacion?.labels || [], series.por_afiliacion?.totals || [], '#22c55e');
                 renderBar('chart-honorarios-cirujano', series.por_cirujano?.labels || [], series.por_cirujano?.totals || [], '#0ea5e9');
                 renderBar('chart-honorarios-procedimientos', series.top_procedimientos?.labels || [], series.top_procedimientos?.totals || [], '#6366f1');
-                setTable(data.table || [], data.table_mode || 'resumen');
+                setTable(rows, tableMode);
             })
             .catch(error => {
                 console.error('[Honorarios] error honorarios-data', error);

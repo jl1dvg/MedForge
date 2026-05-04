@@ -67,6 +67,7 @@ class PacientesFlujoService
                 pp.afiliacion AS afiliacion
             FROM procedimiento_proyectado pp
             WHERE pp.visita_id IN ($placeholders)
+              AND COALESCE(pp.sigcenter_present, 1) = 1
             ORDER BY pp.hora ASC
             SQL;
         $stmtTrayectos = $this->db->prepare($sqlTrayectos);
@@ -137,7 +138,7 @@ class PacientesFlujoService
             FROM procedimiento_proyectado pp
             INNER JOIN patient_data pd ON pp.hc_number = pd.hc_number
             LEFT JOIN visitas v ON pp.visita_id = v.id
-            WHERE 1
+            WHERE COALESCE(pp.sigcenter_present, 1) = 1
             SQL;
         $params = [];
 
@@ -186,11 +187,11 @@ class PacientesFlujoService
         $desde = trim((string) ($desde ?? ''));
 
         if ($desde !== '' && $this->tableHasColumn('procedimiento_proyectado', 'updated_at')) {
-            $stmt = $this->db->prepare('SELECT * FROM procedimiento_proyectado WHERE updated_at > ?');
+            $stmt = $this->db->prepare('SELECT * FROM procedimiento_proyectado WHERE COALESCE(sigcenter_present, 1) = 1 AND updated_at > ?');
             $stmt->execute([$desde]);
             $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
         } else {
-            $stmt = $this->db->query('SELECT * FROM procedimiento_proyectado');
+            $stmt = $this->db->query('SELECT * FROM procedimiento_proyectado WHERE COALESCE(sigcenter_present, 1) = 1');
             $rows = $stmt ? ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
         }
 

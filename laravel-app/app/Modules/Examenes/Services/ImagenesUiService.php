@@ -308,6 +308,7 @@ class ImagenesUiService
             {$categoriaContext['join']}
             {$facturacionSql['join']}
             WHERE pp.estado_agenda IS NOT NULL
+              AND COALESCE(pp.sigcenter_present, 1) = 1
               AND TRIM(pp.estado_agenda) <> ''
               AND UPPER(TRIM(pp.procedimiento_proyectado)) LIKE 'IMAGENES%'";
 
@@ -975,6 +976,7 @@ class ImagenesUiService
             FROM consulta_examenes ce
             LEFT JOIN procedimiento_proyectado pp
                 ON pp.hc_number = ce.hc_number
+               AND COALESCE(pp.sigcenter_present, 1) = 1
                AND UPPER(TRIM(COALESCE(pp.procedimiento_proyectado, ''))) LIKE 'IMAGENES%'
                AND (
                     (
@@ -2127,7 +2129,7 @@ class ImagenesUiService
                 COALESCE(NULLIF(TRIM(pp.doctor), ''), 'Sin asignar') AS doctor_solicitante,
                 COUNT(*) AS total_examenes
             FROM consulta_examenes ce
-            LEFT JOIN procedimiento_proyectado pp ON pp.form_id = ce.form_id
+            LEFT JOIN procedimiento_proyectado pp ON pp.form_id = ce.form_id AND COALESCE(pp.sigcenter_present, 1) = 1
             LEFT JOIN patient_data pd ON pd.hc_number = ce.hc_number
             {$categoriaContext['join']}
             WHERE ce.examen_nombre IS NOT NULL

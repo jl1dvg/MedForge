@@ -188,7 +188,7 @@ class BillingParticularesReportService
                     NULLIF(TRIM(COALESCE(cd.diagnosticos, '')), '') AS consulta_diagnosticos
                 FROM patient_data p
                 INNER JOIN consulta_data cd ON cd.hc_number = p.hc_number
-                INNER JOIN procedimiento_proyectado pp ON pp.hc_number = p.hc_number AND pp.form_id = cd.form_id
+                INNER JOIN procedimiento_proyectado pp ON pp.hc_number = p.hc_number AND pp.form_id = cd.form_id AND COALESCE(pp.sigcenter_present, 1) = 1
                 WHERE cd.fecha BETWEEN ? AND ?
                   AND %ATENDIDO_WHERE%
 
@@ -223,7 +223,7 @@ class BillingParticularesReportService
                     NULL AS consulta_diagnosticos
                 FROM patient_data p
                 INNER JOIN protocolo_data pd ON pd.hc_number = p.hc_number
-                INNER JOIN procedimiento_proyectado pp ON pp.hc_number = p.hc_number AND pp.form_id = pd.form_id
+                INNER JOIN procedimiento_proyectado pp ON pp.hc_number = p.hc_number AND pp.form_id = pd.form_id AND COALESCE(pp.sigcenter_present, 1) = 1
                 WHERE pd.fecha_inicio BETWEEN ? AND ?
                   AND (%ATENDIDO_WHERE% OR %SURGERY_WHERE%)
 
@@ -253,7 +253,7 @@ class BillingParticularesReportService
                     NULL AS consulta_fecha,
                     NULL AS consulta_diagnosticos
                 FROM patient_data p
-                INNER JOIN procedimiento_proyectado pp ON pp.hc_number = p.hc_number
+                INNER JOIN procedimiento_proyectado pp ON pp.hc_number = p.hc_number AND COALESCE(pp.sigcenter_present, 1) = 1
                 LEFT JOIN protocolo_data pd ON pd.hc_number = p.hc_number AND pd.form_id = pp.form_id
                 WHERE pp.fecha BETWEEN ? AND ?
                   AND %SURGERY_WHERE%
@@ -285,7 +285,7 @@ class BillingParticularesReportService
                     cd.fecha AS consulta_fecha,
                     NULLIF(TRIM(COALESCE(cd.diagnosticos, '')), '') AS consulta_diagnosticos
                 FROM patient_data p
-                INNER JOIN procedimiento_proyectado pp ON pp.hc_number = p.hc_number
+                INNER JOIN procedimiento_proyectado pp ON pp.hc_number = p.hc_number AND COALESCE(pp.sigcenter_present, 1) = 1
                 LEFT JOIN consulta_data cd ON cd.hc_number = p.hc_number AND cd.form_id = pp.form_id
                 WHERE pp.fecha BETWEEN ? AND ?
                   AND %PNI_WHERE%
@@ -320,7 +320,7 @@ class BillingParticularesReportService
                     cd.fecha AS consulta_fecha,
                     NULLIF(TRIM(COALESCE(cd.diagnosticos, '')), '') AS consulta_diagnosticos
                 FROM patient_data p
-                INNER JOIN procedimiento_proyectado pp ON pp.hc_number = p.hc_number
+                INNER JOIN procedimiento_proyectado pp ON pp.hc_number = p.hc_number AND COALESCE(pp.sigcenter_present, 1) = 1
                 LEFT JOIN consulta_data cd ON cd.hc_number = p.hc_number AND cd.form_id = pp.form_id
                 WHERE pp.fecha BETWEEN ? AND ?
                   AND %SERVICIO_OFTALMO_WHERE%
@@ -355,7 +355,7 @@ class BillingParticularesReportService
                     cd.fecha AS consulta_fecha,
                     NULLIF(TRIM(COALESCE(cd.diagnosticos, '')), '') AS consulta_diagnosticos
                 FROM patient_data p
-                INNER JOIN procedimiento_proyectado pp ON pp.hc_number = p.hc_number
+                INNER JOIN procedimiento_proyectado pp ON pp.hc_number = p.hc_number AND COALESCE(pp.sigcenter_present, 1) = 1
                 LEFT JOIN consulta_data cd ON cd.hc_number = p.hc_number AND cd.form_id = pp.form_id
                 WHERE pp.fecha BETWEEN ? AND ?
                   AND %IMAGENES_WHERE%

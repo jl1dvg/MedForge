@@ -7,6 +7,7 @@
 namespace App\Models;
 
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 
@@ -27,6 +28,9 @@ use Illuminate\Database\Eloquent\Model;
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property int|null $visita_id
+ * @property bool $sigcenter_present
+ * @property Carbon|null $sigcenter_last_seen_at
+ * @property Carbon|null $sigcenter_missing_at
  * 
  * @property Visita|null $visita
  * @property PatientDatum $patient_datum
@@ -39,12 +43,22 @@ class ProcedimientoProyectado extends Model
 {
 	protected $table = 'procedimiento_proyectado';
 
+	protected static function booted(): void
+	{
+		static::addGlobalScope('sigcenter_present', static function (Builder $builder): void {
+			$builder->where($builder->qualifyColumn('sigcenter_present'), true);
+		});
+	}
+
 	protected $casts = [
 		'form_id' => 'int',
 		'id_sede' => 'int',
 		'fecha' => 'datetime',
 		'hora' => 'datetime',
-		'visita_id' => 'int'
+		'visita_id' => 'int',
+		'sigcenter_present' => 'bool',
+		'sigcenter_last_seen_at' => 'datetime',
+		'sigcenter_missing_at' => 'datetime'
 	];
 
 	protected $fillable = [
@@ -58,7 +72,10 @@ class ProcedimientoProyectado extends Model
 		'afiliacion',
 		'fecha',
 		'hora',
-		'visita_id'
+		'visita_id',
+		'sigcenter_present',
+		'sigcenter_last_seen_at',
+		'sigcenter_missing_at'
 	];
 
 	public function visita()

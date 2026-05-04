@@ -88,6 +88,7 @@ class AgendaReadController
                  FROM procedimiento_proyectado pp
                  LEFT JOIN visitas v ON v.id = pp.visita_id
                  WHERE pp.visita_id = ?
+                   AND COALESCE(pp.sigcenter_present, 1) = 1
                  ORDER BY fecha_agenda ASC, pp.hora ASC, pp.fecha ASC, v.hora_llegada ASC, pp.form_id ASC",
                 [$visitaId]
             );
@@ -199,7 +200,7 @@ class AgendaReadController
                 LEFT JOIN patient_data pd ON pd.hc_number = pp.hc_number
                 LEFT JOIN visitas v ON v.id = pp.visita_id
                 {$afiliacionContext['join']}
-                WHERE 1=1";
+                WHERE COALESCE(pp.sigcenter_present, 1) = 1";
         $bind = [];
 
         if ($filters['fecha_inicio'] !== '' && $filters['fecha_fin'] !== '') {
@@ -251,11 +252,12 @@ class AgendaReadController
         $rows = DB::select($sql, $bind);
         $rows = $this->decorateAgendaRows($rows, $doctorCatalog);
         $tiposAtencion = $this->buildAtencionTipoOptions();
-        $estados = DB::select("SELECT DISTINCT estado_agenda FROM procedimiento_proyectado WHERE estado_agenda IS NOT NULL AND estado_agenda != '' ORDER BY estado_agenda");
+        $estados = DB::select("SELECT DISTINCT estado_agenda FROM procedimiento_proyectado WHERE COALESCE(sigcenter_present, 1) = 1 AND estado_agenda IS NOT NULL AND estado_agenda != '' ORDER BY estado_agenda");
         $sedes = DB::select(
             "SELECT DISTINCT COALESCE(NULLIF(TRIM(sede_departamento), ''), NULLIF(TRIM(id_sede), ''), '') AS sede
              FROM procedimiento_proyectado
-             WHERE COALESCE(NULLIF(TRIM(sede_departamento), ''), NULLIF(TRIM(id_sede), ''), '') != ''
+             WHERE COALESCE(sigcenter_present, 1) = 1
+               AND COALESCE(NULLIF(TRIM(sede_departamento), ''), NULLIF(TRIM(id_sede), ''), '') != ''
              ORDER BY sede ASC"
         );
 
@@ -335,7 +337,8 @@ class AgendaReadController
         $rows = DB::select(
             "SELECT DISTINCT TRIM(SUBSTRING_INDEX(COALESCE(procedimiento_proyectado, ''), ' - ', 1)) AS tipo_atencion
              FROM procedimiento_proyectado
-             WHERE COALESCE(TRIM(procedimiento_proyectado), '') != ''
+             WHERE COALESCE(sigcenter_present, 1) = 1
+               AND COALESCE(TRIM(procedimiento_proyectado), '') != ''
              ORDER BY tipo_atencion ASC"
         );
 
@@ -367,7 +370,8 @@ class AgendaReadController
         $rawDoctors = DB::select(
             "SELECT DISTINCT TRIM(doctor) AS doctor
              FROM procedimiento_proyectado
-             WHERE doctor IS NOT NULL AND TRIM(doctor) != ''
+             WHERE COALESCE(sigcenter_present, 1) = 1
+               AND doctor IS NOT NULL AND TRIM(doctor) != ''
              ORDER BY doctor ASC"
         );
 

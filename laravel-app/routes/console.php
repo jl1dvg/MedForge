@@ -728,6 +728,16 @@ Artisan::command('index-admisiones:sync
                 (string) ($payload['hc_number'] ?? ''),
                 (string) ($payload['error'] ?? 'unknown')
             ));
+            return;
+        }
+
+        if ($event === 'missing') {
+            $this->warn(sprintf(
+                '[MISSING] marcados=%s from=%s to=%s',
+                (string) ($payload['count'] ?? 0),
+                (string) ($payload['from'] ?? '—'),
+                (string) ($payload['to'] ?? '—')
+            ));
         }
     });
 
@@ -739,7 +749,7 @@ Artisan::command('index-admisiones:sync
 
     $this->newLine();
     $this->table(
-        ['From', 'To', 'Source', 'Total', 'Processed', 'Sent', 'Skipped', 'Errors', 'Duration ms'],
+        ['From', 'To', 'Source', 'Total', 'Processed', 'Sent', 'Skipped', 'Missing', 'Errors', 'Duration ms'],
         [[
             (string) ($result['from'] ?? '—'),
             (string) ($result['to'] ?? '—'),
@@ -748,6 +758,7 @@ Artisan::command('index-admisiones:sync
             (int) ($result['processed_rows'] ?? 0),
             (int) ($result['sent_rows'] ?? 0),
             (int) ($result['skipped_rows'] ?? 0),
+            (int) ($result['missing_marked_rows'] ?? 0),
             (int) ($result['error_rows'] ?? 0),
             (int) ($result['duration_ms'] ?? 0),
         ]]

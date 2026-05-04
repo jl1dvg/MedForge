@@ -51,7 +51,7 @@ class ConsultaExamenSyncService
         $columns = $this->buildConsultaDataSelectColumns('cd');
         $columns[] = 'pp.doctor AS doctor_pp';
         $sql = sprintf(
-            'SELECT %s FROM consulta_data cd LEFT JOIN procedimiento_proyectado pp ON pp.form_id = cd.form_id WHERE cd.examenes IS NOT NULL',
+            'SELECT %s FROM consulta_data cd LEFT JOIN procedimiento_proyectado pp ON pp.form_id = cd.form_id AND COALESCE(pp.sigcenter_present, 1) = 1 WHERE cd.examenes IS NOT NULL',
             implode(', ', $columns)
         );
         $params = [];

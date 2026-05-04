@@ -42,6 +42,7 @@ class BillingUiService
             LEFT JOIN (
                 SELECT form_id, MAX(fecha) AS fecha
                 FROM procedimiento_proyectado
+                WHERE COALESCE(sigcenter_present, 1) = 1
                 GROUP BY form_id
             ) pp ON pp.form_id = bm.form_id
             {$whereSql}
@@ -187,6 +188,7 @@ class BillingUiService
                     LEFT JOIN (
                         SELECT form_id, MAX(fecha) AS fecha
                         FROM procedimiento_proyectado
+                        WHERE COALESCE(sigcenter_present, 1) = 1
                         GROUP BY form_id
                     ) pp ON pp.form_id = bm.form_id
                     WHERE bm.form_id = ?

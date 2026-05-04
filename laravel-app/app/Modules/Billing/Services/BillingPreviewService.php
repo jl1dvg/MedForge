@@ -110,7 +110,7 @@ class BillingPreviewService
 
         // Fallback para procedimientos de imágenes (no quirúrgicos) o consulta oftalmo
         if (empty($preview['procedimientos'])) {
-            $stmtImagen = $this->db->prepare("SELECT procedimiento_proyectado FROM procedimiento_proyectado WHERE form_id = ? LIMIT 1");
+            $stmtImagen = $this->db->prepare("SELECT procedimiento_proyectado FROM procedimiento_proyectado WHERE form_id = ? AND COALESCE(sigcenter_present, 1) = 1 LIMIT 1");
             $stmtImagen->execute([$formId]);
             $procTexto = $stmtImagen->fetchColumn();
 

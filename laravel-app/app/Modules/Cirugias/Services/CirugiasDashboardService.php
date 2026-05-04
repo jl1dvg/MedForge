@@ -44,7 +44,7 @@ class CirugiasDashboardService
             SELECT DISTINCT {$sedeExpr} AS sede
             FROM protocolo_data pr
             LEFT JOIN procedimiento_proyectado pp
-                ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number
+                ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number AND COALESCE(pp.sigcenter_present, 1) = 1
             WHERE pr.fecha_inicio BETWEEN :inicio AND :fin
             ORDER BY sede ASC
         SQL;
@@ -101,7 +101,7 @@ class CirugiasDashboardService
                 ON CONVERT(p.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
                  = CONVERT(pr.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
              LEFT JOIN procedimiento_proyectado pp
-                ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number
+                ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number AND COALESCE(pp.sigcenter_present, 1) = 1
              {$categoriaContext['join']}
              WHERE pr.fecha_inicio BETWEEN :inicio AND :fin
                AND (:afiliacion_filter = '' OR {$afiliacionKeyExpr} = :afiliacion_filter_match)
@@ -293,7 +293,7 @@ class CirugiasDashboardService
                     ON CONVERT(p.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
                      = CONVERT(pr.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
                 LEFT JOIN procedimiento_proyectado pp
-                    ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number
+                    ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number AND COALESCE(pp.sigcenter_present, 1) = 1
                 {$categoriaContext['join']}
                 {$facturacionSql['join']}
                 WHERE pr.fecha_inicio BETWEEN :inicio AND :fin
@@ -365,7 +365,7 @@ class CirugiasDashboardService
                         ON CONVERT(p.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
                          = CONVERT(pr.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
                     LEFT JOIN procedimiento_proyectado pp
-                        ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number
+                        ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number AND COALESCE(pp.sigcenter_present, 1) = 1
                     {$categoriaContext['join']}
                     WHERE pr.fecha_inicio BETWEEN :inicio AND :fin
                       AND (:afiliacion_filter = '' OR {$afiliacionKeyExpr} = :afiliacion_filter_match)
@@ -636,7 +636,7 @@ class CirugiasDashboardService
                 ON CONVERT(p.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
                  = CONVERT(pr.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
              LEFT JOIN procedimiento_proyectado pp
-                ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number
+                ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number AND COALESCE(pp.sigcenter_present, 1) = 1
              {$categoriaContext['join']}
              WHERE pr.fecha_inicio BETWEEN :inicio AND :fin
                AND hora_inicio IS NOT NULL
@@ -707,7 +707,7 @@ class CirugiasDashboardService
                     ON CONVERT(p.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
                      = CONVERT(pr.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
                 LEFT JOIN procedimiento_proyectado pp
-                    ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number
+                    ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number AND COALESCE(pp.sigcenter_present, 1) = 1
                 {$categoriaContext['join']}
                 WHERE pr.fecha_inicio BETWEEN :inicio AND :fin
                   AND pr.status = 1
@@ -788,7 +788,7 @@ class CirugiasDashboardService
                 ON CONVERT(p.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
                  = CONVERT(pr.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
              {$categoriaContext['join']}
-             LEFT JOIN procedimiento_proyectado pp ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number
+             LEFT JOIN procedimiento_proyectado pp ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number AND COALESCE(pp.sigcenter_present, 1) = 1
              WHERE pr.fecha_inicio BETWEEN :inicio AND :fin
                AND (:afiliacion_filter = '' OR {$afiliacionKeyExpr} = :afiliacion_filter_match)
                AND (:afiliacion_categoria_filter = '' OR {$categoriaContext['expr']} = :afiliacion_categoria_filter_match)
@@ -845,7 +845,7 @@ class CirugiasDashboardService
                 ON CONVERT(p.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
                  = CONVERT(pr.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
              LEFT JOIN procedimiento_proyectado pp
-                ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number
+                ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number AND COALESCE(pp.sigcenter_present, 1) = 1
              {$categoriaContext['join']}
              WHERE pr.fecha_inicio BETWEEN :inicio AND :fin
                AND (:afiliacion_filter = '' OR {$afiliacionKeyExpr} = :afiliacion_filter_match)
@@ -900,7 +900,7 @@ class CirugiasDashboardService
                 ON CONVERT(p.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
                  = CONVERT(pr.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
              LEFT JOIN procedimiento_proyectado pp
-                ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number
+                ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number AND COALESCE(pp.sigcenter_present, 1) = 1
              {$categoriaContext['join']}
              WHERE pr.fecha_inicio BETWEEN :inicio AND :fin
                AND (:afiliacion_filter = '' OR {$afiliacionKeyExpr} = :afiliacion_filter_match)
@@ -957,7 +957,7 @@ class CirugiasDashboardService
                 ON CONVERT(p.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
                  = CONVERT(pr.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
              LEFT JOIN procedimiento_proyectado pp
-                ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number
+                ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number AND COALESCE(pp.sigcenter_present, 1) = 1
              {$categoriaContext['join']}
              WHERE pr.fecha_inicio BETWEEN :inicio AND :fin
                AND (:afiliacion_filter = '' OR {$afiliacionKeyExpr} = :afiliacion_filter_match)
@@ -1030,6 +1030,7 @@ class CirugiasDashboardService
                         form_id,
                         MAX(NULLIF(TRIM(doctor), '')) AS doctor
                     FROM procedimiento_proyectado
+                    WHERE COALESCE(sigcenter_present, 1) = 1
                     GROUP BY form_id
                 ) pp ON pp.form_id = sp.form_id"
             : '';
@@ -1133,7 +1134,7 @@ class CirugiasDashboardService
                 ON CONVERT(p.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
                  = CONVERT(pr.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
              LEFT JOIN procedimiento_proyectado pp
-                ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number
+                ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number AND COALESCE(pp.sigcenter_present, 1) = 1
              {$categoriaContext['join']}
              WHERE pr.fecha_inicio BETWEEN :inicio AND :fin
                AND (:afiliacion_filter = '' OR {$afiliacionKeyExpr} = :afiliacion_filter_match)
@@ -1478,7 +1479,7 @@ class CirugiasDashboardService
                 ON CONVERT(p.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
                  = CONVERT(pr.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
             LEFT JOIN procedimiento_proyectado pp
-                ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number
+                ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number AND COALESCE(pp.sigcenter_present, 1) = 1
             %AFILIACION_CATEGORIA_JOIN%
             WHERE pr.fecha_inicio BETWEEN :inicio AND :fin
               AND (:afiliacion_filter = '' OR %AFILIACION_KEY_EXPR% = :afiliacion_filter_match)
@@ -1803,6 +1804,7 @@ class CirugiasDashboardService
             FROM procedimiento_proyectado pp_sede
             WHERE CONVERT(pp_sede.form_id USING utf8mb4) COLLATE utf8mb4_unicode_ci
                   = CONVERT({$solicitudAlias}.form_id USING utf8mb4) COLLATE utf8mb4_unicode_ci{$hcCondition}
+              AND COALESCE(pp_sede.sigcenter_present, 1) = 1
               AND {$sedeExpr} = :sede_filter_match
         ))";
     }
