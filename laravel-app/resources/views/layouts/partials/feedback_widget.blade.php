@@ -97,7 +97,6 @@
         aria-label="Abrir sugerencias y reportes"
     >
         <i class="mdi mdi-message-alert-outline"></i>
-        <span>Sugerencias</span>
     </button>
 
     <div class="modal fade" id="feedbackWidgetModal" tabindex="-1" aria-hidden="true" aria-labelledby="feedbackWidgetModalLabel">

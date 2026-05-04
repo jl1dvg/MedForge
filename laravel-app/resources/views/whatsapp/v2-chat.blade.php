@@ -56,7 +56,7 @@
             align-items: center;
             justify-content: space-between;
             gap: 16px;
-            padding: 22px 24px;
+            padding: 10px 20px;
             border-radius: 28px;
             background: linear-gradient(135deg, #0f172a 0%, #134e4a 52%, #0f766e 100%);
             color: #fff;
@@ -107,6 +107,38 @@
             font-size: 12px;
             font-weight: 700;
             color: #fff;
+        }
+
+        .wa-v2-pagebar-control {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 8px 6px 12px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, .14);
+            border: 1px solid rgba(255, 255, 255, .16);
+            backdrop-filter: blur(10px);
+            color: #fff;
+        }
+
+        .wa-v2-pagebar-control label {
+            margin: 0;
+            font-size: 12px;
+            font-weight: 700;
+            color: rgba(255, 255, 255, .82);
+        }
+
+        .wa-v2-pagebar-control .form-select {
+            min-width: 142px;
+            height: 30px;
+            border: 0;
+            border-radius: 999px;
+            background-color: rgba(255, 255, 255, .94);
+            color: #0f172a;
+            font-size: 12px;
+            font-weight: 700;
+            padding-top: 3px;
+            padding-bottom: 3px;
         }
 
         .wa-v2-modal-backdrop {
@@ -214,7 +246,7 @@
         }
 
         .wa-v2-panel__header {
-            padding: 18px 20px;
+            padding: 10px 10px;
             border-bottom: 1px solid var(--wa-border);
             background: radial-gradient(circle at top left, rgba(16, 185, 129, .16), transparent 40%),
             radial-gradient(circle at top right, rgba(14, 165, 233, .10), transparent 42%),
@@ -637,14 +669,29 @@
         }
 
         .wa-v2-chat-subtitle {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 6px;
+            min-width: 0;
             color: var(--wa-muted);
             font-size: 13px;
         }
 
-        .wa-v2-chat-patient {
-            margin-top: 3px;
+        .wa-v2-chat-subtitle__item {
+            min-width: 0;
+            max-width: 320px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .wa-v2-chat-subtitle__item--patient {
             color: #334155;
-            font-size: 13px;
+        }
+
+        .wa-v2-chat-subtitle__dot {
+            color: #94a3b8;
         }
 
         .wa-v2-toolbar {
@@ -653,8 +700,8 @@
             justify-content: space-between;
             gap: 12px;
             flex-wrap: nowrap;
-            margin-top: 16px;
-            padding-top: 14px;
+            margin-top: 10px;
+            padding-top: 10px;
             border-top: 1px solid rgba(15, 23, 42, .06);
         }
 
@@ -668,7 +715,57 @@
 
         .wa-v2-toolbar__actions {
             min-width: 0;
-            flex: 1 1 auto;
+            flex: 0 0 auto;
+        }
+
+        .wa-v2-ops-menu {
+            position: relative;
+        }
+
+        .wa-v2-ops-menu summary {
+            list-style: none;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            min-height: 36px;
+            padding: 0 12px;
+            border-radius: 12px;
+            border: 1px solid #dbe4ee;
+            background: #fff;
+            color: #334155;
+            font-size: 12px;
+            font-weight: 800;
+            white-space: nowrap;
+        }
+
+        .wa-v2-ops-menu summary::-webkit-details-marker {
+            display: none;
+        }
+
+        .wa-v2-ops-menu summary::after {
+            content: "\F0140";
+            font-family: "Material Design Icons";
+            font-size: 16px;
+            color: var(--wa-muted);
+            transition: transform .16s ease;
+        }
+
+        .wa-v2-ops-menu[open] summary::after {
+            transform: rotate(180deg);
+        }
+
+        .wa-v2-ops-menu__body {
+            position: absolute;
+            top: calc(100% + 8px);
+            right: 0;
+            z-index: 35;
+            width: min(760px, calc(100vw - 48px));
+            padding: 12px;
+            border: 1px solid rgba(15, 23, 42, .10);
+            border-radius: 16px;
+            background: rgba(255, 255, 255, .98);
+            box-shadow: 0 22px 44px rgba(15, 23, 42, .16);
         }
 
         .wa-v2-actions {
@@ -678,14 +775,16 @@
         }
 
         .wa-v2-actions__row {
-            display: flex;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
             gap: 12px;
-            align-items: center;
-            flex-wrap: nowrap;
+            align-items: start;
         }
 
         .wa-v2-actions__row--header {
+            display: inline-flex;
             justify-content: flex-end;
+            align-items: center;
             margin-left: auto;
         }
 
@@ -693,7 +792,7 @@
             display: flex;
             align-items: center;
             gap: 10px;
-            flex: 1 1 0;
+            flex: 1 1 auto;
             min-width: 0;
             flex-wrap: nowrap;
         }
@@ -705,8 +804,8 @@
 
         #wa-v2-transfer-user,
         #wa-v2-queue-role {
-            flex: 0 0 220px;
-            min-width: 220px;
+            flex: 0 0 210px;
+            min-width: 210px;
         }
 
         #wa-v2-transfer-note,
@@ -728,7 +827,7 @@
 
         .wa-v2-message {
             max-width: 78%;
-            padding: 12px 14px;
+            padding: 5px 14px;
             border-radius: 20px 20px 20px 8px;
             margin-bottom: 12px;
             background: #fff;
@@ -789,17 +888,58 @@
         }
 
         .wa-v2-tools {
+            padding: 0 5px 5px;
+        }
+
+        .wa-v2-tools-drawer {
+            border: 1px solid rgba(15, 23, 42, .08);
+            border-radius: 16px;
+            background: rgba(255, 255, 255, .88);
+            overflow: hidden;
+        }
+
+        .wa-v2-tools-drawer > summary {
+            list-style: none;
+            cursor: pointer;
+            padding: 10px 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            font-size: 13px;
+            font-weight: 800;
+            color: var(--wa-text);
+        }
+
+        .wa-v2-tools-drawer > summary::-webkit-details-marker {
+            display: none;
+        }
+
+        .wa-v2-tools-drawer > summary::after {
+            content: "\F0140";
+            font-family: "Material Design Icons";
+            font-size: 18px;
+            color: var(--wa-muted);
+            transition: transform .16s ease;
+        }
+
+        .wa-v2-tools-drawer[open] > summary::after {
+            transform: rotate(180deg);
+        }
+
+        .wa-v2-tools-drawer__body {
             display: grid;
-            grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+            grid-template-columns: minmax(0, 1fr);
             gap: 14px;
-            padding: 14px 18px 0;
+            padding: 0 12px 12px;
+            border-top: 1px solid rgba(148, 163, 184, .12);
         }
 
         .wa-v2-tool-card {
             border: 1px solid rgba(15, 23, 42, .08);
-            border-radius: 20px;
-            background: rgba(255, 255, 255, .88);
-            padding: 14px;
+            border-radius: 14px;
+            background: rgba(255, 255, 255, .86);
+            padding: 0;
         }
 
         .wa-v2-chip-list {
@@ -845,7 +985,7 @@
         }
 
         .wa-v2-compose {
-            padding: 16px 18px 18px;
+            padding: 5px 5px 5px;
             border-top: 1px solid rgba(15, 23, 42, .08);
             background: rgba(255, 255, 255, .86);
             backdrop-filter: blur(10px);
@@ -864,10 +1004,9 @@
         }
 
         .wa-v2-compose-actions {
-            display: flex;
+            position: relative;
+            display: inline-flex;
             align-items: center;
-            gap: 8px;
-            flex-wrap: wrap;
         }
 
         .wa-v2-compose-action {
@@ -901,6 +1040,78 @@
             background: #fee2e2;
             color: #dc2626;
             animation: wa-v2-recording-pulse 1.1s ease-in-out infinite;
+        }
+
+        .wa-v2-attachment-menu {
+            position: relative;
+        }
+
+        .wa-v2-attachment-menu.is-disabled {
+            opacity: .55;
+            pointer-events: none;
+        }
+
+        .wa-v2-attachment-menu summary {
+            list-style: none;
+            width: 42px;
+            height: 42px;
+            border-radius: 999px;
+            border: 1px solid #dbe4ee;
+            background: #fff;
+            color: #334155;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: border-color .15s ease, color .15s ease, background .15s ease;
+        }
+
+        .wa-v2-attachment-menu summary::-webkit-details-marker {
+            display: none;
+        }
+
+        .wa-v2-attachment-menu summary:hover,
+        .wa-v2-attachment-menu[open] summary {
+            border-color: #0f766e;
+            color: #0f766e;
+            background: #f0fdfa;
+        }
+
+        .wa-v2-attachment-menu__items {
+            position: absolute;
+            left: 0;
+            bottom: calc(100% + 8px);
+            z-index: 40;
+            display: grid;
+            gap: 8px;
+            width: min(380px, calc(100vw - 48px));
+            padding: 8px;
+            border-radius: 16px;
+            border: 1px solid rgba(15, 23, 42, .10);
+            background: #fff;
+            box-shadow: 0 18px 38px rgba(15, 23, 42, .18);
+        }
+
+        .wa-v2-attachment-menu__section {
+            display: grid;
+            gap: 8px;
+            padding: 8px;
+            border-radius: 12px;
+            background: rgba(248, 250, 252, .86);
+        }
+
+        .wa-v2-attachment-menu__title {
+            font-size: 11px;
+            font-weight: 800;
+            color: #475569;
+            text-transform: uppercase;
+            letter-spacing: .06em;
+        }
+
+        .wa-v2-attachment-menu__media {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
         }
 
         @keyframes wa-v2-recording-pulse {
@@ -1001,24 +1212,27 @@
 
         .wa-v2-composer-inputgroup {
             display: grid;
-            grid-template-columns: minmax(0, 1fr) auto;
+            grid-template-columns: auto minmax(0, 1fr) auto;
             gap: 10px;
-            align-items: end;
+            align-items: center;
         }
 
         .wa-v2-composer-inputgroup textarea {
-            min-height: 54px;
-            resize: vertical;
+            min-height: 42px;
+            resize: none;
             border-radius: 18px;
             border-color: #d7e3dd;
-            padding: 12px 14px;
+            padding: 10px 14px;
         }
 
         .wa-v2-composer-send {
             min-width: 110px;
-            height: 54px;
+            height: 42px;
             border-radius: 18px;
             font-weight: 800;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
         .wa-v2-empty {
@@ -1103,6 +1317,10 @@
             }
 
             .wa-v2-tools {
+                padding-inline: 12px;
+            }
+
+            .wa-v2-tools-drawer__body {
                 grid-template-columns: 1fr;
             }
 
@@ -1128,6 +1346,26 @@
                 width: 100%;
                 justify-content: flex-start;
                 margin-left: 0;
+            }
+
+            .wa-v2-ops-menu {
+                width: 100%;
+            }
+
+            .wa-v2-ops-menu summary {
+                width: 100%;
+                justify-content: center;
+            }
+
+            .wa-v2-ops-menu__body {
+                position: static;
+                width: 100%;
+                margin-top: 8px;
+                box-shadow: none;
+            }
+
+            .wa-v2-actions__row {
+                grid-template-columns: 1fr;
             }
 
             .wa-v2-actions__group {
@@ -1157,10 +1395,11 @@
             }
 
             .wa-v2-composer-inputgroup {
-                grid-template-columns: 1fr;
+                grid-template-columns: auto minmax(0, 1fr);
             }
 
             .wa-v2-composer-send {
+                grid-column: 1 / -1;
                 width: 100%;
             }
         }
@@ -1182,23 +1421,9 @@
                         <button type="button" class="btn btn-light btn-sm" id="wa-v2-open-start-chat">
                             <i class="mdi mdi-message-plus-outline"></i> Nuevo chat
                         </button>
-                        <span class="wa-v2-hero-pill"><i class="mdi mdi-account-circle-outline"></i> {{ $currentUser['display_name'] ?? 'Usuario' }}</span>
-                        <span class="wa-v2-hero-pill"><i class="mdi mdi-layers-outline"></i> {{ $canSupervise ? 'Modo supervisor' : 'Vista de agente' }}</span>
-                        <span class="wa-v2-hero-pill"><i class="mdi mdi-access-point"></i> Realtime listo</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="row mb-15">
-            <div class="col-12">
-                <div class="box mb-0" style="border-radius:22px;">
-                    <div
-                        class="box-body bg-transparent d-flex flex-wrap gap-10 align-items-center justify-content-between">
-                        <div class="d-flex align-items-center gap-10">
-                            <label for="wa-v2-presence" class="mb-0 text-muted"
-                                   style="font-size:12px;">Presencia</label>
-                            <select id="wa-v2-presence" class="form-select form-select-sm" style="min-width: 160px;">
+                        <div class="wa-v2-pagebar-control">
+                            <label for="wa-v2-presence">Presencia</label>
+                            <select id="wa-v2-presence" class="form-select form-select-sm">
                                 <option value="available" {{ $presenceStatus === 'available' ? 'selected' : '' }}>
                                     Disponible
                                 </option>
@@ -1208,10 +1433,13 @@
                             </select>
                         </div>
                         @if($canSupervise)
-                            <button type="button" class="btn btn-outline-warning btn-sm" id="wa-v2-requeue-expired">
+                            <button type="button" class="btn btn-warning btn-sm" id="wa-v2-requeue-expired">
                                 Reencolar vencidos
                             </button>
                         @endif
+                        <span class="wa-v2-hero-pill"><i class="mdi mdi-account-circle-outline"></i> {{ $currentUser['display_name'] ?? 'Usuario' }}</span>
+                        <span class="wa-v2-hero-pill"><i class="mdi mdi-layers-outline"></i> {{ $canSupervise ? 'Modo supervisor' : 'Vista de agente' }}</span>
+                        <span class="wa-v2-hero-pill"><i class="mdi mdi-access-point"></i> Realtime listo</span>
                     </div>
                 </div>
             </div>
@@ -1222,7 +1450,9 @@
                 <div class="wa-v2-modal__header d-flex justify-content-between align-items-start gap-10">
                     <div>
                         <div class="wa-v2-sideheading__title" style="font-size:20px;">Nuevo chat con plantilla</div>
-                        <div class="text-muted" style="font-size:13px;">Busca en pacientes, o escribe el número, y abre la conversación con un template aprobado.</div>
+                        <div class="text-muted" style="font-size:13px;">Busca en pacientes, o escribe el número, y abre
+                            la conversación con un template aprobado.
+                        </div>
                     </div>
                     <button type="button" class="btn btn-outline-secondary btn-sm" id="wa-v2-close-start-chat">
                         Cerrar
@@ -1235,7 +1465,9 @@
                             <div class="input-group">
                                 <input type="text" class="form-control" id="wa-v2-start-search"
                                        placeholder="Celular, HC, nombres o apellidos">
-                                <button type="button" class="btn btn-outline-secondary" id="wa-v2-start-search-button">Buscar</button>
+                                <button type="button" class="btn btn-outline-secondary" id="wa-v2-start-search-button">
+                                    Buscar
+                                </button>
                             </div>
                             <div class="wa-v2-picker-results" id="wa-v2-start-results"></div>
                         </div>
@@ -1243,32 +1475,40 @@
                             <div class="row g-10">
                                 <div class="col-12">
                                     <label for="wa-v2-start-number" class="form-label">Número WhatsApp</label>
-                                    <input type="text" class="form-control" id="wa-v2-start-number" placeholder="593999111222">
+                                    <input type="text" class="form-control" id="wa-v2-start-number"
+                                           placeholder="593999111222">
                                 </div>
                                 <div class="col-12">
                                     <label for="wa-v2-start-contact-name" class="form-label">Nombre visible</label>
-                                    <input type="text" class="form-control" id="wa-v2-start-contact-name" placeholder="Nombre del contacto">
+                                    <input type="text" class="form-control" id="wa-v2-start-contact-name"
+                                           placeholder="Nombre del contacto">
                                 </div>
                                 <div class="col-12">
                                     <label for="wa-v2-start-patient-name" class="form-label">Paciente</label>
-                                    <input type="text" class="form-control" id="wa-v2-start-patient-name" placeholder="Nombres y apellidos">
+                                    <input type="text" class="form-control" id="wa-v2-start-patient-name"
+                                           placeholder="Nombres y apellidos">
                                 </div>
                                 <div class="col-12">
                                     <label for="wa-v2-start-hc" class="form-label">HC</label>
-                                    <input type="text" class="form-control" id="wa-v2-start-hc" placeholder="Historia clínica">
+                                    <input type="text" class="form-control" id="wa-v2-start-hc"
+                                           placeholder="Historia clínica">
                                 </div>
                                 <div class="col-12">
                                     <label for="wa-v2-start-template" class="form-label">Template aprobado</label>
                                     <select class="form-select" id="wa-v2-start-template">
                                         <option value="">Selecciona un template</option>
                                         @foreach($templateOptions as $template)
-                                            <option value="{{ $template['id'] }}">{{ $template['name'] }} · {{ $template['language'] ?: 'n/a' }} · {{ $template['status'] ?: 'n/a' }}</option>
+                                            <option value="{{ $template['id'] }}">{{ $template['name'] }}
+                                                · {{ $template['language'] ?: 'n/a' }}
+                                                · {{ $template['status'] ?: 'n/a' }}</option>
                                         @endforeach
                                     </select>
                                 </div>
                                 <div class="col-12">
                                     <div id="wa-v2-start-template-variables" class="d-none">
-                                        <div class="text-muted" style="font-size:12px; margin-bottom:8px;">Completa las variables del template antes de enviarlo.</div>
+                                        <div class="text-muted" style="font-size:12px; margin-bottom:8px;">Completa las
+                                            variables del template antes de enviarlo.
+                                        </div>
                                         <div class="row g-10" id="wa-v2-start-template-variables-fields"></div>
                                     </div>
                                 </div>
@@ -1280,7 +1520,9 @@
                     </div>
                 </div>
                 <div class="wa-v2-modal__footer">
-                    <div class="text-muted" style="font-size:12px;">Esto crea o reutiliza la conversación y la deja abierta en tu inbox.</div>
+                    <div class="text-muted" style="font-size:12px;">Esto crea o reutiliza la conversación y la deja
+                        abierta en tu inbox.
+                    </div>
                     <button type="button" class="btn btn-primary" id="wa-v2-start-submit">Iniciar con plantilla</button>
                 </div>
             </div>
@@ -1294,6 +1536,7 @@
                             <div class="wa-v2-sideheading__title">Conversaciones</div>
                             <div class="wa-v2-sideheading__meta">{{ count($listData) }} visibles en este filtro</div>
                         </div>
+
                     </div>
 
                     <form method="GET" action="/v2/whatsapp/chat" class="mb-15 wa-v2-searchbar">
@@ -1325,16 +1568,21 @@
                             <input type="hidden" name="role_id" value="{{ $selectedRoleId }}">
                         @endif
                         <div class="col-12">
-                            <div class="text-uppercase text-muted mb-5" style="font-size:11px; letter-spacing:.08em;">Última interacción</div>
+                            <div class="text-uppercase text-muted mb-5" style="font-size:11px; letter-spacing:.08em;">
+                                Última interacción
+                            </div>
                         </div>
                         <div class="col-sm-5">
-                            <input type="date" name="date_from" class="form-control form-control-sm" value="{{ $dateFrom }}">
+                            <input type="date" name="date_from" class="form-control form-control-sm"
+                                   value="{{ $dateFrom }}">
                         </div>
                         <div class="col-sm-5">
-                            <input type="date" name="date_to" class="form-control form-control-sm" value="{{ $dateTo }}">
+                            <input type="date" name="date_to" class="form-control form-control-sm"
+                                   value="{{ $dateTo }}">
                         </div>
                         <div class="col-sm-2 d-flex gap-8">
-                            <button type="submit" class="btn btn-outline-primary btn-sm flex-fill" title="Aplicar rango">
+                            <button type="submit" class="btn btn-outline-primary btn-sm flex-fill"
+                                    title="Aplicar rango">
                                 <i class="mdi mdi-calendar-filter-outline"></i>
                             </button>
                             <a href="{{ '/v2/whatsapp/chat?' . http_build_query(array_filter(['filter' => $selectedFilter, 'search' => $search, 'agent_id' => $selectedAgentId, 'role_id' => $selectedRoleId], static fn ($value) => $value !== null && $value !== '')) }}"
@@ -1429,7 +1677,8 @@
                                         <div class="d-grid gap-8">
                                             @foreach(array_slice($agentSummary['agents'], 0, 4) as $agent)
                                                 <div class="wa-v2-panel p-10" style="border-radius:14px;">
-                                                    <div class="d-flex justify-content-between align-items-center gap-10">
+                                                    <div
+                                                        class="d-flex justify-content-between align-items-center gap-10">
                                                         <div>
                                                             <div class="fw-700">{{ $agent['name'] }}</div>
                                                             <div class="text-muted"
@@ -1437,10 +1686,14 @@
                                                                 · {{ $agent['presence_status'] }}</div>
                                                         </div>
                                                         <div class="text-end" style="font-size:12px;">
-                                                            <div>{{ (int) ($agent['assigned_open_count'] ?? 0) }}asignados
+                                                            <div>{{ (int) ($agent['assigned_open_count'] ?? 0) }}
+                                                                asignados
                                                             </div>
-                                                            <div>{{ (int) ($agent['unread_open_count'] ?? 0) }} con unread</div>
-                                                            <div>{{ (int) ($agent['expiring_soon_count'] ?? 0) }} por vencer
+                                                            <div>{{ (int) ($agent['unread_open_count'] ?? 0) }} con
+                                                                unread
+                                                            </div>
+                                                            <div>{{ (int) ($agent['expiring_soon_count'] ?? 0) }} por
+                                                                vencer
                                                             </div>
                                                         </div>
                                                     </div>
@@ -1454,11 +1707,13 @@
                     @endif
 
                     <div class="wa-v2-tabs-shell">
-                        <button type="button" class="wa-v2-tabs-nav" data-wa-tabs-nav="left" aria-label="Ver filtros anteriores">
+                        <button type="button" class="wa-v2-tabs-nav" data-wa-tabs-nav="left"
+                                aria-label="Ver filtros anteriores">
                             <i class="mdi mdi-chevron-left"></i>
                         </button>
                         <div class="wa-v2-tabs-viewport">
-                            <div class="wa-v2-tabs" id="wa-v2-filter-tabs" tabindex="0" aria-label="Filtros de conversaciones">
+                            <div class="wa-v2-tabs" id="wa-v2-filter-tabs" tabindex="0"
+                                 aria-label="Filtros de conversaciones">
                                 @foreach($tabs as $key => $label)
                                     @php
                                         $tabIcons = [
@@ -1487,7 +1742,8 @@
                                 @endforeach
                             </div>
                         </div>
-                        <button type="button" class="wa-v2-tabs-nav" data-wa-tabs-nav="right" aria-label="Ver más filtros">
+                        <button type="button" class="wa-v2-tabs-nav" data-wa-tabs-nav="right"
+                                aria-label="Ver más filtros">
                             <i class="mdi mdi-chevron-right"></i>
                         </button>
                     </div>
@@ -1547,7 +1803,8 @@
                                     <i class="mdi {{ $priorityState === 'pending' ? 'mdi-alert-circle-outline' : ($priorityState === 'mine' ? 'mdi-account-check-outline' : ($priorityState === 'window_open' ? 'mdi-timer-sand' : ($priorityState === 'needs_template' ? 'mdi-file-document-edit-outline' : 'mdi-check-circle-outline'))) }}"></i>
                                     {{ $priorityLabel }}
                                 </span>
-                                <div class="wa-v2-meta">{{ !empty($conversation['last_message_at']) ? \Illuminate\Support\Carbon::parse($conversation['last_message_at'])->format('d/m H:i') : '' }}</div>
+                                <div
+                                    class="wa-v2-meta">{{ !empty($conversation['last_message_at']) ? \Illuminate\Support\Carbon::parse($conversation['last_message_at'])->format('d/m H:i') : '' }}</div>
                             </div>
                             <div class="d-flex flex-wrap gap-8 mt-10">
                                 @if((int) $conversation['unread_count'] > 0)
@@ -1582,7 +1839,6 @@
                         $selectedAssignedUserId = (int) ($selectedConversation['assigned_user_id'] ?? 0);
                         $currentUserId = (int) ($currentUser['id'] ?? 0);
                         $canReplyHere = $selectedAssignedUserId > 0 && $selectedAssignedUserId === $currentUserId;
-                        $waLink = 'https://wa.me/' . preg_replace('/\D+/', '', (string) ($selectedConversation['wa_number'] ?? ''));
                     @endphp
                     <div class="wa-v2-panel__header">
                         <div class="wa-v2-chat-header">
@@ -1592,24 +1848,19 @@
                                 </div>
                                 <div>
                                     <h4 class="wa-v2-chat-title">{{ $selectedConversation['display_name'] ?: $selectedConversation['wa_number'] }}</h4>
-                                    <div class="wa-v2-chat-subtitle">{{ $selectedConversation['wa_number'] }}</div>
-                                    <div class="wa-v2-chat-patient">
-                                        {{ $selectedConversation['patient_full_name'] ?: 'Sin paciente vinculado' }}
+                                    <div class="wa-v2-chat-subtitle">
+                                        <span class="wa-v2-chat-subtitle__item">{{ $selectedConversation['wa_number'] }}</span>
+                                        <span class="wa-v2-chat-subtitle__dot">·</span>
+                                        <span class="wa-v2-chat-subtitle__item wa-v2-chat-subtitle__item--patient">{{ $selectedConversation['patient_full_name'] ?: 'Sin paciente vinculado' }}</span>
                                         @if(!empty($selectedConversation['patient_hc_number']))
-                                            · HC {{ $selectedConversation['patient_hc_number'] }}
+                                            <span class="wa-v2-chat-subtitle__dot">·</span>
+                                            <span class="wa-v2-chat-subtitle__item">HC {{ $selectedConversation['patient_hc_number'] }}</span>
                                         @endif
                                     </div>
                                 </div>
                             </div>
 
                             <div class="wa-v2-actions__row wa-v2-actions__row--header">
-                                <a href="{{ $waLink }}" target="_blank" rel="noopener" class="btn btn-success-light"
-                                   title="Abrir en WhatsApp" aria-label="Abrir en WhatsApp">
-                                    <span class="wa-v2-icon-label">
-                                        <i class="mdi mdi-whatsapp"></i>
-                                    </span>
-                                </a>
-
                                 @if(($selectedConversation['messaging_window_state'] ?? '') !== 'window_open')
                                     <button type="button"
                                             class="btn btn-outline-primary"
@@ -1638,7 +1889,6 @@
                                             <i class="mdi mdi-account-check-outline"></i>
                                         </span>
                                     </button>
-
                                     <button
                                         type="button"
                                         class="btn btn-outline-danger"
@@ -1674,59 +1924,69 @@
 
                             @if($canOperateConversation)
                                 <div class="wa-v2-toolbar__actions">
-                                    <div class="wa-v2-actions">
-                                        <div class="wa-v2-actions__row">
-                                            <div class="wa-v2-actions__group">
-                                                <select class="form-select" id="wa-v2-transfer-user">
-                                                    <option value="">Transferir a...</option>
-                                                    @foreach($agents as $agent)
-                                                        <option value="{{ $agent['id'] }}">
-                                                            {{ $agent['name'] }} · {{ $agent['presence_status'] }}
-                                                        </option>
-                                                    @endforeach
-                                                </select>
+                                    <details class="wa-v2-ops-menu">
+                                        <summary>
+                                            <i class="mdi mdi-tune-variant"></i>
+                                            Gestionar
+                                        </summary>
+                                        <div class="wa-v2-ops-menu__body">
+                                            <div class="wa-v2-actions">
+                                                <div class="wa-v2-actions__row">
+                                                    <div class="wa-v2-actions__group">
+                                                        <select class="form-select" id="wa-v2-transfer-user">
+                                                            <option value="">Transferir a...</option>
+                                                            @foreach($agents as $agent)
+                                                                <option value="{{ $agent['id'] }}">
+                                                                    {{ $agent['name'] }}
+                                                                    · {{ $agent['presence_status'] }}
+                                                                </option>
+                                                            @endforeach
+                                                        </select>
 
-                                                <input type="text" class="form-control" id="wa-v2-transfer-note"
-                                                       placeholder="Nota de transferencia (opcional)">
+                                                        <input type="text" class="form-control" id="wa-v2-transfer-note"
+                                                               placeholder="Nota de transferencia (opcional)">
 
-                                                <button
-                                                    type="button"
-                                                    class="btn btn-outline-primary"
-                                                    data-wa-action="transfer"
-                                                    data-conversation-id="{{ $selectedConversation['id'] }}"
-                                                    title="Transferir conversación"
-                                                    aria-label="Transferir conversación">
-                            <span class="wa-v2-icon-label">
-                                <i class="mdi mdi-swap-horizontal"></i>
-                            </span>
-                                                </button>
-                                            </div>
+                                                        <button
+                                                            type="button"
+                                                            class="btn btn-outline-primary"
+                                                            data-wa-action="transfer"
+                                                            data-conversation-id="{{ $selectedConversation['id'] }}"
+                                                            title="Transferir conversación"
+                                                            aria-label="Transferir conversación">
+                                                            <span class="wa-v2-icon-label">
+                                                                <i class="mdi mdi-swap-horizontal"></i>
+                                                            </span>
+                                                        </button>
+                                                    </div>
 
-                                            <div class="wa-v2-actions__group">
-                                                <select class="form-select" id="wa-v2-queue-role">
-                                                    <option value="">Enviar a cola de rol...</option>
-                                                    @foreach($roleOptions as $role)
-                                                        <option value="{{ $role['id'] }}">{{ $role['name'] }}</option>
-                                                    @endforeach
-                                                </select>
+                                                    <div class="wa-v2-actions__group">
+                                                        <select class="form-select" id="wa-v2-queue-role">
+                                                            <option value="">Enviar a cola de rol...</option>
+                                                            @foreach($roleOptions as $role)
+                                                                <option
+                                                                    value="{{ $role['id'] }}">{{ $role['name'] }}</option>
+                                                            @endforeach
+                                                        </select>
 
-                                                <input type="text" class="form-control" id="wa-v2-queue-note"
-                                                       placeholder="Nota para la cola (opcional)">
+                                                        <input type="text" class="form-control" id="wa-v2-queue-note"
+                                                               placeholder="Nota para la cola (opcional)">
 
-                                                <button
-                                                    type="button"
-                                                    class="btn btn-outline-warning"
-                                                    data-wa-action="queue-role"
-                                                    data-conversation-id="{{ $selectedConversation['id'] }}"
-                                                    title="Enviar conversación a cola"
-                                                    aria-label="Enviar conversación a cola">
-                            <span class="wa-v2-icon-label">
-                                <i class="mdi mdi-tray-arrow-down"></i>
-                            </span>
-                                                </button>
+                                                        <button
+                                                            type="button"
+                                                            class="btn btn-outline-warning"
+                                                            data-wa-action="queue-role"
+                                                            data-conversation-id="{{ $selectedConversation['id'] }}"
+                                                            title="Enviar conversación a cola"
+                                                            aria-label="Enviar conversación a cola">
+                                                            <span class="wa-v2-icon-label">
+                                                                <i class="mdi mdi-tray-arrow-down"></i>
+                                                            </span>
+                                                        </button>
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
+                                    </details>
                                 </div>
                             @endif
                         </div>
@@ -1812,88 +2072,84 @@
                     </div>
 
                     <div class="wa-v2-tools">
-                        <details class="wa-v2-collapse wa-v2-tool-card">
+                        <details class="wa-v2-tools-drawer">
                             <summary>
-                                <div>
-                                    <div class="fw-700">Respuestas rápidas</div>
-                                    <div class="text-muted" style="font-size:12px;">Snippets y guardado</div>
-                                </div>
+                                <span><i class="mdi mdi-tools"></i> Herramientas</span>
+                                <span class="text-muted" style="font-size:12px;">Notas internas</span>
                             </summary>
-                            <div class="wa-v2-collapse__body">
-                                @if(!empty($quickReplies))
-                                    <div class="wa-v2-chip-list mb-12">
-                                        @foreach($quickReplies as $reply)
-                                            <button
-                                                type="button"
-                                                class="wa-v2-chip"
-                                                data-wa-quick-reply="{{ e($reply['body'] ?? '') }}"
-                                                title="{{ $reply['shortcut'] ? '/' . $reply['shortcut'] : ($reply['title'] ?? 'Respuesta rápida') }}">
-                                                {{ $reply['title'] ?? 'Respuesta' }}
-                                            </button>
-                                        @endforeach
-                                    </div>
-                                @else
-                                    <div class="text-muted mb-10" style="font-size:12px;">Todavía no hay respuestas rápidas
-                                        cargadas.
-                                    </div>
-                                @endif
-
-                                <form id="wa-v2-quick-reply-form" class="d-grid gap-8">
-                                    <div class="row g-8">
-                                        <div class="col-md-4">
-                                            <input type="text" class="form-control form-control-sm" id="wa-v2-quick-title"
-                                                   placeholder="Título">
+                            <div class="wa-v2-tools-drawer__body">
+                                <details class="wa-v2-collapse wa-v2-tool-card">
+                                    <summary>
+                                        <div>
+                                            <div class="fw-700">Administrar respuestas rápidas</div>
+                                            <div class="text-muted" style="font-size:12px;">Crear snippet reusable</div>
                                         </div>
-                                        <div class="col-md-3">
-                                            <input type="text" class="form-control form-control-sm"
-                                                   id="wa-v2-quick-shortcut" placeholder="/atajo">
-                                        </div>
-                                        <div class="col-md-5">
-                                            <input type="text" class="form-control form-control-sm" id="wa-v2-quick-body"
-                                                   placeholder="Texto reusable">
-                                        </div>
-                                    </div>
-                                    <div class="d-flex justify-content-end">
-                                        <button type="submit" class="btn btn-outline-secondary btn-sm">Guardar respuesta
-                                            rápida
-                                        </button>
-                                    </div>
-                                </form>
-                            </div>
-                        </details>
-
-                        <details class="wa-v2-collapse wa-v2-tool-card">
-                            <summary>
-                                <div>
-                                    <div class="fw-700">Notas internas</div>
-                                    <div class="text-muted" style="font-size:12px;">Historial y nueva nota</div>
-                                </div>
-                            </summary>
-                            <div class="wa-v2-collapse__body">
-                                <div class="wa-v2-note-list mb-10">
-                                    @forelse($conversationNotes as $note)
-                                        <div class="wa-v2-note">
-                                            <div>{{ $note['body'] ?? '' }}</div>
-                                            <div class="wa-v2-note__meta">
-                                                {{ $note['author_name'] ?? 'Usuario' }}
-                                                @if(!empty($note['created_at']))
-                                                    · {{ \Illuminate\Support\Carbon::parse($note['created_at'])->format('d/m H:i') }}
-                                                @endif
+                                    </summary>
+                                    <div class="wa-v2-collapse__body">
+                                        <form id="wa-v2-quick-reply-form" class="d-grid gap-8">
+                                            <div class="row g-8">
+                                                <div class="col-md-4">
+                                                    <input type="text" class="form-control form-control-sm"
+                                                           id="wa-v2-quick-title"
+                                                           placeholder="Título">
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <input type="text" class="form-control form-control-sm"
+                                                           id="wa-v2-quick-shortcut" placeholder="/atajo">
+                                                </div>
+                                                <div class="col-md-5">
+                                                    <input type="text" class="form-control form-control-sm"
+                                                           id="wa-v2-quick-body"
+                                                           placeholder="Texto reusable">
+                                                </div>
                                             </div>
-                                        </div>
-                                    @empty
-                                        <div class="text-muted" style="font-size:12px;">Sin notas internas en esta
-                                            conversación.
-                                        </div>
-                                    @endforelse
-                                </div>
-                                <form id="wa-v2-note-form" data-conversation-id="{{ $selectedConversation['id'] }}">
-                                    <div class="input-group">
-                                        <textarea class="form-control" id="wa-v2-note-input" rows="2"
-                                                  placeholder="Agregar nota interna para el equipo"></textarea>
-                                        <button type="submit" class="btn btn-outline-warning">Guardar nota</button>
+                                            <div class="d-flex justify-content-end">
+                                                <button type="submit" class="btn btn-outline-secondary btn-sm">Guardar
+                                                    respuesta
+                                                    rápida
+                                                </button>
+                                            </div>
+                                        </form>
                                     </div>
-                                </form>
+                                </details>
+
+                                <details class="wa-v2-collapse wa-v2-tool-card">
+                                    <summary>
+                                        <div>
+                                            <div class="fw-700">Notas internas</div>
+                                            <div class="text-muted" style="font-size:12px;">Historial y nueva nota</div>
+                                        </div>
+                                    </summary>
+                                    <div class="wa-v2-collapse__body">
+                                        <div class="wa-v2-note-list mb-10">
+                                            @forelse($conversationNotes as $note)
+                                                <div class="wa-v2-note">
+                                                    <div>{{ $note['body'] ?? '' }}</div>
+                                                    <div class="wa-v2-note__meta">
+                                                        {{ $note['author_name'] ?? 'Usuario' }}
+                                                        @if(!empty($note['created_at']))
+                                                            · {{ \Illuminate\Support\Carbon::parse($note['created_at'])->format('d/m H:i') }}
+                                                        @endif
+                                                    </div>
+                                                </div>
+                                            @empty
+                                                <div class="text-muted" style="font-size:12px;">Sin notas internas en
+                                                    esta
+                                                    conversación.
+                                                </div>
+                                            @endforelse
+                                        </div>
+                                        <form id="wa-v2-note-form"
+                                              data-conversation-id="{{ $selectedConversation['id'] }}">
+                                            <div class="input-group">
+                                                <textarea class="form-control" id="wa-v2-note-input" rows="2"
+                                                          placeholder="Agregar nota interna para el equipo"></textarea>
+                                                <button type="submit" class="btn btn-outline-warning">Guardar nota
+                                                </button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </details>
                             </div>
                         </details>
                     </div>
@@ -1909,24 +2165,6 @@
                                 Si la última entrada ya salió de 24h, solo debes seguir con plantilla.
                             </div>
                             <div class="wa-v2-compose-grid">
-                                <div class="wa-v2-compose-actions">
-                                    <button type="button" class="wa-v2-compose-action" data-wa-picker="image"
-                                            title="Enviar imagen" {{ $canReplyHere ? '' : 'disabled' }}>
-                                        <i class="mdi mdi-image-outline"></i>
-                                    </button>
-                                    <button type="button" class="wa-v2-compose-action" data-wa-picker="video"
-                                            title="Enviar video" {{ $canReplyHere ? '' : 'disabled' }}>
-                                        <i class="mdi mdi-video-outline"></i>
-                                    </button>
-                                    <button type="button" class="wa-v2-compose-action" data-wa-picker="document"
-                                            title="Enviar documento" {{ $canReplyHere ? '' : 'disabled' }}>
-                                        <i class="mdi mdi-file-document-outline"></i>
-                                    </button>
-                                    <button type="button" class="wa-v2-compose-action" data-wa-picker="audio"
-                                            title="Enviar voice note o audio" {{ $canReplyHere ? '' : 'disabled' }}>
-                                        <i class="mdi mdi-microphone-outline"></i>
-                                    </button>
-                                </div>
                                 <div class="wa-v2-compose-attachment" id="wa-v2-compose-attachment"
                                      style="display:none;">
                                     <i class="mdi mdi-paperclip"></i>
@@ -1959,6 +2197,61 @@
                                     <div class="wa-v2-upload-progress__bar" id="wa-v2-upload-progress-bar"></div>
                                 </div>
                                 <div class="wa-v2-composer-inputgroup">
+                                    <div class="wa-v2-compose-actions">
+                                        <details class="wa-v2-attachment-menu {{ $canReplyHere ? '' : 'is-disabled' }}">
+                                            <summary title="Más opciones" aria-label="Más opciones">
+                                                <i class="mdi mdi-plus"></i>
+                                            </summary>
+                                            <div class="wa-v2-attachment-menu__items">
+                                                <div class="wa-v2-attachment-menu__section">
+                                                    <div class="wa-v2-attachment-menu__title">Adjuntar</div>
+                                                    <div class="wa-v2-attachment-menu__media">
+                                                        <button type="button" class="wa-v2-compose-action"
+                                                                data-wa-picker="image"
+                                                                title="Enviar imagen" {{ $canReplyHere ? '' : 'disabled' }}>
+                                                            <i class="mdi mdi-image-outline"></i>
+                                                        </button>
+                                                        <button type="button" class="wa-v2-compose-action"
+                                                                data-wa-picker="video"
+                                                                title="Enviar video" {{ $canReplyHere ? '' : 'disabled' }}>
+                                                            <i class="mdi mdi-video-outline"></i>
+                                                        </button>
+                                                        <button type="button" class="wa-v2-compose-action"
+                                                                data-wa-picker="document"
+                                                                title="Enviar documento" {{ $canReplyHere ? '' : 'disabled' }}>
+                                                            <i class="mdi mdi-file-document-outline"></i>
+                                                        </button>
+                                                        <button type="button" class="wa-v2-compose-action"
+                                                                data-wa-picker="audio"
+                                                                title="Enviar voice note o audio" {{ $canReplyHere ? '' : 'disabled' }}>
+                                                            <i class="mdi mdi-microphone-outline"></i>
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                <div class="wa-v2-attachment-menu__section">
+                                                    <div class="wa-v2-attachment-menu__title">Respuestas rápidas</div>
+                                                    @if(!empty($quickReplies))
+                                                        <div class="wa-v2-chip-list">
+                                                            @foreach($quickReplies as $reply)
+                                                                <button
+                                                                    type="button"
+                                                                    class="wa-v2-chip"
+                                                                    data-wa-quick-reply="{{ e($reply['body'] ?? '') }}"
+                                                                    title="{{ $reply['shortcut'] ? '/' . $reply['shortcut'] : ($reply['title'] ?? 'Respuesta rápida') }}">
+                                                                    {{ $reply['title'] ?? 'Respuesta' }}
+                                                                </button>
+                                                            @endforeach
+                                                        </div>
+                                                    @else
+                                                        <div class="text-muted" style="font-size:12px;">Sin respuestas
+                                                            rápidas.
+                                                        </div>
+                                                    @endif
+                                                </div>
+                                            </div>
+                                        </details>
+                                    </div>
                                     <textarea class="form-control" id="wa-v2-message-input" rows="2"
                                               placeholder="Texto o caption" {{ $canReplyHere ? '' : 'disabled' }}></textarea>
                                     <button type="submit"
@@ -1967,7 +2260,7 @@
                                     </button>
                                 </div>
                             </div>
-                            <div id="wa-v2-send-feedback" class="mt-10 text-muted" style="font-size:12px;"></div>
+                            <div id="wa-v2-send-feedback" class="mt-10 text-muted" style="font-size:10px;"></div>
                         </form>
                     </div>
                 @else
@@ -2040,6 +2333,8 @@
             const presenceSelect = document.getElementById('wa-v2-presence');
             const requeueExpiredButton = document.getElementById('wa-v2-requeue-expired');
             const audioPickerButton = document.querySelector('[data-wa-picker="audio"]');
+            const attachmentMenu = document.querySelector('.wa-v2-attachment-menu');
+            const opsMenu = document.querySelector('.wa-v2-ops-menu');
             const tabsScroller = document.getElementById('wa-v2-filter-tabs');
             const realtimeConfig = window.MEDF_PusherConfig || {};
             let requestInFlight = false;
@@ -2080,7 +2375,7 @@
 
                 const scrollTabs = function (direction) {
                     const step = Math.max(220, Math.round(tabsScroller.clientWidth * 0.7));
-                    tabsScroller.scrollBy({ left: direction * step, behavior: 'smooth' });
+                    tabsScroller.scrollBy({left: direction * step, behavior: 'smooth'});
                 };
 
                 leftButton.addEventListener('click', function () {
@@ -2091,7 +2386,7 @@
                     scrollTabs(1);
                 });
 
-                tabsScroller.addEventListener('scroll', updateButtons, { passive: true });
+                tabsScroller.addEventListener('scroll', updateButtons, {passive: true});
                 window.addEventListener('resize', updateButtons);
 
                 tabsScroller.addEventListener('keydown', function (event) {
@@ -2366,7 +2661,7 @@
                         @if($selectedRoleId !== null)
                         target.searchParams.set('role_id', '{{ $selectedRoleId }}');
                         @endif
-                        window.location.href = target.toString();
+                            window.location.href = target.toString();
                         return;
                     }
 
@@ -2905,6 +3200,11 @@
                         return;
                     }
 
+                    const pickerMenu = button.closest('.wa-v2-attachment-menu');
+                    if (pickerMenu) {
+                        pickerMenu.removeAttribute('open');
+                    }
+
                     const targetType = button.getAttribute('data-wa-picker') || 'document';
                     const acceptMap = {
                         image: 'image/*',
@@ -3233,7 +3533,32 @@
                 textarea.addEventListener('input', function () {
                     resetNotificationHint();
                 });
+                textarea.addEventListener('keydown', function (event) {
+                    if (event.key !== 'Enter' || event.shiftKey || event.isComposing) {
+                        return;
+                    }
+
+                    event.preventDefault();
+                    if (form && typeof form.requestSubmit === 'function') {
+                        form.requestSubmit();
+                        return;
+                    }
+
+                    if (form) {
+                        form.dispatchEvent(new Event('submit', {cancelable: true, bubbles: true}));
+                    }
+                });
             }
+
+            document.addEventListener('click', function (event) {
+                if (attachmentMenu && attachmentMenu.hasAttribute('open') && !attachmentMenu.contains(event.target)) {
+                    attachmentMenu.removeAttribute('open');
+                }
+
+                if (opsMenu && opsMenu.hasAttribute('open') && !opsMenu.contains(event.target)) {
+                    opsMenu.removeAttribute('open');
+                }
+            });
 
             if (startChatOpenButton) {
                 startChatOpenButton.addEventListener('click', function () {
@@ -3319,6 +3644,11 @@
                     const current = (textarea.value || '').trim();
                     textarea.value = current ? `${current}\n${snippet}` : snippet;
                     textarea.focus();
+
+                    const quickReplyMenu = button.closest('.wa-v2-attachment-menu');
+                    if (quickReplyMenu) {
+                        quickReplyMenu.removeAttribute('open');
+                    }
                 });
             });
 
