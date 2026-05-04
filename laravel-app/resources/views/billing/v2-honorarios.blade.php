@@ -292,8 +292,8 @@
                         <a class="btn btn-outline-primary" href="/v2/billing/honorarios/settings" title="Configurar reglas de honorarios">
                             <i class="mdi mdi-cog-outline"></i>
                         </a>
-                        <button type="button" class="btn btn-primary w-100" id="honorarios-refresh">
-                            <i class="mdi mdi-refresh"></i> Actualizar
+                        <button type="button" class="btn btn-primary" id="honorarios-refresh">
+                            <i class="mdi mdi-refresh"></i>
                         </button>
                     </div>
                 </div>

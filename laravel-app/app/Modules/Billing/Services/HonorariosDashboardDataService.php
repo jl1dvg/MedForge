@@ -181,8 +181,9 @@ class HonorariosDashboardDataService
             }
 
             $row['tipo_procedimiento'] = $tipo;
+            $codigoFacturacion = strtoupper(trim((string) ($row['proc_codigo'] ?? '')));
             [$codigoTarifario, $detalleTarifario] = $this->parseProcedureCodeDetail((string) ($row['procedimiento_proyectado'] ?? ''));
-            if ($codigoTarifario !== '') {
+            if ($codigoFacturacion === '' && $codigoTarifario !== '') {
                 $row['proc_codigo'] = $codigoTarifario;
             }
             if (trim((string) ($row['proc_detalle'] ?? '')) === '' && $detalleTarifario !== '') {
@@ -190,6 +191,8 @@ class HonorariosDashboardDataService
                     ? $codigoTarifario . ' | ' . $detalleTarifario
                     : $detalleTarifario;
             }
+            $row['proc_codigo_facturacion'] = $codigoFacturacion;
+            $row['proc_codigo_proyectado'] = $codigoTarifario;
             $row['honorario_codigo'] = $this->honorarioCodigoPorCodigo((string) ($row['proc_codigo'] ?? ''));
             $output[] = $row;
         }
@@ -387,6 +390,13 @@ class HonorariosDashboardDataService
         foreach ($rows as $row) {
             $produccion = (float) ($row['total_procedimientos'] ?? 0);
             $honorario = $this->calcularHonorarioLinea($row, $rules);
+            $tipo = (string) ($row['tipo_procedimiento'] ?? 'otros');
+            $categoriaSeguro = strtolower(trim((string) ($row['categoria_seguro'] ?? '')));
+            $rule = $this->resolveHonorarioRule($rules, $tipo, $categoriaSeguro);
+            if ($this->debeUsarHonorarioCodigo($tipo, $categoriaSeguro)) {
+                $rule['modo'] = 'honorario_codigo';
+                $rule['fuente'] = 'catalogo_no_publico';
+            }
             $table[] = [
                 'fecha' => $this->formatDate((string) ($row['fecha'] ?? '')),
                 'form_id' => (string) ($row['form_id'] ?? ''),
@@ -397,6 +407,12 @@ class HonorariosDashboardDataService
                 'realizado_por' => trim((string) ($row['realizado_por'] ?? '')),
                 'tipo' => $this->formatTipo((string) ($row['tipo_procedimiento'] ?? 'otros')),
                 'procedimiento' => trim((string) ($row['proc_detalle'] ?? '')) ?: trim((string) ($row['procedimiento_proyectado'] ?? '')) ?: 'Sin detalle',
+                'proc_codigo' => (string) ($row['proc_codigo'] ?? ''),
+                'proc_codigo_facturacion' => (string) ($row['proc_codigo_facturacion'] ?? ''),
+                'proc_codigo_proyectado' => (string) ($row['proc_codigo_proyectado'] ?? ''),
+                'honorario_codigo' => is_numeric($row['honorario_codigo'] ?? null) ? round((float) $row['honorario_codigo'], 2) : null,
+                'categoria_seguro' => (string) ($row['categoria_seguro'] ?? ''),
+                'honorario_rule' => $rule,
                 'afiliacion' => (string) ($row['afiliacion'] ?? 'Sin afiliación'),
                 'empresa_seguro' => (string) ($row['empresa_seguro'] ?? ''),
                 'produccion' => round($produccion, 2),
@@ -571,6 +587,10 @@ class HonorariosDashboardDataService
         $tipo = (string) ($row['tipo_procedimiento'] ?? 'otros');
         $categoriaSeguro = strtolower(trim((string) ($row['categoria_seguro'] ?? '')));
         $honorarioCodigo = $row['honorario_codigo'] ?? null;
+        if ($this->debeUsarHonorarioCodigo($tipo, $categoriaSeguro)) {
+            return is_numeric($honorarioCodigo) ? (float) $honorarioCodigo : 0.0;
+        }
+
         $rule = $this->resolveHonorarioRule($rules, $tipo, $categoriaSeguro);
 
         if (($rule['modo'] ?? '') === 'honorario_codigo') {
@@ -580,6 +600,14 @@ class HonorariosDashboardDataService
         $percentage = is_numeric($rule['porcentaje'] ?? null) ? (float) $rule['porcentaje'] : 0.0;
 
         return $produccion * ($percentage / 100);
+    }
+
+    private function debeUsarHonorarioCodigo(string $tipo, string $categoriaSeguro): bool
+    {
+        $tipo = $this->normalizeTipoFilter($tipo) ?: $tipo;
+        $categoriaSeguro = $this->afiliacionDimensions->normalizeCategoriaFilter($categoriaSeguro) ?: $categoriaSeguro;
+
+        return in_array($tipo, ['cirugias', 'pni'], true) && $categoriaSeguro !== 'publico';
     }
 
     /**
