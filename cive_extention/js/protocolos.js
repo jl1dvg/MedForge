@@ -182,9 +182,24 @@ async function solicitarCredencialesAuditoriaProtocolo() {
             `,
             icon: 'info',
             focusConfirm: false,
-            showCancelButton: true,
-            confirmButtonText: 'Guardar protocolo',
-            cancelButtonText: 'Cancelar',
+            showCancelButton: false,
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            confirmButtonText: 'Validar y guardar',
+            didOpen: () => {
+                const usernameInput = document.getElementById('cive-audit-username');
+                const passwordInput = document.getElementById('cive-audit-password');
+                [usernameInput, passwordInput].forEach((input) => {
+                    if (!input) return;
+                    input.addEventListener('keydown', (event) => {
+                        if (event.key === 'Enter') {
+                            event.preventDefault();
+                            Swal.clickConfirm();
+                        }
+                    });
+                });
+                usernameInput?.focus();
+            },
             preConfirm: () => {
                 const username = document.getElementById('cive-audit-username')?.value?.trim() || '';
                 const password = document.getElementById('cive-audit-password')?.value || '';
@@ -216,6 +231,65 @@ async function solicitarCredencialesAuditoriaProtocolo() {
     }
 
     return {username, password};
+}
+
+function esErrorAuditoriaProtocolo(resultado) {
+    const message = String(resultado?.message || '').toLowerCase();
+
+    return message.includes('auditor')
+        || message.includes('usuario o contraseña')
+        || message.includes('usuario y contraseña')
+        || message.includes('credenciales');
+}
+
+async function enviarProtocoloConAuditoria(data) {
+    data.audit_source = 'cive_extension_protocolos';
+
+    while (true) {
+        const credencialesAuditoria = await solicitarCredencialesAuditoriaProtocolo();
+
+        if (!credencialesAuditoria) {
+            return {
+                success: false,
+                message: 'No se registró la huella de auditoría del protocolo.',
+                auditCanceled: true
+            };
+        }
+
+        data.audit_username = credencialesAuditoria.username;
+        data.audit_password = credencialesAuditoria.password;
+
+        let resultado;
+        try {
+            resultado = await window.CiveApiClient.post('/protocolos/guardar.php', {body: data});
+        } finally {
+            delete data.audit_password;
+        }
+
+        if (resultado?.success || !esErrorAuditoriaProtocolo(resultado)) {
+            return resultado;
+        }
+
+        if (typeof Swal !== 'undefined' && typeof Swal.fire === 'function') {
+            await Swal.fire({
+                icon: 'error',
+                title: 'Huella inválida',
+                text: resultado.message || 'Usuario o contraseña inválidos. Vuelve a intentarlo.',
+                confirmButtonText: 'Intentar nuevamente',
+                allowOutsideClick: false,
+                allowEscapeKey: false
+            });
+        } else {
+            alert(resultado.message || 'Usuario o contraseña inválidos. Vuelve a intentarlo.');
+        }
+    }
+}
+
+function redactedPayloadForLog(data) {
+    return {
+        ...data,
+        audit_password: data.audit_password ? '[REDACTED]' : undefined
+    };
 }
 
 // Función para extraer datos del div y enviar al servidor
@@ -592,30 +666,12 @@ async function extraerDatosYEnviar() {
     // Enviar los datos al backend
     console.log('Datos a enviar:', data);
     try {
-        if (isProtocoloQuirurgico) {
-            const credencialesAuditoria = await solicitarCredencialesAuditoriaProtocolo();
-
-            if (!credencialesAuditoria) {
-                notifySwal({
-                    icon: 'info',
-                    title: 'Guardado cancelado',
-                    text: 'No se registró la huella de auditoría del protocolo.',
-                    timer: 2500
-                });
-                return;
-            }
-
-            data.audit_source = 'cive_extension_protocolos';
-            data.audit_username = credencialesAuditoria.username;
-            data.audit_password = credencialesAuditoria.password;
-        }
-
         const resultado = isProtocoloQuirurgico
-            ? await window.CiveApiClient.post('/protocolos/guardar.php', {body: data})
+            ? await enviarProtocoloConAuditoria(data)
             : await postConsultaConFallback(data);
 
         console.group('%c📤 Envío a API', 'color: green; font-weight: bold;');
-        console.log('✅ Datos enviados:', data);
+        console.log('✅ Datos enviados:', redactedPayloadForLog(data));
         console.log('📥 Respuesta normalizada:', resultado);
         console.groupEnd();
 
