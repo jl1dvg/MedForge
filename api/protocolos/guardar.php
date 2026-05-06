@@ -27,6 +27,8 @@ try {
         throw new Exception("JSON mal formado");
     }
 
+    $data['audit_source'] = $data['audit_source'] ?? 'cive_extension_protocolos';
+
     $service = new CirugiaService($pdo);
     $response = $service->guardarDesdeApi($data);
     echo json_encode($response);
