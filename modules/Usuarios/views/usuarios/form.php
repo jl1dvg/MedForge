@@ -208,6 +208,7 @@ if (!function_exists('usuarios_permission_id')) {
                                 $especialidades = [
                                     '' => 'Seleccionar',
                                     'Cirujano Oftalmólogo' => 'Cirujano Oftalmólogo',
+                                    'Residente' => 'Residente',
                                     'Anestesiologo' => 'Anestesiólogo',
                                     'Asistente' => 'Asistente',
                                     'Optometrista' => 'Optometrista',

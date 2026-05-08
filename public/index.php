@@ -1,26 +1,12 @@
 <?php
 
-require_once __DIR__ . '/../bootstrap.php';
-
-use Core\ModuleLoader;
-use Core\Router;
-use Controllers\BillingController;
-use Controllers\EstadisticaFlujoController;
-
-$pdo = $GLOBALS['pdo'] ?? null;
-if (!$pdo instanceof PDO) {
-    http_response_code(500);
-    echo 'No hay conexión a la base de datos';
-    exit;
-}
-
 $requestPath = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
 $basePath = '/public/index.php';
 if (strncmp($requestPath, $basePath, strlen($basePath)) === 0) {
     $requestPath = substr($requestPath, strlen($basePath)) ?: '/';
 }
 
-$laravelBridgeExact = ['/auth/login', '/auth/logout'];
+$laravelBridgeExact = ['/auth/login', '/auth/logout', '/whatsapp/webhook'];
 $laravelBridgePrefixes = ['/v2', '/usuarios', '/roles', '/feedback'];
 
 if (in_array($requestPath, $laravelBridgeExact, true)) {
@@ -33,6 +19,20 @@ foreach ($laravelBridgePrefixes as $prefix) {
         require __DIR__ . '/v2_kernel.php';
         exit;
     }
+}
+
+require_once __DIR__ . '/../bootstrap.php';
+
+use Core\ModuleLoader;
+use Core\Router;
+use Controllers\BillingController;
+use Controllers\EstadisticaFlujoController;
+
+$pdo = $GLOBALS['pdo'] ?? null;
+if (!$pdo instanceof PDO) {
+    http_response_code(500);
+    echo 'No hay conexión a la base de datos';
+    exit;
 }
 
 try {

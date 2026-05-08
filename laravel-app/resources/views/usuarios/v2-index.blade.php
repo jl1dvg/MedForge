@@ -14,6 +14,7 @@
     $especialidadesFiltro = [
         '' => 'Todas',
         'Cirujano Oftalmólogo' => 'Cirujano Oftalmólogo',
+        'Residente' => 'Residente',
         'Anestesiologo' => 'Anestesiólogo',
         'Asistente' => 'Asistente',
         'Optometrista' => 'Optometrista',

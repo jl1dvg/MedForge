@@ -30,6 +30,7 @@
     $especialidades = [
         '' => 'Seleccionar',
         'Cirujano Oftalmólogo' => 'Cirujano Oftalmólogo',
+        'Residente' => 'Residente',
         'Anestesiologo' => 'Anestesiólogo',
         'Asistente' => 'Asistente',
         'Optometrista' => 'Optometrista',
