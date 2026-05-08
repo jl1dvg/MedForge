@@ -9,6 +9,9 @@ class PacientesFlujoService
     /** @var array<string, bool> */
     private array $columnCache = [];
 
+    /** @var array<string, bool> */
+    private array $tableCache = [];
+
     public function __construct(private readonly PDO $db)
     {
     }
@@ -202,6 +205,75 @@ class PacientesFlujoService
     }
 
     /**
+     * @return array<string, mixed>
+     */
+    public function actualizarEstadoTrayecto(string $formId, string $estado): array
+    {
+        $formId = trim($formId);
+        $estado = trim($estado);
+
+        if ($formId === '' || $estado === '') {
+            return [
+                'success' => false,
+                'message' => 'form_id y estado son requeridos.',
+            ];
+        }
+
+        $stmt = $this->db->prepare(
+            'SELECT form_id, estado_agenda
+             FROM procedimiento_proyectado
+             WHERE form_id = :form_id AND COALESCE(sigcenter_present, 1) = 1
+             LIMIT 1'
+        );
+        $stmt->execute([':form_id' => $formId]);
+        $current = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$current) {
+            return [
+                'success' => false,
+                'message' => 'Trayecto no encontrado.',
+            ];
+        }
+
+        try {
+            $this->db->beginTransaction();
+
+            $update = $this->db->prepare(
+                'UPDATE procedimiento_proyectado
+                 SET estado_agenda = :estado
+                 WHERE form_id = :form_id'
+            );
+            $update->execute([
+                ':estado' => $estado,
+                ':form_id' => $formId,
+            ]);
+
+            $this->registrarHistorialProcedimientoSiCambio($formId, $estado);
+
+            $this->db->commit();
+
+            return [
+                'success' => true,
+                'message' => 'Estado actualizado.',
+                'data' => [
+                    'form_id' => $formId,
+                    'previous_state' => $current['estado_agenda'] ?? null,
+                    'current_state' => $estado,
+                ],
+            ];
+        } catch (\Throwable $e) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+
+            return [
+                'success' => false,
+                'message' => 'No se pudo actualizar el trayecto: ' . $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
      * @param array<int, string> $formIds
      * @return array<string, array<int, array<string, string>>>
      */
@@ -235,6 +307,55 @@ class PacientesFlujoService
         }
 
         return $historiales;
+    }
+
+    private function slugEstado(string $estado): string
+    {
+        $estado = trim($estado);
+        if ($estado === '') {
+            return '';
+        }
+
+        $lower = mb_strtolower($estado, 'UTF-8');
+        $ascii = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $lower);
+        $ascii = $ascii !== false ? $ascii : $lower;
+        $slug = preg_replace('/[^a-z0-9]+/', '-', $ascii) ?? '';
+        $slug = trim($slug, '-');
+
+        return match ($slug) {
+            'en-quirofano', 'quirofano', 'en-qui-afano' => 'en-quirofano',
+            'recuperacion', 'recuperacion-postoperatoria' => 'recuperacion',
+            default => $slug,
+        };
+    }
+
+    private function registrarHistorialProcedimientoSiCambio(string $formId, string $estado): void
+    {
+        if (!$this->tableExists('procedimiento_proyectado_estado')) {
+            return;
+        }
+
+        $ultimo = $this->db->prepare(
+            'SELECT estado FROM procedimiento_proyectado_estado
+             WHERE form_id = :form_id
+             ORDER BY fecha_hora_cambio DESC
+             LIMIT 1'
+        );
+        $ultimo->execute([':form_id' => $formId]);
+        $ultimoEstado = $ultimo->fetchColumn();
+
+        if ($ultimoEstado !== false && $this->slugEstado((string) $ultimoEstado) === $this->slugEstado($estado)) {
+            return;
+        }
+
+        $insert = $this->db->prepare(
+            'INSERT INTO procedimiento_proyectado_estado (form_id, estado, fecha_hora_cambio)
+             VALUES (:form_id, :estado, NOW())'
+        );
+        $insert->execute([
+            ':form_id' => $formId,
+            ':estado' => $estado,
+        ]);
     }
 
     /**
@@ -346,6 +467,25 @@ class PacientesFlujoService
         }
 
         $this->columnCache[$cacheKey] = $exists;
+
+        return $exists;
+    }
+
+    private function tableExists(string $table): bool
+    {
+        if (array_key_exists($table, $this->tableCache)) {
+            return $this->tableCache[$table];
+        }
+
+        try {
+            $stmt = $this->db->prepare('SHOW TABLES LIKE :table');
+            $stmt->execute([':table' => $table]);
+            $exists = (bool) $stmt->fetchColumn();
+        } catch (\Throwable) {
+            $exists = false;
+        }
+
+        $this->tableCache[$table] = $exists;
 
         return $exists;
     }

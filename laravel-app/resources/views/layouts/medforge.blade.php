@@ -27,7 +27,7 @@
 
     @stack('styles')
 </head>
-<body class="hold-transition light-skin sidebar-mini theme-primary fixed">
+<body class="hold-transition light-skin sidebar-mini sidebar-collapse theme-primary fixed">
 @php
     $appNavigation = \App\Modules\Shared\Support\MedforgeNavigation::build(request());
 @endphp

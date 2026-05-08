@@ -21,4 +21,5 @@ Route::middleware([
     Route::get('/pacientes/flujo', [PacientesReadController::class, 'flujo']);
     Route::get('/pacientes/flujo/tablero', [PacientesReadController::class, 'flujoTablero']);
     Route::get('/pacientes/flujo/recientes', [PacientesReadController::class, 'flujoRecientes']);
+    Route::post('/pacientes/flujo/trayecto-estado', [PacientesReadController::class, 'actualizarEstadoTrayecto']);
 });

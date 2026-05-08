@@ -268,6 +268,21 @@ class PacientesReadController
         }
     }
 
+    public function actualizarEstadoTrayecto(Request $request): JsonResponse
+    {
+        if (!$this->isLegacyAuthenticated($request)) {
+            return response()->json(['success' => false, 'message' => 'Sesión expirada'], 401);
+        }
+
+        $formId = trim((string) $request->input('form_id', ''));
+        $estado = trim((string) $request->input('estado', ''));
+
+        $result = $this->flujoService->actualizarEstadoTrayecto($formId, $estado);
+        $status = !empty($result['success']) ? 200 : 422;
+
+        return response()->json($result, $status);
+    }
+
     public function flujoRecientes(Request $request): JsonResponse
     {
         if (!$this->isLegacyAuthenticated($request)) {

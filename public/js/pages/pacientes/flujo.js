@@ -1,459 +1,483 @@
-// kanban_base.js
+let allSolicitudes = [];
+let ultimoTimestamp = null;
+let pollingIntervalId = null;
 
-// Loader helpers
+const STAGES = {
+    visita: [
+        {label: 'Agendado', id: 'agendado'},
+        {label: 'Llegado', id: 'llegado'},
+        {label: 'En atención', id: 'en-atencion'},
+        {label: 'Alta', id: 'alta'},
+        {label: 'Otro', id: 'otro'},
+    ],
+    consulta: [
+        {label: 'Agendado', id: 'agendado'},
+        {label: 'Llegado', id: 'llegado'},
+        {label: 'En consulta', id: 'en-consulta'},
+        {label: 'Alta', id: 'alta'},
+        {label: 'Otro', id: 'otro'},
+    ],
+    optometria: [
+        {label: 'Agendado', id: 'agendado'},
+        {label: 'Llegado', id: 'llegado'},
+        {label: 'Optometria', id: 'optometria'},
+        {label: 'Dilatando', id: 'dilatando'},
+        {label: 'Alta', id: 'alta'},
+        {label: 'Otro', id: 'otro'},
+    ],
+    cirugia: [
+        {label: 'Agendado', id: 'agendado'},
+        {label: 'Llegado', id: 'llegado'},
+        {label: 'Preoperatorio', id: 'preoperatorio'},
+        {label: 'En quirófano', id: 'en-quirofano'},
+        {label: 'Recuperación', id: 'recuperacion'},
+        {label: 'Alta', id: 'alta'},
+        {label: 'Otro', id: 'otro'},
+    ],
+};
+
+const TYPE_LABELS = {
+    consulta: 'Consulta',
+    optometria: 'Optometría',
+    cirugia: 'Cirugía',
+};
+
 function showLoader() {
     const loader = document.getElementById('loader');
-    if (loader) {
-        loader.style.display = 'block';
-    }
+    if (loader) loader.style.display = 'block';
 }
 
 function hideLoader() {
     const loader = document.getElementById('loader');
-    if (loader) {
-        loader.style.display = 'none';
-    }
+    if (loader) loader.style.display = 'none';
 }
 
-// Definir estados para columnas del tablero de Visitas
-const ESTADOS_VISITA = [
-    {label: "Agendado", id: "agendado"},
-    {label: "Llegado", id: "llegado"},
-    {label: "Preoperatorio", id: "preoperatorio"},
-    {label: "En quirófano", id: "en-quirofano"},
-    {label: "Recuperación", id: "recuperacion"},
-    {label: "Alta", id: "alta"},
-    {label: "Otro", id: "otro"}
-];
-
-function renderColumnasVisita() {
-    const boardWrapper = document.querySelector('.kanban-board');
-    if (!boardWrapper) return;
-
-    const target = boardWrapper.querySelector('.kanban-scroll') || boardWrapper;
-
-    // Limpiar columnas actuales
-    target.innerHTML = '';
-
-    ESTADOS_VISITA.forEach(estado => {
-        const col = document.createElement('div');
-        col.className = 'kanban-col';
-        col.innerHTML = `
-            <div class='kanban-column box box-solid box-info rounded shadow-sm p-1 me-0' style='min-width: 250px; flex-shrink: 0;'>
-            <div class='box-header with-border'>
-            <h5 class='text-center box-title'>${estado.label} <span class='badge bg-danger' id='badge-${estado.id}' style='display:none;'>¡+4!</span></h5>
-            <ul class='box-controls pull-right'><li><a class='box-btn-close' href='#'></a></li><li><a class='box-btn-slide' href='#'></a></li><li><a class='box-btn-fullscreen' href='#'></a></li></ul></div>
-            <div class='box-body p-0'>
-            <div class='kanban-items' id='kanban-${estado.id}'></div>         
-            </div>
-            </div>
-        `;
-        target.appendChild(col);
-    });
+function csrfToken() {
+    return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
 }
 
-// =========================
-// VARIABLES GLOBALES
-// =========================
-let allSolicitudes = [];
-let ultimoTimestamp = null;
-
-// =========================
-// HELPERS DE DATOS Y UI
-// =========================
-function poblarAfiliacionesUnicas(data) {
-    const select = document.getElementById('kanbanAfiliacionFilter');
-    if (!select) return;
-    // Conservar solo la opción "Todas"
-    select.innerHTML = '<option value="">Todas</option>';
-    const afiliaciones = [...new Set(
-        data.flatMap(d => {
-            const values = [];
-            if (d.afiliacion) values.push(d.afiliacion);
-            if (Array.isArray(d.trayectos)) {
-                d.trayectos.forEach(t => {
-                    if (t.afiliacion) values.push(t.afiliacion);
-                });
-            }
-            return values;
-        }).filter(Boolean)
-    )].sort();
-    afiliaciones.forEach(af => {
-        const option = document.createElement('option');
-        option.value = af;
-        option.textContent = af;
-        select.appendChild(option);
-    });
+function normalizeText(value) {
+    return String(value || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toUpperCase()
+        .trim();
 }
 
-// Llenar filtro de doctores y fechas según datosFiltrados
-function llenarSelectDoctoresYFechas(datosFiltrados) {
-    // Doctor
-    const doctorFiltro = document.getElementById('kanbanDoctorFilter');
-    if (!doctorFiltro) return;
-    const currentDoctor = doctorFiltro.value;
-    doctorFiltro.innerHTML = '<option value="">Todos</option>';
+function slug(value) {
+    return String(value || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+}
 
-    // Recorrer trayectos para poblar los doctores únicos
-    const doctoresSet = new Set();
-    datosFiltrados.forEach(visita => {
-        if (Array.isArray(visita.trayectos)) {
-            visita.trayectos.forEach(t => {
-                if (t.doctor) doctoresSet.add(t.doctor);
-            });
-        }
-    });
-    const doctoresOrdenados = Array.from(doctoresSet).sort((a, b) => a.localeCompare(b, 'es', {sensitivity: 'base'}));
-    doctoresOrdenados.forEach(doctor => {
-        if (doctor) {
-            const option = document.createElement('option');
-            option.value = doctor;
-            option.textContent = doctor;
-            if (doctor === currentDoctor) {
-                option.selected = true;
-            }
-            doctorFiltro.appendChild(option);
-        }
-    });
-    // Fecha: solo usa fechas de la visita
-    const fechaFiltro = document.getElementById('kanbanFechaFiltro');
-    if (fechaFiltro) {
-        fechaFiltro.innerHTML = '<option value="">Todas</option>';
-        const fechasSet = new Set(datosFiltrados.map(item => item.fecha_visita));
-        const fechasOrdenadas = Array.from(fechasSet).sort().reverse();
-        fechasOrdenadas.forEach(fecha => {
-            const option = document.createElement('option');
-            option.value = fecha;
-            option.textContent = fecha;
-            fechaFiltro.appendChild(option);
-        });
-    }
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function estadoSlug(estado) {
+    const value = slug(estado);
+    if (value === 'admision') return 'admision';
+    if (value === 'en-quirofano' || value === 'quirofano') return 'en-quirofano';
+    if (value === 'recuperacion') return 'recuperacion';
+    if (value === 'revision-resultados' || value === 'revision-de-resultados') return 'revision-resultados';
+    if (value === 'optometria') return 'optometria';
+    if (value === 'dilatar' || value === 'dilatando') return 'dilatando';
+    if (value === 'en-atencion') return 'en-atencion';
+    return value || 'otro';
+}
+
+function tipoTrayecto(trayecto) {
+    const proc = normalizeText(trayecto.procedimiento);
+    const doctor = normalizeText(trayecto.doctor);
+
+    if (proc.startsWith('CIRUGIAS')) return 'cirugia';
+    if (proc.includes('OPTOMETRIA') || doctor.includes('OPTOMETR')) return 'optometria';
+
+    return 'consulta';
 }
 
 function formatearProcedimientoCorto(proc) {
     if (!proc || typeof proc !== 'string') return '';
-
-    // SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-001 - OPTOMETRIA - AMBOS OJOS
-    if (proc.startsWith('SERVICIOS OFTALMOLOGICOS GENERALES')) {
-        const partes = proc.split(' - ');
-        // Toma el cuarto segmento si existe, o el tercero si no hay "AMBOS OJOS"
-        return partes[3] ? partes[2] : (partes[2] || '');
-    }
-    // CIRUGIAS - CYP-OCU-035 - IPL TRATAMIENTO DE OJO SECO (AO POR SESION) - IZQUIERDO
-    if (proc.startsWith('CIRUGIAS')) {
-        return 'CIRUGIAS';
-    }
-    // IMAGENES - IMA-DIA-003 - 281306-CAMPIMETRIA COMPUTARIZADA - CAMPO VISUAL (AO) - AMBOS OJOS
-    if (proc.startsWith('IMAGENES')) {
-        // Busca el nombre del estudio: después del segundo " - "
-        const partes = proc.split(' - ');
-        // Busca la primera parte que contiene paréntesis, sino el 3er segmento (usualmente el nombre)
-        const conParentesis = partes.find(p => p.includes('('));
-        return conParentesis || partes[3] || partes[2] || 'IMAGEN';
-    }
-    // Si nada coincide, muestra el tercer segmento si existe
     const partes = proc.split(' - ');
+    if (proc.startsWith('CIRUGIAS')) return partes.slice(2).join(' - ') || 'Cirugía';
+    if (proc.startsWith('IMAGENES')) return partes.find(p => p.includes('(')) || partes[3] || partes[2] || 'Imagen';
+    if (proc.startsWith('SERVICIOS OFTALMOLOGICOS GENERALES')) return partes[3] || partes[2] || 'Servicio';
     return partes[3] || partes[2] || proc;
 }
 
-// kanban_base.js (puedes ponerlo al final o cerca del render principal)
+function estadoOrdenIndex(tipo, estado) {
+    const id = estadoSlug(estado);
+    const index = (STAGES[tipo] || STAGES.consulta).findIndex(stage => stage.id === id);
+    return index >= 0 ? index : -1;
+}
+
+function estadoParaColumna(tipo, estado) {
+    const stages = STAGES[tipo] || STAGES.consulta;
+    const id = estadoSlug(estado);
+    return stages.some(stage => stage.id === id) ? id : 'otro';
+}
+
+function estadoMasAvanzado(tipo, trayectos) {
+    let seleccionado = trayectos[0] || null;
+    let mejorIndice = -1;
+
+    trayectos.forEach(trayecto => {
+        const indice = estadoOrdenIndex(tipo, trayecto.estado || 'Agendado');
+        if (indice > mejorIndice) {
+            mejorIndice = indice;
+            seleccionado = trayecto;
+        }
+    });
+
+    return seleccionado;
+}
+
+function minutosEnEstado(trayecto) {
+    if (!Array.isArray(trayecto.historial_estados)) return null;
+
+    const actual = estadoSlug(trayecto.estado);
+    const evento = [...trayecto.historial_estados].reverse().find(h => estadoSlug(h.estado) === actual);
+    if (!evento || !evento.fecha_hora_cambio) return null;
+
+    const inicio = new Date(String(evento.fecha_hora_cambio).replace(' ', 'T'));
+    if (Number.isNaN(inicio.getTime())) return null;
+
+    return Math.max(0, Math.floor((new Date() - inicio) / 60000));
+}
+
+function colorTiempo(minutos) {
+    if (minutos === null) return '#6c757d';
+    if (minutos > 90) return '#dc3545';
+    if (minutos > 45) return '#ffc107';
+    if (minutos > 20) return '#198754';
+    return '#007bff';
+}
+
+function trayectosFiltradosPorTipo(tipo) {
+    return filtrarSolicitudes().flatMap(visita => {
+        if (!Array.isArray(visita.trayectos)) return [];
+        return visita.trayectos
+            .filter(trayecto => tipoTrayecto(trayecto) === tipo)
+            .map(trayecto => ({...trayecto, visita, tipo}));
+    });
+}
+
+function visitasConAtenciones() {
+    return filtrarSolicitudes().map(visita => {
+        const atenciones = {consulta: [], optometria: [], cirugia: []};
+        (visita.trayectos || []).forEach(trayecto => {
+            const tipo = tipoTrayecto(trayecto);
+            if (atenciones[tipo]) atenciones[tipo].push({...trayecto, tipo});
+        });
+
+        return {...visita, atenciones};
+    }).filter(visita => Object.values(visita.atenciones).some(items => items.length > 0));
+}
+
+function estadoVisitaAgregada(visita) {
+    const principales = Object.entries(visita.atenciones)
+        .flatMap(([tipo, trayectos]) => trayectos.length ? [{tipo, trayecto: estadoMasAvanzado(tipo, trayectos)}] : []);
+
+    if (principales.length === 0) return 'Otro';
+    if (principales.every(item => estadoSlug(item.trayecto.estado) === 'alta')) return 'Alta';
+    if (principales.some(item => ['en-consulta', 'optometria', 'dilatando', 'preoperatorio', 'en-quirofano', 'recuperacion', 'admision'].includes(estadoSlug(item.trayecto.estado)))) {
+        return 'En atención';
+    }
+    if (principales.some(item => estadoSlug(item.trayecto.estado) === 'llegado')) return 'Llegado';
+    if (principales.some(item => estadoSlug(item.trayecto.estado) === 'agendado')) return 'Agendado';
+
+    return 'Otro';
+}
+
+function renderColumnas(tipo) {
+    const board = document.querySelector('.kanban-board');
+    if (!board) return;
+
+    board.innerHTML = '';
+    (STAGES[tipo] || STAGES.visita).forEach(stage => {
+        const col = document.createElement('div');
+        col.className = 'kanban-col patient-flow-column';
+        col.innerHTML = `
+            <div class="patient-flow-column__header">
+                <h5 class="patient-flow-column__title">${escapeHtml(stage.label)}</h5>
+                <span class="patient-flow-column__count" id="badge-${stage.id}">0</span>
+            </div>
+            <div class="kanban-items patient-flow-items" id="kanban-${stage.id}" data-estado-label="${escapeHtml(stage.label)}"></div>
+        `;
+        board.appendChild(col);
+    });
+}
+
+function renderResumen(items, titulo) {
+    const summary = document.getElementById('kanban-summary');
+    if (!summary) return;
+
+    const counts = {};
+    items.forEach(item => {
+        const estado = item.estadoResumen || item.estado || 'Otro';
+        counts[estado] = (counts[estado] || 0) + 1;
+    });
+
+    summary.innerHTML = `<div><span class="fw-semibold">${escapeHtml(titulo)}: <b>${items.length}</b></span> &nbsp;|&nbsp; `
+        + Object.entries(counts).map(([estado, total]) => `<span class="me-2">${escapeHtml(estado)}: <b>${total}</b></span>`).join(' ')
+        + `</div>${renderAuditoriaClasificacion()}`;
+}
+
+function actualizarConteosColumnas() {
+    document.querySelectorAll('.patient-flow-column').forEach(column => {
+        const count = column.querySelectorAll('.patient-flow-card').length;
+        const badge = column.querySelector('.patient-flow-column__count');
+        if (badge) badge.textContent = String(count);
+    });
+}
+
+function renderAuditoriaClasificacion() {
+    const counts = {consulta: 0, optometria: 0, cirugia: 0};
+    const estadosFuera = {};
+    const activeTipo = document.querySelector('.tab-kanban.active')?.dataset?.tipo || 'visita';
+
+    filtrarSolicitudes().forEach(visita => {
+        (visita.trayectos || []).forEach(trayecto => {
+            const tipo = tipoTrayecto(trayecto);
+            counts[tipo] = (counts[tipo] || 0) + 1;
+
+            const tipoParaEstado = activeTipo === 'visita' ? tipo : activeTipo;
+            if (tipo === activeTipo || activeTipo === 'visita') {
+                const estadoColumna = estadoParaColumna(tipoParaEstado, trayecto.estado || 'Agendado');
+                if (estadoColumna === 'otro') {
+                    const estado = trayecto.estado || '(sin estado)';
+                    estadosFuera[estado] = (estadosFuera[estado] || 0) + 1;
+                }
+            }
+        });
+    });
+
+    const fuera = Object.entries(estadosFuera)
+        .map(([estado, total]) => `${escapeHtml(estado)} (${total})`)
+        .join(', ');
+
+    return `<div class="mt-1 small text-muted">
+        Clasificación: Consulta <b>${counts.consulta}</b>, Optometría <b>${counts.optometria}</b>, Cirugía <b>${counts.cirugia}</b>
+        ${fuera ? ` · Estados en Otro: ${fuera}` : ''}
+    </div>`;
+}
+
+function renderTarjetaTrayecto(trayecto) {
+    const minutos = minutosEnEstado(trayecto);
+    const paciente = [trayecto.visita.fname, trayecto.visita.lname, trayecto.visita.lname2].filter(Boolean).join(' ');
+    const historial = (trayecto.historial_estados || [])
+        .map(h => `${h.estado}: ${moment(h.fecha_hora_cambio).format('DD-MM-YYYY HH:mm')}`)
+        .join('\n');
+
+    const card = document.createElement('div');
+    card.className = `kanban-card patient-flow-card patient-flow-card--${trayecto.tipo || 'consulta'} view-details`;
+    card.setAttribute('draggable', true);
+    card.dataset.form = trayecto.form_id || '';
+    card.dataset.id = trayecto.id || '';
+    card.dataset.tipo = trayecto.tipo || '';
+    card.dataset.doctor = trayecto.doctor || '';
+    card.dataset.afiliacion = trayecto.afiliacion || '';
+    card.dataset.fecha = trayecto.visita.fecha_visita || '';
+    card.title = historial;
+    card.innerHTML = `
+        <div class="patient-flow-card__top">
+            <span class="patient-flow-card__badge patient-flow-card__badge--${trayecto.tipo || 'consulta'}">${escapeHtml(TYPE_LABELS[trayecto.tipo] || 'Atención')}</span>
+            <span class="patient-flow-card__time" style="color:${colorTiempo(minutos)};">${minutos === null ? '' : `${minutos} min`}</span>
+        </div>
+        <div class="patient-flow-card__name">${escapeHtml(paciente)}</div>
+        <div class="patient-flow-card__meta">
+            <span><i class="mdi mdi-card-account-details"></i> <b>${escapeHtml(trayecto.visita.hc_number)}</b></span>
+            <span><i class="mdi mdi-calendar"></i> ${escapeHtml(trayecto.visita.fecha_visita || '')} · ${escapeHtml(trayecto.visita.hora_llegada ? trayecto.visita.hora_llegada.slice(11, 16) : '-')}</span>
+            <span><i class="mdi mdi-hospital-building"></i> ${escapeHtml(trayecto.afiliacion || '-')}</span>
+            <span><i class="mdi mdi-doctor"></i> ${escapeHtml(trayecto.doctor || '-')}</span>
+        </div>
+        <div class="patient-flow-card__procedure" title="${escapeHtml(trayecto.procedimiento || '')}">
+            ${escapeHtml(formatearProcedimientoCorto(trayecto.procedimiento))}
+        </div>
+        <div class="patient-flow-card__footer">
+            <span>${escapeHtml(trayecto.estado || 'Agendado')}</span>
+            <span>#${escapeHtml(trayecto.form_id || '')}</span>
+        </div>
+    `;
+
+    return card;
+}
+
+function renderTarjetaVisita(visita) {
+    const estadoResumen = estadoVisitaAgregada(visita);
+    const paciente = [visita.fname, visita.lname, visita.lname2].filter(Boolean).join(' ');
+    const tiposHtml = Object.entries(visita.atenciones)
+        .filter(([, trayectos]) => trayectos.length > 0)
+        .map(([tipo, trayectos]) => {
+            const principal = estadoMasAvanzado(tipo, trayectos);
+            return `<div class="patient-flow-visit-line">
+                <span class="patient-flow-card__badge patient-flow-card__badge--${escapeHtml(tipo)}">${escapeHtml(TYPE_LABELS[tipo])}</span>
+                <span>${escapeHtml(principal.estado || 'Agendado')}</span>
+                <span>${trayectos.length}</span>
+            </div>`;
+        }).join('');
+
+    const card = document.createElement('div');
+    card.className = 'kanban-card patient-flow-card patient-flow-card--visita view-details';
+    card.dataset.visitaId = visita.visita_id || '';
+    card.dataset.fecha = visita.fecha_visita || '';
+    card.innerHTML = `
+        <div class="patient-flow-card__top">
+            <span class="patient-flow-card__badge patient-flow-card__badge--visita">${escapeHtml(estadoResumen)}</span>
+            <span class="patient-flow-card__time">${escapeHtml(visita.hora_llegada ? visita.hora_llegada.slice(11, 16) : '-')}</span>
+        </div>
+        <div class="patient-flow-card__name">${escapeHtml(paciente)}</div>
+        <div class="patient-flow-card__meta">
+            <span><i class="mdi mdi-card-account-details"></i> <b>${escapeHtml(visita.hc_number)}</b></span>
+            <span><i class="mdi mdi-calendar"></i> ${escapeHtml(visita.fecha_visita || '')}</span>
+        </div>
+        <div class="patient-flow-visit-lines">${tiposHtml}</div>
+    `;
+
+    return {card, estadoResumen};
+}
+
+function attachSortable(tipo) {
+    if (tipo === 'visita' || typeof Sortable === 'undefined') return;
+
+    document.querySelectorAll('.kanban-items').forEach(container => {
+        new Sortable(container, {
+            group: 'kanban',
+            animation: 150,
+            fallbackOnBody: true,
+            swapThreshold: 0.65,
+            onEnd: function (evt) {
+                const item = evt.item;
+                const formId = item.dataset.form;
+                const newEstado = evt.to.dataset.estadoLabel || '';
+                const trayecto = findTrayecto(formId);
+                const estadoAnterior = trayecto ? trayecto.estado : null;
+
+                if (trayecto) {
+                    trayecto.estado = newEstado;
+                    renderTabActivo();
+                }
+
+                actualizarEstadoTrayecto(formId, newEstado)
+                    .catch(error => {
+                        if (trayecto && estadoAnterior) {
+                            trayecto.estado = estadoAnterior;
+                            renderTabActivo();
+                        }
+                        Swal.fire('Error', error.message || 'No se pudo actualizar el estado.', 'error');
+                    });
+            },
+        });
+    });
+}
+
+function findTrayecto(formId) {
+    for (const visita of allSolicitudes) {
+        const trayecto = (visita.trayectos || []).find(item => String(item.form_id) === String(formId));
+        if (trayecto) return trayecto;
+    }
+    return null;
+}
+
+function actualizarEstadoTrayecto(formId, estado) {
+    return fetch('/v2/pacientes/flujo/trayecto-estado', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'X-CSRF-TOKEN': csrfToken(),
+        },
+        body: JSON.stringify({form_id: formId, estado}),
+    })
+        .then(async response => {
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok || payload.success === false) {
+                throw new Error(payload.message || 'No se pudo actualizar el estado.');
+            }
+            showToast('Estado actualizado correctamente');
+            return payload;
+        });
+}
+
 function renderTabActivo() {
-    const activeTab = document.querySelector('.tab-kanban.active');
-    const tipo = activeTab?.dataset?.tipo;
-    if (!tipo) {
-        renderKanban();
+    const tipo = document.querySelector('.tab-kanban.active')?.dataset?.tipo || 'visita';
+    renderColumnas(tipo);
+
+    if (tipo === 'visita') {
+        const visitas = visitasConAtenciones();
+        visitas.forEach(visita => {
+            const {card, estadoResumen} = renderTarjetaVisita(visita);
+            const col = document.getElementById('kanban-' + estadoParaColumna('visita', estadoResumen));
+            if (col) col.appendChild(card);
+            visita.estadoResumen = estadoResumen;
+        });
+        renderResumen(visitas, 'Total visitas');
+        actualizarConteosColumnas();
         return;
     }
-    if (tipo === 'cirugia' && typeof renderKanbanCirugia === "function") {
-        renderKanbanCirugia();
-    } else if (tipo === 'consulta' && typeof renderKanbanConsulta === "function") {
-        renderKanbanConsulta();
-    } else if (tipo === 'examen' && typeof renderKanbanExamen === "function") {
-        renderKanbanExamen();
-    } else {
-        renderKanban();
-    }
+
+    const trayectos = trayectosFiltradosPorTipo(tipo);
+    trayectos.forEach(trayecto => {
+        const card = renderTarjetaTrayecto(trayecto);
+        const col = document.getElementById('kanban-' + estadoParaColumna(tipo, trayecto.estado || 'Agendado'));
+        if (col) col.appendChild(card);
+    });
+    renderResumen(trayectos, TYPE_LABELS[tipo] || 'Atenciones');
+    attachSortable(tipo);
+    actualizarConteosColumnas();
 }
 
-// =========================
-// FUNCIONES DE RENDER Y RESUMEN
-// =========================
-function renderKanban() {
-    renderColumnasVisita();
-    const filtered = filtrarSolicitudes(); // ya devuelve solo VISITAS de la fecha filtrada
-    llenarSelectDoctoresYFechas(filtered);
+function poblarAfiliacionesUnicas(data) {
+    const select = document.getElementById('kanbanAfiliacionFilter');
+    if (!select) return;
 
-    // Limpiar columnas
-    document.querySelectorAll('.kanban-items').forEach(col => col.innerHTML = '');
-
-    // Para cronómetro y resumen por estado global (usando estado del primer trayecto, puedes ajustar esto)
-    const conteoPorEstado = {};
-    const promedioPorEstado = {};
-
-    filtered.forEach(visita => {
-        console.log('Visita:', visita); // ← Aquí lo agregas
-        // 🚩 NUEVO: Si no tiene trayectos, ignora la visita y no pinta tarjeta
-        if (!Array.isArray(visita.trayectos) || visita.trayectos.length === 0) {
-            return;
-        }
-
-        // Obtén estado global (el más avanzado, el primero, o el que tú decidas)
-        let estadoGlobal = '';
-        let trayectoPrincipal = visita.trayectos && visita.trayectos[0];
-
-        if (trayectoPrincipal) {
-            estadoGlobal = trayectoPrincipal.estado || 'Otro';
-        } else {
-            estadoGlobal = 'Otro';
-        }
-
-        // --- Mapeo defensivo de estados ---
-        // Array de IDs válidos según las columnas
-        const idsValidos = ESTADOS_VISITA.map(e => e.id);
-
-        // Normaliza el estadoId
-        let estadoId = estadoGlobal.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, '-');
-
-        // Si el estadoId no está en los IDs válidos, mapea a "otro"
-        if (!idsValidos.includes(estadoId)) {
-            estadoGlobal = 'Otro';
-            estadoId = 'otro';
-        }
-
-        conteoPorEstado[estadoId] = (conteoPorEstado[estadoId] || 0) + 1;
-
-        // Cronómetro: tiempo desde la llegada (hora_llegada de la visita)
-        let minutosDesdeLlegada = null;
-        if (visita.hora_llegada) {
-            const llegada = new Date(visita.hora_llegada.replace(' ', 'T'));
-            const ahora = new Date();
-            minutosDesdeLlegada = Math.floor((ahora - llegada) / 60000);
-            if (!promedioPorEstado[estadoGlobal]) promedioPorEstado[estadoGlobal] = [];
-            promedioPorEstado[estadoGlobal].push(minutosDesdeLlegada);
-        }
-
-        // Iconos según tipos de trayecto
-        const tipos = new Set();
-        const procedimientos = [];
-        const doctores = new Set();
-        visita.trayectos.forEach(t => {
-            if (t.procedimiento && t.procedimiento.includes('CIRUGIAS')) tipos.add('🔪');
-            else if (t.procedimiento && t.procedimiento.includes('CONSULTA')) tipos.add('🩺');
-            else if (t.procedimiento && t.procedimiento.includes('EXAMEN')) tipos.add('🔬');
-            else if (t.procedimiento && t.procedimiento.includes('OPTOMETRIA')) tipos.add('👓');
-            else if (t.procedimiento && t.procedimiento !== '(no definido)') tipos.add('📄');
-            procedimientos.push(t.procedimiento);
-            if (t.doctor) doctores.add(t.doctor);
-        });
-
-        // Tooltips: historial de estados por trayecto
-        let historialTooltip = '';
-        visita.trayectos.forEach(t => {
-            if (Array.isArray(t.historial_estados) && t.historial_estados.length > 0) {
-                historialTooltip += t.procedimiento + ':\n' +
-                    t.historial_estados.map(h => `${h.estado}: ${moment(h.fecha_hora_cambio).format('DD-MM-YYYY HH:mm')}`).join('\n') + '\n\n';
-            }
-        });
-
-        // Badge semáforo por minutos en clínica
-        let color = '#007bff';
-        if (minutosDesdeLlegada !== null) {
-            if (minutosDesdeLlegada > 180) color = '#dc3545';
-            else if (minutosDesdeLlegada > 90) color = '#ffc107';
-            else if (minutosDesdeLlegada > 30) color = '#198754';
-        }
-
-        // Tarjeta de visita (una por visita_id)
-        const tarjeta = document.createElement('div');
-        tarjeta.className = 'kanban-card view-details';
-        tarjeta.setAttribute('data-visita-id', visita.visita_id);
-        tarjeta.dataset.doctor = [...doctores].join(', ');
-        tarjeta.dataset.afiliacion = trayectoPrincipal?.afiliacion || visita.afiliacion || '';
-        tarjeta.dataset.fecha = visita.fecha_visita || '';
-        if (trayectoPrincipal?.form_id) {
-            tarjeta.dataset.form = trayectoPrincipal.form_id;
-        }
-        tarjeta.title = historialTooltip || '';
-
-        tarjeta.innerHTML = `
-            <div>
-                <span style="color:${color};font-weight:bold;">⏱️ ${minutosDesdeLlegada ?? '--'} min</span>
-                ${[...tipos].join(' ')}
-            </div>
-            <div style="font-size:1.08em;font-weight:600;">
-                <i class="mdi mdi-account"></i> ${[visita.fname, visita.lname, visita.lname2].filter(Boolean).join(' ')}
-            </div>
-            <div style="font-size:0.95em; color:#555;">
-                <i class="mdi mdi-card-account-details"></i> <b>${visita.hc_number}</b>
-            </div>
-            <div style="font-size:0.95em;">
-                <i class="mdi mdi-calendar"></i> ${visita.hora_llegada ? visita.hora_llegada.slice(11, 16) : '-'}
-            </div>
-            <div style="font-size:0.93em; color:#375;">
-                <i class="mdi mdi-hospital-building"></i> ${trayectoPrincipal?.afiliacion || visita.afiliacion || '-'}
-            </div>
-            <div>
-                <span style="font-weight:600">Trayectos:</span> ${[...tipos].length > 0 ? [...tipos].join(' + ') : 'Ninguno'}
-            </div>
-            <div style="font-size:0.93em;color:#375;">
-                ${procedimientos
-            .filter(p => p && p !== '(no definido)')
-            .slice(0, 2)
-            .map(p => formatearProcedimientoCorto(p))
-            .join('<br>')}
-            </div>            
-            <div>
-                <i class="mdi mdi-stethoscope"></i> ${[...doctores].join(', ')}
-            </div>
-            <div style="margin-top:3px;font-size:0.93em;"><b>Estado:</b> ${estadoGlobal}</div>
-        `;
-
-        // Agrega al kanban por estado global
-        const col = document.getElementById('kanban-' + estadoId);
-        if (col) col.appendChild(tarjeta);
-        else console.warn(`No se encontró la columna para el estado: "${estadoGlobal}"`);
+    select.innerHTML = '<option value="">Todas</option>';
+    const afiliaciones = [...new Set(data.flatMap(visita => (visita.trayectos || []).map(t => t.afiliacion).filter(Boolean)))].sort();
+    afiliaciones.forEach(afiliacion => {
+        const option = document.createElement('option');
+        option.value = afiliacion;
+        option.textContent = afiliacion;
+        select.appendChild(option);
     });
-
-    // Mostrar/ocultar badges de conteo por estado
-    Object.entries(conteoPorEstado).forEach(([estadoKey, count]) => {
-        const badge = document.getElementById(`badge-${estadoKey}`);
-        if (badge) badge.style.display = count > 4 ? 'inline-block' : 'none';
-    });
-
-    // Resumen estadístico, usando promedio por estado global (minutos en clínica)
-    let resumen = `<span style="font-weight:600;">📊 Total pacientes: <b>${filtered.length}</b></span> &nbsp;|&nbsp; `;
-    resumen += Object.entries(conteoPorEstado).map(([estado, cant]) =>
-        `<span style="margin-right:10px;">${estado}: <b>${cant}</b></span>`
-    ).join(' ');
-    resumen += '<br>';
-    Object.entries(promedioPorEstado).forEach(([estado, minsArr]) => {
-        const avg = Math.round(minsArr.reduce((a, b) => a + b, 0) / minsArr.length);
-        resumen += `<span style="font-size:0.96em;">⏱️ ${estado}: ${isNaN(avg) ? '-' : avg + ' min promedio en clínica'}</span>&nbsp;&nbsp;`;
-    });
-    if (document.getElementById('kanban-summary')) {
-        document.getElementById('kanban-summary').innerHTML = resumen;
-    } else {
-        // Si no existe, créalo antes del board
-        const board = document.querySelector('.kanban-board');
-        if (board) {
-            const div = document.createElement('div');
-            div.id = 'kanban-summary';
-            div.style.margin = '1em 0';
-            div.innerHTML = resumen;
-            board.parentNode.insertBefore(div, board);
-        }
-    }
 }
 
-function generarResumenKanban(filtrados) {
-    // Conteo de pacientes por estado y para promedios
-    const porEstado = {};
-    const promedioPorEstado = {};
-    filtrados.forEach(s => {
-        porEstado[s.estado] = (porEstado[s.estado] || 0) + 1;
-        if (Array.isArray(s.historial_estados)) {
-            const ult = [...s.historial_estados].reverse().find(h => h.estado === s.estado);
-            if (ult && ult.fecha_hora_cambio) {
-                const fechaCambio = new Date(ult.fecha_hora_cambio.replace(' ', 'T'));
-                const ahora = new Date();
-                const diffMs = ahora - fechaCambio;
-                const min = Math.floor(diffMs / 60000);
-                if (!promedioPorEstado[s.estado]) promedioPorEstado[s.estado] = [];
-                promedioPorEstado[s.estado].push(min);
-            }
-        }
+function llenarDoctores(data) {
+    const select = document.getElementById('kanbanDoctorFilter');
+    if (!select) return;
+
+    const current = select.value;
+    select.innerHTML = '<option value="">Todos</option>';
+    const doctores = [...new Set(data.flatMap(visita => (visita.trayectos || []).map(t => t.doctor).filter(Boolean)))].sort();
+    doctores.forEach(doctor => {
+        const option = document.createElement('option');
+        option.value = doctor;
+        option.textContent = doctor;
+        option.selected = doctor === current;
+        select.appendChild(option);
     });
-    const total = filtrados.length;
-    let resumen = `<span style="font-weight:600;">📊 Total solicitudes: <b>${total}</b></span> &nbsp;|&nbsp; `;
-    resumen += Object.entries(porEstado).map(([estado, cant]) =>
-        `<span style="margin-right:10px;">${estado}: <b>${cant}</b></span>`
-    ).join(' ');
-    resumen += '<br>';
-    Object.entries(promedioPorEstado).forEach(([estado, minsArr]) => {
-        const avg = Math.round(minsArr.reduce((a, b) => a + b, 0) / minsArr.length);
-        resumen += `<span style="font-size:0.96em;">⏱️ ${estado}: ${isNaN(avg) ? '-' : avg + ' min promedio'}</span>&nbsp;&nbsp;`;
-    });
-    if (document.getElementById('kanban-summary')) {
-        document.getElementById('kanban-summary').innerHTML = resumen;
-    } else {
-        // Si no existe, créalo antes del board
-        const board = document.querySelector('.kanban-board');
-        if (board) {
-            const div = document.createElement('div');
-            div.id = 'kanban-summary';
-            div.style.margin = '1em 0';
-            div.innerHTML = resumen;
-            board.parentNode.insertBefore(div, board);
-        }
-    }
 }
 
-// =========================
-// FUNCIONES DE FILTRO
-// =========================
 function filtrarSolicitudes() {
     const selectedDate = document.getElementById('kanbanDateFilter')?.value || '';
     const selectedAfiliacion = document.getElementById('kanbanAfiliacionFilter')?.value || '';
     const selectedDoctor = document.getElementById('kanbanDoctorFilter')?.value || '';
 
     return allSolicitudes.filter(visita => {
-        // Filtro por fecha de la visita (no de trayecto)
-        const coincideFecha = !selectedDate || visita.fecha_visita === selectedDate;
-
-        // Filtro por afiliación: debe cumplirse al menos en uno de los trayectos
-        const coincideAfiliacion = !selectedAfiliacion || (
-            Array.isArray(visita.trayectos) &&
-            visita.trayectos.some(t => t.afiliacion === selectedAfiliacion)
-        );
-
-        // Filtro por doctor: al menos un trayecto debe coincidir
-        const coincideDoctor = !selectedDoctor || (
-            Array.isArray(visita.trayectos) &&
-            visita.trayectos.some(t => t.doctor === selectedDoctor)
-        );
-
-        return coincideFecha && coincideAfiliacion && coincideDoctor;
+        const trayectos = visita.trayectos || [];
+        return (!selectedDate || visita.fecha_visita === selectedDate)
+            && (!selectedAfiliacion || trayectos.some(t => t.afiliacion === selectedAfiliacion))
+            && (!selectedDoctor || trayectos.some(t => t.doctor === selectedDoctor));
     });
 }
 
-function aplicarFiltros() {
-    const doctorFiltro = (document.getElementById('kanbanDoctorFilter')?.value || '').toLowerCase();
-    const afiliacionFiltro = (document.getElementById('kanbanAfiliacionFilter')?.value || '').toLowerCase();
-    const fechaFiltro = document.getElementById('kanbanDateFilter')?.value || '';
-    // const tipoFiltro = document.getElementById('kanbanTipoFiltro')?.value || '';
-
-    document.querySelectorAll('.kanban-card').forEach(card => {
-        const doctor = card.dataset.doctor?.toLowerCase() || '';
-        const afiliacion = card.dataset.afiliacion?.toLowerCase() || '';
-        const fecha = card.dataset.fecha || '';
-        // const tipo = card.dataset.tipo || '';
-
-        const visible =
-            (!doctorFiltro || doctor.includes(doctorFiltro)) &&
-            (!afiliacionFiltro || afiliacion.includes(afiliacionFiltro)) &&
-            (!fechaFiltro || fecha === fechaFiltro);
-        // && (!tipoFiltro || tipo === tipoFiltro);
-
-        card.style.display = visible ? '' : 'none';
-    });
-
-    // Generar el resumen estadístico según los datos filtrados
-    // Recopilar los datos filtrados actualmente visibles
-    const filtrados = [];
-    document.querySelectorAll('.kanban-card').forEach(card => {
-        if (card.style.display !== 'none') {
-            const formId = card.getAttribute('data-form');
-            const obj = allSolicitudes.find(s => String(s.form_id) === String(formId));
-            if (obj) filtrados.push(obj);
-        }
-    });
-    generarResumenKanban(filtrados);
-}
-
-// =========================
-// POLLING Y RED
-// =========================
-// Definir showToast si no existe
 if (typeof showToast !== 'function') {
     function showToast(mensaje) {
         Swal.fire({
@@ -462,18 +486,51 @@ if (typeof showToast !== 'function') {
             icon: 'success',
             title: mensaje,
             showConfirmButton: false,
-            timer: 3000,
-            timerProgressBar: true
+            timer: 2500,
+            timerProgressBar: true,
         });
     }
 }
 
-let pollingIntervalId = null;
+function cargarFlujoPorFecha(fechaSeleccionada) {
+    const selected = fechaSeleccionada || moment().format('YYYY-MM-DD');
+    const dateInput = document.getElementById('kanbanDateFilter');
+    if (dateInput) dateInput.value = selected;
+
+    showLoader();
+    return fetch(`/v2/pacientes/flujo/tablero?fecha=${encodeURIComponent(selected)}&modo=visita`)
+        .then(response => response.json())
+        .then(data => {
+            allSolicitudes = Array.isArray(data) ? data : [];
+            poblarAfiliacionesUnicas(allSolicitudes);
+            llenarDoctores(allSolicitudes);
+            renderTabActivo();
+        })
+        .catch(error => {
+            console.error('Error al cargar el flujo de pacientes:', error);
+            Swal.fire('Error', 'No se pudo cargar el flujo de pacientes.', 'error');
+        })
+        .finally(hideLoader);
+}
+
+function verificarCambiosRecientes() {
+    const url = new URL('/v2/pacientes/flujo/recientes', window.location.origin);
+    if (ultimoTimestamp) url.searchParams.set('desde', ultimoTimestamp);
+
+    fetch(url)
+        .then(response => response.json())
+        .then(data => {
+            if (data?.timestamp) ultimoTimestamp = data.timestamp;
+            if (Array.isArray(data?.pacientes) && data.pacientes.length > 0) {
+                return cargarFlujoPorFecha(document.getElementById('kanbanDateFilter')?.value || moment().format('YYYY-MM-DD'));
+            }
+            return null;
+        })
+        .catch(error => console.error('Error al verificar cambios recientes:', error));
+}
 
 function startPolling() {
-    if (!pollingIntervalId) {
-        pollingIntervalId = setInterval(verificarCambiosRecientes, 30000);
-    }
+    if (!pollingIntervalId) pollingIntervalId = setInterval(verificarCambiosRecientes, 30000);
 }
 
 function stopPolling() {
@@ -492,118 +549,20 @@ document.addEventListener('visibilitychange', function () {
     }
 });
 
-function verificarCambiosRecientes() {
-    const url = new URL('/v2/pacientes/flujo/recientes', window.location.origin);
-    if (ultimoTimestamp) {
-        url.searchParams.set('desde', ultimoTimestamp);
-    }
-
-    showLoader();
-    fetch(url)
-        .then(response => response.json())
-        .then(data => {
-            if (data && Array.isArray(data.pacientes) && data.pacientes.length > 0) {
-                // Data nueva, refrescamos el flujo completo (no borramos DOM todavía)
-                const today = moment().format('YYYY-MM-DD');
-                // 🚩 No borres columnas hasta tener los datos:
-                fetch(`/v2/pacientes/flujo/tablero?fecha=${today}&modo=visita`)
-                    .then(response => response.json())
-                    .then(flujo => {
-                        // 1. Compara la data anterior con la nueva para detectar movimientos de estado (opcional)
-                        const prevData = JSON.stringify(allSolicitudes);
-                        allSolicitudes = flujo;
-
-                        // 2. Refresca los filtros únicos (afiliaciones, doctores, etc.)
-                        poblarAfiliacionesUnicas(allSolicitudes);
-
-                        // 3. Repinta SOLO el tab activo, esto ya limpia columnas y vuelve a poner tarjetas con los nuevos estados
-                        renderTabActivo();
-
-                        // 4. Loader fuera
-                        hideLoader();
-
-                        // 5. Banner visual si hubo realmente cambios en la data (opcional)
-                        if (prevData !== JSON.stringify(flujo)) {
-                            const alerta = document.createElement('div');
-                            alerta.textContent = 'Tablero actualizado ✅';
-                            alerta.style.position = 'fixed';
-                            alerta.style.top = '20px';
-                            alerta.style.right = '20px';
-                            alerta.style.padding = '10px 20px';
-                            alerta.style.backgroundColor = '#28a745';
-                            alerta.style.color = '#fff';
-                            alerta.style.fontWeight = 'bold';
-                            alerta.style.borderRadius = '5px';
-                            alerta.style.boxShadow = '0 2px 6px rgba(0, 0, 0, 0.2)';
-                            alerta.style.zIndex = '9999';
-                            document.body.appendChild(alerta);
-
-                            setTimeout(() => {
-                                document.body.removeChild(alerta);
-                            }, 3000);
-                        }
-                    })
-                    .catch(err => {
-                        hideLoader();
-                        console.error('❌ Error al refrescar flujo:', err);
-                    });
-            } else {
-                // No hay cambios recientes, oculta loader si estaba visible
-                hideLoader();
-            }
-            if (data && data.timestamp) {
-                ultimoTimestamp = data.timestamp;
-            }
-        })
-        .catch(err => {
-            hideLoader();
-            console.error('❌ Error al verificar cambios recientes:', err);
-        });
-}
-
-// =========================
-// INICIALIZACIÓN DE INTERFAZ Y LISTENERS
-// =========================
 $(document).ready(function () {
     const dateInput = document.getElementById('kanbanDateFilter');
-
-    function cargarFlujoPorFecha(fechaSeleccionada) {
-        const selected = fechaSeleccionada || moment().format('YYYY-MM-DD');
-
-        if (dateInput) {
-            dateInput.value = selected;
-        }
-
-        renderColumnasVisita();
-        showLoader();
-        fetch(`/v2/pacientes/flujo/tablero?fecha=${selected}&modo=visita`)
-            .then(response => response.json())
-            .then(data => {
-                allSolicitudes = data;
-                poblarAfiliacionesUnicas(allSolicitudes);
-                hideLoader();
-                renderTabActivo();
-            })
-            .catch(error => {
-                hideLoader();
-                console.error('Error al cargar las solicitudes del flujo:', error);
-            });
-    }
-
-    // Primero renderiza las columnas de Visitas
-    renderColumnasVisita();
-
-    // Iniciar polling de cambios recientes cada 30 segundos SOLO cuando visible
-    startPolling();
-
-    // Cargar solicitudes por defecto usando la fecha de hoy al cargar la página
     const today = moment().format('YYYY-MM-DD');
-    if (dateInput) {
-        dateInput.value = today;
-    }
-    cargarFlujoPorFecha(today);
 
-    // Filtros básicos: ahora filtran en frontend sin recargar
+    if (dateInput) dateInput.value = today;
+
+    document.querySelectorAll('.tab-kanban').forEach(tab => {
+        tab.addEventListener('click', function () {
+            document.querySelectorAll('.tab-kanban').forEach(item => item.classList.remove('active'));
+            this.classList.add('active');
+            renderTabActivo();
+        });
+    });
+
     $('#kanbanDateFilter')
         .datepicker({
             autoclose: true,
@@ -614,17 +573,18 @@ $(document).ready(function () {
             language: 'es',
         })
         .on('changeDate', function (event) {
-            const selected = event?.format?.('yyyy-mm-dd') || (dateInput ? dateInput.value : '') || moment().format('YYYY-MM-DD');
+            const selected = event?.format?.('yyyy-mm-dd') || dateInput?.value || today;
             cargarFlujoPorFecha(selected);
         })
         .on('clearDate', function () {
-            cargarFlujoPorFecha(moment().format('YYYY-MM-DD'));
+            cargarFlujoPorFecha(today);
         });
 
-    // Listeners para filtros en frontend
-    ['kanbanDoctorFilter', 'kanbanAfiliacionFilter', 'kanbanDateFilter'].forEach(id => {
+    ['kanbanDoctorFilter', 'kanbanAfiliacionFilter'].forEach(id => {
         const input = document.getElementById(id);
-        if (input) input.addEventListener('input', renderTabActivo);
-        if (input && input.tagName === 'SELECT') input.addEventListener('change', renderTabActivo);
+        if (input) input.addEventListener('change', renderTabActivo);
     });
+
+    cargarFlujoPorFecha(today);
+    startPolling();
 });
