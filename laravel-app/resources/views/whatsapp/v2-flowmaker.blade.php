@@ -173,6 +173,33 @@
         gap: .75rem;
         align-items: start;
     }
+    .wa-flow-item__order {
+        display: flex;
+        align-items: center;
+        gap: .35rem;
+        flex-shrink: 0;
+    }
+    .wa-flow-order-control {
+        border: 1px solid rgba(148, 163, 184, .22);
+        border-radius: 999px;
+        background: #f8fafc;
+        color: #0f172a;
+        width: 28px;
+        height: 28px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        transition: background .18s ease, border-color .18s ease, color .18s ease;
+    }
+    .wa-flow-order-control:hover:not(:disabled) {
+        background: #e0f2fe;
+        border-color: rgba(14, 165, 233, .36);
+        color: #0369a1;
+    }
+    .wa-flow-order-control:disabled {
+        opacity: .35;
+        cursor: not-allowed;
+    }
     .wa-flow-item__name {
         font-weight: 800;
         color: #0f172a;
@@ -804,6 +831,40 @@
         font-size: 12px;
         color: #64748b;
         margin-top: .6rem;
+    }
+    .wa-flow-action-result {
+        display: none;
+        margin-top: 12px;
+        border: 1px solid rgba(148, 163, 184, .28);
+        border-radius: 16px;
+        background: rgba(248, 250, 252, .92);
+        padding: 12px;
+    }
+    .wa-flow-action-result.is-visible {
+        display: block;
+    }
+    .wa-flow-action-result.is-ok {
+        border-color: rgba(16, 185, 129, .34);
+        background: rgba(236, 253, 245, .92);
+    }
+    .wa-flow-action-result.is-error {
+        border-color: rgba(244, 63, 94, .34);
+        background: rgba(255, 241, 242, .94);
+    }
+    .wa-flow-action-result__title {
+        font-size: 12px;
+        font-weight: 800;
+        color: #0f172a;
+        margin-bottom: 8px;
+    }
+    .wa-flow-action-result__body {
+        margin: 0;
+        max-height: 260px;
+        overflow: auto;
+        white-space: pre-wrap;
+        font-size: 12px;
+        line-height: 1.55;
+        color: #334155;
     }
     .wa-flow-runtime-strip {
         display: grid;
@@ -1652,9 +1713,10 @@ document.addEventListener('DOMContentLoaded', function () {
         store_consent: 'Guardar consentimiento',
         handoff_agent: 'Derivar a agente',
         ai_agent: 'AI Agent',
+        sigcenter_agenda: 'Agendamiento Sigcenter',
     };
     const actionLabel = (action) => actionTypeLabels[String(action?.type || '')] || String(action?.type || 'accion').replaceAll('_', ' ');
-    const actionTypeSelectOptions = (selectedType = 'send_message') => ['send_message', 'send_buttons', 'send_list', 'send_template', 'send_sequence', 'set_state', 'set_context', 'store_consent', 'handoff_agent', 'ai_agent']
+    const actionTypeSelectOptions = (selectedType = 'send_message') => ['send_message', 'send_buttons', 'send_list', 'send_template', 'send_sequence', 'set_state', 'set_context', 'store_consent', 'handoff_agent', 'ai_agent', 'sigcenter_agenda']
         .map((type) => `
             <option value="${type}" ${type === selectedType ? 'selected' : ''}>${escapeHtml(actionTypeLabels[type] || type)}</option>
         `).join('');
@@ -1861,11 +1923,101 @@ document.addEventListener('DOMContentLoaded', function () {
             case 'ai_agent':
                 ensureAiAgentDefaults(action);
                 break;
+            case 'sigcenter_agenda':
+                ensureSigcenterAgendaDefaults(action);
+                break;
             default:
                 if (action.message && typeof action.message === 'object') {
                     ensureMessageBody(action);
                 }
                 break;
+        }
+    };
+    const ensureSigcenterAgendaDefaults = (action) => {
+        if (!action || action.type !== 'sigcenter_agenda') {
+            return;
+        }
+        if (typeof action.operation !== 'string') {
+            action.operation = 'list_specialties';
+        }
+        if (!['list_specialties', 'list_doctors', 'list_sedes', 'list_procedimientos', 'list_days', 'list_times', 'book_appointment'].includes(action.operation)) {
+            action.operation = 'list_specialties';
+        }
+        if (!Number.isFinite(Number(action.company_id))) {
+            action.company_id = 113;
+        }
+        if (typeof action.ID_SEDE !== 'string' && typeof action.ID_SEDE !== 'number') {
+            action.ID_SEDE = '3';
+        }
+        ['especialidad', 'subespecialidad', 'trabajador_id', 'FECHA', 'procedimiento_id', 'fecha_inicio', 'identificacion', 'agenda_id', 'estado_pago', 'store_result_as', 'prompt', 'list_button_text', 'list_section_title', 'save_response_as', 'next_state'].forEach((field) => {
+            if (typeof action[field] !== 'string' && typeof action[field] !== 'number') {
+                action[field] = '';
+            }
+        });
+        if (action.especialidad === '') {
+            action.especialidad = 'Cirujano Oftalmólogo';
+        }
+        if (typeof action.action !== 'string') {
+            action.action = 'CREATE';
+        }
+        if (typeof action.requires_confirmation !== 'boolean') {
+            action.requires_confirmation = action.operation === 'book_appointment';
+        }
+        if (typeof action.send_result !== 'boolean') {
+            action.send_result = ['list_specialties', 'list_doctors'].includes(action.operation);
+        }
+        const defaults = {
+            list_specialties: {
+                store_result_as: 'agenda_especialidades',
+                prompt: '¿Qué especialidad oftalmológica necesitas?',
+                list_section_title: 'Especialidades',
+                save_response_as: 'subespecialidad',
+                next_state: 'agenda_esperando_subespecialidad',
+            },
+            list_doctors: {
+                store_result_as: 'agenda_medicos',
+                prompt: 'Elige el médico con el que deseas agendar.',
+                list_section_title: 'Médicos disponibles',
+                save_response_as: 'trabajador_id',
+                next_state: 'agenda_esperando_medico',
+            },
+            list_sedes: {
+                store_result_as: 'sigcenter_sedes',
+                prompt: 'Elige la sede para tu cita.',
+                list_section_title: 'Sedes',
+                save_response_as: 'sede_id',
+                next_state: 'agenda_esperando_sede',
+            },
+            list_procedimientos: {
+                store_result_as: 'sigcenter_procedimientos',
+                prompt: 'Elige el procedimiento para tu cita.',
+                list_section_title: 'Procedimientos',
+                save_response_as: 'procedimiento_id',
+                next_state: 'agenda_esperando_procedimiento',
+            },
+            list_days: {
+                store_result_as: 'sigcenter_dias',
+                prompt: 'Elige el día disponible para tu cita.',
+                list_section_title: 'Días disponibles',
+                save_response_as: 'fecha',
+                next_state: 'agenda_esperando_dia',
+            },
+            list_times: {
+                store_result_as: 'sigcenter_horarios',
+                prompt: 'Elige el horario disponible para tu cita.',
+                list_section_title: 'Horarios',
+                save_response_as: 'fecha_inicio',
+                next_state: 'agenda_esperando_horario',
+            },
+        };
+        const operationDefaults = defaults[action.operation] || {};
+        Object.entries(operationDefaults).forEach(([field, value]) => {
+            if (String(action[field] || '').trim() === '') {
+                action[field] = value;
+            }
+        });
+        if (String(action.list_button_text || '').trim() === '') {
+            action.list_button_text = 'Ver opciones';
         }
     };
     const ensureAiAgentDefaults = (action) => {
@@ -1968,7 +2120,53 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
 
+        if (action.type === 'sigcenter_agenda' && field === 'operation') {
+            action.operation = String(value || 'list_days');
+            action.requires_confirmation = action.operation === 'book_appointment';
+            ['store_result_as', 'prompt', 'list_section_title', 'save_response_as', 'next_state'].forEach((defaultedField) => {
+                action[defaultedField] = '';
+            });
+            ensureSigcenterAgendaDefaults(action);
+            return;
+        }
+
+        if (action.type === 'sigcenter_agenda' && field === 'send_result') {
+            action.send_result = value === true || value === '1' || value === 'true';
+            return;
+        }
+
         setNestedValue(action, field, value);
+    };
+    const splitConditionValues = (value) => String(value || '')
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean);
+    const normalizeConditionPayload = (condition) => {
+        if (!condition || typeof condition !== 'object') {
+            return;
+        }
+        const type = String(condition.type || 'always');
+        if (type === 'message_in') {
+            condition.values = splitConditionValues(condition.value);
+            delete condition.keywords;
+            delete condition.pattern;
+            return;
+        }
+        if (type === 'message_contains') {
+            condition.keywords = splitConditionValues(condition.value);
+            delete condition.values;
+            delete condition.pattern;
+            return;
+        }
+        if (type === 'message_matches') {
+            condition.pattern = String(condition.value || '');
+            delete condition.values;
+            delete condition.keywords;
+            return;
+        }
+        delete condition.values;
+        delete condition.keywords;
+        delete condition.pattern;
     };
     const templateSelectOptions = (selectedValue = '') => {
         const current = String(selectedValue || '');
@@ -2055,6 +2253,7 @@ document.addEventListener('DOMContentLoaded', function () {
             store_consent: 'Registraría consentimiento',
             handoff_agent: 'Derivaría a un agente',
             ai_agent: 'Respondería con IA',
+            sigcenter_agenda: 'Consultaría o agendaría en Sigcenter',
             conditional: 'Evaluaría una condición',
         };
 
@@ -2130,6 +2329,39 @@ document.addEventListener('DOMContentLoaded', function () {
                     <span class="wa-flow-sim-button">Handoff: ${action?.suggested_handoff ? 'Sí' : 'No'}</span>
                     <span class="wa-flow-sim-button">Motivos: ${escapeHtml(reasons)}</span>
                 </div>
+            `;
+        } else if (type === 'sigcenter_agenda') {
+            const missing = Array.isArray(action?.missing_fields) ? action.missing_fields : [];
+            const payload = action?.payload && typeof action.payload === 'object' ? action.payload : {};
+            const outbound = action?.outbound_message && typeof action.outbound_message === 'object' ? action.outbound_message : null;
+            const rows = Array.isArray(outbound?.sections?.[0]?.rows) ? outbound.sections[0].rows : [];
+            const listPreview = outbound ? `
+                <div class="wa-flow-sim-action__body">
+                    <strong>Lista que verá el paciente:</strong> ${escapeHtml(outbound.body || 'Elige una opción')}
+                </div>
+                <div class="wa-flow-sim-button-row">
+                    ${rows.length ? rows.map((row) => `<span class="wa-flow-sim-button">${escapeHtml(row?.title || row?.id || 'Opción')}</span>`).join('') : '<span class="text-muted">La lista se llenará al ejecutar la consulta.</span>'}
+                </div>
+                <div class="wa-flow-sim-button-row">
+                    <span class="wa-flow-sim-button">Guarda respuesta en: ${escapeHtml(action?.save_response_as || '—')}</span>
+                    <span class="wa-flow-sim-button">Siguiente estado: ${escapeHtml(action?.next_state || '—')}</span>
+                </div>
+            ` : '';
+            body = `
+                <div class="wa-flow-sim-action__body">
+                    ${escapeHtml(action?.label || 'Acción Sigcenter')}
+                    ${action?.mutates_agenda ? '<strong> Requiere confirmación antes de crear la cita real.</strong>' : ''}
+                </div>
+                ${listPreview}
+                <div class="wa-flow-sim-button-row">
+                    <span class="wa-flow-sim-button">Endpoint: ${escapeHtml(action?.endpoint || '—')}</span>
+                    <span class="wa-flow-sim-button">Método: ${escapeHtml(action?.method || '—')}</span>
+                    <span class="wa-flow-sim-button">Estado: ${missing.length ? `faltan ${escapeHtml(missing.join(', '))}` : 'listo'}</span>
+                </div>
+                <details class="wa-flow-sim-details">
+                    <summary>Ver payload que se enviaría</summary>
+                    <pre class="wa-flow-sim-json">${escapeHtml(JSON.stringify(payload, null, 2))}</pre>
+                </details>
             `;
         } else {
             body = `<div class="wa-flow-sim-action__body">Acción ejecutada: <strong>${escapeHtml(type || 'desconocida')}</strong>.</div>`;
@@ -2215,6 +2447,26 @@ document.addEventListener('DOMContentLoaded', function () {
             </div>
         `;
     };
+    const formatSimulationSummary = (result) => {
+        if (!result || typeof result !== 'object') {
+            return 'Todavía no se ejecutó simulación.';
+        }
+        if (!result.matched) {
+            return 'Sin match para el mensaje y contexto actuales.';
+        }
+
+        const actionTypes = Array.isArray(result.actions)
+            ? result.actions.map((action) => humanizeActionType(action?.type || '')).filter(Boolean)
+            : [];
+        const finalState = result?.context_after?.state || result?.facts?.state || '—';
+
+        return [
+            `Escenario: ${result?.scenario?.name || result?.scenario?.id || '—'}`,
+            `Acciones: ${actionTypes.join(', ') || 'sin acciones'}`,
+            `Estado final: ${finalState}`,
+            `Handoff: ${result?.handoff_requested ? 'sí' : 'no'}`,
+        ].join('\n');
+    };
     const formatCompareSummary = (result) => {
         if (!result || !result.parity) {
             return 'Todavía no se comparó contra legacy.';
@@ -2240,6 +2492,9 @@ document.addEventListener('DOMContentLoaded', function () {
             return 'message';
         }
         if (type === 'send_template') {
+            return 'template';
+        }
+        if (type === 'sigcenter_agenda') {
             return 'template';
         }
         if (type === 'handoff_agent') {
@@ -2718,13 +2973,26 @@ document.addEventListener('DOMContentLoaded', function () {
             const isActive = scenario.id === selectedScenarioId;
             const actionCount = Array.isArray(scenario.actions) ? scenario.actions.length : 0;
             const conditionCount = Array.isArray(scenario.conditions) ? scenario.conditions.length : 0;
+            const absoluteIndex = getScenarios().findIndex((item) => String(item?.id) === String(scenario.id));
+            const priority = absoluteIndex + 1;
+            const isFirst = absoluteIndex <= 0;
+            const isLast = absoluteIndex >= getScenarios().length - 1;
 
             return `
-                <button type="button" class="wa-flow-item ${isActive ? 'is-active' : ''}" data-scenario-id="${escapeHtml(scenario.id)}">
+                <div class="wa-flow-item ${isActive ? 'is-active' : ''}" data-scenario-id="${escapeHtml(scenario.id)}" role="button" tabindex="0">
                     <div class="wa-flow-item__top">
                         <div>
                             <div class="wa-flow-item__name">${escapeHtml(scenario.name || scenario.id || 'Escenario')}</div>
                             <div class="small text-muted">${escapeHtml(scenario.description || 'Sin descripción')}</div>
+                        </div>
+                        <div class="wa-flow-item__order" aria-label="Orden del escenario">
+                            <span class="wa-flow-badge wa-flow-badge--count">Prioridad ${priority}</span>
+                            <button type="button" class="wa-flow-order-control" data-scenario-order="${escapeHtml(scenario.id)}" data-direction="-1" title="Subir prioridad" ${isFirst ? 'disabled' : ''}>
+                                <i class="mdi mdi-arrow-up"></i>
+                            </button>
+                            <button type="button" class="wa-flow-order-control" data-scenario-order="${escapeHtml(scenario.id)}" data-direction="1" title="Bajar prioridad" ${isLast ? 'disabled' : ''}>
+                                <i class="mdi mdi-arrow-down"></i>
+                            </button>
                         </div>
                     </div>
                     <div class="wa-flow-item__meta">
@@ -2734,7 +3002,7 @@ document.addEventListener('DOMContentLoaded', function () {
                         <span class="wa-flow-badge wa-flow-badge--count">${actionCount} acciones</span>
                         <span class="wa-flow-badge wa-flow-badge--count">${conditionCount} condiciones</span>
                     </div>
-                </button>
+                </div>
             `;
         }).join('');
 
@@ -2743,6 +3011,23 @@ document.addEventListener('DOMContentLoaded', function () {
                 selectedScenarioId = node.getAttribute('data-scenario-id');
                 renderScenarioList();
                 renderScenarioCanvas();
+            });
+            node.addEventListener('keydown', (event) => {
+                if (event.key !== 'Enter' && event.key !== ' ') {
+                    return;
+                }
+                event.preventDefault();
+                selectedScenarioId = node.getAttribute('data-scenario-id');
+                renderScenarioList();
+                renderScenarioCanvas();
+            });
+        });
+        scenarioList.querySelectorAll('[data-scenario-order]').forEach((node) => {
+            node.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                selectedScenarioId = node.getAttribute('data-scenario-order');
+                moveScenario(Number(node.getAttribute('data-direction') || 0));
             });
         });
     };
@@ -3003,7 +3288,136 @@ document.addEventListener('DOMContentLoaded', function () {
                     </div>
                     <div class="wa-flow-inline-note">Configura thresholds, fallback y filtros KB para que el preview del AI Agent sea auditable.</div>
                 ` : '';
-                const defaultValueEditor = !['send_buttons', 'send_list', 'send_template', 'handoff_agent', 'set_state', 'ai_agent'].includes(type) ? `
+                const sigcenterOperation = action.operation || 'list_specialties';
+                const showAgendaField = (field) => {
+                    const visibility = {
+                        especialidad: ['list_specialties', 'list_doctors'],
+                        subespecialidad: ['list_doctors'],
+                        trabajador_id: ['list_sedes', 'list_procedimientos', 'list_days', 'list_times', 'book_appointment'],
+                        ID_SEDE: ['list_days', 'list_times', 'book_appointment'],
+                        FECHA: ['list_times'],
+                        identificacion: ['book_appointment'],
+                        procedimiento_id: ['book_appointment'],
+                        fecha_inicio: ['book_appointment'],
+                        store_result_as: ['list_specialties', 'list_doctors', 'list_sedes', 'list_procedimientos', 'list_days', 'list_times', 'book_appointment'],
+                        action: ['book_appointment'],
+                        agenda_id: ['book_appointment'],
+                        estado_pago: ['book_appointment'],
+                    };
+                    return (visibility[field] || []).includes(sigcenterOperation);
+                };
+                const sigcenterAgendaEditor = type === 'sigcenter_agenda' ? `
+                    <div class="wa-flow-form-grid">
+                        <div class="wa-flow-editor-field">
+                            <label>Qué hará</label>
+                            <select data-action-config="${index}" data-field="operation">
+                                ${[
+                                    ['list_specialties', 'Listar especialidades'],
+                                    ['list_doctors', 'Listar médicos por especialidad'],
+                                    ['list_sedes', 'Consultar sedes'],
+                                    ['list_procedimientos', 'Consultar procedimientos'],
+                                    ['list_days', 'Buscar días disponibles'],
+                                    ['list_times', 'Buscar horarios de un día'],
+                                    ['book_appointment', 'Agendar cita real'],
+                                ].map(([value, label]) => `
+                                    <option value="${value}" ${action.operation === value ? 'selected' : ''}>${escapeHtml(label)}</option>
+                                `).join('')}
+                            </select>
+                        </div>
+                        ${showAgendaField('especialidad') ? `<div class="wa-flow-editor-field">
+                            <label>Especialidad base</label>
+                            <input type="text" data-action-config="${index}" data-field="especialidad" placeholder="Cirujano Oftalmólogo" value="${escapeHtml(action?.especialidad || 'Cirujano Oftalmólogo')}">
+                        </div>` : ''}
+                        ${showAgendaField('subespecialidad') ? `<div class="wa-flow-editor-field">
+                            <label>Subespecialidad elegida</label>
+                            <input type="text" data-action-config="${index}" data-field="subespecialidad" placeholder="Ej: Retina y Vítreo" value="${escapeHtml(action?.subespecialidad || '')}">
+                        </div>` : ''}
+                        ${showAgendaField('trabajador_id') ? `<div class="wa-flow-editor-field">
+                            <label>Doctor / trabajador ID</label>
+                            <input type="text" data-action-config="${index}" data-field="trabajador_id" placeholder="Ej: 123" value="${escapeHtml(action?.trabajador_id || '')}">
+                        </div>` : ''}
+                        ${showAgendaField('ID_SEDE') ? `<div class="wa-flow-editor-field">
+                            <label>Sede ID</label>
+                            <input type="text" data-action-config="${index}" data-field="ID_SEDE" placeholder="Ej: 3" value="${escapeHtml(action?.ID_SEDE ?? '3')}">
+                        </div>` : ''}
+                        ${showAgendaField('FECHA') ? `<div class="wa-flow-editor-field">
+                            <label>Fecha para horarios</label>
+                            <input type="date" data-action-config="${index}" data-field="FECHA" value="${escapeHtml(action?.FECHA || '')}">
+                        </div>` : ''}
+                        ${showAgendaField('identificacion') ? `<div class="wa-flow-editor-field">
+                            <label>HC / identificación</label>
+                            <input type="text" data-action-config="${index}" data-field="identificacion" placeholder="Se puede tomar del contexto" value="${escapeHtml(action?.identificacion || '')}">
+                        </div>` : ''}
+                        ${showAgendaField('procedimiento_id') ? `<div class="wa-flow-editor-field">
+                            <label>Procedimiento ID</label>
+                            <input type="text" data-action-config="${index}" data-field="procedimiento_id" value="${escapeHtml(action?.procedimiento_id || '')}">
+                        </div>` : ''}
+                        ${showAgendaField('fecha_inicio') ? `<div class="wa-flow-editor-field">
+                            <label>Fecha inicio cita</label>
+                            <input type="text" data-action-config="${index}" data-field="fecha_inicio" placeholder="YYYY-MM-DD HH:mm:ss" value="${escapeHtml(action?.fecha_inicio || '')}">
+                        </div>` : ''}
+                        ${showAgendaField('store_result_as') ? `<div class="wa-flow-editor-field">
+                            <label>Guardar resultado como</label>
+                            <input type="text" data-action-config="${index}" data-field="store_result_as" placeholder="sigcenter_dias" value="${escapeHtml(action?.store_result_as || '')}">
+                        </div>` : ''}
+                        ${sigcenterOperation !== 'book_appointment' ? `<div class="wa-flow-editor-field">
+                            <label>Enviar resultado al paciente</label>
+                            <select data-action-config="${index}" data-field="send_result">
+                                <option value="1" ${action?.send_result ? 'selected' : ''}>Sí, como lista interactiva</option>
+                                <option value="0" ${!action?.send_result ? 'selected' : ''}>No, solo consultar</option>
+                            </select>
+                        </div>` : ''}
+                        ${sigcenterOperation !== 'book_appointment' && action?.send_result ? `<div class="wa-flow-editor-field" style="grid-column: 1 / -1;">
+                            <label>Pregunta para el paciente</label>
+                            <textarea data-action-config="${index}" data-field="prompt">${escapeHtml(action?.prompt || '')}</textarea>
+                        </div>
+                        <div class="wa-flow-editor-field">
+                            <label>Texto del botón</label>
+                            <input type="text" maxlength="20" data-action-config="${index}" data-field="list_button_text" value="${escapeHtml(action?.list_button_text || 'Ver opciones')}">
+                        </div>
+                        <div class="wa-flow-editor-field">
+                            <label>Título de la lista</label>
+                            <input type="text" maxlength="24" data-action-config="${index}" data-field="list_section_title" value="${escapeHtml(action?.list_section_title || '')}">
+                        </div>
+                        <div class="wa-flow-editor-field">
+                            <label>Guardar respuesta en</label>
+                            <input type="text" data-action-config="${index}" data-field="save_response_as" value="${escapeHtml(action?.save_response_as || '')}">
+                        </div>
+                        <div class="wa-flow-editor-field">
+                            <label>Siguiente estado</label>
+                            <input type="text" data-action-config="${index}" data-field="next_state" value="${escapeHtml(action?.next_state || '')}">
+                        </div>` : ''}
+                        ${showAgendaField('action') ? `<div class="wa-flow-editor-field">
+                            <label>Modo de agenda</label>
+                            <select data-action-config="${index}" data-field="action">
+                                <option value="CREATE" ${String(action?.action || 'CREATE').toUpperCase() === 'CREATE' ? 'selected' : ''}>Crear cita nueva</option>
+                                <option value="UPDATE" ${String(action?.action || '').toUpperCase() === 'UPDATE' ? 'selected' : ''}>Reagendar cita existente</option>
+                            </select>
+                        </div>` : ''}
+                        ${showAgendaField('agenda_id') ? `<div class="wa-flow-editor-field">
+                            <label>Agenda ID existente</label>
+                            <input type="text" data-action-config="${index}" data-field="agenda_id" placeholder="Solo para reagendar" value="${escapeHtml(action?.agenda_id || '')}">
+                        </div>` : ''}
+                        ${showAgendaField('estado_pago') ? `<div class="wa-flow-editor-field">
+                            <label>Estado de pago</label>
+                            <input type="text" data-action-config="${index}" data-field="estado_pago" placeholder="Opcional" value="${escapeHtml(action?.estado_pago || '')}">
+                        </div>` : ''}
+                    </div>
+                    <div class="wa-flow-inline-note">
+                        Este nodo representa un solo paso del agendamiento. Después de probarlo, usa la respuesta del paciente para guardar contexto y pasar al siguiente nodo.
+                    </div>
+                    <div class="wa-flow-inline-actions mt-10">
+                        <button type="button" class="btn btn-sm btn-outline-success" data-action-test-sigcenter="${index}">
+                            ${action.operation === 'book_appointment' ? 'Confirmar y agendar en Sigcenter' : 'Probar en Sigcenter'}
+                        </button>
+                        <span class="small text-muted">Usa este botón para probar disponibilidad sin publicar el flujo.</span>
+                    </div>
+                    <div class="wa-flow-action-result" data-action-result="${index}">
+                        <div class="wa-flow-action-result__title">Resultado Sigcenter</div>
+                        <pre class="wa-flow-action-result__body"></pre>
+                    </div>
+                ` : '';
+                const defaultValueEditor = !['send_buttons', 'send_list', 'send_template', 'handoff_agent', 'set_state', 'ai_agent', 'sigcenter_agenda'].includes(type) ? `
                     <div class="wa-flow-form-grid">
                         <div class="wa-flow-editor-field" style="grid-column: 1 / -1;">
                             <label>Valor principal</label>
@@ -3038,6 +3452,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     ${handoffEditor}
                     ${stateEditor}
                     ${aiAgentConfig}
+                    ${sigcenterAgendaEditor}
                     <div class="wa-flow-technical">
                         <details>
                             <summary>Ver JSON técnico de esta acción</summary>
@@ -3287,6 +3702,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 } else {
                     scenario.conditions[index][field] = value;
                 }
+                normalizeConditionPayload(scenario.conditions[index]);
                 syncPayloadField();
                 renderScenarioList();
             });
@@ -3350,6 +3766,56 @@ document.addEventListener('DOMContentLoaded', function () {
                 renderScenarioList();
                 if (node.tagName === 'SELECT') {
                     renderScenarioCanvas();
+                }
+            });
+        });
+        canvas.querySelectorAll('[data-action-test-sigcenter]').forEach((node) => {
+            node.addEventListener('click', async () => {
+                const index = Number(node.getAttribute('data-action-test-sigcenter'));
+                const action = scenario.actions[index];
+                const resultNode = canvas.querySelector(`[data-action-result="${index}"]`);
+                const resultBody = resultNode?.querySelector('.wa-flow-action-result__body');
+                if (!Number.isInteger(index) || !action || action.type !== 'sigcenter_agenda' || !resultNode || !resultBody) {
+                    return;
+                }
+
+                const isBooking = action.operation === 'book_appointment';
+                const confirmed = isBooking
+                    ? window.confirm('Esto intentará crear o reagendar una cita real en Sigcenter. ¿Confirmas que el paciente autorizó este agendamiento?')
+                    : false;
+
+                if (isBooking && !confirmed) {
+                    return;
+                }
+
+                node.disabled = true;
+                resultNode.classList.add('is-visible');
+                resultNode.classList.remove('is-ok', 'is-error');
+                resultBody.textContent = 'Consultando Sigcenter...';
+
+                try {
+                    const response = await fetch('/v2/whatsapp/api/flowmaker/sigcenter-agenda/execute', {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                        },
+                        body: JSON.stringify({
+                            action,
+                            context: {},
+                            input: {},
+                            confirmed,
+                        }),
+                    });
+                    const data = await response.json().catch(() => ({}));
+                    resultNode.classList.add(response.ok && data?.ok ? 'is-ok' : 'is-error');
+                    resultBody.textContent = JSON.stringify(data, null, 2);
+                } catch (error) {
+                    resultNode.classList.add('is-error');
+                    resultBody.textContent = error?.message || 'No se pudo consultar Sigcenter.';
+                } finally {
+                    node.disabled = false;
                 }
             });
         });
@@ -3520,17 +3986,40 @@ document.addEventListener('DOMContentLoaded', function () {
     simButton?.addEventListener('click', async function () {
         simOutput.textContent = 'Simulando...';
 
-        const params = new URLSearchParams({
-            wa_number: simNumber?.value || '',
-            text: simText?.value || '',
-            context: simContext?.value || '{}'
-        });
+        let flowPayload;
+        try {
+            flowPayload = JSON.parse(payloadField?.value || '{}');
+        } catch (error) {
+            simOutput.textContent = 'JSON inválido en el builder. Revisa el contrato antes de simular.';
+            return;
+        }
 
         try {
-            const response = await fetch('/v2/whatsapp/api/flowmaker/simulate?' + params.toString(), {
-                credentials: 'same-origin'
+            const response = await fetch('/v2/whatsapp/api/flowmaker/simulate', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                },
+                credentials: 'same-origin',
+                body: JSON.stringify({
+                    flow: flowPayload,
+                    scenario_id: selectedScenarioId || '',
+                    wa_number: simNumber?.value || '',
+                    text: simText?.value || '',
+                    context: simContext?.value || '{}',
+                }),
             });
-            const data = await response.json();
+            const raw = await response.text();
+            let data = null;
+            try {
+                data = raw ? JSON.parse(raw) : null;
+            } catch (error) {
+                throw new Error(raw.trim() || `Respuesta no JSON. HTTP ${response.status}`);
+            }
+            if (!response.ok) {
+                throw new Error(data?.message || data?.error || `Error HTTP ${response.status}`);
+            }
             latestSimulation = data;
             if (data?.scenario?.id) {
                 selectedScenarioId = data.scenario.id;
@@ -3540,7 +4029,7 @@ document.addEventListener('DOMContentLoaded', function () {
             simOutput.innerHTML = renderSimulationResult(data);
             await loadAiRuns();
         } catch (error) {
-            simOutput.textContent = 'No fue posible ejecutar la simulación.';
+            simOutput.textContent = `No fue posible ejecutar la simulación: ${error?.message || 'error desconocido'}`;
         }
     });
 

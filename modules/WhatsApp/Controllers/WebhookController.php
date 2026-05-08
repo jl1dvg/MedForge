@@ -70,6 +70,7 @@ class WebhookController extends BaseController
             $sessionRepository,
             $patientLookup,
             $consentRepository,
+            $pdo,
             $this->flow
         );
         $this->dataProtection = new DataProtectionFlow($this->messenger, $consentRepository, $patientLookup, $settings);

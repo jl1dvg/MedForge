@@ -4,12 +4,14 @@ namespace App\Modules\Whatsapp\Services;
 
 use App\Models\WhatsappAutoresponderSession;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 
 class FlowRuntimePreviewService
 {
     public function __construct(
         private readonly FlowmakerService $flowmakerService = new FlowmakerService(),
         private readonly FlowAiAgentPreviewService $aiAgentPreviewService = new FlowAiAgentPreviewService(),
+        private readonly FlowSigcenterAgendaService $sigcenterAgendaService = new FlowSigcenterAgendaService(),
     ) {
     }
 
@@ -40,6 +42,8 @@ class FlowRuntimePreviewService
         if (!isset($context['state'])) {
             $context['state'] = 'inicio';
         }
+        $context = $this->seedPatientContextFromConversation($context, $waNumber);
+        $context = $this->captureAwaitingInput($context, $text);
 
         $message = [
             'id' => 'preview-' . substr(md5($waNumber . '|' . $text), 0, 12),
@@ -47,8 +51,9 @@ class FlowRuntimePreviewService
             'text' => ['body' => $text],
         ];
         $facts = $this->buildFacts($waNumber, $text, $session, $context, $message);
+        $scenarios = $this->orderedScenariosForSimulation($flow['scenarios'] ?? [], (string) ($input['scenario_id'] ?? ''));
 
-        foreach (($flow['scenarios'] ?? []) as $scenario) {
+        foreach ($scenarios as $scenario) {
             if (!is_array($scenario)) {
                 continue;
             }
@@ -103,6 +108,29 @@ class FlowRuntimePreviewService
     }
 
     /**
+     * @param mixed $scenarios
+     * @return array<int, mixed>
+     */
+    private function orderedScenariosForSimulation(mixed $scenarios, string $preferredScenarioId): array
+    {
+        if (!is_array($scenarios) || $preferredScenarioId === '') {
+            return is_array($scenarios) ? array_values($scenarios) : [];
+        }
+
+        $preferred = [];
+        $others = [];
+        foreach ($scenarios as $scenario) {
+            if (is_array($scenario) && (string) ($scenario['id'] ?? '') === $preferredScenarioId) {
+                $preferred[] = $scenario;
+                continue;
+            }
+            $others[] = $scenario;
+        }
+
+        return array_values(array_merge($preferred, $others));
+    }
+
+    /**
      * @param array<string, mixed> $scenario
      * @param array<string, mixed> $facts
      */
@@ -150,6 +178,7 @@ class FlowRuntimePreviewService
     private function simulateActions(array $actions, array $context, array $input, string $scenarioId): array
     {
         $emitted = [];
+        unset($context['handoff_requested'], $context['handoff_reasons'], $context['handoff_note']);
 
         foreach ($actions as $index => $action) {
             if (!is_array($action)) {
@@ -158,6 +187,35 @@ class FlowRuntimePreviewService
 
             $type = (string) ($action['type'] ?? '');
             if ($type === '') {
+                continue;
+            }
+
+            if ($type === 'lookup_patient') {
+                $context = $this->lookupPatient($action, $context, $input);
+                $emitted[] = [
+                    'type' => $type,
+                    'field' => $action['field'] ?? 'cedula',
+                    'patient_found' => (bool) ($context['patient_found'] ?? false),
+                    'identifier' => $context['cedula'] ?? $context['identifier'] ?? null,
+                    'patient' => $context['patient'] ?? null,
+                ];
+                continue;
+            }
+
+            if ($type === 'conditional') {
+                $matches = $this->actionConditionMatches(is_array($action['condition'] ?? null) ? $action['condition'] : [], $context);
+                $branch = $matches ? ($action['then'] ?? []) : ($action['else'] ?? []);
+                $emitted[] = [
+                    'type' => $type,
+                    'condition' => $action['condition'] ?? null,
+                    'matched' => $matches,
+                    'branch' => $matches ? 'then' : 'else',
+                ];
+                if (is_array($branch)) {
+                    $run = $this->simulateActions($branch, $context, $input, $scenarioId);
+                    $context = $run['context'];
+                    $emitted = array_merge($emitted, $run['actions']);
+                }
                 continue;
             }
 
@@ -251,10 +309,254 @@ class FlowRuntimePreviewService
                 continue;
             }
 
+            if ($type === 'sigcenter_agenda') {
+                if ($this->shouldRequirePatientIdentifierForAgenda($action, $context) && !$this->hasPatientIdentifier($context)) {
+                    $context['state'] = 'esperando_cedula';
+                    $context['awaiting_field'] = 'cedula';
+                    $emitted[] = [
+                        'type' => 'request_patient_identifier',
+                        'message' => [
+                            'type' => 'text',
+                            'body' => 'Antes de agendar, por favor escribe tu número de cédula.',
+                        ],
+                    ];
+                    continue;
+                }
+                $preview = $this->sigcenterAgendaService->preview($action, $context, $input);
+                $context[(string) $preview['store_result_as']] = [
+                    'operation' => $preview['operation'],
+                    'ready' => $preview['ready'],
+                    'preview_only' => true,
+                ];
+                if (!empty($preview['send_result'])) {
+                    if (is_string($preview['save_response_as'] ?? null) && $preview['save_response_as'] !== '') {
+                        $context['awaiting_field'] = $preview['save_response_as'];
+                    }
+                    if (is_string($preview['next_state'] ?? null) && $preview['next_state'] !== '') {
+                        $context['state'] = $preview['next_state'];
+                    }
+                }
+                $emitted[] = $preview;
+                continue;
+            }
+
+            if ($type === 'upsert_patient_from_context') {
+                $context = $this->upsertPatientFromContext($context);
+                $emitted[] = [
+                    'type' => $type,
+                    'identifier' => $context['cedula'] ?? $context['identifier'] ?? null,
+                ];
+                continue;
+            }
+
+            if ($type === 'goto_menu') {
+                $emitted[] = [
+                    'type' => $type,
+                    'message' => [
+                        'type' => 'buttons',
+                        'body' => '¿En qué puedo ayudarte?',
+                        'buttons' => [
+                            ['id' => 'especialidades0', 'title' => 'Agendar cita'],
+                            ['id' => 'ayuda', 'title' => 'Ayuda'],
+                        ],
+                    ],
+                ];
+                continue;
+            }
+
             $emitted[] = ['type' => $type];
         }
 
         return ['actions' => $emitted, 'context' => $context];
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     * @return array<string, mixed>
+     */
+    private function seedPatientContextFromConversation(array $context, string $waNumber): array
+    {
+        if ($waNumber === '') {
+            return $context;
+        }
+
+        $conversation = DB::table('whatsapp_conversations')->where('wa_number', $waNumber)->first();
+        if ($conversation === null) {
+            return $context;
+        }
+
+        $identifier = $this->normalizeIdentifier((string) ($conversation->patient_hc_number ?? ''));
+        if ($identifier !== '') {
+            $context['cedula'] ??= $identifier;
+            $context['identifier'] ??= $identifier;
+            $context['current_identifier'] ??= $identifier;
+            $context['patient_found'] = true;
+        }
+
+        $fullName = trim((string) ($conversation->patient_full_name ?? ''));
+        if ($fullName !== '' && !isset($context['patient'])) {
+            $context['patient'] = [
+                'hc_number' => $identifier,
+                'full_name' => $fullName,
+            ];
+        }
+
+        return $context;
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     * @return array<string, mixed>
+     */
+    private function captureAwaitingInput(array $context, string $text): array
+    {
+        $field = $context['awaiting_field'] ?? null;
+        if (!is_string($field) || trim($field) === '' || trim($text) === '') {
+            return $context;
+        }
+
+        $value = trim($text);
+        $context[trim($field)] = $value;
+        if (in_array(trim($field), ['cedula', 'identificacion', 'identifier', 'hc_number'], true)) {
+            $context['cedula'] = $this->normalizeIdentifier($value);
+            $context['identifier'] = $context['cedula'];
+            $context['current_identifier'] = $context['cedula'];
+        }
+        unset($context['awaiting_field']);
+
+        return $context;
+    }
+
+    /**
+     * @param array<string, mixed> $action
+     * @param array<string, mixed> $context
+     * @param array<string, mixed> $input
+     * @return array<string, mixed>
+     */
+    private function lookupPatient(array $action, array $context, array $input): array
+    {
+        $field = trim((string) ($action['field'] ?? 'cedula'));
+        $source = trim((string) ($action['source'] ?? 'context'));
+        $identifier = $source === 'message'
+            ? $this->normalizeIdentifier((string) ($input['text'] ?? ''))
+            : $this->normalizeIdentifier((string) ($context[$field] ?? $context['cedula'] ?? $context['identifier'] ?? ''));
+
+        if ($identifier === '') {
+            $context['patient_found'] = false;
+            return $context;
+        }
+
+        $context['cedula'] = $identifier;
+        $context['identifier'] = $identifier;
+        $context['current_identifier'] = $identifier;
+
+        $patient = DB::table('patient_data')
+            ->whereRaw("REPLACE(TRIM(COALESCE(hc_number, '')), ' ', '') = ?", [$identifier])
+            ->first();
+
+        if ($patient === null) {
+            $context['patient_found'] = false;
+            return $context;
+        }
+
+        $fullName = $this->patientFullName((array) $patient);
+        $context['patient_found'] = true;
+        $context['patient'] = [
+            'hc_number' => $identifier,
+            'full_name' => $fullName !== '' ? $fullName : $identifier,
+        ];
+
+        return $context;
+    }
+
+    /**
+     * @param array<string, mixed> $condition
+     * @param array<string, mixed> $context
+     */
+    private function actionConditionMatches(array $condition, array $context): bool
+    {
+        $type = (string) ($condition['type'] ?? 'always');
+
+        return match ($type) {
+            'always' => true,
+            'patient_found' => (bool) ($condition['value'] ?? true) === (bool) ($context['patient_found'] ?? isset($context['patient'])),
+            'context_flag' => $this->contextActionFlagMatches($condition, $context),
+            default => false,
+        };
+    }
+
+    /**
+     * @param array<string, mixed> $condition
+     * @param array<string, mixed> $context
+     */
+    private function contextActionFlagMatches(array $condition, array $context): bool
+    {
+        $key = (string) ($condition['key'] ?? '');
+        if ($key === '') {
+            return false;
+        }
+
+        if (!array_key_exists('value', $condition)) {
+            return !empty($context[$key]);
+        }
+
+        return ($context[$key] ?? null) == $condition['value'];
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     * @return array<string, mixed>
+     */
+    private function upsertPatientFromContext(array $context): array
+    {
+        $identifier = $this->normalizeIdentifier((string) ($context['cedula'] ?? $context['identifier'] ?? $context['current_identifier'] ?? ''));
+        if ($identifier !== '') {
+            $context['cedula'] = $identifier;
+            $context['identifier'] = $identifier;
+            $context['current_identifier'] = $identifier;
+        }
+
+        return $context;
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     */
+    private function hasPatientIdentifier(array $context): bool
+    {
+        return $this->normalizeIdentifier((string) ($context['cedula'] ?? $context['identifier'] ?? $context['current_identifier'] ?? '')) !== '';
+    }
+
+    /**
+     * @param array<string, mixed> $action
+     * @param array<string, mixed> $context
+     */
+    private function shouldRequirePatientIdentifierForAgenda(array $action, array $context): bool
+    {
+        $operation = (string) ($action['operation'] ?? '');
+        $state = (string) ($context['state'] ?? '');
+
+        return $operation === 'book_appointment'
+            || str_starts_with($state, 'agenda_')
+            || !empty($context['consent']);
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    private function patientFullName(array $row): string
+    {
+        return trim(preg_replace('/\s+/u', ' ', implode(' ', array_filter([
+            (string) ($row['fname'] ?? ''),
+            (string) ($row['mname'] ?? ''),
+            (string) ($row['lname'] ?? ''),
+            (string) ($row['lname2'] ?? ''),
+        ], static fn (string $value): bool => trim($value) !== ''))) ?? '');
+    }
+
+    private function normalizeIdentifier(string $value): string
+    {
+        return preg_replace('/\D+/', '', $value) ?: trim($value);
     }
 
     /**
@@ -337,10 +639,7 @@ class FlowRuntimePreviewService
      */
     private function messageIn(array $condition, array $facts): bool
     {
-        $values = $condition['values'] ?? [];
-        if (!is_array($values)) {
-            return false;
-        }
+        $values = $this->conditionTextList($condition, 'values');
         $needle = (string) ($facts['message'] ?? '');
         foreach ($values as $value) {
             if (is_string($value) && $needle === $this->normalizeText($value)) {
@@ -356,10 +655,7 @@ class FlowRuntimePreviewService
      */
     private function messageContains(array $condition, array $facts): bool
     {
-        $keywords = $condition['keywords'] ?? [];
-        if (!is_array($keywords)) {
-            return false;
-        }
+        $keywords = $this->conditionTextList($condition, 'keywords');
         $needle = (string) ($facts['message'] ?? '');
         foreach ($keywords as $keyword) {
             if (is_string($keyword) && $keyword !== '' && str_contains($needle, $this->normalizeText($keyword))) {
@@ -375,7 +671,7 @@ class FlowRuntimePreviewService
      */
     private function messageMatches(array $condition, array $facts): bool
     {
-        $pattern = $condition['pattern'] ?? '';
+        $pattern = $condition['pattern'] ?? $condition['value'] ?? '';
         if (!is_string($pattern) || trim($pattern) === '') {
             return false;
         }
@@ -386,6 +682,31 @@ class FlowRuntimePreviewService
             }
         }
         return false;
+    }
+
+    /**
+     * @param array<string, mixed> $condition
+     * @return array<int, string>
+     */
+    private function conditionTextList(array $condition, string $listKey): array
+    {
+        $values = $condition[$listKey] ?? null;
+        if (is_array($values)) {
+            return array_values(array_filter(array_map(
+                static fn (mixed $value): string => trim((string) $value),
+                $values
+            ), static fn (string $value): bool => $value !== ''));
+        }
+
+        $value = $condition['value'] ?? null;
+        if (is_string($value) && trim($value) !== '') {
+            return array_values(array_filter(array_map(
+                static fn (string $item): string => trim($item),
+                explode(',', $value)
+            ), static fn (string $item): bool => $item !== ''));
+        }
+
+        return [];
     }
 
     /**

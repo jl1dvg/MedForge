@@ -29,12 +29,19 @@ class FlowmakerReadController
     public function simulate(Request $request): JsonResponse
     {
         $context = $this->decodeContext($request->input('context'));
-
-        return response()->json($this->previewService->simulate([
+        $flow = $request->input('flow');
+        $input = [
             'wa_number' => (string) $request->input('wa_number', ''),
             'text' => (string) $request->input('text', ''),
             'context' => $context,
-        ]));
+            'scenario_id' => (string) $request->input('scenario_id', ''),
+        ];
+
+        if (is_array($flow)) {
+            return response()->json($this->previewService->simulateAgainstFlow($flow, $input));
+        }
+
+        return response()->json($this->previewService->simulate($input));
     }
 
     public function compare(Request $request): JsonResponse

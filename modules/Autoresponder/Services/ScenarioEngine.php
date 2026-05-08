@@ -8,6 +8,7 @@ use Modules\WhatsApp\Repositories\ContactConsentRepository;
 use Modules\WhatsApp\Services\ConversationService;
 use Modules\WhatsApp\Services\Messenger;
 use Modules\WhatsApp\Services\PatientLookupService;
+use PDO;
 
 use function array_map;
 use function array_unique;
@@ -31,6 +32,7 @@ class ScenarioEngine
     private AutoresponderSessionRepository $sessions;
     private PatientLookupService $patientLookup;
     private ContactConsentRepository $consentRepository;
+    private PDO $pdo;
     /**
      * @var array<string, mixed>
      */
@@ -46,6 +48,7 @@ class ScenarioEngine
         AutoresponderSessionRepository $sessions,
         PatientLookupService $patientLookup,
         ContactConsentRepository $consentRepository,
+        PDO $pdo,
         array $flow
     ) {
         $this->messenger = $messenger;
@@ -53,6 +56,7 @@ class ScenarioEngine
         $this->sessions = $sessions;
         $this->patientLookup = $patientLookup;
         $this->consentRepository = $consentRepository;
+        $this->pdo = $pdo;
         $this->flow = $flow;
         $this->menuKeywords = $this->collectMenuKeywords($flow);
     }
@@ -86,6 +90,10 @@ class ScenarioEngine
         $handled = false;
 
         foreach ($this->flow['scenarios'] ?? [] as $scenario) {
+            if (!$this->scenarioIsPublished($scenario)) {
+                continue;
+            }
+
             if ($this->shouldBypassScenario($scenario, $facts)) {
                 continue;
             }
@@ -175,6 +183,14 @@ class ScenarioEngine
         }
 
         return $this->isMenuKeyword($message);
+    }
+
+    /**
+     * @param mixed $scenario
+     */
+    private function scenarioIsPublished($scenario): bool
+    {
+        return is_array($scenario) && (string) ($scenario['status'] ?? 'published') === 'published';
     }
 
     /**
@@ -289,33 +305,28 @@ class ScenarioEngine
             case 'awaiting_is':
                 return ($facts['awaiting_field'] ?? null) === ($condition['value'] ?? null);
             case 'message_in':
-                $values = $condition['values'] ?? [];
-                if (!is_array($values)) {
-                    return false;
-                }
+                $values = $this->conditionTextList($condition, 'values');
                 $needle = $facts['message'] ?? '';
                 foreach ($values as $value) {
-                    if ($needle === $value) {
+                    if ($needle === $this->normalizeText($value)) {
                         return true;
                     }
                 }
 
                 return false;
             case 'message_contains':
-                $keywords = $condition['keywords'] ?? [];
-                if (!is_array($keywords)) {
-                    return false;
-                }
+                $keywords = $this->conditionTextList($condition, 'keywords');
                 $needle = $facts['message'] ?? '';
                 foreach ($keywords as $keyword) {
-                    if ($keyword !== '' && str_contains($needle, $keyword)) {
+                    $normalizedKeyword = $this->normalizeText($keyword);
+                    if ($normalizedKeyword !== '' && str_contains($needle, $normalizedKeyword)) {
                         return true;
                     }
                 }
 
                 return false;
             case 'message_matches':
-                $pattern = $condition['pattern'] ?? '';
+                $pattern = $condition['pattern'] ?? $condition['value'] ?? '';
                 if (!is_string($pattern) || $pattern === '') {
                     return false;
                 }
@@ -367,6 +378,31 @@ class ScenarioEngine
     }
 
     /**
+     * @param array<string, mixed> $condition
+     * @return array<int, string>
+     */
+    private function conditionTextList(array $condition, string $listKey): array
+    {
+        $values = $condition[$listKey] ?? null;
+        if (is_array($values)) {
+            return array_values(array_filter(array_map(
+                static fn ($value): string => trim((string) $value),
+                $values
+            ), static fn (string $value): bool => $value !== ''));
+        }
+
+        $value = $condition['value'] ?? null;
+        if (is_string($value) && trim($value) !== '') {
+            return array_values(array_filter(array_map(
+                static fn (string $item): string => trim($item),
+                explode(',', $value)
+            ), static fn (string $item): bool => $item !== ''));
+        }
+
+        return [];
+    }
+
+    /**
      * @param array<int, array<string, mixed>> $actions
      * @param array<string, mixed> $env
      * @return array{context: array<string, mixed>}
@@ -374,6 +410,7 @@ class ScenarioEngine
     private function executeActions(array $actions, array $env): array
     {
         $context = $env['context'] ?? [];
+        unset($context['handoff_requested'], $context['handoff_note']);
 
         foreach ($actions as $action) {
             $type = $action['type'] ?? '';
@@ -406,6 +443,11 @@ class ScenarioEngine
                 if (isset($action['template']) && is_array($action['template'])) {
                     $this->messenger->sendTemplateMessage($env['sender'], $action['template']);
                 }
+                continue;
+            }
+
+            if ($type === 'sigcenter_agenda') {
+                $context = $this->executeSigcenterAgendaAction($action, $env, $context);
                 continue;
             }
 
@@ -651,6 +693,191 @@ class ScenarioEngine
         }
 
         $this->messenger->sendTextMessage($recipient, $body);
+    }
+
+    /**
+     * @param array<string, mixed> $action
+     * @param array<string, mixed> $env
+     * @param array<string, mixed> $context
+     * @return array<string, mixed>
+     */
+    private function executeSigcenterAgendaAction(array $action, array $env, array $context): array
+    {
+        $operation = (string) ($action['operation'] ?? 'list_specialties');
+
+        if ($operation === 'list_specialties') {
+            $especialidad = trim((string) ($action['especialidad'] ?? 'Cirujano Oftalmólogo'));
+            if ($especialidad === '') {
+                $especialidad = 'Cirujano Oftalmólogo';
+            }
+            $items = $this->listSchedulingSpecialties($especialidad);
+            $storeKey = trim((string) ($action['store_result_as'] ?? 'agenda_especialidades'));
+            $context[$storeKey !== '' ? $storeKey : 'agenda_especialidades'] = [
+                'operation' => 'list_specialties',
+                'ready' => true,
+                'preview_only' => false,
+                'especialidades' => $items,
+            ];
+
+            if (!empty($action['send_result'])) {
+                $this->sendDynamicList(
+                    (string) $env['sender'],
+                    $this->stringOrDefault($action['prompt'] ?? null, '¿Qué especialidad oftalmológica necesitas?'),
+                    $this->stringOrDefault($action['list_button_text'] ?? null, 'Ver opciones'),
+                    $this->stringOrDefault($action['list_section_title'] ?? null, 'Especialidades'),
+                    array_map(static fn (string $item): array => [
+                        'id' => $item,
+                        'title' => mb_substr($item, 0, 24),
+                        'description' => '',
+                    ], $items)
+                );
+            }
+
+            $saveAs = trim((string) ($action['save_response_as'] ?? 'subespecialidad'));
+            if ($saveAs !== '') {
+                $context['awaiting_field'] = $saveAs;
+            }
+            $nextState = trim((string) ($action['next_state'] ?? 'agenda_esperando_subespecialidad'));
+            if ($nextState !== '') {
+                $context['state'] = $nextState;
+            }
+
+            return $context;
+        }
+
+        if ($operation === 'list_doctors') {
+            $especialidad = trim((string) ($action['especialidad'] ?? 'Cirujano Oftalmólogo'));
+            $subespecialidad = trim((string) ($action['subespecialidad'] ?? ($context['subespecialidad'] ?? '')));
+            $items = $subespecialidad !== '' ? $this->listSchedulingDoctors($especialidad, $subespecialidad) : [];
+            $storeKey = trim((string) ($action['store_result_as'] ?? 'agenda_medicos'));
+            $context[$storeKey !== '' ? $storeKey : 'agenda_medicos'] = [
+                'operation' => 'list_doctors',
+                'ready' => $subespecialidad !== '',
+                'preview_only' => false,
+                'medicos' => $items,
+            ];
+
+            if (!empty($action['send_result']) && $items !== []) {
+                $this->sendDynamicList(
+                    (string) $env['sender'],
+                    $this->stringOrDefault($action['prompt'] ?? null, 'Elige el médico con el que deseas agendar.'),
+                    $this->stringOrDefault($action['list_button_text'] ?? null, 'Ver opciones'),
+                    $this->stringOrDefault($action['list_section_title'] ?? null, 'Médicos disponibles'),
+                    array_map(static fn (array $item): array => [
+                        'id' => (string) ($item['trabajador_id'] ?? $item['id'] ?? ''),
+                        'title' => mb_substr((string) ($item['nombre'] ?? ''), 0, 24),
+                        'description' => mb_substr((string) ($item['subespecialidad'] ?? ''), 0, 72),
+                    ], $items)
+                );
+            }
+
+            $saveAs = trim((string) ($action['save_response_as'] ?? 'trabajador_id'));
+            if ($saveAs !== '') {
+                $context['awaiting_field'] = $saveAs;
+            }
+            $nextState = trim((string) ($action['next_state'] ?? 'agenda_esperando_medico'));
+            if ($nextState !== '') {
+                $context['state'] = $nextState;
+            }
+
+            return $context;
+        }
+
+        return $context;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function listSchedulingSpecialties(string $especialidad): array
+    {
+        $stmt = $this->pdo->prepare(
+            "SELECT DISTINCT subespecialidad
+             FROM users
+             WHERE (
+                 especialidad = :especialidad
+                 OR UPPER(TRIM(COALESCE(especialidad, ''))) = 'CIRUJANO OFTALMÓLOGO'
+                 OR UPPER(TRIM(COALESCE(especialidad, ''))) = 'CIRUJANO OFTALMOLOGO'
+             )
+             AND subespecialidad IS NOT NULL
+             AND subespecialidad <> ''
+             ORDER BY subespecialidad ASC"
+        );
+        $stmt->execute([':especialidad' => $especialidad]);
+
+        $items = [];
+        while (($value = $stmt->fetchColumn()) !== false) {
+            $item = trim((string) $value);
+            if ($item !== '') {
+                $items[] = $item;
+            }
+        }
+
+        return $items;
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function listSchedulingDoctors(string $especialidad, string $subespecialidad): array
+    {
+        $stmt = $this->pdo->prepare(
+            "SELECT id, nombre, email, profile_photo, especialidad, subespecialidad, id_trabajador
+             FROM users
+             WHERE (
+                 especialidad = :especialidad
+                 OR UPPER(TRIM(COALESCE(especialidad, ''))) = 'CIRUJANO OFTALMÓLOGO'
+                 OR UPPER(TRIM(COALESCE(especialidad, ''))) = 'CIRUJANO OFTALMOLOGO'
+             )
+             AND subespecialidad = :subespecialidad
+             ORDER BY nombre ASC"
+        );
+        $stmt->execute([
+            ':especialidad' => $especialidad !== '' ? $especialidad : 'Cirujano Oftalmólogo',
+            ':subespecialidad' => $subespecialidad,
+        ]);
+
+        $items = [];
+        while (($row = $stmt->fetch(PDO::FETCH_ASSOC)) !== false) {
+            $items[] = [
+                'id' => (int) ($row['id'] ?? 0),
+                'nombre' => (string) ($row['nombre'] ?? ''),
+                'email' => $row['email'] ?? null,
+                'profile_photo' => $row['profile_photo'] ?? null,
+                'especialidad' => (string) ($row['especialidad'] ?? ''),
+                'subespecialidad' => (string) ($row['subespecialidad'] ?? ''),
+                'trabajador_id' => isset($row['id_trabajador']) && $row['id_trabajador'] !== null ? (string) $row['id_trabajador'] : null,
+            ];
+        }
+
+        return $items;
+    }
+
+    /**
+     * @param array<int, array{id: string, title: string, description?: string}> $rows
+     */
+    private function sendDynamicList(string $recipient, string $body, string $button, string $sectionTitle, array $rows): void
+    {
+        $rows = array_values(array_filter($rows, static function (array $row): bool {
+            return trim((string) ($row['id'] ?? '')) !== '' && trim((string) ($row['title'] ?? '')) !== '';
+        }));
+        if ($rows === []) {
+            return;
+        }
+
+        $this->messenger->sendInteractiveList($recipient, $body, [[
+            'title' => mb_substr($sectionTitle, 0, 24),
+            'rows' => array_slice($rows, 0, 10),
+        ]], [
+            'button' => mb_substr($button, 0, 20),
+        ]);
+    }
+
+    private function stringOrDefault($value, string $default): string
+    {
+        $string = is_scalar($value) ? trim((string) $value) : '';
+
+        return $string !== '' ? $string : $default;
     }
 
     private function sendMenu(string $recipient, array $context): void

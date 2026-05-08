@@ -13,6 +13,7 @@ class WebhookService
         private readonly WhatsappConfigService $configService = new WhatsappConfigService(),
         private readonly FlowRuntimeShadowObserverService $shadowObserver = new FlowRuntimeShadowObserverService(),
         private readonly WhatsappRealtimeService $realtime = new WhatsappRealtimeService(),
+        private readonly FlowRuntimeExecutionService $runtime = new FlowRuntimeExecutionService(),
     ) {
     }
 
@@ -33,7 +34,7 @@ class WebhookService
 
     /**
      * @param array<string, mixed> $payload
-     * @return array{statuses_applied:int,messages_persisted:int}
+     * @return array{statuses_applied:int,messages_persisted:int,automation_runs:int,automation_messages_sent:int}
      */
     public function process(array $payload): array
     {
@@ -43,15 +44,25 @@ class WebhookService
         }
 
         $messagesPersisted = 0;
+        $automationRuns = 0;
+        $automationMessagesSent = 0;
         foreach ($this->extractMessages($payload) as $message) {
             $persisted = $this->recordIncomingMessage($message);
             $messagesPersisted += $persisted ? 1 : 0;
             $this->observeAutomationShadow($message, $persisted);
+
+            if ($persisted) {
+                $automation = $this->executeAutomation($message);
+                $automationRuns += !empty($automation['executed']) ? 1 : 0;
+                $automationMessagesSent += (int) ($automation['messages_sent'] ?? 0);
+            }
         }
 
         return [
             'statuses_applied' => $statusesApplied,
             'messages_persisted' => $messagesPersisted,
+            'automation_runs' => $automationRuns,
+            'automation_messages_sent' => $automationMessagesSent,
         ];
     }
 
@@ -291,6 +302,69 @@ class WebhookService
             'text' => $text,
             'context' => $context,
         ], $message);
+    }
+
+    /**
+     * @param array<string, mixed> $message
+     * @return array{executed:bool,matched:bool,scenario_id:?string,messages_sent:int,handoff_requested:bool,reason:?string}
+     */
+    private function executeAutomation(array $message): array
+    {
+        $messageId = trim((string) ($message['id'] ?? ''));
+        if ($messageId === '') {
+            return [
+                'executed' => false,
+                'matched' => false,
+                'scenario_id' => null,
+                'messages_sent' => 0,
+                'handoff_requested' => false,
+                'reason' => 'missing_message_id',
+            ];
+        }
+
+        $inboundMessage = WhatsappMessage::query()
+            ->where('wa_message_id', $messageId)
+            ->where('direction', 'inbound')
+            ->latest('id')
+            ->first();
+
+        if (!$inboundMessage instanceof WhatsappMessage) {
+            return [
+                'executed' => false,
+                'matched' => false,
+                'scenario_id' => null,
+                'messages_sent' => 0,
+                'handoff_requested' => false,
+                'reason' => 'message_not_found',
+            ];
+        }
+
+        $conversation = WhatsappConversation::query()->find($inboundMessage->conversation_id);
+        if (!$conversation instanceof WhatsappConversation) {
+            return [
+                'executed' => false,
+                'matched' => false,
+                'scenario_id' => null,
+                'messages_sent' => 0,
+                'handoff_requested' => false,
+                'reason' => 'conversation_not_found',
+            ];
+        }
+
+        try {
+            return $this->runtime->executeInbound($conversation, $inboundMessage, $message);
+        } catch (\Throwable $exception) {
+            report($exception);
+
+            return [
+                'executed' => false,
+                'matched' => false,
+                'scenario_id' => null,
+                'messages_sent' => 0,
+                'handoff_requested' => false,
+                'reason' => 'automation_error: ' . $exception->getMessage(),
+            ];
+        }
     }
 
     /**

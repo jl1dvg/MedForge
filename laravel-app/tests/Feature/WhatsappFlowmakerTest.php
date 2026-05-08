@@ -41,6 +41,7 @@ class WhatsappFlowmakerTest extends TestCase
         Schema::create('roles', function (Blueprint $table): void {
             $table->id();
             $table->string('name');
+            $table->json('permissions')->nullable();
             $table->timestamps();
         });
 
@@ -52,6 +53,9 @@ class WhatsappFlowmakerTest extends TestCase
             $table->string('nombre')->default('');
             $table->string('email')->nullable();
             $table->string('profile_photo')->nullable();
+            $table->string('especialidad')->default('');
+            $table->string('subespecialidad')->nullable();
+            $table->unsignedBigInteger('id_trabajador')->nullable();
             $table->text('permisos')->nullable();
             $table->unsignedBigInteger('role_id')->nullable();
         });
@@ -283,6 +287,7 @@ class WhatsappFlowmakerTest extends TestCase
         \DB::table('roles')->insert([
             'id' => 1,
             'name' => 'Call Center',
+            'permissions' => json_encode(['whatsapp.manage', 'whatsapp.autoresponder.manage', 'settings.manage']),
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -295,8 +300,42 @@ class WhatsappFlowmakerTest extends TestCase
             'nombre' => 'Jorge Vera',
             'email' => 'jorge@example.test',
             'profile_photo' => null,
+            'especialidad' => 'NA',
+            'subespecialidad' => null,
+            'id_trabajador' => null,
             'permisos' => json_encode(['whatsapp.manage', 'whatsapp.autoresponder.manage']),
             'role_id' => 1,
+        ]);
+
+        \DB::table('users')->insert([
+            [
+                'id' => 50,
+                'username' => 'doctor.retina',
+                'first_name' => 'Dra',
+                'last_name' => 'Retina',
+                'nombre' => 'Dra Retina',
+                'email' => 'retina@example.test',
+                'profile_photo' => null,
+                'especialidad' => 'Cirujano Oftalmólogo',
+                'subespecialidad' => 'Retina y Vítreo',
+                'id_trabajador' => 777,
+                'permisos' => json_encode([]),
+                'role_id' => 1,
+            ],
+            [
+                'id' => 51,
+                'username' => 'doctor.cornea',
+                'first_name' => 'Dr',
+                'last_name' => 'Cornea',
+                'nombre' => 'Dr Córnea',
+                'email' => 'cornea@example.test',
+                'profile_photo' => null,
+                'especialidad' => 'Cirujano Oftalmólogo',
+                'subespecialidad' => 'Córnea',
+                'id_trabajador' => 778,
+                'permisos' => json_encode([]),
+                'role_id' => 1,
+            ],
         ]);
 
         \DB::table('whatsapp_autoresponder_sessions')->insert([
@@ -480,6 +519,568 @@ class WhatsappFlowmakerTest extends TestCase
         ]);
     }
 
+    public function test_it_previews_sigcenter_agenda_actions_without_creating_appointment(): void
+    {
+        $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->postJson('/v2/whatsapp/api/flowmaker/publish', [
+                'flow' => [
+                    'name' => 'Flow agenda Sigcenter',
+                    'description' => 'Consulta disponibilidad desde Flowmaker',
+                    'settings' => ['timezone' => 'America/Guayaquil'],
+                    'scenarios' => [
+                        [
+                            'id' => 'agenda_disponibilidad',
+                            'name' => 'Agenda disponibilidad',
+                            'status' => 'published',
+                            'stage' => 'scheduling',
+                            'conditions' => [
+                                ['type' => 'message_contains', 'keywords' => ['agenda']],
+                            ],
+                            'actions' => [
+                                [
+                                    'type' => 'sigcenter_agenda',
+                                    'operation' => 'list_times',
+                                    'trabajador_id' => '777',
+                                    'ID_SEDE' => '3',
+                                    'FECHA' => '2026-05-06',
+                                    'store_result_as' => 'horarios_disponibles',
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ])
+            ->assertOk();
+
+        $this->assertDatabaseHas('whatsapp_autoresponder_step_actions', [
+            'action_type' => 'sigcenter_agenda',
+        ]);
+
+        $response = $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->getJson('/v2/whatsapp/api/flowmaker/simulate?wa_number=593999111222&text=quiero%20agenda');
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('matched', true)
+            ->assertJsonPath('actions.0.type', 'sigcenter_agenda')
+            ->assertJsonPath('actions.0.operation', 'list_times')
+            ->assertJsonPath('actions.0.preview_only', true)
+            ->assertJsonPath('actions.0.mutates_agenda', false)
+            ->assertJsonPath('actions.0.ready', true)
+            ->assertJsonPath('actions.0.payload.trabajador_id', '777')
+            ->assertJsonPath('actions.0.payload.FECHA', '2026-05-06')
+            ->assertJsonPath('context_after.horarios_disponibles.operation', 'list_times');
+    }
+
+    public function test_it_executes_sigcenter_agenda_lookup_through_protected_endpoint(): void
+    {
+        \Illuminate\Support\Facades\Http::fake([
+            'sigcenter.ddns.net:18093/restful/api-agenda/horarios-disponibles-dias' => \Illuminate\Support\Facades\Http::response([
+                'fechas' => ['2026-05-06'],
+            ], 200),
+        ]);
+
+        $response = $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->postJson('/v2/whatsapp/api/flowmaker/sigcenter-agenda/execute', [
+                'action' => [
+                    'type' => 'sigcenter_agenda',
+                    'operation' => 'list_days',
+                    'trabajador_id' => '777',
+                    'ID_SEDE' => '3',
+                ],
+            ]);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('executed', true)
+            ->assertJsonPath('preview_only', false)
+            ->assertJsonPath('operation', 'list_days')
+            ->assertJsonPath('attempted_method', 'GET')
+            ->assertJsonPath('data.fechas.0', '2026-05-06');
+
+        \Illuminate\Support\Facades\Http::assertSent(fn (\Illuminate\Http\Client\Request $request): bool => $request->method() === 'GET'
+            && str_contains($request->url(), '/restful/api-agenda/horarios-disponibles-dias'));
+    }
+
+    public function test_it_lists_scheduling_specialties_from_users_catalog(): void
+    {
+        $response = $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->postJson('/v2/whatsapp/api/flowmaker/sigcenter-agenda/execute', [
+                'action' => [
+                    'type' => 'sigcenter_agenda',
+                    'operation' => 'list_specialties',
+                ],
+            ]);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('attempted_method', 'LOCAL_DB')
+            ->assertJsonPath('data.especialidades.0', 'Córnea')
+            ->assertJsonPath('data.especialidades.1', 'Retina y Vítreo');
+    }
+
+    public function test_it_lists_scheduling_doctors_by_subspecialty(): void
+    {
+        $response = $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->postJson('/v2/whatsapp/api/flowmaker/sigcenter-agenda/execute', [
+                'action' => [
+                    'type' => 'sigcenter_agenda',
+                    'operation' => 'list_doctors',
+                    'subespecialidad' => 'Retina y Vítreo',
+                ],
+            ]);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('attempted_method', 'LOCAL_DB')
+            ->assertJsonPath('data.medicos.0.nombre', 'Dra Retina')
+            ->assertJsonPath('data.medicos.0.trabajador_id', '777');
+    }
+
+    public function test_it_builds_dynamic_whatsapp_list_for_scheduling_specialties(): void
+    {
+        $response = $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->postJson('/v2/whatsapp/api/flowmaker/sigcenter-agenda/execute', [
+                'action' => [
+                    'type' => 'sigcenter_agenda',
+                    'operation' => 'list_specialties',
+                    'send_result' => true,
+                    'prompt' => '¿Qué especialidad necesitas?',
+                    'save_response_as' => 'subespecialidad',
+                    'next_state' => 'agenda_esperando_subespecialidad',
+                ],
+            ]);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('send_result', true)
+            ->assertJsonPath('save_response_as', 'subespecialidad')
+            ->assertJsonPath('next_state', 'agenda_esperando_subespecialidad')
+            ->assertJsonPath('outbound_message.type', 'list')
+            ->assertJsonPath('outbound_message.body', '¿Qué especialidad necesitas?')
+            ->assertJsonPath('outbound_message.sections.0.rows.0.title', 'Córnea')
+            ->assertJsonPath('outbound_message.sections.0.rows.1.id', 'Retina y Vítreo');
+    }
+
+    public function test_it_marks_context_as_waiting_when_simulating_dynamic_scheduling_list(): void
+    {
+        $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->postJson('/v2/whatsapp/api/flowmaker/publish', [
+                'flow' => [
+                    'name' => 'Flow agenda',
+                    'description' => 'Agenda dinámica',
+                    'settings' => [],
+                    'scenarios' => [[
+                        'id' => 'agenda_inicio',
+                        'name' => 'Agenda inicio',
+                        'status' => 'published',
+                        'stage' => 'scheduling',
+                        'conditions' => [['type' => 'message_contains', 'keywords' => ['agenda']]],
+                        'actions' => [[
+                            'type' => 'sigcenter_agenda',
+                            'operation' => 'list_specialties',
+                            'send_result' => true,
+                            'save_response_as' => 'subespecialidad',
+                            'next_state' => 'agenda_esperando_subespecialidad',
+                        ]],
+                    ]],
+                ],
+            ])
+            ->assertOk();
+
+        $response = $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->getJson('/v2/whatsapp/api/flowmaker/simulate?wa_number=593999111222&text=quiero%20agenda');
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('actions.0.outbound_message.type', 'list')
+            ->assertJsonPath('context_after.awaiting_field', 'subespecialidad')
+            ->assertJsonPath('context_after.state', 'agenda_esperando_subespecialidad');
+    }
+
+    public function test_it_simulates_unpublished_builder_flow_payload(): void
+    {
+        $response = $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->postJson('/v2/whatsapp/api/flowmaker/simulate', [
+                'wa_number' => '593999111222',
+                'text' => 'especialidades0',
+                'context' => '{}',
+                'flow' => [
+                    'name' => 'Draft builder',
+                    'description' => 'Simulación sin publish',
+                    'settings' => [],
+                    'scenarios' => [[
+                        'id' => 'especialidades',
+                        'name' => 'Especialidades',
+                        'status' => 'published',
+                        'stage' => 'custom',
+                        'conditions' => [['type' => 'message_contains', 'keywords' => ['especialidades0']]],
+                        'actions' => [[
+                            'type' => 'sigcenter_agenda',
+                            'operation' => 'list_specialties',
+                            'send_result' => true,
+                        ]],
+                    ]],
+                ],
+            ]);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('matched', true)
+            ->assertJsonPath('scenario.id', 'especialidades')
+            ->assertJsonPath('actions.0.outbound_message.type', 'list');
+    }
+
+    public function test_it_prioritizes_selected_builder_scenario_over_fallback_in_simulation(): void
+    {
+        $response = $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->postJson('/v2/whatsapp/api/flowmaker/simulate', [
+                'wa_number' => '593999111222',
+                'text' => 'especialidades0',
+                'context' => '{}',
+                'scenario_id' => 'especialidades',
+                'flow' => [
+                    'name' => 'Draft builder',
+                    'description' => 'Simulación con preferencia de escenario',
+                    'settings' => [],
+                    'scenarios' => [
+                        [
+                            'id' => 'fallback',
+                            'name' => 'Fallback',
+                            'status' => 'published',
+                            'stage' => 'custom',
+                            'conditions' => [['type' => 'always']],
+                            'actions' => [[
+                                'type' => 'send_message',
+                                'message' => ['body' => 'Fallback'],
+                            ]],
+                        ],
+                        [
+                            'id' => 'especialidades',
+                            'name' => 'Especialidades',
+                            'status' => 'published',
+                            'stage' => 'custom',
+                            'conditions' => [['type' => 'message_contains', 'keywords' => ['especialidades0']]],
+                            'actions' => [[
+                                'type' => 'sigcenter_agenda',
+                                'operation' => 'list_specialties',
+                                'send_result' => true,
+                            ]],
+                        ],
+                    ],
+                ],
+            ]);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('matched', true)
+            ->assertJsonPath('scenario.id', 'especialidades')
+            ->assertJsonPath('actions.0.type', 'sigcenter_agenda');
+    }
+
+    public function test_it_accepts_message_contains_condition_saved_with_value_field(): void
+    {
+        $response = $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->postJson('/v2/whatsapp/api/flowmaker/simulate', [
+                'wa_number' => '593999111222',
+                'text' => 'especialidades0',
+                'context' => '{}',
+                'scenario_id' => 'especialidades',
+                'flow' => [
+                    'name' => 'Draft builder',
+                    'description' => 'Condición guardada desde UI',
+                    'settings' => [],
+                    'scenarios' => [[
+                        'id' => 'especialidades',
+                        'name' => 'Especialidades',
+                        'status' => 'published',
+                        'stage' => 'custom',
+                        'conditions' => [['type' => 'message_contains', 'value' => 'especialidades0']],
+                        'actions' => [[
+                            'type' => 'sigcenter_agenda',
+                            'operation' => 'list_specialties',
+                            'send_result' => true,
+                        ]],
+                    ]],
+                ],
+            ]);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('matched', true)
+            ->assertJsonPath('scenario.id', 'especialidades')
+            ->assertJsonPath('actions.0.outbound_message.type', 'list');
+    }
+
+    public function test_it_builds_dynamic_whatsapp_list_for_sigcenter_sedes_shape(): void
+    {
+        \Illuminate\Support\Facades\Http::fake([
+            'https://sigcenter.ddns.net:18093/restful/api-agenda/sede-departamento' => \Illuminate\Support\Facades\Http::response([
+                'msj' => 'DATOS',
+                'sede' => [
+                    ['NOMBRE' => 'CEIBOS - CONSULTA EXTERNA CEIBOS', 'ID_SEDE' => '16'],
+                    ['NOMBRE' => 'MATRIZ - CONSULTA EXTERNA MATRIZ', 'ID_SEDE' => '1'],
+                ],
+                'estado' => 200,
+            ], 200),
+        ]);
+
+        $response = $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->postJson('/v2/whatsapp/api/flowmaker/sigcenter-agenda/execute', [
+                'action' => [
+                    'type' => 'sigcenter_agenda',
+                    'operation' => 'list_sedes',
+                    'trabajador_id' => '64',
+                    'send_result' => true,
+                    'save_response_as' => 'sede_id',
+                    'next_state' => 'agenda_esperando_sede',
+                ],
+            ]);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('outbound_message.type', 'list')
+            ->assertJsonPath('outbound_message.sections.0.rows.0.id', '16')
+            ->assertJsonPath('outbound_message.sections.0.rows.0.title', 'CEIBOS - CONSULTA EXTERN')
+            ->assertJsonPath('save_response_as', 'sede_id')
+            ->assertJsonPath('next_state', 'agenda_esperando_sede');
+    }
+
+    public function test_it_builds_dynamic_whatsapp_list_for_sigcenter_procedimientos_shape(): void
+    {
+        \Illuminate\Support\Facades\Http::fake([
+            'https://sigcenter.ddns.net:18093/restful/api-agenda/procedimiento-doctor-crm' => \Illuminate\Support\Facades\Http::response([
+                'msj' => 'DATOS',
+                'estado' => 200,
+                'tipoProcedimientos' => [
+                    ['procedimiento' => 'AUTOREFRACCION', 'procedimiento_id' => '529'],
+                    ['procedimiento' => 'CONSULTA OFTALMOLOGICA NUEVO PACIENTE', 'procedimiento_id' => '530'],
+                ],
+            ], 200),
+        ]);
+
+        $response = $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->postJson('/v2/whatsapp/api/flowmaker/sigcenter-agenda/execute', [
+                'action' => [
+                    'type' => 'sigcenter_agenda',
+                    'operation' => 'list_procedimientos',
+                    'trabajador_id' => '64',
+                    'send_result' => true,
+                    'save_response_as' => 'procedimiento_id',
+                    'next_state' => 'agenda_esperando_procedimiento',
+                ],
+            ]);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('outbound_message.type', 'list')
+            ->assertJsonPath('outbound_message.sections.0.rows.0.id', '529')
+            ->assertJsonPath('outbound_message.sections.0.rows.0.title', 'AUTOREFRACCION')
+            ->assertJsonPath('outbound_message.sections.0.rows.1.id', '530')
+            ->assertJsonPath('save_response_as', 'procedimiento_id')
+            ->assertJsonPath('next_state', 'agenda_esperando_procedimiento');
+    }
+
+    public function test_it_uses_cached_sigcenter_result_to_render_preview_list(): void
+    {
+        $response = $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->postJson('/v2/whatsapp/api/flowmaker/simulate', [
+                'wa_number' => '593999111222',
+                'text' => 'matriz consulta externa',
+                'context' => json_encode([
+                    'state' => 'agenda_esperando_sede',
+                    'trabajador_id' => '64',
+                    'sede_id' => '1',
+                    'sigcenter_procedimientos' => [
+                        'data' => [
+                            'msj' => 'DATOS',
+                            'estado' => 200,
+                            'tipoProcedimientos' => [
+                                ['procedimiento' => 'AUTOREFRACCION', 'procedimiento_id' => '529'],
+                            ],
+                        ],
+                        'ready' => true,
+                        'operation' => 'list_procedimientos',
+                    ],
+                ], JSON_UNESCAPED_UNICODE),
+                'flow' => [
+                    'name' => 'Draft builder',
+                    'description' => 'Procedimientos cacheados',
+                    'settings' => [],
+                    'scenarios' => [[
+                        'id' => 'procedimientos',
+                        'name' => 'Procedimiento',
+                        'status' => 'published',
+                        'stage' => 'custom',
+                        'conditions' => [['type' => 'state_is', 'value' => 'agenda_esperando_sede']],
+                        'actions' => [[
+                            'type' => 'sigcenter_agenda',
+                            'operation' => 'list_procedimientos',
+                            'send_result' => true,
+                            'save_response_as' => 'procedimiento_id',
+                            'next_state' => 'agenda_esperando_procedimiento',
+                        ]],
+                    ]],
+                ],
+            ]);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('matched', true)
+            ->assertJsonPath('actions.0.outbound_message.type', 'list')
+            ->assertJsonPath('actions.0.outbound_message.sections.0.rows.0.id', '529')
+            ->assertJsonPath('context_after.awaiting_field', 'procedimiento_id')
+            ->assertJsonPath('context_after.state', 'agenda_esperando_procedimiento');
+    }
+
+    public function test_it_blocks_sigcenter_booking_without_explicit_confirmation(): void
+    {
+        \Illuminate\Support\Facades\Http::fake();
+
+        $response = $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->postJson('/v2/whatsapp/api/flowmaker/sigcenter-agenda/execute', [
+                'action' => [
+                    'type' => 'sigcenter_agenda',
+                    'operation' => 'book_appointment',
+                    'identificacion' => '0907814073',
+                    'trabajador_id' => '777',
+                    'procedimiento_id' => '55',
+                    'fecha_inicio' => '2026-05-06 09:00:00',
+                ],
+            ]);
+
+        $response
+            ->assertStatus(422)
+            ->assertJsonPath('ok', false)
+            ->assertJsonPath('executed', false)
+            ->assertJsonPath('requires_confirmation', true)
+            ->assertJsonPath('mutates_agenda', true);
+
+        \Illuminate\Support\Facades\Http::assertNothingSent();
+    }
+
+    public function test_it_builds_booking_payload_from_runtime_context_before_builder_defaults(): void
+    {
+        \Illuminate\Support\Facades\Http::fake();
+
+        $response = $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->postJson('/v2/whatsapp/api/flowmaker/sigcenter-agenda/execute', [
+                'action' => [
+                    'type' => 'sigcenter_agenda',
+                    'operation' => 'book_appointment',
+                    'ID_SEDE' => '3',
+                    'send_result' => true,
+                ],
+                'context' => [
+                    'cedula' => '0907814073',
+                    'sede_id' => '1',
+                    'trabajador_id' => '64',
+                    'procedimiento_id' => '530',
+                    'fecha' => '2026-05-08',
+                    'fecha_inicio' => '13:00:00 - 13:15:00',
+                ],
+            ]);
+
+        $response
+            ->assertStatus(422)
+            ->assertJsonPath('ok', false)
+            ->assertJsonPath('ready', true)
+            ->assertJsonPath('missing_fields', [])
+            ->assertJsonPath('requires_confirmation', true)
+            ->assertJsonPath('payload.identificacion', '0907814073')
+            ->assertJsonPath('payload.ID_SEDE', '1')
+            ->assertJsonPath('payload.trabajador_id', '64')
+            ->assertJsonPath('payload.procedimiento_id', '530')
+            ->assertJsonPath('payload.fecha_inicio', '2026-05-08 13:00:00');
+
+        \Illuminate\Support\Facades\Http::assertNothingSent();
+    }
+
     public function test_it_does_not_publish_draft_scenarios_into_runtime_tables(): void
     {
         $response = $this
@@ -614,7 +1215,9 @@ class WhatsappFlowmakerTest extends TestCase
             ->assertSee('Comparar con legacy')
             ->assertSee('Fase 6 está lista para cierre')
             ->assertSee('Shadow runs recientes')
-            ->assertSee('AI Agent preview');
+            ->assertSee('AI Agent preview')
+            ->assertSee('Probar en Sigcenter')
+            ->assertSee('Prioridad');
     }
 
     public function test_it_previews_ai_agent_actions_and_logs_runs(): void

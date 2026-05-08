@@ -57,6 +57,8 @@ Route::middleware([
         ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.autoresponder.manage,settings.manage');
     Route::get('/flowmaker/simulate', [FlowmakerReadController::class, 'simulate'])
         ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.autoresponder.manage,settings.manage');
+    Route::post('/flowmaker/simulate', [FlowmakerReadController::class, 'simulate'])
+        ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.autoresponder.manage,settings.manage');
     Route::get('/flowmaker/compare', [FlowmakerReadController::class, 'compare'])
         ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.autoresponder.manage,settings.manage');
     Route::get('/flowmaker/shadow-runs', [FlowmakerReadController::class, 'shadowRuns'])
@@ -111,6 +113,8 @@ Route::middleware([
     Route::post('/handoffs/requeue-expired', [ConversationOpsController::class, 'requeueExpired'])
         ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.supervise,settings.manage');
     Route::post('/flowmaker/publish', [FlowmakerWriteController::class, 'publish'])
+        ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.autoresponder.manage,settings.manage');
+    Route::post('/flowmaker/sigcenter-agenda/execute', [FlowmakerWriteController::class, 'executeSigcenterAgenda'])
         ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.autoresponder.manage,settings.manage');
     Route::post('/knowledge-base', [KnowledgeBaseWriteController::class, 'store'])
         ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.autoresponder.manage,settings.manage');
