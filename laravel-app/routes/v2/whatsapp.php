@@ -118,6 +118,9 @@ Route::middleware([
         ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.autoresponder.manage,settings.manage');
     Route::post('/knowledge-base', [KnowledgeBaseWriteController::class, 'store'])
         ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.autoresponder.manage,settings.manage');
+    Route::post('/knowledge-base/{documentId}', [KnowledgeBaseWriteController::class, 'update'])
+        ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.autoresponder.manage,settings.manage')
+        ->whereNumber('documentId');
     Route::post('/quick-replies', [ProductivityWriteController::class, 'storeQuickReply'])
         ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.send,settings.manage');
     Route::post('/templates', [TemplateWriteController::class, 'store'])

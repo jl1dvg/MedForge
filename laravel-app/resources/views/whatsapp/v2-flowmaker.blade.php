@@ -1012,6 +1012,12 @@
         gap: .35rem;
         margin-top: .65rem;
     }
+    .wa-kb-card__actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: .5rem;
+        margin-top: .75rem;
+    }
     .wa-ai-run-card {
         border-radius: 18px;
         border: 1px solid rgba(148, 163, 184, .18);
@@ -1465,6 +1471,9 @@
                                                     <span class="wa-flow-badge wa-flow-badge--count">{{ $document['metadata']['audiencia'] ?? 'paciente' }}</span>
                                                     <span class="wa-flow-badge wa-flow-badge--count">{{ $document['metadata']['sede'] ?? 'global' }}</span>
                                                 </div>
+                                                <div class="wa-kb-card__actions">
+                                                    <button type="button" class="btn btn-light btn-sm" data-kb-edit="{{ $document['id'] ?? '' }}">Editar</button>
+                                                </div>
                                             </div>
                                         @empty
                                             <div class="wa-flow-empty">Todavía no hay documentos en la Knowledge Base.</div>
@@ -1521,6 +1530,7 @@
                                         </div>
                                         <div class="d-flex flex-wrap gap-10 align-items-center">
                                             <button type="button" class="btn btn-primary" id="wa-kb-save-btn">Guardar documento KB</button>
+                                            <button type="button" class="btn btn-light" id="wa-kb-cancel-edit-btn" hidden>Cancelar edición</button>
                                             <span class="small text-muted" id="wa-kb-status-node">La base documental todavía no tiene integración con AI Agent.</span>
                                         </div>
                                     </div>
@@ -1651,6 +1661,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const versionDiff = document.getElementById('wa-flow-version-diff');
     const kbList = document.getElementById('wa-kb-list');
     const kbSaveButton = document.getElementById('wa-kb-save-btn');
+    const kbCancelEditButton = document.getElementById('wa-kb-cancel-edit-btn');
     const kbStatusNode = document.getElementById('wa-kb-status-node');
     const kbTitle = document.getElementById('wa-kb-title');
     const kbContent = document.getElementById('wa-kb-content');
@@ -1683,6 +1694,7 @@ document.addEventListener('DOMContentLoaded', function () {
         documents: @json($knowledgeDocuments, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
         stats: @json($knowledgeStats, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
     };
+    let selectedKnowledgeDocumentId = null;
     let aiAgentState = {
         runs: @json($aiAgentRuns, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
         stats: @json($aiAgentStats, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
@@ -2753,6 +2765,9 @@ document.addEventListener('DOMContentLoaded', function () {
                     <span class="wa-flow-badge wa-flow-badge--count">${escapeHtml(document.metadata?.audiencia || 'paciente')}</span>
                     <span class="wa-flow-badge wa-flow-badge--count">${escapeHtml(document.metadata?.sede || 'global')}</span>
                 </div>
+                <div class="wa-kb-card__actions">
+                    <button type="button" class="btn btn-light btn-sm" data-kb-edit="${escapeHtml(document.id || '')}">Editar</button>
+                </div>
             </div>
         `).join('');
     };
@@ -2806,6 +2821,41 @@ document.addEventListener('DOMContentLoaded', function () {
                 </div>
             </div>
         `).join('');
+    };
+    const resetKnowledgeBaseForm = () => {
+        selectedKnowledgeDocumentId = null;
+        if (kbTitle) kbTitle.value = '';
+        if (kbContent) kbContent.value = '';
+        if (kbStatus) kbStatus.value = 'draft';
+        if (kbSede) kbSede.value = '';
+        if (kbEspecialidad) kbEspecialidad.value = '';
+        if (kbType) kbType.value = 'faq';
+        if (kbAudiencia) kbAudiencia.value = 'paciente';
+        if (kbSaveButton) kbSaveButton.textContent = 'Guardar documento KB';
+        if (kbCancelEditButton) kbCancelEditButton.hidden = true;
+    };
+    const editKnowledgeDocument = (documentId) => {
+        const documents = Array.isArray(knowledgeBaseState.documents) ? knowledgeBaseState.documents : [];
+        const document = documents.find((item) => String(item?.id) === String(documentId));
+        if (!document) {
+            if (kbStatusNode) {
+                kbStatusNode.textContent = 'No se encontró el documento seleccionado.';
+            }
+            return;
+        }
+
+        selectedKnowledgeDocumentId = document.id;
+        const metadata = document.metadata || {};
+        if (kbTitle) kbTitle.value = document.title || '';
+        if (kbContent) kbContent.value = document.content || '';
+        if (kbStatus) kbStatus.value = document.status || 'draft';
+        if (kbSede) kbSede.value = metadata.sede || '';
+        if (kbEspecialidad) kbEspecialidad.value = metadata.especialidad || '';
+        if (kbType) kbType.value = metadata.tipo_contenido || 'faq';
+        if (kbAudiencia) kbAudiencia.value = metadata.audiencia || 'paciente';
+        if (kbSaveButton) kbSaveButton.textContent = 'Actualizar documento KB';
+        if (kbCancelEditButton) kbCancelEditButton.hidden = false;
+        if (kbStatusNode) kbStatusNode.textContent = `Editando KB #${document.id}`;
     };
     const loadKnowledgeBase = async () => {
         if (!kbList) {
@@ -4215,16 +4265,34 @@ document.addEventListener('DOMContentLoaded', function () {
     searchInput?.addEventListener('input', renderScenarioList);
     addScenarioButton?.addEventListener('click', addScenario);
     shadowRefreshButton?.addEventListener('click', loadShadowRuns);
+    kbList?.addEventListener('click', function (event) {
+        const button = event.target?.closest?.('[data-kb-edit]');
+        if (!button) {
+            return;
+        }
+
+        editKnowledgeDocument(button.getAttribute('data-kb-edit'));
+    });
+    kbCancelEditButton?.addEventListener('click', function () {
+        resetKnowledgeBaseForm();
+        if (kbStatusNode) {
+            kbStatusNode.textContent = 'Edición cancelada.';
+        }
+    });
     kbSaveButton?.addEventListener('click', async function () {
         if (!kbTitle || !kbContent) {
             return;
         }
 
-        kbStatusNode.textContent = 'Guardando documento KB...';
+        const isEditing = selectedKnowledgeDocumentId !== null && selectedKnowledgeDocumentId !== undefined;
+        kbStatusNode.textContent = isEditing ? 'Actualizando documento KB...' : 'Guardando documento KB...';
         kbSaveButton.disabled = true;
 
         try {
-            const response = await fetch('/v2/whatsapp/api/knowledge-base', {
+            const endpoint = isEditing
+                ? `/v2/whatsapp/api/knowledge-base/${encodeURIComponent(String(selectedKnowledgeDocumentId))}`
+                : '/v2/whatsapp/api/knowledge-base';
+            const response = await fetch(endpoint, {
                 method: 'POST',
                 credentials: 'same-origin',
                 headers: {
@@ -4249,9 +4317,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 return;
             }
 
-            kbTitle.value = '';
-            kbContent.value = '';
-            kbStatusNode.textContent = 'Documento KB guardado correctamente.';
+            resetKnowledgeBaseForm();
+            kbStatusNode.textContent = isEditing ? 'Documento KB actualizado correctamente.' : 'Documento KB guardado correctamente.';
             await loadKnowledgeBase();
         } catch (error) {
             kbStatusNode.textContent = 'No fue posible guardar el documento KB.';

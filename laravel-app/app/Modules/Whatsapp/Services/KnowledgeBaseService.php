@@ -48,10 +48,10 @@ class KnowledgeBaseService
         }
 
         if ($search !== '') {
-            $needle = Str::lower($search);
-            $documents = array_values(array_filter($documents, function (WhatsappKnowledgeDocument $document) use ($needle): bool {
+            $tokens = $this->searchTokens($search);
+            $documents = array_values(array_filter($documents, function (WhatsappKnowledgeDocument $document) use ($tokens): bool {
                 $metadata = is_array($document->metadata) ? $document->metadata : [];
-                $haystack = Str::lower(implode(' ', array_filter([
+                $haystack = $this->normalizeSearchText(implode(' ', array_filter([
                     $document->title,
                     $document->summary,
                     $document->content,
@@ -62,7 +62,21 @@ class KnowledgeBaseService
                     $metadata['audiencia'] ?? null,
                 ])));
 
-                return str_contains($haystack, $needle);
+                if ($tokens === []) {
+                    return false;
+                }
+
+                $matches = 0;
+                foreach ($tokens as $token) {
+                    if (!str_contains($haystack, $token)) {
+                        continue;
+                    }
+                    $matches++;
+                }
+
+                $minimumMatches = max(1, (int) ceil(count($tokens) * 0.6));
+
+                return $matches >= $minimumMatches;
             }));
         }
 
@@ -125,6 +139,60 @@ class KnowledgeBaseService
         return $this->serializeDocument($document);
     }
 
+    /**
+     * @param array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
+    public function updateDocument(int $documentId, array $payload, ?int $userId = null): array
+    {
+        /** @var WhatsappKnowledgeDocument|null $document */
+        $document = WhatsappKnowledgeDocument::query()->find($documentId);
+        if (!$document) {
+            throw new RuntimeException('El documento de Knowledge Base no existe.');
+        }
+
+        $title = trim((string) ($payload['title'] ?? $document->title));
+        $content = trim((string) ($payload['content'] ?? $document->content));
+        if ($title === '' || $content === '') {
+            throw new RuntimeException('La Knowledge Base requiere título y contenido.');
+        }
+
+        $metadata = is_array($document->metadata) ? $document->metadata : [];
+        $metadata = [
+            'sede' => trim((string) ($payload['sede'] ?? ($metadata['sede'] ?? ''))),
+            'especialidad' => trim((string) ($payload['especialidad'] ?? ($metadata['especialidad'] ?? ''))),
+            'tipo_contenido' => trim((string) ($payload['tipo_contenido'] ?? ($metadata['tipo_contenido'] ?? 'faq'))),
+            'audiencia' => trim((string) ($payload['audiencia'] ?? ($metadata['audiencia'] ?? 'paciente'))),
+            'vigencia' => trim((string) ($payload['vigencia'] ?? ($metadata['vigencia'] ?? 'vigente'))),
+        ];
+
+        $previousStatus = (string) $document->status;
+        $status = trim((string) ($payload['status'] ?? $previousStatus)) ?: 'draft';
+
+        $document->fill([
+            'title' => $title,
+            'summary' => $this->buildSummary($content),
+            'content' => $content,
+            'status' => $status,
+            'source_type' => trim((string) ($payload['source_type'] ?? $document->source_type)) ?: 'manual',
+            'source_label' => trim((string) ($payload['source_label'] ?? $document->source_label)),
+            'metadata' => $metadata,
+            'updated_by_user_id' => $userId,
+        ]);
+
+        if ($status === 'published' && $previousStatus !== 'published') {
+            $document->published_at = now();
+        }
+
+        if ($status !== 'published') {
+            $document->published_at = null;
+        }
+
+        $document->save();
+
+        return $this->serializeDocument($document);
+    }
+
     private function uniqueSlug(string $title): string
     {
         $base = Str::slug($title);
@@ -142,6 +210,32 @@ class KnowledgeBaseService
     private function buildSummary(string $content): string
     {
         return Str::limit(trim(preg_replace('/\s+/', ' ', $content) ?? ''), 180, '…');
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function searchTokens(string $search): array
+    {
+        $normalized = $this->normalizeSearchText($search);
+        $tokens = preg_split('/\s+/', $normalized) ?: [];
+        $stopWords = [
+            'a', 'al', 'con', 'de', 'del', 'el', 'en', 'la', 'las', 'lo', 'los',
+            'para', 'por', 'que', 'se', 'si', 'su', 'sus', 'un', 'una', 'unas',
+            'unos', 'y',
+        ];
+
+        return array_values(array_unique(array_filter($tokens, static function (string $token) use ($stopWords): bool {
+            return mb_strlen($token) >= 3 && !in_array($token, $stopWords, true);
+        })));
+    }
+
+    private function normalizeSearchText(string $value): string
+    {
+        $value = Str::ascii(Str::lower($value));
+        $value = preg_replace('/[^a-z0-9]+/', ' ', $value) ?? '';
+
+        return trim(preg_replace('/\s+/', ' ', $value) ?? '');
     }
 
     /**

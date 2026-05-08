@@ -36,6 +36,27 @@ class KnowledgeBaseWriteController
         }
     }
 
+    public function update(Request $request, int $documentId): JsonResponse
+    {
+        try {
+            return response()->json([
+                'ok' => true,
+                'data' => $this->service->updateDocument($documentId, $request->all(), $this->actorUserId()),
+            ]);
+        } catch (RuntimeException $e) {
+            return response()->json([
+                'ok' => false,
+                'error' => $e->getMessage(),
+            ], 422);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'ok' => false,
+                'error' => 'No fue posible actualizar el documento de Knowledge Base.',
+                'detail' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
     private function actorUserId(): ?int
     {
         $id = Auth::id();

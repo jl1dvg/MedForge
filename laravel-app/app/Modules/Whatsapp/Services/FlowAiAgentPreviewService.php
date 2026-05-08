@@ -28,7 +28,7 @@ class FlowAiAgentPreviewService
         $classification = $this->classify($text, $documents, $action);
         $confidence = $this->confidence($text, $documents, $classification);
         $fallbackMessage = trim((string) ($action['fallback_message'] ?? 'No encontré grounding suficiente en la Knowledge Base para responder con seguridad.'));
-        $draftResponse = $this->buildResponse($documents, $classification, $action);
+        $draftResponse = $this->buildResponse($text, $documents, $classification, $action);
         $evaluation = $this->evaluate($text, $documents, $draftResponse, $classification, $confidence, $tools, $contextBefore, $action);
         $handoffReasons = $this->resolveHandoffReasons($text, $confidence, $tools, $evaluation, $action);
         $fallbackUsed = $this->shouldUseFallback($confidence, $evaluation, $action);
@@ -179,19 +179,22 @@ class FlowAiAgentPreviewService
      * @param array<int, array<string, mixed>> $documents
      * @param array<string, mixed> $action
      */
-    private function buildResponse(array $documents, string $classification, array $action): string
+    private function buildResponse(string $text, array $documents, string $classification, array $action): string
     {
         if ($documents === []) {
             return trim((string) ($action['fallback_message'] ?? 'No encontré grounding suficiente en la Knowledge Base para responder con seguridad.'));
         }
 
         $first = $documents[0];
-        $prefix = trim((string) ($action['intro'] ?? 'Respuesta sugerida con grounding:'));
-        $summary = trim((string) ($first['summary'] ?? ''));
         $content = trim((string) ($first['content'] ?? ''));
-        $body = $summary !== '' ? $summary : Str::limit($content, 220, '…');
+        $body = $this->bestGroundedAnswer($text, $content);
 
-        return trim($prefix . ' ' . $body . ' [' . $classification . ']');
+        if ($body === '') {
+            $summary = trim((string) ($first['summary'] ?? ''));
+            $body = $summary !== '' ? $summary : Str::limit($content, 220, '…');
+        }
+
+        return trim($body);
     }
 
     /**
@@ -235,6 +238,94 @@ class FlowAiAgentPreviewService
         }
 
         return round(min(0.97, $score), 2);
+    }
+
+    private function bestGroundedAnswer(string $text, string $content): string
+    {
+        $content = trim($content);
+        if ($content === '') {
+            return '';
+        }
+
+        $paragraphs = array_values(array_filter(array_map('trim', preg_split('/\n{2,}/', $content) ?: [])));
+        if ($paragraphs === []) {
+            $paragraphs = [$content];
+        }
+
+        $tokens = $this->searchTokens($text);
+        $bestParagraph = '';
+        $bestScore = -1;
+
+        foreach ($paragraphs as $paragraph) {
+            $haystack = $this->normalizeSearchText($paragraph);
+            $score = 0;
+
+            foreach ($tokens as $token) {
+                if (str_contains($haystack, $token)) {
+                    $score++;
+                }
+            }
+
+            if ($score > $bestScore) {
+                $bestScore = $score;
+                $bestParagraph = $paragraph;
+            }
+        }
+
+        $answer = trim(preg_replace('/^[^:\n]{3,80}:\s*/u', '', $bestParagraph) ?? $bestParagraph);
+
+        if ($this->looksLikeYesNoQuestion($text) && $this->paragraphSupportsAffirmative($answer)) {
+            $answer = 'Sí. ' . lcfirst($answer);
+        }
+
+        return Str::limit($answer, 700, '…');
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function searchTokens(string $search): array
+    {
+        $normalized = $this->normalizeSearchText($search);
+        $tokens = preg_split('/\s+/', $normalized) ?: [];
+        $stopWords = [
+            'a', 'al', 'con', 'de', 'del', 'el', 'en', 'la', 'las', 'lo', 'los',
+            'para', 'por', 'que', 'se', 'si', 'su', 'sus', 'un', 'una', 'unas',
+            'unos', 'y',
+        ];
+
+        return array_values(array_unique(array_filter($tokens, static function (string $token) use ($stopWords): bool {
+            return mb_strlen($token) >= 3 && !in_array($token, $stopWords, true);
+        })));
+    }
+
+    private function normalizeSearchText(string $value): string
+    {
+        $value = Str::ascii(Str::lower($value));
+        $value = preg_replace('/[^a-z0-9]+/', ' ', $value) ?? '';
+
+        return trim(preg_replace('/\s+/', ' ', $value) ?? '');
+    }
+
+    private function looksLikeYesNoQuestion(string $text): bool
+    {
+        $normalized = $this->normalizeSearchText($text);
+
+        return str_starts_with($normalized, 'atienden')
+            || str_starts_with($normalized, 'hay')
+            || str_starts_with($normalized, 'tienen')
+            || str_starts_with($normalized, 'puedo')
+            || str_starts_with($normalized, 'se puede');
+    }
+
+    private function paragraphSupportsAffirmative(string $paragraph): bool
+    {
+        $normalized = $this->normalizeSearchText($paragraph);
+
+        return str_contains($normalized, 'atiende')
+            || str_contains($normalized, 'pueden')
+            || str_contains($normalized, 'puede')
+            || str_contains($normalized, 'disponibilidad');
     }
 
     /**
