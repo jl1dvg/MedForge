@@ -16,6 +16,9 @@ class ConsultasCors
     private array $allowedOrigins = [
         'http://cive.ddns.net',
         'https://cive.ddns.net',
+        'http://sigcenter.ddns.net',
+        'https://sigcenter.ddns.net',
+        'http://sigcenter.ddns.net:18093',
         'http://sigcenter.ddns.net:18093',
         'https://sigcenter.ddns.net:18093',
         'http://192.168.1.13:8085',

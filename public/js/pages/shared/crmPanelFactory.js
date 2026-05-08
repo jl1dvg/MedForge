@@ -1714,13 +1714,13 @@ function renderPropuestas(propuestas) {
         actions.className = 'd-flex flex-column gap-2 align-items-end';
         actions.innerHTML = `
             <button type="button" class="btn btn-sm btn-outline-danger" data-crm-proposal-action="pdf">
-                <i class="mdi mdi-file-pdf-box"></i> PDF
+                <i class="mdi mdi-file-pdf-box"></i>
             </button>
             <button type="button" class="btn btn-sm btn-outline-success" data-crm-proposal-action="whatsapp">
-                <i class="mdi mdi-whatsapp"></i> WhatsApp
+                <i class="mdi mdi-whatsapp"></i>
             </button>
             <button type="button" class="btn btn-sm btn-outline-primary" data-crm-proposal-action="email">
-                <i class="mdi mdi-email-send-outline"></i> Correo
+                <i class="mdi mdi-email-outline"></i>
             </button>
         `;
         actions.querySelector('[data-crm-proposal-action="pdf"]')?.addEventListener('click', () => {
