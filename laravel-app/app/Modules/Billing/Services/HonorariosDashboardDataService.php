@@ -14,6 +14,8 @@ class HonorariosDashboardDataService
     private HonorariosSettingsService $settingsService;
     /** @var array<string, true>|null */
     private ?array $allowedDoctorKeys = null;
+    /** @var array<string, string>|null */
+    private ?array $doctorDisplayByKey = null;
     /** @var array<string, float|null> */
     private array $honorarioCodigoCache = [];
 
@@ -75,37 +77,61 @@ class HonorariosDashboardDataService
         $bfrFacturaIdExpr = "COALESCE(NULLIF(TRIM(bfr.factura_id), ''), '')";
         $bfrEstadoExpr = "COALESCE(NULLIF(TRIM(bfr.estado), ''), '')";
         $bfrRealizadoPorExpr = "COALESCE(NULLIF(TRIM(bfr.realizado_por), ''), '')";
+        $bpJoin = $this->billingProcedimientosJoinDefinition();
+        $isPublicExpr = "({$dimensionContext['categoria_expr']} = 'publico')";
         $sql = "
             SELECT
                 {$atencionIdExpr} AS atencion_id,
                 pp.form_id,
                 {$hcExpr} AS hc_number,
                 {$sedeExpr} AS sede,
-                pp.form_id AS billing_id,
+                COALESCE(NULLIF(TRIM(CAST(bfr.factura_id AS CHAR)), ''), NULLIF(TRIM(CAST(bm.id AS CHAR)), ''), pp.form_id) AS billing_id,
                 {$dateExpr} AS fecha,
                 COALESCE(NULLIF(TRIM({$rawAfiliacionExpr}), ''), 'Sin afiliación') AS afiliacion,
                 {$dimensionContext['categoria_expr']} AS categoria_seguro,
                 {$dimensionContext['empresa_label_expr']} AS empresa_seguro,
                 COALESCE(NULLIF(TRIM(pp.doctor), ''), 'Sin doctor') AS doctor,
                 COALESCE({$bfrPacienteExpr}, {$patientNameExpr}) AS paciente,
-                {$bfrCodigoExpr} AS proc_codigo,
-                {$bfrProcedimientoExpr} AS proc_detalle,
+                COALESCE(NULLIF(TRIM({$bfrCodigoExpr}), ''), NULLIF(TRIM(bp_agg.proc_codigo), ''), '') AS proc_codigo,
+                COALESCE(NULLIF(TRIM({$bfrProcedimientoExpr}), ''), NULLIF(TRIM(bp_agg.proc_detalle), ''), '') AS proc_detalle,
                 COALESCE(NULLIF(TRIM(pp.procedimiento_proyectado), ''), '') AS procedimiento_proyectado,
                 '' AS procedimiento_categoria,
                 '' AS procedimiento_cirugia,
-                {$bfrMontoHonorarioExpr} AS total_procedimientos,
-                1 AS procedimientos_count,
-                {$bfrMontoFacturadoExpr} AS monto_facturado,
-                {$bfrNumeroFacturaExpr} AS numero_factura,
-                {$bfrFacturaIdExpr} AS factura_id,
-                {$bfrEstadoExpr} AS estado_facturacion,
+                CASE
+                    WHEN bfr.form_id IS NOT NULL THEN {$bfrMontoHonorarioExpr}
+                    WHEN {$isPublicExpr} AND bm.id IS NOT NULL THEN COALESCE(bp_agg.total_procedimientos, 0)
+                    ELSE 0
+                END AS total_procedimientos,
+                CASE
+                    WHEN bfr.form_id IS NOT NULL THEN 1
+                    WHEN {$isPublicExpr} AND bm.id IS NOT NULL THEN COALESCE(bp_agg.procedimientos_count, 0)
+                    ELSE 1
+                END AS procedimientos_count,
+                CASE
+                    WHEN bfr.form_id IS NOT NULL THEN {$bfrMontoFacturadoExpr}
+                    WHEN {$isPublicExpr} AND bm.id IS NOT NULL THEN COALESCE(bp_agg.total_procedimientos, 0)
+                    ELSE 0
+                END AS monto_facturado,
+                COALESCE(NULLIF(TRIM({$bfrNumeroFacturaExpr}), ''), '') AS numero_factura,
+                COALESCE(NULLIF(TRIM({$bfrFacturaIdExpr}), ''), NULLIF(TRIM(CAST(bm.id AS CHAR)), ''), '') AS factura_id,
+                COALESCE(NULLIF(TRIM({$bfrEstadoExpr}), ''), CASE WHEN {$isPublicExpr} AND bm.id IS NOT NULL THEN 'BILLING PUBLICO' ELSE '' END) AS estado_facturacion,
                 {$bfrRealizadoPorExpr} AS realizado_por,
-                CASE WHEN bfr.form_id IS NULL THEN 0 ELSE 1 END AS has_facturacion,
+                CASE WHEN bfr.form_id IS NOT NULL OR ({$isPublicExpr} AND bm.id IS NOT NULL) THEN 1 ELSE 0 END AS has_facturacion,
+                CASE WHEN bfr.form_id IS NOT NULL THEN 'billing_facturacion_real' WHEN {$isPublicExpr} AND bm.id IS NOT NULL THEN 'billing_main' ELSE '' END AS facturacion_fuente,
+                CASE WHEN pdh.form_id IS NULL THEN 0 ELSE 1 END AS has_protocolo,
                 {$estadoAgendaExpr} AS estado_agenda,
                 NULL AS honorario_codigo
             FROM procedimiento_proyectado pp
             LEFT JOIN billing_facturacion_real bfr
               ON TRIM(CAST(bfr.form_id AS CHAR)) = TRIM(CAST(pp.form_id AS CHAR))
+            LEFT JOIN billing_main bm
+              ON TRIM(CAST(bm.form_id AS CHAR)) = TRIM(CAST(pp.form_id AS CHAR))
+            {$bpJoin}
+            LEFT JOIN (
+                SELECT DISTINCT TRIM(CAST(form_id AS CHAR)) AS form_id
+                FROM protocolo_data
+                WHERE form_id IS NOT NULL AND TRIM(CAST(form_id AS CHAR)) <> ''
+            ) pdh ON pdh.form_id = TRIM(CAST(pp.form_id AS CHAR))
             {$patientJoin}
             {$dimensionContext['join']}
             WHERE {$dateExpr} BETWEEN :inicio AND :fin
@@ -181,6 +207,7 @@ class HonorariosDashboardDataService
                 continue;
             }
 
+            $row['doctor'] = $this->doctorDisplayName((string) ($row['doctor'] ?? ''));
             $row['tipo_procedimiento'] = $tipo;
             $codigoFacturacion = strtoupper(trim((string) ($row['proc_codigo'] ?? '')));
             [$codigoTarifario, $detalleTarifario] = $this->parseProcedureCodeDetail((string) ($row['procedimiento_proyectado'] ?? ''));
@@ -422,15 +449,33 @@ class HonorariosDashboardDataService
                 'numero_factura' => (string) ($row['numero_factura'] ?? ''),
                 'factura_id' => (string) ($row['factura_id'] ?? ''),
                 'has_facturacion' => (int) ($row['has_facturacion'] ?? 0),
-                'estado_facturacion' => (int) ($row['has_facturacion'] ?? 0) === 1
-                    ? (trim((string) ($row['estado_facturacion'] ?? '')) ?: 'Facturada')
-                    : 'Pendiente facturación',
+                'facturacion_fuente' => (string) ($row['facturacion_fuente'] ?? ''),
+                'has_protocolo' => (int) ($row['has_protocolo'] ?? 0),
+                'estado_facturacion' => $this->estadoHonorario(
+                    (int) ($row['has_facturacion'] ?? 0),
+                    (int) ($row['has_protocolo'] ?? 0),
+                    (string) ($row['tipo_procedimiento'] ?? 'otros'),
+                    (string) ($row['estado_facturacion'] ?? '')
+                ),
             ];
         }
 
         usort($table, static fn(array $a, array $b): int => strcmp((string) ($a['fecha'] ?? ''), (string) ($b['fecha'] ?? '')));
 
         return $table;
+    }
+
+    private function estadoHonorario(int $hasFacturacion, int $hasProtocolo, string $tipo, string $estadoFacturacion): string
+    {
+        if ($hasFacturacion === 1) {
+            return trim($estadoFacturacion) ?: 'Facturada';
+        }
+
+        if (($this->normalizeTipoFilter($tipo) ?: $tipo) === 'cirugias' && $hasProtocolo !== 1) {
+            return 'Sin protocolo';
+        }
+
+        return 'Pendiente facturación';
     }
 
     /**
@@ -704,40 +749,13 @@ class HonorariosDashboardDataService
 
     private function billingProcedimientosJoinDefinition(): string
     {
-        if (!$this->columnExists('billing_procedimientos', 'billing_id')) {
-            return "
-                LEFT JOIN (
-                    SELECT
-                        CAST(NULL AS UNSIGNED) AS billing_id,
-                        CAST(NULL AS CHAR(100)) AS proc_codigo,
-                        CAST(NULL AS CHAR(255)) AS proc_detalle,
-                        0 AS total_procedimientos,
-                        0 AS procedimientos_count
-                    WHERE 1 = 0
-                ) AS bp_agg ON bp_agg.billing_id = bm.id
-            ";
-        }
-
-        $procCodigoExpr = $this->columnExists('billing_procedimientos', 'proc_codigo')
-            ? "SUBSTRING_INDEX(GROUP_CONCAT(NULLIF(TRIM(proc_codigo), '') ORDER BY id SEPARATOR ' | '), ' | ', 1)"
-            : "''";
-        $procDetalleExpr = $this->columnExists('billing_procedimientos', 'proc_detalle')
-            ? "SUBSTRING_INDEX(GROUP_CONCAT(NULLIF(TRIM(proc_detalle), '') ORDER BY id SEPARATOR ' | '), ' | ', 1)"
-            : "''";
-        $procPrecioExpr = $this->columnExists('billing_procedimientos', 'proc_precio')
-            ? 'COALESCE(SUM(proc_precio), 0)'
-            : '0';
-        $orderColumn = $this->columnExists('billing_procedimientos', 'id') ? 'id' : 'billing_id';
-        $procCodigoExpr = str_replace('ORDER BY id', 'ORDER BY ' . $orderColumn, $procCodigoExpr);
-        $procDetalleExpr = str_replace('ORDER BY id', 'ORDER BY ' . $orderColumn, $procDetalleExpr);
-
         return "
             LEFT JOIN (
                 SELECT
                     billing_id,
-                    {$procCodigoExpr} AS proc_codigo,
-                    {$procDetalleExpr} AS proc_detalle,
-                    {$procPrecioExpr} AS total_procedimientos,
+                    SUBSTRING_INDEX(GROUP_CONCAT(NULLIF(TRIM(proc_codigo), '') ORDER BY id SEPARATOR ' | '), ' | ', 1) AS proc_codigo,
+                    SUBSTRING_INDEX(GROUP_CONCAT(NULLIF(TRIM(proc_detalle), '') ORDER BY id SEPARATOR ' | '), ' | ', 1) AS proc_detalle,
+                    COALESCE(SUM({$this->normalizedMoneySql('proc_precio')}), 0) AS total_procedimientos,
                     COUNT(*) AS procedimientos_count
                 FROM billing_procedimientos
                 GROUP BY billing_id
@@ -1019,16 +1037,28 @@ class HonorariosDashboardDataService
         return trim(preg_replace('/\s+/u', ' ', $normalized) ?? $normalized);
     }
 
-    /**
-     * @return array<string, true>
-     */
-    private function allowedDoctorKeys(): array
+    private function doctorDisplayName(string $value): string
     {
-        if ($this->allowedDoctorKeys !== null) {
-            return $this->allowedDoctorKeys;
+        $key = $this->doctorCanonicalKey($value);
+        if ($key === '') {
+            return trim($value) !== '' ? trim($value) : 'Sin doctor';
         }
 
-        $keys = [];
+        $displayByKey = $this->doctorDisplayByKey();
+
+        return $displayByKey[$key] ?? (trim($value) !== '' ? trim($value) : 'Sin doctor');
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function doctorDisplayByKey(): array
+    {
+        if ($this->doctorDisplayByKey !== null) {
+            return $this->doctorDisplayByKey;
+        }
+
+        $displayByKey = [];
         try {
             $stmt = $this->db->query(
                 "SELECT DISTINCT NULLIF(TRIM(nombre), '') AS doctor
@@ -1042,18 +1072,34 @@ class HonorariosDashboardDataService
                  ORDER BY doctor ASC"
             );
             while ($row = $stmt ? $stmt->fetch(PDO::FETCH_ASSOC) : false) {
-                $key = $this->doctorCanonicalKey((string) ($row['doctor'] ?? ''));
-                if ($key !== '') {
-                    $keys[$key] = true;
+                $doctor = trim((string) ($row['doctor'] ?? ''));
+                $key = $this->doctorCanonicalKey($doctor);
+                if ($key !== '' && $doctor !== '' && !isset($displayByKey[$key])) {
+                    $displayByKey[$key] = $doctor;
                 }
             }
         } catch (\Throwable) {
-            $keys = [];
+            $displayByKey = [];
         }
 
-        $this->allowedDoctorKeys = $keys;
+        $this->doctorDisplayByKey = $displayByKey;
+        $this->allowedDoctorKeys = array_fill_keys(array_keys($displayByKey), true);
 
-        return $this->allowedDoctorKeys;
+        return $this->doctorDisplayByKey;
+    }
+
+    /**
+     * @return array<string, true>
+     */
+    private function allowedDoctorKeys(): array
+    {
+        if ($this->allowedDoctorKeys !== null) {
+            return $this->allowedDoctorKeys;
+        }
+
+        $this->doctorDisplayByKey();
+
+        return $this->allowedDoctorKeys ?? [];
     }
 
     private function honorarioCodigoPorCodigo(string $codigo): ?float

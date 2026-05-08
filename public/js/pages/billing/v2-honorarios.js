@@ -16,7 +16,7 @@
     let lastTableMode = 'resumen';
 
     console.info('[Honorarios] script v2-honorarios cargado', {
-        scriptVersion: '20260504-honorarios-detail-header',
+        scriptVersion: '20260504-honorarios-codigos-label',
         hasRangeInput: Boolean(rangeInput),
         hasDoctorSelect: Boolean(doctorSelect),
         doctorOptionsCount: doctorSelect ? doctorSelect.options.length : 0,
@@ -58,12 +58,17 @@
             return true;
         }
         const hasFacturacion = Number(row?.has_facturacion || 0) === 1;
+        const hasProtocolo = Number(row?.has_protocolo || 0) === 1;
+        const isSurgery = String(row?.tipo || '').toLowerCase().includes('cirug');
         const honorario = Number(row?.honorarios || 0);
         if (currentTableFilter === 'facturadas') {
             return hasFacturacion;
         }
         if (currentTableFilter === 'pendientes') {
-            return !hasFacturacion;
+            return !hasFacturacion && (!isSurgery || hasProtocolo);
+        }
+        if (currentTableFilter === 'sin_protocolo') {
+            return !hasFacturacion && isSurgery && !hasProtocolo;
         }
         if (currentTableFilter === 'con_honorario') {
             return honorario > 0;
@@ -83,17 +88,22 @@
         const totals = visibleRows.reduce((acc, row) => {
             acc.produccion += Number(row.produccion || 0);
             acc.honorarios += Number(row.honorarios || 0);
-            if (Number(row.has_facturacion || 0) !== 1) {
+            const isSurgery = String(row.tipo || '').toLowerCase().includes('cirug');
+            if (Number(row.has_facturacion || 0) !== 1 && (!isSurgery || Number(row.has_protocolo || 0) === 1)) {
                 acc.pendientes += 1;
             }
+            if (Number(row.has_facturacion || 0) !== 1 && isSurgery && Number(row.has_protocolo || 0) !== 1) {
+                acc.sinProtocolo += 1;
+            }
             return acc;
-        }, { produccion: 0, honorarios: 0, pendientes: 0 });
+        }, { produccion: 0, honorarios: 0, pendientes: 0, sinProtocolo: 0 });
 
         visibleSummary.innerHTML = `
             <span>Filas: ${formatNumber(visibleRows.length)}</span>
             <span>Recolectado: ${formatCurrency(totals.produccion)}</span>
             <span>Honorarios: ${formatCurrency(totals.honorarios)}</span>
             <span>Pendientes: ${formatNumber(totals.pendientes)}</span>
+            <span>Sin protocolo: ${formatNumber(totals.sinProtocolo)}</span>
         `;
     };
 
@@ -184,9 +194,16 @@
             },
             {
                 data: null,
-                render: row => Number(row.has_facturacion || 0) === 1
-                    ? badge(row.estado_facturacion || 'Facturada', Number(row.honorarios || 0) > 0 ? 'success' : 'muted', 'mdi-check-circle-outline')
-                    : badge('Pendiente', 'warning', 'mdi-clock-outline'),
+                render: row => {
+                    if (Number(row.has_facturacion || 0) === 1) {
+                        return badge(row.estado_facturacion || 'Facturada', Number(row.honorarios || 0) > 0 ? 'success' : 'muted', 'mdi-check-circle-outline');
+                    }
+                    if (String(row.tipo || '').toLowerCase().includes('cirug') && Number(row.has_protocolo || 0) !== 1) {
+                        return badge(row.estado_facturacion || 'Sin protocolo', 'danger', 'mdi-file-alert-outline');
+                    }
+
+                    return badge(row.estado_facturacion || 'Pendiente facturación', 'warning', 'mdi-clock-outline');
+                },
             },
             { data: 'factura_id', defaultContent: '' },
             {
@@ -227,6 +244,35 @@
         return true;
     };
 
+    const tableHeaderHtml = mode => mode === 'detalle'
+        ? '<tr><th>Fecha</th><th>Sede</th><th>Doctor</th><th>Paciente</th><th>Tipo</th><th>Procedimiento</th><th>Afiliación</th><th>Facturación</th><th>Factura ID</th><th class="text-end">Recolectado</th><th class="text-end">Honorario</th></tr>'
+        : '<tr><th>Médico</th><th>Tipo</th><th class="text-end">Atenciones</th><th class="text-end">Códigos</th><th class="text-end">Recolectado</th><th class="text-end">Honorarios</th></tr>';
+
+    const tableColspan = mode => mode === 'detalle' ? 11 : 6;
+
+    const rebuildTableNode = mode => {
+        const currentTable = document.getElementById('honorarios-table');
+        if (!currentTable) {
+            return { table: null, tbody: null };
+        }
+
+        destroyDataTable(currentTable);
+
+        const table = document.createElement('table');
+        table.className = 'table table-striped table-hover mb-0';
+        table.id = 'honorarios-table';
+        table.innerHTML = `
+            <thead class="bg-primary-light">${tableHeaderHtml(mode)}</thead>
+            <tbody id="table-honorarios"></tbody>
+        `;
+        currentTable.replaceWith(table);
+
+        return {
+            table,
+            tbody: table.querySelector('#table-honorarios'),
+        };
+    };
+
     const metric = (id, value) => {
         const node = document.getElementById(id);
         if (node) {
@@ -237,24 +283,16 @@
     const setTable = (rows, mode = 'resumen') => {
         lastTableRows = Array.isArray(rows) ? rows : [];
         lastTableMode = mode;
-        const tbody = document.getElementById('table-honorarios');
-        if (!tbody) {
+        const { table, tbody } = rebuildTableNode(mode);
+        if (!table || !tbody) {
             return;
-        }
-        const table = tbody.closest('table');
-        const thead = table ? table.querySelector('thead') : null;
-        destroyDataTable(table);
-        if (thead) {
-            thead.innerHTML = mode === 'detalle'
-                ? '<tr><th>Fecha</th><th>Sede</th><th>Doctor</th><th>Paciente</th><th>Tipo</th><th>Procedimiento</th><th>Afiliación</th><th>Facturación</th><th>Factura ID</th><th class="text-end">Recolectado</th><th class="text-end">Honorario</th></tr>'
-                : '<tr><th>Médico</th><th>Tipo</th><th class="text-end">Atenciones</th><th class="text-end">Procedimientos</th><th class="text-end">Recolectado</th><th class="text-end">Honorarios</th></tr>';
         }
 
         const filteredRows = Array.isArray(rows) ? rows.filter(row => rowMatchesQuickFilter(row, mode)) : [];
         if (!Array.isArray(rows) || filteredRows.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="${mode === 'detalle' ? 11 : 6}" class="text-center text-muted">Sin datos</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="${tableColspan(mode)}" class="text-center text-muted">Sin datos</td></tr>`;
             if (visibleSummary) {
-                visibleSummary.innerHTML = '<span>Filas: 0</span><span>Recolectado: $0,00</span><span>Honorarios: $0,00</span><span>Pendientes: 0</span>';
+                visibleSummary.innerHTML = '<span>Filas: 0</span><span>Recolectado: $0,00</span><span>Honorarios: $0,00</span><span>Pendientes: 0</span><span>Sin protocolo: 0</span>';
             }
             return;
         }
@@ -309,16 +347,21 @@
             const totals = filteredRows.reduce((acc, row) => {
                 acc.produccion += Number(row.produccion || 0);
                 acc.honorarios += Number(row.honorarios || 0);
-                if (Number(row.has_facturacion || 0) !== 1) {
+                const isSurgery = String(row.tipo || '').toLowerCase().includes('cirug');
+                if (Number(row.has_facturacion || 0) !== 1 && (!isSurgery || Number(row.has_protocolo || 0) === 1)) {
                     acc.pendientes += 1;
                 }
+                if (Number(row.has_facturacion || 0) !== 1 && isSurgery && Number(row.has_protocolo || 0) !== 1) {
+                    acc.sinProtocolo += 1;
+                }
                 return acc;
-            }, { produccion: 0, honorarios: 0, pendientes: 0 });
+            }, { produccion: 0, honorarios: 0, pendientes: 0, sinProtocolo: 0 });
             visibleSummary.innerHTML = `
                 <span>Filas: ${formatNumber(filteredRows.length)}</span>
                 <span>Recolectado: ${formatCurrency(totals.produccion)}</span>
                 <span>Honorarios: ${formatCurrency(totals.honorarios)}</span>
                 <span>Pendientes: ${formatNumber(totals.pendientes)}</span>
+                <span>Sin protocolo: ${formatNumber(totals.sinProtocolo)}</span>
             `;
         }
     };

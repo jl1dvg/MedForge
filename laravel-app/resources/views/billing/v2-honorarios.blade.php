@@ -303,11 +303,11 @@
         <div class="honorarios-grid">
             <div class="metric-card"><h6>Total casos</h6>
                 <div class="metric-value" id="metric-casos">—</div>
-                <div class="metric-subtext">Cirugías con procedimientos</div>
+                <div class="metric-subtext">Atenciones/cirugías únicas</div>
             </div>
-            <div class="metric-card"><h6>Procedimientos</h6>
+            <div class="metric-card"><h6>Códigos facturados</h6>
                 <div class="metric-value" id="metric-procedimientos">—</div>
-                <div class="metric-subtext">Cantidad total</div>
+                <div class="metric-subtext">Líneas de billing_procedimientos</div>
             </div>
             <div class="metric-card"><h6>Producción quirúrgica</h6>
                 <div class="metric-value" id="metric-produccion">—</div>
@@ -364,6 +364,7 @@
                                 <button type="button" class="honorarios-quick-filter active" data-filter="all">Todas</button>
                                 <button type="button" class="honorarios-quick-filter" data-filter="facturadas">Facturadas</button>
                                 <button type="button" class="honorarios-quick-filter" data-filter="pendientes">Pendientes</button>
+                                <button type="button" class="honorarios-quick-filter" data-filter="sin_protocolo">Sin protocolo</button>
                                 <button type="button" class="honorarios-quick-filter" data-filter="con_honorario">Con honorario</button>
                                 <button type="button" class="honorarios-quick-filter" data-filter="honorario_cero">Honorario $0</button>
                             </div>
@@ -380,7 +381,7 @@
                                 <th>Médico</th>
                                 <th>Tipo</th>
                                 <th class="text-end">Casos</th>
-                                <th class="text-end">Procedimientos</th>
+                                <th class="text-end">Códigos</th>
                                 <th class="text-end">Producción</th>
                                 <th class="text-end">Honorarios</th>
                             </tr>
@@ -414,6 +415,6 @@
         <script src="/assets/vendor_components/apexcharts-bundle/dist/apexcharts.js"></script>
         <script src="/assets/vendor_components/datatable/datatables.min.js"></script>
         <script src="/js/pages/shared/datatables-language-es.js"></script>
-        <script src="/js/pages/billing/v2-honorarios.js?v=20260504-honorarios-detail-header"></script>
+        <script src="/js/pages/billing/v2-honorarios.js?v=20260504-honorarios-codigos-label"></script>
     @endif
 @endpush
