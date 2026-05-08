@@ -877,7 +877,9 @@ class WhatsappFlowmakerTest extends TestCase
                 'msj' => 'DATOS',
                 'sede' => [
                     ['NOMBRE' => 'CEIBOS - CONSULTA EXTERNA CEIBOS', 'ID_SEDE' => '16'],
+                    ['NOMBRE' => 'CEIBOS - CEIBOS QUIROFANO 1', 'ID_SEDE' => '18'],
                     ['NOMBRE' => 'MATRIZ - CONSULTA EXTERNA MATRIZ', 'ID_SEDE' => '1'],
+                    ['NOMBRE' => 'MATRIZ - QUIROFANO 1 MATRIZ', 'ID_SEDE' => '3'],
                 ],
                 'estado' => 200,
             ], 200),
@@ -905,7 +907,10 @@ class WhatsappFlowmakerTest extends TestCase
             ->assertJsonPath('ok', true)
             ->assertJsonPath('outbound_message.type', 'list')
             ->assertJsonPath('outbound_message.sections.0.rows.0.id', '16')
-            ->assertJsonPath('outbound_message.sections.0.rows.0.title', 'CEIBOS - CONSULTA EXTERN')
+            ->assertJsonPath('outbound_message.sections.0.rows.0.title', 'Ceibos')
+            ->assertJsonPath('outbound_message.sections.0.rows.1.id', '1')
+            ->assertJsonPath('outbound_message.sections.0.rows.1.title', 'Villa Club')
+            ->assertJsonPath('outbound_message.sections.0.rows.2', null)
             ->assertJsonPath('save_response_as', 'sede_id')
             ->assertJsonPath('next_state', 'agenda_esperando_sede');
     }
@@ -919,6 +924,10 @@ class WhatsappFlowmakerTest extends TestCase
                 'tipoProcedimientos' => [
                     ['procedimiento' => 'AUTOREFRACCION', 'procedimiento_id' => '529'],
                     ['procedimiento' => 'CONSULTA OFTALMOLOGICA NUEVO PACIENTE', 'procedimiento_id' => '530'],
+                    ['procedimiento' => 'CONSULTA OFTALMOLOGICA CITA MEDICA', 'procedimiento_id' => '531'],
+                    ['procedimiento' => 'CONSULTA OFTALMOLOGICA DE CONTROL', 'procedimiento_id' => '532'],
+                    ['procedimiento' => 'REVISION DE EXAMENES', 'procedimiento_id' => '534'],
+                    ['procedimiento' => 'CHALAZION', 'procedimiento_id' => '464'],
                 ],
             ], 200),
         ]);
@@ -944,9 +953,15 @@ class WhatsappFlowmakerTest extends TestCase
             ->assertOk()
             ->assertJsonPath('ok', true)
             ->assertJsonPath('outbound_message.type', 'list')
-            ->assertJsonPath('outbound_message.sections.0.rows.0.id', '529')
-            ->assertJsonPath('outbound_message.sections.0.rows.0.title', 'AUTOREFRACCION')
-            ->assertJsonPath('outbound_message.sections.0.rows.1.id', '530')
+            ->assertJsonPath('outbound_message.sections.0.rows.0.id', '530')
+            ->assertJsonPath('outbound_message.sections.0.rows.0.title', 'Consulta nuevo')
+            ->assertJsonPath('outbound_message.sections.0.rows.1.id', '531')
+            ->assertJsonPath('outbound_message.sections.0.rows.1.title', 'Consulta cita')
+            ->assertJsonPath('outbound_message.sections.0.rows.2.id', '532')
+            ->assertJsonPath('outbound_message.sections.0.rows.2.title', 'Consulta control')
+            ->assertJsonPath('outbound_message.sections.0.rows.3.id', '534')
+            ->assertJsonPath('outbound_message.sections.0.rows.3.title', 'Revisión exámenes')
+            ->assertJsonPath('outbound_message.sections.0.rows.4', null)
             ->assertJsonPath('save_response_as', 'procedimiento_id')
             ->assertJsonPath('next_state', 'agenda_esperando_procedimiento');
     }
@@ -971,7 +986,7 @@ class WhatsappFlowmakerTest extends TestCase
                             'msj' => 'DATOS',
                             'estado' => 200,
                             'tipoProcedimientos' => [
-                                ['procedimiento' => 'AUTOREFRACCION', 'procedimiento_id' => '529'],
+                                ['procedimiento' => 'CONSULTA OFTALMOLOGICA NUEVO PACIENTE', 'procedimiento_id' => '530'],
                             ],
                         ],
                         'ready' => true,
@@ -1003,7 +1018,7 @@ class WhatsappFlowmakerTest extends TestCase
             ->assertOk()
             ->assertJsonPath('matched', true)
             ->assertJsonPath('actions.0.outbound_message.type', 'list')
-            ->assertJsonPath('actions.0.outbound_message.sections.0.rows.0.id', '529')
+            ->assertJsonPath('actions.0.outbound_message.sections.0.rows.0.id', '530')
             ->assertJsonPath('context_after.awaiting_field', 'procedimiento_id')
             ->assertJsonPath('context_after.state', 'agenda_esperando_procedimiento');
     }

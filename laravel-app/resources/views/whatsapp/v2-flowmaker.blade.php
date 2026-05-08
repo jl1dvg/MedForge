@@ -1711,15 +1711,87 @@ document.addEventListener('DOMContentLoaded', function () {
         set_state: 'Cambiar estado',
         set_context: 'Guardar contexto',
         store_consent: 'Guardar consentimiento',
+        lookup_patient: 'Buscar paciente',
+        upsert_patient_from_context: 'Registrar paciente',
+        conditional: 'Condicional',
+        goto_menu: 'Ir al menú',
         handoff_agent: 'Derivar a agente',
         ai_agent: 'AI Agent',
         sigcenter_agenda: 'Agendamiento Sigcenter',
     };
     const actionLabel = (action) => actionTypeLabels[String(action?.type || '')] || String(action?.type || 'accion').replaceAll('_', ' ');
-    const actionTypeSelectOptions = (selectedType = 'send_message') => ['send_message', 'send_buttons', 'send_list', 'send_template', 'send_sequence', 'set_state', 'set_context', 'store_consent', 'handoff_agent', 'ai_agent', 'sigcenter_agenda']
+    const actionTypeSelectOptions = (selectedType = 'send_message') => ['send_message', 'send_buttons', 'send_list', 'send_template', 'send_sequence', 'set_state', 'set_context', 'store_consent', 'lookup_patient', 'upsert_patient_from_context', 'conditional', 'goto_menu', 'handoff_agent', 'ai_agent', 'sigcenter_agenda']
         .map((type) => `
             <option value="${type}" ${type === selectedType ? 'selected' : ''}>${escapeHtml(actionTypeLabels[type] || type)}</option>
         `).join('');
+    const actionSummaryLine = (action) => {
+        if (!action || typeof action !== 'object') {
+            return 'Acción inválida';
+        }
+
+        const type = String(action.type || '');
+        if (['send_message', 'send_buttons', 'send_list'].includes(type)) {
+            return action?.message?.body || action?.message || 'Mensaje sin texto';
+        }
+        if (type === 'set_state') {
+            return `Cambiar estado a: ${action?.state || '—'}`;
+        }
+        if (type === 'set_context') {
+            const values = action?.values && typeof action.values === 'object'
+                ? Object.entries(action.values).map(([key, value]) => `${key}=${stringifyValue(value)}`).join(', ')
+                : 'sin valores';
+            return `Guardar contexto: ${values}`;
+        }
+        if (type === 'lookup_patient') {
+            return `Buscar paciente por ${action?.field || 'cedula'} desde ${action?.source || 'context'}`;
+        }
+        if (type === 'store_consent') {
+            return `Guardar consentimiento: ${action?.value ? 'aceptado' : 'rechazado'}`;
+        }
+        if (type === 'upsert_patient_from_context') {
+            return 'Registrar o actualizar paciente con los datos del contexto';
+        }
+        if (type === 'goto_menu') {
+            return 'Mostrar menú principal';
+        }
+        if (type === 'handoff_agent') {
+            return `Derivar a agente${action?.role_id ? ` rol ${action.role_id}` : ''}`;
+        }
+        if (type === 'sigcenter_agenda') {
+            return `Sigcenter: ${action?.operation || 'list_specialties'}`;
+        }
+
+        return actionLabel(action);
+    };
+    const conditionalSummary = (action) => {
+        const condition = action?.condition || {};
+        const thenActions = Array.isArray(action?.then) ? action.then : [];
+        const elseActions = Array.isArray(action?.else) ? action.else : [];
+        const lines = [
+            `Condición: ${condition?.type || '—'}${condition?.value !== undefined ? ` = ${stringifyValue(condition.value)}` : ''}`,
+        ];
+
+        lines.push('Si se cumple:');
+        lines.push(...(thenActions.length ? thenActions.map((item) => `- ${actionSummaryLine(item)}`) : ['- Sin acciones']));
+        lines.push('Si no se cumple:');
+        lines.push(...(elseActions.length ? elseActions.map((item) => `- ${actionSummaryLine(item)}`) : ['- Sin acciones']));
+
+        return lines.join('\n');
+    };
+    const actionValueForEditor = (action) => {
+        const type = String(action?.type || '');
+        if (type === 'conditional') {
+            return conditionalSummary(action);
+        }
+        return action?.message?.body
+            || action?.message
+            || action?.template?.name
+            || action?.template
+            || action?.instructions
+            || action?.state
+            || actionSummaryLine(action);
+    };
+    const actionUsesReadOnlySummary = (action) => ['lookup_patient', 'upsert_patient_from_context', 'conditional', 'goto_menu', 'store_consent'].includes(String(action?.type || ''));
     const humanizeHandoffReason = (reason) => ({
         low_confidence: 'baja confianza',
         no_grounding: 'sin grounding',
@@ -3128,9 +3200,8 @@ document.addEventListener('DOMContentLoaded', function () {
             ? actions.map((action, index) => {
                 ensureAiAgentDefaults(action);
                 ensureActionDefaults(action);
-                const messageBody = action?.message?.body ?? action?.message ?? '';
-                const templateName = action?.template?.name ?? action?.template ?? '';
-                const actionValue = messageBody || templateName || action?.instructions || action?.state || '';
+                const actionValue = actionValueForEditor(action);
+                const isReadOnlySummary = actionUsesReadOnlySummary(action);
                 const type = String(action?.type || 'accion');
                 const tone = actionTone(type);
                 const isRuntimeHit = activeActionTypes.includes(type);
@@ -3420,8 +3491,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 const defaultValueEditor = !['send_buttons', 'send_list', 'send_template', 'handoff_agent', 'set_state', 'ai_agent', 'sigcenter_agenda'].includes(type) ? `
                     <div class="wa-flow-form-grid">
                         <div class="wa-flow-editor-field" style="grid-column: 1 / -1;">
-                            <label>Valor principal</label>
-                            <textarea data-action-field="${index}" data-field="value">${escapeHtml(actionValue)}</textarea>
+                            <label>${isReadOnlySummary ? 'Resumen' : 'Valor principal'}</label>
+                            <textarea ${isReadOnlySummary ? 'readonly' : `data-action-field="${index}" data-field="value"`}>${escapeHtml(actionValue)}</textarea>
                         </div>
                     </div>
                 ` : '';

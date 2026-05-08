@@ -9,6 +9,22 @@ use Illuminate\Support\Facades\Http;
 class FlowSigcenterAgendaService
 {
     private const COMPANY_ID = 113;
+    /** @var array<int, string> */
+    private const DEFAULT_ALLOWED_SEDE_IDS = ['16', '1'];
+    /** @var array<int, string> */
+    private const DEFAULT_ALLOWED_PROCEDIMIENTO_IDS = ['530', '531', '532', '534'];
+    /** @var array<string, string> */
+    private const DEFAULT_SEDE_LABELS = [
+        '16' => 'Ceibos',
+        '1' => 'Villa Club',
+    ];
+    /** @var array<string, string> */
+    private const DEFAULT_PROCEDIMIENTO_LABELS = [
+        '530' => 'Consulta nuevo',
+        '531' => 'Consulta cita',
+        '532' => 'Consulta control',
+        '534' => 'Revisión exámenes',
+    ];
 
     /**
      * @param array<string, mixed> $action
@@ -31,8 +47,8 @@ class FlowSigcenterAgendaService
             'payload' => $payload,
             'missing_fields' => $missing,
             'ready' => $missing === [],
-            'mutates_agenda' => $operation === 'book_appointment',
-            'requires_confirmation' => $operation === 'book_appointment',
+            'mutates_agenda' => in_array($operation, ['book_appointment', 'cancel_appointment'], true),
+            'requires_confirmation' => in_array($operation, ['book_appointment', 'cancel_appointment'], true),
             'store_result_as' => $this->storeResultAs($action, $operation),
             'preview_only' => true,
         ];
@@ -88,17 +104,19 @@ class FlowSigcenterAgendaService
             ]));
         }
 
-        if ($operation === 'book_appointment' && !$confirmed) {
+        if (in_array($operation, ['book_appointment', 'cancel_appointment'], true) && !$confirmed) {
             return $this->withConversationOutput($action, array_merge($preview, [
                 'ok' => false,
                 'executed' => false,
-                'error' => 'Confirmación requerida antes de crear una cita real.',
+                'error' => 'Confirmación requerida antes de modificar una cita real.',
             ]));
         }
 
-        $result = $operation === 'book_appointment'
-            ? $this->executeBooking($preview)
-            : $this->executeLookup($preview);
+        $result = match ($operation) {
+            'book_appointment' => $this->executeBooking($preview),
+            'cancel_appointment' => $this->executeCancel($preview),
+            default => $this->executeLookup($preview),
+        };
 
         return $this->withConversationOutput($action, array_merge($preview, $result, [
             'preview_only' => false,
@@ -155,6 +173,30 @@ class FlowSigcenterAgendaService
         return $this->responsePayload($response, 'POST', [
             'post_form' => $this->responsePayload($formFallback, 'POST_FORM', null),
             'get' => $this->responsePayload($getFallback, 'GET', null),
+        ]);
+    }
+
+    /**
+     * @param array<string, mixed> $preview
+     * @return array<string, mixed>
+     */
+    private function executeCancel(array $preview): array
+    {
+        $endpoint = (string) $preview['endpoint'];
+        $payload = is_array($preview['payload'] ?? null) ? $preview['payload'] : [];
+        $response = $this->request('POST', $endpoint, $payload);
+
+        if ($response->successful()) {
+            return $this->responsePayload($response, 'POST', null);
+        }
+
+        $formFallback = $this->request('POST_FORM', $endpoint, $payload);
+        if ($formFallback->successful()) {
+            return $this->responsePayload($formFallback, 'POST_FORM', null);
+        }
+
+        return $this->responsePayload($response, 'POST', [
+            'post_form' => $this->responsePayload($formFallback, 'POST_FORM', null),
         ]);
     }
 
@@ -242,7 +284,7 @@ class FlowSigcenterAgendaService
     private function buildOutboundList(array $action, array $result): ?array
     {
         $operation = (string) ($result['operation'] ?? '');
-        $rows = $this->listRows($operation, is_array($result['data'] ?? null) ? $result['data'] : []);
+        $rows = $this->listRows($operation, is_array($result['data'] ?? null) ? $result['data'] : [], $action);
 
         if ($rows === []) {
             return null;
@@ -263,7 +305,7 @@ class FlowSigcenterAgendaService
      * @param array<string, mixed> $data
      * @return array<int, array{id: string, title: string, description: string}>
      */
-    private function listRows(string $operation, array $data): array
+    private function listRows(string $operation, array $data, array $action): array
     {
         if ($operation === 'list_specialties') {
             $specialties = is_array($data['especialidades'] ?? null) ? $data['especialidades'] : [];
@@ -304,19 +346,23 @@ class FlowSigcenterAgendaService
         }
 
         if ($operation === 'list_sedes') {
-            return $this->genericRows($this->recordsFromData($data, ['sede', 'sedes', 'data', 'items', 'result']), [
+            $rows = $this->filterRowsByAllowedIds($this->genericRows($this->recordsFromData($data, ['sede', 'sedes', 'data', 'items', 'result']), [
                 'id' => ['ID_SEDE', 'id_sede', 'sede_id', 'id', 'codigo'],
                 'title' => ['NOMBRE', 'NOMBRE_SEDE', 'sede', 'nombre_sede', 'nombre', 'descripcion'],
                 'description' => ['direccion', 'ciudad', 'departamento'],
-            ]);
+            ]), $this->allowedIds($action, ['allowed_sede_ids', 'allowed_sedes'], self::DEFAULT_ALLOWED_SEDE_IDS));
+
+            return $this->applyRowTitleAliases($rows, $this->titleAliases($action, ['sede_labels', 'sede_titles'], self::DEFAULT_SEDE_LABELS));
         }
 
         if ($operation === 'list_procedimientos') {
-            return $this->genericRows($this->recordsFromData($data, ['tipoProcedimientos', 'procedimientos', 'data', 'items', 'result']), [
+            $rows = $this->filterRowsByAllowedIds($this->genericRows($this->recordsFromData($data, ['tipoProcedimientos', 'procedimientos', 'data', 'items', 'result']), [
                 'id' => ['procedimiento_id', 'ID_PROCEDIMIENTO', 'id_procedimiento', 'id', 'codigo'],
                 'title' => ['procedimiento', 'NOMBRE_PROCEDIMIENTO', 'nombre_procedimiento', 'nombre', 'descripcion'],
                 'description' => ['tipo', 'area', 'departamento'],
-            ]);
+            ]), $this->allowedIds($action, ['allowed_procedimiento_ids', 'allowed_procedimientos'], self::DEFAULT_ALLOWED_PROCEDIMIENTO_IDS));
+
+            return $this->applyRowTitleAliases($rows, $this->titleAliases($action, ['procedimiento_labels', 'procedimiento_titles'], self::DEFAULT_PROCEDIMIENTO_LABELS));
         }
 
         if ($operation === 'list_days') {
@@ -336,6 +382,104 @@ class FlowSigcenterAgendaService
         }
 
         return [];
+    }
+
+    /**
+     * @param array<int, array{id: string, title: string, description: string}> $rows
+     * @param array<int, string> $allowedIds
+     * @return array<int, array{id: string, title: string, description: string}>
+     */
+    private function filterRowsByAllowedIds(array $rows, array $allowedIds): array
+    {
+        if ($allowedIds === []) {
+            return $rows;
+        }
+
+        $allowed = array_fill_keys($allowedIds, true);
+
+        return array_values(array_filter($rows, static fn (array $row): bool => isset($allowed[(string) $row['id']])));
+    }
+
+    /**
+     * @param array<string, mixed> $action
+     * @param array<int, string> $keys
+     * @param array<int, string> $default
+     * @return array<int, string>
+     */
+    private function allowedIds(array $action, array $keys, array $default): array
+    {
+        foreach ($keys as $key) {
+            if (!array_key_exists($key, $action)) {
+                continue;
+            }
+
+            $value = $action[$key];
+            if (is_array($value)) {
+                return array_values(array_filter(array_map(
+                    static fn (mixed $item): string => trim((string) $item),
+                    $value
+                ), static fn (string $item): bool => $item !== ''));
+            }
+
+            if (is_string($value)) {
+                return array_values(array_filter(array_map(
+                    static fn (string $item): string => trim($item),
+                    explode(',', $value)
+                ), static fn (string $item): bool => $item !== ''));
+            }
+        }
+
+        return $default;
+    }
+
+    /**
+     * @param array<int, array{id: string, title: string, description: string}> $rows
+     * @param array<string, string> $aliases
+     * @return array<int, array{id: string, title: string, description: string}>
+     */
+    private function applyRowTitleAliases(array $rows, array $aliases): array
+    {
+        if ($aliases === []) {
+            return $rows;
+        }
+
+        return array_values(array_map(static function (array $row) use ($aliases): array {
+            $alias = trim((string) ($aliases[(string) $row['id']] ?? ''));
+            if ($alias !== '') {
+                $row['title'] = mb_substr($alias, 0, 24, 'UTF-8');
+            }
+
+            return $row;
+        }, $rows));
+    }
+
+    /**
+     * @param array<string, mixed> $action
+     * @param array<int, string> $keys
+     * @param array<string, string> $default
+     * @return array<string, string>
+     */
+    private function titleAliases(array $action, array $keys, array $default): array
+    {
+        foreach ($keys as $key) {
+            if (!array_key_exists($key, $action)) {
+                continue;
+            }
+
+            $value = $action[$key];
+            if (is_array($value)) {
+                $aliases = [];
+                foreach ($value as $id => $label) {
+                    if (is_scalar($label)) {
+                        $aliases[trim((string) $id)] = trim((string) $label);
+                    }
+                }
+
+                return array_filter($aliases, static fn (string $label): bool => $label !== '');
+            }
+        }
+
+        return $default;
     }
 
     /**
@@ -540,6 +684,7 @@ class FlowSigcenterAgendaService
             'dias', 'days', 'list_days' => 'list_days',
             'horarios', 'times', 'list_times' => 'list_times',
             'agendar', 'book', 'book_appointment' => 'book_appointment',
+            'cancelar', 'cancel', 'cancel_appointment' => 'cancel_appointment',
             default => 'list_days',
         };
     }
@@ -561,6 +706,14 @@ class FlowSigcenterAgendaService
             'sede_id',
             $this->selectedValue($action, $context, $input, 'ID_SEDE', 3)
         );
+
+        if ($operation === 'cancel_appointment') {
+            return [
+                'company_id' => (int) $companyId,
+                'agenda_id' => $this->selectedValue($action, $context, $input, 'agenda_id'),
+                'motivo' => (string) $this->value($action, $context, $input, 'motivo', 'Solicitado por paciente vía WhatsApp'),
+            ];
+        }
 
         if ($operation === 'list_specialties') {
             return [
@@ -649,6 +802,7 @@ class FlowSigcenterAgendaService
             'list_days' => ['trabajador_id', 'ID_SEDE'],
             'list_times' => ['trabajador_id', 'ID_SEDE', 'FECHA'],
             'book_appointment' => ['identificacion', 'trabajador_id', 'procedimiento_id', 'fecha_inicio', 'ID_SEDE'],
+            'cancel_appointment' => ['company_id', 'agenda_id', 'motivo'],
             default => [],
         };
 
@@ -667,6 +821,7 @@ class FlowSigcenterAgendaService
             'list_days' => 'https://sigcenter.ddns.net:18093/restful/api-agenda/horarios-disponibles-dias',
             'list_times' => 'https://sigcenter.ddns.net:18093/restful/api-agenda/horarios-disponibles-especifico',
             'book_appointment' => 'https://sigcenter.ddns.net:18093/restful/api-eva/agendar-facturar',
+            'cancel_appointment' => 'https://sigcenter.ddns.net:18093/restful/api-agenda/cancelar-cita',
             default => '',
         };
     }
@@ -677,7 +832,7 @@ class FlowSigcenterAgendaService
             return 'LOCAL_DB';
         }
 
-        return $operation === 'book_appointment' ? 'POST' : 'GET_JSON_WITH_POST_FALLBACK';
+        return in_array($operation, ['book_appointment', 'cancel_appointment'], true) ? 'POST' : 'GET_JSON_WITH_POST_FALLBACK';
     }
 
     private function operationLabel(string $operation): string
@@ -690,6 +845,7 @@ class FlowSigcenterAgendaService
             'list_days' => 'Consultar días disponibles',
             'list_times' => 'Consultar horarios de un día',
             'book_appointment' => 'Crear agendamiento en Sigcenter',
+            'cancel_appointment' => 'Cancelar cita en Sigcenter',
             default => 'Acción Sigcenter',
         };
     }

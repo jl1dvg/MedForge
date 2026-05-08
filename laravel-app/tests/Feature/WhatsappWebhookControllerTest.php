@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
@@ -13,6 +14,7 @@ class WhatsappWebhookControllerTest extends TestCase
         parent::setUp();
 
         Schema::dropIfExists('whatsapp_inbox_messages');
+        Schema::dropIfExists('whatsapp_sigcenter_bookings');
         Schema::dropIfExists('whatsapp_messages');
         Schema::dropIfExists('whatsapp_conversations');
         Schema::dropIfExists('whatsapp_flow_shadow_runs');
@@ -87,6 +89,29 @@ class WhatsappWebhookControllerTest extends TestCase
             $table->string('message_id', 191)->nullable();
             $table->longText('payload')->nullable();
             $table->timestamp('created_at')->nullable();
+        });
+
+        Schema::create('whatsapp_sigcenter_bookings', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('conversation_id')->nullable();
+            $table->string('wa_number', 32);
+            $table->string('inbound_message_id', 191)->nullable();
+            $table->string('status', 32)->default('created');
+            $table->string('patient_hc_number', 64)->nullable();
+            $table->string('patient_full_name', 191)->nullable();
+            $table->string('sigcenter_agenda_id', 64)->nullable();
+            $table->string('trabajador_id', 64)->nullable();
+            $table->string('medico_nombre', 191)->nullable();
+            $table->string('sede_id', 64)->nullable();
+            $table->string('sede_nombre', 191)->nullable();
+            $table->string('procedimiento_id', 64)->nullable();
+            $table->string('procedimiento_nombre', 191)->nullable();
+            $table->timestamp('fecha_inicio')->nullable();
+            $table->json('payload')->nullable();
+            $table->json('response')->nullable();
+            $table->text('error')->nullable();
+            $table->timestamp('booked_at')->nullable();
+            $table->timestamps();
         });
 
         Schema::create('whatsapp_autoresponder_flows', function (Blueprint $table): void {
@@ -943,5 +968,444 @@ class WhatsappWebhookControllerTest extends TestCase
             'inbound_message_id' => 'wamid.sync.1',
             'message_text' => 'hola',
         ]);
+    }
+
+    public function test_it_renders_selected_sigcenter_labels_in_summary_without_losing_ids(): void
+    {
+        config()->set('whatsapp.migration.automation.enabled', true);
+        config()->set('whatsapp.migration.automation.dry_run', true);
+
+        $flowId = \DB::table('whatsapp_autoresponder_flows')->insertGetId([
+            'flow_key' => 'default',
+            'name' => 'Flujo principal de WhatsApp',
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $versionId = \DB::table('whatsapp_autoresponder_flow_versions')->insertGetId([
+            'flow_id' => $flowId,
+            'version' => 1,
+            'status' => 'published',
+            'entry_settings' => json_encode([
+                'flow' => [
+                    'name' => 'Flujo principal de WhatsApp',
+                    'scenarios' => [[
+                        'id' => 'resumen_sede',
+                        'name' => 'Resumen sede',
+                        'stage' => 'custom',
+                        'status' => 'published',
+                        'conditions' => [
+                            ['type' => 'state_is', 'value' => 'agenda_esperando_sede'],
+                        ],
+                        'actions' => [[
+                            'type' => 'send_message',
+                            'message' => [
+                                'type' => 'text',
+                                'body' => 'Sede: {{sede_id}}',
+                            ],
+                        ]],
+                    ]],
+                ],
+            ], JSON_UNESCAPED_UNICODE),
+            'published_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        \DB::table('whatsapp_autoresponder_flows')
+            ->where('id', $flowId)
+            ->update(['active_version_id' => $versionId]);
+
+        $conversationId = \DB::table('whatsapp_conversations')->insertGetId([
+            'wa_number' => '593999111778',
+            'display_name' => 'Paciente Agenda',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        \DB::table('whatsapp_autoresponder_sessions')->insert([
+            'conversation_id' => $conversationId,
+            'wa_number' => '593999111778',
+            'scenario_id' => 'sedes',
+            'awaiting' => 'input',
+            'context' => json_encode([
+                'state' => 'agenda_esperando_sede',
+                'awaiting_field' => 'sede_id',
+                'sigcenter_sedes' => [
+                    'ready' => true,
+                    'data' => [
+                        'sedes' => [[
+                            'ID_SEDE' => '1',
+                            'NOMBRE' => 'MATRIZ - CONSULTA EXTERNA',
+                        ]],
+                    ],
+                ],
+            ], JSON_UNESCAPED_UNICODE),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->postJson('/whatsapp/webhook', [
+            'entry' => [[
+                'changes' => [[
+                    'value' => [
+                        'messages' => [[
+                            'from' => '593999111778',
+                            'id' => 'wamid.flowmaker.sede-label',
+                            'timestamp' => '1712745900',
+                            'type' => 'interactive',
+                            'interactive' => [
+                                'type' => 'list_reply',
+                                'list_reply' => [
+                                    'id' => '1',
+                                    'title' => 'MATRIZ - CONSULTA EXTERN',
+                                ],
+                            ],
+                        ]],
+                    ],
+                ]],
+            ]],
+        ])->assertOk();
+
+        $session = \DB::table('whatsapp_autoresponder_sessions')
+            ->where('wa_number', '593999111778')
+            ->first();
+        $context = json_decode((string) $session?->context, true);
+
+        $this->assertSame('1', $context['sede_id'] ?? null);
+        $this->assertSame('MATRIZ - CONSULTA EXTERNA', $context['sede_nombre'] ?? null);
+        $this->assertDatabaseHas('whatsapp_messages', [
+            'direction' => 'outbound',
+            'body' => 'Sede: MATRIZ - CONSULTA EXTERNA',
+        ]);
+    }
+
+    public function test_it_records_sigcenter_booking_and_sends_success_message_after_confirmation(): void
+    {
+        config()->set('whatsapp.migration.automation.enabled', true);
+        config()->set('whatsapp.migration.automation.dry_run', true);
+
+        Http::fake([
+            'sigcenter.ddns.net:18093/*' => Http::response([
+                'estado' => 200,
+                'msj' => 'OK',
+                'agenda_id' => 'AG-123',
+            ], 200),
+        ]);
+
+        $flowId = \DB::table('whatsapp_autoresponder_flows')->insertGetId([
+            'flow_key' => 'default',
+            'name' => 'Flujo principal de WhatsApp',
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $versionId = \DB::table('whatsapp_autoresponder_flow_versions')->insertGetId([
+            'flow_id' => $flowId,
+            'version' => 1,
+            'status' => 'published',
+            'entry_settings' => json_encode([
+                'flow' => [
+                    'name' => 'Flujo principal de WhatsApp',
+                    'scenarios' => [[
+                        'id' => 'crear_cita',
+                        'name' => 'Crear cita',
+                        'stage' => 'custom',
+                        'status' => 'published',
+                        'conditions' => [
+                            ['type' => 'state_is', 'value' => 'agenda_confirmar_cita'],
+                            ['type' => 'message_contains', 'keywords' => ['confirmar']],
+                        ],
+                        'actions' => [[
+                            'type' => 'sigcenter_agenda',
+                            'operation' => 'book_appointment',
+                            'company_id' => 113,
+                            'requires_confirmation' => true,
+                        ]],
+                    ]],
+                ],
+            ], JSON_UNESCAPED_UNICODE),
+            'published_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        \DB::table('whatsapp_autoresponder_flows')
+            ->where('id', $flowId)
+            ->update(['active_version_id' => $versionId]);
+
+        $conversationId = \DB::table('whatsapp_conversations')->insertGetId([
+            'wa_number' => '593999111779',
+            'display_name' => 'Paciente Agenda',
+            'patient_hc_number' => '0922222222',
+            'patient_full_name' => 'Paciente Agenda',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        \DB::table('whatsapp_autoresponder_sessions')->insert([
+            'conversation_id' => $conversationId,
+            'wa_number' => '593999111779',
+            'scenario_id' => 'resumen',
+            'context' => json_encode([
+                'state' => 'agenda_confirmar_cita',
+                'cedula' => '0922222222',
+                'trabajador_id' => '77',
+                'medico_nombre' => 'Dr. Agenda',
+                'sede_id' => '1',
+                'sede_nombre' => 'Villa Club',
+                'procedimiento_id' => '530',
+                'procedimiento_nombre' => 'Consulta nuevo',
+                'fecha' => '2026-05-08',
+                'fecha_inicio' => '2026-05-08 13:00:00',
+            ], JSON_UNESCAPED_UNICODE),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->postJson('/whatsapp/webhook', [
+            'entry' => [[
+                'changes' => [[
+                    'value' => [
+                        'messages' => [[
+                            'from' => '593999111779',
+                            'id' => 'wamid.flowmaker.booking-confirm',
+                            'timestamp' => '1712745900',
+                            'type' => 'text',
+                            'text' => ['body' => 'Confirmar'],
+                        ]],
+                    ],
+                ]],
+            ]],
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.automation_runs', 1)
+            ->assertJsonPath('data.automation_messages_sent', 1);
+
+        $this->assertDatabaseHas('whatsapp_sigcenter_bookings', [
+            'wa_number' => '593999111779',
+            'inbound_message_id' => 'wamid.flowmaker.booking-confirm',
+            'status' => 'created',
+            'patient_hc_number' => '0922222222',
+            'sede_id' => '1',
+            'sede_nombre' => 'Villa Club',
+            'procedimiento_id' => '530',
+            'procedimiento_nombre' => 'Consulta nuevo',
+        ]);
+
+        $this->assertDatabaseHas('whatsapp_messages', [
+            'direction' => 'outbound',
+            'body' => "Tu cita ha sido agendada exitosamente.\n\nFecha: 2026-05-08\nHorario: 2026-05-08 13:00:00\nSede: Villa Club\nProcedimiento: Consulta nuevo\n\nTe esperamos.",
+        ]);
+    }
+
+    public function test_it_blocks_new_booking_when_patient_has_active_whatsapp_booking(): void
+    {
+        config()->set('whatsapp.migration.automation.enabled', true);
+        config()->set('whatsapp.migration.automation.dry_run', true);
+
+        $this->publishFlowmakerScenarios([[
+            'id' => 'especialidades',
+            'name' => 'Especialidades',
+            'stage' => 'custom',
+            'status' => 'published',
+            'conditions' => [
+                ['type' => 'message_contains', 'value' => 'agendar cita'],
+            ],
+            'actions' => [[
+                'type' => 'sigcenter_agenda',
+                'operation' => 'list_specialties',
+                'send_result' => true,
+            ]],
+        ]]);
+
+        $conversationId = \DB::table('whatsapp_conversations')->insertGetId([
+            'wa_number' => '593999111780',
+            'display_name' => 'Paciente Duplicado',
+            'patient_hc_number' => '0933333333',
+            'patient_full_name' => 'Paciente Duplicado',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $fechaDuplicada = now()->addDay()->format('Y-m-d H:i:s');
+
+        \DB::table('whatsapp_sigcenter_bookings')->insert([
+            'conversation_id' => $conversationId,
+            'wa_number' => '593999111780',
+            'status' => 'created',
+            'patient_hc_number' => '0933333333',
+            'patient_full_name' => 'Paciente Duplicado',
+            'sede_id' => '1',
+            'sede_nombre' => 'Villa Club',
+            'procedimiento_id' => '530',
+            'procedimiento_nombre' => 'Consulta nuevo',
+            'fecha_inicio' => $fechaDuplicada,
+            'booked_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->postJson('/whatsapp/webhook', [
+            'entry' => [[
+                'changes' => [[
+                    'value' => [
+                        'messages' => [[
+                            'from' => '593999111780',
+                            'id' => 'wamid.flowmaker.duplicate-booking',
+                            'timestamp' => '1712745900',
+                            'type' => 'text',
+                            'text' => ['body' => 'Agendar cita'],
+                        ]],
+                    ],
+                ]],
+            ]],
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.automation_runs', 1)
+            ->assertJsonPath('data.automation_messages_sent', 1);
+
+        $this->assertDatabaseHas('whatsapp_messages', [
+            'direction' => 'outbound',
+            'body' => "Ya tienes una cita vigente registrada desde WhatsApp:\nFecha: {$fechaDuplicada}\nSede: Villa Club\nProcedimiento: Consulta nuevo.\n\nPara evitar duplicados no puedo crear otra cita. Si deseas cambiarla, escribe CANCELAR CITA o REAGENDAR CITA y un agente te ayudará.",
+        ]);
+    }
+
+    public function test_it_cancels_active_booking_after_patient_confirmation(): void
+    {
+        config()->set('whatsapp.migration.automation.enabled', true);
+        config()->set('whatsapp.migration.automation.dry_run', true);
+
+        Http::fake([
+            'sigcenter.ddns.net:18093/*' => Http::response([
+                'code' => '200',
+                'msg' => 'CANCELACION CON EXITO',
+                'cancelado' => 'Su cita ha sido cancelada',
+            ], 200),
+        ]);
+
+        $this->publishFlowmakerScenarios([]);
+
+        $conversationId = \DB::table('whatsapp_conversations')->insertGetId([
+            'wa_number' => '593999111781',
+            'display_name' => 'Paciente Cancelar',
+            'patient_hc_number' => '0944444444',
+            'patient_full_name' => 'Paciente Cancelar',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $fechaCancelacion = now()->addDays(2)->format('Y-m-d H:i:s');
+
+        \DB::table('whatsapp_sigcenter_bookings')->insert([
+            'conversation_id' => $conversationId,
+            'wa_number' => '593999111781',
+            'status' => 'created',
+            'patient_hc_number' => '0944444444',
+            'patient_full_name' => 'Paciente Cancelar',
+            'sigcenter_agenda_id' => 'AG-999',
+            'sede_id' => '16',
+            'sede_nombre' => 'Ceibos',
+            'procedimiento_id' => '531',
+            'procedimiento_nombre' => 'Consulta cita',
+            'fecha_inicio' => $fechaCancelacion,
+            'booked_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->postJson('/whatsapp/webhook', [
+            'entry' => [[
+                'changes' => [[
+                    'value' => [
+                        'messages' => [[
+                            'from' => '593999111781',
+                            'id' => 'wamid.flowmaker.cancel-booking',
+                            'timestamp' => '1712745900',
+                            'type' => 'text',
+                            'text' => ['body' => 'Cancelar cita'],
+                        ]],
+                    ],
+                ]],
+            ]],
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.automation_runs', 1)
+            ->assertJsonPath('data.automation_messages_sent', 1);
+
+        $this->assertDatabaseHas('whatsapp_messages', [
+            'direction' => 'outbound',
+            'body' => "Antes de cancelar, confirma esta acción sobre tu cita:\nFecha: {$fechaCancelacion}\nSede: Ceibos\nProcedimiento: Consulta cita.\n\n¿Deseas cancelar esta cita?",
+        ]);
+
+        $this->postJson('/whatsapp/webhook', [
+            'entry' => [[
+                'changes' => [[
+                    'value' => [
+                        'messages' => [[
+                            'from' => '593999111781',
+                            'id' => 'wamid.flowmaker.cancel-booking-confirm',
+                            'timestamp' => '1712745901',
+                            'type' => 'interactive',
+                            'interactive' => [
+                                'type' => 'button_reply',
+                                'button_reply' => [
+                                    'id' => 'confirmar_cancelacion',
+                                    'title' => 'Sí cancelar',
+                                ],
+                            ],
+                        ]],
+                    ],
+                ]],
+            ]],
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.automation_runs', 1)
+            ->assertJsonPath('data.automation_messages_sent', 1);
+
+        $this->assertDatabaseHas('whatsapp_messages', [
+            'direction' => 'outbound',
+            'body' => "Tu cita fue cancelada exitosamente:\nFecha: {$fechaCancelacion}\nSede: Ceibos\nProcedimiento: Consulta cita.\n\nSi necesitas agendar una nueva cita, escribe HOLA o MENU.",
+        ]);
+
+        $this->assertDatabaseHas('whatsapp_sigcenter_bookings', [
+            'wa_number' => '593999111781',
+            'inbound_message_id' => 'wamid.flowmaker.cancel-booking-confirm',
+            'status' => 'cancelled',
+            'sigcenter_agenda_id' => 'AG-999',
+        ]);
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $scenarios
+     */
+    private function publishFlowmakerScenarios(array $scenarios): void
+    {
+        $flowId = \DB::table('whatsapp_autoresponder_flows')->insertGetId([
+            'flow_key' => 'default',
+            'name' => 'Flujo principal de WhatsApp',
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $versionId = \DB::table('whatsapp_autoresponder_flow_versions')->insertGetId([
+            'flow_id' => $flowId,
+            'version' => 1,
+            'status' => 'published',
+            'entry_settings' => json_encode([
+                'flow' => [
+                    'name' => 'Flujo principal de WhatsApp',
+                    'scenarios' => $scenarios,
+                ],
+            ], JSON_UNESCAPED_UNICODE),
+            'published_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        \DB::table('whatsapp_autoresponder_flows')
+            ->where('id', $flowId)
+            ->update(['active_version_id' => $versionId]);
     }
 }

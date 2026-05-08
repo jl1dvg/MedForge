@@ -7,6 +7,7 @@ use App\Models\WhatsappConversation;
 use App\Models\WhatsappMessage;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use RuntimeException;
 
 class FlowRuntimeExecutionService
@@ -49,9 +50,88 @@ class FlowRuntimeExecutionService
             $context['state'] = 'inicio';
         }
         $context = $this->seedPatientContextFromConversation($context, $conversation);
-        $context = $this->captureAwaitingInput($context, $text);
+        $context = $this->captureAwaitingInput($context, $text, $inboundMessage);
 
         $facts = $this->buildFacts($conversation, $inboundMessage, $session, $context, $text, $messagePayload);
+        if (($context['state'] ?? null) === 'agenda_confirmar_cancelacion' || $this->isExplicitCancelConfirmationReply($text)) {
+            $activeBooking = $this->activeSigcenterBooking($conversation, $context);
+            if ($activeBooking !== null && $this->bookingCancellationConfirmed($text)) {
+                $preview = $this->sigcenterAgendaService->execute([
+                    'type' => 'sigcenter_agenda',
+                    'operation' => 'cancel_appointment',
+                    'company_id' => 113,
+                    'agenda_id' => $activeBooking->sigcenter_agenda_id ?? null,
+                    'motivo' => 'Solicitado por paciente vía WhatsApp',
+                ], $context, [
+                    'wa_number' => $conversation->wa_number,
+                    'text' => $text,
+                    'conversation_id' => $conversation->id,
+                ], true);
+
+                $this->markBookingCancellationResult($activeBooking, $preview, $conversation, $inboundMessage);
+                $this->sendFlowMessage(
+                    $conversation,
+                    !empty($preview['ok']) ? $this->bookingCancelledMessage($activeBooking) : $this->bookingCancellationFailedMessage((string) ($preview['error'] ?? '')),
+                    $context
+                );
+
+                WhatsappAutoresponderSession::query()->updateOrCreate(
+                    ['conversation_id' => $conversation->id],
+                    [
+                        'wa_number' => (string) $conversation->wa_number,
+                        'scenario_id' => 'booking_cancel_confirmation',
+                        'node_id' => null,
+                        'awaiting' => null,
+                        'context' => array_merge($context, ['state' => 'menu_principal']),
+                        'last_payload' => $messagePayload,
+                        'last_interaction_at' => now(),
+                    ]
+                );
+
+                return $this->result(true, true, 'booking_cancel_confirmation', 1, false, null);
+            }
+
+            if ($this->bookingCancellationRejected($text)) {
+                $this->sendFlowMessage($conversation, [
+                    'type' => 'text',
+                    'body' => 'No se canceló tu cita. Si necesitas otra gestión, escribe AYUDA.',
+                ], $context);
+
+                return $this->result(true, true, 'booking_cancel_rejected', 1, false, null);
+            }
+        }
+
+        if ($this->isBookingChangeRequest($text)) {
+            $activeBooking = $this->activeSigcenterBooking($conversation, $context);
+            if ($activeBooking !== null) {
+                $changeType = $this->bookingChangeType($text);
+                if ($changeType === 'cancel') {
+                    $this->sendFlowMessage($conversation, $this->bookingCancelConfirmationMessage($activeBooking), $context);
+                } else {
+                    $this->recordSigcenterBookingChangeRequest($activeBooking, $conversation, $inboundMessage, $changeType);
+                    $this->markConversationForBookingSupport($conversation, $activeBooking, $changeType);
+                    $this->sendFlowMessage($conversation, $this->bookingChangeRequestMessage($activeBooking, $changeType), $context);
+                }
+
+                WhatsappAutoresponderSession::query()->updateOrCreate(
+                    ['conversation_id' => $conversation->id],
+                    [
+                        'wa_number' => (string) $conversation->wa_number,
+                        'scenario_id' => $session?->scenario_id,
+                        'node_id' => $session?->node_id,
+                        'awaiting' => null,
+                        'context' => array_merge($context, [
+                            'state' => $changeType === 'cancel' ? 'agenda_confirmar_cancelacion' : 'soporte_cita',
+                            'booking_change_requested' => $changeType,
+                        ]),
+                        'last_payload' => $messagePayload,
+                        'last_interaction_at' => now(),
+                    ]
+                );
+
+                return $this->result(true, true, 'booking_change_request', 1, $changeType !== 'cancel', null);
+            }
+        }
 
         foreach (($flow['scenarios'] ?? []) as $scenario) {
             if (!is_array($scenario) || !$this->scenarioIsPublished($scenario)) {
@@ -109,7 +189,7 @@ class FlowRuntimeExecutionService
      * @param array<string, mixed> $context
      * @return array<string, mixed>
      */
-    private function captureAwaitingInput(array $context, string $text): array
+    private function captureAwaitingInput(array $context, string $text, WhatsappMessage $inboundMessage): array
     {
         $field = $context['awaiting_field'] ?? null;
         if (!is_string($field) || trim($field) === '' || trim($text) === '') {
@@ -117,8 +197,13 @@ class FlowRuntimeExecutionService
         }
 
         $value = trim($text);
-        $context[trim($field)] = $value;
-        if (in_array(trim($field), ['cedula', 'identificacion', 'identifier', 'hc_number'], true)) {
+        $field = trim($field);
+        $context[$field] = $value;
+        $label = $this->resolveCapturedOptionLabel($context, $field, $value, $inboundMessage);
+        if ($label !== null && $label !== '') {
+            $this->storeCapturedOptionLabel($context, $field, $label);
+        }
+        if (in_array($field, ['cedula', 'identificacion', 'identifier', 'hc_number'], true)) {
             $context['cedula'] = $this->normalizeIdentifier($value);
             $context['identifier'] = $context['cedula'];
             $context['current_identifier'] = $context['cedula'];
@@ -194,6 +279,14 @@ class FlowRuntimeExecutionService
             }
 
             if ($type === 'sigcenter_agenda') {
+                if ($this->shouldBlockDuplicateBooking($action, $conversation, $context)) {
+                    $this->sendFlowMessage($conversation, $this->duplicateBookingMessage($this->activeSigcenterBooking($conversation, $context)), $context);
+                    $messagesSent++;
+                    $context['state'] = 'menu_principal';
+                    unset($context['awaiting_field']);
+                    continue;
+                }
+
                 if ($this->shouldRequirePatientIdentifierForAgenda($action, $context) && !$this->hasPatientIdentifier($context, $conversation)) {
                     $this->sendFlowMessage($conversation, [
                         'type' => 'text',
@@ -219,6 +312,15 @@ class FlowRuntimeExecutionService
                     'data' => $preview['data'] ?? null,
                     'executed_at' => now()->toISOString(),
                 ];
+
+                if (($preview['operation'] ?? null) === 'book_appointment') {
+                    $context = $this->recordSigcenterBooking($preview, $context, $conversation, $inboundMessage);
+                    $message = !empty($preview['ok'])
+                        ? $this->bookingSuccessMessage()
+                        : $this->bookingFailureMessage((string) ($preview['error'] ?? ''));
+                    $this->sendFlowMessage($conversation, $message, $context);
+                    $messagesSent++;
+                }
 
                 if (!empty($preview['send_result']) && is_array($preview['outbound_message'] ?? null)) {
                     $this->sendFlowMessage($conversation, $preview['outbound_message'], $context);
@@ -302,6 +404,392 @@ class FlowRuntimeExecutionService
         }
 
         return ['context' => $context, 'messages_sent' => $messagesSent];
+    }
+
+    /**
+     * @param array<string, mixed> $preview
+     * @param array<string, mixed> $context
+     * @return array<string, mixed>
+     */
+    private function recordSigcenterBooking(array $preview, array $context, WhatsappConversation $conversation, WhatsappMessage $inboundMessage): array
+    {
+        $success = !empty($preview['executed']) && !empty($preview['ok']);
+        $context['sigcenter_booking_status'] = $success ? 'created' : 'failed';
+
+        if (!Schema::hasTable('whatsapp_sigcenter_bookings')) {
+            return $context;
+        }
+
+        $payload = is_array($preview['payload'] ?? null) ? $preview['payload'] : [];
+        $response = is_array($preview['data'] ?? null) ? $preview['data'] : [];
+        $agendaId = $this->firstScalarFromNested($response, ['agenda_id', 'id_agenda', 'ID_AGENDA', 'id', 'codigo']);
+        $fechaInicio = $this->parseDateTime($payload['fecha_inicio'] ?? $context['fecha_inicio'] ?? null);
+        $now = now();
+
+        DB::table('whatsapp_sigcenter_bookings')->insert([
+            'conversation_id' => $conversation->id,
+            'wa_number' => (string) $conversation->wa_number,
+            'inbound_message_id' => $inboundMessage->wa_message_id,
+            'status' => $success ? 'created' : 'failed',
+            'patient_hc_number' => $conversation->patient_hc_number ?: ($context['cedula'] ?? $context['identifier'] ?? null),
+            'patient_full_name' => $conversation->patient_full_name ?: data_get($context, 'patient.full_name'),
+            'sigcenter_agenda_id' => $agendaId,
+            'trabajador_id' => $this->scalarOrNull($payload['trabajador_id'] ?? $context['trabajador_id'] ?? null),
+            'medico_nombre' => $this->scalarOrNull($context['medico_nombre'] ?? $context['trabajador_id_label'] ?? null),
+            'sede_id' => $this->scalarOrNull($payload['ID_SEDE'] ?? $context['sede_id'] ?? null),
+            'sede_nombre' => $this->scalarOrNull($context['sede_nombre'] ?? $context['sede_id_label'] ?? null),
+            'procedimiento_id' => $this->scalarOrNull($payload['procedimiento_id'] ?? $context['procedimiento_id'] ?? null),
+            'procedimiento_nombre' => $this->scalarOrNull($context['procedimiento_nombre'] ?? $context['procedimiento_id_label'] ?? null),
+            'fecha_inicio' => $fechaInicio,
+            'payload' => json_encode($payload, JSON_UNESCAPED_UNICODE),
+            'response' => json_encode($preview, JSON_UNESCAPED_UNICODE),
+            'error' => $success ? null : $this->scalarOrNull($preview['error'] ?? null),
+            'booked_at' => $success ? $now : null,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        return $context;
+    }
+
+    /**
+     * @return array{type:string,body:string}
+     */
+    private function bookingSuccessMessage(): array
+    {
+        return [
+            'type' => 'text',
+            'body' => "Tu cita ha sido agendada exitosamente.\n\nFecha: {{fecha}}\nHorario: {{fecha_inicio}}\nSede: {{sede_id}}\nProcedimiento: {{procedimiento_id}}\n\nTe esperamos.",
+        ];
+    }
+
+    /**
+     * @return array{type:string,body:string}
+     */
+    private function bookingFailureMessage(string $error): array
+    {
+        $detail = trim($error) !== '' ? "\n\nDetalle técnico: {$error}" : '';
+
+        return [
+            'type' => 'text',
+            'body' => 'No pudimos confirmar tu cita en este momento. Un agente revisará tu solicitud.' . $detail,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $action
+     * @param array<string, mixed> $context
+     */
+    private function shouldBlockDuplicateBooking(array $action, WhatsappConversation $conversation, array $context): bool
+    {
+        if (!Schema::hasTable('whatsapp_sigcenter_bookings')) {
+            return false;
+        }
+
+        $operation = $this->normalizeSigcenterOperation((string) ($action['operation'] ?? ''));
+        if (!in_array($operation, [
+            'list_specialties',
+            'list_doctors',
+            'list_sedes',
+            'list_procedimientos',
+            'list_days',
+            'list_times',
+            'book_appointment',
+        ], true)) {
+            return false;
+        }
+
+        return $this->activeSigcenterBooking($conversation, $context) !== null;
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     */
+    private function activeSigcenterBooking(WhatsappConversation $conversation, array $context): ?object
+    {
+        if (!Schema::hasTable('whatsapp_sigcenter_bookings')) {
+            return null;
+        }
+
+        $identifier = $this->normalizeIdentifier((string) ($context['cedula'] ?? $context['identifier'] ?? $context['current_identifier'] ?? $conversation->patient_hc_number ?? ''));
+        $query = DB::table('whatsapp_sigcenter_bookings')
+            ->where('status', 'created')
+            ->where(function ($dateQuery): void {
+                $dateQuery->whereNull('fecha_inicio')
+                    ->orWhere('fecha_inicio', '>=', now()->format('Y-m-d H:i:s'));
+            });
+
+        if ($identifier !== '') {
+            $query->where(function ($scope) use ($identifier, $conversation): void {
+                $scope->where('patient_hc_number', $identifier)
+                    ->orWhere('wa_number', (string) $conversation->wa_number);
+            });
+        } else {
+            $query->where('wa_number', (string) $conversation->wa_number);
+        }
+
+        return $query->orderByRaw('fecha_inicio IS NULL ASC')
+            ->orderBy('fecha_inicio')
+            ->orderByDesc('id')
+            ->first();
+    }
+
+    /**
+     * @return array{type:string,body:string}
+     */
+    private function duplicateBookingMessage(?object $booking): array
+    {
+        $summary = $this->bookingSummaryText($booking);
+
+        return [
+            'type' => 'text',
+            'body' => "Ya tienes una cita vigente registrada desde WhatsApp{$summary}.\n\nPara evitar duplicados no puedo crear otra cita. Si deseas cambiarla, escribe CANCELAR CITA o REAGENDAR CITA y un agente te ayudará.",
+        ];
+    }
+
+    /**
+     * @return array{type:string,body:string}
+     */
+    private function bookingChangeRequestMessage(object $booking, string $changeType): array
+    {
+        $action = $changeType === 'cancel' ? 'cancelar' : 'reagendar';
+        $summary = $this->bookingSummaryText($booking);
+
+        return [
+            'type' => 'text',
+            'body' => "Recibimos tu solicitud para {$action} tu cita{$summary}.\n\nUn agente revisará la cita y se pondrá en contacto contigo. Mientras tanto no se crearán citas duplicadas.",
+        ];
+    }
+
+    /**
+     * @return array{type:string,body:string,buttons:array<int,array{id:string,title:string}>}
+     */
+    private function bookingCancelConfirmationMessage(object $booking): array
+    {
+        $summary = $this->bookingSummaryText($booking);
+
+        return [
+            'type' => 'buttons',
+            'body' => "Antes de cancelar, confirma esta acción sobre tu cita{$summary}.\n\n¿Deseas cancelar esta cita?",
+            'buttons' => [
+                ['id' => 'confirmar_cancelacion', 'title' => 'Sí cancelar'],
+                ['id' => 'mantener_cita', 'title' => 'No cancelar'],
+            ],
+        ];
+    }
+
+    /**
+     * @return array{type:string,body:string}
+     */
+    private function bookingCancelledMessage(object $booking): array
+    {
+        $summary = $this->bookingSummaryText($booking);
+
+        return [
+            'type' => 'text',
+            'body' => "Tu cita fue cancelada exitosamente{$summary}.\n\nSi necesitas agendar una nueva cita, escribe HOLA o MENU.",
+        ];
+    }
+
+    /**
+     * @return array{type:string,body:string}
+     */
+    private function bookingCancellationFailedMessage(string $error): array
+    {
+        $detail = trim($error) !== '' ? "\n\nDetalle técnico: {$error}" : '';
+
+        return [
+            'type' => 'text',
+            'body' => 'No pudimos cancelar tu cita automáticamente. Un agente revisará tu solicitud.' . $detail,
+        ];
+    }
+
+    private function bookingCancellationConfirmed(string $text): bool
+    {
+        $normalized = $this->normalizeText(str_replace('_', ' ', $text));
+
+        return in_array($normalized, [
+            'confirmar cancelacion',
+            'si cancelar',
+            'sí cancelar',
+            'confirmar',
+            'si',
+            'sí',
+        ], true);
+    }
+
+    private function isExplicitCancelConfirmationReply(string $text): bool
+    {
+        return in_array($this->normalizeText(str_replace('_', ' ', $text)), [
+            'confirmar cancelacion',
+            'si cancelar',
+            'sí cancelar',
+        ], true);
+    }
+
+    private function bookingCancellationRejected(string $text): bool
+    {
+        $normalized = $this->normalizeText(str_replace('_', ' ', $text));
+
+        return in_array($normalized, [
+            'no cancelar',
+            'mantener cita',
+            'no',
+            'cancelar no',
+        ], true);
+    }
+
+    /**
+     * @param array<string, mixed> $preview
+     */
+    private function markBookingCancellationResult(object $booking, array $preview, WhatsappConversation $conversation, WhatsappMessage $inboundMessage): void
+    {
+        if (!Schema::hasTable('whatsapp_sigcenter_bookings')) {
+            return;
+        }
+
+        $now = now();
+        $ok = !empty($preview['ok']);
+        DB::table('whatsapp_sigcenter_bookings')
+            ->where('id', $booking->id)
+            ->update([
+                'status' => $ok ? 'cancelled' : 'cancel_failed',
+                'response' => json_encode($preview, JSON_UNESCAPED_UNICODE),
+                'error' => $ok ? null : $this->scalarOrNull($preview['error'] ?? null),
+                'updated_at' => $now,
+            ]);
+
+        DB::table('whatsapp_sigcenter_bookings')->insert([
+            'conversation_id' => $conversation->id,
+            'wa_number' => (string) $conversation->wa_number,
+            'inbound_message_id' => $inboundMessage->wa_message_id,
+            'status' => $ok ? 'cancelled' : 'cancel_failed',
+            'patient_hc_number' => $booking->patient_hc_number ?? $conversation->patient_hc_number,
+            'patient_full_name' => $booking->patient_full_name ?? $conversation->patient_full_name,
+            'sigcenter_agenda_id' => $booking->sigcenter_agenda_id ?? null,
+            'trabajador_id' => $booking->trabajador_id ?? null,
+            'medico_nombre' => $booking->medico_nombre ?? null,
+            'sede_id' => $booking->sede_id ?? null,
+            'sede_nombre' => $booking->sede_nombre ?? null,
+            'procedimiento_id' => $booking->procedimiento_id ?? null,
+            'procedimiento_nombre' => $booking->procedimiento_nombre ?? null,
+            'fecha_inicio' => $booking->fecha_inicio ?? null,
+            'payload' => json_encode([
+                'requested_action' => 'cancel',
+                'source_booking_id' => $booking->id ?? null,
+            ], JSON_UNESCAPED_UNICODE),
+            'response' => json_encode($preview, JSON_UNESCAPED_UNICODE),
+            'error' => $ok ? null : $this->scalarOrNull($preview['error'] ?? null),
+            'booked_at' => null,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+    }
+
+    private function bookingSummaryText(?object $booking): string
+    {
+        if ($booking === null) {
+            return '';
+        }
+
+        $parts = [];
+        foreach ([
+            'fecha_inicio' => 'Fecha',
+            'sede_nombre' => 'Sede',
+            'procedimiento_nombre' => 'Procedimiento',
+        ] as $field => $label) {
+            $value = $booking->{$field} ?? null;
+            if (is_scalar($value) && trim((string) $value) !== '') {
+                $parts[] = $label . ': ' . trim((string) $value);
+            }
+        }
+
+        return $parts === [] ? '' : ":\n" . implode("\n", $parts);
+    }
+
+    private function isBookingChangeRequest(string $text): bool
+    {
+        $normalized = $this->normalizeText($text);
+
+        return str_contains($normalized, 'cancel')
+            || str_contains($normalized, 'anul')
+            || str_contains($normalized, 'reagend')
+            || str_contains($normalized, 'cambiar cita')
+            || str_contains($normalized, 'mover cita');
+    }
+
+    private function bookingChangeType(string $text): string
+    {
+        $normalized = $this->normalizeText($text);
+
+        return str_contains($normalized, 'cancel') || str_contains($normalized, 'anul')
+            ? 'cancel'
+            : 'reschedule';
+    }
+
+    private function markConversationForBookingSupport(WhatsappConversation $conversation, object $booking, string $changeType): void
+    {
+        $action = $changeType === 'cancel' ? 'cancelación' : 'reagendamiento';
+        $conversation->fill([
+            'needs_human' => true,
+            'handoff_notes' => trim(sprintf(
+                'Solicitud de %s de cita WhatsApp. Cita: %s, sede: %s, procedimiento: %s.',
+                $action,
+                (string) ($booking->fecha_inicio ?? 'sin fecha'),
+                (string) ($booking->sede_nombre ?? $booking->sede_id ?? 'sin sede'),
+                (string) ($booking->procedimiento_nombre ?? $booking->procedimiento_id ?? 'sin procedimiento')
+            )),
+            'handoff_requested_at' => now(),
+        ]);
+        $conversation->save();
+    }
+
+    private function recordSigcenterBookingChangeRequest(object $booking, WhatsappConversation $conversation, WhatsappMessage $inboundMessage, string $changeType): void
+    {
+        if (!Schema::hasTable('whatsapp_sigcenter_bookings')) {
+            return;
+        }
+
+        $now = now();
+        DB::table('whatsapp_sigcenter_bookings')->insert([
+            'conversation_id' => $conversation->id,
+            'wa_number' => (string) $conversation->wa_number,
+            'inbound_message_id' => $inboundMessage->wa_message_id,
+            'status' => $changeType === 'cancel' ? 'cancel_requested' : 'reschedule_requested',
+            'patient_hc_number' => $booking->patient_hc_number ?? $conversation->patient_hc_number,
+            'patient_full_name' => $booking->patient_full_name ?? $conversation->patient_full_name,
+            'sigcenter_agenda_id' => $booking->sigcenter_agenda_id ?? null,
+            'trabajador_id' => $booking->trabajador_id ?? null,
+            'medico_nombre' => $booking->medico_nombre ?? null,
+            'sede_id' => $booking->sede_id ?? null,
+            'sede_nombre' => $booking->sede_nombre ?? null,
+            'procedimiento_id' => $booking->procedimiento_id ?? null,
+            'procedimiento_nombre' => $booking->procedimiento_nombre ?? null,
+            'fecha_inicio' => $booking->fecha_inicio ?? null,
+            'payload' => json_encode([
+                'requested_action' => $changeType,
+                'source_booking_id' => $booking->id ?? null,
+            ], JSON_UNESCAPED_UNICODE),
+            'response' => null,
+            'error' => null,
+            'booked_at' => null,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+    }
+
+    private function normalizeSigcenterOperation(string $operation): string
+    {
+        return match ($operation) {
+            'especialidades', 'specialties', 'list_specialties', '' => 'list_specialties',
+            'medicos', 'doctors', 'list_doctors' => 'list_doctors',
+            'sedes', 'list_sedes' => 'list_sedes',
+            'procedimientos', 'list_procedimientos' => 'list_procedimientos',
+            'dias', 'days', 'list_days' => 'list_days',
+            'horarios', 'times', 'list_times' => 'list_times',
+            'agendar', 'book', 'book_appointment' => 'book_appointment',
+            default => $operation,
+        };
     }
 
     /**
@@ -459,6 +947,247 @@ class FlowRuntimeExecutionService
         return $operation === 'book_appointment'
             || str_starts_with($state, 'agenda_')
             || !empty($context['consent']);
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     */
+    private function resolveCapturedOptionLabel(array $context, string $field, string $value, WhatsappMessage $inboundMessage): ?string
+    {
+        $label = $this->findLabelInCachedSigcenterResults($context, $field, $value);
+        if ($label !== null && $label !== '') {
+            return $label;
+        }
+
+        $payload = is_array($inboundMessage->raw_payload) ? $inboundMessage->raw_payload : [];
+        $reply = data_get($payload, 'interactive.list_reply');
+        if (!is_array($reply)) {
+            $reply = data_get($payload, 'interactive.button_reply');
+        }
+
+        $replyId = is_array($reply) ? trim((string) ($reply['id'] ?? '')) : '';
+        $replyTitle = is_array($reply) ? trim((string) ($reply['title'] ?? '')) : '';
+
+        return $replyId === $value && $replyTitle !== '' ? $replyTitle : null;
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     */
+    private function findLabelInCachedSigcenterResults(array $context, string $field, string $value): ?string
+    {
+        foreach ($this->cachedResultKeysForField($field) as $key) {
+            $label = $this->labelFromCachedResult($context[$key] ?? null, $field, $value);
+            if ($label !== null && $label !== '') {
+                return $label;
+            }
+        }
+
+        foreach ($context as $entry) {
+            $label = $this->labelFromCachedResult($entry, $field, $value);
+            if ($label !== null && $label !== '') {
+                return $label;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function cachedResultKeysForField(string $field): array
+    {
+        return match ($field) {
+            'subespecialidad' => ['agenda_especialidades'],
+            'trabajador_id' => ['agenda_medicos'],
+            'sede_id', 'ID_SEDE' => ['sigcenter_sedes'],
+            'procedimiento_id' => ['sigcenter_procedimientos'],
+            'fecha' => ['sigcenter_dias'],
+            'fecha_inicio' => ['sigcenter_horarios'],
+            default => [],
+        };
+    }
+
+    /**
+     * @param mixed $entry
+     */
+    private function labelFromCachedResult(mixed $entry, string $field, string $value): ?string
+    {
+        if (!is_array($entry) || !is_array($entry['data'] ?? null)) {
+            return null;
+        }
+
+        $records = match ($field) {
+            'subespecialidad' => $this->recordsFromData($entry['data'], ['especialidades']),
+            'trabajador_id' => $this->recordsFromData($entry['data'], ['medicos', 'doctors', 'data', 'items', 'result']),
+            'sede_id', 'ID_SEDE' => $this->recordsFromData($entry['data'], ['sede', 'sedes', 'data', 'items', 'result']),
+            'procedimiento_id' => $this->recordsFromData($entry['data'], ['tipoProcedimientos', 'procedimientos', 'data', 'items', 'result']),
+            'fecha' => $this->recordsFromData($entry['data'], ['dias', 'fechas', 'data', 'items', 'result']),
+            'fecha_inicio' => $this->recordsFromData($entry['data'], ['horarios', 'times', 'data', 'items', 'result']),
+            default => [],
+        };
+
+        foreach ($records as $record) {
+            $label = $this->labelFromRecord($record, $field, $value);
+            if ($label !== null && $label !== '') {
+                return $label;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param mixed $record
+     */
+    private function labelFromRecord(mixed $record, string $field, string $value): ?string
+    {
+        if (is_scalar($record)) {
+            $text = trim((string) $record);
+            return $text === $value ? $text : null;
+        }
+
+        if (!is_array($record)) {
+            return null;
+        }
+
+        [$idKeys, $labelKeys] = match ($field) {
+            'trabajador_id' => [['trabajador_id', 'id_trabajador', 'id'], ['nombre', 'name']],
+            'sede_id', 'ID_SEDE' => [['ID_SEDE', 'id_sede', 'sede_id', 'id', 'codigo'], ['NOMBRE', 'NOMBRE_SEDE', 'sede', 'nombre_sede', 'nombre', 'descripcion']],
+            'procedimiento_id' => [['procedimiento_id', 'ID_PROCEDIMIENTO', 'id_procedimiento', 'id', 'codigo'], ['procedimiento', 'NOMBRE_PROCEDIMIENTO', 'nombre_procedimiento', 'nombre', 'descripcion']],
+            'fecha' => [['FECHA', 'fecha', 'date', 'dia', 'id'], ['FECHA', 'fecha', 'date', 'dia', 'label']],
+            'fecha_inicio' => [['fecha_inicio', 'FECHA_INICIO', 'inicio', 'hora', 'id'], ['hora', 'HORA', 'inicio', 'fecha_inicio', 'FECHA_INICIO', 'label']],
+            default => [['id', $field], ['title', 'nombre', 'descripcion', $field]],
+        };
+
+        $id = $this->firstRecordValue($record, $idKeys);
+        if ($id !== $value) {
+            return null;
+        }
+
+        return $this->firstRecordValue($record, $labelKeys) ?: $id;
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     */
+    private function storeCapturedOptionLabel(array &$context, string $field, string $label): void
+    {
+        $context[$field . '_label'] = $label;
+
+        $alias = match ($field) {
+            'subespecialidad' => 'subespecialidad_nombre',
+            'trabajador_id' => 'medico_nombre',
+            'sede_id', 'ID_SEDE' => 'sede_nombre',
+            'procedimiento_id' => 'procedimiento_nombre',
+            'fecha' => 'fecha_texto',
+            'fecha_inicio' => 'horario_texto',
+            default => null,
+        };
+
+        if ($alias !== null) {
+            $context[$alias] = $label;
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     * @param array<int, string> $keys
+     * @return array<int, mixed>
+     */
+    private function recordsFromData(array $data, array $keys): array
+    {
+        foreach ($keys as $key) {
+            if (isset($data[$key]) && is_array($data[$key])) {
+                return array_values($data[$key]);
+            }
+        }
+
+        if (array_is_list($data)) {
+            return array_values($data);
+        }
+
+        return [];
+    }
+
+    /**
+     * @param array<string, mixed> $record
+     * @param array<int, string> $keys
+     */
+    private function firstRecordValue(array $record, array $keys): string
+    {
+        foreach ($keys as $key) {
+            $value = $record[$key] ?? null;
+            if (is_scalar($value) && trim((string) $value) !== '') {
+                return trim((string) $value);
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * @param mixed $value
+     */
+    private function scalarOrNull(mixed $value): ?string
+    {
+        if (!is_scalar($value)) {
+            return null;
+        }
+
+        $text = trim((string) $value);
+
+        return $text !== '' ? $text : null;
+    }
+
+    /**
+     * @param mixed $value
+     */
+    private function parseDateTime(mixed $value): ?string
+    {
+        $text = $this->scalarOrNull($value);
+        if ($text === null) {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($text)->format('Y-m-d H:i:s');
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * @param mixed $data
+     * @param array<int, string> $keys
+     */
+    private function firstScalarFromNested(mixed $data, array $keys): ?string
+    {
+        if (!is_array($data)) {
+            return null;
+        }
+
+        foreach ($keys as $key) {
+            $value = $data[$key] ?? null;
+            $scalar = $this->scalarOrNull($value);
+            if ($scalar !== null) {
+                return $scalar;
+            }
+        }
+
+        foreach ($data as $value) {
+            if (!is_array($value)) {
+                continue;
+            }
+
+            $scalar = $this->firstScalarFromNested($value, $keys);
+            if ($scalar !== null) {
+                return $scalar;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -935,9 +1664,9 @@ class FlowRuntimeExecutionService
     {
         return preg_replace_callback('/\{\{\s*([a-zA-Z0-9_.-]+)\s*}}/', function (array $matches) use ($context): string {
             $key = (string) $matches[1];
-            $value = data_get($context, $key);
+            $value = data_get($context, $this->displayPlaceholderKey($key, $context));
             if ($value === null && str_starts_with($key, 'context.')) {
-                $value = data_get($context, substr($key, 8));
+                $value = data_get($context, $this->displayPlaceholderKey(substr($key, 8), $context));
             }
             if (is_scalar($value)) {
                 return (string) $value;
@@ -945,6 +1674,23 @@ class FlowRuntimeExecutionService
 
             return '';
         }, $text) ?? $text;
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     */
+    private function displayPlaceholderKey(string $key, array $context): string
+    {
+        $alias = match ($key) {
+            'trabajador_id' => 'medico_nombre',
+            'sede_id', 'ID_SEDE' => 'sede_nombre',
+            'procedimiento_id' => 'procedimiento_nombre',
+            'fecha' => 'fecha_texto',
+            'fecha_inicio' => 'horario_texto',
+            default => null,
+        };
+
+        return $alias !== null && data_get($context, $alias) !== null ? $alias : $key;
     }
 
     private function normalizePhoneNumber(string $phoneNumber, string $defaultCountryCode): string

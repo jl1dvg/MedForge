@@ -7,6 +7,7 @@ use DatePeriod;
 use DateTimeImmutable;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use InvalidArgumentException;
 
 class KpiDashboardService
@@ -49,11 +50,12 @@ class KpiDashboardService
         $window = $this->conversationWindowSummary($roleId, $agentId);
         $sla = $this->slaSummary($fromSql, $toSql, $roleId, $agentId, $slaTargetMinutes);
         $transfers = $this->transferSummary($fromSql, $toSql, $roleId, $agentId);
+        $bookings = $this->sigcenterBookingSummary($fromSql, $toSql);
 
         $summary = array_merge($summary, $human, $queue, $window, $sla, [
             'handoff_transfers' => $transfers,
             'peak_open_conversations' => (int) ($human['peak_open_conversations'] ?? 0),
-        ]);
+        ], $bookings);
 
         return [
             'period' => [
@@ -110,11 +112,17 @@ class KpiDashboardService
                     $from,
                     $toExclusive
                 ),
+                'sigcenter_bookings' => $this->mapTrend(
+                    $this->sigcenterBookingTrendRows($fromSql, $toSql),
+                    $from,
+                    $toExclusive
+                ),
             ],
             'breakdowns' => [
                 'handoffs_by_role' => $this->handoffsByRole($fromSql, $toSql, $roleId, $agentId),
                 'handoffs_by_agent' => $this->handoffsByAgent($fromSql, $toSql, $roleId, $agentId),
                 'human_attention_by_agent' => $this->humanAttentionByAgent($fromSql, $toSql, $roleId, $agentId),
+                'sigcenter_bookings_by_sede' => $this->sigcenterBookingsBySede($fromSql, $toSql),
             ],
             'options' => [
                 'roles' => $this->roleOptions(),
@@ -198,6 +206,9 @@ class KpiDashboardService
             'queue_awaiting_template_reply' => 'Esperando respuesta a plantilla',
             'sla_assignments_rate' => 'SLA asignación (%)',
             'handoff_transfers' => 'Transferencias',
+            'sigcenter_bookings_created' => 'Citas Sigcenter creadas desde WhatsApp',
+            'sigcenter_booking_patients' => 'Pacientes agendados desde WhatsApp',
+            'sigcenter_booking_failures' => 'Citas Sigcenter fallidas desde WhatsApp',
         ] as $key => $label) {
             $rows[] = ['summary', $label, $summary[$key] ?? null, null];
         }
@@ -614,6 +625,78 @@ class KpiDashboardService
             'period_date' => (string) ($row->period_date ?? ''),
             'total' => (int) ($row->total ?? 0),
         ], DB::select($sql, $params));
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private function sigcenterBookingSummary(string $fromSql, string $toSql): array
+    {
+        if (!Schema::hasTable('whatsapp_sigcenter_bookings')) {
+            return [
+                'sigcenter_bookings_created' => 0,
+                'sigcenter_booking_patients' => 0,
+                'sigcenter_booking_failures' => 0,
+            ];
+        }
+
+        $row = $this->selectOne(
+            'SELECT
+                SUM(CASE WHEN status = "created" THEN 1 ELSE 0 END) AS created_total,
+                COUNT(DISTINCT CASE WHEN status = "created" THEN wa_number ELSE NULL END) AS patient_total,
+                SUM(CASE WHEN status = "failed" THEN 1 ELSE 0 END) AS failed_total
+             FROM whatsapp_sigcenter_bookings
+             WHERE created_at >= ? AND created_at < ?',
+            [$fromSql, $toSql]
+        );
+
+        return [
+            'sigcenter_bookings_created' => (int) ($row->created_total ?? 0),
+            'sigcenter_booking_patients' => (int) ($row->patient_total ?? 0),
+            'sigcenter_booking_failures' => (int) ($row->failed_total ?? 0),
+        ];
+    }
+
+    /**
+     * @return array<int, array{period_date:string,total:int}>
+     */
+    private function sigcenterBookingTrendRows(string $fromSql, string $toSql): array
+    {
+        if (!Schema::hasTable('whatsapp_sigcenter_bookings')) {
+            return [];
+        }
+
+        return $this->trendRows(
+            'SELECT DATE(created_at) AS period_date, COUNT(*) AS total
+             FROM whatsapp_sigcenter_bookings
+             WHERE status = "created" AND created_at >= ? AND created_at < ?
+             GROUP BY DATE(created_at)
+             ORDER BY period_date ASC',
+            [$fromSql, $toSql]
+        );
+    }
+
+    /**
+     * @return array<int, array{sede_id:?string,sede_nombre:string,total:int}>
+     */
+    private function sigcenterBookingsBySede(string $fromSql, string $toSql): array
+    {
+        if (!Schema::hasTable('whatsapp_sigcenter_bookings')) {
+            return [];
+        }
+
+        return array_map(fn ($row) => [
+            'sede_id' => isset($row->sede_id) ? (string) $row->sede_id : null,
+            'sede_nombre' => (string) ($row->sede_nombre ?? 'Sin sede'),
+            'total' => (int) ($row->total ?? 0),
+        ], DB::select(
+            'SELECT sede_id, COALESCE(sede_nombre, sede_id, "Sin sede") AS sede_nombre, COUNT(*) AS total
+             FROM whatsapp_sigcenter_bookings
+             WHERE status = "created" AND created_at >= ? AND created_at < ?
+             GROUP BY sede_id, sede_nombre
+             ORDER BY total DESC, sede_nombre ASC',
+            [$fromSql, $toSql]
+        ));
     }
 
     private function peakOpenConversations(string $fromSql, string $toSql, ?int $roleId, ?int $agentId): array

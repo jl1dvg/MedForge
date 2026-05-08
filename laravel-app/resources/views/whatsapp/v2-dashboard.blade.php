@@ -306,6 +306,7 @@
                         ['label' => 'Pico simultáneo', 'value' => $summary['peak_open_conversations'] ?? 0, 'sub' => $summary['peak_open_at'] ?? 'Sin dato'],
                         ['label' => 'Mensajes inbound', 'value' => $summary['messages_inbound'] ?? 0, 'sub' => 'Recibidos'],
                         ['label' => 'Mensajes outbound', 'value' => $summary['messages_outbound'] ?? 0, 'sub' => 'Enviados'],
+                        ['label' => 'Citas desde WhatsApp', 'value' => $summary['sigcenter_bookings_created'] ?? 0, 'sub' => ($summary['sigcenter_booking_patients'] ?? 0) . ' pacientes · ' . ($summary['sigcenter_booking_failures'] ?? 0) . ' fallidas'],
                         ['label' => 'SLA asignación (objetivo: ' . $slaTargetMinutes . ' min)', 'value' => ($summary['sla_assignments_rate'] ?? 0) . '%', 'sub' => ($summary['sla_assignments_in_target'] ?? 0) . '/' . ($summary['sla_assignments_total'] ?? 0) . ' en meta'],
                         ['label' => 'Cola activa', 'value' => $summary['live_queue_total'] ?? 0, 'sub' => 'Cola ' . ($summary['live_queue_queued'] ?? 0) . ' · Asignadas ' . ($summary['live_queue_assigned'] ?? 0)],
                         ['label' => 'Ventana 24h abierta', 'value' => $summary['queue_window_open'] ?? 0, 'sub' => ($summary['queue_window_open_rate'] ?? 0) . '% del total'],
@@ -347,7 +348,7 @@
                         @endforeach
                     </div>
                     <div class="text-muted mt-10" style="font-size:.82rem;">
-                        Inbound {{ $summary['messages_inbound'] ?? 0 }} · Outbound {{ $summary['messages_outbound'] ?? 0 }} · Transferencias {{ $summary['handoff_transfers'] ?? 0 }}
+                        Inbound {{ $summary['messages_inbound'] ?? 0 }} · Outbound {{ $summary['messages_outbound'] ?? 0 }} · Citas {{ $summary['sigcenter_bookings_created'] ?? 0 }} · Transferencias {{ $summary['handoff_transfers'] ?? 0 }}
                     </div>
                 </div>
             </div>

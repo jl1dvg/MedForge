@@ -20,6 +20,7 @@ class WhatsappKpiDashboardTest extends TestCase
         foreach ([
             'whatsapp_handoff_events',
             'whatsapp_handoffs',
+            'whatsapp_sigcenter_bookings',
             'whatsapp_messages',
             'whatsapp_conversations',
             'users',
@@ -95,6 +96,19 @@ class WhatsappKpiDashboardTest extends TestCase
             $table->timestamp('created_at')->nullable();
         });
 
+        Schema::create('whatsapp_sigcenter_bookings', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('conversation_id')->nullable();
+            $table->string('wa_number', 32);
+            $table->string('status', 32)->default('created');
+            $table->string('sede_id', 64)->nullable();
+            $table->string('sede_nombre', 191)->nullable();
+            $table->string('procedimiento_id', 64)->nullable();
+            $table->string('procedimiento_nombre', 191)->nullable();
+            $table->timestamp('booked_at')->nullable();
+            $table->timestamps();
+        });
+
         \DB::table('roles')->insert([
             ['id' => 1, 'name' => 'Call Center', 'created_at' => now(), 'updated_at' => now()],
         ]);
@@ -168,6 +182,19 @@ class WhatsappKpiDashboardTest extends TestCase
             'created_at' => now()->subDays(2)->addMinutes(3),
         ]);
 
+        \DB::table('whatsapp_sigcenter_bookings')->insert([
+            'conversation_id' => $conversationId,
+            'wa_number' => '593999111222',
+            'status' => 'created',
+            'sede_id' => '1',
+            'sede_nombre' => 'Villa Club',
+            'procedimiento_id' => '530',
+            'procedimiento_nombre' => 'Consulta nuevo',
+            'booked_at' => now()->subDays(2)->addMinutes(10),
+            'created_at' => now()->subDays(2)->addMinutes(10),
+            'updated_at' => now(),
+        ]);
+
         config()->set('whatsapp.migration.enabled', true);
         config()->set('whatsapp.migration.ui.enabled', true);
         config()->set('whatsapp.migration.api.read_enabled', true);
@@ -195,7 +222,10 @@ class WhatsappKpiDashboardTest extends TestCase
             ->assertJsonPath('data.summary.avg_first_human_response_minutes', 3)
             ->assertJsonPath('data.summary.median_first_human_response_minutes', 3)
             ->assertJsonPath('data.summary.sla_target_minutes', 15)
-            ->assertJsonPath('data.summary.handoff_transfers', 1);
+            ->assertJsonPath('data.summary.handoff_transfers', 1)
+            ->assertJsonPath('data.summary.sigcenter_bookings_created', 1)
+            ->assertJsonPath('data.summary.sigcenter_booking_patients', 1)
+            ->assertJsonPath('data.breakdowns.sigcenter_bookings_by_sede.0.sede_nombre', 'Villa Club');
     }
 
     public function test_it_returns_drilldown_for_supported_metric(): void
