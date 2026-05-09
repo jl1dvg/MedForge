@@ -176,8 +176,8 @@ async function solicitarCredencialesAuditoriaProtocolo() {
             html: `
                 <div style="text-align:left">
                     <p style="margin-bottom:12px;">Ingresa tu usuario y contraseña de MedForge para registrar quién guardó este protocolo.</p>
-                    <input id="cive-audit-username" class="swal2-input" placeholder="Usuario" autocomplete="username">
-                    <input id="cive-audit-password" type="password" class="swal2-input" placeholder="Contraseña" autocomplete="current-password">
+                    <input id="cive-audit-username" class="swal2-input" placeholder="Usuario" autocomplete="off" data-lpignore="true" data-1p-ignore="true">
+                    <input id="cive-audit-password" type="password" class="swal2-input" placeholder="Contraseña" autocomplete="off" data-lpignore="true" data-1p-ignore="true">
                 </div>
             `,
             icon: 'info',
