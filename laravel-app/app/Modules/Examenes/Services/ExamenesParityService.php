@@ -4,13 +4,19 @@ declare(strict_types=1);
 
 namespace App\Modules\Examenes\Services;
 
+use App\Models\WhatsappConversation;
+use App\Modules\Shared\Support\AfiliacionDimensionService;
+use App\Modules\Whatsapp\Services\ConversationWriteService;
+use DateInterval;
 use DateTimeImmutable;
 use DateTimeInterface;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Mail;
 use Modules\CRM\Services\LeadConfigurationService;
 use Modules\Examenes\Models\ExamenModel;
 use Modules\Examenes\Services\ExamenCrmService;
 use Modules\Examenes\Services\ExamenEstadoService;
+use Modules\Examenes\Services\ExamenMailLogService;
 use Modules\Notifications\Services\PusherConfigService;
 use PDO;
 use RuntimeException;
@@ -31,6 +37,9 @@ class ExamenesParityService
 
     private PusherConfigService $pusherConfig;
     private ExamenCrmService $crmService;
+    private AfiliacionDimensionService $afiliacionDimensions;
+    private ConversationWriteService $whatsappWriter;
+    private ExamenMailLogService $mailLogService;
 
     public function __construct(private readonly PDO $db)
     {
@@ -41,6 +50,9 @@ class ExamenesParityService
         $this->leadConfig = new LeadConfigurationService($this->db);
         $this->pusherConfig = new PusherConfigService($this->db);
         $this->crmService = new ExamenCrmService($this->db);
+        $this->afiliacionDimensions = new AfiliacionDimensionService($this->db);
+        $this->whatsappWriter = new ConversationWriteService();
+        $this->mailLogService = new ExamenMailLogService($this->db);
     }
 
     /**
@@ -49,14 +61,12 @@ class ExamenesParityService
      */
     public function kanbanData(array $payload): array
     {
-        $filtros = [
-            'afiliacion' => trim((string) ($payload['afiliacion'] ?? '')),
-            'doctor' => trim((string) ($payload['doctor'] ?? '')),
-            'prioridad' => trim((string) ($payload['prioridad'] ?? '')),
-            'estado' => trim((string) ($payload['estado'] ?? '')),
-            'fechaTexto' => trim((string) ($payload['fechaTexto'] ?? '')),
-            'con_pendientes' => (string) ($payload['con_pendientes'] ?? ''),
-        ];
+        $filtros = $this->sanitizeKanbanFilters($payload);
+        if ($filtros['fechaTexto'] === '' && $filtros['date_from'] === null && $filtros['date_to'] === null) {
+            $today = new DateTimeImmutable('today');
+            $filtros['date_from'] = $today->sub(new DateInterval('P30D'))->format('Y-m-d');
+            $filtros['date_to'] = $today->format('Y-m-d');
+        }
 
         $kanbanPreferences = [
             'sort' => 'fecha_desc',
@@ -90,6 +100,13 @@ class ExamenesParityService
             ));
         }
 
+        if (($filtros['mostrar_completados'] ?? false) !== true) {
+            $examenes = array_values(array_filter(
+                $examenes,
+                static fn(array $item): bool => (string) ($item['kanban_estado'] ?? '') !== 'completado'
+            ));
+        }
+
         $examenes = $this->ordenarExamenes($examenes, (string) ($kanbanPreferences['sort'] ?? 'fecha_desc'));
         $examenes = $this->limitarExamenesPorEstado($examenes, (int) ($kanbanPreferences['column_limit'] ?? 0));
 
@@ -108,17 +125,9 @@ class ExamenesParityService
             $fuentes = [];
         }
 
-        $afiliaciones = array_values(array_unique(array_filter(array_map(
-            static fn(array $row): ?string => isset($row['afiliacion']) ? (string) $row['afiliacion'] : null,
-            $examenes
-        ))));
-        sort($afiliaciones, SORT_NATURAL | SORT_FLAG_CASE);
-
-        $doctores = array_values(array_unique(array_filter(array_map(
-            static fn(array $row): ?string => isset($row['doctor']) ? (string) $row['doctor'] : null,
-            $examenes
-        ))));
-        sort($doctores, SORT_NATURAL | SORT_FLAG_CASE);
+        $afiliaciones = $this->distinctSortedValues($examenes, 'afiliacion');
+        $doctores = $this->distinctSortedValues($examenes, 'doctor');
+        $sedes = $this->distinctSortedValues($examenes, 'sede');
 
         return [
             'status' => 200,
@@ -126,7 +135,12 @@ class ExamenesParityService
                 'data' => $examenes,
                 'options' => [
                     'afiliaciones' => $afiliaciones,
+                    'afiliacion_categorias' => $this->afiliacionDimensions->getCategoriaOptions('Todas'),
+                    'empresas_seguro' => $this->afiliacionDimensions->getEmpresaOptions('Todas'),
+                    'planes_seguro' => $this->afiliacionDimensions->getSeguroOptions('Todas', $filtros['empresa_seguro'] ?? ''),
+                    'sedes' => $sedes,
                     'doctores' => $doctores,
+                    'metrics' => $this->buildKanbanMetrics($examenes),
                     'crm' => [
                         'responsables' => $responsables,
                         'etapas' => $pipelineStages,
@@ -299,11 +313,251 @@ class ExamenesParityService
             // Ignorar errores de notificación para no bloquear la operación principal.
         }
 
+        if (isset($resumen['detalle']) && is_array($resumen['detalle'])) {
+            $resumen['whatsapp_context'] = $this->queryWhatsappContext($resumen['detalle']);
+        }
+
         return [
             'status' => 200,
             'payload' => [
                 'success' => true,
                 'data' => $registro,
+            ],
+        ];
+    }
+
+    /**
+     * @return array{status:int,payload:array<string,mixed>}
+     */
+    public function crmOptions(): array
+    {
+        try {
+            $kanbanPreferences = $this->leadConfig->getKanbanPreferences(LeadConfigurationService::CONTEXT_EXAMENES);
+            $responsables = array_values(array_filter(
+                $this->leadConfig->getAssignableUsers(),
+                static fn(array $usuario): bool => !isset($usuario['activo']) || (int) $usuario['activo'] === 1
+            ));
+            $pipelineStages = $this->leadConfig->getPipelineStages();
+            $fuentes = $this->leadConfig->getSources();
+        } catch (Throwable) {
+            $kanbanPreferences = [
+                'sort' => 'fecha_desc',
+                'column_limit' => 0,
+            ];
+            $responsables = [];
+            $pipelineStages = [];
+            $fuentes = [];
+        }
+
+        return [
+            'status' => 200,
+            'payload' => [
+                'options' => [
+                    'crm' => [
+                        'responsables' => $responsables,
+                        'etapas' => $pipelineStages,
+                        'fuentes' => $fuentes,
+                        'kanban' => $kanbanPreferences,
+                    ],
+                ],
+            ],
+        ];
+    }
+
+    /**
+     * @param array<string,mixed> $payload
+     * @return array{status:int,payload:array<string,mixed>}
+     */
+    public function crmEnviarWhatsapp(int $examenId, array $payload, ?int $userId): array
+    {
+        $message = trim((string) ($payload['message'] ?? $payload['mensaje'] ?? ''));
+        if ($message === '') {
+            return [
+                'status' => 422,
+                'payload' => [
+                    'success' => false,
+                    'error' => 'Escribe un mensaje de WhatsApp antes de enviar.',
+                ],
+            ];
+        }
+
+        try {
+            $resumen = $this->crmService->obtenerResumen($examenId);
+            $detalle = is_array($resumen['detalle'] ?? null) ? $resumen['detalle'] : [];
+            $conversationId = isset($payload['conversation_id']) ? (int) $payload['conversation_id'] : 0;
+            $phone = trim((string) ($payload['phone'] ?? $payload['telefono'] ?? ''));
+            if ($phone === '') {
+                $phone = trim((string) ($detalle['crm_contacto_telefono'] ?? $detalle['paciente_celular'] ?? ''));
+            }
+
+            $conversation = $conversationId > 0
+                ? WhatsappConversation::query()->find($conversationId)
+                : $this->findWhatsappConversationByPhone($phone);
+
+            if (!$conversation instanceof WhatsappConversation) {
+                throw new RuntimeException('No hay conversación WhatsApp vinculada. Abre el chat V2 o inicia con una plantilla aprobada.');
+            }
+
+            if ((int) ($conversation->assigned_user_id ?? 0) <= 0 && $userId !== null) {
+                $conversation->assigned_user_id = $userId;
+                $conversation->assigned_at = now();
+                $conversation->needs_human = true;
+                $conversation->save();
+            }
+
+            $result = $this->whatsappWriter->sendTextToConversation((int) $conversation->id, $message, false, $userId);
+            $this->crmService->registrarNota(
+                $examenId,
+                sprintf("WhatsApp enviado a +%s:\n%s", ltrim((string) $conversation->wa_number, '+'), $message),
+                $userId
+            );
+
+            $resumen = $this->crmService->obtenerResumen($examenId);
+            if (isset($resumen['detalle']) && is_array($resumen['detalle'])) {
+                $resumen['whatsapp_context'] = $this->queryWhatsappContext($resumen['detalle']);
+            }
+        } catch (RuntimeException $e) {
+            return [
+                'status' => 422,
+                'payload' => [
+                    'success' => false,
+                    'error' => $e->getMessage(),
+                ],
+            ];
+        } catch (Throwable) {
+            return [
+                'status' => 500,
+                'payload' => [
+                    'success' => false,
+                    'error' => 'No se pudo enviar el WhatsApp.',
+                ],
+            ];
+        }
+
+        return [
+            'status' => 200,
+            'payload' => [
+                'success' => true,
+                'message' => 'Mensaje WhatsApp enviado.',
+                'whatsapp' => $result,
+                'data' => $resumen,
+            ],
+        ];
+    }
+
+    /**
+     * @param array<string,mixed> $payload
+     * @return array{status:int,payload:array<string,mixed>}
+     */
+    public function crmEnviarEmail(int $examenId, array $payload, ?int $userId): array
+    {
+        try {
+            $resumen = $this->crmService->obtenerResumen($examenId);
+            $detalle = is_array($resumen['detalle'] ?? null) ? $resumen['detalle'] : [];
+            $to = trim((string) ($payload['to'] ?? $payload['email'] ?? $detalle['crm_contacto_email'] ?? ''));
+            $subject = trim((string) ($payload['subject'] ?? $payload['asunto'] ?? ''));
+            $body = trim((string) ($payload['body'] ?? $payload['mensaje'] ?? ''));
+
+            if ($to === '' || !filter_var($to, FILTER_VALIDATE_EMAIL)) {
+                throw new RuntimeException('Indica un correo de destino válido.');
+            }
+            if ($subject === '') {
+                throw new RuntimeException('Indica un asunto para el correo.');
+            }
+            if ($body === '') {
+                throw new RuntimeException('Escribe el cuerpo del correo antes de enviar.');
+            }
+
+            Mail::raw($body, static function ($message) use ($to, $subject): void {
+                $message->to($to)->subject($subject);
+            });
+
+            $this->mailLogService->create([
+                'examen_id' => $examenId,
+                'form_id' => $detalle['form_id'] ?? null,
+                'hc_number' => $detalle['hc_number'] ?? null,
+                'to_emails' => $to,
+                'subject' => $subject,
+                'body_text' => $body,
+                'channel' => 'email',
+                'sent_by_user_id' => $userId,
+                'status' => 'sent',
+                'sent_at' => now()->toDateTimeString(),
+            ]);
+
+            $this->crmService->registrarNota(
+                $examenId,
+                sprintf("Correo enviado a %s\nAsunto: %s\n\n%s", $to, $subject, $body),
+                $userId
+            );
+
+            $resumen = $this->crmService->obtenerResumen($examenId);
+            if (isset($resumen['detalle']) && is_array($resumen['detalle'])) {
+                $resumen['whatsapp_context'] = $this->queryWhatsappContext($resumen['detalle']);
+            }
+        } catch (RuntimeException $e) {
+            return [
+                'status' => 422,
+                'payload' => [
+                    'success' => false,
+                    'error' => $e->getMessage(),
+                ],
+            ];
+        } catch (Throwable) {
+            return [
+                'status' => 500,
+                'payload' => [
+                    'success' => false,
+                    'error' => 'No se pudo enviar el correo.',
+                ],
+            ];
+        }
+
+        return [
+            'status' => 200,
+            'payload' => [
+                'success' => true,
+                'message' => 'Correo enviado.',
+                'data' => $resumen,
+            ],
+        ];
+    }
+
+    /**
+     * @param array<string,mixed> $payload
+     * @return array{status:int,payload:array<string,mixed>}
+     */
+    public function crmCrearPropuesta(int $examenId, array $payload, ?int $userId): array
+    {
+        try {
+            $resumen = $this->crmService->crearPropuesta($examenId, $payload, $userId);
+            if (isset($resumen['detalle']) && is_array($resumen['detalle'])) {
+                $resumen['whatsapp_context'] = $this->queryWhatsappContext($resumen['detalle']);
+            }
+        } catch (RuntimeException $e) {
+            return [
+                'status' => 422,
+                'payload' => [
+                    'success' => false,
+                    'error' => $e->getMessage(),
+                ],
+            ];
+        } catch (Throwable) {
+            return [
+                'status' => 500,
+                'payload' => [
+                    'success' => false,
+                    'error' => 'No se pudo crear la propuesta CRM.',
+                ],
+            ];
+        }
+
+        return [
+            'status' => 200,
+            'payload' => [
+                'success' => true,
+                'message' => 'Propuesta CRM creada.',
+                'data' => $resumen,
             ],
         ];
     }
@@ -623,7 +877,7 @@ class ExamenesParityService
      * @param array<string,mixed> $payload
      * @return array{status:int,payload:array<string,mixed>}
      */
-    public function crmActualizarTarea(int $examenId, array $payload): array
+    public function crmActualizarTarea(int $examenId, array $payload, ?int $userId = null): array
     {
         $tareaId = isset($payload['tarea_id']) ? (int) $payload['tarea_id'] : 0;
         $estado = isset($payload['estado']) ? (string) $payload['estado'] : '';
@@ -639,7 +893,7 @@ class ExamenesParityService
         }
 
         try {
-            $this->crmService->actualizarEstadoTarea($examenId, $tareaId, $estado);
+            $this->crmService->actualizarTarea($examenId, $tareaId, $payload, $userId);
             $resumen = $this->crmService->obtenerResumen($examenId);
         } catch (Throwable) {
             return [
@@ -1111,6 +1365,10 @@ class ExamenesParityService
     {
         $row['crm_responsable_avatar'] = $this->formatProfilePhoto($row['crm_responsable_avatar'] ?? null);
         $row['doctor_avatar'] = $this->formatProfilePhoto($row['doctor_avatar'] ?? null);
+        $categoriaKey = strtolower(trim((string) ($row['afiliacion_categoria_key'] ?? '')));
+        $row['afiliacion_categoria'] = $categoriaKey !== ''
+            ? $this->afiliacionDimensions->formatCategoriaLabel($categoriaKey)
+            : '';
 
         if (empty($row['fecha'] ?? null)) {
             $row['fecha'] = $row['consulta_fecha'] ?? $row['created_at'] ?? null;
@@ -1153,6 +1411,101 @@ class ExamenesParityService
         );
 
         return $row;
+    }
+
+    /**
+     * @param array<string,mixed> $payload
+     * @return array{
+     *   afiliacion:string,afiliacion_categoria:string,empresa_seguro:string,plan_seguro:string,sede:string,doctor:string,
+     *   prioridad:string,estado:string,responsable_id:string,fechaTexto:string,date_from:?string,date_to:?string,search:string,
+     *   con_pendientes:string,mostrar_completados:bool
+     * }
+     */
+    private function sanitizeKanbanFilters(array $payload): array
+    {
+        $dateFrom = $this->normalizeDateInput($payload['date_from'] ?? null);
+        $dateTo = $this->normalizeDateInput($payload['date_to'] ?? null);
+        $fechaTexto = trim((string) ($payload['fechaTexto'] ?? ''));
+
+        if (($dateFrom === null || $dateTo === null) && $fechaTexto !== '') {
+            [$parsedFrom, $parsedTo] = $this->parseDateRange($fechaTexto);
+            $dateFrom ??= $parsedFrom;
+            $dateTo ??= $parsedTo;
+        }
+
+        return [
+            'afiliacion' => trim((string) ($payload['afiliacion'] ?? '')),
+            'afiliacion_categoria' => $this->afiliacionDimensions->normalizeCategoriaFilter((string) ($payload['afiliacion_categoria'] ?? '')),
+            'empresa_seguro' => $this->afiliacionDimensions->normalizeEmpresaFilter((string) ($payload['empresa_seguro'] ?? '')),
+            'plan_seguro' => $this->afiliacionDimensions->normalizeSeguroFilter((string) ($payload['plan_seguro'] ?? '')),
+            'sede' => $this->normalizeSedeFilter((string) ($payload['sede'] ?? '')),
+            'doctor' => trim((string) ($payload['doctor'] ?? '')),
+            'prioridad' => trim((string) ($payload['prioridad'] ?? '')),
+            'estado' => trim((string) ($payload['estado'] ?? '')),
+            'responsable_id' => $this->isTruthy($payload['crm_sin_responsable'] ?? null)
+                ? 'sin_asignar'
+                : trim((string) ($payload['responsable_id'] ?? '')),
+            'fechaTexto' => $fechaTexto,
+            'date_from' => $dateFrom,
+            'date_to' => $dateTo,
+            'search' => trim((string) ($payload['search'] ?? '')),
+            'con_pendientes' => (string) ($payload['con_pendientes'] ?? ''),
+            'mostrar_completados' => filter_var($payload['mostrar_completados'] ?? false, FILTER_VALIDATE_BOOLEAN),
+        ];
+    }
+
+    private function normalizeDateInput(mixed $value): ?string
+    {
+        $value = trim((string) ($value ?? ''));
+        if ($value === '') {
+            return null;
+        }
+
+        foreach (['Y-m-d', 'd-m-Y', 'd/m/Y'] as $format) {
+            $date = DateTimeImmutable::createFromFormat($format, $value);
+            if ($date instanceof DateTimeImmutable) {
+                return $date->format('Y-m-d');
+            }
+        }
+
+        $timestamp = strtotime($value);
+        return $timestamp !== false ? date('Y-m-d', $timestamp) : null;
+    }
+
+    /**
+     * @return array{0:?string,1:?string}
+     */
+    private function parseDateRange(string $rangeText): array
+    {
+        $rangeText = trim($rangeText);
+        if ($rangeText === '') {
+            return [null, null];
+        }
+
+        if (!str_contains($rangeText, ' - ')) {
+            $date = $this->normalizeDateInput($rangeText);
+            return [$date, $date];
+        }
+
+        [$from, $to] = explode(' - ', $rangeText, 2);
+
+        return [$this->normalizeDateInput($from), $this->normalizeDateInput($to)];
+    }
+
+    private function normalizeSedeFilter(string $value): string
+    {
+        $value = strtolower(trim($value));
+        if ($value === '') {
+            return '';
+        }
+        if (str_contains($value, 'ceib')) {
+            return 'CEIBOS';
+        }
+        if (str_contains($value, 'matriz') || str_contains($value, 'villa')) {
+            return 'MATRIZ';
+        }
+
+        return strtoupper($value);
     }
 
     /**
@@ -1487,6 +1840,53 @@ class ExamenesParityService
         return $filtrados;
     }
 
+    /**
+     * @param array<int,array<string,mixed>> $rows
+     * @return array<int,string>
+     */
+    private function distinctSortedValues(array $rows, string $key): array
+    {
+        $values = array_values(array_unique(array_filter(array_map(
+            static fn(array $row): ?string => isset($row[$key]) ? trim((string) $row[$key]) : null,
+            $rows
+        ), static fn(?string $value): bool => $value !== null && $value !== '')));
+
+        sort($values, SORT_NATURAL | SORT_FLAG_CASE);
+
+        return $values;
+    }
+
+    /**
+     * @param array<int,array<string,mixed>> $examenes
+     * @return array<string,mixed>
+     */
+    private function buildKanbanMetrics(array $examenes): array
+    {
+        $total = count($examenes);
+        $porEstado = [];
+        $sinResponsable = 0;
+        $conPendientes = 0;
+
+        foreach ($examenes as $examen) {
+            $estado = (string) ($examen['kanban_estado'] ?? $examen['estado'] ?? 'sin_estado');
+            $porEstado[$estado] = ($porEstado[$estado] ?? 0) + 1;
+
+            if (empty($examen['crm_responsable_id'])) {
+                $sinResponsable++;
+            }
+            if ((int) ($examen['pendientes_estudios_total'] ?? 0) > 0) {
+                $conPendientes++;
+            }
+        }
+
+        return [
+            'total' => $total,
+            'por_estado' => $porEstado,
+            'sin_responsable' => $sinResponsable,
+            'con_pendientes' => $conPendientes,
+        ];
+    }
+
     private function parseFecha(mixed $valor): ?DateTimeImmutable
     {
         if (empty($valor)) {
@@ -1591,6 +1991,54 @@ class ExamenesParityService
     private function projectRootPath(): string
     {
         return realpath(base_path('..')) ?: base_path('..');
+    }
+
+    /**
+     * @param array<string,mixed> $detalle
+     * @return array<string,mixed>|null
+     */
+    private function queryWhatsappContext(array $detalle): ?array
+    {
+        $phone = trim((string) ($detalle['crm_contacto_telefono'] ?? $detalle['paciente_celular'] ?? ''));
+        $conversation = $this->findWhatsappConversationByPhone($phone);
+        if (!$conversation instanceof WhatsappConversation) {
+            return null;
+        }
+
+        return [
+            'conversation_id' => (int) $conversation->id,
+            'phone' => (string) $conversation->wa_number,
+            'url' => '/v2/whatsapp?conversation_id=' . rawurlencode((string) $conversation->id),
+        ];
+    }
+
+    private function findWhatsappConversationByPhone(string $phone): ?WhatsappConversation
+    {
+        $normalized = $this->normalizeWhatsappPhone($phone);
+        if ($normalized === '') {
+            return null;
+        }
+
+        return WhatsappConversation::query()->where('wa_number', $normalized)->first();
+    }
+
+    private function normalizeWhatsappPhone(string $phone): string
+    {
+        $digits = preg_replace('/\D+/', '', $phone) ?? '';
+        if ($digits === '') {
+            return '';
+        }
+        if (str_starts_with($digits, '00')) {
+            $digits = substr($digits, 2);
+        }
+        if (str_starts_with($digits, '0') && strlen($digits) === 10) {
+            $digits = '593' . substr($digits, 1);
+        }
+        if (!str_starts_with($digits, '593') && strlen($digits) === 9) {
+            $digits = '593' . $digits;
+        }
+
+        return $digits;
     }
 
     private function ensureLegacyClassAutoloading(): void

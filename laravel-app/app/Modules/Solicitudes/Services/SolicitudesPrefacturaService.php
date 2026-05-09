@@ -349,7 +349,13 @@ class SolicitudesPrefacturaService
 
         $script = $this->projectRootPath() . '/scrapping/scrape_index_admisiones_hc.py';
         if (!is_file($script)) {
-            throw new RuntimeException('No se encontró el script de admisiones.');
+            return [
+                'success' => true,
+                'selected' => null,
+                'needs_selection' => false,
+                'options' => [],
+                'source' => 'scraper_missing',
+            ];
         }
 
         [$parsed, $rawOutput, $exitCode] = $this->runCommandWithJson(sprintf(
@@ -359,7 +365,15 @@ class SolicitudesPrefacturaService
         ));
 
         if (!is_array($parsed)) {
-            throw new RuntimeException('No se pudo interpretar la respuesta del scraper de admisiones.');
+            return [
+                'success' => true,
+                'selected' => null,
+                'needs_selection' => false,
+                'options' => [],
+                'raw_output' => $rawOutput,
+                'exit_code' => $exitCode,
+                'source' => 'scraper_unparsed',
+            ];
         }
 
         $grouped = $parsed['grouped'] ?? [];
@@ -2282,8 +2296,17 @@ class SolicitudesPrefacturaService
     {
         [$outputLines, $exitCode] = $this->runCommand($command);
         $rawOutput = trim(implode("\n", $outputLines));
-        $parsed = null;
+        $parsed = $this->decodeJsonFromOutput($outputLines, $rawOutput);
 
+        return [$parsed, $rawOutput, $exitCode];
+    }
+
+    /**
+     * @param array<int,string> $outputLines
+     * @return array<string,mixed>|null
+     */
+    private function decodeJsonFromOutput(array $outputLines, string $rawOutput): ?array
+    {
         for ($i = count($outputLines) - 1; $i >= 0; $i--) {
             $line = trim((string) $outputLines[$i]);
             if ($line === '') {
@@ -2292,19 +2315,95 @@ class SolicitudesPrefacturaService
 
             $decoded = json_decode($line, true);
             if (is_array($decoded)) {
-                $parsed = $decoded;
-                break;
+                return $decoded;
             }
         }
 
-        if ($parsed === null && $rawOutput !== '') {
+        if ($rawOutput !== '') {
             $decoded = json_decode($rawOutput, true);
             if (is_array($decoded)) {
-                $parsed = $decoded;
+                return $decoded;
             }
         }
 
-        return [$parsed, $rawOutput, $exitCode];
+        return $this->extractJsonObjectFromText($rawOutput);
+    }
+
+    /**
+     * Intenta rescatar el ultimo bloque JSON valido aunque la salida tenga ruido.
+     *
+     * @return array<string,mixed>|null
+     */
+    private function extractJsonObjectFromText(string $text): ?array
+    {
+        $text = trim($text);
+        if ($text === '') {
+            return null;
+        }
+
+        $length = strlen($text);
+        for ($start = 0; $start < $length; $start++) {
+            $char = $text[$start];
+            if ($char !== '{' && $char !== '[') {
+                continue;
+            }
+
+            $stack = [$char];
+            $inString = false;
+            $escaped = false;
+
+            for ($end = $start; $end < $length; $end++) {
+                $current = $text[$end];
+
+                if ($inString) {
+                    if ($escaped) {
+                        $escaped = false;
+                        continue;
+                    }
+
+                    if ($current === '\\') {
+                        $escaped = true;
+                        continue;
+                    }
+
+                    if ($current === '"') {
+                        $inString = false;
+                    }
+
+                    continue;
+                }
+
+                if ($current === '"') {
+                    $inString = true;
+                    continue;
+                }
+
+                if ($current === '{' || $current === '[') {
+                    $stack[] = $current;
+                    continue;
+                }
+
+                if ($current === '}' || $current === ']') {
+                    $last = array_pop($stack);
+                    $matches = ($current === '}' && $last === '{') || ($current === ']' && $last === '[');
+                    if (!$matches) {
+                        break;
+                    }
+
+                    if ($stack === []) {
+                        $candidate = substr($text, $start, $end - $start + 1);
+                        $decoded = json_decode($candidate, true);
+                        if (is_array($decoded)) {
+                            return $decoded;
+                        }
+
+                        break;
+                    }
+                }
+            }
+        }
+
+        return null;
     }
 
     /**

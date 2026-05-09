@@ -545,7 +545,7 @@ class SolicitudesWriteController
         }
 
         try {
-            $summary = $this->service->crmActualizarTareaEstado($id, $taskId, $estado);
+            $summary = $this->service->crmActualizarTareaEstado($id, $taskId, $estado, $payload);
         } catch (RuntimeException $e) {
             return response()->json(['success' => false, 'error' => $e->getMessage()], $this->runtimeStatus($e))
                 ->header('X-Request-Id', $requestId);

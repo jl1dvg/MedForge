@@ -15,6 +15,7 @@
 @endphp
 
 @push('styles')
+    <link rel="stylesheet" href="/css/pages/solicitudes-crm-panel.css">
     <style>
         .sol-v2-toolbar {
             background: #fff;
@@ -287,335 +288,6 @@
 
         .sol-v2-toast.err {
             background: #991b1b;
-        }
-
-        #crmOffcanvas {
-            --bs-offcanvas-width: min(100vw, 500px);
-            --bs-offcanvas-zindex: 2050;
-        }
-
-        .crm-fixed-top {
-            flex: 0 0 auto;
-        }
-
-        .crm-scrollable {
-            flex: 1 1 auto;
-            min-height: 0;
-            overflow: auto;
-        }
-
-        .crm-list-empty {
-            font-size: 12px;
-            color: #64748b;
-            background: #f8fafc;
-            border: 1px dashed #cbd5f5;
-            border-radius: 8px;
-            padding: 8px;
-        }
-
-        #crmCamposContainer .crm-campo {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-            gap: 8px;
-            align-items: center;
-            margin-bottom: 8px;
-        }
-
-        #crmCamposContainer .crm-campo input,
-        #crmCamposContainer .crm-campo select {
-            width: 100%;
-        }
-
-        .crm-checklist-list,
-        .crm-campos-readonly {
-            display: grid;
-            gap: 10px;
-        }
-
-        .crm-checklist-progress {
-            height: 8px;
-            border-radius: 999px;
-            overflow: hidden;
-            background: #e2e8f0;
-            margin: 10px 0 6px;
-        }
-
-        .crm-checklist-progress-bar {
-            height: 100%;
-            width: 0;
-            background: linear-gradient(90deg, #0f766e 0%, #22c55e 100%);
-            transition: width .28s ease;
-        }
-
-        .crm-checklist-next {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 12px;
-            color: #475569;
-            margin-bottom: 10px;
-        }
-
-        .crm-checklist-next strong {
-            color: #0f172a;
-        }
-
-        .crm-checklist-item,
-        .crm-campo-readonly {
-            border: 1px solid #dbe2ea;
-            border-radius: 12px;
-            background: #fff;
-            padding: 10px 12px;
-            transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
-        }
-
-        .crm-checklist-item:hover,
-        .crm-task-item:hover,
-        .crm-section-card[open] > .crm-section-body > .list-group > .list-group-item:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06);
-        }
-
-        .crm-checklist-item.is-completed {
-            border-color: #bbf7d0;
-            background: #f0fdf4;
-        }
-
-        .crm-checklist-item-head {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 4px;
-        }
-
-        .crm-checklist-item-title {
-            font-weight: 600;
-            color: #0f172a;
-        }
-
-        .crm-checklist-item-meta,
-        .crm-campo-readonly-meta {
-            font-size: 12px;
-            color: #64748b;
-        }
-
-        .crm-checklist-item.is-current {
-            border-color: #93c5fd;
-            background: #eff6ff;
-        }
-
-        .crm-checklist-item.is-pending {
-            border-style: dashed;
-        }
-
-        .crm-checklist-item-topline {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-bottom: 8px;
-            font-size: 11px;
-            text-transform: uppercase;
-            letter-spacing: .06em;
-            color: #64748b;
-        }
-
-        .crm-checklist-dot {
-            width: 10px;
-            height: 10px;
-            border-radius: 999px;
-            background: #cbd5e1;
-            flex: 0 0 auto;
-        }
-
-        .crm-checklist-item.is-completed .crm-checklist-dot {
-            background: #16a34a;
-        }
-
-        .crm-checklist-item.is-current .crm-checklist-dot {
-            background: #2563eb;
-            box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
-        }
-
-        .crm-checklist-item-note {
-            margin-top: 6px;
-            font-size: 12px;
-            color: #334155;
-            background: rgba(148, 163, 184, 0.12);
-            border-radius: 8px;
-            padding: 6px 8px;
-        }
-
-        .crm-campo-readonly-label {
-            font-size: 12px;
-            color: #64748b;
-            text-transform: uppercase;
-            letter-spacing: .04em;
-            margin-bottom: 4px;
-        }
-
-        .crm-campo-readonly-value {
-            color: #0f172a;
-            font-weight: 600;
-            word-break: break-word;
-        }
-
-        .crm-offcanvas-section + .crm-offcanvas-section {
-            margin-top: 14px;
-        }
-
-        .crm-task-item .badge {
-            font-size: 10px;
-        }
-
-        .crm-task-item {
-            border: 1px solid #dbe2ea;
-            border-radius: 12px;
-            background: #fff;
-        }
-
-        .crm-task-item.is-open {
-            border-left: 4px solid #2563eb;
-        }
-
-        .crm-task-item.is-done {
-            opacity: .92;
-            background: #f8fafc;
-        }
-
-        .crm-task-meta-row {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 6px;
-            margin-top: 8px;
-        }
-
-        .crm-task-chip {
-            display: inline-flex;
-            align-items: center;
-            gap: 5px;
-            font-size: 11px;
-            color: #475569;
-            background: #f8fafc;
-            border: 1px solid #e2e8f0;
-            border-radius: 999px;
-            padding: 4px 8px;
-        }
-
-        .crm-task-chip.is-alert {
-            color: #9a3412;
-            background: #fff7ed;
-            border-color: #fdba74;
-        }
-
-        .crm-task-chip.is-success {
-            color: #166534;
-            background: #f0fdf4;
-            border-color: #86efac;
-        }
-
-        .crm-section-card {
-            border: 1px solid rgba(226, 232, 240, 0.9);
-            border-radius: 14px;
-            background: #fff;
-            overflow: hidden;
-        }
-
-        .crm-section-card + .crm-section-card {
-            margin-top: 14px;
-        }
-
-        .crm-section-card > summary {
-            list-style: none;
-            cursor: pointer;
-            padding: 14px 16px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 10px;
-            background: #f8fafc;
-        }
-
-        .crm-section-card > summary::-webkit-details-marker {
-            display: none;
-        }
-
-        .crm-section-title {
-            font-weight: 700;
-            color: #0f172a;
-        }
-
-        .crm-section-summary {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            color: #64748b;
-            font-size: 12px;
-        }
-
-        .crm-section-chevron {
-            transition: transform .18s ease;
-        }
-
-        .crm-section-card[open] .crm-section-chevron {
-            transform: rotate(180deg);
-        }
-
-        .crm-section-body {
-            padding: 14px 16px 16px;
-        }
-
-        .crm-proposal-form {
-            border: 1px dashed rgba(148, 163, 184, 0.7);
-            border-radius: 12px;
-            background: #f8fafc;
-            padding: 12px;
-        }
-
-        .crm-proposal-item {
-            border-radius: 10px;
-            background: #fff;
-            padding: 8px;
-            border: 1px solid rgba(226, 232, 240, 0.9);
-        }
-
-        .crm-proposal-search {
-            border: 1px solid rgba(226, 232, 240, 0.9);
-            border-radius: 12px;
-            background: #fff;
-            padding: 10px;
-            margin-bottom: 10px;
-        }
-
-        .crm-proposal-search-results {
-            display: grid;
-            gap: 8px;
-            max-height: 240px;
-            overflow: auto;
-        }
-
-        .crm-proposal-search-item {
-            width: 100%;
-            border: 1px solid rgba(226, 232, 240, 0.9);
-            border-radius: 10px;
-            background: #f8fafc;
-            padding: 10px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 12px;
-            text-align: left;
-        }
-
-        .crm-proposal-search-item:hover {
-            background: #eef6ff;
-            border-color: rgba(59, 130, 246, 0.45);
-        }
-
-        .crm-proposal-search-item small {
-            display: block;
-            color: #64748b;
-            margin-top: 2px;
         }
 
         .prefactura-modal-body {
@@ -1173,6 +845,7 @@
                     <div class="crm-section-body">
                         <div id="crmTareasList" class="list-group mb-3"></div>
                         <form id="crmTareaForm" class="row g-2">
+                            <input type="hidden" id="crmTareaId">
                             <div class="col-md-6">
                                 <label for="crmTareaTitulo" class="form-label">Título</label>
                                 <input type="text" id="crmTareaTitulo" class="form-control" placeholder="Llamar al paciente" required>
@@ -1200,12 +873,24 @@
                                     <option value="low">Baja</option>
                                 </select>
                             </div>
+                            <div class="col-md-4">
+                                <label for="crmTareaEstado" class="form-label">Estado</label>
+                                <select id="crmTareaEstado" class="form-select">
+                                    <option value="pendiente">Pendiente</option>
+                                    <option value="en_progreso">En progreso</option>
+                                    <option value="completada">Completada</option>
+                                    <option value="cancelada">Cancelada</option>
+                                </select>
+                            </div>
                             <div class="col-12">
                                 <label for="crmTareaDescripcion" class="form-label">Descripción</label>
                                 <textarea id="crmTareaDescripcion" class="form-control" rows="2" placeholder="Detalles de la tarea"></textarea>
                             </div>
-                            <div class="col-12 d-flex justify-content-end">
-                                <button type="submit" class="btn btn-outline-success">
+                            <div class="col-12 d-flex justify-content-end gap-2">
+                                <button type="button" class="btn btn-outline-secondary d-none" id="crmTareaCancelarEdicion">
+                                    Cancelar edición
+                                </button>
+                                <button type="submit" class="btn btn-outline-success" data-crm-task-submit>
                                     <i class="mdi mdi-playlist-plus me-1"></i>Agregar tarea
                                 </button>
                             </div>

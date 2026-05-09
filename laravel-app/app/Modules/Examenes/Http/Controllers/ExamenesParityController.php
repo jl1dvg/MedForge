@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Modules\Examenes\Http\Controllers;
 
 use App\Models\ImagenSigcenterIndex;
+use App\Modules\Codes\Services\CodesCatalogService;
+use App\Modules\Codes\Services\CodesPackageService;
 use App\Modules\Examenes\Services\ExamenesParityService;
 use App\Modules\Examenes\Services\ExamenesPrefacturaService;
 use App\Modules\Examenes\Services\ExamenesReportingService;
@@ -224,6 +226,83 @@ class ExamenesParityController
         );
     }
 
+    public function crmOptions(Request $request): Response
+    {
+        return $this->relayNativeJson(
+            $request,
+            'crmOptions',
+            fn(): array => $this->native->crmOptions()
+        );
+    }
+
+    public function crmBuscarCodigos(Request $request): Response
+    {
+        if (!LegacySessionAuth::isAuthenticated($request)) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Sesión expirada',
+            ], 401);
+        }
+
+        try {
+            $query = trim((string) $request->query('q', ''));
+            $limit = max(1, min(50, (int) $request->query('limit', 15)));
+            $data = $query === '' ? [] : (new CodesCatalogService())->quickSearch($query, $limit);
+        } catch (Throwable $e) {
+            Log::error('examenes.crm.catalog.codes.error', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => 'No se pudieron buscar códigos',
+            ], 500);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $data,
+        ]);
+    }
+
+    public function crmBuscarPaquetes(Request $request): Response
+    {
+        if (!LegacySessionAuth::isAuthenticated($request)) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Sesión expirada',
+            ], 401);
+        }
+
+        try {
+            $packages = new CodesPackageService(DB::connection()->getPdo());
+            $rows = $packages->list([
+                'active' => 1,
+                'search' => trim((string) $request->query('q', '')),
+                'limit' => max(1, min(50, (int) $request->query('limit', 20))),
+                'offset' => 0,
+            ]);
+            $data = array_map(
+                fn(array $package): array => $packages->find((int) ($package['id'] ?? 0)) ?? $package,
+                $rows
+            );
+        } catch (Throwable $e) {
+            Log::error('examenes.crm.catalog.packages.error', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => 'No se pudieron buscar paquetes',
+            ], 500);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $data,
+        ]);
+    }
+
     public function crmGuardarDetalles(Request $request, int $id): Response
     {
         return $this->relayNativeJson(
@@ -284,6 +363,36 @@ class ExamenesParityController
         );
     }
 
+    public function crmEnviarWhatsapp(Request $request, int $id): Response
+    {
+        return $this->relayNativeJson(
+            $request,
+            'crmEnviarWhatsapp',
+            fn(): array => $this->native->crmEnviarWhatsapp($id, $request->all(), LegacySessionAuth::userId($request)),
+            [$id]
+        );
+    }
+
+    public function crmEnviarEmail(Request $request, int $id): Response
+    {
+        return $this->relayNativeJson(
+            $request,
+            'crmEnviarEmail',
+            fn(): array => $this->native->crmEnviarEmail($id, $request->all(), LegacySessionAuth::userId($request)),
+            [$id]
+        );
+    }
+
+    public function crmCrearPropuesta(Request $request, int $id): Response
+    {
+        return $this->relayNativeJson(
+            $request,
+            'crmCrearPropuesta',
+            fn(): array => $this->native->crmCrearPropuesta($id, $request->all(), LegacySessionAuth::userId($request)),
+            [$id]
+        );
+    }
+
     public function crmRegistrarBloqueo(Request $request, int $id): Response
     {
         return $this->relayNativeJson(
@@ -309,7 +418,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'crmActualizarTarea',
-            fn(): array => $this->native->crmActualizarTarea($id, $request->all()),
+            fn(): array => $this->native->crmActualizarTarea($id, $request->all(), LegacySessionAuth::userId($request)),
             [$id]
         );
     }

@@ -6,6 +6,7 @@ namespace App\Modules\CRM\Http\Controllers;
 
 use App\Modules\CRM\Services\CrmProposalPdfService;
 use App\Modules\CRM\Services\CrmProposalService;
+use App\Modules\Shared\Support\CompanyBrandResolver;
 use App\Modules\Solicitudes\Services\SolicitudesCommunicationService;
 use App\Modules\Solicitudes\Services\SolicitudesReadParityService;
 use Illuminate\Http\JsonResponse;
@@ -22,6 +23,7 @@ class CrmProposalController
     public function __construct(
         private readonly CrmProposalService $proposals = new CrmProposalService(),
         private readonly CrmProposalPdfService $pdf = new CrmProposalPdfService(),
+        private readonly CompanyBrandResolver $brandResolver = new CompanyBrandResolver(),
     ) {
     }
 
@@ -57,6 +59,7 @@ class CrmProposalController
             'proposal' => $proposal,
             'items' => $proposal['items'] ?? [],
             'pdfUrl' => url('/proposal/' . $id . '/' . $hash . '/pdf'),
+            'brand' => $this->brandResolver->resolve(),
         ]);
     }
 

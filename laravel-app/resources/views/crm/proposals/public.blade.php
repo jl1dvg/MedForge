@@ -1,19 +1,23 @@
 @php
     $fmt = static fn($value, $currency = 'USD') => ($currency ?: 'USD') . ' ' . number_format((float) $value, 2, '.', ',');
     $currency = (string) ($proposal['currency'] ?? 'USD');
+    $brand = is_array($brand ?? null) ? $brand : [];
+    $companyName = (string) ($brand['name'] ?? 'Consulmed');
+    $logoUrl = (string) ($brand['logo_url'] ?? '');
 @endphp
 <!doctype html>
 <html lang="es">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{{ $proposal['proposal_number'] ?? 'Propuesta' }} | Consulmed</title>
+    <title>{{ $proposal['proposal_number'] ?? 'Propuesta' }} | {{ $companyName }}</title>
     <link rel="stylesheet" href="/assets/css/bootstrap.min.css">
     <style>
         body { background: linear-gradient(135deg, #ecfeff, #f8fafc 45%, #fff7ed); color: #172033; }
         .proposal-shell { max-width: 980px; margin: 32px auto; padding: 0 16px; }
         .proposal-card { background: #fff; border: 1px solid #dbe4ee; border-radius: 22px; box-shadow: 0 24px 70px rgba(15, 23, 42, .12); overflow: hidden; }
         .proposal-hero { background: #0f766e; color: #fff; padding: 28px; }
+        .proposal-logo { max-height: 52px; max-width: 180px; object-fit: contain; background: rgba(255,255,255,.94); border-radius: 12px; padding: 8px; }
         .proposal-body { padding: 28px; }
         .total-box { background: #f0fdfa; border: 1px solid #99f6e4; border-radius: 16px; padding: 18px; }
         .table th { color: #64748b; font-size: 12px; text-transform: uppercase; }
@@ -24,7 +28,10 @@
         <section class="proposal-card">
             <div class="proposal-hero d-flex flex-wrap justify-content-between gap-3">
                 <div>
-                    <h1 class="h3 mb-1">Consulmed</h1>
+                    @if($logoUrl !== '')
+                        <img class="proposal-logo mb-3" src="{{ $logoUrl }}" alt="{{ $companyName }}">
+                    @endif
+                    <h1 class="h3 mb-1">{{ $companyName }}</h1>
                     <p class="mb-0 opacity-75">Propuesta clínica comercial</p>
                 </div>
                 <div class="text-end">

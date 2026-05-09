@@ -1,4 +1,4 @@
-import { poblarAfiliacionesUnicas, poblarDoctoresUnicos } from './kanban/filtros.js';
+import { poblarAfiliacionesUnicas, poblarDoctoresUnicos, poblarSelectOptions } from './kanban/filtros.js';
 import { initKanban } from './kanban/index.js';
 import { setCrmOptions } from './kanban/crmPanel.js';
 import { showToast } from './kanban/toast.js';
@@ -124,6 +124,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const tableBody = document.querySelector(getTableBodySelector());
     const tableEmptyState = document.getElementById(resolveId('TableEmpty'));
     const searchInput = document.getElementById('kanbanSearchFilter');
+    const initialFilters = config.initialFilters || {};
     const exportPdfButton = document.getElementById('examenesExportPdfButton');
 
     const VIEW_DEFAULT = 'kanban';
@@ -518,6 +519,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let searchDebounce = null;
     if (searchInput) {
+        if (typeof initialFilters.search === 'string') {
+            searchInput.value = initialFilters.search;
+        }
         searchInput.addEventListener('input', () => {
             clearTimeout(searchDebounce);
             searchDebounce = setTimeout(() => {
@@ -526,12 +530,43 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    const setInputValue = (id, value) => {
+        const element = document.getElementById(id);
+        if (element && typeof value === 'string') {
+            element.value = value;
+        }
+    };
+
+    setInputValue('kanbanDateFromFilter', initialFilters.date_from || '');
+    setInputValue('kanbanDateToFilter', initialFilters.date_to || '');
+    setInputValue('kanbanSemaforoFilter', initialFilters.prioridad || '');
+    setInputValue('kanbanPendientesFilter', initialFilters.con_pendientes || '');
+    setInputValue('kanbanResponsableFilter', initialFilters.responsable_id || '');
+
+    const completedInput = document.getElementById('kanbanMostrarCompletadosFilter');
+    if (completedInput) {
+        completedInput.checked = Boolean(initialFilters.mostrar_completados);
+    }
+    const sinResponsableInput = document.getElementById('kanbanCrmSinResponsableFilter');
+    if (sinResponsableInput) {
+        sinResponsableInput.checked = Boolean(initialFilters.crm_sin_responsable);
+    }
+
     const obtenerFiltros = () => ({
-        afiliacion: document.getElementById('kanbanAfiliacionFilter')?.value ?? '',
+        afiliacion_categoria: document.getElementById('kanbanAfiliacionCategoriaFilter')?.value ?? '',
+        empresa_seguro: document.getElementById('kanbanEmpresaSeguroFilter')?.value ?? '',
+        afiliacion: '',
+        plan_seguro: document.getElementById('kanbanAfiliacionFilter')?.value ?? '',
+        sede: document.getElementById('kanbanSedeFilter')?.value ?? '',
         doctor: document.getElementById('kanbanDoctorFilter')?.value ?? '',
         prioridad: document.getElementById('kanbanSemaforoFilter')?.value ?? '',
+        responsable_id: document.getElementById('kanbanResponsableFilter')?.value ?? '',
+        crm_sin_responsable: document.getElementById('kanbanCrmSinResponsableFilter')?.checked ? '1' : '',
         con_pendientes: document.getElementById('kanbanPendientesFilter')?.value ?? '',
         fechaTexto: document.getElementById('kanbanDateFilter')?.value ?? '',
+        date_from: document.getElementById('kanbanDateFromFilter')?.value ?? '',
+        date_to: document.getElementById('kanbanDateToFilter')?.value ?? '',
+        mostrar_completados: document.getElementById('kanbanMostrarCompletadosFilter')?.checked ? '1' : '',
         search: searchInput?.value ?? '',
     });
 
@@ -565,10 +600,14 @@ document.addEventListener('DOMContentLoaded', () => {
             filters: {
                 search: filtros.search,
                 doctor: filtros.doctor,
-                afiliacion: filtros.afiliacion,
+                afiliacion: '',
+                afiliacion_categoria: filtros.afiliacion_categoria,
+                empresa_seguro: filtros.empresa_seguro,
+                plan_seguro: filtros.plan_seguro,
+                sede: filtros.sede,
                 prioridad: filtros.prioridad,
-                date_from: range.from,
-                date_to: range.to,
+                date_from: filtros.date_from || range.from,
+                date_to: filtros.date_to || range.to,
             },
             quickMetric: quickMetric || null,
             format,
@@ -824,6 +863,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     poblarAfiliacionesUnicas(store);
                 }
 
+                poblarSelectOptions('kanbanAfiliacionCategoriaFilter', options.afiliacion_categorias || [], 'Todas');
+                poblarSelectOptions('kanbanEmpresaSeguroFilter', options.empresas_seguro || [], 'Todas');
+                if (Array.isArray(options.planes_seguro) && options.planes_seguro.length > 1) {
+                    poblarSelectOptions('kanbanAfiliacionFilter', options.planes_seguro, 'Todas');
+                }
+                poblarSelectOptions('kanbanSedeFilter', options.sedes || [], 'Todas');
+
                 if (options.doctores) {
                     poblarDoctoresUnicos(options.doctores);
                 } else {
@@ -832,8 +878,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (options.crm) {
                     setCrmOptions(options.crm);
+                    poblarSelectOptions('kanbanResponsableFilter', options.crm.responsables || [], 'Todos', 'id');
                 } else {
                     setCrmOptions({});
+                    poblarSelectOptions('kanbanResponsableFilter', [], 'Todos');
                 }
 
                 renderFromCache();
@@ -846,7 +894,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
     window.aplicarFiltros = () => cargarKanban(obtenerFiltros());
 
-    ['kanbanAfiliacionFilter', 'kanbanDoctorFilter', 'kanbanSemaforoFilter', 'kanbanPendientesFilter'].forEach(id => {
+    [
+        'kanbanAfiliacionCategoriaFilter',
+        'kanbanEmpresaSeguroFilter',
+        'kanbanAfiliacionFilter',
+        'kanbanSedeFilter',
+        'kanbanDoctorFilter',
+        'kanbanSemaforoFilter',
+        'kanbanResponsableFilter',
+        'kanbanCrmSinResponsableFilter',
+        'kanbanPendientesFilter',
+        'kanbanMostrarCompletadosFilter',
+        'kanbanDateFromFilter',
+        'kanbanDateToFilter',
+    ].forEach(id => {
         const element = document.getElementById(id);
         if (element) {
             element.addEventListener('change', () => window.aplicarFiltros());
@@ -873,13 +934,15 @@ document.addEventListener('DOMContentLoaded', () => {
             });
     }
 
-    const dateFilterInput = document.getElementById('kanbanDateFilter');
-    if (dateFilterInput && !dateFilterInput.value) {
+    const dateFromInput = document.getElementById('kanbanDateFromFilter');
+    const dateToInput = document.getElementById('kanbanDateToFilter');
+    if (dateFromInput && dateToInput && !dateFromInput.value && !dateToInput.value) {
         const now = new Date();
         const start = new Date(now.getFullYear(), now.getMonth(), 1);
         const pad = (value) => String(value).padStart(2, '0');
-        const formatDate = (date) => `${pad(date.getDate())}-${pad(date.getMonth() + 1)}-${date.getFullYear()}`;
-        dateFilterInput.value = `${formatDate(start)} - ${formatDate(now)}`;
+        const formatDate = (date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+        dateFromInput.value = formatDate(start);
+        dateToInput.value = formatDate(now);
     }
 
     if (realtimeConfig.enabled) {

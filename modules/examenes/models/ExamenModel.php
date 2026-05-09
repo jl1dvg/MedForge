@@ -2,6 +2,7 @@
 
 namespace Modules\Examenes\Models;
 
+use App\Modules\Shared\Support\AfiliacionDimensionService;
 use DateTime;
 use DateTimeImmutable;
 use Modules\CRM\Services\LeadConfigurationService;
@@ -34,6 +35,10 @@ class ExamenModel
 
     public function fetchExamenesConDetallesFiltrado(array $filtros = []): array
     {
+        $afiliacionDimensions = new AfiliacionDimensionService($this->db);
+        $afiliacionExpr = 'COALESCE(NULLIF(TRIM(pd.afiliacion), ""), "")';
+        $afiliacionContext = $afiliacionDimensions->buildContext($afiliacionExpr, 'acm_exam');
+        $sedeExpr = $this->sedeExpression('pp');
         $derivacionCodigoExpr = $this->selectExamenColumn('derivacion_codigo');
         $derivacionPedidoExpr = $this->selectExamenColumn('derivacion_pedido_id');
         $derivacionLateralidadExpr = $this->selectExamenColumn('derivacion_lateralidad');
@@ -45,7 +50,13 @@ class ExamenModel
                 ce.hc_number,
                 ce.form_id,
                 CONCAT_WS(' ', TRIM(pd.fname), TRIM(pd.mname), TRIM(pd.lname), TRIM(pd.lname2)) AS full_name,
-                pd.afiliacion,
+                {$afiliacionExpr} AS afiliacion,
+                {$afiliacionContext['categoria_expr']} AS afiliacion_categoria_key,
+                {$afiliacionContext['empresa_key_expr']} AS empresa_seguro_key,
+                {$afiliacionContext['empresa_label_expr']} AS empresa_seguro,
+                {$afiliacionContext['seguro_key_expr']} AS plan_seguro_key,
+                {$afiliacionContext['seguro_label_expr']} AS plan_seguro,
+                {$sedeExpr} AS sede,
                 pd.celular AS paciente_celular,
                 ce.examen_codigo,
                 ce.examen_nombre,
@@ -88,6 +99,7 @@ class ExamenModel
             FROM consulta_examenes ce
             INNER JOIN patient_data pd ON ce.hc_number = pd.hc_number
             LEFT JOIN procedimiento_proyectado pp ON ce.form_id = pp.form_id
+            {$afiliacionContext['join']}
             LEFT JOIN examen_crm_detalles detalles ON detalles.examen_id = ce.id
             LEFT JOIN users responsable ON detalles.responsable_id = responsable.id
             LEFT JOIN (
@@ -101,21 +113,42 @@ class ExamenModel
                 GROUP BY examen_id
             ) adjuntos ON adjuntos.examen_id = ce.id
             LEFT JOIN (
-                SELECT examen_id,
+                SELECT source_ref_id,
                        COUNT(*) AS tareas_total,
-                       SUM(CASE WHEN estado IN ('pendiente','en_progreso') THEN 1 ELSE 0 END) AS tareas_pendientes,
-                       MIN(CASE WHEN estado IN ('pendiente','en_progreso') THEN due_date END) AS proximo_vencimiento
-                FROM examen_crm_tareas
-                GROUP BY examen_id
-            ) tareas ON tareas.examen_id = ce.id
+                       SUM(CASE WHEN status IN ('pendiente','en_progreso','en_proceso') THEN 1 ELSE 0 END) AS tareas_pendientes,
+                       MIN(CASE WHEN status IN ('pendiente','en_progreso','en_proceso') THEN COALESCE(due_at, CONCAT(due_date, ' 23:59:59')) END) AS proximo_vencimiento
+                FROM crm_tasks
+                WHERE source_module = 'examenes'
+                GROUP BY source_ref_id
+            ) tareas ON tareas.source_ref_id = ce.id
             WHERE ce.examen_nombre IS NOT NULL
               AND ce.examen_nombre <> ''";
 
         $params = [];
 
         if (!empty($filtros['afiliacion'])) {
-            $sql .= " AND pd.afiliacion COLLATE utf8mb4_unicode_ci LIKE ?";
+            $sql .= " AND {$afiliacionExpr} COLLATE utf8mb4_unicode_ci LIKE ?";
             $params[] = '%' . trim($filtros['afiliacion']) . '%';
+        }
+
+        if (!empty($filtros['afiliacion_categoria'])) {
+            $sql .= " AND {$afiliacionContext['categoria_expr']} = ?";
+            $params[] = trim((string) $filtros['afiliacion_categoria']);
+        }
+
+        if (!empty($filtros['empresa_seguro'])) {
+            $sql .= " AND {$afiliacionContext['empresa_key_expr']} = ?";
+            $params[] = trim((string) $filtros['empresa_seguro']);
+        }
+
+        if (!empty($filtros['plan_seguro'])) {
+            $sql .= " AND {$afiliacionContext['seguro_key_expr']} = ?";
+            $params[] = trim((string) $filtros['plan_seguro']);
+        }
+
+        if (!empty($filtros['sede'])) {
+            $sql .= " AND {$sedeExpr} = ?";
+            $params[] = trim((string) $filtros['sede']);
         }
 
         if (!empty($filtros['doctor'])) {
@@ -133,12 +166,47 @@ class ExamenModel
             $params[] = trim($filtros['estado']);
         }
 
+        if (!empty($filtros['responsable_id'])) {
+            if ((string) $filtros['responsable_id'] === 'sin_asignar') {
+                $sql .= " AND detalles.responsable_id IS NULL";
+            } elseif ((int) $filtros['responsable_id'] > 0) {
+                $sql .= " AND detalles.responsable_id = ?";
+                $params[] = (int) $filtros['responsable_id'];
+            }
+        }
+
+        if (!empty($filtros['search'])) {
+            $sql .= " AND (
+                CONCAT_WS(' ', TRIM(pd.fname), TRIM(pd.mname), TRIM(pd.lname), TRIM(pd.lname2)) COLLATE utf8mb4_unicode_ci LIKE ?
+                OR ce.hc_number COLLATE utf8mb4_unicode_ci LIKE ?
+                OR ce.form_id COLLATE utf8mb4_unicode_ci LIKE ?
+                OR ce.examen_nombre COLLATE utf8mb4_unicode_ci LIKE ?
+                OR pp.doctor COLLATE utf8mb4_unicode_ci LIKE ?
+                OR {$afiliacionExpr} COLLATE utf8mb4_unicode_ci LIKE ?
+                OR {$sedeExpr} COLLATE utf8mb4_unicode_ci LIKE ?
+                OR ce.estado COLLATE utf8mb4_unicode_ci LIKE ?
+                OR detalles.pipeline_stage COLLATE utf8mb4_unicode_ci LIKE ?
+            )";
+            $term = '%' . trim((string) $filtros['search']) . '%';
+            array_push($params, $term, $term, $term, $term, $term, $term, $term, $term, $term);
+        }
+
+        if (!empty($filtros['date_from'])) {
+            $sql .= " AND DATE(COALESCE(ce.consulta_fecha, ce.created_at)) >= ?";
+            $params[] = trim((string) $filtros['date_from']);
+        }
+
+        if (!empty($filtros['date_to'])) {
+            $sql .= " AND DATE(COALESCE(ce.consulta_fecha, ce.created_at)) <= ?";
+            $params[] = trim((string) $filtros['date_to']);
+        }
+
         if (!empty($filtros['fechaTexto']) && str_contains($filtros['fechaTexto'], ' - ')) {
             [$inicio, $fin] = explode(' - ', $filtros['fechaTexto']);
             $inicioDate = DateTime::createFromFormat('d-m-Y', trim($inicio));
             $finDate = DateTime::createFromFormat('d-m-Y', trim($fin));
 
-            if ($inicioDate && $finDate) {
+            if ($inicioDate && $finDate && empty($filtros['date_from']) && empty($filtros['date_to'])) {
                 $sql .= " AND DATE(COALESCE(ce.consulta_fecha, ce.created_at)) BETWEEN ? AND ?";
                 $params[] = $inicioDate->format('Y-m-d');
                 $params[] = $finDate->format('Y-m-d');
@@ -1033,6 +1101,17 @@ class ExamenModel
             return sprintf('%s.`%s`', $alias, $column);
         }
         return $fallback;
+    }
+
+    private function sedeExpression(string $alias = 'pp'): string
+    {
+        $rawExpr = "LOWER(TRIM(COALESCE(NULLIF({$alias}.sede_departamento, ''), NULLIF({$alias}.id_sede, ''), '')))";
+
+        return "CASE
+            WHEN {$rawExpr} LIKE '%ceib%' THEN 'CEIBOS'
+            WHEN {$rawExpr} LIKE '%matriz%' OR {$rawExpr} LIKE '%villa%' THEN 'MATRIZ'
+            ELSE ''
+        END";
     }
 
     private function hasExamenColumn(string $column): bool

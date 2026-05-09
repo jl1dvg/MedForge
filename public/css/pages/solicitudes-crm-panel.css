@@ -1,6 +1,17 @@
 #crmOffcanvas {
-    --bs-offcanvas-width: min(100vw, 500px);
+    --bs-offcanvas-width: min(100vw, max(520px, 50vw));
     --bs-offcanvas-zindex: 2050;
+}
+
+@media (max-width: 991.98px) {
+    #crmOffcanvas {
+        --bs-offcanvas-width: 100vw;
+    }
+}
+
+.crm-offcanvas-backdrop {
+    z-index: 2040 !important;
+    background-color: rgba(15, 23, 42, 0.45);
 }
 
 .crm-fixed-top {
@@ -171,6 +182,14 @@
 
 .crm-task-item .badge {
     font-size: 10px;
+}
+
+.crm-task-item button {
+    white-space: nowrap;
+}
+
+.crm-note-item small {
+    color: #64748b;
 }
 
 .crm-task-item {

@@ -88,6 +88,11 @@ class SolicitudesReadParityService
      */
     private array $tableExistsCache = [];
 
+    /**
+     * @var array<string, array<int, string>>
+     */
+    private array $columnsCache = [];
+
     private AfiliacionDimensionService $afiliacionDimensions;
     private SolicitudesStateMachineService $stateMachine;
     private ?SettingsOptionResolver $settingsResolver = null;
@@ -141,19 +146,22 @@ class SolicitudesReadParityService
         }
 
         $rows = $this->querySolicitudesKanban($filters);
-        $checklistMap = $this->queryChecklistMap(array_values(array_map(
+        $solicitudIds = array_values(array_map(
             static fn(array $row): int => (int) ($row['id'] ?? 0),
             $rows
-        )));
+        ));
+        $checklistMap = $this->queryChecklistMap($solicitudIds);
+        $taskMap = $this->queryChecklistTaskMap($solicitudIds);
 
         $kanban = [];
         foreach ($rows as $row) {
             $row = $this->normalizeSolicitudRow($row);
             $solicitudId = (int) ($row['id'] ?? 0);
             $checklistRows = $checklistMap[$solicitudId] ?? [];
-            [$checklist, $progress, $kanbanState] = $this->stateMachine->resolvePersistedChecklistContext(
+            [$checklist, $progress, $kanbanState] = $this->resolveOperationalChecklistContext(
+                (string) ($row['estado'] ?? ''),
                 $checklistRows,
-                (string) ($row['estado'] ?? '')
+                $taskMap[$solicitudId] ?? []
             );
 
             $row['checklist'] = $checklist;
@@ -305,20 +313,81 @@ class SolicitudesReadParityService
             throw new RuntimeException('Solicitud no encontrada');
         }
 
+        try {
+            $this->ensureChecklistTasksMaterialized($solicitudId);
+        } catch (Throwable) {
+            // No bloquear el CRM si la materialización del checklist falla.
+        }
+
         return [
             'detalle' => $detalle,
-            'notas' => $this->queryCrmNotas($solicitudId),
-            'adjuntos' => $this->queryCrmAdjuntos($solicitudId),
-            'tareas' => $this->queryCrmTareas($solicitudId),
-            'campos_personalizados' => $this->queryCrmMeta($solicitudId),
+            'notas' => $this->safeCrmSection(fn(): array => $this->queryCrmNotas($solicitudId), []),
+            'adjuntos' => $this->safeCrmSection(fn(): array => $this->queryCrmAdjuntos($solicitudId), []),
+            'tareas' => $this->safeCrmSection(fn(): array => $this->queryCrmTareas($solicitudId), []),
+            'campos_personalizados' => $this->safeCrmSection(fn(): array => $this->queryCrmMeta($solicitudId), []),
             'lead' => null,
             'crm_resumen' => null,
             'project' => null,
-            'propuestas' => $this->queryCrmPropuestas($detalle),
-            'bloqueos_agenda' => $this->queryBloqueosAgenda($solicitudId),
-            'cobertura_mails' => $this->queryCoberturaMails($solicitudId),
-            'whatsapp_context' => $this->queryWhatsappContext($detalle),
+            'propuestas' => $this->safeCrmSection(fn(): array => $this->queryCrmPropuestas($detalle), []),
+            'bloqueos_agenda' => $this->safeCrmSection(fn(): array => $this->queryBloqueosAgenda($solicitudId), []),
+            'cobertura_mails' => $this->safeCrmSection(fn(): array => $this->queryCoberturaMails($solicitudId), []),
+            'whatsapp_context' => $this->safeCrmSection(fn(): array => $this->queryWhatsappContext($detalle), []),
         ];
+    }
+
+    /**
+     * @template T
+     * @param callable():T $callback
+     * @param T $fallback
+     * @return T
+     */
+    private function safeCrmSection(callable $callback, mixed $fallback): mixed
+    {
+        try {
+            return $callback();
+        } catch (Throwable) {
+            return $fallback;
+        }
+    }
+
+    private function ensureChecklistTasksMaterialized(int $solicitudId): void
+    {
+        if (!$this->tableExists('crm_tasks')) {
+            return;
+        }
+
+        $checklistRows = $this->queryChecklistRows($solicitudId);
+        [$checklist] = $this->stateMachine->resolvePersistedChecklistContext(
+            $checklistRows,
+            $checklistRows === [] ? $this->legacyStateBySolicitud($solicitudId) : '',
+            [
+                'include_nota' => true,
+                'include_can_toggle' => true,
+            ]
+        );
+
+        $this->syncChecklistLinkedTasks($solicitudId, $checklist);
+    }
+
+    /**
+     * @param array<int,array<string,mixed>> $checklistRows
+     * @param array<int,array<string,mixed>> $taskRows
+     * @return array{0:array<int,array<string,mixed>>,1:array<string,mixed>,2:array{slug:string,label:string}}
+     */
+    private function resolveOperationalChecklistContext(string $fallbackState, array $checklistRows, array $taskRows): array
+    {
+        $taskChecklistRows = $this->buildChecklistRowsFromTasks($taskRows, $checklistRows);
+        if ($taskChecklistRows !== []) {
+            return $this->stateMachine->resolvePersistedChecklistContext($taskChecklistRows, $fallbackState, [
+                'include_nota' => true,
+                'include_can_toggle' => true,
+            ]);
+        }
+
+        return $this->stateMachine->resolvePersistedChecklistContext($checklistRows, $fallbackState, [
+            'include_nota' => true,
+            'include_can_toggle' => true,
+        ]);
     }
 
     /**
@@ -1882,7 +1951,9 @@ class SolicitudesReadParityService
             ];
         }
 
-        $checklistMap = $this->queryChecklistMap(array_values(array_map(static fn(array $item): int => (int) $item['id'], $solicitudes)));
+        $solicitudIds = array_values(array_map(static fn(array $item): int => (int) $item['id'], $solicitudes));
+        $checklistMap = $this->queryChecklistMap($solicitudIds);
+        $taskMap = $this->queryChecklistTaskMap($solicitudIds);
 
         $wip = [];
         foreach ($this->stateMachine->stages() as $stage) {
@@ -1898,9 +1969,10 @@ class SolicitudesReadParityService
         $completedCount = 0;
 
         foreach ($solicitudes as $row) {
-            [$checklist, $progress, $kanbanState] = $this->stateMachine->resolvePersistedChecklistContext(
+            [$checklist, $progress, $kanbanState] = $this->resolveOperationalChecklistContext(
+                (string) ($row['estado'] ?? ''),
                 $checklistMap[(int) $row['id']] ?? [],
-                (string) ($row['estado'] ?? '')
+                $taskMap[(int) $row['id']] ?? []
             );
             unset($checklist);
 
@@ -2046,6 +2118,47 @@ class SolicitudesReadParityService
      */
     private function queryCrmDetalle(int $solicitudId): ?array
     {
+        $taskJoin = 'LEFT JOIN (
+                SELECT NULL AS source_ref_id,
+                       0 AS tareas_total,
+                       0 AS tareas_pendientes,
+                       NULL AS proximo_vencimiento
+            ) tareas ON 1 = 0';
+        $bindings = [];
+
+        $taskColumns = $this->tableColumns('crm_tasks');
+        if (
+            $taskColumns !== []
+            && in_array('source_ref_id', $taskColumns, true)
+            && in_array('source_module', $taskColumns, true)
+        ) {
+            $taskCompanyFilter = '';
+            if (in_array('company_id', $taskColumns, true)) {
+                $taskCompanyFilter = ' AND company_id = ?';
+                $bindings[] = $this->resolveCompanyId();
+            }
+
+            $taskStatusExpr = in_array('status', $taskColumns, true)
+                ? 'status'
+                : 'NULL';
+            $taskDueExpr = in_array('due_at', $taskColumns, true) && in_array('due_date', $taskColumns, true)
+                ? 'COALESCE(due_at, CONCAT(due_date, " 23:59:59"))'
+                : (in_array('due_at', $taskColumns, true)
+                    ? 'due_at'
+                    : (in_array('due_date', $taskColumns, true) ? 'CONCAT(due_date, " 23:59:59")' : 'NULL'));
+
+            $taskJoin = 'LEFT JOIN (
+                SELECT source_ref_id,
+                       COUNT(*) AS tareas_total,
+                       SUM(CASE WHEN ' . $taskStatusExpr . ' <> "completada" THEN 1 ELSE 0 END) AS tareas_pendientes,
+                       MIN(CASE WHEN ' . $taskStatusExpr . ' <> "completada" THEN ' . $taskDueExpr . ' END) AS proximo_vencimiento
+                FROM crm_tasks
+                WHERE source_module = "solicitudes"'
+                . $taskCompanyFilter . '
+                GROUP BY source_ref_id
+            ) tareas ON tareas.source_ref_id = sp.id';
+        }
+
         $sql = 'SELECT
                 sp.id,
                 sp.hc_number,
@@ -2110,32 +2223,96 @@ class SolicitudesReadParityService
                 FROM solicitud_crm_adjuntos
                 GROUP BY solicitud_id
             ) adjuntos ON adjuntos.solicitud_id = sp.id
-            LEFT JOIN (
-                SELECT source_ref_id,
-                       COUNT(*) AS tareas_total,
-                       SUM(CASE WHEN status <> "completada" THEN 1 ELSE 0 END) AS tareas_pendientes,
-                       MIN(CASE WHEN status <> "completada" THEN COALESCE(due_at, CONCAT(due_date, " 23:59:59")) END) AS proximo_vencimiento
-                FROM crm_tasks
-                WHERE source_module = "solicitudes"
-                  AND company_id = ?
-                GROUP BY source_ref_id
-            ) tareas ON tareas.source_ref_id = sp.id
+            ' . $taskJoin . '
             WHERE sp.id = ?
             LIMIT 1';
 
-        $rows = DB::select($sql, [$this->resolveCompanyId(), $solicitudId]);
+        $bindings[] = $solicitudId;
+
+        try {
+            $rows = DB::select($sql, $bindings);
+            if ($rows === []) {
+                return null;
+            }
+
+            $row = (array) $rows[0];
+            $row['crm_responsable_avatar'] = $this->formatProfilePhoto($row['crm_responsable_avatar'] ?? null);
+            $row['doctor_avatar'] = $this->formatProfilePhoto($row['doctor_avatar'] ?? null);
+            $row['crm_pipeline_stage'] = $this->normalizePipelineStage((string) ($row['crm_pipeline_stage'] ?? ''));
+            $row['seguidores'] = $this->parseFollowers($row['crm_followers'] ?? null);
+            unset($row['crm_followers']);
+
+            return $row;
+        } catch (Throwable) {
+            return $this->queryCrmDetalleFallback($solicitudId);
+        }
+    }
+
+    /**
+     * @return array<string,mixed>|null
+     */
+    private function queryCrmDetalleFallback(int $solicitudId): ?array
+    {
+        try {
+            $rows = DB::select(
+                'SELECT
+                    sp.id,
+                    sp.hc_number,
+                    sp.form_id,
+                    sp.estado,
+                    sp.prioridad,
+                    sp.doctor,
+                    sp.procedimiento,
+                    sp.ojo,
+                    sp.created_at,
+                    sp.observacion,
+                    sp.turno,
+                    cd.fecha AS fecha_consulta,
+                    pd.afiliacion,
+                    pd.celular AS paciente_celular,
+                    TRIM(CONCAT_WS(" ", NULLIF(TRIM(pd.fname), ""), NULLIF(TRIM(pd.mname), ""), NULLIF(TRIM(pd.lname), ""), NULLIF(TRIM(pd.lname2), ""))) AS paciente_nombre
+                 FROM solicitud_procedimiento sp
+                 LEFT JOIN patient_data pd ON sp.hc_number = pd.hc_number
+                 LEFT JOIN (
+                    SELECT c.hc_number, c.form_id, MAX(c.fecha) AS fecha
+                    FROM consulta_data c
+                    GROUP BY c.hc_number, c.form_id
+                 ) cd ON cd.hc_number = sp.hc_number AND cd.form_id = sp.form_id
+                 WHERE sp.id = ?
+                 LIMIT 1',
+                [$solicitudId]
+            );
+        } catch (Throwable) {
+            return null;
+        }
+
         if ($rows === []) {
             return null;
         }
 
         $row = (array) $rows[0];
-        $row['crm_responsable_avatar'] = $this->formatProfilePhoto($row['crm_responsable_avatar'] ?? null);
-        $row['doctor_avatar'] = $this->formatProfilePhoto($row['doctor_avatar'] ?? null);
-        $row['crm_pipeline_stage'] = $this->normalizePipelineStage((string) ($row['crm_pipeline_stage'] ?? ''));
-        $row['seguidores'] = $this->parseFollowers($row['crm_followers'] ?? null);
-        unset($row['crm_followers']);
-
-        return $row;
+        return array_merge($row, [
+            'crm_lead_id' => null,
+            'crm_project_id' => null,
+            'crm_pipeline_stage' => null,
+            'crm_fuente' => null,
+            'crm_contacto_email' => null,
+            'crm_contacto_telefono' => null,
+            'crm_responsable_id' => null,
+            'crm_responsable_nombre' => null,
+            'crm_responsable_email' => null,
+            'crm_responsable_avatar' => null,
+            'doctor_avatar' => null,
+            'crm_lead_status' => null,
+            'crm_lead_source' => null,
+            'crm_lead_updated_at' => null,
+            'crm_total_notas' => 0,
+            'crm_total_adjuntos' => 0,
+            'crm_tareas_pendientes' => 0,
+            'crm_tareas_total' => 0,
+            'crm_proximo_vencimiento' => null,
+            'seguidores' => [],
+        ]);
     }
 
     /**
@@ -2288,32 +2465,117 @@ class SolicitudesReadParityService
      */
     private function queryCrmTareas(int $solicitudId): array
     {
+        $columns = $this->tableColumns('crm_tasks');
+        if ($columns === []) {
+            return [];
+        }
+
+        $select = ['t.id'];
+        if (in_array('title', $columns, true)) {
+            $select[] = 't.title AS titulo';
+        } else {
+            $select[] = 'NULL AS titulo';
+        }
+        if (in_array('description', $columns, true)) {
+            $select[] = 't.description AS descripcion';
+        } else {
+            $select[] = 'NULL AS descripcion';
+        }
+        if (in_array('status', $columns, true)) {
+            $select[] = 't.status AS estado';
+        } else {
+            $select[] = 'NULL AS estado';
+        }
+        if (in_array('checklist_slug', $columns, true)) {
+            $select[] = 't.checklist_slug';
+        } else {
+            $select[] = 'NULL AS checklist_slug';
+        }
+        if (in_array('task_key', $columns, true)) {
+            $select[] = 't.task_key';
+        } else {
+            $select[] = 'NULL AS task_key';
+        }
+        if (in_array('metadata', $columns, true)) {
+            $select[] = 't.metadata';
+        } else {
+            $select[] = 'NULL AS metadata';
+        }
+        if (in_array('assigned_to', $columns, true)) {
+            $select[] = 't.assigned_to';
+        } else {
+            $select[] = 'NULL AS assigned_to';
+        }
+        if (in_array('created_by', $columns, true)) {
+            $select[] = 't.created_by';
+        } else {
+            $select[] = 'NULL AS created_by';
+        }
+        if (in_array('priority', $columns, true)) {
+            $select[] = 't.priority';
+        } else {
+            $select[] = 'NULL AS priority';
+        }
+        if (in_array('due_date', $columns, true) && in_array('due_at', $columns, true)) {
+            $select[] = 'COALESCE(t.due_date, DATE(t.due_at)) AS due_date';
+        } elseif (in_array('due_date', $columns, true)) {
+            $select[] = 't.due_date AS due_date';
+        } elseif (in_array('due_at', $columns, true)) {
+            $select[] = 'DATE(t.due_at) AS due_date';
+        } else {
+            $select[] = 'NULL AS due_date';
+        }
+        if (in_array('remind_at', $columns, true)) {
+            $select[] = 't.remind_at';
+        } else {
+            $select[] = 'NULL AS remind_at';
+        }
+        if (in_array('created_at', $columns, true)) {
+            $select[] = 't.created_at';
+        } else {
+            $select[] = 'NULL AS created_at';
+        }
+        if (in_array('completed_at', $columns, true)) {
+            $select[] = 't.completed_at';
+        } else {
+            $select[] = 'NULL AS completed_at';
+        }
+
+        $joins = [];
+        if (in_array('assigned_to', $columns, true)) {
+            $joins[] = 'LEFT JOIN users asignado ON t.assigned_to = asignado.id';
+            $select[] = 'asignado.nombre AS assigned_name';
+        } else {
+            $select[] = 'NULL AS assigned_name';
+        }
+        if (in_array('created_by', $columns, true)) {
+            $joins[] = 'LEFT JOIN users creador ON t.created_by = creador.id';
+            $select[] = 'creador.nombre AS created_name';
+        } else {
+            $select[] = 'NULL AS created_name';
+        }
+
+        $orderDueExpr = in_array('due_date', $columns, true) && in_array('due_at', $columns, true)
+            ? 'COALESCE(t.due_date, DATE(t.due_at))'
+            : (in_array('due_date', $columns, true)
+                ? 't.due_date'
+                : (in_array('due_at', $columns, true) ? 'DATE(t.due_at)' : 'NULL'));
+        $orderStatusExpr = in_array('status', $columns, true)
+            ? 'CASE WHEN t.status IN ("pendiente", "en_progreso", "en_proceso") THEN 0 ELSE 1 END'
+            : '0';
+
         try {
             $rows = DB::select(
-                'SELECT t.id,
-                        t.title AS titulo,
-                        t.description AS descripcion,
-                        t.status AS estado,
-                        t.checklist_slug,
-                        t.task_key,
-                        t.assigned_to,
-                        t.created_by,
-                        COALESCE(t.due_date, DATE(t.due_at)) AS due_date,
-                        t.remind_at,
-                        t.created_at,
-                        t.completed_at,
-                        asignado.nombre AS assigned_name,
-                        creador.nombre AS created_name
+                'SELECT ' . implode(', ', $select) . '
                  FROM crm_tasks t
-                 LEFT JOIN users asignado ON t.assigned_to = asignado.id
-                 LEFT JOIN users creador ON t.created_by = creador.id
+                 ' . implode(' ', $joins) . '
                  WHERE t.company_id = ?
                    AND t.source_module = "solicitudes"
                    AND t.source_ref_id = ?
                  ORDER BY
-                    CASE WHEN t.status IN ("pendiente", "en_progreso", "en_proceso") THEN 0 ELSE 1 END,
-                    COALESCE(t.due_date, DATE(t.due_at)) IS NULL,
-                    COALESCE(t.due_date, DATE(t.due_at)) ASC,
+                    ' . $orderStatusExpr . ',
+                    (' . $orderDueExpr . ') IS NULL,
+                    ' . $orderDueExpr . ' ASC,
                     t.created_at DESC',
                 [$this->resolveCompanyId(), (string) $solicitudId]
             );
@@ -2321,7 +2583,214 @@ class SolicitudesReadParityService
             return [];
         }
 
-        return array_map(static fn(object $row): array => (array) $row, $rows);
+        return array_map(function (object $row): array {
+            $item = (array) $row;
+            $metadata = $this->decodeTaskMetadata($item['metadata'] ?? null);
+
+            if (trim((string) ($item['checklist_slug'] ?? '')) === '' && is_array($metadata)) {
+                $item['checklist_slug'] = trim((string) ($metadata['checklist_slug'] ?? ''));
+            }
+            if (trim((string) ($item['task_key'] ?? '')) === '' && is_array($metadata)) {
+                $item['task_key'] = trim((string) ($metadata['task_key'] ?? ''));
+            }
+
+            return $item;
+        }, $rows);
+    }
+
+    /**
+     * @param array<int,array<string,mixed>> $checklist
+     */
+    private function syncChecklistLinkedTasks(int $solicitudId, array $checklist): void
+    {
+        $columns = $this->tableColumns('crm_tasks');
+        if ($columns === [] || $checklist === []) {
+            return;
+        }
+
+        $bindings = [
+            $this->resolveCompanyId(),
+            'solicitudes',
+            (string) $solicitudId,
+        ];
+
+        try {
+            $rows = DB::select(
+                'SELECT id, '
+                . (in_array('checklist_slug', $columns, true) ? 'checklist_slug, ' : 'NULL AS checklist_slug, ')
+                . (in_array('status', $columns, true) ? 'status, ' : 'NULL AS status, ')
+                . (in_array('completed_at', $columns, true) ? 'completed_at, ' : 'NULL AS completed_at, ')
+                . (in_array('title', $columns, true) ? 'title, ' : 'NULL AS title, ')
+                . (in_array('description', $columns, true) ? 'description, ' : 'NULL AS description, ')
+                . (in_array('task_key', $columns, true) ? 'task_key, ' : 'NULL AS task_key, ')
+                . (in_array('metadata', $columns, true) ? 'metadata ' : 'NULL AS metadata ')
+                . 'FROM crm_tasks
+                   WHERE company_id = ?
+                     AND source_module = ?
+                     AND source_ref_id = ?',
+                $bindings
+            );
+        } catch (Throwable) {
+            return;
+        }
+
+        $existingBySlug = [];
+        foreach ($rows as $row) {
+            $task = (array) $row;
+            $slug = $this->extractChecklistSlugFromTaskRow($task);
+            if ($slug === '') {
+                continue;
+            }
+
+            $existingBySlug[$slug][] = $task;
+        }
+
+        $now = date('Y-m-d H:i:s');
+        foreach ($checklist as $item) {
+            $slug = $this->normalizeKanbanSlug((string) ($item['slug'] ?? ''));
+            if ($slug === '') {
+                continue;
+            }
+
+            $title = trim((string) ($item['label'] ?? $slug));
+            $completed = !empty($item['completed']);
+            $targetStatus = $completed ? 'completada' : 'pendiente';
+            $targetCompletedAt = $completed
+                ? ($this->normalizeChecklistDateTime($item['completado_at'] ?? null) ?? $now)
+                : null;
+            $description = 'Checklist de solicitud';
+            $taskKey = 'checklist:' . $slug;
+
+            $rowsForSlug = $existingBySlug[$slug] ?? [];
+            if ($rowsForSlug === []) {
+                $payload = [];
+                if (in_array('company_id', $columns, true)) {
+                    $payload['company_id'] = $this->resolveCompanyId();
+                }
+                if (in_array('source_module', $columns, true)) {
+                    $payload['source_module'] = 'solicitudes';
+                }
+                if (in_array('source_ref_id', $columns, true)) {
+                    $payload['source_ref_id'] = (string) $solicitudId;
+                }
+                if (in_array('title', $columns, true)) {
+                    $payload['title'] = $title;
+                }
+                if (in_array('description', $columns, true)) {
+                    $payload['description'] = $description;
+                }
+                if (in_array('status', $columns, true)) {
+                    $payload['status'] = $targetStatus;
+                }
+                if (in_array('checklist_slug', $columns, true)) {
+                    $payload['checklist_slug'] = $slug;
+                }
+                if (in_array('task_key', $columns, true)) {
+                    $payload['task_key'] = $taskKey;
+                }
+                if (in_array('metadata', $columns, true)) {
+                    $payload['metadata'] = json_encode([
+                        'task_key' => $taskKey,
+                        'checklist_slug' => $slug,
+                        'checklist_label' => $title,
+                    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                }
+                if (in_array('completed_at', $columns, true)) {
+                    $payload['completed_at'] = $targetCompletedAt;
+                }
+                if (in_array('created_at', $columns, true)) {
+                    $payload['created_at'] = $now;
+                }
+                if (in_array('updated_at', $columns, true)) {
+                    $payload['updated_at'] = $now;
+                }
+
+                $this->insertRow('crm_tasks', $payload);
+                continue;
+            }
+
+            foreach ($rowsForSlug as $row) {
+                $payload = [];
+                if (in_array('status', $columns, true) && (string) ($row['status'] ?? '') !== $targetStatus) {
+                    $payload['status'] = $targetStatus;
+                }
+                if (in_array('completed_at', $columns, true) && (($row['completed_at'] ?? null) !== $targetCompletedAt)) {
+                    $payload['completed_at'] = $targetCompletedAt;
+                }
+                if (in_array('title', $columns, true) && trim((string) ($row['title'] ?? '')) !== $title) {
+                    $payload['title'] = $title;
+                }
+                if (in_array('description', $columns, true) && trim((string) ($row['description'] ?? '')) === '') {
+                    $payload['description'] = $description;
+                }
+                if (in_array('task_key', $columns, true) && trim((string) ($row['task_key'] ?? '')) === '') {
+                    $payload['task_key'] = $taskKey;
+                }
+                if (in_array('checklist_slug', $columns, true) && trim((string) ($row['checklist_slug'] ?? '')) === '') {
+                    $payload['checklist_slug'] = $slug;
+                }
+                if (in_array('metadata', $columns, true)) {
+                    $metadata = $this->mergeChecklistTaskMetadata($row['metadata'] ?? null, $slug, $title);
+                    if ($metadata !== ($row['metadata'] ?? null)) {
+                        $payload['metadata'] = $metadata;
+                    }
+                }
+                if ($payload !== [] && in_array('updated_at', $columns, true)) {
+                    $payload['updated_at'] = $now;
+                }
+
+                if ($payload === []) {
+                    continue;
+                }
+
+                $this->updateRow('crm_tasks', $payload, 'id = ?', [(int) ($row['id'] ?? 0)]);
+            }
+        }
+    }
+
+    /**
+     * @return array<string,mixed>|null
+     */
+    private function decodeTaskMetadata(mixed $value): ?array
+    {
+        if (is_array($value)) {
+            return $value;
+        }
+
+        if (!is_string($value) || trim($value) === '') {
+            return null;
+        }
+
+        $decoded = json_decode($value, true);
+        return is_array($decoded) ? $decoded : null;
+    }
+
+    /**
+     * @param array<string,mixed> $row
+     */
+    private function extractChecklistSlugFromTaskRow(array $row): string
+    {
+        $slug = $this->normalizeKanbanSlug((string) ($row['checklist_slug'] ?? ''));
+        if ($slug !== '') {
+            return $slug;
+        }
+
+        $metadata = $this->decodeTaskMetadata($row['metadata'] ?? null);
+        if (!is_array($metadata)) {
+            return '';
+        }
+
+        return $this->normalizeKanbanSlug((string) ($metadata['checklist_slug'] ?? ''));
+    }
+
+    private function mergeChecklistTaskMetadata(mixed $current, string $slug, string $label): ?string
+    {
+        $metadata = $this->decodeTaskMetadata($current) ?? [];
+        $metadata['task_key'] = $metadata['task_key'] ?? ('checklist:' . $slug);
+        $metadata['checklist_slug'] = $slug;
+        $metadata['checklist_label'] = $label;
+
+        return json_encode($metadata, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: null;
     }
 
     /**
@@ -2485,6 +2954,242 @@ class SolicitudesReadParityService
         }
 
         return 1;
+    }
+
+    private function legacyStateBySolicitud(int $solicitudId): string
+    {
+        try {
+            $row = DB::selectOne(
+                'SELECT estado FROM solicitud_procedimiento WHERE id = ? LIMIT 1',
+                [$solicitudId]
+            );
+        } catch (Throwable) {
+            return '';
+        }
+
+        return is_object($row) && isset($row->estado) ? (string) $row->estado : '';
+    }
+
+    /**
+     * @return array<int,array<string,mixed>>
+     */
+    private function queryChecklistRows(int $solicitudId): array
+    {
+        if (!$this->tableExists('solicitud_checklist')) {
+            return [];
+        }
+
+        try {
+            $rows = DB::select(
+                'SELECT etapa_slug, completado_at, nota FROM solicitud_checklist WHERE solicitud_id = ? ORDER BY id',
+                [$solicitudId]
+            );
+        } catch (Throwable) {
+            return [];
+        }
+
+        return array_map(static fn(object $row): array => (array) $row, $rows);
+    }
+
+    /**
+     * @param array<int,int> $solicitudIds
+     * @return array<int,array<int,array<string,mixed>>>
+     */
+    private function queryChecklistTaskMap(array $solicitudIds): array
+    {
+        $solicitudIds = array_values(array_filter(array_map('intval', $solicitudIds), static fn(int $id): bool => $id > 0));
+        if ($solicitudIds === []) {
+            return [];
+        }
+
+        $columns = $this->tableColumns('crm_tasks');
+        if (
+            $columns === []
+            || !in_array('source_module', $columns, true)
+            || !in_array('source_ref_id', $columns, true)
+        ) {
+            return [];
+        }
+
+        $select = ['source_ref_id'];
+        foreach (['id', 'title', 'status', 'completed_at', 'checklist_slug', 'task_key', 'metadata'] as $column) {
+            if (in_array($column, $columns, true)) {
+                $select[] = $column;
+            } else {
+                $select[] = 'NULL AS ' . $column;
+            }
+        }
+
+        $bindings = ['solicitudes'];
+        $where = 'source_module = ?';
+        if (in_array('company_id', $columns, true)) {
+            $where .= ' AND company_id = ?';
+            $bindings[] = $this->resolveCompanyId();
+        }
+
+        $where .= ' AND source_ref_id IN (' . implode(', ', array_fill(0, count($solicitudIds), '?')) . ')';
+        foreach ($solicitudIds as $id) {
+            $bindings[] = (string) $id;
+        }
+
+        try {
+            $rows = DB::select(
+                'SELECT ' . implode(', ', $select) . ' FROM crm_tasks WHERE ' . $where,
+                $bindings
+            );
+        } catch (Throwable) {
+            return [];
+        }
+
+        $grouped = [];
+        foreach ($rows as $row) {
+            $item = (array) $row;
+            $solicitudId = (int) ($item['source_ref_id'] ?? 0);
+            if ($solicitudId <= 0) {
+                continue;
+            }
+
+            $slug = $this->extractChecklistSlugFromTaskRow($item);
+            if ($slug === '') {
+                continue;
+            }
+
+            $grouped[$solicitudId][] = $item;
+        }
+
+        return $grouped;
+    }
+
+    /**
+     * @param array<int,array<string,mixed>> $taskRows
+     * @param array<int,array<string,mixed>> $checklistRows
+     * @return array<int,array<string,mixed>>
+     */
+    private function buildChecklistRowsFromTasks(array $taskRows, array $checklistRows = []): array
+    {
+        if ($taskRows === []) {
+            return [];
+        }
+
+        $persistedBySlug = [];
+        foreach ($checklistRows as $row) {
+            $slug = $this->normalizeKanbanSlug((string) ($row['etapa_slug'] ?? ''));
+            if ($slug === '') {
+                continue;
+            }
+
+            $persistedBySlug[$slug] = $row;
+        }
+
+        $tasksBySlug = [];
+        foreach ($taskRows as $row) {
+            $slug = $this->extractChecklistSlugFromTaskRow($row);
+            if ($slug === '') {
+                continue;
+            }
+
+            $tasksBySlug[$slug] = $row;
+        }
+
+        if ($tasksBySlug === []) {
+            return [];
+        }
+
+        $rows = [];
+        foreach ($this->stateMachine->stages() as $stage) {
+            $slug = $this->normalizeKanbanSlug((string) ($stage['slug'] ?? ''));
+            if ($slug === '') {
+                continue;
+            }
+
+            $task = $tasksBySlug[$slug] ?? null;
+            $persisted = $persistedBySlug[$slug] ?? null;
+            $status = strtolower(trim((string) ($task['status'] ?? '')));
+            $isCompleted = in_array($status, ['completada', 'completed', 'done'], true);
+
+            $rows[] = [
+                'etapa_slug' => $slug,
+                'completado_at' => $isCompleted
+                    ? ($task['completed_at'] ?? ($persisted['completado_at'] ?? date('Y-m-d H:i:s')))
+                    : null,
+                'nota' => $persisted['nota'] ?? null,
+            ];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @param array<string,mixed> $payload
+     * @param array<int,mixed> $bindings
+     */
+    private function updateRow(string $table, array $payload, string $where, array $bindings = []): int
+    {
+        if ($payload === []) {
+            return 0;
+        }
+
+        $sets = [];
+        $params = [];
+        foreach ($payload as $column => $value) {
+            $sets[] = '`' . $column . '` = ?';
+            $params[] = $value;
+        }
+        foreach ($bindings as $value) {
+            $params[] = $value;
+        }
+
+        try {
+            return DB::update(
+                sprintf(
+                    'UPDATE `%s` SET %s WHERE %s',
+                    str_replace('`', '', $table),
+                    implode(', ', $sets),
+                    $where
+                ),
+                $params
+            );
+        } catch (Throwable) {
+            return 0;
+        }
+    }
+
+    /**
+     * @param array<string,mixed> $payload
+     */
+    private function insertRow(string $table, array $payload): void
+    {
+        if ($payload === []) {
+            return;
+        }
+
+        try {
+            DB::table($table)->insert($payload);
+        } catch (Throwable) {
+            // ignore: CRM read should degrade instead of fail hard
+        }
+    }
+
+    private function normalizeChecklistDateTime(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $raw = trim((string) $value);
+        if ($raw === '') {
+            return null;
+        }
+
+        if (preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?$/', $raw) === 1) {
+            return strlen($raw) === 16 ? $raw . ':00' : $raw;
+        }
+
+        try {
+            return (new DateTimeImmutable($raw))->format('Y-m-d H:i:s');
+        } catch (Throwable) {
+            return null;
+        }
     }
 
     /**
@@ -3125,5 +3830,59 @@ class SolicitudesReadParityService
         $this->columnExistsCache[$key] = $exists;
 
         return $this->columnExistsCache[$key];
+    }
+
+    /**
+     * @return array<int,string>
+     */
+    private function tableColumns(string $table): array
+    {
+        if (array_key_exists($table, $this->columnsCache)) {
+            return $this->columnsCache[$table];
+        }
+
+        if (!$this->tableExists($table)) {
+            $this->columnsCache[$table] = [];
+            return [];
+        }
+
+        $columns = [];
+
+        try {
+            $rows = DB::select('SHOW COLUMNS FROM `' . str_replace('`', '', $table) . '`');
+            foreach ($rows as $row) {
+                $field = trim((string) ($row->Field ?? ''));
+                if ($field !== '') {
+                    $columns[] = $field;
+                }
+            }
+        } catch (Throwable) {
+            $columns = [];
+        }
+
+        if ($columns === []) {
+            try {
+                $rows = DB::select(
+                    'SELECT COLUMN_NAME
+                     FROM information_schema.COLUMNS
+                     WHERE TABLE_SCHEMA = DATABASE()
+                       AND TABLE_NAME = ?
+                     ORDER BY ORDINAL_POSITION',
+                    [$table]
+                );
+                foreach ($rows as $row) {
+                    $field = trim((string) ($row->COLUMN_NAME ?? ''));
+                    if ($field !== '') {
+                        $columns[] = $field;
+                    }
+                }
+            } catch (Throwable) {
+                $columns = [];
+            }
+        }
+
+        $this->columnsCache[$table] = $columns;
+
+        return $columns;
     }
 }

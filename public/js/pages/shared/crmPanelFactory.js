@@ -100,6 +100,8 @@ let currentData = null;
 let currentLead = null;
 let currentDetalle = null;
 let checklistTasksBySlug = {};
+let editingTaskId = null;
+let editingChecklistSlug = '';
 
 function parsePositiveInt(value) {
     const parsed = Number.parseInt(String(value ?? ''), 10);
@@ -522,15 +524,23 @@ function bindForms() {
             }
 
             const basePath = resolveBasePath();
+            const isEditing = parsePositiveInt(payload.tarea_id) !== null;
             const ok = await submitJson(
-                resolveWritePath(`${basePath}/${currentEntityId}/crm/tareas`),
+                resolveWritePath(isEditing
+                    ? `${basePath}/${currentEntityId}/crm/tareas/estado`
+                    : `${basePath}/${currentEntityId}/crm/tareas`),
                 payload,
-                'Tarea agregada'
+                isEditing ? 'Tarea actualizada' : 'Tarea agregada'
             );
             if (ok) {
-                tareaForm.reset();
+                resetTareaForm(tareaForm);
             }
         });
+    }
+
+    const cancelarTareaButton = document.getElementById('crmTareaCancelarEdicion');
+    if (cancelarTareaButton) {
+        cancelarTareaButton.addEventListener('click', () => resetTareaForm(document.getElementById('crmTareaForm')));
     }
 
     const bloqueoForm = document.getElementById('crmBloqueoForm');
@@ -659,14 +669,86 @@ function collectBloqueoPayload(form) {
 }
 
 function collectTareaPayload(form) {
-    return {
+    const payload = {
+        tarea_id: form.querySelector('#crmTareaId')?.value ?? '',
         titulo: form.querySelector('#crmTareaTitulo')?.value?.trim() ?? '',
+        estado: form.querySelector('#crmTareaEstado')?.value ?? 'pendiente',
         assigned_to: form.querySelector('#crmTareaAsignado')?.value ?? '',
         due_date: form.querySelector('#crmTareaFecha')?.value ?? '',
         remind_at: form.querySelector('#crmTareaRecordatorio')?.value ?? '',
         priority: form.querySelector('#crmTareaPrioridad')?.value ?? '',
         descripcion: form.querySelector('#crmTareaDescripcion')?.value?.trim() ?? '',
     };
+
+    if (editingChecklistSlug) {
+        payload.checklist_slug = editingChecklistSlug;
+        payload.task_key = `checklist:${editingChecklistSlug}`;
+    }
+
+    return payload;
+}
+
+function resetTareaForm(form) {
+    if (!form) {
+        return;
+    }
+
+    form.reset();
+    editingTaskId = null;
+    editingChecklistSlug = '';
+    const idInput = form.querySelector('#crmTareaId');
+    if (idInput) {
+        idInput.value = '';
+    }
+    const statusSelect = form.querySelector('#crmTareaEstado');
+    if (statusSelect) {
+        statusSelect.value = 'pendiente';
+    }
+
+    const submitButton = form.querySelector('[data-crm-task-submit]');
+    if (submitButton) {
+        submitButton.innerHTML = '<i class="mdi mdi-playlist-plus me-1"></i>Agregar tarea';
+    }
+
+    const cancelButton = document.getElementById('crmTareaCancelarEdicion');
+    cancelButton?.classList.add('d-none');
+}
+
+function editTarea(tarea = {}) {
+    const form = document.getElementById('crmTareaForm');
+    if (!form) {
+        return;
+    }
+
+    editingTaskId = parsePositiveInt(tarea.id);
+    editingChecklistSlug = String(tarea.checklist_slug || '').trim();
+    const values = {
+        crmTareaId: editingTaskId !== null ? String(editingTaskId) : '',
+        crmTareaTitulo: tarea.titulo || tarea.title || '',
+        crmTareaEstado: tarea.estado || tarea.status || 'pendiente',
+        crmTareaAsignado: tarea.assigned_to || '',
+        crmTareaFecha: normalizeDateInputValue(tarea.due_date || tarea.due_at || ''),
+        crmTareaRecordatorio: normalizeDateTimeLocalValue(tarea.remind_at || ''),
+        crmTareaPrioridad: tarea.priority || tarea.prioridad || '',
+        crmTareaDescripcion: tarea.descripcion || tarea.description || '',
+    };
+
+    Object.entries(values).forEach(([id, value]) => {
+        const field = form.querySelector(`#${id}`);
+        if (field) {
+            field.value = value == null ? '' : String(value);
+        }
+    });
+
+    const submitButton = form.querySelector('[data-crm-task-submit]');
+    if (submitButton) {
+        submitButton.innerHTML = '<i class="mdi mdi-content-save-outline me-1"></i>Guardar cambios';
+    }
+
+    const cancelButton = document.getElementById('crmTareaCancelarEdicion');
+    cancelButton?.classList.remove('d-none');
+    form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    form.querySelector('#crmTareaTitulo')?.focus();
 }
 
 function collectPropuestaPayload(form) {
@@ -1302,12 +1384,15 @@ function renderCrmData(data) {
     renderResumen(data.detalle, currentLead, data.whatsapp_context || null);
     renderCommunicationDefaults(data.detalle, data.whatsapp_context || null);
     renderPropuestaControls();
+    setChecklistSectionVisible(false);
     loadChecklistState(currentEntityId);
     renderNotas(data.notas ?? []);
     renderCobertura(data.cobertura_mails ?? []);
     renderPropuestas(data.propuestas ?? []);
     renderAdjuntos(data.adjuntos ?? []);
-    renderTareas(data.tareas ?? []);
+    const panelTasks = buildTasksForPanel(data.tareas ?? [], data.checklist ?? []);
+    renderTareas(panelTasks);
+    updateTareasResumen(panelTasks);
     renderChecklistFallbackFromTasks(data.tareas ?? []);
     renderCampos(data.campos_personalizados ?? []);
     renderBloqueos(data.bloqueos_agenda ?? []);
@@ -1336,6 +1421,11 @@ async function loadChecklistState(entityId) {
         }
 
         const tasks = mergeCrmTasks(currentData?.tareas ?? [], Array.isArray(data.tasks) ? data.tasks : []);
+        if (currentData && typeof currentData === 'object') {
+            currentData.tareas = tasks;
+            currentData.checklist = Array.isArray(data.checklist) ? data.checklist : [];
+            currentData.checklist_progress = data.checklist_progress || {};
+        }
         checklistTasksBySlug = tasks.reduce((carry, task) => {
             const slug = String(task?.checklist_slug || '').trim();
             if (slug !== '') {
@@ -1346,9 +1436,9 @@ async function loadChecklistState(entityId) {
         }, {});
 
         renderChecklist(data.checklist || [], data.checklist_progress || {}, tasks);
-        if (tasks.length > 0) {
-            renderTareas(tasks);
-        }
+        const panelTasks = buildTasksForPanel(tasks, data.checklist || []);
+        renderTareas(panelTasks);
+        updateTareasResumen(panelTasks);
     } catch (error) {
         checklistTasksBySlug = {};
         list.innerHTML = `<div class="crm-list-empty">${escapeHtml(error?.message || 'No se pudo cargar el checklist')}</div>`;
@@ -1372,6 +1462,97 @@ function mergeCrmTasks(primaryTasks, secondaryTasks) {
         });
 
     return Array.from(merged.values());
+}
+
+function buildTasksForPanel(tasks, checklist) {
+    const merged = mergeCrmTasks(Array.isArray(tasks) ? tasks : [], []);
+    const checklistItems = Array.isArray(checklist) ? checklist : [];
+    const existingSlugs = new Set(
+        merged
+            .map(task => String(task?.checklist_slug || '').trim())
+            .filter(Boolean)
+    );
+
+    checklistItems.forEach((item, index) => {
+        const slug = String(item?.slug || '').trim();
+        if (slug === '' || existingSlugs.has(slug)) {
+            return;
+        }
+
+        merged.push({
+            id: '',
+            titulo: String(item?.label || `Paso ${index + 1}`),
+            descripcion: `Paso del checklist ${panelConfig.entityLabel}`,
+            estado: item?.completed ? 'completada' : 'pendiente',
+            checklist_slug: slug,
+            task_key: `checklist:${slug}`,
+            assigned_to: '',
+            assigned_name: 'Sin asignar',
+            created_name: 'Checklist',
+            due_date: '',
+            remind_at: '',
+            priority: '',
+            completed_at: item?.completado_at || null,
+            _virtualChecklist: true,
+        });
+    });
+
+    return merged;
+}
+
+function setChecklistSectionVisible(visible) {
+    const checklistList = document.getElementById('crmChecklistList');
+    const section = checklistList?.closest('details.crm-section-card');
+    if (!section) {
+        return;
+    }
+
+    section.classList.toggle('d-none', !visible);
+}
+
+async function updateChecklistTask(task, completed) {
+    if (!currentEntityId) {
+        notify(selectionMessage('actualizar checklist'), false);
+        return false;
+    }
+
+    const slug = String(task?.checklist_slug || '').trim();
+    if (slug === '') {
+        notify('La etapa del checklist no es válida', false);
+        return false;
+    }
+
+    const basePath = resolveBasePath();
+    try {
+        toggleLoading(true);
+        const response = await fetch(resolveWritePath(`${basePath}/${currentEntityId}/crm/checklist`), {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                'Content-Type': 'application/json',
+                ...csrfHeaders(),
+            },
+            body: JSON.stringify({
+                etapa_slug: slug,
+                completado: completed,
+            }),
+        });
+
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data?.success === false) {
+            throw new Error(data?.error || 'No se pudo actualizar el checklist');
+        }
+
+        await loadCrmData(currentEntityId);
+        notify(completed ? 'Paso completado' : 'Paso reabierto');
+        return true;
+    } catch (error) {
+        console.error('CRM ▶ Error checklist', error);
+        notify(error?.message || 'No se pudo actualizar el checklist', false);
+        return false;
+    } finally {
+        toggleLoading(false);
+    }
 }
 
 function renderResumen(detalle, lead, whatsappContext = null) {
@@ -1525,7 +1706,8 @@ function renderCommunicationDefaults(detalle, whatsappContext = null) {
     const emailBody = document.getElementById('crmEmailBody');
 
     const paciente = detalle.paciente_nombre || detalle.full_name || 'paciente';
-    const procedimiento = detalle.procedimiento || 'su procedimiento';
+    const procedimiento = detalle.procedimiento || detalle.examen_nombre || 'su procedimiento';
+    const entityLabel = panelConfig.entityLabel || 'solicitud';
     const telefono = detalle.crm_contacto_telefono || detalle.paciente_celular || '';
     const correo = detalle.crm_contacto_email || '';
     const wa = whatsappContext && typeof whatsappContext === 'object' ? whatsappContext : {};
@@ -1537,21 +1719,21 @@ function renderCommunicationDefaults(detalle, whatsappContext = null) {
         whatsappPhone.value = telefono;
     }
     if (whatsappOpen) {
-        const url = wa.conversation_url || wa.search_url || '';
+        const url = wa.conversation_url || wa.search_url || wa.url || '';
         whatsappOpen.href = url || '#';
         whatsappOpen.classList.toggle('d-none', url === '');
     }
     if (whatsappMessage && whatsappMessage.value.trim() === '') {
-        whatsappMessage.value = `Hola ${paciente}, le escribimos de Consulmed para dar seguimiento a su solicitud de ${procedimiento}.`;
+        whatsappMessage.value = `Hola ${paciente}, le escribimos de Consulmed para dar seguimiento a ${entityLabel === 'examen' ? 'su examen' : 'su solicitud'} de ${procedimiento}.`;
     }
     if (emailTo && emailTo.value.trim() === '') {
         emailTo.value = correo;
     }
     if (emailSubject && emailSubject.value.trim() === '') {
-        emailSubject.value = 'Seguimiento de solicitud quirúrgica';
+        emailSubject.value = entityLabel === 'examen' ? 'Seguimiento de examen' : 'Seguimiento de solicitud quirúrgica';
     }
     if (emailBody && emailBody.value.trim() === '') {
-        emailBody.value = `Estimado/a ${paciente},\n\nLe escribimos de Consulmed para dar seguimiento a su solicitud de ${procedimiento}.\n\nSaludos cordiales.`;
+        emailBody.value = `Estimado/a ${paciente},\n\nLe escribimos de Consulmed para dar seguimiento a ${entityLabel === 'examen' ? 'su examen' : 'su solicitud'} de ${procedimiento}.\n\nSaludos cordiales.`;
     }
 }
 
@@ -1849,6 +2031,7 @@ function renderTareas(tareas) {
         empty.className = 'crm-list-empty';
         empty.textContent = `No hay tareas registradas para ${panelConfig.entityArticle} ${panelConfig.entityLabel}`;
         list.appendChild(empty);
+        updateTareasResumen([]);
         return;
     }
 
@@ -1876,6 +2059,8 @@ function renderTareas(tareas) {
     });
 
     sorted.forEach(tarea => {
+        const checklistLinked = isChecklistLinkedTask(tarea);
+        const virtualChecklist = Boolean(tarea?._virtualChecklist) || (checklistLinked && parsePositiveInt(tarea?.id) === null);
         const item = document.createElement('div');
         item.className = 'list-group-item crm-task-item d-flex justify-content-between align-items-start gap-3';
         item.classList.add(tarea.estado === 'completada' ? 'is-done' : 'is-open');
@@ -1930,6 +2115,21 @@ function renderTareas(tareas) {
         creadorChip.textContent = `Creador: ${creador}`;
         chips.appendChild(creadorChip);
 
+        if (checklistLinked) {
+            const checklistChip = document.createElement('span');
+            checklistChip.className = 'crm-task-chip';
+            checklistChip.textContent = 'Vinculada al checklist';
+            chips.appendChild(checklistChip);
+        }
+
+        const prioridad = taskPriorityLabel(tarea.priority || tarea.prioridad || '');
+        if (prioridad) {
+            const prioridadChip = document.createElement('span');
+            prioridadChip.className = 'crm-task-chip';
+            prioridadChip.textContent = `Prioridad: ${prioridad}`;
+            chips.appendChild(prioridadChip);
+        }
+
         const dueChip = document.createElement('span');
         const hasDue = Boolean(tarea.due_date);
         const isDone = tarea.estado === 'completada';
@@ -1944,6 +2144,13 @@ function renderTareas(tareas) {
         const acciones = document.createElement('div');
         acciones.className = 'd-flex flex-column gap-2 align-items-end';
 
+        const editBtn = document.createElement('button');
+        editBtn.type = 'button';
+        editBtn.className = 'btn btn-sm btn-outline-primary';
+        editBtn.innerHTML = '<i class="mdi mdi-pencil-outline"></i> Editar';
+        editBtn.addEventListener('click', () => editTarea(tarea));
+        acciones.appendChild(editBtn);
+
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = tarea.estado === 'completada'
@@ -1952,8 +2159,12 @@ function renderTareas(tareas) {
         btn.innerHTML = tarea.estado === 'completada'
             ? '<i class="mdi mdi-restore"></i> Reabrir'
             : '<i class="mdi mdi-check-circle-outline"></i> Completar';
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', async () => {
             const nuevoEstado = tarea.estado === 'completada' ? 'pendiente' : 'completada';
+            if (virtualChecklist) {
+                await updateChecklistTask(tarea, nuevoEstado === 'completada');
+                return;
+            }
             actualizarEstadoTarea(tarea.id, nuevoEstado);
         });
         acciones.appendChild(btn);
@@ -1968,6 +2179,8 @@ function renderTareas(tareas) {
         item.appendChild(acciones);
         list.appendChild(item);
     });
+
+    updateTareasResumen(sorted);
 }
 
 function renderChecklist(checklist, progress, tasks = []) {
@@ -2053,6 +2266,29 @@ function renderChecklist(checklist, progress, tasks = []) {
             taskMeta.className = 'crm-checklist-item-meta';
             taskMeta.textContent = `Tarea CRM #${task.id} · ${task.estado || task.status || 'pendiente'}`;
             card.appendChild(taskMeta);
+
+            const taskActions = document.createElement('div');
+            taskActions.className = 'd-flex flex-wrap gap-2 mt-2';
+
+            const editBtn = document.createElement('button');
+            editBtn.type = 'button';
+            editBtn.className = 'btn btn-sm btn-outline-primary';
+            editBtn.innerHTML = '<i class="mdi mdi-pencil-outline"></i> Editar tarea';
+            editBtn.addEventListener('click', () => editTarea(task));
+            taskActions.appendChild(editBtn);
+
+            const toggleBtn = document.createElement('button');
+            toggleBtn.type = 'button';
+            toggleBtn.className = item?.completed ? 'btn btn-sm btn-outline-secondary' : 'btn btn-sm btn-outline-success';
+            toggleBtn.innerHTML = item?.completed
+                ? '<i class="mdi mdi-restore"></i> Marcar pendiente'
+                : '<i class="mdi mdi-check-circle-outline"></i> Completar';
+            toggleBtn.addEventListener('click', () => {
+                actualizarEstadoTarea(task.id, item?.completed ? 'pendiente' : 'completada');
+            });
+            taskActions.appendChild(toggleBtn);
+
+            card.appendChild(taskActions);
         }
 
         const note = String(item?.nota || '').trim();
@@ -2091,6 +2327,23 @@ function renderChecklistFallbackFromTasks(tasks) {
     if (resumen) {
         resumen.textContent = `${completed}/${items.length} completadas`;
     }
+}
+
+function updateTareasResumen(tareas) {
+    const tareasResumen = document.getElementById('crmTareasResumen');
+    if (!tareasResumen) {
+        return;
+    }
+
+    const items = Array.isArray(tareas) ? tareas.filter(task => task && typeof task === 'object') : [];
+    if (!items.length) {
+        tareasResumen.textContent = 'Sin tareas registradas';
+        return;
+    }
+
+    const total = items.length;
+    const pendientes = items.filter(task => String(task?.estado || task?.status || 'pendiente').trim().toLowerCase() !== 'completada').length;
+    tareasResumen.textContent = `${pendientes} pendientes de ${total}`;
 }
 
 function formatCampoTypeLabel(type) {
@@ -2179,6 +2432,27 @@ async function actualizarEstadoTarea(tareaId, estado) {
         tarea_id: tareaId,
         estado,
     }, 'Tarea actualizada');
+}
+
+function normalizeDateInputValue(value) {
+    const raw = String(value || '').trim();
+    if (!raw) {
+        return '';
+    }
+
+    const match = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+    return match ? match[1] : '';
+}
+
+function normalizeDateTimeLocalValue(value) {
+    const raw = String(value || '').trim();
+    if (!raw) {
+        return '';
+    }
+
+    const normalized = raw.replace(' ', 'T');
+    const match = normalized.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})/);
+    return match ? match[1] : '';
 }
 
 function renderCampos(campos) {
@@ -2338,6 +2612,9 @@ function clearCrmSections() {
     }
 
     checklistTasksBySlug = {};
+    editingTaskId = null;
+    editingChecklistSlug = '';
+    setChecklistSectionVisible(false);
 }
 
 function toggleLoading(active) {
@@ -2391,6 +2668,49 @@ function estadoBadgeClass(estado) {
         default:
             return 'text-bg-warning';
     }
+}
+
+function taskPriorityLabel(priority) {
+    const normalized = String(priority || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+    const labels = {
+        low: 'Baja',
+        baja: 'Baja',
+        medium: 'Media',
+        normal: 'Media',
+        media: 'Media',
+        high: 'Alta',
+        alta: 'Alta',
+        urgent: 'Urgente',
+        urgente: 'Urgente',
+        critical: 'Urgente',
+        critica: 'Urgente',
+        crítica: 'Urgente',
+    };
+
+    return labels[normalized] || '';
+}
+
+function isChecklistLinkedTask(task) {
+    const slug = String(task?.checklist_slug || '').trim();
+    if (slug !== '') {
+        return true;
+    }
+
+    const metadata = task?.metadata;
+    if (metadata && typeof metadata === 'object') {
+        return String(metadata.checklist_slug || '').trim() !== '';
+    }
+
+    if (typeof metadata === 'string') {
+        try {
+            const parsed = JSON.parse(metadata);
+            return String(parsed?.checklist_slug || '').trim() !== '';
+        } catch {
+            return false;
+        }
+    }
+
+    return false;
 }
 
 function proposalStatusLabel(status) {

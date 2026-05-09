@@ -11,6 +11,9 @@ Route::middleware([
 Route::match(['GET', 'POST'], '/examenes/kanban-data', [ExamenesParityController::class, 'kanbanData']);
 Route::get('/examenes/turnero-data', [ExamenesParityController::class, 'turneroData']);
 Route::get('/examenes/api/estado', [ExamenesParityController::class, 'apiEstadoGet']);
+Route::get('/examenes/crm/options', [ExamenesParityController::class, 'crmOptions']);
+Route::get('/examenes/crm/catalog/codes', [ExamenesParityController::class, 'crmBuscarCodigos']);
+Route::get('/examenes/crm/catalog/packages', [ExamenesParityController::class, 'crmBuscarPaquetes']);
 Route::get('/examenes/{id}/crm', [ExamenesParityController::class, 'crmResumen'])->whereNumber('id');
 Route::get('/examenes/derivacion', [ExamenesParityController::class, 'derivacionDetalle']);
 Route::get('/examenes/prefactura', [ExamenesParityController::class, 'prefactura']);
@@ -36,6 +39,9 @@ Route::post('/examenes/{id}/crm/bootstrap', [ExamenesParityController::class, 'c
 Route::get('/examenes/{id}/crm/checklist-state', [ExamenesParityController::class, 'crmChecklistState'])->whereNumber('id');
 Route::post('/examenes/{id}/crm/checklist', [ExamenesParityController::class, 'crmActualizarChecklist'])->whereNumber('id');
 Route::post('/examenes/{id}/crm/notas', [ExamenesParityController::class, 'crmAgregarNota'])->whereNumber('id');
+Route::post('/examenes/{id}/crm/whatsapp', [ExamenesParityController::class, 'crmEnviarWhatsapp'])->whereNumber('id');
+Route::post('/examenes/{id}/crm/email', [ExamenesParityController::class, 'crmEnviarEmail'])->whereNumber('id');
+Route::post('/examenes/{id}/crm/propuestas', [ExamenesParityController::class, 'crmCrearPropuesta'])->whereNumber('id');
 Route::post('/examenes/{id}/crm/tareas', [ExamenesParityController::class, 'crmGuardarTarea'])->whereNumber('id');
 Route::post('/examenes/{id}/crm/tareas/estado', [ExamenesParityController::class, 'crmActualizarTarea'])->whereNumber('id');
 Route::post('/examenes/{id}/crm/bloqueo', [ExamenesParityController::class, 'crmRegistrarBloqueo'])->whereNumber('id');
@@ -58,12 +64,18 @@ Route::post('/api/examenes/derivacion/preseleccion', [ExamenesParityController::
 Route::post('/api/examenes/derivacion/guardar', [ExamenesParityController::class, 'guardarDerivacionPreseleccion']);
 Route::post('/api/examenes/reportes/pdf', [ExamenesParityController::class, 'reportePdf']);
 Route::post('/api/examenes/reportes/excel', [ExamenesParityController::class, 'reporteExcel']);
+Route::get('/api/examenes/crm/options', [ExamenesParityController::class, 'crmOptions']);
+Route::get('/api/examenes/crm/catalog/codes', [ExamenesParityController::class, 'crmBuscarCodigos']);
+Route::get('/api/examenes/crm/catalog/packages', [ExamenesParityController::class, 'crmBuscarPaquetes']);
 Route::get('/api/examenes/{id}/crm', [ExamenesParityController::class, 'crmResumen'])->whereNumber('id');
 Route::post('/api/examenes/{id}/crm', [ExamenesParityController::class, 'crmGuardarDetalles'])->whereNumber('id');
 Route::post('/api/examenes/{id}/crm/bootstrap', [ExamenesParityController::class, 'crmBootstrap'])->whereNumber('id');
 Route::get('/api/examenes/{id}/crm/checklist-state', [ExamenesParityController::class, 'crmChecklistState'])->whereNumber('id');
 Route::post('/api/examenes/{id}/crm/checklist', [ExamenesParityController::class, 'crmActualizarChecklist'])->whereNumber('id');
 Route::post('/api/examenes/{id}/crm/notas', [ExamenesParityController::class, 'crmAgregarNota'])->whereNumber('id');
+Route::post('/api/examenes/{id}/crm/whatsapp', [ExamenesParityController::class, 'crmEnviarWhatsapp'])->whereNumber('id');
+Route::post('/api/examenes/{id}/crm/email', [ExamenesParityController::class, 'crmEnviarEmail'])->whereNumber('id');
+Route::post('/api/examenes/{id}/crm/propuestas', [ExamenesParityController::class, 'crmCrearPropuesta'])->whereNumber('id');
 Route::post('/api/examenes/{id}/crm/tareas', [ExamenesParityController::class, 'crmGuardarTarea'])->whereNumber('id');
 Route::post('/api/examenes/{id}/crm/tareas/estado', [ExamenesParityController::class, 'crmActualizarTarea'])->whereNumber('id');
 Route::post('/api/examenes/{id}/crm/bloqueo', [ExamenesParityController::class, 'crmRegistrarBloqueo'])->whereNumber('id');

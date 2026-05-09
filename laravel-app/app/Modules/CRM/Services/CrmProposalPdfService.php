@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace App\Modules\CRM\Services;
 
 use App\Modules\Reporting\Services\PdfRenderer;
+use App\Modules\Shared\Support\CompanyBrandResolver;
 
 class CrmProposalPdfService
 {
     public function __construct(
         private readonly CrmProposalService $proposals = new CrmProposalService(),
         private readonly PdfRenderer $renderer = new PdfRenderer(),
+        private readonly CompanyBrandResolver $brandResolver = new CompanyBrandResolver(),
     ) {
     }
 
@@ -25,6 +27,7 @@ class CrmProposalPdfService
             'proposal' => $proposal,
             'items' => $proposal['items'] ?? [],
             'publicUrl' => $proposal['public_url'] ?? $this->proposals->publicUrl($proposal),
+            'brand' => $this->brandResolver->resolve(),
         ])->render();
 
         $filename = $this->proposals->filename($proposal);
