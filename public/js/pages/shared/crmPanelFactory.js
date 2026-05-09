@@ -3,6 +3,7 @@ let panelConfig = {
     getBasePath: () => '',
     resolveReadPath: null,
     resolveWritePath: null,
+    allowProposalAutoLead: false,
     entityLabel: 'solicitud',
     entityArticle: 'la',
     entitySelectionSuffix: 'seleccionada',
@@ -59,6 +60,22 @@ function notify(message, ok = true) {
 
 function selectionMessage(action) {
     return `Selecciona ${panelConfig.entityArticle} ${panelConfig.entityLabel} para ${action}`;
+}
+
+function notifyKanbanRefresh(reason = 'crm-task-updated') {
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+        window.dispatchEvent(new CustomEvent('kanban.estado-actualizado', {
+            detail: {
+                reason,
+                entity: panelConfig.entityLabel,
+                entityId: currentEntityId,
+            },
+        }));
+    }
+
+    if (typeof window.aplicarFiltros === 'function') {
+        window.aplicarFiltros();
+    }
 }
 
 function entityLabelCap() {
@@ -404,7 +421,7 @@ function bindForms() {
             }
 
             const payload = collectPropuestaPayload(propuestaForm);
-            if (!payload.lead_id) {
+            if (!payload.lead_id && !panelConfig.allowProposalAutoLead) {
                 notify('Vincula o crea un lead CRM antes de crear la propuesta', false);
                 return;
             }
@@ -534,6 +551,7 @@ function bindForms() {
             );
             if (ok) {
                 resetTareaForm(tareaForm);
+                notifyKanbanRefresh(isEditing ? 'crm-task-edited' : 'crm-task-created');
             }
         });
     }
@@ -996,14 +1014,19 @@ function renderPropuestaControls() {
     const submit = form?.querySelector('button[type="submit"]');
     const leadId = document.getElementById('crmLeadId')?.value || currentDetalle?.crm_lead_id || '';
     const hasLead = String(leadId || '').trim() !== '';
+    const hasHcNumber = String(currentDetalle?.hc_number || '').trim() !== '';
+    const canAutoCreateLead = !!panelConfig.allowProposalAutoLead && hasHcNumber;
+    const hasProposalContext = hasLead || canAutoCreateLead;
 
     if (help) {
         help.textContent = hasLead
             ? `Se creará como borrador vinculado al lead #${leadId}.`
-            : 'Vincula o crea un lead CRM antes de crear una propuesta.';
+            : canAutoCreateLead
+                ? 'Se creará como borrador y el lead CRM se generará automáticamente desde la HC.'
+                : 'Vincula o crea un lead CRM antes de crear una propuesta.';
     }
     if (submit) {
-        submit.disabled = !hasLead;
+        submit.disabled = !hasProposalContext;
     }
     if (form && !form.querySelector('.crm-proposal-item')) {
         addPropuestaItemRow();
@@ -1385,15 +1408,36 @@ function renderCrmData(data) {
     renderCommunicationDefaults(data.detalle, data.whatsapp_context || null);
     renderPropuestaControls();
     setChecklistSectionVisible(false);
-    loadChecklistState(currentEntityId);
     renderNotas(data.notas ?? []);
     renderCobertura(data.cobertura_mails ?? []);
     renderPropuestas(data.propuestas ?? []);
     renderAdjuntos(data.adjuntos ?? []);
-    const panelTasks = buildTasksForPanel(data.tareas ?? [], data.checklist ?? []);
+    const crmTasks = Array.isArray(data.tareas) ? data.tareas : [];
+    const checklist = Array.isArray(data.checklist) ? data.checklist : [];
+    const checklistProgress = data.checklist_progress && typeof data.checklist_progress === 'object'
+        ? data.checklist_progress
+        : {};
+
+    if (checklist.length > 0) {
+        checklistTasksBySlug = crmTasks.reduce((carry, task) => {
+            const slug = String(task?.checklist_slug || '').trim();
+            if (slug !== '') {
+                carry[slug] = task;
+            }
+
+            return carry;
+        }, {});
+
+        renderChecklist(checklist, checklistProgress, crmTasks);
+    } else {
+        checklistTasksBySlug = {};
+        loadChecklistState(currentEntityId);
+    }
+
+    const panelTasks = buildTasksForPanel(crmTasks, checklist);
     renderTareas(panelTasks);
     updateTareasResumen(panelTasks);
-    renderChecklistFallbackFromTasks(data.tareas ?? []);
+    renderChecklistFallbackFromTasks(crmTasks);
     renderCampos(data.campos_personalizados ?? []);
     renderBloqueos(data.bloqueos_agenda ?? []);
 }
@@ -2428,10 +2472,13 @@ async function actualizarEstadoTarea(tareaId, estado) {
     }
 
     const basePath = resolveBasePath();
-    await submitJson(resolveWritePath(`${basePath}/${currentEntityId}/crm/tareas/estado`), {
+    const ok = await submitJson(resolveWritePath(`${basePath}/${currentEntityId}/crm/tareas/estado`), {
         tarea_id: tareaId,
         estado,
     }, 'Tarea actualizada');
+    if (ok) {
+        notifyKanbanRefresh('crm-task-status-updated');
+    }
 }
 
 function normalizeDateInputValue(value) {

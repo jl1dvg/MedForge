@@ -704,7 +704,7 @@ $examenesWritePrefix = $examenesV2WritesEnabled ? '/v2' : '';
             </div>
             <div id="crmError" class="alert alert-danger d-none crm-fixed-top" role="alert"></div>
 
-            <details class="crm-section-card crm-fixed-top" open>
+            <details class="crm-section-card crm-fixed-top crm-header-card">
                 <summary>
                     <span class="crm-section-title">Resumen del examen</span>
                     <span class="crm-section-summary">
@@ -713,11 +713,11 @@ $examenesWritePrefix = $examenesV2WritesEnabled ? '/v2' : '';
                     </span>
                 </summary>
                 <div class="crm-section-body">
-                    <div id="crmResumenCabecera" class="bg-light border rounded p-3"></div>
+                    <div id="crmResumenCabecera" class="crm-summary-shell"></div>
                 </div>
             </details>
 
-            <details class="crm-section-card crm-fixed-top">
+            <details class="crm-section-card crm-fixed-top crm-header-card">
                 <summary>
                     <span class="crm-section-title">Detalles CRM</span>
                     <span class="crm-section-summary">
@@ -792,7 +792,7 @@ $examenesWritePrefix = $examenesV2WritesEnabled ? '/v2' : '';
             </details>
 
             <div class="crm-scrollable">
-                <details class="crm-section-card" open>
+                <details class="crm-section-card">
                     <summary>
                         <span class="crm-section-title">Checklist operativo</span>
                         <span class="crm-section-summary">
@@ -809,7 +809,7 @@ $examenesWritePrefix = $examenesV2WritesEnabled ? '/v2' : '';
                     </div>
                 </details>
 
-                <details class="crm-section-card" open>
+                <details class="crm-section-card">
                     <summary>
                         <span class="crm-section-title">Tareas y recordatorios</span>
                         <span class="crm-section-summary">
@@ -873,7 +873,7 @@ $examenesWritePrefix = $examenesV2WritesEnabled ? '/v2' : '';
                     </div>
                 </details>
 
-                <details class="crm-section-card" open>
+                <details class="crm-section-card">
                     <summary>
                         <span class="crm-section-title">Notas internas</span>
                         <span class="crm-section-summary">
@@ -895,7 +895,7 @@ $examenesWritePrefix = $examenesV2WritesEnabled ? '/v2' : '';
                     </div>
                 </details>
 
-                <details class="crm-section-card" open>
+                <details class="crm-section-card">
                     <summary>
                         <span class="crm-section-title">Comunicaciones</span>
                         <span class="crm-section-summary">
@@ -943,7 +943,7 @@ $examenesWritePrefix = $examenesV2WritesEnabled ? '/v2' : '';
                     </div>
                 </details>
 
-                <details class="crm-section-card" open>
+                <details class="crm-section-card">
                     <summary>
                         <span class="crm-section-title">Propuestas CRM</span>
                         <span class="crm-section-summary">

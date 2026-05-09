@@ -117,7 +117,7 @@ function getQuickColumnElement() {
 }
 
 export function buildContextualActionsHtml(solicitud = {}) {
-    const estado = normalizeEstado(solicitud.estado || solicitud.kanban_estado);
+    const estado = normalizeEstado(solicitud?.operational?.kanban_estado || solicitud.kanban_estado || solicitud.estado);
     if (!estado) {
         return "";
     }

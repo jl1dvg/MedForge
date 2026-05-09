@@ -1457,10 +1457,8 @@ class SolicitudesWriteParityService
     {
         $rows = $this->queryChecklistRows($solicitudId);
         $fallbackState = $this->operationalFallbackState($solicitudId, $rows);
-        [, , $kanban] = $this->stateMachine->resolvePersistedChecklistContext($rows, $fallbackState, [
-            'include_nota' => true,
-            'include_can_toggle' => true,
-        ]);
+        $taskRows = $this->queryChecklistTaskRows($solicitudId);
+        [, , $kanban] = $this->resolveOperationalChecklistContext($solicitudId, $rows, $taskRows, $fallbackState);
 
         $this->persistOperationalState($solicitudId, (string) ($kanban['slug'] ?? $fallbackState));
     }
@@ -1509,10 +1507,9 @@ class SolicitudesWriteParityService
         }
 
         $currentRows = $this->queryChecklistRows($solicitudId);
-        $previousState = (string) ($this->stateMachine->resolveOperationalState($currentRows, $fallbackState, [
-            'include_nota' => true,
-            'include_can_toggle' => true,
-        ])['slug'] ?? $fallbackState);
+        $currentTasks = $this->queryChecklistTaskRows($solicitudId);
+        [, , $previousKanban] = $this->resolveOperationalChecklistContext($solicitudId, $currentRows, $currentTasks, $fallbackState);
+        $previousState = (string) ($previousKanban['slug'] ?? $fallbackState);
 
         if (!$force && $completed && !$this->canCompleteStage($currentRows, $stageSlug, $fallbackState)) {
             throw new RuntimeException('Debe completar etapas previas antes de continuar.');
@@ -1521,10 +1518,13 @@ class SolicitudesWriteParityService
         $this->upsertChecklistRow($solicitudId, $stageSlug, $completed, $userId, $note);
 
         $rows = $this->queryChecklistRows($solicitudId);
-        [$checklist, $progress, $kanbanState] = $this->stateMachine->resolvePersistedChecklistContext($rows, $fallbackState, [
+        [$checklist, $progress] = $this->stateMachine->resolvePersistedChecklistContext($rows, $fallbackState, [
             'include_nota' => true,
             'include_can_toggle' => true,
         ]);
+        $this->syncChecklistLinkedTasks($solicitudId, null, $rows, $checklist);
+        $taskRows = $this->queryChecklistTaskRows($solicitudId);
+        [$checklist, $progress, $kanbanState] = $this->resolveOperationalChecklistContext($solicitudId, $rows, $taskRows, $fallbackState);
 
         $nextState = (string) ($kanbanState['slug'] ?? $fallbackState);
         if ($nextState !== '') {
@@ -2106,30 +2106,43 @@ class SolicitudesWriteParityService
      */
     private function resolveOperationalChecklistFromTasks(int $solicitudId, array $rows, array $tasks): array
     {
+        [$checklist, $progress] = $this->resolveOperationalChecklistContext(
+            $solicitudId,
+            $rows,
+            $tasks,
+            $this->operationalFallbackState($solicitudId, $rows)
+        );
+
+        return [$checklist, $progress];
+    }
+
+    /**
+     * @param array<int,array<string,mixed>> $rows
+     * @param array<int,array<string,mixed>> $tasks
+     * @return array{0:array<int,array<string,mixed>>,1:array<string,mixed>,2:array{slug:string,label:string}}
+     */
+    private function resolveOperationalChecklistContext(int $solicitudId, array $rows, array $tasks, string $fallbackState): array
+    {
         $taskChecklistRows = $this->buildChecklistRowsFromTasks($tasks, $rows);
         if ($taskChecklistRows !== []) {
-            [$checklist, $progress] = $this->stateMachine->resolvePersistedChecklistContext(
+            return $this->stateMachine->resolvePersistedChecklistContext(
                 $taskChecklistRows,
-                $this->operationalFallbackState($solicitudId, $rows),
+                $fallbackState,
                 [
                     'include_nota' => true,
                     'include_can_toggle' => true,
                 ]
             );
-
-            return [$checklist, $progress];
         }
 
-        [$checklist, $progress] = $this->stateMachine->resolvePersistedChecklistContext(
+        return $this->stateMachine->resolvePersistedChecklistContext(
             $rows,
-            $this->operationalFallbackState($solicitudId, $rows),
+            $fallbackState,
             [
                 'include_nota' => true,
                 'include_can_toggle' => true,
             ]
         );
-
-        return [$checklist, $progress];
     }
 
     /**
@@ -2193,6 +2206,48 @@ class SolicitudesWriteParityService
         }
 
         return $rows;
+    }
+
+    /**
+     * @return array<int,array<string,mixed>>
+     */
+    private function queryChecklistTaskRows(int $solicitudId): array
+    {
+        $columns = $this->tableColumns('crm_tasks');
+        if (
+            $columns === []
+            || !in_array('source_module', $columns, true)
+            || !in_array('source_ref_id', $columns, true)
+        ) {
+            return [];
+        }
+
+        $select = ['id'];
+        foreach (['status', 'completed_at', 'checklist_slug', 'task_key', 'metadata'] as $column) {
+            if (in_array($column, $columns, true)) {
+                $select[] = $column;
+            }
+        }
+
+        $where = ['source_module = :source_module', 'source_ref_id = :source_ref_id'];
+        $bindings = [
+            ':source_module' => 'solicitudes',
+            ':source_ref_id' => (string) $solicitudId,
+        ];
+
+        if (in_array('company_id', $columns, true)) {
+            $where[] = 'company_id = :company_id';
+            $bindings[':company_id'] = $this->resolveCompanyId();
+        }
+
+        $stmt = $this->db->prepare(sprintf(
+            'SELECT %s FROM crm_tasks WHERE %s',
+            implode(', ', $select),
+            implode(' AND ', $where)
+        ));
+        $stmt->execute($bindings);
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
     }
 
     /**

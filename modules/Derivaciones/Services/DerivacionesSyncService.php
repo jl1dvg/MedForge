@@ -362,8 +362,12 @@ class DerivacionesSyncService
 
         $codesByFormId = [];
         $failedForms = [];
+        $resultsByFormId = [];
         foreach ($results as $result) {
             $formId = (string) ($result['form_id'] ?? '');
+            if ($formId !== '') {
+                $resultsByFormId[$formId] = $result;
+            }
             $ok = (bool) ($result['ok'] ?? false);
             $codigo = trim((string) ($result['cod_derivacion'] ?? ''));
             $error = $result['error'] ?? null;
@@ -389,18 +393,19 @@ class DerivacionesSyncService
             $billingId = (int) ($candidate['billing_id'] ?? 0);
 
             $codigo = $codesByFormId[$formId] ?? '';
+            $resultRow = $resultsByFormId[$formId] ?? [];
 
             if ($codigo !== '') {
                 $upsertRows[] = [
                     'cod_derivacion' => $codigo,
                     'form_id' => $formId,
                     'hc_number' => $hcNumber,
-                    'fecha_registro' => $this->normalizeNullable($result['fecha_registro'] ?? null),
-                    'fecha_vigencia' => $this->normalizeNullable($result['fecha_vigencia'] ?? null),
-                    'referido' => $this->normalizeNullable($result['referido'] ?? null),
-                    'diagnostico' => $this->normalizeNullable($result['diagnostico'] ?? null),
-                    'sede' => $this->normalizeNullable($result['sede'] ?? null),
-                    'parentesco' => $this->normalizeNullable($result['parentesco'] ?? null),
+                    'fecha_registro' => $this->normalizeNullable($resultRow['fecha_registro'] ?? null),
+                    'fecha_vigencia' => $this->normalizeNullable($resultRow['fecha_vigencia'] ?? null),
+                    'referido' => $this->normalizeNullable($resultRow['referido'] ?? null),
+                    'diagnostico' => $this->normalizeNullable($resultRow['diagnostico'] ?? null),
+                    'sede' => $this->normalizeNullable($resultRow['sede'] ?? null),
+                    'parentesco' => $this->normalizeNullable($resultRow['parentesco'] ?? null),
                 ];
                 $success++;
                 $this->markScrapeAttempt($queueMeta[$formId]['queue_id'], 'success', null, $queueMeta[$formId]['attempts'], $maxAttempts);
@@ -684,7 +689,7 @@ class DerivacionesSyncService
         $scriptPath = BASE_PATH . '/scrapping/scrape_derivaciones_batch.py';
 
         if (!is_file($scriptPath)) {
-            throw new RuntimeException('No se encontró el script de scraping batch.');
+            return $this->buildBatchFailureResults($payload, 'No se encontró el script de scraping batch.');
         }
 
         $tempFile = tempnam(sys_get_temp_dir(), 'derivaciones_batch_');
@@ -708,15 +713,35 @@ class DerivacionesSyncService
 
         $joined = trim(implode("\n", $output));
         if ($exitCode !== 0) {
-            throw new RuntimeException($joined !== '' ? $joined : 'Fallo al ejecutar el scraper batch.');
+            return $this->buildBatchFailureResults(
+                $payload,
+                $joined !== '' ? $joined : 'Fallo al ejecutar el scraper batch.'
+            );
         }
 
         $decoded = json_decode($joined, true);
         if (!is_array($decoded)) {
-            throw new RuntimeException('Respuesta inválida del scraper batch.');
+            return $this->buildBatchFailureResults($payload, 'Respuesta inválida del scraper batch.');
         }
 
         return $decoded;
+    }
+
+    /**
+     * @param array<int,array<string,mixed>> $payload
+     * @return array<int,array<string,mixed>>
+     */
+    private function buildBatchFailureResults(array $payload, string $error): array
+    {
+        return array_values(array_map(
+            static fn (array $row): array => [
+                'form_id' => (string) ($row['form_id'] ?? ''),
+                'hc_number' => $row['hc_number'] ?? null,
+                'ok' => false,
+                'error' => $error,
+            ],
+            $payload
+        ));
     }
 
     private function getLastCursor(string $jobName): ?int

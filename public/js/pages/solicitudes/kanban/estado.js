@@ -55,6 +55,17 @@ function normalizarSlug(valor) {
         .replace(/[^a-z0-9-]/g, '');
 }
 
+function resolveOperationalState(data = {}, fallback = '') {
+    const operational = data?.operational ?? {};
+    return (operational.kanban_estado ?? data.kanban_estado ?? data.estado ?? fallback ?? '').toString();
+}
+
+function resolveOperationalLabel(data = {}, fallback = '') {
+    const operational = data?.operational ?? {};
+    const rawState = resolveOperationalState(data, fallback);
+    return (operational.kanban_estado_label ?? data.kanban_estado_label ?? data.estado_label ?? rawState).toString();
+}
+
 export function actualizarEstadoSolicitud(
     id,
     formId,
@@ -107,8 +118,8 @@ const payload = {
                 throw error;
             }
 
-            const estadoKanban = (data.kanban_estado ?? data.estado ?? nuevoEstado ?? '').toString();
-            const estadoLabel = (data.kanban_estado_label ?? data.estado_label ?? estadoKanban)?.toString();
+            const estadoKanban = resolveOperationalState(data, nuevoEstado);
+            const estadoLabel = resolveOperationalLabel(data, estadoKanban);
             const turnoFinal = data.turno ?? null;
 
             if (Array.isArray(solicitudes)) {
@@ -120,9 +131,15 @@ const payload = {
                     // Estado lógico y de tablero
                     encontrada.estado = estadoKanban;
                     encontrada.estado_label = estadoLabel || encontrada.estado_label || estadoKanban;
-                    encontrada.kanban_estado = data.kanban_estado ?? encontrada.kanban_estado ?? estadoKanban;
+                    encontrada.kanban_estado = estadoKanban || encontrada.kanban_estado || encontrada.estado;
                     encontrada.kanban_estado_label =
-                        data.kanban_estado_label ?? encontrada.kanban_estado_label ?? estadoLabel ?? estadoKanban;
+                        estadoLabel ?? encontrada.kanban_estado_label ?? encontrada.estado_label ?? estadoKanban;
+                    encontrada.operational = {
+                        ...(encontrada.operational || {}),
+                        ...(data.operational || {}),
+                        kanban_estado: estadoKanban,
+                        kanban_estado_label: estadoLabel,
+                    };
 
                     if (data.kanban_next) {
                         encontrada.kanban_next = {

@@ -9,7 +9,8 @@ const NORMALIZE = {
     estado: value => (value || '').toString().trim().toLowerCase().replace(/\s+/g, '-'),
 };
 
-const getEstadoSlug = item => NORMALIZE.estado(item.kanban_estado ?? item.estado);
+const getEstadoSlug = item =>
+    NORMALIZE.estado(item?.operational?.kanban_estado ?? item?.kanban_estado ?? item?.estado);
 
 function agruparPorEstado(solicitudes) {
     const agrupadas = {};

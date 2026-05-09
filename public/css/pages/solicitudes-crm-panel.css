@@ -18,6 +18,11 @@
     flex: 0 0 auto;
 }
 
+.crm-fixed-top.crm-header-card + .crm-fixed-top.crm-header-card,
+.crm-fixed-top.crm-header-card + .crm-scrollable {
+    margin-top: 16px;
+}
+
 .crm-scrollable {
     flex: 1 1 auto;
     min-height: 0;
@@ -245,6 +250,14 @@
     overflow: hidden;
 }
 
+.crm-header-card {
+    border-color: rgba(191, 219, 254, 0.95);
+    background:
+        radial-gradient(circle at top right, rgba(191, 219, 254, 0.32), transparent 42%),
+        linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+    box-shadow: 0 14px 34px rgba(15, 23, 42, 0.07);
+}
+
 .crm-section-card + .crm-section-card {
     margin-top: 14px;
 }
@@ -258,6 +271,11 @@
     justify-content: space-between;
     gap: 10px;
     background: #f8fafc;
+}
+
+.crm-header-card > summary {
+    background: transparent;
+    border-bottom: 1px solid rgba(219, 234, 254, 0.95);
 }
 
 .crm-section-card > summary::-webkit-details-marker {
@@ -287,6 +305,13 @@
 
 .crm-section-body {
     padding: 14px 16px 16px;
+}
+
+.crm-summary-shell {
+    border: 1px solid rgba(219, 234, 254, 0.95);
+    border-radius: 12px;
+    background: rgba(248, 250, 252, 0.85);
+    padding: 14px;
 }
 
 .crm-proposal-form {

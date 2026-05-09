@@ -132,6 +132,28 @@ function slugifyEstado(value) {
     return raw;
 }
 
+function resolveOperationalState(item = {}, fallback = '') {
+    return (
+        item?.operational?.kanban_estado
+        ?? item?.estado_slug
+        ?? item?.kanban_estado
+        ?? item?.estado
+        ?? fallback
+        ?? ''
+    ).toString();
+}
+
+function resolveOperationalLabel(item = {}, fallback = '') {
+    const rawState = resolveOperationalState(item, fallback);
+    return (
+        item?.operational?.kanban_estado_label
+        ?? item?.estado_label
+        ?? item?.kanban_estado_label
+        ?? estadoLabelFromSlug(rawState)
+        ?? rawState
+    ).toString();
+}
+
 
 function coberturaBadgeMeta(estadoCobertura) {
     const key = (estadoCobertura || '').toString().trim().toLowerCase();
@@ -290,14 +312,9 @@ export function renderKanban(data, callbackEstadoActualizado) {
         tarjeta.dataset.form = examen.form_id ?? '';
         tarjeta.dataset.codigo = examen.examen_codigo ?? '';
         const examenNombre = examen.examen_nombre || examen.examen || 'Sin examen';
-        const estadoBase = examen.kanban_estado ?? examen.estado;
+        const estadoBase = resolveOperationalState(examen);
         const estadoSlug = slugifyEstado(estadoBase);
-        const estadoLabel =
-            examen.estado_label ||
-            examen.kanban_estado_label ||
-            estadoLabelFromSlug(estadoSlug) ||
-            estadoBase ||
-            'Sin estado';
+        const estadoLabel = resolveOperationalLabel(examen, estadoBase) || 'Sin estado';
         tarjeta.dataset.estado = estadoSlug;
         tarjeta.dataset.estadoLabel = estadoLabel;
         tarjeta.dataset.id = examen.id ?? '';
@@ -491,10 +508,9 @@ export function renderKanban(data, callbackEstadoActualizado) {
                 .then(data => {
                     const turno = formatTurno(data?.turno);
                     const nombre = data?.full_name ?? examen.full_name ?? 'Paciente sin nombre';
-                    const estadoRespuesta = (data?.estado ?? estadoActualLabel ?? '').toString();
-                    const estadoRespuestaSlug = slugifyEstado(data?.estado_slug ?? data?.kanban_estado ?? estadoRespuesta);
-                    const estadoRespuestaLabel =
-                        data?.estado_label ?? estadoLabelFromSlug(estadoRespuestaSlug) ?? estadoRespuesta;
+                    const estadoRespuesta = resolveOperationalState(data, estadoActualLabel);
+                    const estadoRespuestaSlug = slugifyEstado(estadoRespuesta);
+                    const estadoRespuestaLabel = resolveOperationalLabel(data, estadoRespuesta);
 
                     if (turno) {
                         badgeTurno.textContent = `Turno #${turno}`;
@@ -530,6 +546,12 @@ export function renderKanban(data, callbackEstadoActualizado) {
                             item.estado_label = estadoRespuestaLabel || item.estado_label;
                             item.kanban_estado = estadoRespuestaSlug || item.kanban_estado;
                             item.kanban_estado_label = estadoRespuestaLabel || item.kanban_estado_label;
+                            item.operational = {
+                                ...(item.operational || {}),
+                                ...(data?.operational || {}),
+                                kanban_estado: estadoRespuestaSlug || item.kanban_estado,
+                                kanban_estado_label: estadoRespuestaLabel || item.kanban_estado_label,
+                            };
                         }
                     }
 
@@ -600,8 +622,14 @@ export function renderKanban(data, callbackEstadoActualizado) {
                         .then(resp => {
                             examen.checklist = resp?.checklist ?? examen.checklist;
                             examen.checklist_progress = resp?.checklist_progress ?? examen.checklist_progress;
-                            examen.kanban_estado = resp?.kanban_estado ?? examen.kanban_estado;
-                            examen.kanban_estado_label = resp?.kanban_estado_label ?? examen.kanban_estado_label;
+                            examen.kanban_estado = resolveOperationalState(resp, examen.kanban_estado);
+                            examen.kanban_estado_label = resolveOperationalLabel(resp, examen.kanban_estado_label);
+                            examen.operational = {
+                                ...(examen.operational || {}),
+                                ...(resp?.operational || {}),
+                                kanban_estado: examen.kanban_estado,
+                                kanban_estado_label: examen.kanban_estado_label,
+                            };
                             if (typeof window.aplicarFiltros === 'function') {
                                 window.aplicarFiltros();
                             }
@@ -700,11 +728,9 @@ export function renderKanban(data, callbackEstadoActualizado) {
                 if (resultado && typeof resultado.then === 'function') {
                     resultado
                         .then(response => {
-                            const estadoServidor = (response?.estado ?? nuevoEstadoLabel ?? '').toString();
-                            const estadoServidorLabel = (response?.estado_label ?? estadoServidor).toString();
-                            const estadoServidorSlug = slugifyEstado(
-                                response?.estado_slug ?? response?.kanban_estado ?? estadoServidor
-                            );
+                            const estadoServidor = resolveOperationalState(response, nuevoEstadoLabel);
+                            const estadoServidorLabel = resolveOperationalLabel(response, estadoServidor).toString();
+                            const estadoServidorSlug = slugifyEstado(estadoServidor);
                             aplicarEstadoEnUI(estadoServidorSlug, estadoServidorLabel);
 
                             const destinoId = estadoServidorSlug ? `kanban-${estadoServidorSlug}` : null;

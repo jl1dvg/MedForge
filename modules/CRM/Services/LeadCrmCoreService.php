@@ -225,12 +225,18 @@ class LeadCrmCoreService
         switch ($contextType) {
             case self::CONTEXT_SOLICITUD:
                 $stmt = $this->pdo->prepare(
-                    'UPDATE solicitud_crm_detalles SET crm_lead_id = :lead_id WHERE solicitud_id = :context_id'
+                    'INSERT INTO solicitud_crm_detalles (solicitud_id, crm_lead_id)
+                     VALUES (:context_id, :lead_id)
+                     ON DUPLICATE KEY UPDATE
+                        crm_lead_id = VALUES(crm_lead_id)'
                 );
                 break;
             case self::CONTEXT_EXAMEN:
                 $stmt = $this->pdo->prepare(
-                    'UPDATE examen_crm_detalles SET crm_lead_id = :lead_id WHERE examen_id = :context_id'
+                    'INSERT INTO examen_crm_detalles (examen_id, crm_lead_id)
+                     VALUES (:context_id, :lead_id)
+                     ON DUPLICATE KEY UPDATE
+                        crm_lead_id = VALUES(crm_lead_id)'
                 );
                 break;
             default:

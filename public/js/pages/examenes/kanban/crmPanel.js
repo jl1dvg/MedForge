@@ -12,6 +12,7 @@ const {
     getBasePath: () => '/examenes',
     resolveReadPath,
     resolveWritePath,
+    allowProposalAutoLead: true,
     entityLabel: 'examen',
     entityArticle: 'el',
     entitySelectionSuffix: 'seleccionado',

@@ -23,6 +23,29 @@ const slugifyEstado = value => {
     return raw;
 };
 
+function resolveOperationalState(data = {}, fallback = '') {
+    const operational = data?.operational ?? {};
+    return (
+        operational.kanban_estado
+        ?? data.estado_slug
+        ?? data.kanban_estado
+        ?? data.estado
+        ?? fallback
+        ?? ''
+    ).toString();
+}
+
+function resolveOperationalLabel(data = {}, fallback = '') {
+    const operational = data?.operational ?? {};
+    const rawState = resolveOperationalState(data, fallback);
+    return (
+        operational.kanban_estado_label
+        ?? data.estado_label
+        ?? data.kanban_estado_label
+        ?? rawState
+    ).toString();
+}
+
 export function actualizarEstadoExamen(
     id,
     formId,
@@ -46,6 +69,11 @@ export function actualizarEstadoExamen(
                     encontrada.kanban_estado = estadoSlug;
                     encontrada.kanban_estado_label =
                         encontrada.kanban_estado_label || estadoLabel || encontrada.estado;
+                    encontrada.operational = {
+                        ...(encontrada.operational || {}),
+                        kanban_estado: estadoSlug,
+                        kanban_estado_label: estadoLabel || encontrada.estado_label || encontrada.estado,
+                    };
             }
         }
     }
@@ -85,9 +113,9 @@ export function actualizarEstadoExamen(
             return data;
         })
         .then(data => {
-            const estadoRespuesta = (data.estado ?? estadoLabel ?? '').toString();
-            const estadoRespuestaLabel = (data.estado_label ?? data.kanban_estado_label ?? estadoRespuesta).toString();
-            const estadoRespuestaSlug = slugifyEstado(data.estado_slug ?? data.kanban_estado ?? estadoRespuesta);
+            const estadoRespuesta = resolveOperationalState(data, estadoLabel);
+            const estadoRespuestaLabel = resolveOperationalLabel(data, estadoRespuesta);
+            const estadoRespuestaSlug = slugifyEstado(estadoRespuesta);
 
             if (Array.isArray(examenes)) {
                 const encontrada =
@@ -99,7 +127,13 @@ export function actualizarEstadoExamen(
                         encontrada.estado_label = estadoRespuestaLabel || estadoRespuesta;
                         encontrada.kanban_estado = estadoRespuestaSlug || estadoRespuesta;
                         encontrada.kanban_estado_label =
-                            data.estado_label ?? data.kanban_estado_label ?? estadoRespuestaLabel ?? estadoRespuesta;
+                            estadoRespuestaLabel ?? estadoRespuesta;
+                    encontrada.operational = {
+                        ...(encontrada.operational || {}),
+                        ...(data.operational || {}),
+                        kanban_estado: estadoRespuestaSlug || estadoRespuesta,
+                        kanban_estado_label: estadoRespuestaLabel || estadoRespuesta,
+                    };
                     if (data.checklist !== undefined) {
                         encontrada.checklist = data.checklist;
                     }

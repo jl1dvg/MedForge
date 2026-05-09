@@ -26,7 +26,8 @@ const slugifyEstado = value => {
     return raw;
 };
 
-const getEstadoSlug = item => slugifyEstado(item.estado || item.estado_label || item.kanban_estado);
+const getEstadoSlug = item =>
+    slugifyEstado(item?.operational?.kanban_estado || item?.kanban_estado || item?.estado || item?.estado_label);
 
 function agruparPorEstado(examenes) {
     const agrupadas = {};

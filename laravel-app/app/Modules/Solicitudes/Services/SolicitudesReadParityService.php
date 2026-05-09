@@ -319,11 +319,20 @@ class SolicitudesReadParityService
             // No bloquear el CRM si la materialización del checklist falla.
         }
 
+        $tareas = $this->safeCrmSection(fn(): array => $this->queryCrmTareas($solicitudId), []);
+        [$checklist, $checklistProgress, $operationalState] = $this->resolveOperationalChecklistSummary(
+            $solicitudId,
+            $tareas
+        );
+
         return [
             'detalle' => $detalle,
             'notas' => $this->safeCrmSection(fn(): array => $this->queryCrmNotas($solicitudId), []),
             'adjuntos' => $this->safeCrmSection(fn(): array => $this->queryCrmAdjuntos($solicitudId), []),
-            'tareas' => $this->safeCrmSection(fn(): array => $this->queryCrmTareas($solicitudId), []),
+            'tareas' => $tareas,
+            'checklist' => $checklist,
+            'checklist_progress' => $checklistProgress,
+            'operational' => $operationalState,
             'campos_personalizados' => $this->safeCrmSection(fn(): array => $this->queryCrmMeta($solicitudId), []),
             'lead' => null,
             'crm_resumen' => null,
@@ -388,6 +397,25 @@ class SolicitudesReadParityService
             'include_nota' => true,
             'include_can_toggle' => true,
         ]);
+    }
+
+    /**
+     * @param array<int,array<string,mixed>> $taskRows
+     * @return array{0:array<int,array<string,mixed>>,1:array<string,mixed>,2:array<string,mixed>}
+     */
+    private function resolveOperationalChecklistSummary(int $solicitudId, array $taskRows): array
+    {
+        $checklistRows = $this->queryChecklistRows($solicitudId);
+        [$checklist, $progress, $kanban] = $this->resolveOperationalChecklistContext(
+            $this->legacyStateBySolicitud($solicitudId),
+            $checklistRows,
+            $taskRows
+        );
+
+        return [$checklist, $progress, [
+            'kanban_estado' => $kanban['slug'] ?? null,
+            'kanban_estado_label' => $kanban['label'] ?? null,
+        ]];
     }
 
     /**
@@ -2593,9 +2621,33 @@ class SolicitudesReadParityService
             if (trim((string) ($item['task_key'] ?? '')) === '' && is_array($metadata)) {
                 $item['task_key'] = trim((string) ($metadata['task_key'] ?? ''));
             }
+            $slug = $this->normalizeKanbanSlug((string) ($item['checklist_slug'] ?? ''));
+            $stage = $slug !== '' ? $this->stageBySlug($slug) : null;
+            $item['estado'] = $this->normalizeTaskStatus((string) ($item['estado'] ?? 'pendiente'));
+            $item['status'] = $item['estado'];
+            $item['task_type'] = $slug !== '' ? 'checklist' : 'manual';
+            $item['required'] = $slug !== '' ? (bool) ($stage['required'] ?? true) : false;
+            $item['checklist_slug'] = $slug !== '' ? $slug : null;
+            $item['checklist_label'] = $slug !== ''
+                ? trim((string) (($metadata['checklist_label'] ?? null) ?: ($stage['label'] ?? $item['titulo'] ?? $slug)))
+                : null;
+            $item['metadata'] = is_array($metadata) ? $metadata : null;
 
             return $item;
         }, $rows);
+    }
+
+    private function normalizeTaskStatus(string $status): string
+    {
+        $normalized = trim(mb_strtolower($status, 'UTF-8'));
+        if ($normalized === 'en_proceso') {
+            return 'en_progreso';
+        }
+        if (!in_array($normalized, ['pendiente', 'en_progreso', 'completada', 'cancelada'], true)) {
+            return 'pendiente';
+        }
+
+        return $normalized;
     }
 
     /**

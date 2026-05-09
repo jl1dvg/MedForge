@@ -150,6 +150,27 @@ function slugifyEstado(value) {
         .replace(/^-+|-+$/g, "");
 }
 
+function resolveOperationalState(item = {}, fallback = "") {
+    return (
+        item?.operational?.kanban_estado ??
+        item?.kanban_estado ??
+        item?.estado ??
+        fallback ??
+        ""
+    ).toString();
+}
+
+function resolveOperationalLabel(item = {}, fallback = "") {
+    const rawState = resolveOperationalState(item, fallback);
+    return (
+        item?.operational?.kanban_estado_label ??
+        item?.kanban_estado_label ??
+        item?.estado_label ??
+        estadoLabelFromSlug(rawState) ??
+        rawState
+    ).toString();
+}
+
 function estadoLabelFromSlug(slug) {
     const meta = window.__solicitudesEstadosMeta ?? {};
     if (!slug) {
@@ -630,12 +651,8 @@ export function renderKanban(data, callbackEstadoActualizado) {
         tarjeta.className =
             `kanban-card border p-2 mb-2 rounded bg-light view-details${accentClass}`;
         tarjeta.setAttribute("draggable", "true");
-        const estadoSlug =
-            slugifyEstado(solicitud.kanban_estado ?? solicitud.estado) || "";
-        const estadoLabel =
-            solicitud.estado_label ??
-            solicitud.kanban_estado_label ??
-            estadoLabelFromSlug(estadoSlug);
+        const estadoSlug = slugifyEstado(resolveOperationalState(solicitud)) || "";
+        const estadoLabel = resolveOperationalLabel(solicitud, estadoSlug);
         tarjeta.dataset.hc = solicitud.hc_number ?? "";
         tarjeta.dataset.form = solicitud.form_id ?? "";
         tarjeta.dataset.secuencia = solicitud.secuencia ?? "";
@@ -803,9 +820,7 @@ export function renderKanban(data, callbackEstadoActualizado) {
             .filter(Boolean)
             .join("");
 
-        const estadoSlugCard = slugifyEstado(
-            solicitud.kanban_estado ?? solicitud.estado
-        );
+        const estadoSlugCard = slugifyEstado(resolveOperationalState(solicitud));
         const checklist = Array.isArray(solicitud.checklist)
             ? solicitud.checklist.map((item) => {
                 if (slugifyEstado(item.slug) === "recibida" && estadoSlugCard === "recibida") {
@@ -1254,9 +1269,7 @@ export function renderKanban(data, callbackEstadoActualizado) {
             });
         });
 
-        const estadoId =
-            "kanban-" +
-            slugifyEstado(solicitud.kanban_estado ?? solicitud.estado ?? estadoLabel);
+        const estadoId = "kanban-" + slugifyEstado(resolveOperationalState(solicitud, estadoLabel));
 
         const columna = document.getElementById(estadoId);
         if (columna) {
@@ -1346,11 +1359,8 @@ export function renderKanban(data, callbackEstadoActualizado) {
                 if (resultado && typeof resultado.then === "function") {
                     resultado
                         .then((response) => {
-                            const estadoServidor = (
-                                response?.estado ?? nuevoEstado
-                            ).toString();
-                            const estadoServidorLabel =
-                                response?.estado_label ?? estadoLabelFromSlug(estadoServidor);
+                            const estadoServidor = resolveOperationalState(response, nuevoEstado);
+                            const estadoServidorLabel = resolveOperationalLabel(response, estadoServidor);
                             aplicarEstadoEnUI(estadoServidor, estadoServidorLabel);
 
                             const destinoId = "kanban-" + slugifyEstado(estadoServidor);
