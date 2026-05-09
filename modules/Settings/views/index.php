@@ -350,7 +350,7 @@ JS;
                         <?php endif; ?>
                     </div>
                     <div class="box-body">
-                        <form method="post" class="settings-form">
+                        <form method="post" class="settings-form" enctype="multipart/form-data">
                             <input type="hidden" name="section"
                                    value="<?= htmlspecialchars($sectionId, ENT_QUOTES, 'UTF-8'); ?>">
                             <?php foreach ($section['groups'] as $group): ?>
@@ -378,6 +378,9 @@ JS;
                                 break;
                             case 'color':
                                 $columnClass = 'col-md-4 col-sm-6';
+                                break;
+                            case 'file':
+                                $columnClass = 'col-md-6 col-sm-12';
                                 break;
                             case 'billing_rules':
                                 $columnClass = 'col-12';
@@ -424,6 +427,28 @@ JS;
                                                                 </option>
                                                             <?php endforeach; ?>
                                                         </select>
+                                                    <?php elseif ($type === 'file'): ?>
+                                                        <?php $currentFile = is_string($displayValue) ? trim($displayValue) : ''; ?>
+                                                        <?php if ($currentFile !== ''): ?>
+                                                            <div class="settings-file-preview border rounded p-2 mb-2 bg-light">
+                                                                <?php if (preg_match('/\.(png|jpe?g|webp|gif|svg)$/i', $currentFile)): ?>
+                                                                    <img src="<?= htmlspecialchars($currentFile, ENT_QUOTES, 'UTF-8'); ?>"
+                                                                         alt="<?= htmlspecialchars($field['label'], ENT_QUOTES, 'UTF-8'); ?>"
+                                                                         style="max-height: 54px; max-width: 180px; object-fit: contain;">
+                                                                <?php endif; ?>
+                                                                <div class="small text-muted mt-1"><?= htmlspecialchars($currentFile, ENT_QUOTES, 'UTF-8'); ?></div>
+                                                            </div>
+                                                        <?php endif; ?>
+                                                        <input
+                                                            type="hidden"
+                                                            name="<?= htmlspecialchars($field['key'], ENT_QUOTES, 'UTF-8'); ?>"
+                                                            value="<?= htmlspecialchars($currentFile, ENT_QUOTES, 'UTF-8'); ?>">
+                                                        <input
+                                                            type="file"
+                                                            class="form-control"
+                                                            name="<?= htmlspecialchars($field['key'] . '_file', ENT_QUOTES, 'UTF-8'); ?>"
+                                                            id="<?= htmlspecialchars($fieldId, ENT_QUOTES, 'UTF-8'); ?>"
+                                                            accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml">
                                                     <?php elseif ($type === 'checkbox'): ?>
                                                         <?php $isChecked = in_array($displayValue, ['1', 1, true, 'true'], true); ?>
                                                         <div class="form-check form-switch">

@@ -24,6 +24,11 @@ class SettingsHelper
                         'fields' => [
                             self::textField('companyname', 'Nombre comercial', true),
                             self::textField('company_legal_name', 'Razón social'),
+                            self::fileField(
+                                'company_logo',
+                                'Logo principal',
+                                'Se usa en PDFs, propuestas y comunicaciones. Formatos: PNG, JPG, WEBP o SVG.'
+                            ),
                             self::textareaField('companyaddress', 'Dirección principal'),
                             self::textField('company_city', 'Ciudad'),
                             self::textField('company_country', 'País'),
@@ -62,9 +67,8 @@ class SettingsHelper
                     [
                         'id' => 'logo_assets',
                         'title' => 'Recursos gráficos',
-                        'description' => 'Configura las rutas o nombres de archivo de los recursos cargados en Perfex.',
+                        'description' => 'Recursos gráficos avanzados. El logo principal está en General → Perfil de la empresa.',
                         'fields' => [
-                            self::textField('company_logo', 'Logo principal'),
                             self::textField('company_logo_dark', 'Logo para modo oscuro'),
                             self::textField('company_logo_small', 'Logo compacto'),
                             self::textField('companysignature', 'Firma digital', false, 'Nombre del archivo subido para la firma.'),
@@ -1881,7 +1885,9 @@ class SettingsHelper
                     continue;
                 }
 
-                if ($field['type'] === 'checkbox') {
+                if ($field['type'] === 'file') {
+                    $value = is_string($raw) ? trim($raw) : '';
+                } elseif ($field['type'] === 'checkbox') {
                     $value = $raw ? '1' : '0';
                 } elseif ($field['type'] === 'checkbox_group') {
                     $values = is_array($raw) ? $raw : [];
@@ -1914,6 +1920,16 @@ class SettingsHelper
             'key' => $key,
             'label' => $label,
             'required' => $required,
+            'help' => $help,
+        ];
+    }
+
+    private static function fileField(string $key, string $label, ?string $help = null): array
+    {
+        return [
+            'type' => 'file',
+            'key' => $key,
+            'label' => $label,
             'help' => $help,
         ];
     }
