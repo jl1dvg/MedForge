@@ -6,6 +6,7 @@ $solicitud = $viewData['solicitud'] ?? [];
 $consulta = $viewData['consulta'] ?? [];
 $paciente = $viewData['paciente'] ?? [];
 $diagnosticos = $viewData['diagnostico'] ?? [];
+$derivacionTab = $viewData['derivacionTab'] ?? [];
 
 if (empty($solicitud)) {
     echo '<p class="text-muted mb-0">No se encontraron detalles adicionales para esta solicitud.</p>';
@@ -299,10 +300,6 @@ if ($sessionUsername === 'jl1dvg') {
                         data-estado="En atención">
                     <i class="mdi mdi-account-clock-outline me-1"></i> En atención
                 </button>
-                <button type="button" class="btn btn-primary d-none" id="btnCoberturaExitosa"
-                        data-estado="Revisión Códigos" data-completado="1">
-                    <i class="mdi mdi-check-circle-outline me-1"></i> Cobertura exitosa
-                </button>
                 <button type="button" class="btn btn-outline-primary d-none" id="btnRevisarCodigos"
                         data-estado="Revisión Códigos">
                     <i class="mdi mdi-clipboard-check-outline me-1"></i> Códigos Revisado
@@ -460,39 +457,6 @@ if ($sessionUsername === 'jl1dvg') {
                         </div>
                     </div>
                 </div>
-
-                <?php if ($solicitudCoberturaMail): ?>
-                    <div class="alert alert-<?= $solicitudCoberturaMailStyle ?> border d-flex flex-column gap-2 mb-0">
-                        <div class="d-flex align-items-center gap-2">
-                            <i class="bi bi-envelope-exclamation"></i>
-                            <div>
-                                <div class="fw-semibold"><?= $solicitudCoberturaMailTitle ?></div>
-                                <small class="text-muted">
-                                    <?= $solicitudCoberturaMailMessage ?>
-                                </small>
-                            </div>
-                        </div>
-                        <div class="d-flex flex-wrap gap-2">
-                            <button type="button" class="btn btn-warning btn-sm"
-                                    id="btnPrefacturaSolicitarCoberturaMail">
-                                <i class="bi bi-envelope-fill me-1"></i> Solicitar cobertura por correo
-                            </button>
-                            <?php if ($archivoHref): ?>
-                                <a class="btn btn-outline-secondary btn-sm"
-                                   href="<?= htmlspecialchars($archivoHref, ENT_QUOTES, 'UTF-8') ?>"
-                                   target="_blank" rel="noopener">
-                                    <i class="bi bi-file-earmark-arrow-down me-1"></i> Descargar derivación
-                                </a>
-                            <?php endif; ?>
-                        </div>
-                        <div id="prefacturaCoberturaMailStatus"
-                             class="small fw-semibold text-success <?= $coberturaMailSentLabel !== '' ? '' : 'd-none' ?>"
-                             data-sent-at="<?= htmlspecialchars($coberturaMailSentAt, ENT_QUOTES, 'UTF-8') ?>"
-                             data-sent-by="<?= htmlspecialchars($coberturaMailSentBy, ENT_QUOTES, 'UTF-8') ?>">
-                            <?= htmlspecialchars($coberturaMailSentLabel, ENT_QUOTES, 'UTF-8') ?>
-                        </div>
-                    </div>
-                <?php endif; ?>
 
                 <div class="card border-0 shadow-sm">
                     <div class="card-header">
@@ -684,27 +648,88 @@ if ($sessionUsername === 'jl1dvg') {
          aria-labelledby="prefactura-tab-derivacion-tab">
         <!-- TAB 3: Derivación -->
         <div id="prefacturaDerivacionContent">
-            <?php if (!$hasDerivacion): ?>
+            <?php $coverageAction = $derivacionTab['actions']['coverage_mail'] ?? []; ?>
+            <?php $authorizationAction = $derivacionTab['actions']['authorization'] ?? []; ?>
+            <?php $downloadPdfAction = $derivacionTab['actions']['download_pdf'] ?? []; ?>
+            <?php $rescrapeAction = $derivacionTab['actions']['rescrape'] ?? []; ?>
+            <?php $derivacionVigenciaUi = $derivacionTab['vigencia'] ?? []; ?>
+
+            <?php if (!empty($coverageAction['visible'])): ?>
+                <div class="alert alert-<?= htmlspecialchars((string)($coverageAction['style'] ?? 'info'), ENT_QUOTES, 'UTF-8') ?> border d-flex flex-column gap-2 mb-3">
+                    <div class="d-flex align-items-center gap-2">
+                        <i class="bi bi-envelope-exclamation"></i>
+                        <div>
+                            <div class="fw-semibold"><?= htmlspecialchars((string)($coverageAction['title'] ?? 'Solicitar cobertura adicional'), ENT_QUOTES, 'UTF-8') ?></div>
+                            <small class="text-muted">
+                                <?= htmlspecialchars((string)($coverageAction['message'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
+                            </small>
+                        </div>
+                    </div>
+                    <div class="d-flex flex-wrap gap-2">
+                        <button type="button" class="btn btn-warning btn-sm"
+                                id="btnPrefacturaSolicitarCoberturaMail">
+                            <i class="bi bi-envelope-fill me-1"></i> <?= htmlspecialchars((string)($coverageAction['button_label'] ?? 'Solicitar cobertura por correo'), ENT_QUOTES, 'UTF-8') ?>
+                        </button>
+                        <?php if (!empty($downloadPdfAction['visible']) && !empty($downloadPdfAction['href'])): ?>
+                            <a class="btn btn-outline-secondary btn-sm"
+                               href="<?= htmlspecialchars((string)$downloadPdfAction['href'], ENT_QUOTES, 'UTF-8') ?>"
+                               target="_blank" rel="noopener">
+                                <i class="bi bi-file-earmark-arrow-down me-1"></i> <?= htmlspecialchars((string)($downloadPdfAction['label'] ?? 'Descargar derivación'), ENT_QUOTES, 'UTF-8') ?>
+                            </a>
+                        <?php endif; ?>
+                        <?php if (!empty($rescrapeAction['visible'])): ?>
+                            <button type="button"
+                                    class="btn btn-outline-primary btn-sm"
+                                    id="btnRescrapeDerivacion"
+                                    data-form-id="<?= htmlspecialchars((string)$coberturaFormId, ENT_QUOTES, 'UTF-8') ?>"
+                                    data-hc-number="<?= htmlspecialchars((string)$coberturaHcNumber, ENT_QUOTES, 'UTF-8') ?>"
+                                    data-solicitud-id="<?= htmlspecialchars((string)($solicitud['id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                                    data-default-label="<?= htmlspecialchars((string)($rescrapeAction['label'] ?? 'Re-scrapear derivación'), ENT_QUOTES, 'UTF-8') ?>">
+                                <i class="bi bi-arrow-repeat me-1"></i> <?= htmlspecialchars((string)($rescrapeAction['label'] ?? 'Re-scrapear derivación'), ENT_QUOTES, 'UTF-8') ?>
+                            </button>
+                        <?php endif; ?>
+                    </div>
+                    <div id="prefacturaCoberturaMailStatus"
+                         class="small fw-semibold text-success <?= !empty($coverageAction['status_label']) ? '' : 'd-none' ?>"
+                         data-sent-at="<?= htmlspecialchars((string)($coverageAction['sent_at'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                         data-sent-by="<?= htmlspecialchars((string)($coverageAction['sent_by'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+                        <?= htmlspecialchars((string)($coverageAction['status_label'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
+                    </div>
+                </div>
+            <?php endif; ?>
+
+            <?php if (!empty($authorizationAction['visible'])): ?>
                 <div class="card border-0 shadow-sm">
                     <div class="card-body d-flex flex-column gap-2">
                         <div class="d-flex flex-wrap align-items-center gap-2">
                             <span class="badge bg-secondary">Sin derivación</span>
-                            <span class="text-muted">Seguro particular: requiere autorización.</span>
+                            <span class="text-muted"><?= htmlspecialchars((string)($authorizationAction['message'] ?? 'Seguro particular: requiere autorización.'), ENT_QUOTES, 'UTF-8') ?></span>
                         </div>
                         <button type="button" class="btn btn-outline-primary btn-sm" id="btnSolicitarAutorizacion">
-                            Solicitar autorización
+                            <?= htmlspecialchars((string)($authorizationAction['button_label'] ?? 'Solicitar autorización'), ENT_QUOTES, 'UTF-8') ?>
                         </button>
+                        <?php if (!empty($rescrapeAction['visible'])): ?>
+                            <button type="button"
+                                    class="btn btn-outline-secondary btn-sm"
+                                    id="btnRescrapeDerivacion"
+                                    data-form-id="<?= htmlspecialchars((string)$coberturaFormId, ENT_QUOTES, 'UTF-8') ?>"
+                                    data-hc-number="<?= htmlspecialchars((string)$coberturaHcNumber, ENT_QUOTES, 'UTF-8') ?>"
+                                    data-solicitud-id="<?= htmlspecialchars((string)($solicitud['id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                                    data-default-label="<?= htmlspecialchars((string)($rescrapeAction['label'] ?? 'Re-scrapear derivación'), ENT_QUOTES, 'UTF-8') ?>">
+                                <i class="bi bi-arrow-repeat me-1"></i> <?= htmlspecialchars((string)($rescrapeAction['label'] ?? 'Re-scrapear derivación'), ENT_QUOTES, 'UTF-8') ?>
+                            </button>
+                        <?php endif; ?>
                     </div>
                 </div>
             <?php else: ?>
-                <?php if (!empty($archivoHref) || !empty($derivacion['derivacion_id']) || !empty($derivacion['id'])): ?>
+                <?php if (!empty($downloadPdfAction['visible']) && !empty($downloadPdfAction['href'])): ?>
                     <div class="alert alert-info d-flex align-items-center justify-content-between flex-wrap">
                         <div>
                             <strong>📎 Derivación:</strong>
                             <span class="text-muted ms-1">Documento adjunto disponible.</span>
                         </div>
                         <a class="btn btn-sm btn-outline-primary mt-2 mt-md-0"
-                           href="<?= htmlspecialchars($archivoHref, ENT_QUOTES, 'UTF-8') ?>" target="_blank"
+                           href="<?= htmlspecialchars((string)$downloadPdfAction['href'], ENT_QUOTES, 'UTF-8') ?>" target="_blank"
                            rel="noopener">
                             <i class="bi bi-file-earmark-pdf"></i> Abrir PDF
                         </a>
@@ -726,10 +751,10 @@ if ($sessionUsername === 'jl1dvg') {
                                 Vigencia:</strong> <?= htmlspecialchars($derivacion['fecha_vigencia'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?>
                         </li>
                         <li class="list-group-item">
-                            <i class="bi bi-hourglass-split"></i> <?= $vigenciaTexto ?>
-                            <?php if ($vigenciaBadge): ?>
-                                <span class="badge bg-<?= htmlspecialchars($vigenciaBadge['color'], ENT_QUOTES, 'UTF-8') ?> ms-2">
-                                <?= htmlspecialchars($vigenciaBadge['texto'], ENT_QUOTES, 'UTF-8') ?>
+                            <i class="bi bi-hourglass-split"></i> <?= $derivacionVigenciaUi['text'] ?? $vigenciaTexto ?>
+                            <?php if (!empty($derivacionVigenciaUi['badge'])): ?>
+                                <span class="badge bg-<?= htmlspecialchars((string)($derivacionVigenciaUi['badge']['color'] ?? 'secondary'), ENT_QUOTES, 'UTF-8') ?> ms-2">
+                                <?= htmlspecialchars((string)($derivacionVigenciaUi['badge']['texto'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
                             </span>
                             <?php endif; ?>
                         </li>

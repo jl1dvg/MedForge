@@ -100,6 +100,11 @@ export function abrirPrefactura({ hc, formId, examenId }) {
                     if (estadoSugerido) {
                         target.estado = estadoSugerido;
                         target.kanban_estado = estadoSugerido;
+                        target.operational = {
+                            ...(target.operational || {}),
+                            kanban_estado: estadoSugerido,
+                            kanban_estado_label: estadoSugerido,
+                        };
                     }
                 }
                 if (estadoSugerido && typeof window.aplicarFiltros === "function") {

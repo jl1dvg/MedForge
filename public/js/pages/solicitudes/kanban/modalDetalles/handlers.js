@@ -21,6 +21,28 @@ import {escapeHtml} from "./utils.js";
 
 const LIO_EDITOR_MODAL_ID = "solicitudesLioEditorModal";
 
+function clearDerivacionCachesIfAvailable(payload = {}) {
+    if (typeof window === "undefined") {
+        return;
+    }
+
+    const clearFn = window.__solicitudesClearDerivacionCaches;
+    if (typeof clearFn === "function") {
+        clearFn(payload);
+    }
+}
+
+function clearPrefacturaCacheIfAvailable(solicitudId) {
+    if (typeof window === "undefined" || !solicitudId) {
+        return;
+    }
+
+    const clearFn = window.__solicitudesClearPrefacturaCacheBySolicitudId;
+    if (typeof clearFn === "function") {
+        clearFn(solicitudId);
+    }
+}
+
 function getModalApi() {
     return window.bootstrap && typeof window.bootstrap.Modal === "function"
         ? window.bootstrap.Modal
@@ -152,7 +174,7 @@ function buildLioEditorFormHtml({
                 <div class="col-md-6">
                     <label class="form-label" for="sol-estado">Estado</label>
                     <input id="sol-estado" name="estado" class="form-control" value="${escapeHtml(
-                        merged.estado || merged.kanban_estado || ""
+                        merged?.operational?.kanban_estado_label || merged.estado_label || merged.kanban_estado_label || merged.kanban_estado || merged.estado || ""
                     )}" placeholder="Estado" readonly />
                 </div>
                 <div class="col-md-6">
@@ -822,6 +844,7 @@ export async function handleRescrapeDerivacion(event) {
 
         if (solicitudId) {
             clearSolicitudDetalleCacheBySolicitudId(solicitudId);
+            clearPrefacturaCacheIfAvailable(solicitudId);
             const store = getDataStore();
             const item = Array.isArray(store)
                 ? store.find((entry) => String(entry.id) === String(solicitudId))
@@ -830,6 +853,7 @@ export async function handleRescrapeDerivacion(event) {
                 delete item.detalle_hidratado;
             }
         }
+        clearDerivacionCachesIfAvailable({hc: hcNumber, formId, solicitudId});
         if (typeof window.aplicarFiltros === "function") {
             window.aplicarFiltros();
         }

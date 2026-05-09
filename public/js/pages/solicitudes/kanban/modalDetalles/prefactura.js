@@ -97,7 +97,7 @@ export function actualizarBotonesModal(solicitudId, solicitudFallback = null) {
             .replace(/[^a-z0-9]+/g, "-");
 
     const estadoRaw = solicitud
-        ? (solicitud.kanban_estado || solicitud.estado || solicitud.estado_label)
+        ? (solicitud?.operational?.kanban_estado || solicitud.kanban_estado || solicitud.estado || solicitud.estado_label)
         : "";
     const estado = estadoRaw ? normalize(estadoRaw) : "";
 
@@ -106,6 +106,18 @@ export function actualizarBotonesModal(solicitudId, solicitudFallback = null) {
     const btnRevisar = document.getElementById("btnRevisarCodigos");
     const btnCobertura = document.getElementById("btnSolicitarCobertura");
     const btnCoberturaExitosa = document.getElementById("btnCoberturaExitosa");
+    const coberturaData = document.getElementById("prefacturaCoberturaData");
+    const coberturaStatus = document.getElementById("prefacturaCoberturaMailStatus");
+    const derivacionVencida =
+        Boolean(solicitud?.alert_derivacion_vencida) ||
+        String(solicitud?.derivacion_vigencia_status || "").trim().toLowerCase() === "vencida" ||
+        coberturaData?.dataset?.derivacionVencida === "1";
+    const coberturaTemplateAvailable =
+        Boolean(coberturaData?.dataset?.templateKey) &&
+        String(coberturaData?.dataset?.templateKey || "").trim() !== "";
+    const coberturaSolicitada =
+        Boolean(coberturaStatus?.dataset?.sentAt) ||
+        String(coberturaStatus?.textContent || "").trim() !== "";
 
     const show = (el, visible) => {
         if (!el) return;
@@ -125,11 +137,17 @@ export function actualizarBotonesModal(solicitudId, solicitudFallback = null) {
         "cobertura",
         "espera-documentos",
     ]);
-    show(btnCobertura, canShow && coberturaStates.has(estado));
-    show(
-        btnCoberturaExitosa,
-        canShow && (estado === "en-atencion" || estado === "revision-codigos")
-    );
+    const requiereCobertura = coberturaStates.has(estado) || derivacionVencida;
+    const showCoberturaPrimary =
+        canShow && coberturaTemplateAvailable && requiereCobertura && !coberturaSolicitada;
+    const showCoberturaResolved =
+        canShow && coberturaTemplateAvailable && coberturaSolicitada && requiereCobertura;
+    const showRevisionCodes =
+        canShow && !showCoberturaPrimary && !showCoberturaResolved && estado === "revision-codigos";
+
+    show(btnCobertura, showCoberturaPrimary);
+    show(btnCoberturaExitosa, showCoberturaResolved);
+    show(btnRevisar, showRevisionCodes);
     console.log("[botones] estado raw:", estadoRaw);
     console.log("[botones] estado normalized:", estado);
 }
@@ -274,6 +292,8 @@ export function abrirPrefactura({hc, formId, solicitudId}) {
             );
             if (derivacionResult.status === "fulfilled") {
                 renderDerivacionContent(derivacionContainer, derivacionResult.value);
+                syncPrefacturaContext({formId, hcNumber: hc, solicitudId});
+                attachPrefacturaCoberturaMail();
                 const derivacion = derivacionResult.value?.derivacion || null;
                 const vigencia = derivacion?.fecha_vigencia || null;
                 if (vigencia) {
@@ -314,6 +334,8 @@ export function abrirPrefactura({hc, formId, solicitudId}) {
                 if (derivacionContainer) {
                     derivacionContainer.innerHTML = buildDerivacionMissingHtml();
                 }
+                syncPrefacturaContext({formId, hcNumber: hc, solicitudId});
+                attachPrefacturaCoberturaMail();
             }
 
             initSigcenterPanel(content);

@@ -3,6 +3,7 @@ import {updateKanbanCardSla} from "../renderer.js";
 import {findSolicitudById} from "./store.js";
 
 const solicitudDetalleCache = new Map();
+const solicitudPrefacturaHtmlCache = new Map();
 
 export function buildApiCandidates(pathname) {
     const path = pathname.startsWith("/") ? pathname : `/${pathname}`;
@@ -130,6 +131,20 @@ export function clearSolicitudDetalleCacheBySolicitudId(solicitudId) {
     }
 }
 
+export function clearSolicitudPrefacturaCacheBySolicitudId(solicitudId) {
+    if (!solicitudId) return;
+    const sid = String(solicitudId);
+    for (const key of Array.from(solicitudPrefacturaHtmlCache.keys())) {
+        if (key.split(":").includes(sid)) {
+            solicitudPrefacturaHtmlCache.delete(key);
+        }
+    }
+}
+
+if (typeof window !== "undefined") {
+    window.__solicitudesClearPrefacturaCacheBySolicitudId = clearSolicitudPrefacturaCacheBySolicitudId;
+}
+
 export async function fetchWithFallback(urls, options) {
     let lastError;
     for (const url of urls) {
@@ -245,6 +260,7 @@ export async function hydrateSolicitudFromDetalle({solicitudId, formId, hcNumber
 }
 
 export async function loadSolicitudCore({hc, formId, solicitudId}) {
+    const cacheKey = [hc, solicitudId, formId].filter(Boolean).join(":");
     const {basePath} = getKanbanConfig();
     const prefacturaUrl = `${basePath}/prefactura?hc_number=${encodeURIComponent(
         hc
@@ -252,13 +268,20 @@ export async function loadSolicitudCore({hc, formId, solicitudId}) {
         solicitudId
     )}`;
 
-    const [html, solicitud] = await Promise.all([
-        fetch(prefacturaUrl).then((response) => {
+    const htmlPromise = solicitudPrefacturaHtmlCache.has(cacheKey)
+        ? Promise.resolve(solicitudPrefacturaHtmlCache.get(cacheKey))
+        : fetch(prefacturaUrl).then((response) => {
             if (!response.ok) {
                 throw new Error("No se encontró la prefactura");
             }
-            return response.text();
-        }),
+            return response.text().then((html) => {
+                solicitudPrefacturaHtmlCache.set(cacheKey, html);
+                return html;
+            });
+        });
+
+    const [html, solicitud] = await Promise.all([
+        htmlPromise,
         hydrateSolicitudFromDetalle({solicitudId, formId, hcNumber: hc}),
     ]);
 

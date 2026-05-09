@@ -8,19 +8,57 @@ function requestId() {
     return `sol-v2-${Date.now()}-${Math.floor(Math.random() * 99999)}`;
 }
 
+const derivacionPayloadCache = new Map();
+const derivacionPreseleccionCache = new Map();
+
+function buildDerivacionCacheKey({hc, formId, solicitudId = ""}) {
+    return [hc, solicitudId, formId].filter(Boolean).join(":");
+}
+
+export function clearDerivacionCaches({hc = "", formId = "", solicitudId = ""} = {}) {
+    const target = buildDerivacionCacheKey({hc, formId, solicitudId});
+    if (target) {
+        derivacionPayloadCache.delete(target);
+        derivacionPreseleccionCache.delete(target);
+        return;
+    }
+
+    derivacionPayloadCache.clear();
+    derivacionPreseleccionCache.clear();
+}
+
+if (typeof window !== "undefined") {
+    window.__solicitudesClearDerivacionCaches = clearDerivacionCaches;
+}
+
 export function buildDerivacionMissingHtml(
-    message = "Seguro particular: requiere autorización."
+    message = "Seguro particular: requiere autorización.",
+    ui = null
 ) {
+    const authAction = ui?.actions?.authorization || {};
+    const rescrapeAction = ui?.actions?.rescrape || {};
+    const authLabel = authAction.button_label || "Solicitar autorización";
+    const authMessage = authAction.message || message;
+    const rescrapeLabel = rescrapeAction.label || "Re-scrapear derivación";
+
     return `
         <div class="card border-0 shadow-sm">
             <div class="card-body d-flex flex-column gap-2">
                 <div class="d-flex flex-wrap align-items-center gap-2">
                     <span class="badge bg-secondary">Sin derivación</span>
-                    <span class="text-muted">${escapeHtml(message)}</span>
+                    <span class="text-muted">${escapeHtml(authMessage)}</span>
                 </div>
                 <button type="button" class="btn btn-outline-primary btn-sm" id="btnSolicitarAutorizacion">
-                    Solicitar autorización
+                    ${escapeHtml(authLabel)}
                 </button>
+                ${rescrapeAction.visible ? `
+                    <button type="button"
+                            class="btn btn-outline-secondary btn-sm"
+                            id="btnRescrapeDerivacion"
+                            data-default-label="${escapeHtml(rescrapeLabel)}">
+                        <i class="bi bi-arrow-repeat me-1"></i> ${escapeHtml(rescrapeLabel)}
+                    </button>
+                ` : ""}
             </div>
         </div>
     `;
@@ -61,24 +99,90 @@ function buildDerivacionDiagnosticoHtml(derivacion) {
     return '<span class="text-muted">No disponible</span>';
 }
 
-function buildDerivacionHtml(derivacion) {
-    if (!derivacion) {
-        return buildDerivacionMissingHtml();
+function buildCoverageActionsHtml(ui) {
+    const coverageAction = ui?.actions?.coverage_mail || {};
+    const downloadAction = ui?.actions?.download_pdf || {};
+    const rescrapeAction = ui?.actions?.rescrape || {};
+    if (!coverageAction.visible) {
+        return "";
     }
 
-    const derivacionId = derivacion.derivacion_id || derivacion.id || null;
-    const archivoHref = derivacionId
-        ? `/derivaciones/archivo/${encodeURIComponent(String(derivacionId))}`
-        : derivacion.archivo_derivacion_path
-            ? `/${String(derivacion.archivo_derivacion_path).replace(/^\/+/, "")}`
-            : null;
-    const vigenciaInfo = formatDerivacionVigencia(derivacion.fecha_vigencia);
+    const statusLabel = coverageAction.status_label || "";
+    const rescrapeLabel = rescrapeAction.label || "Re-scrapear derivación";
+
+    return `
+        <div class="alert alert-${escapeHtml(coverageAction.style || "info")} border d-flex flex-column gap-2 mb-3">
+            <div class="d-flex align-items-center gap-2">
+                <i class="bi bi-envelope-exclamation"></i>
+                <div>
+                    <div class="fw-semibold">${escapeHtml(coverageAction.title || "Solicitar cobertura adicional")}</div>
+                    <small class="text-muted">${escapeHtml(coverageAction.message || "")}</small>
+                </div>
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+                <button type="button" class="btn btn-warning btn-sm" id="btnPrefacturaSolicitarCoberturaMail">
+                    <i class="bi bi-envelope-fill me-1"></i> ${escapeHtml(coverageAction.button_label || "Solicitar cobertura por correo")}
+                </button>
+                ${downloadAction.visible && downloadAction.href ? `
+                    <a class="btn btn-outline-secondary btn-sm"
+                       href="${escapeHtml(downloadAction.href)}"
+                       target="_blank" rel="noopener">
+                        <i class="bi bi-file-earmark-arrow-down me-1"></i> ${escapeHtml(downloadAction.label || "Descargar derivación")}
+                    </a>
+                ` : ""}
+                ${rescrapeAction.visible ? `
+                    <button type="button"
+                            class="btn btn-outline-primary btn-sm"
+                            id="btnRescrapeDerivacion"
+                            data-default-label="${escapeHtml(rescrapeLabel)}">
+                        <i class="bi bi-arrow-repeat me-1"></i> ${escapeHtml(rescrapeLabel)}
+                    </button>
+                ` : ""}
+            </div>
+            <div id="prefacturaCoberturaMailStatus"
+                 class="small fw-semibold text-success ${statusLabel ? "" : "d-none"}"
+                 data-sent-at="${escapeHtml(coverageAction.sent_at || "")}"
+                 data-sent-by="${escapeHtml(coverageAction.sent_by || "")}">
+                ${escapeHtml(statusLabel)}
+            </div>
+        </div>
+    `;
+}
+
+function buildStandaloneRescrapeHtml(ui) {
+    const coverageAction = ui?.actions?.coverage_mail || {};
+    const rescrapeAction = ui?.actions?.rescrape || {};
+    if (!rescrapeAction.visible || coverageAction.visible) {
+        return "";
+    }
+
+    const rescrapeLabel = rescrapeAction.label || "Re-scrapear derivación";
+    return `
+        <div class="d-flex justify-content-end mb-3">
+            <button type="button"
+                    class="btn btn-outline-primary btn-sm"
+                    id="btnRescrapeDerivacion"
+                    data-default-label="${escapeHtml(rescrapeLabel)}">
+                <i class="bi bi-arrow-repeat me-1"></i> ${escapeHtml(rescrapeLabel)}
+            </button>
+        </div>
+    `;
+}
+
+function buildDerivacionHtml(derivacion, ui = null) {
+    if (!derivacion) {
+        return buildDerivacionMissingHtml(undefined, ui);
+    }
+
+    const downloadAction = ui?.actions?.download_pdf || {};
+    const vigenciaInfo = ui?.vigencia || formatDerivacionVigencia(derivacion.fecha_vigencia);
+    const vigenciaText = vigenciaInfo?.text || vigenciaInfo?.texto || "No disponible";
     const badgeHtml = vigenciaInfo.badge
         ? `<span class="badge bg-${escapeHtml(vigenciaInfo.badge.color)} ms-2">${escapeHtml(
             vigenciaInfo.badge.texto
         )}</span>`
         : "";
-    const archivoHtml = archivoHref
+    const archivoHtml = downloadAction.visible && downloadAction.href
         ? `
         <div class="alert alert-info d-flex align-items-center justify-content-between flex-wrap">
             <div>
@@ -86,7 +190,7 @@ function buildDerivacionHtml(derivacion) {
                 <span class="text-muted ms-1">Documento adjunto disponible.</span>
             </div>
             <a class="btn btn-sm btn-outline-primary mt-2 mt-md-0" href="${escapeHtml(
-            archivoHref
+            downloadAction.href
         )}" target="_blank" rel="noopener">
                 <i class="bi bi-file-earmark-pdf"></i> Abrir PDF
             </a>
@@ -95,6 +199,8 @@ function buildDerivacionHtml(derivacion) {
         : "";
 
     return `
+        ${buildCoverageActionsHtml(ui)}
+        ${buildStandaloneRescrapeHtml(ui)}
         ${archivoHtml}
         <div class="box box-outline-primary">
             <div class="box-header">
@@ -111,7 +217,7 @@ function buildDerivacionHtml(derivacion) {
                     ${escapeHtml(derivacion.fecha_vigencia || "No disponible")}
                 </li>
                 <li class="list-group-item">
-                    <i class="bi bi-hourglass-split"></i> ${vigenciaInfo.texto}
+                    <i class="bi bi-hourglass-split"></i> ${vigenciaText}
                     ${badgeHtml}
                 </li>
                 <li class="list-group-item">
@@ -129,6 +235,7 @@ export function renderDerivacionContent(container, payload) {
     if (!container) {
         return;
     }
+    const ui = payload?.ui || null;
     const hasDerivacion =
         payload?.success &&
         payload?.has_derivacion &&
@@ -136,7 +243,7 @@ export function renderDerivacionContent(container, payload) {
         payload?.derivacion_status !== "missing";
 
     if (hasDerivacion) {
-        container.innerHTML = buildDerivacionHtml(payload.derivacion);
+        container.innerHTML = buildDerivacionHtml(payload.derivacion, ui);
         return;
     }
 
@@ -146,15 +253,21 @@ export function renderDerivacionContent(container, payload) {
             ? "Derivación no disponible por ahora."
             : payload?.message || "Seguro particular: requiere autorización.";
 
-    container.innerHTML = buildDerivacionMissingHtml(fallbackMessage);
+    container.innerHTML = buildDerivacionMissingHtml(fallbackMessage, ui);
 }
 
 export async function loadDerivacion({hc, formId}) {
+    const solicitudId = window.__prefacturaSolicitudId || "";
+    const cacheKey = buildDerivacionCacheKey({hc, formId, solicitudId});
+    if (derivacionPayloadCache.has(cacheKey)) {
+        return derivacionPayloadCache.get(cacheKey);
+    }
+
     const {basePath} = getKanbanConfig();
     const derivacionUrl = `${basePath}/derivacion?hc_number=${encodeURIComponent(
         hc
     )}&form_id=${encodeURIComponent(formId)}&solicitud_id=${encodeURIComponent(
-        window.__prefacturaSolicitudId || ""
+        solicitudId
     )}`;
 
     try {
@@ -166,21 +279,27 @@ export async function loadDerivacion({hc, formId}) {
             },
         });
         if (!response.ok) {
-            return {
+            const payload = {
                 success: true,
                 has_derivacion: false,
                 derivacion_status: "error",
                 derivacion: null,
             };
+            derivacionPayloadCache.set(cacheKey, payload);
+            return payload;
         }
-        return response.json();
+        const payload = await response.json();
+        derivacionPayloadCache.set(cacheKey, payload);
+        return payload;
     } catch (error) {
-        return {
+        const payload = {
             success: true,
             has_derivacion: false,
             derivacion_status: "error",
             derivacion: null,
         };
+        derivacionPayloadCache.set(cacheKey, payload);
+        return payload;
     }
 }
 
@@ -245,6 +364,11 @@ export async function asegurarPreseleccionDerivacion({hc, formId, solicitudId}) 
         return null;
     }
 
+    const cacheKey = buildDerivacionCacheKey({hc, formId, solicitudId});
+    if (derivacionPreseleccionCache.has(cacheKey)) {
+        return derivacionPreseleccionCache.get(cacheKey);
+    }
+
     const response = await fetch(resolveWritePath("/solicitudes/derivacion-preseleccion"), {
         method: "POST",
         credentials: "same-origin",
@@ -282,11 +406,13 @@ export async function asegurarPreseleccionDerivacion({hc, formId, solicitudId}) 
             });
         }
 
+        derivacionPreseleccionCache.set(cacheKey, data.selected);
         return data.selected;
     }
 
     const options = Array.isArray(data?.options) ? data.options : [];
     if (!data?.needs_selection || options.length === 0) {
+        derivacionPreseleccionCache.set(cacheKey, null);
         return null;
     }
 
@@ -300,6 +426,7 @@ export async function asegurarPreseleccionDerivacion({hc, formId, solicitudId}) 
             fecha_vigencia: option.fecha_vigencia,
             prefactura: option.prefactura,
         });
+        derivacionPreseleccionCache.set(cacheKey, option);
         return option;
     }
 
@@ -316,6 +443,7 @@ export async function asegurarPreseleccionDerivacion({hc, formId, solicitudId}) 
             fecha_vigencia: fallbackOption.fecha_vigencia,
             prefactura: fallbackOption.prefactura,
         });
+        derivacionPreseleccionCache.set(cacheKey, fallbackOption);
         return fallbackOption;
     }
 
@@ -379,5 +507,6 @@ export async function asegurarPreseleccionDerivacion({hc, formId, solicitudId}) 
         prefactura: chosen.prefactura,
     });
 
+    derivacionPreseleccionCache.set(cacheKey, chosen);
     return chosen;
 }

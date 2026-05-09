@@ -97,7 +97,7 @@ class SolicitudesPrefacturaService
     public function buildPrefacturaViewData(string $hcNumber, string $formId): array
     {
         $solicitudId = $this->obtenerSolicitudIdPorFormHc($formId, $hcNumber);
-        if ($solicitudId !== null && $solicitudId > 0) {
+        if ($solicitudId !== null && $solicitudId > 0 && !$this->hasDerivacionLocalEvidence($hcNumber, $formId, $solicitudId)) {
             $this->ensureDerivacionPreseleccionAuto($hcNumber, $formId, $solicitudId);
         }
 
@@ -116,9 +116,43 @@ class SolicitudesPrefacturaService
             'paciente' => $paciente,
             'diagnostico' => $diagnostico,
             'consulta' => $consulta,
+            'derivacionTab' => $this->buildDerivacionTabViewData(
+                $derivacion ?? [],
+                $solicitud ?? [],
+                $consulta ?? [],
+                $paciente,
+                $solicitudId
+            ),
             'coberturaTemplateKey' => $templateKey,
             'coberturaTemplateAvailable' => $templateKey !== null ? $this->hasEnabledTemplate($templateKey) : false,
             'coberturaMailLog' => $solicitudId !== null ? $this->fetchLatestCoberturaMailLog($solicitudId) : null,
+        ];
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    public function buildDerivacionTabData(string $hcNumber, string $formId, ?int $solicitudId = null): array
+    {
+        $resolvedSolicitudId = $solicitudId;
+        if (($resolvedSolicitudId ?? 0) <= 0) {
+            $resolvedSolicitudId = $this->obtenerSolicitudIdPorFormHc($formId, $hcNumber);
+        }
+
+        $derivacion = $this->resolveDerivacion($formId, $hcNumber, $resolvedSolicitudId);
+        $solicitud = $this->obtenerDatosYCirujanoSolicitud($formId, $hcNumber) ?? [];
+        $consulta = $this->obtenerConsultaDeSolicitud($formId);
+        $paciente = $this->getPatientDetails($hcNumber);
+
+        return [
+            'derivacion' => $derivacion ?? [],
+            'ui' => $this->buildDerivacionTabViewData(
+                $derivacion ?? [],
+                $solicitud,
+                $consulta,
+                $paciente,
+                $resolvedSolicitudId
+            ),
         ];
     }
 
@@ -1665,6 +1699,10 @@ class SolicitudesPrefacturaService
 
     private function ensureDerivacionPreseleccionAuto(string $hcNumber, string $formId, int $solicitudId): void
     {
+        if ($this->hasDerivacionLocalEvidence($hcNumber, $formId, $solicitudId)) {
+            return;
+        }
+
         $seleccion = $this->obtenerDerivacionPreseleccion($solicitudId, $formId, $hcNumber);
         if (!empty($seleccion['derivacion_pedido_id'])) {
             return;
@@ -1701,6 +1739,24 @@ class SolicitudesPrefacturaService
         }
 
         $this->guardarDerivacionPreseleccion($solicitudId, $option);
+    }
+
+    private function hasDerivacionLocalEvidence(string $hcNumber, string $formId, ?int $solicitudId = null): bool
+    {
+        $seleccion = $this->obtenerDerivacionPreseleccion($solicitudId, $formId, $hcNumber);
+        if (!empty($seleccion['derivacion_pedido_id']) || !empty($seleccion['derivacion_codigo'])) {
+            return true;
+        }
+
+        if ($this->obtenerDerivacionPorFormId($formId) !== null) {
+            return true;
+        }
+
+        if ($this->obtenerDerivacionLegacyPorFormHc($formId, $hcNumber) !== null) {
+            return true;
+        }
+
+        return $this->resolveDerivacionPreseleccionFromLocal($hcNumber, $formId) !== [];
     }
 
     private function guardarDerivacionPreseleccion(int $solicitudId, array $payload): bool
@@ -2108,6 +2164,160 @@ class SolicitudesPrefacturaService
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
         return is_array($row) ? $row : null;
+    }
+
+    /**
+     * @param array<string,mixed> $derivacion
+     * @param array<string,mixed> $solicitud
+     * @param array<string,mixed> $consulta
+     * @param array<string,mixed> $paciente
+     * @return array<string,mixed>
+     */
+    private function buildDerivacionTabViewData(
+        array $derivacion,
+        array $solicitud,
+        array $consulta,
+        array $paciente,
+        ?int $solicitudId
+    ): array {
+        $hasDerivacion = !empty($derivacion['cod_derivacion'])
+            || !empty($derivacion['derivacion_id'])
+            || !empty($derivacion['id'])
+            || !empty($derivacion['archivo_derivacion_path']);
+
+        $archivoHref = null;
+        $derivacionId = $derivacion['derivacion_id'] ?? $derivacion['id'] ?? null;
+        if (!empty($derivacionId)) {
+            $archivoHref = '/derivaciones/archivo/' . urlencode((string) $derivacionId);
+        } elseif (!empty($derivacion['archivo_derivacion_path'])) {
+            $archivoHref = '/' . ltrim((string) $derivacion['archivo_derivacion_path'], '/');
+        }
+
+        $vigencia = $this->buildDerivacionVigenciaMeta($derivacion);
+        $afiliacion = trim((string) ($solicitud['afiliacion'] ?? ''));
+        $templateKey = $this->resolveTemplateKey($afiliacion);
+        $templateAvailable = $templateKey !== null ? $this->hasEnabledTemplate($templateKey) : false;
+        $mailLog = ($solicitudId ?? 0) > 0 ? $this->fetchLatestCoberturaMailLog((int) $solicitudId) : null;
+        [$mailStatusLabel, $mailSentAt, $mailSentBy] = $this->formatCoberturaMailStatus($mailLog);
+
+        $coverageVisible = $hasDerivacion && ($vigencia['expired'] || $templateAvailable || $mailStatusLabel !== '');
+        $authorizationVisible = !$hasDerivacion;
+        $coverageTitle = $vigencia['expired']
+            ? 'Derivación vencida'
+            : 'Solicitar cobertura adicional';
+        $coverageMessage = $vigencia['expired']
+            ? 'Afiliación: ' . $afiliacion . '. Solicita un nuevo código por correo adjuntando la derivación.'
+            : 'Si necesitas otro código de procedimiento o cobertura para el otro ojo, puedes solicitarla por correo.';
+
+        return [
+            'has_derivacion' => $hasDerivacion,
+            'archivo_href' => $archivoHref,
+            'vigencia' => $vigencia,
+            'actions' => [
+                'coverage_mail' => [
+                    'visible' => $coverageVisible,
+                    'style' => $vigencia['expired'] ? 'warning' : 'info',
+                    'title' => $coverageTitle,
+                    'message' => $coverageMessage,
+                    'button_label' => 'Solicitar cobertura por correo',
+                    'status_label' => $mailStatusLabel,
+                    'sent_at' => $mailSentAt,
+                    'sent_by' => $mailSentBy,
+                ],
+                'authorization' => [
+                    'visible' => $authorizationVisible,
+                    'message' => 'Seguro particular: requiere autorización.',
+                    'button_label' => 'Solicitar autorización',
+                ],
+                'download_pdf' => [
+                    'visible' => $archivoHref !== null,
+                    'href' => $archivoHref,
+                    'label' => 'Descargar derivación',
+                ],
+                'rescrape' => [
+                    'visible' => trim((string) ($solicitud['form_id'] ?? $consulta['form_id'] ?? '')) !== ''
+                        && trim((string) ($solicitud['hc_number'] ?? $paciente['hc_number'] ?? '')) !== '',
+                    'label' => 'Re-scrapear derivación',
+                ],
+            ],
+        ];
+    }
+
+    /**
+     * @param array<string,mixed> $derivacion
+     * @return array<string,mixed>
+     */
+    private function buildDerivacionVigenciaMeta(array $derivacion): array
+    {
+        $meta = [
+            'text' => 'No disponible',
+            'badge' => null,
+            'expired' => false,
+            'days' => null,
+        ];
+
+        if (empty($derivacion['fecha_vigencia'])) {
+            return $meta;
+        }
+
+        try {
+            $vigencia = new \DateTime((string) $derivacion['fecha_vigencia']);
+            $hoy = new \DateTime();
+            $days = (int) $hoy->diff($vigencia)->format('%r%a');
+            $meta['days'] = $days;
+            $meta['expired'] = $days < 0;
+            $meta['text'] = '<strong>Días para caducar:</strong> ' . $days . ' días';
+
+            if ($days >= 60) {
+                $meta['badge'] = ['color' => 'success', 'texto' => 'Vigente', 'icon' => 'bi-check-circle'];
+            } elseif ($days >= 30) {
+                $meta['badge'] = ['color' => 'info', 'texto' => 'Vigente', 'icon' => 'bi-info-circle'];
+            } elseif ($days >= 15) {
+                $meta['badge'] = ['color' => 'warning', 'texto' => 'Por vencer', 'icon' => 'bi-hourglass-split'];
+            } elseif ($days >= 0) {
+                $meta['badge'] = ['color' => 'danger', 'texto' => 'Urgente', 'icon' => 'bi-exclamation-triangle'];
+            } else {
+                $meta['badge'] = ['color' => 'dark', 'texto' => 'Vencida', 'icon' => 'bi-x-circle'];
+            }
+        } catch (Throwable) {
+            return $meta;
+        }
+
+        return $meta;
+    }
+
+    /**
+     * @param array<string,mixed>|null $mailLog
+     * @return array{0:string,1:string,2:string}
+     */
+    private function formatCoberturaMailStatus(?array $mailLog): array
+    {
+        $sentAt = '';
+        $sentBy = '';
+
+        if (!empty($mailLog['sent_at'])) {
+            try {
+                $sentAtDate = new \DateTime((string) $mailLog['sent_at']);
+                $sentAt = $sentAtDate->format('d-m-Y H:i');
+            } catch (Throwable) {
+                $sentAt = (string) $mailLog['sent_at'];
+            }
+        }
+
+        if (!empty($mailLog['sent_by_name'])) {
+            $sentBy = (string) $mailLog['sent_by_name'];
+        }
+
+        if ($sentAt === '') {
+            return ['', '', ''];
+        }
+
+        $label = 'Cobertura solicitada el ' . $sentAt;
+        if ($sentBy !== '') {
+            $label .= ' por ' . $sentBy;
+        }
+
+        return [$label, $sentAt, $sentBy];
     }
 
     private function resolveTemplateKey(string $afiliacion): ?string

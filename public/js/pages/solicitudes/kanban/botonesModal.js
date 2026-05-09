@@ -38,7 +38,7 @@ function obtenerTarjetaActiva() {
             id: String(solicitudId || solicitud.id || '').trim(),
             form: String(formId || solicitud.form_id || '').trim(),
             hc: String(hcNumber || solicitud.hc_number || '').trim(),
-            estado: String(solicitud.estado || solicitud.kanban_estado || '').trim(),
+            estado: String(solicitud?.operational?.kanban_estado || solicitud.kanban_estado || solicitud.estado || '').trim(),
             turno: String(solicitud.turno || '').trim(),
         },
     };
@@ -648,6 +648,21 @@ function updateCoberturaMailStatus(payload = {}) {
             modalStatus.dataset.sentBy = payload.sent_by_name;
         }
     }
+
+    const coberturaBtn = document.getElementById('btnSolicitarCobertura');
+    if (coberturaBtn) {
+        coberturaBtn.classList.add('d-none');
+    }
+
+    const coberturaExitosaBtn = document.getElementById('btnCoberturaExitosa');
+    if (coberturaExitosaBtn) {
+        coberturaExitosaBtn.classList.remove('d-none');
+    }
+
+    const revisarBtn = document.getElementById('btnRevisarCodigos');
+    if (revisarBtn) {
+        revisarBtn.classList.add('d-none');
+    }
 }
 
 function buildCoberturaMailStatusLabel(payload) {
@@ -681,16 +696,22 @@ function formatCoberturaDateTime(value) {
 }
 
 export function attachPrefacturaCoberturaMail() {
-    const button = document.getElementById('btnPrefacturaSolicitarCoberturaMail');
-    if (!button || button.dataset.listenerAttached === 'true') {
-        return;
-    }
+    const buttons = [
+        document.getElementById('btnPrefacturaSolicitarCoberturaMail'),
+        document.getElementById('btnSolicitarAutorizacion'),
+    ].filter(Boolean);
 
-    button.dataset.listenerAttached = 'true';
-    button.addEventListener('click', async () => {
-        const result = await abrirCoberturaMail();
-        if (!result.opened) {
-            showToast(result.error || 'No hay información suficiente para armar el correo de cobertura.', false);
+    buttons.forEach((button) => {
+        if (!button || button.dataset.listenerAttached === 'true') {
+            return;
         }
+
+        button.dataset.listenerAttached = 'true';
+        button.addEventListener('click', async () => {
+            const result = await abrirCoberturaMail();
+            if (!result.opened) {
+                showToast(result.error || 'No hay información suficiente para armar el correo de cobertura.', false);
+            }
+        });
     });
 }

@@ -70,7 +70,7 @@ class SolicitudesPrefacturaController
         }
 
         try {
-            $derivacion = $this->service->resolveDerivacion($formId, $hcNumber, $solicitudId > 0 ? $solicitudId : null);
+            $tabData = $this->service->buildDerivacionTabData($hcNumber, $formId, $solicitudId > 0 ? $solicitudId : null);
         } catch (Throwable $e) {
             Log::warning('solicitudes.prefactura.derivacion.error', [
                 'request_id' => $requestId,
@@ -85,8 +85,12 @@ class SolicitudesPrefacturaController
                 'has_derivacion' => false,
                 'derivacion_status' => 'error',
                 'derivacion' => null,
+                'ui' => null,
             ])->header('X-Request-Id', $requestId);
         }
+
+        $derivacion = is_array($tabData['derivacion'] ?? null) ? $tabData['derivacion'] : null;
+        $ui = is_array($tabData['ui'] ?? null) ? $tabData['ui'] : null;
 
         if (!$derivacion) {
             return response()->json([
@@ -95,6 +99,7 @@ class SolicitudesPrefacturaController
                 'derivacion_status' => 'missing',
                 'message' => 'No hay derivación registrada para esta solicitud.',
                 'derivacion' => null,
+                'ui' => $ui,
             ])->header('X-Request-Id', $requestId);
         }
 
@@ -104,6 +109,7 @@ class SolicitudesPrefacturaController
             'derivacion_status' => 'ok',
             'message' => null,
             'derivacion' => $derivacion,
+            'ui' => $ui,
         ])->header('X-Request-Id', $requestId);
     }
 
