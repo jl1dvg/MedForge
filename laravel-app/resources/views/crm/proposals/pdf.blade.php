@@ -2,6 +2,10 @@
     $fmt = static fn($value, $currency = 'USD') => ($currency ?: 'USD') . ' ' . number_format((float) $value, 2, '.', ',');
     $date = static fn($value) => $value ? \Carbon\Carbon::parse($value)->format('d/m/Y') : 'Sin vigencia';
     $currency = (string) ($proposal['currency'] ?? 'USD');
+    $brand = is_array($brand ?? null) ? $brand : [];
+    $companyName = (string) ($brand['name'] ?? 'Consulmed');
+    $companyLegalName = (string) ($brand['legal_name'] ?? '');
+    $logoPath = (string) ($brand['logo_path'] ?? '');
 @endphp
 <!doctype html>
 <html lang="es">
@@ -9,7 +13,10 @@
     <meta charset="utf-8">
     <style>
         body { font-family: dejavusans, sans-serif; color: #172033; font-size: 11px; }
-        .header { border-bottom: 3px solid #0f766e; padding-bottom: 14px; margin-bottom: 20px; }
+        .header { width: 100%; border-bottom: 3px solid #0f766e; padding-bottom: 14px; margin-bottom: 20px; border-collapse: collapse; }
+        .header td { vertical-align: middle; }
+        .logo-cell { width: 118px; padding-right: 14px; }
+        .logo { max-width: 105px; max-height: 58px; }
         .brand { font-size: 22px; font-weight: 800; color: #0f766e; }
         .muted { color: #64748b; }
         .badge { display: inline-block; padding: 4px 8px; border-radius: 999px; background: #ecfeff; color: #0e7490; font-weight: 700; }
@@ -28,10 +35,20 @@
     </style>
 </head>
 <body>
-    <div class="header">
-        <div class="brand">Consulmed</div>
-        <div class="muted">Propuesta clínica comercial</div>
-    </div>
+    <table class="header">
+        <tr>
+            @if($logoPath !== '')
+                <td class="logo-cell"><img class="logo" src="{{ $logoPath }}" alt="{{ $companyName }}"></td>
+            @endif
+            <td>
+                <div class="brand">{{ $companyName }}</div>
+                @if($companyLegalName !== '')
+                    <div class="muted">{{ $companyLegalName }}</div>
+                @endif
+                <div class="muted">Propuesta clínica comercial</div>
+            </td>
+        </tr>
+    </table>
 
     <table class="grid">
         <tr>
@@ -109,6 +126,6 @@
         <strong>Enlace de revisión:</strong> {{ $publicUrl }}
     </div>
 
-    <div class="footer">Documento generado por MedForge / Consulmed.</div>
+    <div class="footer">Documento generado por MedForge / {{ $companyName }}.</div>
 </body>
 </html>
