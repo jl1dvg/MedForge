@@ -45,6 +45,8 @@ class ExamenModel
         $derivacionVigenciaExpr = $this->selectExamenColumn('derivacion_fecha_vigencia_sel');
         $derivacionPrefacturaExpr = $this->selectExamenColumn('derivacion_prefactura');
 
+        $crmTasksJoin = $this->buildCrmTasksAggregateJoin('ce.id');
+
         $sql = "SELECT
                 ce.id,
                 ce.hc_number,
@@ -112,15 +114,7 @@ class ExamenModel
                 FROM examen_crm_adjuntos
                 GROUP BY examen_id
             ) adjuntos ON adjuntos.examen_id = ce.id
-            LEFT JOIN (
-                SELECT source_ref_id,
-                       COUNT(*) AS tareas_total,
-                       SUM(CASE WHEN status IN ('pendiente','en_progreso','en_proceso') THEN 1 ELSE 0 END) AS tareas_pendientes,
-                       MIN(CASE WHEN status IN ('pendiente','en_progreso','en_proceso') THEN COALESCE(due_at, CONCAT(due_date, ' 23:59:59')) END) AS proximo_vencimiento
-                FROM crm_tasks
-                WHERE source_module = 'examenes'
-                GROUP BY source_ref_id
-            ) tareas ON tareas.source_ref_id = ce.id
+            {$crmTasksJoin}
             WHERE ce.examen_nombre IS NOT NULL
               AND ce.examen_nombre <> ''";
 
@@ -229,6 +223,8 @@ class ExamenModel
         }
 
         $placeholders = implode(', ', array_fill(0, count($estados), '?'));
+
+        $crmTasksJoin = $this->buildCrmTasksAggregateJoin('ce.id');
 
         $sql = "SELECT
                 ce.id,
@@ -366,15 +362,7 @@ class ExamenModel
                 FROM examen_crm_adjuntos
                 GROUP BY examen_id
             ) adjuntos ON adjuntos.examen_id = ce.id
-            LEFT JOIN (
-                SELECT source_ref_id,
-                       COUNT(*) AS tareas_total,
-                       SUM(CASE WHEN status IN ('pendiente','en_progreso','en_proceso') THEN 1 ELSE 0 END) AS tareas_pendientes,
-                       MIN(CASE WHEN status IN ('pendiente','en_progreso','en_proceso') THEN COALESCE(due_at, CONCAT(due_date, ' 23:59:59')) END) AS proximo_vencimiento
-                FROM crm_tasks
-                WHERE source_module = 'examenes'
-                GROUP BY source_ref_id
-            ) tareas ON tareas.source_ref_id = ce.id
+            {$crmTasksJoin}
             WHERE ce.form_id = :form_id
               AND ce.hc_number = :hc_number";
 
@@ -1147,6 +1135,42 @@ class ExamenModel
         }
 
         return $this->examenColumns;
+    }
+
+    private function buildCrmTasksAggregateJoin(string $entityExpr): string
+    {
+        if (!$this->tableExists('crm_tasks')) {
+            return "LEFT JOIN (
+                SELECT NULL AS source_ref_id, 0 AS tareas_total, 0 AS tareas_pendientes, NULL AS proximo_vencimiento
+            ) tareas ON 1 = 0";
+        }
+
+        $hasSourceModule = $this->columnExists('crm_tasks', 'source_module');
+        $hasSourceRefId = $this->columnExists('crm_tasks', 'source_ref_id');
+
+        if (!$hasSourceRefId) {
+            return "LEFT JOIN (
+                SELECT NULL AS source_ref_id, 0 AS tareas_total, 0 AS tareas_pendientes, NULL AS proximo_vencimiento
+            ) tareas ON 1 = 0";
+        }
+
+        $statusExpr = $this->columnExists('crm_tasks', 'status')
+            ? 'status'
+            : ($this->columnExists('crm_tasks', 'estado') ? 'estado' : "'pendiente'");
+        $dueAtExpr = $this->columnExists('crm_tasks', 'due_at') ? 'due_at' : 'NULL';
+        $dueDateExpr = $this->columnExists('crm_tasks', 'due_date') ? "CONCAT(due_date, ' 23:59:59')" : 'NULL';
+        $dueExpr = "COALESCE({$dueAtExpr}, {$dueDateExpr})";
+        $moduleWhere = $hasSourceModule ? "WHERE source_module = 'examenes'" : '';
+
+        return "LEFT JOIN (
+                SELECT source_ref_id,
+                       COUNT(*) AS tareas_total,
+                       SUM(CASE WHEN {$statusExpr} IN ('pendiente','en_progreso','en_proceso') THEN 1 ELSE 0 END) AS tareas_pendientes,
+                       MIN(CASE WHEN {$statusExpr} IN ('pendiente','en_progreso','en_proceso') THEN {$dueExpr} END) AS proximo_vencimiento
+                FROM crm_tasks
+                {$moduleWhere}
+                GROUP BY source_ref_id
+            ) tareas ON tareas.source_ref_id = {$entityExpr}";
     }
 
     public function actualizarEstado(

@@ -12,13 +12,17 @@ class CompanyBrandResolver
     }
 
     /**
-     * @return array{name:string,legal_name:string|null,logo_url:string|null,logo_path:string|null}
+     * @return array{name:string,legal_name:string|null,logo_url:string|null,logo_path:string|null,phone:string|null,email:string|null,website:string|null,address:string|null}
      */
     public function resolve(): array
     {
         $options = $this->settings->getOptions([
             'companyname',
             'company_legal_name',
+            'companyphone',
+            'companyemail',
+            'companywebsite',
+            'companyaddress',
             'company_logo',
             'company_logo_dark',
             'company_logo_small',
@@ -41,6 +45,10 @@ class CompanyBrandResolver
             'legal_name' => trim((string) ($options['company_legal_name'] ?? '')) ?: null,
             'logo_url' => $logo['url'],
             'logo_path' => $logo['path'],
+            'phone' => trim((string) ($options['companyphone'] ?? '')) ?: null,
+            'email' => trim((string) ($options['companyemail'] ?? '')) ?: null,
+            'website' => trim((string) ($options['companywebsite'] ?? '')) ?: null,
+            'address' => trim((string) ($options['companyaddress'] ?? '')) ?: null,
         ];
     }
 

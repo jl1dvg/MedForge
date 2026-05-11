@@ -144,14 +144,6 @@ $hasDerivacion = !empty($derivacion['cod_derivacion'])
 
 $afiliacionSolicitud = trim((string)($solicitud['afiliacion'] ?? ''));
 $coberturaTemplateKey = $viewData['coberturaTemplateKey'] ?? null;
-$coberturaTemplateAvailable = (bool)($viewData['coberturaTemplateAvailable'] ?? false);
-$solicitudCoberturaMail = $coberturaTemplateAvailable;
-$solicitudCoberturaMailStyle = $derivacionVencida ? 'warning' : 'info';
-$solicitudCoberturaMailTitle = $derivacionVencida ? 'Derivación vencida' : 'Solicitar cobertura adicional';
-$solicitudCoberturaMailMessage = $derivacionVencida
-        ? 'Afiliación: ' . htmlspecialchars($afiliacionSolicitud, ENT_QUOTES, 'UTF-8')
-        . '. Solicita un nuevo código por correo adjuntando la derivación.'
-        : 'Si necesitas otro código de procedimiento o cobertura para el otro ojo, puedes solicitarla por correo.';
 $coberturaHcNumber = $solicitud['hc_number'] ?? $paciente['hc_number'] ?? '';
 $coberturaFormId = $solicitud['form_id'] ?? $consulta['form_id'] ?? '';
 $coberturaProcedimiento = $solicitud['procedimiento'] ?? '';

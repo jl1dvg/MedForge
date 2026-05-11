@@ -2438,7 +2438,29 @@ class ExamenesParityController
                 'error' => $e->getMessage(),
             ]);
 
-            return $this->dispatch($request, $legacyMethod, $legacyArgs, true);
+            $legacyResponse = $this->dispatch($request, $legacyMethod, $legacyArgs, true);
+            $contentType = (string) $legacyResponse->headers->get('Content-Type', '');
+            $body = (string) $legacyResponse->getContent();
+            $trimmedBody = ltrim($body);
+            $looksJson = str_contains(strtolower($contentType), 'application/json')
+                || ($trimmedBody !== '' && ($trimmedBody[0] === '{' || $trimmedBody[0] === '['));
+
+            if ($looksJson) {
+                return $legacyResponse;
+            }
+
+            Log::error('examenes.v2.native.json_error', [
+                'method' => $legacyMethod,
+                'native_error' => $e->getMessage(),
+                'legacy_status' => $legacyResponse->getStatusCode(),
+                'legacy_content_type' => $contentType,
+                'legacy_body_head' => mb_substr($trimmedBody, 0, 200),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => 'No se pudo cargar la respuesta JSON de Exámenes.',
+            ], 500);
         }
     }
 

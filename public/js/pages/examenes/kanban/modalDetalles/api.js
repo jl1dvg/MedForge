@@ -48,20 +48,10 @@ export function resolveApiBasePath() {
 }
 
 export function buildEstadoApiCandidates() {
-    const { basePath } = getKanbanConfig();
-    const normalizedBase =
-        basePath && basePath !== "/" ? basePath.replace(/\/+$/, "") : "";
-    const apiBase = resolveApiBasePath();
-
     const orderedCandidates = [
         resolveReadPath('/examenes/api/estado'),
-        resolveReadPath(`${apiBase}/examenes/estado`),
-        resolveReadPath('/api/examenes/estado'),
+        '/examenes/api/estado',
     ];
-
-    if (normalizedBase) {
-        orderedCandidates.push(resolveReadPath(`${normalizedBase}/api/estado`));
-    }
 
     const expanded = [];
     const seen = new Set();
@@ -80,6 +70,7 @@ export function buildEstadoApiCandidates() {
 
 export async function fetchWithFallback(urls, options) {
     let lastError;
+    let preferredError;
 
     for (const url of urls) {
         try {
@@ -91,13 +82,17 @@ export async function fetchWithFallback(urls, options) {
             if (response.ok) {
                 return response;
             }
-            lastError = new Error(`HTTP ${response.status}`);
+            const error = new Error(`HTTP ${response.status}`);
+            if (response.status >= 500 && !preferredError) {
+                preferredError = error;
+            }
+            lastError = error;
         } catch (error) {
             lastError = error;
         }
     }
 
-    throw lastError || new Error("No se pudo completar la solicitud");
+    throw preferredError || lastError || new Error("No se pudo completar la solicitud");
 }
 
 export async function fetchDetalleExamen({ hcNumber, examenId, formId }) {

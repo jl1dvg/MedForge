@@ -1,11 +1,29 @@
 @php
-    $fmt = static fn($value, $currency = 'USD') => ($currency ?: 'USD') . ' ' . number_format((float) $value, 2, '.', ',');
+    $fmt = static function ($value, $currency = 'USD'): string {
+        $currency = strtoupper((string) ($currency ?: 'USD'));
+        $symbol = $currency === 'USD' ? '$' : $currency;
+
+        return $symbol . ' ' . number_format((float) $value, 2, ',', '.');
+    };
     $date = static fn($value) => $value ? \Carbon\Carbon::parse($value)->format('d/m/Y') : 'Sin vigencia';
+    $clinicalDate = static fn($value) => $value ? \Carbon\Carbon::parse($value)->format('Y-m-d') : 'Sin fecha';
     $currency = (string) ($proposal['currency'] ?? 'USD');
     $brand = is_array($brand ?? null) ? $brand : [];
     $companyName = (string) ($brand['name'] ?? 'Consulmed');
     $companyLegalName = (string) ($brand['legal_name'] ?? '');
     $logoPath = (string) ($brand['logo_path'] ?? '');
+    $companyContacts = array_filter([
+        $brand['phone'] ?? null,
+        $brand['email'] ?? null,
+        $brand['website'] ?? null,
+        $brand['address'] ?? null,
+    ], static fn($value) => trim((string) $value) !== '');
+    $clinical = is_array($proposal['clinical_context'] ?? null) ? $proposal['clinical_context'] : [];
+    $diagnosticos = is_array($clinical['diagnosticos'] ?? null) ? $clinical['diagnosticos'] : [];
+    $responsible = is_array($proposal['responsible'] ?? null) ? $proposal['responsible'] : [];
+    $responsibleName = trim((string) ($responsible['name'] ?? 'Equipo CIVE'));
+    $responsibleTitle = trim((string) ($responsible['title'] ?? 'COORDINACIÓN QUIRÚRGICA'));
+    $responsibleSignature = trim((string) ($responsible['signature_path'] ?? ''));
 @endphp
 <!doctype html>
 <html lang="es">
@@ -27,10 +45,28 @@
         .items th { background: #0f766e; color: #fff; padding: 8px; text-align: left; }
         .items td { border-bottom: 1px solid #e2e8f0; padding: 8px; }
         .right { text-align: right; }
+        .clinical-title { font-size: 16px; font-weight: 900; letter-spacing: .08em; color: #0f172a; margin: 4px 0 12px; }
+        .clinical { width: 100%; border-collapse: collapse; margin: 8px 0 16px; }
+        .clinical td { padding: 4px 6px; vertical-align: top; }
+        .clinical-label { width: 104px; font-weight: 800; color: #0f172a; }
+        .clinical-value { color: #172033; }
+        .procedure-box { border: 1px solid #cbd5e1; background: #fff; border-radius: 8px; padding: 12px; margin: 12px 0 14px; }
+        .procedure-label { font-weight: 900; color: #0f172a; margin-bottom: 8px; }
+        .procedure-value { font-size: 13px; font-weight: 700; text-transform: uppercase; }
+        .proposal-value { width: 100%; border-collapse: collapse; margin: 14px 0 18px; }
+        .proposal-value td { padding: 8px 0; font-size: 13px; font-weight: 800; }
+        .proposal-value .amount { text-align: right; font-size: 15px; color: #0f766e; }
         .totals { width: 42%; margin-left: auto; border-collapse: collapse; margin-top: 16px; }
         .totals td { padding: 7px 8px; border-bottom: 1px solid #e2e8f0; }
         .total-row td { font-size: 14px; font-weight: 800; color: #0f766e; }
         .notes { margin-top: 18px; border-top: 1px solid #e2e8f0; padding-top: 12px; }
+        .signature { margin-top: 34px; width: 260px; text-align: center; page-break-inside: avoid; }
+        .signature-img { max-width: 210px; max-height: 86px; margin-bottom: 4px; }
+        .signature-line { border-top: 1px solid #334155; height: 1px; margin: 6px auto 8px; width: 220px; }
+        .signature-name { font-weight: 900; text-transform: uppercase; color: #0f172a; }
+        .signature-title { font-weight: 700; color: #334155; }
+        .signature-company { margin-top: 4px; color: #475569; font-size: 10px; }
+        .contacts { margin-top: 4px; color: #64748b; font-size: 9px; }
         .footer { position: fixed; bottom: 0; left: 0; right: 0; color: #64748b; font-size: 9px; text-align: center; }
     </style>
 </head>
@@ -72,6 +108,54 @@
             </td>
         </tr>
     </table>
+
+    <div class="box">
+        <div class="clinical-title">{{ strtoupper((string) ($clinical['type_label'] ?? 'PROPUESTA')) }}</div>
+        <table class="clinical">
+            <tr>
+                <td class="clinical-label">FECHA:</td>
+                <td class="clinical-value">{{ $clinicalDate($clinical['fecha'] ?? $proposal['created_at'] ?? null) }}</td>
+            </tr>
+            <tr>
+                <td class="clinical-label">PACIENTE:</td>
+                <td class="clinical-value">{{ strtoupper((string) ($clinical['paciente'] ?? $proposal['lead_name'] ?? $proposal['customer_name'] ?? 'Paciente')) }}</td>
+            </tr>
+            <tr>
+                <td class="clinical-label">SEGURO:</td>
+                <td class="clinical-value">{{ strtoupper((string) ($clinical['seguro'] ?? 'PARTICULAR / SIN REGISTRO')) }}</td>
+            </tr>
+            <tr>
+                <td class="clinical-label">MÉDICO:</td>
+                <td class="clinical-value">{{ strtoupper((string) ($clinical['medico'] ?? 'SIN MÉDICO REGISTRADO')) }}</td>
+            </tr>
+            <tr>
+                <td class="clinical-label">OJO:</td>
+                <td class="clinical-value">{{ strtoupper((string) ($clinical['ojo'] ?? 'SIN LATERALIDAD REGISTRADA')) }}</td>
+            </tr>
+            <tr>
+                <td class="clinical-label">DX:</td>
+                <td class="clinical-value">
+                    @forelse($diagnosticos as $diagnostico)
+                        <div>{{ strtoupper((string) $diagnostico) }}</div>
+                    @empty
+                        <div>SIN DIAGNÓSTICO REGISTRADO</div>
+                    @endforelse
+                </td>
+            </tr>
+        </table>
+
+        <div class="procedure-box">
+            <div class="procedure-label">PROCEDIMIENTO A REALIZAR:</div>
+            <div class="procedure-value">{{ $clinical['procedimiento'] ?? $proposal['title'] ?? 'Propuesta clínica' }}</div>
+        </div>
+
+        <table class="proposal-value">
+            <tr>
+                <td>VALOR DEL PROCEDIMIENTO</td>
+                <td class="amount">{{ $fmt($proposal['total'] ?? 0, $currency) }}</td>
+            </tr>
+        </table>
+    </div>
 
     <table class="items">
         <thead>
@@ -124,6 +208,22 @@
 
     <div class="notes">
         <strong>Enlace de revisión:</strong> {{ $publicUrl }}
+    </div>
+
+    <div class="signature">
+        @if($responsibleSignature !== '')
+            <img class="signature-img" src="{{ $responsibleSignature }}" alt="{{ $responsibleName }}">
+        @endif
+        <div class="signature-line"></div>
+        <div class="signature-name">{{ $responsibleName }}</div>
+        <div class="signature-title">{{ $responsibleTitle }}</div>
+        <div class="signature-company">{{ $companyLegalName !== '' ? $companyLegalName : $companyName }}</div>
+        @if(!empty($companyContacts))
+            <div class="contacts">
+                Contactos<br>
+                {{ implode(' · ', array_map(static fn($value): string => (string) $value, $companyContacts)) }}
+            </div>
+        @endif
     </div>
 
     <div class="footer">Documento generado por MedForge / {{ $companyName }}.</div>

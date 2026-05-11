@@ -12,6 +12,7 @@ $crm = $viewData['crm'] ?? [];
 $crmDetalle = $crm['detalle'] ?? [];
 $crmAdjuntos = $crm['adjuntos'] ?? [];
 $derivacion = $viewData['derivacion'] ?? [];
+$derivacionTab = $viewData['derivacionTab'] ?? [];
 
 if (empty($examen)) {
     echo '<p class="text-muted mb-0">No se encontraron detalles para este examen.</p>';
@@ -153,7 +154,6 @@ if (!empty($derivacionId)) {
 
 $coberturaTemplateKey = $viewData['coberturaTemplateKey'] ?? null;
 $coberturaTemplateAvailable = (bool) ($viewData['coberturaTemplateAvailable'] ?? false);
-$examenCoberturaMail = $coberturaTemplateAvailable;
 $examenCoberturaMailStyle = $derivacionVencida ? 'warning' : 'info';
 $examenCoberturaMailTitle = $derivacionVencida ? 'Derivación vencida' : 'Solicitar cobertura adicional';
 $examenCoberturaMailMessage = $derivacionVencida
@@ -187,6 +187,10 @@ if ($coberturaMailSentAt !== '') {
         $coberturaMailSentLabel .= ' por ' . $coberturaMailSentBy;
     }
 }
+$coverageAction = $derivacionTab['actions']['coverage_mail'] ?? [];
+$authorizationAction = $derivacionTab['actions']['authorization'] ?? [];
+$downloadPdfAction = $derivacionTab['actions']['download_pdf'] ?? [];
+$derivacionVigenciaUi = $derivacionTab['vigencia'] ?? [];
 ?>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
 
@@ -247,6 +251,8 @@ if ($coberturaMailSentAt !== '') {
     <div id="prefacturaCoberturaData"
          class="d-none"
          data-derivacion-vencida="<?= $derivacionVencida ? '1' : '0' ?>"
+         data-has-derivacion="<?= $hasDerivacion ? '1' : '0' ?>"
+         data-template-available="<?= $coberturaTemplateAvailable ? '1' : '0' ?>"
          data-afiliacion="<?= htmlspecialchars($afiliacion, ENT_QUOTES, 'UTF-8') ?>"
          data-nombre="<?= htmlspecialchars($nombrePaciente !== '' ? $nombrePaciente : 'Paciente', ENT_QUOTES, 'UTF-8') ?>"
          data-hc="<?= htmlspecialchars((string) $coberturaHcNumber, ENT_QUOTES, 'UTF-8') ?>"
@@ -256,42 +262,13 @@ if ($coberturaMailSentAt !== '') {
          data-form-id="<?= htmlspecialchars((string) $coberturaFormId, ENT_QUOTES, 'UTF-8') ?>"
          data-derivacion-pdf="<?= htmlspecialchars((string) ($archivoHref ?? ''), ENT_QUOTES, 'UTF-8') ?>"
          data-template-key="<?= htmlspecialchars((string) ($coberturaTemplateKey ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+         data-sent-label="<?= htmlspecialchars((string) $coberturaMailSentLabel, ENT_QUOTES, 'UTF-8') ?>"
+         data-sent-at="<?= htmlspecialchars((string) $coberturaMailSentAt, ENT_QUOTES, 'UTF-8') ?>"
+         data-sent-by="<?= htmlspecialchars((string) $coberturaMailSentBy, ENT_QUOTES, 'UTF-8') ?>"
          data-examen-id="<?= htmlspecialchars((string) ($examen['id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"></div>
 
     <div class="tab-content border border-top-0 rounded-bottom p-3 bg-white" id="prefacturaTabsContent">
         <div class="tab-pane fade show active" id="prefactura-tab-resumen" role="tabpanel" aria-labelledby="prefactura-tab-resumen-tab">
-            <?php if ($examenCoberturaMail): ?>
-                <div class="alert alert-<?= $examenCoberturaMailStyle ?> border d-flex flex-column gap-2 mb-3">
-                    <div class="d-flex align-items-center gap-2">
-                        <i class="bi bi-envelope-exclamation"></i>
-                        <div>
-                            <div class="fw-semibold"><?= $examenCoberturaMailTitle ?></div>
-                            <small class="text-muted">
-                                <?= $examenCoberturaMailMessage ?>
-                            </small>
-                        </div>
-                    </div>
-                    <div class="d-flex flex-wrap gap-2">
-                        <button type="button" class="btn btn-warning btn-sm"
-                                id="btnPrefacturaSolicitarCoberturaMail">
-                            <i class="bi bi-envelope-fill me-1"></i> Solicitar cobertura por correo
-                        </button>
-                        <?php if ($archivoHref): ?>
-                            <a class="btn btn-outline-secondary btn-sm"
-                               href="<?= htmlspecialchars($archivoHref, ENT_QUOTES, 'UTF-8') ?>"
-                               target="_blank" rel="noopener">
-                                <i class="bi bi-file-earmark-arrow-down me-1"></i> Descargar derivación
-                            </a>
-                        <?php endif; ?>
-                    </div>
-                    <div id="prefacturaCoberturaMailStatus"
-                         class="small fw-semibold text-success <?= $coberturaMailSentLabel !== '' ? '' : 'd-none' ?>"
-                         data-sent-at="<?= htmlspecialchars($coberturaMailSentAt, ENT_QUOTES, 'UTF-8') ?>"
-                         data-sent-by="<?= htmlspecialchars($coberturaMailSentBy, ENT_QUOTES, 'UTF-8') ?>">
-                        <?= htmlspecialchars($coberturaMailSentLabel, ENT_QUOTES, 'UTF-8') ?>
-                    </div>
-                </div>
-            <?php endif; ?>
             <div class="row g-3">
                 <div class="col-lg-6">
                     <div class="card border">
@@ -451,27 +428,60 @@ if ($coberturaMailSentAt !== '') {
 
 <div class="tab-pane fade" id="prefactura-tab-derivacion" role="tabpanel" aria-labelledby="prefactura-tab-derivacion-tab">
             <div id="prefacturaDerivacionContent">
-                <?php if (!$hasDerivacion): ?>
+                <?php if (!empty($coverageAction['visible'])): ?>
+                    <div class="alert alert-<?= htmlspecialchars((string)($coverageAction['style'] ?? 'info'), ENT_QUOTES, 'UTF-8') ?> border d-flex flex-column gap-2 mb-3">
+                        <div class="d-flex align-items-center gap-2">
+                            <i class="bi bi-envelope-exclamation"></i>
+                            <div>
+                                <div class="fw-semibold"><?= htmlspecialchars((string)($coverageAction['title'] ?? 'Solicitar cobertura adicional'), ENT_QUOTES, 'UTF-8') ?></div>
+                                <small class="text-muted">
+                                    <?= htmlspecialchars((string)($coverageAction['message'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
+                                </small>
+                            </div>
+                        </div>
+                        <div class="d-flex flex-wrap gap-2">
+                            <button type="button" class="btn btn-warning btn-sm"
+                                    id="btnPrefacturaSolicitarCoberturaMail">
+                                <i class="bi bi-envelope-fill me-1"></i> <?= htmlspecialchars((string)($coverageAction['button_label'] ?? 'Solicitar cobertura por correo'), ENT_QUOTES, 'UTF-8') ?>
+                            </button>
+                            <?php if (!empty($downloadPdfAction['visible']) && !empty($downloadPdfAction['href'])): ?>
+                                <a class="btn btn-outline-secondary btn-sm"
+                                   href="<?= htmlspecialchars((string)$downloadPdfAction['href'], ENT_QUOTES, 'UTF-8') ?>"
+                                   target="_blank" rel="noopener">
+                                    <i class="bi bi-file-earmark-arrow-down me-1"></i> <?= htmlspecialchars((string)($downloadPdfAction['label'] ?? 'Descargar derivación'), ENT_QUOTES, 'UTF-8') ?>
+                                </a>
+                            <?php endif; ?>
+                        </div>
+                        <div id="prefacturaCoberturaMailStatus"
+                             class="small fw-semibold text-success <?= !empty($coverageAction['status_label']) ? '' : 'd-none' ?>"
+                             data-sent-at="<?= htmlspecialchars((string)($coverageAction['sent_at'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                             data-sent-by="<?= htmlspecialchars((string)($coverageAction['sent_by'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+                            <?= htmlspecialchars((string)($coverageAction['status_label'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
+                        </div>
+                    </div>
+                <?php endif; ?>
+
+                <?php if (!empty($authorizationAction['visible'])): ?>
                     <div class="card border-0 shadow-sm">
                         <div class="card-body d-flex flex-column gap-2">
                             <div class="d-flex flex-wrap align-items-center gap-2">
                                 <span class="badge bg-secondary">Sin derivación</span>
-                                <span class="text-muted">Seguro particular: requiere autorización.</span>
+                                <span class="text-muted"><?= htmlspecialchars((string)($authorizationAction['message'] ?? 'No hay derivación registrada para este examen.'), ENT_QUOTES, 'UTF-8') ?></span>
                             </div>
                             <button type="button" class="btn btn-outline-primary btn-sm" id="btnSolicitarAutorizacion">
-                                Solicitar autorización
+                                <?= htmlspecialchars((string)($authorizationAction['button_label'] ?? 'Solicitar autorización'), ENT_QUOTES, 'UTF-8') ?>
                             </button>
                         </div>
                     </div>
                 <?php else: ?>
-                    <?php if (!empty($archivoHref) || !empty($derivacion['derivacion_id']) || !empty($derivacion['id'])): ?>
+                    <?php if (!empty($downloadPdfAction['visible']) && !empty($downloadPdfAction['href'])): ?>
                         <div class="alert alert-info d-flex align-items-center justify-content-between flex-wrap">
                             <div>
                                 <strong>📎 Derivación:</strong>
                                 <span class="text-muted ms-1">Documento adjunto disponible.</span>
                             </div>
                             <a class="btn btn-sm btn-outline-primary mt-2 mt-md-0"
-                               href="<?= htmlspecialchars($archivoHref, ENT_QUOTES, 'UTF-8') ?>" target="_blank"
+                               href="<?= htmlspecialchars((string)$downloadPdfAction['href'], ENT_QUOTES, 'UTF-8') ?>" target="_blank"
                                rel="noopener">
                                 <i class="bi bi-file-earmark-pdf"></i> Abrir PDF
                             </a>
@@ -493,10 +503,10 @@ if ($coberturaMailSentAt !== '') {
                                 <?= htmlspecialchars($derivacion['fecha_vigencia'] ?? 'No disponible', ENT_QUOTES, 'UTF-8') ?>
                             </li>
                             <li class="list-group-item">
-                                <i class="bi bi-hourglass-split"></i> <?= $vigenciaTexto ?>
-                                <?php if ($vigenciaBadge): ?>
-                                    <span class="badge bg-<?= htmlspecialchars($vigenciaBadge['color'], ENT_QUOTES, 'UTF-8') ?> ms-2">
-                                        <?= htmlspecialchars($vigenciaBadge['texto'], ENT_QUOTES, 'UTF-8') ?>
+                                <i class="bi bi-hourglass-split"></i> <?= $derivacionVigenciaUi['text'] ?? $vigenciaTexto ?>
+                                <?php if (!empty($derivacionVigenciaUi['badge'])): ?>
+                                    <span class="badge bg-<?= htmlspecialchars((string)($derivacionVigenciaUi['badge']['color'] ?? 'secondary'), ENT_QUOTES, 'UTF-8') ?> ms-2">
+                                        <?= htmlspecialchars((string)($derivacionVigenciaUi['badge']['texto'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
                                     </span>
                                 <?php endif; ?>
                             </li>

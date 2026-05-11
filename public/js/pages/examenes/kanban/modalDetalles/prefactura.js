@@ -78,6 +78,7 @@ export function abrirPrefactura({ hc, formId, examenId }) {
             );
             if (derivacionResult.status === "fulfilled") {
                 renderDerivacionContent(derivacionContainer, derivacionResult.value);
+                attachPrefacturaCoberturaMail();
                 const derivacion = derivacionResult.value?.derivacion || null;
                 const vigencia = derivacion?.fecha_vigencia || null;
                 const vigenciaStatus = derivacionResult.value?.vigencia_status || null;
@@ -116,6 +117,7 @@ export function abrirPrefactura({ hc, formId, examenId }) {
                 if (derivacionContainer) {
                     derivacionContainer.innerHTML = buildDerivacionMissingHtml();
                 }
+                attachPrefacturaCoberturaMail();
             }
         }
     );

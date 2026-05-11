@@ -54,6 +54,9 @@ class CrmProposalService
         $data['public_url'] = $this->publicUrl($data);
         $data['pdf_url'] = '/v2/crm/proposals/' . $id . '/pdf';
         $data['solicitud_id'] = $this->resolveSolicitudId($data);
+        $data['examen_id'] = $this->resolveExamenId($data);
+        $data['clinical_context'] = $this->resolveClinicalContext($data);
+        $data['responsible'] = $this->resolveResponsible($data, $data['clinical_context']);
 
         return $data;
     }
@@ -187,5 +190,317 @@ class CrmProposalService
             ->first(['solicitud_id']);
 
         return $row ? (int) $row->solicitud_id : null;
+    }
+
+    /**
+     * @param array<string,mixed> $proposal
+     */
+    private function resolveExamenId(array $proposal): ?int
+    {
+        $leadId = (int) ($proposal['lead_id'] ?? 0);
+        if ($leadId <= 0 || !Schema::hasTable('examen_crm_detalles')) {
+            return null;
+        }
+
+        $row = DB::table('examen_crm_detalles')
+            ->where('crm_lead_id', $leadId)
+            ->orderByDesc('examen_id')
+            ->first(['examen_id']);
+
+        return $row ? (int) $row->examen_id : null;
+    }
+
+    /**
+     * @param array<string,mixed> $proposal
+     * @return array<string,mixed>
+     */
+    private function resolveClinicalContext(array $proposal): array
+    {
+        $solicitudId = (int) ($proposal['solicitud_id'] ?? 0);
+        if ($solicitudId > 0) {
+            $context = $this->resolveSolicitudClinicalContext($solicitudId, $proposal);
+            if ($context !== []) {
+                return $context;
+            }
+        }
+
+        $examenId = (int) ($proposal['examen_id'] ?? 0);
+        if ($examenId > 0) {
+            $context = $this->resolveExamenClinicalContext($examenId, $proposal);
+            if ($context !== []) {
+                return $context;
+            }
+        }
+
+        return [
+            'type' => 'proposal',
+            'type_label' => 'PROPUESTA',
+            'fecha' => $proposal['created_at'] ?? null,
+            'paciente' => $proposal['lead_name'] ?? $proposal['customer_name'] ?? 'Paciente',
+            'seguro' => null,
+            'medico' => null,
+            'ojo' => null,
+            'diagnosticos' => [],
+            'procedimiento' => $proposal['title'] ?? 'Propuesta clínica',
+            'responsable_id' => null,
+        ];
+    }
+
+    /**
+     * @param array<string,mixed> $proposal
+     * @return array<string,mixed>
+     */
+    private function resolveSolicitudClinicalContext(int $solicitudId, array $proposal): array
+    {
+        if (!Schema::hasTable('solicitud_procedimiento')) {
+            return [];
+        }
+
+        $row = DB::table('solicitud_procedimiento as sp')
+            ->leftJoin('patient_data as pd', 'sp.hc_number', '=', 'pd.hc_number')
+            ->leftJoin('consulta_data as cd', function ($join): void {
+                $join->on('sp.hc_number', '=', 'cd.hc_number')
+                    ->on('sp.form_id', '=', 'cd.form_id');
+            })
+            ->leftJoin('solicitud_crm_detalles as detalles', 'detalles.solicitud_id', '=', 'sp.id')
+            ->where('sp.id', $solicitudId)
+            ->select([
+                'sp.id',
+                'sp.hc_number',
+                'sp.form_id',
+                'sp.doctor',
+                'sp.procedimiento',
+                'sp.ojo',
+                'sp.created_at',
+                'cd.fecha as fecha_consulta',
+                'pd.afiliacion',
+                'pd.fname',
+                'pd.mname',
+                'pd.lname',
+                'pd.lname2',
+                'detalles.responsable_id',
+            ])
+            ->first();
+
+        if (!$row) {
+            return [];
+        }
+
+        $data = (array) $row;
+        $diagnosticos = $this->diagnosticosByFormId((string) ($data['form_id'] ?? ''));
+
+        return [
+            'type' => 'solicitud',
+            'type_label' => 'CIRUGIA',
+            'id' => (int) $data['id'],
+            'hc_number' => $data['hc_number'] ?? null,
+            'form_id' => $data['form_id'] ?? null,
+            'fecha' => $data['fecha_consulta'] ?? $data['created_at'] ?? $proposal['created_at'] ?? null,
+            'paciente' => $this->fullNameFromParts($data) ?: (string) ($proposal['lead_name'] ?? $proposal['customer_name'] ?? 'Paciente'),
+            'seguro' => $data['afiliacion'] ?? null,
+            'medico' => $data['doctor'] ?? null,
+            'ojo' => $data['ojo'] ?? null,
+            'diagnosticos' => $diagnosticos,
+            'procedimiento' => $data['procedimiento'] ?? $proposal['title'] ?? null,
+            'responsable_id' => isset($data['responsable_id']) ? (int) $data['responsable_id'] : null,
+        ];
+    }
+
+    /**
+     * @param array<string,mixed> $proposal
+     * @return array<string,mixed>
+     */
+    private function resolveExamenClinicalContext(int $examenId, array $proposal): array
+    {
+        if (!Schema::hasTable('consulta_examenes')) {
+            return [];
+        }
+
+        $row = DB::table('consulta_examenes as ce')
+            ->leftJoin('patient_data as pd', 'ce.hc_number', '=', 'pd.hc_number')
+            ->leftJoin('examen_crm_detalles as detalles', 'detalles.examen_id', '=', 'ce.id')
+            ->where('ce.id', $examenId)
+            ->select([
+                'ce.id',
+                'ce.hc_number',
+                'ce.form_id',
+                'ce.consulta_fecha',
+                'ce.created_at',
+                'ce.doctor',
+                'ce.solicitante',
+                'ce.examen_codigo',
+                'ce.examen_nombre',
+                'ce.lateralidad',
+                'pd.afiliacion',
+                'pd.fname',
+                'pd.mname',
+                'pd.lname',
+                'pd.lname2',
+                'detalles.responsable_id',
+            ])
+            ->first();
+
+        if (!$row) {
+            return [];
+        }
+
+        $data = (array) $row;
+        $examName = trim((string) (($data['examen_codigo'] ?? '') . ' - ' . ($data['examen_nombre'] ?? '')), " \t\n\r\0\x0B-");
+
+        return [
+            'type' => 'examen',
+            'type_label' => 'EXAMEN',
+            'id' => (int) $data['id'],
+            'hc_number' => $data['hc_number'] ?? null,
+            'form_id' => $data['form_id'] ?? null,
+            'fecha' => $data['consulta_fecha'] ?? $data['created_at'] ?? $proposal['created_at'] ?? null,
+            'paciente' => $this->fullNameFromParts($data) ?: (string) ($proposal['lead_name'] ?? $proposal['customer_name'] ?? 'Paciente'),
+            'seguro' => $data['afiliacion'] ?? null,
+            'medico' => $data['solicitante'] ?? $data['doctor'] ?? null,
+            'ojo' => $data['lateralidad'] ?? null,
+            'diagnosticos' => $this->diagnosticosByFormId((string) ($data['form_id'] ?? '')),
+            'procedimiento' => $examName !== '' ? $examName : ($proposal['title'] ?? null),
+            'responsable_id' => isset($data['responsable_id']) ? (int) $data['responsable_id'] : null,
+        ];
+    }
+
+    /**
+     * @return array<int,string>
+     */
+    private function diagnosticosByFormId(string $formId): array
+    {
+        $formId = trim($formId);
+        if ($formId === '' || !Schema::hasTable('diagnosticos_asignados')) {
+            return [];
+        }
+
+        return DB::table('diagnosticos_asignados')
+            ->where('form_id', $formId)
+            ->orderBy('id')
+            ->get()
+            ->map(function (object $row): string {
+                $data = (array) $row;
+                $code = trim((string) ($data['dx_code'] ?? $data['codigo'] ?? $data['cie10'] ?? $data['code'] ?? ''));
+                $description = trim((string) ($data['descripcion'] ?? $data['diagnostico'] ?? $data['nombre'] ?? $data['dx'] ?? ''));
+
+                return trim($code . ($code !== '' && $description !== '' ? ' - ' : '') . $description);
+            })
+            ->filter(static fn(string $value): bool => $value !== '')
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param array<string,mixed> $data
+     */
+    private function fullNameFromParts(array $data): string
+    {
+        return trim(preg_replace('/\s+/', ' ', implode(' ', array_filter([
+            $data['fname'] ?? null,
+            $data['mname'] ?? null,
+            $data['lname'] ?? null,
+            $data['lname2'] ?? null,
+        ], static fn($value): bool => trim((string) $value) !== ''))) ?? '');
+    }
+
+    /**
+     * @param array<string,mixed> $proposal
+     * @param array<string,mixed> $clinicalContext
+     * @return array<string,mixed>
+     */
+    private function resolveResponsible(array $proposal, array $clinicalContext): array
+    {
+        $candidateIds = [
+            $proposal['created_by'] ?? null,
+            $clinicalContext['responsable_id'] ?? null,
+            $proposal['updated_by'] ?? null,
+        ];
+
+        foreach ($candidateIds as $candidateId) {
+            $userId = (int) ($candidateId ?? 0);
+            if ($userId <= 0 || !Schema::hasTable('users')) {
+                continue;
+            }
+
+            $row = DB::table('users')->where('id', $userId)->first($this->userSelectColumns());
+            if (!$row) {
+                continue;
+            }
+
+            $data = (array) $row;
+            $name = trim((string) ($data['full_name'] ?? $data['nombre'] ?? ''));
+            if ($name === '') {
+                $name = $this->fullNameFromParts($data);
+            }
+
+            return [
+                'id' => $userId,
+                'name' => $name !== '' ? $name : 'Equipo CIVE',
+                'title' => trim((string) ($data['position'] ?? $data['cargo'] ?? '')) ?: 'COORDINACIÓN QUIRÚRGICA',
+                'email' => $data['email'] ?? null,
+                'signature_path' => $this->resolvePublicAssetPath((string) ($data['seal_signature_path'] ?? $data['signature_path'] ?? $data['firma'] ?? '')),
+            ];
+        }
+
+        return [
+            'id' => null,
+            'name' => 'Equipo CIVE',
+            'title' => 'COORDINACIÓN QUIRÚRGICA',
+            'email' => null,
+            'signature_path' => null,
+        ];
+    }
+
+    /**
+     * @return array<int,string>
+     */
+    private function userSelectColumns(): array
+    {
+        $columns = ['id'];
+        foreach (['nombre', 'full_name', 'fname', 'mname', 'lname', 'lname2', 'email', 'position', 'cargo', 'firma', 'signature_path', 'seal_signature_path'] as $column) {
+            if (Schema::hasColumn('users', $column)) {
+                $columns[] = $column;
+            }
+        }
+
+        return $columns;
+    }
+
+    private function resolvePublicAssetPath(string $value): ?string
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return null;
+        }
+
+        if (preg_match('#^https?://#i', $value) === 1 || (str_starts_with($value, DIRECTORY_SEPARATOR) && is_file($value))) {
+            return $value;
+        }
+
+        $relative = ltrim(parse_url($value, PHP_URL_PATH) ?: $value, '/');
+        $candidates = array_values(array_unique([
+            $relative,
+            'uploads/users/' . basename($relative),
+            'uploads/' . basename($relative),
+        ]));
+
+        $roots = [];
+        if (function_exists('public_path')) {
+            $roots[] = public_path();
+        }
+        if (function_exists('base_path')) {
+            $roots[] = base_path('../public');
+        }
+
+        foreach ($candidates as $candidate) {
+            foreach (array_unique($roots) as $root) {
+                $absolute = rtrim($root, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $candidate);
+                if (is_file($absolute)) {
+                    return $absolute;
+                }
+            }
+        }
+
+        return null;
     }
 }

@@ -12,6 +12,7 @@ use DateTimeImmutable;
 use DateTimeInterface;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Log;
 use Modules\CRM\Services\LeadConfigurationService;
 use Modules\Examenes\Models\ExamenModel;
 use Modules\Examenes\Services\ExamenCrmService;
@@ -569,7 +570,11 @@ class ExamenesParityService
     {
         try {
             $resumen = $this->crmService->obtenerResumen($examenId);
-        } catch (Throwable) {
+        } catch (Throwable $e) {
+            Log::error('examenes.crm_resumen.error', [
+                'examen_id' => $examenId,
+                'error' => $e->getMessage(),
+            ]);
             return [
                 'status' => 500,
                 'payload' => [

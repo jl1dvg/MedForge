@@ -1131,6 +1131,7 @@ class ExamenCrmService
 
     private function obtenerDetalleExamen(int $examenId): ?array
     {
+        $tareasJoinSql = $this->buildExamenCrmTasksJoinSql();
         $sql = <<<'SQL'
             SELECT
                 ce.id,
@@ -1193,27 +1194,27 @@ class ExamenCrmService
                 FROM examen_crm_adjuntos
                 GROUP BY examen_id
             ) adjuntos ON adjuntos.examen_id = ce.id
-            LEFT JOIN (
-                SELECT source_ref_id,
-                       COUNT(*) AS tareas_total,
-                       SUM(CASE WHEN status IN ('pendiente','en_progreso','en_proceso') THEN 1 ELSE 0 END) AS tareas_pendientes,
-                       MIN(CASE WHEN status IN ('pendiente','en_progreso','en_proceso') THEN COALESCE(due_at, CONCAT(due_date, " 23:59:59")) END) AS proximo_vencimiento
-                FROM crm_tasks
-                WHERE source_module = 'examenes'
-                  AND company_id = :company_id
-                GROUP BY source_ref_id
-            ) tareas ON tareas.source_ref_id = ce.id
+            __TAREAS_JOIN__
             WHERE ce.id = :examen_id
             LIMIT 1
         SQL;
 
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute([
-            ':examen_id' => $examenId,
-            ':company_id' => $this->resolveCompanyId(),
-        ]);
+        $sql = str_replace('__TAREAS_JOIN__', $tareasJoinSql, $sql);
 
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        try {
+            $stmt = $this->pdo->prepare($sql);
+            $bindings = [':examen_id' => $examenId];
+            if (str_contains($sql, ':company_id')) {
+                $bindings[':company_id'] = $this->resolveCompanyId();
+            }
+            $stmt->execute($bindings);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        } catch (Throwable) {
+            $stmt = $this->pdo->prepare($this->buildExamenDetalleFallbackSql());
+            $stmt->execute([':examen_id' => $examenId]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        }
+
         if (!$row) {
             return null;
         }
@@ -1229,6 +1230,122 @@ class ExamenCrmService
         $row['dias_en_estado'] = $this->calcularDiasEnEstado($row['created_at'] ?? null);
 
         return $row;
+    }
+
+    private function buildExamenCrmTasksJoinSql(): string
+    {
+        if (!$this->tableExists('crm_tasks')) {
+            return 'LEFT JOIN (
+                SELECT NULL AS source_ref_id, 0 AS tareas_total, 0 AS tareas_pendientes, NULL AS proximo_vencimiento
+            ) tareas ON 1 = 0';
+        }
+
+        $columns = $this->tableColumns('crm_tasks');
+        if ($columns === []) {
+            return 'LEFT JOIN (
+                SELECT NULL AS source_ref_id, 0 AS tareas_total, 0 AS tareas_pendientes, NULL AS proximo_vencimiento
+            ) tareas ON 1 = 0';
+        }
+
+        $hasSourceModule = in_array('source_module', $columns, true);
+        $hasSourceRefId = in_array('source_ref_id', $columns, true);
+        $hasStatus = in_array('status', $columns, true);
+        $hasCompanyId = in_array('company_id', $columns, true);
+        $hasDueAt = in_array('due_at', $columns, true);
+        $hasDueDate = in_array('due_date', $columns, true);
+
+        if (!$hasSourceModule || !$hasSourceRefId) {
+            return 'LEFT JOIN (
+                SELECT NULL AS source_ref_id, 0 AS tareas_total, 0 AS tareas_pendientes, NULL AS proximo_vencimiento
+            ) tareas ON 1 = 0';
+        }
+
+        $pendingExpr = $hasStatus
+            ? "SUM(CASE WHEN status IN ('pendiente','en_progreso','en_proceso') THEN 1 ELSE 0 END)"
+            : '0';
+        $dueExpr = $hasStatus
+            ? ($hasDueAt && $hasDueDate
+                ? "MIN(CASE WHEN status IN ('pendiente','en_progreso','en_proceso') THEN COALESCE(due_at, CONCAT(due_date, ' 23:59:59')) END)"
+                : ($hasDueAt
+                    ? "MIN(CASE WHEN status IN ('pendiente','en_progreso','en_proceso') THEN due_at END)"
+                    : ($hasDueDate
+                        ? "MIN(CASE WHEN status IN ('pendiente','en_progreso','en_proceso') THEN CONCAT(due_date, ' 23:59:59') END)"
+                        : 'NULL')))
+            : 'NULL';
+        $companyFilter = $hasCompanyId ? ' AND company_id = :company_id' : '';
+
+        return sprintf(
+            "LEFT JOIN (
+                SELECT source_ref_id,
+                       COUNT(*) AS tareas_total,
+                       %s AS tareas_pendientes,
+                       %s AS proximo_vencimiento
+                FROM crm_tasks
+                WHERE source_module = 'examenes'%s
+                GROUP BY source_ref_id
+            ) tareas ON tareas.source_ref_id = ce.id",
+            $pendingExpr,
+            $dueExpr,
+            $companyFilter
+        );
+    }
+
+    private function buildExamenDetalleFallbackSql(): string
+    {
+        return <<<'SQL'
+            SELECT
+                ce.id,
+                ce.hc_number,
+                ce.form_id,
+                ce.estado,
+                ce.prioridad,
+                ce.doctor,
+                ce.solicitante,
+                ce.examen_nombre,
+                ce.examen_codigo,
+                ce.lateralidad,
+                ce.observaciones,
+                ce.created_at,
+                ce.turno,
+                ce.consulta_fecha,
+                pd.afiliacion,
+                pd.celular AS paciente_celular,
+                CONCAT(TRIM(pd.fname), ' ', TRIM(pd.mname), ' ', TRIM(pd.lname), ' ', TRIM(pd.lname2)) AS paciente_nombre,
+                detalles.crm_lead_id AS crm_lead_id,
+                detalles.pipeline_stage AS crm_pipeline_stage,
+                detalles.fuente AS crm_fuente,
+                detalles.contacto_email AS crm_contacto_email,
+                detalles.contacto_telefono AS crm_contacto_telefono,
+                detalles.responsable_id AS crm_responsable_id,
+                detalles.followers AS crm_followers,
+                responsable.nombre AS crm_responsable_nombre,
+                responsable.email AS crm_responsable_email,
+                responsable.profile_photo AS crm_responsable_avatar,
+                (
+                    SELECT u.profile_photo
+                    FROM users u
+                    WHERE u.profile_photo IS NOT NULL
+                      AND u.profile_photo <> ''
+                      AND LOWER(TRIM(ce.doctor)) LIKE CONCAT('%', LOWER(TRIM(u.nombre)), '%')
+                    ORDER BY u.id ASC
+                    LIMIT 1
+                ) AS doctor_avatar,
+                cl.status AS crm_lead_status,
+                cl.source AS crm_lead_source,
+                cl.updated_at AS crm_lead_updated_at,
+                0 AS crm_total_notas,
+                0 AS crm_total_adjuntos,
+                0 AS crm_tareas_pendientes,
+                0 AS crm_tareas_total,
+                NULL AS crm_proximo_vencimiento
+            FROM consulta_examenes ce
+            INNER JOIN patient_data pd ON ce.hc_number = pd.hc_number
+            LEFT JOIN examen_crm_detalles detalles ON detalles.examen_id = ce.id
+            LEFT JOIN users responsable ON detalles.responsable_id = responsable.id
+            LEFT JOIN crm_leads cl ON detalles.crm_lead_id = cl.id
+            WHERE ce.id = :examen_id
+            LIMIT 1
+        SQL;
     }
 
     private function formatProfilePhoto(?string $path): ?string
@@ -1365,30 +1482,99 @@ class ExamenCrmService
 
     private function obtenerTareas(int $examenId): array
     {
-        $companyId = $this->resolveCompanyId();
-        $stmt = $this->pdo->prepare(
-            'SELECT t.id, t.title AS titulo, t.description AS descripcion, t.status AS estado, t.assigned_to, t.created_by,
-                    t.priority, COALESCE(t.due_date, DATE(t.due_at)) AS due_date, t.remind_at, t.created_at, t.completed_at,
-                    t.checklist_slug, t.metadata,
+        if (!$this->tableExists('crm_tasks')) {
+            return [];
+        }
+
+        $columns = $this->tableColumns('crm_tasks');
+        $required = ['id', 'title', 'source_module', 'source_ref_id'];
+        foreach ($required as $column) {
+            if (!in_array($column, $columns, true)) {
+                return [];
+            }
+        }
+
+        $hasCompanyId = in_array('company_id', $columns, true);
+        $hasDescription = in_array('description', $columns, true);
+        $hasStatus = in_array('status', $columns, true);
+        $hasAssignedTo = in_array('assigned_to', $columns, true);
+        $hasCreatedBy = in_array('created_by', $columns, true);
+        $hasPriority = in_array('priority', $columns, true);
+        $hasDueDate = in_array('due_date', $columns, true);
+        $hasDueAt = in_array('due_at', $columns, true);
+        $hasRemindAt = in_array('remind_at', $columns, true);
+        $hasCreatedAt = in_array('created_at', $columns, true);
+        $hasCompletedAt = in_array('completed_at', $columns, true);
+        $hasChecklistSlug = in_array('checklist_slug', $columns, true);
+        $hasMetadata = in_array('metadata', $columns, true);
+
+        $statusExpr = $hasStatus ? 't.status' : '"pendiente"';
+        $descriptionExpr = $hasDescription ? 't.description' : 'NULL';
+        $assignedToExpr = $hasAssignedTo ? 't.assigned_to' : 'NULL';
+        $createdByExpr = $hasCreatedBy ? 't.created_by' : 'NULL';
+        $priorityExpr = $hasPriority ? 't.priority' : '"media"';
+        $dueDateExpr = $hasDueDate && $hasDueAt
+            ? 'COALESCE(t.due_date, DATE(t.due_at))'
+            : ($hasDueDate ? 't.due_date' : ($hasDueAt ? 'DATE(t.due_at)' : 'NULL'));
+        $remindAtExpr = $hasRemindAt ? 't.remind_at' : 'NULL';
+        $createdAtExpr = $hasCreatedAt ? 't.created_at' : 'NULL';
+        $completedAtExpr = $hasCompletedAt ? 't.completed_at' : 'NULL';
+        $checklistSlugExpr = $hasChecklistSlug ? 't.checklist_slug' : 'NULL';
+        $metadataExpr = $hasMetadata ? 't.metadata' : 'NULL';
+        $pendingOrderExpr = $hasStatus
+            ? 'CASE WHEN t.status IN ("pendiente", "en_progreso", "en_proceso") THEN 0 ELSE 1 END'
+            : '0';
+        $dueNullOrderExpr = ($hasDueDate || $hasDueAt) ? ($dueDateExpr . ' IS NULL') : '1';
+        $companyFilter = $hasCompanyId ? ' AND t.company_id = :company_id' : '';
+
+        $sql = sprintf(
+            'SELECT t.id, t.title AS titulo, %s AS descripcion, %s AS estado, %s AS assigned_to, %s AS created_by,
+                    %s AS priority, %s AS due_date, %s AS remind_at, %s AS created_at, %s AS completed_at,
+                    %s AS checklist_slug, %s AS metadata,
                     asignado.nombre AS assigned_name, creador.nombre AS created_name
              FROM crm_tasks t
-             LEFT JOIN users asignado ON t.assigned_to = asignado.id
-             LEFT JOIN users creador ON t.created_by = creador.id
-             WHERE t.company_id = :company_id
-               AND t.source_module = "examenes"
-               AND t.source_ref_id = :source_ref_id
+             LEFT JOIN users asignado ON %s = asignado.id
+             LEFT JOIN users creador ON %s = creador.id
+             WHERE t.source_module = "examenes"
+               AND t.source_ref_id = :source_ref_id%s
              ORDER BY
-                CASE WHEN t.status IN ("pendiente", "en_progreso", "en_proceso") THEN 0 ELSE 1 END,
-                COALESCE(t.due_date, DATE(t.due_at)) IS NULL,
-                COALESCE(t.due_date, DATE(t.due_at)) ASC,
-                t.created_at DESC'
+                %s,
+                %s,
+                %s ASC,
+                %s DESC',
+            $descriptionExpr,
+            $statusExpr,
+            $assignedToExpr,
+            $createdByExpr,
+            $priorityExpr,
+            $dueDateExpr,
+            $remindAtExpr,
+            $createdAtExpr,
+            $completedAtExpr,
+            $checklistSlugExpr,
+            $metadataExpr,
+            $assignedToExpr,
+            $createdByExpr,
+            $companyFilter,
+            $pendingOrderExpr,
+            $dueNullOrderExpr,
+            $dueDateExpr,
+            $createdAtExpr
         );
-        $stmt->execute([
-            ':company_id' => $companyId,
-            ':source_ref_id' => (string) $examenId,
-        ]);
 
-        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        try {
+            $stmt = $this->pdo->prepare($sql);
+            $bindings = [
+                ':source_ref_id' => (string) $examenId,
+            ];
+            if ($hasCompanyId) {
+                $bindings[':company_id'] = $this->resolveCompanyId();
+            }
+            $stmt->execute($bindings);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        } catch (Throwable) {
+            return [];
+        }
 
         return array_map(function (array $row) use ($examenId): array {
             $slug = $this->resolveTaskChecklistSlug($row);

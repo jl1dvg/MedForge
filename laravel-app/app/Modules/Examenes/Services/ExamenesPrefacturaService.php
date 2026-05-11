@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Examenes\Services;
 
+use App\Modules\Shared\Support\DerivacionTabViewModel;
 use App\Modules\Reporting\Services\ReportPdfService;
 use DateTime;
 use DateTimeImmutable;
@@ -223,6 +224,14 @@ class ExamenesPrefacturaService
             $mailLog = $mailLogService->fetchLatestByExamen($examenIdValue);
         }
 
+        $derivacionTab = $this->buildDerivacionTabViewData(
+            is_array($derivacion) ? $derivacion : [],
+            is_array($examen) ? $examen : [],
+            is_array($consulta) ? $consulta : [],
+            is_array($paciente) ? $paciente : [],
+            $mailLog
+        );
+
         return [
             'examen' => $examen,
             'paciente' => is_array($paciente) ? $paciente : [],
@@ -233,6 +242,7 @@ class ExamenesPrefacturaService
             'trazabilidad' => $trazabilidad,
             'crm' => $crmResumen,
             'derivacion' => $derivacion,
+            'derivacionTab' => $derivacionTab,
             'derivacion_vigencia' => $vigenciaStatus,
             'coberturaTemplateKey' => $templateKey,
             'coberturaTemplateAvailable' => $templateAvailable,
@@ -1238,6 +1248,45 @@ class ExamenesPrefacturaService
         }
 
         return (new DateTimeImmutable())->setTimestamp($timestamp);
+    }
+
+    /**
+     * @param array<string,mixed> $derivacion
+     * @param array<string,mixed> $examen
+     * @param array<string,mixed> $consulta
+     * @param array<string,mixed> $paciente
+     * @param array<string,mixed>|null $mailLog
+     * @return array<string,mixed>
+     */
+    private function buildDerivacionTabViewData(
+        array $derivacion,
+        array $examen,
+        array $consulta,
+        array $paciente,
+        ?array $mailLog
+    ): array {
+        $hasDerivacion = !empty($derivacion['cod_derivacion'])
+            || !empty($derivacion['derivacion_id'])
+            || !empty($derivacion['id'])
+            || !empty($derivacion['archivo_derivacion_path']);
+
+        $afiliacion = trim((string) (($paciente['afiliacion'] ?? null) ?: ($examen['afiliacion'] ?? '')));
+        $mailStatus = DerivacionTabViewModel::formatMailStatus($mailLog);
+
+        return DerivacionTabViewModel::build([
+            'has_derivacion' => $hasDerivacion,
+            'archivo_href' => DerivacionTabViewModel::resolveArchivoHref($derivacion),
+            'fecha_vigencia' => $derivacion['fecha_vigencia'] ?? null,
+            'afiliacion' => $afiliacion,
+            'mail_status_label' => $mailStatus['label'],
+            'mail_sent_at' => $mailStatus['sent_at'],
+            'mail_sent_by' => $mailStatus['sent_by'],
+            'coverage_visible' => $hasDerivacion,
+            'coverage_active_message' => 'Si la derivación no tiene autorizaciones completas o necesitas otro código, puedes solicitar cobertura por correo.',
+            'authorization_visible' => !$hasDerivacion,
+            'authorization_message' => 'No hay derivación registrada para este examen.',
+            'rescrape_visible' => false,
+        ]);
     }
 
     private function projectRootPath(): string

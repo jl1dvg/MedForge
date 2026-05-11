@@ -13,8 +13,9 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
+use Modules\Mail\Services\MailProfileService;
+use Modules\Mail\Services\NotificationMailer;
 use RuntimeException;
 use Throwable;
 
@@ -85,6 +86,7 @@ class CrmProposalController
 
     public function sendEmail(Request $request, int $id): JsonResponse
     {
+        $tempPdfPath = null;
         try {
             $proposal = $this->proposals->find($id);
             $to = trim((string) ($request->input('to') ?: ($proposal['lead_email'] ?? '')));
@@ -97,12 +99,32 @@ class CrmProposalController
             $attachPdf = filter_var($request->input('attach_pdf', true), FILTER_VALIDATE_BOOLEAN);
 
             $pdf = $attachPdf ? $this->pdf->generate($id, $proposal) : null;
-            Mail::raw($body, static function ($message) use ($to, $subject, $pdf): void {
-                $message->to($to)->subject($subject);
-                if (is_array($pdf)) {
-                    $message->attachData($pdf['content'], $pdf['filename'], ['mime' => 'application/pdf']);
+            $attachments = [];
+            if (is_array($pdf) && !empty($pdf['content'])) {
+                $tempPdfPath = tempnam(sys_get_temp_dir(), 'crm_proposal_');
+                if ($tempPdfPath === false) {
+                    throw new RuntimeException('No se pudo preparar el PDF temporal de la propuesta');
                 }
-            });
+
+                if (@file_put_contents($tempPdfPath, (string) $pdf['content']) === false) {
+                    throw new RuntimeException('No se pudo escribir el PDF temporal de la propuesta');
+                }
+
+                $attachments[] = [
+                    'path' => $tempPdfPath,
+                    'name' => (string) ($pdf['filename'] ?? ('propuesta_' . $id . '.pdf')),
+                    'type' => 'application/pdf',
+                ];
+            }
+
+            $pdo = app('db')->connection()->getPdo();
+            $profileService = new MailProfileService($pdo);
+            $profileSlug = $profileService->getProfileSlugForContext('crm');
+            $mailer = new NotificationMailer($pdo, $profileSlug);
+            $result = $mailer->sendPatientUpdate($to, $subject, $body, [], $attachments, false, $profileSlug);
+            if (!($result['success'] ?? false)) {
+                throw new RuntimeException((string) ($result['error'] ?? 'No se pudo enviar la propuesta por correo'));
+            }
 
             $this->proposals->markSent($id, 'email', $this->actorId());
         } catch (RuntimeException $e) {
@@ -110,6 +132,10 @@ class CrmProposalController
         } catch (Throwable $e) {
             Log::error('crm.proposal.email.error', ['proposal_id' => $id, 'error' => $e->getMessage()]);
             return response()->json(['success' => false, 'error' => 'No se pudo enviar la propuesta por correo'], 500);
+        } finally {
+            if (is_string($tempPdfPath) && $tempPdfPath !== '' && is_file($tempPdfPath)) {
+                @unlink($tempPdfPath);
+            }
         }
 
         return response()->json(['success' => true, 'message' => 'Propuesta enviada por correo']);

@@ -1,6 +1,23 @@
 import { getKanbanConfig, resolveReadPath, resolveWritePath } from "../config.js";
 import { escapeHtml, formatDerivacionVigencia } from "./utils.js";
 
+function getDerivacionUiData() {
+    const container = document.getElementById("prefacturaCoberturaData");
+    if (!container) {
+        return null;
+    }
+
+    return {
+        hasDerivacion: container.dataset.hasDerivacion === "1",
+        templateAvailable: container.dataset.templateAvailable === "1",
+        derivacionVencida: container.dataset.derivacionVencida === "1",
+        derivacionPdf: container.dataset.derivacionPdf || "",
+        sentLabel: container.dataset.sentLabel || "",
+        sentAt: container.dataset.sentAt || "",
+        sentBy: container.dataset.sentBy || "",
+    };
+}
+
 export function buildDerivacionMissingHtml(
     message = "Seguro particular: requiere autorización."
 ) {
@@ -14,6 +31,49 @@ export function buildDerivacionMissingHtml(
                 <button type="button" class="btn btn-outline-primary btn-sm" id="btnSolicitarAutorizacion">
                     Solicitar autorización
                 </button>
+            </div>
+        </div>
+    `;
+}
+
+function buildCoverageActionsHtml(ui) {
+    if (!ui?.hasDerivacion) {
+        return "";
+    }
+
+    const title = ui.derivacionVencida
+        ? "Derivación vencida"
+        : "Solicitar cobertura adicional";
+    const message = ui.derivacionVencida
+        ? "La derivación está vencida. Puedes solicitar una nueva cobertura por correo."
+        : "Si la derivación no tiene autorizaciones completas o necesitas otro código, puedes solicitar cobertura por correo.";
+
+    return `
+        <div class="alert alert-${ui.derivacionVencida ? "warning" : "info"} border d-flex flex-column gap-2 mb-3">
+            <div class="d-flex align-items-center gap-2">
+                <i class="bi bi-envelope-exclamation"></i>
+                <div>
+                    <div class="fw-semibold">${escapeHtml(title)}</div>
+                    <small class="text-muted">${escapeHtml(message)}</small>
+                </div>
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+                <button type="button" class="btn btn-warning btn-sm" id="btnPrefacturaSolicitarCoberturaMail">
+                    <i class="bi bi-envelope-fill me-1"></i> Solicitar cobertura por correo
+                </button>
+                ${ui.derivacionPdf ? `
+                    <a class="btn btn-outline-secondary btn-sm"
+                       href="${escapeHtml(ui.derivacionPdf)}"
+                       target="_blank" rel="noopener">
+                        <i class="bi bi-file-earmark-arrow-down me-1"></i> Descargar derivación
+                    </a>
+                ` : ""}
+            </div>
+            <div id="prefacturaCoberturaMailStatus"
+                 class="small fw-semibold text-success ${ui.sentLabel ? "" : "d-none"}"
+                 data-sent-at="${escapeHtml(ui.sentAt || "")}"
+                 data-sent-by="${escapeHtml(ui.sentBy || "")}">
+                ${escapeHtml(ui.sentLabel || "")}
             </div>
         </div>
     `;
@@ -50,7 +110,7 @@ function buildDerivacionDiagnosticoHtml(derivacion) {
     return '<span class="text-muted">No disponible</span>';
 }
 
-function buildDerivacionHtml(derivacion) {
+function buildDerivacionHtml(derivacion, ui = null) {
     if (!derivacion) {
         return buildDerivacionMissingHtml();
     }
@@ -84,6 +144,7 @@ function buildDerivacionHtml(derivacion) {
         : "";
 
     return `
+        ${buildCoverageActionsHtml(ui)}
         ${archivoHtml}
         <div class="box box-outline-primary">
             <div class="box-header">
@@ -118,6 +179,7 @@ export function renderDerivacionContent(container, payload) {
     if (!container) {
         return;
     }
+    const ui = getDerivacionUiData();
     const hasDerivacion =
         payload?.success &&
         payload?.has_derivacion &&
@@ -125,7 +187,7 @@ export function renderDerivacionContent(container, payload) {
         payload?.derivacion_status !== "missing";
 
     if (hasDerivacion) {
-        container.innerHTML = buildDerivacionHtml(payload.derivacion);
+        container.innerHTML = buildDerivacionHtml(payload.derivacion, ui);
         return;
     }
 

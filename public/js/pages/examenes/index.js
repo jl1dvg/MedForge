@@ -251,6 +251,25 @@ document.addEventListener('DOMContentLoaded', () => {
         return `<span class="table-avatar-placeholder">${escapeHtml(getInitials(nombre || ''))}</span>`;
     };
 
+    const parseJsonResponse = async (response, fallbackMessage) => {
+        const contentType = (response.headers.get('content-type') || '').toLowerCase();
+        const raw = await response.text();
+        const trimmed = raw.trim();
+        const looksHtml = contentType.includes('text/html')
+            || trimmed.startsWith('<!DOCTYPE')
+            || trimmed.startsWith('<html');
+
+        if (looksHtml) {
+            throw new Error(fallbackMessage || 'El servidor devolvió HTML en lugar de JSON.');
+        }
+
+        try {
+            return trimmed === '' ? {} : JSON.parse(raw);
+        } catch (_) {
+            throw new Error(fallbackMessage || 'El servidor devolvió una respuesta no válida.');
+        }
+    };
+
     const aplicarFiltrosLocales = (data) => {
         const term = (searchInput?.value || '').trim().toLowerCase();
         if (!term) {
@@ -823,24 +842,49 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log(filtros);
         console.groupEnd();
 
-        return fetch(resolveReadPath(`${normalizedReadBasePath}/kanban-data`), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(filtros),
+        const query = new URLSearchParams();
+        Object.entries(filtros || {}).forEach(([key, value]) => {
+            if (value === null || value === undefined) {
+                return;
+            }
+
+            if (Array.isArray(value)) {
+                value.forEach((item) => {
+                    if (item !== null && item !== undefined && `${item}` !== '') {
+                        query.append(key, `${item}`);
+                    }
+                });
+                return;
+            }
+
+            const normalized = `${value}`.trim();
+            if (normalized !== '') {
+                query.set(key, normalized);
+            }
+        });
+
+        const kanbanUrl = `${normalizedReadBasePath}/kanban-data${query.toString() ? `?${query.toString()}` : ''}`;
+
+        return fetch(kanbanUrl, {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+            },
         })
             .then(async (response) => {
                 if (!response.ok) {
                     let serverMsg = '';
                     try {
-                        const data = await response.json();
+                        const data = await parseJsonResponse(response, 'No se pudo interpretar el error del servidor.');
                         serverMsg = data?.error || JSON.stringify(data);
                     } catch (_) {
-                        serverMsg = await response.text();
+                        serverMsg = 'El servidor devolvió una respuesta no JSON.';
                     }
                     const msg = serverMsg ? `No se pudo cargar el tablero. Servidor: ${serverMsg}` : 'No se pudo cargar el tablero';
                     throw new Error(msg);
                 }
-                return response.json();
+                return parseJsonResponse(response, 'El tablero devolvió una respuesta HTML o inválida.');
             })
             .then(({ data = [], options = {} }) => {
                 const store = setDataStore(Array.isArray(data) ? data : []);

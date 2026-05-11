@@ -114,7 +114,7 @@ async function fetchCoberturaTemplate(data) {
     }
 
     try {
-        const result = await request("/mail-templates/cobertura/resolve", {
+        const result = await request(resolveWritePath("/mail-templates/cobertura/resolve"), {
             method: "POST",
             body: buildTemplatePayload(data),
         });
@@ -564,16 +564,22 @@ function formatCoberturaDateTime(value) {
 }
 
 export function attachPrefacturaCoberturaMail() {
-    const button = document.getElementById("btnPrefacturaSolicitarCoberturaMail");
-    if (!button || button.dataset.listenerAttached === "true") {
-        return;
-    }
+    const buttons = [
+        document.getElementById("btnPrefacturaSolicitarCoberturaMail"),
+        document.getElementById("btnSolicitarAutorizacion"),
+    ].filter(Boolean);
 
-    button.dataset.listenerAttached = "true";
-    button.addEventListener("click", async () => {
-        const result = await abrirCoberturaMail();
-        if (!result.opened) {
-            showToast(result.error || "No hay información suficiente para armar el correo de cobertura.", false);
+    buttons.forEach((button) => {
+        if (!button || button.dataset.listenerAttached === "true") {
+            return;
         }
+
+        button.dataset.listenerAttached = "true";
+        button.addEventListener("click", async () => {
+            const result = await abrirCoberturaMail();
+            if (!result.opened) {
+                showToast(result.error || "No hay información suficiente para armar el correo de cobertura.", false);
+            }
+        });
     });
 }
