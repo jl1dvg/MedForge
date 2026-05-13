@@ -85,14 +85,18 @@ function escapeHtml(value) {
 function estadoSlug(estado) {
     const value = slug(estado);
     if (value === 'admision') return 'admision';
+    if (value === 'atendido' || value === 'atendida' || value === 'terminado' || value === 'terminada' || value === 'consulta_terminado' || value === 'consulta-terminado' || value === 'completado' || value === 'completada') return 'alta';
+    if (value === 'alta-medica' || value === 'dado-de-alta' || value === 'dada-de-alta') return 'alta';
     if (value === 'en-quirofano' || value === 'quirofano') return 'en-quirofano';
     if (value === 'recuperacion') return 'recuperacion';
     if (value === 'revision-resultados' || value === 'revision-de-resultados') return 'revision-resultados';
     if (value === 'optometria') return 'optometria';
     if (value === 'dilatar' || value === 'dilatando') return 'dilatando';
+    if (value === 'consulta' || value === 'en-consulta') return 'en-consulta';
     if (value === 'en-atencion') return 'en-atencion';
     return value || 'otro';
 }
+
 
 function tipoTrayecto(trayecto) {
     const proc = normalizeText(trayecto.procedimiento);
