@@ -21,6 +21,7 @@ class WhatsappKpiDashboardTest extends TestCase
             'whatsapp_handoff_events',
             'whatsapp_handoffs',
             'whatsapp_sigcenter_bookings',
+            'whatsapp_conversation_attributions',
             'whatsapp_messages',
             'whatsapp_conversations',
             'users',
@@ -52,6 +53,7 @@ class WhatsappKpiDashboardTest extends TestCase
             $table->string('wa_number', 32)->unique();
             $table->string('display_name')->nullable();
             $table->string('patient_full_name')->nullable();
+            $table->string('patient_hc_number')->nullable();
             $table->timestamp('last_message_at')->nullable();
             $table->string('last_message_direction')->nullable();
             $table->string('last_message_type')->nullable();
@@ -59,6 +61,7 @@ class WhatsappKpiDashboardTest extends TestCase
             $table->boolean('needs_human')->default(false);
             $table->unsignedBigInteger('handoff_role_id')->nullable();
             $table->unsignedBigInteger('assigned_user_id')->nullable();
+            $table->timestamp('handoff_requested_at')->nullable();
             $table->unsignedInteger('unread_count')->default(0);
             $table->timestamps();
         });
@@ -69,6 +72,7 @@ class WhatsappKpiDashboardTest extends TestCase
             $table->string('direction', 16);
             $table->string('message_type', 64)->default('text');
             $table->longText('body')->nullable();
+            $table->longText('raw_payload')->nullable();
             $table->string('status', 32)->nullable();
             $table->timestamp('message_timestamp')->nullable();
             $table->timestamps();
@@ -109,6 +113,20 @@ class WhatsappKpiDashboardTest extends TestCase
             $table->timestamps();
         });
 
+        Schema::create('whatsapp_conversation_attributions', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('conversation_id');
+            $table->string('source_category')->nullable();
+            $table->string('source_type')->nullable();
+            $table->string('source_id')->nullable();
+            $table->string('headline')->nullable();
+            $table->string('media_type')->nullable();
+            $table->string('initial_intent')->nullable();
+            $table->string('patient_segment')->nullable();
+            $table->string('conversation_type')->nullable();
+            $table->timestamps();
+        });
+
         \DB::table('roles')->insert([
             ['id' => 1, 'name' => 'Call Center', 'created_at' => now(), 'updated_at' => now()],
         ]);
@@ -127,12 +145,14 @@ class WhatsappKpiDashboardTest extends TestCase
         $conversationId = \DB::table('whatsapp_conversations')->insertGetId([
             'wa_number' => '593999111222',
             'display_name' => 'Paciente Demo',
+            'patient_hc_number' => '0925619736',
             'last_message_at' => now()->subMinutes(5),
             'last_message_direction' => 'outbound',
             'last_message_type' => 'text',
             'needs_human' => true,
             'handoff_role_id' => 1,
             'assigned_user_id' => 44,
+            'handoff_requested_at' => now()->subDays(2)->addMinute(),
             'unread_count' => 0,
             'created_at' => now()->subDays(2),
             'updated_at' => now(),
@@ -287,6 +307,23 @@ class WhatsappKpiDashboardTest extends TestCase
         $this->assertStringContainsString("summary,\"Mensajes inbound\",1", $content);
     }
 
+    public function test_it_exports_dashboard_pdf(): void
+    {
+        $response = $this
+            ->withoutMiddleware([
+                RequireAppPermission::class,
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->get('/v2/whatsapp/api/kpis/export/pdf');
+
+        $response
+            ->assertOk()
+            ->assertHeader('content-type', 'application/pdf')
+            ->assertDownload();
+    }
+
     public function test_it_renders_dashboard_ui_page(): void
     {
         $response = $this
@@ -302,7 +339,8 @@ class WhatsappKpiDashboardTest extends TestCase
             ->assertOk()
             ->assertSee('KPI y reportes')
             ->assertSee('Personas que escribieron')
-            ->assertSee('Promedio · mediana 3 min')
+            ->assertSee('Tiempo a primera respuesta humana')
+            ->assertSee('Desde handoff · mediana 3 min')
             ->assertSee('SLA asignación (objetivo: 15 min)')
             ->assertSee('Atención humana por agente')
             ->assertSee('Exportar CSV');

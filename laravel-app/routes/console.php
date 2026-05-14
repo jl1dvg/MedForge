@@ -11,10 +11,12 @@ use App\Modules\Farmacia\Services\RecetasConciliacionSyncService;
 use App\Modules\Shared\Support\AfiliacionDimensionService;
 use App\Modules\Solicitudes\Services\SolicitudesChecklistBackfillService;
 use App\Modules\Solicitudes\Services\SolicitudesPrefacturaService;
+use App\Modules\Whatsapp\Services\ConversationAttributionService;
 use App\Modules\Whatsapp\Services\ConversationOpsService;
 use App\Modules\Whatsapp\Services\FlowRuntimeShadowCompareService;
 use App\Modules\Whatsapp\Services\FlowRuntimeShadowObserverService;
 use App\Models\WhatsappConversation;
+use App\Models\WhatsappConversationAttribution;
 use App\Models\WhatsappMessage;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -135,6 +137,136 @@ Artisan::command('whatsapp:phase1-smoke', function (): int {
     $this->info('Fase 1 extendida de WhatsApp habilitada: lectura, escritura y webhook.');
     return 0;
 })->purpose('Verifica flags y estado base de la fase 1 de WhatsApp');
+
+Artisan::command('whatsapp:attribution-backfill
+    {--conversation-id= : Recalcula una conversación puntual}
+    {--from-date= : Solo conversaciones creadas desde YYYY-MM-DD}
+    {--to-date= : Solo conversaciones creadas hasta YYYY-MM-DD}
+    {--limit=0 : Límite total de conversaciones a procesar}
+    {--chunk=200 : Tamaño de lote por iteración}
+    {--only-missing : Solo procesa conversaciones sin atribución}
+    {--dry-run : Solo estima cuántas conversaciones entrarían}', function (): int {
+    /** @var ConversationAttributionService $service */
+    $service = app(ConversationAttributionService::class);
+
+    $conversationId = (int) ($this->option('conversation-id') ?? 0);
+    $limit = max(0, (int) ($this->option('limit') ?? 0));
+    $chunk = max(50, min(1000, (int) ($this->option('chunk') ?? 200)));
+    $onlyMissing = (bool) $this->option('only-missing');
+    $dryRun = (bool) $this->option('dry-run');
+    $fromDate = trim((string) ($this->option('from-date') ?? ''));
+    $toDate = trim((string) ($this->option('to-date') ?? ''));
+
+    $query = WhatsappConversation::query()->orderBy('id');
+
+    if ($conversationId > 0) {
+        $query->where('id', $conversationId);
+    }
+
+    if ($fromDate !== '') {
+        $query->whereDate('created_at', '>=', $fromDate);
+    }
+
+    if ($toDate !== '') {
+        $query->whereDate('created_at', '<=', $toDate);
+    }
+
+    if ($onlyMissing) {
+        $query->whereNotExists(function ($sub): void {
+            $sub->select(DB::raw(1))
+                ->from('whatsapp_conversation_attributions as wca')
+                ->whereColumn('wca.conversation_id', 'whatsapp_conversations.id');
+        });
+    }
+
+    $candidateCount = (clone $query)->count();
+
+    if ($dryRun) {
+        $this->table(
+            ['Filtro', 'Valor'],
+            [
+                ['conversation_id', $conversationId > 0 ? (string) $conversationId : 'todos'],
+                ['from_date', $fromDate !== '' ? $fromDate : 'sin filtro'],
+                ['to_date', $toDate !== '' ? $toDate : 'sin filtro'],
+                ['only_missing', $onlyMissing ? 'true' : 'false'],
+                ['limit', $limit > 0 ? (string) $limit : 'sin límite'],
+                ['chunk', (string) $chunk],
+                ['candidate_count', (string) $candidateCount],
+            ]
+        );
+
+        $this->info('Dry-run completado. No se escribieron cambios.');
+        return 0;
+    }
+
+    $processed = 0;
+    $created = 0;
+    $updated = 0;
+    $errors = 0;
+
+    $runner = function (WhatsappConversation $conversation) use ($service, &$processed, &$created, &$updated, &$errors, $limit): bool {
+        if ($limit > 0 && $processed >= $limit) {
+            return false;
+        }
+
+        try {
+            $existing = WhatsappConversationAttribution::query()
+                ->where('conversation_id', $conversation->id)
+                ->exists();
+
+            $service->syncConversation($conversation);
+
+            if ($existing) {
+                $updated++;
+            } else {
+                $created++;
+            }
+
+            $processed++;
+        } catch (\Throwable $e) {
+            $errors++;
+            $processed++;
+            $this->warn('Error en conversación #' . $conversation->id . ': ' . $e->getMessage());
+        }
+
+        return true;
+    };
+
+    if ($conversationId > 0) {
+        $conversation = $query->first();
+        if (!$conversation instanceof WhatsappConversation) {
+            $this->error('No existe la conversación solicitada.');
+            return 1;
+        }
+
+        $runner($conversation);
+    } else {
+        $query->chunkById($chunk, function ($conversations) use ($runner, $limit, &$processed): bool {
+            foreach ($conversations as $conversation) {
+                if (!$runner($conversation)) {
+                    return false;
+                }
+            }
+
+            return $limit <= 0 || $processed < $limit;
+        });
+    }
+
+    $this->newLine();
+    $this->table(
+        ['Resultado', 'Valor'],
+        [
+            ['candidate_count', (string) $candidateCount],
+            ['processed', (string) $processed],
+            ['created', (string) $created],
+            ['updated', (string) $updated],
+            ['errors', (string) $errors],
+        ]
+    );
+
+    $this->info('Backfill de atribución completado.');
+    return $errors > 0 ? 1 : 0;
+})->purpose('Reconstruye atribución histórica de conversaciones WhatsApp para el dashboard analítico');
 
 Artisan::command('whatsapp:flowmaker-shadow
     {wa_number : Número WhatsApp para simular}

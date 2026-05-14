@@ -51,6 +51,7 @@ class KpiDashboardService
         $sla = $this->slaSummary($fromSql, $toSql, $roleId, $agentId, $slaTargetMinutes);
         $transfers = $this->transferSummary($fromSql, $toSql, $roleId, $agentId);
         $bookings = $this->sigcenterBookingSummary($fromSql, $toSql);
+        $analytics = $this->conversationAnalytics($fromSql, $toSql, $roleId, $agentId);
 
         $summary = array_merge($summary, $human, $queue, $window, $sla, [
             'handoff_transfers' => $transfers,
@@ -124,6 +125,7 @@ class KpiDashboardService
                 'human_attention_by_agent' => $this->humanAttentionByAgent($fromSql, $toSql, $roleId, $agentId),
                 'sigcenter_bookings_by_sede' => $this->sigcenterBookingsBySede($fromSql, $toSql),
             ],
+            'analytics' => $analytics,
             'options' => [
                 'roles' => $this->roleOptions(),
                 'agents' => $this->agentOptions(),
@@ -192,13 +194,15 @@ class KpiDashboardService
             'people_inbound' => 'Personas que escribieron',
             'conversations_attended_human' => 'Conversaciones atendidas',
             'people_attended_human' => 'Personas atendidas',
-            'conversations_lost' => 'Conversaciones perdidas',
-            'people_lost' => 'Personas perdidas',
-            'attention_rate' => 'Tasa de atención',
-            'loss_rate' => 'Tasa de pérdida',
-            'avg_first_human_response_minutes' => '1ra respuesta humana (min)',
-            'median_first_human_response_minutes' => '1ra respuesta humana mediana (min)',
-            'conversations_abandoned' => 'Conversaciones abandonadas',
+            'conversations_lost' => 'Conversaciones sin respuesta humana',
+            'people_lost' => 'Personas sin respuesta humana',
+            'conversations_lost_with_handoff' => 'Conversaciones sin respuesta humana con handoff',
+            'attention_rate' => 'Cobertura humana',
+            'loss_rate' => 'Tasa sin respuesta humana',
+            'avg_first_human_response_minutes' => 'Tiempo a primera respuesta humana desde handoff (min)',
+            'median_first_human_response_minutes' => 'Tiempo mediano a primera respuesta humana desde handoff (min)',
+            'conversations_abandoned' => 'Conversaciones inactivas >24h sin respuesta humana',
+            'conversations_abandoned_with_handoff' => 'Sin respuesta humana con handoff >24h',
             'conversations_resolved' => 'Conversaciones resueltas',
             'live_queue_total' => 'Cola activa',
             'queue_window_open' => 'Ventana 24h abierta',
@@ -259,29 +263,916 @@ class KpiDashboardService
     /**
      * @return array<string, mixed>
      */
+    private function conversationAnalytics(string $fromSql, string $toSql, ?int $roleId, ?int $agentId): array
+    {
+        if (!Schema::hasTable('whatsapp_conversations') || !Schema::hasTable('whatsapp_messages')) {
+            return [
+                'summary' => [
+                    'total_conversations' => 0,
+                    'conversations_from_ads' => 0,
+                    'conversations_organic' => 0,
+                    'conversations_outbound_started' => 0,
+                    'identified_conversations' => 0,
+                    'booked_conversations' => 0,
+                    'handoff_conversations' => 0,
+                    'new_patients' => 0,
+                    'returning_patients' => 0,
+                    'reactivated_patients' => 0,
+                    'avg_lead_score' => 0.0,
+                    'high_value_leads' => 0,
+                    'medium_value_leads' => 0,
+                    'low_value_leads' => 0,
+                    'captacion_conversations' => 0,
+                    'operacion_conversations' => 0,
+                    'seguimiento_clinico_conversations' => 0,
+                    'reactivacion_conversations' => 0,
+                    'identification_rate' => 0.0,
+                    'booking_rate' => 0.0,
+                    'handoff_rate' => 0.0,
+                ],
+                'lifecycle' => [],
+                'sources' => [],
+                'funnel' => [],
+                'outcomes' => [],
+                'intents' => [],
+                'conversation_types' => [],
+                'segments' => [],
+                'lead_scores' => [],
+                'frictions' => [],
+                'insights' => [],
+                'ads' => [],
+            ];
+        }
+
+        $base = $this->conversationAnalyticsBaseSubquery($fromSql, $toSql, $roleId, $agentId, 'analytics');
+        $totals = $this->selectOne('SELECT COUNT(*) AS total FROM (' . $base['sql'] . ') analytics_base', $base['params']);
+        $total = (int) ($totals->total ?? 0);
+
+        return [
+            'summary' => $this->conversationAnalyticsSummary($base),
+            'lifecycle' => $this->conversationLifecycleBreakdown($base, $total),
+            'sources' => $this->conversationSourcesBreakdown($base, $total),
+            'funnel' => $this->conversationFunnel($base, $total),
+            'outcomes' => $this->conversationOutcomesBreakdown($base, $total),
+            'intents' => $this->conversationIntentsBreakdown($base, $total),
+            'conversation_types' => $this->conversationTypesBreakdown($base, $total),
+            'segments' => $this->conversationPatientSegmentsBreakdown($base, $total),
+            'lead_scores' => $this->conversationLeadScoreBreakdown($base, $total),
+            'frictions' => $this->conversationFrictionBreakdown($base, $total),
+            'insights' => $this->conversationAutomatedInsights($base, $total),
+            'ads' => $this->adsPerformanceBreakdown($base),
+        ];
+    }
+
+    /**
+     * @param array{sql:string,params:array<int|string,mixed>} $base
+     * @return array<string, int|float>
+     */
+    private function conversationAnalyticsSummary(array $base): array
+    {
+        $row = $this->selectOne(
+            'SELECT
+                COUNT(*) AS total_conversations,
+                SUM(CASE WHEN source_category = "ad" THEN 1 ELSE 0 END) AS conversations_from_ads,
+                SUM(CASE WHEN source_category = "organic_direct" THEN 1 ELSE 0 END) AS conversations_organic,
+                SUM(CASE WHEN source_category = "campaign_outbound" THEN 1 ELSE 0 END) AS conversations_outbound_started,
+                SUM(is_identified) AS identified_conversations,
+                SUM(has_booking) AS booked_conversations,
+                SUM(has_handoff) AS handoff_conversations,
+                SUM(CASE WHEN patient_segment = "new_patient" THEN 1 ELSE 0 END) AS new_patients,
+                SUM(CASE WHEN patient_segment = "returning_patient" THEN 1 ELSE 0 END) AS returning_patients,
+                SUM(CASE WHEN patient_segment = "reactivated_patient" THEN 1 ELSE 0 END) AS reactivated_patients,
+                AVG(lead_score) AS avg_lead_score,
+                SUM(CASE WHEN lead_score_bucket = "high" THEN 1 ELSE 0 END) AS high_value_leads,
+                SUM(CASE WHEN lead_score_bucket = "medium" THEN 1 ELSE 0 END) AS medium_value_leads,
+                SUM(CASE WHEN lead_score_bucket = "low" THEN 1 ELSE 0 END) AS low_value_leads,
+                SUM(CASE WHEN lifecycle_category = "captacion" THEN 1 ELSE 0 END) AS captacion_conversations,
+                SUM(CASE WHEN lifecycle_category = "operacion" THEN 1 ELSE 0 END) AS operacion_conversations,
+                SUM(CASE WHEN lifecycle_category = "seguimiento_clinico" THEN 1 ELSE 0 END) AS seguimiento_clinico_conversations,
+                SUM(CASE WHEN lifecycle_category = "reactivacion" THEN 1 ELSE 0 END) AS reactivacion_conversations
+             FROM (' . $base['sql'] . ') analytics_base',
+            $base['params']
+        );
+
+        $total = (int) ($row->total_conversations ?? 0);
+        $identified = (int) ($row->identified_conversations ?? 0);
+        $booked = (int) ($row->booked_conversations ?? 0);
+        $handoff = (int) ($row->handoff_conversations ?? 0);
+
+        return [
+            'total_conversations' => $total,
+            'conversations_from_ads' => (int) ($row->conversations_from_ads ?? 0),
+            'conversations_organic' => (int) ($row->conversations_organic ?? 0),
+            'conversations_outbound_started' => (int) ($row->conversations_outbound_started ?? 0),
+            'identified_conversations' => $identified,
+            'booked_conversations' => $booked,
+            'handoff_conversations' => $handoff,
+            'new_patients' => (int) ($row->new_patients ?? 0),
+            'returning_patients' => (int) ($row->returning_patients ?? 0),
+            'reactivated_patients' => (int) ($row->reactivated_patients ?? 0),
+            'avg_lead_score' => round((float) ($row->avg_lead_score ?? 0), 1),
+            'high_value_leads' => (int) ($row->high_value_leads ?? 0),
+            'medium_value_leads' => (int) ($row->medium_value_leads ?? 0),
+            'low_value_leads' => (int) ($row->low_value_leads ?? 0),
+            'captacion_conversations' => (int) ($row->captacion_conversations ?? 0),
+            'operacion_conversations' => (int) ($row->operacion_conversations ?? 0),
+            'seguimiento_clinico_conversations' => (int) ($row->seguimiento_clinico_conversations ?? 0),
+            'reactivacion_conversations' => (int) ($row->reactivacion_conversations ?? 0),
+            'identification_rate' => $total > 0 ? round(($identified / $total) * 100, 1) : 0.0,
+            'booking_rate' => $total > 0 ? round(($booked / $total) * 100, 1) : 0.0,
+            'handoff_rate' => $total > 0 ? round(($handoff / $total) * 100, 1) : 0.0,
+        ];
+    }
+
+    /**
+     * @param array{sql:string,params:array<int|string,mixed>} $base
+     * @return array<int, array<string, int|float|string>>
+     */
+    private function conversationLifecycleBreakdown(array $base, int $total): array
+    {
+        $rows = DB::select(
+            'SELECT *
+             FROM (
+                SELECT
+                    COALESCE(NULLIF(lifecycle_category, ""), "unknown") AS lifecycle_category,
+                    COUNT(*) AS total,
+                    SUM(is_identified) AS identified,
+                    SUM(has_booking) AS bookings,
+                    SUM(has_handoff) AS handoffs
+                FROM (' . $base['sql'] . ') analytics_base
+                GROUP BY COALESCE(NULLIF(lifecycle_category, ""), "unknown")
+             ) lifecycle_breakdown
+             ORDER BY
+                CASE lifecycle_breakdown.lifecycle_category
+                    WHEN "captacion" THEN 1
+                    WHEN "operacion" THEN 2
+                    WHEN "seguimiento_clinico" THEN 3
+                    WHEN "reactivacion" THEN 4
+                    ELSE 5
+                END',
+            $base['params']
+        );
+
+        return array_map(function ($row) use ($total): array {
+            $category = (string) ($row->lifecycle_category ?? 'unknown');
+            $value = (int) ($row->total ?? 0);
+            $bookings = (int) ($row->bookings ?? 0);
+
+            return [
+                'lifecycle_category' => $category,
+                'lifecycle_label' => $this->lifecycleCategoryLabel($category),
+                'total' => $value,
+                'share' => $total > 0 ? round(($value / $total) * 100, 1) : 0.0,
+                'identified' => (int) ($row->identified ?? 0),
+                'bookings' => $bookings,
+                'handoffs' => (int) ($row->handoffs ?? 0),
+                'booking_rate' => $value > 0 ? round(($bookings / $value) * 100, 1) : 0.0,
+            ];
+        }, $rows);
+    }
+
+    /**
+     * @param array{sql:string,params:array<int|string,mixed>} $base
+     * @return array<int, array<string, int|float|string>>
+     */
+    private function conversationSourcesBreakdown(array $base, int $total): array
+    {
+        $rows = DB::select(
+            'SELECT
+                source_category,
+                COUNT(*) AS total,
+                SUM(is_identified) AS identified,
+                SUM(has_booking) AS bookings,
+                SUM(has_handoff) AS handoffs
+             FROM (' . $base['sql'] . ') analytics_base
+             GROUP BY source_category
+             ORDER BY total DESC, source_category ASC',
+            $base['params']
+        );
+
+        return array_map(function ($row) use ($total): array {
+            $source = (string) ($row->source_category ?? 'unknown');
+            $sourceTotal = (int) ($row->total ?? 0);
+            $identified = (int) ($row->identified ?? 0);
+            $bookings = (int) ($row->bookings ?? 0);
+            $handoffs = (int) ($row->handoffs ?? 0);
+
+            return [
+                'source_category' => $source,
+                'source_label' => $this->sourceCategoryLabel($source),
+                'total' => $sourceTotal,
+                'share' => $total > 0 ? round(($sourceTotal / $total) * 100, 1) : 0.0,
+                'identified' => $identified,
+                'bookings' => $bookings,
+                'handoffs' => $handoffs,
+                'booking_rate' => $sourceTotal > 0 ? round(($bookings / $sourceTotal) * 100, 1) : 0.0,
+            ];
+        }, $rows);
+    }
+
+    /**
+     * @param array{sql:string,params:array<int|string,mixed>} $base
+     * @return array<int, array<string, int|float|string>>
+     */
+    private function conversationFunnel(array $base, int $total): array
+    {
+        $row = $this->selectOne(
+            'SELECT
+                COUNT(*) AS started,
+                SUM(has_consent) AS consented,
+                SUM(is_identified) AS identified,
+                SUM(entered_scheduling) AS scheduled,
+                SUM(reached_confirmation) AS confirmed,
+                SUM(has_booking) AS booked
+             FROM (' . $base['sql'] . ') analytics_base',
+            $base['params']
+        );
+
+        $steps = [
+            ['key' => 'started', 'label' => 'Iniciaron conversación', 'value' => (int) ($row->started ?? 0)],
+            ['key' => 'consented', 'label' => 'Dieron consentimiento', 'value' => (int) ($row->consented ?? 0)],
+            ['key' => 'identified', 'label' => 'Paciente identificado', 'value' => (int) ($row->identified ?? 0)],
+            ['key' => 'scheduled', 'label' => 'Entraron a agendamiento', 'value' => (int) ($row->scheduled ?? 0)],
+            ['key' => 'confirmed', 'label' => 'Llegaron a confirmación', 'value' => (int) ($row->confirmed ?? 0)],
+            ['key' => 'booked', 'label' => 'Cita creada', 'value' => (int) ($row->booked ?? 0)],
+        ];
+
+        $previous = $total > 0 ? $total : 0;
+        foreach ($steps as $index => $step) {
+            $value = (int) $step['value'];
+            $steps[$index]['rate_from_start'] = $total > 0 ? round(($value / $total) * 100, 1) : 0.0;
+            $steps[$index]['rate_to_next'] = $previous > 0 ? round(($value / $previous) * 100, 1) : 0.0;
+            $previous = $value > 0 ? $value : 0;
+        }
+
+        return $steps;
+    }
+
+    /**
+     * @param array{sql:string,params:array<int|string,mixed>} $base
+     * @return array<int, array<string, int|float|string>>
+     */
+    private function conversationOutcomesBreakdown(array $base, int $total): array
+    {
+        $rows = DB::select(
+            'SELECT
+                outcome_category,
+                COUNT(*) AS total
+             FROM (' . $base['sql'] . ') analytics_base
+             GROUP BY outcome_category
+             ORDER BY total DESC, outcome_category ASC',
+            $base['params']
+        );
+
+        return array_map(function ($row) use ($total): array {
+            $category = (string) ($row->outcome_category ?? 'unknown');
+            $value = (int) ($row->total ?? 0);
+
+            return [
+                'outcome_category' => $category,
+                'outcome_label' => $this->outcomeCategoryLabel($category),
+                'total' => $value,
+                'share' => $total > 0 ? round(($value / $total) * 100, 1) : 0.0,
+            ];
+        }, $rows);
+    }
+
+    /**
+     * @param array{sql:string,params:array<int|string,mixed>} $base
+     * @return array<int, array<string, int|float|string>>
+     */
+    private function conversationIntentsBreakdown(array $base, int $total): array
+    {
+        $rows = DB::select(
+            'SELECT
+                COALESCE(NULLIF(initial_intent, ""), "unknown") AS initial_intent,
+                COUNT(*) AS total,
+                SUM(has_booking) AS bookings,
+                SUM(has_handoff) AS handoffs
+             FROM (' . $base['sql'] . ') analytics_base
+             GROUP BY COALESCE(NULLIF(initial_intent, ""), "unknown")
+             ORDER BY total DESC, initial_intent ASC',
+            $base['params']
+        );
+
+        return array_map(function ($row) use ($total): array {
+            $intent = (string) ($row->initial_intent ?? 'unknown');
+            $value = (int) ($row->total ?? 0);
+            $bookings = (int) ($row->bookings ?? 0);
+
+            return [
+                'initial_intent' => $intent,
+                'intent_label' => $this->initialIntentLabel($intent),
+                'total' => $value,
+                'share' => $total > 0 ? round(($value / $total) * 100, 1) : 0.0,
+                'bookings' => $bookings,
+                'handoffs' => (int) ($row->handoffs ?? 0),
+                'booking_rate' => $value > 0 ? round(($bookings / $value) * 100, 1) : 0.0,
+            ];
+        }, $rows);
+    }
+
+    /**
+     * @param array{sql:string,params:array<int|string,mixed>} $base
+     * @return array<int, array<string, int|float|string>>
+     */
+    private function conversationPatientSegmentsBreakdown(array $base, int $total): array
+    {
+        $rows = DB::select(
+            'SELECT
+                COALESCE(NULLIF(patient_segment, ""), "unknown") AS patient_segment,
+                COUNT(*) AS total,
+                SUM(is_identified) AS identified,
+                SUM(has_booking) AS bookings
+             FROM (' . $base['sql'] . ') analytics_base
+             GROUP BY COALESCE(NULLIF(patient_segment, ""), "unknown")
+             ORDER BY total DESC, patient_segment ASC',
+            $base['params']
+        );
+
+        return array_map(function ($row) use ($total): array {
+            $segment = (string) ($row->patient_segment ?? 'unknown');
+            $value = (int) ($row->total ?? 0);
+            $bookings = (int) ($row->bookings ?? 0);
+
+            return [
+                'patient_segment' => $segment,
+                'segment_label' => $this->patientSegmentLabel($segment),
+                'total' => $value,
+                'share' => $total > 0 ? round(($value / $total) * 100, 1) : 0.0,
+                'identified' => (int) ($row->identified ?? 0),
+                'bookings' => $bookings,
+                'booking_rate' => $value > 0 ? round(($bookings / $value) * 100, 1) : 0.0,
+            ];
+        }, $rows);
+    }
+
+    /**
+     * @param array{sql:string,params:array<int|string,mixed>} $base
+     * @return array<int, array<string, int|float|string>>
+     */
+    private function conversationTypesBreakdown(array $base, int $total): array
+    {
+        $rows = DB::select(
+            'SELECT
+                COALESCE(NULLIF(conversation_type, ""), "unknown") AS conversation_type,
+                COUNT(*) AS total,
+                SUM(has_booking) AS bookings,
+                SUM(has_handoff) AS handoffs
+             FROM (' . $base['sql'] . ') analytics_base
+             GROUP BY COALESCE(NULLIF(conversation_type, ""), "unknown")
+             ORDER BY total DESC, conversation_type ASC',
+            $base['params']
+        );
+
+        return array_map(function ($row) use ($total): array {
+            $type = (string) ($row->conversation_type ?? 'unknown');
+            $value = (int) ($row->total ?? 0);
+            $bookings = (int) ($row->bookings ?? 0);
+
+            return [
+                'conversation_type' => $type,
+                'type_label' => $this->conversationTypeLabel($type),
+                'total' => $value,
+                'share' => $total > 0 ? round(($value / $total) * 100, 1) : 0.0,
+                'bookings' => $bookings,
+                'handoffs' => (int) ($row->handoffs ?? 0),
+                'booking_rate' => $value > 0 ? round(($bookings / $value) * 100, 1) : 0.0,
+            ];
+        }, $rows);
+    }
+
+    /**
+     * @param array{sql:string,params:array<int|string,mixed>} $base
+     * @return array<int, array<string, int|float|string>>
+     */
+    private function conversationLeadScoreBreakdown(array $base, int $total): array
+    {
+        $rows = DB::select(
+            'SELECT *
+             FROM (
+                SELECT
+                    COALESCE(NULLIF(lead_score_bucket, ""), "low") AS lead_score_bucket,
+                    COUNT(*) AS total,
+                    ROUND(AVG(lead_score), 1) AS avg_score,
+                    SUM(has_booking) AS bookings
+                FROM (' . $base['sql'] . ') analytics_base
+                GROUP BY COALESCE(NULLIF(lead_score_bucket, ""), "low")
+             ) score_breakdown
+             ORDER BY
+                CASE score_breakdown.lead_score_bucket
+                    WHEN "high" THEN 1
+                    WHEN "medium" THEN 2
+                    WHEN "low" THEN 3
+                    ELSE 4
+                END',
+            $base['params']
+        );
+
+        return array_map(function ($row) use ($total): array {
+            $bucket = (string) ($row->lead_score_bucket ?? 'low');
+            $value = (int) ($row->total ?? 0);
+            $bookings = (int) ($row->bookings ?? 0);
+
+            return [
+                'lead_score_bucket' => $bucket,
+                'bucket_label' => $this->leadScoreBucketLabel($bucket),
+                'total' => $value,
+                'share' => $total > 0 ? round(($value / $total) * 100, 1) : 0.0,
+                'avg_score' => round((float) ($row->avg_score ?? 0), 1),
+                'bookings' => $bookings,
+                'booking_rate' => $value > 0 ? round(($bookings / $value) * 100, 1) : 0.0,
+            ];
+        }, $rows);
+    }
+
+    /**
+     * @param array{sql:string,params:array<int|string,mixed>} $base
+     * @return array<int, array<string, int|float|string>>
+     */
+    private function conversationFrictionBreakdown(array $base, int $total): array
+    {
+        $rows = DB::select(
+            'SELECT
+                COALESCE(NULLIF(friction_state, ""), "none") AS friction_state,
+                COUNT(*) AS total
+             FROM (' . $base['sql'] . ') analytics_base
+             WHERE friction_state <> "none"
+             GROUP BY COALESCE(NULLIF(friction_state, ""), "none")
+             ORDER BY total DESC, friction_state ASC',
+            $base['params']
+        );
+
+        return array_map(function ($row) use ($total): array {
+            $state = (string) ($row->friction_state ?? 'none');
+            $value = (int) ($row->total ?? 0);
+
+            return [
+                'friction_state' => $state,
+                'friction_label' => $this->frictionStateLabel($state),
+                'total' => $value,
+                'share' => $total > 0 ? round(($value / $total) * 100, 1) : 0.0,
+            ];
+        }, $rows);
+    }
+
+    /**
+     * @param array{sql:string,params:array<int|string,mixed>} $base
+     * @return array<int, array<string, string>>
+     */
+    private function conversationAutomatedInsights(array $base, int $total): array
+    {
+        if ($total === 0) {
+            return [];
+        }
+
+        $summary = $this->conversationAnalyticsSummary($base);
+        $sources = $this->conversationSourcesBreakdown($base, $total);
+        $intents = $this->conversationIntentsBreakdown($base, $total);
+        $frictions = $this->conversationFrictionBreakdown($base, $total);
+        $leadScores = $this->conversationLeadScoreBreakdown($base, $total);
+        $lifecycle = $this->conversationLifecycleBreakdown($base, $total);
+        $ads = $this->adsPerformanceBreakdown($base);
+
+        $insights = [];
+
+        $topSource = $sources[0] ?? null;
+        if (is_array($topSource)) {
+            $insights[] = [
+                'title' => 'Fuente dominante',
+                'body' => $topSource['source_label'] . ' concentra ' . $topSource['share'] . '% de las conversaciones nuevas del periodo.',
+            ];
+        }
+
+        $topLifecycle = $lifecycle[0] ?? null;
+        if (is_array($topLifecycle)) {
+            $insights[] = [
+                'title' => 'Mix del canal',
+                'body' => $topLifecycle['lifecycle_label'] . ' lidera con ' . $topLifecycle['share'] . '% del canal y conversión a cita de ' . $topLifecycle['booking_rate'] . '%.',
+            ];
+        }
+
+        $topIntent = $intents[0] ?? null;
+        if (is_array($topIntent)) {
+            $insights[] = [
+                'title' => 'Intención más frecuente',
+                'body' => $topIntent['intent_label'] . ' representa ' . $topIntent['share'] . '% de la demanda nueva y convierte ' . $topIntent['booking_rate'] . '% a cita.',
+            ];
+        }
+
+        $topFriction = $frictions[0] ?? null;
+        if (is_array($topFriction)) {
+            $insights[] = [
+                'title' => 'Mayor fricción',
+                'body' => $topFriction['friction_label'] . ' concentra ' . $topFriction['share'] . '% del total analizado. Ese es el primer punto a corregir en flujo u operación.',
+            ];
+        }
+
+        $topScore = $leadScores[0] ?? null;
+        if (is_array($topScore)) {
+            $insights[] = [
+                'title' => 'Calidad de lead',
+                'body' => 'Promedio de score ' . ($summary['avg_lead_score'] ?? 0) . '. El bucket ' . $topScore['bucket_label'] . ' agrupa ' . $topScore['share'] . '% de conversaciones.',
+            ];
+        }
+
+        $topAd = $ads[0] ?? null;
+        if (is_array($topAd) && (int) ($summary['conversations_from_ads'] ?? 0) > 0) {
+            $insights[] = [
+                'title' => 'Ad más rentable',
+                'body' => $topAd['headline'] . ' lidera Ads con ' . $topAd['bookings'] . ' citas y conversión de ' . $topAd['booking_rate'] . '%.',
+            ];
+        }
+
+        return array_slice($insights, 0, 5);
+    }
+
+    /**
+     * @param array{sql:string,params:array<int|string,mixed>} $base
+     * @return array<int, array<string, int|float|string|null>>
+     */
+    private function adsPerformanceBreakdown(array $base): array
+    {
+        $rows = DB::select(
+            'SELECT
+                NULLIF(referral_source_id, "") AS source_id,
+                NULLIF(referral_headline, "") AS headline,
+                NULLIF(referral_media_type, "") AS media_type,
+                COUNT(*) AS conversations,
+                SUM(is_identified) AS identified,
+                SUM(has_booking) AS bookings,
+                SUM(has_handoff) AS handoffs
+             FROM (' . $base['sql'] . ') analytics_base
+             WHERE source_category = "ad"
+             GROUP BY referral_source_id, referral_headline, referral_media_type
+             ORDER BY bookings DESC, conversations DESC, referral_source_id ASC
+             LIMIT 10',
+            $base['params']
+        );
+
+        return array_map(static function ($row): array {
+            $conversations = (int) ($row->conversations ?? 0);
+            $bookings = (int) ($row->bookings ?? 0);
+
+            return [
+                'source_id' => $row->source_id !== null ? (string) $row->source_id : null,
+                'headline' => $row->headline !== null ? (string) $row->headline : 'Sin headline',
+                'media_type' => $row->media_type !== null ? (string) $row->media_type : 'n/d',
+                'conversations' => $conversations,
+                'identified' => (int) ($row->identified ?? 0),
+                'bookings' => $bookings,
+                'handoffs' => (int) ($row->handoffs ?? 0),
+                'booking_rate' => $conversations > 0 ? round(($bookings / $conversations) * 100, 1) : 0.0,
+            ];
+        }, $rows);
+    }
+
+    /**
+     * @return array{sql:string,params:array<int|string,mixed>}
+     */
+    private function conversationAnalyticsBaseSubquery(string $fromSql, string $toSql, ?int $roleId, ?int $agentId, string $scope): array
+    {
+        $filter = $this->conversationScopeFilterSql('c', 'u_assigned', $roleId, $agentId, $scope . '_conversation');
+        $where = 'c.created_at >= ? AND c.created_at < ?';
+        $params = [$fromSql, $toSql];
+        if ($filter['where'] !== '') {
+            $where .= ' AND ' . $filter['where'];
+            $params = array_merge($params, array_values($filter['params']));
+        }
+
+        $referralType = $this->jsonTextExtract('mi.raw_payload', '$.referral.source_type');
+        $referralSourceId = $this->jsonTextExtract('mi.raw_payload', '$.referral.source_id');
+        $referralHeadline = $this->jsonTextExtract('mi.raw_payload', '$.referral.headline');
+        $referralMediaType = $this->jsonTextExtract('mi.raw_payload', '$.referral.media_type');
+        $hasAttributionTable = Schema::hasTable('whatsapp_conversation_attributions');
+        $sessionState = $this->jsonTextExtract('s.context', '$.state');
+        $sessionConsent = $this->jsonBooleanIsTrue('s.context', '$.consent');
+        $attributionJoin = $hasAttributionTable
+            ? 'LEFT JOIN whatsapp_conversation_attributions a ON a.conversation_id = c.id'
+            : 'LEFT JOIN (SELECT NULL AS conversation_id, NULL AS source_category, NULL AS source_type, NULL AS source_id, NULL AS headline, NULL AS media_type, NULL AS initial_intent, NULL AS patient_segment) a ON 1 = 0';
+        $sessionJoin = Schema::hasTable('whatsapp_autoresponder_sessions')
+            ? 'LEFT JOIN whatsapp_autoresponder_sessions s ON s.conversation_id = c.id'
+            : 'LEFT JOIN (SELECT NULL AS conversation_id, NULL AS context) s ON 1 = 0';
+        $bookingJoin = Schema::hasTable('whatsapp_sigcenter_bookings')
+            ? 'LEFT JOIN (
+                    SELECT conversation_id, COUNT(*) AS created_bookings
+                    FROM whatsapp_sigcenter_bookings
+                    WHERE status = "created"
+                    GROUP BY conversation_id
+                ) b ON b.conversation_id = c.id'
+            : 'LEFT JOIN (SELECT NULL AS conversation_id, 0 AS created_bookings) b ON b.conversation_id = c.id';
+        $handoffJoin = Schema::hasTable('whatsapp_handoffs')
+            ? 'LEFT JOIN (
+                    SELECT conversation_id, 1 AS had_handoff
+                    FROM whatsapp_handoffs
+                    GROUP BY conversation_id
+                ) h ON h.conversation_id = c.id'
+            : 'LEFT JOIN (SELECT NULL AS conversation_id, 0 AS had_handoff) h ON h.conversation_id = c.id';
+
+        $sql = 'SELECT
+                    c.id AS conversation_id,
+                    c.wa_number,
+                    c.created_at AS conversation_created_at,
+                    c.patient_hc_number,
+                    c.needs_human,
+                    c.assigned_user_id,
+                    c.handoff_requested_at,
+                    ma.direction AS first_message_direction,
+                    mi.message_timestamp AS first_inbound_at,
+                    COALESCE(NULLIF(a.source_type, ""), ' . $referralType . ') AS referral_source_type,
+                    COALESCE(NULLIF(a.source_id, ""), ' . $referralSourceId . ') AS referral_source_id,
+                    COALESCE(NULLIF(a.headline, ""), ' . $referralHeadline . ') AS referral_headline,
+                    COALESCE(NULLIF(a.media_type, ""), ' . $referralMediaType . ') AS referral_media_type,
+                    COALESCE(NULLIF(a.initial_intent, ""), "unknown") AS initial_intent,
+                    COALESCE(NULLIF(a.conversation_type, ""), "unknown") AS conversation_type,
+                    COALESCE(NULLIF(a.patient_segment, ""), "unknown") AS patient_segment,
+                    ' . $sessionState . ' AS session_state,
+                    CASE WHEN ' . $sessionConsent . ' THEN 1 ELSE 0 END AS has_consent,
+                    CASE WHEN COALESCE(NULLIF(TRIM(c.patient_hc_number), ""), "") <> "" THEN 1 ELSE 0 END AS is_identified,
+                    CASE WHEN (
+                        LOWER(COALESCE(' . $sessionState . ', "")) LIKE "agenda\_%"
+                        OR COALESCE(NULLIF(TRIM(' . $this->jsonTextExtract('s.context', '$.trabajador_id') . '), ""), "") <> ""
+                        OR COALESCE(NULLIF(TRIM(' . $this->jsonTextExtract('s.context', '$.sede_id') . '), ""), "") <> ""
+                        OR COALESCE(NULLIF(TRIM(' . $this->jsonTextExtract('s.context', '$.procedimiento_id') . '), ""), "") <> ""
+                        OR COALESCE(b.created_bookings, 0) > 0
+                    ) THEN 1 ELSE 0 END AS entered_scheduling,
+                    CASE WHEN (
+                        LOWER(COALESCE(' . $sessionState . ', "")) = "agenda_confirmar_cita"
+                        OR COALESCE(b.created_bookings, 0) > 0
+                    ) THEN 1 ELSE 0 END AS reached_confirmation,
+                    CASE WHEN COALESCE(b.created_bookings, 0) > 0 THEN 1 ELSE 0 END AS has_booking,
+                    CASE WHEN COALESCE(h.had_handoff, 0) > 0 OR c.handoff_requested_at IS NOT NULL THEN 1 ELSE 0 END AS has_handoff,
+                    (
+                        (CASE WHEN ' . $sessionConsent . ' THEN 10 ELSE 0 END) +
+                        (CASE WHEN COALESCE(NULLIF(TRIM(c.patient_hc_number), ""), "") <> "" THEN 20 ELSE 0 END) +
+                        (CASE WHEN (
+                            LOWER(COALESCE(' . $sessionState . ', "")) LIKE "agenda\_%"
+                            OR COALESCE(NULLIF(TRIM(' . $this->jsonTextExtract('s.context', '$.trabajador_id') . '), ""), "") <> ""
+                            OR COALESCE(NULLIF(TRIM(' . $this->jsonTextExtract('s.context', '$.sede_id') . '), ""), "") <> ""
+                            OR COALESCE(NULLIF(TRIM(' . $this->jsonTextExtract('s.context', '$.procedimiento_id') . '), ""), "") <> ""
+                            OR COALESCE(b.created_bookings, 0) > 0
+                        ) THEN 20 ELSE 0 END) +
+                        (CASE WHEN (
+                            LOWER(COALESCE(' . $sessionState . ', "")) = "agenda_confirmar_cita"
+                            OR COALESCE(b.created_bookings, 0) > 0
+                        ) THEN 20 ELSE 0 END) +
+                        (CASE WHEN COALESCE(b.created_bookings, 0) > 0 THEN 30 ELSE 0 END)
+                    ) AS lead_score,
+                    CASE
+                        WHEN (
+                            (CASE WHEN ' . $sessionConsent . ' THEN 10 ELSE 0 END) +
+                            (CASE WHEN COALESCE(NULLIF(TRIM(c.patient_hc_number), ""), "") <> "" THEN 20 ELSE 0 END) +
+                            (CASE WHEN (
+                                LOWER(COALESCE(' . $sessionState . ', "")) LIKE "agenda\_%"
+                                OR COALESCE(NULLIF(TRIM(' . $this->jsonTextExtract('s.context', '$.trabajador_id') . '), ""), "") <> ""
+                                OR COALESCE(NULLIF(TRIM(' . $this->jsonTextExtract('s.context', '$.sede_id') . '), ""), "") <> ""
+                                OR COALESCE(NULLIF(TRIM(' . $this->jsonTextExtract('s.context', '$.procedimiento_id') . '), ""), "") <> ""
+                                OR COALESCE(b.created_bookings, 0) > 0
+                            ) THEN 20 ELSE 0 END) +
+                            (CASE WHEN (
+                                LOWER(COALESCE(' . $sessionState . ', "")) = "agenda_confirmar_cita"
+                                OR COALESCE(b.created_bookings, 0) > 0
+                            ) THEN 20 ELSE 0 END) +
+                            (CASE WHEN COALESCE(b.created_bookings, 0) > 0 THEN 30 ELSE 0 END)
+                        ) >= 70 THEN "high"
+                        WHEN (
+                            (CASE WHEN ' . $sessionConsent . ' THEN 10 ELSE 0 END) +
+                            (CASE WHEN COALESCE(NULLIF(TRIM(c.patient_hc_number), ""), "") <> "" THEN 20 ELSE 0 END) +
+                            (CASE WHEN (
+                                LOWER(COALESCE(' . $sessionState . ', "")) LIKE "agenda\_%"
+                                OR COALESCE(NULLIF(TRIM(' . $this->jsonTextExtract('s.context', '$.trabajador_id') . '), ""), "") <> ""
+                                OR COALESCE(NULLIF(TRIM(' . $this->jsonTextExtract('s.context', '$.sede_id') . '), ""), "") <> ""
+                                OR COALESCE(NULLIF(TRIM(' . $this->jsonTextExtract('s.context', '$.procedimiento_id') . '), ""), "") <> ""
+                                OR COALESCE(b.created_bookings, 0) > 0
+                            ) THEN 20 ELSE 0 END) +
+                            (CASE WHEN (
+                                LOWER(COALESCE(' . $sessionState . ', "")) = "agenda_confirmar_cita"
+                                OR COALESCE(b.created_bookings, 0) > 0
+                            ) THEN 20 ELSE 0 END) +
+                            (CASE WHEN COALESCE(b.created_bookings, 0) > 0 THEN 30 ELSE 0 END)
+                        ) >= 35 THEN "medium"
+                        ELSE "low"
+                    END AS lead_score_bucket,
+                    CASE
+                        WHEN COALESCE(NULLIF(a.source_category, ""), "") <> "" THEN a.source_category
+                        WHEN LOWER(COALESCE(' . $referralType . ', "")) = "ad" THEN "ad"
+                        WHEN COALESCE(ma.direction, "") = "outbound" THEN "outbound_initiated"
+                        WHEN mi.message_timestamp IS NOT NULL THEN "organic_inbound"
+                        ELSE "unknown"
+                    END AS source_category,
+                    CASE
+                        WHEN COALESCE(b.created_bookings, 0) > 0 THEN "none"
+                        WHEN COALESCE(h.had_handoff, 0) > 0 OR c.handoff_requested_at IS NOT NULL THEN "handoff_required"
+                        WHEN LOWER(COALESCE(' . $sessionState . ', "")) = "consentimiento_pendiente" THEN "consent_pending"
+                        WHEN LOWER(COALESCE(' . $sessionState . ', "")) = "esperando_cedula" THEN "waiting_identifier"
+                        WHEN LOWER(COALESCE(' . $sessionState . ', "")) = "agenda_confirmar_cita" THEN "confirmation_pending"
+                        WHEN LOWER(COALESCE(' . $sessionState . ', "")) LIKE "agenda\_esperando\_%" THEN LOWER(COALESCE(' . $sessionState . ', ""))
+                        WHEN c.needs_human = 1 THEN "open_unresolved"
+                        ELSE "none"
+                    END AS friction_state,
+                    CASE
+                        WHEN COALESCE(NULLIF(a.source_category, ""), "") IN ("ad", "organic_direct")
+                            AND COALESCE(NULLIF(a.patient_segment, ""), "unknown") = "new_patient" THEN "captacion"
+                        WHEN COALESCE(NULLIF(a.patient_segment, ""), "unknown") = "reactivated_patient"
+                            OR COALESCE(NULLIF(a.conversation_type, ""), "unknown") = "patient_return" THEN "reactivacion"
+                        WHEN COALESCE(NULLIF(a.source_category, ""), "") IN ("post_consultation", "post_surgery")
+                            OR COALESCE(NULLIF(a.conversation_type, ""), "unknown") = "post_op_followup" THEN "seguimiento_clinico"
+                        WHEN COALESCE(NULLIF(a.source_category, ""), "") IN ("support_operational", "campaign_outbound")
+                            OR COALESCE(NULLIF(a.conversation_type, ""), "unknown") IN ("reschedule", "cancel", "results", "human_help", "campaign_response") THEN "operacion"
+                        WHEN COALESCE(NULLIF(a.source_category, ""), "") = "patient_return" THEN "reactivacion"
+                        ELSE "captacion"
+                    END AS lifecycle_category,
+                    CASE
+                        WHEN COALESCE(b.created_bookings, 0) > 0 THEN "booking_created"
+                        WHEN COALESCE(h.had_handoff, 0) > 0 OR c.handoff_requested_at IS NOT NULL THEN "handoff_human"
+                        WHEN c.needs_human = 0 AND COALESCE(NULLIF(TRIM(c.patient_hc_number), ""), "") <> "" THEN "resolved_identified"
+                        WHEN c.needs_human = 0 THEN "resolved_without_identification"
+                        ELSE "open_or_abandoned"
+                    END AS outcome_category
+                FROM whatsapp_conversations c
+                LEFT JOIN users u_assigned ON u_assigned.id = c.assigned_user_id
+                LEFT JOIN (
+                    SELECT m.conversation_id, MIN(m.id) AS first_message_id
+                    FROM whatsapp_messages m
+                    GROUP BY m.conversation_id
+                ) first_any ON first_any.conversation_id = c.id
+                LEFT JOIN whatsapp_messages ma ON ma.id = first_any.first_message_id
+                LEFT JOIN (
+                    SELECT m.conversation_id, MIN(m.id) AS first_inbound_id
+                    FROM whatsapp_messages m
+                    WHERE m.direction = "inbound"
+                    GROUP BY m.conversation_id
+                ) first_inbound ON first_inbound.conversation_id = c.id
+                LEFT JOIN whatsapp_messages mi ON mi.id = first_inbound.first_inbound_id
+                ' . $attributionJoin . '
+                ' . $sessionJoin . '
+                ' . $bookingJoin . '
+                ' . $handoffJoin . '
+                WHERE ' . $where;
+
+        return ['sql' => $sql, 'params' => $params];
+    }
+
+    private function jsonTextExtract(string $column, string $path): string
+    {
+        if ($this->isSqlite()) {
+            return 'COALESCE(CAST(json_extract(' . $column . ', ' . $this->stringLiteral($path) . ') AS TEXT), "")';
+        }
+
+        return 'COALESCE(JSON_UNQUOTE(JSON_EXTRACT(' . $column . ', ' . $this->stringLiteral($path) . ')), "")';
+    }
+
+    private function jsonBooleanIsTrue(string $column, string $path): string
+    {
+        $extract = $this->jsonTextExtract($column, $path);
+        return 'LOWER(COALESCE(' . $extract . ', "")) IN ("1", "true")';
+    }
+
+    private function sourceCategoryLabel(string $category): string
+    {
+        return match ($category) {
+            'ad' => 'Ads',
+            'organic_direct' => 'Orgánico directo',
+            'campaign_outbound' => 'Campaña saliente',
+            'patient_return' => 'Paciente de retorno',
+            'post_consultation' => 'Post consulta',
+            'post_surgery' => 'Post cirugía',
+            'support_operational' => 'Soporte operativo',
+            default => 'Sin clasificar',
+        };
+    }
+
+    private function lifecycleCategoryLabel(string $category): string
+    {
+        return match ($category) {
+            'captacion' => 'Captación',
+            'operacion' => 'Operación',
+            'seguimiento_clinico' => 'Seguimiento clínico',
+            'reactivacion' => 'Reactivación',
+            default => 'Sin clasificar',
+        };
+    }
+
+    private function outcomeCategoryLabel(string $category): string
+    {
+        return match ($category) {
+            'booking_created' => 'Cita creada',
+            'handoff_human' => 'Handoff a humano',
+            'resolved_identified' => 'Resuelto con paciente identificado',
+            'resolved_without_identification' => 'Resuelto sin identificar',
+            'open_or_abandoned' => 'Abierta o abandonada',
+            default => 'Sin clasificar',
+        };
+    }
+
+    private function initialIntentLabel(string $intent): string
+    {
+        return match ($intent) {
+            'booking' => 'Agendar cita',
+            'reschedule' => 'Reagendar',
+            'cancel' => 'Cancelar cita',
+            'pricing' => 'Precios',
+            'hours_location' => 'Horarios o ubicación',
+            'results' => 'Resultados',
+            'human_help' => 'Ayuda humana',
+            'general_info' => 'Información general',
+            'outbound_followup' => 'Seguimiento saliente',
+            'other' => 'Otra intención',
+            default => 'Sin clasificar',
+        };
+    }
+
+    private function patientSegmentLabel(string $segment): string
+    {
+        return match ($segment) {
+            'new_patient' => 'Paciente nuevo',
+            'returning_patient' => 'Paciente recurrente',
+            'reactivated_patient' => 'Paciente reactivado',
+            default => 'Sin clasificar',
+        };
+    }
+
+    private function conversationTypeLabel(string $type): string
+    {
+        return match ($type) {
+            'booking' => 'Agendamiento',
+            'reschedule' => 'Reagendamiento',
+            'cancel' => 'Cancelación',
+            'faq' => 'FAQ / información',
+            'results' => 'Resultados',
+            'human_help' => 'Ayuda humana',
+            'post_op_followup' => 'Seguimiento postoperatorio',
+            'campaign_response' => 'Respuesta a campaña',
+            'patient_return' => 'Retorno de paciente',
+            'other' => 'Otro',
+            default => 'Sin clasificar',
+        };
+    }
+
+    private function leadScoreBucketLabel(string $bucket): string
+    {
+        return match ($bucket) {
+            'high' => 'Alto valor',
+            'medium' => 'Valor medio',
+            default => 'Valor bajo',
+        };
+    }
+
+    private function frictionStateLabel(string $state): string
+    {
+        return match ($state) {
+            'consent_pending' => 'Esperando consentimiento',
+            'waiting_identifier' => 'Esperando cédula',
+            'confirmation_pending' => 'Pendiente de confirmación',
+            'handoff_required' => 'Dependencia de humano',
+            'agenda_esperando_subespecialidad' => 'Esperando especialidad',
+            'agenda_esperando_medico' => 'Esperando médico',
+            'agenda_esperando_sede' => 'Esperando sede',
+            'agenda_esperando_procedimiento' => 'Esperando procedimiento',
+            'agenda_esperando_dia' => 'Esperando día',
+            'agenda_esperando_horario' => 'Esperando horario',
+            'open_unresolved' => 'Abierta sin resolver',
+            default => 'Sin fricción clasificada',
+        };
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
     private function humanAttentionSummary(string $fromSql, string $toSql, ?int $roleId, ?int $agentId): array
     {
         $scope = $this->inboundScopeSubquery($fromSql, $toSql, $roleId, $agentId, 'human_attention');
         $reply = $this->humanReplySubquery($roleId, $agentId, 'human_attention');
+        $handoffStart = $this->handoffStartSubquery($roleId, $agentId, 'human_attention');
 
         $sql = 'SELECT
                     inbound.conversation_id,
                     inbound.wa_number,
                     inbound.first_inbound_at,
                     inbound.last_inbound_at,
+                    inbound.handoff_requested_at,
+                    handoff.first_handoff_at,
                     human.first_human_reply_at
                 FROM (' . $scope['sql'] . ') inbound
+                LEFT JOIN (' . $handoffStart['sql'] . ') handoff
+                    ON handoff.conversation_id = inbound.conversation_id
                 LEFT JOIN (' . $reply['sql'] . ') human
                     ON human.conversation_id = inbound.conversation_id';
 
-        $rows = DB::select($sql, array_values($scope['params'] + $reply['params']));
+        $rows = DB::select($sql, array_merge(
+            array_values($scope['params']),
+            array_values($handoffStart['params']),
+            array_values($reply['params'])
+        ));
         $threshold24h = Carbon::now()->subHours(24);
         $peopleInboundSet = [];
         $peopleAttendedSet = [];
         $peopleLostSet = [];
         $attended = 0;
         $lost = 0;
+        $lostWithHandoff = 0;
         $abandoned = 0;
+        $abandonedWithHandoff = 0;
         $resolved = 0;
         $responseSeconds = [];
 
@@ -291,28 +1182,36 @@ class KpiDashboardService
                 $peopleInboundSet[$waNumber] = true;
             }
 
-            $firstInbound = isset($row->first_inbound_at) ? Carbon::parse((string) $row->first_inbound_at) : null;
             $lastInbound = isset($row->last_inbound_at) ? Carbon::parse((string) $row->last_inbound_at) : null;
             $firstReply = isset($row->first_human_reply_at) ? Carbon::parse((string) $row->first_human_reply_at) : null;
+            $handoffRequestedAt = isset($row->handoff_requested_at) ? Carbon::parse((string) $row->handoff_requested_at) : null;
+            $firstHandoffAt = isset($row->first_handoff_at) ? Carbon::parse((string) $row->first_handoff_at) : null;
+            $responseStart = $handoffRequestedAt ?? $firstHandoffAt;
 
             if ($firstReply !== null) {
                 $attended++;
                 if ($waNumber !== '') {
                     $peopleAttendedSet[$waNumber] = true;
                 }
-                if ($firstInbound !== null && $firstReply->greaterThanOrEqualTo($firstInbound)) {
-                    $responseSeconds[] = $firstInbound->diffInSeconds($firstReply);
+                if ($responseStart !== null && $firstReply->greaterThanOrEqualTo($responseStart)) {
+                    $responseSeconds[] = $responseStart->diffInSeconds($firstReply);
                 }
                 if ($lastInbound !== null && $lastInbound->lessThanOrEqualTo($threshold24h)) {
                     $resolved++;
                 }
             } else {
                 $lost++;
+                if ($responseStart !== null) {
+                    $lostWithHandoff++;
+                }
                 if ($waNumber !== '') {
                     $peopleLostSet[$waNumber] = true;
                 }
                 if ($lastInbound !== null && $lastInbound->lessThanOrEqualTo($threshold24h)) {
                     $abandoned++;
+                    if ($responseStart !== null) {
+                        $abandonedWithHandoff++;
+                    }
                 }
             }
         }
@@ -332,9 +1231,11 @@ class KpiDashboardService
             'people_attended_human' => $peopleAttended,
             'conversations_lost' => $lost,
             'people_lost' => $peopleLost,
+            'conversations_lost_with_handoff' => $lostWithHandoff,
             'attention_rate' => $peopleInbound > 0 ? round(($peopleAttended / $peopleInbound) * 100, 2) : 0.0,
             'loss_rate' => $peopleInbound > 0 ? round(($peopleLost / $peopleInbound) * 100, 2) : 0.0,
             'conversations_abandoned' => $abandoned,
+            'conversations_abandoned_with_handoff' => $abandonedWithHandoff,
             'abandonment_rate' => $peopleInbound > 0 ? round(($abandoned / $peopleInbound) * 100, 2) : 0.0,
             'conversations_resolved' => $resolved,
             'avg_first_human_response_seconds' => $avgSeconds !== null ? round($avgSeconds, 2) : null,
@@ -585,8 +1486,8 @@ class KpiDashboardService
                     ' . $this->agentNameSql('u', 'first_reply.assigned_agent_id', 'Usuario #') . ' AS agent_name,
                     COUNT(*) AS attended_conversations,
                     ' . ($this->isSqlite()
-                        ? 'AVG((julianday(first_reply.first_human_reply_at) - julianday(first_reply.first_inbound_at)) * 86400)'
-                        : 'AVG(TIMESTAMPDIFF(SECOND, first_reply.first_inbound_at, first_reply.first_human_reply_at))') . ' AS avg_first_response_seconds
+                        ? 'AVG((julianday(first_reply.first_human_reply_at) - julianday(first_reply.assigned_at)) * 86400)'
+                        : 'AVG(TIMESTAMPDIFF(SECOND, first_reply.assigned_at, first_reply.first_human_reply_at))') . ' AS avg_first_response_seconds
                 FROM (' . $reply['sql'] . ') first_reply
                 LEFT JOIN users u ON u.id = first_reply.assigned_agent_id
                 GROUP BY first_reply.assigned_agent_id, agent_name
@@ -854,16 +1755,24 @@ class KpiDashboardService
     {
         $scope = $this->inboundScopeSubquery($fromSql, $toSql, $roleId, $agentId, 'human_drilldown');
         $reply = $this->humanReplySubquery($roleId, $agentId, 'human_drilldown');
+        $handoffStart = $this->handoffStartSubquery($roleId, $agentId, 'human_drilldown');
         $condition = $attended ? 'IS NOT NULL' : 'IS NULL';
         $base = 'FROM (' . $scope['sql'] . ') inbound
+                 LEFT JOIN (' . $handoffStart['sql'] . ') handoff ON handoff.conversation_id = inbound.conversation_id
                  LEFT JOIN (' . $reply['sql'] . ') human ON human.conversation_id = inbound.conversation_id
                  INNER JOIN whatsapp_conversations c ON c.id = inbound.conversation_id
                  WHERE human.first_human_reply_at ' . $condition;
-        $params = array_values($scope['params'] + $reply['params']);
+        $params = array_merge(
+            array_values($scope['params']),
+            array_values($handoffStart['params']),
+            array_values($reply['params'])
+        );
 
         $total = (int) (DB::selectOne('SELECT COUNT(*) AS total ' . $base, $params)->total ?? 0);
         $rows = DB::select(
-            'SELECT c.id, c.wa_number, c.display_name, c.patient_full_name, inbound.first_inbound_at, inbound.last_inbound_at, human.first_human_reply_at ' . $base . '
+            'SELECT c.id, c.wa_number, c.display_name, c.patient_full_name,
+                    inbound.first_inbound_at, inbound.last_inbound_at, inbound.handoff_requested_at,
+                    handoff.first_handoff_at, human.first_human_reply_at ' . $base . '
              ORDER BY inbound.first_inbound_at DESC, c.id DESC
              LIMIT ? OFFSET ?',
             array_merge($params, [$limit, $offset])
@@ -877,6 +1786,8 @@ class KpiDashboardService
                 ['key' => 'display_name', 'label' => 'Contacto'],
                 ['key' => 'patient_full_name', 'label' => 'Paciente'],
                 ['key' => 'first_inbound_at', 'label' => '1er inbound'],
+                ['key' => 'handoff_requested_at', 'label' => 'Solicitud ayuda'],
+                ['key' => 'first_handoff_at', 'label' => 'Ingreso a handoff'],
                 ['key' => 'first_human_reply_at', 'label' => '1ra respuesta'],
             ],
             $rows,
@@ -1224,9 +2135,13 @@ class KpiDashboardService
     private function inboundScopeSubquery(string $fromSql, string $toSql, ?int $roleId, ?int $agentId, string $scope): array
     {
         $filter = $this->conversationScopeFilterSql('c', 'u_assigned', $roleId, $agentId, $scope);
+        $handoffRequestedSelect = Schema::hasColumn('whatsapp_conversations', 'handoff_requested_at')
+            ? 'c.handoff_requested_at'
+            : 'NULL AS handoff_requested_at';
         $sql = 'SELECT
                     c.id AS conversation_id,
                     c.wa_number,
+                    ' . $handoffRequestedSelect . ',
                     MIN(m.message_timestamp) AS first_inbound_at,
                     MAX(m.message_timestamp) AS last_inbound_at
                 FROM whatsapp_messages m
@@ -1241,6 +2156,9 @@ class KpiDashboardService
             $params = array_merge($params, array_values($filter['params']));
         }
         $sql .= ' GROUP BY c.id, c.wa_number';
+        if (Schema::hasColumn('whatsapp_conversations', 'handoff_requested_at')) {
+            $sql .= ', c.handoff_requested_at';
+        }
 
         return ['sql' => $sql, 'params' => $params];
     }
@@ -1272,6 +2190,27 @@ class KpiDashboardService
     }
 
     /**
+     * @return array{sql:string,params:array<string,mixed>}
+     */
+    private function handoffStartSubquery(?int $roleId, ?int $agentId, string $scope): array
+    {
+        $filter = $this->handoffFilterSql('h', $roleId, $agentId, $scope . '_start');
+        $sql = 'SELECT
+                    h.conversation_id,
+                    MIN(COALESCE(h.queued_at, h.assigned_at, h.created_at)) AS first_handoff_at
+                FROM whatsapp_handoffs h
+                WHERE 1 = 1';
+        $params = [];
+        if ($filter['where'] !== '') {
+            $sql .= ' AND ' . $filter['where'];
+            $params = array_values($filter['params']);
+        }
+        $sql .= ' GROUP BY h.conversation_id';
+
+        return ['sql' => $sql, 'params' => $params];
+    }
+
+    /**
      * @param array{sql:string,params:array<string,mixed>} $inboundScope
      * @return array{sql:string,params:array<string,mixed>}
      */
@@ -1280,8 +2219,8 @@ class KpiDashboardService
         $filter = $this->handoffFilterSql('h', $roleId, $agentId, $scope . '_first_reply');
         $sql = 'SELECT
                     inbound.conversation_id,
-                    inbound.first_inbound_at,
                     h.assigned_agent_id,
+                    h.assigned_at,
                     MIN(m.message_timestamp) AS first_human_reply_at
                 FROM (' . $inboundScope['sql'] . ') inbound
                 INNER JOIN whatsapp_handoffs h ON h.conversation_id = inbound.conversation_id
@@ -1296,7 +2235,7 @@ class KpiDashboardService
             $sql .= ' AND ' . $filter['where'];
             $params = array_merge($params, array_values($filter['params']));
         }
-        $sql .= ' GROUP BY inbound.conversation_id, inbound.first_inbound_at, h.assigned_agent_id';
+        $sql .= ' GROUP BY inbound.conversation_id, h.assigned_agent_id, h.assigned_at';
 
         return ['sql' => $sql, 'params' => $params];
     }

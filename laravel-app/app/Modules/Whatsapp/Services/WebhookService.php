@@ -14,6 +14,7 @@ class WebhookService
         private readonly FlowRuntimeShadowObserverService $shadowObserver = new FlowRuntimeShadowObserverService(),
         private readonly WhatsappRealtimeService $realtime = new WhatsappRealtimeService(),
         private readonly FlowRuntimeExecutionService $runtime = new FlowRuntimeExecutionService(),
+        private readonly ConversationAttributionService $attributionService = new ConversationAttributionService(),
     ) {
     }
 
@@ -55,6 +56,7 @@ class WebhookService
                 $automation = $this->executeAutomation($message);
                 $automationRuns += !empty($automation['executed']) ? 1 : 0;
                 $automationMessagesSent += (int) ($automation['messages_sent'] ?? 0);
+                $this->syncConversationAttribution($message);
             }
         }
 
@@ -269,10 +271,39 @@ class WebhookService
         });
 
         if ($persistedConversation instanceof WhatsappConversation && $persistedMessage instanceof WhatsappMessage) {
+            $this->attributionService->syncConversation($persistedConversation, $persistedMessage);
             $this->realtime->broadcastInboundMessage($persistedConversation, $persistedMessage);
         }
 
         return true;
+    }
+
+    /**
+     * @param array<string, mixed> $message
+     */
+    private function syncConversationAttribution(array $message): void
+    {
+        $messageId = trim((string) ($message['id'] ?? ''));
+        if ($messageId === '') {
+            return;
+        }
+
+        $inboundMessage = WhatsappMessage::query()
+            ->where('wa_message_id', $messageId)
+            ->where('direction', 'inbound')
+            ->latest('id')
+            ->first();
+
+        if (!$inboundMessage instanceof WhatsappMessage) {
+            return;
+        }
+
+        $conversation = WhatsappConversation::query()->find($inboundMessage->conversation_id);
+        if (!$conversation instanceof WhatsappConversation) {
+            return;
+        }
+
+        $this->attributionService->syncConversation($conversation, $inboundMessage);
     }
 
     /**

@@ -18,6 +18,7 @@ class ConversationStartService
     public function __construct(
         private readonly WhatsappConfigService $configService = new WhatsappConfigService(),
         private readonly CloudApiTransportService $transport = new CloudApiTransportService(),
+        private readonly ConversationAttributionService $attributionService = new ConversationAttributionService(),
     ) {
     }
 
@@ -198,6 +199,9 @@ class ConversationStartService
 
         $conversation->refresh();
         $message = $conversation->whatsapp_messages()->latest('id')->first();
+        if ($message instanceof WhatsappMessage) {
+            $this->attributionService->syncConversation($conversation, $message);
+        }
 
         return [
             'conversation' => [

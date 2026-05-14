@@ -53,6 +53,8 @@ Route::middleware([
         ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.view,whatsapp.chat.supervise,settings.manage');
     Route::get('/kpis/export', [KpiReadController::class, 'export'])
         ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.view,whatsapp.chat.supervise,settings.manage');
+    Route::get('/kpis/export/pdf', [KpiReadController::class, 'exportPdf'])
+        ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.view,whatsapp.chat.supervise,settings.manage');
     Route::get('/flowmaker/contract', [FlowmakerReadController::class, 'contract'])
         ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.autoresponder.manage,settings.manage');
     Route::get('/flowmaker/simulate', [FlowmakerReadController::class, 'simulate'])
