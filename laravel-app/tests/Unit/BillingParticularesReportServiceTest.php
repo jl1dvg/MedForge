@@ -117,6 +117,23 @@ class BillingParticularesReportServiceTest extends TestCase
         ]));
     }
 
+    public function test_confirmed_and_arrived_statuses_are_closure_issues_not_absences(): void
+    {
+        $service = new BillingParticularesReportService(new PDO('sqlite::memory:'));
+
+        foreach (['CONFIRMADO', 'LLEGADO'] as $status) {
+            $this->assertSame('SIN_CIERRE_OPERATIVO', $this->invokeResolveSurgeryRealizationState($service, [
+                'estado_encuentro' => $status,
+            ]));
+            $this->assertSame('SIN_CIERRE_OPERATIVO', $this->invokeResolvePniRealizationState($service, [
+                'estado_encuentro' => $status,
+            ]));
+            $this->assertSame('SIN_CIERRE_OPERATIVO', $this->invokeResolveImageRealizationState($service, [
+                'estado_encuentro' => $status,
+            ]));
+        }
+    }
+
     public function test_summary_switches_from_company_breakdown_to_plan_breakdown_when_a_company_is_selected(): void
     {
         $service = new BillingParticularesReportService(new PDO('sqlite::memory:'));
@@ -308,6 +325,42 @@ class BillingParticularesReportServiceTest extends TestCase
         $resolver = \Closure::bind(
             function (array $row): string {
                 return $this->resolveSurgeryRealizationState($row, false);
+            },
+            $service,
+            BillingParticularesReportService::class
+        );
+
+        return $resolver($row);
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    private function invokeResolvePniRealizationState(
+        BillingParticularesReportService $service,
+        array $row
+    ): string {
+        $resolver = \Closure::bind(
+            function (array $row): string {
+                return $this->resolvePniRealizationState($row, false);
+            },
+            $service,
+            BillingParticularesReportService::class
+        );
+
+        return $resolver($row);
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    private function invokeResolveImageRealizationState(
+        BillingParticularesReportService $service,
+        array $row
+    ): string {
+        $resolver = \Closure::bind(
+            function (array $row): string {
+                return $this->resolveImageRealizationState($row, false);
             },
             $service,
             BillingParticularesReportService::class

@@ -714,6 +714,7 @@
             $pniRealizadaConsulta = (int) ($pniSummary['realizada_consulta'] ?? 0);
             $pniCanceladas = (int) ($pniSummary['canceladas'] ?? 0);
             $pniAusentes = (int) ($pniSummary['ausentes'] ?? 0);
+            $pniSinCierre = (int) ($pniSummary['sin_cierre'] ?? 0);
             $pniPendientesFacturar = (int) ($pniSummary['pendientes_facturar'] ?? 0);
             $pniHonorarioReal = (float) ($pniSummary['honorario_real'] ?? 0);
             $pniPorCobrarEstimado = (float) ($pniSummary['por_cobrar_estimado'] ?? 0);
@@ -751,6 +752,7 @@
             $serviciosOftalmologicosRealizadaConsulta = (int) ($serviciosOftalmologicosSummary['realizada_consulta'] ?? 0);
             $serviciosOftalmologicosCanceladas = (int) ($serviciosOftalmologicosSummary['canceladas'] ?? 0);
             $serviciosOftalmologicosAusentes = (int) ($serviciosOftalmologicosSummary['ausentes'] ?? 0);
+            $serviciosOftalmologicosSinCierre = (int) ($serviciosOftalmologicosSummary['sin_cierre'] ?? 0);
             $serviciosOftalmologicosPendientesFacturar = (int) ($serviciosOftalmologicosSummary['pendientes_facturar'] ?? 0);
             $serviciosOftalmologicosHonorarioReal = (float) ($serviciosOftalmologicosSummary['honorario_real'] ?? 0);
             $serviciosOftalmologicosPorCobrarEstimado = (float) ($serviciosOftalmologicosSummary['por_cobrar_estimado'] ?? 0);
@@ -1512,7 +1514,7 @@
                                     <span
                                         class="badge bg-success-light text-success">{{ $pniRealizadas }} realizadas</span>
                                     <span class="badge bg-warning-light text-warning">{{ $pniPendientesFacturar }} pendientes de facturar</span>
-                                    <span class="badge bg-danger-light text-danger">{{ $pniCanceladas + $pniAusentes }} pérdida</span>
+                                    <span class="badge bg-danger-light text-danger">{{ $pniCanceladas + $pniAusentes + $pniSinCierre }} pérdida</span>
                                 </div>
                             </div>
                         </div>
@@ -1571,7 +1573,7 @@
                          data-detail-block="pni"
                          data-detail-segment="cancelada"
                          data-bs-toggle="tooltip"
-                         title="Filtra PNI canceladas y ausentes.">
+                         title="Filtra PNI canceladas, ausentes y sin cierre operativo.">
                         <div class="kpi-filter-actions">
                             <button type="button" class="btn btn-light btn-sm border" data-detail-modal="pni:cancelada" data-bs-toggle="tooltip" title="Abrir resumen rápido de PNI canceladas o ausentes">
                                 <i class="mdi mdi-magnify"></i>
@@ -1584,7 +1586,7 @@
                             <span class="badge bg-primary-light text-primary kpi-filter-badge d-none">Filtro activo</span>
                             <h6 class="mb-5">Canceladas</h6>
                             <div class="fs-28 fw-700 text-danger">{{ $pniCanceladas }}</div>
-                            <small class="text-muted">{{ $pniAusentes }} ausentes / sin atención</small>
+                            <small class="text-muted">{{ $pniAusentes }} ausentes / {{ $pniSinCierre }} sin cierre</small>
                         </div>
                     </div>
                 </div>
@@ -1877,7 +1879,7 @@
                                     </button>
                                     <span class="badge bg-success-light text-success">{{ $serviciosOftalmologicosRealizadas }} realizadas</span>
                                     <span class="badge bg-warning-light text-warning">{{ $serviciosOftalmologicosPendientesFacturar }} pendientes de facturar</span>
-                                    <span class="badge bg-danger-light text-danger">{{ $serviciosOftalmologicosCanceladas + $serviciosOftalmologicosAusentes }} pérdida</span>
+                                    <span class="badge bg-danger-light text-danger">{{ $serviciosOftalmologicosCanceladas + $serviciosOftalmologicosAusentes + $serviciosOftalmologicosSinCierre }} pérdida</span>
                                 </div>
                             </div>
                         </div>
@@ -1937,7 +1939,7 @@
                          data-detail-block="servicios_oftalmologicos"
                          data-detail-segment="cancelada"
                          data-bs-toggle="tooltip"
-                         title="Filtra servicios oftalmológicos cancelados y ausentes.">
+                         title="Filtra servicios oftalmológicos cancelados, ausentes y sin cierre operativo.">
                         <div class="kpi-filter-actions">
                             <button type="button" class="btn btn-light btn-sm border" data-detail-modal="servicios_oftalmologicos:cancelada" data-bs-toggle="tooltip" title="Abrir resumen rápido de servicios cancelados o ausentes">
                                 <i class="mdi mdi-magnify"></i>
@@ -1950,8 +1952,7 @@
                             <span class="badge bg-primary-light text-primary kpi-filter-badge d-none">Filtro activo</span>
                             <h6 class="mb-5">Canceladas</h6>
                             <div class="fs-28 fw-700 text-danger">{{ $serviciosOftalmologicosCanceladas }}</div>
-                            <small class="text-muted">{{ $serviciosOftalmologicosAusentes }} ausentes / sin
-                                atención</small>
+                            <small class="text-muted">{{ $serviciosOftalmologicosAusentes }} ausentes / {{ $serviciosOftalmologicosSinCierre }} sin cierre</small>
                         </div>
                     </div>
                 </div>
@@ -4478,7 +4479,7 @@
                         return ['CANCELADA', 'AUSENTE', 'SIN_CIERRE_OPERATIVO'].includes(item.estadoRealizacion);
                     }
                     if (item.block === 'pni' || item.block === 'servicios_oftalmologicos') {
-                        return ['CANCELADA', 'AUSENTE'].includes(item.estadoRealizacion);
+                        return ['CANCELADA', 'AUSENTE', 'SIN_CIERRE_OPERATIVO'].includes(item.estadoRealizacion);
                     }
                     if (item.block === 'imagenes') {
                         return ['CANCELADA', 'AUSENTE', 'SIN_CIERRE_OPERATIVO'].includes(item.estadoRealizacion);
@@ -4548,7 +4549,7 @@
                             return item.estadoFacturacion === 'PENDIENTE_FACTURAR';
                         }
                         if (normalizedSegment === 'cancelada') {
-                            return item.estadoRealizacion === 'CANCELADA' || item.estadoRealizacion === 'AUSENTE';
+                            return ['CANCELADA', 'AUSENTE', 'SIN_CIERRE_OPERATIVO'].includes(item.estadoRealizacion);
                         }
                         if (normalizedSegment === 'sin_tarifa_estimable') {
                             return item.sinTarifaEstimable === true;
@@ -4578,7 +4579,7 @@
                             return item.estadoFacturacion === 'PENDIENTE_FACTURAR';
                         }
                         if (normalizedSegment === 'cancelada') {
-                            return item.estadoRealizacion === 'CANCELADA' || item.estadoRealizacion === 'AUSENTE';
+                            return ['CANCELADA', 'AUSENTE', 'SIN_CIERRE_OPERATIVO'].includes(item.estadoRealizacion);
                         }
                         if (normalizedSegment === 'sin_tarifa_estimable') {
                             return item.sinTarifaEstimable === true;

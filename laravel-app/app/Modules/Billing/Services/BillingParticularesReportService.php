@@ -1147,6 +1147,7 @@ class BillingParticularesReportService
             'REALIZADA_CONSULTA' => 0,
             'CANCELADA' => 0,
             'AUSENTE' => 0,
+            'SIN_CIERRE_OPERATIVO' => 0,
         ];
         $pniPorCobrarDoctor = [];
         $pniPerdidaDoctor = [];
@@ -1185,6 +1186,7 @@ class BillingParticularesReportService
             'REALIZADA_CONSULTA' => 0,
             'CANCELADA' => 0,
             'AUSENTE' => 0,
+            'SIN_CIERRE_OPERATIVO' => 0,
         ];
         $serviciosOftalmologicosPorCobrarDoctor = [];
         $serviciosOftalmologicosPerdidaDoctor = [];
@@ -1375,7 +1377,7 @@ class BillingParticularesReportService
                     $pniPorCobrarDoctor[$doctor] = ($pniPorCobrarDoctor[$doctor] ?? 0.0) + $montoPorCobrarPniRow;
                 }
 
-                if (in_array($estadoRealizacionPni, ['CANCELADA', 'AUSENTE'], true)) {
+                if (in_array($estadoRealizacionPni, ['CANCELADA', 'AUSENTE', 'SIN_CIERRE_OPERATIVO'], true)) {
                     $pniPerdidaEstimada += $montoPerdidaPniRow;
                     $pniPerdidaDoctor[$doctor] = ($pniPerdidaDoctor[$doctor] ?? 0.0) + $montoPerdidaPniRow;
                 }
@@ -1468,7 +1470,7 @@ class BillingParticularesReportService
                     $serviciosOftalmologicosPorCobrarDoctor[$doctor] = ($serviciosOftalmologicosPorCobrarDoctor[$doctor] ?? 0.0) + $montoPorCobrarServicioRow;
                 }
 
-                if (in_array($estadoRealizacionServicio, ['CANCELADA', 'AUSENTE'], true)) {
+                if (in_array($estadoRealizacionServicio, ['CANCELADA', 'AUSENTE', 'SIN_CIERRE_OPERATIVO'], true)) {
                     $serviciosOftalmologicosPerdidaEstimada += $montoPerdidaServicioRow;
                     $serviciosOftalmologicosPerdidaDoctor[$doctor] = ($serviciosOftalmologicosPerdidaDoctor[$doctor] ?? 0.0) + $montoPerdidaServicioRow;
                 }
@@ -1540,10 +1542,12 @@ class BillingParticularesReportService
 
             if ($this->isPniAttentionType($tipoAtencionGlobal)) {
                 $esRealizada = in_array($estadoRealizacionGlobal, ['FACTURADA', 'REALIZADA_CONSULTA'], true);
-                $esPerdida = in_array($estadoRealizacionGlobal, ['CANCELADA', 'AUSENTE'], true);
+                $esPerdida = in_array($estadoRealizacionGlobal, ['CANCELADA', 'AUSENTE', 'SIN_CIERRE_OPERATIVO'], true);
+                $esSinCierre = $estadoRealizacionGlobal === 'SIN_CIERRE_OPERATIVO';
             } elseif ($this->isOphthalmologyServiceAttentionType($tipoAtencionGlobal)) {
                 $esRealizada = in_array($estadoRealizacionGlobal, ['FACTURADA', 'REALIZADA_CONSULTA'], true);
-                $esPerdida = in_array($estadoRealizacionGlobal, ['CANCELADA', 'AUSENTE'], true);
+                $esPerdida = in_array($estadoRealizacionGlobal, ['CANCELADA', 'AUSENTE', 'SIN_CIERRE_OPERATIVO'], true);
+                $esSinCierre = $estadoRealizacionGlobal === 'SIN_CIERRE_OPERATIVO';
             } elseif ($this->isImageAttentionType($tipoAtencionGlobal)) {
                 $esRealizada = in_array($estadoRealizacionGlobal, ['FACTURADA', 'REALIZADA_CON_ARCHIVOS', 'REALIZADA_INFORMADA'], true);
                 $esPerdida = in_array($estadoRealizacionGlobal, ['CANCELADA', 'AUSENTE', 'SIN_CIERRE_OPERATIVO'], true);
@@ -1963,6 +1967,7 @@ class BillingParticularesReportService
             + (int)($pniEstadoCounts['REALIZADA_CONSULTA'] ?? 0);
         $pniCanceladas = (int)($pniEstadoCounts['CANCELADA'] ?? 0);
         $pniAusentes = (int)($pniEstadoCounts['AUSENTE'] ?? 0);
+        $pniSinCierre = (int)($pniEstadoCounts['SIN_CIERRE_OPERATIVO'] ?? 0);
         $pniTotal = array_sum($pniEstadoCounts);
         $imagenesRealizadas = (int)($imagenesEstadoCounts['FACTURADA'] ?? 0)
             + (int)($imagenesEstadoCounts['REALIZADA_CON_ARCHIVOS'] ?? 0)
@@ -1978,6 +1983,7 @@ class BillingParticularesReportService
             + (int)($serviciosOftalmologicosEstadoCounts['REALIZADA_CONSULTA'] ?? 0);
         $serviciosOftalmologicosCanceladas = (int)($serviciosOftalmologicosEstadoCounts['CANCELADA'] ?? 0);
         $serviciosOftalmologicosAusentes = (int)($serviciosOftalmologicosEstadoCounts['AUSENTE'] ?? 0);
+        $serviciosOftalmologicosSinCierre = (int)($serviciosOftalmologicosEstadoCounts['SIN_CIERRE_OPERATIVO'] ?? 0);
         $serviciosOftalmologicosTotal = array_sum($serviciosOftalmologicosEstadoCounts);
         $cirugiasRealizadas = (int)($cirugiasEstadoCounts['OPERADA_CONFIRMADA'] ?? 0)
             + (int)($cirugiasEstadoCounts['OPERADA_CON_PROTOCOLO'] ?? 0)
@@ -2175,6 +2181,7 @@ class BillingParticularesReportService
                 'realizada_consulta' => (int)($pniEstadoCounts['REALIZADA_CONSULTA'] ?? 0),
                 'canceladas' => $pniCanceladas,
                 'ausentes' => $pniAusentes,
+                'sin_cierre' => $pniSinCierre,
                 'pendientes_facturar' => $pniPendientesFacturar,
                 'honorario_real' => round($pniHonorarioReal, 2),
                 'por_cobrar_estimado' => round($pniPorCobrarEstimado, 2),
@@ -2214,6 +2221,7 @@ class BillingParticularesReportService
                 'realizada_consulta' => (int)($serviciosOftalmologicosEstadoCounts['REALIZADA_CONSULTA'] ?? 0),
                 'canceladas' => $serviciosOftalmologicosCanceladas,
                 'ausentes' => $serviciosOftalmologicosAusentes,
+                'sin_cierre' => $serviciosOftalmologicosSinCierre,
                 'pendientes_facturar' => $serviciosOftalmologicosPendientesFacturar,
                 'honorario_real' => round($serviciosOftalmologicosHonorarioReal, 2),
                 'por_cobrar_estimado' => round($serviciosOftalmologicosPorCobrarEstimado, 2),
@@ -2901,8 +2909,12 @@ class BillingParticularesReportService
             return 'REALIZADA_CONSULTA';
         }
 
-        if ($estadoEncuentro === 'CANCELADO' || $estadoEncuentro === 'CANCELADA') {
+        if ($this->isEncounterCancelled($estadoEncuentro)) {
             return 'CANCELADA';
+        }
+
+        if ($this->isEncounterArrived($estadoEncuentro)) {
+            return 'SIN_CIERRE_OPERATIVO';
         }
 
         return 'AUSENTE';
@@ -2958,6 +2970,10 @@ class BillingParticularesReportService
 
         if ($this->isEncounterAbsent($estadoEncuentro)) {
             return 'AUSENTE';
+        }
+
+        if ($this->isEncounterArrived($estadoEncuentro)) {
+            return 'SIN_CIERRE_OPERATIVO';
         }
 
         if ($this->isImageOperationalAbsence($estadoEncuentro)) {
@@ -3036,6 +3052,10 @@ class BillingParticularesReportService
             return 'SIN_CIERRE';
         }
 
+        if ($estadoRealizacion === 'SIN_CIERRE_OPERATIVO' && !$hasBillingEvidence) {
+            return 'SIN_CIERRE';
+        }
+
         return null;
     }
 
@@ -3100,6 +3120,10 @@ class BillingParticularesReportService
         $estadoEncuentro = strtoupper(trim((string)($row['estado_encuentro'] ?? '')));
         if ($this->isEncounterCancelled($estadoEncuentro)) {
             return 'CANCELADA';
+        }
+
+        if ($this->isEncounterArrived($estadoEncuentro)) {
+            return 'SIN_CIERRE_OPERATIVO';
         }
 
         if ($this->isEncounterAbsent($estadoEncuentro) || $this->isSurgeryOperationalAbsence($estadoEncuentro)) {
@@ -3183,14 +3207,21 @@ class BillingParticularesReportService
     {
         $normalized = $this->normalizeEncounterStatus($status);
 
-        return in_array($normalized, ['confirmado', 'agendado', 'llegado'], true);
+        return in_array($normalized, ['agendado', 'generada', 'generadas'], true);
     }
 
     private function isSurgeryOperationalAbsence(string $status): bool
     {
         $normalized = $this->normalizeEncounterStatus($status);
 
-        return in_array($normalized, ['confirmado', 'agendado', 'llegado', 'generada', 'generadas'], true);
+        return in_array($normalized, ['agendado', 'generada', 'generadas'], true);
+    }
+
+    private function isEncounterArrived(string $status): bool
+    {
+        $normalized = $this->normalizeEncounterStatus($status);
+
+        return in_array($normalized, ['confirmado', 'llegado'], true);
     }
 
     /**
