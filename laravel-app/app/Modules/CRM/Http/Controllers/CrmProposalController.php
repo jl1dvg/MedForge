@@ -14,10 +14,11 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
-use Modules\Mail\Services\MailProfileService;
-use Modules\Mail\Services\NotificationMailer;
+use App\Modules\Mail\Services\MailProfileService;
+use App\Modules\Mail\Services\NotificationMailer;
 use RuntimeException;
 use Throwable;
+use function preg_match;
 
 class CrmProposalController
 {
@@ -120,8 +121,7 @@ class CrmProposalController
             $pdo = app('db')->connection()->getPdo();
             $profileService = new MailProfileService($pdo);
             $profileSlug = $profileService->getProfileSlugForContext('crm');
-            $mailer = new NotificationMailer($pdo, $profileSlug);
-            $result = $mailer->sendPatientUpdate($to, $subject, $body, [], $attachments, false, $profileSlug);
+            $result = $this->sendProposalEmailWithFallback($pdo, $profileSlug, $to, $subject, $body, $attachments);
             if (!($result['success'] ?? false)) {
                 throw new RuntimeException((string) ($result['error'] ?? 'No se pudo enviar la propuesta por correo'));
             }
@@ -197,5 +197,51 @@ class CrmProposalController
     {
         $code = (int) $e->getCode();
         return $code >= 400 && $code < 600 ? $code : 422;
+    }
+
+    /**
+     * @param array<int,array{path:string,name?:string,type?:string}> $attachments
+     * @return array{success:bool,error?:string}
+     */
+    private function sendProposalEmailWithFallback(
+        \PDO $pdo,
+        ?string $profileSlug,
+        string $to,
+        string $subject,
+        string $body,
+        array $attachments
+    ): array {
+        $mailer = new NotificationMailer($pdo, $profileSlug);
+        $result = $mailer->sendPatientUpdate($to, $subject, $body, [], $attachments, false, $profileSlug);
+        if (($result['success'] ?? false) || !$this->shouldRetryWithDefaultProfile($result['error'] ?? null, $profileSlug)) {
+            return $result;
+        }
+
+        Log::warning('crm.proposal.email.retry_default_profile', [
+            'profile_slug' => $profileSlug,
+            'error' => $result['error'] ?? null,
+        ]);
+
+        $fallbackMailer = new NotificationMailer($pdo, null);
+        $fallbackResult = $fallbackMailer->sendPatientUpdate($to, $subject, $body, [], $attachments, false, null);
+        if (($fallbackResult['success'] ?? false) === false) {
+            $fallbackResult['error'] = trim(sprintf(
+                '%s. Reintento con perfil global: %s',
+                (string) ($result['error'] ?? 'Error SMTP'),
+                (string) ($fallbackResult['error'] ?? 'fallo')
+            ));
+        }
+
+        return $fallbackResult;
+    }
+
+    private function shouldRetryWithDefaultProfile(?string $error, ?string $profileSlug): bool
+    {
+        $message = trim((string) $error);
+        if ($profileSlug === null || $profileSlug === '' || $message === '') {
+            return false;
+        }
+
+        return preg_match('/authenticate|authenticat|credencial|username|password/i', $message) === 1;
     }
 }

@@ -43,7 +43,7 @@ class CodesCatalogService
         return CodeType::query()
             ->orderBy('label')
             ->get()
-            ->map(static fn (CodeType $row): array => $row->toArray())
+            ->map(static fn(CodeType $row): array => $row->toArray())
             ->all();
     }
 
@@ -61,7 +61,7 @@ class CodesCatalogService
             ->orderBy('seq')
             ->orderBy('title')
             ->get()
-            ->map(static fn (CodeCategory $row): array => $row->toArray())
+            ->map(static fn(CodeCategory $row): array => $row->toArray())
             ->all();
     }
 
@@ -73,12 +73,12 @@ class CodesCatalogService
     {
         $map = [];
         foreach ($categories as $category) {
-            $slug = trim((string) ($category['slug'] ?? ''));
+            $slug = trim((string)($category['slug'] ?? ''));
             if ($slug === '') {
                 continue;
             }
 
-            $map[$slug] = trim((string) ($category['title'] ?? '')) ?: $slug;
+            $map[$slug] = trim((string)($category['title'] ?? '')) ?: $slug;
         }
 
         return $map;
@@ -90,11 +90,11 @@ class CodesCatalogService
     public function filtersFromRequest(Request $request): array
     {
         return [
-            'q' => trim((string) $request->query('q', '')),
-            'code_type' => trim((string) $request->query('code_type', '')),
-            'superbill' => trim((string) $request->query('superbill', '')),
-            'tipo_seguro' => trim((string) $request->query('tipo_seguro', '')),
-            'empresa_seguro' => trim((string) $request->query('empresa_seguro', '')),
+            'q' => trim((string)$request->query('q', '')),
+            'code_type' => trim((string)$request->query('code_type', '')),
+            'superbill' => trim((string)$request->query('superbill', '')),
+            'tipo_seguro' => trim((string)$request->query('tipo_seguro', '')),
+            'empresa_seguro' => trim((string)$request->query('empresa_seguro', '')),
             'active' => $request->boolean('active') ? 1 : 0,
             'reportable' => $request->boolean('reportable') ? 1 : 0,
             'financial_reporting' => $request->boolean('financial_reporting') ? 1 : 0,
@@ -103,7 +103,7 @@ class CodesCatalogService
 
     public function totalCount(): int
     {
-        return (int) DB::table('tarifario_2014')->count();
+        return (int)DB::table('tarifario_2014')->count();
     }
 
     /**
@@ -111,7 +111,7 @@ class CodesCatalogService
      */
     public function filteredCount(array $filters): int
     {
-        return (int) $this->applyFilters(DB::table('tarifario_2014 as t'), $filters)->count();
+        return (int)$this->applyFilters(DB::table('tarifario_2014 as t'), $filters)->count();
     }
 
     /**
@@ -130,7 +130,7 @@ class CodesCatalogService
             ->limit(max(1, $limit))
             ->get();
 
-        return $rows->map(static fn (object $row): array => (array) $row)->all();
+        return $rows->map(static fn(object $row): array => (array)$row)->all();
     }
 
     public function find(int $id): ?Tarifario2014
@@ -221,10 +221,10 @@ class CodesCatalogService
             ])
             ->map(static function (object $row): array {
                 return [
-                    'related_code_id' => (int) ($row->related_code_id ?? 0),
-                    'relation_type' => (string) ($row->relation_type ?? ''),
-                    'codigo' => (string) ($row->codigo ?? ''),
-                    'descripcion' => (string) ($row->descripcion ?? ''),
+                    'related_code_id' => (int)($row->related_code_id ?? 0),
+                    'relation_type' => (string)($row->relation_type ?? ''),
+                    'codigo' => (string)($row->codigo ?? ''),
+                    'descripcion' => (string)($row->descripcion ?? ''),
                 ];
             })
             ->all();
@@ -262,12 +262,12 @@ class CodesCatalogService
         }
 
         foreach ($this->allCategories() as $category) {
-            $slug = trim((string) ($category['slug'] ?? ''));
+            $slug = trim((string)($category['slug'] ?? ''));
             if ($slug === '') {
                 continue;
             }
 
-            $title = trim((string) ($category['title'] ?? ''));
+            $title = trim((string)($category['title'] ?? ''));
             if (
                 $this->normalizeLookupText($slug) === $normalizedNeedle
                 || $this->normalizeLookupText($title) === $normalizedNeedle
@@ -294,7 +294,7 @@ class CodesCatalogService
     /**
      * @return array<int, array<string, mixed>>
      */
-    public function quickSearch(string $query, int $limit = 15): array
+    public function quickSearch(string $query, int $limit = 15, string $afiliacion = ''): array
     {
         $query = trim($query);
         if ($query === '') {
@@ -304,7 +304,7 @@ class CodesCatalogService
         $limit = max(1, min(50, $limit));
         $pattern = '%' . $query . '%';
 
-        return DB::table('tarifario_2014')
+        $rows = DB::table('tarifario_2014')
             ->select([
                 'id',
                 'codigo',
@@ -324,8 +324,39 @@ class CodesCatalogService
             ->orderBy('codigo')
             ->limit($limit)
             ->get()
-            ->map(static fn (object $row): array => (array) $row)
+            ->map(static fn(object $row): array => (array)$row)
             ->all();
+
+        $priceService = new \App\Modules\Codes\Services\CodePriceService();
+        $levels = $priceService->levels();
+        $levelKey = $priceService->resolveLevelKey($afiliacion, $levels);
+
+        if ($levelKey === null && trim($afiliacion) !== '') {
+            $normalized = $this->normalizeLookupText($afiliacion);
+            $levelKey = str_replace(' ', '_', $normalized);
+        }
+
+        return array_map(static function (array $row) use ($priceService, $levels, $levelKey): array {
+            $defaultPrice = (float)($row['valor_facturar_nivel3'] ?? 0);
+            $priceSource = 'default';
+            $unitPrice = $defaultPrice;
+
+            if ($levelKey !== null) {
+                $prices = $priceService->pricesForCode((int)($row['id'] ?? 0), $levels);
+                if (array_key_exists($levelKey, $prices)) {
+                    $unitPrice = (float)$prices[$levelKey];
+                    $priceSource = 'afiliacion';
+                }
+            }
+
+            $row['price'] = $unitPrice;
+            $row['unit_price'] = $unitPrice;
+            $row['price_source'] = $priceSource;
+            $row['afiliacion_level_key'] = $levelKey;
+            $row['default_price'] = $defaultPrice;
+
+            return $row;
+        }, $rows);
     }
 
     /**
@@ -406,20 +437,20 @@ class CodesCatalogService
 
             $keys = [];
             foreach ($rows as $row) {
-                $rowCategoria = $service->normalizeCategoriaFilter((string) ($row->categoria ?? ''));
+                $rowCategoria = $service->normalizeCategoriaFilter((string)($row->categoria ?? ''));
                 if ($tipoSeguro !== '' && $rowCategoria !== $tipoSeguro) {
                     continue;
                 }
 
-                $rowEmpresa = trim((string) ($row->empresa_seguro ?? ''));
+                $rowEmpresa = trim((string)($row->empresa_seguro ?? ''));
                 if ($rowEmpresa === '') {
-                    $rowEmpresa = trim((string) ($row->afiliacion_raw ?? ''));
+                    $rowEmpresa = trim((string)($row->afiliacion_raw ?? ''));
                 }
                 if ($empresaSeguro !== '' && $service->normalizeEmpresaFilter($rowEmpresa) !== $empresaSeguro) {
                     continue;
                 }
 
-                $key = trim((string) ($row->afiliacion_norm ?? ''));
+                $key = trim((string)($row->afiliacion_norm ?? ''));
                 if ($key !== '') {
                     $keys[$key] = true;
                 }
@@ -438,7 +469,7 @@ class CodesCatalogService
     private function normalizePayload(array $input): array
     {
         return [
-            'codigo' => trim((string) ($input['codigo'] ?? '')),
+            'codigo' => trim((string)($input['codigo'] ?? '')),
             'descripcion' => $this->trimNullable($input['descripcion'] ?? null),
             'short_description' => $this->trimNullable($input['short_description'] ?? null),
             'code_type' => $this->trimNullable($input['code_type'] ?? null),
@@ -464,7 +495,7 @@ class CodesCatalogService
             return null;
         }
 
-        $value = trim((string) $value);
+        $value = trim((string)$value);
 
         return $value !== '' ? $value : null;
     }
@@ -486,12 +517,12 @@ class CodesCatalogService
             return null;
         }
 
-        return (float) $value;
+        return (float)$value;
     }
 
     private function normalizeLookupText(?string $value): string
     {
-        $value = trim((string) $value);
+        $value = trim((string)$value);
         if ($value === '') {
             return '';
         }

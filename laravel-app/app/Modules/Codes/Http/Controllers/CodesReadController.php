@@ -103,7 +103,8 @@ class CodesReadController
             }
 
             $limit = max(1, min(50, (int) $request->query('limit', 15)));
-            $results = $this->catalog->quickSearch($query, $limit);
+            $afiliacion = trim((string) $request->query('afiliacion', ''));
+            $results = $this->catalog->quickSearch($query, $limit, $afiliacion);
 
             return response()->json(['ok' => true, 'data' => $results]);
         } catch (Throwable $exception) {

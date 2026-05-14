@@ -776,6 +776,7 @@ function collectPropuestaPayload(form) {
         valid_until: form.querySelector('#crmPropuestaVigencia')?.value ?? '',
         tax_rate: Number(form.querySelector('#crmPropuestaImpuesto')?.value || 0),
         notes: form.querySelector('#crmPropuestaNotas')?.value?.trim() ?? '',
+        pricing_affiliation: selectedProposalAffiliation(),
         items: collectPropuestaItems(form),
     };
 }
@@ -884,7 +885,8 @@ async function searchPropuestaCodes() {
     results.innerHTML = '<div class="crm-list-empty">Buscando códigos...</div>';
     try {
         const basePath = resolveBasePath();
-        const response = await fetch(resolveReadPath(`${basePath}/crm/catalog/codes?q=${encodeURIComponent(query)}&limit=20`), {
+        const affiliation = selectedProposalAffiliation();
+        const response = await fetch(resolveReadPath(`${basePath}/crm/catalog/codes?q=${encodeURIComponent(query)}&limit=20&afiliacion=${encodeURIComponent(affiliation)}`), {
             credentials: 'same-origin',
         });
         const payload = await response.json().catch(() => ({}));
@@ -912,7 +914,8 @@ async function searchPropuestaPackages(loadDefault = false) {
     results.innerHTML = '<div class="crm-list-empty">Buscando paquetes...</div>';
     try {
         const basePath = resolveBasePath();
-        const response = await fetch(resolveReadPath(`${basePath}/crm/catalog/packages?q=${encodeURIComponent(query)}&limit=20`), {
+        const affiliation = selectedProposalAffiliation();
+        const response = await fetch(resolveReadPath(`${basePath}/crm/catalog/packages?q=${encodeURIComponent(query)}&limit=20&afiliacion=${encodeURIComponent(affiliation)}`), {
             credentials: 'same-origin',
         });
         const payload = await response.json().catch(() => ({}));
@@ -938,14 +941,15 @@ function renderPropuestaCodeResults(codes) {
     }
 
     codes.forEach(code => {
-        const price = Number(code.valor_facturar_nivel1 ?? code.valor_facturar_nivel2 ?? code.valor_facturar_nivel3 ?? 0) || 0;
+        const price = Number(code.price ?? code.unit_price ?? code.default_price ?? code.valor_facturar_nivel3 ?? code.valor_facturar_nivel2 ?? code.valor_facturar_nivel1 ?? 0) || 0;
+        const priceSource = String(code.price_source || '').trim();
         const item = document.createElement('button');
         item.type = 'button';
         item.className = 'crm-proposal-search-item';
         item.innerHTML = `
             <span>
                 <strong>${escapeHtml(code.codigo || `Código #${code.id || ''}`)}</strong>
-                <small>${escapeHtml(code.descripcion || code.short_description || 'Sin descripción')}</small>
+                <small>${escapeHtml(code.descripcion || code.short_description || 'Sin descripción')}${priceSource === 'afiliacion' ? ' · tarifa por afiliación' : ''}</small>
             </span>
             <span class="badge text-bg-light text-dark">${escapeHtml(formatCurrency(price))}</span>
         `;
@@ -996,7 +1000,7 @@ function renderPropuestaPackageResults(packages) {
                 addPropuestaItemRow({
                     description: packageItem.description || 'Ítem de paquete',
                     quantity: packageItem.quantity || 1,
-                    unit_price: packageItem.unit_price || 0,
+                    unit_price: packageItem.resolved_unit_price || packageItem.unit_price || 0,
                     discount_percent: packageItem.discount_percent || 0,
                     code_id: packageItem.code_id || null,
                     package_id: pkg.id || null,
@@ -1019,11 +1023,12 @@ function renderPropuestaControls() {
     const hasProposalContext = hasLead || canAutoCreateLead;
 
     if (help) {
+        const pricingAffiliation = selectedProposalAffiliation();
         help.textContent = hasLead
-            ? `Se creará como borrador vinculado al lead #${leadId}.`
+            ? `Se creará como borrador vinculado al lead #${leadId}. Precio: ${pricingAffiliation || 'afiliación del paciente'}.`
             : canAutoCreateLead
-                ? 'Se creará como borrador y el lead CRM se generará automáticamente desde la HC.'
-                : 'Vincula o crea un lead CRM antes de crear una propuesta.';
+                ? `Se creará como borrador y el lead CRM se generará automáticamente desde la HC. Precio: ${pricingAffiliation || 'afiliación del paciente'}.`
+                : `Vincula o crea un lead CRM antes de crear una propuesta. Precio: ${pricingAffiliation || 'afiliación del paciente'}.`;
     }
     if (submit) {
         submit.disabled = !hasProposalContext;
@@ -1031,6 +1036,35 @@ function renderPropuestaControls() {
     if (form && !form.querySelector('.crm-proposal-item')) {
         addPropuestaItemRow();
     }
+
+    const pricingSelect = document.getElementById('crmPropuestaAfiliacionPrecio');
+    if (pricingSelect && !pricingSelect.dataset.bound) {
+        pricingSelect.dataset.bound = '1';
+        pricingSelect.addEventListener('change', () => renderPropuestaControls());
+    }
+
+    if (pricingSelect) {
+        const defaultLabel = currentProposalAffiliationLabel();
+        const matchingOption = pricingSelect.querySelector('option[value=""]');
+        if (matchingOption) {
+            matchingOption.textContent = defaultLabel ? `Afiliación del paciente: ${defaultLabel}` : 'Afiliación del paciente';
+        }
+    }
+}
+
+function currentProposalAffiliationLabel() {
+    const value = String(currentDetalle?.afiliacion || '').trim();
+    return value;
+}
+
+function selectedProposalAffiliation() {
+    const select = document.getElementById('crmPropuestaAfiliacionPrecio');
+    const explicit = String(select?.value || '').trim();
+    if (explicit !== '') {
+        return explicit;
+    }
+
+    return currentProposalAffiliationLabel();
 }
 
 function bindLeadControls() {

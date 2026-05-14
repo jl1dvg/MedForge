@@ -168,8 +168,8 @@ class SolicitudesReadController
         try {
             $query = trim((string) $request->query('q', ''));
             $limit = max(1, min(50, (int) $request->query('limit', 15)));
-            $data = $query === '' ? [] : (new CodesCatalogService())->quickSearch($query, $limit);
-        } catch (\Throwable $e) {
+            $afiliacion = trim((string) $request->query('afiliacion', ''));
+            $data = $query === '' ? [] : (new CodesCatalogService())->quickSearch($query, $limit, $afiliacion);        } catch (\Throwable $e) {
             Log::error('solicitudes.read.crm_codigos.error', [
                 'request_id' => $requestId,
                 'user_id' => $this->actorId(),
@@ -191,15 +191,17 @@ class SolicitudesReadController
             /** @var PDO $pdo */
             $pdo = DB::connection()->getPdo();
             $packages = new CodesPackageService($pdo);
+            $afiliacion = trim((string) $request->query('afiliacion', ''));
             $rows = $packages->list([
                 'active' => 1,
                 'search' => trim((string) $request->query('q', '')),
+                'afiliacion' => $afiliacion,
                 'limit' => max(1, min(50, (int) $request->query('limit', 20))),
                 'offset' => 0,
             ]);
 
             $data = array_map(
-                fn(array $package): array => $packages->find((int) ($package['id'] ?? 0)) ?? $package,
+                fn(array $package): array => $packages->find((int) ($package['id'] ?? 0), $afiliacion) ?? $package,
                 $rows
             );
         } catch (\Throwable $e) {

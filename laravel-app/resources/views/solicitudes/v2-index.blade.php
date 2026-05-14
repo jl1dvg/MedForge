@@ -991,6 +991,13 @@
                                 <label for="crmPropuestaImpuesto" class="form-label">IVA %</label>
                                 <input type="number" id="crmPropuestaImpuesto" class="form-control" min="0" max="100" step="0.01" value="0">
                             </div>
+                            <div class="col-md-4">
+                                <label for="crmPropuestaAfiliacionPrecio" class="form-label">Tarifa a aplicar</label>
+                                <select id="crmPropuestaAfiliacionPrecio" class="form-select">
+                                    <option value="">Afiliación del paciente</option>
+                                    <option value="Particular">Particular</option>
+                                </select>
+                            </div>
                             <div class="col-12">
                                 <div class="card-header d-flex flex-wrap align-items-center gap-2 px-0 pt-0 pb-2 bg-transparent border-0">
                                     <strong>Ítems de la propuesta</strong>

@@ -89,6 +89,8 @@ class CodePriceService
             return null;
         }
 
+        $fallbackCandidates = [];
+
         foreach ($levels as $level) {
             $canonicalKey = trim((string) ($level['level_key'] ?? ''));
             if ($canonicalKey === '') {
@@ -96,12 +98,29 @@ class CodePriceService
             }
 
             $title = trim((string) ($level['title'] ?? ''));
-            $titleMatch = $title !== '' && $this->normalizeLookupText($title) === $normalizedAffiliation;
-            $keyMatch = $this->normalizeLookupText($canonicalKey) === $normalizedAffiliation;
+            $normalizedTitle = $this->normalizeLookupText($title);
+            $normalizedKey = $this->normalizeLookupText($canonicalKey);
+
+            $titleMatch = $normalizedTitle !== '' && $normalizedTitle === $normalizedAffiliation;
+            $keyMatch = $normalizedKey !== '' && $normalizedKey === $normalizedAffiliation;
 
             if ($titleMatch || $keyMatch) {
                 return $canonicalKey;
             }
+
+            $titleContainsAffiliation = $normalizedTitle !== '' && $this->containsNormalizedTerm($normalizedTitle, $normalizedAffiliation);
+            $keyContainsAffiliation = $normalizedKey !== '' && $this->containsNormalizedTerm($normalizedKey, $normalizedAffiliation);
+            $affiliationContainsTitle = $normalizedTitle !== '' && $this->containsNormalizedTerm($normalizedAffiliation, $normalizedTitle);
+            $affiliationContainsKey = $normalizedKey !== '' && $this->containsNormalizedTerm($normalizedAffiliation, $normalizedKey);
+
+            if ($titleContainsAffiliation || $keyContainsAffiliation || $affiliationContainsTitle || $affiliationContainsKey) {
+                $fallbackCandidates[$canonicalKey] = true;
+            }
+        }
+
+        $candidateKeys = array_keys($fallbackCandidates);
+        if (count($candidateKeys) === 1) {
+            return $candidateKeys[0];
         }
 
         return null;
@@ -266,6 +285,22 @@ class CodePriceService
         }
 
         return $this->levelKeyMaxLength;
+    }
+
+    private function containsNormalizedTerm(string $haystack, string $needle): bool
+    {
+        $haystack = trim($haystack);
+        $needle = trim($needle);
+
+        if ($haystack === '' || $needle === '') {
+            return false;
+        }
+
+        if ($haystack === $needle) {
+            return true;
+        }
+
+        return preg_match('/(^|\s)' . preg_quote($needle, '/') . '(\s|$)/', $haystack) === 1;
     }
 
     private function normalizeLookupText(?string $value): string

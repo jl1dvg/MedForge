@@ -59,6 +59,7 @@ class CodesPackageService
         $stmt->execute();
 
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $affiliation = trim((string) ($filters['afiliacion'] ?? ''));
         foreach ($rows as &$row) {
             $row['computed_total'] = (float) ($row['computed_total'] ?? 0);
             $row['items_count'] = (int) ($row['items_count'] ?? 0);
@@ -71,6 +72,10 @@ class CodesPackageService
             } else {
                 $row['tags'] = null;
             }
+
+            if ($affiliation !== '') {
+                $row = $this->repricePackage($row, $affiliation, false);
+            }
         }
         unset($row);
 
@@ -80,7 +85,7 @@ class CodesPackageService
     /**
      * @return array<string, mixed>|null
      */
-    public function find(int $id): ?array
+    public function find(int $id, ?string $affiliation = null): ?array
     {
         $stmt = $this->pdo->prepare('SELECT * FROM crm_packages WHERE id = :id LIMIT 1');
         $stmt->execute([':id' => $id]);
@@ -102,6 +107,10 @@ class CodesPackageService
         }
 
         $package['items'] = $this->itemsFor($id);
+        $affiliation = trim((string) $affiliation);
+        if ($affiliation !== '') {
+            $package = $this->repricePackage($package, $affiliation, true);
+        }
 
         return $package;
     }
@@ -396,5 +405,65 @@ class CodesPackageService
 
         return $value !== '' ? $value : null;
     }
-}
 
+    /**
+     * @param array<string,mixed> $package
+     * @return array<string,mixed>
+     */
+    private function repricePackage(array $package, string $affiliation, bool $withItems): array
+    {
+        $affiliation = trim($affiliation);
+        if ($affiliation === '') {
+            return $package;
+        }
+
+        $items = $withItems
+            ? (is_array($package['items'] ?? null) ? $package['items'] : [])
+            : $this->itemsFor((int) ($package['id'] ?? 0));
+
+        if ($items === []) {
+            return $package;
+        }
+
+        $priceService = new CodePriceService();
+        $levels = $priceService->levels();
+        $levelKey = $priceService->resolveLevelKey($affiliation, $levels);
+        if ($levelKey === null && preg_match('/\bparticular\b|\bpar\b/i', $affiliation) === 1) {
+            $levelKey = 'particular';
+        }
+
+        $total = 0.0;
+        foreach ($items as &$item) {
+            $unitPrice = (float) ($item['unit_price'] ?? 0);
+            $priceSource = 'package';
+            $codeId = isset($item['code_id']) ? (int) $item['code_id'] : 0;
+
+            if ($codeId > 0 && $levelKey !== null) {
+                $prices = $priceService->pricesForCode($codeId, $levels);
+                if (array_key_exists($levelKey, $prices)) {
+                    $unitPrice = round((float) $prices[$levelKey], 2);
+                    $priceSource = 'afiliacion';
+                }
+            }
+
+            $item['resolved_unit_price'] = $unitPrice;
+            $item['unit_price'] = $unitPrice;
+            $item['price_source'] = $priceSource;
+            $item['afiliacion_level_key'] = $levelKey;
+
+            $quantity = (float) ($item['quantity'] ?? 0);
+            $discount = max(0.0, min(100.0, (float) ($item['discount_percent'] ?? 0)));
+            $line = $quantity * $unitPrice;
+            $line -= $line * ($discount / 100);
+            $total += $line;
+        }
+        unset($item);
+
+        $package['items'] = $items;
+        $package['computed_total'] = round($total, 2);
+        $package['total_amount'] = round($total, 2);
+        $package['afiliacion_level_key'] = $levelKey;
+
+        return $package;
+    }
+}
