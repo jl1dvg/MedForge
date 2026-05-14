@@ -23,6 +23,7 @@ class PacientesFlujoService
     {
         $fecha = $this->normalizeDate($fecha);
 
+        // 1) Visitas reales
         $sql = <<<'SQL'
             SELECT
                 v.id AS visita_id,
@@ -51,52 +52,120 @@ class PacientesFlujoService
         $stmt->execute($params);
         $visitas = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-        $visitaIds = array_values(array_filter(array_map(static fn ($row) => (string) ($row['visita_id'] ?? ''), $visitas)));
-        if ($visitaIds === []) {
+        $visitaIds = array_values(array_filter(array_map(
+            static fn($row) => (string)($row['visita_id'] ?? ''),
+            $visitas
+        )));
+
+        // 2) Traer trayectos con visita_id y también huérfanos del día
+        $whereParts = [];
+        $paramsTrayectos = [];
+
+        if ($visitaIds !== []) {
+            $placeholders = implode(',', array_fill(0, count($visitaIds), '?'));
+            $whereParts[] = "pp.visita_id IN ($placeholders)";
+            $paramsTrayectos = array_merge($paramsTrayectos, $visitaIds);
+        }
+
+        if ($fecha !== null) {
+            $whereParts[] = "(pp.visita_id IS NULL AND pp.fecha = ?)";
+            $paramsTrayectos[] = $fecha;
+        }
+
+        if ($whereParts === []) {
             return $visitas;
         }
 
-        $placeholders = implode(',', array_fill(0, count($visitaIds), '?'));
+        $whereSql = implode(' OR ', $whereParts);
+
         $sqlTrayectos = <<<SQL
             SELECT
                 pp.id,
                 pp.form_id,
                 pp.visita_id,
+                pp.hc_number,
                 pp.procedimiento_proyectado AS procedimiento,
                 pp.estado_agenda AS estado,
                 pp.fecha AS fecha_cambio,
                 pp.hora AS hora,
-                pp.doctor AS doctor,
-                pp.afiliacion AS afiliacion
+                pp.doctor AS doctor_original,
+                COALESCE(u.full_name, u.nombre, pp.doctor) AS doctor,
+                COALESCE(u.nombre_norm, u.nombre_norm_rev, pp.doctor) AS doctor_key,
+                u.id AS doctor_user_id,
+                pp.afiliacion AS afiliacion,
+                pd.fname,
+                pd.mname,
+                pd.lname,
+                pd.lname2
             FROM procedimiento_proyectado pp
-            WHERE pp.visita_id IN ($placeholders)
+            LEFT JOIN patient_data pd ON pp.hc_number = pd.hc_number
+            LEFT JOIN users u
+              ON UPPER(pp.doctor) = UPPER(u.nombre_norm)
+              OR UPPER(pp.doctor) = UPPER(u.nombre_norm_rev)
+            WHERE ($whereSql)
               AND COALESCE(pp.sigcenter_present, 1) = 1
             ORDER BY pp.hora ASC
             SQL;
         $stmtTrayectos = $this->db->prepare($sqlTrayectos);
-        $stmtTrayectos->execute($visitaIds);
+        $stmtTrayectos->execute($paramsTrayectos);
         $trayectos = $stmtTrayectos->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-        $formIds = array_values(array_unique(array_filter(array_map(static fn ($row) => (string) ($row['form_id'] ?? ''), $trayectos))));
+        $formIds = array_values(array_unique(array_filter(array_map(static fn($row) => (string)($row['form_id'] ?? ''), $trayectos))));
         $historiales = $this->obtenerHistorialesPorFormId($formIds);
 
-        /** @var array<string, array<int, array<string, mixed>>> $trayectosPorVisita */
         $trayectosPorVisita = [];
+        $visitaIndex = [];
+
+        foreach ($visitas as $i => $visita) {
+            $visitaIndex[(string)($visita['visita_id'] ?? '')] = $i;
+        }
+
         foreach ($trayectos as $trayecto) {
-            $formId = (string) ($trayecto['form_id'] ?? '');
+            $formId = (string)($trayecto['form_id'] ?? '');
             $trayecto['historial_estados'] = $historiales[$formId] ?? [];
-            $key = (string) ($trayecto['visita_id'] ?? '');
+
+            $visitaId = trim((string)($trayecto['visita_id'] ?? ''));
+            $hcNumber = trim((string)($trayecto['hc_number'] ?? ''));
+            $fechaCambio = trim((string)($trayecto['fecha_cambio'] ?? ''));
+
+            if ($visitaId !== '') {
+                $key = $visitaId;
+            } else {
+                // 3) Visita virtual: agrupa form_id por paciente + fecha
+                $key = 'virtual_' . $hcNumber . '_' . $fechaCambio;
+
+                if (!isset($visitaIndex[$key])) {
+                    $visitas[] = [
+                        'visita_id' => $key,
+                        'hc_number' => $hcNumber,
+                        'fecha_visita' => $fechaCambio,
+                        'hora_llegada' => $trayecto['hora'] ?? null,
+                        'usuario_registro' => null,
+                        'observaciones' => 'Visita virtual generada desde procedimiento_proyectado sin visita_id.',
+                        'fname' => $trayecto['fname'] ?? null,
+                        'mname' => $trayecto['mname'] ?? null,
+                        'lname' => $trayecto['lname'] ?? null,
+                        'lname2' => $trayecto['lname2'] ?? null,
+                    ];
+
+                    $visitaIndex[$key] = array_key_last($visitas);
+                }
+            }
+
+            unset($trayecto['fname'], $trayecto['mname'], $trayecto['lname'], $trayecto['lname2']);
+
             $trayectosPorVisita[$key][] = $trayecto;
         }
 
         foreach ($visitas as &$visita) {
-            $trayectosVisita = $trayectosPorVisita[(string) ($visita['visita_id'] ?? '')] ?? [];
-            $horaLlegada = isset($visita['hora_llegada']) ? (string) $visita['hora_llegada'] : null;
+            $key = (string)($visita['visita_id'] ?? '');
+            $trayectosVisita = $trayectosPorVisita[$key] ?? [];
+            $horaLlegada = isset($visita['hora_llegada']) ? (string)$visita['hora_llegada'] : null;
 
             foreach ($trayectosVisita as &$trayecto) {
                 $historial = is_array($trayecto['historial_estados'] ?? null) ? $trayecto['historial_estados'] : [];
-                $fechaCambio = trim((string) ($trayecto['fecha_cambio'] ?? ''));
-                $hora = trim((string) ($trayecto['hora'] ?? ''));
+                $fechaCambio = trim((string)($trayecto['fecha_cambio'] ?? ''));
+                $hora = trim((string)($trayecto['hora'] ?? ''));
                 $citaProgramada = ($fechaCambio !== '' && $hora !== '') ? ($fechaCambio . ' ' . $hora) : null;
 
                 $detalle = $this->construirLineaTiempo($historial, $citaProgramada, $horaLlegada);
@@ -109,6 +178,10 @@ class PacientesFlujoService
             $visita['trayectos'] = $trayectosVisita;
         }
         unset($visita);
+
+        usort($visitas, static function (array $a, array $b): int {
+            return strcmp((string)($a['hora_llegada'] ?? ''), (string)($b['hora_llegada'] ?? ''));
+        });
 
         return $visitas;
     }
@@ -129,7 +202,10 @@ class PacientesFlujoService
                 pp.estado_agenda AS estado,
                 pp.fecha AS fecha_cambio,
                 pp.hora AS hora,
-                pp.doctor AS doctor,
+                pp.doctor AS doctor_original,
+                COALESCE(u.full_name, u.nombre, pp.doctor) AS doctor,
+                COALESCE(u.nombre_norm, u.nombre_norm_rev, pp.doctor) AS doctor_key,
+                u.id AS doctor_user_id,
                 pd.fname,
                 pd.mname,
                 pd.lname,
@@ -141,6 +217,9 @@ class PacientesFlujoService
             FROM procedimiento_proyectado pp
             INNER JOIN patient_data pd ON pp.hc_number = pd.hc_number
             LEFT JOIN visitas v ON pp.visita_id = v.id
+            LEFT JOIN users u
+              ON UPPER(pp.doctor) = UPPER(u.nombre_norm)
+              OR UPPER(pp.doctor) = UPPER(u.nombre_norm_rev)
             WHERE COALESCE(pp.sigcenter_present, 1) = 1
             SQL;
         $params = [];
@@ -155,22 +234,22 @@ class PacientesFlujoService
         $stmt->execute($params);
         $solicitudes = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-        $formIds = array_values(array_unique(array_filter(array_map(static fn ($row) => (string) ($row['form_id'] ?? ''), $solicitudes))));
+        $formIds = array_values(array_unique(array_filter(array_map(static fn($row) => (string)($row['form_id'] ?? ''), $solicitudes))));
         $historiales = $this->obtenerHistorialesPorFormId($formIds);
 
         foreach ($solicitudes as &$solicitud) {
-            $formId = (string) ($solicitud['form_id'] ?? '');
+            $formId = (string)($solicitud['form_id'] ?? '');
             $historial = $historiales[$formId] ?? [];
             $solicitud['historial_estados'] = $historial;
 
-            $fechaCambio = trim((string) ($solicitud['fecha_cambio'] ?? ''));
-            $hora = trim((string) ($solicitud['hora'] ?? ''));
+            $fechaCambio = trim((string)($solicitud['fecha_cambio'] ?? ''));
+            $hora = trim((string)($solicitud['hora'] ?? ''));
             $citaProgramada = ($fechaCambio !== '' && $hora !== '') ? ($fechaCambio . ' ' . $hora) : null;
 
             $detalle = $this->construirLineaTiempo(
                 $historial,
                 $citaProgramada,
-                isset($solicitud['hora_llegada']) ? (string) $solicitud['hora_llegada'] : null
+                isset($solicitud['hora_llegada']) ? (string)$solicitud['hora_llegada'] : null
             );
 
             $solicitud['linea_tiempo'] = $detalle['linea_tiempo'];
@@ -187,7 +266,7 @@ class PacientesFlujoService
      */
     public function obtenerCambiosRecientes(?string $desde = null): array
     {
-        $desde = trim((string) ($desde ?? ''));
+        $desde = trim((string)($desde ?? ''));
 
         if ($desde !== '' && $this->tableHasColumn('procedimiento_proyectado', 'updated_at')) {
             $stmt = $this->db->prepare('SELECT * FROM procedimiento_proyectado WHERE COALESCE(sigcenter_present, 1) = 1 AND updated_at > ?');
@@ -295,14 +374,14 @@ class PacientesFlujoService
 
         $historiales = [];
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-            $formId = (string) ($row['form_id'] ?? '');
+            $formId = (string)($row['form_id'] ?? '');
             if ($formId === '') {
                 continue;
             }
 
             $historiales[$formId][] = [
-                'estado' => (string) ($row['estado'] ?? ''),
-                'fecha_hora_cambio' => (string) ($row['fecha_hora_cambio'] ?? ''),
+                'estado' => (string)($row['estado'] ?? ''),
+                'fecha_hora_cambio' => (string)($row['fecha_hora_cambio'] ?? ''),
             ];
         }
 
@@ -344,7 +423,7 @@ class PacientesFlujoService
         $ultimo->execute([':form_id' => $formId]);
         $ultimoEstado = $ultimo->fetchColumn();
 
-        if ($ultimoEstado !== false && $this->slugEstado((string) $ultimoEstado) === $this->slugEstado($estado)) {
+        if ($ultimoEstado !== false && $this->slugEstado((string)$ultimoEstado) === $this->slugEstado($estado)) {
             return;
         }
 
@@ -374,7 +453,7 @@ class PacientesFlujoService
                 continue;
             }
 
-            $estado = (string) ($evento['estado'] ?? '');
+            $estado = (string)($evento['estado'] ?? '');
             $lineaTiempo[] = [
                 'estado' => $estado,
                 'fecha_hora_cambio' => $marca,
@@ -415,7 +494,7 @@ class PacientesFlujoService
 
         return [
             'linea_tiempo' => $lineaTiempo,
-            'metricas' => array_filter($metricas, static fn ($valor) => $valor !== null),
+            'metricas' => array_filter($metricas, static fn($valor) => $valor !== null),
             'primeras_marcas' => $primerasMarcas,
         ];
     }
@@ -438,7 +517,7 @@ class PacientesFlujoService
 
     private function normalizeDate(?string $value): ?string
     {
-        $value = trim((string) ($value ?? ''));
+        $value = trim((string)($value ?? ''));
         if ($value === '') {
             return null;
         }
@@ -461,7 +540,7 @@ class PacientesFlujoService
         try {
             $stmt = $this->db->prepare("SHOW COLUMNS FROM `{$table}` LIKE :column");
             $stmt->execute([':column' => $column]);
-            $exists = (bool) $stmt->fetch(PDO::FETCH_ASSOC);
+            $exists = (bool)$stmt->fetch(PDO::FETCH_ASSOC);
         } catch (\Throwable) {
             $exists = false;
         }
@@ -480,7 +559,7 @@ class PacientesFlujoService
         try {
             $stmt = $this->db->prepare('SHOW TABLES LIKE :table');
             $stmt->execute([':table' => $table]);
-            $exists = (bool) $stmt->fetchColumn();
+            $exists = (bool)$stmt->fetchColumn();
         } catch (\Throwable) {
             $exists = false;
         }

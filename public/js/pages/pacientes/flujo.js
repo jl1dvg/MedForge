@@ -85,6 +85,7 @@ function escapeHtml(value) {
 function estadoSlug(estado) {
     const value = slug(estado);
     if (value === 'admision') return 'admision';
+    if (value === 'llegado' || value === 'confirmado' || value === 'confirmada' || value.includes('confirmado') || value.includes('confirmada')) return 'llegado';
     if (value === 'atendido' || value === 'atendida' || value === 'terminado' || value === 'terminada' || value === 'consulta_terminado' || value === 'consulta-terminado' || value === 'completado' || value === 'completada') return 'alta';
     if (value === 'alta-medica' || value === 'dado-de-alta' || value === 'dada-de-alta') return 'alta';
     if (value === 'en-quirofano' || value === 'quirofano') return 'en-quirofano';
@@ -195,7 +196,9 @@ function estadoVisitaAgregada(visita) {
     if (principales.some(item => ['en-consulta', 'optometria', 'dilatando', 'preoperatorio', 'en-quirofano', 'recuperacion', 'admision'].includes(estadoSlug(item.trayecto.estado)))) {
         return 'En atención';
     }
-    if (principales.some(item => estadoSlug(item.trayecto.estado) === 'llegado')) return 'Llegado';
+    if (principales.some(item => ['llegado', 'confirmado'].includes(estadoSlug(item.trayecto.estado)))) {
+        return 'Llegado';
+    }
     if (principales.some(item => estadoSlug(item.trayecto.estado) === 'agendado')) return 'Agendado';
 
     return 'Otro';
