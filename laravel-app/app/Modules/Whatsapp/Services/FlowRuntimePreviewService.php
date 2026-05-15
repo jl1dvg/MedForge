@@ -353,12 +353,52 @@ class FlowRuntimePreviewService
                 $emitted[] = [
                     'type' => $type,
                     'message' => [
-                        'type' => 'buttons',
-                        'body' => '¿En qué puedo ayudarte?',
-                        'buttons' => [
-                            ['id' => 'especialidades0', 'title' => 'Agendar cita'],
-                            ['id' => 'ayuda', 'title' => 'Ayuda'],
-                        ],
+                        'type' => 'list',
+                        'body' => '¿En qué puedo ayudarte hoy?',
+                        'button_text' => 'Ver opciones',
+                        'sections' => [[
+                            'title' => 'Menú principal',
+                            'rows' => [
+                                ['id' => 'agendar', 'title' => 'Agendar cita', 'description' => 'Programa una nueva cita médica'],
+                                ['id' => 'consultar_cita', 'title' => 'Consultar cita', 'description' => 'Revisa tu cita vigente'],
+                                ['id' => 'servicios_y_sedes', 'title' => 'Servicios y sedes', 'description' => 'Sedes, horarios y especialidades'],
+                                ['id' => 'promociones', 'title' => 'Promociones', 'description' => 'Consulta campañas vigentes'],
+                                ['id' => 'ayuda', 'title' => 'Ayuda', 'description' => 'Hablar con un asesor'],
+                            ],
+                        ]],
+                    ],
+                ];
+                continue;
+            }
+
+            if ($type === 'show_active_booking') {
+                $emitted[] = [
+                    'type' => $type,
+                    'message' => [
+                        'type' => 'text',
+                        'body' => 'Muestra la cita vigente del paciente si existe; si no existe, informa que no tiene citas registradas.',
+                    ],
+                ];
+                continue;
+            }
+
+            if ($type === 'show_specialties_catalog') {
+                $emitted[] = [
+                    'type' => $type,
+                    'message' => [
+                        'type' => 'text',
+                        'body' => 'Muestra el catálogo actual de especialidades disponibles.',
+                    ],
+                ];
+                continue;
+            }
+
+            if ($type === 'persist_lead_capture') {
+                $emitted[] = [
+                    'type' => $type,
+                    'message' => [
+                        'type' => 'meta',
+                        'body' => 'Persiste correo y origen del lead en atribución de conversación y CRM.',
                     ],
                 ];
                 continue;

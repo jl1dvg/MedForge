@@ -7,9 +7,9 @@ if ($pdo instanceof PDO) {
     return $pdo;
 }
 
-$host = getenv('DB_HOST') ?: 'db5016222976.hosting-data.io';
-$db = getenv('DB_NAME') ?: 'dbs13202800';
-$user = getenv('DB_USER') ?: 'dbu365135';
+$host = getenv('DB_HOST') ?: '74.208.195.146';
+$db = getenv('DB_NAME') ?: 'medforge';
+$user = getenv('DB_USER') ?: 'jl1dvg';
 $pass = getenv('DB_PASSWORD') ?: 'JorgeAMI2018';
 $charset = getenv('DB_CHARSET') ?: 'utf8mb4';
 $timezone = getenv('DB_TIMEZONE') ?: '-05:00';

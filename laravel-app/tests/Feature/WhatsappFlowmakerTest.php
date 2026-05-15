@@ -585,7 +585,7 @@ class WhatsappFlowmakerTest extends TestCase
     public function test_it_executes_sigcenter_agenda_lookup_through_protected_endpoint(): void
     {
         \Illuminate\Support\Facades\Http::fake([
-            'sigcenter.ddns.net:18093/restful/api-agenda/horarios-disponibles-dias' => \Illuminate\Support\Facades\Http::response([
+            'sigcenter.ddns.net:18093/restful/api-agenda/horarios-disponibles-dias-online' => \Illuminate\Support\Facades\Http::response([
                 'fechas' => ['2026-05-06'],
             ], 200),
         ]);
@@ -615,7 +615,7 @@ class WhatsappFlowmakerTest extends TestCase
             ->assertJsonPath('data.fechas.0', '2026-05-06');
 
         \Illuminate\Support\Facades\Http::assertSent(fn (\Illuminate\Http\Client\Request $request): bool => $request->method() === 'GET'
-            && str_contains($request->url(), '/restful/api-agenda/horarios-disponibles-dias'));
+            && str_contains($request->url(), '/restful/api-agenda/horarios-disponibles-dias-online'));
     }
 
     public function test_it_lists_scheduling_specialties_from_users_catalog(): void
@@ -956,7 +956,7 @@ class WhatsappFlowmakerTest extends TestCase
             ->assertJsonPath('outbound_message.sections.0.rows.0.id', '530')
             ->assertJsonPath('outbound_message.sections.0.rows.0.title', 'Consulta nuevo')
             ->assertJsonPath('outbound_message.sections.0.rows.1.id', '531')
-            ->assertJsonPath('outbound_message.sections.0.rows.1.title', 'Consulta cita')
+            ->assertJsonPath('outbound_message.sections.0.rows.1.title', 'Cita Médica')
             ->assertJsonPath('outbound_message.sections.0.rows.2.id', '532')
             ->assertJsonPath('outbound_message.sections.0.rows.2.title', 'Consulta control')
             ->assertJsonPath('outbound_message.sections.0.rows.3.id', '534')

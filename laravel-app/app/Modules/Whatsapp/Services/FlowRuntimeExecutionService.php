@@ -4,6 +4,7 @@ namespace App\Modules\Whatsapp\Services;
 
 use App\Models\WhatsappAutoresponderSession;
 use App\Models\WhatsappConversation;
+use App\Models\WhatsappConversationAttribution;
 use App\Models\WhatsappMessage;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -133,12 +134,19 @@ class FlowRuntimeExecutionService
             }
         }
 
+        $fallbackScenarios = [];
+
         foreach (($flow['scenarios'] ?? []) as $scenario) {
             if (!is_array($scenario) || !$this->scenarioIsPublished($scenario)) {
                 continue;
             }
 
             if ($this->shouldSkipCatchAllFallbackDuringAgenda($scenario, $facts)) {
+                continue;
+            }
+
+            if ($this->isCatchAllFallbackScenario($scenario)) {
+                $fallbackScenarios[] = $scenario;
                 continue;
             }
 
@@ -169,6 +177,39 @@ class FlowRuntimeExecutionService
             return $this->result(true, true, (string) ($scenario['id'] ?? 'scenario'), $run['messages_sent'], !empty($context['handoff_requested']), null);
         }
 
+        $recovery = $this->recoverNoMatchFlow($flow, $conversation, $inboundMessage, $messagePayload, $context, $text, $facts, $session);
+        if ($recovery !== null) {
+            return $recovery;
+        }
+
+        foreach ($fallbackScenarios as $scenario) {
+            if (!$this->scenarioMatches($scenario, $facts)) {
+                continue;
+            }
+
+            $run = $this->executeActions($scenario['actions'] ?? [], $context, $conversation, $inboundMessage, $text, (string) ($scenario['id'] ?? 'fallback'));
+            $context = $run['context'];
+
+            WhatsappAutoresponderSession::query()->updateOrCreate(
+                ['conversation_id' => $conversation->id],
+                [
+                    'wa_number' => (string) $conversation->wa_number,
+                    'scenario_id' => (string) ($scenario['id'] ?? 'fallback'),
+                    'node_id' => null,
+                    'awaiting' => isset($context['awaiting_field']) ? 'input' : null,
+                    'context' => $context,
+                    'last_payload' => $messagePayload,
+                    'last_interaction_at' => now(),
+                ]
+            );
+
+            if (!empty($context['handoff_requested'])) {
+                $this->markConversationForHandoff($conversation, $scenario, $context);
+            }
+
+            return $this->result(true, true, (string) ($scenario['id'] ?? 'fallback'), $run['messages_sent'], !empty($context['handoff_requested']), null);
+        }
+
         WhatsappAutoresponderSession::query()->updateOrCreate(
             ['conversation_id' => $conversation->id],
             [
@@ -183,6 +224,152 @@ class FlowRuntimeExecutionService
         );
 
         return $this->result(true, false, null, 0, false, 'no_matching_scenario');
+    }
+
+    /**
+     * @param array<string, mixed> $flow
+     * @param array<string, mixed> $messagePayload
+     * @param array<string, mixed> $context
+     * @param array<string, mixed> $facts
+     * @return array{executed:bool,matched:bool,scenario_id:?string,messages_sent:int,handoff_requested:bool,reason:?string}|null
+     */
+    private function recoverNoMatchFlow(
+        array $flow,
+        WhatsappConversation $conversation,
+        WhatsappMessage $inboundMessage,
+        array $messagePayload,
+        array $context,
+        string $text,
+        array $facts,
+        ?WhatsappAutoresponderSession $session,
+    ): ?array {
+        if ($this->shouldRetryConsent($facts)) {
+            $this->sendFlowMessage($conversation, $this->consentRetryMessage(), $context);
+            $context['state'] = 'consentimiento_pendiente';
+            unset($context['awaiting_field']);
+
+            WhatsappAutoresponderSession::query()->updateOrCreate(
+                ['conversation_id' => $conversation->id],
+                [
+                    'wa_number' => (string) $conversation->wa_number,
+                    'scenario_id' => 'consent_retry',
+                    'node_id' => $session?->node_id,
+                    'awaiting' => null,
+                    'context' => $context,
+                    'last_payload' => $messagePayload,
+                    'last_interaction_at' => now(),
+                ]
+            );
+
+            return $this->result(true, true, 'consent_retry', 1, false, null);
+        }
+
+        if ($this->shouldRetryCedula($facts)) {
+            $this->sendFlowMessage($conversation, $this->cedulaRetryMessage(), $context);
+            $context['state'] = 'esperando_cedula';
+            $context['awaiting_field'] = 'cedula';
+
+            WhatsappAutoresponderSession::query()->updateOrCreate(
+                ['conversation_id' => $conversation->id],
+                [
+                    'wa_number' => (string) $conversation->wa_number,
+                    'scenario_id' => 'cedula_retry',
+                    'node_id' => $session?->node_id,
+                    'awaiting' => 'input',
+                    'context' => $context,
+                    'last_payload' => $messagePayload,
+                    'last_interaction_at' => now(),
+                ]
+            );
+
+            return $this->result(true, true, 'cedula_retry', 1, false, null);
+        }
+
+        if ($this->isNaturalSchedulingIntent($text)) {
+            if (empty($context['consent'])) {
+                $this->sendFlowMessage($conversation, $this->consentRetryMessage(), $context);
+                $context['state'] = 'consentimiento_pendiente';
+                unset($context['awaiting_field']);
+
+                WhatsappAutoresponderSession::query()->updateOrCreate(
+                    ['conversation_id' => $conversation->id],
+                    [
+                        'wa_number' => (string) $conversation->wa_number,
+                        'scenario_id' => 'natural_schedule_consent',
+                        'node_id' => null,
+                        'awaiting' => null,
+                        'context' => $context,
+                        'last_payload' => $messagePayload,
+                        'last_interaction_at' => now(),
+                    ]
+                );
+
+                return $this->result(true, true, 'natural_schedule_consent', 1, false, null);
+            }
+
+            if (!$this->hasPatientIdentifier($context, $conversation)) {
+                $this->sendFlowMessage($conversation, $this->scheduleIdentifierRequestMessage(), $context);
+                $context['state'] = 'esperando_cedula';
+                $context['awaiting_field'] = 'cedula';
+
+                WhatsappAutoresponderSession::query()->updateOrCreate(
+                    ['conversation_id' => $conversation->id],
+                    [
+                        'wa_number' => (string) $conversation->wa_number,
+                        'scenario_id' => 'natural_schedule_identifier',
+                        'node_id' => null,
+                        'awaiting' => 'input',
+                        'context' => $context,
+                        'last_payload' => $messagePayload,
+                        'last_interaction_at' => now(),
+                    ]
+                );
+
+                return $this->result(true, true, 'natural_schedule_identifier', 1, false, null);
+            }
+
+            $scenario = $this->findSchedulingEntryScenario($flow['scenarios'] ?? []);
+            if ($scenario !== null) {
+                $run = $this->executeActions($scenario['actions'] ?? [], $context, $conversation, $inboundMessage, $text, (string) ($scenario['id'] ?? 'natural_schedule'));
+                $context = $run['context'];
+
+                WhatsappAutoresponderSession::query()->updateOrCreate(
+                    ['conversation_id' => $conversation->id],
+                    [
+                        'wa_number' => (string) $conversation->wa_number,
+                        'scenario_id' => (string) ($scenario['id'] ?? 'natural_schedule'),
+                        'node_id' => null,
+                        'awaiting' => isset($context['awaiting_field']) ? 'input' : null,
+                        'context' => $context,
+                        'last_payload' => $messagePayload,
+                        'last_interaction_at' => now(),
+                    ]
+                );
+
+                return $this->result(true, true, (string) ($scenario['id'] ?? 'natural_schedule'), $run['messages_sent'], !empty($context['handoff_requested']), null);
+            }
+
+            $this->sendFlowMessage($conversation, $this->mainMenuMessage(), $context);
+            $context['state'] = 'menu_principal';
+            unset($context['awaiting_field']);
+
+            WhatsappAutoresponderSession::query()->updateOrCreate(
+                ['conversation_id' => $conversation->id],
+                [
+                    'wa_number' => (string) $conversation->wa_number,
+                    'scenario_id' => 'natural_schedule_menu',
+                    'node_id' => null,
+                    'awaiting' => null,
+                    'context' => $context,
+                    'last_payload' => $messagePayload,
+                    'last_interaction_at' => now(),
+                ]
+            );
+
+            return $this->result(true, true, 'natural_schedule_menu', 1, false, null);
+        }
+
+        return null;
     }
 
     /**
@@ -207,6 +394,9 @@ class FlowRuntimeExecutionService
             $context['cedula'] = $this->normalizeIdentifier($value);
             $context['identifier'] = $context['cedula'];
             $context['current_identifier'] = $context['cedula'];
+        }
+        if ($field === 'trabajador_id') {
+            $context = $this->enrichDoctorSelectionContext($context, $value);
         }
         unset($context['awaiting_field']);
 
@@ -313,6 +503,23 @@ class FlowRuntimeExecutionService
                     'executed_at' => now()->toISOString(),
                 ];
 
+                if (($preview['operation'] ?? null) === 'list_procedimientos') {
+                    $context['resolved_cita_tipo'] = (string) ($preview['resolved_cita_tipo'] ?? 'sin_clasificacion');
+                    $context['resolved_procedimiento_ids'] = is_array($preview['resolved_procedimiento_ids'] ?? null)
+                        ? array_values(array_map(static fn (mixed $item): string => (string) $item, $preview['resolved_procedimiento_ids']))
+                        : [];
+                    $context['resolved_procedimiento_reason'] = (string) ($preview['resolved_procedimiento_reason'] ?? 'unknown');
+                    $context['resolved_last_consulta_at'] = $preview['resolved_last_consulta_at'] ?? null;
+                    $context['resolved_last_surgery_at'] = $preview['resolved_last_surgery_at'] ?? null;
+
+                    $autoProcedure = $this->resolveProcedureSelectionFromPreview($action, $preview);
+                    if ($autoProcedure !== null) {
+                        $context['procedimiento_id'] = $autoProcedure['id'];
+                        $context['procedimiento_id_label'] = $autoProcedure['label'];
+                        $context['procedimiento_nombre'] = $autoProcedure['label'];
+                    }
+                }
+
                 if (($preview['operation'] ?? null) === 'book_appointment') {
                     $context = $this->recordSigcenterBooking($preview, $context, $conversation, $inboundMessage);
                     $message = !empty($preview['ok'])
@@ -357,6 +564,23 @@ class FlowRuntimeExecutionService
             if ($type === 'goto_menu') {
                 $this->sendFlowMessage($conversation, $this->mainMenuMessage(), $context);
                 $messagesSent++;
+                continue;
+            }
+
+            if ($type === 'show_active_booking') {
+                $this->sendFlowMessage($conversation, $this->activeBookingLookupMessage($conversation, $context), $context);
+                $messagesSent++;
+                continue;
+            }
+
+            if ($type === 'show_specialties_catalog') {
+                $this->sendFlowMessage($conversation, $this->specialtiesCatalogMessage(), $context);
+                $messagesSent++;
+                continue;
+            }
+
+            if ($type === 'persist_lead_capture') {
+                $context = $this->persistLeadCaptureFromContext($conversation, $context);
                 continue;
             }
 
@@ -548,6 +772,26 @@ class FlowRuntimeExecutionService
     }
 
     /**
+     * @param array<string, mixed> $context
+     * @return array{type:string,body:string}
+     */
+    private function activeBookingLookupMessage(WhatsappConversation $conversation, array $context): array
+    {
+        $booking = $this->activeSigcenterBooking($conversation, $context);
+        if ($booking === null) {
+            return [
+                'type' => 'text',
+                'body' => 'Actualmente no tienes citas registradas desde WhatsApp.' . "\n\n" . 'Si deseas, puedo ayudarte a agendar una nueva cita. Escribe AGENDAR o vuelve al MENU.',
+            ];
+        }
+
+        return [
+            'type' => 'text',
+            'body' => 'Esta es tu cita vigente registrada desde WhatsApp' . $this->bookingSummaryText($booking) . "\n\n" . 'Si necesitas cambiarla, escribe CANCELAR CITA o REAGENDAR CITA.',
+        ];
+    }
+
+    /**
      * @return array{type:string,body:string}
      */
     private function bookingChangeRequestMessage(object $booking, string $changeType): array
@@ -695,6 +939,7 @@ class FlowRuntimeExecutionService
         $parts = [];
         foreach ([
             'fecha_inicio' => 'Fecha',
+            'medico_nombre' => 'Médico',
             'sede_nombre' => 'Sede',
             'procedimiento_nombre' => 'Procedimiento',
         ] as $field => $label) {
@@ -804,6 +1049,7 @@ class FlowRuntimeExecutionService
             $context['identifier'] ??= $identifier;
             $context['current_identifier'] ??= $identifier;
             $context['patient_found'] = true;
+            $context['patient_new'] ??= false;
         }
 
         $fullName = trim((string) ($conversation->patient_full_name ?? ''));
@@ -812,6 +1058,17 @@ class FlowRuntimeExecutionService
                 'hc_number' => $identifier,
                 'full_name' => $fullName,
             ];
+        }
+
+        $attribution = $this->conversationAttribution($conversation);
+        if ($attribution !== null) {
+            $meta = is_array($attribution->meta ?? null) ? $attribution->meta : [];
+            $leadCapture = is_array($meta['lead_capture'] ?? null) ? $meta['lead_capture'] : [];
+            foreach (['lead_email', 'lead_source', 'lead_source_detail', 'crm_lead_id'] as $key) {
+                if (!isset($context[$key]) && isset($leadCapture[$key]) && is_scalar($leadCapture[$key])) {
+                    $context[$key] = (string) $leadCapture[$key];
+                }
+            }
         }
 
         return $context;
@@ -845,11 +1102,13 @@ class FlowRuntimeExecutionService
 
         if ($patient === null) {
             $context['patient_found'] = false;
+            $context['patient_new'] = true;
             return $context;
         }
 
         $fullName = $this->patientFullName((array) $patient);
         $context['patient_found'] = true;
+        $context['patient_new'] = false;
         $context['patient'] = [
             'hc_number' => $identifier,
             'full_name' => $fullName !== '' ? $fullName : $identifier,
@@ -857,7 +1116,13 @@ class FlowRuntimeExecutionService
             'mname' => (string) ($patient->mname ?? ''),
             'lname' => (string) ($patient->lname ?? ''),
             'lname2' => (string) ($patient->lname2 ?? ''),
+            'email' => (string) ($patient->email ?? ''),
         ];
+
+        $email = trim((string) ($patient->email ?? ''));
+        if ($email !== '' && !isset($context['lead_email'])) {
+            $context['lead_email'] = $email;
+        }
 
         $conversation->fill([
             'patient_hc_number' => $identifier,
@@ -917,6 +1182,7 @@ class FlowRuntimeExecutionService
         $context['cedula'] = $identifier;
         $context['identifier'] = $identifier;
         $context['current_identifier'] = $identifier;
+        $context['patient_new'] ??= true;
 
         $conversation->fill([
             'patient_hc_number' => $identifier,
@@ -947,6 +1213,88 @@ class FlowRuntimeExecutionService
         return $operation === 'book_appointment'
             || str_starts_with($state, 'agenda_')
             || !empty($context['consent']);
+    }
+
+    /**
+     * @param array<string, mixed> $facts
+     */
+    private function shouldRetryConsent(array $facts): bool
+    {
+        return ($facts['state'] ?? null) === 'consentimiento_pendiente'
+            && !($facts['has_consent'] ?? false)
+            && trim((string) ($facts['message'] ?? '')) !== '';
+    }
+
+    /**
+     * @param array<string, mixed> $facts
+     */
+    private function shouldRetryCedula(array $facts): bool
+    {
+        if (($facts['state'] ?? null) !== 'esperando_cedula') {
+            return false;
+        }
+
+        if (trim((string) ($facts['raw_message'] ?? '')) === '') {
+            return false;
+        }
+
+        return !preg_match('/^\d{6,10}$/', (string) ($facts['digits'] ?? ''));
+    }
+
+    private function isNaturalSchedulingIntent(string $text): bool
+    {
+        $normalized = $this->normalizeText($text);
+        if ($normalized === '') {
+            return false;
+        }
+
+        foreach ([
+            'agendar cita',
+            'agendar',
+            'agenda',
+            'quiero una cita',
+            'quiero agendar',
+            'sacar cita',
+            'consulta',
+            'doctor',
+            'especialidad',
+            'turno',
+        ] as $keyword) {
+            if (str_contains($normalized, $keyword)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param array<int, mixed> $scenarios
+     * @return array<string, mixed>|null
+     */
+    private function findSchedulingEntryScenario(array $scenarios): ?array
+    {
+        $preferredOperations = ['list_specialties', 'list_procedimientos', 'list_doctors', 'list_sedes'];
+
+        foreach ($preferredOperations as $operation) {
+            foreach ($scenarios as $scenario) {
+                if (!is_array($scenario) || !$this->scenarioIsPublished($scenario)) {
+                    continue;
+                }
+
+                foreach (($scenario['actions'] ?? []) as $action) {
+                    if (!is_array($action) || (string) ($action['type'] ?? '') !== 'sigcenter_agenda') {
+                        continue;
+                    }
+
+                    if ($this->normalizeSigcenterOperation((string) ($action['operation'] ?? '')) === $operation) {
+                        return $scenario;
+                    }
+                }
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -1000,8 +1348,8 @@ class FlowRuntimeExecutionService
     {
         return match ($field) {
             'subespecialidad' => ['agenda_especialidades'],
-            'trabajador_id' => ['agenda_medicos'],
-            'sede_id', 'ID_SEDE' => ['sigcenter_sedes'],
+            'trabajador_id' => ['agenda_medicos', 'agenda_medicos_busqueda'],
+            'sede_id', 'ID_SEDE' => ['sigcenter_sedes', 'sigcenter_sedes_doctor'],
             'procedimiento_id' => ['sigcenter_procedimientos'],
             'fecha' => ['sigcenter_dias'],
             'fecha_inicio' => ['sigcenter_horarios'],
@@ -1036,6 +1384,149 @@ class FlowRuntimeExecutionService
         }
 
         return null;
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     * @return array<string, mixed>
+     */
+    private function enrichDoctorSelectionContext(array $context, string $trabajadorId): array
+    {
+        $record = $this->doctorRecordFromCachedResults($context, $trabajadorId);
+        if (!is_array($record)) {
+            return $context;
+        }
+
+        $subespecialidad = trim((string) ($record['subespecialidad'] ?? ''));
+        if ($subespecialidad !== '') {
+            $context['subespecialidad'] = $subespecialidad;
+            $context['subespecialidad_nombre'] = $subespecialidad;
+        }
+
+        $especialidad = trim((string) ($record['especialidad'] ?? ''));
+        if ($especialidad !== '') {
+            $context['especialidad'] = $especialidad;
+        }
+
+        $doctorName = trim((string) ($record['nombre'] ?? ''));
+        if ($doctorName !== '') {
+            $context['medico_nombre'] = $doctorName;
+            $context['trabajador_id_label'] = $doctorName;
+        }
+
+        return $context;
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     * @return array<string, mixed>|null
+     */
+    private function doctorRecordFromCachedResults(array $context, string $trabajadorId): ?array
+    {
+        $trabajadorId = trim($trabajadorId);
+        if ($trabajadorId === '') {
+            return null;
+        }
+
+        foreach (['agenda_medicos', 'agenda_medicos_busqueda'] as $key) {
+            $entry = $context[$key] ?? null;
+            if (!is_array($entry) || !is_array($entry['data'] ?? null)) {
+                continue;
+            }
+
+            $records = $this->recordsFromData($entry['data'], ['medicos', 'doctors', 'data', 'items', 'result']);
+            foreach ($records as $record) {
+                if (!is_array($record)) {
+                    continue;
+                }
+
+                $candidate = $this->firstRecordValue($record, ['trabajador_id', 'ID_TRABAJADOR', 'id_trabajador', 'codigo', 'id']);
+                if ($candidate !== '' && $candidate === $trabajadorId) {
+                    return $record;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<string, mixed> $action
+     * @param array<string, mixed> $preview
+     * @return array{id:string,label:string}|null
+     */
+    private function resolveProcedureSelectionFromPreview(array $action, array $preview): ?array
+    {
+        if (($preview['operation'] ?? null) !== 'list_procedimientos') {
+            return null;
+        }
+
+        $autoSelect = $action['auto_select_single'] ?? null;
+        $shouldAutoSelect = $autoSelect === true
+            || $autoSelect === 1
+            || $autoSelect === '1'
+            || $autoSelect === 'true'
+            || $autoSelect === 'yes'
+            || empty($preview['send_result']);
+
+        if (!$shouldAutoSelect) {
+            return null;
+        }
+
+        $data = is_array($preview['data'] ?? null) ? $preview['data'] : [];
+        $records = $this->recordsFromData($data, ['tipoProcedimientos', 'procedimientos', 'data', 'items', 'result']);
+        $allowedIds = is_array($preview['resolved_procedimiento_ids'] ?? null)
+            ? array_values(array_filter(array_map(static fn (mixed $item): string => trim((string) $item), $preview['resolved_procedimiento_ids'])))
+            : [];
+
+        $matches = [];
+        foreach ($records as $record) {
+            if (!is_array($record)) {
+                continue;
+            }
+
+            $id = $this->firstRecordValue($record, ['procedimiento_id', 'ID_PROCEDIMIENTO', 'id_procedimiento', 'id', 'codigo']);
+            if ($id === '') {
+                continue;
+            }
+
+            if ($allowedIds !== [] && !in_array($id, $allowedIds, true)) {
+                continue;
+            }
+
+            $label = $this->firstRecordValue($record, ['procedimiento', 'NOMBRE_PROCEDIMIENTO', 'nombre_procedimiento', 'nombre', 'descripcion']);
+            $matches[$id] = [
+                'id' => $id,
+                'label' => $label !== '' ? $label : $id,
+            ];
+        }
+
+        if (count($matches) === 1) {
+            return array_values($matches)[0];
+        }
+
+        if (count($allowedIds) === 1) {
+            $id = $allowedIds[0];
+            $label = $this->defaultProcedureLabel($id);
+
+            return [
+                'id' => $id,
+                'label' => $label !== '' ? $label : $id,
+            ];
+        }
+
+        return null;
+    }
+
+    private function defaultProcedureLabel(string $id): string
+    {
+        return match ($id) {
+            '530' => 'Consulta nuevo',
+            '531' => 'Cita Médica',
+            '532' => 'Consulta control',
+            '536' => 'Post quirúrgico',
+            default => '',
+        };
     }
 
     /**
@@ -1209,17 +1700,263 @@ class FlowRuntimeExecutionService
     }
 
     /**
-     * @return array{type:string,body:string,buttons:array<int,array{id:string,title:string}>}
+     * @return array<string, mixed>
      */
     private function mainMenuMessage(): array
     {
         return [
-            'type' => 'buttons',
-            'body' => '¿En qué puedo ayudarte?',
-            'buttons' => [
-                ['id' => 'especialidades0', 'title' => 'Agendar cita'],
-                ['id' => 'ayuda', 'title' => 'Ayuda'],
+            'type' => 'list',
+            'body' => '¿En qué puedo ayudarte hoy?',
+            'button_text' => 'Ver opciones',
+            'sections' => [
+                [
+                    'title' => 'Menú principal',
+                    'rows' => [
+                        ['id' => 'agendar', 'title' => 'Agendar cita', 'description' => 'Programa una nueva cita médica'],
+                        ['id' => 'consultar_cita', 'title' => 'Consultar cita', 'description' => 'Revisa tu cita vigente'],
+                        ['id' => 'servicios_y_sedes', 'title' => 'Servicios y sedes', 'description' => 'Sedes, horarios y especialidades'],
+                        ['id' => 'promociones', 'title' => 'Promociones', 'description' => 'Consulta campañas vigentes'],
+                        ['id' => 'ayuda', 'title' => 'Ayuda', 'description' => 'Hablar con un asesor'],
+                    ],
+                ],
             ],
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     * @return array<string, mixed>
+     */
+    private function persistLeadCaptureFromContext(WhatsappConversation $conversation, array $context): array
+    {
+        $identifier = $this->normalizeIdentifier((string) ($context['cedula'] ?? $context['identifier'] ?? $conversation->patient_hc_number ?? ''));
+        $email = trim((string) ($context['lead_email'] ?? $context['email'] ?? ''));
+        $leadSource = trim((string) ($context['lead_source_label'] ?? $context['lead_source'] ?? ''));
+        $leadSourceDetail = trim((string) ($context['lead_source_detail'] ?? ''));
+
+        if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return $context;
+        }
+
+        $capture = array_filter([
+            'lead_email' => $email !== '' ? $email : null,
+            'lead_source' => $leadSource !== '' ? $leadSource : null,
+            'lead_source_detail' => $leadSourceDetail !== '' ? $leadSourceDetail : null,
+            'patient_new' => !empty($context['patient_new']),
+            'patient_found' => !empty($context['patient_found']),
+            'captured_at' => now()->toDateTimeString(),
+        ], static fn (mixed $value): bool => $value !== null && $value !== '');
+
+        $attribution = $this->conversationAttribution($conversation);
+        if ($attribution !== null) {
+            $meta = is_array($attribution->meta ?? null) ? $attribution->meta : [];
+            $meta['lead_capture'] = array_merge(
+                is_array($meta['lead_capture'] ?? null) ? $meta['lead_capture'] : [],
+                $capture
+            );
+            $attribution->meta = $meta;
+            $attribution->last_synced_at = now();
+            $attribution->save();
+        }
+
+        if (Schema::hasTable('crm_leads')) {
+            $crmLeadId = $this->upsertCrmLeadCapture($conversation, $context, $identifier, $email, $leadSource, $leadSourceDetail);
+            if ($crmLeadId !== null) {
+                $context['crm_lead_id'] = (string) $crmLeadId;
+                if ($attribution !== null) {
+                    $meta = is_array($attribution->meta ?? null) ? $attribution->meta : [];
+                    $meta['lead_capture'] = array_merge(
+                        is_array($meta['lead_capture'] ?? null) ? $meta['lead_capture'] : [],
+                        ['crm_lead_id' => $crmLeadId]
+                    );
+                    $attribution->meta = $meta;
+                    $attribution->save();
+                }
+            }
+        }
+
+        if ($email !== '') {
+            $context['lead_email'] = $email;
+        }
+        if ($leadSource !== '') {
+            $context['lead_source'] = $leadSource;
+        }
+        if ($leadSourceDetail !== '') {
+            $context['lead_source_detail'] = $leadSourceDetail;
+        }
+        $context['lead_capture_saved'] = true;
+
+        return $context;
+    }
+
+    private function conversationAttribution(WhatsappConversation $conversation): ?WhatsappConversationAttribution
+    {
+        if (!Schema::hasTable('whatsapp_conversation_attributions')) {
+            return null;
+        }
+
+        return WhatsappConversationAttribution::query()
+            ->where('conversation_id', $conversation->id)
+            ->first();
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     */
+    private function upsertCrmLeadCapture(
+        WhatsappConversation $conversation,
+        array $context,
+        string $identifier,
+        string $email,
+        string $leadSource,
+        string $leadSourceDetail,
+    ): ?int {
+        $name = trim((string) data_get($context, 'patient.full_name', ''));
+        if ($name === '') {
+            $name = trim((string) ($conversation->patient_full_name ?? $conversation->display_name ?? $conversation->wa_number));
+        }
+
+        $firstName = trim((string) data_get($context, 'patient.fname', ''));
+        $lastName = trim(implode(' ', array_filter([
+            trim((string) data_get($context, 'patient.lname', '')),
+            trim((string) data_get($context, 'patient.lname2', '')),
+        ])));
+        $phone = trim((string) $conversation->wa_number);
+        $source = $leadSource !== '' ? 'WhatsApp - ' . $leadSource : 'WhatsApp';
+
+        $attribution = $this->conversationAttribution($conversation);
+        $attributionNote = null;
+        if ($attribution !== null) {
+            $parts = array_filter([
+                trim((string) ($attribution->source_category ?? '')),
+                trim((string) ($attribution->source_type ?? '')),
+                trim((string) ($attribution->source_id ?? '')),
+                trim((string) ($attribution->headline ?? '')),
+            ]);
+            if ($parts !== []) {
+                $attributionNote = implode(' | ', $parts);
+            }
+        }
+
+        $noteParts = array_filter([
+            'Captura automática desde flujo WhatsApp.',
+            $leadSourceDetail !== '' ? 'Detalle origen: ' . $leadSourceDetail : null,
+            $attributionNote !== null ? 'Atribución: ' . $attributionNote : null,
+        ]);
+
+        $payload = array_filter([
+            'hc_number' => $identifier !== '' ? $identifier : null,
+            'name' => $name !== '' ? $name : $phone,
+            'first_name' => $firstName !== '' ? $firstName : null,
+            'last_name' => $lastName !== '' ? $lastName : null,
+            'email' => $email !== '' ? $email : null,
+            'phone' => $phone !== '' ? $phone : null,
+            'status' => 'new',
+            'source' => $source,
+            'notes' => $noteParts !== [] ? implode("\n", $noteParts) : null,
+        ], static fn (mixed $value): bool => $value !== null && $value !== '');
+
+        $query = DB::table('crm_leads');
+        $existing = $identifier !== ''
+            ? $query->where('hc_number', $identifier)->first()
+            : $query->where('phone', $phone)->first();
+
+        $now = now();
+        if ($existing !== null) {
+            $changes = $payload;
+            unset($changes['status']);
+            $changes['updated_at'] = $now;
+            DB::table('crm_leads')->where('id', $existing->id)->update($changes);
+
+            return (int) $existing->id;
+        }
+
+        $payload['created_at'] = $now;
+        $payload['updated_at'] = $now;
+
+        return (int) DB::table('crm_leads')->insertGetId($payload);
+    }
+
+    /**
+     * @return array{type:string,body:string}
+     */
+    private function specialtiesCatalogMessage(): array
+    {
+        $specialties = collect();
+
+        if (Schema::hasTable('whatsapp_sigcenter_doctor_catalog')) {
+            $specialties = DB::table('whatsapp_sigcenter_doctor_catalog')
+                ->where('active', true)
+                ->whereNotNull('subespecialidad')
+                ->where('subespecialidad', '<>', '')
+                ->distinct()
+                ->orderBy('subespecialidad')
+                ->pluck('subespecialidad');
+        }
+
+        if ($specialties->isEmpty()) {
+            $specialties = DB::table('users')
+                ->whereNotNull('id_trabajador')
+                ->whereNotNull('subespecialidad')
+                ->where('subespecialidad', '<>', '')
+                ->distinct()
+                ->orderBy('subespecialidad')
+                ->pluck('subespecialidad');
+        }
+
+        $items = $specialties
+            ->filter(fn (mixed $value): bool => is_string($value) && trim($value) !== '')
+            ->map(fn (mixed $value): string => '• ' . trim((string) $value))
+            ->values()
+            ->all();
+
+        if ($items === []) {
+            return [
+                'type' => 'text',
+                'body' => 'En este momento no pude cargar el listado de especialidades. Si deseas apoyo, escribe AYUDA.',
+            ];
+        }
+
+        return [
+            'type' => 'text',
+            'body' => "Estas son nuestras especialidades disponibles:\n\n" . implode("\n", $items) . "\n\nSi deseas agendar una cita, escribe AGENDAR o vuelve al MENU.",
+        ];
+    }
+
+    /**
+     * @return array{type:string,body:string,buttons:array<int,array{id:string,title:string}>}
+     */
+    private function consentRetryMessage(): array
+    {
+        return [
+            'type' => 'buttons',
+            'body' => 'Para ayudarte con tu cita o revisar tus datos, necesito tu autorización para usar tus datos protegidos. ¿Nos autorizas?',
+            'buttons' => [
+                ['id' => 'acepto', 'title' => 'Acepto'],
+                ['id' => 'no_acepto', 'title' => 'No autorizo'],
+            ],
+        ];
+    }
+
+    /**
+     * @return array{type:string,body:string}
+     */
+    private function cedulaRetryMessage(): array
+    {
+        return [
+            'type' => 'text',
+            'body' => 'Para continuar necesito tu número de cédula en formato válido. Escríbelo con 6 a 10 dígitos, sin espacios ni guiones. Si prefieres apoyo, escribe AYUDA.',
+        ];
+    }
+
+    /**
+     * @return array{type:string,body:string}
+     */
+    private function scheduleIdentifierRequestMessage(): array
+    {
+        return [
+            'type' => 'text',
+            'body' => 'Puedo ayudarte a agendar tu cita. Primero necesito tu número de cédula para continuar.',
         ];
     }
 
@@ -1249,6 +1986,27 @@ class FlowRuntimeExecutionService
         }
 
         if ($hasAgendaSpecificCondition) {
+            return false;
+        }
+
+        $id = mb_strtolower((string) ($scenario['id'] ?? ''), 'UTF-8');
+        $name = mb_strtolower((string) ($scenario['name'] ?? ''), 'UTF-8');
+
+        return str_contains($id, 'fallback') || str_contains($name, 'fallback');
+    }
+
+    /**
+     * @param array<string, mixed> $scenario
+     */
+    private function isCatchAllFallbackScenario(array $scenario): bool
+    {
+        $conditions = array_values(array_filter($scenario['conditions'] ?? [], 'is_array'));
+        if (count($conditions) !== 1) {
+            return false;
+        }
+
+        $onlyCondition = $conditions[0];
+        if ((string) ($onlyCondition['type'] ?? '') !== 'always') {
             return false;
         }
 
@@ -1626,6 +2384,16 @@ class FlowRuntimeExecutionService
 
         if ($session?->last_interaction_at instanceof Carbon) {
             $facts['minutes_since_last'] = $session->last_interaction_at->diffInMinutes(now());
+        }
+
+        foreach ($context as $key => $value) {
+            if (!is_string($key) || array_key_exists($key, $facts)) {
+                continue;
+            }
+
+            if (is_scalar($value) || $value === null) {
+                $facts[$key] = $value;
+            }
         }
 
         return $facts;

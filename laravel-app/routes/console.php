@@ -22,6 +22,7 @@ use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schedule;
+use Illuminate\Support\Facades\Schema;
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
@@ -479,6 +480,138 @@ Artisan::command('whatsapp:handoff-requeue-expired {--dry-run : Solo muestra los
         return 0;
     }
 })->purpose('Reencola handoffs vencidos del inbox WhatsApp Laravel');
+
+Artisan::command('whatsapp:sigcenter-doctor-catalog-sync
+    {--dry-run : Solo calcula cuántas filas se reconstruirían}
+    {--only-active=1 : Mantiene solo filas activas derivadas de users}', function (): int {
+    $table = 'whatsapp_sigcenter_doctor_catalog';
+
+    if (!Schema::hasTable($table)) {
+        $this->error('La tabla whatsapp_sigcenter_doctor_catalog no existe. Ejecuta migraciones primero.');
+        return 1;
+    }
+
+    if (!Schema::hasTable('users')) {
+        $this->error('La tabla users no existe en la base configurada.');
+        return 1;
+    }
+
+    $expandSedes = static function (string $rawSede): array {
+        $value = strtoupper(str_replace([' ', '-', '_'], '', trim($rawSede)));
+
+        return match ($value) {
+            'CEIBOS' => [['sede_id' => '16', 'sede_nombre' => 'Ceibos']],
+            'VILLACLUB' => [['sede_id' => '1', 'sede_nombre' => 'Villa Club']],
+            'CEIBOSVILLACLUB' => [
+                ['sede_id' => '16', 'sede_nombre' => 'Ceibos'],
+                ['sede_id' => '1', 'sede_nombre' => 'Villa Club'],
+            ],
+            default => [],
+        };
+    };
+
+    $nullableString = static function (mixed $value, int $maxLength): ?string {
+        $string = trim((string) $value);
+        return $string === '' ? null : mb_substr($string, 0, $maxLength, 'UTF-8');
+    };
+
+    $nullableText = static function (mixed $value): ?string {
+        $string = trim((string) $value);
+        return $string === '' ? null : $string;
+    };
+
+    $rows = DB::table('users')
+        ->select(['id', 'nombre', 'email', 'profile_photo', 'especialidad', 'subespecialidad', 'id_trabajador', 'sede'])
+        ->whereNotNull('id_trabajador')
+        ->whereNotNull('subespecialidad')
+        ->where('subespecialidad', '<>', '')
+        ->where(function ($query): void {
+            $query->where('especialidad', 'Cirujano Oftalmólogo')
+                ->orWhereRaw("UPPER(TRIM(COALESCE(especialidad, ''))) = 'CIRUJANO OFTALMÓLOGO'")
+                ->orWhereRaw("UPPER(TRIM(COALESCE(especialidad, ''))) = 'CIRUJANO OFTALMOLOGO'");
+        })
+        ->orderBy('id')
+        ->get();
+
+    $now = now();
+    $payload = [];
+    $ignoredSedes = [];
+
+    foreach ($rows as $row) {
+        $sedes = $expandSedes((string) ($row->sede ?? ''));
+        if ($sedes === []) {
+            $ignoredSedes[(string) ($row->sede ?? '')] = true;
+            continue;
+        }
+
+        foreach ($sedes as $sede) {
+            $key = implode('|', [
+                (string) $row->id_trabajador,
+                trim((string) $row->subespecialidad),
+                $sede['sede_id'],
+            ]);
+
+            $payload[$key] = [
+                'source_user_id' => $row->id !== null ? (int) $row->id : null,
+                'trabajador_id' => trim((string) $row->id_trabajador),
+                'doctor_nombre' => trim((string) ($row->nombre ?? '')),
+                'doctor_email' => $nullableString($row->email ?? null, 191),
+                'doctor_profile_photo' => $nullableText($row->profile_photo ?? null),
+                'especialidad' => $nullableString($row->especialidad ?? null, 191),
+                'subespecialidad' => trim((string) $row->subespecialidad),
+                'sede_id' => $sede['sede_id'],
+                'sede_nombre' => $sede['sede_nombre'],
+                'active' => true,
+                'last_synced_at' => $now,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        }
+    }
+
+    $existingCount = DB::table($table)->count();
+    $newCount = count($payload);
+    $doctorCount = count(array_unique(array_map(
+        static fn (array $item): string => (string) $item['trabajador_id'],
+        array_values($payload)
+    )));
+
+    $this->table(
+        ['Métrica', 'Valor'],
+        [
+            ['rows_from_users', (string) $rows->count()],
+            ['distinct_doctors', (string) $doctorCount],
+            ['catalog_rows_new', (string) $newCount],
+            ['catalog_rows_existing', (string) $existingCount],
+            ['ignored_sede_values', $ignoredSedes === [] ? '0' : (string) count($ignoredSedes)],
+            ['mode', (bool) $this->option('dry-run') ? 'dry-run' : 'write'],
+        ]
+    );
+
+    if ($ignoredSedes !== []) {
+        $this->newLine();
+        $this->warn('Valores de sede ignorados por no poder normalizarse:');
+        foreach (array_keys($ignoredSedes) as $value) {
+            $this->line('- ' . ($value === '' ? '[vacío]' : $value));
+        }
+    }
+
+    if ((bool) $this->option('dry-run')) {
+        $this->info('Dry-run completado. No se escribieron cambios.');
+        return 0;
+    }
+
+    DB::transaction(function () use ($table, $payload): void {
+        DB::table($table)->delete();
+
+        foreach (array_chunk(array_values($payload), 500) as $chunk) {
+            DB::table($table)->insert($chunk);
+        }
+    });
+
+    $this->info('Catálogo médico-sede sincronizado.');
+    return 0;
+})->purpose('Reconstruye el catálogo normalizado de médicos y sedes para el flujo de WhatsApp');
 
 Artisan::command('derivaciones:scrape
     {form_id : Form ID / pedido ID a consultar}

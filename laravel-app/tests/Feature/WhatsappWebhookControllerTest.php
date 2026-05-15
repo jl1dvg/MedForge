@@ -1081,6 +1081,355 @@ class WhatsappWebhookControllerTest extends TestCase
         ]);
     }
 
+    public function test_it_routes_natural_scheduling_intent_into_existing_agenda_flow(): void
+    {
+        config()->set('whatsapp.migration.automation.enabled', true);
+        config()->set('whatsapp.migration.automation.dry_run', true);
+
+        \DB::table('users')->insert([
+            [
+                'username' => 'retina_natural',
+                'nombre' => 'Retina Natural',
+                'especialidad' => 'Cirujano Oftalmólogo',
+                'subespecialidad' => 'Retina y Vítreo',
+                'id_trabajador' => 3001,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'username' => 'cornea_natural',
+                'nombre' => 'Cornea Natural',
+                'especialidad' => 'Cirujano Oftalmólogo',
+                'subespecialidad' => 'Córnea',
+                'id_trabajador' => 3002,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $this->publishFlowmakerScenarios([[
+            'id' => 'especialidades',
+            'name' => 'Especialidades',
+            'stage' => 'custom',
+            'status' => 'published',
+            'conditions' => [
+                ['type' => 'message_contains', 'value' => 'especialidades0'],
+            ],
+            'actions' => [[
+                'type' => 'sigcenter_agenda',
+                'operation' => 'list_specialties',
+                'especialidad' => 'Cirujano Oftalmólogo',
+                'send_result' => true,
+                'list_body' => '¿Qué especialidad oftalmológica necesitas?',
+                'list_button_text' => 'Ver opciones',
+                'list_section_title' => 'Especialidades',
+                'save_response_as' => 'subespecialidad',
+                'next_state' => 'agenda_esperando_subespecialidad',
+                'store_result_as' => 'agenda_especialidades',
+            ]],
+        ]]);
+
+        $conversationId = \DB::table('whatsapp_conversations')->insertGetId([
+            'wa_number' => '593999111782',
+            'display_name' => 'Paciente Natural',
+            'patient_hc_number' => '0955555555',
+            'patient_full_name' => 'Paciente Natural',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        \DB::table('whatsapp_autoresponder_sessions')->insert([
+            'conversation_id' => $conversationId,
+            'wa_number' => '593999111782',
+            'scenario_id' => 'menu',
+            'context' => json_encode([
+                'state' => 'menu_principal',
+                'consent' => true,
+                'cedula' => '0955555555',
+            ], JSON_UNESCAPED_UNICODE),
+            'last_payload' => json_encode([]),
+            'last_interaction_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->postJson('/whatsapp/webhook', [
+            'entry' => [[
+                'changes' => [[
+                    'value' => [
+                        'messages' => [[
+                            'from' => '593999111782',
+                            'id' => 'wamid.flowmaker.natural-agenda',
+                            'timestamp' => '1712745960',
+                            'type' => 'text',
+                            'text' => ['body' => 'Quiero agendar una cita'],
+                        ]],
+                    ],
+                ]],
+            ]],
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.automation_runs', 1)
+            ->assertJsonPath('data.automation_messages_sent', 1);
+
+        $session = \DB::table('whatsapp_autoresponder_sessions')
+            ->where('wa_number', '593999111782')
+            ->first();
+        $context = json_decode((string) $session?->context, true);
+
+        $this->assertSame('especialidades', $session?->scenario_id);
+        $this->assertSame('agenda_esperando_subespecialidad', $context['state'] ?? null);
+        $this->assertSame('subespecialidad', $context['awaiting_field'] ?? null);
+
+        $this->assertDatabaseHas('whatsapp_messages', [
+            'direction' => 'outbound',
+            'message_type' => 'interactive',
+            'body' => '¿Qué especialidad oftalmológica necesitas?',
+            'status' => 'accepted',
+        ]);
+    }
+
+    public function test_it_retries_consent_when_patient_is_stuck_in_pending_consent(): void
+    {
+        config()->set('whatsapp.migration.automation.enabled', true);
+        config()->set('whatsapp.migration.automation.dry_run', true);
+
+        $this->publishFlowmakerScenarios([]);
+
+        $conversationId = \DB::table('whatsapp_conversations')->insertGetId([
+            'wa_number' => '593999111783',
+            'display_name' => 'Paciente Consent',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        \DB::table('whatsapp_autoresponder_sessions')->insert([
+            'conversation_id' => $conversationId,
+            'wa_number' => '593999111783',
+            'scenario_id' => 'primer_contacto',
+            'context' => json_encode([
+                'state' => 'consentimiento_pendiente',
+            ], JSON_UNESCAPED_UNICODE),
+            'last_payload' => json_encode([]),
+            'last_interaction_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->postJson('/whatsapp/webhook', [
+            'entry' => [[
+                'changes' => [[
+                    'value' => [
+                        'messages' => [[
+                            'from' => '593999111783',
+                            'id' => 'wamid.flowmaker.retry-consent',
+                            'timestamp' => '1712746020',
+                            'type' => 'text',
+                            'text' => ['body' => 'Quiero información'],
+                        ]],
+                    ],
+                ]],
+            ]],
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.automation_runs', 1)
+            ->assertJsonPath('data.automation_messages_sent', 1);
+
+        $session = \DB::table('whatsapp_autoresponder_sessions')
+            ->where('wa_number', '593999111783')
+            ->first();
+        $context = json_decode((string) $session?->context, true);
+
+        $this->assertSame('consent_retry', $session?->scenario_id);
+        $this->assertSame('consentimiento_pendiente', $context['state'] ?? null);
+
+        $this->assertDatabaseHas('whatsapp_messages', [
+            'direction' => 'outbound',
+            'message_type' => 'interactive',
+            'body' => 'Para ayudarte con tu cita o revisar tus datos, necesito tu autorización para usar tus datos protegidos. ¿Nos autorizas?',
+            'status' => 'accepted',
+        ]);
+    }
+
+    public function test_it_retries_identifier_when_patient_sends_invalid_cedula(): void
+    {
+        config()->set('whatsapp.migration.automation.enabled', true);
+        config()->set('whatsapp.migration.automation.dry_run', true);
+
+        $this->publishFlowmakerScenarios([]);
+
+        $conversationId = \DB::table('whatsapp_conversations')->insertGetId([
+            'wa_number' => '593999111784',
+            'display_name' => 'Paciente Cedula',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        \DB::table('whatsapp_autoresponder_sessions')->insert([
+            'conversation_id' => $conversationId,
+            'wa_number' => '593999111784',
+            'scenario_id' => 'captura_cedula',
+            'awaiting' => 'input',
+            'context' => json_encode([
+                'state' => 'esperando_cedula',
+                'awaiting_field' => 'cedula',
+                'consent' => true,
+            ], JSON_UNESCAPED_UNICODE),
+            'last_payload' => json_encode([]),
+            'last_interaction_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->postJson('/whatsapp/webhook', [
+            'entry' => [[
+                'changes' => [[
+                    'value' => [
+                        'messages' => [[
+                            'from' => '593999111784',
+                            'id' => 'wamid.flowmaker.retry-cedula',
+                            'timestamp' => '1712746080',
+                            'type' => 'text',
+                            'text' => ['body' => 'mi cédula no la sé'],
+                        ]],
+                    ],
+                ]],
+            ]],
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.automation_runs', 1)
+            ->assertJsonPath('data.automation_messages_sent', 1);
+
+        $session = \DB::table('whatsapp_autoresponder_sessions')
+            ->where('wa_number', '593999111784')
+            ->first();
+        $context = json_decode((string) $session?->context, true);
+
+        $this->assertSame('cedula_retry', $session?->scenario_id);
+        $this->assertSame('esperando_cedula', $context['state'] ?? null);
+        $this->assertSame('cedula', $context['awaiting_field'] ?? null);
+
+        $this->assertDatabaseHas('whatsapp_messages', [
+            'direction' => 'outbound',
+            'body' => 'Para continuar necesito tu número de cédula en formato válido. Escríbelo con 6 a 10 dígitos, sin espacios ni guiones. Si prefieres apoyo, escribe AYUDA.',
+        ]);
+    }
+
+    public function test_it_prioritizes_recovery_over_generic_fallback(): void
+    {
+        config()->set('whatsapp.migration.automation.enabled', true);
+        config()->set('whatsapp.migration.automation.dry_run', true);
+
+        \DB::table('users')->insert([
+            [
+                'username' => 'retina_fallback',
+                'nombre' => 'Retina Fallback',
+                'especialidad' => 'Cirujano Oftalmólogo',
+                'subespecialidad' => 'Retina y Vítreo',
+                'id_trabajador' => 4001,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $this->publishFlowmakerScenarios([
+            [
+                'id' => 'especialidades',
+                'name' => 'Especialidades',
+                'stage' => 'custom',
+                'status' => 'published',
+                'conditions' => [
+                    ['type' => 'message_contains', 'value' => 'especialidades0'],
+                ],
+                'actions' => [[
+                    'type' => 'sigcenter_agenda',
+                    'operation' => 'list_specialties',
+                    'especialidad' => 'Cirujano Oftalmólogo',
+                    'send_result' => true,
+                    'list_body' => '¿Qué especialidad oftalmológica necesitas?',
+                    'list_button_text' => 'Ver opciones',
+                    'list_section_title' => 'Especialidades',
+                    'save_response_as' => 'subespecialidad',
+                    'next_state' => 'agenda_esperando_subespecialidad',
+                    'store_result_as' => 'agenda_especialidades',
+                ]],
+            ],
+            [
+                'id' => 'fallback',
+                'name' => 'Fallback',
+                'stage' => 'custom',
+                'status' => 'published',
+                'conditions' => [
+                    ['type' => 'always'],
+                ],
+                'actions' => [[
+                    'type' => 'send_message',
+                    'message' => [
+                        'type' => 'text',
+                        'body' => 'Hola, somos CIVE. Un agente se pondrá en contacto contigo en breve.',
+                    ],
+                ]],
+            ],
+        ]);
+
+        $conversationId = \DB::table('whatsapp_conversations')->insertGetId([
+            'wa_number' => '593999111785',
+            'display_name' => 'Paciente Fallback',
+            'patient_hc_number' => '0966666666',
+            'patient_full_name' => 'Paciente Fallback',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        \DB::table('whatsapp_autoresponder_sessions')->insert([
+            'conversation_id' => $conversationId,
+            'wa_number' => '593999111785',
+            'scenario_id' => 'menu',
+            'context' => json_encode([
+                'state' => 'menu_principal',
+                'consent' => true,
+                'cedula' => '0966666666',
+            ], JSON_UNESCAPED_UNICODE),
+            'last_payload' => json_encode([]),
+            'last_interaction_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->postJson('/whatsapp/webhook', [
+            'entry' => [[
+                'changes' => [[
+                    'value' => [
+                        'messages' => [[
+                            'from' => '593999111785',
+                            'id' => 'wamid.flowmaker.fallback-priority',
+                            'timestamp' => '1712746140',
+                            'type' => 'text',
+                            'text' => ['body' => 'Quiero agendar una cita'],
+                        ]],
+                    ],
+                ]],
+            ]],
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.automation_runs', 1)
+            ->assertJsonPath('data.automation_messages_sent', 1);
+
+        $session = \DB::table('whatsapp_autoresponder_sessions')
+            ->where('wa_number', '593999111785')
+            ->first();
+
+        $this->assertSame('especialidades', $session?->scenario_id);
+        $this->assertDatabaseMissing('whatsapp_messages', [
+            'direction' => 'outbound',
+            'body' => 'Hola, somos CIVE. Un agente se pondrá en contacto contigo en breve.',
+        ]);
+        $this->assertDatabaseHas('whatsapp_messages', [
+            'direction' => 'outbound',
+            'body' => '¿Qué especialidad oftalmológica necesitas?',
+        ]);
+    }
+
     public function test_it_records_sigcenter_booking_and_sends_success_message_after_confirmation(): void
     {
         config()->set('whatsapp.migration.automation.enabled', true);
@@ -1307,7 +1656,7 @@ class WhatsappWebhookControllerTest extends TestCase
             'sede_id' => '16',
             'sede_nombre' => 'Ceibos',
             'procedimiento_id' => '531',
-            'procedimiento_nombre' => 'Consulta cita',
+            'procedimiento_nombre' => 'Cita Médica',
             'fecha_inicio' => $fechaCancelacion,
             'booked_at' => now(),
             'created_at' => now(),
@@ -1335,7 +1684,7 @@ class WhatsappWebhookControllerTest extends TestCase
 
         $this->assertDatabaseHas('whatsapp_messages', [
             'direction' => 'outbound',
-            'body' => "Antes de cancelar, confirma esta acción sobre tu cita:\nFecha: {$fechaCancelacion}\nSede: Ceibos\nProcedimiento: Consulta cita.\n\n¿Deseas cancelar esta cita?",
+            'body' => "Antes de cancelar, confirma esta acción sobre tu cita:\nFecha: {$fechaCancelacion}\nSede: Ceibos\nProcedimiento: Cita Médica.\n\n¿Deseas cancelar esta cita?",
         ]);
 
         $this->postJson('/whatsapp/webhook', [
@@ -1365,7 +1714,7 @@ class WhatsappWebhookControllerTest extends TestCase
 
         $this->assertDatabaseHas('whatsapp_messages', [
             'direction' => 'outbound',
-            'body' => "Tu cita fue cancelada exitosamente:\nFecha: {$fechaCancelacion}\nSede: Ceibos\nProcedimiento: Consulta cita.\n\nSi necesitas agendar una nueva cita, escribe HOLA o MENU.",
+            'body' => "Tu cita fue cancelada exitosamente:\nFecha: {$fechaCancelacion}\nSede: Ceibos\nProcedimiento: Cita Médica.\n\nSi necesitas agendar una nueva cita, escribe HOLA o MENU.",
         ]);
 
         $this->assertDatabaseHas('whatsapp_sigcenter_bookings', [
