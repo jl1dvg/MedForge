@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\Examenes\Services;
 
-use App\Modules\Shared\Support\LegacySessionAuth;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 use Throwable;
@@ -168,7 +168,7 @@ class LegacyExamenesBridge
 
     private function hydrateLegacySuperglobals(Request $request): void
     {
-        $legacySession = LegacySessionAuth::readSession($request);
+        $legacySession = $this->buildLegacySession($request);
 
         $_GET = $request->query->all();
         $_POST = $request->request->all();
@@ -183,6 +183,67 @@ class LegacyExamenesBridge
         if ($contentType !== '') {
             $_SERVER['CONTENT_TYPE'] = $contentType;
         }
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private function buildLegacySession(Request $request): array
+    {
+        $sessionPayload = $request->hasSession()
+            ? $request->session()->get('legacy_php_session', [])
+            : [];
+
+        $legacySession = is_array($sessionPayload) ? $sessionPayload : [];
+        $user = Auth::user();
+        if ($user === null) {
+            return $legacySession;
+        }
+
+        $userId = is_numeric($user->id ?? null) ? (int) $user->id : null;
+        if ($userId !== null && $userId > 0) {
+            $legacySession['user_id'] = $userId;
+        }
+
+        $legacySession['username'] = (string) ($user->username ?? $user->email ?? 'usuario');
+        $legacySession['role_id'] = is_numeric($user->role_id ?? null) ? (int) $user->role_id : null;
+        $legacySession['permisos'] = $this->normalizePermissions(
+            array_merge(
+                is_array($user->permisos ?? null) ? $user->permisos : [],
+                is_array($user->role?->permissions ?? null) ? $user->role->permissions : []
+            )
+        );
+
+        return $legacySession;
+    }
+
+    /**
+     * @param mixed $permissions
+     * @return array<int,string>
+     */
+    private function normalizePermissions(mixed $permissions): array
+    {
+        if (is_string($permissions)) {
+            $decoded = json_decode($permissions, true);
+            if (is_array($decoded)) {
+                $permissions = $decoded;
+            }
+        }
+
+        if (!is_array($permissions)) {
+            return [];
+        }
+
+        $normalized = [];
+        foreach ($permissions as $permission) {
+            $value = trim((string) $permission);
+            if ($value === '' || in_array($value, $normalized, true)) {
+                continue;
+            }
+            $normalized[] = $value;
+        }
+
+        return $normalized;
     }
 
     /**
