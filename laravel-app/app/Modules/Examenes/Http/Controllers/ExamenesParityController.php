@@ -17,6 +17,7 @@ use App\Modules\Examenes\Services\NasImagenesService;
 use App\Modules\Examenes\Services\ImagenesSigcenterIndexService;
 use App\Modules\Examenes\Services\SigcenterImagenesService;
 use App\Modules\Reporting\Services\PdfRenderer;
+use App\Modules\Shared\Support\LegacyPermissionResolver;
 use Illuminate\Support\Facades\Auth;
 use DateTimeImmutable;
 use Helpers\JsonLogger;
@@ -2471,8 +2472,7 @@ class ExamenesParityController
      */
     private function sessionPermissions(Request $request): array
     {
-        $session = LegacySessionAuth::readSession($request);
-        $raw = $session['permisos'] ?? [];
+        $raw = LegacyPermissionResolver::resolve($request);
 
         if (is_string($raw)) {
             $decoded = json_decode($raw, true);

@@ -6,7 +6,6 @@ use App\Modules\Pacientes\Services\Paciente360ParityService;
 use App\Modules\Pacientes\Services\PacientesFlujoService;
 use App\Modules\Pacientes\Services\PacientesParityService;
 use App\Modules\Shared\Support\LegacyCurrentUser;
-use App\Modules\Shared\Support\LegacySessionAuth;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
@@ -379,14 +378,6 @@ class PacientesReadController
     private function legacyUserId(Request $request): ?int
     {
         return (is_numeric(Auth::id()) ? (int) Auth::id() : null);
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function readLegacyPhpSession(Request $request): array
-    {
-        return LegacySessionAuth::readSession($request);
     }
 
 }

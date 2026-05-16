@@ -7,7 +7,7 @@ namespace App\Modules\Cirugias\Http\Controllers;
 use App\Modules\Cirugias\Services\CirugiaService;
 use App\Modules\Cirugias\Services\CirugiasDashboardService;
 use App\Modules\Shared\Support\LegacyCurrentUser;
-use App\Modules\Shared\Support\LegacySessionAuth;
+use App\Modules\Shared\Support\LegacyPermissionResolver;
 use DateTimeImmutable;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
@@ -1449,8 +1449,9 @@ class CirugiasUiController
      */
     private function hasAnyPermission(Request $request, array $permissions): bool
     {
-        $session = LegacySessionAuth::readSession($request);
-        $normalized = $this->normalizePermissions($session['permisos'] ?? []);
+        $normalized = $this->normalizePermissions(
+            LegacyPermissionResolver::resolve($request)
+        );
 
         if (in_array('superuser', $normalized, true)) {
             return true;
