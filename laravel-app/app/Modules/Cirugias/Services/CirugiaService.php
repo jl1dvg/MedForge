@@ -430,12 +430,16 @@ class CirugiaService
     {
         $categoriaContext = $this->resolveAfiliacionCategoriaContext("COALESCE(p.afiliacion, '')", 'acm');
         $sql = "SELECT
-                    {$categoriaContext['expr']} AS categoria,
+                    x.categoria,
                     COUNT(*) AS total
-                FROM protocolo_data pr
-                INNER JOIN patient_data p ON p.hc_number = pr.hc_number
-                {$categoriaContext['join']}
-                GROUP BY {$categoriaContext['expr']}
+                FROM (
+                    SELECT
+                        {$categoriaContext['expr']} AS categoria
+                    FROM protocolo_data pr
+                    INNER JOIN patient_data p ON p.hc_number = pr.hc_number
+                    {$categoriaContext['join']}
+                ) x
+                GROUP BY x.categoria
                 ORDER BY total DESC";
 
         $stmt = $this->db->query($sql);
@@ -555,7 +559,6 @@ class CirugiaService
             IF(:afiliacion LIKE '%issfa%' AND producto_issfa <> '', producto_issfa, nombre) AS nombre_final,
             codigo_isspol, codigo_issfa, codigo_iess, codigo_msp
         FROM insumos
-        GROUP BY id
         ORDER BY nombre_final
     ";
 
