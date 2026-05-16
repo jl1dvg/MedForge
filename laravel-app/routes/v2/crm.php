@@ -19,8 +19,8 @@ Route::middleware([
 });
 
 Route::middleware([
-    'legacy.auth',
-    'legacy.permission:administrativo,crm.view,crm.manage',
+    'app.auth',
+    'app.permission:administrativo,crm.view,crm.manage',
 ])->group(function (): void {
     Route::get('/crm/leads', [CrmReadController::class, 'leads']);
     Route::get('/crm/leads/meta', [CrmReadController::class, 'meta']);

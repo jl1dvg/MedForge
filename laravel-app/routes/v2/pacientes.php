@@ -4,8 +4,8 @@ use App\Modules\Pacientes\Http\Controllers\PacientesReadController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware([
-    'legacy.auth',
-    'legacy.permission:administrativo,pacientes.view,pacientes.manage',
+    'app.auth',
+    'app.permission:administrativo,pacientes.view,pacientes.manage',
 ])->group(function (): void {
     Route::get('/pacientes', [PacientesReadController::class, 'index']);
     Route::post('/pacientes/datatable', [PacientesReadController::class, 'datatable']);
@@ -15,8 +15,8 @@ Route::middleware([
 });
 
 Route::middleware([
-    'legacy.auth',
-    'legacy.permission:administrativo,pacientes.flujo.view,pacientes.view,pacientes.manage',
+    'app.auth',
+    'app.permission:administrativo,pacientes.flujo.view,pacientes.view,pacientes.manage',
 ])->group(function (): void {
     Route::get('/pacientes/flujo', [PacientesReadController::class, 'flujo']);
     Route::get('/pacientes/flujo/tablero', [PacientesReadController::class, 'flujoTablero']);

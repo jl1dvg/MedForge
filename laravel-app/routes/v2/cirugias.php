@@ -6,8 +6,8 @@ use App\Modules\Cirugias\Http\Controllers\CirugiasWriteController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware([
-    'legacy.auth',
-    'legacy.permission:administrativo,cirugias.view,cirugias.manage,cirugias.dashboard.view',
+    'app.auth',
+    'app.permission:administrativo,cirugias.view,cirugias.manage,cirugias.dashboard.view',
 ])->group(function (): void {
     Route::get('/cirugias', [CirugiasUiController::class, 'index']);
     Route::post('/cirugias/datatable', [CirugiasReadController::class, 'datatable']);

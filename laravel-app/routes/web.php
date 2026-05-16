@@ -31,20 +31,20 @@ Route::get('/v2/auth/logout', [UnifiedLogoutController::class, 'logout']);
 Route::get('/proposal/{id}/{hash}', [CrmProposalController::class, 'publicView'])->whereNumber('id');
 Route::get('/proposal/{id}/{hash}/pdf', [CrmProposalController::class, 'publicPdf'])->whereNumber('id');
 
-Route::middleware(['legacy.auth'])->group(function (): void {
+Route::middleware(['app.auth'])->group(function (): void {
     Route::post('/feedback/api/report', [FeedbackWriteController::class, 'store']);
 });
 
-Route::middleware(['legacy.auth', 'legacy.permission:administrativo,settings.manage,settings.view'])->group(function (): void {
+Route::middleware(['app.auth', 'app.permission:administrativo,settings.manage,settings.view'])->group(function (): void {
     Route::get('/v2/feedback', [FeedbackUiController::class, 'index']);
     Route::post('/v2/feedback/{id}/status', [FeedbackUiController::class, 'updateStatus'])->whereNumber('id');
 });
 
-Route::middleware(['legacy.auth', 'legacy.permission:administrativo,dashboard.view'])->group(function (): void {
+Route::middleware(['app.auth', 'app.permission:administrativo,dashboard.view'])->group(function (): void {
     Route::get('/v2/dashboard', [DashboardUiController::class, 'index']);
 });
 
-Route::middleware(['legacy.auth', 'legacy.permission:administrativo,derivaciones.view,pacientes.view,solicitudes.view'])->group(function (): void {
+Route::middleware(['app.auth', 'app.permission:administrativo,derivaciones.view,pacientes.view,solicitudes.view'])->group(function (): void {
     Route::get('/v2/derivaciones', [DerivacionesUiController::class, 'index']);
 });
 
@@ -60,19 +60,19 @@ Route::middleware(['app.auth', 'app.permission:administrativo,solicitudes.turner
     Route::get('/v2/solicitudes/turnero', [SolicitudesUiController::class, 'turnero']);
 });
 
-Route::middleware(['legacy.auth', 'legacy.permission:administrativo,examenes.view,examenes.manage'])->group(function (): void {
+Route::middleware(['app.auth', 'app.permission:administrativo,examenes.view,examenes.manage'])->group(function (): void {
     Route::get('/v2/examenes', [ExamenesUiController::class, 'index']);
     Route::get('/v2/examenes/turnero', [ExamenesUiController::class, 'turnero']);
     Route::get('/v2/imagenes/examenes-realizados', [ImagenesUiController::class, 'realizadas']);
     Route::get('/v2/imagenes/dashboard', [ImagenesUiController::class, 'dashboard']);
 });
 
-Route::middleware(['legacy.auth', 'legacy.permission:administrativo,agenda.view,pacientes.view,solicitudes.view,examenes.view'])->group(function (): void {
+Route::middleware(['app.auth', 'app.permission:administrativo,agenda.view,pacientes.view,solicitudes.view,examenes.view'])->group(function (): void {
     Route::get('/v2/consultas', [ConsultasUiController::class, 'edit']);
     Route::post('/v2/consultas', [ConsultasUiController::class, 'update']);
 });
 
-Route::middleware(['legacy.auth', 'legacy.permission:administrativo,farmacia.view,insumos.view,insumos.manage'])->group(function (): void {
+Route::middleware(['app.auth', 'app.permission:administrativo,farmacia.view,insumos.view,insumos.manage'])->group(function (): void {
     Route::get('/v2/farmacia', [FarmaciaUiController::class, 'dashboard']);
     Route::get('/v2/farmacia/export/pdf', [FarmaciaUiController::class, 'exportPdf']);
     Route::get('/v2/farmacia/export/excel', [FarmaciaUiController::class, 'exportExcel']);
@@ -146,11 +146,11 @@ Route::middleware(['app.auth', 'app.permission:administrativo,settings.manage,se
     Route::post('/v2/settings', [SettingsUiController::class, 'save']);
 });
 
-Route::middleware(['legacy.auth', 'legacy.permission:administrativo,codes.view,codes.manage'])->group(function (): void {
+Route::middleware(['app.auth', 'app.permission:administrativo,codes.view,codes.manage'])->group(function (): void {
     Route::get('/v2/codes', [CodesUiController::class, 'index']);
 });
 
-Route::middleware(['legacy.auth', 'legacy.permission:administrativo,codes.manage'])->group(function (): void {
+Route::middleware(['app.auth', 'app.permission:administrativo,codes.manage'])->group(function (): void {
     Route::get('/v2/codes/create', [CodesUiController::class, 'create']);
     Route::get('/v2/codes/import', [CodesUiController::class, 'import']);
     Route::post('/v2/codes/import', [CodesWriteController::class, 'import']);

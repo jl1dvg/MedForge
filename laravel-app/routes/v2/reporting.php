@@ -4,8 +4,8 @@ use App\Modules\Reporting\Http\Controllers\ReportingReadController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware([
-    'legacy.auth',
-    'legacy.permission:administrativo,reportes.view,reportes.export',
+    'app.auth',
+    'app.permission:administrativo,reportes.view,reportes.export',
 ])->group(function (): void {
     Route::get('/reports/protocolo/data', [ReportingReadController::class, 'protocolData']);
     Route::get('/reports/protocolo/pdf', [ReportingReadController::class, 'protocolPdf']);

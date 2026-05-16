@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Modules\Shared\Support\LegacyPermissionResolver;
+use App\Modules\Shared\Support\LegacySessionAuth;
 use Closure;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -13,6 +14,10 @@ class RequireAppPermission
 {
     public function handle(Request $request, Closure $next, string ...$permissions): Response|RedirectResponse
     {
+        if ((bool) config('auth_migration.accept_legacy_session', true)) {
+            LegacySessionAuth::bootstrapLaravelAuth($request);
+        }
+
         if (!Auth::check()) {
             if ($request->expectsJson()) {
                 return response()->json(['error' => 'Sesión expirada'], 401);

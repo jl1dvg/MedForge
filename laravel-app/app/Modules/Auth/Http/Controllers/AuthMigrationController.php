@@ -8,21 +8,22 @@ class AuthMigrationController
 {
     public function status(): JsonResponse
     {
-        $legacyCompatSession = filter_var((string) env('AUTH_WRITE_LEGACY_COMPAT_SESSION', '1'), FILTER_VALIDATE_BOOL);
+        $legacyCompatSession = (bool) config('auth_migration.write_legacy_compat_session', true);
+        $acceptLegacySession = (bool) config('auth_migration.accept_legacy_session', true);
 
         return response()->json([
             'module' => 'auth',
             'status' => 'in_progress',
-            'ready' => !$legacyCompatSession,
+            'ready' => !$legacyCompatSession && !$acceptLegacySession,
             'checks' => [
-                'legacy_session_bridge' => $legacyCompatSession,
+                'legacy_session_bridge' => $acceptLegacySession,
                 'legacy_compat_session_write' => $legacyCompatSession,
                 'app_auth_is_native' => true,
                 'unified_logout' => true,
                 'migration_status_endpoint' => true,
             ],
-            'message' => $legacyCompatSession
-                ? 'Auth/Sesión en transición controlada. El bridge legacy sigue habilitado para módulos no migrados.'
+            'message' => ($legacyCompatSession || $acceptLegacySession)
+                ? 'Auth/Sesión en transición controlada. El fallback de compatibilidad legacy sigue habilitado.'
                 : 'Auth/Sesión lista para operar sin bridge legacy.',
         ], 200);
     }

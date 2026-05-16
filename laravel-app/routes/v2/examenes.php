@@ -4,8 +4,8 @@ use App\Modules\Examenes\Http\Controllers\ExamenesParityController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware([
-    'legacy.auth',
-    'legacy.permission:administrativo,examenes.view,examenes.manage',
+    'app.auth',
+    'app.permission:administrativo,examenes.view,examenes.manage',
 ])->group(function (): void {
 // Legacy mirror paths (reads)
 Route::match(['GET', 'POST'], '/examenes/kanban-data', [ExamenesParityController::class, 'kanbanData']);

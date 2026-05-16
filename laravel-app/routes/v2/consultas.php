@@ -6,8 +6,8 @@ use Illuminate\Support\Facades\Route;
 
 Route::middleware([
     'consultas.cors',
-    'legacy.auth',
-    'legacy.permission:administrativo,ai.manage,ai.consultas.enfermedad,ai.consultas.plan',
+    'app.auth',
+    'app.permission:administrativo,ai.manage,ai.consultas.enfermedad,ai.consultas.plan',
 ])->group(function (): void {
     // Explicit preflight endpoints for cross-origin extension traffic.
     Route::options('/api/consultas/guardar.php', static fn () => response('', 204));

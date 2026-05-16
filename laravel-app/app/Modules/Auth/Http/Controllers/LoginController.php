@@ -84,6 +84,6 @@ class LoginController
 
     private function shouldWriteLegacyCompatibilitySession(): bool
     {
-        return filter_var((string) env('AUTH_WRITE_LEGACY_COMPAT_SESSION', '1'), FILTER_VALIDATE_BOOL);
+        return (bool) config('auth_migration.write_legacy_compat_session', true);
     }
 }

@@ -5,8 +5,8 @@ use App\Modules\Derivaciones\Http\Controllers\DerivacionesWriteController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware([
-    'legacy.auth',
-    'legacy.permission:administrativo,derivaciones.view,pacientes.view,solicitudes.view',
+    'app.auth',
+    'app.permission:administrativo,derivaciones.view,pacientes.view,solicitudes.view',
 ])->group(function (): void {
     Route::post('/derivaciones/datatable', [DerivacionesReadController::class, 'datatable']);
     Route::get('/derivaciones/archivo-form', [DerivacionesReadController::class, 'archivoPorFormId']);
