@@ -8,7 +8,7 @@ use App\Modules\Reporting\Services\ProtocolReportDataService;
 use App\Modules\Reporting\Services\CoberturaReportDataService;
 use App\Modules\Reporting\Services\ConsultaReportDataService;
 use App\Modules\Reporting\Services\ReportPdfService;
-use App\Modules\Shared\Support\LegacySessionAuth;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -37,7 +37,7 @@ class ReportingReadController
     {
         $requestId = $this->requestId($request);
 
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             if ($request->expectsJson()) {
                 return response()->json(['error' => 'Sesión expirada'], 401)->header('X-Request-Id', $requestId);
             }
@@ -80,7 +80,7 @@ class ReportingReadController
 
         Log::info('reporting.read.protocol_data', [
             'request_id' => $requestId,
-            'user_id' => LegacySessionAuth::userId($request),
+            'user_id' => Auth::id(),
             'form_id' => $formId,
             'hc_number' => $hcNumber,
         ]);
@@ -100,7 +100,7 @@ class ReportingReadController
     {
         $requestId = $this->requestId($request);
 
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             if ($request->expectsJson()) {
                 return response()->json(['error' => 'Sesión expirada'], 401)->header('X-Request-Id', $requestId);
             }
@@ -150,7 +150,7 @@ class ReportingReadController
 
         Log::info('reporting.read.protocol_pdf', [
             'request_id' => $requestId,
-            'user_id' => LegacySessionAuth::userId($request),
+            'user_id' => Auth::id(),
             'form_id' => $formId,
             'hc_number' => $hcNumber,
             'modo' => $mode,
@@ -164,7 +164,7 @@ class ReportingReadController
     {
         $requestId = $this->requestId($request);
 
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             if ($request->expectsJson()) {
                 return response()->json(['error' => 'Sesión expirada'], 401)->header('X-Request-Id', $requestId);
             }
@@ -207,7 +207,7 @@ class ReportingReadController
 
         Log::info('reporting.read.imagenes_012b_data', [
             'request_id' => $requestId,
-            'user_id' => LegacySessionAuth::userId($request),
+            'user_id' => Auth::id(),
             'form_id' => $formId,
             'hc_number' => $hcNumber,
         ]);
@@ -227,7 +227,7 @@ class ReportingReadController
     {
         $requestId = $this->requestId($request);
 
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             if ($request->expectsJson()) {
                 return response()->json(['error' => 'Sesión expirada'], 401)->header('X-Request-Id', $requestId);
             }
@@ -275,7 +275,7 @@ class ReportingReadController
 
         Log::info('reporting.read.imagenes_012a_data', [
             'request_id' => $requestId,
-            'user_id' => LegacySessionAuth::userId($request),
+            'user_id' => Auth::id(),
             'form_id' => $formId,
             'hc_number' => $hcNumber,
             'examen_id' => $examenId,
@@ -297,7 +297,7 @@ class ReportingReadController
     {
         $requestId = $this->requestId($request);
 
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             if ($request->expectsJson()) {
                 return response()->json(['error' => 'Sesión expirada'], 401)->header('X-Request-Id', $requestId);
             }
@@ -340,7 +340,7 @@ class ReportingReadController
 
         Log::info('reporting.read.cobertura_data', [
             'request_id' => $requestId,
-            'user_id' => LegacySessionAuth::userId($request),
+            'user_id' => Auth::id(),
             'form_id' => $formId,
             'hc_number' => $hcNumber,
         ]);
@@ -360,7 +360,7 @@ class ReportingReadController
     {
         $requestId = $this->requestId($request);
 
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             if ($request->expectsJson()) {
                 return response()->json(['error' => 'Sesión expirada'], 401)->header('X-Request-Id', $requestId);
             }
@@ -403,7 +403,7 @@ class ReportingReadController
 
         Log::info('reporting.read.consulta_data', [
             'request_id' => $requestId,
-            'user_id' => LegacySessionAuth::userId($request),
+            'user_id' => Auth::id(),
             'form_id' => $formId,
             'hc_number' => $hcNumber,
         ]);
@@ -423,7 +423,7 @@ class ReportingReadController
     {
         $requestId = $this->requestId($request);
 
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             if ($request->expectsJson()) {
                 return response()->json(['error' => 'Sesión expirada'], 401)->header('X-Request-Id', $requestId);
             }
@@ -484,7 +484,7 @@ class ReportingReadController
 
         Log::info('reporting.read.post_surgery_rest_data', [
             'request_id' => $requestId,
-            'user_id' => LegacySessionAuth::userId($request),
+            'user_id' => Auth::id(),
             'form_id' => $formId,
             'hc_number' => $hcNumber,
             'dias_descanso' => $restDays,
@@ -505,7 +505,7 @@ class ReportingReadController
     {
         $requestId = $this->requestId($request);
 
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             if ($request->expectsJson()) {
                 return response()->json(['error' => 'Sesión expirada'], 401)->header('X-Request-Id', $requestId);
             }
@@ -557,7 +557,7 @@ class ReportingReadController
 
         Log::info('reporting.read.cobertura_pdf', [
             'request_id' => $requestId,
-            'user_id' => LegacySessionAuth::userId($request),
+            'user_id' => Auth::id(),
             'form_id' => $formId,
             'hc_number' => $hcNumber,
             'variant' => $variant,
@@ -570,7 +570,7 @@ class ReportingReadController
     {
         $requestId = $this->requestId($request);
 
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             if ($request->expectsJson()) {
                 return response()->json(['error' => 'Sesión expirada'], 401)->header('X-Request-Id', $requestId);
             }
@@ -613,7 +613,7 @@ class ReportingReadController
 
         Log::info('reporting.read.consulta_pdf', [
             'request_id' => $requestId,
-            'user_id' => LegacySessionAuth::userId($request),
+            'user_id' => Auth::id(),
             'form_id' => $formId,
             'hc_number' => $hcNumber,
         ]);
@@ -625,7 +625,7 @@ class ReportingReadController
     {
         $requestId = $this->requestId($request);
 
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             if ($request->expectsJson()) {
                 return response()->json(['error' => 'Sesión expirada'], 401)->header('X-Request-Id', $requestId);
             }
@@ -686,7 +686,7 @@ class ReportingReadController
 
         Log::info('reporting.read.post_surgery_rest_pdf', [
             'request_id' => $requestId,
-            'user_id' => LegacySessionAuth::userId($request),
+            'user_id' => Auth::id(),
             'form_id' => $formId,
             'hc_number' => $hcNumber,
             'dias_descanso' => $restDays,
@@ -699,7 +699,7 @@ class ReportingReadController
     {
         $requestId = $this->requestId($request);
 
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             if ($request->expectsJson()) {
                 return response()->json(['error' => 'Sesión expirada'], 401)->header('X-Request-Id', $requestId);
             }
@@ -742,7 +742,7 @@ class ReportingReadController
 
         Log::info('reporting.read.imagenes_012b_pdf', [
             'request_id' => $requestId,
-            'user_id' => LegacySessionAuth::userId($request),
+            'user_id' => Auth::id(),
             'form_id' => $formId,
             'hc_number' => $hcNumber,
         ]);
@@ -754,7 +754,7 @@ class ReportingReadController
     {
         $requestId = $this->requestId($request);
 
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             if ($request->expectsJson()) {
                 return response()->json(['error' => 'Sesión expirada'], 401)->header('X-Request-Id', $requestId);
             }
@@ -800,7 +800,7 @@ class ReportingReadController
 
         Log::info('reporting.read.imagenes_012b_package_pdf', [
             'request_id' => $requestId,
-            'user_id' => LegacySessionAuth::userId($request),
+            'user_id' => Auth::id(),
             'form_id' => $formId,
             'hc_number' => $hcNumber,
             'items' => 1,
@@ -813,7 +813,7 @@ class ReportingReadController
     {
         $requestId = $this->requestId($request);
 
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             if ($request->expectsJson()) {
                 return response()->json(['error' => 'Sesión expirada'], 401)->header('X-Request-Id', $requestId);
             }
@@ -859,7 +859,7 @@ class ReportingReadController
 
         Log::info('reporting.read.imagenes_012b_package_selection_pdf', [
             'request_id' => $requestId,
-            'user_id' => LegacySessionAuth::userId($request),
+            'user_id' => Auth::id(),
             'items' => count($items),
             'fecha_documento' => $fechaDocumento,
         ]);
@@ -871,7 +871,7 @@ class ReportingReadController
     {
         $requestId = $this->requestId($request);
 
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             if ($request->expectsJson()) {
                 return response()->json(['error' => 'Sesión expirada'], 401)->header('X-Request-Id', $requestId);
             }
@@ -919,7 +919,7 @@ class ReportingReadController
 
         Log::info('reporting.read.imagenes_012a_pdf', [
             'request_id' => $requestId,
-            'user_id' => LegacySessionAuth::userId($request),
+            'user_id' => Auth::id(),
             'form_id' => $formId,
             'hc_number' => $hcNumber,
             'examen_id' => $examenId,
