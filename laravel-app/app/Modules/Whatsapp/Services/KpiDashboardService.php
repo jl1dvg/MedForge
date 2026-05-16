@@ -123,6 +123,7 @@ class KpiDashboardService
                 'handoffs_by_role' => $this->handoffsByRole($fromSql, $toSql, $roleId, $agentId),
                 'handoffs_by_agent' => $this->handoffsByAgent($fromSql, $toSql, $roleId, $agentId),
                 'human_attention_by_agent' => $this->humanAttentionByAgent($fromSql, $toSql, $roleId, $agentId),
+                'human_response_by_queue' => $this->humanResponseByQueue($fromSql, $toSql, $roleId, $agentId),
                 'sigcenter_bookings_by_sede' => $this->sigcenterBookingsBySede($fromSql, $toSql),
             ],
             'analytics' => $analytics,
@@ -1504,6 +1505,103 @@ class KpiDashboardService
     }
 
     /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function humanResponseByQueue(string $fromSql, string $toSql, ?int $roleId, ?int $agentId): array
+    {
+        if (!Schema::hasTable('whatsapp_handoffs')) {
+            return [];
+        }
+
+        $filter = $this->handoffFilterSql('h', $roleId, $agentId, 'human_queue');
+        $attributionJoin = Schema::hasTable('whatsapp_conversation_attributions')
+            ? 'LEFT JOIN whatsapp_conversation_attributions a ON a.conversation_id = h.conversation_id'
+            : 'LEFT JOIN (SELECT NULL AS conversation_id, NULL AS source_category, NULL AS initial_intent, NULL AS conversation_type, NULL AS patient_segment) a ON 1 = 0';
+
+        $sql = 'SELECT
+                    h.id AS handoff_id,
+                    h.topic,
+                    h.priority,
+                    h.status,
+                    h.queued_at,
+                    h.assigned_at,
+                    c.handoff_requested_at,
+                    c.assigned_user_id,
+                    a.source_category,
+                    a.initial_intent,
+                    a.conversation_type,
+                    a.patient_segment,
+                    (
+                        SELECT MIN(m.message_timestamp)
+                        FROM whatsapp_messages m
+                        WHERE m.conversation_id = h.conversation_id
+                          AND m.direction = "outbound"
+                          AND h.assigned_at IS NOT NULL
+                          AND m.message_timestamp >= h.assigned_at
+                    ) AS first_human_reply_at
+                FROM whatsapp_handoffs h
+                INNER JOIN whatsapp_conversations c ON c.id = h.conversation_id
+                ' . $attributionJoin . '
+                WHERE COALESCE(h.queued_at, h.assigned_at, h.created_at) >= ?
+                  AND COALESCE(h.queued_at, h.assigned_at, h.created_at) < ?';
+        $params = [$fromSql, $toSql];
+        if ($filter['where'] !== '') {
+            $sql .= ' AND ' . $filter['where'];
+            $params = array_merge($params, array_values($filter['params']));
+        }
+
+        $buckets = [];
+        foreach (DB::select($sql, $params) as $row) {
+            $queue = $this->operationalQueueFromHandoffRow($row);
+            if (!isset($buckets[$queue])) {
+                $buckets[$queue] = [
+                    'queue' => $queue,
+                    'label' => $this->operationalQueueLabel($queue),
+                    'total_handoffs' => 0,
+                    'attended_handoffs' => 0,
+                    'pending_handoffs' => 0,
+                    'response_seconds' => [],
+                ];
+            }
+
+            $buckets[$queue]['total_handoffs']++;
+            $firstReply = isset($row->first_human_reply_at) ? Carbon::parse((string) $row->first_human_reply_at) : null;
+            $responseStart = $this->parseNullableCarbon($row->handoff_requested_at ?? null)
+                ?? $this->parseNullableCarbon($row->queued_at ?? null)
+                ?? $this->parseNullableCarbon($row->assigned_at ?? null);
+
+            if ($firstReply !== null) {
+                $buckets[$queue]['attended_handoffs']++;
+                if ($responseStart !== null && $firstReply->greaterThanOrEqualTo($responseStart)) {
+                    $buckets[$queue]['response_seconds'][] = $responseStart->diffInSeconds($firstReply);
+                }
+            } else {
+                $buckets[$queue]['pending_handoffs']++;
+            }
+        }
+
+        $order = ['critical_backlog' => 0, 'captacion' => 1, 'operacion' => 2, 'informacion' => 3];
+        $rows = array_map(function (array $bucket): array {
+            $seconds = $bucket['response_seconds'];
+            $avg = $seconds !== [] ? array_sum($seconds) / count($seconds) : null;
+            $median = $this->median($seconds);
+
+            unset($bucket['response_seconds']);
+            $bucket['avg_first_response_minutes'] = $avg !== null ? round($avg / 60, 2) : null;
+            $bucket['median_first_response_minutes'] = $median !== null ? round($median / 60, 2) : null;
+            $bucket['response_rate'] = $bucket['total_handoffs'] > 0
+                ? round(($bucket['attended_handoffs'] / $bucket['total_handoffs']) * 100, 2)
+                : 0.0;
+
+            return $bucket;
+        }, array_values($buckets));
+
+        usort($rows, fn (array $left, array $right): int => ($order[$left['queue']] ?? 99) <=> ($order[$right['queue']] ?? 99));
+
+        return $rows;
+    }
+
+    /**
      * @return array<int, array{period_date:string,total:int}>
      */
     private function transferTrendRows(string $fromSql, string $toSql, ?int $roleId, ?int $agentId): array
@@ -2238,6 +2336,69 @@ class KpiDashboardService
         $sql .= ' GROUP BY inbound.conversation_id, h.assigned_agent_id, h.assigned_at';
 
         return ['sql' => $sql, 'params' => $params];
+    }
+
+    private function operationalQueueFromHandoffRow(object $row): string
+    {
+        $topic = strtolower(trim((string) ($row->topic ?? '')));
+        if (str_starts_with($topic, 'captacion_')) {
+            return 'captacion';
+        }
+        if (str_starts_with($topic, 'operacion_')) {
+            return 'operacion';
+        }
+        if (in_array($topic, ['faq_escalada', 'promociones', 'caso_especial'], true)) {
+            return 'informacion';
+        }
+
+        $queuedAt = $this->parseNullableCarbon($row->queued_at ?? null);
+        $assignedUserId = (int) ($row->assigned_user_id ?? 0);
+        if ($assignedUserId <= 0 && $queuedAt !== null && $queuedAt->lessThanOrEqualTo(Carbon::now()->subHours(24))) {
+            return 'critical_backlog';
+        }
+
+        $sourceCategory = strtolower(trim((string) ($row->source_category ?? '')));
+        $initialIntent = strtolower(trim((string) ($row->initial_intent ?? '')));
+        $conversationType = strtolower(trim((string) ($row->conversation_type ?? '')));
+        $patientSegment = strtolower(trim((string) ($row->patient_segment ?? '')));
+
+        if ((in_array($sourceCategory, ['ad', 'organic_direct'], true) && $patientSegment === 'new_patient')
+            || $initialIntent === 'booking'
+        ) {
+            return 'captacion';
+        }
+
+        if (in_array($sourceCategory, ['support_operational', 'campaign_outbound'], true)
+            || in_array($conversationType, ['reschedule', 'cancel', 'results', 'human_help', 'campaign_response'], true)
+        ) {
+            return 'operacion';
+        }
+
+        return 'informacion';
+    }
+
+    private function operationalQueueLabel(string $queue): string
+    {
+        return match ($queue) {
+            'critical_backlog' => 'Backlog >24h',
+            'captacion' => 'Captación',
+            'operacion' => 'Operación',
+            'informacion' => 'Información',
+            default => 'Sin clasificar',
+        };
+    }
+
+    private function parseNullableCarbon(mixed $value): ?Carbon
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        try {
+            return Carbon::parse((string) $value);
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     /**

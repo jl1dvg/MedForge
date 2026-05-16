@@ -47,6 +47,7 @@
         'ads' => 'Ranking de anuncios que más aportan conversaciones, identificación, handoff y citas.',
         'series' => 'Serie diaria del periodo para leer volumen general del canal y sus principales eventos.',
         'human_by_agent' => 'Qué agente absorbió más conversaciones y en cuánto tiempo respondió por primera vez tras el handoff.',
+        'human_by_queue' => 'Tiempo de primera respuesta humana agrupado por cola operativa para diferenciar captación, operación, información y backlog crítico.',
         'handoffs_by_role' => 'Distribución de handoffs por equipo para medir entrada, asignación y cierre operativo.',
         'agent_load' => 'Carga por agente para detectar saturación, reparto desigual o capacidad ociosa.',
     ];
@@ -1089,6 +1090,53 @@
                             @empty
                                 <tr>
                                     <td colspan="3" class="text-center text-muted py-20">Sin datos para el rango actual.</td>
+                                </tr>
+                            @endforelse
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-6 col-12">
+            <div class="wa-kpi-panel">
+                <div class="wa-kpi-panel__head">
+                    <div class="wa-kpi-title-row">
+                        <div class="wa-kpi-sideheading__title">Primera respuesta por cola</div>
+                        <button type="button" class="wa-kpi-help" aria-label="Ver ayuda de Primera respuesta por cola">
+                            ?
+                            <span class="wa-kpi-help__tooltip">{{ $sectionHelp['human_by_queue'] }}</span>
+                        </button>
+                    </div>
+                    <div class="wa-kpi-sideheading__meta">Mide el tiempo desde ingreso a handoff hasta la primera respuesta humana por tipo de cola.</div>
+                </div>
+                <div class="wa-kpi-panel__body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-striped wa-kpi-table mb-0">
+                            <thead>
+                            <tr>
+                                <th>Cola</th>
+                                <th>Handoffs</th>
+                                <th>Atendidos</th>
+                                <th>Pendientes</th>
+                                <th>Mediana</th>
+                                <th>Promedio</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            @forelse(($breakdowns['human_response_by_queue'] ?? []) as $row)
+                                <tr>
+                                    <td>{{ $row['label'] }}</td>
+                                    <td>{{ $row['total_handoffs'] }}</td>
+                                    <td>{{ $row['attended_handoffs'] }} · {{ $row['response_rate'] }}%</td>
+                                    <td>{{ $row['pending_handoffs'] }}</td>
+                                    <td>{{ $row['median_first_response_minutes'] !== null ? $row['median_first_response_minutes'] . ' min' : '—' }}</td>
+                                    <td>{{ $row['avg_first_response_minutes'] !== null ? $row['avg_first_response_minutes'] . ' min' : '—' }}</td>
+                                </tr>
+                            @empty
+                                <tr>
+                                    <td colspan="6" class="text-center text-muted py-20">Sin datos para el rango actual.</td>
                                 </tr>
                             @endforelse
                             </tbody>

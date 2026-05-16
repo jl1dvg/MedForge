@@ -5,6 +5,7 @@ namespace App\Modules\Whatsapp\Services;
 use App\Models\WhatsappAutoresponderSession;
 use App\Models\WhatsappConversation;
 use App\Models\WhatsappConversationAttribution;
+use App\Models\WhatsappHandoff;
 use App\Models\WhatsappMessage;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -597,6 +598,12 @@ class FlowRuntimeExecutionService
                 if (isset($action['note']) && is_string($action['note'])) {
                     $context['handoff_note'] = $this->renderPlaceholders($action['note'], $context);
                 }
+                if (isset($action['topic']) && is_string($action['topic'])) {
+                    $context['handoff_topic'] = trim($action['topic']);
+                }
+                if (isset($action['priority']) && is_string($action['priority'])) {
+                    $context['handoff_priority'] = trim(strtolower($action['priority']));
+                }
                 continue;
             }
 
@@ -623,6 +630,8 @@ class FlowRuntimeExecutionService
                     $context['handoff_requested'] = true;
                     $context['handoff_reasons'] = is_array($preview['handoff_reasons'] ?? null) ? $preview['handoff_reasons'] : [];
                     $context['handoff_note'] = 'AI Agent sugirió handoff.';
+                    $context['handoff_topic'] = 'faq_escalada';
+                    $context['handoff_priority'] = 'normal';
                 }
             }
         }
@@ -987,6 +996,10 @@ class FlowRuntimeExecutionService
             'handoff_requested_at' => now(),
         ]);
         $conversation->save();
+        $this->syncActiveHandoffRecord($conversation, [
+            'handoff_topic' => $changeType === 'cancel' ? 'operacion_cancelacion' : 'operacion_reagenda',
+            'handoff_priority' => 'high',
+        ]);
     }
 
     private function recordSigcenterBookingChangeRequest(object $booking, WhatsappConversation $conversation, WhatsappMessage $inboundMessage, string $changeType): void
@@ -2210,6 +2223,51 @@ class FlowRuntimeExecutionService
             'handoff_requested_at' => now(),
         ]);
         $conversation->save();
+        $this->syncActiveHandoffRecord($conversation, $context);
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     */
+    private function syncActiveHandoffRecord(WhatsappConversation $conversation, array $context): void
+    {
+        if (!Schema::hasTable('whatsapp_handoffs')) {
+            return;
+        }
+
+        $topic = trim((string) ($context['handoff_topic'] ?? ''));
+        $priority = strtolower(trim((string) ($context['handoff_priority'] ?? '')));
+        if (!in_array($priority, ['critical', 'high', 'normal'], true)) {
+            $priority = $conversation->patient_hc_number ? 'high' : 'normal';
+        }
+
+        $handoff = WhatsappHandoff::query()
+            ->where('conversation_id', $conversation->id)
+            ->whereIn('status', ['queued', 'assigned'])
+            ->orderByDesc('id')
+            ->first();
+
+        if (!$handoff instanceof WhatsappHandoff) {
+            $handoff = new WhatsappHandoff([
+                'conversation_id' => $conversation->id,
+                'wa_number' => (string) $conversation->wa_number,
+                'queued_at' => $conversation->handoff_requested_at ?? now(),
+            ]);
+        }
+
+        $handoff->fill([
+            'status' => (int) ($conversation->assigned_user_id ?? 0) > 0 ? 'assigned' : 'queued',
+            'priority' => $priority,
+            'topic' => $topic !== '' ? $topic : 'faq_escalada',
+            'handoff_role_id' => $conversation->handoff_role_id,
+            'assigned_agent_id' => (int) ($conversation->assigned_user_id ?? 0) > 0 ? (int) $conversation->assigned_user_id : null,
+            'assigned_at' => $conversation->assigned_at,
+            'assigned_until' => (int) ($conversation->assigned_user_id ?? 0) > 0 ? ($handoff->assigned_until ?? now()->addHours(24)) : null,
+            'queued_at' => $handoff->queued_at ?? $conversation->handoff_requested_at ?? now(),
+            'last_activity_at' => now(),
+            'notes' => $conversation->handoff_notes,
+        ]);
+        $handoff->save();
     }
 
     /**

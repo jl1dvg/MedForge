@@ -22,8 +22,12 @@
     $tabs = [
         'mine' => 'Mis chats',
         'handoff' => 'Pendientes',
-        'window_open' => '24h abierta',
+        'captacion' => 'Captación',
+        'operacion' => 'Operación',
+        'informacion' => 'Información',
+        'critical_backlog' => 'Backlog >24h',
         'unread' => 'Sin leer',
+        'window_open' => '24h abierta',
         'needs_template' => 'Plantilla',
         'resolved' => 'Resueltos',
         'all' => 'Todos',
@@ -1747,6 +1751,10 @@
                                 @foreach($tabs as $key => $label)
                                     @php
                                         $tabIcons = [
+                                            'critical_backlog' => 'mdi mdi-alert-octagon-outline',
+                                            'captacion' => 'mdi mdi-bullseye-arrow',
+                                            'operacion' => 'mdi mdi-calendar-sync-outline',
+                                            'informacion' => 'mdi mdi-information-outline',
                                             'mine' => 'mdi mdi-account-outline',
                                             'handoff' => 'mdi mdi-tray-arrow-down',
                                             'window_open' => 'mdi mdi-timer-sand',
@@ -1784,6 +1792,9 @@
                         @php
                             $isActive = (int) ($selectedConversation['id'] ?? 0) === (int) $conversation['id'];
                             $priorityState = match (true) {
+                                ($conversation['queue_bucket'] ?? '') === 'critical_backlog' => 'critical_backlog',
+                                ($conversation['queue_bucket'] ?? '') === 'captacion' => 'captacion',
+                                ($conversation['queue_bucket'] ?? '') === 'operacion' => 'operacion',
                                 !empty($conversation['needs_human']) && empty($conversation['assigned_user_id']) => 'pending',
                                 ($conversation['ownership_state'] ?? '') === 'mine' => 'mine',
                                 ($conversation['messaging_window_state'] ?? '') === 'window_open' => 'window_open',
@@ -1791,6 +1802,9 @@
                                 default => 'resolved',
                             };
                             $priorityLabel = match ($priorityState) {
+                                'critical_backlog' => 'Backlog >24h',
+                                'captacion' => 'Captación',
+                                'operacion' => 'Operación',
                                 'pending' => 'Pendiente',
                                 'mine' => 'Mío',
                                 'window_open' => '24h abierta',
@@ -1798,6 +1812,9 @@
                                 default => 'Resuelto',
                             };
                             $priorityClass = match ($priorityState) {
+                                'critical_backlog' => 'is-pending',
+                                'captacion' => 'is-window-open',
+                                'operacion' => 'is-needs-template',
                                 'pending' => 'is-pending',
                                 'mine' => 'is-mine',
                                 'window_open' => 'is-window-open',
@@ -1830,7 +1847,7 @@
                                 class="wa-v2-preview">{{ $conversation['last_message_preview'] ?: '[' . ($conversation['last_message_type'] ?: 'mensaje') . ']' }}</div>
                             <div class="wa-v2-priority-line">
                                 <span class="wa-v2-priority-badge {{ $priorityClass }}">
-                                    <i class="mdi {{ $priorityState === 'pending' ? 'mdi-alert-circle-outline' : ($priorityState === 'mine' ? 'mdi-account-check-outline' : ($priorityState === 'window_open' ? 'mdi-timer-sand' : ($priorityState === 'needs_template' ? 'mdi-file-document-edit-outline' : 'mdi-check-circle-outline'))) }}"></i>
+                                    <i class="mdi {{ $priorityState === 'critical_backlog' ? 'mdi-alert-octagon-outline' : ($priorityState === 'captacion' ? 'mdi-bullseye-arrow' : ($priorityState === 'operacion' ? 'mdi-calendar-sync-outline' : ($priorityState === 'pending' ? 'mdi-alert-circle-outline' : ($priorityState === 'mine' ? 'mdi-account-check-outline' : ($priorityState === 'window_open' ? 'mdi-timer-sand' : ($priorityState === 'needs_template' ? 'mdi-file-document-edit-outline' : 'mdi-check-circle-outline')))))) }}"></i>
                                     {{ $priorityLabel }}
                                 </span>
                                 <div
@@ -1845,6 +1862,12 @@
                                             class="mdi mdi-tray-arrow-down"></i> En cola</span>
                                 @else
                                     <span class="wa-v2-pill"><i class="mdi mdi-check"></i> Resuelto</span>
+                                @endif
+                                @if(!empty($conversation['queue_bucket_label']) && !empty($conversation['needs_human']))
+                                    <span class="wa-v2-pill"><i class="mdi mdi-shape-outline"></i> {{ $conversation['queue_bucket_label'] }}</span>
+                                @endif
+                                @if(!empty($conversation['handoff_priority_label']) && !empty($conversation['needs_human']))
+                                    <span class="wa-v2-pill"><i class="mdi mdi-flag-outline"></i> {{ $conversation['handoff_priority_label'] }}</span>
                                 @endif
                                 <span
                                     class="wa-v2-pill {{ ($conversation['messaging_window_state'] ?? '') === 'window_open' ? 'is-unread' : '' }}">
@@ -1924,6 +1947,12 @@
                                             class="mdi mdi-tray-arrow-down"></i> En cola</span>
                                 @else
                                     <span class="wa-v2-pill"><i class="mdi mdi-check"></i> Resuelto</span>
+                                @endif
+                                @if(!empty($selectedConversation['queue_bucket_label']) && !empty($selectedConversation['needs_human']))
+                                    <span class="wa-v2-pill"><i class="mdi mdi-shape-outline"></i> {{ $selectedConversation['queue_bucket_label'] }}</span>
+                                @endif
+                                @if(!empty($selectedConversation['handoff_priority_label']) && !empty($selectedConversation['needs_human']))
+                                    <span class="wa-v2-pill"><i class="mdi mdi-flag-outline"></i> {{ $selectedConversation['handoff_priority_label'] }}</span>
                                 @endif
                                 <span
                                     class="wa-v2-pill {{ ($selectedConversation['messaging_window_state'] ?? '') === 'window_open' ? 'is-unread' : '' }}">

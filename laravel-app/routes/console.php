@@ -12,6 +12,7 @@ use App\Modules\Shared\Support\AfiliacionDimensionService;
 use App\Modules\Solicitudes\Services\SolicitudesChecklistBackfillService;
 use App\Modules\Solicitudes\Services\SolicitudesPrefacturaService;
 use App\Modules\Whatsapp\Services\ConversationAttributionService;
+use App\Modules\Whatsapp\Services\ConversationAbandonmentMonitorService;
 use App\Modules\Whatsapp\Services\ConversationOpsService;
 use App\Modules\Whatsapp\Services\FlowRuntimeShadowCompareService;
 use App\Modules\Whatsapp\Services\FlowRuntimeShadowObserverService;
@@ -480,6 +481,60 @@ Artisan::command('whatsapp:handoff-requeue-expired {--dry-run : Solo muestra los
         return 0;
     }
 })->purpose('Reencola handoffs vencidos del inbox WhatsApp Laravel');
+
+Artisan::command('whatsapp:monitor-abandonment
+    {--dry-run : Solo muestra conversaciones candidatas sin encolarlas}
+    {--limit=100 : Máximo de conversaciones a revisar/encolar}
+    {--max-age-hours=72 : Solo vigila sesiones recientes dentro de esta ventana}', function (): int {
+    /** @var ConversationAbandonmentMonitorService $service */
+    $service = app(ConversationAbandonmentMonitorService::class);
+
+    try {
+        $result = $service->scan([
+            'dry_run' => (bool) $this->option('dry-run'),
+            'limit' => (int) $this->option('limit'),
+            'max_age_hours' => (int) $this->option('max-age-hours'),
+        ]);
+
+        if (!empty($result['error'])) {
+            $this->warn((string) $result['error']);
+        }
+
+        $this->table(
+            ['Scanned', 'Candidates', 'Enqueued', 'Skipped'],
+            [[
+                (int) ($result['scanned'] ?? 0),
+                (int) ($result['candidates'] ?? 0),
+                (int) ($result['enqueued'] ?? 0),
+                (int) ($result['skipped'] ?? 0),
+            ]]
+        );
+
+        $rows = array_map(static fn (array $row): array => [
+            (string) ($row['conversation_id'] ?? ''),
+            (string) ($row['state_label'] ?? $row['state'] ?? ''),
+            (string) ($row['idle_minutes'] ?? ''),
+            (string) ($row['threshold_minutes'] ?? ''),
+            (string) ($row['patient'] ?? ''),
+            (string) ($row['wa_number'] ?? ''),
+        ], $result['rows'] ?? []);
+
+        if ($rows !== []) {
+            $this->newLine();
+            $this->table(
+                ['Conversation', 'Estado', 'Min inactivo', 'Umbral', 'Paciente', 'WA'],
+                $rows
+            );
+        }
+
+        return 0;
+    } catch (\Throwable $e) {
+        $this->warn('No fue posible ejecutar el monitor de abandono con la DB configurada.');
+        $this->line($e->getMessage());
+
+        return 0;
+    }
+})->purpose('Detecta sesiones estancadas del bot y las envía a cola humana antes de perder el flujo');
 
 Artisan::command('whatsapp:sigcenter-doctor-catalog-sync
     {--dry-run : Solo calcula cuántas filas se reconstruirían}
@@ -1439,3 +1494,9 @@ Schedule::command('whatsapp:flowmaker-shadow-sync --limit=100')
     ->withoutOverlapping()
     ->when(static fn (): bool => (bool) config('whatsapp.migration.automation.enabled', false)
         && (bool) config('whatsapp.migration.automation.compare_with_legacy', true));
+
+Schedule::command('whatsapp:monitor-abandonment --limit=100')
+    ->everyFiveMinutes()
+    ->withoutOverlapping()
+    ->when(static fn (): bool => (bool) config('whatsapp.migration.automation.enabled', false)
+        && (bool) config('whatsapp.migration.abandonment_monitor.enabled', false));

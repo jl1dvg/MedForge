@@ -9,6 +9,7 @@ use App\Models\Role;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 class ConversationReadService
@@ -95,18 +96,26 @@ class ConversationReadService
     {
         $base = $this->baseVisibleQuery($viewerUserId, $includeAssignedOthers, $assignedUserId, $roleId);
         $base = $this->applyDateRange($base, $dateFrom, $dateTo);
-
-        return [
-            'all' => (clone $base)->count(),
-            'unread' => (clone $base)->where('unread_count', '>', 0)->count(),
-            'mine' => $viewerUserId !== null && $viewerUserId > 0
-                ? (clone $base)->where('assigned_user_id', $viewerUserId)->where('needs_human', true)->count()
-                : 0,
-            'handoff' => (clone $base)->where('needs_human', true)->whereNull('assigned_user_id')->count(),
-            'window_open' => $this->applyWindowOpenFilter((clone $base)->where('needs_human', true))->count(),
-            'needs_template' => $this->applyNeedsTemplateFilter((clone $base)->where('needs_human', true))->count(),
-            'resolved' => (clone $base)->where('needs_human', false)->count(),
+        $filters = [
+            'critical_backlog',
+            'captacion',
+            'operacion',
+            'informacion',
+            'mine',
+            'handoff',
+            'window_open',
+            'unread',
+            'needs_template',
+            'resolved',
+            'all',
         ];
+
+        $counts = [];
+        foreach ($filters as $filter) {
+            $counts[$filter] = $this->applyFilter(clone $base, $filter, $viewerUserId)->count();
+        }
+
+        return $counts;
     }
 
     private function applyDateRange(Builder $query, ?CarbonImmutable $dateFrom, ?CarbonImmutable $dateTo): Builder
@@ -189,6 +198,12 @@ class ConversationReadService
             'assigned_user_name' => is_array($assignedUser) ? ($assignedUser['name'] ?? null) : null,
             'assigned_role_name' => is_array($assignedUser) ? ($assignedUser['role_name'] ?? null) : $handoffRoleName,
             'handoff_role_name' => $handoffRoleName,
+            'handoff_priority' => $this->resolveConversationPriority($conversation),
+            'handoff_priority_label' => $this->handoffPriorityLabel($this->resolveConversationPriority($conversation)),
+            'handoff_topic' => $this->scalarString($conversation->getAttribute('active_handoff_topic')),
+            'queue_bucket' => $this->resolveOperationalQueue($conversation),
+            'queue_bucket_label' => $this->operationalQueueLabel($this->resolveOperationalQueue($conversation)),
+            'queue_age_minutes' => $this->resolveQueueAgeMinutes($conversation),
             'ownership_state' => $this->resolveOwnershipState($conversation, $viewerUserId),
             'ownership_label' => $this->resolveOwnershipLabel($conversation, $viewerUserId, $assignedUser, $handoffRoleName),
             'messaging_window_state' => $this->resolveMessagingWindowState($conversation),
@@ -215,6 +230,9 @@ class ConversationReadService
                     $query->where('direction', 'inbound');
                 },
             ], 'message_timestamp');
+
+        $query = $this->applyActiveHandoffJoin($query);
+        $query = $this->applyAttributionJoin($query);
 
         if (!$includeAssignedOthers && $viewerUserId !== null && $viewerUserId > 0) {
             $query->where(function (Builder $builder) use ($viewerUserId): void {
@@ -259,6 +277,10 @@ class ConversationReadService
     private function applyFilter(Builder $query, string $filter, ?int $viewerUserId): Builder
     {
         return match (trim($filter) !== '' ? trim($filter) : 'all') {
+            'critical_backlog' => $this->applyCriticalBacklogFilter($query),
+            'captacion' => $this->applyOperationalQueueFilter($query, 'captacion'),
+            'operacion' => $this->applyOperationalQueueFilter($query, 'operacion'),
+            'informacion' => $this->applyOperationalQueueFilter($query, 'informacion'),
             'unread' => $query->where('unread_count', '>', 0),
             'mine' => $viewerUserId !== null && $viewerUserId > 0
                 ? $query->where('assigned_user_id', $viewerUserId)->where('needs_human', true)
@@ -274,11 +296,19 @@ class ConversationReadService
     private function applyPriorityOrdering(Builder $query, ?int $viewerUserId): Builder
     {
         $threshold = $this->windowThreshold()->format('Y-m-d H:i:s');
+        $criticalThreshold = now()->toImmutable()->subHours(24)->format('Y-m-d H:i:s');
         $viewerUserId = $viewerUserId !== null && $viewerUserId > 0 ? $viewerUserId : 0;
 
         return $query
             ->orderByRaw(
                 'CASE
+                    WHEN needs_human = 1
+                        AND assigned_user_id IS NULL
+                        AND COALESCE(wh_active_handoff.queued_at, whatsapp_conversations.handoff_requested_at) IS NOT NULL
+                        AND COALESCE(wh_active_handoff.queued_at, whatsapp_conversations.handoff_requested_at) <= ? THEN 140
+                    WHEN needs_human = 1
+                        AND assigned_user_id IS NULL
+                        AND COALESCE(wh_active_handoff.priority, "") = "high" THEN 130
                     WHEN needs_human = 1 AND assigned_user_id IS NULL AND unread_count > 0 THEN 120
                     WHEN needs_human = 1 AND assigned_user_id IS NULL THEN 110
                     WHEN ? > 0 AND needs_human = 1 AND assigned_user_id = ? AND unread_count > 0 THEN 100
@@ -289,10 +319,93 @@ class ConversationReadService
                     WHEN needs_human = 1 THEN 50
                     ELSE 10
                 END DESC',
-                [$viewerUserId, $viewerUserId, $viewerUserId, $viewerUserId, $threshold, $threshold]
+                [$criticalThreshold, $viewerUserId, $viewerUserId, $viewerUserId, $viewerUserId, $threshold, $threshold]
             )
             ->orderByDesc('unread_count')
             ->orderByDesc('last_message_at');
+    }
+
+    private function applyActiveHandoffJoin(Builder $query): Builder
+    {
+        if (!Schema::hasTable('whatsapp_handoffs')) {
+            return $query;
+        }
+
+        $latestActiveHandoffs = DB::table('whatsapp_handoffs')
+            ->selectRaw('MAX(id) AS id, conversation_id')
+            ->whereIn('status', ['queued', 'assigned'])
+            ->groupBy('conversation_id');
+
+        return $query
+            ->leftJoinSub($latestActiveHandoffs, 'wh_active_handoff_ids', function ($join): void {
+                $join->on('wh_active_handoff_ids.conversation_id', '=', 'whatsapp_conversations.id');
+            })
+            ->leftJoin('whatsapp_handoffs as wh_active_handoff', 'wh_active_handoff.id', '=', 'wh_active_handoff_ids.id')
+            ->addSelect([
+                'wh_active_handoff.status as active_handoff_status',
+                'wh_active_handoff.priority as active_handoff_priority',
+                'wh_active_handoff.topic as active_handoff_topic',
+                'wh_active_handoff.queued_at as active_handoff_queued_at',
+                'wh_active_handoff.assigned_at as active_handoff_assigned_at',
+            ]);
+    }
+
+    private function applyAttributionJoin(Builder $query): Builder
+    {
+        if (!Schema::hasTable('whatsapp_conversation_attributions')) {
+            return $query;
+        }
+
+        return $query
+            ->leftJoin('whatsapp_conversation_attributions as wa_attr', 'wa_attr.conversation_id', '=', 'whatsapp_conversations.id')
+            ->addSelect([
+                'wa_attr.source_category as attribution_source_category',
+                'wa_attr.initial_intent as attribution_initial_intent',
+                'wa_attr.conversation_type as attribution_conversation_type',
+                'wa_attr.patient_segment as attribution_patient_segment',
+            ]);
+    }
+
+    private function applyCriticalBacklogFilter(Builder $query): Builder
+    {
+        return $query
+            ->where('needs_human', true)
+            ->whereNull('assigned_user_id')
+            ->whereRaw($this->criticalBacklogSql(), [now()->toImmutable()->subHours(24)->format('Y-m-d H:i:s')]);
+    }
+
+    private function applyOperationalQueueFilter(Builder $query, string $queue): Builder
+    {
+        return match ($queue) {
+            'captacion' => $query->where('needs_human', true)->where(function (Builder $builder): void {
+                $builder
+                    ->where('wh_active_handoff.topic', 'like', 'captacion_%')
+                    ->orWhere(function (Builder $captacion): void {
+                        $captacion
+                            ->whereIn(DB::raw('COALESCE(wa_attr.source_category, "")'), ['ad', 'organic_direct'])
+                            ->where(DB::raw('COALESCE(wa_attr.patient_segment, "unknown")'), 'new_patient');
+                    })
+                    ->orWhere(DB::raw('COALESCE(wa_attr.initial_intent, "")'), 'booking');
+            })->whereRaw('NOT (' . $this->criticalBacklogSql() . ')', [now()->toImmutable()->subHours(24)->format('Y-m-d H:i:s')]),
+            'operacion' => $query->where('needs_human', true)->where(function (Builder $builder): void {
+                $builder
+                    ->where('wh_active_handoff.topic', 'like', 'operacion_%')
+                    ->orWhereIn(DB::raw('COALESCE(wa_attr.source_category, "")'), ['support_operational', 'campaign_outbound'])
+                    ->orWhereIn(DB::raw('COALESCE(wa_attr.conversation_type, "")'), ['reschedule', 'cancel', 'results', 'human_help', 'campaign_response']);
+            })->whereRaw('NOT (' . $this->criticalBacklogSql() . ')', [now()->toImmutable()->subHours(24)->format('Y-m-d H:i:s')]),
+            'informacion' => $query->where('needs_human', true)->where(function (Builder $builder): void {
+                $builder
+                    ->whereIn(DB::raw('COALESCE(wh_active_handoff.topic, "")'), ['faq_escalada', 'promociones', 'caso_especial'])
+                    ->orWhere(function (Builder $fallback): void {
+                        $fallback
+                            ->whereRaw('COALESCE(wh_active_handoff.topic, "") = ""')
+                            ->whereRaw('COALESCE(wa_attr.initial_intent, "") NOT IN ("booking")')
+                            ->whereRaw('COALESCE(wa_attr.conversation_type, "") NOT IN ("reschedule", "cancel", "results", "human_help", "campaign_response")')
+                            ->whereRaw('COALESCE(wa_attr.source_category, "") NOT IN ("ad", "organic_direct", "support_operational", "campaign_outbound")');
+                    });
+            })->whereRaw('NOT (' . $this->criticalBacklogSql() . ')', [now()->toImmutable()->subHours(24)->format('Y-m-d H:i:s')]),
+            default => $query,
+        };
     }
 
     private function applyWindowOpenFilter(Builder $query): Builder
@@ -435,6 +548,118 @@ class ConversationReadService
         return $latestInboundAt->greaterThanOrEqualTo($this->windowThreshold())
             ? 'window_open'
             : 'needs_template';
+    }
+
+    private function resolveOperationalQueue(WhatsappConversation $conversation): string
+    {
+        if (!(bool) $conversation->needs_human) {
+            return 'resolved';
+        }
+
+        $handoffTopic = $this->scalarString($conversation->getAttribute('active_handoff_topic'));
+        if ($handoffTopic !== '') {
+            if (str_starts_with($handoffTopic, 'captacion_')) {
+                return 'captacion';
+            }
+            if (str_starts_with($handoffTopic, 'operacion_')) {
+                return 'operacion';
+            }
+            if (in_array($handoffTopic, ['faq_escalada', 'promociones', 'caso_especial'], true)) {
+                return 'informacion';
+            }
+        }
+
+        $queueAgeMinutes = $this->resolveQueueAgeMinutes($conversation);
+        $assignedUserId = (int) ($conversation->assigned_user_id ?? 0);
+        if ($assignedUserId <= 0 && $queueAgeMinutes !== null && $queueAgeMinutes >= (24 * 60)) {
+            return 'critical_backlog';
+        }
+
+        $sourceCategory = $this->scalarString($conversation->getAttribute('attribution_source_category'));
+        $conversationType = $this->scalarString($conversation->getAttribute('attribution_conversation_type'));
+        $patientSegment = $this->scalarString($conversation->getAttribute('attribution_patient_segment'));
+        $initialIntent = $this->scalarString($conversation->getAttribute('attribution_initial_intent'));
+
+        if (in_array($sourceCategory, ['ad', 'organic_direct'], true) && $patientSegment === 'new_patient') {
+            return 'captacion';
+        }
+
+        if ($initialIntent === 'booking') {
+            return 'captacion';
+        }
+
+        if (in_array($sourceCategory, ['support_operational', 'campaign_outbound'], true)
+            || in_array($conversationType, ['reschedule', 'cancel', 'results', 'human_help', 'campaign_response'], true)
+        ) {
+            return 'operacion';
+        }
+
+        return 'informacion';
+    }
+
+    private function operationalQueueLabel(string $queue): string
+    {
+        return match ($queue) {
+            'critical_backlog' => 'Backlog >24h',
+            'captacion' => 'Captación',
+            'operacion' => 'Operación',
+            'informacion' => 'Información',
+            'resolved' => 'Resuelto',
+            default => 'Sin clasificar',
+        };
+    }
+
+    private function handoffPriorityLabel(string $priority): ?string
+    {
+        return match ($priority) {
+            'critical' => 'Crítica',
+            'high' => 'Alta',
+            'normal' => 'Normal',
+            default => null,
+        };
+    }
+
+    private function resolveQueueAgeMinutes(WhatsappConversation $conversation): ?int
+    {
+        $reference = $conversation->getAttribute('active_handoff_queued_at') ?? $conversation->handoff_requested_at;
+        if ($reference === null || $reference === '') {
+            return null;
+        }
+
+        try {
+            return CarbonImmutable::parse((string) $reference)->diffInMinutes(now()->toImmutable());
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    private function scalarString(mixed $value): string
+    {
+        return is_scalar($value) ? trim((string) $value) : '';
+    }
+
+    private function criticalBacklogSql(): string
+    {
+        return 'COALESCE(wh_active_handoff.queued_at, whatsapp_conversations.handoff_requested_at) <= ?';
+    }
+
+    private function resolveConversationPriority(WhatsappConversation $conversation): string
+    {
+        if ($this->resolveOperationalQueue($conversation) === 'critical_backlog') {
+            return 'critical';
+        }
+
+        $priority = $this->scalarString($conversation->getAttribute('active_handoff_priority'));
+        if (in_array($priority, ['critical', 'high', 'normal'], true)) {
+            return $priority;
+        }
+
+        return match ($this->resolveOperationalQueue($conversation)) {
+            'critical_backlog' => 'critical',
+            'captacion', 'operacion' => 'high',
+            'informacion' => 'normal',
+            default => '',
+        };
     }
 
     private function resolveMessagingWindowLabel(WhatsappConversation $conversation): string

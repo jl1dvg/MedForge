@@ -23,6 +23,17 @@ return [
         'handoff' => [
             'requeue_schedule_enabled' => (bool) env('WHATSAPP_LARAVEL_HANDOFF_REQUEUE_SCHEDULED', false),
         ],
+        'abandonment_monitor' => [
+            'enabled' => (bool) env('WHATSAPP_LARAVEL_ABANDONMENT_MONITOR_ENABLED', false),
+            'role_id' => (int) env('WHATSAPP_LARAVEL_ABANDONMENT_MONITOR_ROLE_ID', 4),
+            'max_age_hours' => (int) env('WHATSAPP_LARAVEL_ABANDONMENT_MAX_AGE_HOURS', 72),
+            'thresholds' => [
+                'consentimiento_pendiente' => (int) env('WHATSAPP_LARAVEL_ABANDONMENT_CONSENT_MINUTES', 15),
+                'esperando_cedula' => (int) env('WHATSAPP_LARAVEL_ABANDONMENT_IDENTIFIER_MINUTES', 15),
+                'agenda' => (int) env('WHATSAPP_LARAVEL_ABANDONMENT_AGENDA_MINUTES', 12),
+                'confirmacion' => (int) env('WHATSAPP_LARAVEL_ABANDONMENT_CONFIRMATION_MINUTES', 10),
+            ],
+        ],
         'automation' => [
             'enabled' => (bool) env('WHATSAPP_LARAVEL_AUTOMATION_ENABLED', false),
             'compare_with_legacy' => (bool) env('WHATSAPP_LARAVEL_AUTOMATION_COMPARE_WITH_LEGACY', true),

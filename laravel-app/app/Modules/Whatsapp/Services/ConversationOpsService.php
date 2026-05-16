@@ -384,6 +384,7 @@ class ConversationOpsService
 
         DB::transaction(function () use ($conversation, $roleId, $note, $actorUserId): void {
             $sanitizedNote = $this->sanitizeNotes($note);
+            $metadata = $this->deriveHandoffMetadata($conversation, $sanitizedNote);
 
             $conversation->fill([
                 'assigned_user_id' => null,
@@ -403,6 +404,8 @@ class ConversationOpsService
                 'last_activity_at' => now(),
                 'notes' => $sanitizedNote,
                 'queued_at' => now(),
+                'topic' => $metadata['topic'],
+                'priority' => $metadata['priority'],
             ]);
 
             $this->insertHandoffEvent($handoff?->id, 'queued', $actorUserId, $sanitizedNote);
@@ -479,14 +482,24 @@ class ConversationOpsService
 
         $handoff = $this->findActiveHandoff($conversation->id);
         if (!$handoff instanceof WhatsappHandoff) {
+            $metadata = $this->deriveHandoffMetadata($conversation, $conversation->handoff_notes);
             $handoff = new WhatsappHandoff([
                 'conversation_id' => $conversation->id,
                 'wa_number' => $conversation->wa_number,
                 'status' => 'assigned',
-                'priority' => 'normal',
+                'priority' => $metadata['priority'],
+                'topic' => $metadata['topic'],
                 'handoff_role_id' => $conversation->handoff_role_id,
                 'notes' => $conversation->handoff_notes,
             ]);
+        }
+
+        if (!array_key_exists('priority', $attributes)) {
+            $attributes['priority'] = $handoff->priority ?: $this->deriveHandoffMetadata($conversation, $conversation->handoff_notes)['priority'];
+        }
+
+        if (!array_key_exists('topic', $attributes)) {
+            $attributes['topic'] = $handoff->topic ?: $this->deriveHandoffMetadata($conversation, $conversation->handoff_notes)['topic'];
         }
 
         $handoff->fill($attributes);
@@ -552,6 +565,72 @@ class ConversationOpsService
         $note = trim((string) $note);
 
         return $note !== '' ? mb_substr($note, 0, 255) : null;
+    }
+
+    /**
+     * @return array{topic:string,priority:string}
+     */
+    private function deriveHandoffMetadata(WhatsappConversation $conversation, ?string $note = null): array
+    {
+        $topic = 'faq_escalada';
+        $priority = 'normal';
+
+        if (Schema::hasTable('whatsapp_conversation_attributions')) {
+            $attribution = DB::table('whatsapp_conversation_attributions')
+                ->select(['source_category', 'initial_intent', 'conversation_type', 'patient_segment'])
+                ->where('conversation_id', $conversation->id)
+                ->first();
+
+            $sourceCategory = strtolower(trim((string) ($attribution->source_category ?? '')));
+            $initialIntent = strtolower(trim((string) ($attribution->initial_intent ?? '')));
+            $conversationType = strtolower(trim((string) ($attribution->conversation_type ?? '')));
+            $patientSegment = strtolower(trim((string) ($attribution->patient_segment ?? '')));
+
+            if (in_array($conversationType, ['reschedule', 'cancel', 'results', 'human_help', 'campaign_response'], true)
+                || in_array($sourceCategory, ['support_operational', 'campaign_outbound'], true)
+            ) {
+                $topic = match ($conversationType) {
+                    'cancel' => 'operacion_cancelacion',
+                    'reschedule' => 'operacion_reagenda',
+                    'results' => 'operacion_resultados',
+                    default => 'operacion_cita_vigente',
+                };
+                $priority = 'high';
+            } elseif ((in_array($sourceCategory, ['ad', 'organic_direct'], true) && $patientSegment === 'new_patient')
+                || $initialIntent === 'booking'
+            ) {
+                $topic = $sourceCategory === 'ad' ? 'captacion_ads' : 'captacion_agendar';
+                $priority = 'high';
+            }
+        }
+
+        $normalizedNote = strtolower(trim((string) $note));
+        if ($normalizedNote !== '') {
+            if (str_contains($normalizedNote, 'promoc')) {
+                $topic = 'promociones';
+            } elseif (str_contains($normalizedNote, 'cancel')) {
+                $topic = 'operacion_cancelacion';
+                $priority = 'high';
+            } elseif (str_contains($normalizedNote, 'reagend') || str_contains($normalizedNote, 'mover cita')) {
+                $topic = 'operacion_reagenda';
+                $priority = 'high';
+            } elseif (str_contains($normalizedNote, 'agend') || str_contains($normalizedNote, 'cita')) {
+                $topic = str_starts_with($topic, 'operacion_') ? $topic : 'captacion_agendar';
+                $priority = $priority === 'normal' ? 'high' : $priority;
+            }
+        }
+
+        if ((int) ($conversation->assigned_user_id ?? 0) <= 0
+            && $conversation->handoff_requested_at !== null
+            && $conversation->handoff_requested_at->lessThanOrEqualTo(now()->subHours(24))
+        ) {
+            $priority = 'critical';
+        }
+
+        return [
+            'topic' => $topic,
+            'priority' => $priority,
+        ];
     }
 
     /**
