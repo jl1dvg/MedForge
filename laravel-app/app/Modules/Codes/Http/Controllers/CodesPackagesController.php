@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace App\Modules\Codes\Http\Controllers;
 
 use App\Modules\Codes\Services\CodesPackageService;
-use App\Modules\Shared\Support\LegacySessionAuth;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use PDO;
 use RuntimeException;
@@ -53,7 +53,7 @@ class CodesPackagesController
     {
         try {
             $payload = $this->getPayload($request);
-            $package = $this->packages->create($payload, LegacySessionAuth::userId($request) ?? 0);
+            $package = $this->packages->create($payload, is_numeric(Auth::id()) ? (int) Auth::id() : 0);
 
             return response()->json(['ok' => true, 'data' => $package], 201);
         } catch (RuntimeException $exception) {
@@ -67,7 +67,7 @@ class CodesPackagesController
     {
         try {
             $payload = $this->getPayload($request);
-            $package = $this->packages->update($id, $payload, LegacySessionAuth::userId($request) ?? 0);
+            $package = $this->packages->update($id, $payload, is_numeric(Auth::id()) ? (int) Auth::id() : 0);
             if ($package === null) {
                 return response()->json(['ok' => false, 'error' => 'Paquete no encontrado'], 404);
             }
@@ -106,4 +106,3 @@ class CodesPackagesController
         return is_array($all) ? $all : [];
     }
 }
-

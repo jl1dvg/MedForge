@@ -14,13 +14,13 @@ use App\Modules\Billing\Services\HonorariosSettingsService;
 use App\Modules\Billing\Services\BillingUiService;
 use App\Modules\Shared\Support\AfiliacionDimensionService;
 use App\Modules\Shared\Support\LegacyCurrentUser;
-use App\Modules\Shared\Support\LegacySessionAuth;
 use DateInterval;
 use DateTimeImmutable;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
@@ -724,7 +724,7 @@ class BillingUiController
 
     private function isLegacyAuthenticated(Request $request): bool
     {
-        return LegacySessionAuth::isAuthenticated($request);
+        return Auth::check();
     }
 
     /**
