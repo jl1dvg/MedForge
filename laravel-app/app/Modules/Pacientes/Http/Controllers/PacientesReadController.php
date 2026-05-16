@@ -7,6 +7,7 @@ use App\Modules\Pacientes\Services\PacientesFlujoService;
 use App\Modules\Pacientes\Services\PacientesParityService;
 use App\Modules\Shared\Support\LegacyCurrentUser;
 use App\Modules\Shared\Support\LegacySessionAuth;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -372,12 +373,12 @@ class PacientesReadController
 
     private function isLegacyAuthenticated(Request $request): bool
     {
-        return LegacySessionAuth::isAuthenticated($request);
+        return Auth::check();
     }
 
     private function legacyUserId(Request $request): ?int
     {
-        return LegacySessionAuth::userId($request);
+        return (is_numeric(Auth::id()) ? (int) Auth::id() : null);
     }
 
     /**
