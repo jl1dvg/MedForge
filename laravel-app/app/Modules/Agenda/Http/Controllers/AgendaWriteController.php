@@ -2,16 +2,16 @@
 
 namespace App\Modules\Agenda\Http\Controllers;
 
-use App\Modules\Shared\Support\LegacySessionAuth;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class AgendaWriteController
 {
     public function actualizarEstado(Request $request): JsonResponse
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return response()->json(['ok' => false, 'error' => 'Sesión expirada'], 401);
         }
 

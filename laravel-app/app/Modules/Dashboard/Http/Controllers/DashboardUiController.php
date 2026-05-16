@@ -8,6 +8,7 @@ use App\Modules\Shared\Support\LegacySessionAuth;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 
 class DashboardUiController
@@ -21,7 +22,7 @@ class DashboardUiController
 
     public function index(Request $request): View|RedirectResponse
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return redirect('/auth/login?auth_required=1');
         }
 
@@ -54,7 +55,7 @@ class DashboardUiController
                 'error' => $e->getMessage(),
                 'start_date' => $startDate,
                 'end_date' => $endDate,
-                'user_id' => LegacySessionAuth::userId($request),
+                'user_id' => Auth::id(),
             ]);
         }
 

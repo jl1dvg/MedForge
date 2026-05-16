@@ -3,10 +3,10 @@
 namespace App\Modules\Billing\Http\Controllers;
 
 use App\Modules\Billing\Services\BillingWriteParityService;
-use App\Modules\Shared\Support\LegacySessionAuth;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use PDO;
@@ -25,7 +25,7 @@ class BillingWriteController
     public function crearDesdeNoFacturado(Request $request): JsonResponse|RedirectResponse
     {
         $requestId = $this->requestId($request);
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             if ($request->expectsJson()) {
                 return response()->json(['error' => 'Sesión expirada'], 401)->header('X-Request-Id', $requestId);
             }
@@ -39,7 +39,7 @@ class BillingWriteController
         }
 
         try {
-            $result = $this->service->crearDesdeNoFacturado($formId, $hcNumber, LegacySessionAuth::userId($request));
+            $result = $this->service->crearDesdeNoFacturado($formId, $hcNumber, is_numeric(Auth::id()) ? (int) Auth::id() : null);
             Log::info('billing.write.crear_desde_no_facturado', [
                 'request_id' => $requestId,
                 'form_id' => $formId,
@@ -63,7 +63,7 @@ class BillingWriteController
     public function eliminarFactura(Request $request): JsonResponse
     {
         $requestId = $this->requestId($request);
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return response()
                 ->json(['success' => false, 'error' => 'Sesión expirada'], 401)
                 ->header('X-Request-Id', $requestId);
@@ -105,7 +105,7 @@ class BillingWriteController
     public function verificacionDerivacion(Request $request): JsonResponse
     {
         $requestId = $this->requestId($request);
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return response()
                 ->json(['success' => false, 'error' => 'Sesión expirada'], 401)
                 ->header('X-Request-Id', $requestId);
@@ -127,7 +127,7 @@ class BillingWriteController
     public function insertarBillingMain(Request $request): JsonResponse
     {
         $requestId = $this->requestId($request);
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return response()
                 ->json(['success' => false, 'error' => 'Sesión expirada'], 401)
                 ->header('X-Request-Id', $requestId);
@@ -149,7 +149,7 @@ class BillingWriteController
         }
 
         try {
-            $result = $this->service->registrarProcedimientoCompleto($procedimientos, LegacySessionAuth::userId($request));
+            $result = $this->service->registrarProcedimientoCompleto($procedimientos, is_numeric(Auth::id()) ? (int) Auth::id() : null);
             Log::info('billing.write.insertar_billing_main', [
                 'request_id' => $requestId,
                 'procedimientos_count' => count($procedimientos),

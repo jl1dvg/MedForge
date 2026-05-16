@@ -4,12 +4,12 @@ namespace App\Modules\Agenda\Http\Controllers;
 
 use App\Modules\Shared\Support\AfiliacionDimensionService;
 use App\Modules\Shared\Support\LegacyCurrentUser;
-use App\Modules\Shared\Support\LegacySessionAuth;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class AgendaReadController
@@ -18,7 +18,7 @@ class AgendaReadController
     {
         $shouldReturnJson = $this->shouldReturnJson($request);
 
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             if ($shouldReturnJson) {
                 return response()->json(['error' => 'Sesión expirada'], 401);
             }
@@ -59,7 +59,7 @@ class AgendaReadController
 
     public function visita(Request $request, int $visitaId): JsonResponse
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return response()->json(['error' => 'Sesión expirada'], 401);
         }
 

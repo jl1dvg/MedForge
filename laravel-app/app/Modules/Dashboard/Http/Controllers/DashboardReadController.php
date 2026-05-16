@@ -7,6 +7,7 @@ use App\Modules\Shared\Support\LegacySessionAuth;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 
 class DashboardReadController
@@ -21,7 +22,7 @@ class DashboardReadController
     public function summary(Request $request): JsonResponse|RedirectResponse
     {
         $requestId = $this->requestId($request);
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             if ($request->expectsJson()) {
                 return response()->json(['error' => 'Sesión expirada'], 401)->header('X-Request-Id', $requestId);
             }
@@ -47,7 +48,7 @@ class DashboardReadController
 
         Log::info('dashboard.read.summary', [
             'request_id' => $requestId,
-            'user_id' => LegacySessionAuth::userId($request),
+            'user_id' => Auth::id(),
             'start_date' => (string) $request->query('start_date', ''),
             'end_date' => (string) $request->query('end_date', ''),
         ]);

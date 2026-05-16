@@ -11,7 +11,9 @@ class LegacySessionBridge
 {
     public function handle(Request $request, Closure $next): Response
     {
-        LegacySessionAuth::hydrateRequest($request);
+        if ((bool) config('auth_migration.accept_legacy_session', true)) {
+            LegacySessionAuth::hydrateRequest($request);
+        }
 
         return $next($request);
     }
