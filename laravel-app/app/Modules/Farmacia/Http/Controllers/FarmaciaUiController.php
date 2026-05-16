@@ -7,12 +7,12 @@ namespace App\Modules\Farmacia\Http\Controllers;
 use App\Modules\Farmacia\Services\FarmaciaDashboardService;
 use App\Modules\Reporting\Services\ReportService;
 use App\Modules\Shared\Support\LegacyCurrentUser;
-use App\Modules\Shared\Support\LegacySessionAuth;
 use DateTimeImmutable;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\Response;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -30,7 +30,7 @@ class FarmaciaUiController
 
     public function dashboard(Request $request): View|RedirectResponse
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return redirect('/auth/login?auth_required=1');
         }
 
@@ -55,7 +55,7 @@ class FarmaciaUiController
 
     public function exportPdf(Request $request): Response|RedirectResponse
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return redirect('/auth/login?auth_required=1');
         }
 
@@ -99,7 +99,7 @@ class FarmaciaUiController
 
     public function exportExcel(Request $request): StreamedResponse|RedirectResponse
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return redirect('/auth/login?auth_required=1');
         }
 

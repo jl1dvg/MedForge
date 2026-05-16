@@ -6,10 +6,10 @@ namespace App\Modules\Consultas\Http\Controllers;
 
 use App\Modules\Consultas\Services\ConsultasParityService;
 use App\Modules\Shared\Support\LegacyCurrentUser;
-use App\Modules\Shared\Support\LegacySessionAuth;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -25,7 +25,7 @@ class ConsultasUiController
 
     public function edit(Request $request): View|RedirectResponse
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return redirect('/auth/login?auth_required=1');
         }
 
@@ -57,7 +57,7 @@ class ConsultasUiController
 
     public function update(Request $request): RedirectResponse
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return redirect('/auth/login?auth_required=1');
         }
 
