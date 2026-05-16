@@ -776,6 +776,14 @@ function generarPoderes(lente) {
       powers.push(rounded.toFixed(2));
     }
   }
+  const poder = lente?.poder;
+  if (!powers.length && poder) {
+    String(poder)
+      .split(/[,;|\n]+/)
+      .map((p) => p.trim())
+      .filter(Boolean)
+      .forEach((p) => powers.push(p));
+  }
   return powers;
 }
 
@@ -1075,102 +1083,106 @@ function abrirModalEditarSolicitud(item) {
     didOpen: async () => {
       const estadoInput = document.getElementById("sol-estado");
       if (estadoInput) estadoInput.value = ESTADO_APTO_OFTALMOLOGO;
-      // Poblar doctores en el select
-      try {
-        const doctores = await obtenerDoctores();
+      const cargarDoctores = async () => {
         const sel = document.getElementById("sol-doctor");
-        if (sel) {
-          sel.innerHTML = '<option value="">Selecciona doctor</option>';
-          doctores.forEach((d) => {
-            const opt = document.createElement("option");
-            opt.value = d;
-            opt.textContent = d;
-            sel.appendChild(opt);
-          });
-          const preset = sel.dataset.value || doctor || "";
-          if (preset) sel.value = preset;
-        }
-      } catch (err) {
-        console.warn("No se pudieron cargar doctores para el select:", err);
-        const sel = document.getElementById("sol-doctor");
-        if (sel) {
+        try {
+          const doctores = await obtenerDoctores();
+          if (sel) {
+            sel.innerHTML = '<option value="">Selecciona doctor</option>';
+            doctores.forEach((d) => {
+              const opt = document.createElement("option");
+              opt.value = d;
+              opt.textContent = d;
+              sel.appendChild(opt);
+            });
+            const preset = sel.dataset.value || doctor || "";
+            if (preset) sel.value = preset;
+          }
+        } catch (err) {
+          console.warn("No se pudieron cargar doctores para el select:", err);
+          if (!sel) return;
           sel.innerHTML = "";
           const opt = document.createElement("option");
           opt.value = doctor;
           opt.textContent = doctor || "Doctor no disponible";
           sel.appendChild(opt);
         }
-      }
+      };
 
-      // Poblar lentes en el select
-      try {
-        const lentes = await obtenerLentes();
+      const cargarLentes = async () => {
         const selLente = document.getElementById("sol-lente-id");
-        const selPoder = document.getElementById("sol-lente-poder");
-        if (selLente) {
-          selLente.innerHTML = '<option value="">Selecciona lente</option>';
-          lentes.forEach((l) => {
-            const opt = document.createElement("option");
-            opt.value = l.id;
-            opt.textContent = `${l.marca} · ${l.modelo} · ${l.nombre}${
-              l.poder ? " (" + l.poder + ")" : ""
-            }`;
-            opt.dataset.nombre = l.nombre;
-            opt.dataset.poder = l.poder || "";
-            opt.dataset.rango_desde = l.rango_desde ?? "";
-            opt.dataset.rango_hasta = l.rango_hasta ?? "";
-            opt.dataset.rango_paso = l.rango_paso ?? "";
-            opt.dataset.rango_inicio_incremento =
-              l.rango_inicio_incremento ?? "";
-            selLente.appendChild(opt);
-          });
-          const preset = selLente.dataset.value || lenteId || "";
-          if (preset) selLente.value = preset;
+        try {
+          const lentes = await obtenerLentes();
+          if (selLente) {
+            selLente.innerHTML = '<option value="">Selecciona lente</option>';
+            lentes.forEach((l) => {
+              const opt = document.createElement("option");
+              opt.value = l.id;
+              opt.textContent = `${l.marca} · ${l.modelo} · ${l.nombre}${
+                l.poder ? " (" + l.poder + ")" : ""
+              }`;
+              opt.dataset.nombre = l.nombre;
+              opt.dataset.poder = l.poder || "";
+              opt.dataset.rango_desde = l.rango_desde ?? "";
+              opt.dataset.rango_hasta = l.rango_hasta ?? "";
+              opt.dataset.rango_paso = l.rango_paso ?? "";
+              opt.dataset.rango_inicio_incremento =
+                l.rango_inicio_incremento ?? "";
+              selLente.appendChild(opt);
+            });
+            const preset = selLente.dataset.value || lenteId || "";
+            if (preset) selLente.value = preset;
 
-          const syncLente = () => {
-            const optSel = selLente.selectedOptions?.[0];
-            const nombre = optSel?.dataset?.nombre || "";
-            const poder = optSel?.dataset?.poder || "";
-            const rangoDesde = optSel?.dataset?.rango_desde || "";
-            const rangoHasta = optSel?.dataset?.rango_hasta || "";
-            const rangoPaso = optSel?.dataset?.rango_paso || "";
-            const rangoInicio = optSel?.dataset?.rango_inicio_incremento || "";
-            const nombreInput = document.getElementById("sol-lente-nombre");
-            const poderSelect = document.getElementById("sol-lente-poder");
-            if (nombreInput) nombreInput.value = nombre || nombreInput.value;
-            if (poderSelect) {
-              poderSelect.innerHTML =
-                '<option value="">Selecciona poder</option>';
-              const lenteObj = {
-                rango_desde: rangoDesde,
-                rango_hasta: rangoHasta,
-                rango_paso: rangoPaso,
-                rango_inicio_incremento: rangoInicio,
-              };
-              const powers = generarPoderes(lenteObj);
-              if (powers.length) {
-                powers.forEach((p) => {
+            const syncLente = () => {
+              const optSel = selLente.selectedOptions?.[0];
+              const nombre = optSel?.dataset?.nombre || "";
+              const poder = optSel?.dataset?.poder || "";
+              const rangoDesde = optSel?.dataset?.rango_desde || "";
+              const rangoHasta = optSel?.dataset?.rango_hasta || "";
+              const rangoPaso = optSel?.dataset?.rango_paso || "";
+              const rangoInicio =
+                optSel?.dataset?.rango_inicio_incremento || "";
+              const nombreInput = document.getElementById("sol-lente-nombre");
+              const poderSelect = document.getElementById("sol-lente-poder");
+              if (nombreInput) nombreInput.value = nombre || nombreInput.value;
+              if (poderSelect) {
+                poderSelect.innerHTML =
+                  '<option value="">Selecciona poder</option>';
+                const lenteObj = {
+                  rango_desde: rangoDesde,
+                  rango_hasta: rangoHasta,
+                  rango_paso: rangoPaso,
+                  rango_inicio_incremento: rangoInicio,
+                  poder,
+                };
+                const powers = generarPoderes(lenteObj);
+                if (powers.length) {
+                  powers.forEach((p) => {
+                    const optP = document.createElement("option");
+                    optP.value = p;
+                    optP.textContent = p;
+                    poderSelect.appendChild(optP);
+                  });
+                }
+                if (poder && !powers.includes(poder)) {
                   const optP = document.createElement("option");
-                  optP.value = p;
-                  optP.textContent = p;
+                  optP.value = poder;
+                  optP.textContent = poder;
                   poderSelect.appendChild(optP);
-                });
+                }
+                poderSelect.value = lentePoder || poder || "";
               }
-              if (poder) {
-                const optP = document.createElement("option");
-                optP.value = poder;
-                optP.textContent = poder;
-                poderSelect.appendChild(optP);
-              }
-              poderSelect.value = lentePoder || poder || "";
-            }
-          };
-          selLente.addEventListener("change", syncLente);
-          syncLente();
+            };
+            selLente.addEventListener("change", syncLente);
+            syncLente();
+          }
+        } catch (err) {
+          console.warn("No se pudieron cargar lentes para el select:", err);
         }
-      } catch (err) {
-        console.warn("No se pudieron cargar lentes para el select:", err);
-      }
+      };
+
+      cargarDoctores();
+      cargarLentes();
     },
     preConfirm: () => {
       return {

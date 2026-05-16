@@ -906,34 +906,64 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.action === "listarDoctores") {
-    fetch(
-      "https://asistentecive.consulmed.me/api/solicitudes/kanban_data.php",
+    const endpoints = [
       {
-        method: "POST",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
-        },
-        body: new URLSearchParams({}),
+        url: "https://asistentecive.consulmed.me/api/solicitudes/doctores.php",
+        options: { method: "GET", credentials: "include" },
+        extract: (data) => data?.doctores,
       },
-    )
-      .then((resp) => {
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        return resp.json();
-      })
-      .then((data) => {
-        const doctores = Array.isArray(data?.options?.doctores)
-          ? data.options.doctores
-          : [];
-        sendResponse({ success: true, doctores });
-      })
-      .catch((error) => {
-        console.error("Error en listarDoctores:", error);
-        sendResponse({
-          success: false,
-          error: error.message || "No se pudo obtener doctores",
-        });
+      {
+        url: "https://cive.consulmed.me/api/solicitudes/doctores.php",
+        options: { method: "GET", credentials: "include" },
+        extract: (data) => data?.doctores,
+      },
+      {
+        url: "https://asistentecive.consulmed.me/api/solicitudes/kanban_data.php",
+        options: {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+          },
+          body: new URLSearchParams({}),
+        },
+        extract: (data) => data?.options?.doctores,
+      },
+    ];
+
+    (async () => {
+      let lastError = null;
+      const fetchWithTimeout = async (url, options, timeoutMs = 6000) => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+          return await fetch(url, { ...options, signal: controller.signal });
+        } finally {
+          clearTimeout(timer);
+        }
+      };
+
+      for (const endpoint of endpoints) {
+        try {
+          const resp = await fetchWithTimeout(endpoint.url, endpoint.options);
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          const data = await resp.json();
+          const doctores = Array.isArray(endpoint.extract(data))
+            ? endpoint.extract(data)
+            : [];
+          sendResponse({ success: true, doctores });
+          return;
+        } catch (error) {
+          lastError = error;
+          console.warn("No se pudo obtener doctores desde", endpoint.url, error);
+        }
+      }
+      console.error("Error en listarDoctores:", lastError);
+      sendResponse({
+        success: false,
+        error: lastError?.message || "No se pudo obtener doctores",
       });
+    })();
     return true;
   }
 

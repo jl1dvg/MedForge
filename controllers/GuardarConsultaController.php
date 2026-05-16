@@ -43,6 +43,11 @@ class GuardarConsultaController
             $s = str_replace(',', '.', trim((string)$v));
             return is_numeric($s) ? (float)$s : null;
         };
+        $toIntOrNull = function ($v) {
+            if ($v === null || $v === '') return null;
+            $s = trim((string)$v);
+            return preg_match('/^-?\d+$/', $s) ? (int)$s : null;
+        };
         $cleanTxt = function ($v) {
             if ($v === null) return null;
             $txt = strip_tags((string)$v);
@@ -262,14 +267,16 @@ class GuardarConsultaController
                     // convertir “SELECCIONE” a NULL en tonómetro
                     $stmtPio->execute([
                         ':form_id' => $form_id,
-                        ':id_ui' => $p['id'] ?? null,
+                        ':id_ui' => $toIntOrNull($p['id'] ?? null),
                         ':tonometro' => $cleanTxt($p['po_tonometro_id'] ?? $p['tonometro'] ?? null), // aceptar ID o TEXTO
                         ':od' => $toFloat($p['od'] ?? null),
                         ':oi' => $toFloat($p['oi'] ?? null),
-                        ':patologico' => isset($p['po_patologico']) ? (int)!!$p['po_patologico'] : 0,
-                        ':hora' => $toTime($p['po_hora'] ?? null),
+                        ':patologico' => isset($p['po_patologico']) || isset($p['patologico'])
+                            ? (int)!!($p['po_patologico'] ?? $p['patologico'])
+                            : 0,
+                        ':hora' => $toTime($p['po_hora'] ?? $p['hora_toma'] ?? null),
                         ':hora_fin' => $toTime($p['hora_fin'] ?? null),
-                        ':observacion' => $p['po_observacion'] ?? null,
+                        ':observacion' => $p['po_observacion'] ?? $p['observacion'] ?? null,
                     ]);
                 }
             }
@@ -299,7 +306,7 @@ class GuardarConsultaController
 
                     $stmtRec->execute([
                         ':form_id' => $form_id,
-                        ':id_ui' => $r['idRecetas'] ?? null,
+                        ':id_ui' => $toIntOrNull($r['idRecetas'] ?? null),
                         ':estado_receta' => $cleanTxt($r['estadoRecetaid'] ?? $r['estado_receta'] ?? null),
                         ':producto' => $productoTxt,
                         ':vias' => $viasTxt,

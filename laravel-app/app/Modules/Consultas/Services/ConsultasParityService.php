@@ -266,14 +266,16 @@ class ConsultasParityService
 
                     $stmtPio->execute([
                         ':form_id' => $formId,
-                        ':id_ui' => $p['id'] ?? null,
+                        ':id_ui' => $this->normalizeOptionalInt($p['id'] ?? null),
                         ':tonometro' => $this->cleanText($p['po_tonometro_id'] ?? $p['tonometro'] ?? null),
                         ':od' => $this->normalizeOptionalFloat($p['od'] ?? null),
                         ':oi' => $this->normalizeOptionalFloat($p['oi'] ?? null),
-                        ':patologico' => isset($p['po_patologico']) ? (int) ((bool) $p['po_patologico']) : 0,
-                        ':hora' => $this->normalizeOptionalTime($p['po_hora'] ?? null),
+                        ':patologico' => isset($p['po_patologico']) || isset($p['patologico'])
+                            ? (int) ((bool) ($p['po_patologico'] ?? $p['patologico']))
+                            : 0,
+                        ':hora' => $this->normalizeOptionalTime($p['po_hora'] ?? $p['hora_toma'] ?? null),
                         ':hora_fin' => $this->normalizeOptionalTime($p['hora_fin'] ?? null),
-                        ':observacion' => $p['po_observacion'] ?? null,
+                        ':observacion' => $p['po_observacion'] ?? $p['observacion'] ?? null,
                     ]);
                 }
             }
@@ -306,7 +308,7 @@ class ConsultasParityService
 
                     $stmtRec->execute([
                         ':form_id' => $formId,
-                        ':id_ui' => $r['idRecetas'] ?? null,
+                        ':id_ui' => $this->normalizeOptionalInt($r['idRecetas'] ?? null),
                         ':estado_receta' => $this->cleanText($r['estadoRecetaid'] ?? $r['estado_receta'] ?? null),
                         ':producto' => $productoTxt,
                         ':vias' => $viasTxt,
@@ -817,6 +819,17 @@ class ConsultasParityService
         }
 
         return $normalized;
+    }
+
+    private function normalizeOptionalInt(mixed $value): ?int
+    {
+        $normalized = $this->normalizeOptionalId($value);
+        if ($normalized === null) {
+            return null;
+        }
+
+        $string = trim((string) $normalized);
+        return preg_match('/^-?\d+$/', $string) === 1 ? (int) $string : null;
     }
 
     private function normalizeOptionalTime(mixed $value): ?string
