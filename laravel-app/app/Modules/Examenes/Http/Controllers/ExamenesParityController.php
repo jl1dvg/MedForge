@@ -17,7 +17,7 @@ use App\Modules\Examenes\Services\NasImagenesService;
 use App\Modules\Examenes\Services\ImagenesSigcenterIndexService;
 use App\Modules\Examenes\Services\SigcenterImagenesService;
 use App\Modules\Reporting\Services\PdfRenderer;
-use App\Modules\Shared\Support\LegacySessionAuth;
+use Illuminate\Support\Facades\Auth;
 use DateTimeImmutable;
 use Helpers\JsonLogger;
 use Illuminate\Http\RedirectResponse;
@@ -79,14 +79,14 @@ class ExamenesParityController
             fn(): array => $this->prefactura->sendCoberturaMail(
                 $this->payload($request),
                 $request->file('attachment'),
-                LegacySessionAuth::userId($request)
+                (is_numeric(Auth::id()) ? (int) Auth::id() : null)
             )
         );
     }
 
     public function reportePdf(Request $request): Response
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return response()->json(['error' => 'Sesión expirada'], 401);
         }
 
@@ -106,7 +106,7 @@ class ExamenesParityController
 
     public function reporteExcel(Request $request): Response
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return response()->json(['error' => 'Sesión expirada'], 401);
         }
 
@@ -129,7 +129,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'actualizarEstado',
-            fn(): array => $this->native->actualizarEstado($request->all(), LegacySessionAuth::userId($request))
+            fn(): array => $this->native->actualizarEstado($request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null))
         );
     }
 
@@ -176,7 +176,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'apiEstadoPost',
-            fn(): array => $this->native->apiEstadoPost($request->all(), LegacySessionAuth::userId($request))
+            fn(): array => $this->native->apiEstadoPost($request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null))
         );
     }
 
@@ -202,7 +202,7 @@ class ExamenesParityController
                 is_scalar($hcNumber) ? (string) $hcNumber : null,
                 is_scalar($formId) ? (string) $formId : null,
                 is_scalar($examenId) ? (int) $examenId : null,
-                LegacySessionAuth::userId($request)
+                (is_numeric(Auth::id()) ? (int) Auth::id() : null)
             )
         );
     }
@@ -212,7 +212,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'turneroLlamar',
-            fn(): array => $this->native->turneroLlamar($request->all(), LegacySessionAuth::userId($request))
+            fn(): array => $this->native->turneroLlamar($request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null))
         );
     }
 
@@ -237,7 +237,7 @@ class ExamenesParityController
 
     public function crmBuscarCodigos(Request $request): Response
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return response()->json([
                 'success' => false,
                 'error' => 'Sesión expirada',
@@ -267,7 +267,7 @@ class ExamenesParityController
 
     public function crmBuscarPaquetes(Request $request): Response
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return response()->json([
                 'success' => false,
                 'error' => 'Sesión expirada',
@@ -310,7 +310,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'crmGuardarDetalles',
-            fn(): array => $this->native->crmGuardarDetalles($id, $request->all(), LegacySessionAuth::userId($request)),
+            fn(): array => $this->native->crmGuardarDetalles($id, $request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null)),
             [$id]
         );
     }
@@ -323,7 +323,7 @@ class ExamenesParityController
             fn(): array => $this->native->crmBootstrap(
                 $id,
                 $request->all(),
-                LegacySessionAuth::userId($request),
+                (is_numeric(Auth::id()) ? (int) Auth::id() : null),
                 $this->sessionPermissions($request)
             ),
             [$id]
@@ -348,7 +348,7 @@ class ExamenesParityController
             fn(): array => $this->native->crmActualizarChecklist(
                 $id,
                 $request->all(),
-                LegacySessionAuth::userId($request),
+                (is_numeric(Auth::id()) ? (int) Auth::id() : null),
                 $this->sessionPermissions($request)
             ),
             [$id]
@@ -360,7 +360,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'crmAgregarNota',
-            fn(): array => $this->native->crmAgregarNota($id, $request->all(), LegacySessionAuth::userId($request)),
+            fn(): array => $this->native->crmAgregarNota($id, $request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null)),
             [$id]
         );
     }
@@ -370,7 +370,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'crmEnviarWhatsapp',
-            fn(): array => $this->native->crmEnviarWhatsapp($id, $request->all(), LegacySessionAuth::userId($request)),
+            fn(): array => $this->native->crmEnviarWhatsapp($id, $request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null)),
             [$id]
         );
     }
@@ -380,7 +380,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'crmEnviarEmail',
-            fn(): array => $this->native->crmEnviarEmail($id, $request->all(), LegacySessionAuth::userId($request)),
+            fn(): array => $this->native->crmEnviarEmail($id, $request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null)),
             [$id]
         );
     }
@@ -390,7 +390,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'crmCrearPropuesta',
-            fn(): array => $this->native->crmCrearPropuesta($id, $request->all(), LegacySessionAuth::userId($request)),
+            fn(): array => $this->native->crmCrearPropuesta($id, $request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null)),
             [$id]
         );
     }
@@ -400,7 +400,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'crmRegistrarBloqueo',
-            fn(): array => $this->native->crmRegistrarBloqueo($id, $request->all(), LegacySessionAuth::userId($request)),
+            fn(): array => $this->native->crmRegistrarBloqueo($id, $request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null)),
             [$id]
         );
     }
@@ -410,7 +410,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'crmGuardarTarea',
-            fn(): array => $this->native->crmGuardarTarea($id, $request->all(), LegacySessionAuth::userId($request)),
+            fn(): array => $this->native->crmGuardarTarea($id, $request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null)),
             [$id]
         );
     }
@@ -420,7 +420,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'crmActualizarTarea',
-            fn(): array => $this->native->crmActualizarTarea($id, $request->all(), LegacySessionAuth::userId($request)),
+            fn(): array => $this->native->crmActualizarTarea($id, $request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null)),
             [$id]
         );
     }
@@ -434,7 +434,7 @@ class ExamenesParityController
                 $id,
                 $request->file('archivo'),
                 is_scalar($request->input('descripcion')) ? (string) $request->input('descripcion') : null,
-                LegacySessionAuth::userId($request)
+                (is_numeric(Auth::id()) ? (int) Auth::id() : null)
             ),
             [$id]
         );
@@ -442,7 +442,7 @@ class ExamenesParityController
 
     public function prefactura(Request $request): Response|RedirectResponse
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return redirect('/auth/login?auth_required=1');
         }
 
@@ -463,7 +463,7 @@ class ExamenesParityController
                 $hcNumber,
                 $formId,
                 $resolvedExamenId,
-                LegacySessionAuth::userId($request)
+                (is_numeric(Auth::id()) ? (int) Auth::id() : null)
             );
 
             if (empty($viewData['examen'])) {
@@ -485,7 +485,7 @@ class ExamenesParityController
 
     public function imagenesNasList(Request $request): Response
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return response()->json([
                 'success' => false,
                 'error' => 'Sesión expirada',
@@ -564,7 +564,7 @@ class ExamenesParityController
 
     public function imagenesNasWarm(Request $request): Response
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return response()->json([
                 'success' => false,
                 'error' => 'Sesión expirada',
@@ -634,7 +634,7 @@ class ExamenesParityController
 
     public function imagenesNasFile(Request $request): Response|RedirectResponse
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return redirect('/auth/login?auth_required=1');
         }
 
@@ -725,7 +725,7 @@ class ExamenesParityController
 
     public function informeDatos(Request $request): Response
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return response()->json(['success' => false, 'error' => 'Sesión expirada'], 401);
         }
 
@@ -766,7 +766,7 @@ class ExamenesParityController
 
     public function informePlantilla(Request $request): Response
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return response('Sesión expirada', 401);
         }
 
@@ -786,7 +786,7 @@ class ExamenesParityController
 
         $checkboxes = $this->obtenerChecklistInforme($plantilla);
         $usuariosFirmantes = $this->listarUsuariosFirmantes();
-        $firmanteDefaultId = LegacySessionAuth::userId($request);
+        $firmanteDefaultId = (is_numeric(Auth::id()) ? (int) Auth::id() : null);
 
         ob_start();
         include $view;
@@ -827,7 +827,7 @@ class ExamenesParityController
 
     public function informeGuardar(Request $request): Response
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return response()->json(['success' => false, 'error' => 'Sesión expirada'], 401);
         }
 
@@ -861,7 +861,7 @@ class ExamenesParityController
         }
 
         try {
-            $userId = LegacySessionAuth::userId($request);
+            $userId = (is_numeric(Auth::id()) ? (int) Auth::id() : null);
             $firmante = $firmanteId > 0 ? $firmanteId : $userId;
             $ok = $this->legacyExamenModel()->guardarInformeImagen(
                 $formId,
@@ -885,7 +885,7 @@ class ExamenesParityController
 
     public function informeAutofill(Request $request): Response
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return response()->json(['success' => false, 'error' => 'Sesión expirada'], 401);
         }
 
@@ -1346,7 +1346,7 @@ class ExamenesParityController
 
     public function imagenesDashboardExportPdf(Request $request): Response|RedirectResponse
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return redirect('/auth/login?auth_required=1');
         }
 
@@ -1414,7 +1414,7 @@ class ExamenesParityController
             $errorId = bin2hex(random_bytes(6));
             Log::error('imagenes.v2.export.pdf', [
                 'error_id' => $errorId,
-                'user_id' => LegacySessionAuth::userId($request),
+                'user_id' => (is_numeric(Auth::id()) ? (int) Auth::id() : null),
                 'error' => $e->getMessage(),
                 'file' => $e->getFile(),
                 'line' => $e->getLine(),
@@ -1426,7 +1426,7 @@ class ExamenesParityController
 
     public function imagenesDashboardExportExcel(Request $request): Response|RedirectResponse
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return redirect('/auth/login?auth_required=1');
         }
 
@@ -1824,7 +1824,7 @@ class ExamenesParityController
 
     public function actualizarImagenRealizada(Request $request): Response
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return response()->json([
                 'success' => false,
                 'error' => 'Sesión expirada',
@@ -1858,7 +1858,7 @@ class ExamenesParityController
 
     public function eliminarImagenRealizada(Request $request): Response
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return response()->json([
                 'success' => false,
                 'error' => 'Sesión expirada',
@@ -2385,7 +2385,7 @@ class ExamenesParityController
      */
     private function relayJson(Request $request, string $legacyMethod, array $args = []): Response
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return response()->json([
                 'success' => false,
                 'error' => 'Sesión expirada',
@@ -2400,7 +2400,7 @@ class ExamenesParityController
      */
     private function relayRaw(Request $request, string $legacyMethod, array $args = []): Response|RedirectResponse
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return redirect('/auth/login?auth_required=1');
         }
 
@@ -2417,7 +2417,7 @@ class ExamenesParityController
         array $legacyArgs = []
     ): Response
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return response()->json([
                 'success' => false,
                 'error' => 'Sesión expirada',
