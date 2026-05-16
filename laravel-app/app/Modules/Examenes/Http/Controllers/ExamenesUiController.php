@@ -6,7 +6,7 @@ namespace App\Modules\Examenes\Http\Controllers;
 
 use App\Modules\Examenes\Services\ExamenesReportingService;
 use App\Modules\Shared\Support\LegacyCurrentUser;
-use App\Modules\Shared\Support\LegacySessionAuth;
+use Illuminate\Support\Facades\Auth;
 use App\Modules\Shared\Support\SettingsOptionResolver;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
@@ -60,7 +60,7 @@ class ExamenesUiController
 
     public function index(Request $request): View|RedirectResponse
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return redirect('/auth/login?auth_required=1');
         }
 
@@ -94,7 +94,7 @@ class ExamenesUiController
 
     public function turnero(Request $request): View|RedirectResponse
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return redirect('/auth/login?auth_required=1');
         }
 
