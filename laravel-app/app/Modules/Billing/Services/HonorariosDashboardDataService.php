@@ -59,25 +59,27 @@ class HonorariosDashboardDataService
      */
     private function fetchProcedimientos(string $start, string $end, array $filters): array
     {
-        $dateExpr = $this->safeAttentionDateExpr();
+        $dateExpr = 'pp.fecha';
         $rawAfiliacionExpr = $this->rawAttentionAffiliationExpr();
         $dimensionContext = $this->afiliacionDimensions->buildContext($rawAfiliacionExpr, 'acm');
         $patientJoin = $this->patientJoinDefinition();
         $atencionIdExpr = $this->columnExists('procedimiento_proyectado', 'id') ? 'pp.id' : 'pp.form_id';
         $hcExpr = 'pp.hc_number';
+        $formIdExpr = 'CAST(pp.form_id AS CHAR) COLLATE utf8mb4_unicode_ci';
         $sedeExpr = $this->sedeExpr();
         $estadoAgendaExpr = "COALESCE(pp.estado_agenda, '')";
         $patientNameExpr = $this->patientNameExpr();
         $bfrPacienteExpr = "NULLIF(TRIM(bfr.paciente), '')";
-        $bfrProcedimientoExpr = "COALESCE(NULLIF(TRIM(bfr.procedimiento), ''), '')";
-        $bfrCodigoExpr = "SUBSTRING_INDEX(COALESCE(NULLIF(TRIM(bfr.procedimiento), ''), ''), ' | ', 1)";
+        $bfrProcedimientoExpr = "COALESCE(NULLIF(TRIM(bfr.proc_detalle), ''), '')";
+        $bfrCodigoExpr = "COALESCE(NULLIF(TRIM(bfr.proc_codigo), ''), '')";
         $bfrMontoHonorarioExpr = $this->normalizedMoneySql('bfr.monto_honorario');
         $bfrMontoFacturadoExpr = $this->normalizedMoneySql('bfr.monto_facturado');
         $bfrNumeroFacturaExpr = "COALESCE(NULLIF(TRIM(bfr.numero_factura), ''), '')";
         $bfrFacturaIdExpr = "COALESCE(NULLIF(TRIM(bfr.factura_id), ''), '')";
-        $bfrEstadoExpr = "COALESCE(NULLIF(TRIM(bfr.estado), ''), '')";
+        $bfrEstadoExpr = "COALESCE(NULLIF(TRIM(bfr.estado_facturacion), ''), '')";
         $bfrRealizadoPorExpr = "COALESCE(NULLIF(TRIM(bfr.realizado_por), ''), '')";
         $bpJoin = $this->billingProcedimientosJoinDefinition();
+        $bfrJoin = $this->facturacionRealJoinDefinition();
         $isPublicExpr = "({$dimensionContext['categoria_expr']} = 'publico')";
         $sql = "
             SELECT
@@ -85,7 +87,7 @@ class HonorariosDashboardDataService
                 pp.form_id,
                 {$hcExpr} AS hc_number,
                 {$sedeExpr} AS sede,
-                COALESCE(NULLIF(TRIM(CAST(bfr.factura_id AS CHAR)), ''), NULLIF(TRIM(CAST(bm.id AS CHAR)), ''), pp.form_id) AS billing_id,
+                COALESCE(NULLIF(TRIM(CAST(bfr.factura_id AS CHAR)), ''), NULLIF(TRIM(CAST(bm.id AS CHAR)), ''), {$formIdExpr}) AS billing_id,
                 {$dateExpr} AS fecha,
                 COALESCE(NULLIF(TRIM({$rawAfiliacionExpr}), ''), 'Sin afiliación') AS afiliacion,
                 {$dimensionContext['categoria_expr']} AS categoria_seguro,
@@ -122,19 +124,16 @@ class HonorariosDashboardDataService
                 {$estadoAgendaExpr} AS estado_agenda,
                 NULL AS honorario_codigo
             FROM procedimiento_proyectado pp
-            LEFT JOIN billing_facturacion_real bfr
-              ON TRIM(CAST(bfr.form_id AS CHAR)) = TRIM(CAST(pp.form_id AS CHAR))
+            {$bfrJoin}
             LEFT JOIN billing_main bm
-              ON TRIM(CAST(bm.form_id AS CHAR)) = TRIM(CAST(pp.form_id AS CHAR))
+              ON bm.form_id = {$formIdExpr}
             {$bpJoin}
-            LEFT JOIN (
-                SELECT DISTINCT TRIM(CAST(form_id AS CHAR)) AS form_id
-                FROM protocolo_data
-                WHERE form_id IS NOT NULL AND TRIM(CAST(form_id AS CHAR)) <> ''
-            ) pdh ON pdh.form_id = TRIM(CAST(pp.form_id AS CHAR))
+            LEFT JOIN protocolo_data pdh
+              ON pdh.form_id = {$formIdExpr}
             {$patientJoin}
             {$dimensionContext['join']}
-            WHERE {$dateExpr} BETWEEN :inicio AND :fin
+            WHERE pp.fecha BETWEEN :inicio AND :fin
+              AND CAST(pp.fecha AS CHAR) NOT IN ('', '0000-00-00', '0000-00-00 00:00:00')
               AND COALESCE(pp.sigcenter_present, 1) = 1
         ";
         $sql .= " AND UPPER(TRIM(COALESCE(pp.estado_agenda, ''))) NOT LIKE 'CANCELADO%'";
@@ -191,8 +190,6 @@ class HonorariosDashboardDataService
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
         $tipoFilters = $this->normalizeTipoFilters($filters['tipo_procedimiento'] ?? null);
         $doctorFilter = $this->doctorCanonicalKey((string) ($filters['doctor'] ?? $filters['cirujano'] ?? ''));
-        $allowedDoctorKeys = $this->allowedDoctorKeys();
-
         $output = [];
         foreach ($rows as $row) {
             $tipo = $this->clasificarTipoProcedimiento($row);
@@ -200,9 +197,6 @@ class HonorariosDashboardDataService
                 continue;
             }
             $rowDoctorKey = $this->doctorCanonicalKey((string) ($row['doctor'] ?? ''));
-            if ($allowedDoctorKeys !== [] && ($rowDoctorKey === '' || !isset($allowedDoctorKeys[$rowDoctorKey]))) {
-                continue;
-            }
             if ($doctorFilter !== '' && $rowDoctorKey !== $doctorFilter) {
                 continue;
             }
@@ -221,9 +215,10 @@ class HonorariosDashboardDataService
             }
             $row['proc_codigo_facturacion'] = $codigoFacturacion;
             $row['proc_codigo_proyectado'] = $codigoTarifario;
-            $row['honorario_codigo'] = $this->honorarioCodigoPorCodigo((string) ($row['proc_codigo'] ?? ''));
             $output[] = $row;
         }
+
+        $this->hydrateHonorariosCodigo($output);
 
         Log::info('billing.honorarios.rows_debug', [
             'start' => $start,
@@ -734,14 +729,6 @@ class HonorariosDashboardDataService
         return array_values($normalized);
     }
 
-    private function safeAttentionDateExpr(): string
-    {
-        return "CASE
-            WHEN CAST(pp.fecha AS CHAR) IN ('', '0000-00-00', '0000-00-00 00:00:00') THEN NULL
-            ELSE pp.fecha
-        END";
-    }
-
     private function rawAttentionAffiliationExpr(): string
     {
         return "COALESCE(NULLIF(TRIM(pp.afiliacion), ''), '')";
@@ -785,7 +772,7 @@ class HonorariosDashboardDataService
                         CAST(NULL AS CHAR(255)) AS realizado_por,
                         0 AS procedimientos_count
                     WHERE 1 = 0
-                ) AS bfr ON bfr.form_id = TRIM(CAST(pp.form_id AS CHAR))
+                ) AS bfr ON bfr.form_id = CAST(pp.form_id AS CHAR)
             ";
         }
 
@@ -821,7 +808,7 @@ class HonorariosDashboardDataService
         return "
             LEFT JOIN (
                 SELECT
-                    TRIM(CAST(form_id AS CHAR)) AS form_id,
+                    CAST(form_id AS CHAR) AS form_id,
                     {$pacienteExpr} AS paciente,
                     {$codigoExpr} AS proc_codigo,
                     {$procedimientoExpr} AS proc_detalle,
@@ -834,8 +821,8 @@ class HonorariosDashboardDataService
                     {$realizadoPorExpr} AS realizado_por,
                     COUNT(*) AS procedimientos_count
                 FROM billing_facturacion_real
-                GROUP BY TRIM(CAST(form_id AS CHAR))
-            ) bfr ON bfr.form_id = TRIM(CAST(pp.form_id AS CHAR))
+                GROUP BY CAST(form_id AS CHAR)
+            ) bfr ON bfr.form_id = CAST(pp.form_id AS CHAR)
         ";
     }
 
@@ -846,18 +833,7 @@ class HonorariosDashboardDataService
 
     private function patientJoinDefinition(): string
     {
-        return "
-            LEFT JOIN (
-                SELECT
-                    TRIM(CAST(hc_number AS CHAR)) AS hc_number,
-                    MAX(NULLIF(TRIM(lname), '')) AS lname,
-                    MAX(NULLIF(TRIM(lname2), '')) AS lname2,
-                    MAX(NULLIF(TRIM(fname), '')) AS fname,
-                    MAX(NULLIF(TRIM(mname), '')) AS mname
-                FROM patient_data
-                GROUP BY TRIM(CAST(hc_number AS CHAR))
-            ) pa ON pa.hc_number = TRIM(CAST(pp.hc_number AS CHAR))
-        ";
+        return "LEFT JOIN patient_data pa ON pa.hc_number = pp.hc_number";
     }
 
     private function sedeExpr(): string
@@ -1102,14 +1078,127 @@ class HonorariosDashboardDataService
         return $this->allowedDoctorKeys ?? [];
     }
 
-    private function honorarioCodigoPorCodigo(string $codigo): ?float
+    /**
+     * @param array<int, array<string, mixed>> $rows
+     */
+    private function hydrateHonorariosCodigo(array &$rows): void
+    {
+        $codes = [];
+        foreach ($rows as $row) {
+            $code = $this->normalizeHonorarioLookupCode((string) ($row['proc_codigo'] ?? ''));
+            if ($code !== '') {
+                $codes[$code] = $code;
+            }
+        }
+
+        if ($codes === []) {
+            return;
+        }
+
+        $pending = [];
+        foreach ($codes as $code) {
+            if (!array_key_exists($code, $this->honorarioCodigoCache)) {
+                $pending[$code] = $code;
+            }
+        }
+
+        if ($pending !== []) {
+            $this->preloadHonorariosCodigo(array_values($pending));
+        }
+
+        foreach ($rows as &$row) {
+            $code = $this->normalizeHonorarioLookupCode((string) ($row['proc_codigo'] ?? ''));
+            $row['honorario_codigo'] = $code !== '' ? ($this->honorarioCodigoCache[$code] ?? null) : null;
+        }
+        unset($row);
+    }
+
+    /**
+     * @param array<int, string> $codes
+     */
+    private function preloadHonorariosCodigo(array $codes): void
+    {
+        $codes = array_values(array_unique(array_filter(array_map(
+            fn(string $code): string => $this->normalizeHonorarioLookupCode($code),
+            $codes
+        ))));
+
+        if ($codes === []) {
+            return;
+        }
+
+        foreach ($codes as $code) {
+            $this->honorarioCodigoCache[$code] = null;
+        }
+
+        $in = implode(', ', array_fill(0, count($codes), '?'));
+        $sql = "SELECT codigo, modifier, honorario_medico
+                FROM tarifario_2014
+                WHERE honorario_medico IS NOT NULL
+                  AND (
+                    UPPER(TRIM(codigo)) IN ({$in})
+                    OR UPPER(TRIM(modifier)) IN ({$in})
+                    OR UPPER(TRIM(CONCAT_WS('-', NULLIF(TRIM(codigo), ''), NULLIF(TRIM(modifier), '')))) IN ({$in})
+                    OR UPPER(TRIM(LEADING '0' FROM codigo)) IN ({$in})
+                  )";
+
+        try {
+            $stmt = $this->db->prepare($sql);
+            $params = array_merge($codes, $codes, $codes, $codes);
+            $stmt->execute($params);
+
+            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $value = is_numeric($row['honorario_medico'] ?? null) ? (float) $row['honorario_medico'] : null;
+                if ($value === null) {
+                    continue;
+                }
+
+                $candidates = array_filter([
+                    $this->normalizeHonorarioLookupCode((string) ($row['codigo'] ?? '')),
+                    $this->normalizeHonorarioLookupCode((string) ($row['modifier'] ?? '')),
+                    $this->normalizeHonorarioLookupCode(trim(implode('-', array_filter([
+                        trim((string) ($row['codigo'] ?? '')),
+                        trim((string) ($row['modifier'] ?? '')),
+                    ])))),
+                    $this->normalizeHonorarioLookupCode(ltrim(trim((string) ($row['codigo'] ?? '')), '0')),
+                ]);
+
+                foreach ($candidates as $candidate) {
+                    if (!array_key_exists($candidate, $this->honorarioCodigoCache)) {
+                        continue;
+                    }
+                    $current = $this->honorarioCodigoCache[$candidate];
+                    if ($current === null || $value > $current) {
+                        $this->honorarioCodigoCache[$candidate] = $value;
+                    }
+                }
+            }
+        } catch (\Throwable $exception) {
+            Log::warning('billing.honorarios.honorario_codigo_preload_error', [
+                'codes' => $codes,
+                'message' => $exception->getMessage(),
+            ]);
+        }
+    }
+
+    private function normalizeHonorarioLookupCode(string $codigo): string
     {
         $codigo = strtoupper(trim($codigo));
         if ($codigo === '') {
-            return null;
+            return '';
         }
         if (str_contains($codigo, '|')) {
             $codigo = strtoupper(trim(strtok($codigo, '|') ?: $codigo));
+        }
+
+        return $codigo;
+    }
+
+    private function honorarioCodigoPorCodigo(string $codigo): ?float
+    {
+        $codigo = $this->normalizeHonorarioLookupCode($codigo);
+        if ($codigo === '') {
+            return null;
         }
         if (array_key_exists($codigo, $this->honorarioCodigoCache)) {
             return $this->honorarioCodigoCache[$codigo];
@@ -1192,8 +1281,15 @@ class HonorariosDashboardDataService
     private function columnExists(string $table, string $column): bool
     {
         try {
-            $stmt = $this->db->prepare('SHOW COLUMNS FROM ' . $table . ' LIKE ?');
-            $stmt->execute([$column]);
+            $stmt = $this->db->prepare(
+                'SELECT 1
+                 FROM information_schema.columns
+                 WHERE table_schema = DATABASE()
+                   AND table_name = ?
+                   AND column_name = ?
+                 LIMIT 1'
+            );
+            $stmt->execute([$table, $column]);
 
             return (bool) $stmt->fetch(PDO::FETCH_ASSOC);
         } catch (\Throwable) {
