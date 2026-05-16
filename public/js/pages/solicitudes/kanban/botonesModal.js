@@ -14,7 +14,9 @@ let coberturaMailModalReady = false;
 let coberturaMailSending = false;
 let pendingCoberturaUpdate = null;
 let coberturaEditorReady = false;
+let coberturaEditorLoading = null;
 const coberturaTemplateCache = new Map();
+const COBERTURA_CKEDITOR_SRC = '/assets/vendor_components/ckeditor/ckeditor.js';
 
 function obtenerTarjetaActiva() {
     const activeCard = document.querySelector('.kanban-card.view-details.active');
@@ -118,6 +120,29 @@ function buildAbsoluteUrl(url) {
     return `${window.location.origin}${normalized}`;
 }
 
+function htmlToPlainText(html = '') {
+    const raw = String(html || '').trim();
+    if (!raw) {
+        return '';
+    }
+
+    const withBreaks = raw
+        .replace(/<\s*br\s*\/?>/gi, '\n')
+        .replace(/<\s*\/p\s*>/gi, '\n\n')
+        .replace(/<\s*\/div\s*>/gi, '\n')
+        .replace(/<\s*li\s*>/gi, '• ')
+        .replace(/<\s*\/li\s*>/gi, '\n');
+
+    const container = document.createElement('div');
+    container.innerHTML = withBreaks;
+    const text = (container.textContent || container.innerText || '')
+        .replace(/\u00a0/g, ' ')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+
+    return text;
+}
+
 function buildTemplatePayload(data) {
     return {
         afiliacion: data.afiliacion || '',
@@ -210,18 +235,58 @@ function getCoberturaMailModalElements() {
     };
 }
 
-function ensureCoberturaEditor() {
+function loadCoberturaEditorScript() {
+    if (window.CKEDITOR) {
+        return Promise.resolve(window.CKEDITOR);
+    }
+
+    if (coberturaEditorLoading) {
+        return coberturaEditorLoading;
+    }
+
+    coberturaEditorLoading = new Promise((resolve, reject) => {
+        const existing = Array.from(document.querySelectorAll('script[src]')).find((script) =>
+            String(script.getAttribute('src') || '').includes('ckeditor.js')
+        );
+
+        if (existing) {
+            existing.addEventListener('load', () => resolve(window.CKEDITOR), {once: true});
+            existing.addEventListener('error', () => reject(new Error('No se pudo cargar CKEditor')), {once: true});
+            window.setTimeout(() => {
+                if (window.CKEDITOR) {
+                    resolve(window.CKEDITOR);
+                }
+            }, 200);
+            return;
+        }
+
+        const script = document.createElement('script');
+        script.src = COBERTURA_CKEDITOR_SRC;
+        script.async = true;
+        script.onload = () => resolve(window.CKEDITOR);
+        script.onerror = () => reject(new Error('No se pudo cargar CKEditor'));
+        document.head.appendChild(script);
+    }).finally(() => {
+        if (window.CKEDITOR) {
+            coberturaEditorLoading = Promise.resolve(window.CKEDITOR);
+        }
+    });
+
+    return coberturaEditorLoading;
+}
+
+async function ensureCoberturaEditor() {
     if (coberturaEditorReady) {
-        return;
+        return getCoberturaEditorInstance();
     }
 
     if (!window.CKEDITOR) {
-        return;
+        await loadCoberturaEditorScript();
     }
 
     const textarea = document.getElementById('coberturaMailBody');
     if (!textarea) {
-        return;
+        return null;
     }
 
     if (!CKEDITOR.instances.coberturaMailBody) {
@@ -237,6 +302,7 @@ function ensureCoberturaEditor() {
     }
 
     coberturaEditorReady = true;
+    return getCoberturaEditorInstance();
 }
 
 function getCoberturaEditorInstance() {
@@ -336,15 +402,14 @@ function ensureCoberturaMailModal() {
     });
 }
 
-function openCoberturaMailModal({subject, body, derivacionPdf, recipients}) {
+async function openCoberturaMailModal({subject, body, derivacionPdf, recipients}) {
     const elements = getCoberturaMailModalElements();
     if (!elements) {
         return false;
     }
 
     ensureCoberturaMailModal();
-    ensureCoberturaEditor();
-    const editor = getCoberturaEditorInstance();
+    const editor = await ensureCoberturaEditor();
 
     const destinatarios = recipients || {};
     if (elements.to) {
@@ -359,7 +424,9 @@ function openCoberturaMailModal({subject, body, derivacionPdf, recipients}) {
     if (editor) {
         editor.setData(body || '');
     } else if (elements.body) {
-        elements.body.value = body || '';
+        elements.body.value = /<[^>]+>/.test(String(body || ''))
+            ? htmlToPlainText(body)
+            : (body || '');
     }
     if (elements.attachment) {
         elements.attachment.value = '';
@@ -420,7 +487,7 @@ async function abrirCoberturaMail() {
 
     coberturaInProgress = true;
     lastCoberturaMailAt = Date.now();
-    const opened = openCoberturaMailModal({
+    const opened = await openCoberturaMailModal({
         subject,
         body,
         derivacionPdf: pdfUrl,

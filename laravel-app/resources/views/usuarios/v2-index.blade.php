@@ -81,9 +81,9 @@
 
         <style>
             .usuarios-avatar {
-                width: 40px;
-                height: 40px;
-                border-radius: 50%;
+                width: 50px;
+                height: 50px;
+                border-radius: 25%;
                 object-fit: cover;
                 background-color: #f1f1f1;
             }

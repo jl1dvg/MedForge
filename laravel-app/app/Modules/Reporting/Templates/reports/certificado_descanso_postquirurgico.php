@@ -3,27 +3,27 @@
 $layout = __DIR__ . '/../layouts/report_simple.php';
 $data = is_array($data ?? null) ? $data : [];
 
-$esc = static fn($value): string => htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
+$esc = static fn($value): string => htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
 $lineBreaks = static fn($value): string => nl2br($esc($value), false);
-$fill = static fn($value, string $fallback = '________________'): string => trim((string) $value) !== '' ? $esc($value) : $fallback;
+$fill = static fn($value, string $fallback = '________________'): string => trim((string)$value) !== '' ? $esc($value) : $fallback;
 
-$certificadoNumero = trim((string) ($data['certificado_numero'] ?? ''));
-$ciudadEmision = trim((string) ($data['ciudad_emision'] ?? ''));
-$fechaEmisionLegible = trim((string) ($data['fecha_emision_legible'] ?? ''));
-$procedimiento = trim((string) ($data['procedimiento'] ?? ''));
-$tratamiento = trim((string) ($data['tratamiento'] ?? ''));
-$tipoContingencia = trim((string) ($data['tipo_contingencia'] ?? ''));
-$diagnosticoIngreso = trim((string) ($data['diagnostico_ingreso'] ?? ''));
-$diagnosticoEgreso = trim((string) ($data['diagnostico_egreso'] ?? ''));
-$fechaCirugiaLegible = trim((string) ($data['fecha_cirugia_legible'] ?? ''));
-$fechaEgresoLegible = trim((string) ($data['fecha_egreso_legible'] ?? ''));
+$certificadoNumero = trim((string)($data['certificado_numero'] ?? ''));
+$ciudadEmision = trim((string)($data['ciudad_emision'] ?? ''));
+$fechaEmisionLegible = trim((string)($data['fecha_emision_legible'] ?? ''));
+$procedimiento = trim((string)($data['procedimiento'] ?? ''));
+$tratamiento = trim((string)($data['tratamiento'] ?? ''));
+$tipoContingencia = trim((string)($data['tipo_contingencia'] ?? ''));
+$diagnosticoIngreso = trim((string)($data['diagnostico_ingreso'] ?? ''));
+$diagnosticoEgreso = trim((string)($data['diagnostico_egreso'] ?? ''));
+$fechaCirugiaLegible = trim((string)($data['fecha_cirugia_legible'] ?? ''));
+$fechaEgresoLegible = trim((string)($data['fecha_egreso_legible'] ?? ''));
 
 $paciente = is_array($data['paciente'] ?? null) ? $data['paciente'] : [];
 $doctor = is_array($data['doctor'] ?? null) ? $data['doctor'] : [];
 $reposo = is_array($data['reposo'] ?? null) ? $data['reposo'] : [];
 
 $resolveAsset = static function (?string $path): string {
-    $path = trim((string) ($path ?? ''));
+    $path = trim((string)($path ?? ''));
     if ($path === '') {
         return '';
     }
@@ -33,7 +33,7 @@ $resolveAsset = static function (?string $path): string {
     }
 
     if (function_exists('asset')) {
-        return (string) asset($path);
+        return (string)asset($path);
     }
 
     return $path;
@@ -70,6 +70,7 @@ body {
 .signature-table td {
     border: none;
     vertical-align: top;
+    text-align: center;
 }
 
 .header-right {
@@ -122,13 +123,36 @@ body {
 
 .signature-wrap {
     margin-top: 8mm;
+    display: flex;
+    justify-content: center;
 }
 
-.signature-table img {
-    display: block;
+.signature-images {
+    position: relative;
+    width: 70mm;
+    height: 32mm;
     margin: 0 auto 2mm auto;
-    max-height: 22mm;
-    max-width: 70mm;
+}
+
+.signature-img {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.signature-img.signature {
+    top: 0;
+    max-height: 24mm;
+    max-width: 48mm;
+    z-index: 2;
+}
+
+.signature-img.seal {
+    top: 8mm;
+    max-height: 18mm;
+    max-width: 42mm;
+    opacity: 0.9;
+    z-index: 1;
 }
 
 .signature-line {
@@ -152,110 +176,124 @@ CSS;
 
 ob_start();
 ?>
-<div class="sheet">
-    <table class="header-table">
-        <tr>
-            <td></td>
-            <td class="header-right">
-                <?php if ($ciudadEmision !== ''): ?>
-                    <div><?= $esc($ciudadEmision) ?>, <?= $esc($fechaEmisionLegible) ?></div>
-                <?php else: ?>
-                    <div><?= $esc($fechaEmisionLegible) ?></div>
-                <?php endif; ?>
-                <div><strong>Certificado:</strong> <?= $esc($certificadoNumero) ?></div>
-            </td>
-        </tr>
-    </table>
-
-    <h1 class="title">CERTIFICADO MEDICO</h1>
-
-    <p class="intro">
-        Yo, <strong><?= $fill($doctor['nombre'] ?? 'Medico tratante') ?></strong>, certifico que el/la paciente antes identificado(a)
-        fue atendido(a) en esta institucion y requiere el presente certificado medico postquirurgico.
-    </p>
-
-    <table class="grid">
-        <tr>
-            <th>Historia clinica</th>
-            <td><?= $fill($paciente['historia_clinica'] ?? '') ?></td>
-            <th>Cedula</th>
-            <td><?= $fill($paciente['identificacion'] ?? '') ?></td>
-        </tr>
-        <tr>
-            <th>Paciente</th>
-            <td colspan="3"><?= $fill($paciente['nombre'] ?? '') ?></td>
-        </tr>
-        <tr>
-            <th>Domicilio</th>
-            <td colspan="3"><?= $fill($paciente['domicilio'] ?? '') ?></td>
-        </tr>
-        <tr>
-            <th>Telefono</th>
-            <td><?= $fill($paciente['telefono'] ?? '') ?></td>
-            <th>Sexo / Edad</th>
-            <td><?= $fill(trim((string) (($paciente['sexo'] ?? '') . (($paciente['edad'] ?? null) !== null && $paciente['edad'] !== '' ? ' / ' . $paciente['edad'] . ' años' : '')))) ?></td>
-        </tr>
-        <tr>
-            <th>Institucion / Empresa</th>
-            <td><?= $fill($paciente['empresa_institucion'] ?? '') ?></td>
-            <th>Puesto de trabajo</th>
-            <td><?= $fill($paciente['puesto_trabajo'] ?? '') ?></td>
-        </tr>
-        <tr>
-            <th>Tipo de contingencia</th>
-            <td colspan="3"><?= $fill($tipoContingencia, 'No especificado') ?></td>
-        </tr>
-        <tr>
-            <th>Diagnostico de ingreso</th>
-            <td colspan="3"><?= $fill($diagnosticoIngreso, 'Sin diagnostico consignado') ?></td>
-        </tr>
-        <tr>
-            <th>Tratamiento</th>
-            <td colspan="3"><?= $lineBreaks(trim($tratamiento) !== '' ? $tratamiento : 'Manejo postoperatorio y reposo segun indicacion medica.') ?></td>
-        </tr>
-        <tr>
-            <th>Procedimiento</th>
-            <td colspan="3"><?= $fill($procedimiento, 'Procedimiento quirurgico') ?></td>
-        </tr>
-        <tr>
-            <th>Fecha de ingreso / atencion</th>
-            <td><?= $fill($fechaCirugiaLegible) ?></td>
-            <th>Fecha de egreso</th>
-            <td><?= $fill($fechaEgresoLegible) ?></td>
-        </tr>
-        <tr>
-            <th>Diagnostico de egreso</th>
-            <td colspan="3"><?= $fill($diagnosticoEgreso, 'Sin diagnostico consignado') ?></td>
-        </tr>
-    </table>
-
-    <div class="reposo-box">
-        <span class="block-label">Dias de reposo:</span>
-        <?= $esc((string) ($reposo['dias'] ?? '0')) ?> (<?= $esc((string) ($reposo['dias_en_letras'] ?? '')) ?>)
-        desde <strong><?= $fill($reposo['desde_legible'] ?? '') ?></strong>
-        hasta <strong><?= $fill($reposo['hasta_legible'] ?? '') ?></strong>, inclusive.
-    </div>
-
-    <div class="signature-wrap">
-        <table class="signature-table">
+    <div class="sheet">
+        <table class="header-table">
             <tr>
-                <td>
-                    <?php if ($signaturePath !== ''): ?>
-                        <img src="<?= $esc($signaturePath) ?>" alt="Firma digital">
+                <td></td>
+                <td class="header-right">
+                    <?php if ($ciudadEmision !== ''): ?>
+                        <div><?= $esc($ciudadEmision) ?>, <?= $esc($fechaEmisionLegible) ?></div>
+                    <?php else: ?>
+                        <div><?= $esc($fechaEmisionLegible) ?></div>
                     <?php endif; ?>
-                    <?php if ($sealPath !== ''): ?>
-                        <img src="<?= $esc($sealPath) ?>" alt="Sello medico">
-                    <?php endif; ?>
-                    <div class="signature-line"></div>
-                    <p class="signature-meta"><strong><?= $fill($doctor['nombre'] ?? 'Medico tratante') ?></strong></p>
-                    <p class="signature-meta"><?= $fill($doctor['especialidad'] ?? '') ?></p>
-                    <p class="signature-meta">Cedula: <?= $fill($doctor['cedula'] ?? '') ?></p>
-                    <p class="signature-meta">Registro medico: <?= $fill($doctor['cedula'] ?? '') ?></p>
+                    <div><strong>Certificado:</strong> <?= $esc($certificadoNumero) ?></div>
                 </td>
             </tr>
         </table>
+
+        <h1 class="title">CERTIFICADO MEDICO</h1>
+
+        <p class="intro">
+            Yo, <strong><?= $fill($doctor['nombre'] ?? 'Medico tratante') ?></strong>, certifico que el/la paciente
+            antes identificado(a)
+            fue atendido(a) en esta institucion y requiere el presente certificado medico postquirurgico.
+        </p>
+
+        <table class="grid">
+            <tr>
+                <th>Historia clinica</th>
+                <td><?= $fill($paciente['historia_clinica'] ?? '') ?></td>
+                <th>Cedula</th>
+                <td><?= $fill($paciente['identificacion'] ?? '') ?></td>
+            </tr>
+            <tr>
+                <th>Paciente</th>
+                <td colspan="3"><?= $fill($paciente['nombre'] ?? '') ?></td>
+            </tr>
+            <tr>
+                <th>Domicilio</th>
+                <td colspan="3"><?= $fill($paciente['domicilio'] ?? '') ?></td>
+            </tr>
+            <tr>
+                <th>Telefono</th>
+                <td><?= $fill($paciente['telefono'] ?? '') ?></td>
+                <th>Sexo / Edad</th>
+                <td><?= $fill(trim((string)(($paciente['sexo'] ?? '') . (($paciente['edad'] ?? null) !== null && $paciente['edad'] !== '' ? ' / ' . $paciente['edad'] . ' años' : '')))) ?></td>
+            </tr>
+            <tr>
+                <th>Institucion / Empresa</th>
+                <td><?= $fill($paciente['empresa_institucion'] ?? '') ?></td>
+                <th>Puesto de trabajo</th>
+                <td><?= $fill($paciente['puesto_trabajo'] ?? '') ?></td>
+            </tr>
+            <tr>
+                <th>Tipo de contingencia</th>
+                <td colspan="3"><?= $fill($tipoContingencia, 'No especificado') ?></td>
+            </tr>
+            <tr>
+                <th>Diagnostico de ingreso</th>
+                <td colspan="3"><?= $fill($diagnosticoIngreso, 'Sin diagnostico consignado') ?></td>
+            </tr>
+            <tr>
+                <th>Tratamiento</th>
+                <td colspan="3"><?= $lineBreaks(trim($tratamiento) !== '' ? $tratamiento : 'Manejo postoperatorio y reposo segun indicacion medica.') ?></td>
+            </tr>
+            <tr>
+                <th>Procedimiento</th>
+                <td colspan="3"><?= $fill($procedimiento, 'Procedimiento quirurgico') ?></td>
+            </tr>
+            <tr>
+                <th>Fecha de ingreso / atencion</th>
+                <td><?= $fill($fechaCirugiaLegible) ?></td>
+                <th>Fecha de egreso</th>
+                <td><?= $fill($fechaEgresoLegible) ?></td>
+            </tr>
+            <tr>
+                <th>Diagnostico de egreso</th>
+                <td colspan="3"><?= $fill($diagnosticoEgreso, 'Sin diagnostico consignado') ?></td>
+            </tr>
+        </table>
+
+        <div class="reposo-box">
+            <span class="block-label">Dias de reposo:</span>
+            <?= $esc((string)($reposo['dias'] ?? '0')) ?> (<?= $esc((string)($reposo['dias_en_letras'] ?? '')) ?>)
+            desde <strong><?= $fill($reposo['desde_legible'] ?? '') ?></strong>
+            hasta <strong><?= $fill($reposo['hasta_legible'] ?? '') ?></strong>, inclusive.
+        </div>
+
+        <div class="signature-wrap">
+            <table class="signature-table">
+                <tr>
+                    <td>
+                        <div class="signature-images">
+                            <?php if ($signaturePath !== ''): ?>
+                                <img
+                                    src="<?= $esc($signaturePath) ?>"
+                                    alt="Firma digital"
+                                    class="signature-img signature"
+                                >
+                            <?php endif; ?>
+                        </div>
+                        <div class="signature-images">
+                            <?php if ($sealPath !== ''): ?>
+                                <img
+                                    src="<?= $esc($sealPath) ?>"
+                                    alt="Sello medico"
+                                    class="signature-img seal"
+                                >
+                            <?php endif; ?>
+                        </div>
+                        <div class="signature-line"></div>
+                        <p class="signature-meta"><strong><?= $fill($doctor['nombre'] ?? 'Medico tratante') ?></strong>
+                        </p>
+                        <p class="signature-meta"><?= $fill($doctor['especialidad'] ?? '') ?></p>
+                        <p class="signature-meta">Cedula: <?= $fill($doctor['cedula'] ?? '') ?></p>
+                        <p class="signature-meta">Registro medico: <?= $fill($doctor['cedula'] ?? '') ?></p>
+                    </td>
+                </tr>
+            </table>
+        </div>
     </div>
-</div>
 <?php
 $content = ob_get_clean();
 $title = 'Certificado medico';

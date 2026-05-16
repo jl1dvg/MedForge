@@ -63,7 +63,7 @@ function attachPrefacturaLioEditorButton(content, solicitud) {
 export function relocateExamenesPrequirurgicosButton(content) {
     const button = document.getElementById("btnSolicitarExamenesPrequirurgicos");
     const modalElement = document.getElementById("prefacturaModal");
-    const footer = modalElement?.querySelector(".modal-footer");
+    const footer = modalElement?.querySelector(".modal-dialog > .modal-content > .modal-footer");
     if (!button || !content || !footer) {
         return;
     }
@@ -75,7 +75,7 @@ export function relocateExamenesPrequirurgicosButton(content) {
 
 export function parkExamenesPrequirurgicosButton(modalElement) {
     const button = document.getElementById("btnSolicitarExamenesPrequirurgicos");
-    const footer = modalElement?.querySelector(".modal-footer");
+    const footer = modalElement?.querySelector(".modal-dialog > .modal-content > .modal-footer");
     if (!button || !footer) {
         return;
     }
