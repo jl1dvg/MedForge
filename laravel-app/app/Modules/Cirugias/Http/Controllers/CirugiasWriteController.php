@@ -6,9 +6,9 @@ namespace App\Modules\Cirugias\Http\Controllers;
 
 use App\Modules\Cirugias\Services\CirugiaService;
 use App\Modules\Cirugias\Services\CirugiasDerivacionService;
-use App\Modules\Shared\Support\LegacySessionAuth;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use PDO;
@@ -28,7 +28,7 @@ class CirugiasWriteController
 
     public function guardar(Request $request): JsonResponse
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return response()->json(['success' => false, 'message' => 'Sesion expirada'], 401);
         }
 
@@ -57,7 +57,7 @@ class CirugiasWriteController
                     (string) $payload['form_id'],
                     (string) ($payload['hc_number'] ?? ''),
                     1,
-                    LegacySessionAuth::userId($request)
+                    is_numeric(Auth::id()) ? (int) Auth::id() : null
                 );
             }
         }
@@ -67,7 +67,7 @@ class CirugiasWriteController
 
     public function autosave(Request $request): JsonResponse
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return response()->json(['success' => false, 'message' => 'Sesion expirada'], 401);
         }
 
@@ -100,7 +100,7 @@ class CirugiasWriteController
 
     public function scrapeDerivacion(Request $request): JsonResponse
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return response()->json(['success' => false, 'message' => 'Sesion expirada'], 401);
         }
 
@@ -154,7 +154,7 @@ class CirugiasWriteController
 
     public function togglePrinted(Request $request): JsonResponse
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return response()->json(['success' => false, 'message' => 'Sesion expirada'], 401);
         }
 
@@ -174,7 +174,7 @@ class CirugiasWriteController
 
     public function updateStatus(Request $request): JsonResponse
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return response()->json(['success' => false, 'message' => 'Sesion expirada'], 401);
         }
 
@@ -187,7 +187,7 @@ class CirugiasWriteController
         }
 
         $status = (int) $statusRaw;
-        $ok = $this->service->actualizarStatus($formId, $hcNumber, $status, LegacySessionAuth::userId($request));
+        $ok = $this->service->actualizarStatus($formId, $hcNumber, $status, is_numeric(Auth::id()) ? (int) Auth::id() : null);
 
         return response()->json(['success' => $ok]);
     }

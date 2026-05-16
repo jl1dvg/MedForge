@@ -6,9 +6,9 @@ namespace App\Modules\Cirugias\Http\Controllers;
 
 use App\Modules\Cirugias\Models\Cirugia;
 use App\Modules\Cirugias\Services\CirugiaService;
-use App\Modules\Shared\Support\LegacySessionAuth;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use PDO;
@@ -27,7 +27,7 @@ class CirugiasReadController
 
     public function datatable(Request $request): JsonResponse
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return response()->json([
                 'draw' => (int) $request->input('draw', 1),
                 'recordsTotal' => 0,
@@ -80,7 +80,7 @@ class CirugiasReadController
             ]);
         } catch (Throwable $exception) {
             Log::error('cirugias.read.datatable.error', [
-                'user_id' => LegacySessionAuth::userId($request),
+                'user_id' => Auth::id(),
                 'error' => $exception->getMessage(),
             ]);
 
@@ -100,7 +100,7 @@ class CirugiasReadController
 
     public function protocolo(Request $request): JsonResponse
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return response()->json(['error' => 'Sesion expirada'], 401);
         }
 
