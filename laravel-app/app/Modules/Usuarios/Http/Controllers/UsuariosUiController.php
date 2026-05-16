@@ -6,6 +6,7 @@ use App\Modules\Shared\Support\LegacyCurrentUser;
 use App\Modules\Shared\Support\LegacyPermissionCatalog;
 use App\Modules\Shared\Support\LegacyPermissionResolver;
 use App\Modules\Shared\Support\LegacySessionAuth;
+use Illuminate\Support\Facades\Auth;
 use App\Modules\Usuarios\Support\SensitiveDataProtector;
 use App\Modules\Usuarios\Support\UserMediaValidator;
 use Illuminate\Contracts\View\View;
@@ -59,9 +60,21 @@ class UsuariosUiController
         $this->protector = new SensitiveDataProtector();
     }
 
+    private function currentUserId(): ?int
+    {
+        $authId = Auth::id();
+        if (!is_numeric($authId)) {
+            return null;
+        }
+
+        $userId = (int) $authId;
+
+        return $userId > 0 ? $userId : null;
+    }
+
     public function index(Request $request): View|RedirectResponse
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return redirect('/auth/login?auth_required=1');
         }
 
@@ -108,14 +121,14 @@ class UsuariosUiController
                 LegacyPermissionResolver::resolve($request),
                 ['administrativo', 'admin.usuarios.manage', 'admin.usuarios']
             ),
-            'currentUserId' => LegacySessionAuth::userId($request),
+            'currentUserId' => $this->currentUserId(),
             'privilegedSummary' => $this->buildPrivilegedUsersSummary($users),
         ]);
     }
 
     public function create(Request $request): View|RedirectResponse
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return redirect('/auth/login?auth_required=1');
         }
 
@@ -140,7 +153,7 @@ class UsuariosUiController
 
     public function store(Request $request): View|RedirectResponse
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return redirect('/auth/login?auth_required=1');
         }
 
@@ -176,7 +189,7 @@ class UsuariosUiController
         }
 
         $data = $this->transformSensitiveFields($data);
-        $data = $this->applyVerificationStatuses($data, null, LegacySessionAuth::userId($request));
+        $data = $this->applyVerificationStatuses($data, null, $this->currentUserId());
 
         try {
             $createdId = $this->createUser($data);
@@ -216,7 +229,7 @@ class UsuariosUiController
 
     public function edit(Request $request, int $id): View|RedirectResponse
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return redirect('/auth/login?auth_required=1');
         }
 
@@ -235,14 +248,14 @@ class UsuariosUiController
             'warnings' => [],
             'formAction' => '/usuarios/' . $id,
             'mode' => 'edit',
-            'canDelete' => LegacySessionAuth::userId($request) !== $id,
+            'canDelete' => $this->currentUserId() !== $id,
             'status' => session('status'),
         ]);
     }
 
     public function update(Request $request, int $id): View|RedirectResponse
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return redirect('/auth/login?auth_required=1');
         }
 
@@ -273,7 +286,7 @@ class UsuariosUiController
                 'warnings' => $warnings,
                 'formAction' => '/usuarios/' . $id,
                 'mode' => 'edit',
-                'canDelete' => LegacySessionAuth::userId($request) !== $id,
+                'canDelete' => $this->currentUserId() !== $id,
                 'status' => null,
             ]);
         }
@@ -284,7 +297,7 @@ class UsuariosUiController
         }
 
         $data = $this->transformSensitiveFields($data);
-        $data = $this->applyVerificationStatuses($data, $existing, LegacySessionAuth::userId($request));
+        $data = $this->applyVerificationStatuses($data, $existing, $this->currentUserId());
 
         try {
             $updated = $this->updateUser($id, $data);
@@ -310,14 +323,14 @@ class UsuariosUiController
                 'warnings' => $warnings,
                 'formAction' => '/usuarios/' . $id,
                 'mode' => 'edit',
-                'canDelete' => LegacySessionAuth::userId($request) !== $id,
+                'canDelete' => $this->currentUserId() !== $id,
                 'status' => null,
             ]);
         }
 
         $this->finalizeUploads($pendingUploads);
 
-        if (LegacySessionAuth::userId($request) === $id) {
+        if ($this->currentUserId() === $id) {
             $this->syncLegacySessionState(
                 $request,
                 LegacyPermissionCatalog::normalize($data['permisos'] ?? []),
@@ -332,11 +345,11 @@ class UsuariosUiController
 
     public function destroy(Request $request, int $id): RedirectResponse
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return redirect('/auth/login?auth_required=1');
         }
 
-        if (LegacySessionAuth::userId($request) === $id) {
+        if ($this->currentUserId() === $id) {
             return redirect('/usuarios')->with('status', 'cannot_delete_self');
         }
 
@@ -356,11 +369,11 @@ class UsuariosUiController
 
     public function media(Request $request): JsonResponse|RedirectResponse
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return redirect('/auth/login?auth_required=1');
         }
 
-        $requestedId = (int) ($request->query('id', LegacySessionAuth::userId($request) ?? 0));
+        $requestedId = (int) ($request->query('id', $this->currentUserId() ?? 0));
         if ($requestedId <= 0) {
             return response()->json(['error' => 'missing_user_id'], 400);
         }
@@ -770,7 +783,7 @@ class UsuariosUiController
         if ($removeRequested && is_string($existingPath) && $existingPath !== '') {
             $this->markForDeletion($pending, $existingPath);
             $currentPath = null;
-            $this->clearMediaMetadata($data, $metaPrefix, true, LegacySessionAuth::userId($request));
+            $this->clearMediaMetadata($data, $metaPrefix, true, $this->currentUserId());
         }
 
         if (!$request->files->has((string) $config['input'])) {
@@ -811,7 +824,7 @@ class UsuariosUiController
         }
 
         $data[$pathKey] = $publicPath;
-        $this->applyMediaMetadata($data, $metaPrefix, $validation, LegacySessionAuth::userId($request));
+        $this->applyMediaMetadata($data, $metaPrefix, $validation, $this->currentUserId());
 
         return [$data, null];
     }
@@ -1278,7 +1291,7 @@ class UsuariosUiController
 
     private function canAccessMedia(Request $request, int $userId): bool
     {
-        $currentUserId = LegacySessionAuth::userId($request);
+        $currentUserId = $this->currentUserId();
         if ($currentUserId !== null && $currentUserId === $userId) {
             return true;
         }
