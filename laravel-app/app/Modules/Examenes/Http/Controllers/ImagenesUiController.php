@@ -6,9 +6,7 @@ namespace App\Modules\Examenes\Http\Controllers;
 
 use App\Modules\Examenes\Services\ImagenesUiService;
 use App\Modules\Shared\Support\LegacyCurrentUser;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Contracts\View\View;
-use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 
 class ImagenesUiController
@@ -20,12 +18,8 @@ class ImagenesUiController
         $this->service = new ImagenesUiService();
     }
 
-    public function realizadas(Request $request): View|RedirectResponse
+    public function realizadas(Request $request): View
     {
-        if (!Auth::check()) {
-            return redirect('/auth/login?auth_required=1');
-        }
-
         $payload = $this->service->imagenesRealizadas($request->query());
 
         return view('examenes.v2-imagenes-realizadas', [
@@ -38,12 +32,8 @@ class ImagenesUiController
         ]);
     }
 
-    public function dashboard(Request $request): View|RedirectResponse
+    public function dashboard(Request $request): View
     {
-        if (!Auth::check()) {
-            return redirect('/auth/login?auth_required=1');
-        }
-
         $payload = $this->service->imagenesDashboard($request->query());
 
         return view('examenes.v2-imagenes-dashboard', [

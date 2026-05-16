@@ -6,10 +6,8 @@ namespace App\Modules\Examenes\Http\Controllers;
 
 use App\Modules\Examenes\Services\ExamenesReportingService;
 use App\Modules\Shared\Support\LegacyCurrentUser;
-use Illuminate\Support\Facades\Auth;
 use App\Modules\Shared\Support\SettingsOptionResolver;
 use Illuminate\Contracts\View\View;
-use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 
 class ExamenesUiController
@@ -58,12 +56,8 @@ class ExamenesUiController
         $this->reportingService = new ExamenesReportingService();
     }
 
-    public function index(Request $request): View|RedirectResponse
+    public function index(Request $request): View
     {
-        if (!Auth::check()) {
-            return redirect('/auth/login?auth_required=1');
-        }
-
         return view('examenes.v2-index', [
             'pageTitle' => 'Solicitudes de Exámenes',
             'currentUser' => LegacyCurrentUser::resolve($request),
@@ -92,12 +86,8 @@ class ExamenesUiController
         ]);
     }
 
-    public function turnero(Request $request): View|RedirectResponse
+    public function turnero(Request $request): View
     {
-        if (!Auth::check()) {
-            return redirect('/auth/login?auth_required=1');
-        }
-
         return view('examenes.v2-turnero', [
             'pageTitle' => 'Turnero de Exámenes',
             'currentUser' => LegacyCurrentUser::resolve($request),
