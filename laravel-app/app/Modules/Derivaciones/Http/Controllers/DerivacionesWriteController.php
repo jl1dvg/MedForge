@@ -3,9 +3,9 @@
 namespace App\Modules\Derivaciones\Http\Controllers;
 
 use App\Modules\Derivaciones\Services\DerivacionesScraperService;
-use App\Modules\Shared\Support\LegacySessionAuth;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 
 class DerivacionesWriteController
@@ -19,7 +19,7 @@ class DerivacionesWriteController
 
     public function scrap(Request $request): JsonResponse
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Sesión expirada',

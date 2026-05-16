@@ -2,16 +2,16 @@
 
 namespace App\Modules\CRM\Http\Controllers;
 
-use App\Modules\Shared\Support\LegacySessionAuth;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class CrmReadController
 {
     public function leads(Request $request): JsonResponse
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return response()->json(['error' => 'Sesión expirada'], 401);
         }
 
@@ -70,7 +70,7 @@ class CrmReadController
 
     public function meta(Request $request): JsonResponse
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return response()->json(['error' => 'Sesión expirada'], 401);
         }
 
@@ -96,7 +96,7 @@ class CrmReadController
 
     public function metrics(Request $request): JsonResponse
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return response()->json(['error' => 'Sesión expirada'], 401);
         }
 

@@ -2,16 +2,16 @@
 
 namespace App\Modules\CRM\Http\Controllers;
 
-use App\Modules\Shared\Support\LegacySessionAuth;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class CrmWriteController
 {
     public function createLead(Request $request): JsonResponse
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return response()->json(['ok' => false, 'error' => 'Sesión expirada'], 401);
         }
 
@@ -43,7 +43,7 @@ class CrmWriteController
             ];
 
             if (in_array('created_by', $columns, true)) {
-                $data['created_by'] = LegacySessionAuth::userId($request);
+                $data['created_by'] = is_numeric(Auth::id()) ? (int) Auth::id() : null;
             }
 
             if (in_array('created_at', $columns, true)) {
@@ -67,7 +67,7 @@ class CrmWriteController
 
     public function updateLead(Request $request): JsonResponse
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return response()->json(['ok' => false, 'error' => 'Sesión expirada'], 401);
         }
 
@@ -111,7 +111,7 @@ class CrmWriteController
 
     public function updateLeadStatus(Request $request, int $id): JsonResponse
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return response()->json(['ok' => false, 'error' => 'Sesión expirada'], 401);
         }
 

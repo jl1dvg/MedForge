@@ -3,10 +3,10 @@
 namespace App\Modules\Derivaciones\Http\Controllers;
 
 use App\Modules\Derivaciones\Services\DerivacionesParityService;
-use App\Modules\Shared\Support\LegacySessionAuth;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
@@ -33,7 +33,7 @@ class DerivacionesReadController
 
     public function datatable(Request $request): JsonResponse
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return response()->json([
                 'draw' => (int) $request->input('draw', 1),
                 'recordsTotal' => 0,
@@ -100,7 +100,7 @@ class DerivacionesReadController
 
     public function archivo(Request $request, int $id): BinaryFileResponse|RedirectResponse|Response
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return redirect('/auth/login?auth_required=1');
         }
 
@@ -143,7 +143,7 @@ class DerivacionesReadController
 
     public function archivoPorFormId(Request $request): BinaryFileResponse|RedirectResponse|Response
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return redirect('/auth/login?auth_required=1');
         }
 
