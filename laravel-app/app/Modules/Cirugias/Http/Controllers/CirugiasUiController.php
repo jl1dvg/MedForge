@@ -15,6 +15,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -219,7 +220,7 @@ class CirugiasUiController
             $errorId = bin2hex(random_bytes(6));
             Log::error('cirugias.dashboard.export_pdf.error', [
                 'error_id' => $errorId,
-                'user_id' => LegacySessionAuth::userId($request),
+                'user_id' => Auth::id(),
                 'error' => $e->getMessage(),
             ]);
 
@@ -491,7 +492,7 @@ class CirugiasUiController
             $errorId = bin2hex(random_bytes(6));
             Log::error('cirugias.dashboard.export_excel.error', [
                 'error_id' => $errorId,
-                'user_id' => LegacySessionAuth::userId($request),
+                'user_id' => Auth::id(),
                 'error' => $e->getMessage(),
             ]);
 
@@ -1432,7 +1433,7 @@ class CirugiasUiController
 
     private function requireLegacyAuth(Request $request): JsonResponse|RedirectResponse|null
     {
-        if (LegacySessionAuth::isAuthenticated($request)) {
+        if (Auth::check()) {
             return null;
         }
 
