@@ -299,6 +299,374 @@
             min-height: 120px;
         }
 
+        .prefactura-section-hero {
+            border: 1px solid #dbe7f3;
+            background:
+                radial-gradient(circle at top left, rgba(59, 130, 246, 0.12), transparent 42%),
+                linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+            box-shadow: 0 14px 32px rgba(15, 23, 42, 0.06);
+        }
+
+        .prefactura-summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 12px;
+        }
+
+        .prefactura-summary-item {
+            border: 1px solid #e2e8f0;
+            border-radius: 14px;
+            background: rgba(255, 255, 255, 0.82);
+            padding: 12px 14px;
+        }
+
+        .prefactura-summary-item small {
+            display: block;
+            margin-bottom: 4px;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            font-size: 11px;
+            font-weight: 700;
+        }
+
+        .prefactura-summary-item strong {
+            display: block;
+            color: #0f172a;
+            font-size: 14px;
+            line-height: 1.35;
+        }
+
+        .prefactura-editorial-card {
+            border: 1px solid #e2e8f0;
+            border-radius: 16px;
+            background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+            box-shadow: 0 12px 28px rgba(15, 23, 42, 0.05);
+        }
+
+        .prefactura-editorial-card .card-header {
+            border-bottom: 1px solid #eef2f7;
+            background: transparent;
+        }
+
+        .prefactura-case-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 14px;
+        }
+
+        .prefactura-detail-chip {
+            border: 1px solid #e2e8f0;
+            border-radius: 14px;
+            background: #f8fafc;
+            padding: 12px 14px;
+        }
+
+        .prefactura-detail-chip .prefactura-meta-label {
+            margin-bottom: 6px;
+        }
+
+        .prefactura-patient-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 14px;
+        }
+
+        .prefactura-patient-grid > div {
+            padding: 10px 0;
+            border-bottom: 1px solid #eef2f7;
+        }
+
+        .prefactura-patient-grid > div:nth-last-child(-n+2) {
+            border-bottom: 0;
+        }
+
+        .prefactura-cover-stack {
+            display: grid;
+            gap: 14px;
+        }
+
+        .prefactura-cover-card {
+            border: 1px solid #e2e8f0;
+            border-radius: 16px;
+            background: #fff;
+            padding: 16px 18px;
+        }
+
+        .prefactura-cover-list {
+            display: grid;
+            gap: 10px;
+        }
+
+        .prefactura-cover-list-item {
+            border-bottom: 1px solid #eef2f7;
+            padding-bottom: 10px;
+        }
+
+        .prefactura-cover-list-item:last-child {
+            border-bottom: 0;
+            padding-bottom: 0;
+        }
+
+        .prefactura-approval-stack {
+            display: grid;
+            gap: 14px;
+        }
+
+        .prefactura-state-container {
+            transition: opacity 0.2s ease;
+        }
+
+        .prefactura-state-card {
+            border: 1px solid #dbe7f3;
+            border-radius: 18px;
+            background:
+                radial-gradient(circle at top right, rgba(14, 165, 233, 0.08), transparent 28%),
+                linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+            box-shadow: 0 18px 38px rgba(15, 23, 42, 0.08);
+            padding: 18px;
+        }
+
+        .prefactura-state-kicker {
+            margin-bottom: 4px;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            font-size: 11px;
+            font-weight: 700;
+        }
+
+        .prefactura-state-header {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            gap: 14px;
+            align-items: flex-start;
+        }
+
+        .prefactura-state-header-title {
+            margin: 0;
+            color: #0f172a;
+            font-size: 20px;
+            font-weight: 700;
+        }
+
+        .prefactura-state-header-copy {
+            color: #64748b;
+            max-width: 560px;
+        }
+
+        .prefactura-state-header-badges {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+            gap: 8px;
+        }
+
+        .prefactura-state-grid {
+            margin-top: 16px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 12px;
+        }
+
+        .prefactura-state-grid-item {
+            padding: 12px 14px;
+            border-radius: 14px;
+            background: rgba(255, 255, 255, 0.86);
+            border: 1px solid #e2e8f0;
+        }
+
+        .prefactura-state-grid-item small {
+            text-transform: uppercase;
+            font-size: 11px;
+            letter-spacing: 0.05em;
+            color: #64748b;
+            font-weight: 700;
+        }
+
+        .prefactura-state-grid-item strong {
+            display: block;
+            font-size: 15px;
+            margin-top: 5px;
+            color: #0f172a;
+            line-height: 1.35;
+        }
+
+        .prefactura-state-stats {
+            margin-top: 16px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 12px;
+        }
+
+        .prefactura-state-stat {
+            padding: 12px 14px;
+            border-radius: 14px;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+        }
+
+        .prefactura-state-stat small {
+            display: block;
+            margin-bottom: 6px;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-size: 11px;
+            font-weight: 700;
+        }
+
+        .prefactura-state-stat span {
+            color: #0f172a;
+            font-size: 15px;
+        }
+
+        .prefactura-state-alerts {
+            margin-top: 16px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .prefactura-state-alerts .badge {
+            font-size: 12px;
+            padding: 8px 10px;
+            border-radius: 999px;
+        }
+
+        .prefactura-state-placeholder {
+            border: 1px dashed #cbd5e1;
+            border-radius: 16px;
+            padding: 16px;
+            background: rgba(248, 250, 252, 0.95);
+            color: #64748b;
+        }
+
+        .prefactura-patient-summary {
+            border: 1px solid #dbe7f3;
+            border-radius: 18px;
+            background:
+                radial-gradient(circle at top left, rgba(59, 130, 246, 0.12), transparent 34%),
+                linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+            box-shadow: 0 14px 32px rgba(15, 23, 42, 0.07);
+        }
+
+        .prefactura-avatar {
+            width: 52px;
+            height: 52px;
+            font-size: 1.35rem;
+            flex-shrink: 0;
+            border: 1px solid #dbe7f3;
+            background: rgba(255, 255, 255, 0.92) !important;
+        }
+
+        .prefactura-patient-name {
+            font-size: 1.1rem;
+            color: #0f172a;
+        }
+
+        .prefactura-patient-summary-meta {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+            gap: 12px;
+            margin-top: 14px;
+        }
+
+        .prefactura-patient-summary-meta-item {
+            border: 1px solid #e2e8f0;
+            border-radius: 14px;
+            background: rgba(255, 255, 255, 0.82);
+            padding: 12px 14px;
+        }
+
+        .prefactura-patient-summary-meta-item small {
+            display: block;
+            margin-bottom: 5px;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-size: 11px;
+            font-weight: 700;
+        }
+
+        .prefactura-patient-summary-meta-item strong {
+            color: #0f172a;
+            display: block;
+            line-height: 1.35;
+        }
+
+        .prefactura-action-stack {
+            display: grid;
+            gap: 10px;
+        }
+
+        .prefactura-action-panel {
+            border-radius: 16px;
+            border: 1px solid #e2e8f0;
+            background: #fff;
+            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+            padding: 16px;
+        }
+
+        .prefactura-action-panel.is-warning {
+            border-color: #fde68a;
+            background: linear-gradient(180deg, #fffdf5 0%, #ffffff 100%);
+        }
+
+        .prefactura-action-panel.is-dark {
+            border-color: #cbd5e1;
+            background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
+        }
+
+        .prefactura-action-panel-head {
+            display: flex;
+            gap: 12px;
+            align-items: flex-start;
+            margin-bottom: 12px;
+        }
+
+        .prefactura-action-panel-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            flex-shrink: 0;
+            background: #eff6ff;
+            color: #2563eb;
+        }
+
+        .prefactura-action-panel.is-warning .prefactura-action-panel-icon {
+            background: #fef3c7;
+            color: #b45309;
+        }
+
+        .prefactura-action-panel.is-dark .prefactura-action-panel-icon {
+            background: #e2e8f0;
+            color: #0f172a;
+        }
+
+        @media (max-width: 767px) {
+            .prefactura-patient-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .prefactura-patient-grid > div:nth-last-child(-n+2) {
+                border-bottom: 1px solid #eef2f7;
+            }
+
+            .prefactura-patient-grid > div:last-child {
+                border-bottom: 0;
+            }
+
+            .prefactura-state-header-badges {
+                justify-content: flex-start;
+            }
+        }
+
         .sol-v2-help-btn {
             width: 30px;
             height: 30px;
@@ -1149,8 +1517,6 @@
                     </div>
                 </div>
                 <div class="modal-footer d-flex flex-wrap gap-2">
-                    <button type="button" class="btn btn-outline-primary d-none" id="btnGenerarTurnoModal">Generar turno</button>
-                    <button type="button" class="btn btn-outline-success d-none" id="btnMarcarAtencionModal" data-estado="En atención">En atención</button>
                     <button class="btn btn-success btn-sm d-inline-flex align-items-center gap-2" type="button" id="btnSolicitarExamenesPrequirurgicos" data-bs-toggle="tooltip" title="Enviar solicitud de exámenes prequirúrgicos al paciente">
                         <i class="mdi mdi-file-multiple me-1"></i> Solicitar exámenes prequirúrgicos
                     </button>

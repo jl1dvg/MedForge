@@ -491,7 +491,7 @@ switch ($statusType) {
                 <a href="/whatsapp/templates" class="btn btn-sm btn-outline-primary">
                     <i class="mdi mdi-whatsapp me-1"></i>Plantillas
                 </a>
-                <a href="/settings?section=whatsapp" class="btn btn-sm btn-primary">
+                <a href="/v2/settings?section=whatsapp" class="btn btn-sm btn-primary">
                     <i class="mdi mdi-cog-outline me-1"></i>Ajustes
                 </a>
             </div>
@@ -567,14 +567,14 @@ switch ($statusType) {
             <?php if (!empty($missingCredentials)): ?>
                 <div class="alert alert-warning mb-4" role="alert">
                     <strong>Completa la configuración de Meta.</strong>
-                    <div class="small mb-0">Faltan: <?= $escape(implode(', ', $missingCredentials)); ?>. Actualiza los campos en <a href="/settings?section=whatsapp" class="alert-link">Ajustes → WhatsApp</a> para habilitar las plantillas y mensajes interactivos.</div>
+                    <div class="small mb-0">Faltan: <?= $escape(implode(', ', $missingCredentials)); ?>. Actualiza los campos en <a href="/v2/settings?section=whatsapp" class="alert-link">Ajustes → WhatsApp</a> para habilitar las plantillas y mensajes interactivos.</div>
                 </div>
             <?php endif; ?>
 
             <?php if ($hasRegistryLookup): ?>
                 <div class="alert alert-info mb-4" role="alert">
                     <strong>Consulta externa habilitada.</strong>
-                    <div class="small mb-0">Si aún no cuentas con un endpoint oficial del Registro Civil, deja el campo <code>whatsapp_registry_lookup_url</code> vacío en <a href="/settings?section=whatsapp" class="alert-link">Ajustes → WhatsApp</a> para trabajar solo con la base local.</div>
+                    <div class="small mb-0">Si aún no cuentas con un endpoint oficial del Registro Civil, deja el campo <code>whatsapp_registry_lookup_url</code> vacío en <a href="/v2/settings?section=whatsapp" class="alert-link">Ajustes → WhatsApp</a> para trabajar solo con la base local.</div>
                 </div>
             <?php endif; ?>
 

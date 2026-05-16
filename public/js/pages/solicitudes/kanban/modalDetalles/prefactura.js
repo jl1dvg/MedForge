@@ -85,70 +85,8 @@ export function parkExamenesPrequirurgicosButton(modalElement) {
 }
 
 export function actualizarBotonesModal(solicitudId, solicitudFallback = null) {
-    const solicitud = findSolicitudById(solicitudId) || solicitudFallback;
-    const normalize = (v) =>
-        (v ?? "")
-            .toString()
-            .normalize("NFD")
-            .replace(/[\u0300-\u036f]/g, "")
-            .trim()
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, "-");
-
-    const estadoRaw = solicitud
-        ? (solicitud?.operational?.kanban_estado || solicitud.kanban_estado || solicitud.estado || solicitud.estado_label)
-        : "";
-    const estado = estadoRaw ? normalize(estadoRaw) : "";
-
-    const btnGenerarTurno = document.getElementById("btnGenerarTurnoModal");
-    const btnEnAtencion = document.getElementById("btnMarcarAtencionModal");
-    const btnRevisar = document.getElementById("btnRevisarCodigos");
-    const btnCobertura = document.getElementById("btnSolicitarCobertura");
-    const btnCoberturaExitosa = document.getElementById("btnCoberturaExitosa");
-    const coberturaData = document.getElementById("prefacturaCoberturaData");
-    const coberturaStatus = document.getElementById("prefacturaCoberturaMailStatus");
-    const derivacionVencida =
-        Boolean(solicitud?.alert_derivacion_vencida) ||
-        String(solicitud?.derivacion_vigencia_status || "").trim().toLowerCase() === "vencida" ||
-        coberturaData?.dataset?.derivacionVencida === "1";
-    const coberturaTemplateAvailable =
-        Boolean(coberturaData?.dataset?.templateKey) &&
-        String(coberturaData?.dataset?.templateKey || "").trim() !== "";
-    const coberturaSolicitada =
-        Boolean(coberturaStatus?.dataset?.sentAt) ||
-        String(coberturaStatus?.textContent || "").trim() !== "";
-
-    const show = (el, visible) => {
-        if (!el) return;
-        el.classList.toggle("d-none", !visible);
-    };
-
-    const canShow = Boolean(estado);
-
-    show(btnGenerarTurno, canShow && estado === "recibida");
-    show(btnEnAtencion, canShow && estado === "llamado");
-    show(btnRevisar, canShow && estado === "revision-codigos");
-    const coberturaStates = new Set([
-        "recibida",
-        "en-atencion",
-        "revision-codigos",
-        "revision-codigo",
-        "cobertura",
-        "espera-documentos",
-    ]);
-    const requiereCobertura = coberturaStates.has(estado) || derivacionVencida;
-    const showCoberturaPrimary =
-        canShow && coberturaTemplateAvailable && requiereCobertura && !coberturaSolicitada;
-    const showCoberturaResolved =
-        canShow && coberturaTemplateAvailable && coberturaSolicitada && requiereCobertura;
-    const showRevisionCodes =
-        canShow && !showCoberturaPrimary && !showCoberturaResolved && estado === "revision-codigos";
-
-    show(btnCobertura, showCoberturaPrimary);
-    show(btnCoberturaExitosa, showCoberturaResolved);
-    show(btnRevisar, showRevisionCodes);
-    console.log("[botones] estado raw:", estadoRaw);
-    console.log("[botones] estado normalized:", estado);
+    void solicitudId;
+    void solicitudFallback;
 }
 
 export function abrirPrefactura({hc, formId, solicitudId}) {

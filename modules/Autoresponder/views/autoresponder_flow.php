@@ -229,7 +229,7 @@ switch ($statusType) {
                 <a href="/whatsapp/templates" class="btn btn-sm btn-outline-primary">
                     <i class="mdi mdi-whatsapp me-1"></i>Plantillas
                 </a>
-                <a href="/settings?section=whatsapp" class="btn btn-sm btn-primary">
+                <a href="/v2/settings?section=whatsapp" class="btn btn-sm btn-primary">
                     <i class="mdi mdi-cog-outline me-1"></i>Ajustes
                 </a>
             </div>

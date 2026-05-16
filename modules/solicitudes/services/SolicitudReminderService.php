@@ -11,6 +11,18 @@ use PDO;
 class SolicitudReminderService
 {
     private const CACHE_FILENAME = '/storage/cache/surgery_reminders.json';
+    private const COMPLETED_STATES = [
+        'completado',
+        'completada',
+        'operada',
+        'operado',
+        'protocolo-completo',
+        'facturado',
+        'facturada',
+        'facturada-cerrada',
+        'cerrado',
+        'cerrada',
+    ];
 
     /**
      * @var array<string, array{
@@ -142,6 +154,10 @@ class SolicitudReminderService
                 : null;
 
             foreach (self::SCENARIOS as $scenarioKey => $scenario) {
+                if (!$this->shouldDispatchScenario($scenarioKey, $solicitud)) {
+                    continue;
+                }
+
                 $dueDate = $this->resolveDueDate($scenario, $fechaProgramada, $fechaCaducidad);
                 if (!$dueDate) {
                     continue;
@@ -212,6 +228,25 @@ class SolicitudReminderService
         }
 
         return $enviadas;
+    }
+
+    /**
+     * @param array<string,mixed> $solicitud
+     */
+    private function shouldDispatchScenario(string $scenarioKey, array $solicitud): bool
+    {
+        $estado = strtolower(trim((string) ($solicitud['estado'] ?? '')));
+        $isCompleted = in_array($estado, self::COMPLETED_STATES, true);
+
+        if (in_array($scenarioKey, ['postop', 'postconsulta'], true)) {
+            return $isCompleted;
+        }
+
+        if (in_array($scenarioKey, ['preop', 'surgery_24h', 'surgery_2h', 'surgery'], true)) {
+            return !$isCompleted;
+        }
+
+        return true;
     }
 
     private function resolveDueDate(array $scenario, ?DateTimeImmutable $fechaProgramada, ?DateTimeImmutable $fechaCaducidad): ?DateTimeImmutable

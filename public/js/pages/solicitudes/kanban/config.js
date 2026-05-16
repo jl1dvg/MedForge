@@ -203,10 +203,7 @@ export function resolveWritePath(pathname) {
         return path;
     }
 
-    if (
-        path.includes(`${writePrefix}/solicitudes`)
-        || path.includes(`${writePrefix}/api/solicitudes`)
-    ) {
+    if (path.includes(`${writePrefix}/solicitudes`)) {
         return path;
     }
 
@@ -215,13 +212,6 @@ export function resolveWritePath(pathname) {
         const rootPrefix = path.slice(0, moduleMarkerIndex);
         const moduleSuffix = path.slice(moduleMarkerIndex);
         return `${rootPrefix}${writePrefix}${moduleSuffix}`;
-    }
-
-    const apiMarkerIndex = path.indexOf('/api/solicitudes');
-    if (apiMarkerIndex >= 0) {
-        const rootPrefix = path.slice(0, apiMarkerIndex);
-        const apiSuffix = path.slice(apiMarkerIndex);
-        return `${rootPrefix}${writePrefix}${apiSuffix}`;
     }
 
     return `${writePrefix}${path === '/' ? '' : path}`;
@@ -239,10 +229,7 @@ export function resolveReadPath(pathname) {
         return path;
     }
 
-    if (
-        path.includes(`${readPrefix}/solicitudes`)
-        || path.includes(`${readPrefix}/api/solicitudes`)
-    ) {
+    if (path.includes(`${readPrefix}/solicitudes`)) {
         return path;
     }
 
@@ -251,13 +238,6 @@ export function resolveReadPath(pathname) {
         const rootPrefix = path.slice(0, moduleMarkerIndex);
         const moduleSuffix = path.slice(moduleMarkerIndex);
         return `${rootPrefix}${readPrefix}${moduleSuffix}`;
-    }
-
-    const apiMarkerIndex = path.indexOf('/api/solicitudes');
-    if (apiMarkerIndex >= 0) {
-        const rootPrefix = path.slice(0, apiMarkerIndex);
-        const apiSuffix = path.slice(apiMarkerIndex);
-        return `${rootPrefix}${readPrefix}${apiSuffix}`;
     }
 
     return `${readPrefix}${path === '/' ? '' : path}`;

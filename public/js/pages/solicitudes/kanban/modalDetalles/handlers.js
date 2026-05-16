@@ -528,6 +528,7 @@ function applyLioEditorResult({
     }
 
     clearSolicitudDetalleCacheBySolicitudId(targetSolicitudId);
+    clearPrefacturaCacheIfAvailable(targetSolicitudId);
     showToast("Solicitud actualizada", true);
     renderEstadoContext(targetSolicitudId);
 

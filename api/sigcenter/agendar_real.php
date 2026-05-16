@@ -47,9 +47,9 @@ foreach ($required as $k) {
 }
 
 // Credenciales Sigcenter: NO deben venir del frontend.
-// Preferir variables de entorno (o constantes definidas en _client.php) y opcionalmente permitir override por payload.
-$u = trim((string)($data['sigcenter_user'] ?? $data['username'] ?? 'jdevera' ?? ''));
-$p = trim((string)($data['sigcenter_pass'] ?? $data['password'] ?? '0925619736' ?? ''));
+// Preferir sesión autenticada y luego configuración del servidor.
+$u = trim((string)($_SESSION['username'] ?? ''));
+$p = trim((string)($_SESSION['sigcenter_password'] ?? ''));
 
 if ($u === '') {
     $u = trim((string)(getenv('SIGCENTER_USER') ?: ''));

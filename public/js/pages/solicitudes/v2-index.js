@@ -656,9 +656,23 @@
         return 'is-ok';
     };
 
+    const resolveSlaStatus = (row = {}) => {
+        const normalized = String(row?.sla_status || '').trim().toLowerCase();
+        if (normalized !== 'vencido') {
+            return normalized || 'sin_fecha';
+        }
+
+        const vigencia = parseLocalDate(row?.derivacion_fecha_vigencia);
+        if (!vigencia) {
+            return normalized;
+        }
+
+        return vigencia.getTime() >= Date.now() ? 'en_rango' : normalized;
+    };
+
     const cardTemplate = (row) => {
         const prioridad = String(row.prioridad || row.prioridad_automatica_label || '').trim() || 'Normal';
-        const sla = String(row.sla_status || '').trim() || 'sin_fecha';
+        const sla = resolveSlaStatus(row);
         const nextSlug = String((row.kanban_next && row.kanban_next.slug) || '').trim();
         const nextLabel = String((row.kanban_next && row.kanban_next.label) || '').trim();
         const requestIdValue = String(row.id || '');
@@ -740,7 +754,7 @@
         const estadoKanban = String(row.kanban_estado_label || labelByColumn[row.kanban_estado] || '').trim();
         const pipeline = String(row.crm_pipeline_stage || 'Recibido');
         const responsable = String(row.crm_responsable_nombre || 'Sin responsable');
-        const sla = String(row.sla_status || 'sin_fecha').replaceAll('_', ' ');
+        const sla = resolveSlaStatus(row).replaceAll('_', ' ');
         const turno = formatTurnoLabel(row.turno);
         const nextSlug = String((row.kanban_next && row.kanban_next.slug) || '').trim();
         const nextLabel = String((row.kanban_next && row.kanban_next.label) || '').trim();
@@ -1743,21 +1757,7 @@
         }
 
         try {
-            const response = await fetch(`${estadoEndpoint}?${params.toString()}`, {
-                credentials: 'same-origin',
-                headers: {
-                    'Accept': 'application/json',
-                    'X-Request-Id': requestId(),
-                },
-            });
-            const json = await response.json().catch(() => ({}));
-
-            if (!response.ok) {
-                throw new Error(json.error || `Error HTTP ${response.status}`);
-            }
-
-            const solicitudes = Array.isArray(json.solicitudes) ? json.solicitudes : [];
-            const found = solicitudes.find((item) => String(item.id || '') === String(solicitudId || ''));
+            const found = await hydrateSolicitudRow(solicitudId, hcNumber, formId);
             if (!found) {
                 showToast('No se encontró detalle de la solicitud', false);
                 return;
@@ -1768,6 +1768,49 @@
         } catch (error) {
             showToast(`Detalle no disponible: ${error.message || error}`, false);
         }
+    };
+
+    const hydrateSolicitudRow = async (solicitudId, hcNumber, formId) => {
+        if (!estadoEndpoint) {
+            return null;
+        }
+
+        const params = new URLSearchParams();
+        if (hcNumber) {
+            params.set('hcNumber', hcNumber);
+        }
+        if (formId) {
+            params.set('form_id', formId);
+        }
+
+        const response = await fetch(`${estadoEndpoint}?${params.toString()}`, {
+            credentials: 'same-origin',
+            headers: {
+                'Accept': 'application/json',
+                'X-Request-Id': requestId(),
+            },
+        });
+        const json = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+            throw new Error(json.error || `Error HTTP ${response.status}`);
+        }
+
+        const solicitudes = Array.isArray(json.solicitudes) ? json.solicitudes : [];
+        const found = solicitudes.find((item) => String(item.id || '') === String(solicitudId || ''));
+        if (!found) {
+            return null;
+        }
+
+        const target = Array.isArray(state.rows)
+            ? state.rows.find((item) => String(item.id || '') === String(solicitudId || ''))
+            : null;
+        if (target && typeof target === 'object') {
+            Object.assign(target, found);
+            rerenderFromLocalFilters();
+        }
+
+        return found;
     };
 
     const openDetalleModal = async (solicitudId, hcNumber, formId) => {
@@ -1794,6 +1837,12 @@
         }
 
         try {
+            try {
+                await hydrateSolicitudRow(solicitudId, hc, form);
+            } catch (error) {
+                console.warn('No se pudo hidratar la fila de la solicitud antes de abrir detalle', error);
+            }
+
             prefacturaApi.abrirPrefactura({
                 hc,
                 formId: form,

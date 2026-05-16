@@ -122,31 +122,15 @@ export function buildContextualActionsHtml(solicitud = {}) {
         return "";
     }
 
-    const baseInfo = {
-        paciente: solicitud.full_name || "Paciente sin nombre",
-        procedimiento: solicitud.procedimiento || "Sin procedimiento",
-        ojo: solicitud.ojo || "—",
-        producto: solicitud.producto || solicitud.lente_nombre || "No registrado",
-        marca: solicitud.lente_marca || solicitud.lente_brand || solicitud.producto || "No registrada",
-        modelo: solicitud.lente_modelo || solicitud.lente_model || "No registrado",
-        poder:
-            solicitud.lente_poder ||
-            solicitud.lente_power ||
-            solicitud.poder ||
-            solicitud.lente_dioptria ||
-            "No especificado",
-        observacion:
-            solicitud.lente_observacion || solicitud.observacion || "Sin observaciones",
-        incision: solicitud.incision || "No definida",
-    };
-
     const blocks = [];
 
     if (estado === "apto-anestesia") {
         blocks.push(`
-        <div class="alert alert-warning border d-flex flex-column gap-2" id="prefacturaAnestesiaPanel">
-            <div class="d-flex align-items-center gap-2">
-                <i class="mdi mdi-stethoscope fs-4 text-warning"></i>
+        <div class="prefactura-action-panel is-warning" id="prefacturaAnestesiaPanel">
+            <div class="prefactura-action-panel-head">
+                <span class="prefactura-action-panel-icon">
+                    <i class="mdi mdi-stethoscope"></i>
+                </span>
                 <div>
                     <strong>Revisión de anestesia pendiente</strong>
                     <p class="mb-0 text-muted">Confirma que el paciente ya fue evaluado por anestesia para avanzar.</p>
@@ -169,9 +153,11 @@ export function buildContextualActionsHtml(solicitud = {}) {
             solicitud.hc_number || ""
         )}&form_id=${encodeURIComponent(solicitud.form_id || "")}`;
         blocks.push(`
-        <div class="alert alert-dark border d-flex flex-column gap-2" id="prefacturaAgendaPanel">
-            <div class="d-flex align-items-center gap-2">
-                <i class="mdi mdi-calendar-clock fs-4 text-dark"></i>
+        <div class="prefactura-action-panel is-dark" id="prefacturaAgendaPanel">
+            <div class="prefactura-action-panel-head">
+                <span class="prefactura-action-panel-icon">
+                    <i class="mdi mdi-calendar-clock"></i>
+                </span>
                 <div>
                     <strong>Listo para agendar</strong>
                     <p class="mb-0 text-muted">Genera la orden de agenda y expórtala en PDF para coordinación.</p>
@@ -197,7 +183,7 @@ export function buildContextualActionsHtml(solicitud = {}) {
         return "";
     }
 
-    return `<div class="mb-3 d-flex flex-column gap-2">${blocks.join("")}</div>`;
+    return `<div class="prefactura-action-stack mb-3">${blocks.join("")}</div>`;
 }
 
 function syncQuickColumnVisibility() {
@@ -315,13 +301,14 @@ export function renderEstadoContext(solicitudId) {
         <div class="prefactura-state-card">
             <div class="prefactura-state-header">
                 <div>
-                    <p class="text-muted mb-1">Estado en Kanban</p>
+                    <div class="prefactura-state-kicker">Radar operativo</div>
+                    <h5 class="prefactura-state-header-title">Estado actual del caso</h5>
+                    <div class="prefactura-state-header-copy">La información de esta tarjeta es la referencia viva de operación, SLA y seguimiento comercial.</div>
+                </div>
+                <div class="prefactura-state-header-badges">
                     <span class="${escapeHtml(
         estadoBadge.badgeClass
     )}">${escapeHtml(estadoBadge.label)}</span>
-                </div>
-                <div>
-                    <p class="text-muted mb-1">Etapa CRM</p>
                     <span class="badge bg-light text-dark border">${escapeHtml(
         pipelineStage
     )}</span>
@@ -390,30 +377,29 @@ export function renderPatientSummaryFallback(solicitudId) {
     container.innerHTML = `
         <div class="card shadow-sm border-0 prefactura-patient-summary">
             <div class="card-body p-3">
-                <div class="d-flex flex-column flex-md-row gap-3 align-items-start align-items-md-center">
-                    <div class="d-flex align-items-start gap-3 flex-grow-1">
-                        <div class="prefactura-avatar rounded-circle bg-light text-primary d-flex align-items-center justify-content-center">
-                            <i class="bi bi-person-fill"></i>
-                        </div>
-                        <div>
-                            <div class="prefactura-patient-name fw-bold">
-                                ${escapeHtml(solicitud.full_name || "Sin nombre")}
-                            </div>
-                            <div class="d-flex flex-wrap gap-2 mt-2">
-                                ${badges.join("")}
-                            </div>
-                        </div>
+                <div class="d-flex align-items-start gap-3">
+                    <div class="prefactura-avatar rounded-circle text-primary d-flex align-items-center justify-content-center">
+                        <i class="bi bi-person-fill"></i>
                     </div>
-                    <div class="flex-grow-1 text-md-end">
-                        <div>
-                            <p class="prefactura-meta-label mb-1">Responsable</p>
-                            <div class="fw-semibold">${escapeHtml(responsable)}</div>
+                    <div class="flex-grow-1">
+                        <div class="prefactura-state-kicker">Paciente seleccionado</div>
+                        <div class="prefactura-patient-name fw-bold">
+                            ${escapeHtml(solicitud.full_name || "Sin nombre")}
                         </div>
-                        <div class="mt-2">
-                            <p class="prefactura-meta-label mb-1">Procedimiento</p>
-                            <div class="prefactura-line-clamp">${escapeHtml(
+                        <div class="d-flex flex-wrap gap-2 mt-2">
+                            ${badges.join("")}
+                        </div>
+                        <div class="prefactura-patient-summary-meta">
+                            <div class="prefactura-patient-summary-meta-item">
+                                <small>Procedimiento</small>
+                                <strong class="prefactura-line-clamp">${escapeHtml(
         procedimiento
-    )}</div>
+    )}</strong>
+                            </div>
+                            <div class="prefactura-patient-summary-meta-item">
+                                <small>Responsable</small>
+                                <strong>${escapeHtml(responsable)}</strong>
+                            </div>
                         </div>
                     </div>
                 </div>

@@ -5,11 +5,15 @@ declare(strict_types=1);
 namespace App\Modules\Solicitudes\Services;
 
 use App\Models\WhatsappConversation;
+use App\Modules\Mail\Services\MailProfileService;
+use App\Modules\Mail\Services\NotificationMailer;
 use App\Modules\Whatsapp\Services\ConversationWriteService;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use PDO;
 use RuntimeException;
+use function preg_match;
 
 class SolicitudesCommunicationService
 {
@@ -92,11 +96,17 @@ class SolicitudesCommunicationService
             throw new RuntimeException('Escribe el cuerpo del correo antes de enviar.');
         }
 
-        Mail::raw($body, static function ($message) use ($to, $subject): void {
-            $message->to($to)->subject($subject);
-        });
+        $pdo = DB::connection()->getPdo();
+        $profileSlug = (new MailProfileService($pdo))->getProfileSlugForContext('solicitudes');
+        $result = $this->sendEmailWithFallback($pdo, $profileSlug, $to, $subject, $body);
+        if (!($result['success'] ?? false)) {
+            $error = trim((string) ($result['error'] ?? 'No se pudo enviar el correo'));
+            $this->logMail($solicitudId, $detail, $to, $subject, $body, $actorUserId, 'failed', $error);
 
-        $this->logMail($solicitudId, $detail, $to, $subject, $body, $actorUserId);
+            throw new RuntimeException($error);
+        }
+
+        $this->logMail($solicitudId, $detail, $to, $subject, $body, $actorUserId, 'sent');
         $this->addNote(
             $solicitudId,
             sprintf(
@@ -181,7 +191,16 @@ class SolicitudesCommunicationService
     /**
      * @param array<string,mixed> $detail
      */
-    private function logMail(int $solicitudId, array $detail, string $to, string $subject, string $body, ?int $actorUserId): void
+    private function logMail(
+        int $solicitudId,
+        array $detail,
+        string $to,
+        string $subject,
+        string $body,
+        ?int $actorUserId,
+        string $status,
+        ?string $errorMessage = null
+    ): void
     {
         if (!Schema::hasTable('solicitud_mail_log')) {
             return;
@@ -197,8 +216,9 @@ class SolicitudesCommunicationService
             'subject' => $subject,
             'body_text' => $body,
             'sent_by_user_id' => $actorUserId,
-            'status' => 'sent',
-            'sent_at' => now()->toDateTimeString(),
+            'status' => $status,
+            'sent_at' => $status === 'sent' ? now()->toDateTimeString() : null,
+            'error_message' => $errorMessage,
             'created_at' => now()->toDateTimeString(),
             'updated_at' => now()->toDateTimeString(),
         ];
@@ -208,5 +228,49 @@ class SolicitudesCommunicationService
         if ($payload !== []) {
             DB::table('solicitud_mail_log')->insert($payload);
         }
+    }
+
+    /**
+     * @return array{success:bool,error?:string}
+     */
+    private function sendEmailWithFallback(
+        PDO $pdo,
+        ?string $profileSlug,
+        string $to,
+        string $subject,
+        string $body
+    ): array {
+        $mailer = new NotificationMailer($pdo, $profileSlug);
+        $result = $mailer->sendPatientUpdate($to, $subject, $body, [], [], false, $profileSlug);
+        if (($result['success'] ?? false) || !$this->shouldRetryWithDefaultProfile($result['error'] ?? null, $profileSlug)) {
+            return $result;
+        }
+
+        Log::warning('solicitudes.email.retry_default_profile', [
+            'profile_slug' => $profileSlug,
+            'error' => $result['error'] ?? null,
+        ]);
+
+        $fallbackMailer = new NotificationMailer($pdo, null);
+        $fallbackResult = $fallbackMailer->sendPatientUpdate($to, $subject, $body, [], [], false, null);
+        if (($fallbackResult['success'] ?? false) === false) {
+            $fallbackResult['error'] = trim(sprintf(
+                '%s. Reintento con perfil global: %s',
+                (string) ($result['error'] ?? 'Error SMTP'),
+                (string) ($fallbackResult['error'] ?? 'fallo')
+            ));
+        }
+
+        return $fallbackResult;
+    }
+
+    private function shouldRetryWithDefaultProfile(?string $error, ?string $profileSlug): bool
+    {
+        $message = trim((string) $error);
+        if ($profileSlug === null || $profileSlug === '' || $message === '') {
+            return false;
+        }
+
+        return preg_match('/authenticate|authenticat|credencial|username|password/i', $message) === 1;
     }
 }

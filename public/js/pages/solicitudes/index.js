@@ -24,9 +24,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const normalizedBasePath = config.basePath && config.basePath !== '/'
         ? config.basePath.replace(/\/+$/, '')
         : '';
-    const normalizedApiBasePath = config.apiBasePath && config.apiBasePath !== '/'
-        ? config.apiBasePath.replace(/\/+$/, '')
-        : '';
     const realtimeConfig = getRealtimeConfig();
     const reportingConfig = getReportingConfig();
     const rawDesktopDismiss = Number(realtimeConfig.auto_dismiss_seconds);
@@ -90,19 +87,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const buildEstadoApiCandidates = () => {
-        const candidates = [
-            resolveReadPath('/solicitudes/api/estado'),
-            resolveReadPath('/api/solicitudes/estado'),
-        ];
-
-        if (normalizedApiBasePath) {
-            candidates.push(resolveReadPath(`${normalizedApiBasePath}/solicitudes/estado`));
-        }
-
-        if (normalizedBasePath) {
-            candidates.push(resolveReadPath(`${normalizedBasePath}/api/estado`));
-        }
-
+        const candidates = [resolveReadPath('/solicitudes/api/estado')];
         return Array.from(new Set(candidates));
     };
 

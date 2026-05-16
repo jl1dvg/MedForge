@@ -13,7 +13,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function cargarKanban(filtros = {}) {
         console.log('🔎 Filtros enviados:', filtros);
-        fetch('/api/solicitudes/kanban_data.php', {
+        fetch('/v2/solicitudes/kanban-data', {
             method: 'POST', body: new URLSearchParams(filtros)
         })
             .then(res => res.json())

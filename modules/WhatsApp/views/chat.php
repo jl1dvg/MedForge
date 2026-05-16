@@ -792,7 +792,7 @@ foreach ($whatsappChatGuide as $key => $meta) {
                             </div>
                             <?php if (!$isIntegrationEnabled): ?>
                                 <div class="alert alert-warning" role="alert">
-                                Configura tu cuenta en <a href="/settings?section=whatsapp" class="alert-link">Ajustes
+                                Configura tu cuenta en <a href="/v2/settings?section=whatsapp" class="alert-link">Ajustes
                                         &rarr; WhatsApp</a> para habilitar el envío manual.
                                 </div>
                             <?php endif; ?>

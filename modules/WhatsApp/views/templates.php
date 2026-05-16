@@ -107,7 +107,7 @@ $bootstrapJson = htmlspecialchars(json_encode($bootstrap, JSON_UNESCAPED_UNICODE
                                     <li><?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8'); ?></li>
                                 <?php endforeach; ?>
                             </ul>
-                            <a href="/settings?section=whatsapp" class="btn btn-sm btn-outline-warning">Ir a configuración</a>
+                            <a href="/v2/settings?section=whatsapp" class="btn btn-sm btn-outline-warning">Ir a configuración</a>
                         </div>
                     <?php endif; ?>
 

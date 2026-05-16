@@ -22,7 +22,7 @@ function buildApiVariants(pathname) {
     variants.add(path);
 
     // Path con basePath cuando no está incluido
-    const hasV2SolicitudesPrefix = path.includes('/v2/solicitudes') || path.includes('/v2/api/solicitudes');
+    const hasV2SolicitudesPrefix = path.includes('/v2/solicitudes');
     const shouldPrependBase = normalizedBase && !pathHasBase && !hasV2SolicitudesPrefix;
     if (shouldPrependBase) {
         variants.add(`${normalizedBase}${path}`);

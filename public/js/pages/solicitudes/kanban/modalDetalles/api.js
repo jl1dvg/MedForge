@@ -49,18 +49,7 @@ export function resolveApiBasePath() {
 }
 
 export function buildEstadoApiCandidates() {
-    const {basePath} = getKanbanConfig();
-    const normalizedBase =
-        basePath && basePath !== "/" ? basePath.replace(/\/+$/, "") : "";
-    const apiBase = resolveApiBasePath();
-    const orderedCandidates = [
-        resolveReadPath("/solicitudes/api/estado"),
-        resolveReadPath(`${apiBase}/solicitudes/estado`),
-        resolveReadPath("/api/solicitudes/estado"),
-    ];
-    if (normalizedBase) {
-        orderedCandidates.push(resolveReadPath(`${normalizedBase}/api/estado`));
-    }
+    const orderedCandidates = [resolveReadPath("/solicitudes/api/estado")];
 
     const expanded = [];
     const seen = new Set();

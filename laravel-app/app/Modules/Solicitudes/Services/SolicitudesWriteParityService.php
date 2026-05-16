@@ -916,9 +916,33 @@ class SolicitudesWriteParityService
     {
         $this->assertSolicitudExists($solicitudId);
 
-        $legacyState = $this->legacyStateBySolicitud($solicitudId);
+        $rows = $this->queryChecklistRows($solicitudId);
+        $taskRows = $this->queryChecklistTaskRows($solicitudId);
+        $taskChecklistRows = $this->buildChecklistRowsFromTasks($taskRows, $rows);
+        $seedStages = [];
 
-        foreach ($this->stateMachine->bootstrapStagesFromLegacyState($legacyState) as $stage) {
+        if ($taskChecklistRows !== []) {
+            [$resolvedChecklist] = $this->stateMachine->resolvePersistedChecklistContext($taskChecklistRows, '', [
+                'include_nota' => true,
+                'include_can_toggle' => true,
+            ]);
+            foreach ($resolvedChecklist as $item) {
+                $seedStages[] = [
+                    'slug' => (string) ($item['slug'] ?? ''),
+                    'completed' => !empty($item['completed']),
+                ];
+            }
+        } else {
+            $legacyState = $this->legacyStateBySolicitud($solicitudId);
+            foreach ($this->stateMachine->bootstrapStagesFromLegacyState($legacyState) as $stage) {
+                $seedStages[] = [
+                    'slug' => (string) ($stage['slug'] ?? ''),
+                    'completed' => (bool) ($stage['completed'] ?? false),
+                ];
+            }
+        }
+
+        foreach ($seedStages as $stage) {
             $slug = $stage['slug'];
             $exists = $this->checklistRowExists($solicitudId, $slug);
             if ($exists) {
@@ -1456,8 +1480,8 @@ class SolicitudesWriteParityService
     private function syncSolicitudEstadoFromChecklist(int $solicitudId): void
     {
         $rows = $this->queryChecklistRows($solicitudId);
-        $fallbackState = $this->operationalFallbackState($solicitudId, $rows);
         $taskRows = $this->queryChecklistTaskRows($solicitudId);
+        $fallbackState = $this->operationalFallbackState($solicitudId, $rows, $taskRows);
         [, , $kanban] = $this->resolveOperationalChecklistContext($solicitudId, $rows, $taskRows, $fallbackState);
 
         $this->persistOperationalState($solicitudId, (string) ($kanban['slug'] ?? $fallbackState));
@@ -1755,11 +1779,19 @@ class SolicitudesWriteParityService
     /**
      * @param array<int,array<string,mixed>>|null $rows
      */
-    private function operationalFallbackState(int $solicitudId, ?array $rows = null): string
+    private function operationalFallbackState(int $solicitudId, ?array $rows = null, ?array $tasks = null): string
     {
         $checklistRows = $rows ?? $this->queryChecklistRows($solicitudId);
+        if ($checklistRows !== []) {
+            return '';
+        }
 
-        return $checklistRows === [] ? $this->legacyStateBySolicitud($solicitudId) : '';
+        $taskRows = $tasks ?? $this->queryChecklistTaskRows($solicitudId);
+        if ($this->buildChecklistRowsFromTasks($taskRows, $checklistRows) !== []) {
+            return '';
+        }
+
+        return $this->legacyStateBySolicitud($solicitudId);
     }
 
     /**
@@ -1900,7 +1932,7 @@ class SolicitudesWriteParityService
         if (!is_array($resolvedChecklist)) {
             [$resolvedChecklist] = $this->stateMachine->resolvePersistedChecklistContext(
                 $checklistRows,
-                $this->operationalFallbackState($solicitudId, $checklistRows),
+                $this->operationalFallbackState($solicitudId, $checklistRows, null),
                 [
                     'include_nota' => true,
                     'include_can_toggle' => true,
@@ -2110,7 +2142,7 @@ class SolicitudesWriteParityService
             $solicitudId,
             $rows,
             $tasks,
-            $this->operationalFallbackState($solicitudId, $rows)
+            $this->operationalFallbackState($solicitudId, $rows, $tasks)
         );
 
         return [$checklist, $progress];

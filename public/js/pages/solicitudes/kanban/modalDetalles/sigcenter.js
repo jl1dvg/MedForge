@@ -123,8 +123,6 @@ export function initSigcenterPanel(container) {
     const existingProcedimientoId = (card.dataset.sigcenterProcedimientoId || "").trim();
     const coberturaData = root.querySelector("#prefacturaCoberturaData");
     const existingDocSolicitud = (card.dataset.sigcenterDocSolicitud || "").trim();
-    const sigcenterUsername = (card.dataset.sigcenterUsername || "").trim();
-    const sigcenterPassword = (card.dataset.sigcenterPassword || "").trim();
 
     const state = {
         ready: false,
@@ -688,8 +686,6 @@ export function initSigcenterPanel(container) {
             const payload = {
                 docSolicitud,
                 idtrabajador: trabajadorId,
-                sigcenter_user: sigcenterUsername,
-                sigcenter_pass: sigcenterPassword,
                 fechaInicio,
                 fechaFin: (() => {
                     const [h, m, s] = hora.split(":");

@@ -35,49 +35,6 @@ class SolicitudesReadParityService
         'cirugia_confirmada_at',
     ];
 
-    private const DEFAULT_OPERATIONAL_SLA_RULES = [
-        'publico' => [
-            'label' => 'Vigencia derivación',
-            'action' => 'Validar vigencia o renovar derivación',
-            'source' => 'derivacion',
-            'missing_derivacion_hours' => 4,
-            'warning_hours' => 72,
-            'critical_hours' => 24,
-        ],
-        'privado' => [
-            'label' => 'Validar cobertura',
-            'action' => 'Confirmar cobertura con aseguradora',
-            'source' => 'cobertura',
-            'hours' => 48,
-            'warning_hours' => 24,
-            'critical_hours' => 6,
-        ],
-        'particular' => [
-            'label' => 'Contactar y confirmar pago',
-            'action' => 'Contactar paciente y confirmar forma de pago',
-            'source' => 'contacto_pago',
-            'hours' => 24,
-            'warning_hours' => 12,
-            'critical_hours' => 4,
-        ],
-        'fundacional' => [
-            'label' => 'Validar autorización',
-            'action' => 'Confirmar autorización del convenio o fundación',
-            'source' => 'autorizacion',
-            'hours' => 72,
-            'warning_hours' => 24,
-            'critical_hours' => 6,
-        ],
-        'otros' => [
-            'label' => 'Seguimiento operativo',
-            'action' => 'Definir siguiente acción de la solicitud',
-            'source' => 'seguimiento',
-            'hours' => 48,
-            'warning_hours' => 24,
-            'critical_hours' => 6,
-        ],
-    ];
-
     /**
      * @var array<string, bool>
      */
@@ -95,6 +52,7 @@ class SolicitudesReadParityService
 
     private AfiliacionDimensionService $afiliacionDimensions;
     private SolicitudesStateMachineService $stateMachine;
+    private ?SolicitudesSlaSettingsService $slaSettings = null;
     private ?SettingsOptionResolver $settingsResolver = null;
 
     public function __construct(?SolicitudesStateMachineService $stateMachine = null)
@@ -208,6 +166,7 @@ class SolicitudesReadParityService
                     'fuentes' => $this->sources(),
                     'kanban' => $this->kanbanPreferences(),
                     'operational_sla_rules' => $this->operationalSlaRules(),
+                    'operational_stage_sla_rules' => $this->operationalStageSlaRules(),
                 ],
                 'metrics' => $this->buildOperationalMetrics($kanban),
             ],
@@ -226,6 +185,7 @@ class SolicitudesReadParityService
                 'fuentes' => $this->sources(),
                 'kanban' => $this->kanbanPreferences(),
                 'operational_sla_rules' => $this->operationalSlaRules(),
+                'operational_stage_sla_rules' => $this->operationalStageSlaRules(),
             ],
         ];
     }
@@ -313,6 +273,12 @@ class SolicitudesReadParityService
             throw new RuntimeException('Solicitud no encontrada');
         }
 
+        $detailSource = (string) ($detalle['_crm_detail_source'] ?? 'primary');
+        unset($detalle['_crm_detail_source']);
+        $degradedSections = [];
+        $checklistRows = $this->queryChecklistRows($solicitudId);
+        $taskRows = $this->queryChecklistTaskRows($solicitudId);
+
         try {
             $this->ensureChecklistTasksMaterialized($solicitudId);
         } catch (Throwable) {
@@ -320,27 +286,39 @@ class SolicitudesReadParityService
         }
 
         $tareas = $this->safeCrmSection(fn(): array => $this->queryCrmTareas($solicitudId), []);
+        $detalle['crm_tareas_total'] = count($tareas);
+        $detalle['crm_tareas_pendientes'] = count(array_filter(
+            $tareas,
+            static fn(array $tarea): bool => (string) ($tarea['estado'] ?? '') !== 'completada'
+        ));
+        $detalle['crm_proximo_vencimiento'] = $this->resolveNextTaskDueDate($tareas);
         [$checklist, $checklistProgress, $operationalState] = $this->resolveOperationalChecklistSummary(
             $solicitudId,
-            $tareas
+            $tareas,
+            $checklistRows
         );
 
         return [
             'detalle' => $detalle,
-            'notas' => $this->safeCrmSection(fn(): array => $this->queryCrmNotas($solicitudId), []),
-            'adjuntos' => $this->safeCrmSection(fn(): array => $this->queryCrmAdjuntos($solicitudId), []),
+            'notas' => $this->safeCrmSection(fn(): array => $this->queryCrmNotas($solicitudId), [], 'notas', $degradedSections),
+            'adjuntos' => $this->safeCrmSection(fn(): array => $this->queryCrmAdjuntos($solicitudId), [], 'adjuntos', $degradedSections),
             'tareas' => $tareas,
             'checklist' => $checklist,
             'checklist_progress' => $checklistProgress,
             'operational' => $operationalState,
-            'campos_personalizados' => $this->safeCrmSection(fn(): array => $this->queryCrmMeta($solicitudId), []),
+            'campos_personalizados' => $this->safeCrmSection(fn(): array => $this->queryCrmMeta($solicitudId), [], 'campos_personalizados', $degradedSections),
             'lead' => null,
             'crm_resumen' => null,
             'project' => null,
-            'propuestas' => $this->safeCrmSection(fn(): array => $this->queryCrmPropuestas($detalle), []),
-            'bloqueos_agenda' => $this->safeCrmSection(fn(): array => $this->queryBloqueosAgenda($solicitudId), []),
-            'cobertura_mails' => $this->safeCrmSection(fn(): array => $this->queryCoberturaMails($solicitudId), []),
-            'whatsapp_context' => $this->safeCrmSection(fn(): array => $this->queryWhatsappContext($detalle), []),
+            'propuestas' => $this->safeCrmSection(fn(): array => $this->queryCrmPropuestas($detalle), [], 'propuestas', $degradedSections),
+            'bloqueos_agenda' => $this->safeCrmSection(fn(): array => $this->queryBloqueosAgenda($solicitudId), [], 'bloqueos_agenda', $degradedSections),
+            'cobertura_mails' => $this->safeCrmSection(fn(): array => $this->queryCoberturaMails($solicitudId), [], 'cobertura_mails', $degradedSections),
+            'whatsapp_context' => $this->safeCrmSection(fn(): array => $this->queryWhatsappContext($detalle), [], 'whatsapp_context', $degradedSections),
+            'source_truth' => [
+                'detail_source' => $detailSource,
+                'degraded_sections' => $degradedSections,
+                'uses_legacy_state_fallback' => $this->operationalFallbackState($solicitudId, $checklistRows, $taskRows) !== '',
+            ],
         ];
     }
 
@@ -348,13 +326,28 @@ class SolicitudesReadParityService
      * @template T
      * @param callable():T $callback
      * @param T $fallback
+     * @param array<int,string>|null $degradedSections
      * @return T
      */
-    private function safeCrmSection(callable $callback, mixed $fallback): mixed
+    private function safeCrmSection(
+        callable $callback,
+        mixed $fallback,
+        ?string $section = null,
+        ?array &$degradedSections = null
+    ): mixed
     {
         try {
             return $callback();
-        } catch (Throwable) {
+        } catch (Throwable $e) {
+            if ($section !== null && $degradedSections !== null) {
+                $degradedSections[] = $section;
+            }
+            if ($section !== null) {
+                logger()->warning('solicitudes.crm.section_fallback', [
+                    'section' => $section,
+                    'error' => $e->getMessage(),
+                ]);
+            }
             return $fallback;
         }
     }
@@ -366,9 +359,11 @@ class SolicitudesReadParityService
         }
 
         $checklistRows = $this->queryChecklistRows($solicitudId);
+        $taskRows = $this->queryChecklistTaskRows($solicitudId);
+        $taskChecklistRows = $this->buildChecklistRowsFromTasks($taskRows, $checklistRows);
         [$checklist] = $this->stateMachine->resolvePersistedChecklistContext(
-            $checklistRows,
-            $checklistRows === [] ? $this->legacyStateBySolicitud($solicitudId) : '',
+            $taskChecklistRows !== [] ? $taskChecklistRows : $checklistRows,
+            $this->operationalFallbackState($solicitudId, $checklistRows, $taskRows),
             [
                 'include_nota' => true,
                 'include_can_toggle' => true,
@@ -403,11 +398,11 @@ class SolicitudesReadParityService
      * @param array<int,array<string,mixed>> $taskRows
      * @return array{0:array<int,array<string,mixed>>,1:array<string,mixed>,2:array<string,mixed>}
      */
-    private function resolveOperationalChecklistSummary(int $solicitudId, array $taskRows): array
+    private function resolveOperationalChecklistSummary(int $solicitudId, array $taskRows, ?array $checklistRows = null): array
     {
-        $checklistRows = $this->queryChecklistRows($solicitudId);
+        $checklistRows = is_array($checklistRows) ? $checklistRows : $this->queryChecklistRows($solicitudId);
         [$checklist, $progress, $kanban] = $this->resolveOperationalChecklistContext(
-            $this->legacyStateBySolicitud($solicitudId),
+            $this->operationalFallbackState($solicitudId, $checklistRows, $taskRows),
             $checklistRows,
             $taskRows
         );
@@ -1165,6 +1160,61 @@ class SolicitudesReadParityService
         $sedeExpr = $this->sedeExpression('pp');
         $afiliacionExpr = 'COALESCE(NULLIF(TRIM(sp.afiliacion), ""), NULLIF(TRIM(pd.afiliacion), ""))';
         $afiliacionContext = $this->afiliacionDimensions->buildContext($afiliacionExpr, 'acm_sol');
+        $taskJoin = 'LEFT JOIN (
+                SELECT NULL AS source_ref_id,
+                       0 AS tareas_total,
+                       0 AS tareas_pendientes,
+                       NULL AS proximo_vencimiento
+            ) tareas ON 1 = 0';
+        $taskColumns = $this->tableColumns('crm_tasks');
+        if (
+            $taskColumns !== []
+            && in_array('source_ref_id', $taskColumns, true)
+            && in_array('source_module', $taskColumns, true)
+        ) {
+            $taskCompanyFilter = '';
+            if (in_array('company_id', $taskColumns, true)) {
+                $taskCompanyFilter = ' AND company_id = ' . $this->resolveCompanyId();
+            }
+
+            $taskStatusExpr = in_array('status', $taskColumns, true)
+                ? 'LOWER(COALESCE(status, ""))'
+                : '""';
+            $taskDueExpr = in_array('due_at', $taskColumns, true) && in_array('due_date', $taskColumns, true)
+                ? 'COALESCE(due_at, CONCAT(due_date, " 23:59:59"))'
+                : (in_array('due_at', $taskColumns, true)
+                    ? 'due_at'
+                    : (in_array('due_date', $taskColumns, true) ? 'CONCAT(due_date, " 23:59:59")' : 'NULL'));
+            $taskChecklistSlugExpr = in_array('checklist_slug', $taskColumns, true)
+                ? 'NULLIF(checklist_slug, "")'
+                : (in_array('metadata', $taskColumns, true)
+                    ? 'NULLIF(JSON_UNQUOTE(JSON_EXTRACT(metadata, "$.checklist_slug")), "")'
+                    : 'NULL');
+            $taskIdentityExpr = in_array('task_key', $taskColumns, true)
+                ? 'COALESCE(' . $taskChecklistSlugExpr . ', NULLIF(task_key, ""), CONCAT("manual:", id))'
+                : 'COALESCE(' . $taskChecklistSlugExpr . ', CONCAT("manual:", id))';
+
+            $taskJoin = 'LEFT JOIN (
+                SELECT source_ref_id,
+                       COUNT(*) AS tareas_total,
+                       SUM(CASE WHEN status_agg IN ("pendiente", "en_progreso", "en_proceso") THEN 1 ELSE 0 END) AS tareas_pendientes,
+                       MIN(CASE WHEN status_agg IN ("pendiente", "en_progreso", "en_proceso") THEN due_agg END) AS proximo_vencimiento
+                FROM (
+                    SELECT source_ref_id,
+                           ' . $taskIdentityExpr . ' AS task_identity,
+                           CASE
+                               WHEN SUM(CASE WHEN ' . $taskStatusExpr . ' IN ("pendiente", "en_progreso", "en_proceso") THEN 1 ELSE 0 END) > 0 THEN "pendiente"
+                               WHEN SUM(CASE WHEN ' . $taskStatusExpr . ' = "completada" THEN 1 ELSE 0 END) > 0 THEN "completada"
+                               ELSE MAX(' . $taskStatusExpr . ')
+                           END AS status_agg,
+                           MIN(CASE WHEN ' . $taskStatusExpr . ' IN ("pendiente", "en_progreso", "en_proceso") THEN ' . $taskDueExpr . ' END) AS due_agg
+                    FROM crm_tasks
+                    WHERE source_module = "solicitudes"' . $taskCompanyFilter . '
+                    GROUP BY source_ref_id, task_identity
+                ) tareas_dedup
+                GROUP BY source_ref_id
+            ) tareas ON tareas.source_ref_id = sp.id';
+        }
         $sql = 'SELECT
                 sp.id,
                 sp.hc_number,
@@ -1235,15 +1285,7 @@ class SolicitudesReadParityService
                 FROM solicitud_crm_adjuntos
                 GROUP BY solicitud_id
             ) adjuntos ON adjuntos.solicitud_id = sp.id
-            LEFT JOIN (
-                SELECT source_ref_id,
-                       COUNT(*) AS tareas_total,
-                       SUM(CASE WHEN status IN ("pendiente", "en_progreso", "en_proceso") THEN 1 ELSE 0 END) AS tareas_pendientes,
-                       MIN(CASE WHEN status IN ("pendiente", "en_progreso", "en_proceso") THEN COALESCE(due_at, CONCAT(due_date, " 23:59:59")) END) AS proximo_vencimiento
-                FROM crm_tasks
-                WHERE source_module = "solicitudes"
-                GROUP BY source_ref_id
-            ) tareas ON tareas.source_ref_id = sp.id
+            ' . $taskJoin . '
             WHERE sp.procedimiento IS NOT NULL
               AND TRIM(sp.procedimiento) <> ""
               AND TRIM(sp.procedimiento) <> "SELECCIONE"';
@@ -1433,6 +1475,13 @@ class SolicitudesReadParityService
             $alerts[] = 'Scrapear o seleccionar derivacion';
         }
 
+        if (!empty($sla['stage_escalated'])) {
+            $stageLabel = trim((string) ($sla['stage_label'] ?? ''));
+            if ($stageLabel !== '') {
+                $alerts[] = $stageLabel;
+            }
+        }
+
         return [
             'prioridad' => $showPriority,
             'prioridad_origen' => $manualPriority !== '' ? 'manual' : 'automatico',
@@ -1445,6 +1494,10 @@ class SolicitudesReadParityService
             'sla_label' => $sla['label'],
             'sla_action' => $sla['action'],
             'sla_rule_key' => $sla['rule_key'],
+            'sla_stage_slug' => $sla['stage_slug'],
+            'sla_stage_label' => $sla['stage_label'],
+            'sla_stage_started_at' => $sla['stage_started_at'],
+            'sla_stage_escalated' => $sla['stage_escalated'],
             'derivacion_vigencia_status' => $sla['derivacion_status'],
             'derivacion_dias_restantes' => $sla['derivacion_days_remaining'],
             'alert_reprogramacion' => $alertReprogramacion,
@@ -1468,6 +1521,10 @@ class SolicitudesReadParityService
      *   label:string,
      *   action:string,
      *   rule_key:string,
+     *   stage_slug:string|null,
+     *   stage_label:string|null,
+     *   stage_started_at:string|null,
+     *   stage_escalated:bool,
      *   derivacion_status:string|null,
      *   derivacion_days_remaining:int|null
      * }
@@ -1511,6 +1568,18 @@ class SolicitudesReadParityService
             max(1, (int) ($rule['warning_hours'] ?? 24)),
             max(1, (int) ($rule['critical_hours'] ?? 6))
         );
+        $baseStatus = $status;
+
+        $stageSla = $this->resolveOperationalStageSla($row, $ruleKey, $now, $createdAt);
+        $stageEscalated = $this->slaSeverityRank((string) ($stageSla['status'] ?? 'sin_fecha')) > $this->slaSeverityRank($baseStatus);
+        if ($stageEscalated) {
+            $deadline = $stageSla['deadline'];
+            $hoursRemaining = $stageSla['hours_remaining'];
+            $status = (string) ($stageSla['status'] ?? $status);
+            $source = (string) ($stageSla['source'] ?? $source);
+            $label = (string) ($stageSla['label'] ?? $label);
+            $action = (string) ($stageSla['action'] ?? $action);
+        }
 
         if ($source === 'derivacion') {
             $derivacionStatus = $status === 'vencido'
@@ -1526,8 +1595,86 @@ class SolicitudesReadParityService
             'label' => $label,
             'action' => $action,
             'rule_key' => $ruleKey,
+            'stage_slug' => $stageSla['stage_slug'],
+            'stage_label' => $stageSla['stage_label'],
+            'stage_started_at' => $stageSla['stage_started_at'],
+            'stage_escalated' => $stageEscalated && !empty($stageSla['is_escalated']),
             'derivacion_status' => $derivacionStatus,
             'derivacion_days_remaining' => $derivacionDaysRemaining,
+        ];
+    }
+
+    /**
+     * @param array<string,mixed> $row
+     * @return array{
+     *   deadline:DateTimeImmutable|null,
+     *   hours_remaining:float|null,
+     *   status:string,
+     *   source:string,
+     *   label:string,
+     *   action:string,
+     *   stage_slug:string|null,
+     *   stage_label:string|null,
+     *   stage_started_at:string|null,
+     *   is_escalated:bool
+     * }
+     */
+    private function resolveOperationalStageSla(array $row, string $ruleKey, DateTimeImmutable $now, DateTimeImmutable $createdAt): array
+    {
+        $activeStageSlug = $this->resolveActiveChecklistStageSlug($row);
+        if ($activeStageSlug === null) {
+            return [
+                'deadline' => null,
+                'hours_remaining' => null,
+                'status' => 'sin_fecha',
+                'source' => 'sin_fecha',
+                'label' => '',
+                'action' => '',
+                'stage_slug' => null,
+                'stage_label' => null,
+                'stage_started_at' => null,
+                'is_escalated' => false,
+            ];
+        }
+
+        $rules = $this->operationalStageSlaRules();
+        $rule = $rules[$activeStageSlug] ?? null;
+        if (!is_array($rule)) {
+            return [
+                'deadline' => null,
+                'hours_remaining' => null,
+                'status' => 'sin_fecha',
+                'source' => 'sin_fecha',
+                'label' => '',
+                'action' => '',
+                'stage_slug' => $activeStageSlug,
+                'stage_label' => $this->stageBySlug($activeStageSlug)['label'] ?? $activeStageSlug,
+                'stage_started_at' => null,
+                'is_escalated' => false,
+            ];
+        }
+
+        $rule = $this->mergeStageRuleByCategory($rule, $ruleKey);
+        $stageStartedAt = $this->resolveActiveChecklistStageStartedAt($row, $activeStageSlug, $createdAt);
+        $deadline = $stageStartedAt->add(new DateInterval('PT' . max(1, (int) ($rule['hours'] ?? 48)) . 'H'));
+        [$status, $hoursRemaining] = $this->resolveSlaStatus(
+            $deadline,
+            $now,
+            max(1, (int) ($rule['warning_hours'] ?? 24)),
+            max(1, (int) ($rule['critical_hours'] ?? 6))
+        );
+
+        return [
+            'deadline' => $deadline,
+            'hours_remaining' => $hoursRemaining,
+            'status' => $status,
+            'source' => (string) ($rule['source'] ?? 'etapa'),
+            'label' => (string) ($rule['label'] ?? 'Etapa estancada'),
+            'action' => (string) ($rule['action'] ?? 'Destrabar la siguiente etapa'),
+            'stage_slug' => $activeStageSlug,
+            'stage_label' => $this->stageBySlug($activeStageSlug)['label'] ?? $activeStageSlug,
+            'stage_started_at' => $stageStartedAt->format(DateTimeImmutable::ATOM),
+            'is_escalated' => true,
         ];
     }
 
@@ -1554,6 +1701,90 @@ class SolicitudesReadParityService
         }
 
         return ['en_rango', $hoursRemaining];
+    }
+
+    private function slaSeverityRank(string $status): int
+    {
+        return match ($status) {
+            'vencido' => 4,
+            'critico' => 3,
+            'advertencia' => 2,
+            'en_rango' => 1,
+            default => 0,
+        };
+    }
+
+    /**
+     * @param array<string,mixed> $row
+     */
+    private function resolveActiveChecklistStageSlug(array $row): ?string
+    {
+        $progress = is_array($row['checklist_progress'] ?? null) ? $row['checklist_progress'] : [];
+        $nextSlug = $this->normalizeKanbanSlug((string) ($progress['next_slug'] ?? ''));
+        if ($nextSlug !== '') {
+            return $nextSlug;
+        }
+
+        $checklist = is_array($row['checklist'] ?? null) ? $row['checklist'] : [];
+        foreach ($checklist as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $slug = $this->normalizeKanbanSlug((string) ($item['slug'] ?? ''));
+            if ($slug === '') {
+                continue;
+            }
+
+            if (empty($item['completed'])) {
+                return $slug;
+            }
+        }
+
+        $kanbanSlug = $this->normalizeKanbanSlug((string) ($row['kanban_estado'] ?? $row['estado'] ?? ''));
+        if ($kanbanSlug !== '' && $this->stageBySlug($kanbanSlug) !== null) {
+            return $kanbanSlug;
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<string,mixed> $row
+     */
+    private function resolveActiveChecklistStageStartedAt(array $row, string $activeStageSlug, DateTimeImmutable $createdAt): DateTimeImmutable
+    {
+        $checklist = is_array($row['checklist'] ?? null) ? $row['checklist'] : [];
+        $activeIndex = null;
+        foreach ($checklist as $index => $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $slug = $this->normalizeKanbanSlug((string) ($item['slug'] ?? ''));
+            if ($slug === $activeStageSlug) {
+                $activeIndex = $index;
+                break;
+            }
+        }
+
+        if ($activeIndex === null) {
+            return $createdAt;
+        }
+
+        for ($i = $activeIndex - 1; $i >= 0; $i--) {
+            $item = $checklist[$i] ?? null;
+            if (!is_array($item) || empty($item['completed'])) {
+                continue;
+            }
+
+            $completedAt = $this->parseDate($item['completado_at'] ?? null);
+            if ($completedAt instanceof DateTimeImmutable) {
+                return $completedAt;
+            }
+        }
+
+        return $createdAt;
     }
 
     /**
@@ -1585,28 +1816,61 @@ class SolicitudesReadParityService
      */
     private function operationalSlaRules(): array
     {
-        $rules = self::DEFAULT_OPERATIONAL_SLA_RULES;
-        $options = $this->settingsOptions(['solicitudes_operational_sla_rules']);
-        $raw = trim((string) ($options['solicitudes_operational_sla_rules'] ?? ''));
-        if ($raw === '') {
-            return $rules;
+        return $this->slaSettings()->baseRules();
+    }
+
+    /**
+     * @return array<string,array<string,mixed>>
+     */
+    private function operationalStageSlaRules(): array
+    {
+        return $this->slaSettings()->stageRules();
+    }
+
+    /**
+     * @param array<string,mixed> $rule
+     * @return array<string,mixed>
+     */
+    private function mergeStageRuleByCategory(array $rule, string $ruleKey): array
+    {
+        $overrides = $rule['by_rule_key'] ?? null;
+        if (!is_array($overrides) || !isset($overrides[$ruleKey]) || !is_array($overrides[$ruleKey])) {
+            unset($rule['by_rule_key']);
+            return $rule;
         }
 
-        $decoded = json_decode($raw, true);
-        if (!is_array($decoded)) {
-            return $rules;
-        }
+        $rule = $this->mergeStageRuleRecursive($rule, $overrides[$ruleKey]);
+        unset($rule['by_rule_key']);
 
-        foreach ($decoded as $key => $config) {
-            $key = strtolower(trim((string) $key));
-            if ($key === '' || !is_array($config)) {
+        return $rule;
+    }
+
+    /**
+     * @param array<string,mixed> $base
+     * @param array<string,mixed> $override
+     * @return array<string,mixed>
+     */
+    private function mergeStageRuleRecursive(array $base, array $override): array
+    {
+        foreach ($override as $key => $value) {
+            if (is_array($value) && is_array($base[$key] ?? null)) {
+                $base[$key] = $this->mergeStageRuleRecursive($base[$key], $value);
                 continue;
             }
 
-            $rules[$key] = array_merge($rules[$key] ?? [], $config);
+            $base[$key] = $value;
         }
 
-        return $rules;
+        return $base;
+    }
+
+    private function slaSettings(): SolicitudesSlaSettingsService
+    {
+        if ($this->slaSettings === null) {
+            $this->slaSettings = new SolicitudesSlaSettingsService();
+        }
+
+        return $this->slaSettings;
     }
 
     /**
@@ -2167,22 +2431,41 @@ class SolicitudesReadParityService
             }
 
             $taskStatusExpr = in_array('status', $taskColumns, true)
-                ? 'status'
-                : 'NULL';
+                ? 'LOWER(COALESCE(status, ""))'
+                : '""';
             $taskDueExpr = in_array('due_at', $taskColumns, true) && in_array('due_date', $taskColumns, true)
                 ? 'COALESCE(due_at, CONCAT(due_date, " 23:59:59"))'
                 : (in_array('due_at', $taskColumns, true)
                     ? 'due_at'
                     : (in_array('due_date', $taskColumns, true) ? 'CONCAT(due_date, " 23:59:59")' : 'NULL'));
+            $taskChecklistSlugExpr = in_array('checklist_slug', $taskColumns, true)
+                ? 'NULLIF(checklist_slug, "")'
+                : (in_array('metadata', $taskColumns, true)
+                    ? 'NULLIF(JSON_UNQUOTE(JSON_EXTRACT(metadata, "$.checklist_slug")), "")'
+                    : 'NULL');
+            $taskIdentityExpr = in_array('task_key', $taskColumns, true)
+                ? 'COALESCE(' . $taskChecklistSlugExpr . ', NULLIF(task_key, ""), CONCAT("manual:", id))'
+                : 'COALESCE(' . $taskChecklistSlugExpr . ', CONCAT("manual:", id))';
 
             $taskJoin = 'LEFT JOIN (
                 SELECT source_ref_id,
                        COUNT(*) AS tareas_total,
-                       SUM(CASE WHEN ' . $taskStatusExpr . ' <> "completada" THEN 1 ELSE 0 END) AS tareas_pendientes,
-                       MIN(CASE WHEN ' . $taskStatusExpr . ' <> "completada" THEN ' . $taskDueExpr . ' END) AS proximo_vencimiento
-                FROM crm_tasks
-                WHERE source_module = "solicitudes"'
-                . $taskCompanyFilter . '
+                       SUM(CASE WHEN status_agg IN ("pendiente", "en_progreso", "en_proceso") THEN 1 ELSE 0 END) AS tareas_pendientes,
+                       MIN(CASE WHEN status_agg IN ("pendiente", "en_progreso", "en_proceso") THEN due_agg END) AS proximo_vencimiento
+                FROM (
+                    SELECT source_ref_id,
+                           ' . $taskIdentityExpr . ' AS task_identity,
+                           CASE
+                               WHEN SUM(CASE WHEN ' . $taskStatusExpr . ' IN ("pendiente", "en_progreso", "en_proceso") THEN 1 ELSE 0 END) > 0 THEN "pendiente"
+                               WHEN SUM(CASE WHEN ' . $taskStatusExpr . ' = "completada" THEN 1 ELSE 0 END) > 0 THEN "completada"
+                               ELSE MAX(' . $taskStatusExpr . ')
+                           END AS status_agg,
+                           MIN(CASE WHEN ' . $taskStatusExpr . ' IN ("pendiente", "en_progreso", "en_proceso") THEN ' . $taskDueExpr . ' END) AS due_agg
+                    FROM crm_tasks
+                    WHERE source_module = "solicitudes"'
+                    . $taskCompanyFilter . '
+                    GROUP BY source_ref_id, task_identity
+                ) tareas_dedup
                 GROUP BY source_ref_id
             ) tareas ON tareas.source_ref_id = sp.id';
         }
@@ -2268,10 +2551,15 @@ class SolicitudesReadParityService
             $row['doctor_avatar'] = $this->formatProfilePhoto($row['doctor_avatar'] ?? null);
             $row['crm_pipeline_stage'] = $this->normalizePipelineStage((string) ($row['crm_pipeline_stage'] ?? ''));
             $row['seguidores'] = $this->parseFollowers($row['crm_followers'] ?? null);
+            $row['_crm_detail_source'] = 'primary';
             unset($row['crm_followers']);
 
             return $row;
-        } catch (Throwable) {
+        } catch (Throwable $e) {
+            logger()->warning('solicitudes.crm.detail_fallback', [
+                'solicitud_id' => $solicitudId,
+                'error' => $e->getMessage(),
+            ]);
             return $this->queryCrmDetalleFallback($solicitudId);
         }
     }
@@ -2320,6 +2608,7 @@ class SolicitudesReadParityService
 
         $row = (array) $rows[0];
         return array_merge($row, [
+            '_crm_detail_source' => 'fallback',
             'crm_lead_id' => null,
             'crm_project_id' => null,
             'crm_pipeline_stage' => null,
@@ -2611,7 +2900,7 @@ class SolicitudesReadParityService
             return [];
         }
 
-        return array_map(function (object $row): array {
+        $items = array_map(function (object $row): array {
             $item = (array) $row;
             $metadata = $this->decodeTaskMetadata($item['metadata'] ?? null);
 
@@ -2635,6 +2924,8 @@ class SolicitudesReadParityService
 
             return $item;
         }, $rows);
+
+        return $this->deduplicateCrmTasks($items);
     }
 
     private function normalizeTaskStatus(string $status): string
@@ -2648,6 +2939,86 @@ class SolicitudesReadParityService
         }
 
         return $normalized;
+    }
+
+    /**
+     * @param array<int,array<string,mixed>> $tasks
+     * @return array<int,array<string,mixed>>
+     */
+    private function deduplicateCrmTasks(array $tasks): array
+    {
+        if ($tasks === []) {
+            return [];
+        }
+
+        $byKey = [];
+        foreach ($tasks as $task) {
+            $slug = trim((string) ($task['checklist_slug'] ?? ''));
+            $taskKey = trim((string) ($task['task_key'] ?? ''));
+            $identity = $slug !== ''
+                ? 'checklist:' . $slug
+                : ($taskKey !== '' ? 'task:' . $taskKey : 'manual:' . (string) ($task['id'] ?? uniqid('task_', true)));
+
+            $current = $byKey[$identity] ?? null;
+            if ($current === null || $this->crmTaskSortScore($task) > $this->crmTaskSortScore($current)) {
+                $byKey[$identity] = $task;
+            }
+        }
+
+        $items = array_values($byKey);
+        usort($items, function (array $a, array $b): int {
+            $statusA = (string) ($a['estado'] ?? '');
+            $statusB = (string) ($b['estado'] ?? '');
+            $pendingA = $statusA !== 'completada' ? 0 : 1;
+            $pendingB = $statusB !== 'completada' ? 0 : 1;
+            if ($pendingA !== $pendingB) {
+                return $pendingA <=> $pendingB;
+            }
+
+            return $this->crmTaskSortScore($b) <=> $this->crmTaskSortScore($a);
+        });
+
+        return $items;
+    }
+
+    /**
+     * @param array<string,mixed> $task
+     */
+    private function crmTaskSortScore(array $task): int
+    {
+        foreach (['completed_at', 'due_date', 'created_at'] as $field) {
+            $value = $this->parseDate($task[$field] ?? null);
+            if ($value instanceof DateTimeImmutable) {
+                return $value->getTimestamp() + (int) ($task['id'] ?? 0);
+            }
+        }
+
+        return (int) ($task['id'] ?? 0);
+    }
+
+    /**
+     * @param array<int,array<string,mixed>> $tasks
+     */
+    private function resolveNextTaskDueDate(array $tasks): ?string
+    {
+        $next = null;
+        foreach ($tasks as $task) {
+            if ((string) ($task['estado'] ?? '') === 'completada') {
+                continue;
+            }
+
+            $due = $task['due_date'] ?? $task['remind_at'] ?? null;
+            $date = $this->parseDate($due);
+            if (!$date instanceof DateTimeImmutable) {
+                continue;
+            }
+
+            if (!$next instanceof DateTimeImmutable || $date < $next) {
+                $next = $date;
+            }
+        }
+
+        return $next?->format('Y-m-d H:i:s');
     }
 
     /**
@@ -3008,6 +3379,25 @@ class SolicitudesReadParityService
         return 1;
     }
 
+    /**
+     * @param array<int,array<string,mixed>>|null $checklistRows
+     * @param array<int,array<string,mixed>>|null $taskRows
+     */
+    private function operationalFallbackState(int $solicitudId, ?array $checklistRows = null, ?array $taskRows = null): string
+    {
+        $rows = is_array($checklistRows) ? $checklistRows : $this->queryChecklistRows($solicitudId);
+        if ($rows !== []) {
+            return '';
+        }
+
+        $tasks = is_array($taskRows) ? $taskRows : $this->queryChecklistTaskRows($solicitudId);
+        if ($this->buildChecklistRowsFromTasks($tasks, $rows) !== []) {
+            return '';
+        }
+
+        return $this->legacyStateBySolicitud($solicitudId);
+    }
+
     private function legacyStateBySolicitud(int $solicitudId): string
     {
         try {
@@ -3041,6 +3431,16 @@ class SolicitudesReadParityService
         }
 
         return array_map(static fn(object $row): array => (array) $row, $rows);
+    }
+
+    /**
+     * @return array<int,array<string,mixed>>
+     */
+    private function queryChecklistTaskRows(int $solicitudId): array
+    {
+        $taskMap = $this->queryChecklistTaskMap([$solicitudId]);
+
+        return $taskMap[$solicitudId] ?? [];
     }
 
     /**

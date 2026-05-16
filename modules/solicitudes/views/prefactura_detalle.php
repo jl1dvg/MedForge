@@ -43,21 +43,6 @@ if ($fechaSolicitudRaw) {
     }
 }
 
-$semaforo = [
-        'color' => 'secondary',
-        'texto' => 'Sin datos',
-        'icon' => 'bi-hourglass-split',
-];
-if ($diasTranscurridos !== null) {
-    if ($diasTranscurridos <= 3) {
-        $semaforo = ['color' => 'success', 'texto' => 'Normal', 'icon' => 'bi-check-circle'];
-    } elseif ($diasTranscurridos <= 7) {
-        $semaforo = ['color' => 'warning', 'texto' => 'Pendiente', 'icon' => 'bi-exclamation-circle'];
-    } else {
-        $semaforo = ['color' => 'danger', 'texto' => 'Urgente', 'icon' => 'bi-exclamation-triangle'];
-    }
-}
-
 $vigenciaTexto = 'No disponible';
 $vigenciaBadge = null;
 $derivacionVencida = false;
@@ -186,15 +171,6 @@ $sigcenterDocSolicitud = $solicitud['pedido_cirugia_id'] ?? '';
 $sigcenterOrigenId = $solicitud['derivacion_pedido_id'] ?? '';
 $sigcenterLateralidad = $solicitud['lateralidad'] ?? ($solicitud['ojo'] ?? '');
 $sigcenterPrefacturaId = $solicitud['derivacion_prefactura'] ?? '';
-$sessionUsername = $_SESSION['username'] ?? '';
-$sessionPassword = $_SESSION['sigcenter_password'] ?? '';
-if ($sessionUsername === 'jl1dvg') {
-    $sigcenterUsername = 'jdevera';
-    $sigcenterPassword = '0925619736';
-} else {
-    $sigcenterUsername = $sessionUsername;
-    $sigcenterPassword = $sessionPassword;
-}
 ?>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
 
@@ -364,9 +340,7 @@ if ($sessionUsername === 'jl1dvg') {
              data-sigcenter-doc-solicitud="<?= htmlspecialchars((string)$sigcenterDocSolicitud, ENT_QUOTES, 'UTF-8') ?>"
              data-sigcenter-origen-id="<?= htmlspecialchars((string)$sigcenterOrigenId, ENT_QUOTES, 'UTF-8') ?>"
              data-sigcenter-prefactura-id="<?= htmlspecialchars((string)$sigcenterPrefacturaId, ENT_QUOTES, 'UTF-8') ?>"
-             data-sigcenter-lateralidad="<?= htmlspecialchars((string)$sigcenterLateralidad, ENT_QUOTES, 'UTF-8') ?>"
-             data-sigcenter-username="<?= htmlspecialchars((string)$sigcenterUsername, ENT_QUOTES, 'UTF-8') ?>"
-             data-sigcenter-password="<?= htmlspecialchars((string)$sigcenterPassword, ENT_QUOTES, 'UTF-8') ?>">
+             data-sigcenter-lateralidad="<?= htmlspecialchars((string)$sigcenterLateralidad, ENT_QUOTES, 'UTF-8') ?>">
             <div class="card-header bg-white">
                 <h6 class="card-title mb-0">
                     <i class="bi bi-calendar2-check prefactura-icon text-primary me-2"></i>
@@ -460,11 +434,13 @@ if ($sessionUsername === 'jl1dvg') {
                                 </div>
                             </div>
                             <div class="d-flex flex-wrap gap-2">
-                                <span class="badge prefactura-badge bg-<?= htmlspecialchars($semaforo['color']) ?> d-inline-flex align-items-center">
-                                    <i class="bi <?= htmlspecialchars($semaforo['icon']) ?> prefactura-icon me-2"
-                                       aria-label="Semáforo de solicitud"></i>
-                                    <?= htmlspecialchars($semaforo['texto']) ?>
-                                </span>
+                                <?php if (!empty($solicitud['form_id'])): ?>
+                                    <span class="badge prefactura-badge bg-light text-dark border d-inline-flex align-items-center">
+                                        <i class="bi bi-file-earmark-text prefactura-icon me-2"
+                                           aria-label="Formulario de solicitud"></i>
+                                        Form <?= htmlspecialchars((string)$solicitud['form_id'], ENT_QUOTES, 'UTF-8') ?>
+                                    </span>
+                                <?php endif; ?>
                                 <?php if ($vigenciaBadge): ?>
                                     <span class="badge prefactura-badge bg-<?= htmlspecialchars($vigenciaBadge['color']) ?> d-inline-flex align-items-center">
                                         <i class="bi <?= htmlspecialchars($vigenciaBadge['icon']) ?> prefactura-icon me-2"
@@ -596,7 +572,6 @@ if ($sessionUsername === 'jl1dvg') {
                                 </div>
                                 <small class="text-muted">
                                     <?= htmlspecialchars($consulta['observacion'] ?? ($solicitud['observacion'] ?? 'Sin observaciones'), ENT_QUOTES, 'UTF-8') ?>
-                                    <?php // REVIEW: no hay un campo explícito de observaciones de solicitud; se usa la observación disponible. ?>
                                 </small>
                             </div>
                         </div>
@@ -613,8 +588,6 @@ if ($sessionUsername === 'jl1dvg') {
                         </h6>
                     </div>
                     <div class="card-body d-flex flex-column gap-3">
-                        <?php // REVIEW: datos de paciente no están explicitados en las tabs solicitadas, se incluyen aquí. ?>
-
                         <div>
                             <div class="d-flex align-items-center mb-1">
                                 <i class="bi bi-gender-ambiguous prefactura-icon me-2" aria-label="Sexo"></i>

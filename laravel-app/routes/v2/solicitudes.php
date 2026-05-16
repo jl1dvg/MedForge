@@ -48,14 +48,17 @@ Route::post('/solicitudes/{id}/crm/adjuntos', [SolicitudesWriteController::class
 Route::post('/solicitudes/{id}/conciliacion-cirugia/confirmar', [SolicitudesWriteController::class, 'confirmarConciliacionCirugia'])->whereNumber('id');
 
 // Legacy-style API aliases
+Route::middleware('legacy.alias:php')->group(function (): void {
 Route::match(['GET', 'POST'], '/api/solicitudes/kanban_data.php', [SolicitudesReadController::class, 'kanbanData']);
 Route::post('/api/solicitudes/dashboard_data.php', [SolicitudesReadController::class, 'dashboardData']);
 Route::post('/api/solicitudes/actualizar_estado.php', [SolicitudesWriteController::class, 'actualizarEstado']);
 Route::post('/api/solicitudes/turnero_llamar.php', [SolicitudesWriteController::class, 'turneroLlamar']);
 Route::get('/api/solicitudes/estado.php', [SolicitudesWriteController::class, 'apiEstadoGet']);
 Route::post('/api/solicitudes/estado.php', [SolicitudesWriteController::class, 'apiEstadoPost']);
+});
 
 // Clean aliases
+Route::middleware('legacy.alias:clean')->group(function (): void {
 Route::match(['GET', 'POST'], '/api/solicitudes/kanban', [SolicitudesReadController::class, 'kanbanData']);
 Route::post('/api/solicitudes/dashboard', [SolicitudesReadController::class, 'dashboardData']);
 Route::get('/api/solicitudes/turnero', [SolicitudesReadController::class, 'turneroData']);
@@ -83,4 +86,5 @@ Route::post('/api/solicitudes/{id}/crm/tareas/estado', [SolicitudesWriteControll
 Route::post('/api/solicitudes/{id}/crm/bloqueo', [SolicitudesWriteController::class, 'crmRegistrarBloqueo'])->whereNumber('id');
 Route::post('/api/solicitudes/{id}/crm/adjuntos', [SolicitudesWriteController::class, 'crmSubirAdjunto'])->whereNumber('id');
 Route::post('/api/solicitudes/{id}/conciliacion-cirugia/confirmar', [SolicitudesWriteController::class, 'confirmarConciliacionCirugia'])->whereNumber('id');
+});
 });
