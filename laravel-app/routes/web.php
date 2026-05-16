@@ -13,6 +13,7 @@ use App\Modules\Codes\Http\Controllers\CodesWriteController;
 use App\Modules\Derivaciones\Http\Controllers\DerivacionesUiController;
 use App\Modules\Shared\Http\Controllers\FeedbackUiController;
 use App\Modules\Solicitudes\Http\Controllers\SolicitudesUiController;
+use App\Modules\Settings\Http\Controllers\SettingsUiController;
 use App\Modules\Shared\Http\Controllers\FeedbackWriteController;
 use App\Modules\Usuarios\Http\Controllers\RolesUiController;
 use App\Modules\Usuarios\Http\Controllers\UsuariosUiController;
@@ -128,6 +129,21 @@ Route::middleware(['app.auth', 'app.permission:administrativo,admin.roles.manage
     foreach (['/roles', '/v2/roles'] as $basePath) {
         $registerRolesWriteRoutes($basePath);
     }
+});
+
+Route::middleware(['app.auth', 'app.permission:administrativo,settings.manage,settings.view'])->group(function (): void {
+    Route::get('/settings', function (\Illuminate\Http\Request $request) {
+        $query = $request->query();
+        $target = '/v2/settings';
+        if ($query !== []) {
+            $target .= '?' . http_build_query($query);
+        }
+
+        return redirect($target);
+    });
+    Route::post('/settings', [SettingsUiController::class, 'save']);
+    Route::get('/v2/settings', [SettingsUiController::class, 'index']);
+    Route::post('/v2/settings', [SettingsUiController::class, 'save']);
 });
 
 Route::middleware(['legacy.auth', 'legacy.permission:administrativo,codes.view,codes.manage'])->group(function (): void {

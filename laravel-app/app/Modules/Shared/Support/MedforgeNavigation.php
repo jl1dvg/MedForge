@@ -445,8 +445,8 @@ class MedforgeNavigation
             ])
                 : null,
             $canAccessSettings
-                ? $link('Ajustes', '/settings', 'mdi mdi-cog-outline', [
-                'prefix' => ['/settings'],
+                ? $link('Ajustes', '/v2/settings', 'mdi mdi-cog-outline', [
+                'prefix' => ['/settings', '/v2/settings'],
             ])
                 : null,
             $canAccessSettings
@@ -505,7 +505,7 @@ class MedforgeNavigation
             ] : null,
             $canAccessSettings ? [
                 'label' => 'Ajustes',
-                'href' => '/settings',
+                'href' => '/v2/settings',
                 'icon' => 'mdi mdi-cog-outline',
             ] : null,
         ]));
@@ -513,7 +513,7 @@ class MedforgeNavigation
         $userMenuLinks = array_values(array_filter([
             $canAccessSettings ? [
                 'label' => 'Ajustes',
-                'href' => '/settings',
+                'href' => '/v2/settings',
                 'icon' => 'mdi mdi-cog-outline',
             ] : null,
             $canAccessUsers ? [

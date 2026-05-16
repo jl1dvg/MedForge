@@ -1,0 +1,499 @@
+@extends('layouts.medforge')
+
+@php
+    $sections = is_array($sections ?? null) ? $sections : [];
+    $activeSection = (string) ($activeSection ?? array_key_first($sections));
+    $baseRules = is_array($baseRules ?? null) ? $baseRules : [];
+    $stageRules = is_array($stageRules ?? null) ? $stageRules : [];
+    $categoryLabels = is_array($categoryLabels ?? null) ? $categoryLabels : [];
+    $stageLabels = is_array($stageLabels ?? null) ? $stageLabels : [];
+@endphp
+
+@push('styles')
+    <style>
+        .settings-sidenav .nav-link.active {
+            background: var(--bs-primary);
+            color: #fff;
+        }
+
+        .settings-section-card textarea.form-control {
+            min-height: 96px;
+        }
+
+        .settings-file-preview img {
+            max-height: 54px;
+            max-width: 180px;
+            object-fit: contain;
+        }
+
+        .sla-settings-table .form-control,
+        .sla-settings-table .form-select {
+            min-width: 120px;
+        }
+
+        .sla-settings-table textarea.form-control {
+            min-width: 220px;
+            min-height: 72px;
+        }
+
+        .sla-settings-override {
+            background: #f8fafc;
+        }
+    </style>
+@endpush
+
+@section('content')
+    <div class="content-header">
+        <div class="d-flex align-items-center">
+            <div class="me-auto">
+                <h3 class="page-title">Configuración</h3>
+                <nav>
+                    <ol class="breadcrumb mb-0">
+                        <li class="breadcrumb-item"><a href="/v2/dashboard"><i class="mdi mdi-home-outline"></i></a></li>
+                        <li class="breadcrumb-item active" aria-current="page">Ajustes</li>
+                    </ol>
+                </nav>
+            </div>
+        </div>
+    </div>
+
+    <section class="content">
+        @if(session('status'))
+            <div class="alert alert-success">{{ session('status') }}</div>
+        @endif
+        @if(session('error'))
+            <div class="alert alert-danger">{{ session('error') }}</div>
+        @endif
+
+        <div class="row">
+            <div class="col-xl-3 col-lg-4">
+                <div class="box">
+                    <div class="box-header with-border">
+                        <h4 class="box-title mb-0">Ajustes</h4>
+                    </div>
+                    <div class="box-body p-0">
+                        <ul class="nav nav-pills flex-column settings-sidenav">
+                            @foreach($sections as $sectionId => $section)
+                                <li class="nav-item">
+                                    <a href="/v2/settings?section={{ urlencode((string) $sectionId) }}"
+                                       class="nav-link d-flex align-items-center {{ $activeSection === (string) $sectionId ? 'active' : '' }}">
+                                        <i class="me-2 {{ (string) ($section['icon'] ?? 'fa-solid fa-circle') }}"></i>
+                                        <span>{{ (string) ($section['title'] ?? $sectionId) }}</span>
+                                    </a>
+                                </li>
+                            @endforeach
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-xl-9 col-lg-8">
+                @foreach($sections as $sectionId => $section)
+                    @continue($activeSection !== (string) $sectionId)
+
+                    <div class="box settings-section-card">
+                        <div class="box-header with-border">
+                            <h4 class="box-title mb-1">{{ (string) ($section['title'] ?? $sectionId) }}</h4>
+                            @if(!empty($section['description']))
+                                <p class="text-muted mb-0">{{ (string) $section['description'] }}</p>
+                            @endif
+                        </div>
+                        <div class="box-body">
+                            <form method="POST" action="/v2/settings" enctype="multipart/form-data">
+                                @csrf
+                                <input type="hidden" name="section" value="{{ (string) $sectionId }}">
+
+                                @foreach(($section['groups'] ?? []) as $group)
+                                    <div class="mb-4">
+                                        <h5 class="fw-600 mb-2">{{ (string) ($group['title'] ?? '') }}</h5>
+                                        @if(!empty($group['description']))
+                                            <p class="text-muted small mb-3">{{ (string) $group['description'] }}</p>
+                                        @endif
+
+                                        <div class="row">
+                                            @foreach(($group['fields'] ?? []) as $field)
+                                                @php
+                                                    $type = (string) ($field['type'] ?? 'text');
+                                                    $key = (string) ($field['key'] ?? '');
+                                                    $fieldId = $sectionId . '_' . (string) ($group['id'] ?? 'group') . '_' . $key;
+                                                    $displayValue = $field['display_value'] ?? '';
+                                                    $hasValue = !empty($field['has_value']);
+                                                    $required = !empty($field['required']);
+                                                    $columnClass = match ($type) {
+                                                        'textarea', 'billing_rules' => 'col-12',
+                                                        'color' => 'col-md-4 col-sm-6',
+                                                        'file', 'checkbox', 'checkbox_group' => 'col-md-6 col-sm-12',
+                                                        default => 'col-md-6 col-sm-12',
+                                                    };
+                                                @endphp
+
+                                                <div class="{{ $columnClass }}">
+                                                    <div class="mb-3">
+                                                        @if($type !== 'checkbox')
+                                                            <label for="{{ $fieldId }}" class="form-label fw-500">
+                                                                {{ (string) ($field['label'] ?? $key) }}
+                                                                @if($required)
+                                                                    <span class="text-danger">*</span>
+                                                                @endif
+                                                            </label>
+                                                        @endif
+
+                                                        @if($type === 'textarea')
+                                                            <textarea class="form-control" rows="4" name="{{ $key }}" id="{{ $fieldId }}" @required($required)>{{ (string) $displayValue }}</textarea>
+                                                        @elseif($type === 'select')
+                                                            <select class="form-select" name="{{ $key }}" id="{{ $fieldId }}" @required($required)>
+                                                                @foreach(($field['options'] ?? []) as $optionValue => $label)
+                                                                    <option value="{{ (string) $optionValue }}" @selected((string) $displayValue === (string) $optionValue)>{{ (string) $label }}</option>
+                                                                @endforeach
+                                                            </select>
+                                                        @elseif($type === 'file')
+                                                            @php $currentFile = is_string($displayValue) ? trim($displayValue) : ''; @endphp
+                                                            @if($currentFile !== '')
+                                                                <div class="settings-file-preview border rounded p-2 mb-2 bg-light">
+                                                                    @if(preg_match('/\.(png|jpe?g|webp|gif|svg)$/i', $currentFile))
+                                                                        <img src="{{ $currentFile }}" alt="{{ (string) ($field['label'] ?? $key) }}">
+                                                                    @endif
+                                                                    <div class="small text-muted mt-1">{{ $currentFile }}</div>
+                                                                </div>
+                                                            @endif
+                                                            <input type="hidden" name="{{ $key }}" value="{{ $currentFile }}">
+                                                            <input type="file" class="form-control" name="{{ $key }}_file" id="{{ $fieldId }}" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml">
+                                                        @elseif($type === 'checkbox')
+                                                            @php $isChecked = in_array($displayValue, ['1', 1, true, 'true'], true); @endphp
+                                                            <div class="form-check form-switch">
+                                                                <input class="form-check-input" type="checkbox" role="switch" name="{{ $key }}" id="{{ $fieldId }}" value="1" @checked($isChecked)>
+                                                                <label class="form-check-label fw-500" for="{{ $fieldId }}">
+                                                                    {{ (string) ($field['label'] ?? $key) }}
+                                                                </label>
+                                                            </div>
+                                                        @elseif($type === 'checkbox_group')
+                                                            @php
+                                                                $selectedValues = [];
+                                                                if (is_string($displayValue) && trim($displayValue) !== '') {
+                                                                    $decoded = json_decode($displayValue, true);
+                                                                    if (is_array($decoded)) {
+                                                                        $selectedValues = array_map('strval', $decoded);
+                                                                    }
+                                                                } elseif (is_array($displayValue)) {
+                                                                    $selectedValues = array_map('strval', $displayValue);
+                                                                }
+                                                            @endphp
+                                                            <label class="form-label fw-500 d-block">{{ (string) ($field['label'] ?? $key) }}</label>
+                                                            @foreach(($field['options'] ?? []) as $optionValue => $optionLabel)
+                                                                <div class="form-check">
+                                                                    <input class="form-check-input" type="checkbox" name="{{ $key }}[]" id="{{ $fieldId }}_{{ $optionValue }}" value="{{ (string) $optionValue }}" @checked(in_array((string) $optionValue, $selectedValues, true))>
+                                                                    <label class="form-check-label" for="{{ $fieldId }}_{{ $optionValue }}">{{ (string) $optionLabel }}</label>
+                                                                </div>
+                                                            @endforeach
+                                                        @elseif($type === 'billing_rules')
+                                                            @php
+                                                                $rulesValue = $displayValue === '' || $displayValue === null ? '[]' : $displayValue;
+                                                                $ruleType = (string) ($field['rule_type'] ?? 'code');
+                                                            @endphp
+                                                            <div class="billing-rules" data-rule-type="{{ $ruleType }}" data-initial-rules='@json(json_decode((string) $rulesValue, true) ?? [])' data-target="{{ $fieldId }}">
+                                                                <div class="table-responsive mb-3">
+                                                                    <table class="table table-sm align-middle mb-0">
+                                                                        <thead class="table-light">
+                                                                        <tr>
+                                                                            <th style="min-width: 120px;">Condición</th>
+                                                                            <th style="min-width: 120px;">Acción</th>
+                                                                            <th style="min-width: 120px;">Valor</th>
+                                                                            <th>Notas</th>
+                                                                            <th class="text-end" style="width: 60px;">&nbsp;</th>
+                                                                        </tr>
+                                                                        </thead>
+                                                                        <tbody class="billing-rules-body"></tbody>
+                                                                    </table>
+                                                                </div>
+                                                                <div class="d-flex justify-content-between align-items-center">
+                                                                    <p class="text-muted small mb-0">{{ (string) ($field['description'] ?? '') }}</p>
+                                                                    <button type="button" class="btn btn-outline-primary btn-sm billing-rules-add">
+                                                                        <i class="fa-solid fa-plus me-1"></i> Agregar regla
+                                                                    </button>
+                                                                </div>
+                                                                <textarea class="d-none" name="{{ $key }}" id="{{ $fieldId }}">{{ is_string($rulesValue) ? $rulesValue : json_encode($rulesValue, JSON_UNESCAPED_UNICODE) }}</textarea>
+                                                            </div>
+                                                        @elseif($type === 'solicitudes_sla')
+                                                            <div class="mt-1">
+                                                                <p class="text-muted small mb-3">
+                                                                    {{ (string) ($field['description'] ?? '') }}
+                                                                </p>
+
+                                                                <div class="box bg-light mb-3">
+                                                                    <div class="box-body table-responsive">
+                                                                        <table class="table table-striped align-middle sla-settings-table mb-0">
+                                                                            <thead class="bg-primary-light">
+                                                                            <tr>
+                                                                                <th>Categoría</th>
+                                                                                <th>Etiqueta</th>
+                                                                                <th>Acción</th>
+                                                                                <th>Fuente</th>
+                                                                                <th>Horas base</th>
+                                                                                <th>Advertencia</th>
+                                                                                <th>Crítico</th>
+                                                                                <th>Sin derivación</th>
+                                                                            </tr>
+                                                                            </thead>
+                                                                            <tbody>
+                                                                            @foreach($categoryLabels as $slaCategoryKey => $slaCategoryLabel)
+                                                                                @php $rule = is_array($baseRules[$slaCategoryKey] ?? null) ? $baseRules[$slaCategoryKey] : []; @endphp
+                                                                                <tr>
+                                                                                    <td><strong>{{ $slaCategoryLabel }}</strong></td>
+                                                                                    <td><input type="text" class="form-control" name="base_rules[{{ $slaCategoryKey }}][label]" value="{{ (string) ($rule['label'] ?? '') }}"></td>
+                                                                                    <td><textarea class="form-control" name="base_rules[{{ $slaCategoryKey }}][action]">{{ (string) ($rule['action'] ?? '') }}</textarea></td>
+                                                                                    <td><input type="text" class="form-control" name="base_rules[{{ $slaCategoryKey }}][source]" value="{{ (string) ($rule['source'] ?? '') }}"></td>
+                                                                                    <td><input type="number" min="1" class="form-control" name="base_rules[{{ $slaCategoryKey }}][hours]" value="{{ (string) ($rule['hours'] ?? '') }}" @disabled($slaCategoryKey === 'publico')></td>
+                                                                                    <td><input type="number" min="1" class="form-control" name="base_rules[{{ $slaCategoryKey }}][warning_hours]" value="{{ (string) ($rule['warning_hours'] ?? '') }}"></td>
+                                                                                    <td><input type="number" min="1" class="form-control" name="base_rules[{{ $slaCategoryKey }}][critical_hours]" value="{{ (string) ($rule['critical_hours'] ?? '') }}"></td>
+                                                                                    <td>
+                                                                                        @if($slaCategoryKey === 'publico')
+                                                                                            <input type="number" min="1" class="form-control" name="base_rules[{{ $slaCategoryKey }}][missing_derivacion_hours]" value="{{ (string) ($rule['missing_derivacion_hours'] ?? '') }}">
+                                                                                        @else
+                                                                                            <span class="text-muted">No aplica</span>
+                                                                                        @endif
+                                                                                    </td>
+                                                                                </tr>
+                                                                            @endforeach
+                                                                            </tbody>
+                                                                        </table>
+                                                                    </div>
+                                                                </div>
+
+                                                                <div class="box bg-light">
+                                                                    <div class="box-body table-responsive">
+                                                                        <table class="table table-striped align-middle sla-settings-table mb-0">
+                                                                            <thead class="bg-primary-light">
+                                                                            <tr>
+                                                                                <th>Etapa</th>
+                                                                                <th>Etiqueta</th>
+                                                                                <th>Acción</th>
+                                                                                <th>Fuente</th>
+                                                                                <th>Horas base</th>
+                                                                                <th>Advertencia</th>
+                                                                                <th>Crítico</th>
+                                                                            </tr>
+                                                                            </thead>
+                                                                            <tbody>
+                                                                            @foreach($stageLabels as $stageKey => $stageLabel)
+                                                                                @continue(in_array($stageKey, ['recibida', 'en-atencion', 'completado'], true))
+                                                                                @php
+                                                                                    $rule = is_array($stageRules[$stageKey] ?? null) ? $stageRules[$stageKey] : [];
+                                                                                    $overrides = is_array($rule['by_rule_key'] ?? null) ? $rule['by_rule_key'] : [];
+                                                                                @endphp
+                                                                                <tr>
+                                                                                    <td><strong>{{ $stageLabel }}</strong></td>
+                                                                                    <td><input type="text" class="form-control" name="stage_rules[{{ $stageKey }}][label]" value="{{ (string) ($rule['label'] ?? '') }}"></td>
+                                                                                    <td><textarea class="form-control" name="stage_rules[{{ $stageKey }}][action]">{{ (string) ($rule['action'] ?? '') }}</textarea></td>
+                                                                                    <td><input type="text" class="form-control" name="stage_rules[{{ $stageKey }}][source]" value="{{ (string) ($rule['source'] ?? '') }}"></td>
+                                                                                    <td><input type="number" min="1" class="form-control" name="stage_rules[{{ $stageKey }}][hours]" value="{{ (string) ($rule['hours'] ?? '') }}"></td>
+                                                                                    <td><input type="number" min="1" class="form-control" name="stage_rules[{{ $stageKey }}][warning_hours]" value="{{ (string) ($rule['warning_hours'] ?? '') }}"></td>
+                                                                                    <td><input type="number" min="1" class="form-control" name="stage_rules[{{ $stageKey }}][critical_hours]" value="{{ (string) ($rule['critical_hours'] ?? '') }}"></td>
+                                                                                </tr>
+
+                                                                                @foreach($categoryLabels as $categoryKey => $categoryLabel)
+                                                                                    @php $override = is_array($overrides[$categoryKey] ?? null) ? $overrides[$categoryKey] : []; @endphp
+                                                                                    @continue($override === [])
+                                                                                    <tr class="sla-settings-override">
+                                                                                        <td colspan="2"><span class="text-muted">Override para <strong>{{ $categoryLabel }}</strong></span></td>
+                                                                                        <td class="text-muted">Ajuste fino por categoría</td>
+                                                                                        <td class="text-muted">Categoría</td>
+                                                                                        <td><input type="number" min="1" class="form-control" name="stage_rules[{{ $stageKey }}][by_rule_key][{{ $categoryKey }}][hours]" value="{{ (string) ($override['hours'] ?? '') }}"></td>
+                                                                                        <td><input type="number" min="1" class="form-control" name="stage_rules[{{ $stageKey }}][by_rule_key][{{ $categoryKey }}][warning_hours]" value="{{ (string) ($override['warning_hours'] ?? '') }}"></td>
+                                                                                        <td><input type="number" min="1" class="form-control" name="stage_rules[{{ $stageKey }}][by_rule_key][{{ $categoryKey }}][critical_hours]" value="{{ (string) ($override['critical_hours'] ?? '') }}"></td>
+                                                                                    </tr>
+                                                                                @endforeach
+                                                                            @endforeach
+                                                                            </tbody>
+                                                                        </table>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        @else
+                                                            @php
+                                                                $valueAttribute = $type === 'password' ? '' : (string) $displayValue;
+                                                                $placeholder = $type === 'password' && $hasValue ? '••••••••' : '';
+                                                            @endphp
+                                                            <input type="{{ $type }}" class="form-control" name="{{ $key }}" id="{{ $fieldId }}" value="{{ $valueAttribute }}" placeholder="{{ $placeholder }}" @required($required)>
+                                                        @endif
+
+                                                        @if(!empty($field['help']))
+                                                            <p class="form-text text-muted mb-0">{{ (string) $field['help'] }}</p>
+                                                        @elseif($type === 'password' && $hasValue)
+                                                            <p class="form-text text-muted mb-0">Deja el campo vacío para mantener la contraseña actual.</p>
+                                                        @endif
+                                                    </div>
+                                                </div>
+                                            @endforeach
+                                        </div>
+                                    </div>
+                                @endforeach
+
+                                <div class="text-end">
+                                    <button type="submit" class="btn btn-primary">Guardar cambios</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                @endforeach
+            </div>
+        </div>
+    </section>
+@endsection
+
+@push('scripts')
+    <script>
+        (() => {
+            const ACTION_LABELS = { tarifa: 'Tarifa fija', descuento: 'Descuento (%)', exclusion: 'Exclusión' };
+            const AFFILIATION_OPTIONS = ['IESS', 'ISSFA', 'ISSPOL', 'MSP', 'PARTICULAR'];
+
+            function buildConditionInput(type, value) {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'd-flex flex-column gap-1';
+                if (type === 'age') {
+                    const minInput = document.createElement('input');
+                    minInput.type = 'number';
+                    minInput.className = 'form-control form-control-sm billing-rule-min';
+                    minInput.placeholder = 'Edad mínima';
+                    minInput.value = value?.min_age ?? '';
+                    const maxInput = document.createElement('input');
+                    maxInput.type = 'number';
+                    maxInput.className = 'form-control form-control-sm billing-rule-max';
+                    maxInput.placeholder = 'Edad máxima';
+                    maxInput.value = value?.max_age ?? '';
+                    wrapper.appendChild(minInput);
+                    wrapper.appendChild(maxInput);
+                    return wrapper;
+                }
+                if (type === 'affiliation') {
+                    const select = document.createElement('select');
+                    select.className = 'form-select form-select-sm billing-rule-condition';
+                    const emptyOption = document.createElement('option');
+                    emptyOption.value = '';
+                    emptyOption.textContent = 'Selecciona afiliación';
+                    select.appendChild(emptyOption);
+                    AFFILIATION_OPTIONS.forEach(function (opt) {
+                        const option = document.createElement('option');
+                        option.value = opt;
+                        option.textContent = opt;
+                        if (String(value ?? '').toUpperCase() === opt) option.selected = true;
+                        select.appendChild(option);
+                    });
+                    return select;
+                }
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.className = 'form-control form-control-sm billing-rule-condition';
+                input.placeholder = type === 'code' ? 'Ej: 12345' : 'Afiliación';
+                input.value = value ?? '';
+                return input;
+            }
+
+            function buildRow(ruleType, rule, onChange) {
+                const tr = document.createElement('tr');
+                tr.dataset.ruleId = rule.id || ('rule_' + Date.now() + '_' + Math.random().toString(16).slice(2));
+                const conditionTd = document.createElement('td');
+                conditionTd.appendChild(buildConditionInput(ruleType, ruleType === 'age' ? { min_age: rule.min_age ?? '', max_age: rule.max_age ?? '' } : (ruleType === 'affiliation' ? rule.affiliation ?? '' : rule.code ?? '')));
+                tr.appendChild(conditionTd);
+                const actionTd = document.createElement('td');
+                const select = document.createElement('select');
+                select.className = 'form-select form-select-sm billing-rule-action';
+                ['tarifa', 'descuento', 'exclusion'].forEach(function (action) {
+                    const option = document.createElement('option');
+                    option.value = action;
+                    option.textContent = ACTION_LABELS[action];
+                    if (rule.action === action) option.selected = true;
+                    select.appendChild(option);
+                });
+                actionTd.appendChild(select);
+                tr.appendChild(actionTd);
+                const valueTd = document.createElement('td');
+                const valueInput = document.createElement('input');
+                valueInput.type = 'number';
+                valueInput.step = '0.01';
+                valueInput.min = '0';
+                valueInput.className = 'form-control form-control-sm billing-rule-value';
+                valueInput.value = rule.value ?? '';
+                valueTd.appendChild(valueInput);
+                tr.appendChild(valueTd);
+                const notesTd = document.createElement('td');
+                const notes = document.createElement('textarea');
+                notes.className = 'form-control form-control-sm billing-rule-notes';
+                notes.rows = 1;
+                notes.value = rule.notes ?? '';
+                notesTd.appendChild(notes);
+                tr.appendChild(notesTd);
+                const deleteTd = document.createElement('td');
+                deleteTd.className = 'text-end';
+                const deleteBtn = document.createElement('button');
+                deleteBtn.type = 'button';
+                deleteBtn.className = 'btn btn-sm btn-outline-danger';
+                deleteBtn.innerHTML = '<i class="fa-solid fa-trash"></i>';
+                deleteTd.appendChild(deleteBtn);
+                tr.appendChild(deleteTd);
+
+                function toggleValueVisibility() {
+                    const shouldHide = select.value === 'exclusion';
+                    valueInput.disabled = shouldHide;
+                    valueInput.classList.toggle('d-none', shouldHide);
+                }
+
+                [select, valueInput, notes].forEach(el => {
+                    el.addEventListener('change', onChange);
+                    el.addEventListener('input', onChange);
+                });
+                tr.querySelectorAll('.billing-rule-condition, .billing-rule-min, .billing-rule-max').forEach(el => {
+                    el.addEventListener('change', onChange);
+                    el.addEventListener('input', onChange);
+                });
+                deleteBtn.addEventListener('click', function () {
+                    tr.remove();
+                    onChange();
+                });
+                select.addEventListener('change', toggleValueVisibility);
+                toggleValueVisibility();
+                return tr;
+            }
+
+            function collectRules(container) {
+                const ruleType = container.dataset.ruleType;
+                return Array.from(container.querySelectorAll('tbody tr')).map(function (row) {
+                    const action = row.querySelector('.billing-rule-action')?.value || 'tarifa';
+                    const value = row.querySelector('.billing-rule-value')?.value;
+                    const base = { id: row.dataset.ruleId, action, notes: row.querySelector('.billing-rule-notes')?.value || '' };
+                    if (action !== 'exclusion' && value !== undefined && value !== '') base.value = parseFloat(value);
+                    if (ruleType === 'code') base.code = row.querySelector('.billing-rule-condition')?.value || '';
+                    else if (ruleType === 'affiliation') base.affiliation = row.querySelector('.billing-rule-condition')?.value || '';
+                    else {
+                        const min = row.querySelector('.billing-rule-min')?.value;
+                        const max = row.querySelector('.billing-rule-max')?.value;
+                        base.min_age = min !== '' ? parseInt(min, 10) : null;
+                        base.max_age = max !== '' ? parseInt(max, 10) : null;
+                    }
+                    return base;
+                });
+            }
+
+            function syncRules(container) {
+                const textarea = document.getElementById(container.dataset.target);
+                if (textarea) textarea.value = JSON.stringify(collectRules(container));
+            }
+
+            document.querySelectorAll('.billing-rules').forEach(function (container) {
+                const tbody = container.querySelector('.billing-rules-body');
+                const ruleType = container.dataset.ruleType || 'code';
+                const initial = JSON.parse(container.dataset.initialRules || '[]');
+                const onChange = () => syncRules(container);
+                (Array.isArray(initial) ? initial : []).forEach(rule => tbody.appendChild(buildRow(ruleType, rule, onChange)));
+                container.querySelector('.billing-rules-add')?.addEventListener('click', function () {
+                    const defaults = { action: 'tarifa', value: '', notes: '' };
+                    if (ruleType === 'code') defaults.code = '';
+                    else if (ruleType === 'affiliation') defaults.affiliation = '';
+                    else { defaults.min_age = ''; defaults.max_age = ''; }
+                    tbody.appendChild(buildRow(ruleType, defaults, onChange));
+                    syncRules(container);
+                });
+                syncRules(container);
+            });
+        })();
+    </script>
+@endpush

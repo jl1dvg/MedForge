@@ -462,11 +462,10 @@ class SettingsHelper
                                 0,
                                 '0 desactiva el límite por columna.'
                             ),
-                            self::textareaField(
+                            self::solicitudesSlaField(
                                 'crm_pipeline_sla_rules',
-                                'SLA por etapa',
-                                'Define una regla por línea con el formato: Etapa | minutos | alerta (email/sms). Ej: Seguimiento | 1440 | email',
-                                'Se utiliza para disparar avisos cuando una tarjeta supere el tiempo configurado en la columna.'
+                                'SLA operativo de solicitudes',
+                                'Configura el SLA base por categoría y el escalamiento por etapa activa del checklist.'
                             ),
                         ],
                     ],
@@ -1839,6 +1838,9 @@ class SettingsHelper
         foreach ($sections as $section) {
             foreach ($section['groups'] as $group) {
                 foreach ($group['fields'] as $field) {
+                    if (in_array((string) ($field['type'] ?? ''), ['solicitudes_sla'], true)) {
+                        continue;
+                    }
                     $keys[] = $field['key'];
                 }
             }
@@ -1885,7 +1887,9 @@ class SettingsHelper
                     continue;
                 }
 
-                if ($field['type'] === 'file') {
+                if ($field['type'] === 'solicitudes_sla') {
+                    continue;
+                } elseif ($field['type'] === 'file') {
                     $value = is_string($raw) ? trim($raw) : '';
                 } elseif ($field['type'] === 'checkbox') {
                     $value = $raw ? '1' : '0';
@@ -2042,6 +2046,16 @@ class SettingsHelper
             'label' => $label,
             'description' => $description,
             'rule_type' => $ruleType,
+        ];
+    }
+
+    private static function solicitudesSlaField(string $key, string $label, string $description): array
+    {
+        return [
+            'type' => 'solicitudes_sla',
+            'key' => $key,
+            'label' => $label,
+            'description' => $description,
         ];
     }
 

@@ -245,8 +245,8 @@ return static function (array $context): array {
             ])
             : null,
         $canAccessSettings
-            ? $link('Ajustes', '/settings', 'mdi mdi-cog-outline', [
-                'prefix' => ['/settings'],
+            ? $link('Ajustes', '/v2/settings', 'mdi mdi-cog-outline', [
+                'prefix' => ['/settings', '/v2/settings'],
             ])
             : null,
         $canAccessSettings
@@ -303,7 +303,7 @@ return static function (array $context): array {
         $canAccessSettings
             ? [
                 'label' => 'Ajustes',
-                'href' => '/settings',
+                'href' => '/v2/settings',
                 'icon' => 'mdi mdi-cog-outline',
             ]
             : null,
@@ -313,7 +313,7 @@ return static function (array $context): array {
         $canAccessSettings
             ? [
                 'label' => 'Ajustes',
-                'href' => '/settings',
+                'href' => '/v2/settings',
                 'icon' => 'ti-settings',
             ]
             : null,
