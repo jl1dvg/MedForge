@@ -5,10 +5,10 @@ namespace App\Modules\Usuarios\Http\Controllers;
 use App\Modules\Shared\Support\LegacyCurrentUser;
 use App\Modules\Shared\Support\LegacyPermissionCatalog;
 use App\Modules\Shared\Support\LegacyPermissionResolver;
-use App\Modules\Shared\Support\LegacySessionAuth;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
@@ -16,7 +16,7 @@ class RolesUiController
 {
     public function index(Request $request): View|RedirectResponse
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return redirect('/auth/login?auth_required=1');
         }
 
@@ -48,7 +48,7 @@ class RolesUiController
 
     public function create(Request $request): View|RedirectResponse
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return redirect('/auth/login?auth_required=1');
         }
 
@@ -66,7 +66,7 @@ class RolesUiController
 
     public function store(Request $request): RedirectResponse
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return redirect('/auth/login?auth_required=1');
         }
 
@@ -95,7 +95,7 @@ class RolesUiController
 
     public function edit(Request $request, int $id): View|RedirectResponse
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return redirect('/auth/login?auth_required=1');
         }
 
@@ -118,7 +118,7 @@ class RolesUiController
 
     public function update(Request $request, int $id): RedirectResponse
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return redirect('/auth/login?auth_required=1');
         }
 
@@ -154,7 +154,7 @@ class RolesUiController
 
     public function destroy(Request $request, int $id): RedirectResponse
     {
-        if (!LegacySessionAuth::isAuthenticated($request)) {
+        if (!Auth::check()) {
             return redirect('/auth/login?auth_required=1');
         }
 
