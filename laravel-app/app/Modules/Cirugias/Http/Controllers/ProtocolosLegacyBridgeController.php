@@ -59,7 +59,6 @@ class ProtocolosLegacyBridgeController
             'mensajeExito' => $request->query('deleted') !== null ? 'Protocolo eliminado correctamente.' : ($request->query('saved') !== null ? 'Protocolo guardado correctamente.' : null),
             'mensajeError' => $request->query('error') !== null ? 'No se pudo completar la operación solicitada.' : null,
             'canManage' => $this->canAny($request, self::WRITE_PERMISSIONS),
-            'csrfToken' => $this->ensureCsrfToken(),
         ]);
     }
 
@@ -167,13 +166,6 @@ class ProtocolosLegacyBridgeController
 
         $this->bootstrapLegacyRuntime($request);
 
-        $token = (string) $request->input('csrf_token', '');
-        $sessionToken = isset($_SESSION['csrf_token']) && is_string($_SESSION['csrf_token']) ? $_SESSION['csrf_token'] : '';
-
-        if ($token === '' || $sessionToken === '' || !hash_equals($sessionToken, $token)) {
-            return redirect('/v2/protocolos?error=1');
-        }
-
         $id = trim((string) $request->input('id', ''));
         if ($id === '') {
             return redirect('/v2/protocolos?error=1');
@@ -256,15 +248,6 @@ class ProtocolosLegacyBridgeController
         return true;
     }
 
-    private function ensureCsrfToken(): string
-    {
-        if (!isset($_SESSION['csrf_token']) || !is_string($_SESSION['csrf_token']) || $_SESSION['csrf_token'] === '') {
-            $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-        }
-
-        return $_SESSION['csrf_token'];
-    }
-
     private function viewEditLegacy(Request $request, array $protocolo, array $context = []): View
     {
         return view('protocolos.edit', array_merge([
@@ -282,7 +265,6 @@ class ProtocolosLegacyBridgeController
             'duplicando' => $context['duplicando'] ?? false,
             'esNuevo' => $context['esNuevo'] ?? false,
             'duplicarId' => $context['duplicarId'] ?? null,
-            'csrfToken' => $this->ensureCsrfToken(),
         ], $context));
     }
 }

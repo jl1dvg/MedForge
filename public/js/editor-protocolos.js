@@ -356,7 +356,11 @@ $(function () {
         console.log('🚀 Enviando formulario por fetch...');
 
         fetch(form.action, {
-            method: 'POST', body: formData
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': (document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')) || ''
+            },
+            body: formData
         })
             .then(response => response.json())
             .then(data => {

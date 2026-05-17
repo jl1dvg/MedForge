@@ -22,12 +22,6 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->encryptCookies(except: ['PHPSESSID']);
-        $middleware->validateCsrfTokens(except: [
-            'protocolos/guardar',
-            'protocolos/eliminar',
-            'v2/protocolos/guardar',
-            'v2/protocolos/eliminar',
-        ]);
         $middleware->web(prepend: [LegacySessionBridge::class]);
         $middleware->api(prepend: [LegacySessionBridge::class]);
         $middleware->alias([

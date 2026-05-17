@@ -9,7 +9,6 @@
 /** @var array $procedimientosPorCategoria */
 /** @var string|null $mensajeExito */
 /** @var string|null $mensajeError */
-/** @var string $csrfToken */
 /** @var string $username */
 /** @var array $scripts */
 $canManage = $canManage ?? false;
@@ -161,8 +160,7 @@ $scripts = array_merge($scripts ?? [], [
                                                                     <form method="POST"
                                                                           action="/v2/protocolos/eliminar"
                                                                           onsubmit="return confirm('¿Estás seguro de que deseas eliminar este protocolo?');">
-                                                                        <input type="hidden" name="csrf_token"
-                                                                               value="<?= htmlspecialchars((string)($csrfToken ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+                                                                        @csrf
                                                                         <input type="hidden" name="id"
                                                                                value="<?= htmlspecialchars((string)($procedimientoId ?? ''), ENT_QUOTES, 'UTF-8') ?>">
                                                                         <button type="submit" class="dropdown-item text-danger">Eliminar</button>
