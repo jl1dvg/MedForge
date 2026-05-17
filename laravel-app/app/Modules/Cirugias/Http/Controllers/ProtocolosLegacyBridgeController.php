@@ -51,7 +51,7 @@ class ProtocolosLegacyBridgeController
         $this->bootstrapLegacyRuntime($request);
         $service = $this->makeLegacyService();
 
-        return response()->view('protocolos.index-legacy', [
+        return response()->view('protocolos.index', [
             'pageTitle' => 'Editor de Protocolos',
             'currentUser' => LegacyCurrentUser::resolve($request),
             'procedimientosPorCategoria' => $service->obtenerProcedimientosAgrupados(),
@@ -299,7 +299,7 @@ class ProtocolosLegacyBridgeController
 
     private function viewEditLegacy(Request $request, \Modules\EditorProtocolos\Services\ProtocoloTemplateService $service, array $protocolo, array $context = []): View
     {
-        return view('protocolos.edit-legacy', array_merge([
+        return view('protocolos.edit', array_merge([
             'pageTitle' => $context['pageTitle'] ?? 'Editor de protocolos',
             'currentUser' => LegacyCurrentUser::resolve($request),
             'protocolo' => $protocolo,
