@@ -304,9 +304,7 @@ $(function () {
     });
 
     window.actualizarInsumos = function () {
-        var insumosObject = {
-            equipos: [], anestesia: [], quirurgicos: []
-        };
+        var insumosObject = {};
         $('#insumosTable tbody tr').each(function () {
             // Handle both singular and array naming, and class selector
             var selectElem = $(this).find('select[name="categoria"], select[name="categoria[]"], select.categoria-select');
@@ -319,6 +317,9 @@ $(function () {
             const insumoNombre = $(this).find('select[name="nombre"] option:selected').text();
             const cantidad = $(this).find('td:eq(2)').text().trim();
             if (categoria && insumoId && insumoNombre && cantidad) {
+                if (!Array.isArray(insumosObject[categoria])) {
+                    insumosObject[categoria] = [];
+                }
                 insumosObject[categoria].push({
                     id: insumoId, nombre: insumoNombre, cantidad: parseInt(cantidad)
                 });
@@ -350,6 +351,34 @@ $(function () {
         if (operatorioInput) {
             operatorioInput.value = getOperatorioValue();
         }
+        const cirugia = (document.getElementById('cirugia')?.value || '').trim();
+        const membrete = (document.getElementById('membrete')?.value || '').trim();
+        const categoriaQX = (document.getElementById('categoriaQX')?.value || '').trim();
+        const horasRaw = (document.getElementById('horas')?.value || '').trim();
+        const imagenLink = (document.getElementById('imagen_link')?.value || '').trim();
+
+        if (!cirugia || !membrete || !categoriaQX) {
+            Swal.fire('Campos requeridos', 'Completa nombre corto, título y categoría antes de guardar.', 'warning');
+            return;
+        }
+        if (horasRaw && Number.isNaN(Number(horasRaw))) {
+            Swal.fire('Duración inválida', 'La duración estimada debe ser numérica.', 'warning');
+            return;
+        }
+        if (imagenLink) {
+            try {
+                new URL(imagenLink);
+            } catch (_) {
+                Swal.fire('URL inválida', 'El enlace de imagen no tiene un formato válido.', 'warning');
+                return;
+            }
+        }
+
+        const guardarBtn = document.getElementById('guardarProtocolo');
+        if (guardarBtn) {
+            guardarBtn.disabled = true;
+        }
+
         const form = document.getElementById('editarProtocoloForm');
         const formData = new FormData(form);
 
@@ -376,11 +405,17 @@ $(function () {
                     Swal.fire({
                         icon: 'error', title: 'Error', text: data.message, confirmButtonText: 'Ok'
                     });
+                    if (guardarBtn) {
+                        guardarBtn.disabled = false;
+                    }
                 }
             })
             .catch(error => {
                 console.error('💥 Error general en fetch:', error);
                 Swal.fire('Error', 'No se pudo actualizar el protocolo.', 'error');
+                if (guardarBtn) {
+                    guardarBtn.disabled = false;
+                }
             });
     });
 

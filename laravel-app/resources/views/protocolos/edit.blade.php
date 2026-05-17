@@ -190,5 +190,4 @@ $scripts = array_merge($scripts ?? [], [
     const staff = <?= json_encode($staff ?? [], JSON_UNESCAPED_UNICODE) ?>;
     const protocoloOperatorio = <?= json_encode((string)($protocolo['operatorio'] ?? ''), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
 </script>
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 @endsection
