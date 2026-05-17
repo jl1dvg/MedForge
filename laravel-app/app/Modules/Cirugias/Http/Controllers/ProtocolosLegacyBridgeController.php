@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Cirugias\Http\Controllers;
 
 use App\Modules\Cirugias\Services\ProtocolosTemplateWriteService;
+use App\Modules\Cirugias\Services\ProtocolosTemplateReadService;
 use App\Modules\Shared\Support\LegacyCurrentUser;
 use App\Modules\Shared\Support\LegacyPermissionResolver;
 use Illuminate\Http\JsonResponse;
@@ -33,6 +34,7 @@ class ProtocolosLegacyBridgeController
 
     private PDO $pdo;
     private ProtocolosTemplateWriteService $writeService;
+    private ProtocolosTemplateReadService $readService;
 
     public function __construct()
     {
@@ -40,6 +42,7 @@ class ProtocolosLegacyBridgeController
         $pdo = DB::connection()->getPdo();
         $this->pdo = $pdo;
         $this->writeService = new ProtocolosTemplateWriteService($pdo);
+        $this->readService = new ProtocolosTemplateReadService($pdo);
     }
 
     public function index(Request $request): Response
@@ -49,12 +52,10 @@ class ProtocolosLegacyBridgeController
         }
 
         $this->bootstrapLegacyRuntime($request);
-        $service = $this->makeLegacyService();
-
         return response()->view('protocolos.index', [
             'pageTitle' => 'Editor de Protocolos',
             'currentUser' => LegacyCurrentUser::resolve($request),
-            'procedimientosPorCategoria' => $service->obtenerProcedimientosAgrupados(),
+            'procedimientosPorCategoria' => $this->readService->obtenerProcedimientosAgrupados(),
             'mensajeExito' => $request->query('deleted') !== null ? 'Protocolo eliminado correctamente.' : ($request->query('saved') !== null ? 'Protocolo guardado correctamente.' : null),
             'mensajeError' => $request->query('error') !== null ? 'No se pudo completar la operación solicitada.' : null,
             'canManage' => $this->canAny($request, self::WRITE_PERMISSIONS),
@@ -69,11 +70,10 @@ class ProtocolosLegacyBridgeController
         }
 
         $this->bootstrapLegacyRuntime($request);
-        $service = $this->makeLegacyService();
         $categoria = trim((string) $request->query('categoria', ''));
-        $protocolo = $service->crearProtocoloVacio($categoria !== '' ? $categoria : null);
+        $protocolo = $this->readService->crearProtocoloVacio($categoria !== '' ? $categoria : null);
 
-        return $this->viewEditLegacy($request, $service, $protocolo, [
+        return $this->viewEditLegacy($request, $protocolo, [
             'pageTitle' => 'Nuevo protocolo',
             'esNuevo' => true,
         ]);
@@ -86,24 +86,23 @@ class ProtocolosLegacyBridgeController
         }
 
         $this->bootstrapLegacyRuntime($request);
-        $service = $this->makeLegacyService();
         $duplicarId = trim((string) $request->query('duplicar', ''));
         $id = trim((string) $request->query('id', ''));
 
         if ($duplicarId !== '') {
-            $original = $service->obtenerProtocoloPorId($duplicarId);
+            $original = $this->readService->obtenerProtocoloPorId($duplicarId);
             if (!$original) {
                 return redirect('/v2/protocolos?error=1');
             }
 
             $protocolo = $original;
             $protocolo['id'] = '';
-            $protocolo['codigos'] = $service->obtenerCodigosDeProcedimiento($duplicarId);
-            $protocolo['staff'] = $service->obtenerStaffDeProcedimiento($duplicarId);
-            $protocolo['insumos'] = $service->obtenerInsumosDeProtocolo($duplicarId);
-            $protocolo['medicamentos'] = $service->obtenerMedicamentosDeProtocolo($duplicarId);
+            $protocolo['codigos'] = $this->readService->obtenerCodigosDeProcedimiento($duplicarId);
+            $protocolo['staff'] = $this->readService->obtenerStaffDeProcedimiento($duplicarId);
+            $protocolo['insumos'] = $this->readService->obtenerInsumosDeProtocolo($duplicarId);
+            $protocolo['medicamentos'] = $this->readService->obtenerMedicamentosDeProtocolo($duplicarId);
 
-            return $this->viewEditLegacy($request, $service, $protocolo, [
+            return $this->viewEditLegacy($request, $protocolo, [
                 'pageTitle' => 'Duplicar protocolo',
                 'duplicando' => true,
                 'duplicarId' => $duplicarId,
@@ -114,17 +113,17 @@ class ProtocolosLegacyBridgeController
             return redirect('/v2/protocolos?error=1');
         }
 
-        $protocolo = $service->obtenerProtocoloPorId($id);
+        $protocolo = $this->readService->obtenerProtocoloPorId($id);
         if (!$protocolo) {
             return redirect('/v2/protocolos?error=1');
         }
 
-        $protocolo['codigos'] = $service->obtenerCodigosDeProcedimiento($id);
-        $protocolo['staff'] = $service->obtenerStaffDeProcedimiento($id);
-        $protocolo['insumos'] = $service->obtenerInsumosDeProtocolo($id);
-        $protocolo['medicamentos'] = $service->obtenerMedicamentosDeProtocolo($id);
+        $protocolo['codigos'] = $this->readService->obtenerCodigosDeProcedimiento($id);
+        $protocolo['staff'] = $this->readService->obtenerStaffDeProcedimiento($id);
+        $protocolo['insumos'] = $this->readService->obtenerInsumosDeProtocolo($id);
+        $protocolo['medicamentos'] = $this->readService->obtenerMedicamentosDeProtocolo($id);
 
-        return $this->viewEditLegacy($request, $service, $protocolo, [
+        return $this->viewEditLegacy($request, $protocolo, [
             'pageTitle' => 'Editar protocolo',
         ]);
     }
@@ -183,25 +182,6 @@ class ProtocolosLegacyBridgeController
         return $this->writeService->deleteProtocol($id)
             ? redirect('/v2/protocolos?deleted=1')
             : redirect('/v2/protocolos?error=1');
-    }
-
-    private function renderLegacy(Request $request, string $method): Response
-    {
-        $this->bootstrapLegacyRuntime($request);
-
-        try {
-            ob_start();
-            $this->makeLegacyController()->{$method}();
-            $output = ob_get_clean() ?: '';
-        } catch (Throwable $exception) {
-            if (ob_get_level() > 0) {
-                ob_end_clean();
-            }
-
-            return response('Error interno en protocolos.', 500);
-        }
-
-        return response($output);
     }
 
     private function bootstrapLegacyRuntime(Request $request): void
@@ -278,16 +258,6 @@ class ProtocolosLegacyBridgeController
         return true;
     }
 
-    private function makeLegacyController(): \Modules\EditorProtocolos\Controllers\EditorController
-    {
-        return new \Modules\EditorProtocolos\Controllers\EditorController($this->pdo);
-    }
-
-    private function makeLegacyService(): \Modules\EditorProtocolos\Services\ProtocoloTemplateService
-    {
-        return new \Modules\EditorProtocolos\Services\ProtocoloTemplateService($this->pdo);
-    }
-
     private function ensureCsrfToken(): string
     {
         if (!isset($_SESSION['csrf_token']) || !is_string($_SESSION['csrf_token']) || $_SESSION['csrf_token'] === '') {
@@ -297,15 +267,15 @@ class ProtocolosLegacyBridgeController
         return $_SESSION['csrf_token'];
     }
 
-    private function viewEditLegacy(Request $request, \Modules\EditorProtocolos\Services\ProtocoloTemplateService $service, array $protocolo, array $context = []): View
+    private function viewEditLegacy(Request $request, array $protocolo, array $context = []): View
     {
         return view('protocolos.edit', array_merge([
             'pageTitle' => $context['pageTitle'] ?? 'Editor de protocolos',
             'currentUser' => LegacyCurrentUser::resolve($request),
             'protocolo' => $protocolo,
             'medicamentos' => $protocolo['medicamentos'] ?? [],
-            'opcionesMedicamentos' => $service->obtenerOpcionesMedicamentos(),
-            'insumosDisponibles' => $service->obtenerInsumosDisponibles(),
+            'opcionesMedicamentos' => $this->readService->obtenerOpcionesMedicamentos(),
+            'insumosDisponibles' => $this->readService->obtenerInsumosDisponibles(),
             'insumosPaciente' => $protocolo['insumos'] ?? ['equipos' => [], 'quirurgicos' => [], 'anestesia' => []],
             'codigos' => $protocolo['codigos'] ?? [],
             'staff' => $protocolo['staff'] ?? [],
