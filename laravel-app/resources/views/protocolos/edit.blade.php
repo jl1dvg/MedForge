@@ -86,7 +86,7 @@ $scripts = array_merge($scripts ?? [], [
                                 </h4>
                                 <div id="collapseRequerido" class="accordion-collapse collapse" aria-labelledby="headingRequerido">
                                     <div class="accordion-body">
-                                        ('protocolos.secciones.requerido')
+                                        @include('protocolos.secciones.requerido')
                                     </div>
                                 </div>
                             </div>
@@ -101,7 +101,7 @@ $scripts = array_merge($scripts ?? [], [
                                 </h4>
                                 <div id="collapseStaff" class="accordion-collapse collapse" aria-labelledby="headingStaff">
                                     <div class="accordion-body">
-                                        ('protocolos.secciones.staff')
+                                        @include('protocolos.secciones.staff')
                                     </div>
                                 </div>
                             </div>
@@ -116,7 +116,7 @@ $scripts = array_merge($scripts ?? [], [
                                 </h4>
                                 <div id="collapseOperatorio" class="accordion-collapse collapse" aria-labelledby="headingOperatorio">
                                     <div class="accordion-body">
-                                        ('protocolos.secciones.operatorio')
+                                        @include('protocolos.secciones.operatorio')
                                     </div>
                                 </div>
                             </div>
@@ -131,7 +131,7 @@ $scripts = array_merge($scripts ?? [], [
                                 </h4>
                                 <div id="collapseEvolucion" class="accordion-collapse collapse" aria-labelledby="headingEvolucion">
                                     <div class="accordion-body">
-                                        ('protocolos.secciones.evolucion')
+                                        @include('protocolos.secciones.evolucion')
                                     </div>
                                 </div>
                             </div>
@@ -146,7 +146,7 @@ $scripts = array_merge($scripts ?? [], [
                                 </h4>
                                 <div id="collapseKardex" class="accordion-collapse collapse" aria-labelledby="headingKardex">
                                     <div class="accordion-body">
-                                        ('protocolos.secciones.kardex')
+                                        @include('protocolos.secciones.kardex')
                                     </div>
                                 </div>
                             </div>
@@ -161,7 +161,7 @@ $scripts = array_merge($scripts ?? [], [
                                 </h4>
                                 <div id="collapseInsumos" class="accordion-collapse collapse" aria-labelledby="headingInsumos">
                                     <div class="accordion-body">
-                                        ('protocolos.secciones.insumos')
+                                        @include('protocolos.secciones.insumos')
                                     </div>
                                 </div>
                             </div>
@@ -190,7 +190,6 @@ $scripts = array_merge($scripts ?? [], [
     const codigos = <?= json_encode($codigos ?? [], JSON_UNESCAPED_UNICODE) ?>;
     const staff = <?= json_encode($staff ?? [], JSON_UNESCAPED_UNICODE) ?>;
     const protocoloOperatorio = <?= json_encode((string)($protocolo['operatorio'] ?? ''), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
-    const listaInsumos = Object.values(insumosDisponibles || {}).flat();
 </script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 @endsection

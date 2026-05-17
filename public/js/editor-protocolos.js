@@ -245,9 +245,11 @@ $(function () {
         newRow.find('td:eq(2)').attr('contenteditable', 'true');
 
         // Hacer scroll hacia la nueva fila
-        $('html, body').animate({
-            scrollTop: newRow.offset().top - 100
-        }, 300);
+        if (newRow && newRow.length && newRow.offset()) {
+            $('html, body').animate({
+                scrollTop: newRow.offset().top - 100
+            }, 300);
+        }
         $('#insumosTable').editableTableWidget(); // Re-inicializa para nuevas celdas
         actualizarInsumos();
     }
