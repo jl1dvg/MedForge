@@ -11,6 +11,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\View\View;
 use Illuminate\Support\Facades\DB;
 use PDO;
 use Throwable;
@@ -47,25 +48,85 @@ class ProtocolosLegacyBridgeController
             return response('Acceso denegado', 403);
         }
 
-        return $this->renderLegacy($request, 'index');
+        $this->bootstrapLegacyRuntime($request);
+        $service = $this->makeLegacyService();
+
+        return response()->view('protocolos.index-legacy', [
+            'pageTitle' => 'Editor de Protocolos',
+            'currentUser' => LegacyCurrentUser::resolve($request),
+            'procedimientosPorCategoria' => $service->obtenerProcedimientosAgrupados(),
+            'mensajeExito' => $request->query('deleted') !== null ? 'Protocolo eliminado correctamente.' : ($request->query('saved') !== null ? 'Protocolo guardado correctamente.' : null),
+            'mensajeError' => $request->query('error') !== null ? 'No se pudo completar la operación solicitada.' : null,
+            'canManage' => $this->canAny($request, self::WRITE_PERMISSIONS),
+            'csrfToken' => $this->ensureCsrfToken(),
+        ]);
     }
 
-    public function create(Request $request): Response
+    public function create(Request $request): View|Response
     {
         if (!$this->canAny($request, self::WRITE_PERMISSIONS)) {
             return response('Acceso denegado', 403);
         }
 
-        return $this->renderLegacy($request, 'create');
+        $this->bootstrapLegacyRuntime($request);
+        $service = $this->makeLegacyService();
+        $categoria = trim((string) $request->query('categoria', ''));
+        $protocolo = $service->crearProtocoloVacio($categoria !== '' ? $categoria : null);
+
+        return $this->viewEditLegacy($request, $service, $protocolo, [
+            'pageTitle' => 'Nuevo protocolo',
+            'esNuevo' => true,
+        ]);
     }
 
-    public function edit(Request $request): Response
+    public function edit(Request $request): View|RedirectResponse|Response
     {
         if (!$this->canAny($request, self::WRITE_PERMISSIONS)) {
             return response('Acceso denegado', 403);
         }
 
-        return $this->renderLegacy($request, 'edit');
+        $this->bootstrapLegacyRuntime($request);
+        $service = $this->makeLegacyService();
+        $duplicarId = trim((string) $request->query('duplicar', ''));
+        $id = trim((string) $request->query('id', ''));
+
+        if ($duplicarId !== '') {
+            $original = $service->obtenerProtocoloPorId($duplicarId);
+            if (!$original) {
+                return redirect('/v2/protocolos?error=1');
+            }
+
+            $protocolo = $original;
+            $protocolo['id'] = '';
+            $protocolo['codigos'] = $service->obtenerCodigosDeProcedimiento($duplicarId);
+            $protocolo['staff'] = $service->obtenerStaffDeProcedimiento($duplicarId);
+            $protocolo['insumos'] = $service->obtenerInsumosDeProtocolo($duplicarId);
+            $protocolo['medicamentos'] = $service->obtenerMedicamentosDeProtocolo($duplicarId);
+
+            return $this->viewEditLegacy($request, $service, $protocolo, [
+                'pageTitle' => 'Duplicar protocolo',
+                'duplicando' => true,
+                'duplicarId' => $duplicarId,
+            ]);
+        }
+
+        if ($id === '') {
+            return redirect('/v2/protocolos?error=1');
+        }
+
+        $protocolo = $service->obtenerProtocoloPorId($id);
+        if (!$protocolo) {
+            return redirect('/v2/protocolos?error=1');
+        }
+
+        $protocolo['codigos'] = $service->obtenerCodigosDeProcedimiento($id);
+        $protocolo['staff'] = $service->obtenerStaffDeProcedimiento($id);
+        $protocolo['insumos'] = $service->obtenerInsumosDeProtocolo($id);
+        $protocolo['medicamentos'] = $service->obtenerMedicamentosDeProtocolo($id);
+
+        return $this->viewEditLegacy($request, $service, $protocolo, [
+            'pageTitle' => 'Editar protocolo',
+        ]);
     }
 
     public function store(Request $request): JsonResponse|Response
@@ -220,5 +281,40 @@ class ProtocolosLegacyBridgeController
     private function makeLegacyController(): \Modules\EditorProtocolos\Controllers\EditorController
     {
         return new \Modules\EditorProtocolos\Controllers\EditorController($this->pdo);
+    }
+
+    private function makeLegacyService(): \Modules\EditorProtocolos\Services\ProtocoloTemplateService
+    {
+        return new \Modules\EditorProtocolos\Services\ProtocoloTemplateService($this->pdo);
+    }
+
+    private function ensureCsrfToken(): string
+    {
+        if (!isset($_SESSION['csrf_token']) || !is_string($_SESSION['csrf_token']) || $_SESSION['csrf_token'] === '') {
+            $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+        }
+
+        return $_SESSION['csrf_token'];
+    }
+
+    private function viewEditLegacy(Request $request, \Modules\EditorProtocolos\Services\ProtocoloTemplateService $service, array $protocolo, array $context = []): View
+    {
+        return view('protocolos.edit-legacy', array_merge([
+            'pageTitle' => $context['pageTitle'] ?? 'Editor de protocolos',
+            'currentUser' => LegacyCurrentUser::resolve($request),
+            'protocolo' => $protocolo,
+            'medicamentos' => $protocolo['medicamentos'] ?? [],
+            'opcionesMedicamentos' => $service->obtenerOpcionesMedicamentos(),
+            'insumosDisponibles' => $service->obtenerInsumosDisponibles(),
+            'insumosPaciente' => $protocolo['insumos'] ?? ['equipos' => [], 'quirurgicos' => [], 'anestesia' => []],
+            'codigos' => $protocolo['codigos'] ?? [],
+            'staff' => $protocolo['staff'] ?? [],
+            'vias' => ['INTRAVENOSA', 'VIA INFILTRATIVA', 'SUBCONJUNTIVAL', 'TOPICA', 'INTRAVITREA'],
+            'responsables' => ['Asistente', 'Anestesiólogo', 'Cirujano Principal'],
+            'duplicando' => $context['duplicando'] ?? false,
+            'esNuevo' => $context['esNuevo'] ?? false,
+            'duplicarId' => $context['duplicarId'] ?? null,
+            'csrfToken' => $this->ensureCsrfToken(),
+        ], $context));
     }
 }
