@@ -1,6 +1,4 @@
 $(function () {
-    console.log('⚡ editar_protocolo script loaded');
-    console.log('jQuery version:', $.fn.jquery);
     "use strict";
 
     const operatorioEditor = document.getElementById('operatorio');
@@ -48,17 +46,6 @@ $(function () {
                 agregarFilaCodigo(c.nombre, c.lateralidad, c.selector);
             }
         });
-    }
-
-    // ---------- STAFF QUIRÚRGICO ----------
-    function cargarStaff() {
-        if (Array.isArray(staff)) {
-            staff.forEach((miembro, i) => {
-                if (typeof agregarFilaStaff === 'function') {
-                    agregarFilaStaff(miembro.funcion, miembro.trabajador, miembro.nombre, miembro.selector);
-                }
-            });
-        }
     }
 
     // Convert editor spans to placeholder string [[ID:...]]
@@ -156,7 +143,6 @@ $(function () {
             }
         });
         $('#medicamentosInput').val(JSON.stringify(medicamentosArray));
-        console.log("✅ JSON medicamentos:", medicamentosArray);
     }
 
     function cambiarColorFila() {
@@ -190,16 +176,13 @@ $(function () {
     if (initialInsumosJson) {
         try {
             var initialInsumos = JSON.parse(initialInsumosJson);
-            console.log('🔍 initialInsumos parsed:', initialInsumos);
             for (const cat in initialInsumos) {
-                console.log(`🔍 Cargando categoría "${cat}" con ${initialInsumos[cat].length} ítems`);
                 // Build category options
                 var categoriaOptions = '';
                 for (const c in insumosDisponibles) {
                     categoriaOptions += `<option value="${escapeHtml(c)}">${escapeHtml(c.replace('_', ' '))}</option>`;
                 }
                 initialInsumos[cat].forEach(function (item) {
-                    console.log('  ➕ Agregando item:', item);
                     // Build name options with selected item
                     var nombreOptions = '';
                     if (insumosDisponibles[cat]) {
@@ -214,8 +197,8 @@ $(function () {
                     // Set the category select value
                     var newRow = insumosTable.row(':last').nodes().to$();
                     newRow.find('select[name="categoria"]').val(cat).trigger('change');
+                    newRow.find('select[name="nombre"]').val(String(item.id ?? ''));
                     newRow.find('td:eq(2)').attr('contenteditable', 'true');
-                    console.log('  ✅ Fila agregada para categoría:', cat);
                 });
             }
         } catch (e) {
@@ -327,7 +310,6 @@ $(function () {
         });
         const json = JSON.stringify(insumosObject);
         $('#insumosInput').val(json);
-        console.log("✅ INSUMOS JSON ACTUALIZADO:", json);
     };
 
     if (operatorioEditor && operatorioInput) {
@@ -335,14 +317,12 @@ $(function () {
         operatorioEditor.innerHTML = renderOperatorioPlaceholders(rawOperatorio);
     }
 
-    // Cargar códigos y staff si existen
+    // Cargar códigos si existen
     cargarCodigos();
     reindexCodigos();
-    cargarStaff();
 
     // SUBMIT DEL FORMULARIO
     $('#guardarProtocolo').on('click', function (e) {
-        console.log('✅ #guardarProtocolo clicked');
         e.preventDefault();
         actualizarInsumos();
         actualizarMedicamentos();
@@ -359,10 +339,12 @@ $(function () {
 
         if (!cirugia || !membrete || !categoriaQX) {
             Swal.fire('Campos requeridos', 'Completa nombre corto, título y categoría antes de guardar.', 'warning');
+            abrirSeccionYEnfocar('collapseRequerido', !cirugia ? 'cirugia' : (!membrete ? 'membrete' : 'categoriaQX'));
             return;
         }
         if (horasRaw && Number.isNaN(Number(horasRaw))) {
             Swal.fire('Duración inválida', 'La duración estimada debe ser numérica.', 'warning');
+            abrirSeccionYEnfocar('collapseRequerido', 'horas');
             return;
         }
         if (imagenLink) {
@@ -370,6 +352,7 @@ $(function () {
                 new URL(imagenLink);
             } catch (_) {
                 Swal.fire('URL inválida', 'El enlace de imagen no tiene un formato válido.', 'warning');
+                abrirSeccionYEnfocar('collapseRequerido', 'imagen_link');
                 return;
             }
         }
@@ -382,8 +365,6 @@ $(function () {
         const form = document.getElementById('editarProtocoloForm');
         const formData = new FormData(form);
 
-        console.log('🚀 Enviando formulario por fetch...');
-
         fetch(form.action, {
             method: 'POST',
             headers: {
@@ -393,8 +374,6 @@ $(function () {
         })
             .then(response => response.json())
             .then(data => {
-                console.log('✅ JSON recibido:', data);
-
                 if (data.success) {
                     Swal.fire({
                         icon: 'success', title: 'Datos Actualizados!', text: data.message, confirmButtonText: 'Ok'
@@ -449,17 +428,17 @@ $(function () {
         reindexCodigos();
     });
 
-    // Permite agregar filas de staff quirúrgico dinámicamente
-    function agregarFilaStaff(funcion = '', trabajador = '', nombre = '', selector = '') {
-        const fila = `
-            <tr>
-                <td><input type="text" class="form-control" name="funciones[]" value="${escapeHtml(funcion)}"></td>
-                <td><input type="text" class="form-control" name="trabajadores[]" value="${escapeHtml(trabajador)}"></td>
-                <td><input type="text" class="form-control" name="nombres_staff[]" value="${escapeHtml(nombre)}"></td>
-                <td><input type="text" class="form-control" name="selectores_staff[]" value="${escapeHtml(selector)}"></td>
-                <td><button type="button" class="btn btn-danger remove-staff"><i class="fa fa-trash"></i></button></td>
-            </tr>
-        `;
-        $('#tablaStaff tbody').append(fila);
+    function abrirSeccionYEnfocar(sectionId, fieldId) {
+        const section = document.getElementById(sectionId);
+        if (section && window.bootstrap && bootstrap.Collapse) {
+            bootstrap.Collapse.getOrCreateInstance(section, {toggle: false}).show();
+        }
+
+        window.setTimeout(function () {
+            const field = document.getElementById(fieldId);
+            if (field && typeof field.focus === 'function') {
+                field.focus();
+            }
+        }, 200);
     }
 });

@@ -24,14 +24,6 @@
 /** @var bool $esNuevo */
 /** @var string|null $duplicarId */
 /** @var string $username */
-/** @var array $scripts */
-$scripts = array_merge($scripts ?? [], [
-    'assets/vendor_components/datatable/datatables.min.js',
-    'assets/vendor_components/tiny-editable/mindmup-editabletable.js',
-    'assets/vendor_components/tiny-editable/numeric-input-example.js',
-    'js/editor-protocolos.js',
-    'js/autocomplete-operatorio.js',
-]);
 ?>
 
 <div class="content-header">

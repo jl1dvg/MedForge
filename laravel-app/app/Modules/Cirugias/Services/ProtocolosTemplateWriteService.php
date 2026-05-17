@@ -166,14 +166,18 @@ class ProtocolosTemplateWriteService
                 continue;
             }
 
+            $workerSelector = trim((string) ($workers[$index] ?? ''));
+            if ($workerSelector === '') {
+                $workerSelector = '#select2-consultasubsecuente-trabajadorprotocolo-' . $index . '-doctor-container';
+            }
+
             $insert->execute([
                 $procedureId,
                 $function,
-                (string) ($workers[$index] ?? ''),
+                $workerSelector,
                 $name,
                 '#select2-consultasubsecuente-trabajadorprotocolo-' . $index . '-funcion-container',
             ]);
         }
     }
 }
-

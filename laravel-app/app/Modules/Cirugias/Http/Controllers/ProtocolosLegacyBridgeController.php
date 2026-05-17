@@ -212,7 +212,7 @@ class ProtocolosLegacyBridgeController
             $payload[$field] = isset($payload[$field]) ? trim((string) $payload[$field]) : '';
         }
 
-        $arrayFields = ['codigos', 'lateralidades', 'selectores_codigos', 'funciones', 'trabajadores', 'nombres_staff', 'selectores_staff'];
+        $arrayFields = ['codigos', 'lateralidades', 'selectores_codigos', 'funciones', 'trabajadores', 'nombres_staff'];
         foreach ($arrayFields as $field) {
             if (!isset($payload[$field]) || !is_array($payload[$field])) {
                 $payload[$field] = [];
