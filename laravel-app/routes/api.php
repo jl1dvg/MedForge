@@ -11,12 +11,16 @@ Route::prefix('v2')->group(function (): void {
     require __DIR__ . '/v2/pacientes.php';
     require __DIR__ . '/v2/agenda.php';
     require __DIR__ . '/v2/billing.php';
-    require __DIR__ . '/v2/cirugias.php';
+    Route::middleware('web')->group(function (): void {
+        require __DIR__ . '/v2/cirugias.php';
+    });
     require __DIR__ . '/v2/derivaciones.php';
     Route::middleware('web')->group(function (): void {
         require __DIR__ . '/v2/solicitudes.php';
     });
-    require __DIR__ . '/v2/examenes.php';
+    Route::middleware('web')->group(function (): void {
+        require __DIR__ . '/v2/examenes.php';
+    });
     require __DIR__ . '/v2/consultas.php';
     require __DIR__ . '/v2/crm.php';
     require __DIR__ . '/v2/codes.php';
