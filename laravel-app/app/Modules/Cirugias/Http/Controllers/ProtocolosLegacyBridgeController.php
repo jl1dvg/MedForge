@@ -186,8 +186,6 @@ class ProtocolosLegacyBridgeController
 
     private function bootstrapLegacyRuntime(Request $request): void
     {
-        require_once base_path('../bootstrap.php');
-
         $currentUser = LegacyCurrentUser::resolve($request);
         $permissions = LegacyPermissionResolver::resolve($request);
 
