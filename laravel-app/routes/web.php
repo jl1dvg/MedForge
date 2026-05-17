@@ -2,6 +2,7 @@
 
 use App\Modules\Dashboard\Http\Controllers\DashboardUiController;
 use App\Modules\Consultas\Http\Controllers\ConsultasUiController;
+use App\Modules\Cirugias\Http\Controllers\ProtocolosLegacyBridgeController;
 use App\Modules\Examenes\Http\Controllers\ExamenesUiController;
 use App\Modules\Examenes\Http\Controllers\ImagenesUiController;
 use App\Modules\Farmacia\Http\Controllers\FarmaciaUiController;
@@ -70,6 +71,19 @@ Route::middleware(['app.auth', 'app.permission:administrativo,examenes.view,exam
 Route::middleware(['app.auth', 'app.permission:administrativo,agenda.view,pacientes.view,solicitudes.view,examenes.view'])->group(function (): void {
     Route::get('/v2/consultas', [ConsultasUiController::class, 'edit']);
     Route::post('/v2/consultas', [ConsultasUiController::class, 'update']);
+});
+
+Route::middleware(['app.auth', 'app.permission:administrativo,protocolos.manage,protocolos.templates.view,protocolos.templates.manage'])->group(function (): void {
+    Route::get('/protocolos', [ProtocolosLegacyBridgeController::class, 'index']);
+    Route::get('/protocolos/crear', [ProtocolosLegacyBridgeController::class, 'create']);
+    Route::get('/protocolos/editar', [ProtocolosLegacyBridgeController::class, 'edit']);
+    Route::post('/protocolos/guardar', [ProtocolosLegacyBridgeController::class, 'store']);
+    Route::post('/protocolos/eliminar', [ProtocolosLegacyBridgeController::class, 'delete']);
+    Route::get('/v2/protocolos', [ProtocolosLegacyBridgeController::class, 'index']);
+    Route::get('/v2/protocolos/crear', [ProtocolosLegacyBridgeController::class, 'create']);
+    Route::get('/v2/protocolos/editar', [ProtocolosLegacyBridgeController::class, 'edit']);
+    Route::post('/v2/protocolos/guardar', [ProtocolosLegacyBridgeController::class, 'store']);
+    Route::post('/v2/protocolos/eliminar', [ProtocolosLegacyBridgeController::class, 'delete']);
 });
 
 Route::middleware(['app.auth', 'app.permission:administrativo,farmacia.view,insumos.view,insumos.manage'])->group(function (): void {
