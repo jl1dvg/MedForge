@@ -364,7 +364,7 @@ $(function () {
                     Swal.fire({
                         icon: 'success', title: 'Datos Actualizados!', text: data.message, confirmButtonText: 'Ok'
                     }).then(() => {
-                        window.location.href = '/protocolos?saved=1';
+                        window.location.href = '/v2/protocolos?saved=1';
                     });
                 } else {
                     Swal.fire({

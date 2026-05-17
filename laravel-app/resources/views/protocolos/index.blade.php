@@ -69,7 +69,7 @@ $scripts = array_merge($scripts ?? [], [
                     </div>
                     <?php if ($canManage): ?>
                         <div>
-                            <a href="/protocolos/crear" class="btn btn-primary">
+                            <a href="/v2/protocolos/crear" class="btn btn-primary">
                                 <i class="mdi mdi-plus-circle-outline me-5"></i> Nuevo Protocolo
                             </a>
                         </div>
@@ -95,7 +95,7 @@ $scripts = array_merge($scripts ?? [], [
                                         </div>
                                         <?php if ($canManage): ?>
                                             <div class="ms-3">
-                                                <a href="/protocolos/crear?categoria=<?= urlencode($categoria) ?>"
+                                                <a href="/v2/protocolos/crear?categoria=<?= urlencode($categoria) ?>"
                                                    class="btn btn-sm btn-outline-primary">
                                                     <i class="mdi mdi-plus-circle-outline me-5"></i> Nuevo protocolo en
                                                     esta categoría
@@ -123,7 +123,7 @@ $scripts = array_merge($scripts ?? [], [
                                                     </div>
                                                     <div class="d-flex flex-column flex-grow-1 fw-500">
                                                         <?php if ($canManage && $procedimientoId !== ''): ?>
-                                                            <a href="/protocolos/editar?id=<?= urlencode($procedimientoId) ?>"
+                                                            <a href="/v2/protocolos/editar?id=<?= urlencode($procedimientoId) ?>"
                                                                class="text-dark hover-primary mb-1 fs-16"
                                                                data-bs-toggle="tooltip"
                                                                title="<?= htmlspecialchars((string)($procedimiento['membrete'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
@@ -154,12 +154,12 @@ $scripts = array_merge($scripts ?? [], [
                                                             <div class="protocolo-actions-menu" role="menu">
                                                                 <?php if ($procedimientoId !== ''): ?>
                                                                     <a class="dropdown-item"
-                                                                       href="/protocolos/editar?id=<?= urlencode($procedimientoId) ?>">Editar</a>
+                                                                       href="/v2/protocolos/editar?id=<?= urlencode($procedimientoId) ?>">Editar</a>
                                                                     <a class="dropdown-item"
-                                                                       href="/protocolos/editar?duplicar=<?= urlencode($procedimientoId) ?>">Duplicar</a>
+                                                                       href="/v2/protocolos/editar?duplicar=<?= urlencode($procedimientoId) ?>">Duplicar</a>
                                                                     <div class="dropdown-divider"></div>
                                                                     <form method="POST"
-                                                                          action="/protocolos/eliminar"
+                                                                          action="/v2/protocolos/eliminar"
                                                                           onsubmit="return confirm('¿Estás seguro de que deseas eliminar este protocolo?');">
                                                                         <input type="hidden" name="csrf_token"
                                                                                value="<?= htmlspecialchars((string)($csrfToken ?? ''), ENT_QUOTES, 'UTF-8') ?>">

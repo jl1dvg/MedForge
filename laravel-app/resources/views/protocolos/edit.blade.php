@@ -43,7 +43,7 @@ $scripts = array_merge($scripts ?? [], [
                 <nav>
                     <ol class="breadcrumb">
                         <li class="breadcrumb-item"><a href="/"><i class="mdi mdi-home-outline"></i> Inicio</a></li>
-                        <li class="breadcrumb-item"><a href="/protocolos">Protocolos</a></li>
+                        <li class="breadcrumb-item"><a href="/v2/protocolos">Protocolos</a></li>
                         <li class="breadcrumb-item active" aria-current="page">
                             <?= htmlspecialchars((string)((($protocolo['membrete'] ?? '') !== '') ? $protocolo['membrete'] : 'Sin título'), ENT_QUOTES, 'UTF-8') ?>
                         </li>
@@ -67,7 +67,7 @@ $scripts = array_merge($scripts ?? [], [
                 <div class="box-header with-border">
                     <h4 class="box-title"><?= $esNuevo ? 'Configurar protocolo' : 'Editar protocolo' ?></h4>
                 </div>
-                <form id="editarProtocoloForm" action="/protocolos/guardar" method="POST" class="form">
+                <form id="editarProtocoloForm" action="/v2/protocolos/guardar" method="POST" class="form">
                     <input type="hidden" name="id" value="<?= htmlspecialchars((string)($protocolo['id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
                     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars((string)($csrfToken ?? ''), ENT_QUOTES, 'UTF-8') ?>">
                     <input type="hidden" name="insumos" id="insumosInput" value='<?= json_encode($insumosPaciente, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>'>
@@ -169,7 +169,7 @@ $scripts = array_merge($scripts ?? [], [
                     </div>
 
                     <div class="box-footer">
-                        <a href="/protocolos" class="btn btn-warning me-1">
+                        <a href="/v2/protocolos" class="btn btn-warning me-1">
                             <i class="ti-trash"></i> Cancelar
                         </a>
                         <button type="button" id="guardarProtocolo" class="btn btn-primary">

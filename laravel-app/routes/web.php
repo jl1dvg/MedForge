@@ -74,16 +74,40 @@ Route::middleware(['app.auth', 'app.permission:administrativo,agenda.view,pacien
 });
 
 Route::middleware(['app.auth', 'app.permission:administrativo,protocolos.manage,protocolos.templates.view,protocolos.templates.manage'])->group(function (): void {
-    Route::get('/protocolos', [ProtocolosLegacyBridgeController::class, 'index']);
-    Route::get('/protocolos/crear', [ProtocolosLegacyBridgeController::class, 'create']);
-    Route::get('/protocolos/editar', [ProtocolosLegacyBridgeController::class, 'edit']);
-    Route::post('/protocolos/guardar', [ProtocolosLegacyBridgeController::class, 'store']);
-    Route::post('/protocolos/eliminar', [ProtocolosLegacyBridgeController::class, 'delete']);
     Route::get('/v2/protocolos', [ProtocolosLegacyBridgeController::class, 'index']);
     Route::get('/v2/protocolos/crear', [ProtocolosLegacyBridgeController::class, 'create']);
     Route::get('/v2/protocolos/editar', [ProtocolosLegacyBridgeController::class, 'edit']);
     Route::post('/v2/protocolos/guardar', [ProtocolosLegacyBridgeController::class, 'store']);
     Route::post('/v2/protocolos/eliminar', [ProtocolosLegacyBridgeController::class, 'delete']);
+
+    Route::get('/protocolos', function (\Illuminate\Http\Request $request) {
+        $target = '/v2/protocolos';
+        $query = $request->getQueryString();
+        if (is_string($query) && $query !== '') {
+            $target .= '?' . $query;
+        }
+        return redirect($target, 302);
+    });
+    Route::get('/protocolos/crear', function (\Illuminate\Http\Request $request) {
+        $target = '/v2/protocolos/crear';
+        $query = $request->getQueryString();
+        if (is_string($query) && $query !== '') {
+            $target .= '?' . $query;
+        }
+        return redirect($target, 302);
+    });
+    Route::get('/protocolos/editar', function (\Illuminate\Http\Request $request) {
+        $target = '/v2/protocolos/editar';
+        $query = $request->getQueryString();
+        if (is_string($query) && $query !== '') {
+            $target .= '?' . $query;
+        }
+        return redirect($target, 302);
+    });
+
+    // 307 preserves method/body for transitional POST callers.
+    Route::post('/protocolos/guardar', static fn () => redirect('/v2/protocolos/guardar', 307));
+    Route::post('/protocolos/eliminar', static fn () => redirect('/v2/protocolos/eliminar', 307));
 });
 
 Route::middleware(['app.auth', 'app.permission:administrativo,farmacia.view,insumos.view,insumos.manage'])->group(function (): void {
