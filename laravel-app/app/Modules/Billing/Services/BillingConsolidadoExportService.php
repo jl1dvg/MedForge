@@ -2,6 +2,9 @@
 
 namespace App\Modules\Billing\Services;
 
+use App\Modules\Billing\Excel\IsspolicIndividualExcelBuilder;
+use App\Modules\Billing\Excel\IssfaIndividualExcelBuilder;
+use App\Modules\Billing\Excel\MspIndividualExcelBuilder;
 use App\Modules\Billing\Support\InformesHelper;
 use App\Modules\Reporting\Services\ConsultaReportDataService;
 use App\Modules\Reporting\Services\ReportService;
@@ -227,21 +230,10 @@ class BillingConsolidadoExportService
      */
     public function exportIndividualLegacyAdapter(string $grupo, string $formId): array
     {
-        $grupo = strtoupper(trim($grupo));
+        $grupo  = strtoupper(trim($grupo));
         $formId = trim($formId);
         if ($formId === '') {
             throw new \InvalidArgumentException('Form ID requerido para exportación individual.');
-        }
-
-        $generatorPath = match ($grupo) {
-            'ISSPOL' => base_path('../views/billing/generar_excel_isspol.php'),
-            'ISSFA' => base_path('../views/billing/generar_excel_issfa.php'),
-            'MSP' => base_path('../views/billing/descargar_excel.php'),
-            default => throw new \InvalidArgumentException('Grupo individual no soportado: ' . $grupo),
-        };
-
-        if (!is_file($generatorPath)) {
-            throw new \RuntimeException('No se encontró el generador individual de ' . $grupo . '.');
         }
 
         $datos = $this->billingService->obtenerDatos($formId);
@@ -249,36 +241,12 @@ class BillingConsolidadoExportService
             throw new \RuntimeException('No se encontraron datos para form_id ' . $formId . '.');
         }
 
-        $prevGet = $_GET;
-        $prevPdo = $GLOBALS['pdo'] ?? null;
-        $prevDatos = $GLOBALS['datos_facturacion'] ?? null;
-        $prevFormId = $GLOBALS['form_id_facturacion'] ?? null;
-        $prevSpreadsheet = $GLOBALS['spreadsheet'] ?? null;
-        $prevExportOnly = $GLOBALS['spreadsheet_export_only'] ?? null;
-
-        try {
-            $_GET['form_id'] = $formId;
-            $GLOBALS['pdo'] = $this->resolvePdo();
-            $GLOBALS['datos_facturacion'] = $datos;
-            $GLOBALS['form_id_facturacion'] = $formId;
-            $GLOBALS['spreadsheet'] = new Spreadsheet();
-            $GLOBALS['spreadsheet_export_only'] = true;
-
-            include $generatorPath;
-
-            $spreadsheet = $GLOBALS['spreadsheet'] ?? null;
-        } finally {
-            $_GET = $prevGet;
-            $GLOBALS['pdo'] = $prevPdo;
-            $GLOBALS['datos_facturacion'] = $prevDatos;
-            $GLOBALS['form_id_facturacion'] = $prevFormId;
-            $GLOBALS['spreadsheet'] = $prevSpreadsheet;
-            $GLOBALS['spreadsheet_export_only'] = $prevExportOnly;
-        }
-
-        if (!($spreadsheet instanceof Spreadsheet)) {
-            throw new \RuntimeException('No se pudo generar el Excel individual de ' . $grupo . '.');
-        }
+        $spreadsheet = match ($grupo) {
+            'ISSPOL' => (new IsspolicIndividualExcelBuilder($this->billingService))->build($datos, $formId),
+            'ISSFA'  => (new IssfaIndividualExcelBuilder($this->billingService))->build($datos, $formId),
+            'MSP'    => (new MspIndividualExcelBuilder())->build($datos),
+            default  => throw new \InvalidArgumentException('Grupo individual no soportado: ' . $grupo),
+        };
 
         $paciente = is_array($datos['paciente'] ?? null) ? $datos['paciente'] : [];
         $filename = trim(implode('_', array_filter([
@@ -292,8 +260,8 @@ class BillingConsolidadoExportService
         }
 
         return [
-            'filename' => $filename . '.xlsx',
-            'content' => $this->renderSpreadsheet($spreadsheet),
+            'filename'     => $filename . '.xlsx',
+            'content'      => $this->renderSpreadsheet($spreadsheet),
             'content_type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         ];
     }

@@ -1,7 +1,4 @@
-    @php
-        $empresaSeguroOptions = is_array($empresaSeguroOptions ?? null) ? $empresaSeguroOptions : [];
-    @endphp
-    <div class="row">
+<div class="row">
         <div class="col-12">
             <div class="box">
                 <div class="box-header bg-light d-flex justify-content-between align-items-center">
@@ -84,10 +81,22 @@
                             <input type="date" id="fFechaHasta" name="fecha_hasta" class="form-control form-control-sm">
                         </div>
                         <div class="col-md-2">
+                            <label for="fCategoria" class="form-label">Categoría</label>
+                            <select id="fCategoria" name="categoria" class="form-select form-select-sm">
+                                <option value="">Todas</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label for="fEmpresa" class="form-label">Empresa</label>
+                            <select id="fEmpresa" name="empresa_seguro" class="form-select form-select-sm">
+                                <option value="">Todas</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
                             <label for="fAfiliacion" class="form-label">Afiliación</label>
                             <select id="fAfiliacion" name="afiliacion" class="form-select form-select-sm" multiple
                                     aria-label="Selecciona una o varias afiliaciones">
-                                <option value="" disabled>Selecciona afiliaciones</option>
+                                <option value="" disabled>Todas</option>
                             </select>
                         </div>
                         <div class="col-md-2">
@@ -148,18 +157,6 @@
                             <input type="text" id="fProcedimiento" name="procedimiento"
                                    class="form-control form-control-sm"
                                    placeholder="Texto o código">
-                        </div>
-                        <div class="col-md-3">
-                            <label for="fEmpresaSeguro" class="form-label">Empresa aseguradora</label>
-                            <select id="fEmpresaSeguro" name="empresa_seguro" class="form-select form-select-sm">
-                                @foreach($empresaSeguroOptions as $option)
-                                    @php
-                                        $optionValue = trim((string) ($option['value'] ?? ''));
-                                        $optionLabel = trim((string) ($option['label'] ?? $optionValue));
-                                    @endphp
-                                    <option value="{{ $optionValue }}">{{ $optionLabel }}</option>
-                                @endforeach
-                            </select>
                         </div>
                         <div class="col-md-4 ms-auto text-end">
                             <button type="submit" class="btn btn-sm btn-primary me-2"><i class="mdi mdi-magnify"></i>

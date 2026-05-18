@@ -2,7 +2,8 @@
 
 namespace App\Modules\Billing\Http\Controllers;
 
-use App\Modules\Billing\Services\BillingWriteParityService;
+use App\Modules\Billing\Services\BillingPreviewService;
+use App\Modules\Billing\Services\BillingWriteService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -13,13 +14,13 @@ use PDO;
 
 class BillingWriteController
 {
-    private BillingWriteParityService $service;
+    private BillingWriteService $service;
 
     public function __construct()
     {
         /** @var PDO $pdo */
         $pdo = DB::connection()->getPdo();
-        $this->service = new BillingWriteParityService($pdo);
+        $this->service = new BillingWriteService(new BillingPreviewService($pdo));
     }
 
     public function crearDesdeNoFacturado(Request $request): JsonResponse|RedirectResponse

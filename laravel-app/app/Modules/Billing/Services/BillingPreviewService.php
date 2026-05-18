@@ -2,6 +2,7 @@
 
 namespace App\Modules\Billing\Services;
 
+use Illuminate\Support\Facades\Cache;
 use PDO;
 
 class BillingPreviewService
@@ -196,32 +197,7 @@ class BillingPreviewService
             ];
         }
 
-        $opts = [
-            "http" => [
-                "method" => "POST",
-                "header" => "Content-Type: application/json",
-                "content" => json_encode(["hcNumber" => $hcNumber, "form_id" => $formId])
-            ]
-        ];
-        $context = stream_context_create($opts);
-
-        $responseData = [];
-        try {
-            $result = @file_get_contents("https://asistentecive.consulmed.me/api/insumos/obtener.php", false, $context);
-            if ($result === false) {
-                throw new \RuntimeException('No se pudo contactar con el servicio de insumos.');
-            }
-
-            $decoded = json_decode($result, true);
-            if (json_last_error() !== JSON_ERROR_NONE || !is_array($decoded)) {
-                throw new \RuntimeException('Respuesta inválida del servicio de insumos.');
-            }
-
-            $responseData = $decoded;
-        } catch (\Throwable $e) {
-            error_log("❌ Error al obtener insumos para el preview: " . $e->getMessage());
-            $responseData = [];
-        }
+        $responseData = $this->fetchInsumosData($formId, $hcNumber);
 
         if (!empty($responseData['insumos'])) {
             $insumosDecodificados = $responseData['insumos'];
@@ -233,15 +209,21 @@ class BillingPreviewService
                 ];
             }
 
+            // Collect all IDs upfront for a single batch price lookup
+            $allItems = array_merge(
+                $insumosDecodificados['quirurgicos'] ?? [],
+                $insumosDecodificados['anestesia'] ?? [],
+                $insumosDecodificados['equipos'] ?? [],
+            );
+            $allIds = array_values(array_filter(array_map(fn($i) => (int)($i['id'] ?? 0), $allItems)));
+            $preciosBatch = $allIds ? $this->obtenerPreciosBatch($allIds, $afiliacion) : [];
+
             foreach (['quirurgicos', 'anestesia'] as $categoria) {
                 if (!empty($insumosDecodificados[$categoria])) {
                     foreach ($insumosDecodificados[$categoria] as $i) {
                         if (!empty($i['codigo'])) {
-                            $precio = $this->obtenerPrecioPorAfiliacion(
-                                $i['codigo'],
-                                $afiliacion,
-                                (int)($i['id'] ?? 0)
-                            ) ?? ($i['precio'] ?? 0);
+                            $id = (int)($i['id'] ?? 0);
+                            $precio = $preciosBatch[$id] ?? ($i['precio'] ?? 0);
 
                             $preview['insumos'][] = [
                                 'id' => $i['id'],
@@ -264,14 +246,11 @@ class BillingPreviewService
             if (!empty($insumosDecodificados['equipos'])) {
                 foreach ($insumosDecodificados['equipos'] as $equipo) {
                     if (!empty($equipo['codigo'])) {
-                        $precio = $this->obtenerPrecioPorAfiliacion(
-                            $equipo['codigo'],
-                            $afiliacion,
-                            (int)($equipo['id'] ?? 0)
-                        ) ?? ($equipo['precio'] ?? 0);
+                        $id = (int)($equipo['id'] ?? 0);
+                        $precio = $preciosBatch[$id] ?? ($equipo['precio'] ?? 0);
 
                         $preview['derechos'][] = [
-                            'id' => (int)$equipo['id'],
+                            'id' => $id,
                             'codigo' => $equipo['codigo'],
                             'detalle' => $equipo['nombre'],
                             'cantidad' => (int)$equipo['cantidad'],
@@ -529,45 +508,96 @@ class BillingPreviewService
         ];
     }
 
-    private function obtenerPrecioPorAfiliacion(string $codigo, string $afiliacion, ?int $id = null): ?float
+    /**
+     * @return array<string,mixed>
+     */
+    private function fetchInsumosData(string $formId, string $hcNumber): array
     {
-        $afiliacionUpper = strtoupper($afiliacion);
-        $iessVariants = [
-            'IESS',
-            'CONTRIBUYENTE VOLUNTARIO',
-            'CONYUGE',
-            'CONYUGE PENSIONISTA',
-            'SEGURO CAMPESINO',
-            'SEGURO CAMPESINO JUBILADO',
-            'SEGURO GENERAL',
-            'SEGURO GENERAL JUBILADO',
-            'SEGURO GENERAL POR MONTEPIO',
-            'SEGURO GENERAL TIEMPO PARCIAL',
-            'HIJOS DEPENDIENTES',
+        $cacheKey = "billing_preview_insumos_{$formId}";
+
+        $cached = Cache::get($cacheKey);
+        if ($cached !== null) {
+            return $cached;
+        }
+
+        $opts = [
+            "http" => [
+                "method"  => "POST",
+                "header"  => "Content-Type: application/json",
+                "content" => json_encode(["hcNumber" => $hcNumber, "form_id" => $formId]),
+                "timeout" => 8,
+            ],
+            "ssl" => [
+                "verify_peer"      => false,
+                "verify_peer_name" => false,
+            ],
         ];
 
-        if (in_array($afiliacionUpper, $iessVariants, true)) {
-            $campoPrecio = 'precio_iess';
-        } else {
-            $campoPrecio = match ($afiliacionUpper) {
-                'ISSPOL' => 'precio_isspol',
-                'ISSFA' => 'precio_issfa',
-                'MSP' => 'precio_msp',
-                default => 'precio_base',
-            };
+        try {
+            $result = @file_get_contents(
+                "https://asistentecive.consulmed.me/api/insumos/obtener.php",
+                false,
+                stream_context_create($opts)
+            );
+
+            if ($result === false) {
+                throw new \RuntimeException('No se pudo contactar con el servicio de insumos.');
+            }
+
+            $decoded = json_decode($result, true);
+            if (json_last_error() !== JSON_ERROR_NONE || !is_array($decoded)) {
+                throw new \RuntimeException('Respuesta inválida del servicio de insumos.');
+            }
+
+            Cache::put($cacheKey, $decoded, now()->addHours(2));
+            return $decoded;
+        } catch (\Throwable $e) {
+            error_log("❌ Error al obtener insumos para el preview: " . $e->getMessage());
+            return [];
+        }
+    }
+
+    private function campoPrecioPorAfiliacion(string $afiliacion): string
+    {
+        $iessVariants = [
+            'IESS', 'CONTRIBUYENTE VOLUNTARIO', 'CONYUGE', 'CONYUGE PENSIONISTA',
+            'SEGURO CAMPESINO', 'SEGURO CAMPESINO JUBILADO', 'SEGURO GENERAL',
+            'SEGURO GENERAL JUBILADO', 'SEGURO GENERAL POR MONTEPIO',
+            'SEGURO GENERAL TIEMPO PARCIAL', 'HIJOS DEPENDIENTES',
+        ];
+
+        if (in_array(strtoupper($afiliacion), $iessVariants, true)) {
+            return 'precio_iess';
         }
 
-        if ($id) {
-            $stmt = $this->db->prepare("SELECT {$campoPrecio} FROM insumos WHERE id = :id LIMIT 1");
-            $stmt->execute(['id' => $id]);
-        } else {
-            $stmt = $this->db->prepare("SELECT {$campoPrecio} FROM insumos WHERE codigo_isspol = :codigo OR codigo_issfa = :codigo OR codigo_iess = :codigo OR codigo_msp = :codigo LIMIT 1");
-            $stmt->execute(['codigo' => $codigo]);
+        return match (strtoupper($afiliacion)) {
+            'ISSPOL' => 'precio_isspol',
+            'ISSFA'  => 'precio_issfa',
+            'MSP'    => 'precio_msp',
+            default  => 'precio_base',
+        };
+    }
+
+    /**
+     * @param int[] $ids
+     * @return array<int, float>  id → precio
+     */
+    private function obtenerPreciosBatch(array $ids, string $afiliacion): array
+    {
+        if (empty($ids)) {
+            return [];
         }
 
-        $precio = $stmt->fetchColumn();
+        $campo = $this->campoPrecioPorAfiliacion($afiliacion);
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $stmt = $this->db->prepare("SELECT id, {$campo} AS precio FROM insumos WHERE id IN ({$placeholders})");
+        $stmt->execute($ids);
 
-        return $precio !== false ? (float) $precio : null;
+        $result = [];
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $result[(int)$row['id']] = (float)($row['precio'] ?? 0);
+        }
+        return $result;
     }
 
     /**

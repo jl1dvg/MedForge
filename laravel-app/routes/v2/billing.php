@@ -16,6 +16,7 @@ Route::middleware(['app.auth'])->group(function (): void {
         Route::get('/api/billing/no-facturados', [BillingReadController::class, 'noFacturados']);
         Route::get('/api/billing/afiliaciones', [BillingReadController::class, 'afiliaciones']);
         Route::get('/api/billing/sedes', [BillingReadController::class, 'sedes']);
+        Route::get('/api/billing/dimensiones', [BillingReadController::class, 'dimensiones']);
         Route::get('/api/billing/billing_preview.php', [BillingReadController::class, 'billingPreview']);
     });
 

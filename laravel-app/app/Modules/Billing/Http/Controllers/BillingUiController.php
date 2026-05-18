@@ -2,7 +2,7 @@
 
 namespace App\Modules\Billing\Http\Controllers;
 
-use Models\SettingsModel;
+use App\Modules\Shared\Support\SettingsOptionResolver;
 use App\Modules\Billing\Services\BillingConsolidadoExportService;
 use App\Modules\Billing\Services\BillingDashboardDataService;
 use App\Modules\Billing\Services\BillingInformeDataService;
@@ -44,8 +44,6 @@ class BillingUiController
     private BillingConsolidadoExportService $consolidadoExportService;
     /** @var array<string, array<string, mixed>> */
     private array $informeConfigs = [];
-    private ?SettingsModel $settingsModel = null;
-    private static bool $legacyAutoloaderRegistered = false;
 
     public function __construct()
     {
@@ -1430,18 +1428,17 @@ class BillingUiController
 
     private function hydrateBillingInformeConfigsFromSettings(): void
     {
-        $settings = $this->resolveSettingsModel();
-        if (!($settings instanceof SettingsModel)) {
-            return;
-        }
-
         $keys = [];
         foreach (array_keys($this->informeConfigs) as $slug) {
             $keys = array_merge($keys, $this->buildSettingKeysForInformeSlug($slug));
         }
 
+        if ($keys === []) {
+            return;
+        }
+
         try {
-            $options = $settings->getOptions($keys);
+            $options = (new SettingsOptionResolver())->getOptions($keys);
         } catch (\Throwable $exception) {
             Log::warning('No fue posible cargar ajustes de informes Billing v2', [
                 'error' => $exception->getMessage(),
@@ -1581,75 +1578,6 @@ class BillingUiController
         }
 
         return $buttons !== [] ? $buttons : $fallback;
-    }
-
-    private function ensureLegacyClassAutoloading(): void
-    {
-        if (self::$legacyAutoloaderRegistered) {
-            return;
-        }
-
-        $baseDir = base_path('..');
-        $prefixes = [
-            'Modules\\' => $baseDir . '/modules/',
-            'Core\\' => $baseDir . '/core/',
-            'Models\\' => $baseDir . '/models/',
-            'Helpers\\' => $baseDir . '/helpers/',
-            'Services\\' => $baseDir . '/controllers/Services/',
-        ];
-
-        spl_autoload_register(static function (string $class) use ($prefixes): void {
-            foreach ($prefixes as $prefix => $legacyBaseDir) {
-                $len = strlen($prefix);
-                if (strncmp($prefix, $class, $len) !== 0) {
-                    continue;
-                }
-
-                $relativeClass = substr($class, $len);
-                $relativePath = str_replace('\\', DIRECTORY_SEPARATOR, $relativeClass) . '.php';
-
-                $paths = [
-                    $legacyBaseDir . $relativePath,
-                    $legacyBaseDir . strtolower($relativePath),
-                ];
-
-                $segments = explode(DIRECTORY_SEPARATOR, $relativePath);
-                $fileName = array_pop($segments) ?: '';
-                $lowerDirPath = implode(DIRECTORY_SEPARATOR, array_map('strtolower', $segments));
-                if ($lowerDirPath !== '') {
-                    $paths[] = rtrim($legacyBaseDir . $lowerDirPath, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $fileName;
-                }
-
-                foreach ($paths as $path) {
-                    if (is_file($path)) {
-                        require_once $path;
-                        return;
-                    }
-                }
-            }
-        }, true, true);
-
-        self::$legacyAutoloaderRegistered = true;
-    }
-
-    private function resolveSettingsModel(): ?SettingsModel
-    {
-        $this->ensureLegacyClassAutoloading();
-
-        if ($this->settingsModel instanceof SettingsModel) {
-            return $this->settingsModel;
-        }
-
-        try {
-            $this->settingsModel = new SettingsModel(DB::connection()->getPdo());
-        } catch (RuntimeException $exception) {
-            Log::warning('No se pudo inicializar SettingsModel para Billing v2', [
-                'error' => $exception->getMessage(),
-            ]);
-            return null;
-        }
-
-        return $this->settingsModel;
     }
 
     private function normalizeReferralDashboardCategory(mixed $value): string

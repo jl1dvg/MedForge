@@ -4,8 +4,10 @@ namespace App\Modules\Billing\Http\Controllers;
 
 use App\Modules\Billing\Services\BillingPreviewService;
 use App\Modules\Billing\Services\NoFacturadosQueryService;
+use App\Modules\Shared\Support\AfiliacionDimensionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class BillingReadController
@@ -39,6 +41,7 @@ class BillingReadController
             'hc_number' => $request->query('hc_number'),
             'afiliacion' => $afiliaciones,
             'empresa_seguro' => $request->query('empresa_seguro'),
+            'categoria' => $request->query('categoria'),
             'sede' => $request->query('sede'),
             'estado_revision' => $request->query('estado_revision'),
             'informado' => $request->query('informado'),
@@ -64,6 +67,21 @@ class BillingReadController
     public function afiliaciones(): JsonResponse
     {
         return response()->json(array_values($this->service->listarAfiliaciones()));
+    }
+
+    public function dimensiones(): JsonResponse
+    {
+        $data = Cache::remember('billing.dimensiones', now()->addHour(), function () {
+            $pdo = DB::connection()->getPdo();
+            $service = new AfiliacionDimensionService($pdo);
+            return [
+                'categorias' => $service->getCategoriaOptions('Todas las categorías'),
+                'empresas'   => $service->getEmpresaOptions('Todas las empresas'),
+                'seguros'    => $service->getSeguroOptions('Todos los seguros'),
+            ];
+        });
+
+        return response()->json($data);
     }
 
     public function sedes(): JsonResponse

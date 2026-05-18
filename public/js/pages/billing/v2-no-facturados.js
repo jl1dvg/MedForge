@@ -16,6 +16,8 @@
         const btnGuardarVista = document.getElementById('btnGuardarVista');
         const btnBorrarVista = document.getElementById('btnBorrarVista');
         const afiliacionSelect = document.getElementById('fAfiliacion');
+        const categoriaSelect = document.getElementById('fCategoria');
+        const empresaSelect = document.getElementById('fEmpresa');
         const toggleImagenesAgrupar = document.getElementById('toggleImagenesAgrupar');
 
         const previewEndpoint = '/v2/api/billing/billing_preview.php';
@@ -170,28 +172,77 @@
             });
         };
 
-        const cargarAfiliaciones = async () => {
-            if (!afiliacionSelect) return;
-            afiliacionSelect.innerHTML = '<option value="" disabled>Cargando afiliaciones...</option>';
-            try {
-                const response = await fetch('/v2/api/billing/afiliaciones');
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                const json = await response.json();
-                const afiliaciones = Array.isArray(json?.data)
-                    ? json.data
-                    : (Array.isArray(json) ? json : []);
+        // Dimension data loaded once, cached in memory
+        let dimensionesData = null;
+
+        const poblarSelect = (select, options, defaultLabel = 'Todas') => {
+            if (!select) return;
+            const currentVal = select.value;
+            select.innerHTML = `<option value="">${defaultLabel}</option>`;
+            options.forEach(({ value, label }) => {
+                if (!value) return;
+                const opt = document.createElement('option');
+                opt.value = value;
+                opt.textContent = label || value;
+                if (opt.value === currentVal) opt.selected = true;
+                select.appendChild(opt);
+            });
+        };
+
+        const actualizarCascadaFiltros = () => {
+            if (!dimensionesData) return;
+            const catVal = categoriaSelect?.value || '';
+            const empVal = empresaSelect?.value || '';
+
+            // Filter empresas by selected categoria
+            const empresasFiltradas = catVal
+                ? dimensionesData.empresas.filter(e => !e.value || (e.categorias || []).includes(catVal))
+                : dimensionesData.empresas;
+            poblarSelect(empresaSelect, empresasFiltradas.filter(e => e.value));
+
+            // Filter seguros by selected empresa (and categoria)
+            const segurosFiltrados = dimensionesData.seguros.filter(s => {
+                if (!s.value) return false;
+                if (empVal && s.empresa_seguro !== empVal) return false;
+                if (catVal && s.categoria !== catVal) return false;
+                return true;
+            });
+            if (afiliacionSelect) {
+                const currentVals = Array.from(afiliacionSelect.selectedOptions).map(o => o.value);
                 afiliacionSelect.innerHTML = '';
-                afiliaciones.forEach((item) => {
-                    const option = document.createElement('option');
-                    option.value = item;
-                    option.textContent = item;
-                    afiliacionSelect.appendChild(option);
+                segurosFiltrados.forEach(({ value, label }) => {
+                    const opt = document.createElement('option');
+                    opt.value = value;
+                    opt.textContent = label || value;
+                    if (currentVals.includes(value)) opt.selected = true;
+                    afiliacionSelect.appendChild(opt);
                 });
-            } catch (error) {
-                console.error('No se pudieron cargar las afiliaciones', error);
-                afiliacionSelect.innerHTML = '<option value="" disabled>No se pudieron cargar afiliaciones</option>';
             }
         };
+
+        const cargarDimensiones = async () => {
+            try {
+                const response = await fetch('/v2/api/billing/dimensiones');
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                dimensionesData = await response.json();
+
+                poblarSelect(categoriaSelect, dimensionesData.categorias.filter(c => c.value));
+                actualizarCascadaFiltros();
+            } catch (error) {
+                console.error('No se pudieron cargar las dimensiones de afiliación', error);
+            }
+        };
+
+        categoriaSelect?.addEventListener('change', () => {
+            if (empresaSelect) empresaSelect.value = '';
+            if (afiliacionSelect) Array.from(afiliacionSelect.options).forEach(o => o.selected = false);
+            actualizarCascadaFiltros();
+        });
+
+        empresaSelect?.addEventListener('change', () => {
+            if (afiliacionSelect) Array.from(afiliacionSelect.options).forEach(o => o.selected = false);
+            actualizarCascadaFiltros();
+        });
 
         const renderVistasGuardadas = (selected = '') => {
             if (!vistasSelect) return;
@@ -697,7 +748,8 @@
         let tablas = {};
 
         const recargarTablas = () => {
-            Object.values(tablas).forEach((tabla) => tabla.ajax.reload());
+            // Only reload tabs that have already been initialized
+            Object.values(tablas).forEach((tabla) => tabla?.ajax?.reload());
         };
 
         const recalcularAnchoTablas = (delayMs = 0) => {
@@ -1190,16 +1242,29 @@
             return table;
         };
 
-        cargarAfiliaciones();
+        cargarDimensiones();
 
-        tablas = {
-            revisados: createTable('revisados'),
-            pendientes: createTable('pendientes'),
-            noQuirurgicos: createTable('noQuirurgicos'),
-            imagenes: createTable('imagenes'),
-            consultas: createTable('consultas'),
-            pni: createTable('pni'),
+        // Lazy tab loading: map tab button id → tableConfigs key
+        const tabKeyMap = {
+            tabRevisados: 'revisados',
+            tabPendientes: 'pendientes',
+            tabNoQuirurgicos: 'noQuirurgicos',
+            tabImagenes: 'imagenes',
+            tabConsultas: 'consultas',
+            tabPni: 'pni',
         };
+
+        const ensureTabLoaded = (tabId) => {
+            const key = tabKeyMap[tabId];
+            if (!key) return;
+            if (!tablas[key]) {
+                tablas[key] = createTable(key);
+            }
+        };
+
+        // Initialize only the active tab on page load
+        const activeTabBtn = document.querySelector('#noFacturadosTabs .nav-link.active');
+        if (activeTabBtn) ensureTabLoaded(activeTabBtn.id);
 
         toggleImagenesAgrupar?.addEventListener('change', (event) => {
             groupingState.imagenes = event.target.checked;
@@ -1217,7 +1282,8 @@
         });
 
         document.querySelectorAll('#noFacturadosTabs .nav-link').forEach((tab) => {
-            tab.addEventListener('shown.bs.tab', () => {
+            tab.addEventListener('shown.bs.tab', (event) => {
+                ensureTabLoaded(event.target.id);
                 updateSelectionInfo();
                 recalcularAnchoTablas(50);
             });

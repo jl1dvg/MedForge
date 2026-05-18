@@ -18,31 +18,21 @@ class NoFacturadosQueryService
         $this->afiliacionDimensions = new AfiliacionDimensionService($db);
     }
 
-    private function getBaseSql(): string
+    /**
+     * Arm types:
+     *   'quirurgico'    → only protocolo_data (pp arm never produces this tipo)
+     *   'no_quirurgico' → only procedimiento_proyectado (pd arm never produces this tipo)
+     *   ''              → full UNION ALL
+     */
+    private function getBaseSql(string $onlyTipo = ''): string
     {
         $dimensionPr = $this->afiliacionDimensions->buildContext('pa.afiliacion', 'acm_pr');
         $dimensionPd = $this->afiliacionDimensions->buildContext('pa.afiliacion', 'acm_pd');
 
-        $sql = <<<'SQL'
-            SELECT
-                base.form_id,
-                base.hc_number,
-                base.fecha,
-                base.afiliacion,
-                base.empresa_seguro_key,
-                base.empresa_seguro,
-                base.sede,
-                base.paciente,
-                base.procedimiento,
-                base.tipo,
-                base.estado_revision,
-                base.informado,
-                base.informe_actualizado,
-                base.estado_agenda,
-                base.valor_estimado,
-                base.consulta_fecha,
-                base.consulta_diagnosticos
-            FROM (
+        $includesPp = ($onlyTipo === '' || $onlyTipo === 'imagen' || $onlyTipo === 'pni' || $onlyTipo === 'consulta' || $onlyTipo === 'no_quirurgico');
+        $includesPd = ($onlyTipo === '' || $onlyTipo === 'imagen' || $onlyTipo === 'pni' || $onlyTipo === 'consulta' || $onlyTipo === 'quirurgico');
+
+        $ppArm = <<<'SQL'
                 SELECT
                     pr.form_id,
                     pr.hc_number,
@@ -73,11 +63,12 @@ class NoFacturadosQueryService
                 INNER JOIN patient_data pa ON pa.hc_number = pr.hc_number
                 %DIMENSION_PR_JOIN%
                 LEFT JOIN protocolo_data pd ON pd.form_id = pr.form_id
+                LEFT JOIN billing_main bm ON bm.form_id = pr.form_id
                 LEFT JOIN imagenes_informes ii ON ii.form_id = pr.form_id
                 LEFT JOIN consulta_data cd ON cd.hc_number = pr.hc_number AND cd.form_id = pr.form_id
                 WHERE pd.form_id IS NULL
+                  AND bm.form_id IS NULL
                   AND COALESCE(pr.sigcenter_present, 1) = 1
-                  AND NOT EXISTS (SELECT 1 FROM billing_main bm WHERE bm.form_id = pr.form_id)
                   AND (
                         UPPER(pr.procedimiento_proyectado) NOT LIKE 'SERVICIOS OFTALMOLOGICOS GENERALES%'
                         OR (
@@ -88,9 +79,9 @@ class NoFacturadosQueryService
                             OR UPPER(pr.procedimiento_proyectado) LIKE 'SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-007 - REVISION DE EXAMENES%'
                         )
                   )
+        SQL;
 
-                UNION ALL
-
+        $pdArm = <<<'SQL'
                 SELECT
                     pd.form_id,
                     pd.hc_number,
@@ -121,9 +112,10 @@ class NoFacturadosQueryService
                 INNER JOIN procedimiento_proyectado pr ON pr.form_id = pd.form_id AND COALESCE(pr.sigcenter_present, 1) = 1
                 INNER JOIN patient_data pa ON pa.hc_number = pd.hc_number
                 %DIMENSION_PD_JOIN%
+                LEFT JOIN billing_main bm ON bm.form_id = pd.form_id
                 LEFT JOIN imagenes_informes ii ON ii.form_id = pd.form_id
                 LEFT JOIN consulta_data cd ON cd.hc_number = pd.hc_number AND cd.form_id = pd.form_id
-                WHERE NOT EXISTS (SELECT 1 FROM billing_main bm WHERE bm.form_id = pd.form_id)
+                WHERE bm.form_id IS NULL
                   AND (
                         UPPER(TRIM(CONCAT(pd.membrete, ' ', pd.lateralidad))) NOT LIKE 'SERVICIOS OFTALMOLOGICOS GENERALES%'
                         OR (
@@ -134,8 +126,35 @@ class NoFacturadosQueryService
                             OR UPPER(TRIM(CONCAT(pd.membrete, ' ', pd.lateralidad))) LIKE 'SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-007 - REVISION DE EXAMENES%'
                         )
                   )
-            ) AS base
         SQL;
+
+        if ($includesPp && $includesPd) {
+            $inner = $ppArm . "\n                UNION ALL\n" . $pdArm;
+        } elseif ($includesPp) {
+            $inner = $ppArm;
+        } else {
+            $inner = $pdArm;
+        }
+
+        $sql = "SELECT
+                base.form_id,
+                base.hc_number,
+                base.fecha,
+                base.afiliacion,
+                base.empresa_seguro_key,
+                base.empresa_seguro,
+                base.sede,
+                base.paciente,
+                base.procedimiento,
+                base.tipo,
+                base.estado_revision,
+                base.informado,
+                base.informe_actualizado,
+                base.estado_agenda,
+                base.valor_estimado,
+                base.consulta_fecha,
+                base.consulta_diagnosticos
+            FROM (\n{$inner}\n            ) AS base";
 
         return str_replace([
             '%SEDE_EXPR%',
@@ -158,57 +177,47 @@ class NoFacturadosQueryService
 
     public function listar(array $filters, int $start, int $length): array
     {
-        $baseSql = $this->getBaseSql();
+        $tipoFilter = trim((string) ($filters['tipo'] ?? ''));
+        $baseSql = $this->getBaseSql($tipoFilter);
 
         $params = [];
         $where = $this->buildWhere($filters, $params);
 
-        $countSql = 'SELECT COUNT(*) FROM (' . $baseSql . ') AS base' . $where;
-        $stmtCount = $this->db->prepare($countSql);
-        foreach ($params as $key => $value) {
-            $stmtCount->bindValue($key, $value);
-        }
-        $stmtCount->execute();
-        $recordsFiltered = (int) $stmtCount->fetchColumn();
-
-        $totalSql = 'SELECT COUNT(*) FROM (' . $baseSql . ') AS total_base';
-        $totalCount = (int) $this->db->query($totalSql)->fetchColumn();
-
-        $summarySql = 'SELECT base.tipo, COUNT(*) AS cantidad, SUM(base.valor_estimado) AS total_valor FROM (' . $baseSql . ') AS base' . $where . ' GROUP BY base.tipo';
-        $stmtSummary = $this->db->prepare($summarySql);
-        foreach ($params as $key => $value) {
-            $stmtSummary->bindValue($key, $value);
-        }
-        $stmtSummary->execute();
-        $summaryRows = $stmtSummary->fetchAll(PDO::FETCH_ASSOC);
-
-        $pniSummary = [
-            'realizadas' => 0,
-            'canceladas' => 0,
-            'no_realizadas' => 0,
-        ];
-
+        // Single query: filtered count + per-tipo summary + pni breakdown
         $pniRealizadaSql = '(' . $this->pniHasConsultaUtilSql('base') . ' AND ' . $this->pniEncounterAttendedSql('base') . ')';
         $pniCanceladaSql = $this->pniEncounterCancelledSql('base');
-        $pniWhere = $where === ''
-            ? " WHERE base.tipo = 'pni'"
-            : $where . " AND base.tipo = 'pni'";
-        $pniSummarySql = 'SELECT
-                SUM(CASE WHEN ' . $pniRealizadaSql . ' THEN 1 ELSE 0 END) AS realizadas,
-                SUM(CASE WHEN NOT ' . $pniRealizadaSql . ' AND (' . $pniCanceladaSql . ') THEN 1 ELSE 0 END) AS canceladas,
-                SUM(CASE WHEN NOT ' . $pniRealizadaSql . ' AND NOT (' . $pniCanceladaSql . ') THEN 1 ELSE 0 END) AS no_realizadas
-            FROM (' . $baseSql . ') AS base' . $pniWhere;
-        $stmtPniSummary = $this->db->prepare($pniSummarySql);
+        $aggregateSql = 'SELECT
+                base.tipo,
+                COUNT(*) AS cantidad,
+                SUM(base.valor_estimado) AS total_valor,
+                SUM(CASE WHEN base.tipo = \'pni\' AND ' . $pniRealizadaSql . ' THEN 1 ELSE 0 END) AS pni_realizadas,
+                SUM(CASE WHEN base.tipo = \'pni\' AND NOT ' . $pniRealizadaSql . ' AND (' . $pniCanceladaSql . ') THEN 1 ELSE 0 END) AS pni_canceladas,
+                SUM(CASE WHEN base.tipo = \'pni\' AND NOT ' . $pniRealizadaSql . ' AND NOT (' . $pniCanceladaSql . ') THEN 1 ELSE 0 END) AS pni_no_realizadas
+            FROM (' . $baseSql . ') AS base' . $where . ' GROUP BY base.tipo';
+        $stmtAggregate = $this->db->prepare($aggregateSql);
         foreach ($params as $key => $value) {
-            $stmtPniSummary->bindValue($key, $value);
+            $stmtAggregate->bindValue($key, $value);
         }
-        $stmtPniSummary->execute();
-        $pniSummaryRow = $stmtPniSummary->fetch(PDO::FETCH_ASSOC) ?: [];
-        $pniSummary = [
-            'realizadas' => (int) ($pniSummaryRow['realizadas'] ?? 0),
-            'canceladas' => (int) ($pniSummaryRow['canceladas'] ?? 0),
-            'no_realizadas' => (int) ($pniSummaryRow['no_realizadas'] ?? 0),
-        ];
+        $stmtAggregate->execute();
+        $aggregateRows = $stmtAggregate->fetchAll(PDO::FETCH_ASSOC);
+
+        $recordsFiltered = 0;
+        $summaryRows = [];
+        $pniSummary = ['realizadas' => 0, 'canceladas' => 0, 'no_realizadas' => 0];
+        foreach ($aggregateRows as $row) {
+            $cantidad = (int) ($row['cantidad'] ?? 0);
+            $recordsFiltered += $cantidad;
+            $summaryRows[] = $row;
+            if (($row['tipo'] ?? '') === 'pni') {
+                $pniSummary = [
+                    'realizadas' => (int) ($row['pni_realizadas'] ?? 0),
+                    'canceladas' => (int) ($row['pni_canceladas'] ?? 0),
+                    'no_realizadas' => (int) ($row['pni_no_realizadas'] ?? 0),
+                ];
+            }
+        }
+
+        $totalCount = $this->getCachedTotalCount($tipoFilter);
 
         $limitStart = max(0, (int) $start);
         $limitLength = max(1, (int) $length);
@@ -280,7 +289,8 @@ class NoFacturadosQueryService
 
     public function getLeakageSummary(array $filters, int $oldestLimit = 10): array
     {
-        $baseSql = $this->getBaseSql();
+        $tipoFilter = trim((string) ($filters['tipo'] ?? ''));
+        $baseSql = $this->getBaseSql($tipoFilter);
         $params = [];
         $where = $this->buildWhere($filters, $params);
 
@@ -327,10 +337,25 @@ class NoFacturadosQueryService
 
     public function listarAfiliaciones(): array
     {
-        $baseSql = $this->getBaseSql();
-        $sql = 'SELECT DISTINCT TRIM(base.afiliacion) AS afiliacion FROM (' . $baseSql . ') AS base WHERE base.afiliacion IS NOT NULL AND TRIM(base.afiliacion) <> \'\' ORDER BY afiliacion';
+        // Direct lookup on patient_data — fast, no billing join needed for a filter dropdown.
+        // Occasional false positives (afiliacion fully billed) are harmless: filter returns 0 rows.
+        $sql = "SELECT DISTINCT TRIM(afiliacion) AS afiliacion
+                FROM patient_data
+                WHERE afiliacion IS NOT NULL AND TRIM(afiliacion) <> ''
+                ORDER BY afiliacion";
         $stmt = $this->db->query($sql);
         return $stmt->fetchAll(PDO::FETCH_COLUMN);
+    }
+
+    private function getCachedTotalCount(string $tipoFilter = ''): int
+    {
+        static $cache = [];
+        if (isset($cache[$tipoFilter])) {
+            return $cache[$tipoFilter];
+        }
+        $baseSql = $this->getBaseSql($tipoFilter);
+        $cache[$tipoFilter] = (int) $this->db->query('SELECT COUNT(*) FROM (' . $baseSql . ') AS total_base')->fetchColumn();
+        return $cache[$tipoFilter];
     }
 
     public function listarSedes(): array
@@ -460,6 +485,7 @@ class NoFacturadosQueryService
         $hcNumber = trim((string) ($filters['hc_number'] ?? ''));
         $afiliaciones = array_values(array_filter(array_map('trim', (array)($filters['afiliacion'] ?? [])), static fn($value) => $value !== ''));
         $empresaSeguro = $this->afiliacionDimensions->normalizeEmpresaFilter((string) ($filters['empresa_seguro'] ?? ''));
+        $categoria = $this->afiliacionDimensions->normalizeCategoriaFilter((string) ($filters['categoria'] ?? ''));
         $estadoRevision = $filters['estado_revision'] ?? null;
         $tipo = $filters['tipo'] ?? null;
         $busqueda = $filters['busqueda'] ?? null;
@@ -493,6 +519,19 @@ class NoFacturadosQueryService
         if ($empresaSeguro !== '') {
             $conditions[] = 'base.empresa_seguro_key = :empresa_seguro';
             $params[':empresa_seguro'] = $empresaSeguro;
+        }
+
+        if ($categoria !== '' && $empresaSeguro === '') {
+            $empresaKeys = $this->resolveEmpresaKeysByCategoria($categoria);
+            if (!empty($empresaKeys)) {
+                $placeholders = [];
+                foreach ($empresaKeys as $i => $key) {
+                    $placeholder = ':cat_empresa_' . $i;
+                    $placeholders[] = $placeholder;
+                    $params[$placeholder] = $key;
+                }
+                $conditions[] = 'base.empresa_seguro_key IN (' . implode(', ', $placeholders) . ')';
+            }
         }
 
         if ($sede !== '') {
@@ -570,6 +609,26 @@ class NoFacturadosQueryService
         }
 
         return $conditions ? (' WHERE ' . implode(' AND ', $conditions)) : '';
+    }
+
+    /**
+     * @return string[]
+     */
+    private function resolveEmpresaKeysByCategoria(string $categoria): array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT DISTINCT
+                COALESCE(NULLIF(TRIM(empresa_seguro), ''), afiliacion_norm) AS empresa_key
+             FROM afiliacion_categoria_map
+             WHERE categoria = :categoria"
+        );
+        $stmt->execute([':categoria' => $categoria]);
+        $raw = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+        return array_values(array_filter(array_map(
+            fn($k) => $this->afiliacionDimensions->normalizeEmpresaFilter((string) $k),
+            $raw
+        ), fn($k) => $k !== ''));
     }
 
     private function normalizeSedeFilter(mixed $value): string
