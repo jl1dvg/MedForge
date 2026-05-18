@@ -11,19 +11,94 @@
 
 @push('styles')
     <style>
+        .settings-sidenav-wrap {
+            position: sticky;
+            top: 20px;
+        }
+
+        .settings-sidenav .nav-link {
+            border-radius: 6px;
+            margin: 1px 4px;
+            padding: 8px 12px;
+            color: #555;
+            transition: background 0.15s, color 0.15s;
+        }
+
+        .settings-sidenav .nav-link:hover {
+            background: #f0f4ff;
+            color: var(--bs-primary);
+        }
+
         .settings-sidenav .nav-link.active {
             background: var(--bs-primary);
             color: #fff;
         }
 
+        .settings-sidenav .nav-link.active .badge {
+            background: rgba(255,255,255,0.3) !important;
+            color: #fff;
+        }
+
         .settings-section-card textarea.form-control {
             min-height: 96px;
+            resize: vertical;
         }
 
         .settings-file-preview img {
             max-height: 54px;
             max-width: 180px;
             object-fit: contain;
+        }
+
+        .settings-file-new-preview {
+            max-height: 60px;
+            max-width: 200px;
+            object-fit: contain;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+            padding: 4px;
+        }
+
+        .settings-color-swatch {
+            display: inline-block;
+            width: 28px;
+            height: 28px;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+            vertical-align: middle;
+            margin-left: 8px;
+        }
+
+        .settings-password-wrap {
+            position: relative;
+        }
+
+        .settings-password-wrap .btn-pw-toggle {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: #888;
+            padding: 0;
+            line-height: 1;
+        }
+
+        .settings-password-wrap .form-control {
+            padding-right: 36px;
+        }
+
+        .settings-save-btn .spinner-border {
+            display: none;
+            width: 1rem;
+            height: 1rem;
+            margin-right: 4px;
+        }
+
+        .settings-save-btn.loading .spinner-border {
+            display: inline-block;
         }
 
         .sla-settings-table .form-control,
@@ -67,22 +142,34 @@
 
         <div class="row">
             <div class="col-xl-3 col-lg-4">
-                <div class="box">
-                    <div class="box-header with-border">
-                        <h4 class="box-title mb-0">Ajustes</h4>
-                    </div>
-                    <div class="box-body p-0">
-                        <ul class="nav nav-pills flex-column settings-sidenav">
-                            @foreach($sections as $sectionId => $section)
-                                <li class="nav-item">
-                                    <a href="/v2/settings?section={{ urlencode((string) $sectionId) }}"
-                                       class="nav-link d-flex align-items-center {{ $activeSection === (string) $sectionId ? 'active' : '' }}">
-                                        <i class="me-2 {{ (string) ($section['icon'] ?? 'fa-solid fa-circle') }}"></i>
-                                        <span>{{ (string) ($section['title'] ?? $sectionId) }}</span>
-                                    </a>
-                                </li>
-                            @endforeach
-                        </ul>
+                <div class="settings-sidenav-wrap">
+                    <div class="box">
+                        <div class="box-header with-border">
+                            <h4 class="box-title mb-0">Secciones</h4>
+                        </div>
+                        <div class="box-body p-0 pb-2">
+                            <ul class="nav nav-pills flex-column settings-sidenav">
+                                @foreach($sections as $sectionId => $section)
+                                    @php
+                                        $fieldCount = 0;
+                                        foreach (($section['groups'] ?? []) as $grp) {
+                                            $fieldCount += count($grp['fields'] ?? []);
+                                        }
+                                    @endphp
+                                    <li class="nav-item">
+                                        <a href="/v2/settings?section={{ urlencode((string) $sectionId) }}"
+                                           data-section="{{ (string) $sectionId }}"
+                                           class="nav-link d-flex align-items-center {{ $activeSection === (string) $sectionId ? 'active' : '' }}">
+                                            <i class="me-2 {{ (string) ($section['icon'] ?? 'fa-solid fa-circle') }}"></i>
+                                            <span class="flex-grow-1">{{ (string) ($section['title'] ?? $sectionId) }}</span>
+                                            @if($fieldCount > 0)
+                                                <span class="badge bg-secondary ms-1" style="font-size:10px;">{{ $fieldCount }}</span>
+                                            @endif
+                                        </a>
+                                    </li>
+                                @endforeach
+                            </ul>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -99,7 +186,9 @@
                             @endif
                         </div>
                         <div class="box-body">
-                            <form method="POST" action="/v2/settings" enctype="multipart/form-data">
+                            <form method="POST" action="/v2/settings" enctype="multipart/form-data"
+                                  data-settings-form data-section="{{ (string) $sectionId }}"
+                                  data-api-url="/api/v2/settings/{{ urlencode((string) $sectionId) }}">
                                 @csrf
                                 <input type="hidden" name="section" value="{{ (string) $sectionId }}">
 
@@ -148,16 +237,22 @@
                                                             </select>
                                                         @elseif($type === 'file')
                                                             @php $currentFile = is_string($displayValue) ? trim($displayValue) : ''; @endphp
-                                                            @if($currentFile !== '')
-                                                                <div class="settings-file-preview border rounded p-2 mb-2 bg-light">
-                                                                    @if(preg_match('/\.(png|jpe?g|webp|gif|svg)$/i', $currentFile))
-                                                                        <img src="{{ $currentFile }}" alt="{{ (string) ($field['label'] ?? $key) }}">
-                                                                    @endif
-                                                                    <div class="small text-muted mt-1">{{ $currentFile }}</div>
+                                                            <div class="settings-file-wrap">
+                                                                @if($currentFile !== '')
+                                                                    <div class="settings-file-preview border rounded p-2 mb-2 bg-light d-flex align-items-center gap-2">
+                                                                        @if(preg_match('/\.(png|jpe?g|webp|gif|svg)$/i', $currentFile))
+                                                                            <img src="{{ $currentFile }}" alt="{{ (string) ($field['label'] ?? $key) }}">
+                                                                        @endif
+                                                                        <div class="small text-muted">{{ $currentFile }}</div>
+                                                                    </div>
+                                                                @endif
+                                                                <div class="settings-file-new-preview-wrap mb-2 d-none">
+                                                                    <img src="" alt="Vista previa" class="settings-file-new-preview">
+                                                                    <div class="small text-muted mt-1 settings-file-new-name"></div>
                                                                 </div>
-                                                            @endif
-                                                            <input type="hidden" name="{{ $key }}" value="{{ $currentFile }}">
-                                                            <input type="file" class="form-control" name="{{ $key }}_file" id="{{ $fieldId }}" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml">
+                                                                <input type="hidden" name="{{ $key }}" value="{{ $currentFile }}">
+                                                                <input type="file" class="form-control settings-file-input" name="{{ $key }}_file" id="{{ $fieldId }}" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml">
+                                                            </div>
                                                         @elseif($type === 'checkbox')
                                                             @php $isChecked = in_array($displayValue, ['1', 1, true, 'true'], true); @endphp
                                                             <div class="form-check form-switch">
@@ -308,12 +403,21 @@
                                                                     </div>
                                                                 </div>
                                                             </div>
+                                                        @elseif($type === 'color')
+                                                            <div class="d-flex align-items-center gap-2">
+                                                                <input type="color" class="form-control form-control-color" name="{{ $key }}" id="{{ $fieldId }}" value="{{ (string) $displayValue ?: '#000000' }}" @required($required)>
+                                                                <span class="settings-color-swatch" style="background:{{ (string) $displayValue ?: '#000000' }};"></span>
+                                                                <span class="text-muted small settings-color-hex">{{ (string) $displayValue ?: '#000000' }}</span>
+                                                            </div>
+                                                        @elseif($type === 'password')
+                                                            <div class="settings-password-wrap">
+                                                                <input type="password" class="form-control" name="{{ $key }}" id="{{ $fieldId }}" value="" placeholder="{{ $hasValue ? '••••••••' : '' }}" @required($required)>
+                                                                <button type="button" class="btn-pw-toggle" aria-label="Mostrar contraseña">
+                                                                    <i class="mdi mdi-eye-outline"></i>
+                                                                </button>
+                                                            </div>
                                                         @else
-                                                            @php
-                                                                $valueAttribute = $type === 'password' ? '' : (string) $displayValue;
-                                                                $placeholder = $type === 'password' && $hasValue ? '••••••••' : '';
-                                                            @endphp
-                                                            <input type="{{ $type }}" class="form-control" name="{{ $key }}" id="{{ $fieldId }}" value="{{ $valueAttribute }}" placeholder="{{ $placeholder }}" @required($required)>
+                                                            <input type="{{ $type }}" class="form-control" name="{{ $key }}" id="{{ $fieldId }}" value="{{ (string) $displayValue }}" @required($required)>
                                                         @endif
 
                                                         @if(!empty($field['help']))
@@ -328,8 +432,16 @@
                                     </div>
                                 @endforeach
 
-                                <div class="text-end">
-                                    <button type="submit" class="btn btn-primary">Guardar cambios</button>
+                                <div class="d-flex justify-content-between align-items-center mt-2">
+                                    <span class="text-muted small settings-dirty-msg d-none">
+                                        <i class="mdi mdi-circle-small text-warning"></i> Tienes cambios sin guardar
+                                    </span>
+                                    <div class="ms-auto">
+                                        <button type="submit" class="btn btn-primary settings-save-btn">
+                                            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                                            Guardar cambios
+                                        </button>
+                                    </div>
                                 </div>
                             </form>
                         </div>
@@ -341,6 +453,162 @@
 @endsection
 
 @push('scripts')
+    <script>
+        /**
+         * Settings v2 - interactividad del módulo de configuración
+         */
+        (() => {
+            'use strict';
+
+            function initSectionNav() {
+                document.querySelectorAll('.settings-sidenav .nav-link[data-section]').forEach(link => {
+                    link.addEventListener('click', e => {
+                        e.preventDefault();
+                        const section = link.dataset.section;
+                        if (!section) return;
+                        const url = new URL(window.location.href);
+                        url.searchParams.set('section', section);
+                        history.replaceState(null, '', url.toString());
+                        window.location.href = url.toString();
+                    });
+                });
+            }
+
+            function initFileUpload() {
+                document.querySelectorAll('.settings-file-input').forEach(input => {
+                    input.addEventListener('change', () => {
+                        const wrap = input.closest('.settings-file-wrap');
+                        if (!wrap) return;
+                        const previewWrap = wrap.querySelector('.settings-file-new-preview-wrap');
+                        const previewImg = wrap.querySelector('.settings-file-new-preview');
+                        const previewName = wrap.querySelector('.settings-file-new-name');
+                        const file = input.files && input.files[0];
+                        if (!file) { previewWrap && previewWrap.classList.add('d-none'); return; }
+                        const allowed = ['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/svg+xml'];
+                        if (!allowed.includes(file.type)) {
+                            showToast('Formato no permitido. Use PNG, JPG, WEBP, GIF o SVG.', 'error');
+                            input.value = ''; return;
+                        }
+                        if (file.size > 3 * 1024 * 1024) {
+                            showToast('El archivo no puede superar 3MB.', 'error');
+                            input.value = ''; return;
+                        }
+                        if (previewImg && previewWrap && previewName) {
+                            const reader = new FileReader();
+                            reader.onload = function(e) {
+                                previewImg.src = e.target.result;
+                                previewName.textContent = file.name;
+                                previewWrap.classList.remove('d-none');
+                            };
+                            reader.readAsDataURL(file);
+                        }
+                    });
+                });
+            }
+
+            function initPasswordToggle() {
+                document.querySelectorAll('.settings-password-wrap').forEach(wrap => {
+                    const input = wrap.querySelector('input[type="password"]');
+                    const btn = wrap.querySelector('.btn-pw-toggle');
+                    const icon = btn && btn.querySelector('i');
+                    if (!input || !btn) return;
+                    btn.addEventListener('click', function() {
+                        const isPassword = input.type === 'password';
+                        input.type = isPassword ? 'text' : 'password';
+                        if (icon) icon.className = isPassword ? 'mdi mdi-eye-off-outline' : 'mdi mdi-eye-outline';
+                        btn.setAttribute('aria-label', isPassword ? 'Ocultar contraseña' : 'Mostrar contraseña');
+                    });
+                });
+            }
+
+            function initColorPreview() {
+                document.querySelectorAll('input[type="color"]').forEach(input => {
+                    const parent = input.closest('.d-flex');
+                    if (!parent) return;
+                    const swatch = parent.querySelector('.settings-color-swatch');
+                    const hex = parent.querySelector('.settings-color-hex');
+                    function update() {
+                        const value = input.value;
+                        if (swatch) swatch.style.background = value;
+                        if (hex) hex.textContent = value;
+                    }
+                    input.addEventListener('input', update);
+                    input.addEventListener('change', update);
+                });
+            }
+
+            function initDirtyTracking() {
+                document.querySelectorAll('[data-settings-form]').forEach(form => {
+                    const msg = form.querySelector('.settings-dirty-msg');
+                    if (!msg) return;
+                    let dirty = false;
+                    form.querySelectorAll('input, textarea, select').forEach(el => {
+                        el.addEventListener('change', function() { if (!dirty) { dirty = true; msg.classList.remove('d-none'); } });
+                        el.addEventListener('input', function() { if (!dirty) { dirty = true; msg.classList.remove('d-none'); } });
+                    });
+                    form.addEventListener('submit', function() { dirty = false; msg.classList.add('d-none'); });
+                });
+            }
+
+            function initAjaxSave() {
+                document.querySelectorAll('[data-settings-form]').forEach(function(form) {
+                    const apiUrl = form.dataset.apiUrl;
+                    if (!apiUrl) return;
+                    form.addEventListener('submit', function(e) {
+                        e.preventDefault();
+                        const btn = form.querySelector('.settings-save-btn');
+                        if (btn) { btn.classList.add('loading'); btn.disabled = true; }
+                        const formData = new FormData(form);
+                        const csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+                        fetch(apiUrl, {
+                            method: 'POST',
+                            headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfToken },
+                            body: formData,
+                        })
+                        .then(function(response) {
+                            return response.json().then(function(data) { return { ok: response.ok, data: data }; });
+                        })
+                        .then(function(result) {
+                            if (result.ok && result.data.success) {
+                                showToast(result.data.message || 'Configuración guardada.', 'success');
+                                const msg = form.querySelector('.settings-dirty-msg');
+                                if (msg) msg.classList.add('d-none');
+                            } else {
+                                showToast(result.data.error || 'Error al guardar la configuración.', 'error');
+                            }
+                        })
+                        .catch(function() { showToast('Error de red. Intenta nuevamente.', 'error'); })
+                        .finally(function() {
+                            if (btn) { btn.classList.remove('loading'); btn.disabled = false; }
+                        });
+                    });
+                });
+            }
+
+            function showToast(message, type) {
+                type = type || 'success';
+                if (typeof window.Swal !== 'undefined') {
+                    window.Swal.fire({ toast: true, position: 'top-end', icon: type, title: message, showConfirmButton: false, timer: type === 'success' ? 3000 : 5000, timerProgressBar: true });
+                    return;
+                }
+                const div = document.createElement('div');
+                div.className = 'alert alert-' + (type === 'success' ? 'success' : 'danger') + ' position-fixed top-0 end-0 m-3';
+                div.style.zIndex = '9999';
+                div.textContent = message;
+                document.body.appendChild(div);
+                setTimeout(function() { div.remove(); }, 4000);
+            }
+
+            document.addEventListener('DOMContentLoaded', function() {
+                initSectionNav();
+                initFileUpload();
+                initPasswordToggle();
+                initColorPreview();
+                initDirtyTracking();
+                initAjaxSave();
+            });
+        })();
+    </script>
     <script>
         (() => {
             const ACTION_LABELS = { tarifa: 'Tarifa fija', descuento: 'Descuento (%)', exclusion: 'Exclusión' };
