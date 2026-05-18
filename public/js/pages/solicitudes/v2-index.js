@@ -81,11 +81,18 @@
     const tableBody = document.getElementById('solicitudesTableBody');
     const tableEmptyState = document.getElementById('solicitudesTableEmpty');
     const conciliacionView = document.getElementById('solicitudesConciliacionSection');
+    const urgentesView = document.getElementById('solicitudesViewUrgentes');
+    const urgentesBody = document.getElementById('solUrgentesBody');
+    const urgentesTotal = document.getElementById('solUrgentesTotal');
+    const urgentesEmpty = document.getElementById('solUrgentesEmpty');
+    const urgentesCountBadge = document.getElementById('solUrgentesCount');
+    const presetsContainer = document.getElementById('solV2Presets');
     const viewButtons = Array.from(document.querySelectorAll('[data-solicitudes-view]'));
 
     const VIEW_STORAGE_KEY = 'solicitudes:view-mode';
+    const COL_COLLAPSE_STORAGE_KEY = 'solicitudes:col-collapsed';
     const VIEW_DEFAULT = 'kanban';
-    const VIEW_ALLOWED = new Set(['kanban', 'table', 'conciliacion']);
+    const VIEW_ALLOWED = new Set(['kanban', 'table', 'conciliacion', 'urgentes']);
     let storedView = '';
     try {
         storedView = String(window.localStorage.getItem(VIEW_STORAGE_KEY) || '').toLowerCase();
@@ -371,6 +378,14 @@
         }
     };
 
+    const debounce = (fn, wait) => {
+        let timer;
+        return (...args) => {
+            window.clearTimeout(timer);
+            timer = window.setTimeout(() => fn(...args), wait);
+        };
+    };
+
     const applyLocalFilters = (rows) => {
         const items = Array.isArray(rows) ? rows : [];
         const tipoSeleccionado = normalizeUpper(tipoSelect ? tipoSelect.value : '');
@@ -381,6 +396,7 @@
         const filtrarSinResponsable = Boolean(sinResponsableCheckbox && sinResponsableCheckbox.checked);
         const responsableSeleccionado = String(responsableSelect ? responsableSelect.value : '').trim();
         const mostrarCompletados = Boolean(mostrarCompletadosCheckbox && mostrarCompletadosCheckbox.checked);
+        const searchRaw = String(searchInput ? searchInput.value : '').trim().toLowerCase();
 
         const today = new Date();
         const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
@@ -421,6 +437,20 @@
                 const matchDerivacion = (filtrarDerivacionVencida && vencida)
                     || (filtrarDerivacionPorVencer && porVencer);
                 if (!matchDerivacion) {
+                    return false;
+                }
+            }
+
+            if (searchRaw) {
+                const haystack = [
+                    item?.full_name,
+                    item?.hc_number,
+                    item?.procedimiento,
+                    item?.crm_responsable_nombre,
+                    item?.id,
+                    item?.solicitud_id,
+                ].map((v) => String(v ?? '').toLowerCase()).join(' ');
+                if (!haystack.includes(searchRaw)) {
                     return false;
                 }
             }
@@ -1620,6 +1650,10 @@
             conciliacionView.classList.toggle('d-none', normalized !== 'conciliacion');
         }
 
+        if (urgentesView) {
+            urgentesView.classList.toggle('d-none', normalized !== 'urgentes');
+        }
+
         const hideForConciliacion = normalized === 'conciliacion';
         if (toolbarBox) {
             toolbarBox.classList.toggle('d-none', hideForConciliacion);
@@ -1629,12 +1663,16 @@
         }
 
         viewButtons.forEach((button) => {
-            const buttonView = resolveView(button.dataset.solicitudesView || '');
+            const buttonView = String(button.dataset.solicitudesView || '').toLowerCase();
             button.classList.toggle('is-active', buttonView === normalized);
         });
 
         if (persist) {
             persistView(normalized);
+        }
+
+        if (normalized === 'urgentes') {
+            renderUrgentes();
         }
 
         if (normalized === 'conciliacion') {
@@ -1699,11 +1737,181 @@
         }
     };
 
+    const escapeHtmlLocal = (str) => String(str ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+    const renderUrgentes = () => {
+        const urgentes = state.filteredRows.filter((row) => {
+            const sla = String(row?.sla_status ?? '').toLowerCase();
+            return sla === 'vencido' || sla === 'critico';
+        }).sort((a, b) => {
+            const order = { vencido: 0, critico: 1 };
+            const aOrder = order[String(a?.sla_status ?? '').toLowerCase()] ?? 2;
+            const bOrder = order[String(b?.sla_status ?? '').toLowerCase()] ?? 2;
+            return aOrder - bOrder;
+        });
+
+        const total = urgentes.length;
+
+        if (urgentesTotal) {
+            urgentesTotal.textContent = String(total);
+        }
+        if (urgentesCountBadge) {
+            urgentesCountBadge.textContent = String(total);
+            urgentesCountBadge.classList.toggle('d-none', total === 0);
+        }
+
+        if (!urgentesBody) {
+            return;
+        }
+
+        if (total === 0) {
+            urgentesBody.innerHTML = '';
+            if (urgentesEmpty) {
+                urgentesEmpty.classList.remove('d-none');
+            }
+            return;
+        }
+
+        if (urgentesEmpty) {
+            urgentesEmpty.classList.add('d-none');
+        }
+
+        urgentesBody.innerHTML = urgentes.map((row) => {
+            const sla = String(row?.sla_status ?? '').toLowerCase();
+            const solicitudId = row?.id ?? row?.solicitud_id ?? '';
+            const hc = escapeHtmlLocal(row?.hc_number ?? '—');
+            const nombre = escapeHtmlLocal(row?.full_name ?? 'Paciente sin nombre');
+            const procedimiento = escapeHtmlLocal(row?.procedimiento ?? '—');
+            const etapa = escapeHtmlLocal(row?.kanban_estado_label ?? labelByColumn[row?.kanban_estado] ?? row?.kanban_estado ?? '—');
+            const responsable = escapeHtmlLocal(row?.crm_responsable_nombre ?? 'Sin responsable');
+            const slaLabel = sla === 'vencido' ? 'Vencido' : 'Crítico';
+            const slaBadgeClass = sla === 'vencido' ? 'bg-danger' : 'bg-warning text-dark';
+            return `<div class="sol-v2-urgente-row is-${sla}" data-action="open-crm" data-id="${escapeHtmlLocal(String(solicitudId))}" data-paciente="${nombre}" data-solicitud-id="${escapeHtmlLocal(String(solicitudId))}" data-paciente-nombre="${nombre}" style="cursor:pointer">
+  <div class="d-flex align-items-start gap-2 flex-wrap">
+    <span class="badge ${slaBadgeClass}">${slaLabel}</span>
+    <span class="fw-semibold">${nombre}</span>
+    <span class="text-muted small">HC ${hc}</span>
+    <span class="ms-auto badge bg-secondary">${etapa}</span>
+  </div>
+  <div class="small text-muted mt-1">${procedimiento} &nbsp;·&nbsp; ${responsable}</div>
+</div>`;
+        }).join('');
+    };
+
+    const getCollapsedCols = () => {
+        try {
+            const raw = window.localStorage.getItem(COL_COLLAPSE_STORAGE_KEY);
+            const parsed = JSON.parse(raw || '[]');
+            return Array.isArray(parsed) ? parsed : [];
+        } catch {
+            return [];
+        }
+    };
+
+    const setCollapsedCols = (slugs) => {
+        try {
+            window.localStorage.setItem(COL_COLLAPSE_STORAGE_KEY, JSON.stringify(slugs));
+        } catch {
+            // storage unavailable
+        }
+    };
+
+    const updateColUrgenteDot = (colEl) => {
+        const slug = colEl?.dataset?.colSlug || '';
+        const dot = colEl?.querySelector('.sol-v2-col-urgente-dot');
+        if (!dot) {
+            return;
+        }
+        const hasUrgent = state.filteredRows.some((row) => {
+            const rowSlug = String(row?.kanban_estado ?? '').toLowerCase();
+            const sla = String(row?.sla_status ?? '').toLowerCase();
+            return rowSlug === slug && (sla === 'vencido' || sla === 'critico');
+        });
+        dot.classList.toggle('has-urgent', hasUrgent);
+    };
+
+    const initColCollapse = () => {
+        const collapsed = getCollapsedCols();
+        document.querySelectorAll('[data-col-collapse]').forEach((btn) => {
+            const slug = btn.dataset.colCollapse || '';
+            const col = btn.closest('.sol-v2-col');
+            if (!col) {
+                return;
+            }
+            col.dataset.colSlug = slug;
+
+            if (collapsed.includes(slug)) {
+                col.classList.add('is-collapsed');
+            }
+
+            btn.addEventListener('click', () => {
+                col.classList.toggle('is-collapsed');
+                const isCollapsed = col.classList.contains('is-collapsed');
+                const currentCollapsed = getCollapsedCols();
+                const updated = isCollapsed
+                    ? [...new Set([...currentCollapsed, slug])]
+                    : currentCollapsed.filter((s) => s !== slug);
+                setCollapsedCols(updated);
+                updateColUrgenteDot(col);
+            });
+        });
+    };
+
+    const updateAllUrgenteDots = () => {
+        document.querySelectorAll('.sol-v2-col[data-col-slug]').forEach((col) => {
+            updateColUrgenteDot(col);
+        });
+    };
+
+    const applyPreset = (preset) => {
+        const currentUserId = parseUserId(window?.MEDF?.currentUser?.id);
+
+        if (sinResponsableCheckbox) sinResponsableCheckbox.checked = false;
+        if (derivacionVencidaCheckbox) derivacionVencidaCheckbox.checked = false;
+        if (tipoSelect) tipoSelect.value = '';
+        if (responsableSelect) responsableSelect.value = '';
+        if (searchInput) searchInput.value = '';
+
+        if (preset === 'mis-casos') {
+            if (responsableSelect && currentUserId !== null) {
+                responsableSelect.value = String(currentUserId);
+            }
+        } else if (preset === 'urgentes-hoy') {
+            switchView('urgentes');
+            return;
+        } else if (preset === 'sin-responsable') {
+            if (sinResponsableCheckbox) sinResponsableCheckbox.checked = true;
+        } else if (preset === 'derivacion-vencida') {
+            if (derivacionVencidaCheckbox) derivacionVencidaCheckbox.checked = true;
+        }
+
+        document.querySelectorAll('.sol-v2-preset-btn').forEach((b) => {
+            b.classList.toggle('is-active', b.dataset.preset === preset && preset !== 'limpiar');
+        });
+
+        rerenderFromLocalFilters();
+    };
+
+    const initPresets = () => {
+        if (!presetsContainer) {
+            return;
+        }
+        presetsContainer.addEventListener('click', (event) => {
+            const btn = event.target.closest('[data-preset]');
+            if (!btn) {
+                return;
+            }
+            applyPreset(btn.dataset.preset);
+        });
+    };
+
     const rerenderFromLocalFilters = () => {
         state.filteredRows = applyLocalFilters(state.rows);
         renderMetrics((state.options.metrics || {}));
         renderBoard();
         renderTable(state.filteredRows);
+        renderUrgentes();
+        updateAllUrgenteDots();
     };
 
     const advanceSolicitud = async (solicitudId, nextSlug) => {
@@ -1979,10 +2187,27 @@
         });
     });
 
+    if (searchInput) {
+        searchInput.addEventListener('input', debounce(() => {
+            rerenderFromLocalFilters();
+        }, 250));
+    }
+
+    if (urgentesView) {
+        urgentesView.addEventListener('click', (event) => {
+            const actionTarget = event.target.closest('[data-action]');
+            if (actionTarget) {
+                handleActionTarget(actionTarget);
+            }
+        });
+    }
+
     applyInitialFilters();
     syncKanbanRuntimeConfig();
     initTooltips();
     initRealtimeNotifications();
+    initPresets();
+    initColCollapse();
     switchView(state.view, false);
     loadKanban();
 })();
