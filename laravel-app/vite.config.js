@@ -33,6 +33,7 @@ export default defineConfig({
                 'resources/js/v2/cirugias-wizard.js',
                 'resources/js/v2/billing-informe-particulares.js',
                 'resources/js/v2/user-edit.js',
+                'resources/js/v2/settings-index.js',
             ],
             refresh: true,
         }),

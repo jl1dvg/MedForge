@@ -26,6 +26,9 @@ Route::prefix('v2')->group(function (): void {
     require __DIR__ . '/v2/codes.php';
     require __DIR__ . '/v2/auth.php';
     Route::middleware('web')->group(function (): void {
+        require __DIR__ . '/v2/settings.php';
+    });
+    Route::middleware('web')->group(function (): void {
         require __DIR__ . '/v2/whatsapp.php';
     });
 });
