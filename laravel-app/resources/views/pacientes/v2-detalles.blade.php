@@ -63,22 +63,6 @@
         : asset('images/avatar/female.png');
 
     $solicitudPdfBaseUrl = '/views/reports/solicitud_quirurgica/solicitud_qx_pdf.php';
-    $patientDetailAssetFiles = [
-        public_path('js/pages/patient-detail.js'),
-        public_path('js/pages/solicitudes/crm-global.js'),
-        public_path('js/pages/shared/crmPanelFactory.js'),
-        public_path('css/pages/solicitudes-crm-panel.css'),
-        public_path('js/pages/solicitudes/kanban/botonesModal.js'),
-        public_path('js/pages/solicitudes/kanban/modalDetalles.js'),
-        public_path('js/pages/solicitudes/kanban/modalDetalles/prefactura.js'),
-        public_path('js/pages/solicitudes/kanban/modalDetalles/handlers.js'),
-    ];
-    $patientDetailAssetVersions = array_values(array_filter(array_map(
-        static fn(string $path): ?string => is_file($path) ? (string) @filemtime($path) : null,
-        $patientDetailAssetFiles
-    )));
-    $patientDetailAssetVersion = $patientDetailAssetVersions !== [] ? max($patientDetailAssetVersions) : '';
-    $patientDetailScriptSrc = '/js/pages/patient-detail.js' . ($patientDetailAssetVersion !== '' ? '?v=' . rawurlencode($patientDetailAssetVersion) : '');
 @endphp
 
 @push('styles')
@@ -538,10 +522,6 @@
 
 @push('scripts')
     <script>
-        window.__SOLICITUDES_V2_UI__ = Object.assign({}, window.__SOLICITUDES_V2_UI__ || {}, {
-            assetVersion: @json($patientDetailAssetVersion)
-        });
-
         window.patientDetailChartData = {
             series: @json(array_values($statsRows)),
             labels: @json(array_keys($statsRows)),
@@ -553,12 +533,5 @@
             buttonSelector: '.btn-open-solicitud-crm'
         });
     </script>
-    @if (\App\Modules\Shared\Support\MedforgeAssets::hasViteBuild())
-        @vite('resources/js/v2/patient-detail.js')
-    @else
-        <script src="/assets/vendor_components/apexcharts-bundle/dist/apexcharts.js"></script>
-        <script src="/assets/vendor_components/horizontal-timeline/js/horizontal-timeline.js"></script>
-        <script src="{{ $patientDetailScriptSrc }}"></script>
-    @endif
-    <script type="module" src="/js/pages/solicitudes/crm-global.js?v={{ rawurlencode($patientDetailAssetVersion) }}"></script>
+    @vite(['resources/js/v2/patient-detail.js', 'resources/js/v2/solicitudes-crm-global.js'])
 @endpush

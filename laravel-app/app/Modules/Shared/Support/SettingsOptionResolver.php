@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 namespace App\Modules\Shared\Support;
 
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Throwable;
 
 class SettingsOptionResolver
 {
     private const TABLE_CANDIDATES = ['app_settings', 'settings', 'tbloptions', 'options'];
+    private const CACHE_TTL = 300;
+    private const CACHE_PREFIX = 'settings.resolver.';
 
     private ?string $resolvedTable = null;
 
@@ -29,6 +32,27 @@ class SettingsOptionResolver
             return [];
         }
 
+        $cacheKey = self::CACHE_PREFIX . md5(implode(',', $keys));
+
+        /** @var array<string,string> $cached */
+        $cached = Cache::remember($cacheKey, self::CACHE_TTL, function () use ($keys): array {
+            return $this->fetchOptions($keys);
+        });
+
+        return $cached;
+    }
+
+    public static function flush(): void
+    {
+        Cache::flush();
+    }
+
+    /**
+     * @param array<int,string> $keys
+     * @return array<string,string>
+     */
+    private function fetchOptions(array $keys): array
+    {
         $table = $this->resolveTable();
         if ($table === null) {
             return [];

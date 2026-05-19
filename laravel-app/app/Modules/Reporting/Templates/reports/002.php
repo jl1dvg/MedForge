@@ -5,7 +5,11 @@ use Helpers\OpenAIHelper;
 // Inicializa el helper de OpenAI (requiere que el autoload/bootstrapping ya esté cargado antes)
 $ai = null;
 if (class_exists(OpenAIHelper::class)) {
-    $ai = new OpenAIHelper();
+    try {
+        $ai = new OpenAIHelper();
+    } catch (\Throwable $e) {
+        $ai = null;
+    }
 }
 $AI_DEBUG = isset($_GET['debug_ai']) && $_GET['debug_ai'] === '1';
 
