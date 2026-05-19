@@ -218,6 +218,43 @@ class SolicitudesReadController
         return response()->json(['success' => true, 'data' => $data])->header('X-Request-Id', $requestId);
     }
 
+    public function doctores(Request $request): JsonResponse
+    {
+        $requestId = $this->requestId($request);
+
+        try {
+            $rows = DB::select("
+                SELECT DISTINCT TRIM(doctor) AS doctor
+                FROM solicitud_procedimiento
+                WHERE doctor IS NOT NULL
+                  AND TRIM(doctor) <> ''
+                  AND UPPER(TRIM(doctor)) <> 'SELECCIONE'
+                ORDER BY doctor ASC
+            ");
+
+            $doctores = array_values(array_filter(array_map(
+                static fn ($row) => (string) ($row->doctor ?? ''),
+                $rows
+            )));
+
+            return response()->json([
+                'success' => true,
+                'doctores' => $doctores,
+            ])->header('X-Request-Id', $requestId);
+        } catch (\Throwable $e) {
+            Log::error('solicitudes.read.doctores.error', [
+                'request_id' => $requestId,
+                'user_id' => $this->actorId(),
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'doctores' => [],
+            ], 500)->header('X-Request-Id', $requestId);
+        }
+    }
+
     public function conciliacionCirugias(Request $request): JsonResponse
     {
         $requestId = $this->requestId($request);

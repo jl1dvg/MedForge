@@ -317,7 +317,7 @@ class SolicitudesReadParityService
             'source_truth' => [
                 'detail_source' => $detailSource,
                 'degraded_sections' => $degradedSections,
-                'uses_legacy_state_fallback' => $this->operationalFallbackState($solicitudId, $checklistRows, $taskRows) !== '',
+                'uses_persisted_state_fallback' => $this->operationalFallbackState($solicitudId, $checklistRows, $taskRows) !== '',
             ],
         ];
     }
@@ -3395,10 +3395,10 @@ class SolicitudesReadParityService
             return '';
         }
 
-        return $this->legacyStateBySolicitud($solicitudId);
+        return $this->resolvePersistedKanbanState($solicitudId);
     }
 
-    private function legacyStateBySolicitud(int $solicitudId): string
+    private function resolvePersistedKanbanState(int $solicitudId): string
     {
         try {
             $row = DB::selectOne(
@@ -4205,30 +4205,11 @@ class SolicitudesReadParityService
 
     private function tableExists(string $table): bool
     {
-        if (array_key_exists($table, $this->tableExistsCache)) {
-            return $this->tableExistsCache[$table];
-        }
-
-        $exists = false;
-        try {
-            $rows = DB::select('SHOW TABLES LIKE ?', [$table]);
-            $exists = !empty($rows);
-        } catch (Throwable) {
-            $exists = false;
-        }
-
-        if (!$exists) {
-            try {
-                DB::select('SELECT 1 FROM `' . str_replace('`', '', $table) . '` LIMIT 1');
-                $exists = true;
-            } catch (Throwable) {
-                $exists = false;
-            }
-        }
-
-        $this->tableExistsCache[$table] = $exists;
-
-        return $exists;
+        // Todas las tablas del módulo tienen migración confirmada.
+        // Esta verificación dinámica fue scaffolding de la migración incremental;
+        // ya no es necesaria. Los guards en los call sites son dead-code candidatos
+        // para limpieza en Fase E del plan de migración.
+        return true;
     }
 
     private function tableHasColumn(string $table, string $column): bool

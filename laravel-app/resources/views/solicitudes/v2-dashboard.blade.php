@@ -240,12 +240,5 @@
             v2ReadsEnabled: true,
         };
     </script>
-    @if (\App\Modules\Shared\Support\MedforgeAssets::hasViteBuild())
-        @vite('resources/js/v2/solicitudes-dashboard.js')
-    @else
-        <script src="/assets/vendor_components/moment/moment.js"></script>
-        <script src="/assets/vendor_components/bootstrap-daterangepicker/daterangepicker.js"></script>
-        <script src="/assets/vendor_components/apexcharts-bundle/dist/apexcharts.js"></script>
-        <script src="/js/pages/solicitudes/dashboard.js"></script>
-    @endif
+    @vite('resources/js/v2/solicitudes-dashboard.js')
 @endpush

@@ -6,6 +6,7 @@ use App\Modules\Whatsapp\Http\Controllers\ConversationWriteController;
 use App\Modules\Whatsapp\Http\Controllers\CampaignReadController;
 use App\Modules\Whatsapp\Http\Controllers\CampaignWriteController;
 use App\Modules\Whatsapp\Http\Controllers\FlowmakerReadController;
+use App\Modules\Whatsapp\Http\Controllers\FlowmakerSandboxController;
 use App\Modules\Whatsapp\Http\Controllers\FlowmakerWriteController;
 use App\Modules\Whatsapp\Http\Controllers\KpiReadController;
 use App\Modules\Whatsapp\Http\Controllers\KnowledgeBaseReadController;
@@ -16,6 +17,8 @@ use App\Modules\Whatsapp\Http\Controllers\ProductivityReadController;
 use App\Modules\Whatsapp\Http\Controllers\ProductivityWriteController;
 use App\Modules\Whatsapp\Http\Controllers\TemplateReadController;
 use App\Modules\Whatsapp\Http\Controllers\TemplateWriteController;
+use App\Modules\Whatsapp\Http\Controllers\WhatsappLeadReadController;
+use App\Modules\Whatsapp\Http\Controllers\WhatsappLeadWriteController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware([
@@ -47,6 +50,9 @@ Route::middleware([
     Route::get('/conversations/{conversationId}/notes', [ProductivityReadController::class, 'conversationNotes'])
         ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.view,whatsapp.chat.send,whatsapp.chat.assign,whatsapp.chat.supervise,settings.manage')
         ->whereNumber('conversationId');
+    Route::get('/conversations/{conversationId}/trail', [ConversationReadController::class, 'trail'])
+        ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.view,whatsapp.chat.send,whatsapp.chat.assign,whatsapp.chat.supervise,settings.manage')
+        ->whereNumber('conversationId');
     Route::get('/kpis', [KpiReadController::class, 'index'])
         ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.view,whatsapp.chat.supervise,settings.manage');
     Route::get('/kpis/drilldown', [KpiReadController::class, 'drilldown'])
@@ -55,6 +61,8 @@ Route::middleware([
         ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.view,whatsapp.chat.supervise,settings.manage');
     Route::get('/kpis/export/pdf', [KpiReadController::class, 'exportPdf'])
         ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.view,whatsapp.chat.supervise,settings.manage');
+    Route::get('/leads', [WhatsappLeadReadController::class, 'index'])
+        ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.supervise,whatsapp.chat.assign,settings.manage');
     Route::get('/flowmaker/contract', [FlowmakerReadController::class, 'contract'])
         ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.autoresponder.manage,settings.manage');
     Route::get('/flowmaker/simulate', [FlowmakerReadController::class, 'simulate'])
@@ -77,6 +85,8 @@ Route::middleware([
         ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.templates.manage,settings.manage');
     Route::get('/templates/sync', [TemplateWriteController::class, 'syncLanding'])
         ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.templates.manage,settings.manage');
+    Route::get('/flowmaker/sandbox', [FlowmakerSandboxController::class, 'status'])
+        ->middleware('app.permission:administrativo,whatsapp.manage,settings.manage');
 });
 
 Route::middleware([
@@ -137,4 +147,22 @@ Route::middleware([
         ->whereNumber('templateId');
     Route::post('/templates/sync', [TemplateWriteController::class, 'sync'])
         ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.templates.manage,settings.manage');
+    // Sandbox (draft testing) endpoints
+    Route::post('/flowmaker/sandbox/draft', [FlowmakerSandboxController::class, 'saveDraft'])
+        ->middleware('app.permission:administrativo,whatsapp.manage,settings.manage');
+    Route::put('/flowmaker/sandbox/numbers', [FlowmakerSandboxController::class, 'setNumbers'])
+        ->middleware('app.permission:administrativo,whatsapp.manage,settings.manage');
+    Route::post('/flowmaker/sandbox/numbers', [FlowmakerSandboxController::class, 'addNumber'])
+        ->middleware('app.permission:administrativo,whatsapp.manage,settings.manage');
+    Route::delete('/flowmaker/sandbox/numbers/{waNumber}', [FlowmakerSandboxController::class, 'removeNumber'])
+        ->middleware('app.permission:administrativo,whatsapp.manage,settings.manage');
+    Route::delete('/flowmaker/sandbox', [FlowmakerSandboxController::class, 'clear'])
+        ->middleware('app.permission:administrativo,whatsapp.manage,settings.manage');
+    // Leads de seguimiento / re-campaña
+    Route::post('/conversations/{conversationId}/leads', [WhatsappLeadWriteController::class, 'store'])
+        ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.send,whatsapp.chat.assign,settings.manage')
+        ->whereNumber('conversationId');
+    Route::patch('/leads/{leadId}/status', [WhatsappLeadWriteController::class, 'updateStatus'])
+        ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.supervise,whatsapp.chat.assign,settings.manage')
+        ->whereNumber('leadId');
 });

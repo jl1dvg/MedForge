@@ -3,19 +3,9 @@
 @php
     $columns = is_array($kanbanColumns ?? null) ? $kanbanColumns : [];
     $filters = is_array($initialFilters ?? null) ? $initialFilters : [];
-    $solicitudesAssetVersionFiles = array_filter([
-        public_path('js/pages/solicitudes/v2-index.js'),
-        public_path('js/pages/solicitudes/kanban/modalDetalles.js'),
-        public_path('js/pages/solicitudes/kanban/modalDetalles/handlers.js'),
-        public_path('js/pages/solicitudes/kanban/modalDetalles/prefactura.js'),
-    ], 'is_file');
-    $solicitudesAssetVersion = $solicitudesAssetVersionFiles !== []
-        ? (string) max(array_map('filemtime', $solicitudesAssetVersionFiles))
-        : 'solicitudes-v2';
 @endphp
 
 @push('styles')
-    <link rel="stylesheet" href="/css/pages/solicitudes-crm-panel.css">
     <style>
         .sol-v2-toolbar {
             background: #fff;
@@ -685,6 +675,82 @@
             color: #fff;
         }
 
+        /* Presets de filtros rápidos */
+        .sol-v2-presets {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            padding: 8px 0 4px;
+            border-bottom: 1px solid #f1f5f9;
+            margin-bottom: 10px;
+        }
+        .sol-v2-preset-btn {
+            font-size: 12px;
+            padding: 3px 10px;
+            border-radius: 999px;
+            border: 1px solid #cbd5e1;
+            background: #f8fafc;
+            color: #334155;
+            cursor: pointer;
+            transition: background 0.15s, border-color 0.15s, color 0.15s;
+            white-space: nowrap;
+        }
+        .sol-v2-preset-btn:hover { background: #e2e8f0; border-color: #94a3b8; }
+        .sol-v2-preset-btn.is-active { background: #0f172a; border-color: #0f172a; color: #fff; }
+        .sol-v2-preset-btn.is-danger { border-color: #fca5a5; color: #991b1b; background: #fef2f2; }
+        .sol-v2-preset-btn.is-danger.is-active { background: #991b1b; border-color: #991b1b; color: #fff; }
+
+        /* Columnas colapsables */
+        .sol-v2-col-collapse-btn {
+            width: 22px; height: 22px; border-radius: 6px; padding: 0;
+            display: inline-flex; align-items: center; justify-content: center;
+            background: transparent; border: 1px solid #dbe2ea; color: #64748b;
+            cursor: pointer; flex-shrink: 0; font-size: 13px; line-height: 1;
+            transition: background 0.15s;
+        }
+        .sol-v2-col-collapse-btn:hover { background: #e2e8f0; }
+        .sol-v2-col.is-collapsed { min-width: 36px; max-width: 36px; width: 36px; }
+        .sol-v2-col.is-collapsed .sol-v2-col-body { display: none; }
+        .sol-v2-col.is-collapsed .sol-v2-col-title { display: none; }
+        .sol-v2-col.is-collapsed .sol-v2-col-head {
+            flex-direction: column; padding: 8px 4px; gap: 4px; min-height: 120px;
+            justify-content: flex-start; writing-mode: vertical-rl;
+        }
+        .sol-v2-col.is-collapsed .sol-v2-col-count { writing-mode: horizontal-tb; }
+        .sol-v2-col.is-collapsed .sol-v2-col-title-rotated {
+            font-size: 12px; font-weight: 700; color: #334155;
+            writing-mode: vertical-rl; text-orientation: mixed; white-space: nowrap;
+        }
+        .sol-v2-col-title-rotated { display: none; }
+        .sol-v2-col.is-collapsed .sol-v2-col-title-rotated { display: block; }
+        .sol-v2-col-collapse-btn .icon-expand { display: none; }
+        .sol-v2-col-collapse-btn .icon-collapse { display: inline; }
+        .sol-v2-col.is-collapsed .sol-v2-col-collapse-btn .icon-expand { display: inline; }
+        .sol-v2-col.is-collapsed .sol-v2-col-collapse-btn .icon-collapse { display: none; }
+        .sol-v2-col.is-collapsed .sol-v2-col-urgente-dot { display: block; }
+        .sol-v2-col-urgente-dot {
+            display: none; width: 8px; height: 8px; border-radius: 999px;
+            background: #dc2626; flex-shrink: 0;
+        }
+
+        /* Vista Urgentes */
+        .sol-v2-urgentes-list { display: flex; flex-direction: column; gap: 8px; }
+        .sol-v2-urgente-row {
+            background: #fff; border: 1px solid #d9e1ec; border-radius: 12px;
+            padding: 12px 14px; display: grid;
+            grid-template-columns: 10px 1fr auto; gap: 10px; align-items: start;
+            box-shadow: 0 2px 8px rgba(15,23,42,0.04);
+        }
+        .sol-v2-urgente-row.is-vencido { border-left: 3px solid #dc2626; }
+        .sol-v2-urgente-row.is-critico { border-left: 3px solid #f59e0b; }
+        .sol-v2-urgente-indicator { width: 10px; height: 10px; border-radius: 999px; margin-top: 4px; flex-shrink: 0; }
+        .sol-v2-urgente-indicator.is-vencido { background: #dc2626; }
+        .sol-v2-urgente-indicator.is-critico { background: #f59e0b; }
+        .sol-v2-urgente-name { font-size: 13px; font-weight: 700; color: #0f172a; }
+        .sol-v2-urgente-meta { font-size: 12px; color: #64748b; margin-top: 2px; }
+        .sol-v2-urgente-proc { font-size: 12px; color: #334155; margin-top: 4px; }
+        .sol-v2-urgente-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
         .sol-v2-table-card {
             border: 1px solid #e2e8f0;
             border-radius: 14px;
@@ -712,7 +778,7 @@
     <div class="content-header">
         <div class="d-flex align-items-center">
             <div class="me-auto">
-                <h3 class="page-title">Solicitudes v2 (Kanban)</h3>
+                <h3 class="page-title">Coordinación Quirúrgica</h3>
                 <div class="d-inline-block align-items-center">
                     <nav>
                         <ol class="breadcrumb mb-0">
@@ -726,6 +792,10 @@
                 <div class="btn-group sol-v2-view-switch" role="group" aria-label="Cambiar vista de solicitudes">
                     <button type="button" class="btn btn-light is-active" data-solicitudes-view="kanban">
                         <i class="mdi mdi-view-kanban"></i> Tablero
+                    </button>
+                    <button type="button" class="btn btn-light" data-solicitudes-view="urgentes">
+                        <i class="mdi mdi-alert-circle-outline"></i> Urgentes
+                        <span class="badge bg-danger ms-1 d-none" id="solUrgentesCount">0</span>
                     </button>
                     <button type="button" class="btn btn-light" data-solicitudes-view="table">
                         <i class="mdi mdi-table-large"></i> Tabla
@@ -766,6 +836,24 @@
     <section class="content">
         <div class="box sol-v2-toolbar" id="solV2ToolbarBox">
             <div class="box-body">
+                <div class="sol-v2-presets" id="solV2Presets" role="group" aria-label="Filtros rápidos">
+                    <span class="text-muted" style="font-size:11px;line-height:2;letter-spacing:.05em;text-transform:uppercase;">Acceso rápido:</span>
+                    <button type="button" class="sol-v2-preset-btn" data-preset="mis-casos" title="Solicitudes asignadas a mí">
+                        <i class="mdi mdi-account-check-outline"></i> Mis casos
+                    </button>
+                    <button type="button" class="sol-v2-preset-btn is-danger" data-preset="urgentes-hoy" title="SLA vencido o crítico">
+                        <i class="mdi mdi-alert-circle-outline"></i> Urgentes
+                    </button>
+                    <button type="button" class="sol-v2-preset-btn" data-preset="sin-responsable" title="Sin coordinador asignado">
+                        <i class="mdi mdi-account-off-outline"></i> Sin responsable
+                    </button>
+                    <button type="button" class="sol-v2-preset-btn" data-preset="derivacion-vencida" title="Derivación con vigencia vencida">
+                        <i class="mdi mdi-calendar-remove-outline"></i> Derivación vencida
+                    </button>
+                    <button type="button" class="sol-v2-preset-btn ms-auto" data-preset="limpiar" title="Quitar filtros rápidos">
+                        <i class="mdi mdi-close-circle-outline"></i> Limpiar
+                    </button>
+                </div>
                 <form id="solV2Filters" class="row g-2 align-items-end">
                     <div class="col-lg-2 col-md-3">
                         <label for="solSearch" class="form-label">Buscar</label>
@@ -897,13 +985,39 @@
                         <article class="sol-v2-col" data-column="{{ (string) ($column['slug'] ?? '') }}">
                             <header class="sol-v2-col-head">
                                 <h5 class="sol-v2-col-title">{{ (string) ($column['label'] ?? '') }}</h5>
+                                <span class="sol-v2-col-title-rotated">{{ (string) ($column['label'] ?? '') }}</span>
                                 <span class="sol-v2-col-count" data-count>0</span>
+                                <span class="sol-v2-col-urgente-dot" aria-hidden="true"></span>
+                                <button type="button"
+                                    class="sol-v2-col-collapse-btn"
+                                    data-col-collapse="{{ (string) ($column['slug'] ?? '') }}"
+                                    title="Colapsar columna"
+                                    aria-label="Colapsar columna {{ (string) ($column['label'] ?? '') }}">
+                                    <span class="icon-collapse">&#x2039;</span>
+                                    <span class="icon-expand">&#x203a;</span>
+                                </button>
                             </header>
                             <div class="sol-v2-col-body" data-body>
                                 <div class="sol-v2-empty">Sin solicitudes</div>
                             </div>
                         </article>
                     @endforeach
+                </div>
+            </div>
+        </div>
+
+        <div id="solicitudesViewUrgentes" class="sol-v2-table-card d-none">
+            <div class="box-header with-border d-flex align-items-center justify-content-between">
+                <div>
+                    <h5 class="box-title mb-1"><i class="mdi mdi-alert-circle-outline text-danger me-1"></i> Urgentes</h5>
+                    <small class="text-muted">Solicitudes con SLA vencido o crítico, ordenadas por antigüedad.</small>
+                </div>
+                <span class="badge bg-danger" id="solUrgentesTotal">0</span>
+            </div>
+            <div class="box-body">
+                <div class="sol-v2-urgentes-list" id="solUrgentesBody"></div>
+                <div id="solUrgentesEmpty" class="sol-v2-empty-state d-none">
+                    <i class="mdi mdi-check-circle-outline text-success"></i> Sin solicitudes urgentes. ¡Todo bajo control!
                 </div>
             </div>
         </div>
@@ -1550,15 +1664,7 @@
             columns: @json($columns),
             realtime: @json($realtimeConfig ?? []),
             notificationStorageKey: @json($notificationStorageKey ?? 'medf:notification-panel:solicitudes-v2'),
-            assetVersion: @json($solicitudesAssetVersion),
         };
     </script>
-    @if (\App\Modules\Shared\Support\MedforgeAssets::hasViteBuild())
-        @vite('resources/js/v2/solicitudes-index.js')
-    @else
-        @if(!empty($realtimeConfig['enabled']) && !empty($realtimeConfig['key']))
-            <script src="/assets/vendor_components/pusher/pusher.min.js"></script>
-        @endif
-        <script src="/js/pages/solicitudes/v2-index.js?v={{ urlencode($solicitudesAssetVersion) }}"></script>
-    @endif
+    @vite('resources/js/v2/solicitudes-index.js')
 @endpush

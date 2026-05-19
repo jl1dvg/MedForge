@@ -1,5 +1,6 @@
 <?php
 
+use App\Jobs\EvaluateSolicitudesSlaJob;
 use App\Modules\Agenda\Services\IndexAdmisionesSyncService;
 use App\Modules\Billing\Services\BillingInformeDataService;
 use App\Modules\Billing\Services\BillingInformePacienteService;
@@ -1084,6 +1085,24 @@ Artisan::command('index-admisiones:sync
         ]]
     );
 
+    $solStats = $result['solicitudes_sync'] ?? [];
+    if ($solStats !== []) {
+        if (isset($solStats['error'])) {
+            $this->warn('[SOLICITUDES-SYNC] Error: ' . $solStats['error']);
+        } else {
+            $this->table(
+                ['Sol. matcheadas', 'Actualizadas', 'Etapa avanzada', 'Notas agregadas', 'Errores'],
+                [[
+                    (int) ($solStats['matched'] ?? 0),
+                    (int) ($solStats['updated'] ?? 0),
+                    (int) ($solStats['advanced'] ?? 0),
+                    (int) ($solStats['noted'] ?? 0),
+                    (int) ($solStats['errors'] ?? 0),
+                ]]
+            );
+        }
+    }
+
     $this->line(sprintf('[%s] [done] index-admisiones:sync', now()->format('Y-m-d H:i:s')));
 
     return 0;
@@ -1479,6 +1498,18 @@ SQL, $dimensionContext['join'], implode("\n  AND ", $conditions), $limitSql);
 
     return $errors > 0 ? 1 : 0;
 })->purpose('Sincroniza derivaciones faltantes priorizando billing_main ya facturado');
+
+Artisan::command('solicitudes:evaluar-sla', function (): int {
+    $this->line(sprintf('[%s] Evaluando SLAs de solicitudes...', now()->format('Y-m-d H:i:s')));
+    EvaluateSolicitudesSlaJob::dispatchSync();
+    $this->line(sprintf('[%s] Evaluación SLA completada.', now()->format('Y-m-d H:i:s')));
+    return 0;
+})->purpose('Evalúa SLAs de solicitudes activas y crea tareas CRM para casos críticos o vencidos');
+
+Schedule::command('solicitudes:evaluar-sla')
+    ->everyThirtyMinutes()
+    ->withoutOverlapping()
+    ->runInBackground();
 
 Schedule::command('derivaciones:scrape-missing --limit=200 --max-attempts=3 --cooldown-hours=6')
     ->hourly()

@@ -1,0 +1,784 @@
+import {actualizarEstadoSolicitud} from './estado.js';
+import {showToast} from './toast.js';
+import {getDataStore, resolveWritePath} from './config.js';
+import {llamarTurnoSolicitud} from './turnero.js';
+import {findSolicitudById} from './modalDetalles/store.js';
+
+const PREQUIRURGICO_DEBOUNCE_MS = 900;
+let lastPrequirurgicoOpenAt = 0;
+let prequirurgicoOpening = false;
+const COBERTURA_DEBOUNCE_MS = 1200;
+let lastCoberturaMailAt = 0;
+let coberturaInProgress = false;
+let coberturaMailModalReady = false;
+let coberturaMailSending = false;
+let pendingCoberturaUpdate = null;
+let coberturaEditorReady = false;
+let coberturaEditorLoading = null;
+const coberturaTemplateCache = new Map();
+const COBERTURA_CKEDITOR_SRC = '/assets/vendor_components/ckeditor/ckeditor.js';
+
+function obtenerTarjetaActiva() {
+    const activeCard = document.querySelector('.kanban-card.view-details.active');
+    if (activeCard) {
+        return activeCard;
+    }
+
+    const context = window.__prefacturaCurrent || {};
+    const solicitudId = String(context.solicitudId || '').trim();
+    const formId = String(context.formId || '').trim();
+    const hcNumber = String(context.hcNumber || '').trim();
+
+    if (!solicitudId && !formId && !hcNumber) {
+        return null;
+    }
+
+    const solicitud = findSolicitudById(solicitudId || formId) || {};
+
+    return {
+        dataset: {
+            id: String(solicitudId || solicitud.id || '').trim(),
+            form: String(formId || solicitud.form_id || '').trim(),
+            hc: String(hcNumber || solicitud.hc_number || '').trim(),
+            estado: String(solicitud?.operational?.kanban_estado || solicitud.kanban_estado || solicitud.estado || '').trim(),
+            turno: String(solicitud.turno || '').trim(),
+        },
+    };
+}
+
+function cerrarModal() {
+    const modalElement = document.getElementById('prefacturaModal');
+    const instance = bootstrap.Modal.getInstance(modalElement);
+    if (instance) {
+        instance.hide();
+    }
+}
+
+function abrirEnNuevaPestana(url) {
+    if (!url) {
+        return false;
+    }
+
+    const nuevaVentana = window.open(url, '_blank', 'noopener');
+    if (nuevaVentana) {
+        if (typeof nuevaVentana.focus === 'function') {
+            nuevaVentana.focus();
+        }
+        return true;
+    }
+
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.target = '_blank';
+    anchor.rel = 'noopener noreferrer';
+    anchor.style.position = 'absolute';
+    anchor.style.left = '-9999px';
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+
+    return false;
+}
+
+function request(url, options = {}) {
+    const config = {
+        method: 'GET', credentials: 'same-origin', headers: {}, ...options,
+    };
+
+    if (config.body && !(config.body instanceof FormData)) {
+        config.headers = {
+            'Content-Type': 'application/json', ...config.headers,
+        };
+        config.body = JSON.stringify(config.body);
+    }
+
+    return fetch(url, config).then(async (response) => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.success === false || data.ok === false) {
+            throw new Error(data.error || data.message || 'No se pudo completar la solicitud');
+        }
+        return data;
+    });
+}
+
+function shouldDebounce(lastTime, windowMs) {
+    const now = Date.now();
+    return now - lastTime < windowMs;
+}
+
+function buildAbsoluteUrl(url) {
+    if (!url) {
+        return '';
+    }
+    if (/^https?:\/\//i.test(url)) {
+        return url;
+    }
+    if (url.startsWith('//')) {
+        return `${window.location.protocol}${url}`;
+    }
+    const normalized = url.startsWith('/') ? url : `/${url}`;
+    return `${window.location.origin}${normalized}`;
+}
+
+function htmlToPlainText(html = '') {
+    const raw = String(html || '').trim();
+    if (!raw) {
+        return '';
+    }
+
+    const withBreaks = raw
+        .replace(/<\s*br\s*\/?>/gi, '\n')
+        .replace(/<\s*\/p\s*>/gi, '\n\n')
+        .replace(/<\s*\/div\s*>/gi, '\n')
+        .replace(/<\s*li\s*>/gi, '• ')
+        .replace(/<\s*\/li\s*>/gi, '\n');
+
+    const container = document.createElement('div');
+    container.innerHTML = withBreaks;
+    const text = (container.textContent || container.innerText || '')
+        .replace(/\u00a0/g, ' ')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+
+    return text;
+}
+
+function buildTemplatePayload(data) {
+    return {
+        afiliacion: data.afiliacion || '',
+        nombre: data.nombre || '',
+        hc_number: data.hcNumber || '',
+        procedimiento: data.procedimiento || '',
+        plan: data.plan || '',
+        form_id: data.formId || '',
+        pdf_url: data.derivacionPdf ? buildAbsoluteUrl(data.derivacionPdf) : '',
+    };
+}
+
+async function fetchCoberturaTemplate(data) {
+    const cacheKey = JSON.stringify({
+        afiliacion: data.afiliacion || '',
+        formId: data.formId || '',
+    });
+    if (coberturaTemplateCache.has(cacheKey)) {
+        return coberturaTemplateCache.get(cacheKey);
+    }
+
+    try {
+        const result = await request('/mail-templates/cobertura/resolve', {
+            method: 'POST',
+            body: buildTemplatePayload(data),
+        });
+        const template = result?.template || null;
+        coberturaTemplateCache.set(cacheKey, template);
+        return template;
+    } catch (error) {
+        console.warn('No se pudo resolver la plantilla de cobertura', error);
+        coberturaTemplateCache.set(cacheKey, null);
+        return null;
+    }
+}
+
+function buildCoberturaUrl(formId, hcNumber, pages) {
+    if (!formId || !hcNumber) {
+        return '';
+    }
+
+    const params = new URLSearchParams({
+        form_id: formId, hc_number: hcNumber, variant: 'appendix',
+    });
+
+    if (pages) {
+        params.set('pages', pages);
+    }
+
+    return `/v2/reports/cobertura/pdf?${params.toString()}`;
+}
+
+function getCoberturaMailData() {
+    const container = document.getElementById('prefacturaCoberturaData');
+    if (!container) {
+        return null;
+    }
+
+    return {
+        derivacionVencida: container.dataset.derivacionVencida === '1',
+        afiliacion: container.dataset.afiliacion || '',
+        nombre: container.dataset.nombre || '',
+        hcNumber: container.dataset.hc || '',
+        procedimiento: container.dataset.procedimiento || '',
+        plan: container.dataset.plan || '',
+        formId: container.dataset.formId || '',
+        derivacionPdf: container.dataset.derivacionPdf || '',
+        templateKey: container.dataset.templateKey || '',
+        solicitudId: container.dataset.solicitudId || '',
+    };
+}
+
+function getCoberturaMailModalElements() {
+    const modal = document.getElementById('coberturaMailModal');
+    if (!modal || !window.bootstrap) {
+        return null;
+    }
+
+    return {
+        modal,
+        form: modal.querySelector('[data-cobertura-mail-form]'),
+        to: modal.querySelector('[data-cobertura-mail-to]'),
+        cc: modal.querySelector('[data-cobertura-mail-cc]'),
+        subject: modal.querySelector('[data-cobertura-mail-subject]'),
+        body: modal.querySelector('[data-cobertura-mail-body]'),
+        attachment: modal.querySelector('[data-cobertura-mail-attachment]'),
+        pdfLink: modal.querySelector('[data-cobertura-mail-pdf]'),
+        cancelButton: modal.querySelector('[data-cobertura-mail-cancel]'),
+        sendButton: modal.querySelector('[data-cobertura-mail-send]'),
+    };
+}
+
+function loadCoberturaEditorScript() {
+    if (window.CKEDITOR) {
+        return Promise.resolve(window.CKEDITOR);
+    }
+
+    if (coberturaEditorLoading) {
+        return coberturaEditorLoading;
+    }
+
+    coberturaEditorLoading = new Promise((resolve, reject) => {
+        const existing = Array.from(document.querySelectorAll('script[src]')).find((script) =>
+            String(script.getAttribute('src') || '').includes('ckeditor.js')
+        );
+
+        if (existing) {
+            existing.addEventListener('load', () => resolve(window.CKEDITOR), {once: true});
+            existing.addEventListener('error', () => reject(new Error('No se pudo cargar CKEditor')), {once: true});
+            window.setTimeout(() => {
+                if (window.CKEDITOR) {
+                    resolve(window.CKEDITOR);
+                }
+            }, 200);
+            return;
+        }
+
+        const script = document.createElement('script');
+        script.src = COBERTURA_CKEDITOR_SRC;
+        script.async = true;
+        script.onload = () => resolve(window.CKEDITOR);
+        script.onerror = () => reject(new Error('No se pudo cargar CKEditor'));
+        document.head.appendChild(script);
+    }).finally(() => {
+        if (window.CKEDITOR) {
+            coberturaEditorLoading = Promise.resolve(window.CKEDITOR);
+        }
+    });
+
+    return coberturaEditorLoading;
+}
+
+async function ensureCoberturaEditor() {
+    if (coberturaEditorReady) {
+        return getCoberturaEditorInstance();
+    }
+
+    if (!window.CKEDITOR) {
+        await loadCoberturaEditorScript();
+    }
+
+    const textarea = document.getElementById('coberturaMailBody');
+    if (!textarea) {
+        return null;
+    }
+
+    if (!CKEDITOR.instances.coberturaMailBody) {
+        CKEDITOR.replace('coberturaMailBody', {
+            toolbar: [{name: 'basicstyles', items: ['Bold', 'Italic', 'Underline']}, {
+                name: 'links',
+                items: ['Link', 'Unlink']
+            }, {name: 'paragraph', items: ['BulletedList', 'NumberedList']}, {
+                name: 'clipboard',
+                items: ['Undo', 'Redo']
+            }, {name: 'editing', items: ['RemoveFormat']},], removePlugins: 'elementspath', resize_enabled: false,
+        });
+    }
+
+    coberturaEditorReady = true;
+    return getCoberturaEditorInstance();
+}
+
+function getCoberturaEditorInstance() {
+    if (!window.CKEDITOR) {
+        return null;
+    }
+    return CKEDITOR.instances.coberturaMailBody || null;
+}
+
+function ensureCoberturaMailModal() {
+    if (coberturaMailModalReady) {
+        return;
+    }
+
+    const elements = getCoberturaMailModalElements();
+    if (!elements || !elements.form) {
+        return;
+    }
+
+    coberturaMailModalReady = true;
+    elements.form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (coberturaMailSending) {
+            return;
+        }
+
+        const editor = getCoberturaEditorInstance();
+        const subject = elements.subject?.value?.trim() || '';
+        const body = editor ? editor.getData().trim() : (elements.body?.value?.trim() || '');
+        const to = elements.to?.value?.trim() || '';
+        const cc = elements.cc?.value?.trim() || '';
+        const attachment = elements.attachment?.files?.[0] ?? null;
+
+        if (!subject || !body) {
+            showToast('Completa el asunto y el mensaje antes de enviar.', false);
+            return;
+        }
+
+        coberturaMailSending = true;
+        if (elements.sendButton) {
+            elements.sendButton.disabled = true;
+        }
+
+        try {
+            const coberturaData = getCoberturaMailData() || {};
+            const formData = new FormData();
+            formData.append('subject', subject);
+            formData.append('body', body);
+            formData.append('to', to);
+            formData.append('cc', cc);
+            if (coberturaData.solicitudId) {
+                formData.append('solicitud_id', coberturaData.solicitudId);
+            }
+            if (coberturaData.formId) {
+                formData.append('form_id', coberturaData.formId);
+            }
+            if (coberturaData.hcNumber) {
+                formData.append('hc_number', coberturaData.hcNumber);
+            }
+            if (coberturaData.afiliacion) {
+                formData.append('afiliacion', coberturaData.afiliacion);
+            }
+            if (coberturaData.templateKey) {
+                formData.append('template_key', coberturaData.templateKey);
+            }
+            if (coberturaData.derivacionPdf) {
+                formData.append('derivacion_pdf', buildAbsoluteUrl(coberturaData.derivacionPdf));
+            }
+            if (attachment) {
+                formData.append('attachment', attachment);
+            }
+            if (editor) {
+                formData.append('is_html', '1');
+            }
+            const response = await request(resolveWritePath('/solicitudes/cobertura-mail'), {
+                method: 'POST', body: formData,
+            });
+            showToast('Correo enviado.', true);
+            updateCoberturaMailStatus(response);
+            const instance = window.bootstrap.Modal.getInstance(elements.modal) ?? new window.bootstrap.Modal(elements.modal);
+            instance.hide();
+            if (pendingCoberturaUpdate) {
+                const {estado, completado} = pendingCoberturaUpdate;
+                pendingCoberturaUpdate = null;
+                actualizarDesdeBoton(estado, {force: true, completado}).catch(() => {
+                });
+            }
+        } catch (error) {
+            console.error('No se pudo enviar el correo de cobertura', error);
+            showToast(error?.message || 'No se pudo enviar el correo de cobertura.', false);
+        } finally {
+            coberturaMailSending = false;
+            if (elements.sendButton) {
+                elements.sendButton.disabled = false;
+            }
+        }
+    });
+}
+
+async function openCoberturaMailModal({subject, body, derivacionPdf, recipients}) {
+    const elements = getCoberturaMailModalElements();
+    if (!elements) {
+        return false;
+    }
+
+    ensureCoberturaMailModal();
+    const editor = await ensureCoberturaEditor();
+
+    const destinatarios = recipients || {};
+    if (elements.to) {
+        elements.to.value = destinatarios.to || '';
+    }
+    if (elements.cc) {
+        elements.cc.value = destinatarios.cc || '';
+    }
+    if (elements.subject) {
+        elements.subject.value = subject || '';
+    }
+    if (editor) {
+        editor.setData(body || '');
+    } else if (elements.body) {
+        elements.body.value = /<[^>]+>/.test(String(body || ''))
+            ? htmlToPlainText(body)
+            : (body || '');
+    }
+    if (elements.attachment) {
+        elements.attachment.value = '';
+    }
+
+    if (elements.pdfLink) {
+        elements.pdfLink.setAttribute('title', 'Ver PDF de respaldo');
+        elements.pdfLink.setAttribute('aria-label', 'Ver PDF de respaldo');
+        if (derivacionPdf) {
+            elements.pdfLink.href = derivacionPdf;
+            elements.pdfLink.classList.remove('d-none');
+        } else {
+            elements.pdfLink.classList.add('d-none');
+        }
+    }
+
+    if (elements.sendButton) {
+        elements.sendButton.setAttribute('title', 'Enviar correo de cobertura');
+        elements.sendButton.setAttribute('aria-label', 'Enviar correo de cobertura');
+    }
+    if (elements.cancelButton) {
+        elements.cancelButton.setAttribute('title', 'Cancelar envío');
+        elements.cancelButton.setAttribute('aria-label', 'Cancelar envío');
+    }
+
+    const instance = window.bootstrap.Modal.getInstance(elements.modal) ?? new window.bootstrap.Modal(elements.modal);
+    instance.show();
+
+    return true;
+}
+
+async function abrirCoberturaMail() {
+    if (coberturaInProgress || shouldDebounce(lastCoberturaMailAt, COBERTURA_DEBOUNCE_MS)) {
+        return {opened: true};
+    }
+
+    const data = getCoberturaMailData();
+    if (!data) {
+        return {opened: false, error: 'No hay información suficiente para armar el correo de cobertura.'};
+    }
+
+    if (!data.afiliacion) {
+        return {opened: false, error: 'No se encontró la afiliación necesaria para armar el correo.'};
+    }
+
+    const template = await fetchCoberturaTemplate(data);
+    if (!template) {
+        return {opened: false, error: 'No hay plantilla configurada para esta afiliación.'};
+    }
+
+    const subject = template.subject || '';
+    const body = template.body_html || template.body_text || '';
+    const pdfUrl = data.derivacionPdf ? buildAbsoluteUrl(data.derivacionPdf) : '';
+    const recipients = {
+        to: template.recipients_to || '',
+        cc: template.recipients_cc || '',
+    };
+
+    coberturaInProgress = true;
+    lastCoberturaMailAt = Date.now();
+    const opened = await openCoberturaMailModal({
+        subject,
+        body,
+        derivacionPdf: pdfUrl,
+        recipients,
+    });
+    if (!opened) {
+        coberturaInProgress = false;
+        return {opened: false, error: 'No se pudo abrir el formulario de correo de cobertura.'};
+    }
+
+    // Ya no abrimos el PDF automáticamente (evita abrir 2 pestañas). El enlace queda disponible en el modal.
+    if (data.derivacionPdf) {
+        showToast('Adjunta el PDF de la derivación antes de enviar el correo (usa el enlace en el modal).', true);
+    } else {
+        showToast('No se encontró el PDF de la derivación para adjuntar.', false);
+    }
+
+    window.setTimeout(() => {
+        coberturaInProgress = false;
+    }, COBERTURA_DEBOUNCE_MS);
+
+    return {opened: true};
+}
+
+function imprimirExamenesPrequirurgicos(tarjeta) {
+    if (!tarjeta) {
+        showToast('Selecciona una solicitud antes de solicitar exámenes', false);
+        return false;
+    }
+
+    const now = Date.now();
+    if (prequirurgicoOpening || now - lastPrequirurgicoOpenAt < PREQUIRURGICO_DEBOUNCE_MS) {
+        return false;
+    }
+    prequirurgicoOpening = true;
+    lastPrequirurgicoOpenAt = now;
+    window.setTimeout(() => {
+        prequirurgicoOpening = false;
+    }, PREQUIRURGICO_DEBOUNCE_MS);
+
+    const formId = tarjeta.dataset.form;
+    const hcNumber = tarjeta.dataset.hc;
+    if (!formId || !hcNumber) {
+        showToast('No se encontró la información necesaria para imprimir los documentos.', false);
+        return false;
+    }
+
+    const url = buildCoberturaUrl(formId, hcNumber, '007,010');
+    const abierta = abrirEnNuevaPestana(url);
+
+    if (!abierta) {
+        showToast('Permite las ventanas emergentes para ver los documentos prequirúrgicos.', false);
+    }
+
+    return abierta;
+}
+
+function imprimirReferenciaCobertura(tarjeta) {
+    if (!tarjeta) {
+        showToast('Selecciona una solicitud antes de solicitar cobertura', false);
+        return false;
+    }
+
+    const formId = tarjeta.dataset.form;
+    const hcNumber = tarjeta.dataset.hc;
+    if (!formId || !hcNumber) {
+        showToast('No se encontró la información necesaria para imprimir los documentos.', false);
+        return false;
+    }
+
+    const url = buildCoberturaUrl(formId, hcNumber, 'referencia');
+    const abierta = abrirEnNuevaPestana(url);
+
+    if (!abierta) {
+        showToast('Permite las ventanas emergentes para ver el documento de cobertura.', false);
+    }
+
+    return abierta;
+}
+
+function actualizarDesdeBoton(nuevoEstado, options = {}) {
+    const tarjeta = obtenerTarjetaActiva();
+    if (!tarjeta) {
+        showToast('Selecciona una solicitud antes de continuar', false);
+        return Promise.reject(new Error('No hay tarjeta activa'));
+    }
+
+    return actualizarEstadoSolicitud(tarjeta.dataset.id, tarjeta.dataset.form, nuevoEstado, getDataStore(), window.aplicarFiltros, options).then(() => cerrarModal());
+}
+
+export function inicializarBotonesModal() {
+    const generarTurnoBtn = document.getElementById('btnGenerarTurnoModal');
+    if (generarTurnoBtn && generarTurnoBtn.dataset.listenerAttached !== 'true') {
+        generarTurnoBtn.dataset.listenerAttached = 'true';
+        generarTurnoBtn.addEventListener('click', () => {
+            const tarjeta = obtenerTarjetaActiva();
+            if (!tarjeta) {
+                showToast('Selecciona una solicitud antes de generar turno', false);
+                return;
+            }
+            generarTurnoBtn.disabled = true;
+            llamarTurnoSolicitud({id: tarjeta.dataset.id})
+                .then((data) => {
+                    const turno = data?.turno ?? tarjeta.dataset.turno;
+                    const estado = data?.estado ?? 'Llamado';
+                    tarjeta.dataset.turno = turno || '';
+                    tarjeta.dataset.estado = estado;
+                    const store = getDataStore();
+                    if (Array.isArray(store)) {
+                        const item = store.find(s => String(s.id) === String(tarjeta.dataset.id));
+                        if (item) {
+                            item.turno = turno;
+                            item.estado = estado;
+                            item.kanban_estado = estado;
+                        }
+                    }
+                    showToast('Turno generado', true);
+                    if (typeof window.aplicarFiltros === 'function') {
+                        window.aplicarFiltros();
+                    }
+                })
+                .catch((error) => {
+                    console.error('❌ Error al generar turno:', error);
+                    showToast(error?.message || 'No se pudo generar el turno', false);
+                })
+                .finally(() => {
+                    generarTurnoBtn.disabled = false;
+                });
+        });
+    }
+
+    const enAtencionBtn = document.getElementById('btnMarcarAtencionModal');
+    if (enAtencionBtn && enAtencionBtn.dataset.listenerAttached !== 'true') {
+        enAtencionBtn.dataset.listenerAttached = 'true';
+        enAtencionBtn.addEventListener('click', () => {
+            const estado = enAtencionBtn.dataset.estado || 'En atención';
+            actualizarDesdeBoton(estado, {force: true, completado: true}).catch(() => {
+            });
+        });
+    }
+
+    const revisarBtn = document.getElementById('btnRevisarCodigos');
+    if (revisarBtn && revisarBtn.dataset.listenerAttached !== 'true') {
+        revisarBtn.dataset.listenerAttached = 'true';
+        revisarBtn.addEventListener('click', () => {
+            const estado = revisarBtn.dataset.estado || 'Revisión Códigos';
+            actualizarDesdeBoton(estado).catch(() => {
+            });
+        });
+    }
+
+    const examenesBtn = document.getElementById('btnSolicitarExamenesPrequirurgicos');
+    if (examenesBtn && examenesBtn.dataset.listenerAttached !== 'true') {
+        examenesBtn.dataset.listenerAttached = 'true';
+        examenesBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            event.stopImmediatePropagation();
+
+            const tarjeta = obtenerTarjetaActiva();
+            imprimirExamenesPrequirurgicos(tarjeta);
+        });
+    }
+
+    const coberturaBtn = document.getElementById('btnSolicitarCobertura');
+    if (coberturaBtn && coberturaBtn.dataset.listenerAttached !== 'true') {
+        coberturaBtn.dataset.listenerAttached = 'true';
+        coberturaBtn.addEventListener('click', async () => {
+            const result = await abrirCoberturaMail();
+            if (!result.opened) {
+                const tarjeta = obtenerTarjetaActiva();
+                imprimirReferenciaCobertura(tarjeta);
+            }
+
+            // Pasar a revisión de códigos (pendiente)
+            const estado = coberturaBtn.dataset.estado || 'Revisión Códigos';
+            const completado = coberturaBtn.dataset.completado === '1';
+            if (result.opened) {
+                pendingCoberturaUpdate = {estado, completado};
+                return;
+            }
+            actualizarDesdeBoton(estado, {force: true, completado}).catch(() => {
+            });
+        });
+    }
+
+    const coberturaExitosaBtn = document.getElementById('btnCoberturaExitosa');
+    if (coberturaExitosaBtn && coberturaExitosaBtn.dataset.listenerAttached !== 'true') {
+        coberturaExitosaBtn.dataset.listenerAttached = 'true';
+        coberturaExitosaBtn.addEventListener('click', () => {
+            const estado = coberturaExitosaBtn.dataset.estado || 'Revisión Códigos';
+            const completado = coberturaExitosaBtn.dataset.completado === '1';
+            actualizarDesdeBoton(estado, {force: true, completado}).catch(() => {
+            });
+        });
+    }
+}
+
+function updateCoberturaMailStatus(payload = {}) {
+    const statusLabel = buildCoberturaMailStatusLabel(payload);
+    if (!statusLabel) {
+        return;
+    }
+
+    const prefacturaStatus = document.getElementById('prefacturaCoberturaMailStatus');
+    if (prefacturaStatus) {
+        prefacturaStatus.textContent = statusLabel;
+        prefacturaStatus.classList.remove('d-none');
+        if (payload?.sent_at) {
+            prefacturaStatus.dataset.sentAt = payload.sent_at;
+        }
+        if (payload?.sent_by_name) {
+            prefacturaStatus.dataset.sentBy = payload.sent_by_name;
+        }
+    }
+
+    const modalStatus = document.getElementById('coberturaMailModalStatus');
+    if (modalStatus) {
+        modalStatus.textContent = statusLabel;
+        modalStatus.classList.remove('d-none');
+        if (payload?.sent_at) {
+            modalStatus.dataset.sentAt = payload.sent_at;
+        }
+        if (payload?.sent_by_name) {
+            modalStatus.dataset.sentBy = payload.sent_by_name;
+        }
+    }
+
+    const coberturaBtn = document.getElementById('btnSolicitarCobertura');
+    if (coberturaBtn) {
+        coberturaBtn.classList.add('d-none');
+    }
+
+    const coberturaExitosaBtn = document.getElementById('btnCoberturaExitosa');
+    if (coberturaExitosaBtn) {
+        coberturaExitosaBtn.classList.remove('d-none');
+    }
+
+    const revisarBtn = document.getElementById('btnRevisarCodigos');
+    if (revisarBtn) {
+        revisarBtn.classList.add('d-none');
+    }
+}
+
+function buildCoberturaMailStatusLabel(payload) {
+    const sentAt = payload?.sent_at || payload?.sentAt || '';
+    if (!sentAt) {
+        return '';
+    }
+
+    const sentBy = payload?.sent_by_name || payload?.sentByName || '';
+    const formattedDate = formatCoberturaDateTime(sentAt);
+    if (!formattedDate) {
+        return '';
+    }
+
+    return sentBy ? `Cobertura solicitada el ${formattedDate} por ${sentBy}` : `Cobertura solicitada el ${formattedDate}`;
+}
+
+function formatCoberturaDateTime(value) {
+    if (!value) {
+        return '';
+    }
+
+    const normalized = value.replace(' ', 'T');
+    const date = new Date(normalized);
+    if (Number.isNaN(date.getTime())) {
+        return value;
+    }
+
+    const pad = (num) => String(num).padStart(2, '0');
+    return `${pad(date.getDate())}-${pad(date.getMonth() + 1)}-${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+export function attachPrefacturaCoberturaMail() {
+    const buttons = [
+        document.getElementById('btnPrefacturaSolicitarCoberturaMail'),
+        document.getElementById('btnSolicitarAutorizacion'),
+    ].filter(Boolean);
+
+    buttons.forEach((button) => {
+        if (!button || button.dataset.listenerAttached === 'true') {
+            return;
+        }
+
+        button.dataset.listenerAttached = 'true';
+        button.addEventListener('click', async () => {
+            const result = await abrirCoberturaMail();
+            if (!result.opened) {
+                showToast(result.error || 'No hay información suficiente para armar el correo de cobertura.', false);
+            }
+        });
+    });
+}

@@ -4,23 +4,16 @@ declare(strict_types=1);
 
 namespace App\Modules\Solicitudes\Services;
 
+use App\Modules\Solicitudes\Services\Traits\SolicitudesDbHelperTrait;
 use DateTime;
-use DateInterval;
-use DateTimeImmutable;
+use Illuminate\Support\Facades\DB;
 use PDO;
 use RuntimeException;
 use Throwable;
 
 class SolicitudesWriteParityService
 {
-    private const TURNERO_STATE_MAP = [
-        'recibido' => 'Recibido',
-        'recibida' => 'Recibido',
-        'llamado' => 'Llamado',
-        'en atencion' => 'En atención',
-        'en atención' => 'En atención',
-        'atendido' => 'Atendido',
-    ];
+    use SolicitudesDbHelperTrait;
 
     private const META_CIRUGIA_CONFIRMADA_KEYS = [
         'cirugia_confirmada_form_id',
@@ -32,14 +25,9 @@ class SolicitudesWriteParityService
         'cirugia_confirmada_at',
     ];
 
-    /** @var array<string, array<int, string>> */
-    private array $columnsCache = [];
-
-    /** @var array<string, bool> */
-    private array $tableExistsCache = [];
-
-    private ?int $companyIdCache = null;
     private SolicitudesStateMachineService $stateMachine;
+    private SolicitudesKanbanService $kanban;
+    private SolicitudesCrmWriteService $crmWrite;
 
     public function __construct(
         private readonly PDO $db,
@@ -47,23 +35,18 @@ class SolicitudesWriteParityService
         ?SolicitudesStateMachineService $stateMachine = null,
     ) {
         $this->stateMachine = $stateMachine ?? new SolicitudesStateMachineService();
+        $this->kanban  = new SolicitudesKanbanService($this->db, $this->stateMachine, $this->readService);
+        $this->crmWrite = new SolicitudesCrmWriteService($this->db, $this->readService);
     }
 
-    /**
-     * @return array<string,mixed>
-     */
+    // =========================================================================
+    // Kanban delegations
+    // =========================================================================
+
+    /** @return array<string,mixed> */
     public function apiEstadoGet(string $hcNumber): array
     {
-        $stmt = $this->db->prepare('SELECT * FROM solicitud_procedimiento WHERE hc_number = :hc ORDER BY created_at DESC');
-        $stmt->execute([':hc' => $hcNumber]);
-        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-
-        return [
-            'success' => true,
-            'hcNumber' => $hcNumber,
-            'total' => count($rows),
-            'solicitudes' => $rows,
-        ];
+        return $this->kanban->apiEstadoGet($hcNumber);
     }
 
     /**
@@ -72,44 +55,10 @@ class SolicitudesWriteParityService
      */
     public function apiEstadoPost(array $payload): array
     {
-        $id = isset($payload['id']) ? (int) $payload['id'] : 0;
-        if ($id <= 0 && isset($payload['solicitud_id'])) {
-            $id = (int) $payload['solicitud_id'];
-        }
-
-        if ($id <= 0) {
-            throw new RuntimeException('Parámetro id requerido para actualizar la solicitud');
-        }
-
-        $campos = [];
-        foreach ([
-            'estado',
-            'doctor',
-            'fecha',
-            'prioridad',
-            'observacion',
-            'procedimiento',
-            'producto',
-            'ojo',
-            'afiliacion',
-            'duracion',
-            'lente_id',
-            'lente_nombre',
-            'lente_poder',
-            'lente_observacion',
-            'incision',
-        ] as $field) {
-            if (array_key_exists($field, $payload)) {
-                $campos[$field] = $payload[$field];
-            }
-        }
-
-        return $this->actualizarSolicitudParcial($id, $campos);
+        return $this->kanban->apiEstadoPost($payload);
     }
 
-    /**
-     * @return array<string,mixed>
-     */
+    /** @return array<string,mixed> */
     public function actualizarEstado(
         int $id,
         int $formId,
@@ -119,48 +68,112 @@ class SolicitudesWriteParityService
         ?int $userId,
         ?string $nota = null,
     ): array {
-        if ($id <= 0 && $formId > 0) {
-            $id = $this->findIdByFormId($formId) ?? 0;
-        }
-
-        $stageSlug = $this->normalizeKanbanSlug($estado);
-        if ($id <= 0 || $stageSlug === '') {
-            throw new RuntimeException('Datos incompletos');
-        }
-
-        $row = $this->fetchSolicitudById($id);
-        if ($row === null) {
-            throw new RuntimeException('Solicitud no encontrada');
-        }
-
-        $legacyState = (string) ($row['estado'] ?? '');
-        [$checklist, $progress, $kanbanState, $transitionMeta] = $this->transitionChecklistStage(
-            $id,
-            $stageSlug,
-            $completado,
-            $userId,
-            $nota,
-            $force,
-            $legacyState
-        );
-
-        $nextState = (string) ($kanbanState['slug'] ?? $stageSlug);
-        $nextStateLabel = (string) ($kanbanState['label'] ?? $this->kanbanLabel($nextState));
-
-        $fresh = $this->fetchSolicitudById($id);
-
-        return [
-            'kanban_estado' => $nextState,
-            'kanban_estado_label' => $nextStateLabel,
-            'estado' => $nextState,
-            'estado_label' => $nextStateLabel,
-            'turno' => isset($fresh['turno']) ? (int) $fresh['turno'] : null,
-            'checklist' => $checklist,
-            'checklist_progress' => $progress,
-            'estado_anterior' => $legacyState,
-            'transition' => $transitionMeta,
-        ];
+        return $this->kanban->actualizarEstado($id, $formId, $estado, $completado, $force, $userId, $nota);
     }
+
+    /** @return array<string,mixed>|null */
+    public function turneroLlamar(?int $id, ?int $turno, string $nuevoEstado): ?array
+    {
+        return $this->kanban->turneroLlamar($id, $turno, $nuevoEstado);
+    }
+
+    /** @return array<string,mixed> */
+    public function crmChecklistState(int $solicitudId): array
+    {
+        return $this->kanban->crmChecklistState($solicitudId);
+    }
+
+    /** @return array<string,mixed> */
+    public function crmActualizarChecklist(int $solicitudId, string $etapa, bool $completado, ?int $userId): array
+    {
+        return $this->kanban->crmActualizarChecklist($solicitudId, $etapa, $completado, $userId);
+    }
+
+    /**
+     * @param array<string,mixed> $payload
+     * @return array<string,mixed>
+     */
+    public function crmBootstrap(int $solicitudId, array $payload, ?int $userId): array
+    {
+        return $this->kanban->crmBootstrap($solicitudId, $payload, $userId);
+    }
+
+    /** @return array<string,mixed> */
+    public function crmActualizarTareaEstado(int $solicitudId, int $tareaId, string $estado, array $payloadExtra = []): array
+    {
+        return $this->kanban->crmActualizarTareaEstado($solicitudId, $tareaId, $estado, $payloadExtra);
+    }
+
+    // =========================================================================
+    // CRM write delegations
+    // =========================================================================
+
+    /**
+     * @param array<string,mixed> $payload
+     * @return array<string,mixed>
+     */
+    public function crmGuardarDetalles(int $solicitudId, array $payload, ?int $userId): array
+    {
+        return $this->crmWrite->crmGuardarDetalles($solicitudId, $payload, $userId);
+    }
+
+    /**
+     * @param array<string,mixed> $payload
+     * @return array<string,mixed>
+     */
+    public function crmRegistrarBloqueo(int $solicitudId, array $payload, ?int $userId): array
+    {
+        return $this->crmWrite->crmRegistrarBloqueo($solicitudId, $payload, $userId);
+    }
+
+    /** @return array<string,mixed> */
+    public function crmSubirAdjunto(
+        int $solicitudId,
+        string $nombreOriginal,
+        string $rutaRelativa,
+        ?string $mimeType,
+        ?int $tamanoBytes,
+        ?int $usuarioId,
+        ?string $descripcion = null,
+    ): array {
+        return $this->crmWrite->crmSubirAdjunto(
+            $solicitudId,
+            $nombreOriginal,
+            $rutaRelativa,
+            $mimeType,
+            $tamanoBytes,
+            $usuarioId,
+            $descripcion,
+        );
+    }
+
+    /** @return array<string,mixed> */
+    public function crmAgregarNota(int $solicitudId, string $nota, ?int $autorId): array
+    {
+        return $this->crmWrite->crmAgregarNota($solicitudId, $nota, $autorId);
+    }
+
+    /**
+     * @param array<string,mixed> $payload
+     * @return array<string,mixed>
+     */
+    public function crmGuardarTarea(int $solicitudId, array $payload, ?int $autorId): array
+    {
+        return $this->crmWrite->crmGuardarTarea($solicitudId, $payload, $autorId);
+    }
+
+    /**
+     * @param array<string,mixed> $payload
+     * @return array<string,mixed>
+     */
+    public function crmCrearPropuesta(int $solicitudId, array $payload, ?int $autorId): array
+    {
+        return $this->crmWrite->crmCrearPropuesta($solicitudId, $payload, $autorId);
+    }
+
+    // =========================================================================
+    // Derivacion / cirugía (Phase 3 Step 3 — not yet extracted)
+    // =========================================================================
 
     /**
      * @param array<string,mixed> $payload
@@ -203,7 +216,7 @@ class SolicitudesWriteParityService
             return [
                 'success' => true,
                 'message' => (string) ($resultado['message'] ?? 'Cambios guardados'),
-                'data' => $resultado['data'] ?? null,
+                'data'    => $resultado['data'] ?? null,
             ];
         }
 
@@ -220,29 +233,29 @@ class SolicitudesWriteParityService
         throw new RuntimeException('Datos no válidos o incompletos');
     }
 
-    /**
-     * @param array<string,mixed> $payload
-     */
+    /** @param array<string,mixed> $payload */
     public function guardarDerivacionPreseleccion(?int $solicitudId, array $payload): bool
     {
-        $codigo = trim((string) ($payload['codigo_derivacion'] ?? ''));
-        $pedidoId = trim((string) ($payload['pedido_id_mas_antiguo'] ?? ''));
+        $codigo      = trim((string) ($payload['codigo_derivacion'] ?? ''));
+        $pedidoId    = trim((string) ($payload['pedido_id_mas_antiguo'] ?? ''));
         $lateralidad = trim((string) ($payload['lateralidad'] ?? ''));
-        $vigencia = trim((string) ($payload['fecha_vigencia'] ?? ''));
-        $prefactura = trim((string) ($payload['prefactura'] ?? ''));
+        $vigencia    = trim((string) ($payload['fecha_vigencia'] ?? ''));
+        $prefactura  = trim((string) ($payload['prefactura'] ?? ''));
 
         if (($solicitudId ?? 0) <= 0) {
             $solicitudId = isset($payload['solicitud_id']) ? (int) $payload['solicitud_id'] : 0;
         }
 
         if ($solicitudId <= 0) {
-            $formId = trim((string) ($payload['form_id'] ?? ''));
+            $formId   = trim((string) ($payload['form_id'] ?? ''));
             $hcNumber = trim((string) ($payload['hc_number'] ?? ''));
             if ($formId !== '' && $hcNumber !== '') {
-                $stmt = $this->db->prepare('SELECT id FROM solicitud_procedimiento WHERE form_id = :form_id AND hc_number = :hc ORDER BY id DESC LIMIT 1');
-                $stmt->execute([':form_id' => $formId, ':hc' => $hcNumber]);
-                $resolved = $stmt->fetchColumn();
-                $solicitudId = $resolved !== false ? (int) $resolved : 0;
+                $resolved    = DB::table('solicitud_procedimiento')
+                    ->where('form_id', $formId)
+                    ->where('hc_number', $hcNumber)
+                    ->orderByDesc('id')
+                    ->value('id');
+                $solicitudId = $resolved ? (int) $resolved : 0;
             }
         }
 
@@ -250,775 +263,24 @@ class SolicitudesWriteParityService
             throw new RuntimeException('Datos incompletos para guardar la derivación seleccionada.');
         }
 
-        $set = [];
-        $params = [':id' => $solicitudId];
+        $updated = DB::table('solicitud_procedimiento')
+            ->where('id', $solicitudId)
+            ->update([
+                'derivacion_codigo'             => $codigo,
+                'derivacion_pedido_id'          => $pedidoId,
+                'derivacion_lateralidad'        => $lateralidad !== '' ? $lateralidad : null,
+                'derivacion_fecha_vigencia_sel' => $vigencia    !== '' ? $vigencia    : null,
+                'derivacion_prefactura'         => $prefactura  !== '' ? $prefactura  : null,
+            ]);
 
-        if ($this->hasColumn('solicitud_procedimiento', 'derivacion_codigo')) {
-            $set[] = 'derivacion_codigo = :codigo';
-            $params[':codigo'] = $codigo;
-        }
-        if ($this->hasColumn('solicitud_procedimiento', 'derivacion_pedido_id')) {
-            $set[] = 'derivacion_pedido_id = :pedido';
-            $params[':pedido'] = $pedidoId;
-        }
-        if ($this->hasColumn('solicitud_procedimiento', 'derivacion_lateralidad')) {
-            $set[] = 'derivacion_lateralidad = :lateralidad';
-            $params[':lateralidad'] = $lateralidad !== '' ? $lateralidad : null;
-        }
-        if ($this->hasColumn('solicitud_procedimiento', 'derivacion_fecha_vigencia_sel')) {
-            $set[] = 'derivacion_fecha_vigencia_sel = :vigencia';
-            $params[':vigencia'] = $vigencia !== '' ? $vigencia : null;
-        }
-        if ($this->hasColumn('solicitud_procedimiento', 'derivacion_prefactura')) {
-            $set[] = 'derivacion_prefactura = :prefactura';
-            $params[':prefactura'] = $prefactura !== '' ? $prefactura : null;
-        }
-
-        if ($set === []) {
-            return false;
-        }
-
-        $stmt = $this->db->prepare('UPDATE solicitud_procedimiento SET ' . implode(', ', $set) . ' WHERE id = :id');
-        $stmt->execute($params);
-
-        if ($stmt->rowCount() > 0) {
+        if ($updated > 0) {
             return true;
         }
 
-        $existsStmt = $this->db->prepare('SELECT 1 FROM solicitud_procedimiento WHERE id = :id LIMIT 1');
-        $existsStmt->execute([':id' => $solicitudId]);
-
-        return $existsStmt->fetchColumn() !== false;
+        return DB::table('solicitud_procedimiento')->where('id', $solicitudId)->exists();
     }
 
-    /**
-     * @return array<string,mixed>|null
-     */
-    public function turneroLlamar(?int $id, ?int $turno, string $nuevoEstado): ?array
-    {
-        $estadoNormalizado = $this->normalizeTurneroEstado($nuevoEstado);
-        if ($estadoNormalizado === null) {
-            throw new RuntimeException('Estado no permitido para el turnero');
-        }
-
-        $this->db->beginTransaction();
-
-        try {
-            $registro = null;
-            if (($turno ?? 0) > 0) {
-                $stmt = $this->db->prepare('SELECT id, turno, estado FROM solicitud_procedimiento WHERE turno = :turno FOR UPDATE');
-                $stmt->execute([':turno' => $turno]);
-                $registro = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
-            } else {
-                $stmt = $this->db->prepare('SELECT id, turno, estado FROM solicitud_procedimiento WHERE id = :id FOR UPDATE');
-                $stmt->execute([':id' => $id]);
-                $registro = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
-
-                if ($registro === null && ($id ?? 0) > 0) {
-                    $fallback = $this->db->prepare('SELECT id, turno, estado FROM solicitud_procedimiento WHERE form_id = :form_id ORDER BY id DESC LIMIT 1 FOR UPDATE');
-                    $fallback->execute([':form_id' => $id]);
-                    $registro = $fallback->fetch(PDO::FETCH_ASSOC) ?: null;
-                }
-            }
-
-            if ($registro === null) {
-                $this->db->rollBack();
-                return null;
-            }
-
-            $estadoActual = $this->normalizeTurneroEstado((string) ($registro['estado'] ?? ''));
-            if ($estadoActual === null) {
-                $this->db->rollBack();
-                return null;
-            }
-
-            if (empty($registro['turno'])) {
-                $registro['turno'] = $this->asignarTurnoSiNecesario((int) $registro['id']);
-            }
-
-            $update = $this->db->prepare('UPDATE solicitud_procedimiento SET estado = :estado WHERE id = :id');
-            $update->execute([
-                ':estado' => $estadoNormalizado,
-                ':id' => (int) $registro['id'],
-            ]);
-
-            $detailStmt = $this->db->prepare('SELECT
-                    sp.id,
-                    sp.turno,
-                    sp.estado,
-                    sp.hc_number,
-                    sp.form_id,
-                    sp.prioridad,
-                    sp.created_at,
-                    TRIM(CONCAT_WS(" ", NULLIF(TRIM(pd.fname), ""), NULLIF(TRIM(pd.mname), ""), NULLIF(TRIM(pd.lname), ""), NULLIF(TRIM(pd.lname2), ""))) AS full_name
-                FROM solicitud_procedimiento sp
-                INNER JOIN patient_data pd ON sp.hc_number = pd.hc_number
-                WHERE sp.id = :id');
-            $detailStmt->execute([':id' => (int) $registro['id']]);
-            $detalles = $detailStmt->fetch(PDO::FETCH_ASSOC) ?: null;
-
-            $this->db->commit();
-            return $detalles;
-        } catch (Throwable $e) {
-            $this->db->rollBack();
-            throw $e;
-        }
-    }
-
-    /**
-     * @param array<string,mixed> $payload
-     * @return array<string,mixed>
-     */
-    public function crmGuardarDetalles(int $solicitudId, array $payload, ?int $userId): array
-    {
-        $this->assertSolicitudExists($solicitudId);
-
-        if (!$this->tableExists('solicitud_crm_detalles')) {
-            throw new RuntimeException('Tabla solicitud_crm_detalles no disponible');
-        }
-
-        $responsableId = $this->nullableInt($payload['responsable_id'] ?? null);
-        $pipelineStage = $this->nullableString($payload['pipeline_stage'] ?? null);
-        $fuente = $this->nullableString($payload['fuente'] ?? null);
-        $contactoEmail = $this->nullableString($payload['contacto_email'] ?? null);
-        $contactoTelefono = $this->nullableString($payload['contacto_telefono'] ?? null);
-        $followers = $this->normalizeFollowers($payload['seguidores'] ?? []);
-        $followersJson = $followers !== [] ? json_encode($followers, JSON_UNESCAPED_UNICODE) : null;
-
-        $existing = $this->fetchCrmDetalleRow($solicitudId);
-        $columns = $this->tableColumns('solicitud_crm_detalles');
-        $companyId = $this->resolveCompanyId();
-
-        $data = [];
-        $data['solicitud_id'] = $solicitudId;
-        if (in_array('crm_lead_id', $columns, true)) {
-            $data['crm_lead_id'] = $this->nullableInt($payload['crm_lead_id'] ?? null);
-        }
-        if (in_array('crm_project_id', $columns, true)) {
-            $data['crm_project_id'] = $existing['crm_project_id'] ?? null;
-        }
-        if (in_array('responsable_id', $columns, true)) {
-            $data['responsable_id'] = $responsableId;
-        }
-        if (in_array('pipeline_stage', $columns, true)) {
-            $data['pipeline_stage'] = $pipelineStage;
-        }
-        if (in_array('fuente', $columns, true)) {
-            $data['fuente'] = $fuente;
-        }
-        if (in_array('contacto_email', $columns, true)) {
-            $data['contacto_email'] = $contactoEmail;
-        }
-        if (in_array('contacto_telefono', $columns, true)) {
-            $data['contacto_telefono'] = $contactoTelefono;
-        }
-        if (in_array('followers', $columns, true)) {
-            $data['followers'] = $followersJson;
-        }
-        if (in_array('company_id', $columns, true)) {
-            $data['company_id'] = $companyId;
-        }
-
-        if ($existing === null) {
-            if (in_array('created_at', $columns, true)) {
-                $data['created_at'] = date('Y-m-d H:i:s');
-            }
-            if (in_array('updated_at', $columns, true)) {
-                $data['updated_at'] = date('Y-m-d H:i:s');
-            }
-            $this->insertRow('solicitud_crm_detalles', $data);
-        } else {
-            if (in_array('updated_at', $columns, true)) {
-                $data['updated_at'] = date('Y-m-d H:i:s');
-            }
-            unset($data['solicitud_id']);
-            $this->updateRow('solicitud_crm_detalles', $data, 'solicitud_id = :solicitud_id', [':solicitud_id' => $solicitudId]);
-        }
-
-        if (isset($payload['custom_fields']) && is_array($payload['custom_fields'])) {
-            $this->guardarCrmMeta($solicitudId, $payload['custom_fields']);
-        }
-
-        return $this->readService->crmResumen($solicitudId);
-    }
-
-    /**
-     * @param array<string,mixed> $payload
-     * @return array<string,mixed>
-     */
-    public function crmRegistrarBloqueo(int $solicitudId, array $payload, ?int $userId): array
-    {
-        $this->assertSolicitudExists($solicitudId);
-
-        $columns = $this->tableColumns('crm_calendar_blocks');
-        if ($columns === []) {
-            throw new RuntimeException('Tabla crm_calendar_blocks no disponible');
-        }
-
-        $base = $this->fetchSolicitudBloqueoBase($solicitudId);
-        if ($base === null) {
-            throw new RuntimeException('No se encontró la solicitud para bloquear agenda');
-        }
-
-        $inicio = $this->parseFlexibleDateTime($payload['fecha_inicio'] ?? ($base['fecha_programada'] ?? null));
-        if (!$inicio instanceof DateTimeImmutable) {
-            throw new RuntimeException('La fecha/hora de inicio es obligatoria');
-        }
-
-        $fin = $this->parseFlexibleDateTime($payload['fecha_fin'] ?? null);
-        if (!$fin instanceof DateTimeImmutable) {
-            $duracionMinutos = max(15, (int) ($payload['duracion_minutos'] ?? 60));
-            $fin = $inicio->add(new DateInterval(sprintf('PT%dM', $duracionMinutos)));
-        }
-
-        if ($fin <= $inicio) {
-            throw new RuntimeException('La hora de fin debe ser posterior al inicio');
-        }
-
-        $doctor = $this->nullableString($payload['doctor'] ?? ($base['doctor'] ?? null));
-        $sala = $this->nullableString($payload['sala'] ?? ($payload['quirofano'] ?? ($base['sala'] ?? null)));
-        $motivo = $this->nullableString($payload['motivo'] ?? null);
-        $now = date('Y-m-d H:i:s');
-
-        $insert = ['solicitud_id' => $solicitudId];
-        if (in_array('doctor', $columns, true)) {
-            $insert['doctor'] = $doctor;
-        }
-        if (in_array('sala', $columns, true)) {
-            $insert['sala'] = $sala;
-        }
-        if (in_array('fecha_inicio', $columns, true)) {
-            $insert['fecha_inicio'] = $inicio->format('Y-m-d H:i:s');
-        }
-        if (in_array('fecha_fin', $columns, true)) {
-            $insert['fecha_fin'] = $fin->format('Y-m-d H:i:s');
-        }
-        if (in_array('motivo', $columns, true)) {
-            $insert['motivo'] = $motivo;
-        }
-        if (in_array('created_by', $columns, true)) {
-            $insert['created_by'] = $userId;
-        }
-        if (in_array('created_at', $columns, true)) {
-            $insert['created_at'] = $now;
-        }
-        if (in_array('updated_at', $columns, true)) {
-            $insert['updated_at'] = $now;
-        }
-
-        $this->insertRow('crm_calendar_blocks', $insert);
-        $bloqueoId = (int) $this->db->lastInsertId();
-
-        $resumen = $this->readService->crmResumen($solicitudId);
-        $resumen['ultimo_bloqueo'] = [
-            'id' => $bloqueoId > 0 ? $bloqueoId : null,
-            'solicitud_id' => $solicitudId,
-            'doctor' => $doctor,
-            'sala' => $sala,
-            'fecha_inicio' => $inicio->format(DateTimeImmutable::ATOM),
-            'fecha_fin' => $fin->format(DateTimeImmutable::ATOM),
-            'motivo' => $motivo,
-            'created_by' => $userId,
-        ];
-
-        return $resumen;
-    }
-
-    /**
-     * @return array<string,mixed>
-     */
-    public function crmSubirAdjunto(
-        int $solicitudId,
-        string $nombreOriginal,
-        string $rutaRelativa,
-        ?string $mimeType,
-        ?int $tamanoBytes,
-        ?int $usuarioId,
-        ?string $descripcion = null
-    ): array {
-        $this->assertSolicitudExists($solicitudId);
-
-        $columns = $this->tableColumns('solicitud_crm_adjuntos');
-        if ($columns === []) {
-            throw new RuntimeException('Tabla solicitud_crm_adjuntos no disponible');
-        }
-
-        $now = date('Y-m-d H:i:s');
-        $insert = ['solicitud_id' => $solicitudId];
-        if (in_array('nombre_original', $columns, true)) {
-            $insert['nombre_original'] = $nombreOriginal;
-        }
-        if (in_array('ruta_relativa', $columns, true)) {
-            $insert['ruta_relativa'] = $rutaRelativa;
-        }
-        if (in_array('mime_type', $columns, true)) {
-            $insert['mime_type'] = $mimeType;
-        }
-        if (in_array('tamano_bytes', $columns, true)) {
-            $insert['tamano_bytes'] = $tamanoBytes;
-        }
-        if (in_array('descripcion', $columns, true)) {
-            $insert['descripcion'] = $this->nullableString($descripcion);
-        }
-        if (in_array('subido_por', $columns, true)) {
-            $insert['subido_por'] = $usuarioId;
-        }
-        if (in_array('created_at', $columns, true)) {
-            $insert['created_at'] = $now;
-        }
-        if (in_array('updated_at', $columns, true)) {
-            $insert['updated_at'] = $now;
-        }
-
-        $this->insertRow('solicitud_crm_adjuntos', $insert);
-
-        return $this->readService->crmResumen($solicitudId);
-    }
-
-    /**
-     * @return array<string,mixed>
-     */
-    public function crmAgregarNota(int $solicitudId, string $nota, ?int $autorId): array
-    {
-        $this->assertSolicitudExists($solicitudId);
-        $nota = trim(strip_tags($nota));
-        if ($nota === '') {
-            throw new RuntimeException('La nota no puede estar vacía');
-        }
-
-        $columns = $this->tableColumns('solicitud_crm_notas');
-        if ($columns === []) {
-            throw new RuntimeException('Tabla solicitud_crm_notas no disponible');
-        }
-
-        $payload = [
-            'solicitud_id' => $solicitudId,
-            'nota' => $nota,
-        ];
-        if (in_array('autor_id', $columns, true)) {
-            $payload['autor_id'] = $autorId;
-        }
-        if (in_array('created_at', $columns, true)) {
-            $payload['created_at'] = date('Y-m-d H:i:s');
-        }
-
-        $this->insertRow('solicitud_crm_notas', $payload);
-
-        return $this->readService->crmResumen($solicitudId);
-    }
-
-    /**
-     * @param array<string,mixed> $payload
-     * @return array<string,mixed>
-     */
-    public function crmGuardarTarea(int $solicitudId, array $payload, ?int $autorId): array
-    {
-        $this->assertSolicitudExists($solicitudId);
-
-        $title = trim((string) ($payload['titulo'] ?? $payload['title'] ?? ''));
-        if ($title === '') {
-            $title = 'Tarea solicitud #' . $solicitudId;
-        }
-
-        $status = strtolower(trim((string) ($payload['estado'] ?? $payload['status'] ?? 'pendiente')));
-        if (!in_array($status, ['pendiente', 'en_progreso', 'en_proceso', 'completada', 'cancelada'], true)) {
-            $status = 'pendiente';
-        }
-
-        $columns = $this->tableColumns('crm_tasks');
-        if ($columns === []) {
-            throw new RuntimeException('Tabla crm_tasks no disponible');
-        }
-
-        $now = date('Y-m-d H:i:s');
-        $task = [];
-        if (in_array('company_id', $columns, true)) {
-            $task['company_id'] = $this->resolveCompanyId();
-        }
-        if (in_array('source_module', $columns, true)) {
-            $task['source_module'] = 'solicitudes';
-        }
-        if (in_array('source_ref_id', $columns, true)) {
-            $task['source_ref_id'] = (string) $solicitudId;
-        }
-        if (in_array('title', $columns, true)) {
-            $task['title'] = $title;
-        }
-        if (in_array('description', $columns, true)) {
-            $task['description'] = $this->nullableString($payload['descripcion'] ?? $payload['description'] ?? null);
-        }
-        if (in_array('status', $columns, true)) {
-            $task['status'] = $status;
-        }
-        if (in_array('assigned_to', $columns, true)) {
-            $task['assigned_to'] = $this->nullableInt($payload['assigned_to'] ?? $payload['asignado_a'] ?? null);
-        }
-        if (in_array('created_by', $columns, true)) {
-            $task['created_by'] = $autorId;
-        }
-        if (in_array('due_date', $columns, true)) {
-            $task['due_date'] = $this->normalizeDate($payload['due_date'] ?? $payload['fecha_vencimiento'] ?? null);
-        }
-        if (in_array('due_at', $columns, true)) {
-            $task['due_at'] = $this->normalizeDateTime($payload['due_at'] ?? $payload['fecha_hora_vencimiento'] ?? null);
-        }
-        if (in_array('remind_at', $columns, true)) {
-            $task['remind_at'] = $this->normalizeDateTime($payload['remind_at'] ?? null);
-        }
-        if (in_array('checklist_slug', $columns, true)) {
-            $task['checklist_slug'] = $this->nullableString($payload['checklist_slug'] ?? $payload['etapa_slug'] ?? null);
-        }
-        if (in_array('task_key', $columns, true)) {
-            $task['task_key'] = $this->nullableString($payload['task_key'] ?? null);
-        }
-        if (in_array('metadata', $columns, true)) {
-            $metadata = [];
-            $checklistSlug = $this->nullableString($payload['checklist_slug'] ?? $payload['etapa_slug'] ?? null);
-            $taskKey = $this->nullableString($payload['task_key'] ?? null);
-            if ($checklistSlug !== null) {
-                $metadata['checklist_slug'] = $checklistSlug;
-                $metadata['checklist_label'] = $title;
-            }
-            if ($taskKey !== null) {
-                $metadata['task_key'] = $taskKey;
-            }
-            $task['metadata'] = $metadata !== [] ? json_encode($metadata, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : null;
-        }
-        if (in_array('priority', $columns, true)) {
-            $task['priority'] = $this->normalizeTaskPriority($payload['priority'] ?? $payload['prioridad'] ?? null);
-        }
-        if (in_array('completed_at', $columns, true)) {
-            $task['completed_at'] = $status === 'completada' ? $now : null;
-        }
-        if (in_array('created_at', $columns, true)) {
-            $task['created_at'] = $now;
-        }
-        if (in_array('updated_at', $columns, true)) {
-            $task['updated_at'] = $now;
-        }
-
-        $this->insertRow('crm_tasks', $task);
-
-        return $this->readService->crmResumen($solicitudId);
-    }
-
-    /**
-     * @param array<string,mixed> $payload
-     * @return array<string,mixed>
-     */
-    public function crmCrearPropuesta(int $solicitudId, array $payload, ?int $autorId): array
-    {
-        $this->assertSolicitudExists($solicitudId);
-
-        $proposalColumns = $this->tableColumns('crm_proposals');
-        $itemColumns = $this->tableColumns('crm_proposal_items');
-        if ($proposalColumns === [] || $itemColumns === []) {
-            throw new RuntimeException('Tablas de propuestas CRM no disponibles');
-        }
-
-        $leadId = $this->nullableInt($payload['lead_id'] ?? null);
-        if ($leadId === null) {
-            $detalle = $this->fetchCrmDetalleRow($solicitudId);
-            $leadId = $this->nullableInt($detalle['crm_lead_id'] ?? null);
-        }
-
-        if ($leadId === null) {
-            throw new RuntimeException('Vincula o crea un lead CRM antes de crear la propuesta');
-        }
-
-        $lead = $this->fetchCrmLead($leadId);
-        if ($lead === null) {
-            throw new RuntimeException('El lead CRM vinculado no existe');
-        }
-
-        $title = $this->nullableString($payload['title'] ?? null);
-        if ($title === null) {
-            throw new RuntimeException('La propuesta necesita un título');
-        }
-
-        $items = $this->normalizeProposalItems($payload['items'] ?? []);
-        if ($items === []) {
-            throw new RuntimeException('La propuesta debe incluir al menos un ítem');
-        }
-
-        $taxRate = max(0.0, min(100.0, (float) ($payload['tax_rate'] ?? 0)));
-        $totals = $this->calculateProposalTotals($items, $taxRate);
-        $number = $this->nextProposalNumber();
-        $now = date('Y-m-d H:i:s');
-        $currency = strtoupper(substr(trim((string) ($payload['currency'] ?? 'USD')), 0, 3)) ?: 'USD';
-
-        $this->db->beginTransaction();
-
-        try {
-            $proposal = [
-                'proposal_number' => $number['number'],
-                'proposal_year' => $number['year'],
-                'sequence' => $number['sequence'],
-                'lead_id' => $leadId,
-                'customer_id' => $this->nullableInt($payload['customer_id'] ?? ($lead['customer_id'] ?? null)),
-                'title' => $title,
-                'status' => 'draft',
-                'currency' => $currency,
-                'subtotal' => $totals['subtotal'],
-                'discount_total' => $totals['discount'],
-                'tax_rate' => $taxRate,
-                'tax_total' => $totals['tax'],
-                'total' => $totals['total'],
-                'valid_until' => $this->normalizeDate($payload['valid_until'] ?? null),
-                'notes' => $this->nullableString($payload['notes'] ?? null),
-                'terms' => $this->nullableString($payload['terms'] ?? null),
-                'packages_snapshot' => null,
-                'created_by' => $autorId,
-                'updated_by' => $autorId,
-                'created_at' => $now,
-                'updated_at' => $now,
-            ];
-
-            $this->insertRow('crm_proposals', $this->filterColumns($proposal, $proposalColumns));
-            $proposalId = (int) $this->db->lastInsertId();
-            if ($proposalId <= 0) {
-                throw new RuntimeException('No se pudo crear la propuesta CRM');
-            }
-
-            foreach ($items as $index => $item) {
-                $row = [
-                    'proposal_id' => $proposalId,
-                    'code_id' => $item['code_id'],
-                    'package_id' => $item['package_id'],
-                    'description' => $item['description'],
-                    'quantity' => $item['quantity'],
-                    'unit_price' => $item['unit_price'],
-                    'discount_percent' => $item['discount_percent'],
-                    'sort_order' => $index,
-                    'metadata' => null,
-                    'created_at' => $now,
-                    'updated_at' => $now,
-                ];
-                $this->insertRow('crm_proposal_items', $this->filterColumns($row, $itemColumns));
-            }
-
-            $this->db->commit();
-        } catch (Throwable $e) {
-            $this->db->rollBack();
-            throw $e;
-        }
-
-        $summary = $this->readService->crmResumen($solicitudId);
-        $summary['ultima_propuesta'] = [
-            'id' => $proposalId,
-            'proposal_number' => $number['number'],
-            'lead_id' => $leadId,
-            'total' => $totals['total'],
-            'currency' => $currency,
-            'url' => '/crm?proposal=' . $proposalId,
-        ];
-
-        return $summary;
-    }
-
-    /**
-     * @return array<string,mixed>
-     */
-    public function crmActualizarTareaEstado(int $solicitudId, int $tareaId, string $estado, array $payloadExtra = []): array
-    {
-        $this->assertSolicitudExists($solicitudId);
-
-        $estado = strtolower(trim($estado));
-        if (!in_array($estado, ['pendiente', 'en_progreso', 'en_proceso', 'completada', 'cancelada'], true)) {
-            throw new RuntimeException('Estado de tarea inválido');
-        }
-
-        $columns = $this->tableColumns('crm_tasks');
-        if ($columns === []) {
-            throw new RuntimeException('Tabla crm_tasks no disponible');
-        }
-
-        $taskRow = $this->crmTaskRow($solicitudId, $tareaId, $columns);
-
-        $payload = [];
-        $titulo = $this->nullableString($payloadExtra['titulo'] ?? $payloadExtra['title'] ?? null);
-        if ($titulo !== null && in_array('title', $columns, true)) {
-            $payload['title'] = $titulo;
-        }
-        if (
-            (array_key_exists('descripcion', $payloadExtra) || array_key_exists('description', $payloadExtra))
-            && in_array('description', $columns, true)
-        ) {
-            $payload['description'] = $this->nullableString($payloadExtra['descripcion'] ?? $payloadExtra['description'] ?? null);
-        }
-        if (in_array('status', $columns, true)) {
-            $payload['status'] = $estado;
-        }
-        if (in_array('assigned_to', $columns, true) && array_key_exists('assigned_to', $payloadExtra)) {
-            $payload['assigned_to'] = $this->nullableInt($payloadExtra['assigned_to']);
-        }
-        if (in_array('due_date', $columns, true) && array_key_exists('due_date', $payloadExtra)) {
-            $payload['due_date'] = $this->normalizeDate($payloadExtra['due_date']);
-        }
-        if (in_array('due_at', $columns, true) && (array_key_exists('due_at', $payloadExtra) || array_key_exists('due_date', $payloadExtra))) {
-            $dueDate = $payload['due_date'] ?? null;
-            $payload['due_at'] = $this->normalizeDateTime($payloadExtra['due_at'] ?? null)
-                ?? ($dueDate ? $dueDate . ' 23:59:59' : null);
-        }
-        if (in_array('remind_at', $columns, true) && array_key_exists('remind_at', $payloadExtra)) {
-            $payload['remind_at'] = $this->normalizeDateTime($payloadExtra['remind_at']);
-        }
-        if (in_array('priority', $columns, true) && array_key_exists('priority', $payloadExtra)) {
-            $payload['priority'] = $this->normalizeTaskPriority($payloadExtra['priority'] ?? $payloadExtra['prioridad'] ?? null);
-        }
-        if (in_array('updated_at', $columns, true)) {
-            $payload['updated_at'] = date('Y-m-d H:i:s');
-        }
-        if (in_array('completed_at', $columns, true)) {
-            $payload['completed_at'] = $estado === 'completada' ? date('Y-m-d H:i:s') : null;
-        }
-
-        $where = 'id = :id';
-        $bindings = [':id' => $tareaId];
-        if (in_array('source_module', $columns, true)) {
-            $where .= ' AND source_module = :source_module';
-            $bindings[':source_module'] = 'solicitudes';
-        }
-        if (in_array('source_ref_id', $columns, true)) {
-            $where .= ' AND source_ref_id = :source_ref_id';
-            $bindings[':source_ref_id'] = (string) $solicitudId;
-        }
-        if (in_array('company_id', $columns, true)) {
-            $where .= ' AND company_id = :company_id';
-            $bindings[':company_id'] = $this->resolveCompanyId();
-        }
-
-        $this->updateRow('crm_tasks', $payload, $where, $bindings);
-
-        $checklistSlug = $this->extractChecklistSlugFromTaskRow($taskRow);
-        if ($checklistSlug !== '' && in_array($estado, ['completada', 'pendiente'], true)) {
-            $rows = $this->queryChecklistRows($solicitudId);
-            $this->transitionChecklistStage(
-                $solicitudId,
-                $checklistSlug,
-                $estado === 'completada',
-                null,
-                null,
-                false,
-                $this->operationalFallbackState($solicitudId, $rows)
-            );
-            $this->syncChecklistLinkedTasks($solicitudId, $checklistSlug);
-        }
-
-        return $this->readService->crmResumen($solicitudId);
-    }
-
-    /**
-     * @param array<string,mixed> $payload
-     * @return array<string,mixed>
-     */
-    public function crmBootstrap(int $solicitudId, array $payload, ?int $userId): array
-    {
-        $this->assertSolicitudExists($solicitudId);
-
-        $rows = $this->queryChecklistRows($solicitudId);
-        $taskRows = $this->queryChecklistTaskRows($solicitudId);
-        $taskChecklistRows = $this->buildChecklistRowsFromTasks($taskRows, $rows);
-        $seedStages = [];
-
-        if ($taskChecklistRows !== []) {
-            [$resolvedChecklist] = $this->stateMachine->resolvePersistedChecklistContext($taskChecklistRows, '', [
-                'include_nota' => true,
-                'include_can_toggle' => true,
-            ]);
-            foreach ($resolvedChecklist as $item) {
-                $seedStages[] = [
-                    'slug' => (string) ($item['slug'] ?? ''),
-                    'completed' => !empty($item['completed']),
-                ];
-            }
-        } else {
-            $legacyState = $this->legacyStateBySolicitud($solicitudId);
-            foreach ($this->stateMachine->bootstrapStagesFromLegacyState($legacyState) as $stage) {
-                $seedStages[] = [
-                    'slug' => (string) ($stage['slug'] ?? ''),
-                    'completed' => (bool) ($stage['completed'] ?? false),
-                ];
-            }
-        }
-
-        foreach ($seedStages as $stage) {
-            $slug = $stage['slug'];
-            $exists = $this->checklistRowExists($solicitudId, $slug);
-            if ($exists) {
-                continue;
-            }
-
-            $completed = (bool) ($stage['completed'] ?? false);
-            $this->upsertChecklistRow($solicitudId, $slug, $completed, $userId, null);
-        }
-
-        $result = $this->crmChecklistState($solicitudId);
-
-        if (($payload['force_estado_sync'] ?? false) === true) {
-            $this->syncSolicitudEstadoFromChecklist($solicitudId);
-            $result = $this->crmChecklistState($solicitudId);
-        }
-
-        return $result;
-    }
-
-    /**
-     * @return array<string,mixed>
-     */
-    public function crmChecklistState(int $solicitudId): array
-    {
-        $this->assertSolicitudExists($solicitudId);
-
-        $rows = $this->queryChecklistRows($solicitudId);
-        $this->syncChecklistLinkedTasks($solicitudId, null, $rows, null);
-        $resumen = $this->readService->crmResumen($solicitudId);
-        $detalle = is_array($resumen['detalle'] ?? null) ? (array) $resumen['detalle'] : [];
-        $taskRows = is_array($resumen['tareas'] ?? null) ? (array) $resumen['tareas'] : [];
-        [$checklist, $progress] = $this->resolveOperationalChecklistFromTasks(
-            $solicitudId,
-            $rows,
-            $taskRows
-        );
-
-        return [
-            'checklist' => $checklist,
-            'checklist_progress' => $progress,
-            'tasks' => $resumen['tareas'] ?? [],
-            'lead_id' => $detalle['crm_lead_id'] ?? null,
-            'project_id' => $detalle['crm_project_id'] ?? null,
-        ];
-    }
-
-    /**
-     * @return array<string,mixed>
-     */
-    public function crmActualizarChecklist(int $solicitudId, string $etapa, bool $completado, ?int $userId): array
-    {
-        $this->assertSolicitudExists($solicitudId);
-
-        $slug = $this->normalizeKanbanSlug($etapa);
-        if ($slug === '') {
-            throw new RuntimeException('Etapa requerida');
-        }
-
-        $rows = $this->queryChecklistRows($solicitudId);
-        $this->transitionChecklistStage(
-            $solicitudId,
-            $slug,
-            $completado,
-            $userId,
-            null,
-            false,
-            $this->operationalFallbackState($solicitudId, $rows)
-        );
-
-        return $this->crmChecklistState($solicitudId);
-    }
-
-    /**
-     * @return array<string,mixed>
-     */
+    /** @return array<string,mixed> */
     public function confirmarConciliacionCirugia(int $solicitudId, string $protocoloFormId, ?int $userId): array
     {
         if ($solicitudId <= 0) {
@@ -1066,111 +328,114 @@ class SolicitudesWriteParityService
             (string) ($protocolo['lateralidad'] ?? 'sin lateralidad')
         );
 
-        $this->completarChecklistConciliacion($solicitudId, $userId, $nota);
+        $this->kanban->completeAllChecklistStages($solicitudId, $userId, $nota);
         $tareasActualizadas = $this->completarTodasLasTareasConciliacion($solicitudId);
 
         $completedState = $this->stateMachine->completedTerminalState();
-        $this->persistOperationalState($solicitudId, (string) ($completedState['slug'] ?? SolicitudesStateMachineService::STATE_COMPLETADO));
+        $this->kanban->persistEstado($solicitudId, (string) ($completedState['slug'] ?? SolicitudesStateMachineService::STATE_COMPLETADO));
 
-        $checklistState = $this->crmChecklistState($solicitudId);
+        $checklistState = $this->kanban->crmChecklistState($solicitudId);
 
         return [
-            'message' => 'Solicitud confirmada y marcada como completada.',
-            'estado' => (string) ($completedState['slug'] ?? SolicitudesStateMachineService::STATE_COMPLETADO),
-            'checklist' => $checklistState['checklist'] ?? [],
-            'checklist_progress' => $checklistState['checklist_progress'] ?? [],
-            'tareas_actualizadas' => $tareasActualizadas,
-            'protocolo_confirmado' => [
-                'form_id' => trim((string) ($protocolo['form_id'] ?? '')),
-                'hc_number' => trim((string) ($protocolo['hc_number'] ?? '')),
-                'fecha_inicio' => $protocolo['fecha_inicio'] ?? null,
-                'lateralidad' => trim((string) ($protocolo['lateralidad'] ?? '')),
-                'membrete' => trim((string) ($protocolo['membrete'] ?? '')),
-                'status' => isset($protocolo['status']) ? (int) $protocolo['status'] : null,
-                'confirmado_at' => date('Y-m-d H:i:s'),
+            'message'               => 'Solicitud confirmada y marcada como completada.',
+            'estado'                => (string) ($completedState['slug'] ?? SolicitudesStateMachineService::STATE_COMPLETADO),
+            'checklist'             => $checklistState['checklist'] ?? [],
+            'checklist_progress'    => $checklistState['checklist_progress'] ?? [],
+            'tareas_actualizadas'   => $tareasActualizadas,
+            'protocolo_confirmado'  => [
+                'form_id'        => trim((string) ($protocolo['form_id'] ?? '')),
+                'hc_number'      => trim((string) ($protocolo['hc_number'] ?? '')),
+                'fecha_inicio'   => $protocolo['fecha_inicio'] ?? null,
+                'lateralidad'    => trim((string) ($protocolo['lateralidad'] ?? '')),
+                'membrete'       => trim((string) ($protocolo['membrete'] ?? '')),
+                'status'         => isset($protocolo['status']) ? (int) $protocolo['status'] : null,
+                'confirmado_at'  => date('Y-m-d H:i:s'),
                 'confirmado_by_id' => $userId ?: null,
             ],
         ];
     }
 
-    private function completarChecklistConciliacion(int $solicitudId, ?int $userId, ?string $note): void
-    {
-        if (!$this->tableExists('solicitud_checklist')) {
-            return;
-        }
-
-        foreach ($this->stateMachine->stages() as $stage) {
-            $slug = (string) ($stage['slug'] ?? '');
-            if ($slug === '') {
-                continue;
-            }
-            $this->upsertChecklistRow($solicitudId, $slug, true, $userId, $note);
-        }
-    }
+    // =========================================================================
+    // Private helpers — derivacion only
+    // =========================================================================
 
     private function completarTodasLasTareasConciliacion(int $solicitudId): int
     {
-        $totalActualizadas = 0;
         $now = date('Y-m-d H:i:s');
 
-        if ($this->tableExists('crm_tasks')) {
-            $columns = $this->tableColumns('crm_tasks');
-            if (
-                in_array('status', $columns, true)
-                && in_array('source_module', $columns, true)
-                && in_array('source_ref_id', $columns, true)
-            ) {
-                $payload = [
-                    'status' => 'completada',
-                ];
-                if (in_array('completed_at', $columns, true)) {
-                    $payload['completed_at'] = $now;
-                }
-                if (in_array('updated_at', $columns, true)) {
-                    $payload['updated_at'] = $now;
-                }
+        $crm = DB::table('crm_tasks')
+            ->where('source_module', 'solicitudes')
+            ->where('source_ref_id', (string) $solicitudId)
+            ->where('company_id', $this->resolveCompanyId())
+            ->where(static function ($q): void {
+                $q->whereNull('status')->orWhere('status', '!=', 'completada');
+            })
+            ->update(['status' => 'completada', 'completed_at' => $now, 'updated_at' => $now]);
 
-                $where = 'source_module = :source_module AND source_ref_id = :source_ref_id';
-                $bindings = [
-                    ':source_module' => 'solicitudes',
-                    ':source_ref_id' => (string) $solicitudId,
-                    ':estado_actual' => 'completada',
-                ];
+        $tareas = DB::table('solicitud_crm_tareas')
+            ->where('solicitud_id', $solicitudId)
+            ->where(static function ($q): void {
+                $q->whereNull('estado')->orWhere('estado', '!=', 'completada');
+            })
+            ->update(['estado' => 'completada', 'completed_at' => $now]);
 
-                if (in_array('company_id', $columns, true)) {
-                    $where .= ' AND company_id = :company_id';
-                    $bindings[':company_id'] = $this->resolveCompanyId();
-                }
+        return $crm + $tareas;
+    }
 
-                $where .= ' AND (status IS NULL OR status <> :estado_actual)';
-                $totalActualizadas += $this->updateRow('crm_tasks', $payload, $where, $bindings);
-            }
+    /** @param array<string,mixed> $protocolo */
+    private function guardarConfirmacionCirugiaMeta(int $solicitudId, array $protocolo, ?int $usuarioId): void
+    {
+        $formId = trim((string) ($protocolo['form_id'] ?? ''));
+        if ($formId === '') {
+            throw new RuntimeException('No se puede guardar confirmación sin form_id de protocolo.');
         }
 
-        if ($this->tableExists('solicitud_crm_tareas')) {
-            $columns = $this->tableColumns('solicitud_crm_tareas');
-            if (in_array('estado', $columns, true) && in_array('solicitud_id', $columns, true)) {
-                $payload = [
-                    'estado' => 'completada',
-                ];
-                if (in_array('completed_at', $columns, true)) {
-                    $payload['completed_at'] = $now;
-                }
-                if (in_array('updated_at', $columns, true)) {
-                    $payload['updated_at'] = $now;
-                }
+        $now = date('Y-m-d H:i:s');
 
-                $where = 'solicitud_id = :solicitud_id AND (estado IS NULL OR estado <> :estado_actual)';
-                $bindings = [
-                    ':solicitud_id' => $solicitudId,
-                    ':estado_actual' => 'completada',
-                ];
+        $metaValues = [
+            'cirugia_confirmada_form_id'      => $formId,
+            'cirugia_confirmada_hc_number'    => trim((string) ($protocolo['hc_number'] ?? '')),
+            'cirugia_confirmada_fecha_inicio' => trim((string) ($protocolo['fecha_inicio'] ?? '')),
+            'cirugia_confirmada_lateralidad'  => trim((string) ($protocolo['lateralidad'] ?? '')),
+            'cirugia_confirmada_membrete'     => trim((string) ($protocolo['membrete'] ?? '')),
+            'cirugia_confirmada_by'           => $usuarioId ? (string) $usuarioId : '',
+            'cirugia_confirmada_at'           => $now,
+        ];
 
-                $totalActualizadas += $this->updateRow('solicitud_crm_tareas', $payload, $where, $bindings);
+        $metaTypes = [
+            'cirugia_confirmada_form_id'      => 'texto',
+            'cirugia_confirmada_hc_number'    => 'texto',
+            'cirugia_confirmada_fecha_inicio' => 'fecha',
+            'cirugia_confirmada_lateralidad'  => 'texto',
+            'cirugia_confirmada_membrete'     => 'texto',
+            'cirugia_confirmada_by'           => 'numero',
+            'cirugia_confirmada_at'           => 'fecha',
+        ];
+
+        DB::table('solicitud_crm_meta')
+            ->where('solicitud_id', $solicitudId)
+            ->whereIn('meta_key', self::META_CIRUGIA_CONFIRMADA_KEYS)
+            ->delete();
+
+        $inserts = [];
+        foreach (self::META_CIRUGIA_CONFIRMADA_KEYS as $metaKey) {
+            $value = $metaValues[$metaKey] ?? '';
+            if ($value === '') {
+                continue;
             }
+            $inserts[] = [
+                'solicitud_id' => $solicitudId,
+                'meta_key'     => $metaKey,
+                'meta_value'   => $value,
+                'meta_type'    => $metaTypes[$metaKey] ?? 'texto',
+                'created_at'   => $now,
+                'updated_at'   => $now,
+            ];
         }
 
-        return $totalActualizadas;
+        if ($inserts !== []) {
+            DB::table('solicitud_crm_meta')->insert($inserts);
+        }
     }
 
     /**
@@ -1185,10 +450,8 @@ class SolicitudesWriteParityService
                 if ($valor === '' || strtoupper($valor) === 'SELECCIONE') {
                     return null;
                 }
-
                 return $valor;
             }
-
             return $valor === '' ? null : $valor;
         };
 
@@ -1197,19 +460,16 @@ class SolicitudesWriteParityService
             if (!$valor) {
                 return null;
             }
-
             if (is_string($valor) && preg_match('/^\d{4}-\d{2}-\d{2}( \d{2}:\d{2}(:\d{2})?)?$/', $valor)) {
                 return $valor;
             }
-
             if (is_string($valor) && preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/', $valor)) {
                 $format = strlen($valor) === 19 ? 'Y-m-d\\TH:i:s' : 'Y-m-d\\TH:i';
-                $date = DateTime::createFromFormat($format, $valor);
+                $date   = DateTime::createFromFormat($format, $valor);
                 if ($date instanceof DateTime) {
                     return $date->format('Y-m-d H:i:s');
                 }
             }
-
             $formats = ['d/m/Y H:i', 'd-m-Y H:i', 'd/m/Y', 'd-m-Y', 'm/d/Y H:i', 'm-d-Y H:i'];
             foreach ($formats as $format) {
                 $date = DateTime::createFromFormat($format, (string) $valor);
@@ -1217,37 +477,19 @@ class SolicitudesWriteParityService
                     return $date->format(strlen($format) >= 10 ? 'Y-m-d H:i:s' : 'Y-m-d');
                 }
             }
-
             return null;
         };
 
+        // Todos los campos permitidos tienen migración confirmada en solicitud_procedimiento.
         $permitidos = [
-            'estado',
-            'doctor',
-            'fecha',
-            'prioridad',
-            'observacion',
-            'procedimiento',
-            'producto',
-            'ojo',
-            'afiliacion',
-            'duracion',
-            'lente_id',
-            'lente_nombre',
-            'lente_poder',
-            'lente_observacion',
-            'incision',
+            'estado', 'doctor', 'fecha', 'prioridad', 'observacion',
+            'procedimiento', 'producto', 'ojo', 'afiliacion', 'duracion',
+            'lente_id', 'lente_nombre', 'lente_poder', 'lente_observacion', 'incision',
         ];
 
-        $columns = $this->tableColumns('solicitud_procedimiento');
-        $set = [];
-        $params = [':id' => $id];
-
+        $updates = [];
         foreach ($permitidos as $campo) {
             if (!array_key_exists($campo, $campos)) {
-                continue;
-            }
-            if (!in_array($campo, $columns, true)) {
                 continue;
             }
 
@@ -1262,41 +504,37 @@ class SolicitudesWriteParityService
                 $valor = $limpiar($valor);
             }
 
-            $set[] = "`{$campo}` = :{$campo}";
-            $params[":{$campo}"] = $valor;
+            $updates[$campo] = $valor;
         }
 
-        if ($set === []) {
+        if ($updates === []) {
             return ['success' => false, 'message' => 'No se enviaron campos para actualizar'];
         }
 
-        $sql = 'UPDATE solicitud_procedimiento SET ' . implode(', ', $set) . ' WHERE id = :id';
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute($params);
+        $rowsAffected = DB::table('solicitud_procedimiento')->where('id', $id)->update($updates);
 
-        $stmtData = $this->db->prepare('SELECT sp.*, COALESCE(cd.fecha, sp.fecha) AS fecha_programada
-            FROM solicitud_procedimiento sp
-            LEFT JOIN consulta_data cd ON cd.hc_number = sp.hc_number AND cd.form_id = sp.form_id
-            WHERE sp.id = :id');
-        $stmtData->execute([':id' => $id]);
-        $row = $stmtData->fetch(PDO::FETCH_ASSOC) ?: null;
+        $row = DB::table('solicitud_procedimiento as sp')
+            ->selectRaw('sp.*, COALESCE(cd.fecha, sp.fecha) AS fecha_programada')
+            ->leftJoin('consulta_data as cd', static function ($join): void {
+                $join->on('cd.hc_number', '=', 'sp.hc_number')
+                     ->on('cd.form_id', '=', 'sp.form_id');
+            })
+            ->where('sp.id', $id)
+            ->first();
 
         return [
-            'success' => true,
-            'message' => 'Solicitud actualizada correctamente',
-            'rows_affected' => $stmt->rowCount(),
-            'data' => $row,
+            'success'       => true,
+            'message'       => 'Solicitud actualizada correctamente',
+            'rows_affected' => $rowsAffected,
+            'data'          => $row ? (array) $row : null,
         ];
     }
 
-    /**
-     * @param array<string,mixed> $data
-     * @return array<string,mixed>
-     */
+    /** @return array<string,mixed> */
     private function guardarSolicitudesBatchUpsert(array $data): array
     {
-        $hcNumber = (string) ($data['hcNumber'] ?? ($data['hc_number'] ?? ''));
-        $formId = (string) ($data['form_id'] ?? '');
+        $hcNumber    = (string) ($data['hcNumber'] ?? ($data['hc_number'] ?? ''));
+        $formId      = (string) ($data['form_id'] ?? '');
         $solicitudes = $data['solicitudes'] ?? null;
 
         if ($hcNumber === '' || $formId === '' || !is_array($solicitudes)) {
@@ -1309,16 +547,13 @@ class SolicitudesWriteParityService
                 if ($value === '' || in_array(mb_strtoupper($value), ['SELECCIONE', 'NINGUNO'], true)) {
                     return null;
                 }
-
                 return $value;
             }
-
             return $value === '' ? null : $value;
         };
 
         $normPrioridad = static function (mixed $value): string {
             $value = is_string($value) ? mb_strtoupper(trim($value)) : $value;
-
             return ($value === 'SI' || $value === 1 || $value === '1' || $value === true) ? 'SI' : 'NO';
         };
 
@@ -1327,19 +562,16 @@ class SolicitudesWriteParityService
             if (!$value) {
                 return null;
             }
-
             if (is_string($value) && preg_match('/^\d{4}-\d{2}-\d{2}( \d{2}:\d{2}(:\d{2})?)?$/', $value)) {
                 return $value;
             }
-
             if (is_string($value) && preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/', $value)) {
                 $format = strlen($value) === 19 ? 'Y-m-d\\TH:i:s' : 'Y-m-d\\TH:i';
-                $dt = DateTime::createFromFormat($format, $value);
+                $dt     = DateTime::createFromFormat($format, $value);
                 if ($dt instanceof DateTime) {
                     return $dt->format('Y-m-d H:i:s');
                 }
             }
-
             $formats = ['d/m/Y H:i', 'd-m-Y H:i', 'd/m/Y', 'd-m-Y', 'm/d/Y H:i', 'm-d-Y H:i'];
             foreach ($formats as $format) {
                 $dt = DateTime::createFromFormat($format, (string) $value);
@@ -1347,7 +579,6 @@ class SolicitudesWriteParityService
                     return $dt->format(strlen($format) >= 10 ? 'Y-m-d H:i:s' : 'Y-m-d');
                 }
             }
-
             return null;
         };
 
@@ -1356,8 +587,7 @@ class SolicitudesWriteParityService
             if (!is_array($solicitud)) {
                 continue;
             }
-            $procedimiento = $clean($solicitud['procedimiento'] ?? null);
-            if ($procedimiento === null) {
+            if ($clean($solicitud['procedimiento'] ?? null) === null) {
                 $missing[] = $solicitud['secuencia'] ?? ($idx + 1);
             }
         }
@@ -1369,45 +599,11 @@ class SolicitudesWriteParityService
             ];
         }
 
-        $sql = 'INSERT INTO solicitud_procedimiento
-            (hc_number, form_id, secuencia, tipo, afiliacion, procedimiento, doctor, fecha, duracion, ojo, prioridad, producto, observacion, sesiones, lente_id, lente_nombre, lente_poder, lente_observacion, incision)
-            VALUES (:hc, :form_id, :secuencia, :tipo, :afiliacion, :procedimiento, :doctor, :fecha, :duracion, :ojo, :prioridad, :producto, :observacion, :sesiones, :lente_id, :lente_nombre, :lente_poder, :lente_observacion, :incision)
-            ON DUPLICATE KEY UPDATE
-                tipo = VALUES(tipo),
-                afiliacion = VALUES(afiliacion),
-                procedimiento = VALUES(procedimiento),
-                doctor = VALUES(doctor),
-                fecha = VALUES(fecha),
-                duracion = VALUES(duracion),
-                ojo = VALUES(ojo),
-                prioridad = VALUES(prioridad),
-                producto = VALUES(producto),
-                observacion = VALUES(observacion),
-                sesiones = VALUES(sesiones),
-                lente_id = VALUES(lente_id),
-                lente_nombre = VALUES(lente_nombre),
-                lente_poder = VALUES(lente_poder),
-                lente_observacion = VALUES(lente_observacion),
-                incision = VALUES(incision)';
-
-        $stmt = $this->db->prepare($sql);
-
+        $rows = [];
         foreach ($solicitudes as $solicitud) {
             if (!is_array($solicitud)) {
                 continue;
             }
-
-            $secuencia = $solicitud['secuencia'] ?? null;
-            $tipo = $clean($solicitud['tipo'] ?? null);
-            $afiliacion = $clean($solicitud['afiliacion'] ?? null);
-            $procedimiento = $clean($solicitud['procedimiento'] ?? null);
-            $doctor = $clean($solicitud['doctor'] ?? null);
-            $fecha = $normFecha($solicitud['fecha'] ?? null);
-            $duracion = $clean($solicitud['duracion'] ?? null);
-            $prioridad = $normPrioridad($solicitud['prioridad'] ?? 'NO');
-            $producto = $clean($solicitud['producto'] ?? null);
-            $observacion = $clean($solicitud['observacion'] ?? null);
-            $sesiones = $clean($solicitud['sesiones'] ?? null);
 
             $ojoValue = $solicitud['ojo'] ?? null;
             if (is_array($ojoValue)) {
@@ -1416,12 +612,13 @@ class SolicitudesWriteParityService
                 $ojoValue = $clean($ojoValue);
             }
 
-            $lenteId = $clean($solicitud['lente_id'] ?? null);
+            $lenteId     = $clean($solicitud['lente_id'] ?? null);
             $lenteNombre = $clean($solicitud['lente_nombre'] ?? null);
-            $lentePoder = $clean($solicitud['lente_poder'] ?? null);
-            $lenteObs = $clean($solicitud['lente_observacion'] ?? null);
-            $incision = $clean($solicitud['incision'] ?? null);
+            $lentePoder  = $clean($solicitud['lente_poder'] ?? null);
+            $lenteObs    = $clean($solicitud['lente_observacion'] ?? null);
+            $incision    = $clean($solicitud['incision'] ?? null);
 
+            // Extrae campos del detalle principal si no vienen en el top level
             $detalles = $solicitud['detalles'] ?? [];
             if (is_array($detalles)) {
                 $detallePlano = null;
@@ -1436,1453 +633,53 @@ class SolicitudesWriteParityService
                 }
 
                 if (is_array($detallePlano)) {
-                    $lenteId = $lenteId ?: $clean($detallePlano['id_lente_intraocular'] ?? ($detallePlano['lente_id'] ?? null));
+                    $lenteId     = $lenteId     ?: $clean($detallePlano['id_lente_intraocular'] ?? ($detallePlano['lente_id'] ?? null));
                     $lenteNombre = $lenteNombre ?: $clean($detallePlano['lente'] ?? ($detallePlano['lente_nombre'] ?? null));
-                    $lentePoder = $lentePoder ?: $clean($detallePlano['poder'] ?? ($detallePlano['lente_poder'] ?? null));
-                    $lenteObs = $lenteObs ?: $clean($detallePlano['observaciones'] ?? ($detallePlano['lente_observacion'] ?? null));
-                    $incision = $incision ?: $clean($detallePlano['incision'] ?? null);
+                    $lentePoder  = $lentePoder  ?: $clean($detallePlano['poder'] ?? ($detallePlano['lente_poder'] ?? null));
+                    $lenteObs    = $lenteObs    ?: $clean($detallePlano['observaciones'] ?? ($detallePlano['lente_observacion'] ?? null));
+                    $incision    = $incision    ?: $clean($detallePlano['incision'] ?? null);
                     if (!$ojoValue) {
                         $ojoValue = $clean($detallePlano['lateralidad'] ?? null);
                     }
                 }
             }
 
-            $stmt->execute([
-                ':hc' => $hcNumber,
-                ':form_id' => $formId,
-                ':secuencia' => $secuencia,
-                ':tipo' => $tipo,
-                ':afiliacion' => $afiliacion,
-                ':procedimiento' => $procedimiento,
-                ':doctor' => $doctor,
-                ':fecha' => $fecha,
-                ':duracion' => $duracion,
-                ':ojo' => $ojoValue,
-                ':prioridad' => $prioridad,
-                ':producto' => $producto,
-                ':observacion' => $observacion,
-                ':sesiones' => $sesiones,
-                ':lente_id' => $lenteId,
-                ':lente_nombre' => $lenteNombre,
-                ':lente_poder' => $lentePoder,
-                ':lente_observacion' => $lenteObs,
-                ':incision' => $incision,
-            ]);
+            $rows[] = [
+                'hc_number'        => $hcNumber,
+                'form_id'          => $formId,
+                'secuencia'        => $solicitud['secuencia'] ?? null,
+                'tipo'             => $clean($solicitud['tipo'] ?? null),
+                'afiliacion'       => $clean($solicitud['afiliacion'] ?? null),
+                'procedimiento'    => $clean($solicitud['procedimiento'] ?? null),
+                'doctor'           => $clean($solicitud['doctor'] ?? null),
+                'fecha'            => $normFecha($solicitud['fecha'] ?? null),
+                'duracion'         => $clean($solicitud['duracion'] ?? null),
+                'ojo'              => $ojoValue,
+                'prioridad'        => $normPrioridad($solicitud['prioridad'] ?? 'NO'),
+                'producto'         => $clean($solicitud['producto'] ?? null),
+                'observacion'      => $clean($solicitud['observacion'] ?? null),
+                'sesiones'         => $clean($solicitud['sesiones'] ?? null),
+                'lente_id'         => $lenteId,
+                'lente_nombre'     => $lenteNombre,
+                'lente_poder'      => $lentePoder,
+                'lente_observacion'=> $lenteObs,
+                'incision'         => $incision,
+            ];
         }
+
+        // unique_solicitud index: (hc_number, form_id, secuencia)
+        DB::table('solicitud_procedimiento')->upsert(
+            $rows,
+            ['hc_number', 'form_id', 'secuencia'],
+            ['tipo', 'afiliacion', 'procedimiento', 'doctor', 'fecha', 'duracion', 'ojo',
+             'prioridad', 'producto', 'observacion', 'sesiones',
+             'lente_id', 'lente_nombre', 'lente_poder', 'lente_observacion', 'incision'],
+        );
 
         return [
             'success' => true,
             'message' => 'Solicitudes guardadas o actualizadas correctamente',
-            'total' => count($solicitudes),
+            'total'   => count($rows),
         ];
-    }
-
-    private function syncSolicitudEstadoFromChecklist(int $solicitudId): void
-    {
-        $rows = $this->queryChecklistRows($solicitudId);
-        $taskRows = $this->queryChecklistTaskRows($solicitudId);
-        $fallbackState = $this->operationalFallbackState($solicitudId, $rows, $taskRows);
-        [, , $kanban] = $this->resolveOperationalChecklistContext($solicitudId, $rows, $taskRows, $fallbackState);
-
-        $this->persistOperationalState($solicitudId, (string) ($kanban['slug'] ?? $fallbackState));
-    }
-
-    private function persistOperationalState(int $solicitudId, string $stateSlug): void
-    {
-        $payload = ['estado' => $stateSlug];
-        if ($this->hasColumn('solicitud_procedimiento', 'updated_at')) {
-            $payload['updated_at'] = date('Y-m-d H:i:s');
-        }
-
-        $this->updateRow('solicitud_procedimiento', $payload, 'id = :id', [':id' => $solicitudId]);
-    }
-
-    /**
-     * @return array{0:array<int,array<string,mixed>>,1:array<string,mixed>,2:array{slug:string,label:string},3:array<string,mixed>}
-     */
-    private function transitionChecklistStage(
-        int $solicitudId,
-        string $stageSlug,
-        bool $completed,
-        ?int $userId,
-        ?string $note,
-        bool $force,
-        string $fallbackState
-    ): array {
-        if (!$this->tableExists('solicitud_checklist')) {
-            $nextState = $completed ? $stageSlug : $fallbackState;
-            if ($nextState !== '') {
-                $this->persistOperationalState($solicitudId, $nextState);
-            }
-
-            [$checklist, $progress] = $this->buildChecklistContext($nextState !== '' ? $nextState : $stageSlug, []);
-
-            $transitionMeta = $this->stateMachine->describeTransition($fallbackState, $nextState !== '' ? $nextState : $stageSlug);
-
-            return [
-                $checklist,
-                $progress,
-                [
-                    'slug' => $nextState !== '' ? $nextState : $stageSlug,
-                    'label' => $this->kanbanLabel($nextState !== '' ? $nextState : $stageSlug),
-                ],
-                $transitionMeta,
-            ];
-        }
-
-        $currentRows = $this->queryChecklistRows($solicitudId);
-        $currentTasks = $this->queryChecklistTaskRows($solicitudId);
-        [, , $previousKanban] = $this->resolveOperationalChecklistContext($solicitudId, $currentRows, $currentTasks, $fallbackState);
-        $previousState = (string) ($previousKanban['slug'] ?? $fallbackState);
-
-        if (!$force && $completed && !$this->canCompleteStage($currentRows, $stageSlug, $fallbackState)) {
-            throw new RuntimeException('Debe completar etapas previas antes de continuar.');
-        }
-
-        $this->upsertChecklistRow($solicitudId, $stageSlug, $completed, $userId, $note);
-
-        $rows = $this->queryChecklistRows($solicitudId);
-        [$checklist, $progress] = $this->stateMachine->resolvePersistedChecklistContext($rows, $fallbackState, [
-            'include_nota' => true,
-            'include_can_toggle' => true,
-        ]);
-        $this->syncChecklistLinkedTasks($solicitudId, null, $rows, $checklist);
-        $taskRows = $this->queryChecklistTaskRows($solicitudId);
-        [$checklist, $progress, $kanbanState] = $this->resolveOperationalChecklistContext($solicitudId, $rows, $taskRows, $fallbackState);
-
-        $nextState = (string) ($kanbanState['slug'] ?? $fallbackState);
-        if ($nextState !== '') {
-            $this->persistOperationalState($solicitudId, $nextState);
-        }
-
-        $transitionMeta = $this->stateMachine->describeTransition($previousState, $nextState);
-
-        return [$checklist, $progress, $kanbanState, $transitionMeta];
-    }
-
-    private function checklistRowExists(int $solicitudId, string $slug): bool
-    {
-        if (!$this->tableExists('solicitud_checklist')) {
-            return false;
-        }
-
-        $stmt = $this->db->prepare('SELECT id FROM solicitud_checklist WHERE solicitud_id = :id AND etapa_slug = :slug LIMIT 1');
-        $stmt->execute([':id' => $solicitudId, ':slug' => $slug]);
-
-        return $stmt->fetchColumn() !== false;
-    }
-
-    /**
-     * @param array<string,mixed> $customFields
-     */
-    private function guardarCrmMeta(int $solicitudId, array $customFields): void
-    {
-        if (!$this->tableExists('solicitud_crm_meta')) {
-            return;
-        }
-
-        $columns = $this->tableColumns('solicitud_crm_meta');
-        $now = date('Y-m-d H:i:s');
-
-        foreach ($customFields as $key => $value) {
-            $metaKey = trim((string) $key);
-            if ($metaKey === '') {
-                continue;
-            }
-
-            $metaValue = is_scalar($value) || $value === null
-                ? (string) $value
-                : json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-
-            $existing = $this->db->prepare('SELECT id FROM solicitud_crm_meta WHERE solicitud_id = :solicitud_id AND meta_key = :meta_key LIMIT 1');
-            $existing->execute([
-                ':solicitud_id' => $solicitudId,
-                ':meta_key' => $metaKey,
-            ]);
-            $existingId = $existing->fetchColumn();
-
-            if ($existingId !== false) {
-                $update = [];
-                if (in_array('meta_value', $columns, true)) {
-                    $update['meta_value'] = $metaValue;
-                }
-                if (in_array('meta_type', $columns, true)) {
-                    $update['meta_type'] = 'string';
-                }
-                if (in_array('updated_at', $columns, true)) {
-                    $update['updated_at'] = $now;
-                }
-
-                if ($update !== []) {
-                    $this->updateRow('solicitud_crm_meta', $update, 'id = :id', [':id' => (int) $existingId]);
-                }
-                continue;
-            }
-
-            $insert = [
-                'solicitud_id' => $solicitudId,
-                'meta_key' => $metaKey,
-            ];
-            if (in_array('meta_value', $columns, true)) {
-                $insert['meta_value'] = $metaValue;
-            }
-            if (in_array('meta_type', $columns, true)) {
-                $insert['meta_type'] = 'string';
-            }
-            if (in_array('created_at', $columns, true)) {
-                $insert['created_at'] = $now;
-            }
-            if (in_array('updated_at', $columns, true)) {
-                $insert['updated_at'] = $now;
-            }
-
-            $this->insertRow('solicitud_crm_meta', $insert);
-        }
-    }
-
-    /**
-     * @param array<string,mixed> $protocolo
-     */
-    private function guardarConfirmacionCirugiaMeta(int $solicitudId, array $protocolo, ?int $usuarioId): void
-    {
-        $formId = trim((string) ($protocolo['form_id'] ?? ''));
-        if ($formId === '') {
-            throw new RuntimeException('No se puede guardar confirmación sin form_id de protocolo.');
-        }
-
-        if (!$this->tableExists('solicitud_crm_meta')) {
-            return;
-        }
-
-        $columns = $this->tableColumns('solicitud_crm_meta');
-        if (!in_array('solicitud_id', $columns, true) || !in_array('meta_key', $columns, true)) {
-            return;
-        }
-
-        $now = date('Y-m-d H:i:s');
-        $metaValues = [
-            'cirugia_confirmada_form_id' => $formId,
-            'cirugia_confirmada_hc_number' => trim((string) ($protocolo['hc_number'] ?? '')),
-            'cirugia_confirmada_fecha_inicio' => trim((string) ($protocolo['fecha_inicio'] ?? '')),
-            'cirugia_confirmada_lateralidad' => trim((string) ($protocolo['lateralidad'] ?? '')),
-            'cirugia_confirmada_membrete' => trim((string) ($protocolo['membrete'] ?? '')),
-            'cirugia_confirmada_by' => $usuarioId ? (string) $usuarioId : '',
-            'cirugia_confirmada_at' => $now,
-        ];
-
-        $metaTypes = [
-            'cirugia_confirmada_form_id' => 'texto',
-            'cirugia_confirmada_hc_number' => 'texto',
-            'cirugia_confirmada_fecha_inicio' => 'fecha',
-            'cirugia_confirmada_lateralidad' => 'texto',
-            'cirugia_confirmada_membrete' => 'texto',
-            'cirugia_confirmada_by' => 'numero',
-            'cirugia_confirmada_at' => 'fecha',
-        ];
-
-        $placeholders = implode(', ', array_fill(0, count(self::META_CIRUGIA_CONFIRMADA_KEYS), '?'));
-        $deleteSql = "DELETE FROM solicitud_crm_meta
-             WHERE solicitud_id = ?
-               AND meta_key IN ($placeholders)";
-
-        $params = array_merge([$solicitudId], self::META_CIRUGIA_CONFIRMADA_KEYS);
-        $deleteStmt = $this->db->prepare($deleteSql);
-        $deleteStmt->execute($params);
-
-        foreach (self::META_CIRUGIA_CONFIRMADA_KEYS as $metaKey) {
-            $value = $metaValues[$metaKey] ?? '';
-            if ($value === '') {
-                continue;
-            }
-
-            $insert = [
-                'solicitud_id' => $solicitudId,
-                'meta_key' => $metaKey,
-            ];
-
-            if (in_array('meta_value', $columns, true)) {
-                $insert['meta_value'] = $value;
-            }
-            if (in_array('meta_type', $columns, true)) {
-                $insert['meta_type'] = $metaTypes[$metaKey] ?? 'texto';
-            }
-            if (in_array('created_at', $columns, true)) {
-                $insert['created_at'] = $now;
-            }
-            if (in_array('updated_at', $columns, true)) {
-                $insert['updated_at'] = $now;
-            }
-
-            $this->insertRow('solicitud_crm_meta', $insert);
-        }
-    }
-
-    /**
-     * @return array<int,int>
-     */
-    private function normalizeFollowers(mixed $raw): array
-    {
-        if (!is_array($raw)) {
-            return [];
-        }
-
-        $ids = [];
-        foreach ($raw as $value) {
-            if (!is_numeric($value)) {
-                continue;
-            }
-            $id = (int) $value;
-            if ($id > 0) {
-                $ids[] = $id;
-            }
-        }
-
-        return array_values(array_unique($ids));
-    }
-
-    /**
-     * @param array<int,array<string,mixed>> $rows
-     */
-    private function canCompleteStage(array $rows, string $targetSlug, string $fallbackState): bool
-    {
-        [$checklist] = $this->stateMachine->resolvePersistedChecklistContext($rows, $fallbackState, [
-            'include_nota' => true,
-            'include_can_toggle' => true,
-        ]);
-
-        $targetOrder = null;
-        foreach ($this->stateMachine->stages() as $stage) {
-            if ($stage['slug'] === $targetSlug) {
-                $targetOrder = (int) $stage['order'];
-                break;
-            }
-        }
-
-        if ($targetOrder === null) {
-            return true;
-        }
-
-        foreach ($checklist as $item) {
-            $itemOrder = (int) ($item['order'] ?? 0);
-            if ($itemOrder >= $targetOrder) {
-                continue;
-            }
-
-            if (!empty($item['required']) && empty($item['completed'])) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    /**
-     * @param array<int,array<string,mixed>>|null $rows
-     */
-    private function operationalFallbackState(int $solicitudId, ?array $rows = null, ?array $tasks = null): string
-    {
-        $checklistRows = $rows ?? $this->queryChecklistRows($solicitudId);
-        if ($checklistRows !== []) {
-            return '';
-        }
-
-        $taskRows = $tasks ?? $this->queryChecklistTaskRows($solicitudId);
-        if ($this->buildChecklistRowsFromTasks($taskRows, $checklistRows) !== []) {
-            return '';
-        }
-
-        return $this->legacyStateBySolicitud($solicitudId);
-    }
-
-    /**
-     * @param array<int,string> $columns
-     * @return array<string,mixed>
-     */
-    private function crmTaskRow(int $solicitudId, int $tareaId, array $columns): array
-    {
-        $select = ['id'];
-        if (in_array('checklist_slug', $columns, true)) {
-            $select[] = 'checklist_slug';
-        }
-        if (in_array('task_key', $columns, true)) {
-            $select[] = 'task_key';
-        }
-        if (in_array('metadata', $columns, true)) {
-            $select[] = 'metadata';
-        }
-        if (in_array('status', $columns, true)) {
-            $select[] = 'status';
-        }
-
-        $where = 'id = :id';
-        $bindings = [':id' => $tareaId];
-
-        if (in_array('source_module', $columns, true)) {
-            $where .= ' AND source_module = :source_module';
-            $bindings[':source_module'] = 'solicitudes';
-        }
-        if (in_array('source_ref_id', $columns, true)) {
-            $where .= ' AND source_ref_id = :source_ref_id';
-            $bindings[':source_ref_id'] = (string) $solicitudId;
-        }
-        if (in_array('company_id', $columns, true)) {
-            $where .= ' AND company_id = :company_id';
-            $bindings[':company_id'] = $this->resolveCompanyId();
-        }
-
-        $sql = sprintf(
-            'SELECT %s FROM crm_tasks WHERE %s LIMIT 1',
-            implode(', ', $select),
-            $where
-        );
-
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute($bindings);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-
-        if (!is_array($row)) {
-            throw new RuntimeException('No se encontró la tarea CRM.');
-        }
-
-        return $row;
-    }
-
-    private function upsertChecklistRow(int $solicitudId, string $slug, bool $completed, ?int $userId, ?string $note): void
-    {
-        if (!$this->tableExists('solicitud_checklist')) {
-            return;
-        }
-
-        $columns = $this->tableColumns('solicitud_checklist');
-        $stmt = $this->db->prepare('SELECT id FROM solicitud_checklist WHERE solicitud_id = :solicitud_id AND etapa_slug = :etapa_slug LIMIT 1');
-        $stmt->execute([
-            ':solicitud_id' => $solicitudId,
-            ':etapa_slug' => $slug,
-        ]);
-        $id = $stmt->fetchColumn();
-
-        $now = date('Y-m-d H:i:s');
-        $completedAt = $completed ? $now : null;
-
-        if ($id !== false) {
-            $payload = [];
-            if (in_array('completado_at', $columns, true)) {
-                $payload['completado_at'] = $completedAt;
-            }
-            if (in_array('completado_por', $columns, true)) {
-                $payload['completado_por'] = $completed ? $userId : null;
-            }
-            if (in_array('nota', $columns, true) && $note !== null) {
-                $payload['nota'] = trim($note);
-            }
-            if (in_array('updated_at', $columns, true)) {
-                $payload['updated_at'] = $now;
-            }
-
-            if ($payload !== []) {
-                $this->updateRow('solicitud_checklist', $payload, 'id = :id', [':id' => (int) $id]);
-            }
-            return;
-        }
-
-        $payload = [
-            'solicitud_id' => $solicitudId,
-            'etapa_slug' => $slug,
-        ];
-        if (in_array('completado_at', $columns, true)) {
-            $payload['completado_at'] = $completedAt;
-        }
-        if (in_array('completado_por', $columns, true)) {
-            $payload['completado_por'] = $completed ? $userId : null;
-        }
-        if (in_array('nota', $columns, true) && $note !== null) {
-            $payload['nota'] = trim($note);
-        }
-        if (in_array('created_at', $columns, true)) {
-            $payload['created_at'] = $now;
-        }
-        if (in_array('updated_at', $columns, true)) {
-            $payload['updated_at'] = $now;
-        }
-
-        $this->insertRow('solicitud_checklist', $payload);
-    }
-
-    /**
-     * @param array<int,array<string,mixed>>|null $rows
-     * @param array<int,array<string,mixed>>|null $checklist
-     */
-    private function syncChecklistLinkedTasks(
-        int $solicitudId,
-        ?string $targetSlug = null,
-        ?array $rows = null,
-        ?array $checklist = null
-    ): int {
-        if (!$this->tableExists('crm_tasks')) {
-            return 0;
-        }
-
-        $columns = $this->tableColumns('crm_tasks');
-        if ($columns === []) {
-            return 0;
-        }
-
-        $checklistRows = $rows ?? $this->queryChecklistRows($solicitudId);
-        $resolvedChecklist = $checklist;
-        if (!is_array($resolvedChecklist)) {
-            [$resolvedChecklist] = $this->stateMachine->resolvePersistedChecklistContext(
-                $checklistRows,
-                $this->operationalFallbackState($solicitudId, $checklistRows, null),
-                [
-                    'include_nota' => true,
-                    'include_can_toggle' => true,
-                ]
-            );
-        }
-
-        $items = array_values(array_filter(
-            is_array($resolvedChecklist) ? $resolvedChecklist : [],
-            function (array $item) use ($targetSlug): bool {
-                $slug = $this->normalizeKanbanSlug((string) ($item['slug'] ?? ''));
-                if ($slug === '') {
-                    return false;
-                }
-
-                return $targetSlug === null || $slug === $targetSlug;
-            }
-        ));
-
-        if ($items === []) {
-            return 0;
-        }
-
-        $where = [
-            'source_module = :source_module',
-            'source_ref_id = :source_ref_id',
-        ];
-        $bindings = [
-            ':source_module' => 'solicitudes',
-            ':source_ref_id' => (string) $solicitudId,
-        ];
-
-        if (in_array('company_id', $columns, true)) {
-            $where[] = 'company_id = :company_id';
-            $bindings[':company_id'] = $this->resolveCompanyId();
-        }
-
-        $select = ['id'];
-        foreach (['checklist_slug', 'status', 'completed_at', 'title', 'description', 'task_key', 'metadata'] as $column) {
-            if (in_array($column, $columns, true)) {
-                $select[] = $column;
-            }
-        }
-
-        $stmt = $this->db->prepare(sprintf(
-            'SELECT %s FROM crm_tasks WHERE %s',
-            implode(', ', array_unique($select)),
-            implode(' AND ', $where)
-        ));
-        $stmt->execute($bindings);
-
-        $existingBySlug = [];
-        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
-            $slug = $this->extractChecklistSlugFromTaskRow($row);
-            if ($slug === '') {
-                continue;
-            }
-
-            $existingBySlug[$slug][] = $row;
-        }
-
-        $updatedCount = 0;
-        $now = date('Y-m-d H:i:s');
-
-        foreach ($items as $item) {
-            $slug = $this->normalizeKanbanSlug((string) ($item['slug'] ?? ''));
-            if ($slug === '') {
-                continue;
-            }
-
-            $title = trim((string) ($item['label'] ?? $slug));
-            $isCompleted = !empty($item['completed']);
-            $targetStatus = $isCompleted ? 'completada' : 'pendiente';
-            $targetCompletedAt = $isCompleted
-                ? ($this->normalizeDateTime($item['completado_at'] ?? null) ?? $now)
-                : null;
-            $description = 'Checklist de solicitud';
-
-            $rowsForSlug = $existingBySlug[$slug] ?? [];
-            if ($rowsForSlug === []) {
-                $task = [];
-                if (in_array('company_id', $columns, true)) {
-                    $task['company_id'] = $this->resolveCompanyId();
-                }
-                if (in_array('source_module', $columns, true)) {
-                    $task['source_module'] = 'solicitudes';
-                }
-                if (in_array('source_ref_id', $columns, true)) {
-                    $task['source_ref_id'] = (string) $solicitudId;
-                }
-                if (in_array('title', $columns, true)) {
-                    $task['title'] = $title;
-                }
-                if (in_array('description', $columns, true)) {
-                    $task['description'] = $description;
-                }
-                if (in_array('status', $columns, true)) {
-                    $task['status'] = $targetStatus;
-                }
-                if (in_array('checklist_slug', $columns, true)) {
-                    $task['checklist_slug'] = $slug;
-                }
-                if (in_array('task_key', $columns, true)) {
-                    $task['task_key'] = 'checklist:' . $slug;
-                }
-                if (in_array('metadata', $columns, true)) {
-                    $task['metadata'] = json_encode([
-                        'task_key' => 'checklist:' . $slug,
-                        'checklist_slug' => $slug,
-                        'checklist_label' => $title,
-                    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-                }
-                if (in_array('completed_at', $columns, true)) {
-                    $task['completed_at'] = $targetCompletedAt;
-                }
-                if (in_array('created_at', $columns, true)) {
-                    $task['created_at'] = $now;
-                }
-                if (in_array('updated_at', $columns, true)) {
-                    $task['updated_at'] = $now;
-                }
-
-                $this->insertRow('crm_tasks', $task);
-                $updatedCount++;
-                continue;
-            }
-
-            foreach ($rowsForSlug as $row) {
-                $payload = [];
-                if (in_array('status', $columns, true) && (string) ($row['status'] ?? '') !== $targetStatus) {
-                    $payload['status'] = $targetStatus;
-                }
-                if (in_array('completed_at', $columns, true) && (($row['completed_at'] ?? null) !== $targetCompletedAt)) {
-                    $payload['completed_at'] = $targetCompletedAt;
-                }
-                if (in_array('title', $columns, true) && trim((string) ($row['title'] ?? '')) !== $title) {
-                    $payload['title'] = $title;
-                }
-                if (in_array('description', $columns, true) && trim((string) ($row['description'] ?? '')) === '') {
-                    $payload['description'] = $description;
-                }
-                if (in_array('task_key', $columns, true) && trim((string) ($row['task_key'] ?? '')) === '') {
-                    $payload['task_key'] = 'checklist:' . $slug;
-                }
-                if (in_array('checklist_slug', $columns, true) && trim((string) ($row['checklist_slug'] ?? '')) === '') {
-                    $payload['checklist_slug'] = $slug;
-                }
-                if (in_array('metadata', $columns, true)) {
-                    $metadata = $this->mergeChecklistTaskMetadata($row['metadata'] ?? null, $slug, $title);
-                    if ($metadata !== ($row['metadata'] ?? null)) {
-                        $payload['metadata'] = $metadata;
-                    }
-                }
-                if ($payload !== [] && in_array('updated_at', $columns, true)) {
-                    $payload['updated_at'] = $now;
-                }
-
-                if ($payload === []) {
-                    continue;
-                }
-
-                $taskWhere = 'id = :id';
-                $taskBindings = [':id' => (int) $row['id']];
-                if (in_array('source_module', $columns, true)) {
-                    $taskWhere .= ' AND source_module = :source_module';
-                    $taskBindings[':source_module'] = 'solicitudes';
-                }
-                if (in_array('source_ref_id', $columns, true)) {
-                    $taskWhere .= ' AND source_ref_id = :source_ref_id';
-                    $taskBindings[':source_ref_id'] = (string) $solicitudId;
-                }
-                if (in_array('company_id', $columns, true)) {
-                    $taskWhere .= ' AND company_id = :company_id';
-                    $taskBindings[':company_id'] = $this->resolveCompanyId();
-                }
-
-                $updatedCount += $this->updateRow('crm_tasks', $payload, $taskWhere, $taskBindings);
-            }
-        }
-
-        return $updatedCount;
-    }
-
-    /**
-     * @return array<int,array<string,mixed>>
-     */
-    private function queryChecklistRows(int $solicitudId): array
-    {
-        if (!$this->tableExists('solicitud_checklist')) {
-            return [];
-        }
-
-        $stmt = $this->db->prepare('SELECT etapa_slug, completado_at, nota FROM solicitud_checklist WHERE solicitud_id = :id ORDER BY id');
-        $stmt->execute([':id' => $solicitudId]);
-
-        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-    }
-
-    /**
-     * @param array<int,array<string,mixed>> $rows
-     * @param array<int,array<string,mixed>> $tasks
-     * @return array{0:array<int,array<string,mixed>>,1:array<string,mixed>}
-     */
-    private function resolveOperationalChecklistFromTasks(int $solicitudId, array $rows, array $tasks): array
-    {
-        [$checklist, $progress] = $this->resolveOperationalChecklistContext(
-            $solicitudId,
-            $rows,
-            $tasks,
-            $this->operationalFallbackState($solicitudId, $rows, $tasks)
-        );
-
-        return [$checklist, $progress];
-    }
-
-    /**
-     * @param array<int,array<string,mixed>> $rows
-     * @param array<int,array<string,mixed>> $tasks
-     * @return array{0:array<int,array<string,mixed>>,1:array<string,mixed>,2:array{slug:string,label:string}}
-     */
-    private function resolveOperationalChecklistContext(int $solicitudId, array $rows, array $tasks, string $fallbackState): array
-    {
-        $taskChecklistRows = $this->buildChecklistRowsFromTasks($tasks, $rows);
-        if ($taskChecklistRows !== []) {
-            return $this->stateMachine->resolvePersistedChecklistContext(
-                $taskChecklistRows,
-                $fallbackState,
-                [
-                    'include_nota' => true,
-                    'include_can_toggle' => true,
-                ]
-            );
-        }
-
-        return $this->stateMachine->resolvePersistedChecklistContext(
-            $rows,
-            $fallbackState,
-            [
-                'include_nota' => true,
-                'include_can_toggle' => true,
-            ]
-        );
-    }
-
-    /**
-     * @param array<int,array<string,mixed>> $taskRows
-     * @param array<int,array<string,mixed>> $checklistRows
-     * @return array<int,array<string,mixed>>
-     */
-    private function buildChecklistRowsFromTasks(array $taskRows, array $checklistRows = []): array
-    {
-        if ($taskRows === []) {
-            return [];
-        }
-
-        $persistedBySlug = [];
-        foreach ($checklistRows as $row) {
-            $slug = $this->normalizeKanbanSlug((string) ($row['etapa_slug'] ?? ''));
-            if ($slug === '') {
-                continue;
-            }
-
-            $persistedBySlug[$slug] = $row;
-        }
-
-        $tasksBySlug = [];
-        foreach ($taskRows as $task) {
-            if (!is_array($task)) {
-                continue;
-            }
-
-            $slug = $this->extractChecklistSlugFromTaskRow($task);
-            if ($slug === '') {
-                continue;
-            }
-
-            $tasksBySlug[$slug] = $task;
-        }
-
-        if ($tasksBySlug === []) {
-            return [];
-        }
-
-        $rows = [];
-        foreach ($this->stateMachine->stages() as $stage) {
-            $slug = $this->normalizeKanbanSlug((string) ($stage['slug'] ?? ''));
-            if ($slug === '') {
-                continue;
-            }
-
-            $task = $tasksBySlug[$slug] ?? null;
-            $persisted = $persistedBySlug[$slug] ?? null;
-            $status = strtolower(trim((string) ($task['estado'] ?? $task['status'] ?? '')));
-            $isCompleted = in_array($status, ['completada', 'completed', 'done'], true);
-
-            $rows[] = [
-                'etapa_slug' => $slug,
-                'completado_at' => $isCompleted
-                    ? ($task['completed_at'] ?? ($persisted['completado_at'] ?? date('Y-m-d H:i:s')))
-                    : null,
-                'nota' => $persisted['nota'] ?? null,
-            ];
-        }
-
-        return $rows;
-    }
-
-    /**
-     * @return array<int,array<string,mixed>>
-     */
-    private function queryChecklistTaskRows(int $solicitudId): array
-    {
-        $columns = $this->tableColumns('crm_tasks');
-        if (
-            $columns === []
-            || !in_array('source_module', $columns, true)
-            || !in_array('source_ref_id', $columns, true)
-        ) {
-            return [];
-        }
-
-        $select = ['id'];
-        foreach (['status', 'completed_at', 'checklist_slug', 'task_key', 'metadata'] as $column) {
-            if (in_array($column, $columns, true)) {
-                $select[] = $column;
-            }
-        }
-
-        $where = ['source_module = :source_module', 'source_ref_id = :source_ref_id'];
-        $bindings = [
-            ':source_module' => 'solicitudes',
-            ':source_ref_id' => (string) $solicitudId,
-        ];
-
-        if (in_array('company_id', $columns, true)) {
-            $where[] = 'company_id = :company_id';
-            $bindings[':company_id'] = $this->resolveCompanyId();
-        }
-
-        $stmt = $this->db->prepare(sprintf(
-            'SELECT %s FROM crm_tasks WHERE %s',
-            implode(', ', $select),
-            implode(' AND ', $where)
-        ));
-        $stmt->execute($bindings);
-
-        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-    }
-
-    /**
-     * @param array<int,array<string,mixed>> $checklistRows
-     * @return array{0:array<int,array<string,mixed>>,1:array<string,mixed>,2:array{slug:string,label:string}}
-     */
-    private function buildChecklistContext(string $legacyState, array $checklistRows): array
-    {
-        return $this->stateMachine->buildChecklistContext($legacyState, $checklistRows, [
-            'include_nota' => true,
-            'include_can_toggle' => true,
-        ]);
-    }
-
-    private function stageIndex(string $slug): ?int
-    {
-        return $this->stateMachine->stageIndex($slug);
-    }
-
-    /**
-     * @return array{slug:string,label:string,order:int,column:string,required:bool}|null
-     */
-    private function stageBySlug(string $slug): ?array
-    {
-        return $this->stateMachine->stageBySlug($slug);
-    }
-
-    private function kanbanLabel(string $slug): string
-    {
-        return $this->stateMachine->kanbanLabel($slug);
-    }
-
-    private function normalizeKanbanSlug(string $value): string
-    {
-        return $this->stateMachine->normalizeKanbanSlug($value);
-    }
-
-    private function normalizeTurneroEstado(string $estado): ?string
-    {
-        $limpio = trim($estado);
-        if ($limpio === '') {
-            return null;
-        }
-
-        $key = function_exists('mb_strtolower') ? mb_strtolower($limpio, 'UTF-8') : strtolower($limpio);
-
-        return self::TURNERO_STATE_MAP[$key] ?? null;
-    }
-
-    private function normalizeTaskPriority(mixed $priority): string
-    {
-        $raw = trim((string) ($priority ?? ''));
-        if ($raw === '') {
-            return 'media';
-        }
-
-        $key = function_exists('mb_strtolower') ? mb_strtolower($raw, 'UTF-8') : strtolower($raw);
-        $key = str_replace([' ', '-'], '_', $key);
-
-        return match ($key) {
-            'low', 'baja' => 'baja',
-            'high', 'alta' => 'alta',
-            'urgent', 'urgente', 'critical', 'critica', 'crítica' => 'urgente',
-            'normal', 'medium', 'media' => 'media',
-            default => 'media',
-        };
-    }
-
-    private function extractChecklistSlugFromTaskRow(array $row): string
-    {
-        $slug = $this->normalizeKanbanSlug((string) ($row['checklist_slug'] ?? ''));
-        if ($slug !== '') {
-            return $slug;
-        }
-
-        $metadata = $this->decodeTaskMetadata($row['metadata'] ?? null);
-        if (is_array($metadata)) {
-            return $this->normalizeKanbanSlug((string) ($metadata['checklist_slug'] ?? ''));
-        }
-
-        return '';
-    }
-
-    /**
-     * @return array<string,mixed>|null
-     */
-    private function decodeTaskMetadata(mixed $value): ?array
-    {
-        if (is_array($value)) {
-            return $value;
-        }
-
-        if (!is_string($value) || trim($value) === '') {
-            return null;
-        }
-
-        $decoded = json_decode($value, true);
-        return is_array($decoded) ? $decoded : null;
-    }
-
-    private function mergeChecklistTaskMetadata(mixed $currentValue, string $slug, string $title): ?string
-    {
-        $metadata = $this->decodeTaskMetadata($currentValue) ?? [];
-        $metadata['task_key'] = trim((string) ($metadata['task_key'] ?? '')) !== '' ? $metadata['task_key'] : 'checklist:' . $slug;
-        $metadata['checklist_slug'] = $slug;
-        $metadata['checklist_label'] = trim((string) ($metadata['checklist_label'] ?? '')) !== '' ? $metadata['checklist_label'] : $title;
-
-        return json_encode($metadata, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-    }
-
-    private function asignarTurnoSiNecesario(int $id): ?int
-    {
-        $consulta = $this->db->prepare('SELECT turno FROM solicitud_procedimiento WHERE id = :id FOR UPDATE');
-        $consulta->execute([':id' => $id]);
-        $actual = $consulta->fetchColumn();
-
-        if ($actual !== false && $actual !== null) {
-            return (int) $actual;
-        }
-
-        $maxStmt = $this->db->query('SELECT turno FROM solicitud_procedimiento WHERE turno IS NOT NULL ORDER BY turno DESC LIMIT 1 FOR UPDATE');
-        $maxTurno = $maxStmt ? (int) $maxStmt->fetchColumn() : 0;
-        $siguiente = $maxTurno + 1;
-
-        $update = $this->db->prepare('UPDATE solicitud_procedimiento SET turno = :turno WHERE id = :id AND turno IS NULL');
-        $update->execute([
-            ':turno' => $siguiente,
-            ':id' => $id,
-        ]);
-
-        if ($update->rowCount() === 0) {
-            $consulta->execute([':id' => $id]);
-            $actual = $consulta->fetchColumn();
-
-            return $actual !== false ? (int) $actual : null;
-        }
-
-        return $siguiente;
-    }
-
-    private function findIdByFormId(int $formId): ?int
-    {
-        if ($formId <= 0) {
-            return null;
-        }
-
-        $stmt = $this->db->prepare('SELECT id FROM solicitud_procedimiento WHERE form_id = :form_id ORDER BY created_at DESC LIMIT 1');
-        $stmt->execute([':form_id' => $formId]);
-        $result = $stmt->fetchColumn();
-
-        return $result !== false ? (int) $result : null;
-    }
-
-    private function assertSolicitudExists(int $solicitudId): void
-    {
-        if ($this->fetchSolicitudById($solicitudId) === null) {
-            throw new RuntimeException('Solicitud no encontrada');
-        }
-    }
-
-    /**
-     * @return array<string,mixed>|null
-     */
-    private function fetchSolicitudById(int $id): ?array
-    {
-        $stmt = $this->db->prepare('SELECT * FROM solicitud_procedimiento WHERE id = :id LIMIT 1');
-        $stmt->execute([':id' => $id]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-
-        return $row !== false ? $row : null;
-    }
-
-    /**
-     * @return array<string,mixed>|null
-     */
-    private function fetchCrmDetalleRow(int $solicitudId): ?array
-    {
-        if (!$this->tableExists('solicitud_crm_detalles')) {
-            return null;
-        }
-
-        $stmt = $this->db->prepare('SELECT * FROM solicitud_crm_detalles WHERE solicitud_id = :solicitud_id LIMIT 1');
-        $stmt->execute([':solicitud_id' => $solicitudId]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-
-        return $row !== false ? $row : null;
-    }
-
-    private function legacyStateBySolicitud(int $solicitudId): string
-    {
-        $stmt = $this->db->prepare('SELECT estado FROM solicitud_procedimiento WHERE id = :id LIMIT 1');
-        $stmt->execute([':id' => $solicitudId]);
-        $value = $stmt->fetchColumn();
-
-        return is_string($value) ? $value : '';
-    }
-
-    private function resolveCompanyId(): int
-    {
-        if ($this->companyIdCache !== null) {
-            return $this->companyIdCache;
-        }
-
-        try {
-            $stmt = $this->db->query('SELECT company_id FROM crm_tasks WHERE company_id IS NOT NULL LIMIT 1');
-            $value = $stmt ? (int) $stmt->fetchColumn() : 0;
-            if ($value > 0) {
-                $this->companyIdCache = $value;
-                return $value;
-            }
-        } catch (Throwable) {
-            // ignore
-        }
-
-        $this->companyIdCache = 1;
-
-        return 1;
-    }
-
-    private function tableExists(string $table): bool
-    {
-        if (array_key_exists($table, $this->tableExistsCache)) {
-            return $this->tableExistsCache[$table];
-        }
-
-        $exists = false;
-
-        try {
-            $stmt = $this->db->prepare('SHOW TABLES LIKE :table');
-            $stmt->execute([':table' => $table]);
-            $exists = $stmt->fetchColumn() !== false;
-        } catch (Throwable) {
-            $exists = false;
-        }
-
-        if (!$exists) {
-            try {
-                $sql = 'SELECT 1 FROM `' . str_replace('`', '', $table) . '` LIMIT 1';
-                $this->db->query($sql);
-                $exists = true;
-            } catch (Throwable) {
-                $exists = false;
-            }
-        }
-
-        $this->tableExistsCache[$table] = $exists;
-
-        return $exists;
-    }
-
-    /**
-     * @return array<int,string>
-     */
-    private function tableColumns(string $table): array
-    {
-        if (array_key_exists($table, $this->columnsCache)) {
-            return $this->columnsCache[$table];
-        }
-
-        if (!$this->tableExists($table)) {
-            $this->columnsCache[$table] = [];
-            return [];
-        }
-
-        try {
-            $stmt = $this->db->query('SHOW COLUMNS FROM `' . str_replace('`', '', $table) . '`');
-            $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
-        } catch (Throwable) {
-            $rows = [];
-        }
-
-        $columns = [];
-        foreach ($rows as $row) {
-            $field = trim((string) ($row['Field'] ?? ''));
-            if ($field !== '') {
-                $columns[] = $field;
-            }
-        }
-
-        $this->columnsCache[$table] = $columns;
-
-        return $columns;
-    }
-
-    private function hasColumn(string $table, string $column): bool
-    {
-        return in_array($column, $this->tableColumns($table), true);
-    }
-
-    /**
-     * @param array<string,mixed> $payload
-     */
-    private function insertRow(string $table, array $payload): void
-    {
-        if ($payload === []) {
-            return;
-        }
-
-        $columns = [];
-        $holders = [];
-        $bindings = [];
-
-        foreach ($payload as $column => $value) {
-            $key = ':' . $column;
-            $columns[] = '`' . $column . '`';
-            $holders[] = $key;
-            $bindings[$key] = $value;
-        }
-
-        $sql = sprintf(
-            'INSERT INTO `%s` (%s) VALUES (%s)',
-            str_replace('`', '', $table),
-            implode(', ', $columns),
-            implode(', ', $holders)
-        );
-
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute($bindings);
-    }
-
-    /**
-     * @param array<string,mixed> $payload
-     * @param array<string,mixed> $bindings
-     */
-    private function updateRow(string $table, array $payload, string $where, array $bindings = []): int
-    {
-        if ($payload === []) {
-            return 0;
-        }
-
-        $sets = [];
-        $params = $bindings;
-
-        foreach ($payload as $column => $value) {
-            $key = ':set_' . $column;
-            $sets[] = '`' . $column . '` = ' . $key;
-            $params[$key] = $value;
-        }
-
-        $sql = sprintf(
-            'UPDATE `%s` SET %s WHERE %s',
-            str_replace('`', '', $table),
-            implode(', ', $sets),
-            $where
-        );
-
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute($params);
-
-        return $stmt->rowCount();
-    }
-
-    private function nullableString(mixed $value): ?string
-    {
-        if ($value === null) {
-            return null;
-        }
-
-        $value = trim((string) $value);
-
-        return $value === '' ? null : $value;
-    }
-
-    private function nullableInt(mixed $value): ?int
-    {
-        if (!is_numeric($value)) {
-            return null;
-        }
-
-        $value = (int) $value;
-
-        return $value > 0 ? $value : null;
-    }
-
-    private function normalizeDate(mixed $value): ?string
-    {
-        $value = $this->nullableString($value);
-        if ($value === null) {
-            return null;
-        }
-
-        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
-            return $value;
-        }
-
-        $formats = ['d/m/Y', 'd-m-Y', 'm/d/Y', 'm-d-Y'];
-        foreach ($formats as $format) {
-            $dt = DateTime::createFromFormat($format, $value);
-            if ($dt instanceof DateTime) {
-                return $dt->format('Y-m-d');
-            }
-        }
-
-        try {
-            return (new DateTimeImmutable($value))->format('Y-m-d');
-        } catch (Throwable) {
-            return null;
-        }
-    }
-
-    private function normalizeDateTime(mixed $value): ?string
-    {
-        $value = $this->nullableString($value);
-        if ($value === null) {
-            return null;
-        }
-
-        if (preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?$/', $value)) {
-            return strlen($value) === 16 ? $value . ':00' : $value;
-        }
-
-        if (preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/', $value)) {
-            $format = strlen($value) === 19 ? 'Y-m-d\\TH:i:s' : 'Y-m-d\\TH:i';
-            $dt = DateTime::createFromFormat($format, $value);
-            if ($dt instanceof DateTime) {
-                return $dt->format('Y-m-d H:i:s');
-            }
-        }
-
-        try {
-            return (new DateTimeImmutable($value))->format('Y-m-d H:i:s');
-        } catch (Throwable) {
-            return null;
-        }
-    }
-
-    /**
-     * @return array<string,mixed>|null
-     */
-    private function fetchCrmLead(int $leadId): ?array
-    {
-        if ($leadId <= 0 || !$this->tableExists('crm_leads')) {
-            return null;
-        }
-
-        $stmt = $this->db->prepare('SELECT * FROM crm_leads WHERE id = :id LIMIT 1');
-        $stmt->execute([':id' => $leadId]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-
-        return $row !== false ? $row : null;
-    }
-
-    /**
-     * @param mixed $items
-     * @return array<int,array<string,mixed>>
-     */
-    private function normalizeProposalItems(mixed $items): array
-    {
-        if (!is_array($items)) {
-            return [];
-        }
-
-        $clean = [];
-        foreach ($items as $item) {
-            if (!is_array($item)) {
-                continue;
-            }
-
-            $description = trim((string) ($item['description'] ?? ''));
-            if ($description === '') {
-                continue;
-            }
-
-            $clean[] = [
-                'description' => $description,
-                'quantity' => max(0.01, (float) ($item['quantity'] ?? 1)),
-                'unit_price' => max(0.0, (float) ($item['unit_price'] ?? 0)),
-                'discount_percent' => max(0.0, min(100.0, (float) ($item['discount_percent'] ?? 0))),
-                'code_id' => $this->nullableInt($item['code_id'] ?? null),
-                'package_id' => $this->nullableInt($item['package_id'] ?? null),
-            ];
-        }
-
-        return $clean;
-    }
-
-    /**
-     * @param array<int,array<string,mixed>> $items
-     * @return array{subtotal: float, discount: float, tax: float, total: float}
-     */
-    private function calculateProposalTotals(array $items, float $taxRate): array
-    {
-        $subtotal = 0.0;
-        $discountTotal = 0.0;
-
-        foreach ($items as $item) {
-            $lineSubtotal = (float) $item['quantity'] * (float) $item['unit_price'];
-            $lineDiscount = $lineSubtotal * ((float) $item['discount_percent'] / 100);
-            $subtotal += $lineSubtotal;
-            $discountTotal += $lineDiscount;
-        }
-
-        $taxable = max(0.0, $subtotal - $discountTotal);
-        $tax = $taxable * ($taxRate / 100);
-
-        return [
-            'subtotal' => round($subtotal, 2),
-            'discount' => round($discountTotal, 2),
-            'tax' => round($tax, 2),
-            'total' => round($taxable + $tax, 2),
-        ];
-    }
-
-    /**
-     * @return array{number: string, sequence: int, year: int}
-     */
-    private function nextProposalNumber(): array
-    {
-        $year = (int) date('Y');
-        $stmt = $this->db->prepare('SELECT MAX(sequence) FROM crm_proposals WHERE proposal_year = :year');
-        $stmt->execute([':year' => $year]);
-        $sequence = (int) $stmt->fetchColumn() + 1;
-
-        return [
-            'number' => sprintf('PROP-%d-%04d', $year, $sequence),
-            'sequence' => $sequence,
-            'year' => $year,
-        ];
-    }
-
-    /**
-     * @param array<string,mixed> $payload
-     * @param array<int,string> $columns
-     * @return array<string,mixed>
-     */
-    private function filterColumns(array $payload, array $columns): array
-    {
-        return array_filter(
-            $payload,
-            static fn(string $column): bool => in_array($column, $columns, true),
-            ARRAY_FILTER_USE_KEY
-        );
-    }
-
-    /**
-     * @return array<string,mixed>|null
-     */
-    private function fetchSolicitudBloqueoBase(int $solicitudId): ?array
-    {
-        $selectFecha = 'sp.fecha AS fecha_programada';
-        $selectSala = 'NULL AS sala';
-        $join = '';
-
-        $canJoinConsultaData = $this->tableExists('consulta_data')
-            && $this->hasColumn('consulta_data', 'hc_number')
-            && $this->hasColumn('consulta_data', 'form_id');
-
-        if ($canJoinConsultaData) {
-            $join = ' LEFT JOIN consulta_data cd ON cd.hc_number = sp.hc_number AND cd.form_id = sp.form_id';
-            if ($this->hasColumn('consulta_data', 'fecha')) {
-                $selectFecha = 'COALESCE(cd.fecha, sp.fecha) AS fecha_programada';
-            }
-            if ($this->hasColumn('consulta_data', 'quirofano')) {
-                $selectSala = 'cd.quirofano AS sala';
-            }
-        }
-
-        $stmt = $this->db->prepare(
-            sprintf(
-                'SELECT sp.id, sp.doctor, %s, %s
-                 FROM solicitud_procedimiento sp%s
-                 WHERE sp.id = :id
-                 LIMIT 1',
-                $selectFecha,
-                $selectSala,
-                $join
-            )
-        );
-        $stmt->execute([':id' => $solicitudId]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-
-        return $row !== false ? $row : null;
-    }
-
-    private function parseFlexibleDateTime(mixed $value): ?DateTimeImmutable
-    {
-        if ($value instanceof DateTimeImmutable) {
-            return $value;
-        }
-
-        $raw = $this->nullableString($value);
-        if ($raw === null) {
-            return null;
-        }
-
-        foreach ([
-            'Y-m-d H:i:s',
-            DateTimeImmutable::ATOM,
-            'Y-m-d\TH:i',
-            'd/m/Y H:i',
-            'd-m-Y H:i',
-            'Y-m-d',
-        ] as $format) {
-            $dt = DateTimeImmutable::createFromFormat($format, $raw);
-            if ($dt instanceof DateTimeImmutable) {
-                return $dt;
-            }
-        }
-
-        try {
-            return new DateTimeImmutable($raw);
-        } catch (Throwable) {
-            return null;
-        }
     }
 }

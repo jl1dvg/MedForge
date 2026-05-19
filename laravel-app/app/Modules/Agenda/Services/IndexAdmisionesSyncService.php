@@ -2,6 +2,7 @@
 
 namespace App\Modules\Agenda\Services;
 
+use App\Modules\Solicitudes\Services\SolicitudesSigcenterSyncService;
 use DateTimeImmutable;
 use Illuminate\Support\Facades\DB;
 use Throwable;
@@ -90,6 +91,7 @@ class IndexAdmisionesSyncService
             'missing_marked' => 0,
         ];
         $seenFormIds = [];
+        $syncedNormalizedRows = [];
 
         foreach ($rows as $row) {
             $stats['processed']++;
@@ -117,6 +119,7 @@ class IndexAdmisionesSyncService
 
                 $stats['sent']++;
                 $seenFormIds[] = (int) $normalized['form_id'];
+                $syncedNormalizedRows[] = $normalized;
                 $onProgress && $onProgress('row', [
                     'form_id' => $normalized['form_id'],
                     'hc_number' => $normalized['hcNumber'],
@@ -145,6 +148,15 @@ class IndexAdmisionesSyncService
             }
         }
 
+        $solicitudesStats = [];
+        if ($syncedNormalizedRows !== []) {
+            try {
+                $solicitudesStats = (new SolicitudesSigcenterSyncService())->syncFromRows($syncedNormalizedRows);
+            } catch (Throwable $e) {
+                $solicitudesStats = ['error' => $e->getMessage()];
+            }
+        }
+
         return [
             'success' => true,
             'from' => $fromDate,
@@ -157,6 +169,7 @@ class IndexAdmisionesSyncService
             'missing_marked_rows' => $stats['missing_marked'],
             'duration_ms' => (int) round((microtime(true) - $startedAt) * 1000),
             'source' => $this->lastSource,
+            'solicitudes_sync' => $solicitudesStats,
         ];
     }
 

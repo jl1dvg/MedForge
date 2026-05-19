@@ -1,9 +1,3 @@
-@once
-    @push('styles')
-        <link rel="stylesheet" href="/css/pages/solicitudes-crm-panel.css?v={{ @filemtime(public_path('css/pages/solicitudes-crm-panel.css')) ?: time() }}">
-    @endpush
-@endonce
-
 <div class="offcanvas offcanvas-end" tabindex="-1" id="crmOffcanvas" aria-labelledby="crmOffcanvasLabel">
     <div class="offcanvas-header">
         <div>

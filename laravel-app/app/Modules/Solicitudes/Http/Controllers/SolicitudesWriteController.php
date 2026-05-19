@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Solicitudes\Http\Controllers;
 
+use App\Modules\CRM\Services\CrmProposalService;
 use App\Modules\Solicitudes\Services\SolicitudesReadParityService;
 use App\Modules\Solicitudes\Services\SolicitudesCommunicationService;
 use App\Modules\Solicitudes\Services\SolicitudesWriteParityService;
@@ -441,11 +442,78 @@ class SolicitudesWriteController
 
     public function crmCrearPropuesta(Request $request, int $id): JsonResponse
     {
-        return $this->crmWriteResponse(
-            $request,
-            $id,
-            fn(array $payload, ?int $userId): array => $this->service->crmCrearPropuesta($id, $payload, $userId)
-        );
+        $requestId = $this->requestId($request);
+        $userId = $this->actorId();
+        $payload = $this->payload($request);
+
+        try {
+            $result = $this->service->crmCrearPropuesta($id, $payload, $userId);
+        } catch (Throwable $e) {
+            Log::error('solicitudes.write.crm_crear_propuesta.error', [
+                'request_id' => $requestId,
+                'solicitud_id' => $id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json(['success' => false, 'error' => $e->getMessage()], 422)
+                ->header('X-Request-Id', $requestId);
+        }
+
+        $ultima = $result['ultima_propuesta'] ?? [];
+        $proposalId = (int) ($ultima['id'] ?? 0);
+        $proposalNumber = (string) ($ultima['proposal_number'] ?? '');
+
+        $sendBy = strtolower(trim((string) ($payload['send_by'] ?? 'none')));
+        $sendError = null;
+
+        if ($proposalId > 0 && in_array($sendBy, ['email', 'whatsapp'], true)) {
+            try {
+                $proposalService = new CrmProposalService();
+                $proposal = $proposalService->find($proposalId);
+                $publicUrl = $proposal['public_url'] ?? ('/v2/crm/proposals/' . $proposalId);
+
+                if ($sendBy === 'email') {
+                    $detalle = $result['detalle'] ?? [];
+                    $emailTo = trim((string) ($payload['email_to'] ?? $detalle['crm_contacto_email'] ?? ''));
+                    if ($emailTo !== '' && filter_var($emailTo, FILTER_VALIDATE_EMAIL)) {
+                        $this->communicationService->sendEmail($id, [
+                            'to' => $emailTo,
+                            'subject' => 'Propuesta ' . $proposalNumber,
+                            'body' => 'Le enviamos la propuesta ' . $proposalNumber . ".\n\nPuede revisarla en línea: " . $publicUrl,
+                        ], $userId);
+                    }
+                } else {
+                    $detalle = $result['detalle'] ?? [];
+                    $phone = trim((string) ($payload['phone'] ?? $detalle['crm_contacto_telefono'] ?? ''));
+                    if ($phone !== '') {
+                        $this->communicationService->sendWhatsapp($id, [
+                            'phone' => $phone,
+                            'mensaje' => 'Propuesta ' . $proposalNumber . ': ' . $publicUrl,
+                        ], $userId);
+                    }
+                }
+
+                $proposalService->markSent($proposalId, $sendBy, $userId);
+                $result['ultima_propuesta']['public_url'] = $publicUrl;
+                $result['ultima_propuesta']['sent_by'] = $sendBy;
+            } catch (Throwable $sendException) {
+                // Delivery failure is non-fatal — proposal is created and must not be rolled back.
+                $sendError = $sendException->getMessage();
+                Log::warning('solicitudes.write.crm_propuesta_envio.error', [
+                    'solicitud_id' => $id,
+                    'proposal_id' => $proposalId,
+                    'send_by' => $sendBy,
+                    'error' => $sendError,
+                ]);
+            }
+        }
+
+        $result['success'] = true;
+        if ($sendError !== null) {
+            $result['send_warning'] = 'La propuesta fue creada pero el envío falló: ' . $sendError;
+        }
+
+        return response()->json($result)->header('X-Request-Id', $requestId);
     }
 
     public function crmRegistrarBloqueo(Request $request, int $id): JsonResponse

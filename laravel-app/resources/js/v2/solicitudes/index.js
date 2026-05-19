@@ -1,10 +1,8 @@
-(() => {
+
     const config = window.__SOLICITUDES_V2_UI__ || {};
     const endpoints = config.endpoints || {};
     const columns = Array.isArray(config.columns) ? config.columns : [];
     const initialFilters = config.initialFilters || {};
-    const assetVersion = String(config.assetVersion || '').trim();
-    const assetSuffix = assetVersion ? `?v=${encodeURIComponent(assetVersion)}` : '';
     const rawRealtimeConfig = config.realtime && typeof config.realtime === 'object'
         ? config.realtime
         : {};
@@ -916,7 +914,7 @@
         }
 
         if (!state.crmPanel.loadingPromise) {
-            state.crmPanel.loadingPromise = import('/js/pages/shared/crmPanelFactory.js')
+            state.crmPanel.loadingPromise = import('../shared/crmPanelFactory.js')
                 .then((module) => {
                     if (!module || typeof module.createCrmPanel !== 'function') {
                         throw new Error('Módulo CRM no disponible');
@@ -993,7 +991,7 @@
         }
 
         if (!state.prefacturaPanel.loadingPromise) {
-            state.prefacturaPanel.loadingPromise = import(`/js/pages/solicitudes/kanban/modalDetalles/prefactura.js${assetSuffix}`)
+            state.prefacturaPanel.loadingPromise = import(/* @vite-ignore */ './kanban/modalDetalles/prefactura.js')
                 .then((module) => {
                     if (!module || typeof module.abrirPrefactura !== 'function') {
                         throw new Error('Módulo de prefactura no disponible');
@@ -1022,7 +1020,7 @@
         }
 
         if (!state.prefacturaPanel.interactionsPromise) {
-            state.prefacturaPanel.interactionsPromise = import(`/js/pages/solicitudes/kanban/modalDetalles.js${assetSuffix}`)
+            state.prefacturaPanel.interactionsPromise = import(/* @vite-ignore */ './kanban/modalDetalles.js')
                 .then((module) => {
                     if (!module || typeof module.inicializarModalDetalles !== 'function') {
                         throw new Error('Módulo de interacciones de prefactura no disponible');
@@ -1088,7 +1086,7 @@
         }
 
         try {
-            const module = await import('/js/pages/solicitudes/notifications/panel.js');
+            const module = await import('./notifications/panel.js');
             if (!module || typeof module.createNotificationPanel !== 'function') {
                 return null;
             }
@@ -1596,7 +1594,7 @@
 
         if (!state.conciliacionPanel.loadingPromise) {
             syncKanbanRuntimeConfig();
-            state.conciliacionPanel.loadingPromise = import('/js/pages/solicitudes/conciliacion.js')
+            state.conciliacionPanel.loadingPromise = import('./conciliacion.js')
                 .then((module) => {
                     if (!module || typeof module.initSolicitudesConciliacion !== 'function') {
                         throw new Error('Módulo de conciliación no disponible');
@@ -2210,4 +2208,4 @@
     initColCollapse();
     switchView(state.view, false);
     loadKanban();
-})();
+
