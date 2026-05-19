@@ -16,6 +16,7 @@ class FlowRuntimeExecutionService
 {
     public function __construct(
         private readonly FlowmakerService $flowmakerService = new FlowmakerService(),
+        private readonly FlowmakerSandboxService $sandboxService = new FlowmakerSandboxService(),
         private readonly WhatsappConfigService $configService = new WhatsappConfigService(),
         private readonly CloudApiTransportService $transport = new CloudApiTransportService(),
         private readonly FlowSigcenterAgendaService $sigcenterAgendaService = new FlowSigcenterAgendaService(),
@@ -42,7 +43,10 @@ class FlowRuntimeExecutionService
             return $this->result(false, false, null, 0, false, 'empty_text');
         }
 
-        $flow = $this->flowmakerService->getActiveFlowPayload();
+        $waNumber = (string) ($conversation->wa_number ?? '');
+        $flow = $this->sandboxService->getFlowPayload($waNumber)
+            ?? $this->flowmakerService->getActiveFlowPayload();
+
         $session = WhatsappAutoresponderSession::query()
             ->where('conversation_id', $conversation->id)
             ->first();

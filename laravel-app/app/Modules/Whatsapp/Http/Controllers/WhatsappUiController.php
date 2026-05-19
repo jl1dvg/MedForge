@@ -13,6 +13,7 @@ use App\Modules\Whatsapp\Services\KnowledgeBaseService;
 use App\Modules\Whatsapp\Services\KpiDashboardService;
 use App\Modules\Whatsapp\Services\ProductivityToolkitService;
 use App\Modules\Whatsapp\Services\TemplateCatalogService;
+use App\Modules\Whatsapp\Services\WhatsappLeadService;
 use Carbon\CarbonImmutable;
 use DateTimeImmutable;
 use Illuminate\Support\Facades\DB;
@@ -41,6 +42,7 @@ class WhatsappUiController
         private readonly FlowAiAgentPreviewService $aiAgentPreviewService = new \App\Modules\Whatsapp\Services\FlowAiAgentPreviewService(),
         private readonly KnowledgeBaseService $knowledgeBaseService = new \App\Modules\Whatsapp\Services\KnowledgeBaseService(),
         private readonly ProductivityToolkitService $productivityToolkitService = new \App\Modules\Whatsapp\Services\ProductivityToolkitService(),
+        private readonly WhatsappLeadService $leadService = new \App\Modules\Whatsapp\Services\WhatsappLeadService(),
     ) {
     }
 
@@ -235,6 +237,28 @@ class WhatsappUiController
             'audienceSuggestions' => $this->campaignService->audienceSuggestions(),
         ] + $this->buildWhatsappNotificationViewData($request, [
             'scope' => 'campaigns',
+        ]));
+    }
+
+    public function leads(Request $request): View
+    {
+        $status = trim((string) $request->query('status', ''));
+        $search = trim((string) $request->query('search', ''));
+        $page   = max(1, (int) $request->query('page', 1));
+
+        $leads = $this->leadService->list(
+            status:  $status,
+            search:  $search,
+            page:    $page,
+            perPage: 50,
+        );
+
+        return view('whatsapp.v2-leads', [
+            'pageTitle'      => 'WhatsApp - Leads de seguimiento',
+            'leads'          => $leads,
+            'filters'        => compact('status', 'search', 'page'),
+        ] + $this->buildWhatsappNotificationViewData($request, [
+            'scope' => 'leads',
         ]));
     }
 

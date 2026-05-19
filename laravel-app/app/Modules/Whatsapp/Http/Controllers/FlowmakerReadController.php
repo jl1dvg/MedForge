@@ -2,6 +2,7 @@
 
 namespace App\Modules\Whatsapp\Http\Controllers;
 
+use App\Modules\Whatsapp\Services\FlowmakerSandboxService;
 use App\Modules\Whatsapp\Services\FlowmakerService;
 use App\Modules\Whatsapp\Services\FlowAiAgentPreviewService;
 use App\Modules\Whatsapp\Services\FlowRuntimePreviewService;
@@ -14,6 +15,7 @@ class FlowmakerReadController
 {
     public function __construct(
         private readonly FlowmakerService $service = new FlowmakerService(),
+        private readonly FlowmakerSandboxService $sandboxService = new FlowmakerSandboxService(),
         private readonly FlowAiAgentPreviewService $aiAgentService = new FlowAiAgentPreviewService(),
         private readonly FlowRuntimePreviewService $previewService = new FlowRuntimePreviewService(),
         private readonly FlowRuntimeShadowCompareService $compareService = new FlowRuntimeShadowCompareService(),
@@ -37,8 +39,22 @@ class FlowmakerReadController
             'scenario_id' => (string) $request->input('scenario_id', ''),
         ];
 
+        // Explicit flow payload takes precedence
         if (is_array($flow)) {
             return response()->json($this->previewService->simulateAgainstFlow($flow, $input));
+        }
+
+        // ?use_sandbox=true → simulate against the sandbox draft flow
+        if ($request->boolean('use_sandbox')) {
+            $sandboxStatus = $this->sandboxService->getStatus();
+            $draftFlow = $sandboxStatus['draft_flow'] ?? null;
+            if (is_array($draftFlow)) {
+                $result = $this->previewService->simulateAgainstFlow($draftFlow, $input);
+                $result['sandbox'] = true;
+                $result['sandbox_version_id'] = $sandboxStatus['version_id'];
+                return response()->json($result);
+            }
+            return response()->json(['ok' => false, 'error' => 'No hay sandbox activo. Guarda un borrador primero.'], 404);
         }
 
         return response()->json($this->previewService->simulate($input));

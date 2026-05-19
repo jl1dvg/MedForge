@@ -94,6 +94,14 @@ class ConversationReadController
         ]);
     }
 
+    public function trail(int $conversationId): JsonResponse
+    {
+        return response()->json([
+            'ok' => true,
+            'data' => $this->service->getConversationTrail($conversationId),
+        ]);
+    }
+
     private function nullableIntQuery(Request $request, string $key): ?int
     {
         if (!$request->query->has($key)) {

@@ -1204,7 +1204,16 @@
                 <div class="d-flex flex-wrap gap-10 align-items-center mt-18">
                     <a href="/v2/whatsapp/api/flowmaker/contract" target="_blank" rel="noopener" class="btn btn-primary">Ver contrato JSON</a>
                     <button type="button" class="btn btn-success" id="wa-flow-publish-btn">Publicar JSON</button>
+                    <button type="button" class="btn btn-outline-warning" id="wa-flow-sandbox-btn">
+                        <i class="mdi mdi-flask-outline"></i> Sandbox
+                        <span id="wa-flow-sandbox-indicator" style="display:none;width:8px;height:8px;border-radius:50%;background:#f59e0b;margin-left:4px;vertical-align:middle;animation:sandbox-pulse 1.4s ease-in-out infinite;"></span>
+                    </button>
                     <span id="wa-flow-status" class="text-light" style="font-size:.84rem;"></span>
+                </div>
+                {{-- Sandbox stale-version banner — hidden until JS detects mismatch --}}
+                <div id="wa-sandbox-stale-banner" style="display:none;margin-top:10px;padding:9px 14px;border-radius:10px;background:#fef3c7;color:#92400e;font-size:.82rem;font-weight:600;display:none;align-items:center;gap:10px;flex-wrap:wrap;">
+                    <span>⚠️ El sandbox está activo con un borrador desactualizado (<span id="wa-sandbox-stale-desc"></span>). Abre Sandbox → Paso 1 para actualizarlo.</span>
+                    <button id="wa-sandbox-stale-dismiss" style="margin-left:auto;background:none;border:none;color:#92400e;cursor:pointer;font-size:1rem;line-height:1;padding:0;">✕</button>
                 </div>
             </div>
         </div>
@@ -1625,6 +1634,74 @@
         </div>
     </div>
 </section>
+
+{{-- ============================================================ --}}
+{{--  SANDBOX MODAL                                               --}}
+{{-- ============================================================ --}}
+<div id="wa-sandbox-overlay" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.62);backdrop-filter:blur(4px);z-index:9999;align-items:center;justify-content:center;">
+    <div style="background:#fff;border-radius:20px;padding:28px 30px;max-width:540px;width:calc(100% - 32px);box-shadow:0 24px 56px rgba(15,23,42,.22);position:relative;">
+        <button id="wa-sandbox-close" style="position:absolute;top:14px;right:18px;background:none;border:none;font-size:1.4rem;line-height:1;cursor:pointer;color:#64748b;">×</button>
+
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+            <span style="font-size:1.5rem;">🧪</span>
+            <h5 style="margin:0;font-weight:700;color:#0f172a;">Sandbox — Prueba antes de publicar</h5>
+        </div>
+        <p id="wa-sandbox-desc" style="font-size:.85rem;color:#475569;margin-bottom:14px;">
+            Captura el flujo actual como borrador, agrega tu número y prueba en WhatsApp sin afectar a los pacientes.
+        </p>
+
+        {{-- Version mismatch warning --}}
+        <div id="wa-sandbox-version-warn" style="display:none;border-radius:10px;padding:9px 13px;font-size:.8rem;font-weight:600;background:#fef3c7;color:#92400e;margin-bottom:12px;">
+            ⚠️ El borrador sandbox es de una versión anterior a la publicada actualmente. Considera guardar un borrador nuevo.
+        </div>
+
+        {{-- Status pill --}}
+        <div id="wa-sandbox-status-bar" style="border-radius:12px;padding:12px 14px;font-size:.82rem;margin-bottom:16px;background:#f1f5f9;color:#475569;">
+            Cargando estado del sandbox…
+        </div>
+
+        {{-- Paso 1: Guardar borrador --}}
+        <div style="border:1.5px solid #e2e8f0;border-radius:14px;padding:14px 16px;margin-bottom:10px;">
+            <div style="font-size:.72rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">
+                Paso 1 — Capturar flujo como borrador
+            </div>
+            <p style="font-size:.82rem;color:#64748b;margin:0 0 10px;">
+                Guarda el estado actual del editor. El sandbox correrá este borrador.
+            </p>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                <button id="wa-sandbox-draft-btn" style="padding:9px 18px;border-radius:10px;background:#1d4ed8;color:#fff;border:none;font-size:.85rem;cursor:pointer;font-weight:600;">
+                    Guardar borrador sandbox
+                </button>
+                <span id="wa-sandbox-draft-saved-badge" style="display:none;font-size:.8rem;color:#059669;font-weight:600;">✓ Guardado</span>
+            </div>
+        </div>
+
+        {{-- Paso 2: Números --}}
+        <div id="wa-sandbox-numbers-section" style="border:1.5px solid #e2e8f0;border-radius:14px;padding:14px 16px;margin-bottom:16px;transition:opacity .2s;">
+            <div style="font-size:.72rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">
+                Paso 2 — Números de prueba
+            </div>
+            <div id="wa-sandbox-numbers-list" style="min-height:28px;display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;"></div>
+            <div style="display:flex;gap:8px;">
+                <input id="wa-sandbox-number-input" type="tel" placeholder="593999123456 (sin +)"
+                       style="flex:1;border:1px solid #d1d5db;border-radius:10px;padding:8px 12px;font-size:.88rem;outline:none;">
+                <button id="wa-sandbox-add-btn" style="padding:8px 16px;border-radius:10px;background:#0f172a;color:#fff;border:none;font-size:.85rem;cursor:pointer;white-space:nowrap;font-weight:600;">
+                    + Agregar
+                </button>
+            </div>
+        </div>
+
+        {{-- Footer --}}
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+            <p style="font-size:.76rem;color:#94a3b8;margin:0;flex:1;">
+                Publica normalmente con "Publicar JSON" cuando termines. El sandbox se desactiva solo.
+            </p>
+            <button id="wa-sandbox-clear-btn" style="padding:7px 14px;border-radius:10px;background:#fff;color:#dc2626;border:1px solid #fca5a5;font-size:.82rem;cursor:pointer;white-space:nowrap;">
+                Limpiar sandbox
+            </button>
+        </div>
+    </div>
+</div>
 @endsection
 
 @push('scripts')
@@ -1633,6 +1710,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const initialSchema = @json($schema, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     const initialTemplates = @json($templates, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     const activeVersion = @json($activeVersion, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    window.waActiveVersion = activeVersion; // exposed for sandbox script
     const versionsData = @json($versions, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     const publishButton = document.getElementById('wa-flow-publish-btn');
     const payloadField = document.getElementById('wa-flow-payload');
@@ -4095,6 +4173,19 @@ document.addEventListener('DOMContentLoaded', function () {
             statusNode.textContent = data?.message
                 || (!response.ok ? (raw.trim() || `Error HTTP ${response.status}`) : 'Publicado.');
             if (response.ok) {
+                // If sandbox is active, offer to sync the draft before reloading
+                const sync = window.sandboxSync;
+                if (sync && sync.active()) {
+                    const wantsSync = confirm(
+                        `✅ Versión publicada correctamente.\n\n` +
+                        `El sandbox tiene un borrador (v${sync.version()}) que ya no refleja esta nueva versión publicada.\n` +
+                        `¿Actualizar el borrador sandbox ahora?`
+                    );
+                    if (wantsSync) {
+                        statusNode.textContent = 'Actualizando sandbox…';
+                        await sync.saveDraft();
+                    }
+                }
                 window.setTimeout(function () { window.location.reload(); }, 800);
             }
         } catch (error) {
@@ -4337,5 +4428,286 @@ document.addEventListener('DOMContentLoaded', function () {
     loadKnowledgeBase();
     loadAiRuns();
 });
+</script>
+
+{{-- ============================================================ --}}
+{{--  SANDBOX JS                                                  --}}
+{{-- ============================================================ --}}
+<style>
+@keyframes sandbox-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%       { opacity: .5; transform: scale(1.3); }
+}
+</style>
+<script>
+(function () {
+    const CSRF = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    const overlay        = document.getElementById('wa-sandbox-overlay');
+    const closeBtn       = document.getElementById('wa-sandbox-close');
+    const openBtn        = document.getElementById('wa-flow-sandbox-btn');
+    const indicator      = document.getElementById('wa-flow-sandbox-indicator');
+    const statusBar      = document.getElementById('wa-sandbox-status-bar');
+    const numList        = document.getElementById('wa-sandbox-numbers-list');
+    const numInput       = document.getElementById('wa-sandbox-number-input');
+    const addBtn         = document.getElementById('wa-sandbox-add-btn');
+    const draftBtn       = document.getElementById('wa-sandbox-draft-btn');
+    const clearBtn       = document.getElementById('wa-sandbox-clear-btn');
+    const versionWarn    = document.getElementById('wa-sandbox-version-warn');
+    const draftBadge     = document.getElementById('wa-sandbox-draft-saved-badge');
+    const numbersSection = document.getElementById('wa-sandbox-numbers-section');
+
+    let sandboxState = { active: false, version_number: null, wa_numbers: [] };
+
+    // ------------------------------------------------------------------
+    // API helpers
+    // ------------------------------------------------------------------
+    async function sandboxApi(method, path, body) {
+        const opts = {
+            method,
+            credentials: 'same-origin',
+            headers: { 'X-CSRF-TOKEN': CSRF, 'Content-Type': 'application/json' },
+        };
+        if (body !== undefined) opts.body = JSON.stringify(body);
+        const r = await fetch('/v2/whatsapp/api' + path, opts);
+        return r.json();
+    }
+
+    // ------------------------------------------------------------------
+    // Render
+    // ------------------------------------------------------------------
+    function renderStatus() {
+        const { active, version_number, wa_numbers } = sandboxState;
+
+        // Header indicator pulse
+        if (indicator) indicator.style.display = active ? 'inline-block' : 'none';
+
+        // Lock / unlock numbers section
+        if (numbersSection) {
+            numbersSection.style.opacity        = active ? '1' : '0.45';
+            numbersSection.style.pointerEvents  = active ? '' : 'none';
+        }
+
+        // Status bar
+        if (!active) {
+            statusBar.innerHTML = `<span style="color:#64748b;">⬜ Sin sandbox activo — el flujo publicado atiende a todos.</span>`;
+            if (versionWarn) versionWarn.style.display = 'none';
+        } else {
+            const count = wa_numbers ? wa_numbers.length : 0;
+            statusBar.innerHTML = `
+                <span style="color:#92400e;background:#fef3c7;padding:4px 10px;border-radius:8px;font-weight:600;">
+                    🧪 Activo — borrador v${version_number ?? '?'}
+                </span>
+                <span style="margin-left:8px;color:#475569;">${count} número${count !== 1 ? 's' : ''} en prueba</span>`;
+
+            // Version mismatch: warn when sandbox draft is older than published version
+            const publishedV = (window.waActiveVersion?.version) ?? null;
+            const isStale = publishedV && version_number && Number(version_number) < Number(publishedV);
+            if (versionWarn) {
+                versionWarn.style.display = isStale ? 'block' : 'none';
+                if (isStale) {
+                    versionWarn.textContent = `⚠️ El borrador sandbox es v${version_number}, pero la versión publicada es v${publishedV}. Considera guardar un borrador nuevo (Paso 1).`;
+                }
+            }
+            // Top banner
+            const staleBanner = document.getElementById('wa-sandbox-stale-banner');
+            const staleDesc   = document.getElementById('wa-sandbox-stale-desc');
+            if (staleBanner) {
+                if (isStale) {
+                    if (staleDesc) staleDesc.textContent = `borrador v${version_number} vs publicada v${publishedV}`;
+                    staleBanner.style.display = 'flex';
+                } else {
+                    staleBanner.style.display = 'none';
+                }
+            }
+        }
+
+        // Numbers chips
+        numList.innerHTML = '';
+        const nums = sandboxState.wa_numbers || [];
+        if (nums.length === 0) {
+            numList.innerHTML = `<span style="font-size:.78rem;color:#94a3b8;">${active ? 'Ningún número aún.' : 'Guarda un borrador primero (Paso 1).'}</span>`;
+        } else {
+            nums.forEach(function (n) {
+                const chip = document.createElement('span');
+                chip.style.cssText = 'display:inline-flex;align-items:center;gap:5px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;padding:3px 10px;font-size:.82rem;color:#1e293b;';
+                chip.innerHTML = `${n} <button data-num="${n}" style="background:none;border:none;cursor:pointer;color:#dc2626;font-size:.9rem;line-height:1;padding:0;">×</button>`;
+                chip.querySelector('button').addEventListener('click', removeNumber);
+                numList.appendChild(chip);
+            });
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Load current sandbox state
+    // ------------------------------------------------------------------
+    async function loadStatus() {
+        try {
+            const data = await sandboxApi('GET', '/flowmaker/sandbox');
+            if (data.ok) {
+                sandboxState = data.data;
+                renderStatus();
+            }
+        } catch (e) {
+            statusBar.textContent = 'No se pudo cargar el estado del sandbox.';
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Actions
+    // ------------------------------------------------------------------
+
+    // Internal helper — returns true on success
+    async function saveDraftInternal() {
+        const pf = document.getElementById('wa-flow-payload');
+        let flowPayload;
+        try {
+            flowPayload = JSON.parse(pf?.value || '{}');
+        } catch (e) {
+            alert('El JSON del flujo no es válido. Revisa el editor antes de guardar el borrador.');
+            return false;
+        }
+        try {
+            const data = await sandboxApi('POST', '/flowmaker/sandbox/draft', {
+                flow: flowPayload,
+                wa_numbers: sandboxState.wa_numbers || [],
+                changelog: 'Borrador sandbox — ' + new Date().toLocaleString('es-EC'),
+            });
+            if (data.ok) {
+                sandboxState.version_number = data.version_number;
+                sandboxState.active = true;
+                renderStatus();
+                if (draftBadge) {
+                    draftBadge.style.display = 'inline';
+                    setTimeout(() => { draftBadge.style.display = 'none'; }, 3000);
+                }
+                return true;
+            } else {
+                alert(data.error || 'No se pudo guardar el borrador.');
+                return false;
+            }
+        } catch (e) {
+            alert('Error de red al guardar el borrador.');
+            return false;
+        }
+    }
+
+    async function addNumber() {
+        const raw = (numInput.value || '').trim().replace(/\D/g, '');
+        if (!raw) { numInput.focus(); return; }
+
+        // Auto-save draft if none exists yet
+        if (!sandboxState.active || !sandboxState.version_number) {
+            const ok = confirm('No hay un borrador sandbox guardado todavía.\n¿Guardar el flujo actual como borrador y luego agregar el número?');
+            if (!ok) return;
+            draftBtn.disabled = true;
+            draftBtn.textContent = 'Guardando…';
+            const saved = await saveDraftInternal();
+            draftBtn.disabled = false;
+            draftBtn.textContent = 'Guardar borrador sandbox';
+            if (!saved) return;
+        }
+
+        addBtn.disabled = true;
+        try {
+            const data = await sandboxApi('POST', '/flowmaker/sandbox/numbers', { wa_number: raw });
+            if (data.ok) {
+                sandboxState.wa_numbers = data.wa_numbers;
+                sandboxState.active = true;
+                numInput.value = '';
+                renderStatus();
+            } else {
+                alert(data.error || 'No se pudo agregar el número.');
+            }
+        } catch (e) {
+            alert('Error de red al agregar el número.');
+        } finally {
+            addBtn.disabled = false;
+        }
+    }
+
+    async function removeNumber(e) {
+        const num = e.currentTarget.dataset.num;
+        try {
+            const data = await sandboxApi('DELETE', '/flowmaker/sandbox/numbers/' + num);
+            if (data.ok) {
+                sandboxState.wa_numbers = data.wa_numbers;
+                renderStatus();
+            }
+        } catch (e) {
+            alert('Error de red al quitar el número.');
+        }
+    }
+
+    async function saveDraft() {
+        draftBtn.disabled = true;
+        draftBtn.textContent = 'Guardando…';
+        await saveDraftInternal();
+        draftBtn.disabled = false;
+        draftBtn.textContent = 'Guardar borrador sandbox';
+    }
+
+    async function clearSandbox() {
+        if (!confirm('¿Desactivar el sandbox? Se eliminarán el borrador y todos los números de prueba.')) return;
+        clearBtn.disabled = true;
+        try {
+            const data = await sandboxApi('DELETE', '/flowmaker/sandbox');
+            if (data.ok) {
+                sandboxState = { active: false, version_number: null, wa_numbers: [] };
+                renderStatus();
+            }
+        } catch (e) {
+            alert('Error de red al limpiar el sandbox.');
+        } finally {
+            clearBtn.disabled = false;
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Open / close modal
+    // ------------------------------------------------------------------
+    function openModal() {
+        overlay.style.display = 'flex';
+        loadStatus();
+    }
+    function closeModal(e) {
+        if (e && e.target !== overlay && e.target !== closeBtn) return;
+        overlay.style.display = 'none';
+    }
+
+    // ------------------------------------------------------------------
+    // Event listeners
+    // ------------------------------------------------------------------
+    openBtn?.addEventListener('click', openModal);
+    closeBtn?.addEventListener('click', closeModal);
+    overlay?.addEventListener('click', closeModal);
+    addBtn?.addEventListener('click', addNumber);
+    numInput?.addEventListener('keydown', function (e) { if (e.key === 'Enter') addNumber(); });
+    draftBtn?.addEventListener('click', saveDraft);
+    clearBtn?.addEventListener('click', clearSandbox);
+
+    // Dismiss stale banner
+    document.getElementById('wa-sandbox-stale-dismiss')?.addEventListener('click', function () {
+        const b = document.getElementById('wa-sandbox-stale-banner');
+        if (b) b.style.display = 'none';
+    });
+
+    // Expose interface to other scripts (e.g., publish handler)
+    window.sandboxSync = {
+        active:    function () { return sandboxState.active; },
+        version:   function () { return sandboxState.version_number; },
+        saveDraft: saveDraftInternal,
+    };
+
+    // Check sandbox on page load: show indicator and stale banner if needed
+    (async function () {
+        try {
+            const data = await sandboxApi('GET', '/flowmaker/sandbox');
+            if (data.ok && data.data && data.data.active) {
+                sandboxState = data.data;
+                renderStatus(); // updates indicator + stale banner + version warn
+            }
+        } catch (e) { /* silent */ }
+    }());
+}());
 </script>
 @endpush

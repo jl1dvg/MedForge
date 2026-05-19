@@ -20,6 +20,7 @@
     $conversationNotes = is_array($conversationNotes ?? null) ? $conversationNotes : [];
     $templateOptions = is_array($templateOptions ?? null) ? $templateOptions : [];
     $tabs = [
+        'all' => 'Todos',
         'mine' => 'Mis chats',
         'handoff' => 'Pendientes',
         'captacion' => 'Captación',
@@ -30,7 +31,19 @@
         'window_open' => '24h abierta',
         'needs_template' => 'Plantilla',
         'resolved' => 'Resueltos',
-        'all' => 'Todos',
+    ];
+    $tabDescriptions = [
+        'mine'             => 'Mis chats — Conversaciones asignadas actualmente a ti.',
+        'handoff'          => 'Pendientes — Solicitudes de atención humana que aún no tienen agente asignado.',
+        'captacion'        => 'Captación — Pacientes nuevos o consultas de primer contacto.',
+        'operacion'        => 'Operación — Pacientes en proceso quirúrgico o de seguimiento post-consulta.',
+        'informacion'      => 'Información — Consultas generales que no requieren proceso activo.',
+        'critical_backlog' => 'Backlog >24h — Sin respuesta humana por más de 24 horas. Atención urgente.',
+        'unread'           => 'Sin leer — Mensajes entrantes que aún no has revisado.',
+        'window_open'      => '24h abierta — El paciente escribió en las últimas 24h. Puedes responder libremente sin plantilla.',
+        'needs_template'   => 'Requiere Plantilla — La ventana de 24h expiró. Solo puedes iniciar con una plantilla aprobada de WhatsApp.',
+        'resolved'         => 'Resueltos — Conversaciones cerradas por el agente.',
+        'all'              => 'Todos — Todas las conversaciones sin filtro.',
     ];
 @endphp
 
@@ -253,7 +266,7 @@
 
         .wa-v2-shell {
             display: grid;
-            grid-template-columns: 390px minmax(0, 1fr);
+            grid-template-columns: 390px minmax(0, 1fr) 320px;
             gap: 20px;
             align-items: stretch;
             height: calc(100vh - 0px);
@@ -649,13 +662,35 @@
             height: 100%;
             max-height: 100%;
             overflow: hidden;
-            background: linear-gradient(180deg, rgba(248, 250, 252, .9) 0%, rgba(232, 244, 241, .96) 100%),
-            radial-gradient(circle at top left, rgba(16, 185, 129, .08), transparent 26%);
+            background: #f0f4f0;
         }
 
         .wa-v2-chat__body {
-            padding: 18px 18px 10px;
+            padding: 16px 18px 10px;
             overflow: auto;
+            background:
+                radial-gradient(ellipse at top, rgba(220, 248, 198, .18) 0%, transparent 55%),
+                #eef2ee;
+        }
+
+        /* date divider inside message list */
+        .wa-v2-date-divider {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 14px 0 10px;
+            font-size: 11px;
+            font-weight: 700;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: .06em;
+        }
+        .wa-v2-date-divider::before,
+        .wa-v2-date-divider::after {
+            content: '';
+            flex: 1 1 auto;
+            height: 1px;
+            background: rgba(148, 163, 184, .28);
         }
 
         .wa-v2-chat-header {
@@ -713,6 +748,24 @@
             text-overflow: ellipsis;
             white-space: nowrap;
         }
+
+        .wa-v2-origin-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 999px;
+            white-space: nowrap;
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .wa-v2-origin-badge--ad       { background: #ffedd5; color: #c2410c; }
+        .wa-v2-origin-badge--organic  { background: #dcfce7; color: #15803d; }
+        .wa-v2-origin-badge--campaign { background: #f3e8ff; color: #7e22ce; }
+        .wa-v2-origin-badge--support  { background: #e0f2fe; color: #0369a1; }
 
         .wa-v2-chat-subtitle__item--patient {
             color: #334155;
@@ -854,36 +907,89 @@
         }
 
         .wa-v2-message {
-            max-width: 78%;
-            padding: 5px 14px;
-            border-radius: 20px 20px 20px 8px;
-            margin-bottom: 12px;
+            max-width: 74%;
+            padding: 8px 14px 5px;
+            border-radius: 16px 16px 16px 4px;
+            margin-bottom: 2px;
             background: #fff;
-            border: 1px solid rgba(15, 23, 42, .06);
-            box-shadow: 0 10px 20px rgba(15, 23, 42, .05);
+            border: 1px solid rgba(15, 23, 42, .07);
+            box-shadow: 0 1px 4px rgba(15, 23, 42, .07);
+            font-size: 14px;
+            line-height: 1.55;
+            color: #1e293b;
+            word-break: break-word;
+        }
+
+        /* visual gap when direction switches */
+        .wa-v2-message.is-outbound + .wa-v2-message:not(.is-outbound),
+        .wa-v2-message:not(.is-outbound) + .wa-v2-message.is-outbound {
+            margin-top: 12px;
+        }
+
+        /* extra breathing room after the last of each group */
+        .wa-v2-message:last-child {
+            margin-bottom: 8px;
         }
 
         .wa-v2-message.is-outbound {
             margin-left: auto;
-            background: linear-gradient(180deg, #d2f4e7 0%, #c7efe1 100%);
-            border-color: rgba(15, 118, 110, .18);
-            border-radius: 20px 20px 8px 20px;
+            background: linear-gradient(155deg, #e2fcd4 0%, #d5f5bf 100%);
+            border-color: rgba(74, 171, 66, .22);
+            border-radius: 16px 16px 4px 16px;
+            box-shadow: 0 1px 4px rgba(74, 171, 66, .14);
+            color: #14290f;
         }
 
-        .wa-v2-message__meta {
-            margin-top: 6px;
-            font-size: 11px;
-            color: #64748b;
+        /* message body text */
+        .wa-v2-message__body {
+            white-space: pre-wrap;
         }
+
+        /* meta: time + delivery tick — always right-aligned, small */
+        .wa-v2-message__meta {
+            margin-top: 2px;
+            margin-bottom: 1px;
+            font-size: 10.5px;
+            color: #94a3b8;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 3px;
+            min-height: 16px;
+        }
+
+        .wa-v2-message:not(.is-outbound) .wa-v2-message__meta {
+            color: #b0bcc8;
+        }
+
+        /* delivery status ticks */
+        .wa-v2-msg-tick {
+            font-size: 13px;
+            font-weight: 700;
+            line-height: 1;
+            letter-spacing: -.03em;
+            display: inline-block;
+        }
+
+        .wa-v2-msg-tick--sent      { color: #94a3b8; }
+        .wa-v2-msg-tick--delivered { color: #94a3b8; }
+        .wa-v2-msg-tick--read      { color: #3b82f6; }
+        .wa-v2-msg-tick--failed    { color: #ef4444; font-size: 11px; }
+        .wa-v2-msg-tick--pending   { color: #94a3b8; font-size: 11px; }
 
         .wa-v2-media-card {
             display: grid;
             gap: 8px;
-            margin-top: 8px;
+            margin-top: 6px;
             padding: 10px 12px;
-            border-radius: 14px;
+            border-radius: 12px;
             background: rgba(15, 23, 42, .04);
             border: 1px solid rgba(15, 23, 42, .08);
+        }
+
+        .wa-v2-message.is-outbound .wa-v2-media-card {
+            background: rgba(15, 23, 42, .05);
+            border-color: rgba(74, 171, 66, .18);
         }
 
         .wa-v2-media-card__title {
@@ -902,13 +1008,21 @@
             align-items: center;
             justify-content: space-between;
             gap: 12px;
-            padding: 10px 12px;
-            margin: 0 18px 12px;
+            padding: 9px 14px;
+            margin: 0 0 10px;
             border-radius: 12px;
-            border: 1px solid #bfdbfe;
-            background: #eff6ff;
-            color: #1e3a8a;
-            box-shadow: 0 10px 16px rgba(59, 130, 246, .10);
+            border: 1px solid rgba(14, 165, 233, .22);
+            background: rgba(224, 242, 254, .95);
+            color: #0c4a6e;
+            font-size: 13px;
+            font-weight: 600;
+            box-shadow: 0 2px 8px rgba(14, 165, 233, .12);
+            cursor: pointer;
+            transition: background .14s ease;
+        }
+
+        .wa-v2-live-banner:hover {
+            background: #bae6fd;
         }
 
         .wa-v2-live-banner[hidden] {
@@ -917,6 +1031,41 @@
 
         .wa-v2-tools {
             padding: 0 5px 5px;
+            min-height: 0;
+        }
+
+        /* ── 3rd column: herramientas panel ─────────────────────────────── */
+        .wa-v2-herramientas {
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            height: 100%;
+            max-height: 100%;
+            overflow: hidden;
+        }
+
+        .wa-v2-herramientas__scroll {
+            flex: 1 1 auto;
+            min-height: 0;
+            max-height: 100%;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        /* ── tool-card overrides inside the 3rd column ───────────────────── */
+        .wa-v2-herramientas .wa-v2-collapse {
+            border-radius: 14px;
+            border: 1px solid rgba(15, 23, 42, .08);
+            background: rgba(255, 255, 255, .86);
+        }
+
+        .wa-v2-herramientas .wa-v2-collapse__body {
+            padding: 10px 12px 12px;
         }
 
         .wa-v2-tools-drawer {
@@ -924,6 +1073,7 @@
             border-radius: 16px;
             background: rgba(255, 255, 255, .88);
             overflow: hidden;
+            flex: 0 0 auto;
         }
 
         .wa-v2-tools-drawer > summary {
@@ -1012,10 +1162,81 @@
             margin-top: 6px;
         }
 
+        /* Trail / trazabilidad */
+        .wa-v2-trail {
+            position: relative;
+            padding-left: 20px;
+        }
+        .wa-v2-trail::before {
+            content: '';
+            position: absolute;
+            left: 6px;
+            top: 4px;
+            bottom: 4px;
+            width: 2px;
+            background: #e2e8f0;
+            border-radius: 2px;
+        }
+        .wa-v2-trail-item {
+            position: relative;
+            margin-bottom: 12px;
+        }
+        .wa-v2-trail-item::before {
+            content: '';
+            position: absolute;
+            left: -17px;
+            top: 5px;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            border: 2px solid #94a3b8;
+            background: #fff;
+        }
+        .wa-v2-trail-item--start::before       { border-color: #0ea5e9; background: #e0f2fe; }
+        .wa-v2-trail-item--assigned::before   { border-color: #2563eb; background: #dbeafe; }
+        .wa-v2-trail-item--queued::before     { border-color: #d97706; background: #fef3c7; }
+        .wa-v2-trail-item--closed::before     { border-color: #16a34a; background: #dcfce7; }
+        .wa-v2-trail-item--transferred::before{ border-color: #7c3aed; background: #ede9fe; }
+        .wa-v2-trail-item--resolved::before   { border-color: #16a34a; background: #dcfce7; }
+        .wa-v2-trail-item--expired::before    { border-color: #dc2626; background: #fee2e2; }
+        .wa-v2-trail-item--template::before   { border-color: #0891b2; background: #cffafe; }
+        .wa-v2-trail-item--ad::before         { border-color: #ea580c; background: #ffedd5; }
+        .wa-v2-trail-item--organic::before    { border-color: #16a34a; background: #dcfce7; }
+        .wa-v2-trail-item--campaign::before   { border-color: #9333ea; background: #f3e8ff; }
+        .wa-v2-trail-item--support::before    { border-color: #0369a1; background: #e0f2fe; }
+        .wa-v2-trail-item--intent::before     { border-color: #64748b; background: #f1f5f9; }
+
+        .wa-v2-trail-notes {
+            font-size: .79rem;
+            color: #475569;
+            margin-top: 3px;
+            white-space: pre-line;
+            line-height: 1.5;
+        }
+        .wa-v2-trail-label {
+            font-weight: 700;
+            font-size: .8rem;
+            color: #1e293b;
+        }
+        .wa-v2-trail-meta {
+            font-size: .74rem;
+            color: #64748b;
+            margin-top: 1px;
+        }
+        .wa-v2-trail-note {
+            font-size: .74rem;
+            color: #475569;
+            margin-top: 4px;
+            background: #f8fafc;
+            border-left: 2px solid #cbd5e1;
+            padding: 4px 8px;
+            border-radius: 0 6px 6px 0;
+        }
+
         .wa-v2-compose {
-            padding: 5px 5px 5px;
+            padding: 10px 12px 12px;
             border-top: 1px solid rgba(15, 23, 42, .08);
-            background: rgba(255, 255, 255, .86);
+            background: #f0f4f0;
             backdrop-filter: blur(10px);
             position: sticky;
             bottom: 0;
@@ -1023,12 +1244,12 @@
 
         .wa-v2-compose-grid {
             display: grid;
-            gap: 10px;
-            padding: 12px;
-            border-radius: 22px;
-            background: rgba(255, 255, 255, .94);
-            border: 1px solid rgba(15, 23, 42, .08);
-            box-shadow: 0 14px 24px rgba(15, 23, 42, .06);
+            gap: 8px;
+            padding: 10px 12px;
+            border-radius: 20px;
+            background: #fff;
+            border: 1px solid rgba(15, 23, 42, .09);
+            box-shadow: 0 2px 10px rgba(15, 23, 42, .07);
         }
 
         .wa-v2-compose-actions {
@@ -1246,21 +1467,59 @@
         }
 
         .wa-v2-composer-inputgroup textarea {
-            min-height: 42px;
+            min-height: 44px;
+            max-height: 120px;
             resize: none;
-            border-radius: 18px;
+            border-radius: 16px;
             border-color: #d7e3dd;
-            padding: 10px 14px;
+            padding: 11px 14px;
+            font-size: 14px;
+            line-height: 1.5;
+            background: #f8fbf8;
+            transition: border-color .15s ease, background .15s ease;
         }
 
+        .wa-v2-composer-inputgroup textarea:focus {
+            border-color: #0f766e;
+            background: #fff;
+            box-shadow: 0 0 0 3px rgba(15, 118, 110, .10);
+        }
+
+        .wa-v2-composer-inputgroup textarea:disabled {
+            background: #f1f5f1;
+            color: #94a3b8;
+        }
+
+        .btn.wa-v2-composer-send,
         .wa-v2-composer-send {
-            min-width: 110px;
-            height: 42px;
-            border-radius: 18px;
+            min-width: 100px;
+            height: 44px;
+            border-radius: 16px;
             font-weight: 800;
+            font-size: 13px;
             display: flex;
             align-items: center;
             justify-content: center;
+            gap: 6px;
+            background: linear-gradient(135deg, #0f766e 0%, #14b8a6 100%) !important;
+            border: none !important;
+            color: #fff !important;
+            box-shadow: 0 4px 12px rgba(15, 118, 110, .28);
+            transition: opacity .15s ease, transform .12s ease, box-shadow .15s ease;
+        }
+
+        .btn.wa-v2-composer-send:not(:disabled):hover,
+        .wa-v2-composer-send:not(:disabled):hover {
+            opacity: .92;
+            transform: translateY(-1px);
+            box-shadow: 0 6px 16px rgba(15, 118, 110, .34);
+        }
+
+        .btn.wa-v2-composer-send:disabled,
+        .wa-v2-composer-send:disabled {
+            background: #e2e8f0 !important;
+            color: #94a3b8 !important;
+            box-shadow: none;
         }
 
         .wa-v2-empty {
@@ -1344,6 +1603,18 @@
                 grid-template-columns: 1fr;
             }
 
+            .wa-v2-herramientas {
+                height: auto;
+                max-height: none;
+                overflow: visible;
+            }
+
+            .wa-v2-herramientas__scroll {
+                overflow: visible;
+                max-height: none;
+                min-height: 0;
+            }
+
             .wa-v2-tools {
                 padding-inline: 12px;
             }
@@ -1419,7 +1690,7 @@
             }
 
             .wa-v2-message {
-                max-width: 92%;
+                max-width: 88%;
             }
 
             .wa-v2-composer-inputgroup {
@@ -1768,10 +2039,10 @@
                                     <a
                                         href="{{ '/v2/whatsapp/chat?' . http_build_query(array_filter(['filter' => $key, 'search' => $search, 'date_from' => $dateFrom, 'date_to' => $dateTo, 'agent_id' => $selectedAgentId, 'role_id' => $selectedRoleId], static fn ($value) => $value !== null && $value !== '')) }}"
                                         class="wa-v2-tab {{ $selectedFilter === $key ? 'is-active' : '' }}"
-                                        title="{{ $label }}"
+                                        title="{{ $tabDescriptions[$key] ?? $label }}"
                                         aria-label="{{ $label }}"
                                         data-bs-toggle="tooltip"
-                                        data-bs-placement="top">
+                                        data-bs-placement="bottom">
                                         <span class="wa-v2-icon-label">
                                             <i class="{{ $icon }}"></i>
                                         </span>
@@ -1850,8 +2121,7 @@
                                     <i class="mdi {{ $priorityState === 'critical_backlog' ? 'mdi-alert-octagon-outline' : ($priorityState === 'captacion' ? 'mdi-bullseye-arrow' : ($priorityState === 'operacion' ? 'mdi-calendar-sync-outline' : ($priorityState === 'pending' ? 'mdi-alert-circle-outline' : ($priorityState === 'mine' ? 'mdi-account-check-outline' : ($priorityState === 'window_open' ? 'mdi-timer-sand' : ($priorityState === 'needs_template' ? 'mdi-file-document-edit-outline' : 'mdi-check-circle-outline')))))) }}"></i>
                                     {{ $priorityLabel }}
                                 </span>
-                                <div
-                                    class="wa-v2-meta">{{ !empty($conversation['last_message_at']) ? \Illuminate\Support\Carbon::parse($conversation['last_message_at'])->format('d/m H:i') : '' }}</div>
+                                <div class="wa-v2-meta" data-ts="{{ $conversation['last_message_at'] ?? '' }}"></div>
                             </div>
                             <div class="d-flex flex-wrap gap-8 mt-10">
                                 @if((int) $conversation['unread_count'] > 0)
@@ -1908,6 +2178,26 @@
                                         @if(!empty($selectedConversation['patient_hc_number']))
                                             <span class="wa-v2-chat-subtitle__dot">·</span>
                                             <span class="wa-v2-chat-subtitle__item">HC {{ $selectedConversation['patient_hc_number'] }}</span>
+                                        @endif
+                                        @php
+                                            $attrSrc = $selectedConversation['attribution_source_category'] ?? null;
+                                            $attrHead = $selectedConversation['attribution_headline'] ?? null;
+                                        @endphp
+                                        @if($attrSrc === 'ad')
+                                            <span class="wa-v2-chat-subtitle__dot">·</span>
+                                            <span class="wa-v2-origin-badge wa-v2-origin-badge--ad"
+                                                  title="{{ $attrHead ? 'Anuncio: '.$attrHead : 'Desde Meta Ads' }}">
+                                                🎯 {{ $attrHead ? mb_substr($attrHead, 0, 40) : 'Meta Ads' }}
+                                            </span>
+                                        @elseif($attrSrc === 'organic_direct')
+                                            <span class="wa-v2-chat-subtitle__dot">·</span>
+                                            <span class="wa-v2-origin-badge wa-v2-origin-badge--organic">🌐 Orgánico</span>
+                                        @elseif($attrSrc === 'campaign_outbound')
+                                            <span class="wa-v2-chat-subtitle__dot">·</span>
+                                            <span class="wa-v2-origin-badge wa-v2-origin-badge--campaign">📣 Campaña</span>
+                                        @elseif($attrSrc === 'support_operational')
+                                            <span class="wa-v2-chat-subtitle__dot">·</span>
+                                            <span class="wa-v2-origin-badge wa-v2-origin-badge--support">🔧 Soporte</span>
                                         @endif
                                     </div>
                                 </div>
@@ -2040,11 +2330,61 @@
                             <div id="wa-v2-live-banner-text">Hay mensajes nuevos en esta conversación.</div>
                         </div>
                         <div id="wa-v2-message-list" class="wa-v2-message-stack">
+                            @php $lastMsgDate = null; @endphp
                             @foreach(($selectedConversation['messages'] ?? []) as $message)
+                                @php
+                                    $msgDateStr = '';
+                                    if (!empty($message['message_timestamp'])) {
+                                        try {
+                                            $msgCarbon = \Carbon\Carbon::parse($message['message_timestamp']);
+                                            $msgDateStr = $msgCarbon->toDateString();
+                                            if ($msgDateStr !== $lastMsgDate) {
+                                                $lastMsgDate = $msgDateStr;
+                                                $today = \Carbon\Carbon::today()->toDateString();
+                                                $yesterday = \Carbon\Carbon::yesterday()->toDateString();
+                                                $dividerLabel = match($msgDateStr) {
+                                                    $today     => 'Hoy',
+                                                    $yesterday => 'Ayer',
+                                                    default    => $msgCarbon->format('d/m/Y'),
+                                                };
+                                            } else {
+                                                $dividerLabel = null;
+                                            }
+                                        } catch (\Exception $e) {
+                                            $dividerLabel = null;
+                                        }
+                                    } else {
+                                        $dividerLabel = null;
+                                    }
+                                @endphp
+                                @if($dividerLabel !== null)
+                                    <div class="wa-v2-date-divider" data-date="{{ $msgDateStr }}">{{ $dividerLabel }}</div>
+                                @endif
+                                @php
+                                    $msgDir    = $message['direction'] ?? 'inbound';
+                                    $msgStatus = $message['status'] ?? '';
+                                    $tickIcon  = match ($msgStatus) {
+                                        'read'      => '✓✓',
+                                        'delivered' => '✓✓',
+                                        'sent'      => '✓',
+                                        'failed'    => '⚠',
+                                        'pending'   => '○',
+                                        default     => '',
+                                    };
+                                    $tickClass = match ($msgStatus) {
+                                        'read'      => 'read',
+                                        'delivered' => 'delivered',
+                                        'sent'      => 'sent',
+                                        'failed'    => 'failed',
+                                        'pending'   => 'pending',
+                                        default     => '',
+                                    };
+                                @endphp
                                 <div
-                                    class="wa-v2-message {{ ($message['direction'] ?? '') === 'outbound' ? 'is-outbound' : '' }}"
-                                    data-message-id="{{ (int) ($message['id'] ?? 0) }}">
-                                    <div>{{ $message['body'] ?: '[' . ($message['message_type'] ?? 'mensaje') . ']' }}</div>
+                                    class="wa-v2-message {{ $msgDir === 'outbound' ? 'is-outbound' : '' }}"
+                                    data-message-id="{{ (int) ($message['id'] ?? 0) }}"
+                                    data-status="{{ $msgStatus }}">
+                                    <div class="wa-v2-message__body">{{ $message['body'] ?: '[' . ($message['message_type'] ?? 'mensaje') . ']' }}</div>
                                     @if(!empty($message['media']) && is_array($message['media']))
                                         @php
                                             $media = $message['media'];
@@ -2100,13 +2440,12 @@
                                         </div>
                                     @endif
                                     <div class="wa-v2-message__meta">
-                                        {{ $message['direction'] === 'outbound' ? 'Salida' : 'Entrada' }}
-                                        · {{ $message['message_type'] ?? 'text' }}
-                                        @if(!empty($message['status']))
-                                            · {{ $message['status'] }}
-                                        @endif
                                         @if(!empty($message['message_timestamp']))
-                                            · {{ \Illuminate\Support\Carbon::parse($message['message_timestamp'])->format('d/m H:i') }}
+                                            <span data-ts="{{ $message['message_timestamp'] }}" class="wa-v2-msg-time"></span>
+                                        @endif
+                                        @if($msgDir === 'outbound' && $tickIcon !== '')
+                                            <span class="wa-v2-msg-tick wa-v2-msg-tick--{{ $tickClass }}"
+                                                  title="{{ ucfirst($msgStatus) }}">{{ $tickIcon }}</span>
                                         @endif
                                     </div>
                                 </div>
@@ -2114,98 +2453,23 @@
                         </div>
                     </div>
 
-                    <div class="wa-v2-tools">
-                        <details class="wa-v2-tools-drawer">
-                            <summary>
-                                <span><i class="mdi mdi-tools"></i> Herramientas</span>
-                                <span class="text-muted" style="font-size:12px;">Notas internas</span>
-                            </summary>
-                            <div class="wa-v2-tools-drawer__body">
-                                <details class="wa-v2-collapse wa-v2-tool-card">
-                                    <summary>
-                                        <div>
-                                            <div class="fw-700">Administrar respuestas rápidas</div>
-                                            <div class="text-muted" style="font-size:12px;">Crear snippet reusable</div>
-                                        </div>
-                                    </summary>
-                                    <div class="wa-v2-collapse__body">
-                                        <form id="wa-v2-quick-reply-form" class="d-grid gap-8">
-                                            <div class="row g-8">
-                                                <div class="col-md-4">
-                                                    <input type="text" class="form-control form-control-sm"
-                                                           id="wa-v2-quick-title"
-                                                           placeholder="Título">
-                                                </div>
-                                                <div class="col-md-3">
-                                                    <input type="text" class="form-control form-control-sm"
-                                                           id="wa-v2-quick-shortcut" placeholder="/atajo">
-                                                </div>
-                                                <div class="col-md-5">
-                                                    <input type="text" class="form-control form-control-sm"
-                                                           id="wa-v2-quick-body"
-                                                           placeholder="Texto reusable">
-                                                </div>
-                                            </div>
-                                            <div class="d-flex justify-content-end">
-                                                <button type="submit" class="btn btn-outline-secondary btn-sm">Guardar
-                                                    respuesta
-                                                    rápida
-                                                </button>
-                                            </div>
-                                        </form>
-                                    </div>
-                                </details>
-
-                                <details class="wa-v2-collapse wa-v2-tool-card">
-                                    <summary>
-                                        <div>
-                                            <div class="fw-700">Notas internas</div>
-                                            <div class="text-muted" style="font-size:12px;">Historial y nueva nota</div>
-                                        </div>
-                                    </summary>
-                                    <div class="wa-v2-collapse__body">
-                                        <div class="wa-v2-note-list mb-10">
-                                            @forelse($conversationNotes as $note)
-                                                <div class="wa-v2-note">
-                                                    <div>{{ $note['body'] ?? '' }}</div>
-                                                    <div class="wa-v2-note__meta">
-                                                        {{ $note['author_name'] ?? 'Usuario' }}
-                                                        @if(!empty($note['created_at']))
-                                                            · {{ \Illuminate\Support\Carbon::parse($note['created_at'])->format('d/m H:i') }}
-                                                        @endif
-                                                    </div>
-                                                </div>
-                                            @empty
-                                                <div class="text-muted" style="font-size:12px;">Sin notas internas en
-                                                    esta
-                                                    conversación.
-                                                </div>
-                                            @endforelse
-                                        </div>
-                                        <form id="wa-v2-note-form"
-                                              data-conversation-id="{{ $selectedConversation['id'] }}">
-                                            <div class="input-group">
-                                                <textarea class="form-control" id="wa-v2-note-input" rows="2"
-                                                          placeholder="Agregar nota interna para el equipo"></textarea>
-                                                <button type="submit" class="btn btn-outline-warning">Guardar nota
-                                                </button>
-                                            </div>
-                                        </form>
-                                    </div>
-                                </details>
-                            </div>
-                        </details>
-                    </div>
-
                     <div class="wa-v2-compose">
                         <form
                             id="wa-v2-send-form"
                             data-conversation-id="{{ $selectedConversation['id'] }}"
                             data-latest-message-id="{{ (int) collect($selectedConversation['messages'] ?? [])->max('id') }}">
-                            <div class="mb-10 text-muted" style="font-size:12px;">
-                                Estado de escritura:
-                                <strong>{{ $selectedConversation['messaging_window_label'] ?? 'Sin ventana' }}</strong>.
-                                Si la última entrada ya salió de 24h, solo debes seguir con plantilla.
+                            @php
+                                $wState = $selectedConversation['messaging_window_state'] ?? '';
+                                $wBarColor = $wState === 'window_open' ? '#dcfce7' : '#fef3c7';
+                                $wBarText  = $wState === 'window_open' ? '#166534' : '#78350f';
+                                $wBarIcon  = $wState === 'window_open' ? 'mdi-timer-sand' : 'mdi-file-document-edit-outline';
+                                $wBarNote  = $wState === 'window_open'
+                                    ? 'Ventana 24h activa — puedes responder libremente.'
+                                    : 'Ventana cerrada — solo puedes iniciar con plantilla aprobada.';
+                            @endphp
+                            <div class="mb-8" style="display:flex;align-items:center;gap:7px;padding:6px 10px;border-radius:10px;background:{{ $wBarColor }};color:{{ $wBarText }};font-size:12px;font-weight:600;">
+                                <i class="mdi {{ $wBarIcon }}" style="font-size:15px;"></i>
+                                <span>{{ $wBarNote }}</span>
                             </div>
                             <div class="wa-v2-compose-grid">
                                 <div class="wa-v2-compose-attachment" id="wa-v2-compose-attachment"
@@ -2331,6 +2595,139 @@
                     </div>
                 @endif
             </div>
+
+            {{-- ── Columna 3: Herramientas ────────────────────────────────── --}}
+            <div class="wa-v2-panel wa-v2-herramientas">
+                <div class="wa-v2-panel__header">
+                    <div class="wa-v2-sideheading" style="margin-bottom:0;">
+                        <div>
+                            <div class="wa-v2-sideheading__title"><i class="mdi mdi-tools" style="font-size:16px;"></i> Herramientas</div>
+                            @if($selectedConversation)
+                                <div class="wa-v2-sideheading__meta">{{ $selectedConversation['display_name'] ?: $selectedConversation['wa_number'] }}</div>
+                            @endif
+                        </div>
+                    </div>
+                </div>
+
+                @if($selectedConversation)
+                    <div class="wa-v2-herramientas__scroll">
+
+                        {{-- Trazabilidad --}}
+                        <details class="wa-v2-collapse wa-v2-tool-card" id="wa-v2-trail-card" open>
+                            <summary>
+                                <div>
+                                    <div class="fw-700">Trazabilidad</div>
+                                    <div class="text-muted" style="font-size:12px;">Asignaciones y derivaciones</div>
+                                </div>
+                            </summary>
+                            <div class="wa-v2-collapse__body">
+                                <div id="wa-v2-trail-list" style="font-size:.82rem;">
+                                    <div class="text-muted" style="padding:8px 0;">Cargando trazabilidad…</div>
+                                </div>
+                            </div>
+                        </details>
+
+                        {{-- Notas internas --}}
+                        <details class="wa-v2-collapse wa-v2-tool-card" open>
+                            <summary>
+                                <div>
+                                    <div class="fw-700">Notas internas</div>
+                                    <div class="text-muted" style="font-size:12px;">Historial y nueva nota</div>
+                                </div>
+                            </summary>
+                            <div class="wa-v2-collapse__body">
+                                <div class="wa-v2-note-list mb-10">
+                                    @forelse($conversationNotes as $note)
+                                        <div class="wa-v2-note">
+                                            <div>{{ $note['body'] ?? '' }}</div>
+                                            <div class="wa-v2-note__meta">
+                                                {{ $note['author_name'] ?? 'Usuario' }}
+                                                @if(!empty($note['created_at']))
+                                                    · <span data-ts="{{ $note['created_at'] }}"></span>
+                                                @endif
+                                            </div>
+                                        </div>
+                                    @empty
+                                        <div class="text-muted" style="font-size:12px;">Sin notas internas en esta conversación.</div>
+                                    @endforelse
+                                </div>
+                                <form id="wa-v2-note-form" data-conversation-id="{{ $selectedConversation['id'] }}">
+                                    <div class="input-group">
+                                        <textarea class="form-control" id="wa-v2-note-input" rows="2"
+                                                  placeholder="Agregar nota interna para el equipo"></textarea>
+                                        <button type="submit" class="btn btn-outline-warning btn-sm">Guardar nota</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </details>
+
+                        {{-- Administrar respuestas rápidas --}}
+                        <details class="wa-v2-collapse wa-v2-tool-card">
+                            <summary>
+                                <div>
+                                    <div class="fw-700">Respuestas rápidas</div>
+                                    <div class="text-muted" style="font-size:12px;">Crear snippet reusable</div>
+                                </div>
+                            </summary>
+                            <div class="wa-v2-collapse__body">
+                                <form id="wa-v2-quick-reply-form" class="d-grid gap-8">
+                                    <input type="text" class="form-control form-control-sm mb-6"
+                                           id="wa-v2-quick-title" placeholder="Título">
+                                    <input type="text" class="form-control form-control-sm mb-6"
+                                           id="wa-v2-quick-shortcut" placeholder="/atajo">
+                                    <input type="text" class="form-control form-control-sm mb-6"
+                                           id="wa-v2-quick-body" placeholder="Texto reusable">
+                                    <div class="d-flex justify-content-end">
+                                        <button type="submit" class="btn btn-outline-secondary btn-sm">Guardar respuesta rápida</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </details>
+
+                        {{-- Dar de baja / Lead de seguimiento --}}
+                        <div style="padding: 4px 0 8px;">
+                            <button type="button"
+                                    id="wa-v2-baja-btn"
+                                    class="btn btn-outline-danger btn-sm w-100"
+                                    data-conversation-id="{{ $selectedConversation['id'] }}">
+                                <i class="mdi mdi-account-remove-outline"></i> Dar de baja y generar lead
+                            </button>
+                        </div>
+
+                    </div>
+                @else
+                    <div class="wa-v2-empty">
+                        <div class="text-muted" style="font-size:13px;">Selecciona una conversación para ver las herramientas.</div>
+                    </div>
+                @endif
+            </div>
+
+            {{-- Modal: Dar de baja --}}
+            <div class="wa-v2-modal-backdrop" id="wa-v2-baja-modal" style="display:none;">
+                <div class="wa-v2-modal" style="max-width:480px;">
+                    <div class="wa-v2-modal__header">
+                        <div class="fw-700" style="font-size:16px;">📋 Dar de baja — Lead de seguimiento</div>
+                        <button type="button" class="btn-close" id="wa-v2-baja-close"></button>
+                    </div>
+                    <div class="wa-v2-modal__body">
+                        <p class="text-muted" style="font-size:13px; margin-bottom:14px;">
+                            Esta acción archiva la conversación y genera un lead en la lista de re-campaña.
+                            No elimina el historial del chat.
+                        </p>
+                        <div class="mb-12">
+                            <label class="form-label fw-700" style="font-size:13px;">Motivo de la baja <span class="text-danger">*</span></label>
+                            <textarea id="wa-v2-baja-motivo" class="form-control" rows="3"
+                                      placeholder="Ej: Paciente no responde, ya fue atendido, cambió de número…"></textarea>
+                        </div>
+                        <div id="wa-v2-baja-feedback" class="text-danger" style="font-size:12px;"></div>
+                    </div>
+                    <div class="wa-v2-modal__footer">
+                        <button type="button" class="btn btn-outline-secondary" id="wa-v2-baja-cancel">Cancelar</button>
+                        <button type="button" class="btn btn-danger" id="wa-v2-baja-submit">Confirmar baja</button>
+                    </div>
+                </div>
+            </div>
+
         </div>
 
     </section>
@@ -2339,6 +2736,28 @@
 @push('scripts')
     <script>
         document.addEventListener('DOMContentLoaded', function () {
+            // Inicializar tooltips de Bootstrap en los tabs de filtro
+            document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) {
+                if (typeof bootstrap !== 'undefined' && bootstrap.Tooltip) {
+                    new bootstrap.Tooltip(el, { trigger: 'hover', boundary: 'window' });
+                }
+            });
+
+            // Render all UTC timestamps using the browser's local timezone
+            document.querySelectorAll('[data-ts]').forEach(function (el) {
+                const raw = el.getAttribute('data-ts');
+                if (!raw) return;
+                const date = new Date(raw);
+                if (Number.isNaN(date.getTime())) return;
+                el.textContent = new Intl.DateTimeFormat('es-EC', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: false,
+                }).format(date).replace(',', '');
+            });
+
             const form = document.getElementById('wa-v2-send-form');
             const textarea = document.getElementById('wa-v2-message-input');
             const messageTypeSelect = document.getElementById('wa-v2-message-type');
@@ -2862,7 +3281,7 @@
                     month: '2-digit',
                     hour: '2-digit',
                     minute: '2-digit',
-                    hour12: false
+                    hour12: false,
                 }).format(date).replace(',', '');
             };
 
@@ -2906,32 +3325,66 @@
                 return html;
             };
 
+            const deliveryTick = function (status, direction) {
+                if ((direction || '') !== 'outbound') return '';
+                const map = {
+                    read:      { icon: '✓✓', cls: 'read' },
+                    delivered: { icon: '✓✓', cls: 'delivered' },
+                    sent:      { icon: '✓',  cls: 'sent' },
+                    failed:    { icon: '⚠',  cls: 'failed' },
+                    pending:   { icon: '○',  cls: 'pending' },
+                };
+                const m = map[status || ''];
+                if (!m) return '';
+                return `<span class="wa-v2-msg-tick wa-v2-msg-tick--${m.cls}" title="${escapeHtml(status || '')}">${m.icon}</span>`;
+            };
+
             const renderMessageNode = function (message) {
                 const wrapper = document.createElement('div');
-                wrapper.className = `wa-v2-message ${(message.direction || '') === 'outbound' ? 'is-outbound' : ''}`;
+                const isOutbound = (message.direction || '') === 'outbound';
+                wrapper.className = `wa-v2-message${isOutbound ? ' is-outbound' : ''}`;
                 wrapper.setAttribute('data-message-id', String(Number(message.id || 0)));
+                wrapper.setAttribute('data-status', String(message.status || ''));
 
                 const body = (message.body && String(message.body).trim() !== '')
                     ? escapeHtml(message.body)
                     : `[${escapeHtml(message.message_type || 'mensaje')}]`;
-                const directionLabel = (message.direction || '') === 'outbound' ? 'Salida' : 'Entrada';
-                const metaParts = [
-                    directionLabel,
-                    escapeHtml(message.message_type || 'text')
-                ];
-
-                if (message.status) {
-                    metaParts.push(escapeHtml(message.status));
-                }
 
                 const formattedTimestamp = formatTimestamp(message.message_timestamp);
-                if (formattedTimestamp !== '') {
-                    metaParts.push(escapeHtml(formattedTimestamp));
-                }
+                const timeHtml = formattedTimestamp !== ''
+                    ? `<span class="wa-v2-msg-time">${escapeHtml(formattedTimestamp)}</span>`
+                    : '';
+                const tickHtml = deliveryTick(message.status, message.direction);
 
-                wrapper.innerHTML = `<div>${body}</div>${renderMediaCard(message)}<div class="wa-v2-message__meta">${metaParts.join(' · ')}</div>`;
+                const metaHtml = (timeHtml || tickHtml)
+                    ? `<div class="wa-v2-message__meta">${timeHtml}${tickHtml}</div>`
+                    : '';
+
+                wrapper.innerHTML = `<div class="wa-v2-message__body">${body}</div>${renderMediaCard(message)}${metaHtml}`;
 
                 return wrapper;
+            };
+
+            const msgDateKey = function (ts) {
+                if (!ts) return null;
+                const d = new Date(ts);
+                if (Number.isNaN(d.getTime())) return null;
+                return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            };
+
+            const dateLabel = function (key) {
+                if (!key) return null;
+                const today = msgDateKey(new Date());
+                const yesterday = msgDateKey(new Date(Date.now() - 864e5));
+                if (key === today) return 'Hoy';
+                if (key === yesterday) return 'Ayer';
+                const [y, m, d] = key.split('-');
+                return `${d}/${m}/${y}`;
+            };
+
+            const lastRenderedDateKey = function () {
+                const dividers = messageList ? messageList.querySelectorAll('.wa-v2-date-divider') : [];
+                return dividers.length ? dividers[dividers.length - 1].getAttribute('data-date') : null;
             };
 
             const appendMessages = function (messages) {
@@ -2943,9 +3396,21 @@
                     ? (chatBody.scrollHeight - chatBody.scrollTop - chatBody.clientHeight) < 80
                     : true;
 
+                let lastDateKey = lastRenderedDateKey();
+
                 messages.forEach(function (message) {
                     if (messageList.querySelector(`[data-message-id="${Number(message.id || 0)}"]`)) {
                         return;
+                    }
+
+                    const dKey = msgDateKey(message.message_timestamp);
+                    if (dKey && dKey !== lastDateKey) {
+                        const divider = document.createElement('div');
+                        divider.className = 'wa-v2-date-divider';
+                        divider.setAttribute('data-date', dKey);
+                        divider.textContent = dateLabel(dKey) || dKey;
+                        messageList.appendChild(divider);
+                        lastDateKey = dKey;
                     }
 
                     messageList.appendChild(renderMessageNode(message));
@@ -3862,6 +4327,200 @@
                     }
                 });
             });
+
+            // ── Trazabilidad (trail) ──────────────────────────────────────────
+            (function () {
+                const trailCard = document.getElementById('wa-v2-trail-card');
+                const trailList = document.getElementById('wa-v2-trail-list');
+                if (!trailCard || !trailList) return;
+
+                // Derive conversation ID from the note form (already rendered on page)
+                const noteFormEl = document.getElementById('wa-v2-note-form');
+                const conversationId = noteFormEl ? noteFormEl.getAttribute('data-conversation-id') : null;
+                if (!conversationId) return;
+
+                // icon → CSS modifier class for the dot color
+                const ICON_CLASS = {
+                    start:       'start',
+                    requested:   'queued',
+                    queued:      'queued',
+                    assigned:    'assigned',
+                    transferred: 'transferred',
+                    expired:     'expired',
+                    resolved:    'resolved',
+                    template:    'template',
+                    ad:          'ad',
+                    organic:     'organic',
+                    campaign:    'campaign',
+                    support:     'support',
+                    intent:      'intent',
+                };
+
+                // icon → emoji for visual identification
+                const ICON_EMOJI = {
+                    start:       '🟢',
+                    requested:   '🔔',
+                    queued:      '📥',
+                    assigned:    '👤',
+                    transferred: '🔄',
+                    expired:     '⏰',
+                    resolved:    '✅',
+                    template:    '📨',
+                    ad:          '🎯',
+                    organic:     '🌐',
+                    campaign:    '📣',
+                    support:     '🔧',
+                    intent:      '🤖',
+                };
+
+                function escHtml(str) {
+                    return String(str ?? '')
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;');
+                }
+
+                function fmtTrailTs(iso) {
+                    if (!iso) return '';
+                    const d = new Date(iso);
+                    if (Number.isNaN(d.getTime())) return iso;
+                    return new Intl.DateTimeFormat('es-EC', {
+                        day: '2-digit', month: '2-digit',
+                        hour: '2-digit', minute: '2-digit', hour12: false,
+                    }).format(d).replace(',', '');
+                }
+
+                function renderTrail(items) {
+                    if (!items || items.length === 0) {
+                        trailList.innerHTML = '<div class="text-muted" style="padding:8px 0;font-size:.82rem;">Sin eventos registrados.</div>';
+                        return;
+                    }
+
+                    const html = items.map(function (item) {
+                        const icon    = item.icon || 'default';
+                        const mod     = ICON_CLASS[icon] || '';
+                        const emoji   = ICON_EMOJI[icon] || '•';
+                        const itemCls = 'wa-v2-trail-item' + (mod ? ' wa-v2-trail-item--' + mod : '');
+                        const ts      = fmtTrailTs(item.created_at);
+                        const actor   = item.actor_name ? escHtml(item.actor_name) : '<em class="text-muted">Sistema</em>';
+                        const noteHtml = item.notes
+                            ? '<div class="wa-v2-trail-notes">' + escHtml(item.notes) + '</div>'
+                            : '';
+
+                        return '<div class="' + itemCls + '">'
+                            + '<div class="wa-v2-trail-label">'
+                            +   '<span style="margin-right:5px;">' + emoji + '</span>'
+                            +   escHtml(item.event_label)
+                            + '</div>'
+                            + '<div class="wa-v2-trail-meta">' + actor + ' · ' + ts + '</div>'
+                            + noteHtml
+                            + '</div>';
+                    }).join('');
+
+                    trailList.innerHTML = '<div class="wa-v2-trail">' + html + '</div>';
+                }
+
+                async function loadTrail() {
+                    trailList.innerHTML = '<div class="text-muted" style="padding:8px 0;font-size:.82rem;">Cargando trazabilidad…</div>';
+                    try {
+                        const response = await fetch(`/v2/whatsapp/api/conversations/${conversationId}/trail`, {
+                            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                        });
+                        const json = await response.json();
+                        if (json.ok && Array.isArray(json.data)) {
+                            renderTrail(json.data);
+                        } else {
+                            trailList.innerHTML = '<div class="text-danger" style="font-size:.82rem;">No se pudo cargar la trazabilidad.</div>';
+                        }
+                    } catch (e) {
+                        trailList.innerHTML = '<div class="text-danger" style="font-size:.82rem;">Error de red al cargar la trazabilidad.</div>';
+                    }
+                }
+
+                // Auto-load on page ready (panel is always visible in the 3rd column)
+                loadTrail();
+
+                // Also reload when the section is manually re-opened after collapse
+                let firstToggle = true;
+                trailCard.addEventListener('toggle', function () {
+                    if (!trailCard.open || firstToggle) { firstToggle = false; return; }
+                    loadTrail();
+                });
+            })();
+
+            // ── Dar de baja / Lead de seguimiento ────────────────────────────
+            (function () {
+                const bajaBtn    = document.getElementById('wa-v2-baja-btn');
+                const bajaModal  = document.getElementById('wa-v2-baja-modal');
+                const bajaClose  = document.getElementById('wa-v2-baja-close');
+                const bajaCancel = document.getElementById('wa-v2-baja-cancel');
+                const bajaSubmit = document.getElementById('wa-v2-baja-submit');
+                const bajaMotivo = document.getElementById('wa-v2-baja-motivo');
+                const bajaFeed   = document.getElementById('wa-v2-baja-feedback');
+
+                if (!bajaBtn || !bajaModal) return;
+
+                const conversationId = bajaBtn.getAttribute('data-conversation-id');
+
+                function openModal() {
+                    bajaMotivo.value = '';
+                    bajaFeed.textContent = '';
+                    bajaModal.style.display = 'flex';
+                    bajaMotivo.focus();
+                }
+
+                function closeModal() {
+                    bajaModal.style.display = 'none';
+                }
+
+                bajaBtn.addEventListener('click', openModal);
+                bajaClose.addEventListener('click', closeModal);
+                bajaCancel.addEventListener('click', closeModal);
+                bajaModal.addEventListener('click', function (e) {
+                    if (e.target === bajaModal) closeModal();
+                });
+
+                bajaSubmit.addEventListener('click', async function () {
+                    const motivo = bajaMotivo.value.trim();
+                    if (!motivo) {
+                        bajaFeed.textContent = 'El motivo de la baja es obligatorio.';
+                        bajaMotivo.focus();
+                        return;
+                    }
+
+                    bajaSubmit.disabled = true;
+                    bajaSubmit.textContent = 'Procesando…';
+                    bajaFeed.textContent = '';
+
+                    try {
+                        const resp = await fetch(`/v2/whatsapp/api/conversations/${conversationId}/leads`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-Requested-With': 'XMLHttpRequest',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? '',
+                            },
+                            body: JSON.stringify({ motivo_baja: motivo }),
+                        });
+                        const json = await resp.json();
+
+                        if (json.ok) {
+                            closeModal();
+                            // Redirigir al chat (sin la conversación seleccionada) o recargar
+                            window.location.href = '/v2/whatsapp/chat';
+                        } else {
+                            bajaFeed.textContent = json.error ?? 'No se pudo generar el lead.';
+                            bajaSubmit.disabled = false;
+                            bajaSubmit.textContent = 'Confirmar baja';
+                        }
+                    } catch (e) {
+                        bajaFeed.textContent = 'Error de red. Intenta de nuevo.';
+                        bajaSubmit.disabled = false;
+                        bajaSubmit.textContent = 'Confirmar baja';
+                    }
+                });
+            })();
         });
     </script>
 @endpush

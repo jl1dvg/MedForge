@@ -147,6 +147,284 @@ class ConversationReadService
     }
 
     /**
+     * Returns the full operational trail (trazabilidad) for a conversation.
+     * Combines: conversation creation, handoff events (filtered), and template messages.
+     * Sorted chronologically by timestamp then id.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function getConversationTrail(int $conversationId): array
+    {
+        $entries = [];
+
+        // ── 0. Attribution / origen (ad, orgánico, campaña) ──────────────────
+        $attr = null;
+        if (Schema::hasTable('whatsapp_conversation_attributions')) {
+            $attr = DB::table('whatsapp_conversation_attributions')
+                ->where('conversation_id', $conversationId)
+                ->first();
+        }
+
+        // Supplement with referral data from the first inbound message raw_payload
+        $firstInbound = DB::table('whatsapp_messages')
+            ->where('conversation_id', $conversationId)
+            ->where('direction', 'inbound')
+            ->orderBy('id')
+            ->first(['id', 'raw_payload', 'message_timestamp', 'created_at']);
+
+        $referral = [];
+        if ($firstInbound) {
+            $raw = is_string($firstInbound->raw_payload)
+                ? json_decode($firstInbound->raw_payload, true)
+                : (is_array($firstInbound->raw_payload) ? $firstInbound->raw_payload : []);
+            $referral = is_array($raw['referral'] ?? null) ? $raw['referral'] : [];
+        }
+
+        // Resolve the best available ad/origin data
+        $sourceCategory  = trim((string) ($attr->source_category ?? ''));
+        $headline        = trim((string) ($attr->headline ?? $referral['headline'] ?? ''));
+        $sourceId        = trim((string) ($attr->source_id ?? $referral['source_id'] ?? ''));
+        $welcomeMsg      = trim((string) ($attr->welcome_message_text ?? ''));
+        $initialIntent   = trim((string) ($attr->initial_intent ?? ''));
+        $patientSegment  = trim((string) ($attr->patient_segment ?? ''));
+        $conversationType = trim((string) ($attr->conversation_type ?? ''));
+        $firstSeenAt     = $attr->first_seen_at ?? ($firstInbound->message_timestamp ?? ($firstInbound->created_at ?? null));
+
+        // Map source_category → human label + icon
+        $sourceLabels = [
+            'ad'                  => ['label' => 'Anuncio de Meta Ads',       'icon' => 'ad'],
+            'organic_direct'      => ['label' => 'Contacto orgánico directo', 'icon' => 'organic'],
+            'campaign_outbound'   => ['label' => 'Campaña saliente',          'icon' => 'campaign'],
+            'support_operational' => ['label' => 'Soporte / seguimiento',     'icon' => 'support'],
+        ];
+        $sourceMeta = $sourceLabels[$sourceCategory] ?? null;
+
+        if ($sourceMeta !== null || $headline !== '' || $sourceCategory !== '') {
+            $originLabel = $sourceMeta['label'] ?? ucfirst(str_replace('_', ' ', $sourceCategory));
+            $originIcon  = $sourceMeta['icon'] ?? 'start';
+
+            $originNotes = [];
+            if ($headline !== '') {
+                $originNotes[] = '📢 ' . $headline;
+            }
+            if ($sourceId !== '') {
+                $originNotes[] = 'ID: ' . $sourceId;
+            }
+            if ($welcomeMsg !== '') {
+                $originNotes[] = '💬 "' . mb_substr($welcomeMsg, 0, 200) . '"';
+            }
+
+            $entries[] = [
+                'id'          => -1,
+                'sort_key'    => ($firstSeenAt ?? '1970-01-01 00:00:00') . '_origin',
+                'event_type'  => 'origin',
+                'event_label' => 'Origen: ' . $originLabel,
+                'icon'        => $originIcon,
+                'notes'       => $originNotes !== [] ? implode("\n", $originNotes) : null,
+                'actor_name'  => null,
+                'created_at'  => $firstSeenAt,
+            ];
+        }
+
+        // Bot intent / classification entry
+        $intentLabels = [
+            'booking'          => 'Agendar cita',
+            'information'      => 'Consulta de información',
+            'reschedule'       => 'Re-agendar cita',
+            'cancel'           => 'Cancelar cita',
+            'results'          => 'Resultados',
+            'human_help'       => 'Solicitud de agente humano',
+            'campaign_response'=> 'Respuesta a campaña',
+        ];
+        $segmentLabels = [
+            'new_patient'      => 'Paciente nuevo',
+            'existing_patient' => 'Paciente existente',
+            'unknown'          => null,
+        ];
+
+        $intentLabel   = $intentLabels[$initialIntent] ?? null;
+        $segmentLabel  = $segmentLabels[$patientSegment] ?? null;
+
+        if ($intentLabel !== null || $segmentLabel !== null || $conversationType !== '') {
+            $intentNotes = array_filter([
+                $intentLabel  ? '🎯 Intención: ' . $intentLabel : null,
+                $segmentLabel ? '👤 ' . $segmentLabel : null,
+                $conversationType !== '' ? '🏷 Tipo: ' . $conversationType : null,
+            ]);
+
+            $entries[] = [
+                'id'          => -2,
+                'sort_key'    => ($firstSeenAt ?? '1970-01-01 00:00:00') . '_intent',
+                'event_type'  => 'intent_detected',
+                'event_label' => 'Clasificación del bot',
+                'icon'        => 'intent',
+                'notes'       => implode("\n", $intentNotes),
+                'actor_name'  => 'Bot',
+                'created_at'  => $firstSeenAt,
+            ];
+        }
+
+        // ── 1. Conversation creation ──────────────────────────────────────────
+        $conv = DB::table('whatsapp_conversations')
+            ->select('created_at', 'display_name', 'wa_number')
+            ->where('id', $conversationId)
+            ->first();
+
+        if ($conv) {
+            $entries[] = [
+                'id'          => 0,
+                'sort_key'    => $conv->created_at . '_0000000',
+                'event_type'  => 'conversation_created',
+                'event_label' => 'Conversación iniciada',
+                'icon'        => 'start',
+                'notes'       => null,
+                'actor_name'  => null,
+                'created_at'  => $conv->created_at,
+            ];
+        }
+
+        // ── 2. Handoff events (only operationally relevant ones) ──────────────
+        // Skip internal notify/system chatter: notify_started, notify_selection,
+        // notified, notify_failed, conversation_update_failed.
+        $relevantTypes = ['requested', 'queued', 'requeued', 'assigned', 'transferred', 'expired', 'resolved'];
+        $placeholders  = implode(',', array_fill(0, count($relevantTypes), '?'));
+
+        $handoffRows = DB::select(
+            "SELECT
+                whe.id,
+                whe.event_type,
+                whe.notes,
+                whe.created_at,
+                whe.actor_user_id,
+                TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,''))) AS actor_name,
+                wh.topic,
+                wh.handoff_role_id,
+                r.name AS role_name,
+                wh.assigned_agent_id,
+                TRIM(CONCAT(COALESCE(ua.first_name,''),' ',COALESCE(ua.last_name,''))) AS assigned_agent_name
+            FROM whatsapp_handoffs wh
+            JOIN whatsapp_handoff_events whe ON whe.handoff_id = wh.id
+            LEFT JOIN users u  ON u.id  = whe.actor_user_id
+            LEFT JOIN users ua ON ua.id = wh.assigned_agent_id
+            LEFT JOIN roles r  ON r.id  = wh.handoff_role_id
+            WHERE wh.conversation_id = ?
+              AND whe.event_type IN ($placeholders)
+            ORDER BY whe.created_at ASC, whe.id ASC",
+            array_merge([$conversationId], $relevantTypes)
+        );
+
+        $topicLabels = [
+            'captacion_agendar'      => 'Captación · Agendar',
+            'captacion_informacion'  => 'Captación · Información',
+            'operacion_cita_vigente' => 'Operación · Cita vigente',
+            'operacion_resultados'   => 'Operación · Resultados',
+            'faq_escalada'           => 'Información · Escalada',
+            'promociones'            => 'Información · Promociones',
+            'caso_especial'          => 'Caso especial',
+        ];
+
+        $eventMeta = [
+            'requested'   => ['label' => 'Solicitud de agente',   'icon' => 'requested'],
+            'queued'      => ['label' => 'En cola',                'icon' => 'queued'],
+            'requeued'    => ['label' => 'Re-encolado',            'icon' => 'queued'],
+            'assigned'    => ['label' => 'Asignado a agente',      'icon' => 'assigned'],
+            'transferred' => ['label' => 'Derivado',               'icon' => 'transferred'],
+            'expired'     => ['label' => 'Expirado sin atender',   'icon' => 'expired'],
+            'resolved'    => ['label' => 'Resuelto',               'icon' => 'resolved'],
+        ];
+
+        foreach ($handoffRows as $row) {
+            $eventType  = (string) ($row->event_type ?? '');
+            $actorName  = trim((string) ($row->actor_name ?? ''));
+            $topic      = (string) ($row->topic ?? '');
+            $meta       = $eventMeta[$eventType] ?? ['label' => ucfirst($eventType), 'icon' => 'default'];
+
+            // Build a human-readable description
+            $description = null;
+            if ($eventType === 'assigned') {
+                $agent = trim((string) ($row->assigned_agent_name ?? ''));
+                $description = $agent !== '' ? "Agente: {$agent}" : null;
+            } elseif ($eventType === 'transferred') {
+                $agent = trim((string) ($row->assigned_agent_name ?? ''));
+                $role  = trim((string) ($row->role_name ?? ''));
+                if ($agent !== '') {
+                    $description = "A: {$agent}";
+                } elseif ($role !== '') {
+                    $description = "Cola: {$role}";
+                }
+            } elseif (in_array($eventType, ['queued', 'requeued', 'requested'], true)) {
+                $rawNotes = trim((string) ($row->notes ?? ''));
+                // Extract human-readable reason from Flowmaker notes
+                if (str_contains($rawNotes, ':')) {
+                    $parts = explode(':', $rawNotes, 2);
+                    $description = trim($parts[1]);
+                } elseif ($rawNotes !== '') {
+                    $description = $rawNotes;
+                }
+                if ($topic !== '') {
+                    $topicLabel  = $topicLabels[$topic] ?? $topic;
+                    $description = $description ? "{$description} · {$topicLabel}" : $topicLabel;
+                }
+            } elseif ($eventType === 'expired') {
+                $description = 'Sin respuesta del agente';
+            }
+
+            $entries[] = [
+                'id'          => (int) $row->id,
+                'sort_key'    => $row->created_at . '_' . str_pad((string) $row->id, 7, '0', STR_PAD_LEFT),
+                'event_type'  => $eventType,
+                'event_label' => $meta['label'],
+                'icon'        => $meta['icon'],
+                'notes'       => $description,
+                'actor_name'  => $actorName !== '' ? $actorName : null,
+                'created_at'  => $row->created_at,
+            ];
+        }
+
+        // ── 3. Template messages sent during the conversation ─────────────────
+        $templates = DB::select(
+            "SELECT id, message_timestamp, created_at, body, direction
+             FROM whatsapp_messages
+             WHERE conversation_id = ?
+               AND message_type = 'template'
+             ORDER BY id ASC",
+            [$conversationId]
+        );
+
+        foreach ($templates as $tpl) {
+            $ts         = $tpl->message_timestamp ?? $tpl->created_at;
+            $senderName = null;
+
+            $entries[] = [
+                'id'          => (int) $tpl->id * -1, // negative to avoid id collision
+                'sort_key'    => $ts . '_t' . str_pad((string) $tpl->id, 7, '0', STR_PAD_LEFT),
+                'event_type'  => 'template_sent',
+                'event_label' => 'Plantilla enviada',
+                'icon'        => 'template',
+                'notes'       => trim((string) ($tpl->body ?? '')),
+                'actor_name'  => $senderName,
+                'created_at'  => $ts,
+            ];
+        }
+
+        // ── Sort chronologically ──────────────────────────────────────────────
+        usort($entries, fn (array $a, array $b): int => strcmp($a['sort_key'], $b['sort_key']));
+
+        // ── Serialize timestamps as UTC ISO for frontend ──────────────────────
+        $appTz = config('app.timezone', 'UTC');
+
+        return array_values(array_map(function (array $entry) use ($appTz): array {
+            unset($entry['sort_key']);
+            $entry['created_at'] = CarbonImmutable::parse(
+                (string) ($entry['created_at'] ?? ''),
+                $appTz
+            )->toISOString();
+
+            return $entry;
+        }, $entries));
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function serializeConversationDetail(WhatsappConversation $conversation, ?int $viewerUserId = null): array
@@ -213,6 +491,13 @@ class ConversationReadService
             'handoff_requested_at' => optional($conversation->handoff_requested_at)?->toISOString(),
             'unread_count' => (int) $conversation->unread_count,
             'source' => 'laravel-v2',
+            // Attribution / origen
+            'attribution_source_category' => ($v = $this->scalarString($conversation->getAttribute('attribution_source_category'))) !== '' ? $v : null,
+            'attribution_headline'         => ($v = $this->scalarString($conversation->getAttribute('attribution_headline'))) !== '' ? $v : null,
+            'attribution_source_id'        => ($v = $this->scalarString($conversation->getAttribute('attribution_source_id'))) !== '' ? $v : null,
+            'attribution_initial_intent'   => ($v = $this->scalarString($conversation->getAttribute('attribution_initial_intent'))) !== '' ? $v : null,
+            'attribution_patient_segment'  => ($v = $this->scalarString($conversation->getAttribute('attribution_patient_segment'))) !== '' ? $v : null,
+            'attribution_welcome_message'  => ($v = $this->scalarString($conversation->getAttribute('attribution_welcome_message'))) !== '' ? $v : null,
         ];
     }
 
@@ -266,11 +551,11 @@ class ConversationReadService
 
         return $query->where(function (Builder $builder) use ($search): void {
             $builder
-                ->where('display_name', 'like', '%' . $search . '%')
-                ->orWhere('patient_full_name', 'like', '%' . $search . '%')
-                ->orWhere('patient_hc_number', 'like', '%' . $search . '%')
-                ->orWhere('wa_number', 'like', '%' . $search . '%')
-                ->orWhere('last_message_preview', 'like', '%' . $search . '%');
+                ->where('whatsapp_conversations.display_name', 'like', '%' . $search . '%')
+                ->orWhere('whatsapp_conversations.patient_full_name', 'like', '%' . $search . '%')
+                ->orWhere('whatsapp_conversations.patient_hc_number', 'like', '%' . $search . '%')
+                ->orWhere('whatsapp_conversations.wa_number', 'like', '%' . $search . '%')
+                ->orWhere('whatsapp_conversations.last_message_preview', 'like', '%' . $search . '%');
         });
     }
 
@@ -363,6 +648,11 @@ class ConversationReadService
                 'wa_attr.initial_intent as attribution_initial_intent',
                 'wa_attr.conversation_type as attribution_conversation_type',
                 'wa_attr.patient_segment as attribution_patient_segment',
+                'wa_attr.headline as attribution_headline',
+                'wa_attr.source_id as attribution_source_id',
+                'wa_attr.welcome_message_text as attribution_welcome_message',
+                'wa_attr.first_seen_at as attribution_first_seen_at',
+                'wa_attr.ctwa_clid as attribution_ctwa_clid',
             ]);
     }
 
@@ -503,7 +793,11 @@ class ConversationReadService
             'message_type' => $message->message_type,
             'body' => $message->body,
             'status' => $message->status,
-            'message_timestamp' => optional($message->message_timestamp)?->toISOString(),
+            // Inbound timestamps are stored as UTC (from WhatsApp Unix epoch via createFromTimestampUTC).
+            // Outbound timestamps are stored in the app local timezone (from now()).
+            // Eloquent reads both without timezone info, so we must parse the raw DB value
+            // with the correct timezone to produce a valid UTC ISO string for the frontend.
+            'message_timestamp' => $this->serializeMessageTimestamp($message),
             'sent_at' => optional($message->sent_at)?->toISOString(),
             'delivered_at' => optional($message->delivered_at)?->toISOString(),
             'read_at' => optional($message->read_at)?->toISOString(),
@@ -516,6 +810,19 @@ class ConversationReadService
                 'download_url' => $mediaId !== '' || $directLink !== '' ? '/v2/whatsapp/api/messages/' . $message->id . '/media' : null,
             ] : null,
         ];
+    }
+
+    private function serializeMessageTimestamp(WhatsappMessage $message): ?string
+    {
+        $raw = $message->getRawOriginal('message_timestamp');
+        if ($raw === null || $raw === '') {
+            return null;
+        }
+
+        // All timestamps in the DB are stored in the server's configured timezone.
+        // Parse explicitly to avoid Eloquent re-interpreting the raw value,
+        // then emit as UTC ISO so the frontend can convert to any browser timezone.
+        return CarbonImmutable::parse($raw, config('app.timezone'))->toISOString();
     }
 
     private function resolveOwnershipState(WhatsappConversation $conversation, ?int $viewerUserId): string
@@ -543,7 +850,9 @@ class ConversationReadService
             return 'needs_template';
         }
 
-        $latestInboundAt = CarbonImmutable::parse((string) $latestInbound);
+        // latest_inbound_at is stored as UTC in MySQL — parse explicitly as UTC
+        // to avoid misinterpretation when APP_TIMEZONE is not UTC.
+        $latestInboundAt = CarbonImmutable::parse((string) $latestInbound, 'UTC');
 
         return $latestInboundAt->greaterThanOrEqualTo($this->windowThreshold())
             ? 'window_open'
@@ -664,9 +973,33 @@ class ConversationReadService
 
     private function resolveMessagingWindowLabel(WhatsappConversation $conversation): string
     {
-        return $this->resolveMessagingWindowState($conversation) === 'window_open'
-            ? '24h abierta'
-            : 'Requiere plantilla';
+        if ($this->resolveMessagingWindowState($conversation) !== 'window_open') {
+            return 'Requiere plantilla';
+        }
+
+        $latestInbound = $conversation->getAttribute('latest_inbound_at');
+        if ($latestInbound === null || $latestInbound === '') {
+            return '24h abierta';
+        }
+
+        // latest_inbound_at is stored as UTC — parse explicitly to avoid timezone drift.
+        $expiresAt = CarbonImmutable::parse((string) $latestInbound, 'UTC')->addHours(24);
+        $minutesLeft = (int) now()->toImmutable()->diffInMinutes($expiresAt, false);
+
+        if ($minutesLeft <= 0) {
+            return 'Ventana cerrada';
+        }
+
+        if ($minutesLeft < 60) {
+            return "Cierra en {$minutesLeft}min";
+        }
+
+        $hoursLeft = floor($minutesLeft / 60);
+        $minsLeft  = $minutesLeft % 60;
+
+        return $minsLeft > 0
+            ? "Cierra en {$hoursLeft}h {$minsLeft}min"
+            : "Cierra en {$hoursLeft}h";
     }
 
     private function windowThreshold(): CarbonImmutable
