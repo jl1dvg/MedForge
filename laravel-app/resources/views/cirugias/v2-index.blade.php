@@ -170,7 +170,11 @@
 
             fetch(printedEndpoint, {
                 method: 'POST',
-                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRF-TOKEN': window.csrfToken || '',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
                 body: new URLSearchParams({form_id, hc_number, printed: button.classList.contains('active') ? 1 : 0})
             }).then(response => {
                 if (!response.ok) {

@@ -240,6 +240,7 @@
                         method: 'POST',
                         body: formData,
                         headers: {
+                            'X-CSRF-TOKEN': window.csrfToken || '',
                             'X-Requested-With': 'XMLHttpRequest'
                         }
                     });

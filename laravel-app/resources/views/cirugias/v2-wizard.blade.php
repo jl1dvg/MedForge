@@ -47,6 +47,7 @@
             </div>
             <div class="box-body wizard-content">
                 <form action="/v2/cirugias/wizard/guardar" method="POST" class="tab-wizard vertical wizard-circle">
+                    @csrf
                     <input type="hidden" name="form_id" value="{{ (string) ($cirugia->form_id ?? '') }}">
                     <input type="hidden" name="hc_number" value="{{ (string) ($cirugia->hc_number ?? '') }}">
 
