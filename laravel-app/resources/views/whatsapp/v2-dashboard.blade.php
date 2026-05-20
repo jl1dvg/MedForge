@@ -802,7 +802,7 @@
                 <div class="wa-kpi-panel__head" style="cursor:pointer" onclick="var t=document.getElementById('chart-intencion-table');t.style.display=t.style.display==='none'?'block':'none';this.querySelector('.wa-section-toggle').textContent=t.style.display==='none'?'▼':'▲'">
                     <div class="wa-kpi-title-row">
                         <div class="wa-kpi-sideheading__title">Intención inicial</div>
-                        <button type="button" class="wa-kpi-help" aria-label="Ver ayuda de Intención inicial">
+                        <button type="button" class="wa-kpi-help" aria-label="Ver ayuda de Intención inicial" onclick="event.stopPropagation()">
                             ?
                             <span class="wa-kpi-help__tooltip">{{ $sectionHelp['initial_intent'] }}</span>
                         </button>
@@ -851,7 +851,7 @@
                 <div class="wa-kpi-panel__head" style="cursor:pointer" onclick="var t=document.getElementById('chart-tipo-conv-table');t.style.display=t.style.display==='none'?'block':'none';this.querySelector('.wa-section-toggle').textContent=t.style.display==='none'?'▼':'▲'">
                     <div class="wa-kpi-title-row">
                         <div class="wa-kpi-sideheading__title">Tipo de conversación</div>
-                        <button type="button" class="wa-kpi-help" aria-label="Ver ayuda de Tipo de conversación">
+                        <button type="button" class="wa-kpi-help" aria-label="Ver ayuda de Tipo de conversación" onclick="event.stopPropagation()">
                             ?
                             <span class="wa-kpi-help__tooltip">{{ $sectionHelp['conversation_type'] }}</span>
                         </button>
@@ -900,7 +900,7 @@
                 <div class="wa-kpi-panel__head" style="cursor:pointer" onclick="var t=document.getElementById('chart-segmento-table');t.style.display=t.style.display==='none'?'block':'none';this.querySelector('.wa-section-toggle').textContent=t.style.display==='none'?'▼':'▲'">
                     <div class="wa-kpi-title-row">
                         <div class="wa-kpi-sideheading__title">Segmento del paciente</div>
-                        <button type="button" class="wa-kpi-help" aria-label="Ver ayuda de Segmento del paciente">
+                        <button type="button" class="wa-kpi-help" aria-label="Ver ayuda de Segmento del paciente" onclick="event.stopPropagation()">
                             ?
                             <span class="wa-kpi-help__tooltip">{{ $sectionHelp['patient_segment'] }}</span>
                         </button>
@@ -1474,7 +1474,7 @@
     var el = document.getElementById('chart-intencion');
     if (!el) return;
     var rows = @json($analyticsIntents);
-    if (!rows || !rows.length) { el.innerHTML = '<div class="wa-chart-empty">Sin datos</div>'; return; }
+    if (!rows || !rows.length) { el.innerHTML = '<div class="wa-chart-empty">Sin datos para el periodo seleccionado</div>'; return; }
     new ApexCharts(el, {
         chart: { type: 'bar', height: 200, toolbar: { show: false }, fontFamily: 'inherit' },
         plotOptions: { bar: { horizontal: true, distributed: true, barHeight: '65%', borderRadius: 4 } },
@@ -1494,7 +1494,7 @@
     var el = document.getElementById('chart-tipo-conv');
     if (!el) return;
     var rows = @json($analyticsConversationTypes);
-    if (!rows || !rows.length) { el.innerHTML = '<div class="wa-chart-empty">Sin datos</div>'; return; }
+    if (!rows || !rows.length) { el.innerHTML = '<div class="wa-chart-empty">Sin datos para el periodo seleccionado</div>'; return; }
     new ApexCharts(el, {
         chart: { type: 'bar', height: 200, toolbar: { show: false }, fontFamily: 'inherit' },
         plotOptions: { bar: { horizontal: true, distributed: true, barHeight: '65%', borderRadius: 4 } },
@@ -1514,7 +1514,7 @@
     var el = document.getElementById('chart-segmento');
     if (!el) return;
     var rows = @json($analyticsSegments);
-    if (!rows || !rows.length) { el.innerHTML = '<div class="wa-chart-empty">Sin datos</div>'; return; }
+    if (!rows || !rows.length) { el.innerHTML = '<div class="wa-chart-empty">Sin datos para el periodo seleccionado</div>'; return; }
     new ApexCharts(el, {
         chart: { type: 'donut', height: 220, toolbar: { show: false }, fontFamily: 'inherit' },
         series: rows.map(function(r){ return parseInt(r.total)||0; }),
