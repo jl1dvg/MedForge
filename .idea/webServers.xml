@@ -17,7 +17,7 @@
         </fileTransfer>
       </webServer>
       <webServer id="162cc360-f433-4ee8-a5d4-49dd49b46c73" name="JLDVG_VPS">
-        <fileTransfer accessType="SFTP" host="74.208.195.146" port="22" sshConfigId="f676cd4f-b2b1-4752-b5ad-0a62a288a835" sshConfig="root@74.208.195.146:22 password">
+        <fileTransfer accessType="SFTP" host="74.208.195.146" port="22" sshConfigId="92eded95-11f8-42fa-94ce-a902071532f7" sshConfig="root@74.208.195.146:22 password">
           <advancedOptions>
             <advancedOptions dataProtectionLevel="Private" keepAliveTimeout="0" passiveMode="true" shareSSLContext="true" />
           </advancedOptions>
@@ -25,6 +25,13 @@
       </webServer>
       <webServer id="daca6586-b710-4aba-b41b-a7c8dd125766" name="Google">
         <fileTransfer accessType="SFTP" host="190.110.204.74" port="3000" sshConfigId="d25c30fa-fad2-4046-a769-a207fc8f2bcd" sshConfig="tecnico@190.110.204.74:3000 agent" authAgent="true">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" keepAliveTimeout="0" passiveMode="true" shareSSLContext="true" />
+          </advancedOptions>
+        </fileTransfer>
+      </webServer>
+      <webServer id="45d9040e-f5ca-4cf7-8f45-cd7bc029be9c" name="IONOS Web Hosting Business">
+        <fileTransfer accessType="SFTP" host="access908326449.webspace-data.io" port="22" sshConfigId="f4466bb5-adeb-48b5-bdb9-4ec877b3a595" sshConfig="IONOS Web Hosting Business">
           <advancedOptions>
             <advancedOptions dataProtectionLevel="Private" keepAliveTimeout="0" passiveMode="true" shareSSLContext="true" />
           </advancedOptions>
