@@ -1,6 +1,8 @@
 <?php
 
 use App\Jobs\EvaluateSolicitudesSlaJob;
+use App\Jobs\SendSolicitudReminderJob;
+use App\Modules\Solicitudes\Services\SolicitudesSigcenterSyncService;
 use App\Modules\Agenda\Services\IndexAdmisionesSyncService;
 use App\Modules\Billing\Services\BillingInformeDataService;
 use App\Modules\Billing\Services\BillingInformePacienteService;
@@ -1506,6 +1508,395 @@ Artisan::command('solicitudes:evaluar-sla', function (): int {
     return 0;
 })->purpose('Evalúa SLAs de solicitudes activas y crea tareas CRM para casos críticos o vencidos');
 
+// ---------------------------------------------------------------------------
+// solicitudes:enviar-recordatorios
+// Despacha recordatorios quirúrgicos (preop 2d, preop 24h, postop) para
+// solicitudes en estado "programada" según ventanas de fecha de cirugía.
+// ---------------------------------------------------------------------------
+Artisan::command('solicitudes:enviar-recordatorios
+    {--dry-run : Solo lista cuántos recordatorios se despacharían sin enviarlos}', function (): int {
+    $ahora  = now();
+    $dryRun = (bool) $this->option('dry-run');
+
+    $ventanas = [
+        'preop_2d'  => ['dias' => 2,  'label' => '2 días antes de cirugía'],
+        'preop_24h' => ['dias' => 1,  'label' => '24 h antes de cirugía'],
+        'postop'    => ['dias' => -1, 'label' => '1 día después de cirugía'],
+    ];
+
+    $totalDespachados = 0;
+
+    foreach ($ventanas as $tipo => ['dias' => $dias, 'label' => $label]) {
+        $fecha = $ahora->copy()->addDays($dias)->toDateString();
+
+        $rows = DB::table('solicitud_procedimiento')
+            ->whereDate('fecha', $fecha)
+            ->where('estado', 'programada')
+            ->select(['id', 'fecha'])
+            ->get();
+
+        $this->line(sprintf('[%s] %s — %s: %d solicitudes', $ahora->format('H:i:s'), $tipo, $label, $rows->count()));
+
+        if (!$dryRun) {
+            foreach ($rows as $row) {
+                SendSolicitudReminderJob::dispatch((int) $row->id, $tipo, (string) $row->fecha);
+            }
+        }
+
+        $totalDespachados += $rows->count();
+    }
+
+    $this->newLine();
+    $this->info($dryRun
+        ? "Dry-run completado. {$totalDespachados} recordatorios pendientes de despacho."
+        : "Recordatorios despachados: {$totalDespachados}."
+    );
+
+    return 0;
+})->purpose('Despacha recordatorios quirúrgicos para solicitudes programadas con cirugía inminente o reciente');
+
+// ---------------------------------------------------------------------------
+// solicitudes:crm-sync
+// Sincroniza datos de SigCenter con solicitud_procedimiento y avanza etapas
+// kanban automáticamente usando IndexAdmisionesSyncService.
+// ---------------------------------------------------------------------------
+Artisan::command('solicitudes:crm-sync
+    {--lookback=7  : Días hacia atrás desde hoy}
+    {--lookahead=7 : Días hacia adelante desde hoy}
+    {--from-date=  : Fecha inicial YYYY-MM-DD (tiene prioridad sobre --lookback)}
+    {--to-date=    : Fecha final YYYY-MM-DD (tiene prioridad sobre --lookahead)}
+    {--extractor=auto : Driver de extracción: auto, db o scraper}', function (): int {
+    /** @var IndexAdmisionesSyncService $syncService */
+    $syncService = app(IndexAdmisionesSyncService::class);
+
+    $this->line(sprintf('[%s] solicitudes:crm-sync — sincronizando SigCenter...', now()->format('Y-m-d H:i:s')));
+
+    $result = $syncService->sync([
+        'lookback'  => (int) $this->option('lookback'),
+        'lookahead' => (int) $this->option('lookahead'),
+        'from_date' => $this->option('from-date') ?: null,
+        'to_date'   => $this->option('to-date') ?: null,
+        'extractor' => trim((string) ($this->option('extractor') ?? 'auto')),
+    ]);
+
+    if (!(bool) ($result['success'] ?? false)) {
+        $this->error((string) ($result['error'] ?? 'No se pudo sincronizar con SigCenter.'));
+        $this->line(sprintf('[%s] solicitudes:crm-sync — error.', now()->format('Y-m-d H:i:s')));
+        return 1;
+    }
+
+    $this->newLine();
+    $this->table(
+        ['Métrica', 'Valor'],
+        [
+            ['Rango desde',             (string) ($result['from']     ?? '—')],
+            ['Rango hasta',             (string) ($result['to']       ?? '—')],
+            ['Filas obtenidas',         (string) ($result['fetched']  ?? ($result['rows'] ?? 0))],
+            ['Sincronizadas',           (string) ($result['synced']   ?? ($result['matched'] ?? 0))],
+            ['Actualizadas',            (string) ($result['updated']  ?? 0)],
+            ['Etapas avanzadas',        (string) ($result['advanced'] ?? 0)],
+            ['Errores',                 (string) ($result['errors']   ?? 0)],
+        ]
+    );
+
+    $this->line(sprintf('[%s] solicitudes:crm-sync — completado.', now()->format('Y-m-d H:i:s')));
+    return (int) (($result['errors'] ?? 0) > 0);
+})->purpose('Sincroniza datos de SigCenter (cirugías programadas) con solicitudes y avanza etapas kanban');
+
+// ---------------------------------------------------------------------------
+// solicitudes:derivaciones-refresh
+// Refresca los campos derivacion_numero_sel y derivacion_fecha_vigencia_sel
+// en solicitud_procedimiento cruzando con las tablas de derivaciones.
+// ---------------------------------------------------------------------------
+Artisan::command('solicitudes:derivaciones-refresh
+    {--dry-run           : Solo muestra las solicitudes que se actualizarían}
+    {--solo-sin-numero   : Solo procesa solicitudes sin derivacion_numero_sel}
+    {--limit=0           : Límite de solicitudes a procesar (0 = sin límite)}', function (): int {
+    $dryRun   = (bool) $this->option('dry-run');
+    $soloSin  = (bool) $this->option('solo-sin-numero');
+    $limit    = max(0, (int) $this->option('limit'));
+
+    $this->line(sprintf('[%s] solicitudes:derivaciones-refresh — buscando candidatas...', now()->format('Y-m-d H:i:s')));
+
+    // Cruzamos solicitud_procedimiento con las 3 tablas de derivaciones por hc_number.
+    // Nos quedamos con el referral_code y la vigencia más reciente por hc_number.
+    $query = DB::table('solicitud_procedimiento as sp')
+        ->select([
+            'sp.id',
+            'sp.hc_number',
+            'sp.derivacion_numero_sel',
+            DB::raw('r.referral_code AS nuevo_numero'),
+            DB::raw('COALESCE(r.valid_until, f.fecha_vigencia) AS nueva_vigencia'),
+        ])
+        ->join('derivaciones_forms as f', 'f.hc_number', '=', 'sp.hc_number')
+        ->join('derivaciones_referral_forms as df', 'df.form_id', '=', 'f.id')
+        ->join('derivaciones_referrals as r', 'r.id', '=', 'df.referral_id')
+        ->whereRaw("sp.afiliacion REGEXP 'IESS|ISSFA|ISSPOL|MSP'")
+        ->whereNotIn('sp.estado', ['completado', 'completada', 'cancelado', 'anulado'])
+        ->whereNotNull('r.referral_code')
+        ->orderByDesc('sp.id');
+
+    if ($soloSin) {
+        $query->whereNull('sp.derivacion_numero_sel');
+    }
+
+    if ($limit > 0) {
+        $query->limit($limit);
+    }
+
+    $rows = $query->get();
+
+    $this->line("Solicitudes candidatas: {$rows->count()}");
+
+    if ($dryRun) {
+        $this->table(
+            ['ID', 'HC', 'Número actual', 'Nuevo número', 'Nueva vigencia'],
+            $rows->take(25)->map(fn ($r) => [
+                (string) $r->id,
+                (string) $r->hc_number,
+                (string) ($r->derivacion_numero_sel ?? '—'),
+                (string) ($r->nuevo_numero ?? '—'),
+                (string) ($r->nueva_vigencia ?? '—'),
+            ])->all()
+        );
+        if ($rows->count() > 25) {
+            $this->line('... (mostrando primeros 25 de ' . $rows->count() . ')');
+        }
+        $this->info('Dry-run completado. No se escribieron cambios.');
+        return 0;
+    }
+
+    $actualizado = 0;
+    $sinNumero   = 0;
+
+    foreach ($rows as $row) {
+        $nuevoNumero  = trim((string) ($row->nuevo_numero ?? ''));
+        $nuevaVigencia = $row->nueva_vigencia !== null ? trim((string) $row->nueva_vigencia) : null;
+
+        if ($nuevoNumero === '') {
+            $sinNumero++;
+            continue;
+        }
+
+        DB::table('solicitud_procedimiento')
+            ->where('id', (int) $row->id)
+            ->update([
+                'derivacion_numero_sel'        => $nuevoNumero,
+                'derivacion_fecha_vigencia_sel' => $nuevaVigencia !== '' ? $nuevaVigencia : null,
+            ]);
+
+        $actualizado++;
+    }
+
+    $this->newLine();
+    $this->table(
+        ['Resultado', 'Valor'],
+        [
+            ['Candidatas evaluadas', (string) $rows->count()],
+            ['Actualizadas',         (string) $actualizado],
+            ['Sin número en origen', (string) $sinNumero],
+        ]
+    );
+
+    $this->info('Refresh de derivaciones completado.');
+    return 0;
+})->purpose('Refresca derivacion_numero_sel y derivacion_fecha_vigencia_sel desde las tablas de derivaciones');
+
+// ---------------------------------------------------------------------------
+// solicitudes:marcar-vencidas
+// Detecta solicitudes públicas con derivación vencida y sin tarea CRM abierta,
+// y crea una tarea CRM de alerta para gestión inmediata.
+// ---------------------------------------------------------------------------
+Artisan::command('solicitudes:marcar-vencidas
+    {--dry-run : Solo muestra cuántas solicitudes están vencidas sin escribir}', function (): int {
+    $dryRun  = (bool) $this->option('dry-run');
+    $now     = now();
+    $hoy     = $now->toDateString();
+
+    $this->line(sprintf('[%s] solicitudes:marcar-vencidas — detectando solicitudes con derivación vencida...', $now->format('Y-m-d H:i:s')));
+
+    // Solicitudes públicas con vigencia expirada y estado aún activo.
+    $vencidas = DB::table('solicitud_procedimiento as sp')
+        ->select(['sp.id', 'sp.hc_number', 'sp.estado', 'sp.afiliacion', 'sp.derivacion_fecha_vigencia_sel', 'sc.responsable_id'])
+        ->leftJoin('solicitud_crm_detalles as sc', 'sc.solicitud_id', '=', 'sp.id')
+        ->whereRaw("sp.afiliacion REGEXP 'IESS|ISSFA|ISSPOL|MSP'")
+        ->whereNotNull('sp.derivacion_fecha_vigencia_sel')
+        ->whereDate('sp.derivacion_fecha_vigencia_sel', '<', $hoy)
+        ->whereNotIn('sp.estado', ['completado', 'completada', 'cancelado', 'anulado', 'programada'])
+        ->whereNotExists(function ($sub): void {
+            $sub->select(DB::raw(1))
+                ->from('crm_tasks')
+                ->where('source_module', 'solicitudes')
+                ->whereColumn('source_ref_id', DB::raw('CAST(sp.id AS CHAR)'))
+                ->where('category', 'derivacion_vencida')
+                ->whereNotIn('status', ['completada', 'cancelada']);
+        })
+        ->get();
+
+    $this->line("Solicitudes con derivación vencida sin tarea abierta: {$vencidas->count()}");
+
+    if ($vencidas->isEmpty()) {
+        $this->info('No hay solicitudes con derivación vencida pendientes de atención.');
+        return 0;
+    }
+
+    if ($dryRun) {
+        $this->table(
+            ['ID', 'HC', 'Estado', 'Vigencia expirada'],
+            $vencidas->take(20)->map(fn ($r) => [
+                (string) $r->id,
+                (string) $r->hc_number,
+                (string) $r->estado,
+                (string) $r->derivacion_fecha_vigencia_sel,
+            ])->all()
+        );
+        $this->info('Dry-run completado. No se escribieron cambios.');
+        return 0;
+    }
+
+    $creadas = 0;
+    $nowStr  = $now->toDateTimeString();
+
+    foreach ($vencidas as $row) {
+        $diasVencida = (int) now()->diffInDays($row->derivacion_fecha_vigencia_sel);
+
+        DB::table('crm_tasks')->insert([
+            'source_module' => 'solicitudes',
+            'source_ref_id' => (string) $row->id,
+            'title'         => "🔴 Derivación IESS vencida — Solicitud #{$row->id}",
+            'description'   => "La autorización IESS (vigencia: {$row->derivacion_fecha_vigencia_sel}) venció hace {$diasVencida} días. Renovar derivación urgente.",
+            'status'        => 'pendiente',
+            'priority'      => 'urgente',
+            'category'      => 'derivacion_vencida',
+            'assigned_to'   => $row->responsable_id ?? null,
+            'due_date'      => $hoy,
+            'due_at'        => $nowStr,
+            'created_at'    => $nowStr,
+            'updated_at'    => $nowStr,
+        ]);
+
+        $creadas++;
+    }
+
+    $this->newLine();
+    $this->table(
+        ['Resultado', 'Valor'],
+        [
+            ['Solicitudes evaluadas', (string) $vencidas->count()],
+            ['Tareas CRM creadas',    (string) $creadas],
+        ]
+    );
+
+    $this->info('Detección de solicitudes vencidas completada.');
+    return 0;
+})->purpose('Crea tareas CRM urgentes para solicitudes IESS con derivación vencida y sin gestión abierta');
+
+// ---------------------------------------------------------------------------
+// solicitudes:crm-task-reminders
+// Procesa crm_tasks con remind_at <= now() del módulo solicitudes,
+// registra el reminder disparado e inserta una nota de seguimiento.
+// ---------------------------------------------------------------------------
+Artisan::command('solicitudes:crm-task-reminders
+    {--dry-run : Solo muestra tareas pendientes de recordatorio sin procesar}
+    {--limit=100 : Máximo de tareas a procesar por ejecución}', function (): int {
+    $dryRun = (bool) $this->option('dry-run');
+    $limit  = max(1, min(500, (int) $this->option('limit')));
+    $now    = now();
+    $nowStr = $now->toDateTimeString();
+
+    $this->line(sprintf('[%s] solicitudes:crm-task-reminders — procesando recordatorios pendientes...', $now->format('Y-m-d H:i:s')));
+
+    // Tareas activas del módulo solicitudes cuyo remind_at ya pasó
+    // y aún no tienen un registro en crm_task_reminders para hoy.
+    $tareas = DB::table('crm_tasks as t')
+        ->select(['t.id', 't.title', 't.source_ref_id', 't.assigned_to', 't.remind_at', 't.remind_channel'])
+        ->where('t.source_module', 'solicitudes')
+        ->whereNotIn('t.status', ['completada', 'cancelada'])
+        ->whereNotNull('t.remind_at')
+        ->where('t.remind_at', '<=', $nowStr)
+        ->whereNotExists(function ($sub) use ($now): void {
+            $sub->select(DB::raw(1))
+                ->from('crm_task_reminders as r')
+                ->whereColumn('r.task_id', 't.id')
+                ->whereDate('r.created_at', $now->toDateString());
+        })
+        ->orderBy('t.remind_at')
+        ->limit($limit)
+        ->get();
+
+    $this->line("Tareas con recordatorio pendiente: {$tareas->count()}");
+
+    if ($tareas->isEmpty()) {
+        $this->info('No hay recordatorios de tareas CRM pendientes.');
+        return 0;
+    }
+
+    if ($dryRun) {
+        $this->table(
+            ['Task ID', 'Solicitud ID', 'Título', 'Remind at', 'Asignado a'],
+            $tareas->map(fn ($t) => [
+                (string) $t->id,
+                (string) $t->source_ref_id,
+                mb_substr((string) $t->title, 0, 50),
+                (string) $t->remind_at,
+                (string) ($t->assigned_to ?? '—'),
+            ])->all()
+        );
+        $this->info('Dry-run completado. No se escribieron cambios.');
+        return 0;
+    }
+
+    $procesadas = 0;
+    $errores    = 0;
+    // company_id para crm_task_reminders (fallback al primer registro de la tarea)
+    $defaultCompanyId = (int) DB::table('crm_tasks')->value('company_id') ?: 1;
+
+    foreach ($tareas as $tarea) {
+        try {
+            // 1. Registrar el recordatorio disparado.
+            DB::table('crm_task_reminders')->insert([
+                'task_id'    => $tarea->id,
+                'company_id' => $defaultCompanyId,
+                'remind_at'  => $tarea->remind_at,
+                'channel'    => $tarea->remind_channel ?: 'system',
+                'created_at' => $nowStr,
+            ]);
+
+            // 2. Insertar nota de seguimiento en la solicitud.
+            $solicitudId = (int) $tarea->source_ref_id;
+            if ($solicitudId > 0) {
+                DB::table('solicitud_crm_notas')->insert([
+                    'solicitud_id' => $solicitudId,
+                    'nota'         => "⏰ Recordatorio de tarea: {$tarea->title}",
+                    'autor_id'     => null,
+                    'created_at'   => $nowStr,
+                ]);
+            }
+
+            $procesadas++;
+        } catch (\Throwable $e) {
+            $errores++;
+            \Illuminate\Support\Facades\Log::warning('solicitudes.crm_task_reminders.error', [
+                'task_id' => $tarea->id,
+                'error'   => $e->getMessage(),
+            ]);
+        }
+    }
+
+    $this->newLine();
+    $this->table(
+        ['Resultado', 'Valor'],
+        [
+            ['Tareas evaluadas', (string) $tareas->count()],
+            ['Procesadas',       (string) $procesadas],
+            ['Errores',          (string) $errores],
+        ]
+    );
+
+    $this->info('Recordatorios de tareas CRM procesados.');
+    return $errores > 0 ? 1 : 0;
+})->purpose('Procesa remind_at de crm_tasks del módulo solicitudes e inserta notas de seguimiento');
+
 Schedule::command('solicitudes:evaluar-sla')
     ->everyThirtyMinutes()
     ->withoutOverlapping()
@@ -1514,6 +1905,35 @@ Schedule::command('solicitudes:evaluar-sla')
 Schedule::command('derivaciones:scrape-missing --limit=200 --max-attempts=3 --cooldown-hours=6')
     ->hourly()
     ->withoutOverlapping();
+
+// Recordatorios quirúrgicos — cada mañana a las 8:00.
+Schedule::command('solicitudes:enviar-recordatorios')
+    ->dailyAt('08:00')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Sincronización SigCenter — cada hora en horario hábil.
+Schedule::command('solicitudes:crm-sync --lookback=3 --lookahead=14')
+    ->hourly()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Refresh derivaciones — dos veces al día.
+Schedule::command('solicitudes:derivaciones-refresh --solo-sin-numero')
+    ->twiceDaily(7, 14)
+    ->withoutOverlapping();
+
+// Detección de derivaciones vencidas — cada mañana a las 7:00.
+Schedule::command('solicitudes:marcar-vencidas')
+    ->dailyAt('07:00')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Recordatorios de tareas CRM — cada 30 minutos.
+Schedule::command('solicitudes:crm-task-reminders --limit=100')
+    ->everyThirtyMinutes()
+    ->withoutOverlapping()
+    ->runInBackground();
 
 Schedule::command('whatsapp:handoff-requeue-expired')
     ->everyFiveMinutes()
