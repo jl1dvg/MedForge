@@ -946,17 +946,22 @@
 
         <div class="col-xl-6 col-12">
             <div class="wa-kpi-panel">
-                <div class="wa-kpi-panel__head">
+                <div class="wa-kpi-panel__head" style="cursor:pointer;"
+                     onclick="this.nextElementSibling.nextElementSibling.classList.toggle('d-none')">
                     <div class="wa-kpi-title-row">
                         <div class="wa-kpi-sideheading__title">Lead scoring</div>
-                        <button type="button" class="wa-kpi-help" aria-label="Ver ayuda de Lead scoring">
+                        <button type="button" class="wa-kpi-help" aria-label="Ver ayuda de Lead scoring" onclick="event.stopPropagation()">
                             ?
                             <span class="wa-kpi-help__tooltip">{{ $sectionHelp['lead_scoring'] }}</span>
                         </button>
+                        <button type="button" class="wa-section-toggle ms-auto">▼</button>
                     </div>
                     <div class="wa-kpi-sideheading__meta">Prioridad comercial estimada por progreso, identificación y cierre efectivo.</div>
                 </div>
-                <div class="wa-kpi-panel__body p-0">
+                <div class="wa-kpi-panel__body">
+                    <div id="chart-lead-scoring" class="wa-chart-wrap" style="height:180px"></div>
+                </div>
+                <div class="wa-kpi-panel__body p-0" id="chart-lead-scoring-table" style="display:none">
                     <div class="table-responsive">
                         <table class="table table-striped wa-kpi-table mb-0">
                             <thead>
@@ -988,20 +993,44 @@
                 </div>
             </div>
         </div>
+<script>
+(function () {
+    var el = document.getElementById('chart-lead-scoring');
+    if (!el) return;
+    var rows = @json($analyticsLeadScores);
+    if (!rows || !rows.length) { el.innerHTML = '<div class="wa-chart-empty">Sin datos para el periodo seleccionado</div>'; return; }
+    new ApexCharts(el, {
+        chart: { type: 'bar', height: 180, toolbar: { show: false }, fontFamily: 'inherit' },
+        plotOptions: { bar: { horizontal: true, distributed: true, barHeight: '60%', borderRadius: 4 } },
+        series: [{ name: 'Conversaciones', data: rows.map(function(r){ return parseInt(r.total)||0; }) }],
+        xaxis: { categories: rows.map(function(r){ return r.bucket_label; }), labels: { style: { fontSize: '11px' } } },
+        yaxis: { labels: { style: { fontSize: '11px' } } },
+        colors: ['#10b981','#3b82f6','#f59e0b','#ef4444'],
+        legend: { show: false },
+        dataLabels: { enabled: true, style: { fontSize: '10px' } },
+        grid: { borderColor: '#f1f5f9' },
+    }).render();
+}());
+</script>
 
         <div class="col-xl-6 col-12">
             <div class="wa-kpi-panel">
-                <div class="wa-kpi-panel__head">
+                <div class="wa-kpi-panel__head" style="cursor:pointer;"
+                     onclick="this.nextElementSibling.nextElementSibling.classList.toggle('d-none')">
                     <div class="wa-kpi-title-row">
                         <div class="wa-kpi-sideheading__title">Fricciones del flujo</div>
-                        <button type="button" class="wa-kpi-help" aria-label="Ver ayuda de Fricciones del flujo">
+                        <button type="button" class="wa-kpi-help" aria-label="Ver ayuda de Fricciones del flujo" onclick="event.stopPropagation()">
                             ?
                             <span class="wa-kpi-help__tooltip">{{ $sectionHelp['frictions'] }}</span>
                         </button>
+                        <button type="button" class="wa-section-toggle ms-auto">▼</button>
                     </div>
                     <div class="wa-kpi-sideheading__meta">Estados donde más se frenan conversaciones sin cierre efectivo.</div>
                 </div>
-                <div class="wa-kpi-panel__body p-0">
+                <div class="wa-kpi-panel__body">
+                    <div id="chart-fricciones" class="wa-chart-wrap" style="height:180px"></div>
+                </div>
+                <div class="wa-kpi-panel__body p-0" id="chart-fricciones-table" style="display:none">
                     <div class="table-responsive">
                         <table class="table table-striped wa-kpi-table mb-0">
                             <thead>
@@ -1029,20 +1058,49 @@
                 </div>
             </div>
         </div>
+<script>
+(function () {
+    var el = document.getElementById('chart-fricciones');
+    if (!el) return;
+    var rows = @json($analyticsFrictions);
+    if (!rows || !rows.length) { el.innerHTML = '<div class="wa-chart-empty">Sin datos para el periodo seleccionado</div>'; return; }
+    var colors = rows.map(function(r){
+        var s = parseInt(r.share)||0;
+        return s >= 30 ? '#ef4444' : (s >= 15 ? '#f59e0b' : '#94a3b8');
+    });
+    new ApexCharts(el, {
+        chart: { type: 'bar', height: 180, toolbar: { show: false }, fontFamily: 'inherit' },
+        plotOptions: { bar: { horizontal: true, distributed: true, barHeight: '60%', borderRadius: 4 } },
+        series: [{ name: '% de fricciones', data: rows.map(function(r){ return parseFloat(r.share)||0; }) }],
+        xaxis: { categories: rows.map(function(r){ return r.friction_label; }), labels: { style: { fontSize: '11px' } }, max: 100 },
+        yaxis: { labels: { style: { fontSize: '11px' } } },
+        colors: colors,
+        legend: { show: false },
+        dataLabels: { enabled: true, formatter: function(val){ return val + '%'; }, style: { fontSize: '10px' } },
+        tooltip: { y: { formatter: function(val, opts){ return val + '% (' + (rows[opts.dataPointIndex] ? rows[opts.dataPointIndex].total : 0) + ' conv.)'; } } },
+        grid: { borderColor: '#f1f5f9' },
+    }).render();
+}());
+</script>
 
         <div class="col-12">
             <div class="wa-kpi-panel">
-                <div class="wa-kpi-panel__head">
+                <div class="wa-kpi-panel__head" style="cursor:pointer;"
+                     onclick="this.nextElementSibling.nextElementSibling.classList.toggle('d-none')">
                     <div class="wa-kpi-title-row">
                         <div class="wa-kpi-sideheading__title">Embudo conversacional y comercial</div>
-                        <button type="button" class="wa-kpi-help" aria-label="Ver ayuda de Embudo conversacional y comercial">
+                        <button type="button" class="wa-kpi-help" aria-label="Ver ayuda de Embudo conversacional y comercial" onclick="event.stopPropagation()">
                             ?
                             <span class="wa-kpi-help__tooltip">{{ $sectionHelp['funnel'] }}</span>
                         </button>
+                        <button type="button" class="wa-section-toggle ms-auto">▼</button>
                     </div>
                     <div class="wa-kpi-sideheading__meta">Avance de las conversaciones nuevas desde el inicio hasta la creación efectiva de cita.</div>
                 </div>
                 <div class="wa-kpi-panel__body">
+                    <div id="chart-embudo" class="wa-chart-wrap" style="height:260px"></div>
+                </div>
+                <div class="wa-kpi-panel__body" id="chart-embudo-table" style="display:none">
                     <div class="wa-kpi-grid">
                         @forelse($analyticsFunnel as $step)
                             <div class="wa-kpi-card">
@@ -1057,6 +1115,33 @@
                 </div>
             </div>
         </div>
+<script>
+(function () {
+    var el = document.getElementById('chart-embudo');
+    if (!el) return;
+    var steps = @json($analyticsFunnel);
+    if (!steps || !steps.length) { el.innerHTML = '<div class="wa-chart-empty">Sin datos para el periodo seleccionado</div>'; return; }
+    new ApexCharts(el, {
+        chart: { type: 'bar', height: 260, toolbar: { show: false }, fontFamily: 'inherit' },
+        plotOptions: { bar: { horizontal: true, distributed: false, barHeight: '55%', borderRadius: 4, isFunnel: true } },
+        series: [{ name: 'Conversaciones', data: steps.map(function(s){ return parseInt(s.value)||0; }) }],
+        xaxis: { categories: steps.map(function(s){ return s.label; }), labels: { style: { fontSize: '11px' } } },
+        yaxis: { labels: { style: { fontSize: '11px' } } },
+        colors: ['#3b82f6'],
+        dataLabels: {
+            enabled: true,
+            formatter: function(val, opts) {
+                var s = steps[opts.dataPointIndex];
+                return val + (s ? ' (' + s.rate_from_start + '%)' : '');
+            },
+            style: { fontSize: '11px' }
+        },
+        legend: { show: false },
+        grid: { borderColor: '#f1f5f9' },
+        tooltip: { y: { formatter: function(val, opts){ var s = steps[opts.dataPointIndex]; return val + ' conv. · ' + (s ? s.rate_to_next + '% al siguiente' : ''); } } },
+    }).render();
+}());
+</script>
 
         <div class="col-12">
             <div class="wa-kpi-panel">
