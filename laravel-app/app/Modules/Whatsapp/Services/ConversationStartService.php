@@ -116,6 +116,14 @@ class ConversationStartService
             $recipient,
             $templateVariables
         );
+        $renderedTemplateBody = $this->resolveRenderedTemplateBody(
+            $template,
+            $contactName,
+            $patientHcNumber,
+            $patientFullName,
+            $recipient,
+            $templateVariables
+        );
         $transportResult = $this->transport->sendTemplate(
             $config['phone_number_id'],
             $config['access_token'],
@@ -136,7 +144,8 @@ class ConversationStartService
             $sentAt,
             $template,
             $templateComponents,
-            $transportResult
+            $transportResult,
+            $renderedTemplateBody
         ): WhatsappConversation {
             $displayName = $this->truncate($contactName ?: $patientFullName ?: $recipient, 191);
             $patientFullName = $this->truncate($patientFullName ?: $contactName, 191);
@@ -178,7 +187,7 @@ class ConversationStartService
                 'wa_message_id' => $transportResult['wa_message_id'],
                 'direction' => 'outbound',
                 'message_type' => 'template',
-                'body' => 'Plantilla: ' . ($template->display_name ?: $template->template_code),
+                'body' => $renderedTemplateBody,
                 'raw_payload' => [
                     'template' => [
                         'id' => $template->id,
@@ -299,6 +308,52 @@ class ConversationStartService
     /**
      * @return array<int, string>
      */
+    private function resolveRenderedTemplateBody(
+        WhatsappMessageTemplate $template,
+        ?string $contactName,
+        ?string $patientHcNumber,
+        ?string $patientFullName,
+        string $recipient,
+        array $templateVariables = []
+    ): string {
+        $fallback = 'Plantilla: ' . ($template->display_name ?: $template->template_code);
+
+        if (!Schema::hasTable('whatsapp_template_revisions')) {
+            return $fallback;
+        }
+
+        $revision = $template->relationLoaded('whatsapp_template_revision')
+            ? $template->whatsapp_template_revision
+            : $template->whatsapp_template_revision()->first();
+
+        if (!$revision instanceof WhatsappTemplateRevision) {
+            return $fallback;
+        }
+
+        $bodyText = trim((string) ($revision->body_text ?? ''));
+        if ($bodyText === '') {
+            return $fallback;
+        }
+
+        $params = $this->buildTextParameterValues(
+            $bodyText,
+            $contactName,
+            $patientHcNumber,
+            $patientFullName,
+            $recipient,
+            $templateVariables
+        );
+
+        foreach ($params as $i => $value) {
+            $bodyText = str_replace('{{' . ($i + 1) . '}}', (string) $value, $bodyText);
+        }
+
+        // Strip inline example hints like {{1[example]}} leftovers
+        $bodyText = preg_replace('/\{\{\d+(?:\[[^\]]*\])?\}\}/', '', $bodyText) ?? $bodyText;
+
+        return trim($bodyText) !== '' ? trim($bodyText) : $fallback;
+    }
+
     private function buildTextParameterValues(
         string $text,
         ?string $contactName,

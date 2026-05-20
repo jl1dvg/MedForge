@@ -19,6 +19,18 @@
     $quickReplies = is_array($quickReplies ?? null) ? $quickReplies : [];
     $conversationNotes = is_array($conversationNotes ?? null) ? $conversationNotes : [];
     $templateOptions = is_array($templateOptions ?? null) ? $templateOptions : [];
+
+    // WhatsApp markdown → HTML formatter (server-side)
+    $formatWaBody = static function (string $text): string {
+        $safe = htmlspecialchars($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $safe = preg_replace('/\*([^*\r\n]+)\*/', '<strong>$1</strong>', $safe) ?? $safe;
+        $safe = preg_replace('/_([^_\r\n]+)_/', '<em>$1</em>', $safe) ?? $safe;
+        $safe = preg_replace('/~([^~\r\n]+)~/', '<del>$1</del>', $safe) ?? $safe;
+        $safe = preg_replace('/`([^`\r\n]+)`/', '<code>$1</code>', $safe) ?? $safe;
+        $safe = str_replace(["\r\n", "\r", "\n"], '<br>', $safe);
+        return $safe;
+    };
+
     $tabs = [
         'all' => 'Todos',
         'mine' => 'Mis chats',
@@ -942,7 +954,8 @@
 
         /* message body text */
         .wa-v2-message__body {
-            white-space: pre-wrap;
+            white-space: normal;
+            word-break: break-word;
         }
 
         /* meta: time + delivery tick — always right-aligned, small */
@@ -2393,7 +2406,7 @@
                                     class="wa-v2-message {{ $msgDir === 'outbound' ? 'is-outbound' : '' }}"
                                     data-message-id="{{ (int) ($message['id'] ?? 0) }}"
                                     data-status="{{ $msgStatus }}">
-                                    <div class="wa-v2-message__body">{{ $message['body'] ?: '[' . ($message['message_type'] ?? 'mensaje') . ']' }}</div>
+                                    <div class="wa-v2-message__body">{!! $formatWaBody($message['body'] ?: '[' . ($message['message_type'] ?? 'mensaje') . ']') !!}</div>
                                     @if(!empty($message['media']) && is_array($message['media']))
                                         @php
                                             $media = $message['media'];
@@ -3306,6 +3319,17 @@
                     .replaceAll("'", '&#039;');
             };
 
+            // WhatsApp markdown → HTML (mirrors server-side $formatWaBody)
+            const formatWaMarkdown = function (text) {
+                let s = escapeHtml(text);
+                s = s.replace(/\*([^*\r\n]+)\*/g,  '<strong>$1</strong>');
+                s = s.replace(/_([^_\r\n]+)_/g,    '<em>$1</em>');
+                s = s.replace(/~([^~\r\n]+)~/g,    '<del>$1</del>');
+                s = s.replace(/`([^`\r\n]+)`/g,    '<code>$1</code>');
+                s = s.replace(/\r\n|\r|\n/g,        '<br>');
+                return s;
+            };
+
             const formatTimestamp = function (value) {
                 if (!value) {
                     return '';
@@ -3387,7 +3411,7 @@
                 wrapper.setAttribute('data-status', String(message.status || ''));
 
                 const body = (message.body && String(message.body).trim() !== '')
-                    ? escapeHtml(message.body)
+                    ? formatWaMarkdown(message.body)
                     : `[${escapeHtml(message.message_type || 'mensaje')}]`;
 
                 const formattedTimestamp = formatTimestamp(message.message_timestamp);
