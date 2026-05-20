@@ -4052,3 +4052,248 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 </script>
 @endpush
+
+@push('scripts')
+<script>
+(function () {
+    const CSRF = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    const overlay        = document.getElementById('wa-sandbox-overlay');
+    const closeBtn       = document.getElementById('wa-sandbox-close');
+    const openBtn        = document.getElementById('wa-flow-sandbox-btn');
+    const indicator      = document.getElementById('wa-flow-sandbox-indicator');
+    const statusBar      = document.getElementById('wa-sandbox-status-bar');
+    const numList        = document.getElementById('wa-sandbox-numbers-list');
+    const numInput       = document.getElementById('wa-sandbox-number-input');
+    const addBtn         = document.getElementById('wa-sandbox-add-btn');
+    const draftBtn       = document.getElementById('wa-sandbox-draft-btn');
+    const clearBtn       = document.getElementById('wa-sandbox-clear-btn');
+    const versionWarn    = document.getElementById('wa-sandbox-version-warn');
+    const draftBadge     = document.getElementById('wa-sandbox-draft-saved-badge');
+    const numbersSection = document.getElementById('wa-sandbox-numbers-section');
+
+    let sandboxState = { active: false, version_number: null, wa_numbers: [] };
+
+    async function sandboxApi(method, path, body) {
+        const opts = {
+            method,
+            credentials: 'same-origin',
+            headers: { 'X-CSRF-TOKEN': CSRF, 'Content-Type': 'application/json' },
+        };
+        if (body !== undefined) opts.body = JSON.stringify(body);
+        const r = await fetch('/v2/whatsapp/api' + path, opts);
+        return r.json();
+    }
+
+    function renderStatus() {
+        const { active, version_number, wa_numbers } = sandboxState;
+
+        if (indicator) indicator.style.display = active ? 'inline-block' : 'none';
+
+        if (numbersSection) {
+            numbersSection.style.opacity       = active ? '1' : '0.45';
+            numbersSection.style.pointerEvents = active ? '' : 'none';
+        }
+
+        if (!active) {
+            statusBar.innerHTML = `<span style="color:#64748b;">⬜ Sin sandbox activo — el flujo publicado atiende a todos.</span>`;
+            if (versionWarn) versionWarn.style.display = 'none';
+        } else {
+            const count = wa_numbers ? wa_numbers.length : 0;
+            statusBar.innerHTML = `
+                <span style="color:#92400e;background:#fef3c7;padding:4px 10px;border-radius:8px;font-weight:600;">
+                    🧪 Activo — borrador v${version_number ?? '?'}
+                </span>
+                <span style="margin-left:8px;color:#475569;">${count} número${count !== 1 ? 's' : ''} en prueba</span>`;
+
+            const publishedV = (window.waActiveVersion?.version) ?? null;
+            const isStale = publishedV && version_number && Number(version_number) < Number(publishedV);
+            if (versionWarn) {
+                versionWarn.style.display = isStale ? 'block' : 'none';
+                if (isStale) {
+                    versionWarn.textContent = `⚠️ El borrador sandbox es v${version_number}, pero la versión publicada es v${publishedV}. Considera guardar un borrador nuevo (Paso 1).`;
+                }
+            }
+            const staleBanner = document.getElementById('wa-sandbox-stale-banner');
+            const staleDesc   = document.getElementById('wa-sandbox-stale-desc');
+            if (staleBanner) {
+                if (isStale) {
+                    if (staleDesc) staleDesc.textContent = `borrador v${version_number} vs publicada v${publishedV}`;
+                    staleBanner.style.display = 'flex';
+                } else {
+                    staleBanner.style.display = 'none';
+                }
+            }
+        }
+
+        numList.innerHTML = '';
+        const nums = sandboxState.wa_numbers || [];
+        if (nums.length === 0) {
+            numList.innerHTML = `<span style="font-size:.78rem;color:#94a3b8;">${active ? 'Ningún número aún.' : 'Guarda un borrador primero (Paso 1).'}</span>`;
+        } else {
+            nums.forEach(function (n) {
+                const chip = document.createElement('span');
+                chip.style.cssText = 'display:inline-flex;align-items:center;gap:5px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;padding:3px 10px;font-size:.82rem;color:#1e293b;';
+                chip.innerHTML = `${n} <button data-num="${n}" style="background:none;border:none;cursor:pointer;color:#dc2626;font-size:.9rem;line-height:1;padding:0;">×</button>`;
+                chip.querySelector('button').addEventListener('click', removeNumber);
+                numList.appendChild(chip);
+            });
+        }
+    }
+
+    async function loadStatus() {
+        try {
+            const data = await sandboxApi('GET', '/flowmaker/sandbox');
+            if (data.ok) {
+                sandboxState = data.data;
+                renderStatus();
+            }
+        } catch (e) {
+            statusBar.textContent = 'No se pudo cargar el estado del sandbox.';
+        }
+    }
+
+    async function saveDraftInternal() {
+        const pf = document.getElementById('wa-flow-payload');
+        let flowPayload;
+        try {
+            flowPayload = JSON.parse(pf?.value || '{}');
+        } catch (e) {
+            alert('El JSON del flujo no es válido. Revisa el editor antes de guardar el borrador.');
+            return false;
+        }
+        try {
+            const data = await sandboxApi('POST', '/flowmaker/sandbox/draft', {
+                flow: flowPayload,
+                wa_numbers: sandboxState.wa_numbers || [],
+                changelog: 'Borrador sandbox — ' + new Date().toLocaleString('es-EC'),
+            });
+            if (data.ok) {
+                sandboxState.version_number = data.version_number;
+                sandboxState.active = true;
+                renderStatus();
+                if (draftBadge) {
+                    draftBadge.style.display = 'inline';
+                    setTimeout(() => { draftBadge.style.display = 'none'; }, 3000);
+                }
+                return true;
+            } else {
+                alert(data.error || 'No se pudo guardar el borrador.');
+                return false;
+            }
+        } catch (e) {
+            alert('Error de red al guardar el borrador.');
+            return false;
+        }
+    }
+
+    async function addNumber() {
+        const raw = (numInput.value || '').trim().replace(/\D/g, '');
+        if (!raw) { numInput.focus(); return; }
+
+        if (!sandboxState.active || !sandboxState.version_number) {
+            const ok = confirm('No hay un borrador sandbox guardado todavía.\n¿Guardar el flujo actual como borrador y luego agregar el número?');
+            if (!ok) return;
+            draftBtn.disabled = true;
+            draftBtn.textContent = 'Guardando…';
+            const saved = await saveDraftInternal();
+            draftBtn.disabled = false;
+            draftBtn.textContent = 'Guardar borrador sandbox';
+            if (!saved) return;
+        }
+
+        addBtn.disabled = true;
+        try {
+            const data = await sandboxApi('POST', '/flowmaker/sandbox/numbers', { wa_number: raw });
+            if (data.ok) {
+                sandboxState.wa_numbers = data.wa_numbers;
+                sandboxState.active = true;
+                numInput.value = '';
+                renderStatus();
+            } else {
+                alert(data.error || 'No se pudo agregar el número.');
+            }
+        } catch (e) {
+            alert('Error de red al agregar el número.');
+        } finally {
+            addBtn.disabled = false;
+        }
+    }
+
+    async function removeNumber(e) {
+        const num = e.currentTarget.dataset.num;
+        try {
+            const data = await sandboxApi('DELETE', '/flowmaker/sandbox/numbers/' + num);
+            if (data.ok) {
+                sandboxState.wa_numbers = data.wa_numbers;
+                renderStatus();
+            }
+        } catch (e) {
+            alert('Error de red al quitar el número.');
+        }
+    }
+
+    async function saveDraft() {
+        draftBtn.disabled = true;
+        draftBtn.textContent = 'Guardando…';
+        await saveDraftInternal();
+        draftBtn.disabled = false;
+        draftBtn.textContent = 'Guardar borrador sandbox';
+    }
+
+    async function clearSandbox() {
+        if (!confirm('¿Desactivar el sandbox? Se eliminarán el borrador y todos los números de prueba.')) return;
+        clearBtn.disabled = true;
+        try {
+            const data = await sandboxApi('DELETE', '/flowmaker/sandbox');
+            if (data.ok) {
+                sandboxState = { active: false, version_number: null, wa_numbers: [] };
+                renderStatus();
+            }
+        } catch (e) {
+            alert('Error de red al limpiar el sandbox.');
+        } finally {
+            clearBtn.disabled = false;
+        }
+    }
+
+    function openModal() {
+        overlay.style.display = 'flex';
+        loadStatus();
+    }
+    function closeModal(e) {
+        if (e && e.target !== overlay && e.target !== closeBtn) return;
+        overlay.style.display = 'none';
+    }
+
+    openBtn?.addEventListener('click', openModal);
+    closeBtn?.addEventListener('click', closeModal);
+    overlay?.addEventListener('click', closeModal);
+    addBtn?.addEventListener('click', addNumber);
+    numInput?.addEventListener('keydown', function (e) { if (e.key === 'Enter') addNumber(); });
+    draftBtn?.addEventListener('click', saveDraft);
+    clearBtn?.addEventListener('click', clearSandbox);
+
+    document.getElementById('wa-sandbox-stale-dismiss')?.addEventListener('click', function () {
+        const b = document.getElementById('wa-sandbox-stale-banner');
+        if (b) b.style.display = 'none';
+    });
+
+    window.sandboxSync = {
+        active:    function () { return sandboxState.active; },
+        version:   function () { return sandboxState.version_number; },
+        saveDraft: saveDraftInternal,
+    };
+
+    // Check sandbox state on page load
+    (async function () {
+        try {
+            const data = await sandboxApi('GET', '/flowmaker/sandbox');
+            if (data.ok && data.data && data.data.active) {
+                sandboxState = data.data;
+                renderStatus();
+            }
+        } catch (e) { /* silent */ }
+    }());
+}());
+</script>
+@endpush
