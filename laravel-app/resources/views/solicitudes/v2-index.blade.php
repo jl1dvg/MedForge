@@ -1666,5 +1666,12 @@
             notificationStorageKey: @json($notificationStorageKey ?? 'medf:notification-panel:solicitudes-v2'),
         };
     </script>
-    @vite('resources/js/v2/solicitudes-index.js')
+    @if(\App\Modules\Shared\Support\MedforgeAssets::hasViteBuild())
+        @vite('resources/js/v2/solicitudes-index.js')
+    @else
+        @if(!empty($realtimeConfig['enabled']) && !empty($realtimeConfig['key']))
+            <script src="/assets/vendor_components/pusher/pusher.min.js"></script>
+        @endif
+        <script src="/js/pages/solicitudes/v2-index.js?v=2"></script>
+    @endif
 @endpush
