@@ -1719,7 +1719,7 @@ class KpiDashboardService
                     ON human.conversation_id = inbound.conversation_id
                 WHERE inbound.first_inbound_at IS NOT NULL';
 
-        $rows = DB::select($sql, array_merge([Carbon::now()->format('Y-m-d H:i:s')], array_values($scope['params'] + $reply['params'])));
+        $rows = DB::select($sql, array_merge([Carbon::now()->format('Y-m-d H:i:s')], array_values($scope['params']), array_values($reply['params'])));
         $events = [];
         foreach ($rows as $row) {
             $opened = strtotime((string) ($row->opened_at ?? ''));

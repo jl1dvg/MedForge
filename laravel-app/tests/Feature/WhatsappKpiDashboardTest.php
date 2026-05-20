@@ -344,7 +344,7 @@ class WhatsappKpiDashboardTest extends TestCase
             ->assertSee('Personas que escribieron')
             ->assertSee('Tiempo a primera respuesta humana')
             ->assertSee('Desde handoff · mediana 3 min')
-            ->assertSee('SLA asignación (objetivo: 15 min)')
+            ->assertSee('Respondidos a tiempo')
             ->assertSee('Atención humana por agente')
             ->assertSee('Exportar CSV');
     }
