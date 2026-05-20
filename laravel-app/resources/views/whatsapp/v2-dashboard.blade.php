@@ -768,6 +768,7 @@
                     </div>
                 </div>
                 {{-- ══ FIN ZONA AHORA ══ --}}
+                {{--
                 <div class="wa-kpi-grid">
                     @php
                         $slaTargetMinutes = (int) ($summary['sla_target_minutes'] ?? ($filters['sla_target_minutes'] ?? 15));
@@ -783,8 +784,8 @@
                             ['label' => 'Urgente: derivado sin atender >24h', 'value' => $summary['conversations_abandoned_with_handoff'] ?? 0, 'sub' => ($summary['conversations_lost_with_handoff'] ?? 0) . ' sin respuesta humana tras handoff', 'help' => 'Subset realmente accionable para operación: conversaciones que sí pidieron ayuda o cayeron en handoff y siguen sin respuesta humana después de 24 horas.'],
                             ['label' => 'Conversaciones resueltas', 'value' => $summary['conversations_resolved'] ?? 0, 'sub' => 'Sin actividad inbound 24h', 'help' => 'Conversaciones atendidas que no han recibido nuevos inbound en las últimas 24 horas.'],
                             ['label' => 'Pico simultáneo', 'value' => $summary['peak_open_conversations'] ?? 0, 'sub' => $summary['peak_open_at'] ?? 'Sin dato', 'help' => 'Máximo de conversaciones abiertas al mismo tiempo detectado dentro del rango analizado.'],
-                            // ['label' => 'Mensajes inbound', 'value' => $summary['messages_inbound'] ?? 0, 'sub' => 'Recibidos', 'help' => 'Total de mensajes recibidos desde pacientes o contactos en el periodo.'],
-                            // ['label' => 'Mensajes outbound', 'value' => $summary['messages_outbound'] ?? 0, 'sub' => 'Enviados', 'help' => 'Total de mensajes enviados desde el canal, incluyendo bot, humanos y plantillas.'],
+                            ['label' => 'Mensajes inbound', 'value' => $summary['messages_inbound'] ?? 0, 'sub' => 'Recibidos', 'help' => 'Total de mensajes recibidos desde pacientes o contactos en el periodo.'],
+                            ['label' => 'Mensajes outbound', 'value' => $summary['messages_outbound'] ?? 0, 'sub' => 'Enviados', 'help' => 'Total de mensajes enviados desde el canal, incluyendo bot, humanos y plantillas.'],
                             ['label' => 'Citas desde WhatsApp', 'value' => $summary['sigcenter_bookings_created'] ?? 0, 'sub' => ($summary['sigcenter_booking_patients'] ?? 0) . ' pacientes · ' . ($summary['sigcenter_booking_failures'] ?? 0) . ' fallidas', 'help' => 'Citas creadas exitosamente desde WhatsApp según integración con Sigcenter, junto con pacientes únicos y fallos registrados.'],
                             ['label' => 'Respondidos a tiempo (meta: ' . $slaTargetMinutes . ' min)', 'value' => ($summary['sla_assignments_rate'] ?? 0) . '%', 'sub' => ($summary['sla_assignments_in_target'] ?? 0) . '/' . ($summary['sla_assignments_total'] ?? 0) . ' en meta', 'help' => 'Mide tiempo de asignación interna del handoff, no tiempo de respuesta efectiva al paciente.'],
                             ['label' => 'Conversaciones en atención ahora', 'value' => $summary['live_queue_total'] ?? 0, 'sub' => 'Cola ' . ($summary['live_queue_queued'] ?? 0) . ' · Asignadas ' . ($summary['live_queue_assigned'] ?? 0), 'help' => 'Conversaciones actualmente en circuito humano: pendientes en cola o ya asignadas a un agente.'],
@@ -811,6 +812,7 @@
                         </div>
                     @endforeach
                 </div>
+--}}
             </div>
 
             {{-- ── TENDENCIAS DEL CANAL ─────────────────────────────────────── --}}
@@ -888,7 +890,50 @@
                 <div class="wa-group-label">🔍 Análisis de conversaciones</div>
             </div>
 
-            <div class="col-xl-6 col-12">
+
+            <div class="col-xl-4 col-12">
+                <div class="wa-kpi-panel">
+                    <div class="wa-kpi-panel__head" style="cursor:pointer;"
+                         onclick="var t=document.getElementById('chart-embudo-table');t.style.display=t.style.display==='none'?'block':'none';this.querySelector('.wa-section-toggle').textContent=t.style.display==='none'?'▼':'▲'">
+                        <div class="wa-kpi-title-row">
+                            <div class="wa-kpi-sideheading__title">Embudo conversacional y comercial</div>
+                            <button type="button" class="wa-kpi-help"
+                                    aria-label="Ver ayuda de Embudo conversacional y comercial"
+                                    onclick="event.stopPropagation()">
+                                ?
+                                <span class="wa-kpi-help__tooltip">{{ $sectionHelp['funnel'] }}</span>
+                            </button>
+                            <span
+                                style="font-size:10px;background:#f0fdf4;color:#166534;border-radius:4px;padding:2px 7px;font-weight:600;margin-left:auto;margin-right:6px">🔻 Chart + tabla</span>
+                            <button type="button" class="wa-section-toggle">▼</button>
+                        </div>
+                        <div class="wa-kpi-sideheading__meta">Avance de las conversaciones nuevas desde el inicio hasta
+                            la creación efectiva de cita.
+                        </div>
+                    </div>
+                    <div class="wa-kpi-panel__body">
+                        <div id="chart-embudo" class="wa-chart-wrap" style="height:260px"></div>
+                    </div>
+                    <div class="wa-kpi-panel__body" id="chart-embudo-table" style="display:none">
+                        <div class="wa-kpi-grid">
+                            @forelse($analyticsFunnel as $step)
+                                <div class="wa-kpi-card">
+                                    <div class="wa-kpi-label">{{ $step['label'] }}</div>
+                                    <div class="wa-kpi-value">{{ $step['value'] }}</div>
+                                    <div class="wa-kpi-sub">Desde inicio {{ $step['rate_from_start'] }}% ·
+                                        Paso {{ $step['rate_to_next'] }}%
+                                    </div>
+                                </div>
+                            @empty
+                                <div class="text-muted">Sin datos para el rango actual.</div>
+                            @endforelse
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {{-- chart-embudo rendered via @push('scripts') after ApexCharts CDN --}}
+
+            <div class="col-xl-4 col-12">
                 <div class="wa-kpi-panel">
                     <div class="wa-kpi-panel__head" style="cursor:pointer"
                          onclick="var t=document.getElementById('chart-intencion-table');t.style.display=t.style.display==='none'?'block':'none';this.querySelector('.wa-section-toggle').textContent=t.style.display==='none'?'▼':'▲'">
@@ -946,7 +991,7 @@
                 </div>
             </div>
 
-            <div class="col-xl-6 col-12">
+            <div class="col-xl-4 col-12">
                 <div class="wa-kpi-panel">
                     <div class="wa-kpi-panel__head" style="cursor:pointer"
                          onclick="var t=document.getElementById('chart-tipo-conv-table');t.style.display=t.style.display==='none'?'block':'none';this.querySelector('.wa-section-toggle').textContent=t.style.display==='none'?'▼':'▲'">
@@ -1004,7 +1049,7 @@
                 </div>
             </div>
 
-            <div class="col-xl-6 col-12">
+            <div class="col-xl-4 col-12">
                 <div class="wa-kpi-panel">
                     <div class="wa-kpi-panel__head" style="cursor:pointer"
                          onclick="var t=document.getElementById('chart-segmento-table');t.style.display=t.style.display==='none'?'block':'none';this.querySelector('.wa-section-toggle').textContent=t.style.display==='none'?'▼':'▲'">
@@ -1062,7 +1107,7 @@
                 </div>
             </div>
 
-            <div class="col-xl-6 col-12">
+            <div class="col-xl-4 col-12">
                 <div class="wa-kpi-panel">
                     <div class="wa-kpi-panel__head" style="cursor:pointer;"
                          onclick="var t=document.getElementById('chart-lead-scoring-table');t.style.display=t.style.display==='none'?'block':'none';this.querySelector('.wa-section-toggle').textContent=t.style.display==='none'?'▼':'▲'">
@@ -1121,7 +1166,7 @@
             </div>
             {{-- chart-lead-scoring rendered via @push('scripts') after ApexCharts CDN --}}
 
-            <div class="col-xl-6 col-12">
+            <div class="col-xl-4 col-12">
                 <div class="wa-kpi-panel">
                     <div class="wa-kpi-panel__head" style="cursor:pointer;"
                          onclick="var t=document.getElementById('chart-fricciones-table');t.style.display=t.style.display==='none'?'block':'none';this.querySelector('.wa-section-toggle').textContent=t.style.display==='none'?'▼':'▲'">
@@ -1174,48 +1219,6 @@
                 </div>
             </div>
             {{-- chart-fricciones rendered via @push('scripts') after ApexCharts CDN --}}
-
-            <div class="col-12">
-                <div class="wa-kpi-panel">
-                    <div class="wa-kpi-panel__head" style="cursor:pointer;"
-                         onclick="var t=document.getElementById('chart-embudo-table');t.style.display=t.style.display==='none'?'block':'none';this.querySelector('.wa-section-toggle').textContent=t.style.display==='none'?'▼':'▲'">
-                        <div class="wa-kpi-title-row">
-                            <div class="wa-kpi-sideheading__title">Embudo conversacional y comercial</div>
-                            <button type="button" class="wa-kpi-help"
-                                    aria-label="Ver ayuda de Embudo conversacional y comercial"
-                                    onclick="event.stopPropagation()">
-                                ?
-                                <span class="wa-kpi-help__tooltip">{{ $sectionHelp['funnel'] }}</span>
-                            </button>
-                            <span
-                                style="font-size:10px;background:#f0fdf4;color:#166534;border-radius:4px;padding:2px 7px;font-weight:600;margin-left:auto;margin-right:6px">🔻 Chart + tabla</span>
-                            <button type="button" class="wa-section-toggle">▼</button>
-                        </div>
-                        <div class="wa-kpi-sideheading__meta">Avance de las conversaciones nuevas desde el inicio hasta
-                            la creación efectiva de cita.
-                        </div>
-                    </div>
-                    <div class="wa-kpi-panel__body">
-                        <div id="chart-embudo" class="wa-chart-wrap" style="height:260px"></div>
-                    </div>
-                    <div class="wa-kpi-panel__body" id="chart-embudo-table" style="display:none">
-                        <div class="wa-kpi-grid">
-                            @forelse($analyticsFunnel as $step)
-                                <div class="wa-kpi-card">
-                                    <div class="wa-kpi-label">{{ $step['label'] }}</div>
-                                    <div class="wa-kpi-value">{{ $step['value'] }}</div>
-                                    <div class="wa-kpi-sub">Desde inicio {{ $step['rate_from_start'] }}% ·
-                                        Paso {{ $step['rate_to_next'] }}%
-                                    </div>
-                                </div>
-                            @empty
-                                <div class="text-muted">Sin datos para el rango actual.</div>
-                            @endforelse
-                        </div>
-                    </div>
-                </div>
-            </div>
-            {{-- chart-embudo rendered via @push('scripts') after ApexCharts CDN --}}
 
             <div class="col-12">
                 <div class="wa-kpi-panel">
@@ -1323,74 +1326,6 @@
             {{-- ── OPERACIÓN HUMANA ─────────────────────────────────────────── --}}
             <div class="col-12">
                 <div class="wa-group-label">👥 Operación humana</div>
-            </div>
-
-            <div class="col-xl-6 col-12">
-                <div class="wa-kpi-panel">
-                    <div class="wa-kpi-panel__head" style="cursor:pointer;"
-                         onclick="this.nextElementSibling.classList.toggle('d-none')">
-                        <div class="wa-kpi-title-row">
-                            <div class="wa-kpi-sideheading__title">Atención humana por agente</div>
-                            <button type="button" class="wa-kpi-help"
-                                    aria-label="Ver ayuda de Atención humana por agente"
-                                    onclick="event.stopPropagation()">
-                                ?
-                                <span class="wa-kpi-help__tooltip">{{ $sectionHelp['human_by_agent'] }}</span>
-                            </button>
-                            <span
-                                style="font-size:10px;background:#faf5ff;color:#6d28d9;border-radius:4px;padding:2px 7px;font-weight:600;margin-left:auto;margin-right:6px">📋 Tabla mejorada</span>
-                            <button type="button" class="wa-section-toggle">▼</button>
-                        </div>
-                        <div class="wa-kpi-sideheading__meta">Quién absorbió más conversaciones y cómo respondió en
-                            primera intervención.
-                        </div>
-                    </div>
-                    <div class="wa-kpi-panel__body p-0 d-none">
-                        <div class="table-responsive">
-                            <table class="table table-striped wa-kpi-table mb-0">
-                                <thead>
-                                <tr>
-                                    <th>Agente</th>
-                                    <th>Atendidas</th>
-                                    <th>1ra respuesta</th>
-                                    <th style="min-width:140px">Velocidad</th>
-                                </tr>
-                                </thead>
-                                <tbody>
-                                @php $slaMeta = (int)($filters['sla_target_minutes'] ?? 15); @endphp
-                                @forelse(($breakdowns['human_attention_by_agent'] ?? []) as $row)
-                                    @php
-                                        $mins  = $row['avg_first_response_minutes'];
-                                        $pct   = $mins !== null ? min(100, (int)round(($mins / ($slaMeta * 2)) * 100)) : 0;
-                                        $color = $mins === null ? 'green' : ($mins > $slaMeta * 2 ? 'red' : ($mins > $slaMeta ? 'yellow' : 'green'));
-                                        $badge = $mins === null ? '—' : ($mins > $slaMeta * 2 ? '✗ Alto' : ($mins > $slaMeta ? '~ OK' : '✓ OK'));
-                                    @endphp
-                                    <tr>
-                                        <td>{{ $row['agent_name'] }}</td>
-                                        <td>{{ $row['attended_conversations'] }}</td>
-                                        <td class="wa-prog-val--{{ $color }}">{{ $mins !== null ? $mins . ' min' : '—' }}</td>
-                                        <td>
-                                            <div class="wa-prog-wrap">
-                                                <div class="wa-prog-bg">
-                                                    <div class="wa-prog-fill wa-prog-fill--{{ $color }}"
-                                                         style="width:{{ $pct }}%"></div>
-                                                </div>
-                                                <span class="wa-prog-val wa-prog-val--{{ $color }}">{{ $badge }}</span>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                @empty
-                                    <tr>
-                                        <td colspan="4" class="text-center text-muted py-20">Sin datos para el rango
-                                            actual.
-                                        </td>
-                                    </tr>
-                                @endforelse
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
             </div>
 
             <div class="col-xl-6 col-12">
@@ -1519,6 +1454,74 @@
                                 @empty
                                     <tr>
                                         <td colspan="6" class="text-center text-muted py-20">Sin datos para el rango
+                                            actual.
+                                        </td>
+                                    </tr>
+                                @endforelse
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-xl-6 col-12">
+                <div class="wa-kpi-panel">
+                    <div class="wa-kpi-panel__head" style="cursor:pointer;"
+                         onclick="this.nextElementSibling.classList.toggle('d-none')">
+                        <div class="wa-kpi-title-row">
+                            <div class="wa-kpi-sideheading__title">Atención humana por agente</div>
+                            <button type="button" class="wa-kpi-help"
+                                    aria-label="Ver ayuda de Atención humana por agente"
+                                    onclick="event.stopPropagation()">
+                                ?
+                                <span class="wa-kpi-help__tooltip">{{ $sectionHelp['human_by_agent'] }}</span>
+                            </button>
+                            <span
+                                style="font-size:10px;background:#faf5ff;color:#6d28d9;border-radius:4px;padding:2px 7px;font-weight:600;margin-left:auto;margin-right:6px">📋 Tabla mejorada</span>
+                            <button type="button" class="wa-section-toggle">▼</button>
+                        </div>
+                        <div class="wa-kpi-sideheading__meta">Quién absorbió más conversaciones y cómo respondió en
+                            primera intervención.
+                        </div>
+                    </div>
+                    <div class="wa-kpi-panel__body p-0 d-none">
+                        <div class="table-responsive">
+                            <table class="table table-striped wa-kpi-table mb-0">
+                                <thead>
+                                <tr>
+                                    <th>Agente</th>
+                                    <th>Atendidas</th>
+                                    <th>1ra respuesta</th>
+                                    <th style="min-width:140px">Velocidad</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                @php $slaMeta = (int)($filters['sla_target_minutes'] ?? 15); @endphp
+                                @forelse(($breakdowns['human_attention_by_agent'] ?? []) as $row)
+                                    @php
+                                        $mins  = $row['avg_first_response_minutes'];
+                                        $pct   = $mins !== null ? min(100, (int)round(($mins / ($slaMeta * 2)) * 100)) : 0;
+                                        $color = $mins === null ? 'green' : ($mins > $slaMeta * 2 ? 'red' : ($mins > $slaMeta ? 'yellow' : 'green'));
+                                        $badge = $mins === null ? '—' : ($mins > $slaMeta * 2 ? '✗ Alto' : ($mins > $slaMeta ? '~ OK' : '✓ OK'));
+                                    @endphp
+                                    <tr>
+                                        <td>{{ $row['agent_name'] }}</td>
+                                        <td>{{ $row['attended_conversations'] }}</td>
+                                        <td class="wa-prog-val--{{ $color }}">{{ $mins !== null ? $mins . ' min' : '—' }}</td>
+                                        <td>
+                                            <div class="wa-prog-wrap">
+                                                <div class="wa-prog-bg">
+                                                    <div class="wa-prog-fill wa-prog-fill--{{ $color }}"
+                                                         style="width:{{ $pct }}%"></div>
+                                                </div>
+                                                <span class="wa-prog-val wa-prog-val--{{ $color }}">{{ $badge }}</span>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                @empty
+                                    <tr>
+                                        <td colspan="4" class="text-center text-muted py-20">Sin datos para el rango
                                             actual.
                                         </td>
                                     </tr>
@@ -2096,90 +2099,175 @@
                 var el = document.getElementById('chart-ads');
                 if (!el) return;
                 var rows = @json($analyticsAds);
-    if (!rows || !rows.length) {
-        el.innerHTML = '<div class="wa-chart-empty">Sin conversaciones atribuibles a Ads en el rango actual</div>';
-        return;
-    }
-    rows = rows.slice().sort(function(a, b){ return (parseInt(b.bookings)||0) - (parseInt(a.bookings)||0); });
-    var platformIcons = { facebook: '📘', instagram: '📷', whatsapp: '💬' };
-    var labels = rows.map(function(r){
-        var icon = platformIcons[r.platform] || '❓';
-        return icon + ' ' + (r.headline ? r.headline.substring(0, 28) + (r.headline.length > 28 ? '…' : '') : 'Sin nombre');
-    });
-    new ApexCharts(el, {
-        chart: { type: 'bar', height: 220, toolbar: { show: false }, fontFamily: 'inherit' },
-        plotOptions: { bar: { horizontal: true, distributed: true, barHeight: '60%', borderRadius: 4 } },
-        series: [{ name: 'Citas', data: rows.map(function(r){ return parseInt(r.bookings)||0; }) }],
-        xaxis: { categories: labels, labels: { style: { fontSize: '10px' } } },
-        yaxis: { labels: { style: { fontSize: '10px' }, maxWidth: 160 } },
-        colors: rows.map(function(r){ return r.platform === 'instagram' ? '#e879f9' : '#3b82f6'; }),
-        legend: { show: false },
-        dataLabels: { enabled: true, formatter: function(val){ return val + ' citas'; }, style: { fontSize: '10px' } },
-        tooltip: { y: { formatter: function(val, opts){ var r = rows[opts.dataPointIndex]; return val + ' citas · ' + (r ? r.conversations : 0) + ' conv.'; } } },
-        grid: { borderColor: '#f1f5f9' },
-    }).render();
-}());
-</script>
-<script>
-(function () {
-    var el = document.getElementById('chart-lead-scoring');
-    if (!el) return;
-    var rows = @json($analyticsLeadScores);
-    if (!rows || !rows.length) { el.innerHTML = '<div class="wa-chart-empty">Sin datos para el periodo seleccionado</div>'; return; }
-    new ApexCharts(el, {
-        chart: { type: 'bar', height: 180, toolbar: { show: false }, fontFamily: 'inherit' },
-        plotOptions: { bar: { horizontal: true, distributed: true, barHeight: '60%', borderRadius: 4 } },
-        series: [{ name: 'Conversaciones', data: rows.map(function(r){ return parseInt(r.total)||0; }) }],
-        xaxis: { categories: rows.map(function(r){ return r.bucket_label; }), labels: { style: { fontSize: '11px' } } },
-        yaxis: { labels: { style: { fontSize: '11px' } } },
-        colors: ['#10b981', '#3b82f6', '#f59e0b', '#ef4444'],
-        legend: { show: false },
-        dataLabels: { enabled: true, style: { fontSize: '10px' } },
-        grid: { borderColor: '#f1f5f9' },
-    }).render();
-}());
-</script>
-<script>
-(function () {
-    var el = document.getElementById('chart-fricciones');
-    if (!el) return;
-    var rows = @json($analyticsFrictions);
-    if (!rows || !rows.length) { el.innerHTML = '<div class="wa-chart-empty">Sin datos para el periodo seleccionado</div>'; return; }
-    var colors = rows.map(function(r){ var s = parseFloat(r.share)||0; return s >= 30 ? '#ef4444' : (s >= 15 ? '#f59e0b' : '#94a3b8'); });
-    new ApexCharts(el, {
-        chart: { type: 'bar', height: 180, toolbar: { show: false }, fontFamily: 'inherit' },
-        plotOptions: { bar: { horizontal: true, distributed: true, barHeight: '60%', borderRadius: 4 } },
-        series: [{ name: '% de fricciones', data: rows.map(function(r){ return parseFloat(r.share)||0; }) }],
-        xaxis: { categories: rows.map(function(r){ return r.friction_label; }), labels: { style: { fontSize: '11px' } }, max: 100 },
-        yaxis: { labels: { style: { fontSize: '11px' } } },
-        colors: colors,
-        legend: { show: false },
-        dataLabels: { enabled: true, formatter: function(val){ return val + '%'; }, style: { fontSize: '10px' } },
-        tooltip: { y: { formatter: function(val, opts){ return val + '% (' + (rows[opts.dataPointIndex] ? rows[opts.dataPointIndex].total : 0) + ' conv.)'; } } },
-        grid: { borderColor: '#f1f5f9' },
-    }).render();
-}());
-</script>
-<script>
-(function () {
-    var el = document.getElementById('chart-embudo');
-    if (!el) return;
-    var steps = @json($analyticsFunnel);
-    if (!steps || !steps.length) { el.innerHTML = '<div class="wa-chart-empty">Sin datos para el periodo seleccionado</div>'; return; }
-    new ApexCharts(el, {
-        chart: { type: 'bar', height: 260, toolbar: { show: false }, fontFamily: 'inherit' },
-        plotOptions: { bar: { horizontal: true, distributed: false, barHeight: '55%', borderRadius: 4, isFunnel: true } },
-        series: [{ name: 'Conversaciones', data: steps.map(function(s){ return parseInt(s.value)||0; }) }],
-        xaxis: { categories: steps.map(function(s){ return s.label; }), labels: { style: { fontSize: '11px' } } },
-        yaxis: { labels: { style: { fontSize: '11px' } } },
-        colors: ['#3b82f6'],
-        dataLabels: { enabled: true, formatter: function(val, opts){ var s = steps[opts.dataPointIndex]; return val + (s ? ' (' + s.rate_from_start + '%)' : ''); }, style: { fontSize: '11px' } },
-        legend: { show: false },
-        grid: { borderColor: '#f1f5f9' },
-        tooltip: { y: { formatter: function(val, opts){ var s = steps[opts.dataPointIndex]; return val + ' conv. · ' + (s ? s.rate_to_next + '% al siguiente' : ''); } } },
-    }).render();
-}());
-</script>
-@endpush
+                if (!rows || !rows.length) {
+                    el.innerHTML = '<div class="wa-chart-empty">Sin conversaciones atribuibles a Ads en el rango actual</div>';
+                    return;
+                }
+                rows = rows.slice().sort(function (a, b) {
+                    return (parseInt(b.bookings) || 0) - (parseInt(a.bookings) || 0);
+                });
+                var platformIcons = {facebook: '📘', instagram: '📷', whatsapp: '💬'};
+                var labels = rows.map(function (r) {
+                    var icon = platformIcons[r.platform] || '❓';
+                    return icon + ' ' + (r.headline ? r.headline.substring(0, 28) + (r.headline.length > 28 ? '…' : '') : 'Sin nombre');
+                });
+                new ApexCharts(el, {
+                    chart: {type: 'bar', height: 220, toolbar: {show: false}, fontFamily: 'inherit'},
+                    plotOptions: {bar: {horizontal: true, distributed: true, barHeight: '60%', borderRadius: 4}},
+                    series: [{
+                        name: 'Citas', data: rows.map(function (r) {
+                            return parseInt(r.bookings) || 0;
+                        })
+                    }],
+                    xaxis: {categories: labels, labels: {style: {fontSize: '10px'}}},
+                    yaxis: {labels: {style: {fontSize: '10px'}, maxWidth: 160}},
+                    colors: rows.map(function (r) {
+                        return r.platform === 'instagram' ? '#e879f9' : '#3b82f6';
+                    }),
+                    legend: {show: false},
+                    dataLabels: {
+                        enabled: true, formatter: function (val) {
+                            return val + ' citas';
+                        }, style: {fontSize: '10px'}
+                    },
+                    tooltip: {
+                        y: {
+                            formatter: function (val, opts) {
+                                var r = rows[opts.dataPointIndex];
+                                return val + ' citas · ' + (r ? r.conversations : 0) + ' conv.';
+                            }
+                        }
+                    },
+                    grid: {borderColor: '#f1f5f9'},
+                }).render();
+            }());
+        </script>
+        <script>
+            (function () {
+                var el = document.getElementById('chart-lead-scoring');
+                if (!el) return;
+                var rows = @json($analyticsLeadScores);
+                if (!rows || !rows.length) {
+                    el.innerHTML = '<div class="wa-chart-empty">Sin datos para el periodo seleccionado</div>';
+                    return;
+                }
+                new ApexCharts(el, {
+                    chart: {type: 'bar', height: 180, toolbar: {show: false}, fontFamily: 'inherit'},
+                    plotOptions: {bar: {horizontal: true, distributed: true, barHeight: '60%', borderRadius: 4}},
+                    series: [{
+                        name: 'Conversaciones', data: rows.map(function (r) {
+                            return parseInt(r.total) || 0;
+                        })
+                    }],
+                    xaxis: {
+                        categories: rows.map(function (r) {
+                            return r.bucket_label;
+                        }), labels: {style: {fontSize: '11px'}}
+                    },
+                    yaxis: {labels: {style: {fontSize: '11px'}}},
+                    colors: ['#10b981', '#3b82f6', '#f59e0b', '#ef4444'],
+                    legend: {show: false},
+                    dataLabels: {enabled: true, style: {fontSize: '10px'}},
+                    grid: {borderColor: '#f1f5f9'},
+                }).render();
+            }());
+        </script>
+        <script>
+            (function () {
+                var el = document.getElementById('chart-fricciones');
+                if (!el) return;
+                var rows = @json($analyticsFrictions);
+                if (!rows || !rows.length) {
+                    el.innerHTML = '<div class="wa-chart-empty">Sin datos para el periodo seleccionado</div>';
+                    return;
+                }
+                var colors = rows.map(function (r) {
+                    var s = parseFloat(r.share) || 0;
+                    return s >= 30 ? '#ef4444' : (s >= 15 ? '#f59e0b' : '#94a3b8');
+                });
+                new ApexCharts(el, {
+                    chart: {type: 'bar', height: 180, toolbar: {show: false}, fontFamily: 'inherit'},
+                    plotOptions: {bar: {horizontal: true, distributed: true, barHeight: '60%', borderRadius: 4}},
+                    series: [{
+                        name: '% de fricciones', data: rows.map(function (r) {
+                            return parseFloat(r.share) || 0;
+                        })
+                    }],
+                    xaxis: {
+                        categories: rows.map(function (r) {
+                            return r.friction_label;
+                        }), labels: {style: {fontSize: '11px'}}, max: 100
+                    },
+                    yaxis: {labels: {style: {fontSize: '11px'}}},
+                    colors: colors,
+                    legend: {show: false},
+                    dataLabels: {
+                        enabled: true, formatter: function (val) {
+                            return val + '%';
+                        }, style: {fontSize: '10px'}
+                    },
+                    tooltip: {
+                        y: {
+                            formatter: function (val, opts) {
+                                return val + '% (' + (rows[opts.dataPointIndex] ? rows[opts.dataPointIndex].total : 0) + ' conv.)';
+                            }
+                        }
+                    },
+                    grid: {borderColor: '#f1f5f9'},
+                }).render();
+            }());
+        </script>
+        <script>
+            (function () {
+                var el = document.getElementById('chart-embudo');
+                if (!el) return;
+                var steps = @json($analyticsFunnel);
+                if (!steps || !steps.length) {
+                    el.innerHTML = '<div class="wa-chart-empty">Sin datos para el periodo seleccionado</div>';
+                    return;
+                }
+                new ApexCharts(el, {
+                    chart: {type: 'bar', height: 260, toolbar: {show: false}, fontFamily: 'inherit'},
+                    plotOptions: {
+                        bar: {
+                            horizontal: true,
+                            distributed: false,
+                            barHeight: '55%',
+                            borderRadius: 4,
+                            isFunnel: true
+                        }
+                    },
+                    series: [{
+                        name: 'Conversaciones', data: steps.map(function (s) {
+                            return parseInt(s.value) || 0;
+                        })
+                    }],
+                    xaxis: {
+                        categories: steps.map(function (s) {
+                            return s.label;
+                        }), labels: {style: {fontSize: '11px'}}
+                    },
+                    yaxis: {labels: {style: {fontSize: '11px'}}},
+                    colors: ['#3b82f6'],
+                    dataLabels: {
+                        enabled: true, formatter: function (val, opts) {
+                            var s = steps[opts.dataPointIndex];
+                            return val + (s ? ' (' + s.rate_from_start + '%)' : '');
+                        }, style: {fontSize: '11px'}
+                    },
+                    legend: {show: false},
+                    grid: {borderColor: '#f1f5f9'},
+                    tooltip: {
+                        y: {
+                            formatter: function (val, opts) {
+                                var s = steps[opts.dataPointIndex];
+                                return val + ' conv. · ' + (s ? s.rate_to_next + '% al siguiente' : '');
+                            }
+                        }
+                    },
+                }).render();
+            }());
+        </script>
+    @endpush
 
 @endsection
