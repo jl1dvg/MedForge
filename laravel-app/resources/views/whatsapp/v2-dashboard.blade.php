@@ -53,6 +53,23 @@
     ];
 @endphp
 
+@php
+    $slaMeta         = (int) ($filters['sla_target_minutes'] ?? 15);
+    $alertQueue      = ($summary['live_queue_queued'] ?? 0) > 10;
+    $alertSla        = ($summary['sla_assignments_rate'] ?? 100) < 70;
+    $alertUnanswered = ($summary['unanswered_no_human'] ?? 0) >= 5;
+    $hasAlerts       = $alertQueue || $alertSla || $alertUnanswered;
+    $alertCount      = (int) $alertQueue + (int) $alertSla + (int) $alertUnanswered;
+
+    $topSource   = collect($analyticsSources)->sortByDesc('total')->first();
+    $topIntent   = collect($analyticsIntents)->sortByDesc('total')->first();
+    $topSegment  = collect($analyticsSegments)->sortByDesc('total')->first();
+    $topFriction = collect($analyticsFrictions)->sortByDesc('total')->first();
+    $topAd       = collect($analyticsAds)->sortByDesc('bookings')->first();
+    $totalConvs  = $analyticsSummary['total_conversations'] ?? 0;
+    $frictionHighShare = isset($topFriction['share']) && (int) $topFriction['share'] > 30;
+@endphp
+
 @push('styles')
 <style>
     .wa-dashboard-pagebar {
@@ -403,6 +420,26 @@
                 </div>
             </div>
         </div>
+
+        {{-- ── Banner de alertas condicional ─────────────────────────────── --}}
+        @if($hasAlerts)
+        <div class="col-12">
+        <div id="wa-alert-banner" class="mb-3" style="background:linear-gradient(135deg,#fef2f2,#fff7ed);border:1px solid #fecaca;border-radius:14px;padding:14px 20px;display:flex;align-items:center;gap:14px;">
+            <span style="font-size:24px;flex-shrink:0">⚠️</span>
+            <div style="flex:1">
+                <div style="font-size:13px;font-weight:700;color:#dc2626;line-height:1.3">
+                    {{ $alertCount }} {{ $alertCount === 1 ? 'alerta activa' : 'alertas activas' }} en este periodo
+                </div>
+                <div style="font-size:11px;color:#64748b;margin-top:3px;line-height:1.5">
+                    @if($alertQueue) Cola activa alta ({{ $summary['live_queue_queued'] }} en espera). @endif
+                    @if($alertSla) SLA por debajo de meta ({{ $summary['sla_assignments_rate'] }}%). @endif
+                    @if($alertUnanswered) {{ $summary['unanswered_no_human'] }} conversaciones sin respuesta humana. @endif
+                </div>
+            </div>
+            <a href="#exec-summary" onclick="document.getElementById('exec-summary-body').classList.remove('d-none')" style="font-size:11px;color:#3b82f6;font-weight:600;white-space:nowrap;text-decoration:none;">Ver resumen ejecutivo ↓</a>
+        </div>
+        </div>
+        @endif
 
         <div class="col-12">
             <div class="wa-dashboard-filter-shell">
@@ -1335,6 +1372,51 @@
                             @endforelse
                             </tbody>
                         </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {{-- ── Resumen ejecutivo para gerencia ────────────────────────────── --}}
+        <div id="exec-summary" class="col-12 mt-3">
+            <div class="wa-kpi-panel">
+                <div class="wa-kpi-panel__head" style="cursor:pointer"
+                     onclick="document.getElementById('exec-summary-body').classList.toggle('d-none')">
+                    <div class="wa-kpi-title-row">
+                        <div class="wa-kpi-sideheading__title">📋 Resumen ejecutivo del periodo</div>
+                        <button type="button" class="wa-section-toggle ms-auto">▼</button>
+                    </div>
+                    <div class="wa-kpi-sideheading__meta">Lectura consolidada para gerencia — origen, intención, SLA y fricción.</div>
+                </div>
+                <div id="exec-summary-body" class="wa-kpi-panel__body d-none">
+                    <p style="font-size:13px;color:#475569;line-height:1.75;margin-bottom:16px">
+                        El canal recibió <strong>{{ number_format($totalConvs) }} conversaciones nuevas</strong> en el periodo.
+                        @if($topSource) La principal fuente fue <strong>{{ $topSource['source_label'] }} ({{ $topSource['share'] }}%)</strong>. @endif
+                        @if($topIntent) La intención dominante fue <strong>{{ $topIntent['intent_label'] }} ({{ $topIntent['share'] }}%)</strong>. @endif
+                        @if($frictionHighShare) Se detectó <strong>fricción significativa</strong> en "{{ $topFriction['friction_label'] }}" ({{ $topFriction['share'] }}% de conversaciones). @endif
+                    </p>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                        @if($frictionHighShare)
+                        <div style="background:#fef2f2;border-radius:10px;padding:12px;display:flex;gap:10px;align-items:flex-start">
+                            <span style="font-size:18px">🔴</span>
+                            <div><strong style="font-size:12px;color:#dc2626">Acción recomendada</strong><div style="font-size:11px;color:#64748b;margin-top:3px">Revisar "{{ $topFriction['friction_label'] }}" — representa {{ $topFriction['share'] }}% de las fricciones</div></div>
+                        </div>
+                        @endif
+                        @if($topAd)
+                        <div style="background:#f0fdf4;border-radius:10px;padding:12px;display:flex;gap:10px;align-items:flex-start">
+                            <span style="font-size:18px">🟢</span>
+                            <div><strong style="font-size:12px;color:#166534">Mejor anuncio</strong><div style="font-size:11px;color:#64748b;margin-top:3px">{{ $topAd['headline'] }} — {{ $topAd['bookings'] }} citas ({{ $topAd['platform_label'] ?? '' }})</div></div>
+                        </div>
+                        @endif
+                        <div style="background:#fffbeb;border-radius:10px;padding:12px;display:flex;gap:10px;align-items:flex-start">
+                            <span style="font-size:18px">🟡</span>
+                            <div><strong style="font-size:12px;color:#d97706">SLA del periodo</strong><div style="font-size:11px;color:#64748b;margin-top:3px">{{ $summary['sla_assignments_rate'] ?? 0 }}% respondidos dentro de meta de {{ $slaMeta }} min</div></div>
+                        </div>
+                        @if($topSegment)
+                        <div style="background:#eff6ff;border-radius:10px;padding:12px;display:flex;gap:10px;align-items:flex-start">
+                            <span style="font-size:18px">🔵</span>
+                            <div><strong style="font-size:12px;color:#2563eb">Segmento dominante</strong><div style="font-size:11px;color:#64748b;margin-top:3px">{{ $topSegment['segment_label'] }} — {{ $topSegment['share'] }}% de las conversaciones</div></div>
+                        </div>
+                        @endif
                     </div>
                 </div>
             </div>
