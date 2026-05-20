@@ -1626,6 +1626,7 @@
         el.innerHTML = '<div class="wa-chart-empty">Sin conversaciones atribuibles a Ads en el rango actual</div>';
         return;
     }
+    rows = rows.slice().sort(function(a, b){ return (parseInt(b.bookings)||0) - (parseInt(a.bookings)||0); });
     var platformIcons = { facebook: '📘', instagram: '📷', whatsapp: '💬' };
     var labels = rows.map(function(r){
         var icon = platformIcons[r.platform] || '❓';
