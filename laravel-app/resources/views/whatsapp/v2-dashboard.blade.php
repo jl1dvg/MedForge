@@ -750,35 +750,8 @@
                     </div>
                     <div class="wa-kpi-sideheading__meta">Cómo se reparte la entrada del canal entre Ads, orgánico y conversaciones iniciadas desde el equipo.</div>
                 </div>
-                <div class="wa-kpi-panel__body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-striped wa-kpi-table mb-0">
-                            <thead>
-                            <tr>
-                                <th>Fuente</th>
-                                <th>Conversaciones</th>
-                                <th>Participación</th>
-                                <th>Identificadas</th>
-                                <th>Citas</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                            @forelse($analyticsSources as $row)
-                                <tr>
-                                    <td>{{ $row['source_label'] }}</td>
-                                    <td>{{ $row['total'] }}</td>
-                                    <td>{{ $row['share'] }}%</td>
-                                    <td>{{ $row['identified'] }}</td>
-                                    <td>{{ $row['bookings'] }} <span class="text-muted">({{ $row['booking_rate'] }}%)</span></td>
-                                </tr>
-                            @empty
-                                <tr>
-                                    <td colspan="5" class="text-center text-muted py-20">Sin datos para el rango actual.</td>
-                                </tr>
-                            @endforelse
-                            </tbody>
-                        </table>
-                    </div>
+                <div class="wa-kpi-panel__body">
+                    <div id="chart-origen-demanda" class="wa-chart-wrap"></div>
                 </div>
             </div>
         </div>
@@ -1458,6 +1431,29 @@
         legend:  { position: 'top', fontSize: '12px' },
         grid:    { borderColor: '#f1f5f9' },
         dataLabels: { enabled: false },
+    }).render();
+}());
+</script>
+<script>
+(function () {
+    var el = document.getElementById('chart-origen-demanda');
+    if (!el) return;
+    var rows = @json($analyticsSources);
+    if (!rows || !rows.length) {
+        el.innerHTML = '<div class="wa-chart-empty">Sin datos para el periodo seleccionado</div>';
+        return;
+    }
+    var labels = rows.map(function(r){ return r.source_label; });
+    var series = rows.map(function(r){ return parseInt(r.total) || 0; });
+    new ApexCharts(el, {
+        chart:    { type: 'donut', height: 260, toolbar: { show: false }, fontFamily: 'inherit' },
+        series:   series,
+        labels:   labels,
+        colors:   ['#3b82f6','#e879f9','#10b981','#f59e0b','#6366f1','#94a3b8'],
+        legend:   { position: 'right', fontSize: '12px' },
+        plotOptions: { pie: { donut: { size: '60%', labels: { show: true, total: { show: true, label: 'Total', fontSize: '12px' } } } } },
+        dataLabels: { enabled: true, formatter: function(val){ return Math.round(val) + '%'; }, style: { fontSize: '11px' } },
+        tooltip:  { y: { formatter: function(val, opts){ return val + ' conv. (' + (rows[opts.seriesIndex] ? rows[opts.seriesIndex].booking_rate : 0) + '% cita)'; } } },
     }).render();
 }());
 </script>
