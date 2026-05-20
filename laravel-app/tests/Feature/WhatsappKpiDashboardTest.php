@@ -361,5 +361,9 @@ class WhatsappKpiDashboardTest extends TestCase
         $this->assertSame('whatsapp',   $ref->invoke($service, 'https://api.whatsapp.com/something'));
         $this->assertNull($ref->invoke($service, ''));
         $this->assertNull($ref->invoke($service, null));
+        // Edge cases
+        $this->assertNull($ref->invoke($service, 'not-a-url'));
+        $this->assertNull($ref->invoke($service, 'javascript:alert(1)'));
+        $this->assertSame('facebook', $ref->invoke($service, 'https://cdn.facebook.com/image.jpg'));
     }
 }
