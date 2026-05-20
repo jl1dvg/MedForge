@@ -340,7 +340,7 @@ class WhatsappKpiDashboardTest extends TestCase
 
         $response
             ->assertOk()
-            ->assertSee('KPI y reportes')
+            ->assertSee('WhatsApp KPI Dashboard')
             ->assertSee('Personas que escribieron')
             ->assertSee('Tiempo a primera respuesta humana')
             ->assertSee('Desde handoff · mediana 3 min')

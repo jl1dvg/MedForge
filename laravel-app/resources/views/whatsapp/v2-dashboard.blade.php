@@ -401,21 +401,26 @@
                 <div class="wa-dashboard-pagebar__top">
                     <div>
                         <div class="wa-kpi-title-row">
-                            <div class="wa-dashboard-pagebar__title">KPI y reportes</div>
-                            <button type="button" class="wa-kpi-help wa-kpi-help--light" aria-label="Ver ayuda de KPI y reportes">
+                            <div class="wa-dashboard-pagebar__title">WhatsApp KPI Dashboard</div>
+                            <button type="button" class="wa-kpi-help wa-kpi-help--light" aria-label="Ver ayuda del dashboard">
                                 ?
                                 <span class="wa-kpi-help__tooltip">{{ $sectionHelp['dashboard_title'] }}</span>
                             </button>
                         </div>
                         <div class="wa-dashboard-pagebar__subtitle">
-                            Vista operativa sobre Laravel para atención humana, SLA, cola, ventana de 24 horas y transferencias.
-                            El objetivo aquí es leer salud operativa rápido, no navegar tablas sueltas.
+                            Salud operativa y análisis del canal — actualizado al aplicar filtros
                         </div>
                     </div>
                     <div class="wa-dashboard-pagebar__meta">
-                        <span class="wa-dashboard-hero-pill"><i class="mdi mdi-chart-line"></i> atención {{ $summary['attention_rate'] ?? 0 }}%</span>
-                        <span class="wa-dashboard-hero-pill"><i class="mdi mdi-timer-outline"></i> SLA {{ $summary['sla_assignments_rate'] ?? 0 }}%</span>
-                        <span class="wa-dashboard-hero-pill"><i class="mdi mdi-tray-arrow-down"></i> cola {{ $summary['live_queue_total'] ?? 0 }}</span>
+                        @if(!empty($filters['date_from']) || !empty($filters['date_to']))
+                            <span class="wa-dashboard-hero-pill"><i class="mdi mdi-calendar-range"></i> {{ $filters['date_from'] ?? '—' }} → {{ $filters['date_to'] ?? '—' }}</span>
+                        @endif
+                        @if(!empty($filters['agent_id']))
+                            <span class="wa-dashboard-hero-pill"><i class="mdi mdi-account"></i> Agente filtrado</span>
+                        @else
+                            <span class="wa-dashboard-hero-pill"><i class="mdi mdi-account-group"></i> Todos los agentes</span>
+                        @endif
+                        <span class="wa-dashboard-hero-pill"><i class="mdi mdi-timer-outline"></i> Meta SLA: {{ $filters['sla_target_minutes'] ?? 15 }} min</span>
                     </div>
                 </div>
             </div>
@@ -544,6 +549,7 @@
                 $coberturaClass = $cobertura < 70 ? 'alert' : ($cobertura < 85 ? 'warn' : 'ok');
                 $slaClass      = $respondidos < 60 ? 'alert' : ($respondidos < 80 ? 'warn' : 'ok');
             @endphp
+            <div class="wa-group-label">⚡ En este momento</div>
             <div class="wa-now-zone mb-20">
                 <div class="wa-now-card wa-now-card--{{ $queueClass }}">
                     <div class="wa-now-card__value">{{ $queueTotal }}</div>
@@ -738,6 +744,46 @@
             </div>
         </div>
 
+        {{-- ── TENDENCIAS DEL CANAL ─────────────────────────────────────── --}}
+        <div class="col-12"><div class="wa-group-label">📊 Tendencias del canal</div></div>
+
+        <div class="col-xl-6 col-12">
+            <div class="wa-kpi-panel">
+                <div class="wa-kpi-panel__head">
+                    <div class="wa-kpi-title-row">
+                        <div class="wa-kpi-sideheading__title">Serie diaria del periodo</div>
+                        <button type="button" class="wa-kpi-help" aria-label="Ver ayuda de Series del periodo">
+                            ?
+                            <span class="wa-kpi-help__tooltip">{{ $sectionHelp['series'] }}</span>
+                        </button>
+                        <span style="font-size:10px;background:#eff6ff;color:#2563eb;border-radius:4px;padding:2px 7px;font-weight:600;margin-left:auto">📈 Chart puro</span>
+                    </div>
+                    <div class="wa-kpi-sideheading__meta">Evolución diaria de conversaciones nuevas, handoffs y citas creadas.</div>
+                </div>
+                <div class="wa-kpi-panel__body">
+                    <div id="chart-serie-diaria" class="wa-chart-wrap"></div>
+                    @php
+                        $chipTotals = [
+                            'Nuevas'        => array_sum($trends['conversations'] ?? []),
+                            'Con handoff'   => array_sum($trends['handoff_transfers'] ?? []),
+                            'Con cita'      => array_sum($trends['sigcenter_bookings'] ?? []),
+                        ];
+                    @endphp
+                    <div class="wa-chart-chips">
+                        @foreach($chipTotals as $chipLabel => $chipVal)
+                            <div class="wa-chart-chip">
+                                <div class="wa-chart-chip__val">{{ number_format($chipVal) }}</div>
+                                <div class="wa-chart-chip__lbl">{{ $chipLabel }}</div>
+                            </div>
+                        @endforeach
+                    </div>
+                    <div class="text-muted mt-10" style="font-size:.82rem;">
+                        Inbound {{ $summary['messages_inbound'] ?? 0 }} · Outbound {{ $summary['messages_outbound'] ?? 0 }} · Citas {{ $summary['sigcenter_bookings_created'] ?? 0 }} · Derivaciones {{ $summary['handoff_transfers'] ?? 0 }}
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="col-xl-6 col-12">
             <div class="wa-kpi-panel">
                 <div class="wa-kpi-panel__head">
@@ -747,6 +793,7 @@
                             ?
                             <span class="wa-kpi-help__tooltip">{{ $sectionHelp['source_demand'] }}</span>
                         </button>
+                        <span style="font-size:10px;background:#eff6ff;color:#2563eb;border-radius:4px;padding:2px 7px;font-weight:600;margin-left:auto">🍩 Chart puro</span>
                     </div>
                     <div class="wa-kpi-sideheading__meta">Cómo se reparte la entrada del canal entre Ads, orgánico y conversaciones iniciadas desde el equipo.</div>
                 </div>
@@ -797,6 +844,9 @@
             </div>
         </div>
 
+        {{-- ── ANÁLISIS DE CONVERSACIONES ───────────────────────────────── --}}
+        <div class="col-12"><div class="wa-group-label">🔍 Análisis de conversaciones</div></div>
+
         <div class="col-xl-6 col-12">
             <div class="wa-kpi-panel">
                 <div class="wa-kpi-panel__head" style="cursor:pointer" onclick="var t=document.getElementById('chart-intencion-table');t.style.display=t.style.display==='none'?'block':'none';this.querySelector('.wa-section-toggle').textContent=t.style.display==='none'?'▼':'▲'">
@@ -806,7 +856,8 @@
                             ?
                             <span class="wa-kpi-help__tooltip">{{ $sectionHelp['initial_intent'] }}</span>
                         </button>
-                        <button type="button" class="wa-section-toggle ms-auto">▼</button>
+                        <span style="font-size:10px;background:#f0fdf4;color:#166534;border-radius:4px;padding:2px 7px;font-weight:600;margin-left:auto;margin-right:6px">📊 Chart + tabla</span>
+                        <button type="button" class="wa-section-toggle">▼</button>
                     </div>
                     <div class="wa-kpi-sideheading__meta">Clasificación del primer mensaje útil de cada conversación nueva.</div>
                 </div>
@@ -855,7 +906,8 @@
                             ?
                             <span class="wa-kpi-help__tooltip">{{ $sectionHelp['conversation_type'] }}</span>
                         </button>
-                        <button type="button" class="wa-section-toggle ms-auto">▼</button>
+                        <span style="font-size:10px;background:#f0fdf4;color:#166534;border-radius:4px;padding:2px 7px;font-weight:600;margin-left:auto;margin-right:6px">📊 Chart + tabla</span>
+                        <button type="button" class="wa-section-toggle">▼</button>
                     </div>
                     <div class="wa-kpi-sideheading__meta">Clasificación operativa/comercial del contacto una vez interpretado el contexto de entrada.</div>
                 </div>
@@ -904,7 +956,8 @@
                             ?
                             <span class="wa-kpi-help__tooltip">{{ $sectionHelp['patient_segment'] }}</span>
                         </button>
-                        <button type="button" class="wa-section-toggle ms-auto">▼</button>
+                        <span style="font-size:10px;background:#f0fdf4;color:#166534;border-radius:4px;padding:2px 7px;font-weight:600;margin-left:auto;margin-right:6px">📊 Chart + tabla</span>
+                        <button type="button" class="wa-section-toggle">▼</button>
                     </div>
                     <div class="wa-kpi-sideheading__meta">Distribución entre paciente nuevo, recurrente y reactivado en las conversaciones nuevas.</div>
                 </div>
@@ -954,7 +1007,8 @@
                             ?
                             <span class="wa-kpi-help__tooltip">{{ $sectionHelp['lead_scoring'] }}</span>
                         </button>
-                        <button type="button" class="wa-section-toggle ms-auto">▼</button>
+                        <span style="font-size:10px;background:#f0fdf4;color:#166534;border-radius:4px;padding:2px 7px;font-weight:600;margin-left:auto;margin-right:6px">📊 Chart + tabla</span>
+                        <button type="button" class="wa-section-toggle">▼</button>
                     </div>
                     <div class="wa-kpi-sideheading__meta">Prioridad comercial estimada por progreso, identificación y cierre efectivo.</div>
                 </div>
@@ -1023,7 +1077,8 @@
                             ?
                             <span class="wa-kpi-help__tooltip">{{ $sectionHelp['frictions'] }}</span>
                         </button>
-                        <button type="button" class="wa-section-toggle ms-auto">▼</button>
+                        <span style="font-size:10px;background:#fff7ed;color:#c2410c;border-radius:4px;padding:2px 7px;font-weight:600;margin-left:auto;margin-right:6px">⚠️ Chart + tabla</span>
+                        <button type="button" class="wa-section-toggle">▼</button>
                     </div>
                     <div class="wa-kpi-sideheading__meta">Estados donde más se frenan conversaciones sin cierre efectivo.</div>
                 </div>
@@ -1093,7 +1148,8 @@
                             ?
                             <span class="wa-kpi-help__tooltip">{{ $sectionHelp['funnel'] }}</span>
                         </button>
-                        <button type="button" class="wa-section-toggle ms-auto">▼</button>
+                        <span style="font-size:10px;background:#f0fdf4;color:#166534;border-radius:4px;padding:2px 7px;font-weight:600;margin-left:auto;margin-right:6px">🔻 Chart + tabla</span>
+                        <button type="button" class="wa-section-toggle">▼</button>
                     </div>
                     <div class="wa-kpi-sideheading__meta">Avance de las conversaciones nuevas desde el inicio hasta la creación efectiva de cita.</div>
                 </div>
@@ -1180,7 +1236,8 @@
                             ?
                             <span class="wa-kpi-help__tooltip">{{ $sectionHelp['ads'] }}</span>
                         </button>
-                        <button type="button" class="wa-section-toggle ms-auto">▼</button>
+                        <span style="font-size:10px;background:#f0fdf4;color:#166534;border-radius:4px;padding:2px 7px;font-weight:600;margin-left:auto;margin-right:6px">📊 Chart + tabla</span>
+                        <button type="button" class="wa-section-toggle">▼</button>
                     </div>
                     <div class="wa-kpi-sideheading__meta">Ranking inicial de anuncios que más conversaciones y citas aportan al canal.</div>
                 </div>
@@ -1235,41 +1292,8 @@
             </div>
         </div>
 
-        <div class="col-xl-6 col-12">
-            <div class="wa-kpi-panel">
-                <div class="wa-kpi-panel__head">
-                    <div class="wa-kpi-title-row">
-                        <div class="wa-kpi-sideheading__title">Series del periodo</div>
-                        <button type="button" class="wa-kpi-help" aria-label="Ver ayuda de Series del periodo">
-                            ?
-                            <span class="wa-kpi-help__tooltip">{{ $sectionHelp['series'] }}</span>
-                        </button>
-                    </div>
-                    <div class="wa-kpi-sideheading__meta">Lectura rápida del volumen de conversaciones en el rango seleccionado.</div>
-                </div>
-                <div class="wa-kpi-panel__body">
-                    <div id="chart-serie-diaria" class="wa-chart-wrap"></div>
-                    @php
-                        $chipTotals = [
-                            'Nuevas'        => array_sum($trends['conversations'] ?? []),
-                            'Con handoff'   => array_sum($trends['handoff_transfers'] ?? []),
-                            'Con cita'      => array_sum($trends['sigcenter_bookings'] ?? []),
-                        ];
-                    @endphp
-                    <div class="wa-chart-chips">
-                        @foreach($chipTotals as $chipLabel => $chipVal)
-                            <div class="wa-chart-chip">
-                                <div class="wa-chart-chip__val">{{ number_format($chipVal) }}</div>
-                                <div class="wa-chart-chip__lbl">{{ $chipLabel }}</div>
-                            </div>
-                        @endforeach
-                    </div>
-                    <div class="text-muted mt-10" style="font-size:.82rem;">
-                        Inbound {{ $summary['messages_inbound'] ?? 0 }} · Outbound {{ $summary['messages_outbound'] ?? 0 }} · Citas {{ $summary['sigcenter_bookings_created'] ?? 0 }} · Derivaciones {{ $summary['handoff_transfers'] ?? 0 }}
-                    </div>
-                </div>
-            </div>
-        </div>
+        {{-- ── OPERACIÓN HUMANA ─────────────────────────────────────────── --}}
+        <div class="col-12"><div class="wa-group-label">👥 Operación humana</div></div>
 
         <div class="col-xl-6 col-12">
             <div class="wa-kpi-panel">
@@ -1281,7 +1305,8 @@
                             ?
                             <span class="wa-kpi-help__tooltip">{{ $sectionHelp['human_by_agent'] }}</span>
                         </button>
-                        <button type="button" class="wa-section-toggle ms-auto">▼</button>
+                        <span style="font-size:10px;background:#faf5ff;color:#6d28d9;border-radius:4px;padding:2px 7px;font-weight:600;margin-left:auto;margin-right:6px">📋 Tabla mejorada</span>
+                        <button type="button" class="wa-section-toggle">▼</button>
                     </div>
                     <div class="wa-kpi-sideheading__meta">Quién absorbió más conversaciones y cómo respondió en primera intervención.</div>
                 </div>
@@ -1337,6 +1362,7 @@
                             ?
                             <span class="wa-kpi-help__tooltip">{{ $sectionHelp['human_by_queue'] }}</span>
                         </button>
+                        <span style="font-size:10px;background:#faf5ff;color:#6d28d9;border-radius:4px;padding:2px 7px;font-weight:600;margin-left:auto">📋 Tabla mejorada</span>
                     </div>
                     <div class="wa-kpi-sideheading__meta">Mide el tiempo desde ingreso a handoff hasta la primera respuesta humana por tipo de cola.</div>
                 </div>
@@ -1397,7 +1423,8 @@
                             ?
                             <span class="wa-kpi-help__tooltip">{{ $sectionHelp['handoffs_by_role'] }}</span>
                         </button>
-                        <button type="button" class="wa-section-toggle ms-auto">▼</button>
+                        <span style="font-size:10px;background:#faf5ff;color:#6d28d9;border-radius:4px;padding:2px 7px;font-weight:600;margin-left:auto;margin-right:6px">📋 Tabla mejorada</span>
+                        <button type="button" class="wa-section-toggle">▼</button>
                     </div>
                     <div class="wa-kpi-sideheading__meta">Distribución de cola, asignación y resolución por equipo operativo.</div>
                 </div>
@@ -1455,7 +1482,8 @@
                             ?
                             <span class="wa-kpi-help__tooltip">{{ $sectionHelp['agent_load'] }}</span>
                         </button>
-                        <button type="button" class="wa-section-toggle ms-auto">▼</button>
+                        <span style="font-size:10px;background:#faf5ff;color:#6d28d9;border-radius:4px;padding:2px 7px;font-weight:600;margin-left:auto;margin-right:6px">📋 Tabla mejorada</span>
+                        <button type="button" class="wa-section-toggle">▼</button>
                     </div>
                     <div class="wa-kpi-sideheading__meta">Lectura de workload para saber quién está tomado, activo o ya resolvió.</div>
                 </div>
