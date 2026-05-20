@@ -806,7 +806,7 @@ class KpiDashboardService
                 SUM(has_handoff) AS handoffs
              FROM (' . $base['sql'] . ') analytics_base
              LEFT JOIN whatsapp_conversation_attributions a ON a.conversation_id = analytics_base.conversation_id
-             WHERE source_category = "ad"
+             WHERE analytics_base.source_category = "ad"
              GROUP BY referral_source_id, referral_headline, referral_media_type, a.platform
              ORDER BY bookings DESC, conversations DESC, referral_source_id ASC
              LIMIT 50',

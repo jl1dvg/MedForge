@@ -88,6 +88,8 @@ class WhatsappKpiDashboardTest extends TestCase
             $table->timestamp('assigned_at')->nullable();
             $table->timestamp('assigned_until')->nullable();
             $table->timestamp('queued_at')->nullable();
+            $table->string('topic')->nullable();
+            $table->string('priority')->nullable();
             $table->timestamps();
         });
 
@@ -118,6 +120,7 @@ class WhatsappKpiDashboardTest extends TestCase
             $table->unsignedBigInteger('conversation_id');
             $table->string('source_category')->nullable();
             $table->string('source_type')->nullable();
+            $table->string('platform', 32)->nullable();
             $table->string('source_id')->nullable();
             $table->string('headline')->nullable();
             $table->string('media_type')->nullable();
