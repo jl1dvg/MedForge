@@ -799,15 +799,17 @@ class KpiDashboardService
                 NULLIF(referral_source_id, "") AS source_id,
                 NULLIF(referral_headline, "") AS headline,
                 NULLIF(referral_media_type, "") AS media_type,
+                NULLIF(a.platform, "") AS platform,
                 COUNT(*) AS conversations,
                 SUM(is_identified) AS identified,
                 SUM(has_booking) AS bookings,
                 SUM(has_handoff) AS handoffs
              FROM (' . $base['sql'] . ') analytics_base
+             LEFT JOIN whatsapp_conversation_attributions a ON a.conversation_id = analytics_base.conversation_id
              WHERE source_category = "ad"
-             GROUP BY referral_source_id, referral_headline, referral_media_type
+             GROUP BY referral_source_id, referral_headline, referral_media_type, a.platform
              ORDER BY bookings DESC, conversations DESC, referral_source_id ASC
-             LIMIT 10',
+             LIMIT 50',
             $base['params']
         );
 
@@ -819,6 +821,13 @@ class KpiDashboardService
                 'source_id' => $row->source_id !== null ? (string) $row->source_id : null,
                 'headline' => $row->headline !== null ? (string) $row->headline : 'Sin headline',
                 'media_type' => $row->media_type !== null ? (string) $row->media_type : 'n/d',
+                'platform' => $row->platform !== null ? (string) $row->platform : null,
+                'platform_label' => match ($row->platform ?? null) {
+                    'facebook'  => 'Facebook',
+                    'instagram' => 'Instagram',
+                    'whatsapp'  => 'WhatsApp',
+                    default     => 'Desconocido',
+                },
                 'conversations' => $conversations,
                 'identified' => (int) ($row->identified ?? 0),
                 'bookings' => $bookings,
