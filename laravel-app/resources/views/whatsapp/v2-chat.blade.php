@@ -2218,13 +2218,14 @@
                                     </button>
                                     <button
                                         type="button"
-                                        class="btn btn-outline-danger"
+                                        class="btn btn-outline-success"
                                         data-wa-action="close"
                                         data-conversation-id="{{ $selectedConversation['id'] }}"
-                                        title="Cerrar conversación"
-                                        aria-label="Cerrar conversación">
+                                        title="Resolver conversación"
+                                        aria-label="Resolver conversación">
                                         <span class="wa-v2-icon-label">
-                                            <i class="mdi mdi-close-circle-outline"></i>
+                                            <i class="mdi mdi-check-circle-outline"></i>
+                                            <span class="d-none d-md-inline ms-1">Resolver</span>
                                         </span>
                                     </button>
                                 @endif
@@ -2736,6 +2737,22 @@
 @push('scripts')
     <script>
         document.addEventListener('DOMContentLoaded', function () {
+            // ── Shell height: ajusta al espacio real disponible bajo el navbar/pagebar
+            (function () {
+                const shell = document.querySelector('.wa-v2-shell');
+                if (!shell) return;
+                const setHeight = function () {
+                    const top = shell.getBoundingClientRect().top + window.scrollY;
+                    const available = window.innerHeight - top - 8; // 8px bottom padding
+                    if (available > 200) {
+                        shell.style.height = available + 'px';
+                        shell.style.maxHeight = available + 'px';
+                    }
+                };
+                setHeight();
+                window.addEventListener('resize', setHeight);
+            }());
+
             // Inicializar tooltips de Bootstrap en los tabs de filtro
             document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) {
                 if (typeof bootstrap !== 'undefined' && bootstrap.Tooltip) {
@@ -3040,39 +3057,54 @@
                     const title = row.display_name || row.wa_number || 'Contacto';
                     const meta = [row.wa_number || '', row.hc_number ? `HC ${row.hc_number}` : ''].filter(Boolean).join(' · ');
                     const sourceMap = {
-                        conversation: 'Conversación',
+                        conversation: 'Conversación existente',
                         patient_data: 'Paciente',
                         consent: 'Consentimiento',
                         crm_lead: 'CRM',
                     };
                     const sourceLabel = sourceMap[row.source] || 'Fuente';
+                    const isExisting = row.source === 'conversation' && row.id;
+
+                    const actions = isExisting
+                        ? `<a href="/v2/whatsapp/chat?conversation=${row.id}&filter={{ $selectedFilter }}"
+                              class="btn btn-primary btn-sm"
+                              style="white-space:nowrap;">Abrir chat</a>
+                           <button type="button"
+                                   class="btn btn-outline-secondary btn-sm"
+                                   data-wa-select-contact="1"
+                                   data-wa-number="${row.wa_number || ''}"
+                                   data-wa-contact-name="${title}"
+                                   data-wa-patient-name="${title}"
+                                   data-wa-hc-number="${row.hc_number || ''}">Nueva plantilla</button>`
+                        : `<button type="button"
+                                   class="btn btn-outline-secondary btn-sm"
+                                   data-wa-select-contact="1"
+                                   data-wa-number="${row.wa_number || ''}"
+                                   data-wa-contact-name="${title}"
+                                   data-wa-patient-name="${title}"
+                                   data-wa-hc-number="${row.hc_number || ''}">Usar</button>`;
 
                     return `
-                        <button type="button"
-                                class="wa-v2-picker-card ${index === 0 ? 'is-active' : ''}"
-                                data-wa-select-contact="1"
-                                data-wa-number="${row.wa_number || ''}"
-                                data-wa-contact-name="${title}"
-                                data-wa-patient-name="${title}"
-                                data-wa-hc-number="${row.hc_number || ''}">
+                        <div class="wa-v2-picker-card ${index === 0 ? 'is-active' : ''} ${isExisting ? 'wa-v2-picker-card--existing' : ''}"
+                             data-wa-number="${row.wa_number || ''}">
                             <div>
                                 <div class="fw-700">${title}</div>
                                 <div class="text-muted" style="font-size:12px;">${meta || 'Sin meta'}</div>
                             </div>
                             <div class="d-flex align-items-center gap-8">
                                 <span class="wa-v2-picker-card__source">${sourceLabel}</span>
-                                <span class="btn btn-outline-secondary btn-sm">Usar</span>
+                                ${actions}
                             </div>
-                        </button>
+                        </div>
                     `;
                 }).join('');
 
                 startChatResults.querySelectorAll('[data-wa-select-contact]').forEach(function (button) {
                     button.addEventListener('click', function () {
-                        startChatResults.querySelectorAll('.wa-v2-picker-card').forEach(function (row) {
-                            row.classList.remove('is-active');
+                        startChatResults.querySelectorAll('.wa-v2-picker-card').forEach(function (card) {
+                            card.classList.remove('is-active');
                         });
-                        button.classList.add('is-active');
+                        button.closest('.wa-v2-picker-card')?.classList.add('is-active');
                         if (startChatNumber) startChatNumber.value = button.getAttribute('data-wa-number') || '';
                         if (startChatContactName) startChatContactName.value = button.getAttribute('data-wa-contact-name') || '';
                         if (startChatPatientName) startChatPatientName.value = button.getAttribute('data-wa-patient-name') || '';

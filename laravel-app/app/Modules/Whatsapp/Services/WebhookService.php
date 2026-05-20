@@ -3,6 +3,7 @@
 namespace App\Modules\Whatsapp\Services;
 
 use App\Models\WhatsappConversation;
+use App\Models\WhatsappHandoff;
 use App\Models\WhatsappMessage;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
@@ -244,6 +245,18 @@ class WebhookService
             $conversation->last_message_type = $type;
             $conversation->last_message_preview = $previewText !== null ? mb_substr($previewText, 0, 512) : null;
             $conversation->unread_count = (int) $conversation->unread_count + 1;
+
+            // Auto-reopen conversations that were closed by an agent when patient writes back
+            if (!$conversation->wasRecentlyCreated && !$conversation->needs_human) {
+                $hasResolvedHandoff = WhatsappHandoff::query()
+                    ->where('conversation_id', $conversation->id)
+                    ->where('status', 'resolved')
+                    ->exists();
+                if ($hasResolvedHandoff) {
+                    $conversation->needs_human = true;
+                }
+            }
+
             $conversation->save();
 
             $persistedMessage = WhatsappMessage::query()->create([

@@ -532,6 +532,15 @@ class FlowRuntimeExecutionService
                         : $this->bookingFailureMessage((string) ($preview['error'] ?? ''));
                     $this->sendFlowMessage($conversation, $message, $context);
                     $messagesSent++;
+
+                    // Auto-resolve: booking successful → close the conversation (bot completed the task)
+                    if (!empty($preview['ok'])) {
+                        $conversation->fill([
+                            'needs_human'      => false,
+                            'assigned_user_id' => null,
+                            'assigned_at'      => null,
+                        ])->save();
+                    }
                 }
 
                 if (!empty($preview['send_result']) && is_array($preview['outbound_message'] ?? null)) {
