@@ -110,18 +110,58 @@ class PacientesParityService
         }
 
         $timelineLimit = 100;
-        $solicitudes = $this->getSolicitudesPorPaciente($hcNumber, $timelineLimit);
-        $prefacturas = $this->getPrefacturasPorPaciente($hcNumber, $timelineLimit);
+
+        try {
+            $solicitudes = $this->getSolicitudesPorPaciente($hcNumber, $timelineLimit);
+        } catch (PDOException) {
+            $solicitudes = [];
+        }
+
+        try {
+            $prefacturas = $this->getPrefacturasPorPaciente($hcNumber, $timelineLimit);
+        } catch (PDOException) {
+            $prefacturas = [];
+        }
+
+        try {
+            $medicos = $this->getDoctoresAsignados($hcNumber);
+        } catch (PDOException) {
+            $medicos = [];
+        }
+
+        try {
+            $eventos = $this->getEventosTimeline($hcNumber);
+        } catch (PDOException) {
+            $eventos = [];
+        }
+
+        try {
+            $documentos = $this->getDocumentosDescargables($hcNumber);
+        } catch (PDOException) {
+            $documentos = [];
+        }
+
+        try {
+            $estadisticas = $this->getEstadisticasProcedimientos($hcNumber);
+        } catch (PDOException) {
+            $estadisticas = [];
+        }
+
+        try {
+            $diagnosticos = $this->getDiagnosticosPorPaciente($hcNumber);
+        } catch (PDOException) {
+            $diagnosticos = [];
+        }
 
         return [
             'patientData' => $patientData,
             'afiliacionesDisponibles' => $this->getAfiliacionesDisponibles(),
-            'diagnosticos' => $this->getDiagnosticosPorPaciente($hcNumber),
-            'medicos' => $this->getDoctoresAsignados($hcNumber),
+            'diagnosticos' => $diagnosticos,
+            'medicos' => $medicos,
             'timelineItems' => $this->ordenarTimeline(array_merge($solicitudes, $prefacturas)),
-            'eventos' => $this->getEventosTimeline($hcNumber),
-            'documentos' => $this->getDocumentosDescargables($hcNumber),
-            'estadisticas' => $this->getEstadisticasProcedimientos($hcNumber),
+            'eventos' => $eventos,
+            'documentos' => $documentos,
+            'estadisticas' => $estadisticas,
             'patientAge' => $this->calcularEdad($patientData['fecha_nacimiento'] ?? null),
             'coverageStatus' => $this->verificarCoberturaPaciente($hcNumber),
         ];
@@ -632,7 +672,12 @@ class PacientesParityService
             SQL;
         }
 
-        $stmt = $this->db->query($sql);
+        try {
+            $stmt = $this->db->query($sql);
+        } catch (PDOException) {
+            return [];
+        }
+
         if ($stmt === false) {
             return [];
         }

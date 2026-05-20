@@ -123,7 +123,19 @@ class PacientesReadController
             return redirect('/v2/pacientes/detalles?hc_number=' . urlencode($hcNumber));
         }
 
-        $context = $this->service->obtenerContextoPaciente($hcNumber);
+        try {
+            $context = $this->service->obtenerContextoPaciente($hcNumber);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('Error cargando detalles de paciente', [
+                'hc_number' => $hcNumber,
+                'error' => $e->getMessage(),
+            ]);
+            if ($request->expectsJson()) {
+                return response()->json(['error' => 'Error al cargar los datos del paciente'], 500);
+            }
+            abort(500, 'Error al cargar los datos del paciente: ' . $e->getMessage());
+        }
+
         if ($context === []) {
             if ($request->expectsJson()) {
                 return response()->json(['error' => 'Paciente no encontrado'], 404);
