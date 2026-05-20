@@ -616,134 +616,6 @@
             </div>
         </div>
 
-        <div class="col-12">
-            <div class="wa-kpi-panel">
-                <div class="wa-kpi-panel__head">
-                    <div class="wa-kpi-title-row">
-                        <div class="wa-kpi-sideheading__title">Vista ejecutiva del canal</div>
-                        <button type="button" class="wa-kpi-help" aria-label="Ver ayuda de Vista ejecutiva del canal">
-                            ?
-                            <span class="wa-kpi-help__tooltip">{{ $sectionHelp['executive_view'] }}</span>
-                        </button>
-                    </div>
-                    <div class="wa-kpi-sideheading__meta">Separación macro entre captación, operación, seguimiento clínico y reactivación.</div>
-                </div>
-                <div class="wa-kpi-panel__body">
-                    <div class="wa-kpi-grid">
-                        @php
-                            $executiveCards = [
-                                ['label' => 'Captación', 'value' => $analyticsSummary['captacion_conversations'] ?? 0, 'sub' => 'Demanda nueva y entrada comercial', 'help' => 'Conversaciones nuevas orientadas a adquisición o primera entrada comercial al canal.'],
-                                ['label' => 'Operación', 'value' => $analyticsSummary['operacion_conversations'] ?? 0, 'sub' => 'Cambios, soporte y gestión operativa', 'help' => 'Conversaciones centradas en cambios de cita, soporte, campañas reactivas y gestión operativa.'],
-                                ['label' => 'Seguimiento clínico', 'value' => $analyticsSummary['seguimiento_clinico_conversations'] ?? 0, 'sub' => 'Post consulta y post cirugía', 'help' => 'Conversaciones asociadas a continuidad clínica, seguimiento post consulta o post cirugía.'],
-                                ['label' => 'Reactivación', 'value' => $analyticsSummary['reactivacion_conversations'] ?? 0, 'sub' => 'Pacientes que vuelven al canal', 'help' => 'Pacientes reactivados o que regresan tras un periodo sin interacción relevante.'],
-                            ];
-                        @endphp
-                        @foreach($executiveCards as $card)
-                            <div class="wa-kpi-card">
-                                <div class="wa-kpi-label-row">
-                                    <div class="wa-kpi-label">{{ $card['label'] }}</div>
-                                    @if(!empty($card['help']))
-                                        <button type="button" class="wa-kpi-help" aria-label="Ver ayuda de {{ $card['label'] }}">
-                                            ?
-                                            <span class="wa-kpi-help__tooltip">{{ $card['help'] }}</span>
-                                        </button>
-                                    @endif
-                                </div>
-                                <div class="wa-kpi-value">{{ $card['value'] }}</div>
-                                <div class="wa-kpi-sub">{{ $card['sub'] }}</div>
-                            </div>
-                        @endforeach
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-12">
-            <div class="wa-kpi-panel">
-                <div class="wa-kpi-panel__head">
-                    <div class="wa-kpi-title-row">
-                        <div class="wa-kpi-sideheading__title">Mix ejecutivo del canal</div>
-                        <button type="button" class="wa-kpi-help" aria-label="Ver ayuda de Mix ejecutivo del canal">
-                            ?
-                            <span class="wa-kpi-help__tooltip">{{ $sectionHelp['executive_mix'] }}</span>
-                        </button>
-                    </div>
-                    <div class="wa-kpi-sideheading__meta">Comparativo entre las cuatro líneas principales del WhatsApp por volumen, booking y dependencia de humano.</div>
-                </div>
-                <div class="wa-kpi-panel__body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-striped wa-kpi-table mb-0">
-                            <thead>
-                            <tr>
-                                <th>Categoría</th>
-                                <th>Total</th>
-                                <th>Participación</th>
-                                <th>Identificadas</th>
-                                <th>Citas</th>
-                                <th>Handoffs</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                            @forelse($analyticsLifecycle as $row)
-                                <tr>
-                                    <td>{{ $row['lifecycle_label'] }}</td>
-                                    <td>{{ $row['total'] }}</td>
-                                    <td>{{ $row['share'] }}%</td>
-                                    <td>{{ $row['identified'] }}</td>
-                                    <td>{{ $row['bookings'] }} <span class="text-muted">({{ $row['booking_rate'] }}%)</span></td>
-                                    <td>{{ $row['handoffs'] }}</td>
-                                </tr>
-                            @empty
-                                <tr>
-                                    <td colspan="6" class="text-center text-muted py-20">Sin datos para el rango actual.</td>
-                                </tr>
-                            @endforelse
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-12">
-            <div class="wa-kpi-panel">
-                <div class="wa-kpi-panel__head">
-                    <div class="wa-kpi-title-row">
-                        <div class="wa-kpi-sideheading__title">Captación y conversión del canal</div>
-                        <button type="button" class="wa-kpi-help" aria-label="Ver ayuda de Captación y conversión del canal">
-                            ?
-                            <span class="wa-kpi-help__tooltip">{{ $sectionHelp['channel_capture'] }}</span>
-                        </button>
-                    </div>
-                    <div class="wa-kpi-sideheading__meta">Resumen gerencial de conversaciones nuevas: origen, identificación, handoff y conversión a cita.</div>
-                </div>
-                <div class="wa-kpi-panel__body">
-                    <div class="wa-kpi-grid">
-                        @php
-                            $commercialCards = [
-                                ['label' => 'Conversaciones nuevas', 'value' => $analyticsSummary['total_conversations'] ?? 0, 'sub' => 'Base analítica del periodo'],
-                                ['label' => 'Desde Ads', 'value' => $analyticsSummary['conversations_from_ads'] ?? 0, 'sub' => 'Orgánico ' . ($analyticsSummary['conversations_organic'] ?? 0)],
-                                ['label' => 'Iniciadas por equipo', 'value' => $analyticsSummary['conversations_outbound_started'] ?? 0, 'sub' => 'Seguimientos o arranque manual'],
-                                ['label' => 'Pacientes nuevos', 'value' => $analyticsSummary['new_patients'] ?? 0, 'sub' => 'Recurrentes ' . ($analyticsSummary['returning_patients'] ?? 0)],
-                                ['label' => 'Pacientes reactivados', 'value' => $analyticsSummary['reactivated_patients'] ?? 0, 'sub' => 'Más de 180 días sin toque clínico'],
-                                ['label' => 'Lead score promedio', 'value' => $analyticsSummary['avg_lead_score'] ?? 0, 'sub' => 'Alto valor ' . ($analyticsSummary['high_value_leads'] ?? 0)],
-                                ['label' => 'Identificadas', 'value' => ($analyticsSummary['identification_rate'] ?? 0) . '%', 'sub' => ($analyticsSummary['identified_conversations'] ?? 0) . ' conversaciones'],
-                                ['label' => 'Con cita creada', 'value' => ($analyticsSummary['booking_rate'] ?? 0) . '%', 'sub' => ($analyticsSummary['booked_conversations'] ?? 0) . ' conversaciones'],
-                                ['label' => 'Con handoff humano', 'value' => ($analyticsSummary['handoff_rate'] ?? 0) . '%', 'sub' => ($analyticsSummary['handoff_conversations'] ?? 0) . ' conversaciones'],
-                            ];
-                        @endphp
-                        @foreach($commercialCards as $card)
-                            <div class="wa-kpi-card">
-                                <div class="wa-kpi-label">{{ $card['label'] }}</div>
-                                <div class="wa-kpi-value">{{ $card['value'] }}</div>
-                                <div class="wa-kpi-sub">{{ $card['sub'] }}</div>
-                            </div>
-                        @endforeach
-                    </div>
-                </div>
-            </div>
-        </div>
-
         {{-- ── TENDENCIAS DEL CANAL ─────────────────────────────────────── --}}
         <div class="col-12"><div class="wa-group-label">📊 Tendencias del canal</div></div>
 
@@ -799,47 +671,6 @@
                 </div>
                 <div class="wa-kpi-panel__body">
                     <div id="chart-origen-demanda" class="wa-chart-wrap"></div>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-xl-6 col-12">
-            <div class="wa-kpi-panel">
-                <div class="wa-kpi-panel__head">
-                    <div class="wa-kpi-title-row">
-                        <div class="wa-kpi-sideheading__title">Outcome de conversaciones</div>
-                        <button type="button" class="wa-kpi-help" aria-label="Ver ayuda de Outcome de conversaciones">
-                            ?
-                            <span class="wa-kpi-help__tooltip">{{ $sectionHelp['conversation_outcomes'] }}</span>
-                        </button>
-                    </div>
-                    <div class="wa-kpi-sideheading__meta">Resultado final más relevante para cada conversación nueva del periodo.</div>
-                </div>
-                <div class="wa-kpi-panel__body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-striped wa-kpi-table mb-0">
-                            <thead>
-                            <tr>
-                                <th>Resultado</th>
-                                <th>Total</th>
-                                <th>Participación</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                            @forelse($analyticsOutcomes as $row)
-                                <tr>
-                                    <td>{{ $row['outcome_label'] }}</td>
-                                    <td>{{ $row['total'] }}</td>
-                                    <td>{{ $row['share'] }}%</td>
-                                </tr>
-                            @empty
-                                <tr>
-                                    <td colspan="3" class="text-center text-muted py-20">Sin datos para el rango actual.</td>
-                                </tr>
-                            @endforelse
-                            </tbody>
-                        </table>
-                    </div>
                 </div>
             </div>
         </div>
@@ -1532,6 +1363,187 @@
                 </div>
             </div>
         </div>
+        {{-- ── ANÁLISIS GERENCIAL COMPLEMENTARIO ──────────────────────────── --}}
+        <div class="col-12">
+            <div class="wa-group-label" style="cursor:pointer;user-select:none"
+                 onclick="var b=document.getElementById('wa-gerencial-body');var a=this.querySelector('.wa-gerencial-arrow');b.style.display=b.style.display==='none'?'contents':'none';a.textContent=b.style.display==='none'?'▼':'▲'">
+                📋 Análisis gerencial complementario
+                <span class="wa-gerencial-arrow" style="float:right;font-size:13px;color:#94a3b8">▼</span>
+            </div>
+        </div>
+        <div id="wa-gerencial-body" style="display:none">
+
+        <div class="col-12">
+            <div class="wa-kpi-panel">
+                <div class="wa-kpi-panel__head">
+                    <div class="wa-kpi-title-row">
+                        <div class="wa-kpi-sideheading__title">Vista ejecutiva del canal</div>
+                        <button type="button" class="wa-kpi-help" aria-label="Ver ayuda de Vista ejecutiva del canal">
+                            ?
+                            <span class="wa-kpi-help__tooltip">{{ $sectionHelp['executive_view'] }}</span>
+                        </button>
+                    </div>
+                    <div class="wa-kpi-sideheading__meta">Separación macro entre captación, operación, seguimiento clínico y reactivación.</div>
+                </div>
+                <div class="wa-kpi-panel__body">
+                    <div class="wa-kpi-grid">
+                        @php
+                            $executiveCards = [
+                                ['label' => 'Captación', 'value' => $analyticsSummary['captacion_conversations'] ?? 0, 'sub' => 'Demanda nueva y entrada comercial', 'help' => 'Conversaciones nuevas orientadas a adquisición o primera entrada comercial al canal.'],
+                                ['label' => 'Operación', 'value' => $analyticsSummary['operacion_conversations'] ?? 0, 'sub' => 'Cambios, soporte y gestión operativa', 'help' => 'Conversaciones centradas en cambios de cita, soporte, campañas reactivas y gestión operativa.'],
+                                ['label' => 'Seguimiento clínico', 'value' => $analyticsSummary['seguimiento_clinico_conversations'] ?? 0, 'sub' => 'Post consulta y post cirugía', 'help' => 'Conversaciones asociadas a continuidad clínica, seguimiento post consulta o post cirugía.'],
+                                ['label' => 'Reactivación', 'value' => $analyticsSummary['reactivacion_conversations'] ?? 0, 'sub' => 'Pacientes que vuelven al canal', 'help' => 'Pacientes reactivados o que regresan tras un periodo sin interacción relevante.'],
+                            ];
+                        @endphp
+                        @foreach($executiveCards as $card)
+                            <div class="wa-kpi-card">
+                                <div class="wa-kpi-label-row">
+                                    <div class="wa-kpi-label">{{ $card['label'] }}</div>
+                                    @if(!empty($card['help']))
+                                        <button type="button" class="wa-kpi-help" aria-label="Ver ayuda de {{ $card['label'] }}">
+                                            ?
+                                            <span class="wa-kpi-help__tooltip">{{ $card['help'] }}</span>
+                                        </button>
+                                    @endif
+                                </div>
+                                <div class="wa-kpi-value">{{ $card['value'] }}</div>
+                                <div class="wa-kpi-sub">{{ $card['sub'] }}</div>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12">
+            <div class="wa-kpi-panel">
+                <div class="wa-kpi-panel__head">
+                    <div class="wa-kpi-title-row">
+                        <div class="wa-kpi-sideheading__title">Mix ejecutivo del canal</div>
+                        <button type="button" class="wa-kpi-help" aria-label="Ver ayuda de Mix ejecutivo del canal">
+                            ?
+                            <span class="wa-kpi-help__tooltip">{{ $sectionHelp['executive_mix'] }}</span>
+                        </button>
+                    </div>
+                    <div class="wa-kpi-sideheading__meta">Comparativo entre las cuatro líneas principales del WhatsApp por volumen, booking y dependencia de humano.</div>
+                </div>
+                <div class="wa-kpi-panel__body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-striped wa-kpi-table mb-0">
+                            <thead>
+                            <tr>
+                                <th>Categoría</th>
+                                <th>Total</th>
+                                <th>Participación</th>
+                                <th>Identificadas</th>
+                                <th>Citas</th>
+                                <th>Handoffs</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            @forelse($analyticsLifecycle as $row)
+                                <tr>
+                                    <td>{{ $row['lifecycle_label'] }}</td>
+                                    <td>{{ $row['total'] }}</td>
+                                    <td>{{ $row['share'] }}%</td>
+                                    <td>{{ $row['identified'] }}</td>
+                                    <td>{{ $row['bookings'] }} <span class="text-muted">({{ $row['booking_rate'] }}%)</span></td>
+                                    <td>{{ $row['handoffs'] }}</td>
+                                </tr>
+                            @empty
+                                <tr>
+                                    <td colspan="6" class="text-center text-muted py-20">Sin datos para el rango actual.</td>
+                                </tr>
+                            @endforelse
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12">
+            <div class="wa-kpi-panel">
+                <div class="wa-kpi-panel__head">
+                    <div class="wa-kpi-title-row">
+                        <div class="wa-kpi-sideheading__title">Captación y conversión del canal</div>
+                        <button type="button" class="wa-kpi-help" aria-label="Ver ayuda de Captación y conversión del canal">
+                            ?
+                            <span class="wa-kpi-help__tooltip">{{ $sectionHelp['channel_capture'] }}</span>
+                        </button>
+                    </div>
+                    <div class="wa-kpi-sideheading__meta">Resumen gerencial de conversaciones nuevas: origen, identificación, handoff y conversión a cita.</div>
+                </div>
+                <div class="wa-kpi-panel__body">
+                    <div class="wa-kpi-grid">
+                        @php
+                            $commercialCards = [
+                                ['label' => 'Conversaciones nuevas', 'value' => $analyticsSummary['total_conversations'] ?? 0, 'sub' => 'Base analítica del periodo'],
+                                ['label' => 'Desde Ads', 'value' => $analyticsSummary['conversations_from_ads'] ?? 0, 'sub' => 'Orgánico ' . ($analyticsSummary['conversations_organic'] ?? 0)],
+                                ['label' => 'Iniciadas por equipo', 'value' => $analyticsSummary['conversations_outbound_started'] ?? 0, 'sub' => 'Seguimientos o arranque manual'],
+                                ['label' => 'Pacientes nuevos', 'value' => $analyticsSummary['new_patients'] ?? 0, 'sub' => 'Recurrentes ' . ($analyticsSummary['returning_patients'] ?? 0)],
+                                ['label' => 'Pacientes reactivados', 'value' => $analyticsSummary['reactivated_patients'] ?? 0, 'sub' => 'Más de 180 días sin toque clínico'],
+                                ['label' => 'Lead score promedio', 'value' => $analyticsSummary['avg_lead_score'] ?? 0, 'sub' => 'Alto valor ' . ($analyticsSummary['high_value_leads'] ?? 0)],
+                                ['label' => 'Identificadas', 'value' => ($analyticsSummary['identification_rate'] ?? 0) . '%', 'sub' => ($analyticsSummary['identified_conversations'] ?? 0) . ' conversaciones'],
+                                ['label' => 'Con cita creada', 'value' => ($analyticsSummary['booking_rate'] ?? 0) . '%', 'sub' => ($analyticsSummary['booked_conversations'] ?? 0) . ' conversaciones'],
+                                ['label' => 'Con handoff humano', 'value' => ($analyticsSummary['handoff_rate'] ?? 0) . '%', 'sub' => ($analyticsSummary['handoff_conversations'] ?? 0) . ' conversaciones'],
+                            ];
+                        @endphp
+                        @foreach($commercialCards as $card)
+                            <div class="wa-kpi-card">
+                                <div class="wa-kpi-label">{{ $card['label'] }}</div>
+                                <div class="wa-kpi-value">{{ $card['value'] }}</div>
+                                <div class="wa-kpi-sub">{{ $card['sub'] }}</div>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-6 col-12">
+            <div class="wa-kpi-panel">
+                <div class="wa-kpi-panel__head">
+                    <div class="wa-kpi-title-row">
+                        <div class="wa-kpi-sideheading__title">Outcome de conversaciones</div>
+                        <button type="button" class="wa-kpi-help" aria-label="Ver ayuda de Outcome de conversaciones">
+                            ?
+                            <span class="wa-kpi-help__tooltip">{{ $sectionHelp['conversation_outcomes'] }}</span>
+                        </button>
+                    </div>
+                    <div class="wa-kpi-sideheading__meta">Resultado final más relevante para cada conversación nueva del periodo.</div>
+                </div>
+                <div class="wa-kpi-panel__body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-striped wa-kpi-table mb-0">
+                            <thead>
+                            <tr>
+                                <th>Resultado</th>
+                                <th>Total</th>
+                                <th>Participación</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            @forelse($analyticsOutcomes as $row)
+                                <tr>
+                                    <td>{{ $row['outcome_label'] }}</td>
+                                    <td>{{ $row['total'] }}</td>
+                                    <td>{{ $row['share'] }}%</td>
+                                </tr>
+                            @empty
+                                <tr>
+                                    <td colspan="3" class="text-center text-muted py-20">Sin datos para el rango actual.</td>
+                                </tr>
+                            @endforelse
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        </div>{{-- /wa-gerencial-body --}}
+
         {{-- ── Resumen ejecutivo para gerencia ────────────────────────────── --}}
         <div id="exec-summary" class="col-12 mt-3">
             <div class="wa-kpi-panel">
