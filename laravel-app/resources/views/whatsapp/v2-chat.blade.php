@@ -1068,6 +1068,14 @@
             padding: 10px 12px 12px;
         }
 
+        /* Trail scrollable internamente */
+        #wa-v2-trail-list {
+            max-height: 260px;
+            overflow-y: auto;
+            overflow-x: hidden;
+            -webkit-overflow-scrolling: touch;
+        }
+
         .wa-v2-tools-drawer {
             border: 1px solid rgba(15, 23, 42, .08);
             border-radius: 16px;

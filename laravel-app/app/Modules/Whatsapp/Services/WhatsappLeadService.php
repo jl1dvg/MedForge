@@ -47,8 +47,8 @@ class WhatsappLeadService
                 'source'      => 'whatsapp_baja',
                 'notes'       => "Dado de baja desde WhatsApp.\nNúmero: {$conversation->wa_number}\nMotivo: {$motivoBaja}"
                     . ($cedula ? "\nCédula: {$cedula}" : ''),
-                'created_by'  => $actorUserId,
-                'assigned_to' => $actorUserId,
+                'created_by'  => $actorUserId > 0 ? $actorUserId : null,
+                'assigned_to' => $actorUserId > 0 ? $actorUserId : null,
             ]);
 
             // 2. Crear whatsapp_lead
@@ -62,7 +62,7 @@ class WhatsappLeadService
                 'patient_full_name'  => $conversation->patient_full_name,
                 'motivo_baja'        => $motivoBaja,
                 'status'             => 'pendiente',
-                'created_by_user_id' => $actorUserId,
+                'created_by_user_id' => $actorUserId > 0 ? $actorUserId : null,
             ]);
 
             // 3. Resolver handoff activo si existe
