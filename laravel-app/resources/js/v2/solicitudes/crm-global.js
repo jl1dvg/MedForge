@@ -1,4 +1,4 @@
-import { createCrmPanel } from '../../shared/crmPanelFactory.js';
+import { createCrmPanel } from '../shared/crmPanelFactory.js';
 
 const config = window.__SOLICITUDES_CRM_PANEL__ || {};
 const buttonSelector = config.buttonSelector || '.btn-open-solicitud-crm';

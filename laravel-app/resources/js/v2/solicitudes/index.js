@@ -1,3 +1,4 @@
+(function () {
 
     const config = window.__SOLICITUDES_V2_UI__ || {};
     const endpoints = config.endpoints || {};
@@ -2209,3 +2210,4 @@
     switchView(state.view, false);
     loadKanban();
 
+})();

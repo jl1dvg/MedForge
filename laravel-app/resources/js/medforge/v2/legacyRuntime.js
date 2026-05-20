@@ -103,6 +103,7 @@ export const loadLegacyModuleScript = (path) => {
 
 export const ensureJQuery = async () => {
     if (window.jQuery && window.$) {
+        _applyJQuerySetup(window.jQuery);
         return window.jQuery;
     }
 
@@ -116,9 +117,27 @@ export const ensureJQuery = async () => {
 
     window.jQuery = jQuery;
     window.$ = jQuery;
+    _applyJQuerySetup(jQuery);
 
     return jQuery;
 };
+
+/** Applied once per page load: CSRF header for all $.ajax POST requests. */
+function _applyJQuerySetup(jQuery) {
+    if (jQuery.__medfSetupApplied) {
+        return;
+    }
+    jQuery.__medfSetupApplied = true;
+
+    // CSRF token — ensures every jQuery POST (DataTables included) passes Laravel's VerifyCsrfToken
+    const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+    const csrfToken = csrfMeta ? (csrfMeta.getAttribute('content') || '') : '';
+    if (csrfToken) {
+        jQuery.ajaxSetup({
+            headers: { 'X-CSRF-TOKEN': csrfToken },
+        });
+    }
+}
 
 export const ensureMoment = async () => {
     if (window.moment) {
@@ -164,6 +183,25 @@ export const ensureSweetAlert = async () => {
 
 export const ensureDataTables = async () => {
     const jQuery = await ensureJQuery();
+
+    // jQuery 4 removed several methods used by DataTables 1.x — polyfill them all
+    if (typeof jQuery.isArray !== 'function')    { jQuery.isArray    = Array.isArray; }
+    if (typeof jQuery.trim    !== 'function')    { jQuery.trim       = (s) => (s == null ? '' : String.prototype.trim.call(s)); }
+    if (typeof jQuery.isFunction !== 'function') { jQuery.isFunction = (fn) => typeof fn === 'function'; }
+    if (typeof jQuery.type !== 'function') {
+        jQuery.type = (obj) => {
+            if (obj == null) return String(obj);
+            const map = {
+                '[object Boolean]': 'boolean', '[object Number]': 'number',
+                '[object String]': 'string',   '[object Function]': 'function',
+                '[object Array]': 'array',     '[object Date]': 'date',
+                '[object RegExp]': 'regexp',   '[object Object]': 'object',
+                '[object Error]': 'error',
+            };
+            return map[Object.prototype.toString.call(obj)] || 'object';
+        };
+    }
+    if (typeof jQuery.now !== 'function') { jQuery.now = Date.now; }
 
     if (jQuery.fn && typeof jQuery.fn.DataTable === 'function') {
         return;

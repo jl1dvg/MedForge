@@ -1,4 +1,5 @@
 
+(function () {
     const charts = {};
     const dashboardConfig = typeof window !== 'undefined' ? (window.__SOLICITUDES_DASHBOARD__ || {}) : {};
     const endpoint = typeof dashboardConfig.endpoint === 'string' && dashboardConfig.endpoint.trim() !== ''
@@ -277,4 +278,4 @@
     }
 
     fetchDashboard();
-
+})();
