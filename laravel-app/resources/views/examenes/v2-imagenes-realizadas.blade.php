@@ -575,7 +575,16 @@
                 }).then(r => r.json());
             }
 
-            document.addEventListener('DOMContentLoaded', function () {
+            window.initImagenesRealizadasPage = function initImagenesRealizadasPage() {
+                if (window.__imagenesRealizadasPageInitialized) {
+                    return;
+                }
+                if (typeof window.createImagenesRealizadasTable !== 'function') {
+                    return;
+                }
+
+                window.__imagenesRealizadasPageInitialized = true;
+
                 function uniqueSorted(values) {
                     return Array.from(new Set(values.filter(Boolean))).sort(function (a, b) {
                         return a.localeCompare(b, 'es', {sensitivity: 'base'});
@@ -2569,50 +2578,20 @@
                     });
                 }
 
-                if (window.jQuery && $.fn.DataTable) {
-                    const extSearch = $.fn.dataTable.ext.search;
-                    if (window.__imagenesRealizadasTabFilterFn) {
-                        const oldFilterIndex = extSearch.indexOf(window.__imagenesRealizadasTabFilterFn);
-                        if (oldFilterIndex !== -1) {
-                            extSearch.splice(oldFilterIndex, 1);
-                        }
-                    }
-
-                    const tabFilterFn = function (settings, data, dataIndex) {
-                        if (!settings || !settings.nTable || settings.nTable.id !== 'tablaImagenesRealizadas') {
-                            return true;
-                        }
-                        const rowRef = settings.aoData && settings.aoData[dataIndex] ? settings.aoData[dataIndex].nTr : null;
-                        if (!rowRef || !rowRef.dataset || !rowRef.dataset.id) {
-                            return true;
-                        }
-                        return rowInActiveTab(rowRef);
-                    };
-                    extSearch.push(tabFilterFn);
-                    window.__imagenesRealizadasTabFilterFn = tabFilterFn;
-
-                    dataTable = $('#tablaImagenesRealizadas').DataTable({
-                        order: [[1, 'desc']],
-                        language: window.medforgeDataTableLanguageEs ? window.medforgeDataTableLanguageEs() : {},
+                dataTable = window.createImagenesRealizadasTable(
+                    document.getElementById('tablaImagenesRealizadas'),
+                    {
                         pageLength: 25,
-                        autoWidth: false,
-                        deferRender: true,
-                        processing: true,
-                        columnDefs: [
-                            {targets: 0, orderable: false, searchable: false, className: 'text-center select-cell'}
-                        ],
-                        initComplete: function () {
-                            $('#tablaImagenesRealizadas').css('width', '100%').removeAttr('style');
-                            updateSelectAllState();
-                        }
-                    });
-                    $('#tablaImagenesRealizadas').on('draw.dt', function () {
-                        applyPatientGrouping();
-                        refreshTabCounts();
-                        updateSelectAllState();
-                        runActiveTabBackgroundTasks();
-                    });
-                }
+                        order: [[1, 'desc']],
+                    }
+                );
+                dataTable.setExternalFilter(rowInActiveTab);
+                dataTable.onDraw(function () {
+                    applyPatientGrouping();
+                    refreshTabCounts();
+                    updateSelectAllState();
+                    runActiveTabBackgroundTasks();
+                });
 
                 applyTabFilter('no-informados');
                 applyPatientGrouping();
@@ -2726,10 +2705,16 @@
                             })
                             .catch(function () {
                                 alert('Error de red al eliminar.');
-                            });
+                        });
                     });
                 });
-            });
+            };
+
+            document.addEventListener('DOMContentLoaded', window.initImagenesRealizadasPage);
+            window.addEventListener('medforge:imagenes-realizadas-module-ready', window.initImagenesRealizadasPage);
+            if (typeof window.createImagenesRealizadasTable === 'function') {
+                window.initImagenesRealizadasPage();
+            }
         })();
     </script>
 
