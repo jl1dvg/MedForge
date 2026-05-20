@@ -38,18 +38,23 @@ class WhatsappLeadService
         $cedula = $this->resolveCedula($conversation);
 
         $result = DB::transaction(function () use ($conversation, $motivoBaja, $cedula, $actorUserId): array {
-            // 1. Crear crm_lead
-            $crmLead = CrmLead::query()->create([
-                'hc_number'   => $conversation->patient_hc_number,
-                'name'        => $conversation->patient_full_name ?: $conversation->display_name ?: $conversation->wa_number,
-                'phone'       => $conversation->wa_number,
-                'status'      => 'nuevo',
-                'source'      => 'whatsapp_baja',
-                'notes'       => "Dado de baja desde WhatsApp.\nNúmero: {$conversation->wa_number}\nMotivo: {$motivoBaja}"
-                    . ($cedula ? "\nCédula: {$cedula}" : ''),
-                'created_by'  => $actorUserId > 0 ? $actorUserId : null,
-                'assigned_to' => $actorUserId > 0 ? $actorUserId : null,
-            ]);
+            // 1. Crear o actualizar crm_lead (uq_crm_leads_hc_number puede ya existir)
+            $actor = $actorUserId > 0 ? $actorUserId : null;
+            $newNotes = "Dado de baja desde WhatsApp.\nNúmero: {$conversation->wa_number}\nMotivo: {$motivoBaja}"
+                . ($cedula ? "\nCédula: {$cedula}" : '');
+
+            $crmLead = CrmLead::query()->updateOrCreate(
+                ['hc_number' => $conversation->patient_hc_number],
+                [
+                    'name'        => $conversation->patient_full_name ?: $conversation->display_name ?: $conversation->wa_number,
+                    'phone'       => $conversation->wa_number,
+                    'status'      => 'nuevo',
+                    'source'      => 'whatsapp_baja',
+                    'notes'       => $newNotes,
+                    'created_by'  => $actor,
+                    'assigned_to' => $actor,
+                ]
+            );
 
             // 2. Crear whatsapp_lead
             $lead = WhatsappLead::query()->create([
