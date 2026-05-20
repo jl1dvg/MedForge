@@ -1173,7 +1173,7 @@
         <div class="col-12">
             <div class="wa-kpi-panel">
                 <div class="wa-kpi-panel__head" style="cursor:pointer;"
-                     onclick="this.nextElementSibling.classList.toggle('d-none')">
+                     onclick="this.nextElementSibling.nextElementSibling.classList.toggle('d-none')">
                     <div class="wa-kpi-title-row">
                         <div class="wa-kpi-sideheading__title">Top Ads por citas</div>
                         <button type="button" class="wa-kpi-help" aria-label="Ver ayuda de Top Ads por citas" onclick="event.stopPropagation()">
@@ -1184,6 +1184,11 @@
                     </div>
                     <div class="wa-kpi-sideheading__meta">Ranking inicial de anuncios que más conversaciones y citas aportan al canal.</div>
                 </div>
+                {{-- Chart de Ads (nuevo) --}}
+                <div class="wa-kpi-panel__body">
+                    <div id="chart-ads" class="wa-chart-wrap" style="height:220px"></div>
+                </div>
+                {{-- Tabla detalle (ya existente, mantener el d-none) --}}
                 <div class="wa-kpi-panel__body p-0 d-none">
                     <div class="table-responsive">
                         <table class="table table-striped wa-kpi-table mb-0">
@@ -1609,6 +1614,34 @@
         plotOptions: { pie: { donut: { size: '55%' } } },
         dataLabels: { enabled: true, formatter: function(val){ return Math.round(val) + '%'; }, style: { fontSize: '10px' } },
         tooltip: { y: { formatter: function(val){ return val + ' conversaciones'; } } },
+    }).render();
+}());
+</script>
+<script>
+(function () {
+    var el = document.getElementById('chart-ads');
+    if (!el) return;
+    var rows = @json($analyticsAds);
+    if (!rows || !rows.length) {
+        el.innerHTML = '<div class="wa-chart-empty">Sin conversaciones atribuibles a Ads en el rango actual</div>';
+        return;
+    }
+    var platformIcons = { facebook: '📘', instagram: '📷', whatsapp: '💬' };
+    var labels = rows.map(function(r){
+        var icon = platformIcons[r.platform] || '❓';
+        return icon + ' ' + (r.headline ? r.headline.substring(0, 28) + (r.headline.length > 28 ? '…' : '') : 'Sin nombre');
+    });
+    new ApexCharts(el, {
+        chart: { type: 'bar', height: 220, toolbar: { show: false }, fontFamily: 'inherit' },
+        plotOptions: { bar: { horizontal: true, distributed: true, barHeight: '60%', borderRadius: 4 } },
+        series: [{ name: 'Citas', data: rows.map(function(r){ return parseInt(r.bookings)||0; }) }],
+        xaxis: { categories: labels, labels: { style: { fontSize: '10px' } } },
+        yaxis: { labels: { style: { fontSize: '10px' }, maxWidth: 160 } },
+        colors: rows.map(function(r){ return r.platform === 'instagram' ? '#e879f9' : '#3b82f6'; }),
+        legend: { show: false },
+        dataLabels: { enabled: true, formatter: function(val){ return val + ' citas'; }, style: { fontSize: '10px' } },
+        tooltip: { y: { formatter: function(val, opts){ var r = rows[opts.dataPointIndex]; return val + ' citas · ' + (r ? r.conversations : 0) + ' conv.'; } } },
+        grid: { borderColor: '#f1f5f9' },
     }).render();
 }());
 </script>
