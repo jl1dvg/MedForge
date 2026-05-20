@@ -2710,9 +2710,10 @@
                         <div style="padding: 4px 0 8px;">
                             <button type="button"
                                     id="wa-v2-baja-btn"
-                                    class="btn btn-outline-danger btn-sm w-100"
+                                    class="waves-effect waves-light btn mb-5 bg-gradient-success"
+                                    data-placeholder="Dar de baja y generar lead"
                                     data-conversation-id="{{ $selectedConversation['id'] }}">
-                                <i class="mdi mdi-account-remove-outline"></i> Dar de baja y generar lead
+                                <i class="mdi mdi-account-remove-outline"></i>
                             </button>
                         </div>
 
@@ -3708,7 +3709,8 @@
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
-                            'Accept': 'application/json'
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? '',
                         },
                         body: JSON.stringify(payload || {})
                     });
