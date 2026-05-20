@@ -227,4 +227,7 @@ Route::middleware(['app.auth'])->group(function (): void {
     Route::get('/v2/whatsapp/ai-agent', [WhatsappUiController::class, 'aiAgent'])
         ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.autoresponder.manage,settings.manage')
         ->middleware('whatsapp.feature:ui,/whatsapp/flowmaker');
+    Route::get('/v2/whatsapp/leads', [WhatsappUiController::class, 'leads'])
+        ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.supervise,whatsapp.chat.assign,settings.manage')
+        ->middleware('whatsapp.feature:ui,/whatsapp/chat');
 });
