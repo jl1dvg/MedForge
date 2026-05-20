@@ -343,6 +343,36 @@
     .wa-now-card__action:hover { text-decoration: underline; }
     .wa-section-toggle   { background: none; border: none; cursor: pointer; font-size: .82rem; color: #64748b; padding: 4px 8px; border-radius: 4px; }
     .wa-section-toggle:hover { background: #f1f5f9; }
+    /* ── T+ Progress bars ─────────────────────────────── */
+    .wa-prog-wrap { display: flex; align-items: center; gap: 8px; }
+    .wa-prog-bg   { flex: 1; background: #f1f5f9; border-radius: 4px; height: 6px; overflow: hidden; }
+    .wa-prog-fill { height: 6px; border-radius: 4px; transition: width .3s ease; }
+    .wa-prog-fill--green  { background: #10b981; }
+    .wa-prog-fill--yellow { background: #f59e0b; }
+    .wa-prog-fill--red    { background: #ef4444; }
+    .wa-prog-val  { font-size: 10px; font-weight: 700; white-space: nowrap; min-width: 36px; text-align: right; }
+    .wa-prog-val--green  { color: #059669; }
+    .wa-prog-val--yellow { color: #d97706; }
+    .wa-prog-val--red    { color: #dc2626; }
+    /* ── Chart section group labels ───────────────────── */
+    .wa-group-label {
+        font-size: 11px; font-weight: 700; color: #64748b;
+        text-transform: uppercase; letter-spacing: .08em;
+        padding: 6px 0 4px; border-bottom: 2px solid #e2e8f0;
+        margin-bottom: 10px; margin-top: 18px;
+    }
+    /* ── Chart wrappers ───────────────────────────────── */
+    .wa-chart-wrap { min-height: 200px; }
+    .wa-chart-empty {
+        display: flex; align-items: center; justify-content: center;
+        min-height: 160px; color: #94a3b8; font-size: 13px;
+        background: #f8fafc; border-radius: 10px;
+    }
+    /* ── Chart summary chips ──────────────────────────── */
+    .wa-chart-chips { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; margin-top: 10px; }
+    .wa-chart-chip  { text-align: center; }
+    .wa-chart-chip__val { font-size: 18px; font-weight: 800; line-height: 1; }
+    .wa-chart-chip__lbl { font-size: 10px; color: #64748b; margin-top: 2px; }
 </style>
 @endpush
 
@@ -1314,4 +1344,9 @@
 
 {{-- Guía de uso interactiva --}}
 @include('whatsapp.partials.dashboard-guide')
+
+@push('scripts')
+<script src="https://cdn.jsdelivr.net/npm/apexcharts@3/dist/apexcharts.min.js"></script>
+@endpush
+
 @endsection
