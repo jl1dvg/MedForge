@@ -2223,14 +2223,23 @@ class KpiDashboardService
     private function conversationScopeFilterSql(string $conversationAlias, string $userAlias, ?int $roleId, ?int $agentId, string $scope): array
     {
         $conditions = [];
-        $params = [];
+        $params     = [];
+
         if ($roleId !== null && $roleId > 0) {
             $conditions[] = $userAlias . '.role_id = ?';
             $params[$scope . '_role'] = $roleId;
         }
+
         if ($agentId !== null && $agentId > 0) {
-            $conditions[] = $conversationAlias . '.assigned_user_id = ?';
-            $params[$scope . '_agent'] = $agentId;
+            // Incluye la asignación actual Y conversaciones donde el agente
+            // tuvo un handoff histórico (para no perder transferencias).
+            $conditions[] = '(' . $conversationAlias . '.assigned_user_id = ? OR EXISTS (
+            SELECT 1 FROM whatsapp_handoffs wh_scope
+            WHERE wh_scope.conversation_id = ' . $conversationAlias . '.id
+              AND wh_scope.assigned_agent_id = ?
+        ))';
+            $params[$scope . '_agent_current']    = $agentId;
+            $params[$scope . '_agent_historical'] = $agentId;
         }
 
         return ['where' => implode(' AND ', $conditions), 'params' => $params];
