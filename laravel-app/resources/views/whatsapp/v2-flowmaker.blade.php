@@ -233,6 +233,26 @@
         background: rgba(71, 85, 105, .10);
         color: #475569;
     }
+    .wa-flow-badge--status-published {
+        background: rgba(15, 118, 110, .10);
+        color: #0f766e;
+    }
+    .wa-flow-badge--status-draft {
+        background: rgba(148, 163, 184, .14);
+        color: #475569;
+    }
+    .wa-flow-badge--status-paused {
+        background: rgba(245, 158, 11, .10);
+        color: #b45309;
+    }
+    .wa-flow-badge--stage-arrival    { background: rgba(139, 92, 246, .10); color: #6d28d9; }
+    .wa-flow-badge--stage-validation { background: rgba(245, 158, 11, .10); color: #b45309; }
+    .wa-flow-badge--stage-consent    { background: rgba(236, 72, 153, .10); color: #be185d; }
+    .wa-flow-badge--stage-menu       { background: rgba(15, 118, 110, .10); color: #0f766e; }
+    .wa-flow-badge--stage-scheduling { background: rgba(37, 99, 235, .10);  color: #1d4ed8; }
+    .wa-flow-badge--stage-results    { background: rgba(22, 163, 74, .10);  color: #15803d; }
+    .wa-flow-badge--stage-post       { background: rgba(99, 102, 241, .10); color: #4338ca; }
+    .wa-flow-badge--stage-custom     { background: rgba(71, 85, 105, .10);  color: #475569; }
     .wa-flow-workspace {
         display: grid;
         gap: 18px;
@@ -1277,8 +1297,6 @@
                                         <div class="wa-flow-mini-pill">Sin selección</div>
                                     </div>
                                     <div class="wa-flow-canvas-toolbar__actions">
-                                        <span class="wa-flow-mini-pill"><i class="mdi mdi-vector-polyline"></i> canvas-first</span>
-                                        <span class="wa-flow-mini-pill"><i class="mdi mdi-shield-check-outline"></i> shadow parity</span>
                                         <span class="wa-flow-mini-pill"><i class="mdi mdi-history"></i> versionado</span>
                                     </div>
                                 </div>
@@ -1307,10 +1325,10 @@
                                             <input id="wa-flow-sim-text" class="form-control" value="hola">
                                         </div>
                                     </div>
-                                    <div>
-                                        <label class="form-label">Contexto JSON opcional</label>
-                                        <textarea id="wa-flow-sim-context" class="form-control" rows="5">{}</textarea>
-                                    </div>
+                                    <details>
+                                        <summary class="form-label" style="cursor:pointer;user-select:none;">Contexto JSON opcional</summary>
+                                        <textarea id="wa-flow-sim-context" class="form-control mt-6" rows="5">{}</textarea>
+                                    </details>
                                     <div class="d-flex flex-wrap gap-10">
                                         <button type="button" class="btn btn-primary" id="wa-flow-sim-btn">Simular mensaje</button>
                                         <button type="button" class="btn btn-outline-dark" id="wa-flow-compare-btn">Comparar con legacy</button>
@@ -1336,10 +1354,10 @@
                                 <div class="wa-flow-inspector-grid">
                                     <div class="wa-flow-soft-panel wa-flow-soft-panel--full">
                                         <div class="wa-flow-section-title d-flex justify-content-between align-items-center">
-                                            <span>Fase 6 está lista para cierre</span>
+                                            <span>Estado del flujo</span>
                                             <button type="button" class="btn btn-xs btn-outline-dark" id="wa-flow-shadow-refresh-btn">Actualizar</button>
                                         </div>
-                                        <div class="wa-flow-preview" id="wa-flow-readiness-output">Todavía no se evaluó si Fase 6 está lista para cierre.</div>
+                                        <div class="wa-flow-preview" id="wa-flow-readiness-output">Pendiente de evaluación.</div>
                                     </div>
                                     <div class="wa-flow-soft-panel">
                                         <div class="wa-flow-section-title">Paridad del shadow runtime</div>
@@ -1370,20 +1388,34 @@
                             <div class="wa-flow-panel__body">
                                 <div class="wa-flow-version-stack" id="wa-flow-version-list">
                                     @forelse($versions as $version)
+                                        @php
+                                            $versionDate = $version['published_at'] ?? $version['created_at'] ?? null;
+                                            $versionDateFormatted = $versionDate
+                                                ? \Carbon\Carbon::parse($versionDate)->locale('es')->isoFormat('D MMM YYYY, HH:mm')
+                                                : '—';
+                                            $versionStatus = $version['status'] ?? 'draft';
+                                            $versionStatusClass = match($versionStatus) {
+                                                'published' => 'wa-flow-badge--status-published',
+                                                'paused'    => 'wa-flow-badge--status-paused',
+                                                default     => 'wa-flow-badge--status-draft',
+                                            };
+                                            $versionStatusLabel = match($versionStatus) {
+                                                'published' => 'Publicado',
+                                                'paused'    => 'Pausado',
+                                                default     => 'Borrador',
+                                            };
+                                        @endphp
                                         <button type="button" class="wa-flow-version-card {{ ($version['id'] ?? null) === ($activeVersion['id'] ?? null) ? 'is-active' : '' }}" data-version-id="{{ $version['id'] ?? '' }}">
                                             <div class="wa-flow-version-card__top">
                                                 <div>
                                                     <div class="wa-flow-version-card__name">Versión {{ $version['version'] ?? '—' }}</div>
-                                                    <div class="small text-muted">{{ $version['published_at'] ?? $version['created_at'] ?? '—' }}</div>
+                                                    <div class="small text-muted">{{ $versionDateFormatted }}</div>
                                                 </div>
-                                                <span class="wa-flow-badge wa-flow-badge--stage">{{ $version['status'] ?? '—' }}</span>
+                                                <span class="wa-flow-badge {{ $versionStatusClass }}">{{ $versionStatusLabel }}</span>
                                             </div>
                                             <div class="wa-flow-version-card__meta">
                                                 <span class="wa-flow-badge wa-flow-badge--count">
                                                     {{ count(($version['entry_settings']['flow']['scenarios'] ?? $version['entry_settings']['scenarios'] ?? [])) }} escenarios
-                                                </span>
-                                                <span class="wa-flow-badge wa-flow-badge--count">
-                                                    id {{ $version['id'] ?? '—' }}
                                                 </span>
                                             </div>
                                         </button>
@@ -1437,195 +1469,76 @@
                         </div>
                     </div>
 
-                    <div class="wa-flow-panel">
-                        <div class="wa-flow-panel__head">
-                            <div class="wa-flow-sideheading__title">Knowledge Base IA</div>
-                            <div class="wa-flow-sideheading__meta">Base documental inicial para FAQs, sedes, seguros, pre y post operatorios, lista para alimentar el nodo AI Agent.</div>
-                        </div>
-                        <div class="wa-flow-panel__body">
-                            <div class="wa-flow-kpis mb-15">
-                                <div class="wa-flow-kpi">
-                                    <div class="wa-flow-kpi__label">Documentos</div>
-                                    <div class="wa-flow-kpi__value" id="wa-kb-total">{{ $knowledgeStats['total'] ?? 0 }}</div>
-                                    <div class="wa-flow-kpi__sub">Base total indexada</div>
-                                </div>
-                                <div class="wa-flow-kpi">
-                                    <div class="wa-flow-kpi__label">Publicados</div>
-                                    <div class="wa-flow-kpi__value" id="wa-kb-published">{{ $knowledgeStats['published'] ?? 0 }}</div>
-                                    <div class="wa-flow-kpi__sub">Listos para consulta</div>
-                                </div>
-                                <div class="wa-flow-kpi">
-                                    <div class="wa-flow-kpi__label">Draft</div>
-                                    <div class="wa-flow-kpi__value" id="wa-kb-draft">{{ $knowledgeStats['draft'] ?? 0 }}</div>
-                                    <div class="wa-flow-kpi__sub">Pendientes de curación</div>
-                                </div>
-                                <div class="wa-flow-kpi">
-                                    <div class="wa-flow-kpi__label">Fuentes</div>
-                                    <div class="wa-flow-kpi__value" id="wa-kb-sources">{{ $knowledgeStats['sources'] ?? 0 }}</div>
-                                    <div class="wa-flow-kpi__sub">Tipos de origen documentado</div>
-                                </div>
-                            </div>
-
-                            <div class="wa-kb-grid">
+                    <div class="wa-flow-inline-grid">
+                        <div class="wa-flow-panel">
+                            <div class="wa-flow-panel__head d-flex justify-content-between align-items-center gap-10">
                                 <div>
-                                    <div class="wa-flow-section-title">Documentos recientes</div>
-                                    <div class="wa-kb-list" id="wa-kb-list">
-                                        @forelse($knowledgeDocuments as $document)
-                                            <div class="wa-kb-card">
-                                                <div class="wa-kb-card__title">{{ $document['title'] ?? 'Documento KB' }}</div>
-                                                <div class="wa-kb-card__summary">{{ $document['summary'] ?? 'Sin resumen.' }}</div>
-                                                <div class="wa-kb-card__meta">
-                                                    <span class="wa-flow-badge wa-flow-badge--stage">{{ $document['status'] ?? 'draft' }}</span>
-                                                    <span class="wa-flow-badge wa-flow-badge--count">{{ $document['metadata']['tipo_contenido'] ?? 'faq' }}</span>
-                                                    <span class="wa-flow-badge wa-flow-badge--count">{{ $document['metadata']['audiencia'] ?? 'paciente' }}</span>
-                                                    <span class="wa-flow-badge wa-flow-badge--count">{{ $document['metadata']['sede'] ?? 'global' }}</span>
-                                                </div>
-                                                <div class="wa-kb-card__actions">
-                                                    <button type="button" class="btn btn-light btn-sm" data-kb-edit="{{ $document['id'] ?? '' }}">Editar</button>
-                                                </div>
-                                            </div>
-                                        @empty
-                                            <div class="wa-flow-empty">Todavía no hay documentos en la Knowledge Base.</div>
-                                        @endforelse
+                                    <div class="wa-flow-sideheading__title">Knowledge Base IA</div>
+                                    <div class="wa-flow-sideheading__meta">Base documental del nodo AI Agent para grounding controlado.</div>
+                                </div>
+                                <a href="/v2/whatsapp/kb" class="btn btn-sm btn-primary">
+                                    <i class="mdi mdi-open-in-new"></i> Gestionar KB
+                                </a>
+                            </div>
+                            <div class="wa-flow-panel__body">
+                                <div class="wa-flow-kpis">
+                                    <div class="wa-flow-kpi">
+                                        <div class="wa-flow-kpi__label">Total</div>
+                                        <div class="wa-flow-kpi__value">{{ $knowledgeStats['total'] ?? 0 }}</div>
+                                        <div class="wa-flow-kpi__sub">Documentos</div>
+                                    </div>
+                                    <div class="wa-flow-kpi">
+                                        <div class="wa-flow-kpi__label">Publicados</div>
+                                        <div class="wa-flow-kpi__value">{{ $knowledgeStats['published'] ?? 0 }}</div>
+                                        <div class="wa-flow-kpi__sub">Listos para AI</div>
+                                    </div>
+                                    <div class="wa-flow-kpi">
+                                        <div class="wa-flow-kpi__label">Draft</div>
+                                        <div class="wa-flow-kpi__value">{{ $knowledgeStats['draft'] ?? 0 }}</div>
+                                        <div class="wa-flow-kpi__sub">Por curar</div>
+                                    </div>
+                                    <div class="wa-flow-kpi">
+                                        <div class="wa-flow-kpi__label">Fuentes</div>
+                                        <div class="wa-flow-kpi__value">{{ $knowledgeStats['sources'] ?? 0 }}</div>
+                                        <div class="wa-flow-kpi__sub">Tipos de origen</div>
                                     </div>
                                 </div>
+                            </div>
+                        </div>
 
+                        <div class="wa-flow-panel">
+                            <div class="wa-flow-panel__head d-flex justify-content-between align-items-center gap-10">
                                 <div>
-                                    <div class="wa-flow-section-title">Alta rápida de documento</div>
-                                    <div class="wa-flow-stack">
-                                        <div class="wa-flow-form-grid">
-                                            <div class="wa-flow-editor-field">
-                                                <label>Título</label>
-                                                <input type="text" id="wa-kb-title" placeholder="Consentimiento y uso de datos">
-                                            </div>
-                                            <div class="wa-flow-editor-field">
-                                                <label>Estado</label>
-                                                <select id="wa-kb-status">
-                                                    <option value="draft">draft</option>
-                                                    <option value="published">published</option>
-                                                </select>
-                                            </div>
-                                            <div class="wa-flow-editor-field">
-                                                <label>Sede</label>
-                                                <input type="text" id="wa-kb-sede" placeholder="Matriz">
-                                            </div>
-                                            <div class="wa-flow-editor-field">
-                                                <label>Especialidad</label>
-                                                <input type="text" id="wa-kb-especialidad" placeholder="Oftalmología">
-                                            </div>
-                                            <div class="wa-flow-editor-field">
-                                                <label>Tipo de contenido</label>
-                                                <select id="wa-kb-type">
-                                                    <option value="faq">faq</option>
-                                                    <option value="policy">policy</option>
-                                                    <option value="preoperatorio">preoperatorio</option>
-                                                    <option value="postoperatorio">postoperatorio</option>
-                                                    <option value="seguros">seguros</option>
-                                                    <option value="consentimiento">consentimiento</option>
-                                                </select>
-                                            </div>
-                                            <div class="wa-flow-editor-field">
-                                                <label>Audiencia</label>
-                                                <select id="wa-kb-audiencia">
-                                                    <option value="paciente">paciente</option>
-                                                    <option value="agente">agente</option>
-                                                    <option value="supervisor">supervisor</option>
-                                                </select>
-                                            </div>
-                                        </div>
-                                        <div class="wa-flow-editor-field">
-                                            <label>Contenido</label>
-                                            <textarea id="wa-kb-content" placeholder="Texto base para grounding controlado del AI Agent."></textarea>
-                                        </div>
-                                        <div class="d-flex flex-wrap gap-10 align-items-center">
-                                            <button type="button" class="btn btn-primary" id="wa-kb-save-btn">Guardar documento KB</button>
-                                            <button type="button" class="btn btn-light" id="wa-kb-cancel-edit-btn" hidden>Cancelar edición</button>
-                                            <span class="small text-muted" id="wa-kb-status-node">La base documental todavía no tiene integración con AI Agent.</span>
-                                        </div>
+                                    <div class="wa-flow-sideheading__title">AI Agent</div>
+                                    <div class="wa-flow-sideheading__meta">Historial de runs del nodo en modo preview — confianza, grounding y handoff.</div>
+                                </div>
+                                <a href="/v2/whatsapp/ai-agent" class="btn btn-sm btn-primary">
+                                    <i class="mdi mdi-open-in-new"></i> Ver runs
+                                </a>
+                            </div>
+                            <div class="wa-flow-panel__body">
+                                <div class="wa-flow-kpis">
+                                    <div class="wa-flow-kpi">
+                                        <div class="wa-flow-kpi__label">Runs</div>
+                                        <div class="wa-flow-kpi__value">{{ $aiAgentStats['total_runs'] ?? 0 }}</div>
+                                        <div class="wa-flow-kpi__sub">Preview total</div>
+                                    </div>
+                                    <div class="wa-flow-kpi">
+                                        <div class="wa-flow-kpi__label">Handoff</div>
+                                        <div class="wa-flow-kpi__value">{{ $aiAgentStats['handoff_suggested'] ?? 0 }}</div>
+                                        <div class="wa-flow-kpi__sub">Sugerido</div>
+                                    </div>
+                                    <div class="wa-flow-kpi">
+                                        <div class="wa-flow-kpi__label">Confianza</div>
+                                        <div class="wa-flow-kpi__value">{{ $aiAgentStats['avg_confidence'] ?? 0 }}</div>
+                                        <div class="wa-flow-kpi__sub">Media</div>
+                                    </div>
+                                    <div class="wa-flow-kpi">
+                                        <div class="wa-flow-kpi__label">Fallback</div>
+                                        <div class="wa-flow-kpi__value">{{ $aiAgentStats['fallback_runs'] ?? 0 }}</div>
+                                        <div class="wa-flow-kpi__sub">Guardrail activo</div>
                                     </div>
                                 </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="wa-flow-panel">
-                        <div class="wa-flow-panel__head">
-                            <div class="wa-flow-sideheading__title">AI Agent preview</div>
-                            <div class="wa-flow-sideheading__meta">Runs recientes del nodo `AI Agent` en modo preview. Todavía no ejecuta webhook real ni tools sensibles.</div>
-                        </div>
-                        <div class="wa-flow-panel__body">
-                            <div class="wa-flow-kpis mb-15">
-                                <div class="wa-flow-kpi">
-                                    <div class="wa-flow-kpi__label">Runs</div>
-                                    <div class="wa-flow-kpi__value" id="wa-ai-total">{{ $aiAgentStats['total_runs'] ?? 0 }}</div>
-                                    <div class="wa-flow-kpi__sub">Preview persistido</div>
-                                </div>
-                                <div class="wa-flow-kpi">
-                                    <div class="wa-flow-kpi__label">Handoff sugerido</div>
-                                    <div class="wa-flow-kpi__value" id="wa-ai-handoff">{{ $aiAgentStats['handoff_suggested'] ?? 0 }}</div>
-                                    <div class="wa-flow-kpi__sub">Por baja confianza</div>
-                                </div>
-                                <div class="wa-flow-kpi">
-                                    <div class="wa-flow-kpi__label">Alta confianza</div>
-                                    <div class="wa-flow-kpi__value" id="wa-ai-high">{{ $aiAgentStats['high_confidence'] ?? 0 }}</div>
-                                    <div class="wa-flow-kpi__sub">>= 0.75</div>
-                                </div>
-                                <div class="wa-flow-kpi">
-                                    <div class="wa-flow-kpi__label">Confianza media</div>
-                                    <div class="wa-flow-kpi__value" id="wa-ai-avg">{{ $aiAgentStats['avg_confidence'] ?? 0 }}</div>
-                                    <div class="wa-flow-kpi__sub">Preview</div>
-                                </div>
-                                <div class="wa-flow-kpi">
-                                    <div class="wa-flow-kpi__label">Fallback runs</div>
-                                    <div class="wa-flow-kpi__value" id="wa-ai-fallback">{{ $aiAgentStats['fallback_runs'] ?? 0 }}</div>
-                                    <div class="wa-flow-kpi__sub">Guardrail activo</div>
-                                </div>
-                                <div class="wa-flow-kpi">
-                                    <div class="wa-flow-kpi__label">Grounding medio</div>
-                                    <div class="wa-flow-kpi__value" id="wa-ai-grounding">{{ $aiAgentStats['avg_grounding'] ?? 0 }}</div>
-                                    <div class="wa-flow-kpi__sub">Score por run</div>
-                                </div>
-                                <div class="wa-flow-kpi">
-                                    <div class="wa-flow-kpi__label">Safety medio</div>
-                                    <div class="wa-flow-kpi__value" id="wa-ai-safety">{{ $aiAgentStats['avg_safety'] ?? 0 }}</div>
-                                    <div class="wa-flow-kpi__sub">Guardrail básico</div>
-                                </div>
-                            </div>
-                            <div class="wa-kb-list" id="wa-ai-runs-list">
-                                @forelse($aiAgentRuns as $run)
-                                    <div class="wa-ai-run-card">
-                                        <div class="wa-ai-run-card__top">
-                                            <div>
-                                                <div class="wa-ai-run-card__title">{{ $run['scenario_id'] ?? 'AI Agent' }} · {{ $run['classification'] ?? 'general' }}</div>
-                                                <div class="wa-ai-run-card__meta">{{ $run['wa_number'] ?? 'sin número' }} · conf {{ $run['confidence'] ?? 0 }} · {{ $run['created_at'] ?? '—' }}</div>
-                                            </div>
-                                            <span class="wa-flow-node-badge wa-flow-node-badge--{{ !empty($run['fallback_used']) ? 'warning' : (!empty($run['suggested_handoff']) ? 'draft' : 'match') }}">
-                                                {{ $run['decision'] ?? (!empty($run['suggested_handoff']) ? 'respond_handoff' : 'respond') }}
-                                            </span>
-                                        </div>
-                                        <div class="wa-ai-run-card__response">{{ $run['response_text'] ?? 'Sin respuesta sugerida todavía.' }}</div>
-                                        <div class="wa-ai-run-card__meta">fallback={{ !empty($run['fallback_used']) ? 'sí' : 'no' }} · handoff={{ !empty($run['suggested_handoff']) ? 'sí' : 'no' }}</div>
-                                        @if(!empty($run['handoff_reasons']))
-                                            <div class="wa-ai-run-card__sources">
-                                                @foreach(($run['handoff_reasons'] ?? []) as $reason)
-                                                    <span class="wa-flow-badge wa-flow-badge--count">{{ $reason }}</span>
-                                                @endforeach
-                                            </div>
-                                        @endif
-                                        @if(!empty($run['scores']))
-                                            <div class="wa-ai-run-card__meta">
-                                                grounding {{ $run['scores']['grounding'] ?? '0' }} · safety {{ $run['scores']['safety'] ?? '0' }} · overall {{ $run['scores']['overall'] ?? '0' }}
-                                            </div>
-                                        @endif
-                                        <div class="wa-ai-run-card__sources">
-                                            @foreach(($run['matched_documents'] ?? []) as $document)
-                                                <span class="wa-flow-badge wa-flow-badge--count">{{ $document['title'] ?? 'doc' }}</span>
-                                            @endforeach
-                                        </div>
-                                    </div>
-                                @empty
-                                    <div class="wa-flow-empty">Todavía no hay ejecuciones del nodo AI Agent.</div>
-                                @endforelse
                             </div>
                         </div>
                     </div>
@@ -1710,7 +1623,6 @@ document.addEventListener('DOMContentLoaded', function () {
     const initialSchema = @json($schema, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     const initialTemplates = @json($templates, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     const activeVersion = @json($activeVersion, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-    window.waActiveVersion = activeVersion; // exposed for sandbox script
     const versionsData = @json($versions, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     const publishButton = document.getElementById('wa-flow-publish-btn');
     const payloadField = document.getElementById('wa-flow-payload');
@@ -1737,29 +1649,6 @@ document.addEventListener('DOMContentLoaded', function () {
     const versionList = document.getElementById('wa-flow-version-list');
     const versionStats = document.getElementById('wa-flow-version-stats');
     const versionDiff = document.getElementById('wa-flow-version-diff');
-    const kbList = document.getElementById('wa-kb-list');
-    const kbSaveButton = document.getElementById('wa-kb-save-btn');
-    const kbCancelEditButton = document.getElementById('wa-kb-cancel-edit-btn');
-    const kbStatusNode = document.getElementById('wa-kb-status-node');
-    const kbTitle = document.getElementById('wa-kb-title');
-    const kbContent = document.getElementById('wa-kb-content');
-    const kbStatus = document.getElementById('wa-kb-status');
-    const kbSede = document.getElementById('wa-kb-sede');
-    const kbEspecialidad = document.getElementById('wa-kb-especialidad');
-    const kbType = document.getElementById('wa-kb-type');
-    const kbAudiencia = document.getElementById('wa-kb-audiencia');
-    const kbTotal = document.getElementById('wa-kb-total');
-    const kbPublished = document.getElementById('wa-kb-published');
-    const kbDraft = document.getElementById('wa-kb-draft');
-    const kbSources = document.getElementById('wa-kb-sources');
-    const aiRunsList = document.getElementById('wa-ai-runs-list');
-    const aiTotal = document.getElementById('wa-ai-total');
-    const aiHandoff = document.getElementById('wa-ai-handoff');
-    const aiHigh = document.getElementById('wa-ai-high');
-    const aiAvg = document.getElementById('wa-ai-avg');
-    const aiFallback = document.getElementById('wa-ai-fallback');
-    const aiGrounding = document.getElementById('wa-ai-grounding');
-    const aiSafety = document.getElementById('wa-ai-safety');
 
     let editorSchema = JSON.parse(JSON.stringify(initialSchema || {}));
     const templateOptions = Array.isArray(initialTemplates) ? initialTemplates : [];
@@ -1768,15 +1657,6 @@ document.addEventListener('DOMContentLoaded', function () {
     let latestShadowRows = [];
     let latestSimulation = null;
     let latestCompare = null;
-    let knowledgeBaseState = {
-        documents: @json($knowledgeDocuments, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-        stats: @json($knowledgeStats, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-    };
-    let selectedKnowledgeDocumentId = null;
-    let aiAgentState = {
-        runs: @json($aiAgentRuns, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-        stats: @json($aiAgentStats, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-    };
 
     const escapeHtml = (value) => {
         return String(value ?? '')
@@ -1882,20 +1762,6 @@ document.addEventListener('DOMContentLoaded', function () {
             || actionSummaryLine(action);
     };
     const actionUsesReadOnlySummary = (action) => ['lookup_patient', 'upsert_patient_from_context', 'conditional', 'goto_menu', 'store_consent'].includes(String(action?.type || ''));
-    const humanizeHandoffReason = (reason) => ({
-        low_confidence: 'baja confianza',
-        no_grounding: 'sin grounding',
-        node_requested_handoff: 'handoff forzado',
-        safety_guardrail: 'guardrail safety',
-        user_requested_human: 'solicitó humano',
-        window_closed: 'ventana cerrada',
-    }[reason] || reason || 'motivo');
-    const humanizeDecision = (decision) => ({
-        respond: 'respuesta normal',
-        fallback: 'fallback',
-        respond_handoff: 'respuesta + handoff',
-        fallback_handoff: 'fallback + handoff',
-    }[decision] || decision || 'respond');
     const humanizeScenarioStatus = (status) => ({
         draft: 'Borrador',
         published: 'Publicado',
@@ -1968,15 +1834,6 @@ document.addEventListener('DOMContentLoaded', function () {
         awaiting_is: 'La salida depende del campo esperado.',
         context_flag: 'La salida depende de una bandera del contexto.',
     }[type] || '');
-    const decisionBadgeTone = (run) => {
-        if (run?.fallback_used) {
-            return 'warning';
-        }
-        if (run?.suggested_handoff) {
-            return 'draft';
-        }
-        return 'match';
-    };
     const ensureScenarioDefaults = (scenario) => {
         if (!scenario || typeof scenario !== 'object') {
             return;
@@ -2816,161 +2673,6 @@ document.addEventListener('DOMContentLoaded', function () {
         `;
         versionDiff.textContent = summarizeVersionDiff(draftFlow, versionFlow);
     };
-    const renderKnowledgeBase = () => {
-        if (!kbList) {
-            return;
-        }
-        const documents = Array.isArray(knowledgeBaseState.documents) ? knowledgeBaseState.documents : [];
-        const stats = knowledgeBaseState.stats || {};
-
-        if (kbTotal) kbTotal.textContent = String(stats.total || 0);
-        if (kbPublished) kbPublished.textContent = String(stats.published || 0);
-        if (kbDraft) kbDraft.textContent = String(stats.draft || 0);
-        if (kbSources) kbSources.textContent = String(stats.sources || 0);
-
-        if (!documents.length) {
-            kbList.innerHTML = '<div class="wa-flow-empty">Todavía no hay documentos en la Knowledge Base.</div>';
-            return;
-        }
-
-        kbList.innerHTML = documents.map((document) => `
-            <div class="wa-kb-card">
-                <div class="wa-kb-card__title">${escapeHtml(document.title || 'Documento KB')}</div>
-                <div class="wa-kb-card__summary">${escapeHtml(document.summary || 'Sin resumen.')}</div>
-                <div class="wa-kb-card__meta">
-                    <span class="wa-flow-badge wa-flow-badge--stage">${escapeHtml(document.status || 'draft')}</span>
-                    <span class="wa-flow-badge wa-flow-badge--count">${escapeHtml(document.metadata?.tipo_contenido || 'faq')}</span>
-                    <span class="wa-flow-badge wa-flow-badge--count">${escapeHtml(document.metadata?.audiencia || 'paciente')}</span>
-                    <span class="wa-flow-badge wa-flow-badge--count">${escapeHtml(document.metadata?.sede || 'global')}</span>
-                </div>
-                <div class="wa-kb-card__actions">
-                    <button type="button" class="btn btn-light btn-sm" data-kb-edit="${escapeHtml(document.id || '')}">Editar</button>
-                </div>
-            </div>
-        `).join('');
-    };
-    const renderAiRuns = () => {
-        if (aiTotal) aiTotal.textContent = String(aiAgentState?.stats?.total_runs || 0);
-        if (aiHandoff) aiHandoff.textContent = String(aiAgentState?.stats?.handoff_suggested || 0);
-        if (aiHigh) aiHigh.textContent = String(aiAgentState?.stats?.high_confidence || 0);
-        if (aiAvg) aiAvg.textContent = String(aiAgentState?.stats?.avg_confidence || 0);
-        if (aiFallback) aiFallback.textContent = String(aiAgentState?.stats?.fallback_runs || 0);
-        if (aiGrounding) aiGrounding.textContent = String(aiAgentState?.stats?.avg_grounding || 0);
-        if (aiSafety) aiSafety.textContent = String(aiAgentState?.stats?.avg_safety || 0);
-        if (!aiRunsList) {
-            return;
-        }
-
-        const runs = Array.isArray(aiAgentState?.runs) ? aiAgentState.runs : [];
-        if (!runs.length) {
-            aiRunsList.innerHTML = '<div class="wa-flow-empty">Todavía no hay ejecuciones del nodo AI Agent.</div>';
-            return;
-        }
-
-        aiRunsList.innerHTML = runs.map((run) => `
-            <div class="wa-ai-run-card">
-                <div class="wa-ai-run-card__top">
-                    <div>
-                        <div class="wa-ai-run-card__title">${escapeHtml(run.scenario_id || 'AI Agent')} · ${escapeHtml(run.classification || 'general')}</div>
-                        <div class="wa-ai-run-card__meta">${escapeHtml(run.wa_number || 'sin número')} · conf ${escapeHtml(run.confidence ?? 0)} · ${escapeHtml(run.created_at || '—')}</div>
-                    </div>
-                    <span class="wa-flow-node-badge wa-flow-node-badge--${decisionBadgeTone(run)}">${escapeHtml(humanizeDecision(run.decision || (run.suggested_handoff ? 'respond_handoff' : 'respond')))}</span>
-                </div>
-                <div class="wa-ai-run-card__response">${escapeHtml(run.response_text || 'Sin respuesta sugerida todavía.')}</div>
-                <div class="wa-ai-run-card__meta">
-                    fallback ${run.fallback_used ? 'sí' : 'no'} · handoff ${run.suggested_handoff ? 'sí' : 'no'} · grounding ${escapeHtml(run?.scores?.grounding ?? 0)} · safety ${escapeHtml(run?.scores?.safety ?? 0)}
-                </div>
-                ${(Array.isArray(run.handoff_reasons) && run.handoff_reasons.length) ? `
-                    <div class="wa-ai-run-card__sources">
-                        ${run.handoff_reasons.map((reason) => `
-                            <span class="wa-flow-badge wa-flow-badge--count">${escapeHtml(humanizeHandoffReason(reason))}</span>
-                        `).join('')}
-                    </div>
-                ` : ''}
-                ${(run.evaluation && typeof run.evaluation === 'object') ? `
-                    <div class="wa-ai-run-card__meta">
-                        grounding ${escapeHtml(run?.evaluation?.grounding?.status || '—')} · safety ${escapeHtml(run?.evaluation?.safety?.status || '—')}
-                    </div>
-                ` : ''}
-                <div class="wa-ai-run-card__sources">
-                    ${(Array.isArray(run.matched_documents) ? run.matched_documents : []).map((document) => `
-                        <span class="wa-flow-badge wa-flow-badge--count">${escapeHtml(document.title || 'doc')}</span>
-                    `).join('')}
-                </div>
-            </div>
-        `).join('');
-    };
-    const resetKnowledgeBaseForm = () => {
-        selectedKnowledgeDocumentId = null;
-        if (kbTitle) kbTitle.value = '';
-        if (kbContent) kbContent.value = '';
-        if (kbStatus) kbStatus.value = 'draft';
-        if (kbSede) kbSede.value = '';
-        if (kbEspecialidad) kbEspecialidad.value = '';
-        if (kbType) kbType.value = 'faq';
-        if (kbAudiencia) kbAudiencia.value = 'paciente';
-        if (kbSaveButton) kbSaveButton.textContent = 'Guardar documento KB';
-        if (kbCancelEditButton) kbCancelEditButton.hidden = true;
-    };
-    const editKnowledgeDocument = (documentId) => {
-        const documents = Array.isArray(knowledgeBaseState.documents) ? knowledgeBaseState.documents : [];
-        const document = documents.find((item) => String(item?.id) === String(documentId));
-        if (!document) {
-            if (kbStatusNode) {
-                kbStatusNode.textContent = 'No se encontró el documento seleccionado.';
-            }
-            return;
-        }
-
-        selectedKnowledgeDocumentId = document.id;
-        const metadata = document.metadata || {};
-        if (kbTitle) kbTitle.value = document.title || '';
-        if (kbContent) kbContent.value = document.content || '';
-        if (kbStatus) kbStatus.value = document.status || 'draft';
-        if (kbSede) kbSede.value = metadata.sede || '';
-        if (kbEspecialidad) kbEspecialidad.value = metadata.especialidad || '';
-        if (kbType) kbType.value = metadata.tipo_contenido || 'faq';
-        if (kbAudiencia) kbAudiencia.value = metadata.audiencia || 'paciente';
-        if (kbSaveButton) kbSaveButton.textContent = 'Actualizar documento KB';
-        if (kbCancelEditButton) kbCancelEditButton.hidden = false;
-        if (kbStatusNode) kbStatusNode.textContent = `Editando KB #${document.id}`;
-    };
-    const loadKnowledgeBase = async () => {
-        if (!kbList) {
-            return;
-        }
-        try {
-            const response = await fetch('/v2/whatsapp/api/knowledge-base?limit=8', {credentials: 'same-origin'});
-            const data = await response.json();
-            knowledgeBaseState = {
-                documents: Array.isArray(data?.data) ? data.data : [],
-                stats: data?.stats || {},
-            };
-            renderKnowledgeBase();
-        } catch (error) {
-            if (kbStatusNode) {
-                kbStatusNode.textContent = 'No fue posible cargar la Knowledge Base.';
-            }
-        }
-    };
-    const loadAiRuns = async () => {
-        try {
-            const response = await fetch('/v2/whatsapp/api/flowmaker/ai-runs?limit=8', {credentials: 'same-origin'});
-            const data = await response.json();
-            const runs = Array.isArray(data?.data) ? data.data : [];
-            aiAgentState = {
-                runs,
-                stats: data?.stats || {},
-            };
-        } catch (error) {
-            aiAgentState = {
-                runs: Array.isArray(aiAgentState?.runs) ? aiAgentState.runs : [],
-                stats: aiAgentState?.stats || {},
-            };
-        }
-        renderAiRuns();
-    };
-
     const syncPayloadField = () => {
         if (payloadField) {
             payloadField.value = JSON.stringify(editorSchema, null, 2);
@@ -3196,9 +2898,9 @@ document.addEventListener('DOMContentLoaded', function () {
                         </div>
                     </div>
                     <div class="wa-flow-item__meta">
-                        <span class="wa-flow-badge wa-flow-badge--${scenario.status === 'published' ? 'menu' : 'count'}">${escapeHtml(humanizeScenarioStatus(scenario.status || 'published'))}</span>
-                        <span class="wa-flow-badge wa-flow-badge--stage">${escapeHtml(stageLabels[scenario.stage] || scenario.stage || 'Personalizado')}</span>
-                        ${scenario.intercept_menu ? '<span class="wa-flow-badge wa-flow-badge--menu">menu</span>' : ''}
+                        <span class="wa-flow-badge wa-flow-badge--status-${escapeHtml(scenario.status || 'draft')}">${escapeHtml(humanizeScenarioStatus(scenario.status || 'published'))}</span>
+                        <span class="wa-flow-badge wa-flow-badge--stage wa-flow-badge--stage-${escapeHtml(scenario.stage || 'custom')}">${escapeHtml(stageLabels[scenario.stage] || scenario.stage || 'Personalizado')}</span>
+                        ${scenario.intercept_menu ? '<span class="wa-flow-badge wa-flow-badge--menu">menú</span>' : ''}
                         <span class="wa-flow-badge wa-flow-badge--count">${actionCount} acciones</span>
                         <span class="wa-flow-badge wa-flow-badge--count">${conditionCount} condiciones</span>
                     </div>
@@ -4173,19 +3875,6 @@ document.addEventListener('DOMContentLoaded', function () {
             statusNode.textContent = data?.message
                 || (!response.ok ? (raw.trim() || `Error HTTP ${response.status}`) : 'Publicado.');
             if (response.ok) {
-                // If sandbox is active, offer to sync the draft before reloading
-                const sync = window.sandboxSync;
-                if (sync && sync.active()) {
-                    const wantsSync = confirm(
-                        `✅ Versión publicada correctamente.\n\n` +
-                        `El sandbox tiene un borrador (v${sync.version()}) que ya no refleja esta nueva versión publicada.\n` +
-                        `¿Actualizar el borrador sandbox ahora?`
-                    );
-                    if (wantsSync) {
-                        statusNode.textContent = 'Actualizando sandbox…';
-                        await sync.saveDraft();
-                    }
-                }
                 window.setTimeout(function () { window.location.reload(); }, 800);
             }
         } catch (error) {
@@ -4239,7 +3928,6 @@ document.addEventListener('DOMContentLoaded', function () {
                 renderScenarioCanvas();
             }
             simOutput.innerHTML = renderSimulationResult(data);
-            await loadAiRuns();
         } catch (error) {
             simOutput.textContent = `No fue posible ejecutar la simulación: ${error?.message || 'error desconocido'}`;
         }
@@ -4278,7 +3966,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
         shadowRunsOutput.textContent = 'Cargando shadow runs...';
         shadowSummaryOutput.textContent = 'Cargando resumen de shadow runtime...';
-        readinessOutput.textContent = 'Evaluando readiness de Fase 6...';
+        readinessOutput.textContent = 'Evaluando estado del flujo...';
 
         try {
             const [readinessResponse, summaryResponse, runsResponse] = await Promise.all([
@@ -4330,7 +4018,7 @@ document.addEventListener('DOMContentLoaded', function () {
             renderScenarioCanvas();
         } catch (error) {
             latestShadowRows = [];
-            readinessOutput.textContent = 'No fue posible evaluar el readiness de Fase 6.';
+            readinessOutput.textContent = 'No fue posible evaluar el estado del flujo.';
             shadowSummaryOutput.textContent = 'No fue posible cargar el resumen del shadow runtime.';
             shadowRunsOutput.textContent = 'No fue posible cargar los runs recientes del shadow webhook.';
             renderScenarioCanvas();
@@ -4356,358 +4044,11 @@ document.addEventListener('DOMContentLoaded', function () {
     searchInput?.addEventListener('input', renderScenarioList);
     addScenarioButton?.addEventListener('click', addScenario);
     shadowRefreshButton?.addEventListener('click', loadShadowRuns);
-    kbList?.addEventListener('click', function (event) {
-        const button = event.target?.closest?.('[data-kb-edit]');
-        if (!button) {
-            return;
-        }
-
-        editKnowledgeDocument(button.getAttribute('data-kb-edit'));
-    });
-    kbCancelEditButton?.addEventListener('click', function () {
-        resetKnowledgeBaseForm();
-        if (kbStatusNode) {
-            kbStatusNode.textContent = 'Edición cancelada.';
-        }
-    });
-    kbSaveButton?.addEventListener('click', async function () {
-        if (!kbTitle || !kbContent) {
-            return;
-        }
-
-        const isEditing = selectedKnowledgeDocumentId !== null && selectedKnowledgeDocumentId !== undefined;
-        kbStatusNode.textContent = isEditing ? 'Actualizando documento KB...' : 'Guardando documento KB...';
-        kbSaveButton.disabled = true;
-
-        try {
-            const endpoint = isEditing
-                ? `/v2/whatsapp/api/knowledge-base/${encodeURIComponent(String(selectedKnowledgeDocumentId))}`
-                : '/v2/whatsapp/api/knowledge-base';
-            const response = await fetch(endpoint, {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
-                },
-                body: JSON.stringify({
-                    title: kbTitle.value,
-                    content: kbContent.value,
-                    status: kbStatus?.value || 'draft',
-                    sede: kbSede?.value || '',
-                    especialidad: kbEspecialidad?.value || '',
-                    tipo_contenido: kbType?.value || 'faq',
-                    audiencia: kbAudiencia?.value || 'paciente',
-                    source_type: 'manual',
-                    source_label: 'Flowmaker KB',
-                }),
-            });
-            const data = await response.json();
-            if (!response.ok || !data?.ok) {
-                kbStatusNode.textContent = data?.error || 'No fue posible guardar el documento KB.';
-                return;
-            }
-
-            resetKnowledgeBaseForm();
-            kbStatusNode.textContent = isEditing ? 'Documento KB actualizado correctamente.' : 'Documento KB guardado correctamente.';
-            await loadKnowledgeBase();
-        } catch (error) {
-            kbStatusNode.textContent = 'No fue posible guardar el documento KB.';
-        } finally {
-            kbSaveButton.disabled = false;
-        }
-    });
-
     syncPayloadField();
     renderScenarioList();
     renderScenarioCanvas();
     renderVersionWorkspace();
-    renderKnowledgeBase();
-    renderAiRuns();
     loadShadowRuns();
-    loadKnowledgeBase();
-    loadAiRuns();
 });
-</script>
-
-{{-- ============================================================ --}}
-{{--  SANDBOX JS                                                  --}}
-{{-- ============================================================ --}}
-<style>
-@keyframes sandbox-pulse {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50%       { opacity: .5; transform: scale(1.3); }
-}
-</style>
-<script>
-(function () {
-    const CSRF = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
-    const overlay        = document.getElementById('wa-sandbox-overlay');
-    const closeBtn       = document.getElementById('wa-sandbox-close');
-    const openBtn        = document.getElementById('wa-flow-sandbox-btn');
-    const indicator      = document.getElementById('wa-flow-sandbox-indicator');
-    const statusBar      = document.getElementById('wa-sandbox-status-bar');
-    const numList        = document.getElementById('wa-sandbox-numbers-list');
-    const numInput       = document.getElementById('wa-sandbox-number-input');
-    const addBtn         = document.getElementById('wa-sandbox-add-btn');
-    const draftBtn       = document.getElementById('wa-sandbox-draft-btn');
-    const clearBtn       = document.getElementById('wa-sandbox-clear-btn');
-    const versionWarn    = document.getElementById('wa-sandbox-version-warn');
-    const draftBadge     = document.getElementById('wa-sandbox-draft-saved-badge');
-    const numbersSection = document.getElementById('wa-sandbox-numbers-section');
-
-    let sandboxState = { active: false, version_number: null, wa_numbers: [] };
-
-    // ------------------------------------------------------------------
-    // API helpers
-    // ------------------------------------------------------------------
-    async function sandboxApi(method, path, body) {
-        const opts = {
-            method,
-            credentials: 'same-origin',
-            headers: { 'X-CSRF-TOKEN': CSRF, 'Content-Type': 'application/json' },
-        };
-        if (body !== undefined) opts.body = JSON.stringify(body);
-        const r = await fetch('/v2/whatsapp/api' + path, opts);
-        return r.json();
-    }
-
-    // ------------------------------------------------------------------
-    // Render
-    // ------------------------------------------------------------------
-    function renderStatus() {
-        const { active, version_number, wa_numbers } = sandboxState;
-
-        // Header indicator pulse
-        if (indicator) indicator.style.display = active ? 'inline-block' : 'none';
-
-        // Lock / unlock numbers section
-        if (numbersSection) {
-            numbersSection.style.opacity        = active ? '1' : '0.45';
-            numbersSection.style.pointerEvents  = active ? '' : 'none';
-        }
-
-        // Status bar
-        if (!active) {
-            statusBar.innerHTML = `<span style="color:#64748b;">⬜ Sin sandbox activo — el flujo publicado atiende a todos.</span>`;
-            if (versionWarn) versionWarn.style.display = 'none';
-        } else {
-            const count = wa_numbers ? wa_numbers.length : 0;
-            statusBar.innerHTML = `
-                <span style="color:#92400e;background:#fef3c7;padding:4px 10px;border-radius:8px;font-weight:600;">
-                    🧪 Activo — borrador v${version_number ?? '?'}
-                </span>
-                <span style="margin-left:8px;color:#475569;">${count} número${count !== 1 ? 's' : ''} en prueba</span>`;
-
-            // Version mismatch: warn when sandbox draft is older than published version
-            const publishedV = (window.waActiveVersion?.version) ?? null;
-            const isStale = publishedV && version_number && Number(version_number) < Number(publishedV);
-            if (versionWarn) {
-                versionWarn.style.display = isStale ? 'block' : 'none';
-                if (isStale) {
-                    versionWarn.textContent = `⚠️ El borrador sandbox es v${version_number}, pero la versión publicada es v${publishedV}. Considera guardar un borrador nuevo (Paso 1).`;
-                }
-            }
-            // Top banner
-            const staleBanner = document.getElementById('wa-sandbox-stale-banner');
-            const staleDesc   = document.getElementById('wa-sandbox-stale-desc');
-            if (staleBanner) {
-                if (isStale) {
-                    if (staleDesc) staleDesc.textContent = `borrador v${version_number} vs publicada v${publishedV}`;
-                    staleBanner.style.display = 'flex';
-                } else {
-                    staleBanner.style.display = 'none';
-                }
-            }
-        }
-
-        // Numbers chips
-        numList.innerHTML = '';
-        const nums = sandboxState.wa_numbers || [];
-        if (nums.length === 0) {
-            numList.innerHTML = `<span style="font-size:.78rem;color:#94a3b8;">${active ? 'Ningún número aún.' : 'Guarda un borrador primero (Paso 1).'}</span>`;
-        } else {
-            nums.forEach(function (n) {
-                const chip = document.createElement('span');
-                chip.style.cssText = 'display:inline-flex;align-items:center;gap:5px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;padding:3px 10px;font-size:.82rem;color:#1e293b;';
-                chip.innerHTML = `${n} <button data-num="${n}" style="background:none;border:none;cursor:pointer;color:#dc2626;font-size:.9rem;line-height:1;padding:0;">×</button>`;
-                chip.querySelector('button').addEventListener('click', removeNumber);
-                numList.appendChild(chip);
-            });
-        }
-    }
-
-    // ------------------------------------------------------------------
-    // Load current sandbox state
-    // ------------------------------------------------------------------
-    async function loadStatus() {
-        try {
-            const data = await sandboxApi('GET', '/flowmaker/sandbox');
-            if (data.ok) {
-                sandboxState = data.data;
-                renderStatus();
-            }
-        } catch (e) {
-            statusBar.textContent = 'No se pudo cargar el estado del sandbox.';
-        }
-    }
-
-    // ------------------------------------------------------------------
-    // Actions
-    // ------------------------------------------------------------------
-
-    // Internal helper — returns true on success
-    async function saveDraftInternal() {
-        const pf = document.getElementById('wa-flow-payload');
-        let flowPayload;
-        try {
-            flowPayload = JSON.parse(pf?.value || '{}');
-        } catch (e) {
-            alert('El JSON del flujo no es válido. Revisa el editor antes de guardar el borrador.');
-            return false;
-        }
-        try {
-            const data = await sandboxApi('POST', '/flowmaker/sandbox/draft', {
-                flow: flowPayload,
-                wa_numbers: sandboxState.wa_numbers || [],
-                changelog: 'Borrador sandbox — ' + new Date().toLocaleString('es-EC'),
-            });
-            if (data.ok) {
-                sandboxState.version_number = data.version_number;
-                sandboxState.active = true;
-                renderStatus();
-                if (draftBadge) {
-                    draftBadge.style.display = 'inline';
-                    setTimeout(() => { draftBadge.style.display = 'none'; }, 3000);
-                }
-                return true;
-            } else {
-                alert(data.error || 'No se pudo guardar el borrador.');
-                return false;
-            }
-        } catch (e) {
-            alert('Error de red al guardar el borrador.');
-            return false;
-        }
-    }
-
-    async function addNumber() {
-        const raw = (numInput.value || '').trim().replace(/\D/g, '');
-        if (!raw) { numInput.focus(); return; }
-
-        // Auto-save draft if none exists yet
-        if (!sandboxState.active || !sandboxState.version_number) {
-            const ok = confirm('No hay un borrador sandbox guardado todavía.\n¿Guardar el flujo actual como borrador y luego agregar el número?');
-            if (!ok) return;
-            draftBtn.disabled = true;
-            draftBtn.textContent = 'Guardando…';
-            const saved = await saveDraftInternal();
-            draftBtn.disabled = false;
-            draftBtn.textContent = 'Guardar borrador sandbox';
-            if (!saved) return;
-        }
-
-        addBtn.disabled = true;
-        try {
-            const data = await sandboxApi('POST', '/flowmaker/sandbox/numbers', { wa_number: raw });
-            if (data.ok) {
-                sandboxState.wa_numbers = data.wa_numbers;
-                sandboxState.active = true;
-                numInput.value = '';
-                renderStatus();
-            } else {
-                alert(data.error || 'No se pudo agregar el número.');
-            }
-        } catch (e) {
-            alert('Error de red al agregar el número.');
-        } finally {
-            addBtn.disabled = false;
-        }
-    }
-
-    async function removeNumber(e) {
-        const num = e.currentTarget.dataset.num;
-        try {
-            const data = await sandboxApi('DELETE', '/flowmaker/sandbox/numbers/' + num);
-            if (data.ok) {
-                sandboxState.wa_numbers = data.wa_numbers;
-                renderStatus();
-            }
-        } catch (e) {
-            alert('Error de red al quitar el número.');
-        }
-    }
-
-    async function saveDraft() {
-        draftBtn.disabled = true;
-        draftBtn.textContent = 'Guardando…';
-        await saveDraftInternal();
-        draftBtn.disabled = false;
-        draftBtn.textContent = 'Guardar borrador sandbox';
-    }
-
-    async function clearSandbox() {
-        if (!confirm('¿Desactivar el sandbox? Se eliminarán el borrador y todos los números de prueba.')) return;
-        clearBtn.disabled = true;
-        try {
-            const data = await sandboxApi('DELETE', '/flowmaker/sandbox');
-            if (data.ok) {
-                sandboxState = { active: false, version_number: null, wa_numbers: [] };
-                renderStatus();
-            }
-        } catch (e) {
-            alert('Error de red al limpiar el sandbox.');
-        } finally {
-            clearBtn.disabled = false;
-        }
-    }
-
-    // ------------------------------------------------------------------
-    // Open / close modal
-    // ------------------------------------------------------------------
-    function openModal() {
-        overlay.style.display = 'flex';
-        loadStatus();
-    }
-    function closeModal(e) {
-        if (e && e.target !== overlay && e.target !== closeBtn) return;
-        overlay.style.display = 'none';
-    }
-
-    // ------------------------------------------------------------------
-    // Event listeners
-    // ------------------------------------------------------------------
-    openBtn?.addEventListener('click', openModal);
-    closeBtn?.addEventListener('click', closeModal);
-    overlay?.addEventListener('click', closeModal);
-    addBtn?.addEventListener('click', addNumber);
-    numInput?.addEventListener('keydown', function (e) { if (e.key === 'Enter') addNumber(); });
-    draftBtn?.addEventListener('click', saveDraft);
-    clearBtn?.addEventListener('click', clearSandbox);
-
-    // Dismiss stale banner
-    document.getElementById('wa-sandbox-stale-dismiss')?.addEventListener('click', function () {
-        const b = document.getElementById('wa-sandbox-stale-banner');
-        if (b) b.style.display = 'none';
-    });
-
-    // Expose interface to other scripts (e.g., publish handler)
-    window.sandboxSync = {
-        active:    function () { return sandboxState.active; },
-        version:   function () { return sandboxState.version_number; },
-        saveDraft: saveDraftInternal,
-    };
-
-    // Check sandbox on page load: show indicator and stale banner if needed
-    (async function () {
-        try {
-            const data = await sandboxApi('GET', '/flowmaker/sandbox');
-            if (data.ok && data.data && data.data.active) {
-                sandboxState = data.data;
-                renderStatus(); // updates indicator + stale banner + version warn
-            }
-        } catch (e) { /* silent */ }
-    }());
-}());
 </script>
 @endpush
