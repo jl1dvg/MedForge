@@ -317,6 +317,32 @@
             padding: 16px;
         }
     }
+    /* Zona Ahora */
+    .wa-now-zone {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 12px;
+        margin-bottom: 24px;
+    }
+    .wa-now-card {
+        background: #fff;
+        border-radius: 10px;
+        padding: 16px 20px;
+        border-left: 4px solid #e2e8f0;
+        box-shadow: 0 1px 4px rgba(0,0,0,.07);
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+    .wa-now-card--alert  { border-left-color: #ef4444; background: #fff5f5; }
+    .wa-now-card--warn   { border-left-color: #f59e0b; background: #fffbeb; }
+    .wa-now-card--ok     { border-left-color: #10b981; background: #f0fdf4; }
+    .wa-now-card__value  { font-size: 2rem; font-weight: 700; line-height: 1; }
+    .wa-now-card__label  { font-size: .82rem; color: #64748b; font-weight: 500; }
+    .wa-now-card__action { font-size: .75rem; color: #3b82f6; margin-top: 4px; text-decoration: none; }
+    .wa-now-card__action:hover { text-decoration: underline; }
+    .wa-section-toggle   { background: none; border: none; cursor: pointer; font-size: .82rem; color: #64748b; padding: 4px 8px; border-radius: 4px; }
+    .wa-section-toggle:hover { background: #f1f5f9; }
 </style>
 @endpush
 
@@ -439,6 +465,40 @@
         </div>
 
         <div class="col-12">
+            {{-- ══ ZONA AHORA ══ --}}
+            @php
+                $queueTotal   = (int)($summary['live_queue_total'] ?? 0);
+                $sinRespuesta = (int)($summary['conversations_lost'] ?? 0);
+                $cobertura    = (float)($summary['attention_rate'] ?? 0);
+                $respondidos  = (float)($summary['sla_assignments_rate'] ?? 0);
+
+                $queueClass    = $queueTotal > 10 ? 'alert' : ($queueTotal > 5 ? 'warn' : 'ok');
+                $sinRespClass  = $sinRespuesta > 5 ? 'alert' : ($sinRespuesta > 2 ? 'warn' : 'ok');
+                $coberturaClass = $cobertura < 70 ? 'alert' : ($cobertura < 85 ? 'warn' : 'ok');
+                $slaClass      = $respondidos < 60 ? 'alert' : ($respondidos < 80 ? 'warn' : 'ok');
+            @endphp
+            <div class="wa-now-zone mb-20">
+                <div class="wa-now-card wa-now-card--{{ $queueClass }}">
+                    <div class="wa-now-card__value">{{ $queueTotal }}</div>
+                    <div class="wa-now-card__label">En espera ahora</div>
+                    @if($queueTotal > 0)
+                        <a href="/v2/whatsapp" class="wa-now-card__action">Ver conversaciones →</a>
+                    @endif
+                </div>
+                <div class="wa-now-card wa-now-card--{{ $sinRespClass }}">
+                    <div class="wa-now-card__value">{{ $sinRespuesta }}</div>
+                    <div class="wa-now-card__label">Sin atender en el periodo</div>
+                </div>
+                <div class="wa-now-card wa-now-card--{{ $coberturaClass }}">
+                    <div class="wa-now-card__value">{{ $cobertura }}%</div>
+                    <div class="wa-now-card__label">De cada 10 que escriben, reciben respuesta</div>
+                </div>
+                <div class="wa-now-card wa-now-card--{{ $slaClass }}">
+                    <div class="wa-now-card__value">{{ $respondidos }}%</div>
+                    <div class="wa-now-card__label">Respondidos a tiempo ({{ $summary['sla_target_minutes'] ?? 15 }} min)</div>
+                </div>
+            </div>
+            {{-- ══ FIN ZONA AHORA ══ --}}
             <div class="wa-kpi-grid">
                 @php
                     $slaTargetMinutes = (int) ($summary['sla_target_minutes'] ?? ($filters['sla_target_minutes'] ?? 15));
@@ -447,22 +507,22 @@
                     $cards = [
                         ['label' => 'Personas que escribieron', 'value' => $summary['people_inbound'] ?? 0, 'sub' => 'Números únicos inbound', 'help' => 'Cantidad de números únicos que enviaron al menos un mensaje inbound en el periodo.'],
                         ['label' => 'Conversaciones atendidas', 'value' => $summary['conversations_attended_human'] ?? 0, 'sub' => ($summary['people_attended_human'] ?? 0) . ' personas atendidas', 'help' => 'Conversaciones que recibieron al menos una respuesta humana.'],
-                        ['label' => 'Conversaciones sin respuesta humana', 'value' => $summary['conversations_lost'] ?? 0, 'sub' => ($summary['people_lost'] ?? 0) . ' personas · ' . ($summary['loss_rate'] ?? 0) . '% · ' . ($summary['conversations_lost_with_handoff'] ?? 0) . ' con handoff', 'help' => 'Conversaciones inbound que no registraron respuesta humana. Puede incluir casos con handoff pendiente y casos que nunca llegaron a handoff.'],
+                        ['label' => 'Sin atender por humano', 'value' => $summary['conversations_lost'] ?? 0, 'sub' => ($summary['people_lost'] ?? 0) . ' personas · ' . ($summary['loss_rate'] ?? 0) . '% · ' . ($summary['conversations_lost_with_handoff'] ?? 0) . ' con handoff', 'help' => 'Conversaciones inbound que no registraron respuesta humana. Puede incluir casos con handoff pendiente y casos que nunca llegaron a handoff.'],
                         ['label' => 'Cobertura humana', 'value' => ($summary['attention_rate'] ?? 0) . '%', 'sub' => 'Personas atendidas / personas inbound', 'help' => 'Porcentaje de números únicos inbound que sí recibieron respuesta humana.'],
                         ['label' => 'Tiempo a primera respuesta humana', 'value' => $firstHumanAvg, 'sub' => 'Desde handoff · mediana ' . $firstHumanMedian, 'help' => 'Promedio medido desde la solicitud de ayuda o ingreso a handoff hasta la primera respuesta humana. No usa el primer mensaje del bot como punto de partida.'],
                         ['label' => 'Conversaciones inactivas >24h sin respuesta humana', 'value' => $summary['conversations_abandoned'] ?? 0, 'sub' => ($summary['abandonment_rate'] ?? 0) . '% del inbound único', 'help' => 'Conversaciones sin respuesta humana cuyo último inbound ocurrió hace más de 24 horas. No implica necesariamente falla operativa: puede incluir cierres naturales del paciente como ok, gracias o adiós.'],
-                        ['label' => 'Sin respuesta humana con handoff >24h', 'value' => $summary['conversations_abandoned_with_handoff'] ?? 0, 'sub' => ($summary['conversations_lost_with_handoff'] ?? 0) . ' sin respuesta humana tras handoff', 'help' => 'Subset realmente accionable para operación: conversaciones que sí pidieron ayuda o cayeron en handoff y siguen sin respuesta humana después de 24 horas.'],
+                        ['label' => 'Urgente: derivado sin atender >24h', 'value' => $summary['conversations_abandoned_with_handoff'] ?? 0, 'sub' => ($summary['conversations_lost_with_handoff'] ?? 0) . ' sin respuesta humana tras handoff', 'help' => 'Subset realmente accionable para operación: conversaciones que sí pidieron ayuda o cayeron en handoff y siguen sin respuesta humana después de 24 horas.'],
                         ['label' => 'Conversaciones resueltas', 'value' => $summary['conversations_resolved'] ?? 0, 'sub' => 'Sin actividad inbound 24h', 'help' => 'Conversaciones atendidas que no han recibido nuevos inbound en las últimas 24 horas.'],
                         ['label' => 'Pico simultáneo', 'value' => $summary['peak_open_conversations'] ?? 0, 'sub' => $summary['peak_open_at'] ?? 'Sin dato', 'help' => 'Máximo de conversaciones abiertas al mismo tiempo detectado dentro del rango analizado.'],
                         ['label' => 'Mensajes inbound', 'value' => $summary['messages_inbound'] ?? 0, 'sub' => 'Recibidos', 'help' => 'Total de mensajes recibidos desde pacientes o contactos en el periodo.'],
                         ['label' => 'Mensajes outbound', 'value' => $summary['messages_outbound'] ?? 0, 'sub' => 'Enviados', 'help' => 'Total de mensajes enviados desde el canal, incluyendo bot, humanos y plantillas.'],
                         ['label' => 'Citas desde WhatsApp', 'value' => $summary['sigcenter_bookings_created'] ?? 0, 'sub' => ($summary['sigcenter_booking_patients'] ?? 0) . ' pacientes · ' . ($summary['sigcenter_booking_failures'] ?? 0) . ' fallidas', 'help' => 'Citas creadas exitosamente desde WhatsApp según integración con Sigcenter, junto con pacientes únicos y fallos registrados.'],
-                        ['label' => 'SLA asignación (objetivo: ' . $slaTargetMinutes . ' min)', 'value' => ($summary['sla_assignments_rate'] ?? 0) . '%', 'sub' => ($summary['sla_assignments_in_target'] ?? 0) . '/' . ($summary['sla_assignments_total'] ?? 0) . ' en meta', 'help' => 'Mide tiempo de asignación interna del handoff, no tiempo de respuesta efectiva al paciente.'],
-                        ['label' => 'Cola activa', 'value' => $summary['live_queue_total'] ?? 0, 'sub' => 'Cola ' . ($summary['live_queue_queued'] ?? 0) . ' · Asignadas ' . ($summary['live_queue_assigned'] ?? 0), 'help' => 'Conversaciones actualmente en circuito humano: pendientes en cola o ya asignadas a un agente.'],
-                        ['label' => 'Ventana 24h abierta', 'value' => $summary['queue_window_open'] ?? 0, 'sub' => ($summary['queue_window_open_rate'] ?? 0) . '% del total', 'help' => 'Conversaciones que todavía pueden recibir mensaje libre sin necesidad de plantilla porque su último inbound sigue dentro de 24 horas.'],
-                        ['label' => 'Requiere plantilla', 'value' => $summary['queue_needs_template'] ?? 0, 'sub' => ($summary['queue_needs_template_rate'] ?? 0) . '% del total', 'help' => 'Conversaciones fuera de la ventana de 24 horas que solo pueden reabrirse con plantilla.'],
+                        ['label' => 'Respondidos a tiempo (meta: ' . $slaTargetMinutes . ' min)', 'value' => ($summary['sla_assignments_rate'] ?? 0) . '%', 'sub' => ($summary['sla_assignments_in_target'] ?? 0) . '/' . ($summary['sla_assignments_total'] ?? 0) . ' en meta', 'help' => 'Mide tiempo de asignación interna del handoff, no tiempo de respuesta efectiva al paciente.'],
+                        ['label' => 'Conversaciones en atención ahora', 'value' => $summary['live_queue_total'] ?? 0, 'sub' => 'Cola ' . ($summary['live_queue_queued'] ?? 0) . ' · Asignadas ' . ($summary['live_queue_assigned'] ?? 0), 'help' => 'Conversaciones actualmente en circuito humano: pendientes en cola o ya asignadas a un agente.'],
+                        ['label' => 'Pueden recibir mensaje libre', 'value' => $summary['queue_window_open'] ?? 0, 'sub' => ($summary['queue_window_open_rate'] ?? 0) . '% del total', 'help' => 'Conversaciones que todavía pueden recibir mensaje libre sin necesidad de plantilla porque su último inbound sigue dentro de 24 horas.'],
+                        ['label' => 'Solo pueden reabrirse con plantilla', 'value' => $summary['queue_needs_template'] ?? 0, 'sub' => ($summary['queue_needs_template_rate'] ?? 0) . '% del total', 'help' => 'Conversaciones fuera de la ventana de 24 horas que solo pueden reabrirse con plantilla.'],
                         ['label' => 'Esperando plantilla', 'value' => $summary['queue_awaiting_template_reply'] ?? 0, 'sub' => ($summary['queue_awaiting_template_reply_rate'] ?? 0) . '% fuera de ventana', 'help' => 'Conversaciones fuera de ventana donde ya se envió plantilla y todavía no hay respuesta inbound.'],
-                        ['label' => 'Transferencias', 'value' => $summary['handoff_transfers'] ?? 0, 'sub' => 'Entre agentes', 'help' => 'Cambios de ownership entre agentes o equipos dentro del proceso de atención humana.'],
+                        ['label' => 'Derivaciones entre agentes', 'value' => $summary['handoff_transfers'] ?? 0, 'sub' => 'Entre agentes', 'help' => 'Cambios de ownership entre agentes o equipos dentro del proceso de atención humana.'],
                     ];
                 @endphp
                 @foreach($cards as $card)
@@ -975,23 +1035,26 @@
 
         <div class="col-12">
             <div class="wa-kpi-panel">
-                <div class="wa-kpi-panel__head">
+                <div class="wa-kpi-panel__head" style="cursor:pointer;"
+                     onclick="this.nextElementSibling.classList.toggle('d-none')">
                     <div class="wa-kpi-title-row">
                         <div class="wa-kpi-sideheading__title">Top Ads por citas</div>
-                        <button type="button" class="wa-kpi-help" aria-label="Ver ayuda de Top Ads por citas">
+                        <button type="button" class="wa-kpi-help" aria-label="Ver ayuda de Top Ads por citas" onclick="event.stopPropagation()">
                             ?
                             <span class="wa-kpi-help__tooltip">{{ $sectionHelp['ads'] }}</span>
                         </button>
+                        <button type="button" class="wa-section-toggle ms-auto">▼</button>
                     </div>
                     <div class="wa-kpi-sideheading__meta">Ranking inicial de anuncios que más conversaciones y citas aportan al canal.</div>
                 </div>
-                <div class="wa-kpi-panel__body p-0">
+                <div class="wa-kpi-panel__body p-0 d-none">
                     <div class="table-responsive">
                         <table class="table table-striped wa-kpi-table mb-0">
                             <thead>
                             <tr>
                                 <th>Anuncio</th>
-                                <th>Media</th>
+                                <th>Red social</th>
+                                <th>Tipo de pieza</th>
                                 <th>Conversaciones</th>
                                 <th>Identificadas</th>
                                 <th>Citas</th>
@@ -1003,7 +1066,14 @@
                                 <tr>
                                     <td>
                                         <div class="fw-600">{{ $row['headline'] }}</div>
-                                        <div class="text-muted small">{{ $row['source_id'] ?? 'Sin source_id' }}</div>
+                                        <div class="text-muted small">ID: {{ $row['source_id'] ?? 'Sin ID' }}</div>
+                                    </td>
+                                    <td>
+                                        @php
+                                            $platformIcons = ['facebook' => '📘', 'instagram' => '📷', 'whatsapp' => '💬'];
+                                            $icon = $platformIcons[$row['platform'] ?? ''] ?? '❓';
+                                        @endphp
+                                        {{ $icon }} {{ $row['platform_label'] ?? 'Desconocido' }}
                                     </td>
                                     <td>{{ $row['media_type'] }}</td>
                                     <td>{{ $row['conversations'] }}</td>
@@ -1013,7 +1083,7 @@
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="6" class="text-center text-muted py-20">No hubo conversaciones atribuibles a Ads en el rango actual.</td>
+                                    <td colspan="7" class="text-center text-muted py-20">No hubo conversaciones atribuibles a Ads en el rango actual.</td>
                                 </tr>
                             @endforelse
                             </tbody>
@@ -1060,17 +1130,19 @@
 
         <div class="col-xl-6 col-12">
             <div class="wa-kpi-panel">
-                <div class="wa-kpi-panel__head">
+                <div class="wa-kpi-panel__head" style="cursor:pointer;"
+                     onclick="this.nextElementSibling.classList.toggle('d-none')">
                     <div class="wa-kpi-title-row">
                         <div class="wa-kpi-sideheading__title">Atención humana por agente</div>
-                        <button type="button" class="wa-kpi-help" aria-label="Ver ayuda de Atención humana por agente">
+                        <button type="button" class="wa-kpi-help" aria-label="Ver ayuda de Atención humana por agente" onclick="event.stopPropagation()">
                             ?
                             <span class="wa-kpi-help__tooltip">{{ $sectionHelp['human_by_agent'] }}</span>
                         </button>
+                        <button type="button" class="wa-section-toggle ms-auto">▼</button>
                     </div>
                     <div class="wa-kpi-sideheading__meta">Quién absorbió más conversaciones y cómo respondió en primera intervención.</div>
                 </div>
-                <div class="wa-kpi-panel__body p-0">
+                <div class="wa-kpi-panel__body p-0 d-none">
                     <div class="table-responsive">
                         <table class="table table-striped wa-kpi-table mb-0">
                             <thead>
@@ -1148,17 +1220,19 @@
 
         <div class="col-xl-6 col-12">
             <div class="wa-kpi-panel">
-                <div class="wa-kpi-panel__head">
+                <div class="wa-kpi-panel__head" style="cursor:pointer;"
+                     onclick="this.nextElementSibling.classList.toggle('d-none')">
                     <div class="wa-kpi-title-row">
                         <div class="wa-kpi-sideheading__title">Handoffs por equipo</div>
-                        <button type="button" class="wa-kpi-help" aria-label="Ver ayuda de Handoffs por equipo">
+                        <button type="button" class="wa-kpi-help" aria-label="Ver ayuda de Handoffs por equipo" onclick="event.stopPropagation()">
                             ?
                             <span class="wa-kpi-help__tooltip">{{ $sectionHelp['handoffs_by_role'] }}</span>
                         </button>
+                        <button type="button" class="wa-section-toggle ms-auto">▼</button>
                     </div>
                     <div class="wa-kpi-sideheading__meta">Distribución de cola, asignación y resolución por equipo operativo.</div>
                 </div>
-                <div class="wa-kpi-panel__body p-0">
+                <div class="wa-kpi-panel__body p-0 d-none">
                     <div class="table-responsive">
                         <table class="table table-striped wa-kpi-table mb-0">
                             <thead>
@@ -1193,17 +1267,19 @@
 
         <div class="col-xl-6 col-12">
             <div class="wa-kpi-panel">
-                <div class="wa-kpi-panel__head">
+                <div class="wa-kpi-panel__head" style="cursor:pointer;"
+                     onclick="this.nextElementSibling.classList.toggle('d-none')">
                     <div class="wa-kpi-title-row">
                         <div class="wa-kpi-sideheading__title">Carga por agente</div>
-                        <button type="button" class="wa-kpi-help" aria-label="Ver ayuda de Carga por agente">
+                        <button type="button" class="wa-kpi-help" aria-label="Ver ayuda de Carga por agente" onclick="event.stopPropagation()">
                             ?
                             <span class="wa-kpi-help__tooltip">{{ $sectionHelp['agent_load'] }}</span>
                         </button>
+                        <button type="button" class="wa-section-toggle ms-auto">▼</button>
                     </div>
                     <div class="wa-kpi-sideheading__meta">Lectura de workload para saber quién está tomado, activo o ya resolvió.</div>
                 </div>
-                <div class="wa-kpi-panel__body p-0">
+                <div class="wa-kpi-panel__body p-0 d-none">
                     <div class="table-responsive">
                         <table class="table table-striped wa-kpi-table mb-0">
                             <thead>
