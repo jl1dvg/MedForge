@@ -799,17 +799,21 @@
 
         <div class="col-xl-6 col-12">
             <div class="wa-kpi-panel">
-                <div class="wa-kpi-panel__head">
+                <div class="wa-kpi-panel__head" style="cursor:pointer" onclick="var t=document.getElementById('chart-intencion-table');t.style.display=t.style.display==='none'?'block':'none';this.querySelector('.wa-section-toggle').textContent=t.style.display==='none'?'▼':'▲'">
                     <div class="wa-kpi-title-row">
                         <div class="wa-kpi-sideheading__title">Intención inicial</div>
                         <button type="button" class="wa-kpi-help" aria-label="Ver ayuda de Intención inicial">
                             ?
                             <span class="wa-kpi-help__tooltip">{{ $sectionHelp['initial_intent'] }}</span>
                         </button>
+                        <button type="button" class="wa-section-toggle ms-auto">▼</button>
                     </div>
                     <div class="wa-kpi-sideheading__meta">Clasificación del primer mensaje útil de cada conversación nueva.</div>
                 </div>
-                <div class="wa-kpi-panel__body p-0">
+                <div class="wa-kpi-panel__body">
+                    <div id="chart-intencion" class="wa-chart-wrap" style="height:200px"></div>
+                </div>
+                <div class="wa-kpi-panel__body p-0" id="chart-intencion-table" style="display:none">
                     <div class="table-responsive">
                         <table class="table table-striped wa-kpi-table mb-0">
                             <thead>
@@ -844,17 +848,21 @@
 
         <div class="col-xl-6 col-12">
             <div class="wa-kpi-panel">
-                <div class="wa-kpi-panel__head">
+                <div class="wa-kpi-panel__head" style="cursor:pointer" onclick="var t=document.getElementById('chart-tipo-conv-table');t.style.display=t.style.display==='none'?'block':'none';this.querySelector('.wa-section-toggle').textContent=t.style.display==='none'?'▼':'▲'">
                     <div class="wa-kpi-title-row">
                         <div class="wa-kpi-sideheading__title">Tipo de conversación</div>
                         <button type="button" class="wa-kpi-help" aria-label="Ver ayuda de Tipo de conversación">
                             ?
                             <span class="wa-kpi-help__tooltip">{{ $sectionHelp['conversation_type'] }}</span>
                         </button>
+                        <button type="button" class="wa-section-toggle ms-auto">▼</button>
                     </div>
                     <div class="wa-kpi-sideheading__meta">Clasificación operativa/comercial del contacto una vez interpretado el contexto de entrada.</div>
                 </div>
-                <div class="wa-kpi-panel__body p-0">
+                <div class="wa-kpi-panel__body">
+                    <div id="chart-tipo-conv" class="wa-chart-wrap" style="height:200px"></div>
+                </div>
+                <div class="wa-kpi-panel__body p-0" id="chart-tipo-conv-table" style="display:none">
                     <div class="table-responsive">
                         <table class="table table-striped wa-kpi-table mb-0">
                             <thead>
@@ -889,17 +897,21 @@
 
         <div class="col-xl-6 col-12">
             <div class="wa-kpi-panel">
-                <div class="wa-kpi-panel__head">
+                <div class="wa-kpi-panel__head" style="cursor:pointer" onclick="var t=document.getElementById('chart-segmento-table');t.style.display=t.style.display==='none'?'block':'none';this.querySelector('.wa-section-toggle').textContent=t.style.display==='none'?'▼':'▲'">
                     <div class="wa-kpi-title-row">
                         <div class="wa-kpi-sideheading__title">Segmento del paciente</div>
                         <button type="button" class="wa-kpi-help" aria-label="Ver ayuda de Segmento del paciente">
                             ?
                             <span class="wa-kpi-help__tooltip">{{ $sectionHelp['patient_segment'] }}</span>
                         </button>
+                        <button type="button" class="wa-section-toggle ms-auto">▼</button>
                     </div>
                     <div class="wa-kpi-sideheading__meta">Distribución entre paciente nuevo, recurrente y reactivado en las conversaciones nuevas.</div>
                 </div>
-                <div class="wa-kpi-panel__body p-0">
+                <div class="wa-kpi-panel__body">
+                    <div id="chart-segmento" class="wa-chart-wrap" style="height:220px"></div>
+                </div>
+                <div class="wa-kpi-panel__body p-0" id="chart-segmento-table" style="display:none">
                     <div class="table-responsive">
                         <table class="table table-striped wa-kpi-table mb-0">
                             <thead>
@@ -1454,6 +1466,64 @@
         plotOptions: { pie: { donut: { size: '60%', labels: { show: true, total: { show: true, label: 'Total', fontSize: '12px' } } } } },
         dataLabels: { enabled: true, formatter: function(val){ return Math.round(val) + '%'; }, style: { fontSize: '11px' } },
         tooltip:  { y: { formatter: function(val, opts){ return val + ' conv. (' + (rows[opts.seriesIndex] ? rows[opts.seriesIndex].booking_rate : 0) + '% cita)'; } } },
+    }).render();
+}());
+</script>
+<script>
+(function () {
+    var el = document.getElementById('chart-intencion');
+    if (!el) return;
+    var rows = @json($analyticsIntents);
+    if (!rows || !rows.length) { el.innerHTML = '<div class="wa-chart-empty">Sin datos</div>'; return; }
+    new ApexCharts(el, {
+        chart: { type: 'bar', height: 200, toolbar: { show: false }, fontFamily: 'inherit' },
+        plotOptions: { bar: { horizontal: true, distributed: true, barHeight: '65%', borderRadius: 4 } },
+        series: [{ name: 'Conversaciones', data: rows.map(function(r){ return parseInt(r.total)||0; }) }],
+        xaxis: { categories: rows.map(function(r){ return r.intent_label; }), labels: { style: { fontSize: '11px' } } },
+        yaxis: { labels: { style: { fontSize: '11px' } } },
+        colors: ['#3b82f6','#6366f1','#10b981','#f59e0b','#ef4444','#e879f9','#94a3b8'],
+        legend: { show: false },
+        dataLabels: { enabled: true, formatter: function(val){ return val; }, style: { fontSize: '10px' } },
+        tooltip: { y: { formatter: function(val, opts){ return val + ' conv. (' + (rows[opts.dataPointIndex] ? rows[opts.dataPointIndex].share : 0) + '%)'; } } },
+        grid: { borderColor: '#f1f5f9' },
+    }).render();
+}());
+</script>
+<script>
+(function () {
+    var el = document.getElementById('chart-tipo-conv');
+    if (!el) return;
+    var rows = @json($analyticsConversationTypes);
+    if (!rows || !rows.length) { el.innerHTML = '<div class="wa-chart-empty">Sin datos</div>'; return; }
+    new ApexCharts(el, {
+        chart: { type: 'bar', height: 200, toolbar: { show: false }, fontFamily: 'inherit' },
+        plotOptions: { bar: { horizontal: true, distributed: true, barHeight: '65%', borderRadius: 4 } },
+        series: [{ name: 'Conversaciones', data: rows.map(function(r){ return parseInt(r.total)||0; }) }],
+        xaxis: { categories: rows.map(function(r){ return r.type_label; }), labels: { style: { fontSize: '11px' } } },
+        yaxis: { labels: { style: { fontSize: '11px' } } },
+        colors: ['#6366f1','#3b82f6','#10b981','#f59e0b','#ef4444','#94a3b8'],
+        legend: { show: false },
+        dataLabels: { enabled: true, formatter: function(val){ return val; }, style: { fontSize: '10px' } },
+        tooltip: { y: { formatter: function(val, opts){ return val + ' (' + (rows[opts.dataPointIndex] ? rows[opts.dataPointIndex].share : 0) + '%)'; } } },
+        grid: { borderColor: '#f1f5f9' },
+    }).render();
+}());
+</script>
+<script>
+(function () {
+    var el = document.getElementById('chart-segmento');
+    if (!el) return;
+    var rows = @json($analyticsSegments);
+    if (!rows || !rows.length) { el.innerHTML = '<div class="wa-chart-empty">Sin datos</div>'; return; }
+    new ApexCharts(el, {
+        chart: { type: 'donut', height: 220, toolbar: { show: false }, fontFamily: 'inherit' },
+        series: rows.map(function(r){ return parseInt(r.total)||0; }),
+        labels: rows.map(function(r){ return r.segment_label; }),
+        colors: ['#6366f1','#f59e0b','#10b981','#3b82f6'],
+        legend: { position: 'bottom', fontSize: '11px' },
+        plotOptions: { pie: { donut: { size: '55%' } } },
+        dataLabels: { enabled: true, formatter: function(val){ return Math.round(val) + '%'; }, style: { fontSize: '10px' } },
+        tooltip: { y: { formatter: function(val){ return val + ' conversaciones'; } } },
     }).render();
 }());
 </script>
