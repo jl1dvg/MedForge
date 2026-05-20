@@ -1173,23 +1173,24 @@
                     <div class="wa-kpi-sideheading__meta">Lectura rápida del volumen de conversaciones en el rango seleccionado.</div>
                 </div>
                 <div class="wa-kpi-panel__body">
+                    <div id="chart-serie-diaria" class="wa-chart-wrap"></div>
                     @php
-                        $series = is_array($trends['conversations'] ?? null) ? $trends['conversations'] : [];
-                        $labels = is_array($trends['labels'] ?? null) ? $trends['labels'] : [];
-                        $maxValue = max(1, ...array_map('intval', $series ?: [1]));
+                        $chipTotals = [
+                            'Nuevas'        => array_sum($trends['conversations'] ?? []),
+                            'Con handoff'   => array_sum($trends['handoff_transfers'] ?? []),
+                            'Con cita'      => array_sum($trends['sigcenter_bookings'] ?? []),
+                        ];
                     @endphp
-                    <div class="wa-kpi-series-bar">
-                        @foreach($series as $value)
-                            <span style="height: {{ max(8, (int) round(((int) $value / $maxValue) * 120)) }}px;" title="{{ $value }}"></span>
-                        @endforeach
-                    </div>
-                    <div class="wa-kpi-series-labels">
-                        @foreach($labels as $label)
-                            <div>{{ \Illuminate\Support\Str::after($label, '2026-') ?: $label }}</div>
+                    <div class="wa-chart-chips">
+                        @foreach($chipTotals as $chipLabel => $chipVal)
+                            <div class="wa-chart-chip">
+                                <div class="wa-chart-chip__val">{{ number_format($chipVal) }}</div>
+                                <div class="wa-chart-chip__lbl">{{ $chipLabel }}</div>
+                            </div>
                         @endforeach
                     </div>
                     <div class="text-muted mt-10" style="font-size:.82rem;">
-                        Inbound {{ $summary['messages_inbound'] ?? 0 }} · Outbound {{ $summary['messages_outbound'] ?? 0 }} · Citas {{ $summary['sigcenter_bookings_created'] ?? 0 }} · Transferencias {{ $summary['handoff_transfers'] ?? 0 }}
+                        Inbound {{ $summary['messages_inbound'] ?? 0 }} · Outbound {{ $summary['messages_outbound'] ?? 0 }} · Citas {{ $summary['sigcenter_bookings_created'] ?? 0 }} · Derivaciones {{ $summary['handoff_transfers'] ?? 0 }}
                     </div>
                 </div>
             </div>
@@ -1429,6 +1430,37 @@
 
 @push('scripts')
 <script src="https://cdn.jsdelivr.net/npm/apexcharts@3/dist/apexcharts.min.js"></script>
+<script>
+(function () {
+    var el = document.getElementById('chart-serie-diaria');
+    if (!el) return;
+    var labels   = @json($trends['labels'] ?? []);
+    var convs    = @json(array_values($trends['conversations'] ?? []));
+    var handoffs = @json(array_values($trends['handoff_transfers'] ?? []));
+    var bookings = @json(array_values($trends['sigcenter_bookings'] ?? []));
+    if (!labels.length) {
+        el.innerHTML = '<div class="wa-chart-empty">Sin datos para el periodo seleccionado</div>';
+        return;
+    }
+    new ApexCharts(el, {
+        chart:  { type: 'area', height: 220, toolbar: { show: false }, zoom: { enabled: false }, fontFamily: 'inherit' },
+        series: [
+            { name: 'Nuevas',      data: convs    },
+            { name: 'Con handoff', data: handoffs },
+            { name: 'Con cita',    data: bookings },
+        ],
+        colors:  ['#3b82f6', '#10b981', '#f59e0b'],
+        fill:    { type: 'gradient', gradient: { opacityFrom: 0.35, opacityTo: 0.02 } },
+        stroke:  { curve: 'smooth', width: [2.5, 2, 1.5] },
+        xaxis:   { categories: labels, labels: { rotate: -30, style: { fontSize: '10px' } }, tickAmount: Math.min(labels.length, 10) },
+        yaxis:   { labels: { style: { fontSize: '11px' } } },
+        tooltip: { shared: true, intersect: false },
+        legend:  { position: 'top', fontSize: '12px' },
+        grid:    { borderColor: '#f1f5f9' },
+        dataLabels: { enabled: false },
+    }).render();
+}());
+</script>
 @endpush
 
 @endsection
