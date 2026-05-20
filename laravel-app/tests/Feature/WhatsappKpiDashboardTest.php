@@ -429,4 +429,140 @@ class WhatsappKpiDashboardTest extends TestCase
         $this->assertNotNull($agentAHandoffs, 'Agente A no aparece en handoffs_by_agent tras filtrar por él');
         $this->assertGreaterThanOrEqual(1, $agentAHandoffs['assigned_count']);
     }
+
+    public function test_it_renders_chart_containers_in_dashboard_ui(): void
+    {
+        $response = $this
+            ->withoutMiddleware([
+                RequireAppPermission::class,
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->get('/v2/whatsapp/dashboard');
+
+        $response->assertOk();
+
+        // Serie diaria
+        $response->assertSee('id="chart-serie-diaria"', false);
+        // Origen de demanda
+        $response->assertSee('id="chart-origen-demanda"', false);
+        // Secciones analíticas (patrón A)
+        $response->assertSee('id="chart-intencion"', false);
+        $response->assertSee('id="chart-tipo-conv"', false);
+        $response->assertSee('id="chart-segmento"', false);
+        $response->assertSee('id="chart-lead-scoring"', false);
+        $response->assertSee('id="chart-fricciones"', false);
+        $response->assertSee('id="chart-embudo"', false);
+        $response->assertSee('id="chart-ads"', false);
+    }
+
+    public function test_it_renders_alert_banner_when_queue_is_high(): void
+    {
+        $summary = $this->makeTestSummary(['live_queue_queued' => 15]);
+
+        $html = view('whatsapp.v2-dashboard', [
+            'dashboard' => $this->makeTestDashboard($summary),
+            'filters'   => ['sla_target_minutes' => 15],
+        ])->render();
+
+        $this->assertStringContainsString('id="wa-alert-banner"', $html);
+    }
+
+    public function test_it_does_not_render_alert_banner_when_all_ok(): void
+    {
+        $summary = $this->makeTestSummary([
+            'live_queue_queued'    => 2,
+            'sla_assignments_rate' => 95,
+            'unanswered_no_human'  => 0,
+        ]);
+
+        $html = view('whatsapp.v2-dashboard', [
+            'dashboard' => $this->makeTestDashboard($summary),
+            'filters'   => ['sla_target_minutes' => 15],
+        ])->render();
+
+        $this->assertStringNotContainsString('id="wa-alert-banner"', $html);
+    }
+
+    public function test_it_renders_executive_summary_section(): void
+    {
+        $response = $this
+            ->withoutMiddleware([
+                RequireAppPermission::class,
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->get('/v2/whatsapp/dashboard');
+
+        $response->assertOk();
+        $response->assertSee('id="exec-summary"', false);
+        $response->assertSee('Resumen ejecutivo');
+    }
+
+    // ── Helpers para los tests de vista directa ──────────────────────────────
+
+    private function makeTestSummary(array $overrides = []): array
+    {
+        return array_merge([
+            'messages_inbound'            => 1,
+            'messages_outbound'           => 0,
+            'unique_contacts'             => 1,
+            'new_conversations'           => 1,
+            'live_queue_total'            => 0,
+            'live_queue_queued'           => 0,
+            'live_queue_assigned'         => 0,
+            'unanswered_no_human'         => 0,
+            'unanswered_handoff_gt24h'    => 0,
+            'sla_assignments_rate'        => 100,
+            'median_first_reply_seconds'  => 0,
+            'median_from_handoff_seconds' => 0,
+            'attention_rate'              => 100,
+            'window_open_count'           => 0,
+            'window_template_count'       => 0,
+            'handoff_transfers'           => 0,
+            'sigcenter_bookings_created'  => 0,
+            'coverage_rate'               => 100,
+            'sla_target_minutes'          => 15,
+        ], $overrides);
+    }
+
+    private function makeTestDashboard(array $summary): array
+    {
+        return [
+            'summary'    => $summary,
+            'trends'     => [
+                'labels'            => [],
+                'conversations'     => [],
+                'handoff_transfers' => [],
+                'sigcenter_bookings'=> [],
+                'messages_inbound'  => [],
+                'messages_outbound' => [],
+            ],
+            'breakdowns' => [
+                'handoffs_by_role'          => [],
+                'handoffs_by_agent'         => [],
+                'human_attention_by_agent'  => [],
+                'human_response_by_queue'   => [],
+                'sigcenter_bookings_by_sede'=> [],
+            ],
+            'analytics'  => [
+                'summary'            => [],
+                'lifecycle'          => [],
+                'sources'            => [],
+                'funnel'             => [],
+                'outcomes'           => [],
+                'intents'            => [],
+                'conversation_types' => [],
+                'segments'           => [],
+                'lead_scores'        => [],
+                'frictions'          => [],
+                'insights'           => [],
+                'ads'                => [],
+            ],
+            'options'    => ['roles' => [], 'agents' => []],
+            'filters'    => ['sla_target_minutes' => 15],
+        ];
+    }
 }
