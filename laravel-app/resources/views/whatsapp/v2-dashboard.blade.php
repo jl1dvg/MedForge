@@ -1293,18 +1293,32 @@
                                 <th>Agente</th>
                                 <th>Atendidas</th>
                                 <th>1ra respuesta</th>
+                                <th style="min-width:140px">Velocidad</th>
                             </tr>
                             </thead>
                             <tbody>
+                            @php $slaMeta = (int)($filters['sla_target_minutes'] ?? 15); @endphp
                             @forelse(($breakdowns['human_attention_by_agent'] ?? []) as $row)
+                                @php
+                                    $mins  = $row['avg_first_response_minutes'];
+                                    $pct   = $mins !== null ? min(100, (int)round(($mins / ($slaMeta * 2)) * 100)) : 0;
+                                    $color = $mins === null ? 'green' : ($mins > $slaMeta * 2 ? 'red' : ($mins > $slaMeta ? 'yellow' : 'green'));
+                                    $badge = $mins === null ? '—' : ($mins > $slaMeta * 2 ? '✗ Alto' : ($mins > $slaMeta ? '~ OK' : '✓ OK'));
+                                @endphp
                                 <tr>
                                     <td>{{ $row['agent_name'] }}</td>
                                     <td>{{ $row['attended_conversations'] }}</td>
-                                    <td>{{ $row['avg_first_response_minutes'] !== null ? $row['avg_first_response_minutes'] . ' min' : '—' }}</td>
+                                    <td class="wa-prog-val--{{ $color }}">{{ $mins !== null ? $mins . ' min' : '—' }}</td>
+                                    <td>
+                                        <div class="wa-prog-wrap">
+                                            <div class="wa-prog-bg"><div class="wa-prog-fill wa-prog-fill--{{ $color }}" style="width:{{ $pct }}%"></div></div>
+                                            <span class="wa-prog-val wa-prog-val--{{ $color }}">{{ $badge }}</span>
+                                        </div>
+                                    </td>
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="3" class="text-center text-muted py-20">Sin datos para el rango actual.</td>
+                                    <td colspan="4" class="text-center text-muted py-20">Sin datos para el rango actual.</td>
                                 </tr>
                             @endforelse
                             </tbody>
@@ -1337,21 +1351,33 @@
                                 <th>Pendientes</th>
                                 <th>Mediana</th>
                                 <th>Promedio</th>
+                                <th style="min-width:120px">SLA</th>
                             </tr>
                             </thead>
                             <tbody>
+                            @php $slaMeta = (int)($filters['sla_target_minutes'] ?? 15); @endphp
                             @forelse(($breakdowns['human_response_by_queue'] ?? []) as $row)
+                                @php
+                                    $avg   = $row['avg_first_response_minutes'];
+                                    $pct   = $avg !== null ? min(100, (int)round(($avg / ($slaMeta * 2)) * 100)) : 0;
+                                    $color = $avg === null ? 'green' : ($avg > $slaMeta * 2 ? 'red' : ($avg > $slaMeta ? 'yellow' : 'green'));
+                                @endphp
                                 <tr>
                                     <td>{{ $row['label'] }}</td>
                                     <td>{{ $row['total_handoffs'] }}</td>
                                     <td>{{ $row['attended_handoffs'] }} · {{ $row['response_rate'] }}%</td>
                                     <td>{{ $row['pending_handoffs'] }}</td>
                                     <td>{{ $row['median_first_response_minutes'] !== null ? $row['median_first_response_minutes'] . ' min' : '—' }}</td>
-                                    <td>{{ $row['avg_first_response_minutes'] !== null ? $row['avg_first_response_minutes'] . ' min' : '—' }}</td>
+                                    <td class="wa-prog-val--{{ $color }}">{{ $avg !== null ? $avg . ' min' : '—' }}</td>
+                                    <td>
+                                        <div class="wa-prog-wrap">
+                                            <div class="wa-prog-bg"><div class="wa-prog-fill wa-prog-fill--{{ $color }}" style="width:{{ $pct }}%"></div></div>
+                                        </div>
+                                    </td>
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="6" class="text-center text-muted py-20">Sin datos para el rango actual.</td>
+                                    <td colspan="7" class="text-center text-muted py-20">Sin datos para el rango actual.</td>
                                 </tr>
                             @endforelse
                             </tbody>
@@ -1385,20 +1411,31 @@
                                 <th>Cola</th>
                                 <th>Asignadas</th>
                                 <th>Resueltas</th>
+                                <th style="min-width:120px">% Resueltas</th>
                             </tr>
                             </thead>
                             <tbody>
                             @forelse(($breakdowns['handoffs_by_role'] ?? []) as $row)
+                                @php
+                                    $pctR   = $row['total'] > 0 ? (int)round(($row['resolved'] / $row['total']) * 100) : 0;
+                                    $colorR = $pctR >= 85 ? 'green' : ($pctR >= 60 ? 'yellow' : 'red');
+                                @endphp
                                 <tr>
                                     <td>{{ $row['role_name'] }}</td>
                                     <td>{{ $row['total'] }}</td>
                                     <td>{{ $row['queued'] }}</td>
                                     <td>{{ $row['assigned'] }}</td>
                                     <td>{{ $row['resolved'] }}</td>
+                                    <td>
+                                        <div class="wa-prog-wrap">
+                                            <div class="wa-prog-bg"><div class="wa-prog-fill wa-prog-fill--{{ $colorR }}" style="width:{{ $pctR }}%"></div></div>
+                                            <span class="wa-prog-val wa-prog-val--{{ $colorR }}">{{ $pctR }}%</span>
+                                        </div>
+                                    </td>
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="5" class="text-center text-muted py-20">Sin datos para el rango actual.</td>
+                                    <td colspan="6" class="text-center text-muted py-20">Sin datos para el rango actual.</td>
                                 </tr>
                             @endforelse
                             </tbody>
@@ -1431,19 +1468,34 @@
                                 <th>Asignadas</th>
                                 <th>Activas</th>
                                 <th>Resueltas</th>
+                                <th style="min-width:120px">Carga</th>
                             </tr>
                             </thead>
                             <tbody>
+                            @php
+                                $agentRows = $breakdowns['handoffs_by_agent'] ?? [];
+                                $maxAssigned = count($agentRows) > 0 ? max(1, ...array_map(fn($r) => (int)($r['assigned_count'] ?? 0), $agentRows)) : 1;
+                            @endphp
                             @forelse(($breakdowns['handoffs_by_agent'] ?? []) as $row)
+                                @php
+                                    $loadPct = (int)round(($row['assigned_count'] / $maxAssigned) * 100);
+                                    $colorL  = $loadPct >= 90 ? 'red' : ($loadPct >= 70 ? 'yellow' : 'green');
+                                @endphp
                                 <tr>
                                     <td>{{ $row['agent_name'] }}</td>
                                     <td>{{ $row['assigned_count'] }}</td>
                                     <td>{{ $row['active_count'] }}</td>
                                     <td>{{ $row['resolved_count'] }}</td>
+                                    <td>
+                                        <div class="wa-prog-wrap">
+                                            <div class="wa-prog-bg"><div class="wa-prog-fill wa-prog-fill--{{ $colorL }}" style="width:{{ $loadPct }}%"></div></div>
+                                            <span class="wa-prog-val wa-prog-val--{{ $colorL }}">{{ $loadPct }}%</span>
+                                        </div>
+                                    </td>
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="4" class="text-center text-muted py-20">Sin datos para el rango actual.</td>
+                                    <td colspan="5" class="text-center text-muted py-20">Sin datos para el rango actual.</td>
                                 </tr>
                             @endforelse
                             </tbody>
