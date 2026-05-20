@@ -1311,4 +1311,7 @@
         </div>
     </div>
 </section>
+
+{{-- Guía de uso interactiva --}}
+@include('whatsapp.partials.dashboard-guide')
 @endsection
