@@ -947,7 +947,7 @@
         <div class="col-xl-6 col-12">
             <div class="wa-kpi-panel">
                 <div class="wa-kpi-panel__head" style="cursor:pointer;"
-                     onclick="this.nextElementSibling.nextElementSibling.classList.toggle('d-none')">
+                     onclick="var t=document.getElementById('chart-lead-scoring-table');t.style.display=t.style.display==='none'?'block':'none';this.querySelector('.wa-section-toggle').textContent=t.style.display==='none'?'▼':'▲'">
                     <div class="wa-kpi-title-row">
                         <div class="wa-kpi-sideheading__title">Lead scoring</div>
                         <button type="button" class="wa-kpi-help" aria-label="Ver ayuda de Lead scoring" onclick="event.stopPropagation()">
@@ -1016,7 +1016,7 @@
         <div class="col-xl-6 col-12">
             <div class="wa-kpi-panel">
                 <div class="wa-kpi-panel__head" style="cursor:pointer;"
-                     onclick="this.nextElementSibling.nextElementSibling.classList.toggle('d-none')">
+                     onclick="var t=document.getElementById('chart-fricciones-table');t.style.display=t.style.display==='none'?'block':'none';this.querySelector('.wa-section-toggle').textContent=t.style.display==='none'?'▼':'▲'">
                     <div class="wa-kpi-title-row">
                         <div class="wa-kpi-sideheading__title">Fricciones del flujo</div>
                         <button type="button" class="wa-kpi-help" aria-label="Ver ayuda de Fricciones del flujo" onclick="event.stopPropagation()">
@@ -1086,7 +1086,7 @@
         <div class="col-12">
             <div class="wa-kpi-panel">
                 <div class="wa-kpi-panel__head" style="cursor:pointer;"
-                     onclick="this.nextElementSibling.nextElementSibling.classList.toggle('d-none')">
+                     onclick="var t=document.getElementById('chart-embudo-table');t.style.display=t.style.display==='none'?'block':'none';this.querySelector('.wa-section-toggle').textContent=t.style.display==='none'?'▼':'▲'">
                     <div class="wa-kpi-title-row">
                         <div class="wa-kpi-sideheading__title">Embudo conversacional y comercial</div>
                         <button type="button" class="wa-kpi-help" aria-label="Ver ayuda de Embudo conversacional y comercial" onclick="event.stopPropagation()">
