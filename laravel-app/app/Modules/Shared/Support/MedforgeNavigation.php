@@ -153,6 +153,10 @@ class MedforgeNavigation
             $permissions,
             ['administrativo', 'whatsapp.manage', 'whatsapp.autoresponder.manage', 'settings.manage']
         );
+        $canAccessWhatsAppLeads = LegacyPermissionCatalog::containsAny(
+            $permissions,
+            ['administrativo', 'whatsapp.manage', 'whatsapp.chat.supervise', 'whatsapp.chat.assign', 'settings.manage']
+        );
         $canAccessCronManager = LegacyPermissionCatalog::containsAny(
             $permissions,
             ['administrativo', 'settings.manage']
@@ -284,6 +288,11 @@ class MedforgeNavigation
             $canAccessWhatsAppCampaigns
                 ? $link('Campañas WhatsApp', '/v2/whatsapp/campaigns', 'mdi mdi-bullhorn-outline', [
                 'prefix' => ['/v2/whatsapp/campaigns'],
+            ])
+                : null,
+            $canAccessWhatsAppLeads
+                ? $link('Bajas WhatsApp', '/v2/whatsapp/leads', 'mdi mdi-account-remove-outline', [
+                'prefix' => ['/v2/whatsapp/leads'],
             ])
                 : null,
             $canAccessMailbox

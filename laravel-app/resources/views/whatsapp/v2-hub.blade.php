@@ -11,6 +11,7 @@
         'templates' => '/v2/whatsapp/templates',
         'dashboard' => '/v2/whatsapp/dashboard',
         'flowmaker' => '/v2/whatsapp/flowmaker',
+        'leads' => '/v2/whatsapp/leads',
     ];
 @endphp
 
