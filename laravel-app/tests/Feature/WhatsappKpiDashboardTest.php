@@ -88,6 +88,8 @@ class WhatsappKpiDashboardTest extends TestCase
             $table->timestamp('assigned_at')->nullable();
             $table->timestamp('assigned_until')->nullable();
             $table->timestamp('queued_at')->nullable();
+            $table->string('topic')->nullable();
+            $table->string('priority')->nullable();
             $table->timestamps();
         });
 
@@ -118,6 +120,7 @@ class WhatsappKpiDashboardTest extends TestCase
             $table->unsignedBigInteger('conversation_id');
             $table->string('source_category')->nullable();
             $table->string('source_type')->nullable();
+            $table->string('platform', 32)->nullable();
             $table->string('source_id')->nullable();
             $table->string('headline')->nullable();
             $table->string('media_type')->nullable();
@@ -361,5 +364,69 @@ class WhatsappKpiDashboardTest extends TestCase
         $this->assertSame('whatsapp',   $ref->invoke($service, 'https://api.whatsapp.com/something'));
         $this->assertNull($ref->invoke($service, ''));
         $this->assertNull($ref->invoke($service, null));
+        // Edge cases
+        $this->assertNull($ref->invoke($service, 'not-a-url'));
+        $this->assertNull($ref->invoke($service, 'javascript:alert(1)'));
+        $this->assertSame('facebook', $ref->invoke($service, 'https://cdn.facebook.com/image.jpg'));
+    }
+
+    /** @test */
+    public function agent_filter_includes_conversations_from_historical_handoffs(): void
+    {
+        // Arrange — dos agentes (usando insert directo, el modelo no tiene HasFactory)
+        $agentAId = \DB::table('users')->insertGetId([
+            'username'   => 'agent.a',
+            'first_name' => 'Agent',
+            'last_name'  => 'A',
+            'nombre'     => 'Agent A',
+            'email'      => 'agenta@example.com',
+            'role_id'    => 1,
+        ]);
+        $agentBId = \DB::table('users')->insertGetId([
+            'username'   => 'agent.b',
+            'first_name' => 'Agent',
+            'last_name'  => 'B',
+            'nombre'     => 'Agent B',
+            'email'      => 'agentb@example.com',
+            'role_id'    => 1,
+        ]);
+
+        // Conversación actualmente asignada a B (transferida desde A)
+        $convId = \DB::table('whatsapp_conversations')->insertGetId([
+            'wa_number'        => '5939991112233',
+            'assigned_user_id' => $agentBId,
+            'needs_human'      => 0,
+            'unread_count'     => 0,
+            'created_at'       => now()->subDays(2),
+            'updated_at'       => now()->subDays(2),
+        ]);
+
+        // El agente A tuvo un handoff histórico para esta conversación
+        \DB::table('whatsapp_handoffs')->insert([
+            'conversation_id'   => $convId,
+            'wa_number'         => '5939991112233',
+            'assigned_agent_id' => $agentAId,
+            'status'            => 'resolved',
+            'queued_at'         => now()->subDays(2),
+            'created_at'        => now()->subDays(2),
+            'updated_at'        => now()->subDays(2),
+        ]);
+
+        $service = app(\App\Modules\Whatsapp\Services\KpiDashboardService::class);
+
+        // Filtrar por agente A — debe incluir la conversación en handoffs_by_agent
+        $dashboard = $service->buildDashboard(
+            new \DateTimeImmutable(now()->subDays(7)->format('Y-m-d')),
+            new \DateTimeImmutable(now()->format('Y-m-d')),
+            null,
+            $agentAId
+        );
+
+        // El agente A debe aparecer en handoffs_by_agent
+        $agentAHandoffs = collect($dashboard['breakdowns']['handoffs_by_agent'])
+            ->firstWhere('user_id', $agentAId);
+
+        $this->assertNotNull($agentAHandoffs, 'Agente A no aparece en handoffs_by_agent tras filtrar por él');
+        $this->assertGreaterThanOrEqual(1, $agentAHandoffs['assigned_count']);
     }
 }

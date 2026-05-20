@@ -118,7 +118,12 @@ class ConversationAttributionService
             return null;
         }
 
-        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+        $parsed = @parse_url($url);
+        if (!is_array($parsed) || empty($parsed['host'])) {
+            return null;
+        }
+
+        $host = strtolower($parsed['host']);
 
         if (str_contains($host, 'instagram.com')) {
             return 'instagram';
