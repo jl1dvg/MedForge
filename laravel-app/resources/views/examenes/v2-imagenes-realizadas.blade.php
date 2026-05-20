@@ -568,11 +568,33 @@
     <script>
         (function () {
             function postJson(url, body) {
+                const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+                    || window.csrfToken
+                    || '';
+
                 return fetch(url, {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                        ...(csrfToken ? {'X-CSRF-TOKEN': csrfToken} : {})
+                    },
+                    credentials: 'same-origin',
                     body: JSON.stringify(body || {})
-                }).then(r => r.json());
+                }).then(function (response) {
+                    if (!response.ok) {
+                        return response.json()
+                            .catch(function () {
+                                return {};
+                            })
+                            .then(function (data) {
+                                throw new Error(data && data.error ? data.error : ('HTTP ' + response.status));
+                            });
+                    }
+
+                    return response.json();
+                });
             }
 
             window.initImagenesRealizadasPage = function initImagenesRealizadasPage() {
