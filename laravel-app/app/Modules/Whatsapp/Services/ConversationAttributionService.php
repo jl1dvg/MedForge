@@ -50,6 +50,7 @@ class ConversationAttributionService
                 'first_message_id' => $firstMessage?->id,
                 'first_inbound_message_id' => $firstInbound?->id,
                 'source_category' => $sourceCategory,
+                'platform' => $this->derivePlatformFromUrl($this->scalar($referralPayload['source_url'] ?? null)),
                 'source_type' => $this->truncate($this->scalar($referralPayload['source_type'] ?? null), 64),
                 'source_id' => $this->truncate($this->scalar($referralPayload['source_id'] ?? null), 191),
                 'source_url' => $this->scalar($referralPayload['source_url'] ?? null),
@@ -109,6 +110,29 @@ class ConversationAttributionService
             ->where('direction', 'inbound')
             ->orderBy('id')
             ->first();
+    }
+
+    private function derivePlatformFromUrl(?string $url): ?string
+    {
+        if ($url === null || $url === '') {
+            return null;
+        }
+
+        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+
+        if (str_contains($host, 'instagram.com')) {
+            return 'instagram';
+        }
+
+        if (str_contains($host, 'facebook.com') || str_contains($host, 'fb.com')) {
+            return 'facebook';
+        }
+
+        if (str_contains($host, 'wa.me') || str_contains($host, 'whatsapp.com')) {
+            return 'whatsapp';
+        }
+
+        return null;
     }
 
     /**

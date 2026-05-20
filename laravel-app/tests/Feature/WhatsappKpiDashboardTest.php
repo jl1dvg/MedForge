@@ -345,4 +345,21 @@ class WhatsappKpiDashboardTest extends TestCase
             ->assertSee('Atención humana por agente')
             ->assertSee('Exportar CSV');
     }
+
+    /** @test */
+    public function it_derives_platform_from_source_url(): void
+    {
+        $service = app(\App\Modules\Whatsapp\Services\ConversationAttributionService::class);
+        $ref = new \ReflectionMethod($service, 'derivePlatformFromUrl');
+        $ref->setAccessible(true);
+
+        $this->assertSame('facebook',   $ref->invoke($service, 'https://www.facebook.com/ads/123'));
+        $this->assertSame('facebook',   $ref->invoke($service, 'https://l.facebook.com/l.php?u=test'));
+        $this->assertSame('facebook',   $ref->invoke($service, 'https://fb.com/something'));
+        $this->assertSame('instagram',  $ref->invoke($service, 'https://www.instagram.com/p/abc/'));
+        $this->assertSame('whatsapp',   $ref->invoke($service, 'https://wa.me/123456'));
+        $this->assertSame('whatsapp',   $ref->invoke($service, 'https://api.whatsapp.com/something'));
+        $this->assertNull($ref->invoke($service, ''));
+        $this->assertNull($ref->invoke($service, null));
+    }
 }
