@@ -535,15 +535,9 @@ class ConversationOpsService
             'event_type' => $eventType,
             'actor_user_id' => $actorUserId,
             'notes' => $this->sanitizeNotes($notes),
+            // The production table requires created_at and does not have updated_at.
+            'created_at' => now(),
         ];
-
-        if (Schema::hasColumn('whatsapp_handoff_events', 'created_at')) {
-            $payload['created_at'] = now();
-        }
-
-        if (Schema::hasColumn('whatsapp_handoff_events', 'updated_at')) {
-            $payload['updated_at'] = now();
-        }
 
         DB::table('whatsapp_handoff_events')->insert($payload);
     }

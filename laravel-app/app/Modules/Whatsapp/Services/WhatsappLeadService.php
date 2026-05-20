@@ -203,13 +203,12 @@ class WhatsappLeadService
         $handoff->save();
 
         if (class_exists(WhatsappHandoffEvent::class)) {
-            WhatsappHandoffEvent::query()->create([
-                'handoff_id'         => $handoff->id,
-                'event_type'         => 'resolved',
-                'actor_user_id'      => $actorUserId,
-                'notes'              => 'Baja: ' . mb_substr($notes, 0, 500),
-                'created_at'         => $now,
-                'updated_at'         => $now,
+            DB::table('whatsapp_handoff_events')->insert([
+                'handoff_id'    => $handoff->id,
+                'event_type'    => 'resolved',
+                'actor_user_id' => $actorUserId,
+                'notes'         => 'Baja: ' . mb_substr($notes, 0, 500),
+                'created_at'    => $now,
             ]);
         }
     }
