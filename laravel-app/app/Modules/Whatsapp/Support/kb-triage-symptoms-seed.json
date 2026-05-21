@@ -1,0 +1,218 @@
+[
+  {
+    "title": "Triage síntomas - Visión borrosa o cambio gradual de visión",
+    "content": "Orientación para paciente:\nSi presentas visión borrosa, dificultad para enfocar, cansancio visual o notas que ya no ves igual de lejos o de cerca, la especialidad sugerida es Oftalmología general.\n\nSíntomas frecuentes:\nvisión borrosa, veo nublado, no enfoco, me arden los ojos al leer, me cuesta ver de lejos, me cuesta ver de cerca.\n\nRed flags:\nSi la visión se perdió de forma súbita, ves una sombra negra, destellos intensos o dolor fuerte, no debe seguir una agenda normal y debe pasar a atención humana prioritaria.\n\nSiguiente paso sugerido:\nInvitar a agendar por sede y luego continuar con la especialidad sugerida.\n\nMensaje breve sugerido al paciente:\nPor lo que me indicas, te recomiendo una valoración por Oftalmología general. Si deseas, puedo ayudarte a agendar tu cita ahora.",
+    "status": "published",
+    "source_type": "manual",
+    "source_label": "Sandbox triage síntomas",
+    "especialidad": "oftalmologo general",
+    "tipo_contenido": "triage",
+    "audiencia": "paciente",
+    "vigencia": "vigente",
+    "metadata": {
+      "sintomas": ["visión borrosa", "veo nublado", "no enfoco", "cambio de graduación", "cansancio visual"],
+      "sinonimos": ["vision borrosa", "veo borroso", "no veo bien", "no enfoco"],
+      "nivel_urgencia": "normal",
+      "destino": "agenda",
+      "red_flags": ["pérdida súbita de visión", "dolor intenso", "sombra negra", "destellos intensos"]
+    }
+  },
+  {
+    "title": "Triage síntomas - Ojo rojo o dolor ocular leve a moderado",
+    "content": "Orientación para paciente:\nSi presentas ojo rojo, molestia, dolor ocular leve o moderado, sensibilidad a la luz o inflamación, la especialidad sugerida es Uveitis o una evaluación oftalmológica inicial priorizada.\n\nSíntomas frecuentes:\nojo rojo, dolor en el ojo, molestia ocular, ardor, inflamación, fotofobia.\n\nRed flags:\nSi el dolor es intenso, hay pérdida de visión, trauma, secreción severa o empeora rápidamente, debe pasar a atención humana prioritaria.\n\nSiguiente paso sugerido:\nOrientar al paciente a valoración prioritaria y escalar si reporta dolor intenso o baja visual súbita.\n\nMensaje breve sugerido al paciente:\nPor lo que me indicas, te recomiendo valoración prioritaria por inflamación ocular. Si deseas, puedo ayudarte a revisar disponibilidad ahora.",
+    "status": "published",
+    "source_type": "manual",
+    "source_label": "Sandbox triage síntomas",
+    "especialidad": "Uveitis",
+    "tipo_contenido": "triage",
+    "audiencia": "paciente",
+    "vigencia": "vigente",
+    "metadata": {
+      "sintomas": ["ojo rojo", "dolor ocular", "ardor", "fotofobia", "inflamación"],
+      "sinonimos": ["ojo irritado", "me duele el ojo", "ojos rojos"],
+      "nivel_urgencia": "alta",
+      "destino": "agenda_prioritaria",
+      "red_flags": ["dolor intenso", "pérdida súbita de visión", "trauma ocular", "secreción severa"]
+    }
+  },
+  {
+    "title": "Triage síntomas - Flashes, moscas volantes o sombra en la visión",
+    "content": "Orientación para paciente:\nSi notas destellos, moscas volantes nuevas, una cortina, sombra, distorsión de líneas o cambios repentinos en la visión, la especialidad sugerida es Retina y Vítreo.\n\nSíntomas frecuentes:\ndestellos, flashes, moscas volantes, mancha negra, cortina, sombra, líneas torcidas.\n\nRed flags:\nEstos síntomas pueden ser de prioridad alta. Si comenzaron de forma súbita o se acompañan de pérdida visual, debe pasar a atención humana prioritaria.\n\nSiguiente paso sugerido:\nDirigir a Retina y Vítreo y priorizar gestión humana si el cambio es súbito.\n\nMensaje breve sugerido al paciente:\nPor lo que me indicas, te recomiendo valoración por Retina y Vítreo. Si el cambio fue súbito o sientes que estás perdiendo visión, te ayudaremos con prioridad.",
+    "status": "published",
+    "source_type": "manual",
+    "source_label": "Sandbox triage síntomas",
+    "especialidad": "Retina y Vítreo",
+    "tipo_contenido": "triage",
+    "audiencia": "paciente",
+    "vigencia": "vigente",
+    "metadata": {
+      "sintomas": ["flashes", "destellos", "moscas volantes", "sombra", "cortina", "distorsión visual"],
+      "sinonimos": ["flash en el ojo", "veo manchas flotando", "veo una sombra"],
+      "nivel_urgencia": "alta",
+      "destino": "agenda_prioritaria",
+      "red_flags": ["inicio súbito", "pérdida de visión", "cortina negra"]
+    }
+  },
+  {
+    "title": "Triage síntomas - Párpado caído, chalazión o molestias en párpados",
+    "content": "Orientación para paciente:\nSi tu consulta es por párpado caído, bolita en el párpado, chalazión, lesiones palpebrales, lagrimeo por posición del párpado o molestias estéticas/funcionales del párpado, la especialidad sugerida es Oculoplastia.\n\nSíntomas frecuentes:\npárpado caído, bolita en el párpado, chalazión, bulto, lesión en párpado, pestañas que rozan.\n\nRed flags:\nSi hay trauma importante, sangrado activo o dolor severo, se debe escalar a atención humana.\n\nMensaje breve sugerido al paciente:\nPor lo que me indicas, te recomiendo una valoración por Oculoplastia. Si deseas, te ayudo a agendar.",
+    "status": "published",
+    "source_type": "manual",
+    "source_label": "Sandbox triage síntomas",
+    "especialidad": "Oculoplastia",
+    "tipo_contenido": "triage",
+    "audiencia": "paciente",
+    "vigencia": "vigente",
+    "metadata": {
+      "sintomas": ["párpado caído", "chalazión", "bulto en párpado", "lesión palpebral"],
+      "sinonimos": ["bolita en el ojo", "orzuelo interno", "me cuelga el párpado"],
+      "nivel_urgencia": "normal",
+      "destino": "agenda",
+      "red_flags": ["trauma importante", "sangrado activo", "dolor severo"]
+    }
+  },
+  {
+    "title": "Triage síntomas - Resequedad severa, córnea o queratocono",
+    "content": "Orientación para paciente:\nSi presentas resequedad severa, molestias persistentes en la superficie del ojo, antecedentes de queratocono, cicatrices corneales o te indicaron revisar la córnea, la especialidad sugerida es Córnea.\n\nSíntomas frecuentes:\nresequedad intensa, sensación de arena, dolor por superficie ocular, queratocono, cicatriz corneal.\n\nRed flags:\nSi hay dolor intenso, disminución marcada de visión o sospecha de infección, se debe escalar a atención humana.\n\nMensaje breve sugerido al paciente:\nPor lo que me indicas, te recomiendo una valoración por Córnea. Si deseas, puedo ayudarte a agendar.",
+    "status": "published",
+    "source_type": "manual",
+    "source_label": "Sandbox triage síntomas",
+    "especialidad": "Córnea",
+    "tipo_contenido": "triage",
+    "audiencia": "paciente",
+    "vigencia": "vigente",
+    "metadata": {
+      "sintomas": ["resequedad severa", "sensación de arena", "queratocono", "cicatriz corneal"],
+      "sinonimos": ["ojo seco", "me raspa el ojo", "problema en la córnea"],
+      "nivel_urgencia": "normal",
+      "destino": "agenda",
+      "red_flags": ["dolor intenso", "sospecha de infección", "baja visual marcada"]
+    }
+  },
+  {
+    "title": "Triage síntomas - Presión ocular o glaucoma",
+    "content": "Orientación para paciente:\nSi te dijeron que tienes presión ocular elevada, sospecha de glaucoma, antecedentes familiares o requieres seguimiento de glaucoma, la especialidad sugerida es Glaucomatólogo.\n\nSíntomas frecuentes:\npresión ocular, glaucoma, control de glaucoma, sospecha por examen previo.\n\nRed flags:\nSi hay dolor intenso con náusea, halos y baja visual aguda, se debe escalar de inmediato a atención humana.\n\nMensaje breve sugerido al paciente:\nPor lo que me indicas, te recomiendo una valoración por Glaucoma. Si deseas, puedo ayudarte con la cita.",
+    "status": "published",
+    "source_type": "manual",
+    "source_label": "Sandbox triage síntomas",
+    "especialidad": "Glaucomatólogo",
+    "tipo_contenido": "triage",
+    "audiencia": "paciente",
+    "vigencia": "vigente",
+    "metadata": {
+      "sintomas": ["presión ocular", "glaucoma", "control glaucoma"],
+      "sinonimos": ["presion alta en el ojo", "me dijeron glaucoma"],
+      "nivel_urgencia": "normal",
+      "destino": "agenda",
+      "red_flags": ["dolor intenso", "náusea", "halos", "baja visual aguda"]
+    }
+  },
+  {
+    "title": "Triage síntomas - Niño con problemas visuales o desviación ocular",
+    "content": "Orientación para paciente:\nSi la consulta es para un niño con sospecha de baja visual, desviación de un ojo, control visual infantil o molestias relacionadas con visión pediátrica, la especialidad sugerida es Oftalmopediatría.\n\nSíntomas frecuentes:\nniño no ve bien, ojo desviado, control visual infantil, visión borrosa en niño, molestia ocular en niño.\n\nRed flags:\nSi hay trauma, dolor intenso o pérdida visual súbita, se debe escalar a atención humana.\n\nMensaje breve sugerido al paciente:\nPor lo que me indicas, te recomiendo una valoración por Oftalmopediatría. Si deseas, te ayudo a agendar.",
+    "status": "published",
+    "source_type": "manual",
+    "source_label": "Sandbox triage síntomas",
+    "especialidad": "Oftalmopediatría",
+    "tipo_contenido": "triage",
+    "audiencia": "paciente",
+    "vigencia": "vigente",
+    "metadata": {
+      "sintomas": ["niño no ve bien", "ojo desviado", "control visual infantil"],
+      "sinonimos": ["estrabismo", "mi hijo no ve bien", "vision infantil"],
+      "nivel_urgencia": "normal",
+      "destino": "agenda",
+      "red_flags": ["trauma", "dolor intenso", "pérdida visual súbita"]
+    }
+  },
+  {
+    "title": "Triage síntomas - Catarata o cirugía de catarata",
+    "content": "Orientación para paciente:\nSi refieres visión opaca progresiva, diagnóstico previo de catarata o deseas valoración para cirugía de catarata, la especialidad sugerida es Oftalmología general como puerta de entrada para evaluación quirúrgica.\n\nSíntomas frecuentes:\ncatarata, visión opaca, visión nublada progresiva, cirugía de catarata.\n\nRed flags:\nSi la pérdida de visión es súbita o se acompaña de dolor importante, se debe escalar a atención humana.\n\nMensaje breve sugerido al paciente:\nPor lo que me indicas, te recomiendo valoración inicial por Oftalmología general para definir manejo de catarata. Si deseas, puedo ayudarte a agendar.",
+    "status": "published",
+    "source_type": "manual",
+    "source_label": "Sandbox triage síntomas",
+    "especialidad": "oftalmologo general",
+    "tipo_contenido": "triage",
+    "audiencia": "paciente",
+    "vigencia": "vigente",
+    "metadata": {
+      "sintomas": ["catarata", "visión opaca", "cirugía de catarata"],
+      "sinonimos": ["me dijeron catarata", "veo opaco"],
+      "nivel_urgencia": "normal",
+      "destino": "agenda",
+      "red_flags": ["pérdida súbita de visión", "dolor importante"]
+    }
+  },
+  {
+    "title": "Triage síntomas - Control postquirúrgico oftalmológico",
+    "content": "Orientación para paciente:\nSi necesitas revisión luego de una cirugía ocular reciente, retiro de puntos o seguimiento postoperatorio, la especialidad sugerida es control con el médico tratante o la subespecialidad correspondiente al procedimiento realizado.\n\nSíntomas frecuentes:\ncontrol postquirúrgico, revisión después de cirugía, control postoperatorio.\n\nRed flags:\nSi hay dolor intenso, secreción abundante, sangrado o pérdida visual, se debe escalar a atención humana prioritaria.\n\nMensaje breve sugerido al paciente:\nPara un control postquirúrgico lo ideal es revisar disponibilidad con el equipo tratante. Si deseas, te ayudamos con prioridad.",
+    "status": "published",
+    "source_type": "manual",
+    "source_label": "Sandbox triage síntomas",
+    "especialidad": "oftalmologo general",
+    "tipo_contenido": "triage",
+    "audiencia": "paciente",
+    "vigencia": "vigente",
+    "metadata": {
+      "sintomas": ["control postquirúrgico", "revisión después de cirugía", "control postoperatorio"],
+      "sinonimos": ["post operatorio", "me operaron del ojo", "control cirugía ocular"],
+      "nivel_urgencia": "alta",
+      "destino": "agenda_prioritaria",
+      "red_flags": ["dolor intenso", "secreción abundante", "sangrado", "pérdida visual"]
+    }
+  },
+  {
+    "title": "Triage síntomas - Trauma ocular o golpe en el ojo",
+    "content": "Orientación para paciente:\nSi sufriste un golpe en el ojo, accidente, herida o trauma ocular, no debe seguir un flujo de agenda normal. Debe pasar a atención humana prioritaria para orientación inmediata.\n\nSíntomas frecuentes:\ngolpe en el ojo, accidente, trauma ocular, herida en el ojo.\n\nRed flags:\nTodos los traumas oculares se consideran de alta prioridad, especialmente si hay dolor, visión borrosa, sangrado o cuerpo extraño.\n\nMensaje breve sugerido al paciente:\nPor seguridad, este caso debe ser revisado de inmediato por nuestro equipo. Te ayudaremos con prioridad.",
+    "status": "published",
+    "source_type": "manual",
+    "source_label": "Sandbox triage síntomas",
+    "especialidad": "",
+    "tipo_contenido": "triage",
+    "audiencia": "paciente",
+    "vigencia": "vigente",
+    "metadata": {
+      "sintomas": ["golpe en el ojo", "trauma ocular", "accidente", "herida"],
+      "sinonimos": ["me golpeé el ojo", "me cayó algo en el ojo"],
+      "nivel_urgencia": "emergente",
+      "destino": "handoff_urgente",
+      "red_flags": ["sangrado", "baja visual", "dolor intenso", "cuerpo extraño"]
+    }
+  },
+  {
+    "title": "Triage síntomas - Pérdida súbita de visión",
+    "content": "Orientación para paciente:\nSi presentas pérdida súbita de visión o una disminución importante de la visión de inicio brusco, no debe seguir un flujo de agenda normal. Debe pasar a atención humana prioritaria.\n\nSíntomas frecuentes:\npérdida súbita de visión, de repente no veo, se me fue la vista, veo muy oscuro.\n\nRed flags:\nTodos estos síntomas son de alta prioridad y requieren derivación inmediata.\n\nMensaje breve sugerido al paciente:\nPor seguridad, tu caso debe ser revisado de inmediato por nuestro equipo. Te ayudaremos con prioridad.",
+    "status": "published",
+    "source_type": "manual",
+    "source_label": "Sandbox triage síntomas",
+    "especialidad": "",
+    "tipo_contenido": "triage",
+    "audiencia": "paciente",
+    "vigencia": "vigente",
+    "metadata": {
+      "sintomas": ["pérdida súbita de visión", "no veo de repente", "disminución brusca de visión"],
+      "sinonimos": ["se me fue la vista", "veo oscuro de repente"],
+      "nivel_urgencia": "emergente",
+      "destino": "handoff_urgente",
+      "red_flags": ["inicio brusco", "dolor", "sombra negra", "destellos"]
+    }
+  },
+  {
+    "title": "Triage síntomas - Consulta general sin síntoma claro",
+    "content": "Orientación para paciente:\nSi el paciente describe una molestia visual general, desea chequeo, control preventivo o no expresa un síntoma claro, la especialidad sugerida es Oftalmología general.\n\nSíntomas frecuentes:\nchequeo general, control visual, quiero revisarme, necesito una consulta.\n\nRed flags:\nSi durante la conversación aparecen dolor intenso, trauma o pérdida súbita de visión, debe pasar a atención humana prioritaria.\n\nMensaje breve sugerido al paciente:\nPuedo orientarte con una valoración por Oftalmología general. Si deseas, te ayudo a agendar tu cita.",
+    "status": "published",
+    "source_type": "manual",
+    "source_label": "Sandbox triage síntomas",
+    "especialidad": "oftalmologo general",
+    "tipo_contenido": "triage",
+    "audiencia": "paciente",
+    "vigencia": "vigente",
+    "metadata": {
+      "sintomas": ["chequeo general", "control visual", "consulta general"],
+      "sinonimos": ["quiero revisarme", "quiero una valoración"],
+      "nivel_urgencia": "normal",
+      "destino": "agenda",
+      "red_flags": ["dolor intenso", "trauma", "pérdida súbita de visión"]
+    }
+  }
+]
