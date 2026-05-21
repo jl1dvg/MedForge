@@ -2,29 +2,34 @@
     /** @var array<int, array<string, mixed>> $users */
     /** @var array<int, string> $roleMap */
     /** @var array<string, string> $permissionLabels */
+    /** @var array<string, array<string, string>> $permissionGroups */
+    /** @var array<string, string[]> $rolesWithPermissions */
+    /** @var array<string, mixed> $permissionProfiles */
 
-    $users = $users ?? [];
-    $roleMap = $roleMap ?? [];
-    $permissionLabels = $permissionLabels ?? [];
-    $warnings = $warnings ?? [];
-    $canManageUsers = !empty($canManageUsers);
-    $currentUserId = isset($currentUserId) ? (int) $currentUserId : 0;
-    $privilegedSummary = $privilegedSummary ?? ['superusers' => [], 'administrative' => [], 'totalAccess' => []];
+    $users               = $users               ?? [];
+    $roleMap             = $roleMap             ?? [];
+    $permissionLabels    = $permissionLabels    ?? [];
+    $permissionGroups    = $permissionGroups    ?? [];
+    $rolesWithPermissions = $rolesWithPermissions ?? [];
+    $permissionProfiles  = $permissionProfiles  ?? [];
+    $warnings            = $warnings            ?? [];
+    $canManageUsers      = !empty($canManageUsers);
+    $currentUserId       = isset($currentUserId) ? (int) $currentUserId : 0;
 
     $especialidadesFiltro = [
-        '' => 'Todas',
-        'Cirujano Oftalmólogo' => 'Cirujano Oftalmólogo',
-        'Residente' => 'Residente',
-        'Anestesiologo' => 'Anestesiólogo',
-        'Asistente' => 'Asistente',
-        'Optometrista' => 'Optometrista',
-        'Enfermera' => 'Enfermera',
-        'Administrativo' => 'Administrativo',
-        'Facturación' => 'Facturación',
-        'Sistemas' => 'Sistemas',
-        'Coordinación Quirúrgica' => 'Coordinación Quirúrgica',
-        'Admisión' => 'Admisión',
-        'Imagenología' => 'Imagenología',
+        ''                         => 'Todas',
+        'Cirujano Oftalmólogo'     => 'Cirujano Oftalmólogo',
+        'Residente'                => 'Residente',
+        'Anestesiologo'            => 'Anestesiólogo',
+        'Asistente'                => 'Asistente',
+        'Optometrista'             => 'Optometrista',
+        'Enfermera'                => 'Enfermera',
+        'Administrativo'           => 'Administrativo',
+        'Facturación'              => 'Facturación',
+        'Sistemas'                 => 'Sistemas',
+        'Coordinación Quirúrgica'  => 'Coordinación Quirúrgica',
+        'Admisión'                 => 'Admisión',
+        'Imagenología'             => 'Imagenología',
     ];
 @endphp
 
@@ -35,14 +40,14 @@
         <div class="d-flex align-items-center">
             <div class="me-auto">
                 <h3 class="page-title">Usuarios</h3>
-                <div class="d-inline-block align-items-center">
-                    <nav>
-                        <ol class="breadcrumb">
-                            <li class="breadcrumb-item"><a href="/v2/dashboard"><i class="mdi mdi-home-outline"></i></a></li>
-                            <li class="breadcrumb-item active" aria-current="page">Usuarios</li>
-                        </ol>
-                    </nav>
-                </div>
+                <nav aria-label="breadcrumb">
+                    <ol class="breadcrumb">
+                        <li class="breadcrumb-item">
+                            <a href="/v2/dashboard"><i class="mdi mdi-home-outline"></i></a>
+                        </li>
+                        <li class="breadcrumb-item active" aria-current="page">Usuarios</li>
+                    </ol>
+                </nav>
             </div>
             <div class="d-flex gap-2">
                 <a href="/roles" class="btn btn-outline-primary btn-sm">Administrar roles</a>
@@ -57,11 +62,20 @@
 
     <section class="content">
         @if(($status ?? null) === 'created')
-            <div class="alert alert-success">Usuario creado correctamente.</div>
+            <div class="alert alert-success alert-dismissible fade show">
+                Usuario creado correctamente.
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+            </div>
         @elseif(($status ?? null) === 'updated')
-            <div class="alert alert-success">Usuario actualizado correctamente.</div>
+            <div class="alert alert-success alert-dismissible fade show">
+                Usuario actualizado correctamente.
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+            </div>
         @elseif(($status ?? null) === 'deleted')
-            <div class="alert alert-success">Usuario eliminado correctamente.</div>
+            <div class="alert alert-success alert-dismissible fade show">
+                Usuario eliminado correctamente.
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+            </div>
         @elseif(($status ?? null) === 'not_found')
             <div class="alert alert-warning">No se encontró el usuario solicitado.</div>
         @elseif(($status ?? null) === 'cannot_delete_self')
@@ -79,290 +93,394 @@
             </div>
         @endif
 
-        <style>
-            .usuarios-avatar {
-                width: 50px;
-                height: 50px;
-                border-radius: 25%;
-                object-fit: cover;
-                background-color: #f1f1f1;
-            }
-
-            .usuarios-table thead th[data-sort] {
-                cursor: pointer;
-                user-select: none;
-            }
-
-            .usuarios-table thead th[data-sort] .sort-indicator {
-                margin-left: 0.35rem;
-                font-size: 0.75em;
-                opacity: 0.6;
-            }
-
-            .usuarios-filters .form-label {
-                font-weight: 600;
-            }
-
-            .usuarios-hidden {
-                display: none !important;
-            }
-        </style>
-
-        <div class="card mb-3 usuarios-filters">
-            <div class="card-body">
-                <div class="row g-3 align-items-end">
+        {{-- ── Filtros ─────────────────────────────────────────────────────── --}}
+        <div class="card mb-3">
+            <div class="card-body py-2">
+                <div class="row g-2 align-items-end">
                     <div class="col-lg-4">
-                        <label class="form-label" for="usuariosFiltroBuscar">Buscar</label>
-                        <input type="text" id="usuariosFiltroBuscar" class="form-control" placeholder="Nombre, usuario, correo…">
-                        <div class="form-text">Filtra en tiempo real sin recargar.</div>
+                        <label class="form-label small mb-1 fw-semibold" for="uf-buscar">Buscar</label>
+                        <input type="search" id="uf-buscar" class="form-control form-control-sm"
+                               placeholder="Nombre, usuario, correo…" autocomplete="off">
                     </div>
-
                     <div class="col-lg-3">
-                        <label class="form-label" for="usuariosFiltroEspecialidad">Especialidad</label>
-                        <select id="usuariosFiltroEspecialidad" class="form-select">
+                        <label class="form-label small mb-1 fw-semibold" for="uf-especialidad">Especialidad</label>
+                        <select id="uf-especialidad" class="form-select form-select-sm">
                             @foreach($especialidadesFiltro as $value => $label)
                                 <option value="{{ $value }}">{{ $label }}</option>
                             @endforeach
                         </select>
                     </div>
-
-                    <div class="col-lg-3">
-                        <label class="form-label" for="usuariosFiltroRol">Rol</label>
-                        <select id="usuariosFiltroRol" class="form-select">
+                    <div class="col-lg-2">
+                        <label class="form-label small mb-1 fw-semibold" for="uf-rol">Rol</label>
+                        <select id="uf-rol" class="form-select form-select-sm">
                             <option value="">Todos</option>
-                            @foreach($roleMap as $roleId => $roleName)
-                                <option value="{{ $roleId }}">{{ $roleName }}</option>
+                            @foreach($roleMap as $rId => $rName)
+                                <option value="{{ $rId }}">{{ $rName }}</option>
                             @endforeach
                         </select>
                     </div>
-
                     <div class="col-lg-2">
-                        <label class="form-label" for="usuariosFiltroEstado">Estado</label>
-                        <select id="usuariosFiltroEstado" class="form-select">
+                        <label class="form-label small mb-1 fw-semibold" for="uf-estado">Estado</label>
+                        <select id="uf-estado" class="form-select form-select-sm">
                             <option value="">Todos</option>
                             <option value="approved">Aprobado</option>
                             <option value="pending">Pendiente</option>
                         </select>
                     </div>
-
-                    <div class="col-12 d-flex gap-2 justify-content-end">
-                        <button type="button" class="btn btn-outline-secondary" id="usuariosFiltroLimpiar">
-                            <i class="mdi mdi-filter-remove"></i> Limpiar
+                    <div class="col-lg-1 d-flex align-items-end gap-2">
+                        <button type="button" id="uf-limpiar" class="btn btn-outline-secondary btn-sm" title="Limpiar filtros">
+                            <i class="mdi mdi-filter-remove"></i>
                         </button>
-                        <span class="badge bg-light text-dark border align-self-center" id="usuariosFiltroCount">0 mostrados</span>
+                        <span id="uf-count" class="badge bg-light text-dark border ms-auto"></span>
                     </div>
                 </div>
             </div>
         </div>
 
-        <div class="row g-3 mb-3" id="privilegedSummaryAccordion">
-            <div class="col-lg-4">
-                <div class="card border-danger">
-                    <div class="card-body">
-                        <button
-                            type="button"
-                            class="btn btn-link text-reset text-decoration-none d-flex justify-content-between align-items-center w-100 p-0"
-                            data-bs-toggle="collapse"
-                            data-bs-target="#privilegedSummarySuperusers"
-                            aria-expanded="false"
-                            aria-controls="privilegedSummarySuperusers"
-                        >
-                            <h5 class="card-title mb-0">Superusuarios</h5>
-                            <span class="badge bg-danger">{{ count($privilegedSummary['superusers'] ?? []) }}</span>
-                        </button>
-                        <div id="privilegedSummarySuperusers" class="collapse mt-3" data-bs-parent="#privilegedSummaryAccordion">
-                            @if(!empty($privilegedSummary['superusers']))
-                                <div class="small text-muted">{{ implode(', ', $privilegedSummary['superusers']) }}</div>
-                            @else
-                                <div class="small text-muted">No hay usuarios con `superuser` efectivo.</div>
-                            @endif
-                        </div>
-                    </div>
-                </div>
-            </div>
+        {{-- ── Master-detail layout ─────────────────────────────────────────── --}}
+        <div class="usuarios-layout">
 
-            <div class="col-lg-4">
-                <div class="card border-warning">
-                    <div class="card-body">
-                        <button
-                            type="button"
-                            class="btn btn-link text-reset text-decoration-none d-flex justify-content-between align-items-center w-100 p-0"
-                            data-bs-toggle="collapse"
-                            data-bs-target="#privilegedSummaryAdministrative"
-                            aria-expanded="false"
-                            aria-controls="privilegedSummaryAdministrative"
-                        >
-                            <h5 class="card-title mb-0">Acceso administrativo</h5>
-                            <span class="badge bg-warning text-dark">{{ count($privilegedSummary['administrative'] ?? []) }}</span>
-                        </button>
-                        <div id="privilegedSummaryAdministrative" class="collapse mt-3" data-bs-parent="#privilegedSummaryAccordion">
-                            @if(!empty($privilegedSummary['administrative']))
-                                <div class="small text-muted">{{ implode(', ', $privilegedSummary['administrative']) }}</div>
-                            @else
-                                <div class="small text-muted">Nadie tiene el flag `administrativo`.</div>
-                            @endif
-                        </div>
-                    </div>
-                </div>
-            </div>
+            {{-- Table --}}
+            <div class="usuarios-main">
+                <div class="box">
+                    <div class="box-body table-responsive p-0">
+                        <table class="table table-hover align-middle mb-0 usuarios-table">
+                            <thead class="bg-primary text-white">
+                            <tr>
+                                <th scope="col" style="width:48px"></th>
+                                <th scope="col" data-sort="name" aria-sort="none">
+                                    Nombre
+                                    <svg class="sort-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
+                                         fill="none" stroke="currentColor" stroke-width="2"
+                                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                        <line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/>
+                                    </svg>
+                                </th>
+                                <th scope="col" data-sort="especialidad" aria-sort="none">
+                                    Especialidad
+                                    <svg class="sort-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
+                                         fill="none" stroke="currentColor" stroke-width="2"
+                                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                        <line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/>
+                                    </svg>
+                                </th>
+                                <th scope="col">Rol</th>
+                                <th scope="col">Estado</th>
+                                <th scope="col" style="width:48px"></th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            @forelse($users as $user)
+                                @php
+                                    $displayName   = trim((string) ($user['display_full_name'] ?? $user['username'] ?? ''));
+                                    $username      = (string) ($user['username'] ?? '');
+                                    $especialidad  = trim((string) ($user['especialidad'] ?? ''));
+                                    $roleId        = (string) ($user['role_id'] ?? '0');
+                                    $isApproved    = !empty($user['is_approved']) ? '1' : '0';
+                                    $initial       = mb_strtoupper(
+                                        mb_substr($displayName !== '' ? $displayName : ($username !== '' ? $username : 'U'), 0, 1, 'UTF-8'),
+                                        'UTF-8'
+                                    );
 
-            <div class="col-lg-4">
-                <div class="card border-primary">
-                    <div class="card-body">
-                        <button
-                            type="button"
-                            class="btn btn-link text-reset text-decoration-none d-flex justify-content-between align-items-center w-100 p-0"
-                            data-bs-toggle="collapse"
-                            data-bs-target="#privilegedSummaryTotalAccess"
-                            aria-expanded="false"
-                            aria-controls="privilegedSummaryTotalAccess"
-                        >
-                            <h5 class="card-title mb-0">Accesos totales</h5>
-                            <span class="badge bg-primary">{{ count($privilegedSummary['totalAccess'] ?? []) }}</span>
-                        </button>
-                        <div id="privilegedSummaryTotalAccess" class="collapse mt-3" data-bs-parent="#privilegedSummaryAccordion">
-                            @if(!empty($privilegedSummary['totalAccess']))
-                                @foreach($privilegedSummary['totalAccess'] as $entry)
-                                    <div class="small text-muted mb-1">
-                                        <strong>{{ $entry['name'] }}</strong>: {{ implode(', ', $entry['modules'] ?? []) }}
-                                    </div>
-                                @endforeach
-                            @else
-                                <div class="small text-muted">No hay atajos `*.manage` activos.</div>
-                            @endif
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+                                    $searchIndex = mb_strtolower(trim(implode(' ', array_filter([
+                                        $username,
+                                        $displayName,
+                                        (string) ($user['email'] ?? ''),
+                                        $especialidad,
+                                        (string) ($user['role_label'] ?? ''),
+                                    ], static fn ($v): bool => (string) $v !== ''))), 'UTF-8');
 
-        <div class="box">
-            <div class="box-body table-responsive">
-                <table class="table table-striped table-hover align-middle usuarios-table">
-                    <thead class="bg-primary">
-                    <tr>
-                        <th scope="col">Foto</th>
-                        <th scope="col" data-sort="username" aria-sort="none">Usuario <span class="sort-indicator">⇅</span></th>
-                        <th scope="col" data-sort="full_name" aria-sort="none">Nombre <span class="sort-indicator">⇅</span></th>
-                        <th scope="col">Correo</th>
-                        <th scope="col">Rol</th>
-                        <th scope="col">Permisos</th>
-                        <th scope="col">Estado</th>
-                        <th scope="col">Perfil</th>
-                        <th scope="col" class="text-end">Acciones</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    @forelse($users as $user)
-                        @php
-                            $displayName = trim((string) ($user['display_full_name'] ?? $user['username'] ?? 'Usuario'));
-                            $initial = mb_strtoupper(mb_substr($displayName !== '' ? $displayName : 'Usuario', 0, 1, 'UTF-8'), 'UTF-8');
-                            $username = (string) ($user['username'] ?? '');
-                            $fullName = (string) ($user['display_full_name'] ?? '');
-                            $email = (string) ($user['email'] ?? '');
-                            $especialidad = trim((string) ($user['especialidad'] ?? ''));
-                            $roleId = (string) ($user['role_id'] ?? '');
-                            $isApproved = !empty($user['is_approved']) ? '1' : '0';
-                            $searchIndex = mb_strtolower(trim(implode(' ', array_filter([
-                                $username,
-                                $fullName,
-                                $email,
-                                $especialidad,
-                                (string) ($user['role_label'] ?? ''),
-                            ], static fn ($value): bool => (string) $value !== ''))), 'UTF-8');
-                            $nameSort = mb_strtolower(trim(implode(' ', array_filter([
-                                $user['last_name'] ?? '',
-                                $user['second_last_name'] ?? '',
-                                $user['first_name'] ?? '',
-                                $user['middle_name'] ?? '',
-                                $fullName !== '' ? $fullName : $username,
-                            ], static fn ($value): bool => (string) $value !== ''))), 'UTF-8');
-                            $completeness = $user['profile_completeness'] ?? ['label' => 'N/D', 'class' => 'bg-secondary', 'ratio' => 0];
-                            $accessSummary = $user['access_summary'] ?? ['is_superuser' => false, 'is_administrative' => false, 'total_access_modules' => []];
-                        @endphp
-                        <tr
-                            data-especialidad="{{ mb_strtolower($especialidad, 'UTF-8') }}"
-                            data-role-id="{{ $roleId }}"
-                            data-approved="{{ $isApproved }}"
-                            data-search="{{ $searchIndex }}"
-                        >
-                            <td class="text-center">
-                                @if(!empty($user['profile_photo_url']))
-                                    <img src="{{ $user['profile_photo_url'] }}" alt="Foto de {{ $displayName }}" class="usuarios-avatar">
-                                @else
-                                    <span class="avatar avatar-sm rounded-circle d-inline-flex align-items-center justify-content-center bg-secondary text-white fw-semibold usuarios-avatar">
-                                        {{ $initial }}
-                                    </span>
-                                @endif
-                            </td>
-                            <td data-sort-value="{{ mb_strtolower($username, 'UTF-8') }}">{{ $username }}</td>
-                            <td data-sort-value="{{ $nameSort }}">{{ $fullName !== '' ? $fullName : '—' }}</td>
-                            <td>{{ $email !== '' ? $email : '—' }}</td>
-                            <td>{{ $user['role_label'] ?? 'Sin asignar' }}</td>
-                            <td>
-                                @if(!empty($accessSummary['is_superuser']))
-                                    <span class="badge bg-danger me-1 mb-1">Superusuario</span>
-                                @endif
-                                @if(!empty($accessSummary['is_administrative']))
-                                    <span class="badge bg-warning text-dark me-1 mb-1">Administrativo</span>
-                                @endif
-                                @foreach(($accessSummary['total_access_modules'] ?? []) as $module)
-                                    <span class="badge bg-primary me-1 mb-1">Total: {{ $module }}</span>
-                                @endforeach
-                                @if(empty($user['permisos_lista']))
-                                    <span class="badge bg-secondary">Sin permisos</span>
-                                @else
-                                    @foreach($user['permisos_lista'] as $permission)
-                                        <span class="badge bg-light text-dark border border-secondary me-1 mb-1">
-                                            {{ $permissionLabels[$permission] ?? $permission }}
+                                    $nameSort = mb_strtolower(trim(implode(' ', array_filter([
+                                        $user['last_name'] ?? '',
+                                        $user['second_last_name'] ?? '',
+                                        $user['first_name'] ?? '',
+                                        $user['middle_name'] ?? '',
+                                        $displayName !== '' ? $displayName : $username,
+                                    ], static fn ($v): bool => (string) $v !== ''))), 'UTF-8');
+
+                                    $userPayload = [
+                                        'id'               => (int) $user['id'],
+                                        'username'         => $username,
+                                        'display_full_name'=> $displayName,
+                                        'especialidad'     => $especialidad,
+                                        'role_id'          => (string) ($user['role_id'] ?? '0'),
+                                        'role_label'       => (string) ($user['role_label'] ?? 'Sin asignar'),
+                                        'is_approved'      => !empty($user['is_approved']),
+                                        'permisos_lista'   => $user['permisos_lista'] ?? [],
+                                        'profile_photo_url'=> $user['profile_photo_url'] ?? null,
+                                    ];
+                                @endphp
+                                <tr
+                                    data-user="{{ json_encode($userPayload) }}"
+                                    data-search="{{ $searchIndex }}"
+                                    data-especialidad="{{ mb_strtolower($especialidad, 'UTF-8') }}"
+                                    data-role-id="{{ $roleId }}"
+                                    data-approved="{{ $isApproved }}"
+                                >
+                                    <td class="text-center pe-0">
+                                        <span class="u-avatar">
+                                            @if(!empty($user['profile_photo_url']))
+                                                <img src="{{ $user['profile_photo_url'] }}"
+                                                     alt="{{ $displayName }}">
+                                            @else
+                                                {{ $initial }}
+                                            @endif
                                         </span>
-                                    @endforeach
-                                @endif
-                            </td>
-                            <td>
-                                @if(!empty($user['is_approved']))
-                                    <span class="badge bg-success">Aprobado</span>
-                                @else
-                                    <span class="badge bg-warning text-dark">Pendiente</span>
-                                @endif
-                                @if(!empty($user['is_subscribed']))
-                                    <span class="badge bg-info">Suscrito</span>
-                                @endif
-                                <div class="mt-1 small text-muted">
-                                    <span class="badge bg-light text-dark border">Sello: {{ $user['seal_status'] ?? 'no disponible' }}</span>
-                                    <span class="badge bg-light text-dark border">Firma: {{ $user['signature_status'] ?? 'no disponible' }}</span>
-                                </div>
-                            </td>
-                            <td>
-                                <span class="badge {{ $completeness['class'] ?? 'bg-secondary' }}">
-                                    {{ $completeness['label'] ?? 'N/D' }}
-                                    @if(isset($completeness['ratio']))
-                                        ({{ number_format(((float) $completeness['ratio']) * 100, 0) }}%)
-                                    @endif
-                                </span>
-                            </td>
-                            <td class="text-end">
-                                <a href="/usuarios/{{ (int) $user['id'] }}/edit" class="btn btn-sm btn-outline-primary me-1">
-                                    <i class="mdi mdi-pencil"></i> Editar
-                                </a>
-                                @if($canManageUsers)
-                                    <form action="/usuarios/{{ (int) $user['id'] }}/delete" method="POST" class="d-inline-block"
-                                          onsubmit="return confirm('¿Deseas eliminar a {{ addslashes($username !== '' ? $username : 'este usuario') }}?');">
-                                        @csrf
-                                        <button type="submit" class="btn btn-sm btn-outline-danger" {{ (int) $user['id'] === $currentUserId ? 'disabled' : '' }}>
-                                            <i class="mdi mdi-delete"></i> Eliminar
+                                    </td>
+                                    <td data-sort-value="{{ $nameSort }}">
+                                        <div class="fw-semibold lh-sm">{{ $displayName ?: $username }}</div>
+                                        @if($username !== '')
+                                            <div class="text-muted" style="font-size:0.75rem">{{ $username }}</div>
+                                        @endif
+                                    </td>
+                                    <td data-sort-value="{{ mb_strtolower($especialidad, 'UTF-8') }}">
+                                        {{ $especialidad ?: '—' }}
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-secondary">
+                                            {{ $user['role_label'] ?? 'Sin asignar' }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        @if(!empty($user['is_approved']))
+                                            <span class="badge bg-success">Aprobado</span>
+                                        @else
+                                            <span class="badge bg-warning text-dark">Pendiente</span>
+                                        @endif
+                                    </td>
+                                    <td class="text-center ps-0">
+                                        <button type="button"
+                                                class="btn btn-sm btn-outline-secondary row-edit-btn"
+                                                title="Editar"
+                                                aria-label="Editar {{ $displayName ?: $username }}">
+                                            <i class="mdi mdi-pencil"></i>
                                         </button>
-                                    </form>
+                                    </td>
+                                </tr>
+                            @empty
+                                <tr>
+                                    <td colspan="6" class="text-center text-muted py-5">
+                                        No hay usuarios registrados.
+                                    </td>
+                                </tr>
+                            @endforelse
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            {{-- ── Drawer ───────────────────────────────────────────────────── --}}
+            <aside id="usuarios-drawer"
+                   class="usuarios-drawer d-none"
+                   hidden
+                   role="complementary"
+                   aria-label="Detalle de usuario">
+
+                {{-- Header --}}
+                <div class="drawer-header">
+                    <div class="drawer-avatar" aria-hidden="true">U</div>
+                    <div class="drawer-user-info">
+                        <div class="drawer-user-name">—</div>
+                        <div class="drawer-user-meta">—</div>
+                    </div>
+                    <button type="button"
+                            id="usuarios-drawer-close"
+                            class="btn-close ms-auto"
+                            aria-label="Cerrar detalle de usuario"></button>
+                </div>
+
+                {{-- Tabs --}}
+                <div class="drawer-tabs" role="tablist">
+                    <button class="drawer-tab-btn active"
+                            data-tab="acceso"
+                            role="tab"
+                            aria-selected="true"
+                            id="tab-acceso">
+                        Acceso
+                    </button>
+                    <button class="drawer-tab-btn"
+                            data-tab="actividad"
+                            role="tab"
+                            aria-selected="false"
+                            id="tab-actividad">
+                        Actividad
+                    </button>
+                </div>
+
+                {{-- Tab: Acceso --}}
+                <div class="drawer-tab-panel" data-tab="acceso" role="tabpanel" aria-labelledby="tab-acceso">
+                    <form method="POST" class="drawer-form" action="/usuarios/0">
+                        @csrf
+
+                        {{-- Rol asignado --}}
+                        <div class="drawer-section">
+                            <label class="form-label small fw-semibold mb-1" for="drawer-role-id">
+                                Rol asignado
+                            </label>
+                            <select id="drawer-role-id" name="role_id" class="form-select form-select-sm">
+                                <option value="0">Sin asignar</option>
+                                @foreach($roleMap as $rId => $rName)
+                                    <option value="{{ $rId }}">{{ $rName }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+
+                        {{-- Plantilla rápida --}}
+                        @if(!empty($permissionProfiles))
+                            <div class="drawer-section">
+                                <label class="form-label small fw-semibold mb-1" for="drawer-permission-profile">
+                                    Plantilla de permisos
+                                </label>
+                                <div class="d-flex gap-2">
+                                    <select id="drawer-permission-profile" class="form-select form-select-sm flex-grow-1">
+                                        <option value="">Seleccionar plantilla…</option>
+                                        @foreach($permissionProfiles as $profileKey => $profile)
+                                            <option value="{{ $profileKey }}">
+                                                {{ $profile['label'] ?? $profileKey }}
+                                            </option>
+                                        @endforeach
+                                    </select>
+                                    <button type="button"
+                                            id="drawer-profile-apply"
+                                            class="btn btn-outline-secondary btn-sm">
+                                        Aplicar
+                                    </button>
+                                </div>
+                            </div>
+                        @endif
+
+                        {{-- Permisos directos --}}
+                        <div class="drawer-section">
+                            <div class="d-flex align-items-center justify-content-between mb-2">
+                                <span class="form-label small fw-semibold mb-0">Permisos directos</span>
+                                <span style="font-size:0.7rem;color:#64748b">
+                                    <span class="perm-legend-direct" aria-hidden="true">●</span> directo
+                                    <span class="perm-legend-inherited ms-1" aria-hidden="true">○</span> heredado
+                                </span>
+                            </div>
+
+                            @foreach($permissionGroups as $groupName => $groupPerms)
+                                <div class="perm-group">
+                                    <button type="button"
+                                            class="perm-group-head"
+                                            aria-expanded="false">
+                                        <span>{{ $groupName }}</span>
+                                        <svg class="perm-chevron"
+                                             xmlns="http://www.w3.org/2000/svg"
+                                             width="12" height="12"
+                                             viewBox="0 0 24 24"
+                                             fill="none"
+                                             stroke="currentColor"
+                                             stroke-width="2"
+                                             stroke-linecap="round"
+                                             stroke-linejoin="round"
+                                             aria-hidden="true">
+                                            <polyline points="6 9 12 15 18 9"/>
+                                        </svg>
+                                    </button>
+                                    <div class="perm-group-body d-none">
+                                        <div class="perm-grid">
+                                            @foreach($groupPerms as $permKey => $permLabel)
+                                                <div class="perm-check">
+                                                    <input type="checkbox"
+                                                           class="form-check-input"
+                                                           name="permissions[]"
+                                                           value="{{ $permKey }}"
+                                                           id="dp-{{ $permKey }}"
+                                                           data-direct="0"
+                                                           aria-label="{{ $permLabel }}">
+                                                    <label class="form-check-label"
+                                                           for="dp-{{ $permKey }}">
+                                                        {{ $permLabel }}
+                                                    </label>
+                                                    <span class="inherited-tag d-none"
+                                                          aria-hidden="true">rol</span>
+                                                </div>
+                                            @endforeach
+                                        </div>
+                                    </div>
+                                </div>
+                            @endforeach
+                        </div>
+
+                        {{-- Footer --}}
+                        <div class="drawer-footer">
+                            <a class="drawer-profile-link btn btn-outline-secondary btn-sm w-100 mb-2"
+                               href="/usuarios/0/edit">
+                                Editar perfil completo
+                                <svg xmlns="http://www.w3.org/2000/svg"
+                                     width="12" height="12"
+                                     viewBox="0 0 24 24"
+                                     fill="none"
+                                     stroke="currentColor"
+                                     stroke-width="2"
+                                     stroke-linecap="round"
+                                     stroke-linejoin="round"
+                                     aria-hidden="true">
+                                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                                    <polyline points="15 3 21 3 21 9"/>
+                                    <line x1="10" y1="14" x2="21" y2="3"/>
+                                </svg>
+                            </a>
+                            <div class="d-flex gap-2">
+                                <button type="submit" class="btn btn-primary btn-sm flex-grow-1">
+                                    Guardar cambios
+                                </button>
+                                @if($canManageUsers)
+                                    <button type="button"
+                                            class="btn btn-outline-danger btn-sm drawer-delete-btn"
+                                            data-user-id="0"
+                                            data-username="">
+                                        Eliminar
+                                    </button>
                                 @endif
-                            </td>
-                        </tr>
-                    @empty
-                        <tr>
-                            <td colspan="9" class="text-center">No hay usuarios registrados.</td>
-                        </tr>
-                    @endforelse
-                    </tbody>
-                </table>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+
+                {{-- Tab: Actividad --}}
+                <div class="drawer-tab-panel d-none"
+                     data-tab="actividad"
+                     role="tabpanel"
+                     aria-labelledby="tab-actividad">
+                    <div class="p-4 text-center text-muted">
+                        <i class="mdi mdi-history" style="font-size:1.5rem;display:block;margin-bottom:.5rem;opacity:.4"></i>
+                        <small>Historial de actividad — próximamente</small>
+                    </div>
+                </div>
+            </aside>
+        </div>
+
+        {{-- ── Delete confirmation modal ────────────────────────────────────── --}}
+        <div id="delete-user-modal"
+             class="modal-overlay d-none"
+             hidden
+             role="dialog"
+             aria-modal="true"
+             aria-labelledby="delete-modal-title">
+            <div class="modal-dialog-custom">
+                <h5 id="delete-modal-title" class="mb-3 text-danger">
+                    <i class="mdi mdi-alert-circle me-2"></i>Confirmar eliminación
+                </h5>
+                <p class="mb-0">
+                    ¿Eliminar a <strong id="delete-modal-username">este usuario</strong>?
+                    Esta acción no se puede deshacer.
+                </p>
+                <form id="delete-modal-form" method="POST" action="/usuarios/0/delete">
+                    @csrf
+                    <div class="d-flex gap-2 justify-content-end mt-4">
+                        <button type="button"
+                                id="delete-modal-cancel"
+                                class="btn btn-secondary btn-sm">
+                            Cancelar
+                        </button>
+                        <button type="submit" class="btn btn-danger btn-sm">
+                            <i class="mdi mdi-delete me-1"></i>Eliminar
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
     </section>
@@ -370,104 +488,13 @@
 
 @push('scripts')
     <script>
-        document.addEventListener('DOMContentLoaded', function () {
-            const table = document.querySelector('.usuarios-table');
-            if (!table) {
-                return;
-            }
-
-            const headers = table.querySelectorAll('thead th[data-sort]');
-            const collator = new Intl.Collator('es', { sensitivity: 'base', numeric: false });
-            const filtroBuscar = document.getElementById('usuariosFiltroBuscar');
-            const filtroEspecialidad = document.getElementById('usuariosFiltroEspecialidad');
-            const filtroRol = document.getElementById('usuariosFiltroRol');
-            const filtroEstado = document.getElementById('usuariosFiltroEstado');
-            const filtroLimpiar = document.getElementById('usuariosFiltroLimpiar');
-            const filtroCount = document.getElementById('usuariosFiltroCount');
-
-            const applyFilters = function () {
-                const q = (filtroBuscar ? (filtroBuscar.value || '').trim().toLowerCase() : '');
-                const esp = (filtroEspecialidad ? (filtroEspecialidad.value || '').trim().toLowerCase() : '');
-                const rol = (filtroRol ? (filtroRol.value || '').trim() : '');
-                const est = (filtroEstado ? (filtroEstado.value || '').trim() : '');
-                const rows = Array.from(table.querySelectorAll('tbody tr[data-search]'));
-
-                let shown = 0;
-                rows.forEach(function (row) {
-                    const rowSearch = row.dataset.search || '';
-                    const rowEsp = row.dataset.especialidad || '';
-                    const rowRole = row.dataset.roleId || '';
-                    const rowApproved = row.dataset.approved || '0';
-
-                    let ok = true;
-                    if (q && !rowSearch.includes(q)) ok = false;
-                    if (ok && esp && rowEsp !== esp) ok = false;
-                    if (ok && rol && rowRole !== rol) ok = false;
-                    if (ok && est === 'approved' && rowApproved !== '1') ok = false;
-                    if (ok && est === 'pending' && rowApproved !== '0') ok = false;
-
-                    row.classList.toggle('usuarios-hidden', !ok);
-                    if (ok) {
-                        shown++;
-                    }
-                });
-
-                if (filtroCount) {
-                    filtroCount.textContent = shown + ' mostrados';
-                }
-            };
-
-            if (filtroBuscar) filtroBuscar.addEventListener('input', applyFilters);
-            if (filtroEspecialidad) filtroEspecialidad.addEventListener('change', applyFilters);
-            if (filtroRol) filtroRol.addEventListener('change', applyFilters);
-            if (filtroEstado) filtroEstado.addEventListener('change', applyFilters);
-            if (filtroLimpiar) {
-                filtroLimpiar.addEventListener('click', function () {
-                    if (filtroBuscar) filtroBuscar.value = '';
-                    if (filtroEspecialidad) filtroEspecialidad.value = '';
-                    if (filtroRol) filtroRol.value = '';
-                    if (filtroEstado) filtroEstado.value = '';
-                    applyFilters();
-                });
-            }
-
-            applyFilters();
-
-            headers.forEach(function (header) {
-                header.addEventListener('click', function () {
-                    const tbody = table.querySelector('tbody');
-                    if (!tbody) {
-                        return;
-                    }
-
-                    const currentSort = header.getAttribute('aria-sort');
-                    const newDirection = currentSort === 'ascending' ? 'descending' : 'ascending';
-
-                    headers.forEach(function (otherHeader) {
-                        otherHeader.setAttribute('aria-sort', 'none');
-                    });
-                    header.setAttribute('aria-sort', newDirection);
-
-                    const columnIndex = Array.prototype.indexOf.call(header.parentElement.children, header);
-                    const rows = Array.from(tbody.querySelectorAll('tr'));
-
-                    rows.sort(function (rowA, rowB) {
-                        const cellA = rowA.children[columnIndex];
-                        const cellB = rowB.children[columnIndex];
-                        const valueA = cellA ? (cellA.dataset.sortValue || cellA.textContent || '') : '';
-                        const valueB = cellB ? (cellB.dataset.sortValue || cellB.textContent || '') : '';
-                        const comparison = collator.compare(valueA.trim(), valueB.trim());
-
-                        return newDirection === 'ascending' ? comparison : -comparison;
-                    });
-
-                    rows.forEach(function (row) {
-                        tbody.appendChild(row);
-                    });
-
-                    applyFilters();
-                });
-            });
-        });
+        window.__USUARIOS_INDEX__ = {!! json_encode([
+            'permissionGroups'     => collect($permissionGroups)->map(fn($g) => array_keys($g))->toArray(),
+            'rolesWithPermissions' => $rolesWithPermissions,
+            'currentUserId'        => $currentUserId,
+            'canManageUsers'       => $canManageUsers,
+            'permissionProfiles'   => $permissionProfiles,
+        ], JSON_UNESCAPED_UNICODE) !!};
     </script>
+    @vite(['resources/css/usuarios.css', 'resources/js/v2/usuarios-index.js'])
 @endpush

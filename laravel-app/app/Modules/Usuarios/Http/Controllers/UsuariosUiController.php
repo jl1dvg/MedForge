@@ -110,19 +110,21 @@ class UsuariosUiController
         })->all();
 
         return view('usuarios.v2-index', [
-            'pageTitle' => 'Usuarios',
-            'currentUser' => LegacyCurrentUser::resolve($request),
-            'users' => $users,
-            'roleMap' => $roleMap,
-            'permissionLabels' => LegacyPermissionCatalog::all(),
-            'status' => session('status'),
-            'warnings' => session('warnings', []),
-            'canManageUsers' => LegacyPermissionCatalog::containsAny(
+            'pageTitle'            => 'Usuarios',
+            'currentUser'          => LegacyCurrentUser::resolve($request),
+            'users'                => $users,
+            'roleMap'              => $roleMap,
+            'permissionLabels'     => LegacyPermissionCatalog::all(),
+            'status'               => session('status'),
+            'warnings'             => session('warnings', []),
+            'canManageUsers'       => LegacyPermissionCatalog::containsAny(
                 LegacyPermissionResolver::resolve($request),
                 ['administrativo', 'admin.usuarios.manage', 'admin.usuarios']
             ),
-            'currentUserId' => $this->currentUserId(),
-            'privilegedSummary' => $this->buildPrivilegedUsersSummary($users),
+            'currentUserId'        => $this->currentUserId(),
+            'rolesWithPermissions' => $this->fetchRolesWithPermissions(),
+            'permissionGroups'     => LegacyPermissionCatalog::groups(),
+            'permissionProfiles'   => config('permission_profiles', []),
         ]);
     }
 
@@ -442,6 +444,23 @@ class UsuariosUiController
             ])
             ->all();
     }
+
+    /**
+     * @return array<string, list<string>>  roleId (string) → list of permission keys
+     */
+    private function fetchRolesWithPermissions(): array
+    {
+        $rows = DB::table('roles')->select(['id', 'permissions'])->get();
+        $map  = [];
+
+        foreach ($rows as $row) {
+            $perms = LegacyPermissionCatalog::normalize($row->permissions ?? []);
+            $map[(string) $row->id] = $perms;
+        }
+
+        return $map;
+    }
+
 
     /**
      * @return array<string, mixed>|null

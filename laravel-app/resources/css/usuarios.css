@@ -1,0 +1,299 @@
+/* ─── Usuarios module ────────────────────────────────────────────────────── */
+
+/* Master-detail layout */
+.usuarios-layout {
+    display: flex;
+    align-items: flex-start;
+    gap: 0;
+}
+
+.usuarios-main {
+    flex: 1 1 0%;
+    min-width: 0;
+    overflow: hidden;
+}
+
+/* Table */
+.usuarios-table tbody tr[data-user] {
+    cursor: pointer;
+    transition: background-color 0.1s;
+}
+
+.usuarios-table tbody tr.table-active {
+    background-color: #e0f2fe !important;
+    box-shadow: inset 3px 0 0 #0891b2;
+}
+
+.row-edit-btn {
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+
+.usuarios-table tbody tr:hover .row-edit-btn,
+.usuarios-table tbody tr.table-active .row-edit-btn {
+    opacity: 1;
+}
+
+.sort-icon {
+    display: inline-block;
+    vertical-align: middle;
+    margin-left: 0.25rem;
+    opacity: 0.5;
+    width: 12px;
+    height: 12px;
+}
+
+th[aria-sort="ascending"] .sort-icon,
+th[aria-sort="descending"] .sort-icon {
+    opacity: 1;
+}
+
+/* Avatar */
+.u-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 0.8rem;
+    background: #cbd5e1;
+    color: #1e293b;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.u-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: inherit;
+}
+
+/* ─── Drawer ──────────────────────────────────────────────────────────────── */
+
+.usuarios-drawer {
+    width: 320px;
+    min-width: 320px;
+    border-left: 1px solid #e2e8f0;
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+    position: sticky;
+    top: 60px;           /* below the fixed topbar */
+    max-height: calc(100vh - 80px);
+    overflow-y: auto;
+    border-radius: 0 0.5rem 0.5rem 0;
+    box-shadow: -4px 0 16px rgba(0,0,0,0.06);
+}
+
+.drawer-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1rem;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.drawer-avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 1.1rem;
+    background: #0891b2;
+    color: #fff;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.drawer-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: inherit;
+}
+
+.drawer-user-info {
+    flex: 1 1 0%;
+    min-width: 0;
+}
+
+.drawer-user-name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.drawer-user-meta {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 0.75rem;
+}
+
+/* Tabs */
+.drawer-tabs {
+    display: flex;
+    border-bottom: 1px solid #e2e8f0;
+    padding: 0 1rem;
+    gap: 0;
+}
+
+.drawer-tab-btn {
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 0.6rem 0.75rem;
+    font-size: 0.8rem;
+    color: #64748b;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+    margin-bottom: -1px;
+}
+
+.drawer-tab-btn:hover {
+    color: #0f172a;
+}
+
+.drawer-tab-btn.active {
+    color: #0891b2;
+    border-bottom-color: #0891b2;
+    font-weight: 600;
+}
+
+/* Tab panels */
+.drawer-tab-panel {
+    flex: 1 1 auto;
+    overflow-y: auto;
+}
+
+/* Sections */
+.drawer-section {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+/* Permission accordion */
+.perm-group {
+    border: 1px solid #e2e8f0;
+    border-radius: 0.375rem;
+    margin-bottom: 0.375rem;
+    overflow: hidden;
+}
+
+.perm-group-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    background: #f8fafc;
+    border: none;
+    padding: 0.4rem 0.6rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #334155;
+    cursor: pointer;
+    text-align: left;
+}
+
+.perm-group-head:hover {
+    background: #f1f5f9;
+}
+
+.perm-chevron {
+    transition: transform 0.15s;
+    flex-shrink: 0;
+    color: #94a3b8;
+}
+
+.perm-group-head[aria-expanded="true"] .perm-chevron {
+    transform: rotate(180deg);
+}
+
+.perm-group-body {
+    padding: 0.5rem 0.6rem;
+    background: #fff;
+}
+
+.perm-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.25rem 0.75rem;
+}
+
+.perm-check {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.3rem;
+    font-size: 0.72rem;
+    line-height: 1.3;
+}
+
+.perm-check .form-check-input {
+    margin-top: 0.1rem;
+    flex-shrink: 0;
+}
+
+.inherited-tag {
+    display: inline-block;
+    font-size: 0.65rem;
+    padding: 0.1rem 0.3rem;
+    border-radius: 0.25rem;
+    background: #e0f2fe;
+    color: #0369a1;
+    margin-left: auto;
+    flex-shrink: 0;
+    line-height: 1.4;
+}
+
+.perm-legend-direct {
+    color: #0891b2;
+}
+
+.perm-legend-inherited {
+    color: #94a3b8;
+}
+
+/* Drawer footer */
+.drawer-footer {
+    padding: 0.75rem 1rem 1rem;
+    border-top: 1px solid #e2e8f0;
+    margin-top: auto;
+}
+
+.drawer-profile-link {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.78rem;
+    width: 100%;
+    margin-bottom: 0.5rem;
+    justify-content: center;
+}
+
+/* ─── Delete modal overlay ────────────────────────────────────────────────── */
+
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1050;
+}
+
+.modal-dialog-custom {
+    background: #fff;
+    border-radius: 0.5rem;
+    padding: 1.5rem;
+    max-width: 400px;
+    width: 100%;
+    margin: 1rem;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+}
