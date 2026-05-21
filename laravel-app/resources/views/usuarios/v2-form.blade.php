@@ -409,21 +409,21 @@
                     <small class="text-muted">Se compone automáticamente a partir de los nombres y apellidos.</small>
                 </div>
 
-                {{-- Contraseña (create only) --}}
-                @if($isCreate)
-                    <div>
-                        <label class="form-label" for="password">Contraseña *</label>
-                        <input type="password"
-                               name="password"
-                               id="password"
-                               class="form-control"
-                               autocomplete="new-password"
-                               required>
-                        @if(!empty($validationErrors['password']))
-                            <div class="text-danger small">{{ $validationErrors['password'] }}</div>
-                        @endif
-                    </div>
-                @endif
+                {{-- Contraseña --}}
+                <div>
+                    <label class="form-label" for="password">
+                        Contraseña {{ $isCreate ? '*' : '(dejar en blanco para mantener)' }}
+                    </label>
+                    <input type="password"
+                           name="password"
+                           id="password"
+                           class="form-control"
+                           autocomplete="new-password"
+                           {{ $isCreate ? 'required' : '' }}>
+                    @if(!empty($validationErrors['password']))
+                        <div class="text-danger small">{{ $validationErrors['password'] }}</div>
+                    @endif
+                </div>
 
             </div>{{-- /form-field-grid --}}
 
