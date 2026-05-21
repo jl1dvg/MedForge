@@ -417,6 +417,7 @@ class UsuariosUiController
             'user' => $user,
             'roles' => $this->fetchRoles(),
             'permissions' => LegacyPermissionCatalog::groups(),
+            'rolesWithPermissions' => $this->fetchRolesWithPermissions(),
             'permissionProfiles' => config('permission_profiles', []),
             'selectedPermissions' => $context['selectedPermissions'] ?? [],
             'validationErrors' => $context['validationErrors'] ?? [],
