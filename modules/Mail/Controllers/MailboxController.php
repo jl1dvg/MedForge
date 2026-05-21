@@ -4,7 +4,6 @@ namespace Modules\Mail\Controllers;
 
 use Core\BaseController;
 use Modules\Examenes\Services\ExamenMailLogService;
-use Modules\Examenes\Services\ExamenCrmService;
 use Modules\Mail\Services\MailboxService;
 use Modules\Mail\Services\NotificationMailer;
 use Modules\Mail\Services\MailProfileService;
@@ -15,7 +14,6 @@ use Throwable;
 class MailboxController extends BaseController
 {
     private MailboxService $mailbox;
-    private ExamenCrmService $examenCrm;
     private ExamenMailLogService $examenMailLog;
     private NotificationMailer $mailer;
     /** @var array<string, mixed> */
@@ -26,7 +24,6 @@ class MailboxController extends BaseController
     {
         parent::__construct($pdo);
         $this->mailbox = new MailboxService($pdo);
-        $this->examenCrm = new ExamenCrmService($pdo);
         $this->examenMailLog = new ExamenMailLogService($pdo);
         $this->mailer = new NotificationMailer($pdo);
         $this->mailboxConfig = $this->mailbox->getConfig();
@@ -174,9 +171,38 @@ class MailboxController extends BaseController
                     }
                     break;
                 case 'examen':
-                    $this->examenCrm->registrarNota($targetId, $message, $this->getCurrentUserId());
+                    $notaTexto = trim(strip_tags($message));
+                    if ($notaTexto !== '') {
+                        $stmtNota = $this->pdo->prepare(
+                            'INSERT INTO examen_crm_notas (examen_id, autor_id, nota) VALUES (:examen_id, :autor_id, :nota)'
+                        );
+                        $stmtNota->bindValue(':examen_id', $targetId, \PDO::PARAM_INT);
+                        $stmtNota->bindValue(':autor_id', $this->getCurrentUserId(), \PDO::PARAM_INT);
+                        $stmtNota->bindValue(':nota', $notaTexto, \PDO::PARAM_STR);
+                        $stmtNota->execute();
+                    }
                     $link = '/examenes/' . $targetId . '/crm';
-                    $emailContext = $this->examenCrm->obtenerContactoPaciente($targetId);
+                    $stmtCtxEx = $this->pdo->prepare(
+                        "SELECT
+                            CONCAT(TRIM(pd.fname), ' ', TRIM(pd.mname), ' ', TRIM(pd.lname), ' ', TRIM(pd.lname2)) AS name,
+                            detalles.contacto_email AS email,
+                            ce.hc_number,
+                            ce.form_id,
+                            ce.examen_nombre AS descripcion
+                         FROM consulta_examenes ce
+                         INNER JOIN patient_data pd ON ce.hc_number = pd.hc_number
+                         LEFT JOIN examen_crm_detalles detalles ON detalles.examen_id = ce.id
+                         WHERE ce.id = ?
+                         LIMIT 1"
+                    );
+                    $stmtCtxEx->execute([$targetId]);
+                    $rowEx = $stmtCtxEx->fetch(\PDO::FETCH_ASSOC);
+                    if ($rowEx !== false && $rowEx !== null) {
+                        $emailContext = array_filter($rowEx, static fn($v) => $v !== null && $v !== '');
+                        if ($emailContext === []) {
+                            $emailContext = null;
+                        }
+                    }
                     break;
                 case 'ticket':
                     $this->createTicketMessage($targetId, $message);
