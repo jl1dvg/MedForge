@@ -297,3 +297,201 @@ th[aria-sort="descending"] .sort-icon {
     margin: 1rem;
     box-shadow: 0 20px 60px rgba(0,0,0,0.2);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   FORM v2 — User header, tabs, panels, sections, footer
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ─── User header ─────────────────────────────────────────────────────────── */
+
+.form-user-header {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.5rem 0.5rem 0 0;
+    padding: 0.875rem 1.25rem;
+    margin-bottom: 0;
+}
+
+.form-user-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    background: #0891b2;
+    color: #fff;
+    font-weight: 700;
+    font-size: 1.05rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    overflow: hidden;
+}
+
+.form-user-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.form-user-name {
+    font-weight: 600;
+    font-size: 1.05rem;
+    color: #0f172a;
+    line-height: 1.3;
+}
+
+.form-user-sub {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    font-size: 0.8rem;
+    color: #64748b;
+    margin-top: 0.1rem;
+}
+
+.form-user-badge-approved {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    background: #dcfce7;
+    color: #166534;
+    font-size: 0.73rem;
+    font-weight: 600;
+    padding: 0.1rem 0.4rem;
+    border-radius: 20px;
+}
+
+.form-user-badge-pending {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    background: #fef3c7;
+    color: #92400e;
+    font-size: 0.73rem;
+    font-weight: 600;
+    padding: 0.1rem 0.4rem;
+    border-radius: 20px;
+}
+
+/* ─── Tab bar ─────────────────────────────────────────────────────────────── */
+
+.form-tab-bar {
+    display: flex;
+    background: #fff;
+    border-left: 1px solid #e2e8f0;
+    border-right: 1px solid #e2e8f0;
+    border-bottom: 1px solid #e2e8f0;
+    padding: 0 1rem;
+    gap: 0;
+}
+
+.form-tab-btn {
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 0.65rem 1rem;
+    font-size: 0.88rem;
+    font-weight: 500;
+    color: #64748b;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+    white-space: nowrap;
+}
+
+.form-tab-btn:hover {
+    color: #0f172a;
+}
+
+.form-tab-btn.active,
+.form-tab-btn[aria-selected="true"] {
+    color: #0891b2;
+    border-bottom-color: #0891b2;
+    font-weight: 600;
+}
+
+/* ─── Tab panels ──────────────────────────────────────────────────────────── */
+
+.form-tab-panel {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-top: none;
+    padding: 1.5rem 1.25rem;
+}
+
+.form-tab-panel[hidden] {
+    display: none;
+}
+
+/* ─── Section labels inside tabs ──────────────────────────────────────────── */
+
+.form-section-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #94a3b8;
+    margin-bottom: 0.75rem;
+    margin-top: 1.5rem;
+    padding-bottom: 0.25rem;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.form-section-label:first-child {
+    margin-top: 0;
+}
+
+/* ─── Field grid ──────────────────────────────────────────────────────────── */
+
+.form-field-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.875rem 1.25rem;
+}
+
+@media (max-width: 991px) {
+    .form-field-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 575px) {
+    .form-field-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.form-field-grid .col-full {
+    grid-column: 1 / -1;
+}
+
+/* ─── Upload grid (Documentos tab) ───────────────────────────────────────── */
+
+.form-upload-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.25rem;
+}
+
+@media (max-width: 575px) {
+    .form-upload-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ─── Persistent footer ───────────────────────────────────────────────────── */
+
+.form-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-top: none;
+    padding: 0.875rem 1.25rem;
+    border-radius: 0 0 0.5rem 0.5rem;
+}
