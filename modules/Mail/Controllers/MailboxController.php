@@ -3,7 +3,6 @@
 namespace Modules\Mail\Controllers;
 
 use Core\BaseController;
-use Modules\Examenes\Services\ExamenMailLogService;
 use Modules\Mail\Services\MailboxService;
 use Modules\Mail\Services\NotificationMailer;
 use Modules\Mail\Services\MailProfileService;
@@ -14,7 +13,6 @@ use Throwable;
 class MailboxController extends BaseController
 {
     private MailboxService $mailbox;
-    private ExamenMailLogService $examenMailLog;
     private NotificationMailer $mailer;
     /** @var array<string, mixed> */
     private array $mailboxConfig = [];
@@ -24,7 +22,6 @@ class MailboxController extends BaseController
     {
         parent::__construct($pdo);
         $this->mailbox = new MailboxService($pdo);
-        $this->examenMailLog = new ExamenMailLogService($pdo);
         $this->mailer = new NotificationMailer($pdo);
         $this->mailboxConfig = $this->mailbox->getConfig();
     }
@@ -342,19 +339,29 @@ class MailboxController extends BaseController
         }
 
         try {
-            $this->examenMailLog->create([
-                'examen_id' => $examenId,
-                'form_id' => $context['form_id'] ?? null,
-                'hc_number' => $context['hc_number'] ?? null,
-                'to_emails' => $toEmail,
-                'subject' => $notification['subject'] ?? ('Actualización de Examen #' . $examenId),
-                'body_text' => $notification['body_text'] ?? null,
-                'channel' => $notification['channel'] ?? 'email',
-                'sent_by_user_id' => $this->getCurrentUserId(),
-                'status' => $notification['status'] ?? 'failed',
-                'error_message' => $notification['error'] ?? null,
-                'sent_at' => $notification['sent_at'] ?? null,
-            ]);
+            $sentByUserId = $this->getCurrentUserId();
+            $stmtLog = $this->pdo->prepare(
+                "INSERT INTO examen_mail_log
+                    (examen_id, form_id, hc_number, to_emails, subject, body_text, channel, sent_by_user_id, status, error_message, sent_at)
+                 VALUES
+                    (:examen_id, :form_id, :hc_number, :to_emails, :subject, :body_text, :channel, :sent_by_user_id, :status, :error_message, :sent_at)"
+            );
+            $stmtLog->bindValue(':examen_id', $examenId, \PDO::PARAM_INT);
+            $bindNullStr = static function (string $k, mixed $v) use ($stmtLog): void {
+                $stmtLog->bindValue($k, ($v !== null && $v !== '') ? (string) $v : null,
+                    ($v !== null && $v !== '') ? \PDO::PARAM_STR : \PDO::PARAM_NULL);
+            };
+            $bindNullStr(':form_id', $context['form_id'] ?? null);
+            $bindNullStr(':hc_number', $context['hc_number'] ?? null);
+            $stmtLog->bindValue(':to_emails', $toEmail, \PDO::PARAM_STR);
+            $stmtLog->bindValue(':subject', $notification['subject'] ?? ('Actualización de Examen #' . $examenId), \PDO::PARAM_STR);
+            $bindNullStr(':body_text', $notification['body_text'] ?? null);
+            $stmtLog->bindValue(':channel', $notification['channel'] ?? 'email', \PDO::PARAM_STR);
+            $stmtLog->bindValue(':sent_by_user_id', $sentByUserId, $sentByUserId !== null ? \PDO::PARAM_INT : \PDO::PARAM_NULL);
+            $stmtLog->bindValue(':status', $notification['status'] ?? 'failed', \PDO::PARAM_STR);
+            $bindNullStr(':error_message', $notification['error'] ?? null);
+            $bindNullStr(':sent_at', $notification['sent_at'] ?? null);
+            $stmtLog->execute();
         } catch (Throwable $exception) {
             error_log('No se pudo registrar examen_mail_log para examen #' . $examenId . ': ' . $exception->getMessage());
         }
