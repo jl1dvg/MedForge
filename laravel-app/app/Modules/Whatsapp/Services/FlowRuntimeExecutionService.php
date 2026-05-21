@@ -18,13 +18,14 @@ class FlowRuntimeExecutionService
     private ?SettingsOptionResolver $settingsResolver = null;
 
     public function __construct(
-        private readonly FlowmakerService $flowmakerService = new FlowmakerService(),
-        private readonly FlowmakerSandboxService $sandboxService = new FlowmakerSandboxService(),
-        private readonly WhatsappConfigService $configService = new WhatsappConfigService(),
-        private readonly CloudApiTransportService $transport = new CloudApiTransportService(),
+        private readonly FlowmakerService           $flowmakerService = new FlowmakerService(),
+        private readonly FlowmakerSandboxService    $sandboxService = new FlowmakerSandboxService(),
+        private readonly WhatsappConfigService      $configService = new WhatsappConfigService(),
+        private readonly CloudApiTransportService   $transport = new CloudApiTransportService(),
         private readonly FlowSigcenterAgendaService $sigcenterAgendaService = new FlowSigcenterAgendaService(),
-        private readonly FlowAiAgentPreviewService $aiAgentPreviewService = new FlowAiAgentPreviewService(),
-    ) {
+        private readonly FlowAiAgentPreviewService  $aiAgentPreviewService = new FlowAiAgentPreviewService(),
+    )
+    {
     }
 
     /**
@@ -33,20 +34,20 @@ class FlowRuntimeExecutionService
      */
     public function executeInbound(WhatsappConversation $conversation, WhatsappMessage $inboundMessage, array $messagePayload): array
     {
-        if (!(bool) config('whatsapp.migration.automation.enabled', false)) {
+        if (!(bool)config('whatsapp.migration.automation.enabled', false)) {
             return $this->result(false, false, null, 0, false, 'automation_disabled');
         }
 
-        if ((bool) ($conversation->assigned_user_id ?? false)) {
+        if ((bool)($conversation->assigned_user_id ?? false)) {
             return $this->result(false, false, null, 0, false, 'conversation_assigned');
         }
 
-        $text = trim((string) ($inboundMessage->body ?? ''));
+        $text = trim((string)($inboundMessage->body ?? ''));
         if ($text === '') {
             return $this->result(false, false, null, 0, false, 'empty_text');
         }
 
-        $waNumber = (string) ($conversation->wa_number ?? '');
+        $waNumber = (string)($conversation->wa_number ?? '');
         $flow = $this->sandboxService->getFlowPayload($waNumber)
             ?? $this->flowmakerService->getActiveFlowPayload();
 
@@ -80,14 +81,14 @@ class FlowRuntimeExecutionService
                 $this->markBookingCancellationResult($activeBooking, $preview, $conversation, $inboundMessage);
                 $this->sendFlowMessage(
                     $conversation,
-                    !empty($preview['ok']) ? $this->bookingCancelledMessage($activeBooking) : $this->bookingCancellationFailedMessage((string) ($preview['error'] ?? '')),
+                    !empty($preview['ok']) ? $this->bookingCancelledMessage($activeBooking) : $this->bookingCancellationFailedMessage((string)($preview['error'] ?? '')),
                     $context
                 );
 
                 WhatsappAutoresponderSession::query()->updateOrCreate(
                     ['conversation_id' => $conversation->id],
                     [
-                        'wa_number' => (string) $conversation->wa_number,
+                        'wa_number' => (string)$conversation->wa_number,
                         'scenario_id' => 'booking_cancel_confirmation',
                         'node_id' => null,
                         'awaiting' => null,
@@ -125,7 +126,7 @@ class FlowRuntimeExecutionService
                 WhatsappAutoresponderSession::query()->updateOrCreate(
                     ['conversation_id' => $conversation->id],
                     [
-                        'wa_number' => (string) $conversation->wa_number,
+                        'wa_number' => (string)$conversation->wa_number,
                         'scenario_id' => $session?->scenario_id,
                         'node_id' => $session?->node_id,
                         'awaiting' => null,
@@ -162,14 +163,14 @@ class FlowRuntimeExecutionService
                 continue;
             }
 
-            $run = $this->executeActions($scenario['actions'] ?? [], $context, $conversation, $inboundMessage, $text, (string) ($scenario['id'] ?? ''));
+            $run = $this->executeActions($scenario['actions'] ?? [], $context, $conversation, $inboundMessage, $text, (string)($scenario['id'] ?? ''));
             $context = $run['context'];
 
             WhatsappAutoresponderSession::query()->updateOrCreate(
                 ['conversation_id' => $conversation->id],
                 [
-                    'wa_number' => (string) $conversation->wa_number,
-                    'scenario_id' => (string) ($scenario['id'] ?? 'scenario'),
+                    'wa_number' => (string)$conversation->wa_number,
+                    'scenario_id' => (string)($scenario['id'] ?? 'scenario'),
                     'node_id' => null,
                     'awaiting' => isset($context['awaiting_field']) ? 'input' : null,
                     'context' => $context,
@@ -182,7 +183,7 @@ class FlowRuntimeExecutionService
                 $this->markConversationForHandoff($conversation, $scenario, $context);
             }
 
-            return $this->result(true, true, (string) ($scenario['id'] ?? 'scenario'), $run['messages_sent'], !empty($context['handoff_requested']), null);
+            return $this->result(true, true, (string)($scenario['id'] ?? 'scenario'), $run['messages_sent'], !empty($context['handoff_requested']), null);
         }
 
         $recovery = $this->recoverNoMatchFlow($flow, $conversation, $inboundMessage, $messagePayload, $context, $text, $facts, $session);
@@ -195,14 +196,14 @@ class FlowRuntimeExecutionService
                 continue;
             }
 
-            $run = $this->executeActions($scenario['actions'] ?? [], $context, $conversation, $inboundMessage, $text, (string) ($scenario['id'] ?? 'fallback'));
+            $run = $this->executeActions($scenario['actions'] ?? [], $context, $conversation, $inboundMessage, $text, (string)($scenario['id'] ?? 'fallback'));
             $context = $run['context'];
 
             WhatsappAutoresponderSession::query()->updateOrCreate(
                 ['conversation_id' => $conversation->id],
                 [
-                    'wa_number' => (string) $conversation->wa_number,
-                    'scenario_id' => (string) ($scenario['id'] ?? 'fallback'),
+                    'wa_number' => (string)$conversation->wa_number,
+                    'scenario_id' => (string)($scenario['id'] ?? 'fallback'),
                     'node_id' => null,
                     'awaiting' => isset($context['awaiting_field']) ? 'input' : null,
                     'context' => $context,
@@ -215,13 +216,13 @@ class FlowRuntimeExecutionService
                 $this->markConversationForHandoff($conversation, $scenario, $context);
             }
 
-            return $this->result(true, true, (string) ($scenario['id'] ?? 'fallback'), $run['messages_sent'], !empty($context['handoff_requested']), null);
+            return $this->result(true, true, (string)($scenario['id'] ?? 'fallback'), $run['messages_sent'], !empty($context['handoff_requested']), null);
         }
 
         WhatsappAutoresponderSession::query()->updateOrCreate(
             ['conversation_id' => $conversation->id],
             [
-                'wa_number' => (string) $conversation->wa_number,
+                'wa_number' => (string)$conversation->wa_number,
                 'scenario_id' => $session?->scenario_id,
                 'node_id' => $session?->node_id,
                 'awaiting' => isset($context['awaiting_field']) ? 'input' : null,
@@ -242,15 +243,16 @@ class FlowRuntimeExecutionService
      * @return array{executed:bool,matched:bool,scenario_id:?string,messages_sent:int,handoff_requested:bool,reason:?string}|null
      */
     private function recoverNoMatchFlow(
-        array $flow,
-        WhatsappConversation $conversation,
-        WhatsappMessage $inboundMessage,
-        array $messagePayload,
-        array $context,
-        string $text,
-        array $facts,
+        array                         $flow,
+        WhatsappConversation          $conversation,
+        WhatsappMessage               $inboundMessage,
+        array                         $messagePayload,
+        array                         $context,
+        string                        $text,
+        array                         $facts,
         ?WhatsappAutoresponderSession $session,
-    ): ?array {
+    ): ?array
+    {
         if ($this->shouldRetryConsent($facts)) {
             $this->sendFlowMessage($conversation, $this->consentRetryMessage(), $context);
             $context['state'] = 'consentimiento_pendiente';
@@ -259,7 +261,7 @@ class FlowRuntimeExecutionService
             WhatsappAutoresponderSession::query()->updateOrCreate(
                 ['conversation_id' => $conversation->id],
                 [
-                    'wa_number' => (string) $conversation->wa_number,
+                    'wa_number' => (string)$conversation->wa_number,
                     'scenario_id' => 'consent_retry',
                     'node_id' => $session?->node_id,
                     'awaiting' => null,
@@ -280,7 +282,7 @@ class FlowRuntimeExecutionService
             WhatsappAutoresponderSession::query()->updateOrCreate(
                 ['conversation_id' => $conversation->id],
                 [
-                    'wa_number' => (string) $conversation->wa_number,
+                    'wa_number' => (string)$conversation->wa_number,
                     'scenario_id' => 'cedula_retry',
                     'node_id' => $session?->node_id,
                     'awaiting' => 'input',
@@ -302,7 +304,7 @@ class FlowRuntimeExecutionService
                 WhatsappAutoresponderSession::query()->updateOrCreate(
                     ['conversation_id' => $conversation->id],
                     [
-                        'wa_number' => (string) $conversation->wa_number,
+                        'wa_number' => (string)$conversation->wa_number,
                         'scenario_id' => 'natural_schedule_consent',
                         'node_id' => null,
                         'awaiting' => null,
@@ -323,7 +325,7 @@ class FlowRuntimeExecutionService
                 WhatsappAutoresponderSession::query()->updateOrCreate(
                     ['conversation_id' => $conversation->id],
                     [
-                        'wa_number' => (string) $conversation->wa_number,
+                        'wa_number' => (string)$conversation->wa_number,
                         'scenario_id' => 'natural_schedule_identifier',
                         'node_id' => null,
                         'awaiting' => 'input',
@@ -338,14 +340,14 @@ class FlowRuntimeExecutionService
 
             $scenario = $this->findSchedulingEntryScenario($flow['scenarios'] ?? []);
             if ($scenario !== null) {
-                $run = $this->executeActions($scenario['actions'] ?? [], $context, $conversation, $inboundMessage, $text, (string) ($scenario['id'] ?? 'natural_schedule'));
+                $run = $this->executeActions($scenario['actions'] ?? [], $context, $conversation, $inboundMessage, $text, (string)($scenario['id'] ?? 'natural_schedule'));
                 $context = $run['context'];
 
                 WhatsappAutoresponderSession::query()->updateOrCreate(
                     ['conversation_id' => $conversation->id],
                     [
-                        'wa_number' => (string) $conversation->wa_number,
-                        'scenario_id' => (string) ($scenario['id'] ?? 'natural_schedule'),
+                        'wa_number' => (string)$conversation->wa_number,
+                        'scenario_id' => (string)($scenario['id'] ?? 'natural_schedule'),
                         'node_id' => null,
                         'awaiting' => isset($context['awaiting_field']) ? 'input' : null,
                         'context' => $context,
@@ -354,7 +356,7 @@ class FlowRuntimeExecutionService
                     ]
                 );
 
-                return $this->result(true, true, (string) ($scenario['id'] ?? 'natural_schedule'), $run['messages_sent'], !empty($context['handoff_requested']), null);
+                return $this->result(true, true, (string)($scenario['id'] ?? 'natural_schedule'), $run['messages_sent'], !empty($context['handoff_requested']), null);
             }
 
             $this->sendFlowMessage($conversation, $this->mainMenuMessage(), $context);
@@ -364,7 +366,7 @@ class FlowRuntimeExecutionService
             WhatsappAutoresponderSession::query()->updateOrCreate(
                 ['conversation_id' => $conversation->id],
                 [
-                    'wa_number' => (string) $conversation->wa_number,
+                    'wa_number' => (string)$conversation->wa_number,
                     'scenario_id' => 'natural_schedule_menu',
                     'node_id' => null,
                     'awaiting' => null,
@@ -423,8 +425,8 @@ class FlowRuntimeExecutionService
             $reply = data_get($payload, 'interactive.button_reply');
         }
 
-        $replyId = is_array($reply) ? trim((string) ($reply['id'] ?? '')) : '';
-        $replyTitle = is_array($reply) ? trim((string) ($reply['title'] ?? '')) : '';
+        $replyId = is_array($reply) ? trim((string)($reply['id'] ?? '')) : '';
+        $replyTitle = is_array($reply) ? trim((string)($reply['title'] ?? '')) : '';
 
         if ($replyId !== '') {
             return [$replyId, $replyTitle];
@@ -450,7 +452,7 @@ class FlowRuntimeExecutionService
                 continue;
             }
 
-            $type = (string) ($action['type'] ?? '');
+            $type = (string)($action['type'] ?? '');
             if ($type === '') {
                 continue;
             }
@@ -526,7 +528,7 @@ class FlowRuntimeExecutionService
                     'cedula' => $context['cedula'] ?? $conversation->patient_hc_number,
                 ], $this->bookingIsConfirmed($action, $context, $text));
 
-                $context[(string) ($preview['store_result_as'] ?? 'sigcenter_result')] = [
+                $context[(string)($preview['store_result_as'] ?? 'sigcenter_result')] = [
                     'operation' => $preview['operation'] ?? null,
                     'ready' => $preview['ready'] ?? false,
                     'data' => $preview['data'] ?? null,
@@ -534,11 +536,11 @@ class FlowRuntimeExecutionService
                 ];
 
                 if (($preview['operation'] ?? null) === 'list_procedimientos') {
-                    $context['resolved_cita_tipo'] = (string) ($preview['resolved_cita_tipo'] ?? 'sin_clasificacion');
+                    $context['resolved_cita_tipo'] = (string)($preview['resolved_cita_tipo'] ?? 'sin_clasificacion');
                     $context['resolved_procedimiento_ids'] = is_array($preview['resolved_procedimiento_ids'] ?? null)
-                        ? array_values(array_map(static fn (mixed $item): string => (string) $item, $preview['resolved_procedimiento_ids']))
+                        ? array_values(array_map(static fn(mixed $item): string => (string)$item, $preview['resolved_procedimiento_ids']))
                         : [];
-                    $context['resolved_procedimiento_reason'] = (string) ($preview['resolved_procedimiento_reason'] ?? 'unknown');
+                    $context['resolved_procedimiento_reason'] = (string)($preview['resolved_procedimiento_reason'] ?? 'unknown');
                     $context['resolved_last_consulta_at'] = $preview['resolved_last_consulta_at'] ?? null;
                     $context['resolved_last_surgery_at'] = $preview['resolved_last_surgery_at'] ?? null;
 
@@ -554,16 +556,16 @@ class FlowRuntimeExecutionService
                     $context = $this->recordSigcenterBooking($preview, $context, $conversation, $inboundMessage);
                     $message = !empty($preview['ok'])
                         ? $this->bookingSuccessMessage()
-                        : $this->bookingFailureMessage((string) ($preview['error'] ?? ''));
+                        : $this->bookingFailureMessage((string)($preview['error'] ?? ''));
                     $this->sendFlowMessage($conversation, $message, $context);
                     $messagesSent++;
 
                     // Auto-resolve: booking successful → close the conversation (bot completed the task)
                     if (!empty($preview['ok'])) {
                         $conversation->fill([
-                            'needs_human'      => false,
+                            'needs_human' => false,
                             'assigned_user_id' => null,
-                            'assigned_at'      => null,
+                            'assigned_at' => null,
                         ])->save();
                     }
                 }
@@ -582,14 +584,14 @@ class FlowRuntimeExecutionService
             }
 
             if ($type === 'set_state') {
-                $context['state'] = (string) ($action['state'] ?? 'inicio');
+                $context['state'] = (string)($action['state'] ?? 'inicio');
                 continue;
             }
 
             if ($type === 'set_context') {
                 foreach (($action['values'] ?? []) as $key => $value) {
                     if (is_scalar($value)) {
-                        $context[(string) $key] = $value;
+                        $context[(string)$key] = $value;
                     }
                 }
                 continue;
@@ -624,14 +626,14 @@ class FlowRuntimeExecutionService
             }
 
             if ($type === 'store_consent') {
-                $context['consent'] = (bool) ($action['value'] ?? true);
+                $context['consent'] = (bool)($action['value'] ?? true);
                 continue;
             }
 
             if ($type === 'handoff_agent') {
                 $context['handoff_requested'] = true;
                 if (isset($action['role_id']) && is_numeric($action['role_id'])) {
-                    $context['handoff_role_id'] = (int) $action['role_id'];
+                    $context['handoff_role_id'] = (int)$action['role_id'];
                 }
                 if (isset($action['note']) && is_string($action['note'])) {
                     $context['handoff_note'] = $this->renderPlaceholders($action['note'], $context);
@@ -659,7 +661,7 @@ class FlowRuntimeExecutionService
                     $context
                 );
                 $context = is_array($preview['context_after'] ?? null) ? $preview['context_after'] : $context;
-                $response = trim((string) ($preview['response'] ?? ''));
+                $response = trim((string)($preview['response'] ?? ''));
                 if ($response !== '') {
                     $this->sendFlowMessage($conversation, ['type' => 'text', 'body' => $response], $context);
                     $messagesSent++;
@@ -667,8 +669,8 @@ class FlowRuntimeExecutionService
                 if (!empty($preview['suggested_handoff'])) {
                     $context['handoff_requested'] = true;
                     $context['handoff_reasons'] = is_array($preview['handoff_reasons'] ?? null) ? $preview['handoff_reasons'] : [];
-                    $triageUrgency = trim((string) ($context['triage_nivel_urgencia'] ?? ''));
-                    $triageDestination = trim((string) ($context['triage_destino'] ?? ''));
+                    $triageUrgency = trim((string)($context['triage_nivel_urgencia'] ?? ''));
+                    $triageDestination = trim((string)($context['triage_destino'] ?? ''));
                     $context['handoff_note'] = str_starts_with($triageDestination, 'handoff')
                         ? 'Triage de síntomas sugirió atención humana prioritaria.'
                         : 'AI Agent sugirió handoff.';
@@ -707,7 +709,7 @@ class FlowRuntimeExecutionService
 
         DB::table('whatsapp_sigcenter_bookings')->insert([
             'conversation_id' => $conversation->id,
-            'wa_number' => (string) $conversation->wa_number,
+            'wa_number' => (string)$conversation->wa_number,
             'inbound_message_id' => $inboundMessage->wa_message_id,
             'status' => $success ? 'created' : 'failed',
             'patient_hc_number' => $conversation->patient_hc_number ?: ($context['cedula'] ?? $context['identifier'] ?? null),
@@ -765,7 +767,7 @@ class FlowRuntimeExecutionService
             return false;
         }
 
-        $operation = $this->normalizeSigcenterOperation((string) ($action['operation'] ?? ''));
+        $operation = $this->normalizeSigcenterOperation((string)($action['operation'] ?? ''));
         if (!in_array($operation, [
             'list_specialties',
             'list_doctors',
@@ -790,7 +792,7 @@ class FlowRuntimeExecutionService
             return null;
         }
 
-        $identifier = $this->normalizeIdentifier((string) ($context['cedula'] ?? $context['identifier'] ?? $context['current_identifier'] ?? $conversation->patient_hc_number ?? ''));
+        $identifier = $this->normalizeIdentifier((string)($context['cedula'] ?? $context['identifier'] ?? $context['current_identifier'] ?? $conversation->patient_hc_number ?? ''));
         $query = DB::table('whatsapp_sigcenter_bookings')
             ->where('status', 'created')
             ->where(function ($dateQuery): void {
@@ -801,10 +803,10 @@ class FlowRuntimeExecutionService
         if ($identifier !== '') {
             $query->where(function ($scope) use ($identifier, $conversation): void {
                 $scope->where('patient_hc_number', $identifier)
-                    ->orWhere('wa_number', (string) $conversation->wa_number);
+                    ->orWhere('wa_number', (string)$conversation->wa_number);
             });
         } else {
-            $query->where('wa_number', (string) $conversation->wa_number);
+            $query->where('wa_number', (string)$conversation->wa_number);
         }
 
         return $query->orderByRaw('fecha_inicio IS NULL ASC')
@@ -960,7 +962,7 @@ class FlowRuntimeExecutionService
 
         DB::table('whatsapp_sigcenter_bookings')->insert([
             'conversation_id' => $conversation->id,
-            'wa_number' => (string) $conversation->wa_number,
+            'wa_number' => (string)$conversation->wa_number,
             'inbound_message_id' => $inboundMessage->wa_message_id,
             'status' => $ok ? 'cancelled' : 'cancel_failed',
             'patient_hc_number' => $booking->patient_hc_number ?? $conversation->patient_hc_number,
@@ -993,14 +995,14 @@ class FlowRuntimeExecutionService
 
         $parts = [];
         foreach ([
-            'fecha_inicio' => 'Fecha',
-            'medico_nombre' => 'Médico',
-            'sede_nombre' => 'Sede',
-            'procedimiento_nombre' => 'Procedimiento',
-        ] as $field => $label) {
+                     'fecha_inicio' => 'Fecha',
+                     'medico_nombre' => 'Médico',
+                     'sede_nombre' => 'Sede',
+                     'procedimiento_nombre' => 'Procedimiento',
+                 ] as $field => $label) {
             $value = $booking->{$field} ?? null;
-            if (is_scalar($value) && trim((string) $value) !== '') {
-                $parts[] = $label . ': ' . trim((string) $value);
+            if (is_scalar($value) && trim((string)$value) !== '') {
+                $parts[] = $label . ': ' . trim((string)$value);
             }
         }
 
@@ -1035,9 +1037,9 @@ class FlowRuntimeExecutionService
             'handoff_notes' => trim(sprintf(
                 'Solicitud de %s de cita WhatsApp. Cita: %s, sede: %s, procedimiento: %s.',
                 $action,
-                (string) ($booking->fecha_inicio ?? 'sin fecha'),
-                (string) ($booking->sede_nombre ?? $booking->sede_id ?? 'sin sede'),
-                (string) ($booking->procedimiento_nombre ?? $booking->procedimiento_id ?? 'sin procedimiento')
+                (string)($booking->fecha_inicio ?? 'sin fecha'),
+                (string)($booking->sede_nombre ?? $booking->sede_id ?? 'sin sede'),
+                (string)($booking->procedimiento_nombre ?? $booking->procedimiento_id ?? 'sin procedimiento')
             )),
             'handoff_requested_at' => now(),
         ]);
@@ -1057,7 +1059,7 @@ class FlowRuntimeExecutionService
         $now = now();
         DB::table('whatsapp_sigcenter_bookings')->insert([
             'conversation_id' => $conversation->id,
-            'wa_number' => (string) $conversation->wa_number,
+            'wa_number' => (string)$conversation->wa_number,
             'inbound_message_id' => $inboundMessage->wa_message_id,
             'status' => $changeType === 'cancel' ? 'cancel_requested' : 'reschedule_requested',
             'patient_hc_number' => $booking->patient_hc_number ?? $conversation->patient_hc_number,
@@ -1102,7 +1104,7 @@ class FlowRuntimeExecutionService
      */
     private function seedPatientContextFromConversation(array $context, WhatsappConversation $conversation): array
     {
-        $identifier = $this->normalizeIdentifier((string) ($conversation->patient_hc_number ?? ''));
+        $identifier = $this->normalizeIdentifier((string)($conversation->patient_hc_number ?? ''));
         if ($identifier !== '') {
             $context['cedula'] ??= $identifier;
             $context['identifier'] ??= $identifier;
@@ -1111,7 +1113,7 @@ class FlowRuntimeExecutionService
             $context['patient_new'] ??= false;
         }
 
-        $fullName = trim((string) ($conversation->patient_full_name ?? ''));
+        $fullName = trim((string)($conversation->patient_full_name ?? ''));
         if ($fullName !== '' && !isset($context['patient'])) {
             $context['patient'] = [
                 'hc_number' => $identifier,
@@ -1125,7 +1127,7 @@ class FlowRuntimeExecutionService
             $leadCapture = is_array($meta['lead_capture'] ?? null) ? $meta['lead_capture'] : [];
             foreach (['lead_email', 'lead_source', 'lead_source_detail', 'crm_lead_id'] as $key) {
                 if (!isset($context[$key]) && isset($leadCapture[$key]) && is_scalar($leadCapture[$key])) {
-                    $context[$key] = (string) $leadCapture[$key];
+                    $context[$key] = (string)$leadCapture[$key];
                 }
             }
         }
@@ -1140,11 +1142,11 @@ class FlowRuntimeExecutionService
      */
     private function lookupPatient(array $action, array $context, WhatsappConversation $conversation, string $text): array
     {
-        $field = trim((string) ($action['field'] ?? 'cedula'));
-        $source = trim((string) ($action['source'] ?? 'context'));
+        $field = trim((string)($action['field'] ?? 'cedula'));
+        $source = trim((string)($action['source'] ?? 'context'));
         $identifier = $source === 'message'
             ? $this->normalizeIdentifier($text)
-            : $this->normalizeIdentifier((string) ($context[$field] ?? $context['cedula'] ?? $context['identifier'] ?? ''));
+            : $this->normalizeIdentifier((string)($context[$field] ?? $context['cedula'] ?? $context['identifier'] ?? ''));
 
         if ($identifier === '') {
             $context['patient_found'] = false;
@@ -1165,20 +1167,20 @@ class FlowRuntimeExecutionService
             return $context;
         }
 
-        $fullName = $this->patientFullName((array) $patient);
+        $fullName = $this->patientFullName((array)$patient);
         $context['patient_found'] = true;
         $context['patient_new'] = false;
         $context['patient'] = [
             'hc_number' => $identifier,
             'full_name' => $fullName !== '' ? $fullName : $identifier,
-            'fname' => (string) ($patient->fname ?? ''),
-            'mname' => (string) ($patient->mname ?? ''),
-            'lname' => (string) ($patient->lname ?? ''),
-            'lname2' => (string) ($patient->lname2 ?? ''),
-            'email' => (string) ($patient->email ?? ''),
+            'fname' => (string)($patient->fname ?? ''),
+            'mname' => (string)($patient->mname ?? ''),
+            'lname' => (string)($patient->lname ?? ''),
+            'lname2' => (string)($patient->lname2 ?? ''),
+            'email' => (string)($patient->email ?? ''),
         ];
 
-        $email = trim((string) ($patient->email ?? ''));
+        $email = trim((string)($patient->email ?? ''));
         if ($email !== '' && !isset($context['lead_email'])) {
             $context['lead_email'] = $email;
         }
@@ -1199,11 +1201,11 @@ class FlowRuntimeExecutionService
      */
     private function actionConditionMatches(array $condition, array $context): bool
     {
-        $type = (string) ($condition['type'] ?? 'always');
+        $type = (string)($condition['type'] ?? 'always');
 
         return match ($type) {
             'always' => true,
-            'patient_found' => (bool) ($condition['value'] ?? true) === (bool) ($context['patient_found'] ?? isset($context['patient'])),
+            'patient_found' => (bool)($condition['value'] ?? true) === (bool)($context['patient_found'] ?? isset($context['patient'])),
             'context_flag' => $this->contextActionFlagMatches($condition, $context),
             default => false,
         };
@@ -1215,7 +1217,7 @@ class FlowRuntimeExecutionService
      */
     private function contextActionFlagMatches(array $condition, array $context): bool
     {
-        $key = (string) ($condition['key'] ?? '');
+        $key = (string)($condition['key'] ?? '');
         if ($key === '') {
             return false;
         }
@@ -1233,7 +1235,7 @@ class FlowRuntimeExecutionService
      */
     private function upsertPatientFromContext(array $context, WhatsappConversation $conversation): array
     {
-        $identifier = $this->normalizeIdentifier((string) ($context['cedula'] ?? $context['identifier'] ?? $context['current_identifier'] ?? ''));
+        $identifier = $this->normalizeIdentifier((string)($context['cedula'] ?? $context['identifier'] ?? $context['current_identifier'] ?? ''));
         if ($identifier === '') {
             return $context;
         }
@@ -1257,7 +1259,7 @@ class FlowRuntimeExecutionService
      */
     private function hasPatientIdentifier(array $context, WhatsappConversation $conversation): bool
     {
-        return $this->normalizeIdentifier((string) ($context['cedula'] ?? $context['identifier'] ?? $context['current_identifier'] ?? $conversation->patient_hc_number ?? '')) !== '';
+        return $this->normalizeIdentifier((string)($context['cedula'] ?? $context['identifier'] ?? $context['current_identifier'] ?? $conversation->patient_hc_number ?? '')) !== '';
     }
 
     /**
@@ -1266,8 +1268,8 @@ class FlowRuntimeExecutionService
      */
     private function shouldRequirePatientIdentifierForAgenda(array $action, array $context): bool
     {
-        $operation = (string) ($action['operation'] ?? '');
-        $state = (string) ($context['state'] ?? '');
+        $operation = (string)($action['operation'] ?? '');
+        $state = (string)($context['state'] ?? '');
 
         return $operation === 'book_appointment'
             || str_starts_with($state, 'agenda_')
@@ -1281,7 +1283,7 @@ class FlowRuntimeExecutionService
     {
         return ($facts['state'] ?? null) === 'consentimiento_pendiente'
             && !($facts['has_consent'] ?? false)
-            && trim((string) ($facts['message'] ?? '')) !== '';
+            && trim((string)($facts['message'] ?? '')) !== '';
     }
 
     /**
@@ -1293,11 +1295,11 @@ class FlowRuntimeExecutionService
             return false;
         }
 
-        if (trim((string) ($facts['raw_message'] ?? '')) === '') {
+        if (trim((string)($facts['raw_message'] ?? '')) === '') {
             return false;
         }
 
-        return !preg_match('/^\d{6,10}$/', (string) ($facts['digits'] ?? ''));
+        return !preg_match('/^\d{6,10}$/', (string)($facts['digits'] ?? ''));
     }
 
     private function isNaturalSchedulingIntent(string $text): bool
@@ -1308,17 +1310,17 @@ class FlowRuntimeExecutionService
         }
 
         foreach ([
-            'agendar cita',
-            'agendar',
-            'agenda',
-            'quiero una cita',
-            'quiero agendar',
-            'sacar cita',
-            'consulta',
-            'doctor',
-            'especialidad',
-            'turno',
-        ] as $keyword) {
+                     'agendar cita',
+                     'agendar',
+                     'agenda',
+                     'quiero una cita',
+                     'quiero agendar',
+                     'sacar cita',
+                     'consulta',
+                     'doctor',
+                     'especialidad',
+                     'turno',
+                 ] as $keyword) {
             if (str_contains($normalized, $keyword)) {
                 return true;
             }
@@ -1342,11 +1344,11 @@ class FlowRuntimeExecutionService
                 }
 
                 foreach (($scenario['actions'] ?? []) as $action) {
-                    if (!is_array($action) || (string) ($action['type'] ?? '') !== 'sigcenter_agenda') {
+                    if (!is_array($action) || (string)($action['type'] ?? '') !== 'sigcenter_agenda') {
                         continue;
                     }
 
-                    if ($this->normalizeSigcenterOperation((string) ($action['operation'] ?? '')) === $operation) {
+                    if ($this->normalizeSigcenterOperation((string)($action['operation'] ?? '')) === $operation) {
                         return $scenario;
                     }
                 }
@@ -1372,8 +1374,8 @@ class FlowRuntimeExecutionService
             $reply = data_get($payload, 'interactive.button_reply');
         }
 
-        $replyId = is_array($reply) ? trim((string) ($reply['id'] ?? '')) : '';
-        $replyTitle = is_array($reply) ? trim((string) ($reply['title'] ?? '')) : '';
+        $replyId = is_array($reply) ? trim((string)($reply['id'] ?? '')) : '';
+        $replyTitle = is_array($reply) ? trim((string)($reply['title'] ?? '')) : '';
 
         return $replyId === $value && $replyTitle !== '' ? $replyTitle : null;
     }
@@ -1456,18 +1458,18 @@ class FlowRuntimeExecutionService
             return $context;
         }
 
-        $subespecialidad = trim((string) ($record['subespecialidad'] ?? ''));
+        $subespecialidad = trim((string)($record['subespecialidad'] ?? ''));
         if ($subespecialidad !== '') {
             $context['subespecialidad'] = $subespecialidad;
             $context['subespecialidad_nombre'] = $subespecialidad;
         }
 
-        $especialidad = trim((string) ($record['especialidad'] ?? ''));
+        $especialidad = trim((string)($record['especialidad'] ?? ''));
         if ($especialidad !== '') {
             $context['especialidad'] = $especialidad;
         }
 
-        $doctorName = trim((string) ($record['nombre'] ?? ''));
+        $doctorName = trim((string)($record['nombre'] ?? ''));
         if ($doctorName !== '') {
             $context['medico_nombre'] = $doctorName;
             $context['trabajador_id_label'] = $doctorName;
@@ -1535,7 +1537,7 @@ class FlowRuntimeExecutionService
         $data = is_array($preview['data'] ?? null) ? $preview['data'] : [];
         $records = $this->recordsFromData($data, ['tipoProcedimientos', 'procedimientos', 'data', 'items', 'result']);
         $allowedIds = is_array($preview['resolved_procedimiento_ids'] ?? null)
-            ? array_values(array_filter(array_map(static fn (mixed $item): string => trim((string) $item), $preview['resolved_procedimiento_ids'])))
+            ? array_values(array_filter(array_map(static fn(mixed $item): string => trim((string)$item), $preview['resolved_procedimiento_ids'])))
             : [];
 
         $matches = [];
@@ -1594,7 +1596,7 @@ class FlowRuntimeExecutionService
     private function labelFromRecord(mixed $record, string $field, string $value): ?string
     {
         if (is_scalar($record)) {
-            $text = trim((string) $record);
+            $text = trim((string)$record);
             return $text === $value ? $text : null;
         }
 
@@ -1669,8 +1671,8 @@ class FlowRuntimeExecutionService
     {
         foreach ($keys as $key) {
             $value = $record[$key] ?? null;
-            if (is_scalar($value) && trim((string) $value) !== '') {
-                return trim((string) $value);
+            if (is_scalar($value) && trim((string)$value) !== '') {
+                return trim((string)$value);
             }
         }
 
@@ -1686,7 +1688,7 @@ class FlowRuntimeExecutionService
             return null;
         }
 
-        $text = trim((string) $value);
+        $text = trim((string)$value);
 
         return $text !== '' ? $text : null;
     }
@@ -1746,11 +1748,11 @@ class FlowRuntimeExecutionService
     private function patientFullName(array $row): string
     {
         return trim(preg_replace('/\s+/u', ' ', implode(' ', array_filter([
-            (string) ($row['fname'] ?? ''),
-            (string) ($row['mname'] ?? ''),
-            (string) ($row['lname'] ?? ''),
-            (string) ($row['lname2'] ?? ''),
-        ], static fn (string $value): bool => trim($value) !== ''))) ?? '');
+            (string)($row['fname'] ?? ''),
+            (string)($row['mname'] ?? ''),
+            (string)($row['lname'] ?? ''),
+            (string)($row['lname2'] ?? ''),
+        ], static fn(string $value): bool => trim($value) !== ''))) ?? '');
     }
 
     private function normalizeIdentifier(string $value): string
@@ -1800,12 +1802,12 @@ class FlowRuntimeExecutionService
         ];
 
         return array_values(array_map(
-            static fn (array $row): array => [
+            static fn(array $row): array => [
                 'id' => $row['id'],
                 'title' => $row['title'],
                 'description' => $row['description'],
             ],
-            array_filter($catalog, static fn (array $row): bool => (bool) ($row['enabled'] ?? false))
+            array_filter($catalog, static fn(array $row): bool => (bool)($row['enabled'] ?? false))
         ));
     }
 
@@ -1818,7 +1820,7 @@ class FlowRuntimeExecutionService
             return $default;
         }
 
-        return in_array(strtolower(trim((string) $options[$key])), ['1', 'true', 'yes', 'on'], true);
+        return in_array(strtolower(trim((string)$options[$key])), ['1', 'true', 'yes', 'on'], true);
     }
 
     /**
@@ -1840,10 +1842,10 @@ class FlowRuntimeExecutionService
      */
     private function persistLeadCaptureFromContext(WhatsappConversation $conversation, array $context): array
     {
-        $identifier = $this->normalizeIdentifier((string) ($context['cedula'] ?? $context['identifier'] ?? $conversation->patient_hc_number ?? ''));
-        $email = trim((string) ($context['lead_email'] ?? $context['email'] ?? ''));
-        $leadSource = trim((string) ($context['lead_source_label'] ?? $context['lead_source'] ?? ''));
-        $leadSourceDetail = trim((string) ($context['lead_source_detail'] ?? ''));
+        $identifier = $this->normalizeIdentifier((string)($context['cedula'] ?? $context['identifier'] ?? $conversation->patient_hc_number ?? ''));
+        $email = trim((string)($context['lead_email'] ?? $context['email'] ?? ''));
+        $leadSource = trim((string)($context['lead_source_label'] ?? $context['lead_source'] ?? ''));
+        $leadSourceDetail = trim((string)($context['lead_source_detail'] ?? ''));
 
         if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
             return $context;
@@ -1856,7 +1858,7 @@ class FlowRuntimeExecutionService
             'patient_new' => !empty($context['patient_new']),
             'patient_found' => !empty($context['patient_found']),
             'captured_at' => now()->toDateTimeString(),
-        ], static fn (mixed $value): bool => $value !== null && $value !== '');
+        ], static fn(mixed $value): bool => $value !== null && $value !== '');
 
         $attribution = $this->conversationAttribution($conversation);
         if ($attribution !== null) {
@@ -1873,7 +1875,7 @@ class FlowRuntimeExecutionService
         if (Schema::hasTable('crm_leads')) {
             $crmLeadId = $this->upsertCrmLeadCapture($conversation, $context, $identifier, $email, $leadSource, $leadSourceDetail);
             if ($crmLeadId !== null) {
-                $context['crm_lead_id'] = (string) $crmLeadId;
+                $context['crm_lead_id'] = (string)$crmLeadId;
                 if ($attribution !== null) {
                     $meta = is_array($attribution->meta ?? null) ? $attribution->meta : [];
                     $meta['lead_capture'] = array_merge(
@@ -1916,33 +1918,34 @@ class FlowRuntimeExecutionService
      */
     private function upsertCrmLeadCapture(
         WhatsappConversation $conversation,
-        array $context,
-        string $identifier,
-        string $email,
-        string $leadSource,
-        string $leadSourceDetail,
-    ): ?int {
-        $name = trim((string) data_get($context, 'patient.full_name', ''));
+        array                $context,
+        string               $identifier,
+        string               $email,
+        string               $leadSource,
+        string               $leadSourceDetail,
+    ): ?int
+    {
+        $name = trim((string)data_get($context, 'patient.full_name', ''));
         if ($name === '') {
-            $name = trim((string) ($conversation->patient_full_name ?? $conversation->display_name ?? $conversation->wa_number));
+            $name = trim((string)($conversation->patient_full_name ?? $conversation->display_name ?? $conversation->wa_number));
         }
 
-        $firstName = trim((string) data_get($context, 'patient.fname', ''));
+        $firstName = trim((string)data_get($context, 'patient.fname', ''));
         $lastName = trim(implode(' ', array_filter([
-            trim((string) data_get($context, 'patient.lname', '')),
-            trim((string) data_get($context, 'patient.lname2', '')),
+            trim((string)data_get($context, 'patient.lname', '')),
+            trim((string)data_get($context, 'patient.lname2', '')),
         ])));
-        $phone = trim((string) $conversation->wa_number);
+        $phone = trim((string)$conversation->wa_number);
         $source = $leadSource !== '' ? 'WhatsApp - ' . $leadSource : 'WhatsApp';
 
         $attribution = $this->conversationAttribution($conversation);
         $attributionNote = null;
         if ($attribution !== null) {
             $parts = array_filter([
-                trim((string) ($attribution->source_category ?? '')),
-                trim((string) ($attribution->source_type ?? '')),
-                trim((string) ($attribution->source_id ?? '')),
-                trim((string) ($attribution->headline ?? '')),
+                trim((string)($attribution->source_category ?? '')),
+                trim((string)($attribution->source_type ?? '')),
+                trim((string)($attribution->source_id ?? '')),
+                trim((string)($attribution->headline ?? '')),
             ]);
             if ($parts !== []) {
                 $attributionNote = implode(' | ', $parts);
@@ -1965,7 +1968,7 @@ class FlowRuntimeExecutionService
             'status' => 'new',
             'source' => $source,
             'notes' => $noteParts !== [] ? implode("\n", $noteParts) : null,
-        ], static fn (mixed $value): bool => $value !== null && $value !== '');
+        ], static fn(mixed $value): bool => $value !== null && $value !== '');
 
         $query = DB::table('crm_leads');
         $existing = $identifier !== ''
@@ -1979,13 +1982,13 @@ class FlowRuntimeExecutionService
             $changes['updated_at'] = $now;
             DB::table('crm_leads')->where('id', $existing->id)->update($changes);
 
-            return (int) $existing->id;
+            return (int)$existing->id;
         }
 
         $payload['created_at'] = $now;
         $payload['updated_at'] = $now;
 
-        return (int) DB::table('crm_leads')->insertGetId($payload);
+        return (int)DB::table('crm_leads')->insertGetId($payload);
     }
 
     /**
@@ -2017,8 +2020,8 @@ class FlowRuntimeExecutionService
 
         $items = $this->specialtiesCatalogItems(
             $specialties
-                ->filter(fn (mixed $value): bool => is_string($value) && trim((string) $value) !== '')
-                ->map(fn (mixed $value): string => trim((string) $value))
+                ->filter(fn(mixed $value): bool => is_string($value) && trim((string)$value) !== '')
+                ->map(fn(mixed $value): string => trim((string)$value))
                 ->values()
                 ->all()
         );
@@ -2043,9 +2046,9 @@ class FlowRuntimeExecutionService
     private function specialtiesCatalogItems(array $available): array
     {
         $available = array_values(array_filter(array_map(
-            static fn (mixed $value): string => trim((string) $value),
+            static fn(mixed $value): string => trim((string)$value),
             $available
-        ), static fn (string $value): bool => $value !== ''));
+        ), static fn(string $value): bool => $value !== ''));
 
         $visibleMap = [
             'Oculoplastia' => ['title' => 'Oculoplastia', 'description' => ''],
@@ -2053,9 +2056,7 @@ class FlowRuntimeExecutionService
             'Oftalmopediatría' => ['title' => 'Oftalmopediatría', 'description' => ''],
             'oftalmologo general' => ['title' => 'Segmento Anterior', 'description' => 'Superficie ocular, cirugía de catarata'],
             'Glaucoma' => ['title' => 'Glaucoma', 'description' => ''],
-            'Glaucomatólogo' => ['title' => 'Glaucoma', 'description' => ''],
             'Córnea y Cirugía Refractiva' => ['title' => 'Córnea y Cirugía Refractiva', 'description' => ''],
-            'Córnea' => ['title' => 'Córnea y Cirugía Refractiva', 'description' => ''],
         ];
 
         $preferredOrder = [
@@ -2064,22 +2065,20 @@ class FlowRuntimeExecutionService
             'Oftalmopediatría',
             'oftalmologo general',
             'Glaucoma',
-            'Glaucomatólogo',
             'Córnea y Cirugía Refractiva',
-            'Córnea',
         ];
 
         $items = [];
         $seen = [];
 
         $appendItem = static function (string $value, array $meta) use (&$items, &$seen): void {
-            $dedupeKey = mb_strtolower(trim((string) ($meta['title'] ?? $value)), 'UTF-8');
+            $dedupeKey = mb_strtolower(trim((string)($meta['title'] ?? $value)), 'UTF-8');
             if ($dedupeKey === '' || isset($seen[$dedupeKey])) {
                 return;
             }
 
             $line = '• ' . ($meta['title'] ?? $value);
-            $description = trim((string) ($meta['description'] ?? ''));
+            $description = trim((string)($meta['description'] ?? ''));
             if ($description !== '') {
                 $line .= "\n  " . $description;
             }
@@ -2146,7 +2145,7 @@ class FlowRuntimeExecutionService
      */
     private function shouldSkipCatchAllFallbackDuringAgenda(array $scenario, array $facts): bool
     {
-        $state = (string) ($facts['state'] ?? '');
+        $state = (string)($facts['state'] ?? '');
         if (!str_starts_with($state, 'agenda_')) {
             return false;
         }
@@ -2158,7 +2157,7 @@ class FlowRuntimeExecutionService
 
         $hasAgendaSpecificCondition = false;
         foreach ($conditions as $condition) {
-            $type = (string) ($condition['type'] ?? '');
+            $type = (string)($condition['type'] ?? '');
             if (in_array($type, ['state_is', 'awaiting_is'], true)) {
                 $hasAgendaSpecificCondition = true;
                 break;
@@ -2169,8 +2168,8 @@ class FlowRuntimeExecutionService
             return false;
         }
 
-        $id = mb_strtolower((string) ($scenario['id'] ?? ''), 'UTF-8');
-        $name = mb_strtolower((string) ($scenario['name'] ?? ''), 'UTF-8');
+        $id = mb_strtolower((string)($scenario['id'] ?? ''), 'UTF-8');
+        $name = mb_strtolower((string)($scenario['name'] ?? ''), 'UTF-8');
 
         return str_contains($id, 'fallback') || str_contains($name, 'fallback');
     }
@@ -2186,12 +2185,12 @@ class FlowRuntimeExecutionService
         }
 
         $onlyCondition = $conditions[0];
-        if ((string) ($onlyCondition['type'] ?? '') !== 'always') {
+        if ((string)($onlyCondition['type'] ?? '') !== 'always') {
             return false;
         }
 
-        $id = mb_strtolower((string) ($scenario['id'] ?? ''), 'UTF-8');
-        $name = mb_strtolower((string) ($scenario['name'] ?? ''), 'UTF-8');
+        $id = mb_strtolower((string)($scenario['id'] ?? ''), 'UTF-8');
+        $name = mb_strtolower((string)($scenario['name'] ?? ''), 'UTF-8');
 
         return str_contains($id, 'fallback') || str_contains($name, 'fallback');
     }
@@ -2202,7 +2201,7 @@ class FlowRuntimeExecutionService
      */
     private function bookingIsConfirmed(array $action, array $context, string $text): bool
     {
-        $operation = (string) ($action['operation'] ?? '');
+        $operation = (string)($action['operation'] ?? '');
         if (!in_array($operation, ['agendar', 'book', 'book_appointment'], true)) {
             return false;
         }
@@ -2246,13 +2245,13 @@ class FlowRuntimeExecutionService
     private function sendFlowMessage(WhatsappConversation $conversation, array $message, array $context): void
     {
         $config = $this->transportConfig();
-        $recipient = $this->normalizePhoneNumber((string) $conversation->wa_number, $config['default_country_code']);
+        $recipient = $this->normalizePhoneNumber((string)$conversation->wa_number, $config['default_country_code']);
         if ($recipient === '') {
             throw new RuntimeException('Número de WhatsApp inválido para automatización.');
         }
 
-        $type = (string) ($message['type'] ?? 'text');
-        $body = $this->renderPlaceholders((string) ($message['body'] ?? ''), $context);
+        $type = (string)($message['type'] ?? 'text');
+        $body = $this->renderPlaceholders((string)($message['body'] ?? ''), $context);
         $transportResult = match ($type) {
             'buttons' => $this->transport->sendInteractiveButtons(
                 $config['phone_number_id'],
@@ -2261,8 +2260,8 @@ class FlowRuntimeExecutionService
                 $recipient,
                 $body,
                 is_array($message['buttons'] ?? null) ? $message['buttons'] : [],
-                isset($message['header']) ? $this->renderPlaceholders((string) $message['header'], $context) : null,
-                isset($message['footer']) ? $this->renderPlaceholders((string) $message['footer'], $context) : null,
+                isset($message['header']) ? $this->renderPlaceholders((string)$message['header'], $context) : null,
+                isset($message['footer']) ? $this->renderPlaceholders((string)$message['footer'], $context) : null,
             ),
             'list' => $this->transport->sendInteractiveList(
                 $config['phone_number_id'],
@@ -2271,8 +2270,8 @@ class FlowRuntimeExecutionService
                 $recipient,
                 $body,
                 is_array($message['sections'] ?? null) ? $message['sections'] : [],
-                (string) ($message['button_text'] ?? $message['button'] ?? 'Seleccionar'),
-                isset($message['footer']) ? $this->renderPlaceholders((string) $message['footer'], $context) : null,
+                (string)($message['button_text'] ?? $message['button'] ?? 'Seleccionar'),
+                isset($message['footer']) ? $this->renderPlaceholders((string)$message['footer'], $context) : null,
             ),
             default => $this->transport->sendText(
                 $config['phone_number_id'],
@@ -2280,7 +2279,7 @@ class FlowRuntimeExecutionService
                 $config['api_version'],
                 $recipient,
                 $body,
-                (bool) ($message['preview_url'] ?? false),
+                (bool)($message['preview_url'] ?? false),
             ),
         };
 
@@ -2293,9 +2292,9 @@ class FlowRuntimeExecutionService
     private function sendTemplate(WhatsappConversation $conversation, array $template): void
     {
         $config = $this->transportConfig();
-        $recipient = $this->normalizePhoneNumber((string) $conversation->wa_number, $config['default_country_code']);
-        $name = trim((string) ($template['name'] ?? $template['code'] ?? ''));
-        $language = trim((string) ($template['language'] ?? 'es'));
+        $recipient = $this->normalizePhoneNumber((string)$conversation->wa_number, $config['default_country_code']);
+        $name = trim((string)($template['name'] ?? $template['code'] ?? ''));
+        $language = trim((string)($template['language'] ?? 'es'));
         if ($recipient === '' || $name === '') {
             throw new RuntimeException('Plantilla de Flowmaker incompleta.');
         }
@@ -2348,7 +2347,7 @@ class FlowRuntimeExecutionService
     private function transportConfig(): array
     {
         $config = $this->configService->get();
-        $dryRun = (bool) config('whatsapp.migration.automation.dry_run', true);
+        $dryRun = (bool)config('whatsapp.migration.automation.dry_run', true);
         if ($dryRun) {
             config()->set('whatsapp.transport.dry_run', true);
             $config['enabled'] = true;
@@ -2361,11 +2360,11 @@ class FlowRuntimeExecutionService
         }
 
         return [
-            'enabled' => (bool) $config['enabled'],
-            'phone_number_id' => (string) $config['phone_number_id'],
-            'access_token' => (string) $config['access_token'],
-            'api_version' => (string) $config['api_version'],
-            'default_country_code' => (string) $config['default_country_code'],
+            'enabled' => (bool)$config['enabled'],
+            'phone_number_id' => (string)$config['phone_number_id'],
+            'access_token' => (string)$config['access_token'],
+            'api_version' => (string)$config['api_version'],
+            'default_country_code' => (string)$config['default_country_code'],
         ];
     }
 
@@ -2377,7 +2376,7 @@ class FlowRuntimeExecutionService
     {
         $note = 'Escalado desde Flowmaker';
         if (!empty($scenario['name'])) {
-            $note .= ': ' . (string) $scenario['name'];
+            $note .= ': ' . (string)$scenario['name'];
         }
         if (!empty($context['handoff_note']) && is_string($context['handoff_note'])) {
             $note .= ' · ' . trim($context['handoff_note']);
@@ -2386,7 +2385,7 @@ class FlowRuntimeExecutionService
         $conversation->fill([
             'needs_human' => true,
             'handoff_notes' => $note,
-            'handoff_role_id' => isset($context['handoff_role_id']) && is_numeric($context['handoff_role_id']) ? (int) $context['handoff_role_id'] : null,
+            'handoff_role_id' => isset($context['handoff_role_id']) && is_numeric($context['handoff_role_id']) ? (int)$context['handoff_role_id'] : null,
             'handoff_requested_at' => now(),
         ]);
         $conversation->save();
@@ -2402,8 +2401,8 @@ class FlowRuntimeExecutionService
             return;
         }
 
-        $topic = trim((string) ($context['handoff_topic'] ?? ''));
-        $priority = strtolower(trim((string) ($context['handoff_priority'] ?? '')));
+        $topic = trim((string)($context['handoff_topic'] ?? ''));
+        $priority = strtolower(trim((string)($context['handoff_priority'] ?? '')));
         if (!in_array($priority, ['critical', 'high', 'normal'], true)) {
             $priority = $conversation->patient_hc_number ? 'high' : 'normal';
         }
@@ -2417,19 +2416,19 @@ class FlowRuntimeExecutionService
         if (!$handoff instanceof WhatsappHandoff) {
             $handoff = new WhatsappHandoff([
                 'conversation_id' => $conversation->id,
-                'wa_number' => (string) $conversation->wa_number,
+                'wa_number' => (string)$conversation->wa_number,
                 'queued_at' => $conversation->handoff_requested_at ?? now(),
             ]);
         }
 
         $handoff->fill([
-            'status' => (int) ($conversation->assigned_user_id ?? 0) > 0 ? 'assigned' : 'queued',
+            'status' => (int)($conversation->assigned_user_id ?? 0) > 0 ? 'assigned' : 'queued',
             'priority' => $priority,
             'topic' => $topic !== '' ? $topic : 'faq_escalada',
             'handoff_role_id' => $conversation->handoff_role_id,
-            'assigned_agent_id' => (int) ($conversation->assigned_user_id ?? 0) > 0 ? (int) $conversation->assigned_user_id : null,
+            'assigned_agent_id' => (int)($conversation->assigned_user_id ?? 0) > 0 ? (int)$conversation->assigned_user_id : null,
             'assigned_at' => $conversation->assigned_at,
-            'assigned_until' => (int) ($conversation->assigned_user_id ?? 0) > 0 ? ($handoff->assigned_until ?? now()->addHours(24)) : null,
+            'assigned_until' => (int)($conversation->assigned_user_id ?? 0) > 0 ? ($handoff->assigned_until ?? now()->addHours(24)) : null,
             'queued_at' => $handoff->queued_at ?? $conversation->handoff_requested_at ?? now(),
             'last_activity_at' => now(),
             'notes' => $conversation->handoff_notes,
@@ -2458,19 +2457,19 @@ class FlowRuntimeExecutionService
      */
     private function evaluateCondition(array $condition, array $facts): bool
     {
-        $type = (string) ($condition['type'] ?? 'always');
+        $type = (string)($condition['type'] ?? 'always');
 
         return match ($type) {
             'always' => true,
-            'is_first_time' => (bool) ($condition['value'] ?? false) === (bool) ($facts['is_first_time'] ?? false),
-            'has_consent' => (bool) ($condition['value'] ?? false) === (bool) ($facts['has_consent'] ?? false),
+            'is_first_time' => (bool)($condition['value'] ?? false) === (bool)($facts['is_first_time'] ?? false),
+            'has_consent' => (bool)($condition['value'] ?? false) === (bool)($facts['has_consent'] ?? false),
             'state_is' => ($facts['state'] ?? null) === ($condition['value'] ?? null),
             'awaiting_is' => ($facts['awaiting_field'] ?? null) === ($condition['value'] ?? null),
             'message_in' => $this->messageIn($condition, $facts),
             'message_contains' => $this->messageContains($condition, $facts),
             'message_matches' => $this->messageMatches($condition, $facts),
-            'last_interaction_gt' => (int) ($facts['minutes_since_last'] ?? 0) >= max(0, (int) ($condition['minutes'] ?? 0)),
-            'patient_found' => (bool) ($facts['patient_found'] ?? false),
+            'last_interaction_gt' => (int)($facts['minutes_since_last'] ?? 0) >= max(0, (int)($condition['minutes'] ?? 0)),
+            'patient_found' => (bool)($facts['patient_found'] ?? false),
             'context_flag' => $this->contextFlagMatches($condition, $facts),
             default => false,
         };
@@ -2482,7 +2481,7 @@ class FlowRuntimeExecutionService
      */
     private function messageIn(array $condition, array $facts): bool
     {
-        $needle = (string) ($facts['message'] ?? '');
+        $needle = (string)($facts['message'] ?? '');
         foreach ($this->conditionTextList($condition, 'values') as $value) {
             if ($needle === $this->normalizeText($value)) {
                 return true;
@@ -2498,7 +2497,7 @@ class FlowRuntimeExecutionService
      */
     private function messageContains(array $condition, array $facts): bool
     {
-        $needle = (string) ($facts['message'] ?? '');
+        $needle = (string)($facts['message'] ?? '');
         foreach ($this->conditionTextList($condition, 'keywords') as $keyword) {
             $keyword = $this->normalizeText($keyword);
             if ($keyword !== '' && str_contains($needle, $keyword)) {
@@ -2515,13 +2514,13 @@ class FlowRuntimeExecutionService
      */
     private function messageMatches(array $condition, array $facts): bool
     {
-        $pattern = trim((string) ($condition['pattern'] ?? $condition['value'] ?? ''));
+        $pattern = trim((string)($condition['pattern'] ?? $condition['value'] ?? ''));
         if ($pattern === '') {
             return false;
         }
 
         $regex = '~' . str_replace('~', '\\~', $pattern) . '~u';
-        foreach ([(string) ($facts['raw_message'] ?? ''), (string) ($facts['message'] ?? ''), (string) ($facts['digits'] ?? '')] as $candidate) {
+        foreach ([(string)($facts['raw_message'] ?? ''), (string)($facts['message'] ?? ''), (string)($facts['digits'] ?? '')] as $candidate) {
             if ($candidate !== '' && @preg_match($regex, $candidate) === 1) {
                 return true;
             }
@@ -2536,14 +2535,14 @@ class FlowRuntimeExecutionService
      */
     private function contextFlagMatches(array $condition, array $facts): bool
     {
-        $key = (string) ($condition['key'] ?? '');
+        $key = (string)($condition['key'] ?? '');
         if ($key === '') {
             return false;
         }
 
         $value = $facts[$key] ?? null;
         if (!array_key_exists('value', $condition)) {
-            return (bool) $value;
+            return (bool)$value;
         }
 
         return $condition['value'] == $value;
@@ -2558,17 +2557,17 @@ class FlowRuntimeExecutionService
         $values = $condition[$listKey] ?? null;
         if (is_array($values)) {
             return array_values(array_filter(array_map(
-                static fn ($value): string => trim((string) $value),
+                static fn($value): string => trim((string)$value),
                 $values
-            ), static fn (string $value): bool => $value !== ''));
+            ), static fn(string $value): bool => $value !== ''));
         }
 
         $value = $condition['value'] ?? null;
         if (is_string($value) && trim($value) !== '') {
             return array_values(array_filter(array_map(
-                static fn (string $item): string => trim($item),
+                static fn(string $item): string => trim($item),
                 explode(',', $value)
-            ), static fn (string $item): bool => $item !== ''));
+            ), static fn(string $item): bool => $item !== ''));
         }
 
         return [];
@@ -2580,13 +2579,14 @@ class FlowRuntimeExecutionService
      * @return array<string, mixed>
      */
     private function buildFacts(
-        WhatsappConversation $conversation,
-        WhatsappMessage $inboundMessage,
+        WhatsappConversation          $conversation,
+        WhatsappMessage               $inboundMessage,
         ?WhatsappAutoresponderSession $session,
-        array $context,
-        string $text,
-        array $messagePayload,
-    ): array {
+        array                         $context,
+        string                        $text,
+        array                         $messagePayload,
+    ): array
+    {
         $normalized = $this->normalizeText($text);
         $facts = [
             'is_first_time' => $session === null && empty($context['consent']),
@@ -2595,7 +2595,7 @@ class FlowRuntimeExecutionService
             'has_consent' => !empty($context['consent']),
             'message' => $normalized,
             'raw_message' => $text,
-            'patient_found' => isset($context['patient']) || trim((string) ($conversation->patient_hc_number ?? '')) !== '',
+            'patient_found' => isset($context['patient']) || trim((string)($conversation->patient_hc_number ?? '')) !== '',
             'consent_identifier' => $context['identifier'] ?? null,
             'current_identifier' => $context['cedula'] ?? ($context['identifier'] ?? $conversation->patient_hc_number),
             'wa_number' => $conversation->wa_number,
@@ -2629,7 +2629,7 @@ class FlowRuntimeExecutionService
      */
     private function scenarioIsPublished(array $scenario): bool
     {
-        return (string) ($scenario['status'] ?? 'published') === 'published';
+        return (string)($scenario['status'] ?? 'published') === 'published';
     }
 
     private function normalizeText(string $text): string
@@ -2656,13 +2656,13 @@ class FlowRuntimeExecutionService
     private function renderPlaceholders(string $text, array $context): string
     {
         return preg_replace_callback('/\{\{\s*([a-zA-Z0-9_.-]+)\s*}}/', function (array $matches) use ($context): string {
-            $key = (string) $matches[1];
+            $key = (string)$matches[1];
             $value = data_get($context, $this->displayPlaceholderKey($key, $context));
             if ($value === null && str_starts_with($key, 'context.')) {
                 $value = data_get($context, $this->displayPlaceholderKey(substr($key, 8), $context));
             }
             if (is_scalar($value)) {
-                return (string) $value;
+                return (string)$value;
             }
 
             return '';

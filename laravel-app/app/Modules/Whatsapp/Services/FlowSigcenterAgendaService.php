@@ -1597,9 +1597,7 @@ class FlowSigcenterAgendaService
             'Oftalmopediatría' => ['title' => 'Oftalmopediatría', 'description' => ''],
             'oftalmologo general' => ['title' => 'Segmento Anterior', 'description' => 'Superficie ocular, cirugía de catarata'],
             'Glaucoma' => ['title' => 'Glaucoma', 'description' => ''],
-            'Glaucomatólogo' => ['title' => 'Glaucoma', 'description' => ''],
             'Córnea y Cirugía Refractiva' => ['title' => 'Córnea y Cirugía Refractiva', 'description' => ''],
-            'Córnea' => ['title' => 'Córnea y Cirugía Refractiva', 'description' => ''],
         ];
 
         $preferredOrder = [
@@ -1608,9 +1606,7 @@ class FlowSigcenterAgendaService
             'Oftalmopediatría',
             'oftalmologo general',
             'Glaucoma',
-            'Glaucomatólogo',
             'Córnea y Cirugía Refractiva',
-            'Córnea',
         ];
 
         $catalog = [];
@@ -1663,8 +1659,6 @@ class FlowSigcenterAgendaService
     {
         return match (trim($value)) {
             'oftalmologo general' => 'Segmento Anterior',
-            'Glaucomatólogo' => 'Glaucoma',
-            'Córnea' => 'Córnea y Cirugía Refractiva',
             default => trim($value),
         };
     }
