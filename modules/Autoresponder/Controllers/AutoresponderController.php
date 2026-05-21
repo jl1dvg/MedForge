@@ -8,7 +8,7 @@ use Modules\Autoresponder\Repositories\AutoresponderFlowRepository;
 use Modules\WhatsApp\Repositories\InboxRepository;
 use Modules\WhatsApp\Support\AutoresponderFlow;
 use Modules\WhatsApp\Services\TemplateManager;
-use Modules\Usuarios\Models\RolModel;
+use Models\RolModel;
 use PDO;
 use function array_reverse;
 use function is_array;
