@@ -7,6 +7,8 @@ Route::middleware([
     'app.auth',
     'app.permission:administrativo,reportes.view,reportes.export',
 ])->group(function (): void {
+    Route::get('/reports', [ReportingReadController::class, 'index']);
+    Route::get('/reports/{slug}', [ReportingReadController::class, 'show'])->where('slug', '.+');
     Route::get('/reports/protocolo/data', [ReportingReadController::class, 'protocolData']);
     Route::get('/reports/protocolo/pdf', [ReportingReadController::class, 'protocolPdf']);
     Route::get('/reports/imagenes/012b/data', [ReportingReadController::class, 'informe012BData']);
