@@ -142,12 +142,12 @@ Muere sola cuando sus consumidores desaparecen. Limpieza final.
 
 | Onda | Archivo del plan | Estado |
 |------|-----------------|--------|
-| 1 | `docs/superpowers/plans/2026-05-21-onda1-dead-code.md` | ⬜ por crear |
-| 2 | `docs/superpowers/plans/2026-05-21-onda2-quick-completions.md` | ⬜ por crear |
-| 3 | `docs/superpowers/plans/2026-05-21-onda3-small-independents.md` | ⬜ por crear |
-| 4 | `docs/superpowers/plans/2026-05-21-onda4-medium-modules.md` | ⬜ por crear |
-| 5 | `docs/superpowers/plans/2026-05-21-onda5-giants.md` | ⬜ por crear |
-| 6 | `docs/superpowers/plans/2026-05-21-onda6-infrastructure.md` | ⬜ por crear |
+| 1 | `docs/superpowers/plans/2026-05-21-onda1-dead-code.md` | ✅ listo — executing-plans |
+| 2 | `docs/superpowers/plans/2026-05-21-onda2-quick-completions.md` | ✅ listo — subagent-driven |
+| 3 | `docs/superpowers/plans/2026-05-21-onda3-small-independents.md` | ✅ listo — subagent-driven |
+| 4 | `docs/superpowers/plans/2026-05-21-onda4-medium-modules.md` | ✅ listo — subagent-driven |
+| 5 | `docs/superpowers/plans/2026-05-21-onda5-giants.md` | ✅ listo — subagent-driven |
+| 6 | `docs/superpowers/plans/2026-05-21-onda6-infrastructure.md` | ✅ listo — executing-plans |
 
 ---
 
