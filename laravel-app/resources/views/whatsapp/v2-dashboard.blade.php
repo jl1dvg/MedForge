@@ -65,6 +65,40 @@
     $topIntent   = collect($analyticsIntents)->sortByDesc('total')->first();
     $topSegment  = collect($analyticsSegments)->sortByDesc('total')->first();
     $topFriction = collect($analyticsFrictions)->sortByDesc('total')->first();
+
+    $analyticsAds = collect($analyticsAds)
+        ->groupBy(function ($row) {
+            $headline = trim((string) ($row['headline'] ?? ''));
+            return $headline !== '' ? $headline : 'Sin nombre de anuncio';
+        })
+        ->map(function ($rows, $headline) {
+            $conversations = (int) $rows->sum('conversations');
+            $identified    = (int) $rows->sum('identified');
+            $bookings      = (int) $rows->sum('bookings');
+            $handoffs      = (int) $rows->sum('handoffs');
+            $sourceIds     = $rows->pluck('source_id')->filter()->unique()->values();
+            $platforms     = $rows->pluck('platform')->filter()->unique()->values();
+            $mediaTypes    = $rows->pluck('media_type')->filter()->unique()->values();
+
+            return [
+                'headline'       => $headline,
+                'source_id'      => $sourceIds->count() === 1 ? $sourceIds->first() : $sourceIds->count() . ' anuncios agrupados',
+                'source_ids'     => $sourceIds->all(),
+                'platform'       => $platforms->count() === 1 ? $platforms->first() : 'multiple',
+                'platform_label' => $platforms->count() === 1 ? ($rows->first()['platform_label'] ?? 'Desconocido') : 'Varias',
+                'media_type'     => $mediaTypes->count() === 1 ? $mediaTypes->first() : 'Mixto',
+                'conversations'  => $conversations,
+                'identified'     => $identified,
+                'bookings'       => $bookings,
+                'booking_rate'   => $conversations > 0 ? round(($bookings / $conversations) * 100, 1) : 0,
+                'handoffs'       => $handoffs,
+            ];
+        })
+        ->sortByDesc('bookings')
+        ->sortByDesc('conversations')
+        ->values()
+        ->all();
+
     $topAd       = collect($analyticsAds)->sortByDesc('bookings')->first();
     $totalConvs  = $analyticsSummary['total_conversations'] ?? 0;
     $frictionHighShare = isset($topFriction['share']) && (int) $topFriction['share'] > 30;
@@ -1293,7 +1327,7 @@
                                     <tr>
                                         <td>
                                             <div class="fw-600">{{ $row['headline'] }}</div>
-                                            <div class="text-muted small">ID: {{ $row['source_id'] ?? 'Sin ID' }}</div>
+                                            <div class="text-muted small">{{ $row['source_id'] ?? 'Sin ID' }}</div>
                                         </td>
                                         <td>
                                             @php
@@ -2098,43 +2132,85 @@
             (function () {
                 var el = document.getElementById('chart-ads');
                 if (!el) return;
+
                 var rows = @json($analyticsAds);
                 if (!rows || !rows.length) {
                     el.innerHTML = '<div class="wa-chart-empty">Sin conversaciones atribuibles a Ads en el rango actual</div>';
                     return;
                 }
-                rows = rows.slice().sort(function (a, b) {
-                    return (parseInt(b.bookings) || 0) - (parseInt(a.bookings) || 0);
+
+                rows = rows.slice();
+
+                var totalBookings = rows.reduce(function (total, row) {
+                    return total + (parseInt(row.bookings) || 0);
+                }, 0);
+
+                var metricKey = totalBookings > 0 ? 'bookings' : 'conversations';
+                var metricLabel = totalBookings > 0 ? 'Citas' : 'Conversaciones';
+                var metricSuffix = totalBookings > 0 ? ' citas' : ' conversaciones';
+
+                rows.sort(function (a, b) {
+                    return (parseInt(b[metricKey]) || 0) - (parseInt(a[metricKey]) || 0);
                 });
-                var platformIcons = {facebook: '📘', instagram: '📷', whatsapp: '💬'};
+
+                var platformIcons = {facebook: '📘', instagram: '📷', whatsapp: '💬', multiple: '📣'};
                 var labels = rows.map(function (r) {
-                    var icon = platformIcons[r.platform] || '❓';
-                    return icon + ' ' + (r.headline ? r.headline.substring(0, 28) + (r.headline.length > 28 ? '…' : '') : 'Sin nombre');
+                    var icon = platformIcons[r.platform] || '📣';
+                    var headline = r.headline || 'Sin nombre';
+                    return icon + ' ' + headline.substring(0, 32) + (headline.length > 32 ? '…' : '');
                 });
+
+                var data = rows.map(function (r) {
+                    return parseInt(r[metricKey]) || 0;
+                });
+
                 new ApexCharts(el, {
-                    chart: {type: 'bar', height: 220, toolbar: {show: false}, fontFamily: 'inherit'},
-                    plotOptions: {bar: {horizontal: true, distributed: true, barHeight: '60%', borderRadius: 4}},
+                    chart: {
+                        type: 'bar',
+                        height: 220,
+                        toolbar: {show: false},
+                        fontFamily: 'inherit'
+                    },
+                    plotOptions: {
+                        bar: {
+                            horizontal: true,
+                            distributed: true,
+                            barHeight: '60%',
+                            borderRadius: 4
+                        }
+                    },
                     series: [{
-                        name: 'Citas', data: rows.map(function (r) {
-                            return parseInt(r.bookings) || 0;
-                        })
+                        name: metricLabel,
+                        data: data
                     }],
-                    xaxis: {categories: labels, labels: {style: {fontSize: '10px'}}},
-                    yaxis: {labels: {style: {fontSize: '10px'}, maxWidth: 160}},
+                    xaxis: {
+                        categories: labels,
+                        min: 0,
+                        labels: {style: {fontSize: '10px'}}
+                    },
+                    yaxis: {
+                        labels: {style: {fontSize: '10px'}, maxWidth: 180}
+                    },
                     colors: rows.map(function (r) {
-                        return r.platform === 'instagram' ? '#e879f9' : '#3b82f6';
+                        if (r.platform === 'instagram') return '#e879f9';
+                        if (r.platform === 'facebook') return '#3b82f6';
+                        if (r.platform === 'whatsapp') return '#10b981';
+                        return '#10b981';
                     }),
                     legend: {show: false},
                     dataLabels: {
-                        enabled: true, formatter: function (val) {
-                            return val + ' citas';
-                        }, style: {fontSize: '10px'}
+                        enabled: true,
+                        formatter: function (val) {
+                            return Number(val || 0).toLocaleString() + metricSuffix;
+                        },
+                        style: {fontSize: '10px'}
                     },
                     tooltip: {
                         y: {
                             formatter: function (val, opts) {
                                 var r = rows[opts.dataPointIndex];
-                                return val + ' citas · ' + (r ? r.conversations : 0) + ' conv.';
+                                if (!r) return Number(val || 0).toLocaleString() + metricSuffix;
+                                return Number(val || 0).toLocaleString() + metricSuffix + ' · ' + (parseInt(r.bookings) || 0) + ' citas · ' + (parseInt(r.conversations) || 0) + ' conv.';
                             }
                         }
                     },
