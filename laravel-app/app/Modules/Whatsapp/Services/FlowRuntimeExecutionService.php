@@ -2,6 +2,7 @@
 
 namespace App\Modules\Whatsapp\Services;
 
+use App\Modules\Shared\Support\SettingsOptionResolver;
 use App\Models\WhatsappAutoresponderSession;
 use App\Models\WhatsappConversation;
 use App\Models\WhatsappConversationAttribution;
@@ -14,6 +15,8 @@ use RuntimeException;
 
 class FlowRuntimeExecutionService
 {
+    private ?SettingsOptionResolver $settingsResolver = null;
+
     public function __construct(
         private readonly FlowmakerService $flowmakerService = new FlowmakerService(),
         private readonly FlowmakerSandboxService $sandboxService = new FlowmakerSandboxService(),
@@ -642,9 +645,17 @@ class FlowRuntimeExecutionService
                 if (!empty($preview['suggested_handoff'])) {
                     $context['handoff_requested'] = true;
                     $context['handoff_reasons'] = is_array($preview['handoff_reasons'] ?? null) ? $preview['handoff_reasons'] : [];
-                    $context['handoff_note'] = 'AI Agent sugirió handoff.';
-                    $context['handoff_topic'] = 'faq_escalada';
-                    $context['handoff_priority'] = 'normal';
+                    $triageUrgency = trim((string) ($context['triage_nivel_urgencia'] ?? ''));
+                    $triageDestination = trim((string) ($context['triage_destino'] ?? ''));
+                    $context['handoff_note'] = str_starts_with($triageDestination, 'handoff')
+                        ? 'Triage de síntomas sugirió atención humana prioritaria.'
+                        : 'AI Agent sugirió handoff.';
+                    $context['handoff_topic'] = str_starts_with($triageDestination, 'handoff')
+                        ? 'triage_urgente'
+                        : 'faq_escalada';
+                    $context['handoff_priority'] = in_array($triageUrgency, ['emergente', 'alta'], true)
+                        ? 'high'
+                        : 'normal';
                 }
             }
         }
@@ -705,7 +716,7 @@ class FlowRuntimeExecutionService
     {
         return [
             'type' => 'text',
-            'body' => "Tu cita ha sido agendada exitosamente.\n\nFecha: {{fecha}}\nHorario: {{fecha_inicio}}\nSede: {{sede_id}}\nProcedimiento: {{procedimiento_id}}\n\nTe esperamos.",
+            'body' => "✅ *Tu cita ha sido agendada exitosamente.*\n\n📅 *Fecha:* {{fecha}}\n🕒 *Horario:* {{fecha_inicio}}\n📍 *Sede:* {{sede_id}}\n🩺 *Procedimiento:* {{procedimiento_id}}\n\n*Recomendaciones:*\n▪️ Uso obligatorio de mascarilla\n▪️ Estar 10 minutos antes de la hora de su cita\n▪️ Traer documento de identidad del paciente (cédula o pasaporte)\n▪️ Venir solo con un acompañante\n▪️ Es probable que dilaten su pupila, por lo que se recomienda no conducir\n\n🙌 *Te esperamos.*",
         ];
     }
 
@@ -1730,6 +1741,8 @@ class FlowRuntimeExecutionService
      */
     private function mainMenuMessage(): array
     {
+        $rows = $this->mainMenuRows();
+
         return [
             'type' => 'list',
             'body' => '¿En qué puedo ayudarte hoy?',
@@ -1737,16 +1750,66 @@ class FlowRuntimeExecutionService
             'sections' => [
                 [
                     'title' => 'Menú principal',
-                    'rows' => [
-                        ['id' => 'agendar', 'title' => 'Agendar cita', 'description' => 'Programa una nueva cita médica'],
-                        ['id' => 'consultar_cita', 'title' => 'Consultar cita', 'description' => 'Revisa tu cita vigente'],
-                        ['id' => 'servicios_y_sedes', 'title' => 'Servicios y sedes', 'description' => 'Sedes, horarios y especialidades'],
-                        ['id' => 'promociones', 'title' => 'Promociones', 'description' => 'Consulta campañas vigentes'],
-                        ['id' => 'ayuda', 'title' => 'Ayuda', 'description' => 'Hablar con un asesor'],
-                    ],
+                    'rows' => $rows,
                 ],
             ],
         ];
+    }
+
+    /**
+     * @return array<int, array{id:string,title:string,description:string}>
+     */
+    private function mainMenuRows(): array
+    {
+        $options = $this->settingsOptions([
+            'whatsapp_menu_agendar_enabled',
+            'whatsapp_menu_consultar_cita_enabled',
+            'whatsapp_menu_servicios_sedes_enabled',
+            'whatsapp_menu_promociones_enabled',
+            'whatsapp_menu_ayuda_enabled',
+        ]);
+
+        $catalog = [
+            ['id' => 'agendar', 'title' => 'Agendar cita', 'description' => 'Programa una nueva cita médica', 'enabled' => $this->settingFlag($options, 'whatsapp_menu_agendar_enabled', true)],
+            ['id' => 'consultar_cita', 'title' => 'Consultar cita', 'description' => 'Revisa tu cita vigente', 'enabled' => $this->settingFlag($options, 'whatsapp_menu_consultar_cita_enabled', true)],
+            ['id' => 'servicios_y_sedes', 'title' => 'Servicios y sedes', 'description' => 'Sedes, horarios y especialidades', 'enabled' => $this->settingFlag($options, 'whatsapp_menu_servicios_sedes_enabled', true)],
+            ['id' => 'promociones', 'title' => 'Promociones', 'description' => 'Consulta campañas vigentes', 'enabled' => $this->settingFlag($options, 'whatsapp_menu_promociones_enabled', true)],
+            ['id' => 'ayuda', 'title' => 'Ayuda', 'description' => 'Hablar con un asesor', 'enabled' => $this->settingFlag($options, 'whatsapp_menu_ayuda_enabled', true)],
+        ];
+
+        return array_values(array_map(
+            static fn (array $row): array => [
+                'id' => $row['id'],
+                'title' => $row['title'],
+                'description' => $row['description'],
+            ],
+            array_filter($catalog, static fn (array $row): bool => (bool) ($row['enabled'] ?? false))
+        ));
+    }
+
+    /**
+     * @param array<string,string> $options
+     */
+    private function settingFlag(array $options, string $key, bool $default): bool
+    {
+        if (!array_key_exists($key, $options)) {
+            return $default;
+        }
+
+        return in_array(strtolower(trim((string) $options[$key])), ['1', 'true', 'yes', 'on'], true);
+    }
+
+    /**
+     * @param array<int,string> $keys
+     * @return array<string,string>
+     */
+    private function settingsOptions(array $keys): array
+    {
+        if ($this->settingsResolver === null) {
+            $this->settingsResolver = new SettingsOptionResolver();
+        }
+
+        return $this->settingsResolver->getOptions($keys);
     }
 
     /**

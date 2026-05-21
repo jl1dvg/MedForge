@@ -2,12 +2,15 @@
 
 namespace App\Modules\Whatsapp\Services;
 
+use App\Modules\Shared\Support\SettingsOptionResolver;
 use App\Models\WhatsappAutoresponderSession;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class FlowRuntimePreviewService
 {
+    private ?SettingsOptionResolver $settingsResolver = null;
+
     public function __construct(
         private readonly FlowmakerService $flowmakerService = new FlowmakerService(),
         private readonly FlowAiAgentPreviewService $aiAgentPreviewService = new FlowAiAgentPreviewService(),
@@ -352,21 +355,7 @@ class FlowRuntimePreviewService
             if ($type === 'goto_menu') {
                 $emitted[] = [
                     'type' => $type,
-                    'message' => [
-                        'type' => 'list',
-                        'body' => '¿En qué puedo ayudarte hoy?',
-                        'button_text' => 'Ver opciones',
-                        'sections' => [[
-                            'title' => 'Menú principal',
-                            'rows' => [
-                                ['id' => 'agendar', 'title' => 'Agendar cita', 'description' => 'Programa una nueva cita médica'],
-                                ['id' => 'consultar_cita', 'title' => 'Consultar cita', 'description' => 'Revisa tu cita vigente'],
-                                ['id' => 'servicios_y_sedes', 'title' => 'Servicios y sedes', 'description' => 'Sedes, horarios y especialidades'],
-                                ['id' => 'promociones', 'title' => 'Promociones', 'description' => 'Consulta campañas vigentes'],
-                                ['id' => 'ayuda', 'title' => 'Ayuda', 'description' => 'Hablar con un asesor'],
-                            ],
-                        ]],
-                    ],
+                    'message' => $this->mainMenuMessage(),
                 ];
                 continue;
             }
@@ -764,5 +753,77 @@ class FlowRuntimePreviewService
             return (bool) $value;
         }
         return $condition['value'] == $value;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function mainMenuMessage(): array
+    {
+        return [
+            'type' => 'list',
+            'body' => '¿En qué puedo ayudarte hoy?',
+            'button_text' => 'Ver opciones',
+            'sections' => [[
+                'title' => 'Menú principal',
+                'rows' => $this->mainMenuRows(),
+            ]],
+        ];
+    }
+
+    /**
+     * @return array<int, array{id:string,title:string,description:string}>
+     */
+    private function mainMenuRows(): array
+    {
+        $options = $this->settingsOptions([
+            'whatsapp_menu_agendar_enabled',
+            'whatsapp_menu_consultar_cita_enabled',
+            'whatsapp_menu_servicios_sedes_enabled',
+            'whatsapp_menu_promociones_enabled',
+            'whatsapp_menu_ayuda_enabled',
+        ]);
+
+        $catalog = [
+            ['id' => 'agendar', 'title' => 'Agendar cita', 'description' => 'Programa una nueva cita médica', 'enabled' => $this->settingFlag($options, 'whatsapp_menu_agendar_enabled', true)],
+            ['id' => 'consultar_cita', 'title' => 'Consultar cita', 'description' => 'Revisa tu cita vigente', 'enabled' => $this->settingFlag($options, 'whatsapp_menu_consultar_cita_enabled', true)],
+            ['id' => 'servicios_y_sedes', 'title' => 'Servicios y sedes', 'description' => 'Sedes, horarios y especialidades', 'enabled' => $this->settingFlag($options, 'whatsapp_menu_servicios_sedes_enabled', true)],
+            ['id' => 'promociones', 'title' => 'Promociones', 'description' => 'Consulta campañas vigentes', 'enabled' => $this->settingFlag($options, 'whatsapp_menu_promociones_enabled', true)],
+            ['id' => 'ayuda', 'title' => 'Ayuda', 'description' => 'Hablar con un asesor', 'enabled' => $this->settingFlag($options, 'whatsapp_menu_ayuda_enabled', true)],
+        ];
+
+        return array_values(array_map(
+            static fn (array $row): array => [
+                'id' => $row['id'],
+                'title' => $row['title'],
+                'description' => $row['description'],
+            ],
+            array_filter($catalog, static fn (array $row): bool => (bool) ($row['enabled'] ?? false))
+        ));
+    }
+
+    /**
+     * @param array<string,string> $options
+     */
+    private function settingFlag(array $options, string $key, bool $default): bool
+    {
+        if (!array_key_exists($key, $options)) {
+            return $default;
+        }
+
+        return in_array(strtolower(trim((string) $options[$key])), ['1', 'true', 'yes', 'on'], true);
+    }
+
+    /**
+     * @param array<int,string> $keys
+     * @return array<string,string>
+     */
+    private function settingsOptions(array $keys): array
+    {
+        if ($this->settingsResolver === null) {
+            $this->settingsResolver = new SettingsOptionResolver();
+        }
+
+        return $this->settingsResolver->getOptions($keys);
     }
 }

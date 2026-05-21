@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Schema;
 class FlowSigcenterAgendaService
 {
     private const DOCTOR_CATALOG_TABLE = 'whatsapp_sigcenter_doctor_catalog';
+    private const DOCTOR_AVAILABILITY_TABLE = 'whatsapp_sigcenter_doctor_availability';
     private const COMPANY_ID = 113;
     /** @var array<int, string> */
     private const DEFAULT_ALLOWED_SEDE_IDS = ['16', '1'];
@@ -70,7 +71,7 @@ class FlowSigcenterAgendaService
             $preview = array_merge($preview, $this->resolvedProcedureMetadata($action, $context));
         }
 
-        if ($this->shouldSendResult($action) && $missing === [] && in_array($operation, ['list_specialties', 'list_doctors', 'list_sedes', 'list_doctors_by_name', 'list_sedes_by_doctor'], true)) {
+        if ($this->shouldSendResult($action) && $missing === [] && in_array($operation, ['list_specialties', 'list_doctors', 'list_sedes', 'list_doctors_by_name', 'list_sedes_by_doctor', 'list_dates_by_specialty', 'list_doctors_by_date'], true)) {
             $preview = array_merge($preview, $this->executeLocalCatalog($preview), [
                 'preview_only' => true,
                 'executed' => false,
@@ -106,7 +107,7 @@ class FlowSigcenterAgendaService
         $preview = $this->preview($action, $context, $input);
         $operation = (string) $preview['operation'];
 
-        if (in_array($operation, ['list_specialties', 'list_doctors', 'list_sedes', 'list_doctors_by_name', 'list_sedes_by_doctor'], true)) {
+        if (in_array($operation, ['list_specialties', 'list_doctors', 'list_sedes', 'list_doctors_by_name', 'list_sedes_by_doctor', 'list_dates_by_specialty', 'list_doctors_by_date'], true)) {
             return $this->withConversationOutput($action, array_merge($preview, $this->executeLocalCatalog($preview), [
                 'preview_only' => false,
                 'executed' => true,
@@ -272,6 +273,8 @@ class FlowSigcenterAgendaService
             'list_doctors_by_name' => 'trabajador_id',
             'list_sedes' => 'sede_id',
             'list_sedes_by_doctor' => 'sede_id',
+            'list_dates_by_specialty' => 'fecha',
+            'list_doctors_by_date' => 'trabajador_id',
             'list_procedimientos' => 'procedimiento_id',
             'list_days' => 'fecha',
             'list_times' => 'fecha_inicio',
@@ -295,6 +298,8 @@ class FlowSigcenterAgendaService
             'list_doctors_by_name' => 'agenda_esperando_doctor_directo',
             'list_sedes' => 'agenda_esperando_sede',
             'list_sedes_by_doctor' => 'agenda_esperando_sede_directa',
+            'list_dates_by_specialty' => 'agenda_esperando_fecha_general',
+            'list_doctors_by_date' => 'agenda_esperando_medico_general_por_fecha',
             'list_procedimientos' => 'agenda_esperando_procedimiento',
             'list_days' => 'agenda_esperando_dia',
             'list_times' => 'agenda_esperando_horario',
@@ -342,6 +347,22 @@ class FlowSigcenterAgendaService
         $operation = (string) ($result['operation'] ?? '');
 
         return match ($operation) {
+            'list_specialties' => [
+                'outbound_message' => [
+                    'type' => 'text',
+                    'body' => trim((string) ($action['empty_message'] ?? 'No encontré especialidades disponibles en este momento. Si deseas, escribe MENU para intentarlo de otra forma.')),
+                ],
+                'save_response_as' => null,
+                'next_state' => (string) ($action['empty_next_state'] ?? 'menu_principal'),
+            ],
+            'list_doctors' => [
+                'outbound_message' => [
+                    'type' => 'text',
+                    'body' => trim((string) ($action['empty_message'] ?? 'No encontré médicos disponibles para esa opción en este momento. Puedes elegir otra especialidad, escribir ATRÁS o volver al MENU.')),
+                ],
+                'save_response_as' => null,
+                'next_state' => (string) ($action['empty_next_state'] ?? 'agenda_esperando_subespecialidad'),
+            ],
             'list_doctors_by_name' => [
                 'outbound_message' => [
                     'type' => 'text',
@@ -354,6 +375,46 @@ class FlowSigcenterAgendaService
                 'outbound_message' => [
                     'type' => 'text',
                     'body' => trim((string) ($action['empty_message'] ?? 'No encontré sedes disponibles para ese médico. Si deseas apoyo, escribe AYUDA.')),
+                ],
+                'save_response_as' => null,
+                'next_state' => (string) ($action['empty_next_state'] ?? 'menu_principal'),
+            ],
+            'list_dates_by_specialty' => [
+                'outbound_message' => [
+                    'type' => 'text',
+                    'body' => trim((string) ($action['empty_message'] ?? 'No encontré fechas disponibles para esa sede en los próximos días. Si deseas, escribe MENU para intentar otra opción.')),
+                ],
+                'save_response_as' => null,
+                'next_state' => (string) ($action['empty_next_state'] ?? 'menu_principal'),
+            ],
+            'list_doctors_by_date' => [
+                'outbound_message' => [
+                    'type' => 'text',
+                    'body' => trim((string) ($action['empty_message'] ?? 'No encontré médicos disponibles para esa fecha. Puedes elegir otra fecha o escribir MENU.')),
+                ],
+                'save_response_as' => null,
+                'next_state' => (string) ($action['empty_next_state'] ?? 'agenda_esperando_fecha_general'),
+            ],
+            'list_procedimientos' => [
+                'outbound_message' => [
+                    'type' => 'text',
+                    'body' => trim((string) ($action['empty_message'] ?? 'No pude resolver el procedimiento de tu cita en este momento. Escribe ATRÁS para volver o AYUDA para hablar con un asesor.')),
+                ],
+                'save_response_as' => null,
+                'next_state' => (string) ($action['empty_next_state'] ?? 'menu_principal'),
+            ],
+            'list_days' => [
+                'outbound_message' => [
+                    'type' => 'text',
+                    'body' => trim((string) ($action['empty_message'] ?? 'No encontré fechas disponibles con esa selección. Puedes escribir ATRÁS para volver o MENU para intentar otra opción.')),
+                ],
+                'save_response_as' => null,
+                'next_state' => (string) ($action['empty_next_state'] ?? 'menu_principal'),
+            ],
+            'list_times' => [
+                'outbound_message' => [
+                    'type' => 'text',
+                    'body' => trim((string) ($action['empty_message'] ?? 'No encontré horarios disponibles para esa fecha. Puedes escribir ATRÁS para volver o MENU para intentar otra opción.')),
                 ],
                 'save_response_as' => null,
                 'next_state' => (string) ($action['empty_next_state'] ?? 'menu_principal'),
@@ -450,6 +511,48 @@ class FlowSigcenterAgendaService
             ]), $this->allowedIds($action, ['allowed_sede_ids', 'allowed_sedes'], self::DEFAULT_ALLOWED_SEDE_IDS));
 
             return $this->applyRowTitleAliases($rows, $this->titleAliases($action, ['sede_labels', 'sede_titles'], self::DEFAULT_SEDE_LABELS));
+        }
+
+        if ($operation === 'list_dates_by_specialty') {
+            return $this->genericRows($this->recordsFromData($data, ['fechas', 'dias', 'data', 'items', 'result']), [
+                'id' => ['fecha', 'FECHA', 'id', 'date'],
+                'title' => ['label', 'fecha', 'FECHA', 'date'],
+                'description' => ['description', 'resumen', 'disponibles', 'cupos'],
+            ]);
+        }
+
+        if ($operation === 'list_doctors_by_date') {
+            $doctors = is_array($data['medicos'] ?? null) ? $data['medicos'] : [];
+
+            return array_values(array_filter(array_map(static function (mixed $doctor): ?array {
+                if (!is_array($doctor)) {
+                    return null;
+                }
+
+                $title = trim((string) ($doctor['nombre'] ?? ''));
+                $id = trim((string) ($doctor['trabajador_id'] ?? $doctor['id'] ?? ''));
+                if ($title === '' || $id === '') {
+                    return null;
+                }
+
+                $parts = [];
+                $slots = (int) ($doctor['available_slots_count'] ?? 0);
+                if ($slots > 0) {
+                    $parts[] = $slots . ' horarios';
+                }
+
+                $first = trim((string) ($doctor['first_slot_start'] ?? ''));
+                $last = trim((string) ($doctor['last_slot_end'] ?? ''));
+                if ($first !== '' && $last !== '') {
+                    $parts[] = $first . ' a ' . $last;
+                }
+
+                return [
+                    'id' => $id,
+                    'title' => mb_substr($title, 0, 24, 'UTF-8'),
+                    'description' => mb_substr(implode(' · ', $parts), 0, 72, 'UTF-8'),
+                ];
+            }, $doctors)));
         }
 
         if ($operation === 'list_procedimientos') {
@@ -839,6 +942,8 @@ class FlowSigcenterAgendaService
             'list_doctors_by_name' => 'Selecciona el médico con el que deseas agendar.',
             'list_sedes' => 'Elige la sede para tu cita.',
             'list_sedes_by_doctor' => 'Elige la sede para tu cita.',
+            'list_dates_by_specialty' => 'Elige una fecha disponible para tu cita.',
+            'list_doctors_by_date' => 'Elige el médico disponible para esa fecha.',
             'list_procedimientos' => 'Elige el procedimiento para tu cita.',
             'list_days' => 'Elige el día disponible para tu cita.',
             'list_times' => 'Elige el horario disponible para tu cita.',
@@ -872,6 +977,8 @@ class FlowSigcenterAgendaService
             'list_doctors_by_name' => 'Médicos encontrados',
             'list_sedes' => 'Sedes',
             'list_sedes_by_doctor' => 'Sedes disponibles',
+            'list_dates_by_specialty' => 'Fechas disponibles',
+            'list_doctors_by_date' => 'Médicos disponibles',
             'list_procedimientos' => 'Procedimientos',
             'list_days' => 'Días disponibles',
             'list_times' => 'Horarios',
@@ -950,6 +1057,8 @@ class FlowSigcenterAgendaService
             'buscar_medicos', 'search_doctors', 'list_doctors_by_name' => 'list_doctors_by_name',
             'sedes', 'list_sedes' => 'list_sedes',
             'sedes_por_medico', 'doctor_sedes', 'list_sedes_by_doctor' => 'list_sedes_by_doctor',
+            'fechas_especialidad', 'dates_by_specialty', 'list_dates_by_specialty' => 'list_dates_by_specialty',
+            'medicos_por_fecha', 'doctors_by_date', 'list_doctors_by_date' => 'list_doctors_by_date',
             'procedimientos', 'list_procedimientos' => 'list_procedimientos',
             'dias', 'days', 'list_days' => 'list_days',
             'horarios', 'times', 'list_times' => 'list_times',
@@ -1016,6 +1125,27 @@ class FlowSigcenterAgendaService
         if ($operation === 'list_sedes_by_doctor') {
             return [
                 'trabajador_id' => $trabajadorId,
+            ];
+        }
+
+        if ($operation === 'list_dates_by_specialty') {
+            return [
+                'sede_id' => (string) $sedeId,
+                'subespecialidad' => (string) $this->value($action, $context, $input, 'subespecialidad', 'oftalmologo general'),
+            ];
+        }
+
+        if ($operation === 'list_doctors_by_date') {
+            return [
+                'sede_id' => (string) $sedeId,
+                'subespecialidad' => (string) $this->value($action, $context, $input, 'subespecialidad', 'oftalmologo general'),
+                'fecha' => (string) $this->selectedValue(
+                    $action,
+                    $context,
+                    $input,
+                    'fecha',
+                    $this->selectedValue($action, $context, $input, 'FECHA')
+                ),
             ];
         }
 
@@ -1092,6 +1222,8 @@ class FlowSigcenterAgendaService
             'list_doctors_by_name' => ['doctor_query'],
             'list_sedes' => ['subespecialidad'],
             'list_sedes_by_doctor' => ['trabajador_id'],
+            'list_dates_by_specialty' => ['subespecialidad', 'sede_id'],
+            'list_doctors_by_date' => ['subespecialidad', 'sede_id', 'fecha'],
             'list_procedimientos' => ['trabajador_id'],
             'list_days' => ['trabajador_id', 'ID_SEDE'],
             'list_times' => ['trabajador_id', 'ID_SEDE', 'FECHA'],
@@ -1113,6 +1245,8 @@ class FlowSigcenterAgendaService
             'list_doctors_by_name' => 'local://users/doctores-por-nombre',
             'list_sedes' => 'local://users/sedes-por-subespecialidad',
             'list_sedes_by_doctor' => 'local://users/sedes-por-doctor',
+            'list_dates_by_specialty' => 'local://availability/fechas-por-especialidad',
+            'list_doctors_by_date' => 'local://availability/doctores-por-fecha',
             'list_procedimientos' => 'https://sigcenter.ddns.net:18093/restful/api-agenda/procedimiento-doctor-crm',
             'list_days' => 'https://sigcenter.ddns.net:18093/restful/api-agenda/horarios-disponibles-dias-online',
             'list_times' => 'https://sigcenter.ddns.net:18093/restful/api-agenda/horarios-disponibles-especifico-online',
@@ -1124,7 +1258,7 @@ class FlowSigcenterAgendaService
 
     private function method(string $operation): string
     {
-        if (in_array($operation, ['list_specialties', 'list_doctors', 'list_sedes', 'list_doctors_by_name', 'list_sedes_by_doctor'], true)) {
+        if (in_array($operation, ['list_specialties', 'list_doctors', 'list_sedes', 'list_doctors_by_name', 'list_sedes_by_doctor', 'list_dates_by_specialty', 'list_doctors_by_date'], true)) {
             return 'LOCAL_DB';
         }
 
@@ -1139,6 +1273,8 @@ class FlowSigcenterAgendaService
             'list_doctors_by_name' => 'Buscar médicos por nombre',
             'list_sedes' => 'Consultar sedes disponibles',
             'list_sedes_by_doctor' => 'Consultar sedes disponibles del médico',
+            'list_dates_by_specialty' => 'Consultar fechas disponibles por sede y especialidad',
+            'list_doctors_by_date' => 'Consultar médicos disponibles por fecha',
             'list_procedimientos' => 'Consultar procedimientos del doctor',
             'list_days' => 'Consultar días disponibles',
             'list_times' => 'Consultar horarios de un día',
@@ -1164,6 +1300,8 @@ class FlowSigcenterAgendaService
             'list_doctors_by_name' => 'agenda_medicos_busqueda',
             'list_sedes' => 'sigcenter_sedes',
             'list_sedes_by_doctor' => 'sigcenter_sedes_doctor',
+            'list_dates_by_specialty' => 'agenda_fechas_general',
+            'list_doctors_by_date' => 'agenda_medicos_fecha',
             'list_procedimientos' => 'sigcenter_procedimientos',
             'list_days' => 'sigcenter_dias',
             'list_times' => 'sigcenter_horarios',
@@ -1315,6 +1453,39 @@ class FlowSigcenterAgendaService
                 'attempted_method' => 'LOCAL_DB',
                 'data' => [
                     'sedes' => $this->listSedesByDoctor((string) ($payload['trabajador_id'] ?? '')),
+                ],
+                'raw' => null,
+                'error' => null,
+            ];
+        }
+
+        if ($operation === 'list_dates_by_specialty') {
+            return [
+                'ok' => true,
+                'http_code' => 200,
+                'attempted_method' => 'LOCAL_DB',
+                'data' => [
+                    'fechas' => $this->listAvailableDatesBySedeAndSpecialty(
+                        (string) ($payload['sede_id'] ?? ''),
+                        (string) ($payload['subespecialidad'] ?? '')
+                    ),
+                ],
+                'raw' => null,
+                'error' => null,
+            ];
+        }
+
+        if ($operation === 'list_doctors_by_date') {
+            return [
+                'ok' => true,
+                'http_code' => 200,
+                'attempted_method' => 'LOCAL_DB',
+                'data' => [
+                    'medicos' => $this->listAvailableDoctorsByDate(
+                        (string) ($payload['sede_id'] ?? ''),
+                        (string) ($payload['subespecialidad'] ?? ''),
+                        (string) ($payload['fecha'] ?? '')
+                    ),
                 ],
                 'raw' => null,
                 'error' => null,
@@ -1482,10 +1653,7 @@ class FlowSigcenterAgendaService
                 ->where('active', true)
                 ->when(trim($sedeId) !== '', static fn ($query) => $query->where('sede_id', $sedeId))
                 ->get()
-                ->filter(fn (object $row): bool => $this->nameMatchesQuery((string) ($row->nombre ?? ''), $normalizedQuery))
-                ->unique(fn (object $row): string => (string) ($row->trabajador_id ?? ''))
-                ->sortBy('nombre')
-                ->map(static fn (object $row): array => [
+                ->map(fn (object $row): array => [
                     'id' => $row->id !== null ? (int) $row->id : 0,
                     'nombre' => (string) ($row->nombre ?? ''),
                     'email' => $row->email,
@@ -1494,7 +1662,20 @@ class FlowSigcenterAgendaService
                     'subespecialidad' => (string) ($row->subespecialidad ?? ''),
                     'trabajador_id' => $row->trabajador_id !== null ? (string) $row->trabajador_id : null,
                     'sede' => (string) ($row->sede ?? ''),
+                    '_score' => $this->scoreDoctorNameMatch((string) ($row->nombre ?? ''), $normalizedQuery),
                 ])
+                ->filter(static fn (array $row): bool => (int) ($row['_score'] ?? 0) > 0)
+                ->sortByDesc('_score')
+                ->unique(fn (array $row): string => (string) ($row['trabajador_id'] ?? ''))
+                ->sortBy([
+                    ['_score', 'desc'],
+                    ['nombre', 'asc'],
+                ])
+                ->map(static function (array $row): array {
+                    unset($row['_score']);
+
+                    return $row;
+                })
                 ->values()
                 ->all();
         }
@@ -1504,10 +1685,7 @@ class FlowSigcenterAgendaService
             ->whereNotNull('id_trabajador')
             ->get()
             ->filter(fn (object $row): bool => $this->doctorMatchesSede((string) ($row->sede ?? ''), $sedeId))
-            ->filter(fn (object $row): bool => $this->nameMatchesQuery((string) ($row->nombre ?? ''), $normalizedQuery))
-            ->unique(fn (object $row): string => (string) ($row->id_trabajador ?? ''))
-            ->sortBy('nombre')
-            ->map(static fn (object $row): array => [
+            ->map(fn (object $row): array => [
                 'id' => (int) $row->id,
                 'nombre' => (string) ($row->nombre ?? ''),
                 'email' => $row->email,
@@ -1516,7 +1694,20 @@ class FlowSigcenterAgendaService
                 'subespecialidad' => (string) ($row->subespecialidad ?? ''),
                 'trabajador_id' => $row->id_trabajador !== null ? (string) $row->id_trabajador : null,
                 'sede' => (string) ($row->sede ?? ''),
+                '_score' => $this->scoreDoctorNameMatch((string) ($row->nombre ?? ''), $normalizedQuery),
             ])
+            ->filter(static fn (array $row): bool => (int) ($row['_score'] ?? 0) > 0)
+            ->sortByDesc('_score')
+            ->unique(fn (array $row): string => (string) ($row['trabajador_id'] ?? ''))
+            ->sortBy([
+                ['_score', 'desc'],
+                ['nombre', 'asc'],
+            ])
+            ->map(static function (array $row): array {
+                unset($row['_score']);
+
+                return $row;
+            })
             ->values()
             ->all();
     }
@@ -1563,6 +1754,96 @@ class FlowSigcenterAgendaService
             ->all();
     }
 
+    /**
+     * @return array<int, array<string, string>>
+     */
+    private function listAvailableDatesBySedeAndSpecialty(string $sedeId, string $subespecialidad): array
+    {
+        if (!$this->doctorAvailabilityAvailable() || trim($sedeId) === '' || trim($subespecialidad) === '') {
+            return [];
+        }
+
+        return DB::table(self::DOCTOR_AVAILABILITY_TABLE)
+            ->select([
+                'fecha',
+                DB::raw('SUM(available_slots_count) as total_slots'),
+                DB::raw('MIN(first_slot_start) as first_slot_start'),
+                DB::raw('MAX(last_slot_end) as last_slot_end'),
+            ])
+            ->where('active', true)
+            ->where('sede_id', $sedeId)
+            ->where('subespecialidad', $subespecialidad)
+            ->groupBy('fecha')
+            ->orderBy('fecha')
+            ->get()
+            ->map(function (object $row): array {
+                $fecha = (string) ($row->fecha ?? '');
+                $slots = max(0, (int) ($row->total_slots ?? 0));
+                $first = trim((string) ($row->first_slot_start ?? ''));
+                $last = trim((string) ($row->last_slot_end ?? ''));
+                $descriptionParts = [];
+
+                if ($slots > 0) {
+                    $descriptionParts[] = $slots . ' horarios';
+                }
+                if ($first !== '' && $last !== '') {
+                    $descriptionParts[] = $first . ' a ' . $last;
+                }
+
+                return [
+                    'fecha' => $fecha,
+                    'label' => $fecha,
+                    'description' => implode(' · ', $descriptionParts),
+                ];
+            })
+            ->filter(static fn (array $row): bool => trim((string) ($row['fecha'] ?? '')) !== '')
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function listAvailableDoctorsByDate(string $sedeId, string $subespecialidad, string $fecha): array
+    {
+        if (!$this->doctorAvailabilityAvailable() || trim($sedeId) === '' || trim($subespecialidad) === '' || trim($fecha) === '') {
+            return [];
+        }
+
+        return DB::table(self::DOCTOR_AVAILABILITY_TABLE)
+            ->select([
+                'trabajador_id',
+                'doctor_nombre as nombre',
+                'especialidad',
+                'subespecialidad',
+                'sede_id',
+                'sede_nombre as sede',
+                'available_slots_count',
+                'first_slot_start',
+                'last_slot_end',
+            ])
+            ->where('active', true)
+            ->where('sede_id', $sedeId)
+            ->where('subespecialidad', $subespecialidad)
+            ->whereDate('fecha', $fecha)
+            ->orderBy('doctor_nombre')
+            ->get()
+            ->map(static fn (object $row): array => [
+                'trabajador_id' => (string) ($row->trabajador_id ?? ''),
+                'nombre' => (string) ($row->nombre ?? ''),
+                'especialidad' => (string) ($row->especialidad ?? ''),
+                'subespecialidad' => (string) ($row->subespecialidad ?? ''),
+                'sede_id' => (string) ($row->sede_id ?? ''),
+                'sede' => (string) ($row->sede ?? ''),
+                'available_slots_count' => (int) ($row->available_slots_count ?? 0),
+                'first_slot_start' => (string) ($row->first_slot_start ?? ''),
+                'last_slot_end' => (string) ($row->last_slot_end ?? ''),
+            ])
+            ->filter(static fn (array $row): bool => trim((string) ($row['trabajador_id'] ?? '')) !== '' && trim((string) ($row['nombre'] ?? '')) !== '')
+            ->values()
+            ->all();
+    }
+
     private function normalizeSearchTerm(string $value): string
     {
         $value = trim(mb_strtolower($value, 'UTF-8'));
@@ -1583,19 +1864,78 @@ class FlowSigcenterAgendaService
 
     private function nameMatchesQuery(string $name, string $normalizedQuery): bool
     {
+        return $this->scoreDoctorNameMatch($name, $normalizedQuery) > 0;
+    }
+
+    private function scoreDoctorNameMatch(string $name, string $normalizedQuery): int
+    {
         $normalizedName = $this->normalizeSearchTerm($name);
         if ($normalizedName === '' || $normalizedQuery === '') {
-            return false;
+            return 0;
         }
 
-        $tokens = array_values(array_filter(explode(' ', $normalizedQuery)));
-        foreach ($tokens as $token) {
-            if (!str_contains($normalizedName, $token)) {
-                return false;
+        $queryTokens = array_values(array_filter(explode(' ', $normalizedQuery)));
+        $nameTokens = array_values(array_filter(explode(' ', $normalizedName)));
+        if ($queryTokens === [] || $nameTokens === []) {
+            return 0;
+        }
+
+        $score = 0;
+
+        if ($normalizedName === $normalizedQuery) {
+            $score += 1000;
+        } elseif (str_contains($normalizedName, $normalizedQuery)) {
+            $score += 300;
+        }
+
+        foreach ($queryTokens as $queryToken) {
+            $tokenScore = 0;
+
+            foreach ($nameTokens as $nameToken) {
+                if ($nameToken === $queryToken) {
+                    $tokenScore = max($tokenScore, 200);
+                    continue;
+                }
+
+                if (str_starts_with($nameToken, $queryToken)) {
+                    $tokenScore = max($tokenScore, 150);
+                    continue;
+                }
+
+                if (str_contains($nameToken, $queryToken)) {
+                    $tokenScore = max($tokenScore, 110);
+                    continue;
+                }
+
+                $maxDistance = $this->allowedDoctorTokenDistance($queryToken, $nameToken);
+                if ($maxDistance > 0 && levenshtein($queryToken, $nameToken) <= $maxDistance) {
+                    $tokenScore = max($tokenScore, 70);
+                }
             }
+
+            if ($tokenScore === 0) {
+                return 0;
+            }
+
+            $score += $tokenScore;
         }
 
-        return true;
+        return $score;
+    }
+
+    private function allowedDoctorTokenDistance(string $queryToken, string $nameToken): int
+    {
+        $length = max(mb_strlen($queryToken, 'UTF-8'), mb_strlen($nameToken, 'UTF-8'));
+
+        if ($length >= 8) {
+            return 2;
+        }
+
+        if ($length >= 5) {
+            return 1;
+        }
+
+        return 0;
     }
 
     /**
@@ -1613,6 +1953,11 @@ class FlowSigcenterAgendaService
         }
 
         return array_values(array_unique($sedeIds));
+    }
+
+    private function doctorAvailabilityAvailable(): bool
+    {
+        return Schema::hasTable(self::DOCTOR_AVAILABILITY_TABLE);
     }
 
     /**

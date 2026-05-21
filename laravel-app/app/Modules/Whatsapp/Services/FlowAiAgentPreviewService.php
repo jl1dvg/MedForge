@@ -30,7 +30,7 @@ class FlowAiAgentPreviewService
         $fallbackMessage = trim((string) ($action['fallback_message'] ?? 'No encontré grounding suficiente en la Knowledge Base para responder con seguridad.'));
         $draftResponse = $this->buildResponse($text, $documents, $classification, $action);
         $evaluation = $this->evaluate($text, $documents, $draftResponse, $classification, $confidence, $tools, $contextBefore, $action);
-        $handoffReasons = $this->resolveHandoffReasons($text, $confidence, $tools, $evaluation, $action);
+        $handoffReasons = $this->resolveHandoffReasons($text, $confidence, $tools, $evaluation, $action, $documents);
         $fallbackUsed = $this->shouldUseFallback($confidence, $evaluation, $action);
         $response = $fallbackUsed ? $fallbackMessage : $draftResponse;
         $suggestedHandoff = $handoffReasons !== [];
@@ -42,6 +42,20 @@ class FlowAiAgentPreviewService
             'handoff' => (float) ($evaluation['handoff']['score'] ?? 0),
             'overall' => round(((float) $confidence + (float) ($evaluation['grounding']['score'] ?? 0) + (float) ($evaluation['safety']['score'] ?? 0)) / 3, 2),
         ];
+        $primaryDocument = $documents[0] ?? [];
+        $triageMetadata = is_array($primaryDocument['metadata'] ?? null) ? $primaryDocument['metadata'] : [];
+        $fallbackSpecialty = trim((string) ($action['fallback_specialty'] ?? ''));
+        $fallbackDestination = trim((string) ($action['fallback_destination'] ?? 'agenda'));
+        $suggestedSpecialty = trim((string) ($triageMetadata['especialidad'] ?? ''));
+        $triageDestination = trim((string) ($triageMetadata['destino'] ?? ''));
+        $triageUrgency = trim((string) ($triageMetadata['nivel_urgencia'] ?? ''));
+
+        if ($suggestedSpecialty === '' && $fallbackUsed && $fallbackSpecialty !== '') {
+            $suggestedSpecialty = $fallbackSpecialty;
+            $triageDestination = $triageDestination !== '' ? $triageDestination : $fallbackDestination;
+            $triageUrgency = $triageUrgency !== '' ? $triageUrgency : 'normal';
+        }
+
         $contextAfter = array_merge($contextBefore, [
             'ai_last_classification' => $classification,
             'ai_last_confidence' => $confidence,
@@ -53,7 +67,15 @@ class FlowAiAgentPreviewService
             'ai_last_scores' => $scorecard,
             'ai_last_evaluation' => $evaluation,
             'ai_tools' => $tools,
+            'triage_especialidad_sugerida' => $suggestedSpecialty,
+            'triage_destino' => $triageDestination,
+            'triage_nivel_urgencia' => $triageUrgency,
         ]);
+
+        if ($suggestedSpecialty !== '') {
+            $contextAfter['subespecialidad'] = $suggestedSpecialty;
+            $contextAfter['subespecialidad_nombre'] = $suggestedSpecialty;
+        }
 
         $run = WhatsappAiAgentRun::query()->create([
             'wa_number' => trim((string) ($input['wa_number'] ?? '')),
@@ -245,6 +267,13 @@ class FlowAiAgentPreviewService
         $content = trim($content);
         if ($content === '') {
             return '';
+        }
+
+        if (preg_match('/Mensaje breve sugerido al paciente:\s*(.+)$/uis', $content, $matches) === 1) {
+            $suggested = trim((string) ($matches[1] ?? ''));
+            if ($suggested !== '') {
+                return Str::limit($suggested, 700, '…');
+            }
         }
 
         $paragraphs = array_values(array_filter(array_map('trim', preg_split('/\n{2,}/', $content) ?: [])));
@@ -450,11 +479,22 @@ class FlowAiAgentPreviewService
         float $confidence,
         array $tools,
         array $evaluation,
-        array $action
+        array $action,
+        array $documents = []
     ): array {
         $reasons = is_array($evaluation['handoff']['reasons'] ?? null) ? $evaluation['handoff']['reasons'] : [];
+        $primaryDocument = $documents[0] ?? [];
+        $metadata = is_array($primaryDocument['metadata'] ?? null) ? $primaryDocument['metadata'] : [];
+        $destination = trim((string) ($metadata['destino'] ?? ''));
+        $urgency = trim((string) ($metadata['nivel_urgencia'] ?? ''));
+        $defaultRouteWithoutHandoff = filter_var($action['default_route_without_handoff'] ?? false, FILTER_VALIDATE_BOOL);
+        $fallbackSpecialty = trim((string) ($action['fallback_specialty'] ?? ''));
 
-        if ($confidence < (float) ($action['handoff_threshold'] ?? 0.45) && !in_array('low_confidence', $reasons, true)) {
+        if (
+            $confidence < (float) ($action['handoff_threshold'] ?? 0.45)
+            && !in_array('low_confidence', $reasons, true)
+            && !($defaultRouteWithoutHandoff && $fallbackSpecialty !== '' && $documents === [])
+        ) {
             $reasons[] = 'low_confidence';
         }
         if (!($tools['window_status']['can_send_freeform'] ?? true) && !in_array('window_closed', $reasons, true)) {
@@ -462,6 +502,16 @@ class FlowAiAgentPreviewService
         }
         if ($this->userExplicitlyRequestsHuman($text) && !in_array('user_requested_human', $reasons, true)) {
             $reasons[] = 'user_requested_human';
+        }
+        if ($destination !== '' && str_starts_with($destination, 'handoff') && !in_array('triage_urgent', $reasons, true)) {
+            $reasons[] = 'triage_urgent';
+        }
+        if (in_array($urgency, ['emergente', 'alta'], true) && ($action['handoff_on_high_urgency'] ?? true) && !in_array('triage_high_urgency', $reasons, true)) {
+            $reasons[] = 'triage_high_urgency';
+        }
+
+        if ($defaultRouteWithoutHandoff && $fallbackSpecialty !== '' && $documents === []) {
+            $reasons = array_values(array_filter($reasons, static fn (string $reason): bool => !in_array($reason, ['low_confidence', 'no_grounding'], true)));
         }
 
         return array_values(array_unique($reasons));

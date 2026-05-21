@@ -32,7 +32,7 @@ class KnowledgeBaseService
         /** @var array<int, WhatsappKnowledgeDocument> $documents */
         $documents = $query->get()->all();
 
-        foreach (['sede', 'especialidad', 'tipo_contenido', 'audiencia', 'vigencia'] as $field) {
+        foreach (['sede', 'especialidad', 'tipo_contenido', 'audiencia', 'vigencia', 'nivel_urgencia', 'destino'] as $field) {
             $expected = trim((string) ($filters[$field] ?? ''));
             if ($expected === '') {
                 continue;
@@ -56,10 +56,7 @@ class KnowledgeBaseService
                     $document->summary,
                     $document->content,
                     $document->source_label,
-                    $metadata['sede'] ?? null,
-                    $metadata['especialidad'] ?? null,
-                    $metadata['tipo_contenido'] ?? null,
-                    $metadata['audiencia'] ?? null,
+                    $this->metadataSearchText($metadata),
                 ])));
 
                 if ($tokens === []) {
@@ -114,13 +111,7 @@ class KnowledgeBaseService
         }
 
         $slug = $this->uniqueSlug($title);
-        $metadata = [
-            'sede' => trim((string) ($payload['sede'] ?? '')),
-            'especialidad' => trim((string) ($payload['especialidad'] ?? '')),
-            'tipo_contenido' => trim((string) ($payload['tipo_contenido'] ?? 'faq')),
-            'audiencia' => trim((string) ($payload['audiencia'] ?? 'paciente')),
-            'vigencia' => trim((string) ($payload['vigencia'] ?? 'vigente')),
-        ];
+        $metadata = $this->normalizeMetadata($payload);
 
         $document = WhatsappKnowledgeDocument::query()->create([
             'title' => $title,
@@ -158,13 +149,7 @@ class KnowledgeBaseService
         }
 
         $metadata = is_array($document->metadata) ? $document->metadata : [];
-        $metadata = [
-            'sede' => trim((string) ($payload['sede'] ?? ($metadata['sede'] ?? ''))),
-            'especialidad' => trim((string) ($payload['especialidad'] ?? ($metadata['especialidad'] ?? ''))),
-            'tipo_contenido' => trim((string) ($payload['tipo_contenido'] ?? ($metadata['tipo_contenido'] ?? 'faq'))),
-            'audiencia' => trim((string) ($payload['audiencia'] ?? ($metadata['audiencia'] ?? 'paciente'))),
-            'vigencia' => trim((string) ($payload['vigencia'] ?? ($metadata['vigencia'] ?? 'vigente'))),
-        ];
+        $metadata = $this->normalizeMetadata($payload, $metadata);
 
         $previousStatus = (string) $document->status;
         $status = trim((string) ($payload['status'] ?? $previousStatus)) ?: 'draft';
@@ -213,6 +198,60 @@ class KnowledgeBaseService
     }
 
     /**
+     * @param array<string, mixed> $payload
+     * @param array<string, mixed> $existing
+     * @return array<string, mixed>
+     */
+    private function normalizeMetadata(array $payload, array $existing = []): array
+    {
+        $core = [
+            'sede' => trim((string) ($payload['sede'] ?? ($existing['sede'] ?? ''))),
+            'especialidad' => trim((string) ($payload['especialidad'] ?? ($existing['especialidad'] ?? ''))),
+            'tipo_contenido' => trim((string) ($payload['tipo_contenido'] ?? ($existing['tipo_contenido'] ?? 'faq'))),
+            'audiencia' => trim((string) ($payload['audiencia'] ?? ($existing['audiencia'] ?? 'paciente'))),
+            'vigencia' => trim((string) ($payload['vigencia'] ?? ($existing['vigencia'] ?? 'vigente'))),
+        ];
+
+        $extraPayload = $payload['metadata'] ?? [];
+        $extraExisting = $existing;
+        foreach (array_keys($core) as $reservedKey) {
+            unset($extraExisting[$reservedKey]);
+        }
+
+        $extra = is_array($extraExisting) ? $extraExisting : [];
+        if (is_array($extraPayload)) {
+            foreach ($extraPayload as $key => $value) {
+                if (!is_string($key) || $key === '' || array_key_exists($key, $core)) {
+                    continue;
+                }
+
+                $extra[$key] = $this->normalizeMetadataValue($value);
+            }
+        }
+
+        return array_merge($core, $extra);
+    }
+
+    private function normalizeMetadataValue(mixed $value): mixed
+    {
+        if (is_string($value)) {
+            return trim($value);
+        }
+
+        if (is_array($value)) {
+            return array_values(array_filter(array_map(function (mixed $item): string {
+                if (is_scalar($item)) {
+                    return trim((string) $item);
+                }
+
+                return '';
+            }, $value), static fn (string $item): bool => $item !== ''));
+        }
+
+        return $value;
+    }
+
+    /**
      * @return array<int, string>
      */
     private function searchTokens(string $search): array
@@ -236,6 +275,31 @@ class KnowledgeBaseService
         $value = preg_replace('/[^a-z0-9]+/', ' ', $value) ?? '';
 
         return trim(preg_replace('/\s+/', ' ', $value) ?? '');
+    }
+
+    /**
+     * @param array<string, mixed> $metadata
+     */
+    private function metadataSearchText(array $metadata): string
+    {
+        $parts = [];
+
+        foreach ($metadata as $value) {
+            if (is_string($value) && trim($value) !== '') {
+                $parts[] = $value;
+                continue;
+            }
+
+            if (is_array($value)) {
+                foreach ($value as $item) {
+                    if (is_scalar($item) && trim((string) $item) !== '') {
+                        $parts[] = (string) $item;
+                    }
+                }
+            }
+        }
+
+        return implode(' ', $parts);
     }
 
     /**

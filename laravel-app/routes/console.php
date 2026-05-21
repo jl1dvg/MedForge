@@ -671,6 +671,254 @@ Artisan::command('whatsapp:sigcenter-doctor-catalog-sync
     return 0;
 })->purpose('Reconstruye el catálogo normalizado de médicos y sedes para el flujo de WhatsApp');
 
+Artisan::command('whatsapp:sigcenter-availability-sync
+    {--days=7 : Días hacia adelante a sincronizar, contando hoy}
+    {--specialty=oftalmologo general : Subespecialidad a sincronizar}
+    {--sede= : Filtra una sede específica (16 o 1)}
+    {--dry-run : Solo calcula filas sin escribir}', function (): int {
+    $availabilityTable = 'whatsapp_sigcenter_doctor_availability';
+    $catalogTable = 'whatsapp_sigcenter_doctor_catalog';
+
+    if (!Schema::hasTable($availabilityTable)) {
+        $this->error('La tabla whatsapp_sigcenter_doctor_availability no existe. Ejecuta migraciones primero.');
+        return 1;
+    }
+
+    if (!Schema::hasTable($catalogTable)) {
+        $this->error('La tabla whatsapp_sigcenter_doctor_catalog no existe. Sin catálogo local no se puede sincronizar disponibilidad.');
+        return 1;
+    }
+
+    $days = max(0, min(7, (int) $this->option('days')));
+    $specialty = trim(mb_strtolower((string) $this->option('specialty'), 'UTF-8'));
+    $sedeFilter = trim((string) $this->option('sede'));
+    $dryRun = (bool) $this->option('dry-run');
+    $today = now()->startOfDay();
+    $endDate = $today->copy()->addDays($days);
+    $syncAt = now();
+
+    $doctors = DB::table($catalogTable)
+        ->select(['trabajador_id', 'doctor_nombre', 'especialidad', 'subespecialidad', 'sede_id', 'sede_nombre'])
+        ->where('active', true)
+        ->whereRaw('LOWER(TRIM(subespecialidad)) = ?', [$specialty])
+        ->when($sedeFilter !== '', static fn ($query) => $query->where('sede_id', $sedeFilter))
+        ->orderBy('doctor_nombre')
+        ->orderBy('sede_id')
+        ->get();
+
+    $this->table(
+        ['Parámetro', 'Valor'],
+        [
+            ['specialty', $specialty],
+            ['date_from', $today->toDateString()],
+            ['date_to', $endDate->toDateString()],
+            ['doctor_rows', (string) $doctors->count()],
+            ['mode', $dryRun ? 'dry-run' : 'write'],
+        ]
+    );
+
+    if ($doctors->isEmpty()) {
+        $this->warn('No hay doctores en el catálogo local para ese filtro.');
+        return 0;
+    }
+
+    /** @var \App\Modules\Whatsapp\Services\FlowSigcenterAgendaService $agenda */
+    $agenda = app(\App\Modules\Whatsapp\Services\FlowSigcenterAgendaService::class);
+
+    $parseSlots = static function (array $slots): array {
+        $normalized = array_values(array_filter(array_map(static function (mixed $slot): ?string {
+            $value = trim((string) $slot);
+            return $value === '' ? null : $value;
+        }, $slots)));
+
+        if ($normalized === []) {
+            return [0, null, null, []];
+        }
+
+        $firstStart = null;
+        $lastEnd = null;
+
+        foreach ($normalized as $slot) {
+            [$start, $end] = array_pad(array_map('trim', explode('-', $slot, 2)), 2, null);
+            if ($start !== null && preg_match('/^\d{2}:\d{2}:\d{2}$/', $start) === 1 && $firstStart === null) {
+                $firstStart = $start;
+            }
+            if ($end !== null && preg_match('/^\d{2}:\d{2}:\d{2}$/', $end) === 1) {
+                $lastEnd = $end;
+            }
+        }
+
+        return [count($normalized), $firstStart, $lastEnd, $normalized];
+    };
+
+    $payload = [];
+    $stats = [
+        'doctors_scanned' => 0,
+        'dates_found' => 0,
+        'rows_prepared' => 0,
+        'times_with_data' => 0,
+        'times_empty' => 0,
+        'errors' => 0,
+    ];
+
+    foreach ($doctors as $doctor) {
+        $stats['doctors_scanned']++;
+
+        try {
+            $daysResult = $agenda->execute(
+                ['operation' => 'list_days', 'send_result' => false],
+                [
+                    'trabajador_id' => (string) $doctor->trabajador_id,
+                    'sede_id' => (string) $doctor->sede_id,
+                ],
+                [],
+                false
+            );
+        } catch (\Throwable $e) {
+            $stats['errors']++;
+            $this->warn(sprintf(
+                'Error consultando días para %s (%s / sede %s): %s',
+                (string) $doctor->doctor_nombre,
+                (string) $doctor->trabajador_id,
+                (string) $doctor->sede_id,
+                $e->getMessage()
+            ));
+            continue;
+        }
+
+        $dates = is_array($daysResult['data']['fechas'] ?? null) ? $daysResult['data']['fechas'] : [];
+        foreach ($dates as $date) {
+            $dateValue = trim((string) $date);
+            if ($dateValue === '') {
+                continue;
+            }
+
+            try {
+                $parsed = \Illuminate\Support\Carbon::parse($dateValue)->startOfDay();
+            } catch (\Throwable) {
+                continue;
+            }
+
+            if ($parsed->lt($today) || $parsed->gt($endDate)) {
+                continue;
+            }
+
+            $stats['dates_found']++;
+
+            try {
+                $timesResult = $agenda->execute(
+                    ['operation' => 'list_times', 'send_result' => false],
+                    [
+                        'trabajador_id' => (string) $doctor->trabajador_id,
+                        'sede_id' => (string) $doctor->sede_id,
+                        'fecha' => $parsed->toDateString(),
+                    ],
+                    [],
+                    false
+                );
+            } catch (\Throwable $e) {
+                $stats['errors']++;
+                $this->warn(sprintf(
+                    'Error consultando horarios para %s (%s / %s / %s): %s',
+                    (string) $doctor->doctor_nombre,
+                    (string) $doctor->trabajador_id,
+                    (string) $doctor->sede_id,
+                    $parsed->toDateString(),
+                    $e->getMessage()
+                ));
+                continue;
+            }
+
+            $slots = is_array($timesResult['data']['horarios'] ?? null) ? $timesResult['data']['horarios'] : [];
+            [$slotCount, $firstStart, $lastEnd, $normalizedSlots] = $parseSlots($slots);
+
+            if ($slotCount > 0) {
+                $stats['times_with_data']++;
+            } else {
+                $stats['times_empty']++;
+            }
+
+            $payload[] = [
+                'trabajador_id' => (string) $doctor->trabajador_id,
+                'doctor_nombre' => trim((string) $doctor->doctor_nombre),
+                'especialidad' => trim((string) ($doctor->especialidad ?? '')),
+                'subespecialidad' => trim((string) $doctor->subespecialidad),
+                'sede_id' => (string) $doctor->sede_id,
+                'sede_nombre' => trim((string) $doctor->sede_nombre),
+                'fecha' => $parsed->toDateString(),
+                'available_slots_count' => $slotCount,
+                'first_slot_start' => $firstStart,
+                'last_slot_end' => $lastEnd,
+                'raw_slots' => json_encode($normalizedSlots, JSON_UNESCAPED_UNICODE),
+                'active' => $slotCount > 0,
+                'last_synced_at' => $syncAt,
+                'created_at' => $syncAt,
+                'updated_at' => $syncAt,
+            ];
+            $stats['rows_prepared']++;
+        }
+    }
+
+    $this->newLine();
+    $this->table(
+        ['Métrica', 'Valor'],
+        [
+            ['doctors_scanned', (string) $stats['doctors_scanned']],
+            ['dates_found', (string) $stats['dates_found']],
+            ['rows_prepared', (string) $stats['rows_prepared']],
+            ['times_with_data', (string) $stats['times_with_data']],
+            ['times_empty', (string) $stats['times_empty']],
+            ['errors', (string) $stats['errors']],
+        ]
+    );
+
+    if ($dryRun) {
+        $previewRows = collect($payload)->take(10)->map(static fn (array $row): array => [
+            $row['doctor_nombre'],
+            $row['sede_nombre'],
+            $row['fecha'],
+            (string) $row['available_slots_count'],
+            (string) ($row['first_slot_start'] ?? '—'),
+            (string) ($row['last_slot_end'] ?? '—'),
+        ])->all();
+
+        if ($previewRows !== []) {
+            $this->newLine();
+            $this->table(
+                ['Doctor', 'Sede', 'Fecha', 'Bloques', 'Inicio', 'Fin'],
+                $previewRows
+            );
+        }
+
+        $this->info('Dry-run completado. No se escribieron cambios.');
+        return 0;
+    }
+
+    DB::transaction(function () use ($availabilityTable, $specialty, $sedeFilter, $today, $endDate, $payload, $syncAt): void {
+        DB::table($availabilityTable)
+            ->whereRaw('LOWER(TRIM(subespecialidad)) = ?', [$specialty])
+            ->when($sedeFilter !== '', static fn ($query) => $query->where('sede_id', $sedeFilter))
+            ->whereBetween('fecha', [$today->toDateString(), $endDate->toDateString()])
+            ->delete();
+
+        foreach (array_chunk($payload, 500) as $chunk) {
+            DB::table($availabilityTable)->insert($chunk);
+        }
+
+        DB::table($availabilityTable)
+            ->whereRaw('LOWER(TRIM(subespecialidad)) = ?', [$specialty])
+            ->where('fecha', '>=', $today->toDateString())
+            ->where('last_synced_at', '<', $syncAt)
+            ->update([
+                'active' => false,
+                'updated_at' => $syncAt,
+            ]);
+    });
+
+    $this->info('Disponibilidad sincronizada.');
+    return 0;
+})->purpose('Sincroniza disponibilidad local por médico, sede y fecha para flujos de agenda por fecha');
+
 Artisan::command('derivaciones:scrape
     {form_id : Form ID / pedido ID a consultar}
     {hc_number : HC number del paciente}
@@ -1897,6 +2145,77 @@ Artisan::command('solicitudes:crm-task-reminders
     return $errores > 0 ? 1 : 0;
 })->purpose('Procesa remind_at de crm_tasks del módulo solicitudes e inserta notas de seguimiento');
 
+Artisan::command('whatsapp:kb-import-triage
+    {file? : Ruta al JSON con documentos de triage}
+    {--draft : Importa como borrador en lugar de publicado}', function (): int {
+    $defaultPath = base_path('app/Modules/Whatsapp/Support/kb-triage-symptoms-seed.json');
+    $path = (string) ($this->argument('file') ?: $defaultPath);
+
+    if (!is_file($path)) {
+        $this->error("No existe el archivo: {$path}");
+        return 1;
+    }
+
+    $raw = file_get_contents($path);
+    if (!is_string($raw) || trim($raw) === '') {
+        $this->error('El archivo de triage está vacío.');
+        return 1;
+    }
+
+    $rows = json_decode($raw, true);
+    if (!is_array($rows)) {
+        $this->error('El archivo no contiene un JSON válido.');
+        return 1;
+    }
+
+    $service = app(\App\Modules\Whatsapp\Services\KnowledgeBaseService::class);
+    $draft = (bool) $this->option('draft');
+    $created = 0;
+    $updated = 0;
+
+    foreach ($rows as $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+
+        $title = trim((string) ($row['title'] ?? ''));
+        $slug = \Illuminate\Support\Str::slug($title);
+        if ($title === '') {
+            continue;
+        }
+
+        if ($draft) {
+            $row['status'] = 'draft';
+        }
+
+        $existing = \App\Models\WhatsappKnowledgeDocument::query()
+            ->where('slug', $slug)
+            ->orWhere('title', $title)
+            ->first();
+
+        if ($existing) {
+            $service->updateDocument((int) $existing->id, $row, null);
+            $updated++;
+            continue;
+        }
+
+        $service->createDocument($row, null);
+        $created++;
+    }
+
+    $this->table(
+        ['Resultado', 'Valor'],
+        [
+            ['Archivo', $path],
+            ['Creados', (string) $created],
+            ['Actualizados', (string) $updated],
+            ['Modo', $draft ? 'draft' : 'published'],
+        ]
+    );
+
+    return 0;
+})->purpose('Carga o actualiza una semilla base de Knowledge Base para triage de síntomas');
+
 Schedule::command('solicitudes:evaluar-sla')
     ->everyThirtyMinutes()
     ->withoutOverlapping()
@@ -1951,3 +2270,9 @@ Schedule::command('whatsapp:monitor-abandonment --limit=100')
     ->withoutOverlapping()
     ->when(static fn (): bool => (bool) config('whatsapp.migration.automation.enabled', false)
         && (bool) config('whatsapp.migration.abandonment_monitor.enabled', false));
+
+Schedule::command("whatsapp:sigcenter-availability-sync --days=7 --specialty='oftalmologo general'")
+    ->dailyAt('05:00')
+    ->withoutOverlapping()
+    ->runInBackground()
+    ->when(static fn (): bool => (bool) config('whatsapp.migration.automation.enabled', false));
