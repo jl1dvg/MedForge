@@ -177,7 +177,8 @@ class MailboxController extends BaseController
                             'INSERT INTO examen_crm_notas (examen_id, autor_id, nota) VALUES (:examen_id, :autor_id, :nota)'
                         );
                         $stmtNota->bindValue(':examen_id', $targetId, \PDO::PARAM_INT);
-                        $stmtNota->bindValue(':autor_id', $this->getCurrentUserId(), \PDO::PARAM_INT);
+                        $autorId = $this->getCurrentUserId();
+                        $stmtNota->bindValue(':autor_id', $autorId, $autorId !== null ? \PDO::PARAM_INT : \PDO::PARAM_NULL);
                         $stmtNota->bindValue(':nota', $notaTexto, \PDO::PARAM_STR);
                         $stmtNota->execute();
                     }
