@@ -2251,7 +2251,9 @@ class FlowRuntimeExecutionService
         }
 
         $type = (string)($message['type'] ?? 'text');
-        $body = $this->renderPlaceholders((string)($message['body'] ?? ''), $context);
+        $body = $this->normalizeRenderedMessageText(
+            $this->renderPlaceholders((string)($message['body'] ?? ''), $context)
+        );
         $transportResult = match ($type) {
             'buttons' => $this->transport->sendInteractiveButtons(
                 $config['phone_number_id'],
@@ -2260,8 +2262,8 @@ class FlowRuntimeExecutionService
                 $recipient,
                 $body,
                 is_array($message['buttons'] ?? null) ? $message['buttons'] : [],
-                isset($message['header']) ? $this->renderPlaceholders((string)$message['header'], $context) : null,
-                isset($message['footer']) ? $this->renderPlaceholders((string)$message['footer'], $context) : null,
+                isset($message['header']) ? $this->normalizeRenderedMessageText($this->renderPlaceholders((string)$message['header'], $context)) : null,
+                isset($message['footer']) ? $this->normalizeRenderedMessageText($this->renderPlaceholders((string)$message['footer'], $context)) : null,
             ),
             'list' => $this->transport->sendInteractiveList(
                 $config['phone_number_id'],
@@ -2271,7 +2273,7 @@ class FlowRuntimeExecutionService
                 $body,
                 is_array($message['sections'] ?? null) ? $message['sections'] : [],
                 (string)($message['button_text'] ?? $message['button'] ?? 'Seleccionar'),
-                isset($message['footer']) ? $this->renderPlaceholders((string)$message['footer'], $context) : null,
+                isset($message['footer']) ? $this->normalizeRenderedMessageText($this->renderPlaceholders((string)$message['footer'], $context)) : null,
             ),
             default => $this->transport->sendText(
                 $config['phone_number_id'],
@@ -2667,6 +2669,15 @@ class FlowRuntimeExecutionService
 
             return '';
         }, $text) ?? $text;
+    }
+
+    private function normalizeRenderedMessageText(string $text): string
+    {
+        return str_replace(
+            ["\\r\\n", "\\n", "\\r", "\\t"],
+            ["\r\n", "\n", "\r", "\t"],
+            $text
+        );
     }
 
     /**
