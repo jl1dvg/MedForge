@@ -8,7 +8,6 @@ use Modules\Examenes\Services\ExamenCrmService;
 use Modules\Mail\Services\MailboxService;
 use Modules\Mail\Services\NotificationMailer;
 use Modules\Mail\Services\MailProfileService;
-use Modules\Solicitudes\Services\SolicitudCrmService;
 use PDO;
 use RuntimeException;
 use Throwable;
@@ -16,7 +15,6 @@ use Throwable;
 class MailboxController extends BaseController
 {
     private MailboxService $mailbox;
-    private SolicitudCrmService $solicitudCrm;
     private ExamenCrmService $examenCrm;
     private ExamenMailLogService $examenMailLog;
     private NotificationMailer $mailer;
@@ -28,7 +26,6 @@ class MailboxController extends BaseController
     {
         parent::__construct($pdo);
         $this->mailbox = new MailboxService($pdo);
-        $this->solicitudCrm = new SolicitudCrmService($pdo);
         $this->examenCrm = new ExamenCrmService($pdo);
         $this->examenMailLog = new ExamenMailLogService($pdo);
         $this->mailer = new NotificationMailer($pdo);
@@ -147,9 +144,34 @@ class MailboxController extends BaseController
             $notificationResult = null;
             switch ($targetType) {
                 case 'solicitud':
-                    $this->solicitudCrm->registrarNota($targetId, $message, $this->getCurrentUserId());
+                    $notaTexto = trim(strip_tags((string) $message));
+                    if ($notaTexto !== '') {
+                        $stmtNota = $this->pdo->prepare(
+                            'INSERT INTO solicitud_crm_notas (solicitud_id, autor_id, nota, created_at) VALUES (?, ?, ?, NOW())'
+                        );
+                        $stmtNota->execute([$targetId, $this->getCurrentUserId(), $notaTexto]);
+                    }
                     $link = '/solicitudes/' . $targetId . '/crm';
-                    $emailContext = $this->solicitudCrm->obtenerContactoPaciente($targetId);
+                    $emailContext = null;
+                    $stmtCtx = $this->pdo->prepare(
+                        "SELECT CONCAT(TRIM(pd.fname), ' ', TRIM(pd.lname)) AS name,
+                                scd.contacto_email AS email,
+                                sp.hc_number,
+                                sp.procedimiento AS descripcion
+                         FROM solicitud_procedimiento sp
+                         LEFT JOIN patient_data pd ON pd.hc_number = sp.hc_number
+                         LEFT JOIN solicitud_crm_detalles scd ON scd.solicitud_id = sp.id
+                         WHERE sp.id = ?
+                         LIMIT 1"
+                    );
+                    $stmtCtx->execute([$targetId]);
+                    $ctxRow = $stmtCtx->fetch(\PDO::FETCH_ASSOC);
+                    if ($ctxRow !== false && $ctxRow !== null) {
+                        $emailContext = array_filter($ctxRow, static fn($v) => $v !== null && $v !== '');
+                        if ($emailContext === []) {
+                            $emailContext = null;
+                        }
+                    }
                     break;
                 case 'examen':
                     $this->examenCrm->registrarNota($targetId, $message, $this->getCurrentUserId());
