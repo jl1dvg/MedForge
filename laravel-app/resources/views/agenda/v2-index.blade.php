@@ -15,8 +15,8 @@
     $empresasAfiliacion = array_values(array_filter((array) ($agendaMeta['empresa_afiliacion_opciones'] ?? []), static fn ($value) => is_array($value)));
     $afiliaciones = array_values(array_filter((array) ($agendaMeta['afiliacion_opciones'] ?? []), static fn ($value) => is_array($value)));
 
-    $fechaInicio = (string) ($filters['fecha_inicio'] ?? '');
-    $fechaFin = (string) ($filters['fecha_fin'] ?? '');
+    $fechaInicio = (string) ($filters['fecha_inicio'] ?? now()->toDateString());
+    $fechaFin = (string) ($filters['fecha_fin'] ?? now()->toDateString());
     $tipoAtencionActual = (string) ($filters['tipo_atencion'] ?? '');
     $doctorActual = (string) ($filters['doctor'] ?? '');
     $estadoActual = (string) ($filters['estado'] ?? '');
