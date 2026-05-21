@@ -19,7 +19,6 @@ use Modules\IdentityVerification\Services\VerificationPolicyService;
 use Modules\KPI\Services\KpiCalculationService;
 use Modules\Mail\Services\NotificationMailer;
 use Modules\Notifications\Services\PusherConfigService;
-use Modules\Solicitudes\Services\SolicitudCrmService;
 use Modules\Solicitudes\Services\ExamenesReminderService;
 use Modules\WhatsApp\Services\HandoffService;
 use PDO;
@@ -1453,74 +1452,17 @@ class CronRunner
     /**
      * @return array{status?:string,message?:string,details?:array}
      */
+    /**
+     * @return array{status?:string,message?:string,details?:array}
+     */
     private function runSolicitudesCrmSyncTask(): array
     {
-        $this->ensureSolicitudModuleLoaded();
-
-        $terminalStatuses = [
-            'atendido', 'atendida', 'cancelado', 'cancelada', 'cerrado', 'cerrada',
-            'suspendido', 'suspendida', 'facturado', 'facturada', 'reprogramado', 'reprogramada',
-            'pagado', 'pagada', 'no procede'
-        ];
-
-        $placeholders = implode(', ', array_fill(0, count($terminalStatuses), '?'));
-        $sql = "SELECT sp.id, sp.hc_number, sp.form_id
-                FROM solicitud_procedimiento sp
-                LEFT JOIN solicitud_crm_detalles scd ON scd.solicitud_id = sp.id
-                WHERE sp.hc_number IS NOT NULL
-                  AND sp.hc_number <> ''
-                  AND (scd.crm_lead_id IS NULL OR scd.crm_lead_id = 0)
-                  AND (sp.estado IS NULL OR sp.estado = '' OR LOWER(sp.estado) NOT IN ($placeholders))
-                ORDER BY sp.created_at DESC
-                LIMIT 25";
-
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute($this->toLower($terminalStatuses));
-        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-
-        if (empty($rows)) {
-            return [
-                'status' => 'skipped',
-                'message' => 'No se encontraron solicitudes pendientes de sincronización CRM.',
-            ];
-        }
-
-        $service = new SolicitudCrmService($this->pdo);
-        $synced = 0;
-        $failed = 0;
-        $errors = [];
-
-        foreach ($rows as $row) {
-            $solicitudId = (int) ($row['id'] ?? 0);
-            $hcNumber = trim((string) ($row['hc_number'] ?? ''));
-
-            if ($solicitudId <= 0 || $hcNumber === '') {
-                $failed++;
-                continue;
-            }
-
-            try {
-                $service->bootstrapChecklist($solicitudId, ['hc_number' => $hcNumber], null, []);
-                $synced++;
-            } catch (Throwable $exception) {
-                $failed++;
-                if (count($errors) < 5) {
-                    $errors[] = [
-                        'solicitud_id' => $solicitudId,
-                        'message' => $exception->getMessage(),
-                    ];
-                }
-            }
-        }
-
+        // Retirado: esta tarea es ahora ejecutada por el comando Artisan
+        // `solicitudes:crm-sync` registrado en el scheduler de Laravel.
+        // Ver routes/console.php: Schedule::command('solicitudes:crm-sync ...')->hourly()
         return [
-            'message' => sprintf('Se sincronizaron %d solicitudes con CRM.', $synced),
-            'details' => [
-                'processed' => count($rows),
-                'synced' => $synced,
-                'failed' => $failed,
-                'errors' => $errors,
-            ],
+            'status'  => 'retired',
+            'message' => 'Tarea migrada a Artisan solicitudes:crm-sync (Laravel scheduler).',
         ];
     }
 
