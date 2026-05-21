@@ -1,0 +1,82 @@
+[
+  {
+    "id": "dln",
+    "label": "DLN",
+    "text": ""
+  },
+  {
+    "id": "sin",
+    "label": "Sin Patrón",
+    "text": "NO ESPECIFICADO"
+  },
+  {
+    "id": "isla",
+    "label": "Isla",
+    "text": "DE CONTRACCIÓN DEL CAMPO VISUAL PERIFÉRICO CON ISLA REMANENTE CENTRAL"
+  },
+  {
+    "id": "arcuato_sup",
+    "label": "Arcuato Sup",
+    "text": "ARCUATO SUPERIOR"
+  },
+  {
+    "id": "arcuato_inf",
+    "label": "Arcuato Inf",
+    "text": "ARCUATO INFERIOR"
+  },
+  {
+    "id": "arcuato_doble",
+    "label": "Arcuato Sup Inf",
+    "text": "ARCUATO SUPERIOR E INFERIOR"
+  },
+  {
+    "id": "escalon_sup",
+    "label": "Escalón Sup",
+    "text": "ESCALÓN NASAL SUPERIOR"
+  },
+  {
+    "id": "escalon_inf",
+    "label": "Escalón Inf",
+    "text": "ESCALÓN NASAL INFERIOR"
+  },
+  {
+    "id": "seidel_sup",
+    "label": "Seidel Sup",
+    "text": "SEIDEL SUPERIOR"
+  },
+  {
+    "id": "seidel_inf",
+    "label": "Seidel Inf",
+    "text": "SEIDEL INFERIOR"
+  },
+  {
+    "id": "paracentral_sup",
+    "label": "Paracentral Sup",
+    "text": "PARACENTRAL SUPERIOR"
+  },
+  {
+    "id": "paracentral_inf",
+    "label": "Paracentral Inf",
+    "text": "PARACENTRAL INFERIOR"
+  },
+  {
+    "id": "altitudinal_sup",
+    "label": "Altitudinal Sup",
+    "text": "ALTITUDINAL SUPERIOR"
+  },
+  {
+    "id": "altitudinal_inf",
+    "label": "Altitudinal Inf",
+    "text": "ALTITUDINAL INFERIOR"
+  },
+  {
+    "id": "central",
+    "label": "10 grados",
+    "text": "QUE INVOLUCRA LOS 10 GRADOS CENTRALES"
+  },
+  {
+    "id": "amaurosis",
+    "label": "Amaurosis",
+    "text": "PÉRDIDA TOTAL DE VISIÓN EN ÁREAS AFECTADAS Y UNA DISMINUCIÓN GENERALIZADA DE LA SENSIBILIDAD RETINIANA, SUGIRIENDO UNA AFECTACIÓN SEVERA DEL NERVIO ÓPTICO."
+  }
+]

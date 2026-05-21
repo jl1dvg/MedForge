@@ -780,7 +780,7 @@ class ExamenesParityController
             return response('Plantilla no encontrada', 404);
         }
 
-        $view = $this->workspaceRootPath('modules/examenes/views/informes/' . $plantilla . '.php');
+        $view = base_path('resources/examenes/views/informes/' . $plantilla . '.php');
         if (!is_file($view)) {
             return response('Plantilla no disponible', 404);
         }
@@ -806,7 +806,7 @@ class ExamenesParityController
             return [];
         }
 
-        $file = $this->workspaceRootPath('modules/examenes/resources/informes/' . $plantilla . '.json');
+        $file = base_path('resources/examenes/resources/informes/' . $plantilla . '.json');
         if (!is_file($file)) {
             return [];
         }

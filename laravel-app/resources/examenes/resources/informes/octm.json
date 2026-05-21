@@ -1,0 +1,57 @@
+[
+  {
+    "id": "dln",
+    "label": "DLN",
+    "text": "Arquitectura retiniana bien definida, fóvea con depresión central bien delineada, epitelio pigmentario continuo y uniforme, membrana limitante interna es hiporreflectiva y continua, células de Müller están bien alineadas sin signos de edema o tracción."
+  },
+  {
+    "id": "emq",
+    "label": "EMQ",
+    "text": "Se muestran áreas de hiporreflectividad intrarretiniana que sugieren quistes, exudados lipídicos dispersos, engrosamiento retiniano significativo en la región foveal y alteración en la capa del epitelio pigmentario de la retina, indicando edema macular quístico y depósitos lipídicos intrarretinianos."
+  },
+  {
+    "id": "dtr",
+    "label": "DTR",
+    "text": "El examen revela elevación de la retina, membranas fibrovasculares adheridas, aumento del grosor retiniano, distorsión de las capas retinianas y un espacio subretiniano hipoecogénico, sugerente de desprendimiento traccional de retina."
+  },
+  {
+    "id": "dme",
+    "label": "MNV",
+    "text": "se observa membrana neovascular subretinal con un área hiperreflectiva irregular y fluido subretinal, causando elevación de la retina y cambios estructurales en las capas retinianas adyacentes, indicando actividad neovascular y exudación subretinal significativa."
+  },
+  {
+    "id": "drusen",
+    "label": "Drusen",
+    "text": "muestra drusas cuticulares no exudativas como depósitos hiperreflectivos entre la membrana de Bruch y el epitelio pigmentario de la retina, sin elevación significativa de la retina ni acumulación de fluido subretinal, y con capas retinianas adyacentes bien estructuradas."
+  },
+  {
+    "id": "atrofia",
+    "label": "A-EPR",
+    "text": "áreas de hiporreflectividad, hiperreflectividad y adelgazamiento significativo en el epitelio pigmentario, disrupción de las capas retinianas y mayor visibilidad de la coroides debido a la atrofia del epitelio pigmentario."
+  },
+  {
+    "id": "mer",
+    "label": "MER",
+    "text": "muestra una membrana epirretinal que distorsiona la arquitectura de la retina, formando pseudoquistes intrarretinianos, sin desprendimiento significativo de la retina ni acumulación de fluido subretinal."
+  },
+  {
+    "id": "agujero_macular",
+    "label": "AM",
+    "text": "El examen muestra un agujero macular con discontinuidad completa en las capas retinianas centrales, creando una cavidad definida. Los bordes elevados en forma de cúpula se deben a la tracción vitreomacular, con cambios en las capas retinianas adyacentes, pero sin fluido subretinal ni edema significativo."
+  },
+  {
+    "id": "pseudohole",
+    "label": "Pseudohole",
+    "text": "AGUJERO PSEUDOMACULAR"
+  },
+  {
+    "id": "csc",
+    "label": "CSC",
+    "text": "revela coroidopatía serosa central con desprendimiento seroso de la retina neurosensorial y acumulación de fluido subretinal. No se detecta tracción vitreorretiniana ni neovascularización, y las capas retinianas adyacentes mantienen su estructura."
+  },
+  {
+    "id": "vmt",
+    "label": "VMT",
+    "text": "TRACCION VITREOMACULAR"
+  }
+]
