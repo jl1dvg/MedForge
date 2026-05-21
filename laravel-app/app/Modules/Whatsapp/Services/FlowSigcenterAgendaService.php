@@ -213,8 +213,14 @@ class FlowSigcenterAgendaService
             return $this->responsePayload($formFallback, 'POST_FORM', null);
         }
 
+        $getFallback = $this->request('GET', $endpoint, $payload);
+        if ($getFallback->successful()) {
+            return $this->responsePayload($getFallback, 'GET', null);
+        }
+
         return $this->responsePayload($response, 'POST', [
             'post_form' => $this->responsePayload($formFallback, 'POST_FORM', null),
+            'get' => $this->responsePayload($getFallback, 'GET', null),
         ]);
     }
 
@@ -1014,6 +1020,10 @@ class FlowSigcenterAgendaService
 
         if ($method === 'POST_FORM') {
             return $pending->asForm()->post($endpoint, $payload);
+        }
+
+        if ($method === 'GET') {
+            return $pending->get($endpoint, $payload);
         }
 
         return $pending->send($method, $endpoint, ['json' => $payload]);

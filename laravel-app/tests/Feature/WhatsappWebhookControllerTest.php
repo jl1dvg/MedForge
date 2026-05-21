@@ -1725,6 +1725,108 @@ class WhatsappWebhookControllerTest extends TestCase
         ]);
     }
 
+    public function test_it_falls_back_to_get_when_sigcenter_cancel_rejects_post(): void
+    {
+        config()->set('whatsapp.migration.automation.enabled', true);
+        config()->set('whatsapp.migration.automation.dry_run', true);
+
+        Http::fake([
+            'sigcenter.ddns.net:18093/*' => function (\Illuminate\Http\Client\Request $request) {
+                if ($request->method() === 'POST') {
+                    return Http::response([], 405);
+                }
+
+                if ($request->method() === 'GET') {
+                    return Http::response([
+                        'code' => '200',
+                        'msg' => 'CANCELACION CON EXITO',
+                        'cancelado' => 'Su cita ha sido cancelada',
+                    ], 200);
+                }
+
+                return Http::response([], 500);
+            },
+        ]);
+
+        $this->publishFlowmakerScenarios([]);
+
+        $conversationId = \DB::table('whatsapp_conversations')->insertGetId([
+            'wa_number' => '593999111782',
+            'display_name' => 'Paciente Cancelar Fallback',
+            'patient_hc_number' => '0955555555',
+            'patient_full_name' => 'Paciente Cancelar Fallback',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $fechaCancelacion = now()->addDays(3)->format('Y-m-d H:i:s');
+
+        \DB::table('whatsapp_sigcenter_bookings')->insert([
+            'conversation_id' => $conversationId,
+            'wa_number' => '593999111782',
+            'status' => 'created',
+            'patient_hc_number' => '0955555555',
+            'patient_full_name' => 'Paciente Cancelar Fallback',
+            'sigcenter_agenda_id' => 'AG-1000',
+            'sede_id' => '1',
+            'sede_nombre' => 'Villa Club',
+            'procedimiento_id' => '530',
+            'procedimiento_nombre' => 'Consulta nuevo',
+            'fecha_inicio' => $fechaCancelacion,
+            'booked_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->postJson('/whatsapp/webhook', [
+            'entry' => [[
+                'changes' => [[
+                    'value' => [
+                        'messages' => [[
+                            'from' => '593999111782',
+                            'id' => 'wamid.flowmaker.cancel-booking-fallback',
+                            'timestamp' => '1712745900',
+                            'type' => 'text',
+                            'text' => ['body' => 'Cancelar cita'],
+                        ]],
+                    ],
+                ]],
+            ]],
+        ])->assertOk();
+
+        $this->postJson('/whatsapp/webhook', [
+            'entry' => [[
+                'changes' => [[
+                    'value' => [
+                        'messages' => [[
+                            'from' => '593999111782',
+                            'id' => 'wamid.flowmaker.cancel-booking-fallback-confirm',
+                            'timestamp' => '1712745901',
+                            'type' => 'interactive',
+                            'interactive' => [
+                                'type' => 'button_reply',
+                                'button_reply' => [
+                                    'id' => 'confirmar_cancelacion',
+                                    'title' => 'Sí cancelar',
+                                ],
+                            ],
+                        ]],
+                    ],
+                ]],
+            ]],
+        ])->assertOk();
+
+        $this->assertDatabaseHas('whatsapp_messages', [
+            'direction' => 'outbound',
+            'body' => "Tu cita fue cancelada exitosamente:\nFecha: {$fechaCancelacion}\nSede: Villa Club\nProcedimiento: Consulta nuevo.\n\nSi necesitas agendar una nueva cita, escribe HOLA o MENU.",
+        ]);
+
+        Http::assertSent(function (\Illuminate\Http\Client\Request $request): bool {
+            return $request->url() === 'https://sigcenter.ddns.net:18093/restful/api-agenda/cancelar-cita'
+                && $request->method() === 'GET'
+                && ($request['agenda_id'] ?? null) === 'AG-1000';
+        });
+    }
+
     /**
      * @param array<int, array<string, mixed>> $scenarios
      */

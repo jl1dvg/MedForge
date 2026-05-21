@@ -897,11 +897,9 @@ class FlowRuntimeExecutionService
      */
     private function bookingCancellationFailedMessage(string $error): array
     {
-        $detail = trim($error) !== '' ? "\n\nDetalle técnico: {$error}" : '';
-
         return [
             'type' => 'text',
-            'body' => 'No pudimos cancelar tu cita automáticamente. Un agente revisará tu solicitud.' . $detail,
+            'body' => 'No pudimos cancelar tu cita automáticamente. Un agente revisará tu solicitud.',
         ];
     }
 
@@ -1769,11 +1767,11 @@ class FlowRuntimeExecutionService
 
         return [
             'type' => 'list',
-            'body' => '¿En qué puedo ayudarte hoy?',
-            'button_text' => 'Ver opciones',
+            'body' => "👁️ *¿En qué puedo ayudarte hoy?*",
+            'button_text' => '✨ Ver opciones',
             'sections' => [
                 [
-                    'title' => 'Menú principal',
+                    'title' => 'Opciones',
                     'rows' => $rows,
                 ],
             ],
@@ -1794,11 +1792,11 @@ class FlowRuntimeExecutionService
         ]);
 
         $catalog = [
-            ['id' => 'agendar', 'title' => 'Agendar cita', 'description' => 'Programa una nueva cita médica', 'enabled' => $this->settingFlag($options, 'whatsapp_menu_agendar_enabled', true)],
-            ['id' => 'consultar_cita', 'title' => 'Consultar cita', 'description' => 'Revisa tu cita vigente', 'enabled' => $this->settingFlag($options, 'whatsapp_menu_consultar_cita_enabled', true)],
-            ['id' => 'servicios_y_sedes', 'title' => 'Servicios y sedes', 'description' => 'Sedes, horarios y especialidades', 'enabled' => $this->settingFlag($options, 'whatsapp_menu_servicios_sedes_enabled', true)],
-            ['id' => 'promociones', 'title' => 'Promociones', 'description' => 'Consulta campañas vigentes', 'enabled' => $this->settingFlag($options, 'whatsapp_menu_promociones_enabled', true)],
-            ['id' => 'ayuda', 'title' => 'Ayuda', 'description' => 'Hablar con un asesor', 'enabled' => $this->settingFlag($options, 'whatsapp_menu_ayuda_enabled', true)],
+            ['id' => 'agendar', 'title' => '📅 Agendar cita', 'description' => 'Programa una nueva cita médica', 'enabled' => $this->settingFlag($options, 'whatsapp_menu_agendar_enabled', true)],
+            ['id' => 'consultar_cita', 'title' => '📄 Consultar cita', 'description' => 'Revisa tu cita vigente', 'enabled' => $this->settingFlag($options, 'whatsapp_menu_consultar_cita_enabled', true)],
+            ['id' => 'servicios_y_sedes', 'title' => '📍 Servicios y sedes', 'description' => 'Sedes, horarios y especialidades', 'enabled' => $this->settingFlag($options, 'whatsapp_menu_servicios_sedes_enabled', true)],
+            ['id' => 'promociones', 'title' => '🎁 Promociones', 'description' => 'Consulta campañas vigentes', 'enabled' => $this->settingFlag($options, 'whatsapp_menu_promociones_enabled', true)],
+            ['id' => 'ayuda', 'title' => '🆘 Ayuda', 'description' => 'Hablar con un asesor', 'enabled' => $this->settingFlag($options, 'whatsapp_menu_ayuda_enabled', true)],
         ];
 
         return array_values(array_map(
