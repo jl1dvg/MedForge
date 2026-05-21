@@ -19,7 +19,7 @@ use Modules\IdentityVerification\Services\VerificationPolicyService;
 use Modules\KPI\Services\KpiCalculationService;
 use Modules\Mail\Services\NotificationMailer;
 use Modules\Notifications\Services\PusherConfigService;
-use Modules\Examenes\Services\ExamenesReminderService;
+use Modules\CronManager\Services\ExamenesReminderService;
 use Modules\WhatsApp\Services\HandoffService;
 use PDO;
 use RuntimeException;
@@ -1780,7 +1780,7 @@ class CronRunner
     private function ensureSolicitudModuleLoaded(): void
     {
         // Legacy bootstrap removed — modules/solicitudes/ retired.
-        // ExamenesReminderService now lives in Modules\Examenes\Services.
+        // ExamenesReminderService lives in Modules\CronManager\Services.
         $this->solicitudesLoaded = true;
     }
 
