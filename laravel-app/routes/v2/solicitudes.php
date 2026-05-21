@@ -56,6 +56,7 @@ Route::post('/api/solicitudes/turnero_llamar.php', [SolicitudesWriteController::
 Route::get('/api/solicitudes/estado.php', [SolicitudesWriteController::class, 'apiEstadoGet']);
 Route::post('/api/solicitudes/estado.php', [SolicitudesWriteController::class, 'apiEstadoPost']);
 Route::get('/api/solicitudes/doctores.php', [SolicitudesReadController::class, 'doctores']);
+Route::post('/api/solicitudes/guardar.php', [SolicitudesWriteController::class, 'guardarSolicitud']);
 });
 
 // Clean aliases
@@ -88,5 +89,7 @@ Route::post('/api/solicitudes/{id}/crm/tareas/estado', [SolicitudesWriteControll
 Route::post('/api/solicitudes/{id}/crm/bloqueo', [SolicitudesWriteController::class, 'crmRegistrarBloqueo'])->whereNumber('id');
 Route::post('/api/solicitudes/{id}/crm/adjuntos', [SolicitudesWriteController::class, 'crmSubirAdjunto'])->whereNumber('id');
 Route::post('/api/solicitudes/{id}/conciliacion-cirugia/confirmar', [SolicitudesWriteController::class, 'confirmarConciliacionCirugia'])->whereNumber('id');
+Route::post('/api/solicitudes/guardar', [SolicitudesWriteController::class, 'guardarSolicitud']);
+Route::post('/solicitudes/guardar', [SolicitudesWriteController::class, 'guardarSolicitud']);
 });
 });

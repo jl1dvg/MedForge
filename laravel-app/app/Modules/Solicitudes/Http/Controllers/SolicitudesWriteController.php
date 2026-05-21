@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Solicitudes\Http\Controllers;
 
 use App\Modules\CRM\Services\CrmProposalService;
+use App\Modules\Solicitudes\Services\SolicitudesCreateService;
 use App\Modules\Solicitudes\Services\SolicitudesReadParityService;
 use App\Modules\Solicitudes\Services\SolicitudesCommunicationService;
 use App\Modules\Solicitudes\Services\SolicitudesWriteParityService;
@@ -714,6 +715,14 @@ class SolicitudesWriteController
         }
 
         return public_path();
+    }
+
+    public function guardarSolicitud(Request $request): JsonResponse
+    {
+        $data = $request->all();
+        $result = (new SolicitudesCreateService())->guardar($data);
+        $status = ($result['success'] ?? false) ? 200 : 422;
+        return new JsonResponse($result, $status);
     }
 
     private function actorId(): ?int

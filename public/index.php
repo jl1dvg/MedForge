@@ -6,7 +6,7 @@ if (strncmp($requestPath, $basePath, strlen($basePath)) === 0) {
     $requestPath = substr($requestPath, strlen($basePath)) ?: '/';
 }
 
-$laravelBridgeExact = ['/auth/login', '/auth/logout', '/whatsapp/webhook'];
+$laravelBridgeExact = ['/auth/login', '/auth/logout', '/whatsapp/webhook', '/solicitudes/guardar.php', '/api/solicitudes/guardar.php'];
 $laravelBridgePrefixes = ['/v2', '/usuarios', '/roles', '/feedback', '/protocolos'];
 
 if (in_array($requestPath, $laravelBridgeExact, true)) {
