@@ -74,7 +74,7 @@ th[aria-sort="descending"] .sort-icon {
 /* ─── Drawer ──────────────────────────────────────────────────────────────── */
 
 .usuarios-drawer {
-    width: clamp(260px, 28%, 380px);
+    width: clamp(420px, 40%, 500px);
     border-left: 1px solid #e2e8f0;
     background: #fff;
     display: flex;
