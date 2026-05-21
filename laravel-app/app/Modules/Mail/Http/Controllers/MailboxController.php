@@ -1,117 +1,122 @@
 <?php
 
-namespace Modules\Mail\Controllers;
+namespace App\Modules\Mail\Http\Controllers;
 
-use Core\BaseController;
-use Modules\Mail\Services\MailboxService;
-use Modules\Mail\Services\NotificationMailer;
-use Modules\Mail\Services\MailProfileService;
+use App\Modules\Mail\Services\MailboxService;
+use App\Modules\Mail\Services\MailProfileService;
+use App\Modules\Mail\Services\NotificationMailer;
+use App\Modules\Shared\Support\LegacyCurrentUser;
+use Illuminate\Contracts\View\View;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use PDO;
 use RuntimeException;
 use Throwable;
 
-class MailboxController extends BaseController
+class MailboxController
 {
-    private MailboxService $mailbox;
-    private NotificationMailer $mailer;
-    /** @var array<string, mixed> */
-    private array $mailboxConfig = [];
-    private ?array $bodyCache = null;
-
-    public function __construct(PDO $pdo)
+    private function pdo(): PDO
     {
-        parent::__construct($pdo);
-        $this->mailbox = new MailboxService($pdo);
-        $this->mailer = new NotificationMailer($pdo);
-        $this->mailboxConfig = $this->mailbox->getConfig();
+        return DB::connection()->getPdo();
     }
 
-    public function index(): void
+    private function mailboxService(): MailboxService
     {
-        $this->requireAuth();
+        return new MailboxService($this->pdo());
+    }
 
-        $defaultLimit = (int) ($this->mailboxConfig['limit'] ?? 50);
+    public function index(Request $request): View|RedirectResponse
+    {
+        if (!Auth::check()) {
+            return redirect('/auth/login?auth_required=1');
+        }
+
+        $mailbox = $this->mailboxService();
+        $config = $mailbox->getConfig();
+
+        $defaultLimit = (int) ($config['limit'] ?? 50);
         $filters = [
-            'limit' => isset($_GET['limit']) ? (int) $_GET['limit'] : $defaultLimit,
-            'query' => isset($_GET['q']) ? trim((string) $_GET['q']) : null,
-            'sources' => $_GET['source'] ?? null,
+            'limit' => (int) $request->query('limit', (string) $defaultLimit),
+            'query' => $request->query('q') !== null ? trim((string) $request->query('q')) : null,
+            'sources' => $request->query('source'),
         ];
 
-        $feed = $this->mailbox->getFeed($filters);
+        $feed = $mailbox->getFeed($filters);
 
-        $data = [
+        $flashMessage = $request->session()->pull('flash_mailbox');
+
+        return view('mail.index', [
             'pageTitle' => 'Mailbox',
             'mailbox' => [
                 'feed' => $feed,
-                'contacts' => $this->mailbox->getContacts($feed),
-                'stats' => $this->mailbox->getStats($feed),
-                'contexts' => $this->mailbox->buildContextOptions($feed),
+                'contacts' => $mailbox->getContacts($feed),
+                'stats' => $mailbox->getStats($feed),
+                'contexts' => $mailbox->buildContextOptions($feed),
                 'filters' => $filters,
-                'config' => $this->mailboxConfig,
+                'config' => $config,
             ],
-            'scripts' => ['js/pages/mailbox.js'],
-        ];
-
-        if (isset($_SESSION['flash_mailbox'])) {
-            $data['flashMessage'] = $_SESSION['flash_mailbox'];
-            unset($_SESSION['flash_mailbox']);
-        }
-
-        $this->render(__DIR__ . '/../views/index.php', $data);
+            'currentUser' => LegacyCurrentUser::resolve($request),
+            'flashMessage' => $flashMessage,
+        ]);
     }
 
-    public function feed(): void
+    public function feed(Request $request): JsonResponse
     {
-        if (!$this->isAuthenticated()) {
-            $this->json(['success' => false, 'error' => 'Sesión expirada'], 401);
-            return;
+        if (!Auth::check()) {
+            return response()->json(['success' => false, 'error' => 'Sesión expirada'], 401);
         }
 
-        if (!($this->mailboxConfig['enabled'] ?? true)) {
-            $this->json(['success' => false, 'error' => 'Mailbox desactivado en Configuración.'], 403);
-            return;
+        $mailbox = $this->mailboxService();
+        $config = $mailbox->getConfig();
+
+        if (!($config['enabled'] ?? true)) {
+            return response()->json(['success' => false, 'error' => 'Mailbox desactivado en Configuración.'], 403);
         }
 
-        $defaultLimit = (int) ($this->mailboxConfig['limit'] ?? 50);
+        $defaultLimit = (int) ($config['limit'] ?? 50);
         $filters = [
-            'limit' => isset($_GET['limit']) ? (int) $_GET['limit'] : $defaultLimit,
-            'query' => isset($_GET['q']) ? trim((string) $_GET['q']) : null,
-            'sources' => $_GET['source'] ?? null,
-            'contact' => isset($_GET['contact']) ? trim((string) $_GET['contact']) : null,
+            'limit' => (int) $request->query('limit', (string) $defaultLimit),
+            'query' => $request->query('q') !== null ? trim((string) $request->query('q')) : null,
+            'sources' => $request->query('source'),
+            'contact' => $request->query('contact') !== null ? trim((string) $request->query('contact')) : null,
         ];
 
-        $feed = $this->mailbox->getFeed($filters);
+        $feed = $mailbox->getFeed($filters);
 
-        $this->json([
+        return response()->json([
             'success' => true,
             'data' => [
                 'feed' => $feed,
-                'contacts' => $this->mailbox->getContacts($feed),
-                'stats' => $this->mailbox->getStats($feed),
-                'contexts' => $this->mailbox->buildContextOptions($feed),
-                'config' => $this->mailboxConfig,
+                'contacts' => $mailbox->getContacts($feed),
+                'stats' => $mailbox->getStats($feed),
+                'contexts' => $mailbox->buildContextOptions($feed),
+                'config' => $config,
             ],
         ]);
     }
 
-    public function compose(): void
+    public function compose(Request $request): JsonResponse|RedirectResponse
     {
-        if (!$this->isAuthenticated()) {
-            $this->json(['success' => false, 'error' => 'Sesión expirada'], 401);
-            return;
+        if (!Auth::check()) {
+            return response()->json(['success' => false, 'error' => 'Sesión expirada'], 401);
         }
 
-        if (!($this->mailboxConfig['enabled'] ?? true)) {
-            $this->respondComposeError('El Mailbox está desactivado desde Configuración.', 403);
-            return;
+        $mailbox = $this->mailboxService();
+        $config = $mailbox->getConfig();
+
+        if (!($config['enabled'] ?? true)) {
+            return $this->composeError($request, 'El Mailbox está desactivado desde Configuración.', 403);
         }
 
-        if (!($this->mailboxConfig['compose_enabled'] ?? true)) {
-            $this->respondComposeError('El formulario de notas se encuentra deshabilitado.', 403);
-            return;
+        if (!($config['compose_enabled'] ?? true)) {
+            return $this->composeError($request, 'El formulario de notas se encuentra deshabilitado.', 403);
         }
 
-        $payload = $this->getRequestBody();
+        $payload = $request->isJson() ? (array) $request->json()->all() : $request->all();
+
         $reference = isset($payload['target_reference']) ? trim((string) $payload['target_reference']) : '';
         if ($reference !== '' && str_contains($reference, ':')) {
             [$payload['target_type'], $payload['target_id']] = explode(':', $reference, 2);
@@ -122,14 +127,15 @@ class MailboxController extends BaseController
         $message = $this->resolveMessageBody($payload);
 
         if ($targetType === '' || $targetId <= 0) {
-            $this->respondComposeError('Selecciona un destino válido.', 422);
-            return;
+            return $this->composeError($request, 'Selecciona un destino válido.', 422);
         }
 
         if ($message === '') {
-            $this->respondComposeError('El cuerpo del mensaje no puede estar vacío.', 422);
-            return;
+            return $this->composeError($request, 'El cuerpo del mensaje no puede estar vacío.', 422);
         }
+
+        $pdo = $this->pdo();
+        $userId = $this->currentUserId();
 
         try {
             $link = null;
@@ -140,14 +146,14 @@ class MailboxController extends BaseController
                 case 'solicitud':
                     $notaTexto = trim(strip_tags((string) $message));
                     if ($notaTexto !== '') {
-                        $stmtNota = $this->pdo->prepare(
+                        $stmtNota = $pdo->prepare(
                             'INSERT INTO solicitud_crm_notas (solicitud_id, autor_id, nota, created_at) VALUES (?, ?, ?, NOW())'
                         );
-                        $stmtNota->execute([$targetId, $this->getCurrentUserId(), $notaTexto]);
+                        $stmtNota->execute([$targetId, $userId, $notaTexto]);
                     }
                     $link = '/solicitudes/' . $targetId . '/crm';
                     $emailContext = null;
-                    $stmtCtx = $this->pdo->prepare(
+                    $stmtCtx = $pdo->prepare(
                         "SELECT CONCAT(TRIM(pd.fname), ' ', TRIM(pd.lname)) AS name,
                                 scd.contacto_email AS email,
                                 sp.hc_number,
@@ -159,7 +165,7 @@ class MailboxController extends BaseController
                          LIMIT 1"
                     );
                     $stmtCtx->execute([$targetId]);
-                    $ctxRow = $stmtCtx->fetch(\PDO::FETCH_ASSOC);
+                    $ctxRow = $stmtCtx->fetch(PDO::FETCH_ASSOC);
                     if ($ctxRow !== false && $ctxRow !== null) {
                         $emailContext = array_filter($ctxRow, static fn($v) => $v !== null && $v !== '');
                         if ($emailContext === []) {
@@ -170,17 +176,16 @@ class MailboxController extends BaseController
                 case 'examen':
                     $notaTexto = trim(strip_tags($message));
                     if ($notaTexto !== '') {
-                        $stmtNota = $this->pdo->prepare(
+                        $stmtNota = $pdo->prepare(
                             'INSERT INTO examen_crm_notas (examen_id, autor_id, nota) VALUES (:examen_id, :autor_id, :nota)'
                         );
-                        $stmtNota->bindValue(':examen_id', $targetId, \PDO::PARAM_INT);
-                        $autorId = $this->getCurrentUserId();
-                        $stmtNota->bindValue(':autor_id', $autorId, $autorId !== null ? \PDO::PARAM_INT : \PDO::PARAM_NULL);
-                        $stmtNota->bindValue(':nota', $notaTexto, \PDO::PARAM_STR);
+                        $stmtNota->bindValue(':examen_id', $targetId, PDO::PARAM_INT);
+                        $stmtNota->bindValue(':autor_id', $userId, $userId !== null ? PDO::PARAM_INT : PDO::PARAM_NULL);
+                        $stmtNota->bindValue(':nota', $notaTexto, PDO::PARAM_STR);
                         $stmtNota->execute();
                     }
                     $link = '/examenes/' . $targetId . '/crm';
-                    $stmtCtxEx = $this->pdo->prepare(
+                    $stmtCtxEx = $pdo->prepare(
                         "SELECT
                             CONCAT(TRIM(pd.fname), ' ', TRIM(pd.mname), ' ', TRIM(pd.lname), ' ', TRIM(pd.lname2)) AS name,
                             detalles.contacto_email AS email,
@@ -194,7 +199,7 @@ class MailboxController extends BaseController
                          LIMIT 1"
                     );
                     $stmtCtxEx->execute([$targetId]);
-                    $rowEx = $stmtCtxEx->fetch(\PDO::FETCH_ASSOC);
+                    $rowEx = $stmtCtxEx->fetch(PDO::FETCH_ASSOC);
                     if ($rowEx !== false && $rowEx !== null) {
                         $emailContext = array_filter($rowEx, static fn($v) => $v !== null && $v !== '');
                         if ($emailContext === []) {
@@ -203,7 +208,7 @@ class MailboxController extends BaseController
                     }
                     break;
                 case 'ticket':
-                    $this->createTicketMessage($targetId, $message);
+                    $this->createTicketMessage($pdo, $targetId, $message, $userId);
                     $link = '/crm?ticket=' . $targetId;
                     break;
                 default:
@@ -211,52 +216,52 @@ class MailboxController extends BaseController
             }
 
             if ($emailContext !== null && $shouldNotify) {
-                $notificationResult = $this->notifyPatient($emailContext, $targetType, $targetId, $message);
+                $notificationResult = $this->notifyPatient($pdo, $emailContext, $targetType, $targetId, $message);
             }
 
             if ($targetType === 'examen' && is_array($notificationResult)) {
-                $this->registrarExamenMailEvent($targetId, $emailContext, $notificationResult);
+                $this->registrarExamenMailEvent($pdo, $targetId, $emailContext, $notificationResult, $userId);
             }
 
-            $this->respondComposeSuccess('Mensaje registrado correctamente.', $link);
+            return $this->composeSuccess($request, 'Mensaje registrado correctamente.', $link);
         } catch (Throwable $exception) {
-            $this->respondComposeError($exception->getMessage() ?: 'No se pudo registrar el mensaje.', 500);
+            return $this->composeError($request, $exception->getMessage() ?: 'No se pudo registrar el mensaje.', 500);
         }
     }
 
-    private function createTicketMessage(int $ticketId, string $message): void
+    private function createTicketMessage(PDO $pdo, int $ticketId, string $message, ?int $userId): void
     {
-        $stmt = $this->pdo->prepare(
+        $stmt = $pdo->prepare(
             'INSERT INTO crm_ticket_messages (ticket_id, author_id, message) VALUES (:ticket_id, :author_id, :message)'
         );
         $stmt->execute([
             ':ticket_id' => $ticketId,
-            ':author_id' => $this->getCurrentUserId(),
+            ':author_id' => $userId,
             ':message' => $message,
         ]);
     }
 
-    private function respondComposeSuccess(string $message, ?string $link = null): void
+    private function composeSuccess(Request $request, string $message, ?string $link = null): JsonResponse|RedirectResponse
     {
-        if ($this->wantsJson()) {
+        if ($this->wantsJson($request)) {
             $payload = ['success' => true, 'message' => $message];
             if ($link) {
                 $payload['redirect'] = $link;
             }
-            $this->json($payload);
-            return;
+
+            return response()->json($payload);
         }
 
-        $_SESSION['flash_mailbox'] = $message;
-        header('Location: /mailbox');
-        exit;
+        $request->session()->put('flash_mailbox', $message);
+
+        return redirect('/mailbox');
     }
 
     /**
      * @param array{name?:string,email?:string,hc_number?:string,form_id?:string,descripcion?:string}|null $context
      * @return array<string, mixed>
      */
-    private function notifyPatient(?array $context, string $targetType, int $targetId, string $body): array
+    private function notifyPatient(PDO $pdo, ?array $context, string $targetType, int $targetId, string $body): array
     {
         $email = trim((string) ($context['email'] ?? ''));
         if ($email === '') {
@@ -295,9 +300,10 @@ class MailboxController extends BaseController
         ];
 
         try {
-            $profileService = new MailProfileService($this->pdo);
+            $profileService = new MailProfileService($pdo);
             $profileSlug = $profileService->getProfileSlugForContext('crm');
-            $result = $this->mailer->sendPatientUpdate(
+            $mailer = new NotificationMailer($pdo, $profileSlug);
+            $result = $mailer->sendPatientUpdate(
                 $email,
                 $subject,
                 $bodyText,
@@ -327,7 +333,7 @@ class MailboxController extends BaseController
      * @param array{name?:string,email?:string,hc_number?:string,form_id?:string,descripcion?:string}|null $context
      * @param array<string, mixed> $notification
      */
-    private function registrarExamenMailEvent(int $examenId, ?array $context, array $notification): void
+    private function registrarExamenMailEvent(PDO $pdo, int $examenId, ?array $context, array $notification, ?int $userId): void
     {
         if (!($notification['attempted'] ?? false)) {
             return;
@@ -339,26 +345,25 @@ class MailboxController extends BaseController
         }
 
         try {
-            $sentByUserId = $this->getCurrentUserId();
-            $stmtLog = $this->pdo->prepare(
+            $stmtLog = $pdo->prepare(
                 "INSERT INTO examen_mail_log
                     (examen_id, form_id, hc_number, to_emails, subject, body_text, channel, sent_by_user_id, status, error_message, sent_at)
                  VALUES
                     (:examen_id, :form_id, :hc_number, :to_emails, :subject, :body_text, :channel, :sent_by_user_id, :status, :error_message, :sent_at)"
             );
-            $stmtLog->bindValue(':examen_id', $examenId, \PDO::PARAM_INT);
+            $stmtLog->bindValue(':examen_id', $examenId, PDO::PARAM_INT);
             $bindNullStr = static function (string $k, mixed $v) use ($stmtLog): void {
                 $stmtLog->bindValue($k, ($v !== null && $v !== '') ? (string) $v : null,
-                    ($v !== null && $v !== '') ? \PDO::PARAM_STR : \PDO::PARAM_NULL);
+                    ($v !== null && $v !== '') ? PDO::PARAM_STR : PDO::PARAM_NULL);
             };
             $bindNullStr(':form_id', $context['form_id'] ?? null);
             $bindNullStr(':hc_number', $context['hc_number'] ?? null);
-            $stmtLog->bindValue(':to_emails', $toEmail, \PDO::PARAM_STR);
-            $stmtLog->bindValue(':subject', $notification['subject'] ?? ('Actualización de Examen #' . $examenId), \PDO::PARAM_STR);
+            $stmtLog->bindValue(':to_emails', $toEmail, PDO::PARAM_STR);
+            $stmtLog->bindValue(':subject', $notification['subject'] ?? ('Actualización de Examen #' . $examenId), PDO::PARAM_STR);
             $bindNullStr(':body_text', $notification['body_text'] ?? null);
-            $stmtLog->bindValue(':channel', $notification['channel'] ?? 'email', \PDO::PARAM_STR);
-            $stmtLog->bindValue(':sent_by_user_id', $sentByUserId, $sentByUserId !== null ? \PDO::PARAM_INT : \PDO::PARAM_NULL);
-            $stmtLog->bindValue(':status', $notification['status'] ?? 'failed', \PDO::PARAM_STR);
+            $stmtLog->bindValue(':channel', $notification['channel'] ?? 'email', PDO::PARAM_STR);
+            $stmtLog->bindValue(':sent_by_user_id', $userId, $userId !== null ? PDO::PARAM_INT : PDO::PARAM_NULL);
+            $stmtLog->bindValue(':status', $notification['status'] ?? 'failed', PDO::PARAM_STR);
             $bindNullStr(':error_message', $notification['error'] ?? null);
             $bindNullStr(':sent_at', $notification['sent_at'] ?? null);
             $stmtLog->execute();
@@ -385,45 +390,20 @@ class MailboxController extends BaseController
         return $stripped !== null ? $stripped : $message;
     }
 
-    private function respondComposeError(string $message, int $status): void
+    private function composeError(Request $request, string $message, int $status): JsonResponse|RedirectResponse
     {
-        if ($this->wantsJson()) {
-            $this->json(['success' => false, 'error' => $message], $status);
-            return;
+        if ($this->wantsJson($request)) {
+            return response()->json(['success' => false, 'error' => $message], $status);
         }
 
-        $_SESSION['flash_mailbox'] = $message;
-        header('Location: /mailbox');
-        exit;
+        $request->session()->put('flash_mailbox', $message);
+
+        return redirect('/mailbox');
     }
 
     /**
-     * @return array<string, mixed>
+     * @param array<string, mixed> $payload
      */
-    private function getRequestBody(): array
-    {
-        if ($this->bodyCache !== null) {
-            return $this->bodyCache;
-        }
-
-        $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
-        if (stripos($contentType, 'application/json') !== false) {
-            $decoded = json_decode(file_get_contents('php://input'), true);
-            $this->bodyCache = is_array($decoded) ? $decoded : [];
-            return $this->bodyCache;
-        }
-
-        if (!empty($_POST)) {
-            $this->bodyCache = $_POST;
-            return $this->bodyCache;
-        }
-
-        $decoded = json_decode(file_get_contents('php://input'), true);
-        $this->bodyCache = is_array($decoded) ? $decoded : [];
-
-        return $this->bodyCache;
-    }
-
     private function resolveMessageBody(array $payload): string
     {
         foreach (['message', 'body', 'nota', 'content'] as $key) {
@@ -435,20 +415,29 @@ class MailboxController extends BaseController
         return '';
     }
 
-    private function wantsJson(): bool
+    private function wantsJson(Request $request): bool
     {
-        $accept = $_SERVER['HTTP_ACCEPT'] ?? '';
-        $requestedWith = $_SERVER['HTTP_X_REQUESTED_WITH'] ?? '';
+        if ($request->expectsJson()) {
+            return true;
+        }
 
+        $accept = (string) $request->header('Accept', '');
         if (stripos($accept, 'application/json') !== false) {
             return true;
         }
 
-        return strtolower($requestedWith) === 'xmlhttprequest';
+        return strtolower((string) $request->header('X-Requested-With', '')) === 'xmlhttprequest';
     }
 
-    private function getCurrentUserId(): ?int
+    private function currentUserId(): ?int
     {
-        return isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
+        $authId = Auth::id();
+        if (is_numeric($authId)) {
+            return (int) $authId;
+        }
+
+        $sessionId = session('user_id');
+
+        return is_numeric($sessionId) ? (int) $sessionId : null;
     }
 }

@@ -1,9 +1,10 @@
 <?php
 
-namespace Modules\Mail\Services;
+namespace App\Modules\Mail\Services;
 
+use App\Modules\Shared\Support\SettingsOptionResolver;
 use DateTimeImmutable;
-use Models\SettingsModel;
+use Illuminate\Support\Facades\DB;
 use PDO;
 use Throwable;
 
@@ -12,20 +13,22 @@ class MailboxService
     private const DEFAULT_SOURCES = ['solicitudes', 'examenes', 'cobertura', 'whatsapp', 'tickets'];
     private const PHONE_REPLACEMENTS = ['+', '-', ' ', '(', ')', '.', '_'];
 
-    private PDO $pdo;
-    private ?SettingsModel $settingsModel = null;
+    private ?PDO $pdo;
+    private ?SettingsOptionResolver $settingsResolver = null;
+
     /** @var array<string, mixed> */
     private array $config = [];
+
     /** @var array<string, array{name: string, hc_number?: string}|false> */
     private array $phoneCache = [];
 
-    public function __construct(PDO $pdo)
+    public function __construct(?PDO $pdo = null)
     {
         $this->pdo = $pdo;
         try {
-            $this->settingsModel = new SettingsModel($pdo);
+            $this->settingsResolver = new SettingsOptionResolver();
         } catch (Throwable $exception) {
-            $this->settingsModel = null;
+            $this->settingsResolver = null;
         }
         $this->config = $this->buildConfig();
     }
@@ -293,6 +296,27 @@ class MailboxService
     }
 
     /**
+     * @param string $sql
+     * @param array<string, mixed> $bindings
+     * @return array<int, array<string, mixed>>
+     */
+    private function selectRows(string $sql, array $bindings): array
+    {
+        try {
+            $rows = DB::select($sql, $bindings);
+        } catch (Throwable $exception) {
+            return [];
+        }
+
+        $result = [];
+        foreach ($rows as $row) {
+            $result[] = (array) $row;
+        }
+
+        return $result;
+    }
+
+    /**
      * @return array<int, array<string, mixed>>
      */
     private function fetchSolicitudNotes(int $limit): array
@@ -321,17 +345,10 @@ INNER JOIN solicitud_procedimiento sp ON sp.id = n.solicitud_id
 LEFT JOIN patient_data pd ON pd.hc_number = sp.hc_number
 LEFT JOIN users u ON u.id = n.autor_id
 ORDER BY n.created_at DESC
-LIMIT :limit
+LIMIT {$limit}
 SQL;
 
-        try {
-            $stmt = $this->pdo->prepare($sql);
-            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-            $stmt->execute();
-            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-        } catch (Throwable $exception) {
-            return [];
-        }
+        $rows = $this->selectRows($sql, []);
 
         return array_map(fn(array $row): array => $this->mapSolicitudRow($row), $rows);
     }
@@ -365,17 +382,10 @@ INNER JOIN consulta_examenes e ON e.id = n.examen_id
 LEFT JOIN patient_data pd ON pd.hc_number = e.hc_number
 LEFT JOIN users u ON u.id = n.autor_id
 ORDER BY n.created_at DESC
-LIMIT :limit
+LIMIT {$limit}
 SQL;
 
-        try {
-            $stmt = $this->pdo->prepare($sql);
-            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-            $stmt->execute();
-            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-        } catch (Throwable $exception) {
-            return [];
-        }
+        $rows = $this->selectRows($sql, []);
 
         return array_map(fn(array $row): array => $this->mapExamenRow($row), $rows);
     }
@@ -419,17 +429,10 @@ LEFT JOIN patient_data pd ON pd.hc_number = e.hc_number
 LEFT JOIN users asignado ON asignado.id = t.assigned_to
 LEFT JOIN users creador ON creador.id = t.created_by
 ORDER BY COALESCE(t.updated_at, t.created_at) DESC, t.id DESC
-LIMIT :limit
+LIMIT {$limit}
 SQL;
 
-        try {
-            $stmt = $this->pdo->prepare($sql);
-            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-            $stmt->execute();
-            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-        } catch (Throwable $exception) {
-            return [];
-        }
+        $rows = $this->selectRows($sql, []);
 
         return array_map(fn(array $row): array => $this->mapExamenTaskRow($row), $rows);
     }
@@ -466,17 +469,10 @@ INNER JOIN consulta_examenes e ON e.id = l.examen_id
 LEFT JOIN patient_data pd ON pd.hc_number = e.hc_number
 LEFT JOIN users u ON u.id = l.changed_by
 ORDER BY l.changed_at DESC, l.id DESC
-LIMIT :limit
+LIMIT {$limit}
 SQL;
 
-        try {
-            $stmt = $this->pdo->prepare($sql);
-            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-            $stmt->execute();
-            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-        } catch (Throwable $exception) {
-            return [];
-        }
+        $rows = $this->selectRows($sql, []);
 
         return array_map(fn(array $row): array => $this->mapExamenStatusRow($row), $rows);
     }
@@ -514,17 +510,10 @@ INNER JOIN consulta_examenes e ON e.id = b.examen_id
 LEFT JOIN patient_data pd ON pd.hc_number = e.hc_number
 LEFT JOIN users u ON u.id = b.created_by
 ORDER BY b.created_at DESC, b.id DESC
-LIMIT :limit
+LIMIT {$limit}
 SQL;
 
-        try {
-            $stmt = $this->pdo->prepare($sql);
-            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-            $stmt->execute();
-            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-        } catch (Throwable $exception) {
-            return [];
-        }
+        $rows = $this->selectRows($sql, []);
 
         return array_map(fn(array $row): array => $this->mapExamenBlockRow($row), $rows);
     }
@@ -567,17 +556,10 @@ INNER JOIN consulta_examenes e ON e.id = eml.examen_id
 LEFT JOIN patient_data pd ON pd.hc_number = COALESCE(eml.hc_number, e.hc_number)
 LEFT JOIN users u ON u.id = eml.sent_by_user_id
 ORDER BY COALESCE(eml.sent_at, eml.created_at) DESC, eml.id DESC
-LIMIT :limit
+LIMIT {$limit}
 SQL;
 
-        try {
-            $stmt = $this->pdo->prepare($sql);
-            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-            $stmt->execute();
-            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-        } catch (Throwable $exception) {
-            return [];
-        }
+        $rows = $this->selectRows($sql, []);
 
         return array_map(fn(array $row): array => $this->mapExamenMailRow($row), $rows);
     }
@@ -618,17 +600,10 @@ LEFT JOIN solicitud_procedimiento sp ON sp.id = sml.solicitud_id
 LEFT JOIN patient_data pd ON pd.hc_number = COALESCE(sp.hc_number, sml.hc_number)
 LEFT JOIN users u ON u.id = sml.sent_by_user_id
 ORDER BY COALESCE(sml.sent_at, sml.created_at) DESC, sml.id DESC
-LIMIT :limit
+LIMIT {$limit}
 SQL;
 
-        try {
-            $stmt = $this->pdo->prepare($sql);
-            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-            $stmt->execute();
-            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-        } catch (Throwable $exception) {
-            return [];
-        }
+        $rows = $this->selectRows($sql, []);
 
         return array_map(fn(array $row): array => $this->mapCoberturaRow($row), $rows);
     }
@@ -656,17 +631,10 @@ LEFT JOIN users u ON u.id = m.author_id
 LEFT JOIN users reporter ON reporter.id = t.reporter_id
 LEFT JOIN users assigned ON assigned.id = t.assigned_to
 ORDER BY m.created_at DESC
-LIMIT :limit
+LIMIT {$limit}
 SQL;
 
-        try {
-            $stmt = $this->pdo->prepare($sql);
-            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-            $stmt->execute();
-            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-        } catch (Throwable $exception) {
-            return [];
-        }
+        $rows = $this->selectRows($sql, []);
 
         return array_map(fn(array $row): array => $this->mapTicketRow($row), $rows);
     }
@@ -688,17 +656,10 @@ SELECT
     created_at
 FROM whatsapp_inbox_messages
 ORDER BY id DESC
-LIMIT :limit
+LIMIT {$limit}
 SQL;
 
-        try {
-            $stmt = $this->pdo->prepare($sql);
-            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-            $stmt->execute();
-            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-        } catch (Throwable $exception) {
-            return [];
-        }
+        $rows = $this->selectRows($sql, []);
 
         return array_map(fn(array $row): array => $this->mapWhatsappRow($row), $rows);
     }
@@ -1486,15 +1447,14 @@ SELECT
     ) AS nombre
 FROM patient_data
 WHERE celular IS NOT NULL
-  AND REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(celular, '+', ''), '-', ''), ' ', ''), '(', ''), ')', ''), '.', '') = :phone
+  AND REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(celular, '+', ''), '-', ''), ' ', ''), '(', ''), ')', ''), '.', '') = ?
 LIMIT 1
 SQL;
 
         try {
-            $stmt = $this->pdo->prepare($sql);
-            $stmt->bindValue(':phone', $normalized, PDO::PARAM_STR);
-            $stmt->execute();
-            $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+            $rows = DB::select($sql, [$normalized]);
+            $row = $rows[0] ?? null;
+            $row = $row !== null ? (array) $row : null;
         } catch (Throwable $exception) {
             $row = null;
         }
@@ -1542,12 +1502,12 @@ SQL;
             ],
         ];
 
-        if (!$this->settingsModel instanceof SettingsModel) {
+        if (!$this->settingsResolver instanceof SettingsOptionResolver) {
             return $config;
         }
 
         try {
-            $options = $this->settingsModel->getOptions([
+            $options = $this->settingsResolver->getOptions([
                 'mailbox_enabled',
                 'mailbox_compose_enabled',
                 'mailbox_source_solicitudes',
