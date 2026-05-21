@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Modules\Solicitudes\Services;
 
 use Illuminate\Support\Facades\DB;
@@ -32,9 +34,10 @@ class SolicitudesCreateService
         }
 
         $ids = [];
+        $now = now()->toDateTimeString();
 
         try {
-            DB::transaction(function () use ($hcNumber, $formId, $solicitudes, &$ids): void {
+            DB::transaction(function () use ($hcNumber, $formId, $solicitudes, $now, &$ids): void {
                 foreach ($solicitudes as $sol) {
                     $procedimiento = $this->clean($sol['procedimiento'] ?? null);
                     $doctor        = $this->clean($sol['doctor'] ?? null);
@@ -63,18 +66,16 @@ class SolicitudesCreateService
                         'fecha'                => $fecha,
                         'code_id'              => $codeId,
                         'estado'               => 'recibida',
-                        'created_at'           => now()->toDateTimeString(),
-                        'updated_at'           => now()->toDateTimeString(),
+                        'created_at'           => $now,
+                        'updated_at'           => $now,
                     ]);
 
-                    if ($id > 0) {
-                        $ids[] = $id;
-                    }
+                    $ids[] = $id;
                 }
             });
         } catch (\Throwable $e) {
             Log::error('SolicitudesCreateService::guardar error', ['message' => $e->getMessage()]);
-            return ['success' => false, 'message' => 'Error al guardar la solicitud: ' . $e->getMessage()];
+            return ['success' => false, 'message' => 'Error interno al guardar la solicitud. Por favor intente nuevamente.'];
         }
 
         return [
@@ -114,7 +115,7 @@ class SolicitudesCreateService
         foreach (['d/m/Y H:i', 'd-m-Y H:i', 'd/m/Y', 'd-m-Y', 'm/d/Y H:i', 'm-d-Y H:i'] as $fmt) {
             $dt = \DateTime::createFromFormat($fmt, $v);
             if ($dt instanceof \DateTime) {
-                return $dt->format(strlen($fmt) >= 10 ? 'Y-m-d H:i:s' : 'Y-m-d');
+                return $dt->format(str_contains($fmt, ' ') ? 'Y-m-d H:i:s' : 'Y-m-d');
             }
         }
         return null;
