@@ -33,6 +33,10 @@ Route::prefix('v2')->group(function (): void {
     });
 });
 
+Route::middleware('web')->group(function (): void {
+    require __DIR__ . '/v2/mail.php';
+});
+
 Route::middleware([
     'whatsapp.feature:webhook,/whatsapp/webhook',
 ])->group(function (): void {

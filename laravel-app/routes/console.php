@@ -7,6 +7,7 @@ use App\Modules\Agenda\Services\IndexAdmisionesSyncService;
 use App\Modules\Billing\Services\BillingInformeDataService;
 use App\Modules\Billing\Services\BillingInformePacienteService;
 use App\Modules\Billing\Services\FacturacionRealSyncService;
+use App\Modules\Derivaciones\Services\DerivacionesBatchSyncService;
 use App\Modules\Examenes\Services\ImagenesNasIndexService;
 use App\Modules\Examenes\Services\ImagenesSigcenterIndexService;
 use App\Modules\Examenes\Services\NasImagenesService;
@@ -968,23 +969,10 @@ Artisan::command('derivaciones:scrape-missing
     {--limit=200 : Máximo de formularios por corrida}
     {--max-attempts=3 : Máximo de intentos por form_id}
     {--cooldown-hours=6 : Horas mínimas entre reintentos}', function (): int {
-    $syncServiceClass = 'Modules\\Derivaciones\\Services\\DerivacionesSyncService';
-    if (!defined('BASE_PATH')) {
-        define('BASE_PATH', dirname(base_path()));
-    }
-    if (!class_exists($syncServiceClass)) {
-        $syncServicePath = dirname(base_path()) . '/modules/Derivaciones/Services/DerivacionesSyncService.php';
-        if (!is_file($syncServicePath)) {
-            $this->components->error('No se encontró DerivacionesSyncService.');
-            return 1;
-        }
-
-        require_once $syncServicePath;
-    }
-
-    $pdo = DB::connection()->getPdo();
-    /** @var object{scrapeMissingDerivationsBatch:callable} $service */
-    $service = new $syncServiceClass($pdo);
+    $service = new DerivacionesBatchSyncService(
+        DB::connection()->getPdo(),
+        dirname(base_path())
+    );
 
     try {
         $result = $service->scrapeMissingDerivationsBatch(

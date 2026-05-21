@@ -21,4 +21,6 @@ Route::middleware([
     Route::get('/reports/cobertura/pdf', [ReportingReadController::class, 'coberturaPdf']);
     Route::get('/reports/consulta/pdf', [ReportingReadController::class, 'consultaPdf']);
     Route::match(['GET', 'POST'], '/reports/cirugias/descanso/pdf', [ReportingReadController::class, 'postSurgeryRestPdf']);
+    Route::get('/reports', [ReportingReadController::class, 'index']);
+    Route::get('/reports/{slug}', [ReportingReadController::class, 'show'])->where('slug', '.+');
 });

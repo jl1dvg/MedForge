@@ -341,6 +341,15 @@ class NotificationMailer
         }
     }
 
+    private function columnExists(string $table, string $column): bool
+    {
+        try {
+            return DB::getSchemaBuilder()->hasColumn($table, $column);
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
 
     /**
      * @return array<string, mixed>|null

@@ -33,6 +33,75 @@ class ReportingReadController
         $this->postSurgeryRestService = new PostSurgeryRestReportDataService();
     }
 
+    /**
+     * List available reports.
+     * Returns a static catalogue of known report slugs — the full engine
+     * (ReportService / LegacyLoader) migrates in Onda 6; this endpoint only
+     * needs to surface the listing so the front-end can render the menu.
+     */
+    public function index(Request $request): JsonResponse
+    {
+        $requestId = $this->requestId($request);
+
+        if (!Auth::check()) {
+            return response()->json(['error' => 'Sesión expirada'], 401)
+                ->header('X-Request-Id', $requestId);
+        }
+
+        $reports = [
+            ['slug' => 'protocolo',        'type' => 'pdf-template', 'label' => 'Protocolo quirúrgico'],
+            ['slug' => 'cobertura',        'type' => 'pdf-template', 'label' => 'Cobertura'],
+            ['slug' => 'consulta',         'type' => 'pdf-template', 'label' => 'Consulta'],
+            ['slug' => 'cirugias/descanso','type' => 'pdf-template', 'label' => 'Certificado de descanso post-cirugía'],
+            ['slug' => 'imagenes/012b',    'type' => 'pdf-template', 'label' => 'Informe 012B'],
+            ['slug' => 'imagenes/012a',    'type' => 'pdf-template', 'label' => 'Cobertura 012A'],
+        ];
+
+        return response()->json([
+            'reports' => $reports,
+            'meta'    => ['strategy' => 'strangler-v2', 'source' => 'reporting-index-v1'],
+        ])->header('X-Request-Id', $requestId);
+    }
+
+    /**
+     * Return metadata for a single report slug.
+     * Mirrors the legacy ReportController::show() contract without touching
+     * ReportService — the engine stays in modules/Reporting until Onda 6.
+     */
+    public function show(Request $request, string $slug): JsonResponse
+    {
+        $requestId = $this->requestId($request);
+
+        if (!Auth::check()) {
+            return response()->json(['error' => 'Sesión expirada'], 401)
+                ->header('X-Request-Id', $requestId);
+        }
+
+        $catalogue = [
+            'protocolo'         => ['type' => 'pdf-template', 'label' => 'Protocolo quirúrgico',                'fields' => ['form_id', 'hc_number', 'modo', 'pagina']],
+            'cobertura'         => ['type' => 'pdf-template', 'label' => 'Cobertura',                           'fields' => ['form_id', 'hc_number', 'variant']],
+            'consulta'          => ['type' => 'pdf-template', 'label' => 'Consulta',                            'fields' => ['form_id', 'hc_number']],
+            'cirugias/descanso' => ['type' => 'pdf-template', 'label' => 'Certificado de descanso post-cirugía','fields' => ['form_id', 'hc_number', 'dias_descanso', 'fecha_inicio_descanso', 'observaciones']],
+            'imagenes/012b'     => ['type' => 'pdf-template', 'label' => 'Informe 012B',                        'fields' => ['form_id', 'hc_number']],
+            'imagenes/012a'     => ['type' => 'pdf-template', 'label' => 'Cobertura 012A',                      'fields' => ['form_id', 'hc_number', 'examen_id', 'selected_items']],
+        ];
+
+        if (!isset($catalogue[$slug])) {
+            return response()->json(['error' => 'Reporte no encontrado', 'slug' => $slug], 404)
+                ->header('X-Request-Id', $requestId);
+        }
+
+        $meta = $catalogue[$slug];
+
+        return response()->json([
+            'slug'   => $slug,
+            'type'   => $meta['type'],
+            'label'  => $meta['label'],
+            'fields' => $meta['fields'],
+            'meta'   => ['strategy' => 'strangler-v2', 'source' => 'reporting-show-v1'],
+        ])->header('X-Request-Id', $requestId);
+    }
+
     public function protocolData(Request $request): JsonResponse|RedirectResponse
     {
         $requestId = $this->requestId($request);
