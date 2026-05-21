@@ -527,7 +527,7 @@
                     @endif
                 </div>
                 <div class="col-md-6 d-flex align-items-end">
-                    <div class="alert alert-info mb-0 py-2 px-3 small w-100">
+                    <div class="alert alert-info mb-0 py-2 px-3 small">
                         <i class="mdi mdi-information-outline"></i>
                         Al cambiar el rol, los permisos heredados se actualizan al instante.
                     </div>
