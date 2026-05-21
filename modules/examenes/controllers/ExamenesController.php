@@ -2,24 +2,17 @@
 
 namespace Controllers;
 
-require_once dirname(__DIR__, 2) . '/solicitudes/controllers/SolicitudController.php';
-
-use Modules\Solicitudes\Controllers\SolicitudController as SolicitudesModuleController;
-use PDO;
-
 if (class_exists(__NAMESPACE__ . '\\ExamenesController', false)) {
     return;
 }
 
 /**
- * @deprecated Mantener solo por compatibilidad con integraciones legacy.
- *             El flujo activo de solicitudes vive en Modules\Solicitudes\Controllers\SolicitudController.
+ * @deprecated Legacy stub — no active callers. modules/solicitudes/ retired.
+ *             All solicitudes flows now live in the Laravel application.
  */
-class ExamenesController extends SolicitudesModuleController
+class ExamenesController
 {
-    public function __construct(PDO $pdo)
+    public function __construct(private \PDO $pdo)
     {
-        parent::__construct($pdo);
     }
 }
-

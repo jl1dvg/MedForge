@@ -1,6 +1,6 @@
 <?php
 
-namespace Modules\Solicitudes\Services;
+namespace Modules\Examenes\Services;
 
 use DateInterval;
 use DateTimeImmutable;
@@ -8,7 +8,7 @@ use Models\SolicitudModel;
 use Modules\Notifications\Services\PusherConfigService;
 use PDO;
 
-class SolicitudReminderService
+class ExamenesReminderService
 {
     private const CACHE_FILENAME = '/storage/cache/surgery_reminders.json';
     private const COMPLETED_STATES = [
@@ -43,22 +43,6 @@ class SolicitudReminderService
             'maxOffsetHours' => 72.0,
             'source' => 'scheduled',
         ],
-        'surgery_24h' => [
-            'event' => PusherConfigService::EVENT_SURGERY_PRECHECK_24H,
-            'label' => 'Confirmación 24h',
-            'context' => 'Confirmar asistencia del paciente y bloquear agenda quirúrgica/consultorio.',
-            'minOffsetHours' => 22.0,
-            'maxOffsetHours' => 26.0,
-            'source' => 'scheduled',
-        ],
-        'surgery_2h' => [
-            'event' => PusherConfigService::EVENT_SURGERY_PRECHECK_2H,
-            'label' => 'Recordatorio 2h',
-            'context' => 'Ultimar sala, instrumentista y documentación antes de la cirugía.',
-            'minOffsetHours' => 1.0,
-            'maxOffsetHours' => 3.5,
-            'source' => 'scheduled',
-        ],
         'surgery' => [
             'event' => PusherConfigService::EVENT_SURGERY_REMINDER,
             'label' => 'Recordatorio de cirugía',
@@ -73,14 +57,6 @@ class SolicitudReminderService
             'context' => 'Agendar control, confirmar indicaciones y gestionar incidencias reportadas.',
             'minOffsetHours' => -48.0,
             'maxOffsetHours' => -6.0,
-            'source' => 'scheduled',
-        ],
-        'postconsulta' => [
-            'event' => PusherConfigService::EVENT_POST_CONSULTA,
-            'label' => 'Postconsulta',
-            'context' => 'Enviar instrucciones y encuesta de satisfacción al paciente.',
-            'minOffsetHours' => -6.0,
-            'maxOffsetHours' => -1.0,
             'source' => 'scheduled',
         ],
         'exams' => [
@@ -238,11 +214,11 @@ class SolicitudReminderService
         $estado = strtolower(trim((string) ($solicitud['estado'] ?? '')));
         $isCompleted = in_array($estado, self::COMPLETED_STATES, true);
 
-        if (in_array($scenarioKey, ['postop', 'postconsulta'], true)) {
+        if ($scenarioKey === 'postop') {
             return $isCompleted;
         }
 
-        if (in_array($scenarioKey, ['preop', 'surgery_24h', 'surgery_2h', 'surgery'], true)) {
+        if (in_array($scenarioKey, ['preop', 'surgery'], true)) {
             return !$isCompleted;
         }
 

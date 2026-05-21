@@ -19,7 +19,7 @@ use Modules\IdentityVerification\Services\VerificationPolicyService;
 use Modules\KPI\Services\KpiCalculationService;
 use Modules\Mail\Services\NotificationMailer;
 use Modules\Notifications\Services\PusherConfigService;
-use Modules\Solicitudes\Services\ExamenesReminderService;
+use Modules\Examenes\Services\ExamenesReminderService;
 use Modules\WhatsApp\Services\HandoffService;
 use PDO;
 use RuntimeException;
@@ -1779,22 +1779,8 @@ class CronRunner
 
     private function ensureSolicitudModuleLoaded(): void
     {
-        if ($this->solicitudesLoaded) {
-            return;
-        }
-
-        $bootstrap = BASE_PATH . '/modules/solicitudes/index.php';
-        $model = BASE_PATH . '/modules/solicitudes/models/SolicitudModel.php';
-        $legacyModel = BASE_PATH . '/modules/solicitudes/models/ExamenesModel.php';
-
-        if (is_file($bootstrap)) {
-            require_once $bootstrap;
-        } elseif (is_file($model)) {
-            require_once $model;
-        } elseif (is_file($legacyModel)) {
-            require_once $legacyModel;
-        }
-
+        // Legacy bootstrap removed — modules/solicitudes/ retired.
+        // ExamenesReminderService now lives in Modules\Examenes\Services.
         $this->solicitudesLoaded = true;
     }
 
