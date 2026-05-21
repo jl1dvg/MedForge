@@ -391,10 +391,10 @@ class FlowRuntimeExecutionService
             return $context;
         }
 
-        $value = trim($text);
+        [$value, $interactiveLabel] = $this->resolveCapturedInputValue($text, $inboundMessage);
         $field = trim($field);
         $context[$field] = $value;
-        $label = $this->resolveCapturedOptionLabel($context, $field, $value, $inboundMessage);
+        $label = $interactiveLabel !== '' ? $interactiveLabel : $this->resolveCapturedOptionLabel($context, $field, $value, $inboundMessage);
         if ($label !== null && $label !== '') {
             $this->storeCapturedOptionLabel($context, $field, $label);
         }
@@ -409,6 +409,28 @@ class FlowRuntimeExecutionService
         unset($context['awaiting_field']);
 
         return $context;
+    }
+
+    /**
+     * @return array{0:string,1:string}
+     */
+    private function resolveCapturedInputValue(string $text, WhatsappMessage $inboundMessage): array
+    {
+        $text = trim($text);
+        $payload = is_array($inboundMessage->raw_payload) ? $inboundMessage->raw_payload : [];
+        $reply = data_get($payload, 'interactive.list_reply');
+        if (!is_array($reply)) {
+            $reply = data_get($payload, 'interactive.button_reply');
+        }
+
+        $replyId = is_array($reply) ? trim((string) ($reply['id'] ?? '')) : '';
+        $replyTitle = is_array($reply) ? trim((string) ($reply['title'] ?? '')) : '';
+
+        if ($replyId !== '') {
+            return [$replyId, $replyTitle];
+        }
+
+        return [$text, ''];
     }
 
     /**
@@ -1993,11 +2015,13 @@ class FlowRuntimeExecutionService
                 ->pluck('subespecialidad');
         }
 
-        $items = $specialties
-            ->filter(fn (mixed $value): bool => is_string($value) && trim($value) !== '')
-            ->map(fn (mixed $value): string => '• ' . trim((string) $value))
-            ->values()
-            ->all();
+        $items = $this->specialtiesCatalogItems(
+            $specialties
+                ->filter(fn (mixed $value): bool => is_string($value) && trim((string) $value) !== '')
+                ->map(fn (mixed $value): string => trim((string) $value))
+                ->values()
+                ->all()
+        );
 
         if ($items === []) {
             return [
@@ -2010,6 +2034,73 @@ class FlowRuntimeExecutionService
             'type' => 'text',
             'body' => "Estas son nuestras especialidades disponibles:\n\n" . implode("\n", $items) . "\n\nSi deseas agendar una cita, escribe AGENDAR o vuelve al MENU.",
         ];
+    }
+
+    /**
+     * @param array<int, string> $available
+     * @return array<int, string>
+     */
+    private function specialtiesCatalogItems(array $available): array
+    {
+        $available = array_values(array_filter(array_map(
+            static fn (mixed $value): string => trim((string) $value),
+            $available
+        ), static fn (string $value): bool => $value !== ''));
+
+        $visibleMap = [
+            'Oculoplastia' => ['title' => 'Oculoplastia', 'description' => ''],
+            'Retina y Vítreo' => ['title' => 'Retina y Vítreo', 'description' => ''],
+            'Oftalmopediatría' => ['title' => 'Oftalmopediatría', 'description' => ''],
+            'oftalmologo general' => ['title' => 'Segmento Anterior', 'description' => 'Superficie ocular, cirugía de catarata'],
+            'Glaucoma' => ['title' => 'Glaucoma', 'description' => ''],
+            'Glaucomatólogo' => ['title' => 'Glaucoma', 'description' => ''],
+            'Córnea y Cirugía Refractiva' => ['title' => 'Córnea y Cirugía Refractiva', 'description' => ''],
+            'Córnea' => ['title' => 'Córnea y Cirugía Refractiva', 'description' => ''],
+        ];
+
+        $preferredOrder = [
+            'Oculoplastia',
+            'Retina y Vítreo',
+            'Oftalmopediatría',
+            'oftalmologo general',
+            'Glaucoma',
+            'Glaucomatólogo',
+            'Córnea y Cirugía Refractiva',
+            'Córnea',
+        ];
+
+        $items = [];
+        $seen = [];
+
+        $appendItem = static function (string $value, array $meta) use (&$items, &$seen): void {
+            $dedupeKey = mb_strtolower(trim((string) ($meta['title'] ?? $value)), 'UTF-8');
+            if ($dedupeKey === '' || isset($seen[$dedupeKey])) {
+                return;
+            }
+
+            $line = '• ' . ($meta['title'] ?? $value);
+            $description = trim((string) ($meta['description'] ?? ''));
+            if ($description !== '') {
+                $line .= "\n  " . $description;
+            }
+
+            $items[] = $line;
+            $seen[$dedupeKey] = true;
+        };
+
+        foreach ($preferredOrder as $value) {
+            if (!in_array($value, $available, true)) {
+                continue;
+            }
+
+            $appendItem($value, $visibleMap[$value] ?? ['title' => $value, 'description' => '']);
+        }
+
+        foreach ($available as $value) {
+            $appendItem($value, $visibleMap[$value] ?? ['title' => $value, 'description' => '']);
+        }
+
+        return $items;
     }
 
     /**

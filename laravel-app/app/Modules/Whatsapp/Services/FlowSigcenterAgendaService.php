@@ -433,6 +433,21 @@ class FlowSigcenterAgendaService
             $specialties = is_array($data['especialidades'] ?? null) ? $data['especialidades'] : [];
 
             return array_values(array_filter(array_map(static function (mixed $specialty): ?array {
+                if (is_array($specialty)) {
+                    $id = trim((string) ($specialty['subespecialidad'] ?? $specialty['id'] ?? ''));
+                    $title = trim((string) ($specialty['title'] ?? $specialty['nombre'] ?? $specialty['subespecialidad'] ?? ''));
+                    $description = trim((string) ($specialty['description'] ?? $specialty['descripcion'] ?? ''));
+                    if ($id === '' || $title === '') {
+                        return null;
+                    }
+
+                    return [
+                        'id' => $id,
+                        'title' => mb_substr($title, 0, 24, 'UTF-8'),
+                        'description' => mb_substr($description, 0, 72, 'UTF-8'),
+                    ];
+                }
+
                 $title = trim((string) $specialty);
                 if ($title === '') {
                     return null;
@@ -449,7 +464,7 @@ class FlowSigcenterAgendaService
         if ($operation === 'list_doctors') {
             $doctors = is_array($data['medicos'] ?? null) ? $data['medicos'] : [];
 
-            return array_values(array_filter(array_map(static function (mixed $doctor): ?array {
+            return array_values(array_filter(array_map(function (mixed $doctor): ?array {
                 if (!is_array($doctor)) {
                     return null;
                 }
@@ -461,8 +476,8 @@ class FlowSigcenterAgendaService
 
                 return [
                     'id' => $id,
-                    'title' => mb_substr($title, 0, 24, 'UTF-8'),
-                    'description' => mb_substr(trim((string) ($doctor['subespecialidad'] ?? '')), 0, 72, 'UTF-8'),
+                    'title' => $this->formatDoctorRowTitle($title),
+                    'description' => mb_substr($this->specialtyDisplayTitle(trim((string) ($doctor['subespecialidad'] ?? ''))), 0, 72, 'UTF-8'),
                 ];
             }, $doctors)));
         }
@@ -470,7 +485,7 @@ class FlowSigcenterAgendaService
         if ($operation === 'list_doctors_by_name') {
             $doctors = is_array($data['medicos'] ?? null) ? $data['medicos'] : [];
 
-            return array_values(array_filter(array_map(static function (mixed $doctor): ?array {
+            return array_values(array_filter(array_map(function (mixed $doctor): ?array {
                 if (!is_array($doctor)) {
                     return null;
                 }
@@ -481,13 +496,13 @@ class FlowSigcenterAgendaService
                 }
 
                 $parts = array_filter([
-                    trim((string) ($doctor['subespecialidad'] ?? '')),
+                    $this->specialtyDisplayTitle(trim((string) ($doctor['subespecialidad'] ?? ''))),
                     trim((string) ($doctor['sede'] ?? '')),
                 ]);
 
                 return [
                     'id' => $id,
-                    'title' => mb_substr($title, 0, 24, 'UTF-8'),
+                    'title' => $this->formatDoctorRowTitle($title),
                     'description' => mb_substr(implode(' · ', $parts), 0, 72, 'UTF-8'),
                 ];
             }, $doctors)));
@@ -1525,13 +1540,32 @@ class FlowSigcenterAgendaService
     }
 
     /**
-     * @return array<int, string>
+     * @return array<int, array<string, string>>
      */
     private function listSpecialties(string $especialidad): array
     {
+        $available = [];
+
         if ($this->doctorCatalogAvailable()) {
-            return DB::table(self::DOCTOR_CATALOG_TABLE)
+            $available = DB::table(self::DOCTOR_CATALOG_TABLE)
                 ->where('active', true)
+                ->whereNotNull('subespecialidad')
+                ->where('subespecialidad', '<>', '')
+                ->distinct()
+                ->orderBy('subespecialidad')
+                ->pluck('subespecialidad')
+                ->map(static fn (mixed $value): string => trim((string) $value))
+                ->filter(static fn (string $value): bool => $value !== '')
+                ->values()
+                ->all();
+        } else {
+            $available = DB::table('users')
+                ->where(function ($query) use ($especialidad): void {
+                    $query->where('especialidad', $especialidad)
+                        ->orWhereRaw("UPPER(TRIM(COALESCE(especialidad, ''))) = 'CIRUJANO OFTALMÓLOGO'")
+                        ->orWhereRaw("UPPER(TRIM(COALESCE(especialidad, ''))) = 'CIRUJANO OFTALMOLOGO'");
+                })
+                ->whereNotNull('id_trabajador')
                 ->whereNotNull('subespecialidad')
                 ->where('subespecialidad', '<>', '')
                 ->distinct()
@@ -1543,22 +1577,163 @@ class FlowSigcenterAgendaService
                 ->all();
         }
 
-        return DB::table('users')
-            ->where(function ($query) use ($especialidad): void {
-                $query->where('especialidad', $especialidad)
-                    ->orWhereRaw("UPPER(TRIM(COALESCE(especialidad, ''))) = 'CIRUJANO OFTALMÓLOGO'")
-                    ->orWhereRaw("UPPER(TRIM(COALESCE(especialidad, ''))) = 'CIRUJANO OFTALMOLOGO'");
-            })
-            ->whereNotNull('id_trabajador')
-            ->whereNotNull('subespecialidad')
-            ->where('subespecialidad', '<>', '')
-            ->distinct()
-            ->orderBy('subespecialidad')
-            ->pluck('subespecialidad')
-            ->map(static fn (mixed $value): string => trim((string) $value))
-            ->filter(static fn (string $value): bool => $value !== '')
-            ->values()
-            ->all();
+        return $this->buildSpecialtyCatalog($available);
+    }
+
+    /**
+     * @param array<int, string> $available
+     * @return array<int, array<string, string>>
+     */
+    private function buildSpecialtyCatalog(array $available): array
+    {
+        $available = array_values(array_filter(array_map(
+            static fn (mixed $value): string => trim((string) $value),
+            $available
+        ), static fn (string $value): bool => $value !== ''));
+
+        $visibleMap = [
+            'Oculoplastia' => ['title' => 'Oculoplastia', 'description' => ''],
+            'Retina y Vítreo' => ['title' => 'Retina y Vítreo', 'description' => ''],
+            'Oftalmopediatría' => ['title' => 'Oftalmopediatría', 'description' => ''],
+            'oftalmologo general' => ['title' => 'Segmento Anterior', 'description' => 'Superficie ocular, cirugía de catarata'],
+            'Glaucoma' => ['title' => 'Glaucoma', 'description' => ''],
+            'Glaucomatólogo' => ['title' => 'Glaucoma', 'description' => ''],
+            'Córnea y Cirugía Refractiva' => ['title' => 'Córnea y Cirugía Refractiva', 'description' => ''],
+            'Córnea' => ['title' => 'Córnea y Cirugía Refractiva', 'description' => ''],
+        ];
+
+        $preferredOrder = [
+            'Oculoplastia',
+            'Retina y Vítreo',
+            'Oftalmopediatría',
+            'oftalmologo general',
+            'Glaucoma',
+            'Glaucomatólogo',
+            'Córnea y Cirugía Refractiva',
+            'Córnea',
+        ];
+
+        $catalog = [];
+        $seen = [];
+
+        foreach ($preferredOrder as $value) {
+            if (!in_array($value, $available, true)) {
+                continue;
+            }
+
+            $meta = $visibleMap[$value] ?? ['title' => $value, 'description' => ''];
+            $dedupeKey = mb_strtolower(trim((string) $meta['title']), 'UTF-8');
+            if ($dedupeKey === '' || isset($seen[$dedupeKey])) {
+                continue;
+            }
+
+            $catalog[] = [
+                'id' => $value,
+                'subespecialidad' => $value,
+                'title' => $meta['title'],
+                'nombre' => $meta['title'],
+                'description' => $meta['description'],
+                'descripcion' => $meta['description'],
+            ];
+            $seen[$dedupeKey] = true;
+        }
+
+        foreach ($available as $value) {
+            $meta = $visibleMap[$value] ?? ['title' => $value, 'description' => ''];
+            $dedupeKey = mb_strtolower(trim((string) $meta['title']), 'UTF-8');
+            if ($dedupeKey === '' || isset($seen[$dedupeKey])) {
+                continue;
+            }
+
+            $catalog[] = [
+                'id' => $value,
+                'subespecialidad' => $value,
+                'title' => $meta['title'],
+                'nombre' => $meta['title'],
+                'description' => $meta['description'],
+                'descripcion' => $meta['description'],
+            ];
+            $seen[$dedupeKey] = true;
+        }
+
+        return $catalog;
+    }
+
+    private function specialtyDisplayTitle(string $value): string
+    {
+        return match (trim($value)) {
+            'oftalmologo general' => 'Segmento Anterior',
+            'Glaucomatólogo' => 'Glaucoma',
+            'Córnea' => 'Córnea y Cirugía Refractiva',
+            default => trim($value),
+        };
+    }
+
+    private function formatDoctorRowTitle(string $fullName): string
+    {
+        $fullName = trim($fullName);
+        if ($fullName === '') {
+            return '';
+        }
+
+        if (mb_strlen($fullName, 'UTF-8') <= 24) {
+            return $fullName;
+        }
+
+        $parts = array_values(array_filter(preg_split('/\s+/', $fullName) ?: [], static fn (string $part): bool => $part !== ''));
+        if ($parts === []) {
+            return mb_substr($fullName, 0, 24, 'UTF-8');
+        }
+
+        $partCount = count($parts);
+
+        if ($partCount >= 4) {
+            $secondSurname = $parts[$partCount - 1];
+            $principalSurnameEnd = $partCount - 2;
+            $principalSurnameStart = $principalSurnameEnd;
+
+            while ($principalSurnameStart > 0 && $this->isSurnameConnector($parts[$principalSurnameStart - 1] ?? '')) {
+                $principalSurnameStart--;
+            }
+
+            $givenNames = array_slice($parts, 0, $principalSurnameStart);
+            $principalSurnameParts = array_slice($parts, $principalSurnameStart, $principalSurnameEnd - $principalSurnameStart + 1);
+            $finalInitial = mb_substr($secondSurname, 0, 1, 'UTF-8') . '.';
+        } else {
+            $givenNames = array_slice($parts, 0, max(1, $partCount - 1));
+            $principalSurnameParts = [$parts[$partCount - 1]];
+            $finalInitial = '';
+        }
+
+        if ($givenNames === []) {
+            return mb_substr($fullName, 0, 24, 'UTF-8');
+        }
+
+        $displayNames = array_slice($givenNames, 0, min(2, count($givenNames)));
+        $principalSurname = implode(' ', $principalSurnameParts);
+
+        $candidates = array_values(array_filter([
+            trim(implode(' ', $displayNames) . ' ' . $principalSurname . ' ' . $finalInitial),
+            trim(implode(' ', $displayNames) . ' ' . $principalSurname),
+            trim(($displayNames[0] ?? '') . ' ' . $principalSurname . ' ' . $finalInitial),
+            trim(($displayNames[0] ?? '') . ' ' . $principalSurname),
+            trim(mb_substr((string) ($displayNames[0] ?? ''), 0, 1, 'UTF-8') . '. ' . $principalSurname),
+        ], static fn (string $candidate): bool => $candidate !== ''));
+
+        foreach ($candidates as $candidate) {
+            if (mb_strlen($candidate, 'UTF-8') <= 24) {
+                return $candidate;
+            }
+        }
+
+        return mb_substr($fullName, 0, 24, 'UTF-8');
+    }
+
+    private function isSurnameConnector(string $token): bool
+    {
+        $token = mb_strtolower(trim($token), 'UTF-8');
+
+        return in_array($token, ['de', 'del', 'de la', 'de los', 'de las', 'la', 'las', 'los'], true);
     }
 
     /**
