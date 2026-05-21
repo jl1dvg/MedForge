@@ -4,7 +4,7 @@ namespace Modules\Pacientes\Services;
 
 use InvalidArgumentException;
 use Models\SolicitudModel;
-use Modules\Examenes\Models\ExamenModel;
+use Models\ExamenModel;
 use PDO;
 use Throwable;
 

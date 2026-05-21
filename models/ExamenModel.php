@@ -1,6 +1,6 @@
 <?php
 
-namespace Modules\Examenes\Models;
+namespace Models;
 
 use App\Modules\Shared\Support\AfiliacionDimensionService;
 use DateTime;
