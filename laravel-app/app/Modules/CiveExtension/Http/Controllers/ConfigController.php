@@ -11,12 +11,7 @@ use Throwable;
 
 class ConfigController
 {
-    private ConfigService $service;
-
-    public function __construct()
-    {
-        $this->service = new ConfigService();
-    }
+    public function __construct(private readonly ConfigService $service) {}
 
     public function show(): JsonResponse
     {

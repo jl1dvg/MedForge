@@ -11,12 +11,7 @@ use Throwable;
 
 class HealthCheckService
 {
-    private ConfigService $configService;
-
-    public function __construct()
-    {
-        $this->configService = new ConfigService();
-    }
+    public function __construct(private readonly ConfigService $configService) {}
 
     /**
      * @param bool $force If true, ignores flags and forces immediate execution.
@@ -67,6 +62,10 @@ class HealthCheckService
                 }
             } catch (Throwable $exception) {
                 $failures++;
+                Log::warning('CiveExtension health check failed', [
+                    'endpoint' => $endpoint['url'] ?? 'unknown',
+                    'error' => $exception->getMessage(),
+                ]);
                 $results[] = [
                     'name' => $endpoint['name'],
                     'success' => false,

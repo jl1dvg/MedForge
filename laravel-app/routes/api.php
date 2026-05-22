@@ -46,7 +46,9 @@ Route::middleware('web')->group(function (): void {
 });
 
 // /api/cive-extension routes — consumed by Chrome extension (asistentecive.consulmed.me)
-require __DIR__ . '/v2/cive_extension.php';
+Route::middleware('web')->group(function (): void {
+    require __DIR__ . '/v2/cive_extension.php';
+});
 
 Route::middleware([
     'whatsapp.feature:webhook,/whatsapp/webhook',

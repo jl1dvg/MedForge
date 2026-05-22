@@ -11,12 +11,7 @@ use Throwable;
 
 class HealthController
 {
-    private HealthCheckService $service;
-
-    public function __construct()
-    {
-        $this->service = new HealthCheckService();
-    }
+    public function __construct(private readonly HealthCheckService $service) {}
 
     public function run(): JsonResponse
     {
