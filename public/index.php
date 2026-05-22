@@ -7,7 +7,7 @@ if (strncmp($requestPath, $basePath, strlen($basePath)) === 0) {
 }
 
 $laravelBridgeExact = ['/auth/login', '/auth/logout', '/whatsapp/webhook', '/solicitudes/guardar.php', '/api/solicitudes/guardar.php'];
-$laravelBridgePrefixes = ['/v2', '/usuarios', '/roles', '/feedback', '/protocolos', '/examenes', '/imagenes', '/agenda', '/derivaciones', '/reports', '/mailbox', '/mail', '/mail-templates', '/ai', '/search', '/api/cive-extension', '/insumos', '/kpis'];
+$laravelBridgePrefixes = ['/v2', '/usuarios', '/roles', '/feedback', '/protocolos', '/examenes', '/imagenes', '/agenda', '/derivaciones', '/reports', '/mailbox', '/mail', '/mail-templates', '/ai', '/search', '/api/cive-extension', '/insumos', '/kpis', '/doctores'];
 
 if (in_array($requestPath, $laravelBridgeExact, true)) {
     require __DIR__ . '/v2_kernel.php';
