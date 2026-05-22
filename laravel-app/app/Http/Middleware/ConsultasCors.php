@@ -50,6 +50,10 @@ class ConsultasCors
 
     private function isAllowedOrigin(string $origin): bool
     {
+        if (str_starts_with(strtolower($origin), 'chrome-extension://')) {
+            return true;
+        }
+
         return in_array($origin, $this->allowedOrigins, true);
     }
 
@@ -67,4 +71,3 @@ class ConsultasCors
         return $response;
     }
 }
-

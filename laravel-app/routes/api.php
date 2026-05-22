@@ -1,7 +1,12 @@
 <?php
 
+use App\Modules\Consultas\Http\Controllers\ConsultasReadController;
+use App\Modules\Consultas\Http\Controllers\ConsultasWriteController;
+use App\Modules\Pacientes\Services\PacientesFlujoService;
+use App\Modules\Solicitudes\Http\Controllers\SolicitudesWriteController;
 use App\Modules\Whatsapp\Http\Controllers\WebhookController;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v2')->group(function (): void {
@@ -31,6 +36,97 @@ Route::prefix('v2')->group(function (): void {
     Route::middleware('web')->group(function (): void {
         require __DIR__ . '/v2/whatsapp.php';
     });
+});
+
+Route::middleware(['consultas.cors'])->group(function (): void {
+    foreach ([
+        '/consultas/guardar',
+        '/consultas/guardar.php',
+        '/api/consultas/guardar',
+        '/api/consultas/guardar.php',
+    ] as $path) {
+        Route::options($path, static fn () => response('', 204));
+        Route::post($path, static function (Request $request, ConsultasWriteController $controller) {
+            return $controller->guardar($request);
+        });
+    }
+
+    foreach ([
+        '/consultas/anterior',
+        '/consultas/anterior.php',
+        '/api/consultas/anterior',
+        '/api/consultas/anterior.php',
+    ] as $path) {
+        Route::options($path, static fn () => response('', 204));
+        Route::get($path, static function (Request $request, ConsultasReadController $controller) {
+            return $controller->anterior($request);
+        });
+    }
+
+    foreach ([
+        '/api/solicitudes/estado',
+        '/api/solicitudes/estado.php',
+    ] as $path) {
+        Route::options($path, static fn () => response('', 204));
+        Route::get($path, static function (Request $request, SolicitudesWriteController $controller) {
+            return $controller->apiEstadoGet($request);
+        });
+        Route::post($path, static function (Request $request, SolicitudesWriteController $controller) {
+            return $controller->apiEstadoPost($request);
+        });
+    }
+
+    foreach ([
+        '/api/proyecciones/consulta.php' => [
+            'CONSULTA' => 'en_proceso',
+            'CONSULTA_TERMINADO' => 'terminado_sin_dilatar',
+            'DILATAR' => 'terminado_dilatar',
+        ],
+        '/api/proyecciones/optometria.php' => [
+            'OPTOMETRIA' => 'en_proceso',
+            'OPTOMETRIA_TERMINADO' => 'terminado_sin_dilatar',
+            'DILATAR' => 'terminado_dilatar',
+        ],
+    ] as $path => $stateMap) {
+        Route::options($path, static fn () => response('', 204));
+
+        Route::get($path, static function (Request $request) use ($stateMap) {
+            if ($request->query('action') !== 'estado') {
+                return response()->json(['success' => false, 'message' => 'Acción no soportada'], 422);
+            }
+
+            $formId = trim((string) $request->query('form_id', ''));
+            if ($formId === '') {
+                return response()->json(['success' => false, 'message' => 'form_id requerido'], 422);
+            }
+
+            $estadoBd = DB::table('procedimiento_proyectado')
+                ->where('form_id', $formId)
+                ->whereRaw('COALESCE(sigcenter_present, 1) = 1')
+                ->value('estado_agenda');
+
+            return response()->json([
+                'success' => true,
+                'estado' => $stateMap[(string) $estadoBd] ?? 'pendiente',
+                'estado_bd' => $estadoBd,
+            ]);
+        });
+
+        Route::post($path, static function (Request $request) use ($stateMap) {
+            $formId = trim((string) $request->input('form_id', ''));
+            $estado = trim((string) $request->input('estado', ''));
+            $frontToDb = array_flip($stateMap);
+            $targetState = $frontToDb[$estado] ?? null;
+
+            if ($targetState === null) {
+                return response()->json(['success' => false, 'message' => 'Estado inválido proporcionado.'], 422);
+            }
+
+            $service = new PacientesFlujoService(DB::connection()->getPdo());
+            $result = $service->actualizarEstadoTrayecto($formId, $targetState);
+            return response()->json($result, !empty($result['success']) ? 200 : 422);
+        });
+    }
 });
 
 Route::middleware('web')->group(function (): void {

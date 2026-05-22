@@ -6,8 +6,39 @@ if (strncmp($requestPath, $basePath, strlen($basePath)) === 0) {
     $requestPath = substr($requestPath, strlen($basePath)) ?: '/';
 }
 
-$laravelBridgeExact = ['/auth/login', '/auth/logout', '/whatsapp/webhook', '/solicitudes/guardar.php', '/api/solicitudes/guardar.php'];
-$laravelBridgePrefixes = ['/v2', '/usuarios', '/roles', '/feedback', '/protocolos', '/examenes', '/imagenes', '/agenda', '/derivaciones', '/reports', '/mailbox', '/mail', '/mail-templates', '/ai', '/search', '/api/cive-extension', '/insumos', '/kpis', '/doctores'];
+$laravelBridgeExact = [
+    '/auth/login',
+    '/auth/logout',
+    '/whatsapp/webhook',
+    '/solicitudes/guardar.php',
+    '/api/solicitudes/guardar.php',
+    '/api/solicitudes/estado',
+    '/api/solicitudes/estado.php',
+];
+$laravelBridgePrefixes = [
+    '/v2',
+    '/usuarios',
+    '/roles',
+    '/feedback',
+    '/protocolos',
+    '/consultas',
+    '/examenes',
+    '/imagenes',
+    '/agenda',
+    '/derivaciones',
+    '/reports',
+    '/mailbox',
+    '/mail',
+    '/mail-templates',
+    '/ai',
+    '/search',
+    '/api/cive-extension',
+    '/api/consultas',
+    '/api/proyecciones',
+    '/insumos',
+    '/kpis',
+    '/doctores',
+];
 
 if (in_array($requestPath, $laravelBridgeExact, true)) {
     require __DIR__ . '/v2_kernel.php';
