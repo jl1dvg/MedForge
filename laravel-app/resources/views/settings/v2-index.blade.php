@@ -188,7 +188,7 @@
                         <div class="box-body">
                             <form method="POST" action="/v2/settings" enctype="multipart/form-data"
                                   data-settings-form data-section="{{ (string) $sectionId }}"
-                                  data-api-url="/api/v2/settings/{{ urlencode((string) $sectionId) }}">
+                                  data-api-url="/v2/settings/{{ urlencode((string) $sectionId) }}">
                                 @csrf
                                 <input type="hidden" name="section" value="{{ (string) $sectionId }}">
 
