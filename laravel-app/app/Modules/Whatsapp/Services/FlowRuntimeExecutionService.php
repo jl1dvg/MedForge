@@ -24,6 +24,7 @@ class FlowRuntimeExecutionService
         private readonly CloudApiTransportService   $transport = new CloudApiTransportService(),
         private readonly FlowSigcenterAgendaService $sigcenterAgendaService = new FlowSigcenterAgendaService(),
         private readonly FlowAiAgentPreviewService  $aiAgentPreviewService = new FlowAiAgentPreviewService(),
+        private readonly WhatsappAppointmentReminderService $appointmentReminderService = new WhatsappAppointmentReminderService(),
     )
     {
     }
@@ -40,6 +41,10 @@ class FlowRuntimeExecutionService
 
         if ((bool)($conversation->assigned_user_id ?? false)) {
             return $this->result(false, false, null, 0, false, 'conversation_assigned');
+        }
+
+        if ((bool) ($conversation->needs_human ?? false)) {
+            return $this->result(false, false, null, 0, false, 'conversation_needs_human');
         }
 
         $text = trim((string)($inboundMessage->body ?? ''));
@@ -59,8 +64,34 @@ class FlowRuntimeExecutionService
         if (!isset($context['state'])) {
             $context['state'] = 'inicio';
         }
+        $context = $this->clearAbandonmentMonitorOnInbound($context);
         $context = $this->seedPatientContextFromConversation($context, $conversation);
         $context = $this->captureAwaitingInput($context, $text, $inboundMessage);
+
+        $reminderResult = $this->appointmentReminderService->handleInboundResponse($conversation, $text);
+        if (is_array($reminderResult) && !empty($reminderResult['handled'])) {
+            WhatsappAutoresponderSession::query()->updateOrCreate(
+                ['conversation_id' => $conversation->id],
+                [
+                    'wa_number' => (string) $conversation->wa_number,
+                    'scenario_id' => 'appointment_reminder_response',
+                    'node_id' => null,
+                    'awaiting' => null,
+                    'context' => array_merge($context, ['state' => 'menu_principal']),
+                    'last_payload' => $messagePayload,
+                    'last_interaction_at' => now(),
+                ]
+            );
+
+            return $this->result(
+                true,
+                true,
+                'appointment_reminder_response',
+                (int) ($reminderResult['messages_sent'] ?? 0),
+                (bool) ($reminderResult['handoff_requested'] ?? false),
+                (string) ($reminderResult['reason'] ?? null)
+            );
+        }
 
         $facts = $this->buildFacts($conversation, $inboundMessage, $session, $context, $text, $messagePayload);
         if (($context['state'] ?? null) === 'agenda_confirmar_cancelacion' || $this->isExplicitCancelConfirmationReply($text)) {
@@ -380,6 +411,21 @@ class FlowRuntimeExecutionService
         }
 
         return null;
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     * @return array<string, mixed>
+     */
+    private function clearAbandonmentMonitorOnInbound(array $context): array
+    {
+        if (!is_array($context['abandonment_monitor'] ?? null)) {
+            return $context;
+        }
+
+        unset($context['abandonment_monitor']);
+
+        return $context;
     }
 
     /**

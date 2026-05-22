@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Settings\Services;
 
 use App\Models\AppSetting;
+use App\Modules\Shared\Support\SettingsOptionResolver;
 use Illuminate\Support\Facades\Cache;
 
 class SettingsService
@@ -86,5 +87,6 @@ class SettingsService
         }
 
         Cache::forget(self::CACHE_PREFIX . 'all');
+        SettingsOptionResolver::flush();
     }
 }

@@ -600,7 +600,10 @@ class ConversationOpsService
 
         $normalizedNote = strtolower(trim((string) $note));
         if ($normalizedNote !== '') {
-            if (str_contains($normalizedNote, 'promoc')) {
+            if (str_contains($normalizedNote, 'recordatorio') || str_contains($normalizedNote, 'comunicarse con un agente')) {
+                $topic = 'operacion_cita_vigente';
+                $priority = 'high';
+            } elseif (str_contains($normalizedNote, 'promoc')) {
                 $topic = 'promociones';
             } elseif (str_contains($normalizedNote, 'cancel')) {
                 $topic = 'operacion_cancelacion';

@@ -5,18 +5,21 @@ namespace App\Modules\Whatsapp\Services;
 use App\Models\WhatsappAutoresponderSession;
 use App\Models\WhatsappConversation;
 use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 class ConversationAbandonmentMonitorService
 {
     public function __construct(
         private readonly ConversationOpsService $conversationOpsService = new ConversationOpsService(),
+        private readonly AutomatedConversationDispatchService $dispatchService = new AutomatedConversationDispatchService(),
     ) {
     }
 
     /**
      * @param array{dry_run?:bool,limit?:int,max_age_hours?:int} $options
-     * @return array{scanned:int,candidates:int,enqueued:int,skipped:int,rows:array<int,array<string,mixed>>,error?:string}
+     * @return array{scanned:int,candidates:int,nudged:int,closed:int,enqueued:int,skipped:int,rows:array<int,array<string,mixed>>,error?:string}
      */
     public function scan(array $options = []): array
     {
@@ -24,6 +27,8 @@ class ConversationAbandonmentMonitorService
             return [
                 'scanned' => 0,
                 'candidates' => 0,
+                'nudged' => 0,
+                'closed' => 0,
                 'enqueued' => 0,
                 'skipped' => 0,
                 'rows' => [],
@@ -39,6 +44,8 @@ class ConversationAbandonmentMonitorService
             return [
                 'scanned' => 0,
                 'candidates' => 0,
+                'nudged' => 0,
+                'closed' => 0,
                 'enqueued' => 0,
                 'skipped' => 0,
                 'rows' => [],
@@ -59,6 +66,8 @@ class ConversationAbandonmentMonitorService
         $rows = [];
         $scanned = 0;
         $candidates = 0;
+        $nudged = 0;
+        $closed = 0;
         $enqueued = 0;
         $skipped = 0;
 
@@ -96,14 +105,17 @@ class ConversationAbandonmentMonitorService
 
             $monitorContext = is_array($context['abandonment_monitor'] ?? null) ? $context['abandonment_monitor'] : [];
             $escalatedAt = $this->parseNullableCarbon($monitorContext['escalated_at'] ?? null);
-            if ($escalatedAt !== null && $session->last_interaction_at instanceof \Carbon\CarbonInterface
-                && $session->last_interaction_at->lessThanOrEqualTo($escalatedAt)
+            $closedAt = $this->parseNullableCarbon($monitorContext['closed_at'] ?? null);
+            $nudgedAt = $this->parseNullableCarbon($monitorContext['nudged_at'] ?? null);
+            if ($this->sessionHasNoNewInboundSince($session->last_interaction_at, $escalatedAt)
+                || $this->sessionHasNoNewInboundSince($session->last_interaction_at, $closedAt)
             ) {
                 $skipped++;
                 continue;
             }
 
             $candidates++;
+            $action = 'candidate';
             $row = [
                 'conversation_id' => (int) $conversation->id,
                 'wa_number' => (string) $conversation->wa_number,
@@ -112,29 +124,81 @@ class ConversationAbandonmentMonitorService
                 'idle_minutes' => (int) round($idleMinutes),
                 'threshold_minutes' => $rules[$state],
                 'patient' => (string) ($conversation->patient_full_name ?: $conversation->display_name ?: $conversation->wa_number),
+                'action' => $action,
             ];
 
             if (!$dryRun) {
-                $note = $this->handoffNote($state, $idleMinutes);
-                $this->conversationOpsService->enqueueConversationToRole(
-                    (int) $conversation->id,
-                    $this->defaultRoleId(),
-                    0,
-                    true,
-                    $note
-                );
+                if ($nudgedAt === null || !$this->sessionHasNoNewInboundSince($session->last_interaction_at, $nudgedAt)) {
+                    $this->dispatchService->sendSystemText(
+                        $conversation,
+                        (string) config(
+                            'whatsapp.migration.abandonment_monitor.nudge_message',
+                            '😔 Parece que se interrumpió tu proceso. Si aún deseas continuar con tu cita, responde este mensaje y con gusto te ayudo.'
+                        )
+                    );
 
-                $context['abandonment_monitor'] = [
-                    'escalated_at' => now()->toISOString(),
-                    'state' => $state,
-                    'idle_minutes' => $idleMinutes,
-                ];
+                    $context['abandonment_monitor'] = array_merge($monitorContext, [
+                        'nudged_at' => now()->toISOString(),
+                        'nudged_count' => (int) ($monitorContext['nudged_count'] ?? 0) + 1,
+                        'abandonment_status' => 'nudged',
+                        'state' => $state,
+                        'idle_minutes' => $idleMinutes,
+                    ]);
 
-                $session->fill([
-                    'context' => $context,
-                ])->save();
+                    $session->fill([
+                        'context' => $context,
+                    ])->save();
 
-                $enqueued++;
+                    $row['action'] = 'nudged';
+                    $nudged++;
+                } elseif ($this->followupWindowExpired($nudgedAt, $state)) {
+                    if ($this->isHighIntentState($state)) {
+                        $note = $this->handoffNote($state, $idleMinutes);
+                        $this->conversationOpsService->enqueueConversationToRole(
+                            (int) $conversation->id,
+                            $this->defaultRoleId(),
+                            0,
+                            true,
+                            $note
+                        );
+
+                        $context['abandonment_monitor'] = array_merge($monitorContext, [
+                            'nudged_at' => $nudgedAt->toISOString(),
+                            'nudged_count' => (int) ($monitorContext['nudged_count'] ?? 1),
+                            'abandonment_status' => 'escalated',
+                            'escalated_at' => now()->toISOString(),
+                            'state' => $state,
+                            'idle_minutes' => $idleMinutes,
+                        ]);
+
+                        $session->fill([
+                            'context' => $context,
+                        ])->save();
+
+                        $row['action'] = 'escalated';
+                        $enqueued++;
+                    } else {
+                        $context['abandonment_monitor'] = array_merge($monitorContext, [
+                            'nudged_at' => $nudgedAt->toISOString(),
+                            'nudged_count' => (int) ($monitorContext['nudged_count'] ?? 1),
+                            'abandonment_status' => 'closed',
+                            'closed_at' => now()->toISOString(),
+                            'closed_reason' => $this->closedReason($state),
+                            'state' => $state,
+                            'idle_minutes' => $idleMinutes,
+                        ]);
+
+                        $session->fill([
+                            'context' => $context,
+                        ])->save();
+
+                        $row['action'] = 'closed';
+                        $closed++;
+                    }
+                } else {
+                    $skipped++;
+                    continue;
+                }
             }
 
             $rows[] = $row;
@@ -143,9 +207,113 @@ class ConversationAbandonmentMonitorService
         return [
             'scanned' => $scanned,
             'candidates' => $candidates,
+            'nudged' => $nudged,
+            'closed' => $closed,
             'enqueued' => $enqueued,
             'skipped' => $skipped,
             'rows' => $rows,
+        ];
+    }
+
+    /**
+     * @return array{sessions:array<int,array<string,mixed>>,handoffs:array<string,mixed>,error?:string}
+     */
+    public function audit(array $options = []): array
+    {
+        if (!Schema::hasTable('whatsapp_autoresponder_sessions') || !Schema::hasTable('whatsapp_conversations')) {
+            return [
+                'sessions' => [],
+                'handoffs' => [],
+                'error' => 'Tablas de sesiones o conversaciones no disponibles.',
+            ];
+        }
+
+        $rules = $this->stateRules();
+        $maxAgeHours = max(1, (int) ($options['max_age_hours'] ?? config('whatsapp.migration.abandonment_monitor.max_age_hours', 72)));
+        $newestThreshold = now()->subHours($maxAgeHours);
+
+        $sessions = WhatsappAutoresponderSession::query()
+            ->where('last_interaction_at', '>=', $newestThreshold)
+            ->get();
+
+        $sessionSummary = [];
+        foreach ($sessions as $session) {
+            $context = is_array($session->context) ? $session->context : [];
+            $state = strtolower(trim((string) ($context['state'] ?? '')));
+            if ($state === '' || !isset($rules[$state])) {
+                continue;
+            }
+
+            $idleMinutes = $session->last_interaction_at instanceof CarbonInterface
+                ? $session->last_interaction_at->diffInMinutes(now())
+                : null;
+            $monitor = is_array($context['abandonment_monitor'] ?? null) ? $context['abandonment_monitor'] : [];
+            $status = (string) ($monitor['abandonment_status'] ?? 'open');
+
+            $sessionSummary[$state] ??= [
+                'state' => $state,
+                'state_label' => $this->stateLabel($state),
+                'threshold_minutes' => $rules[$state],
+                'total' => 0,
+                'over_threshold' => 0,
+                'nudged' => 0,
+                'closed' => 0,
+                'escalated' => 0,
+            ];
+
+            $sessionSummary[$state]['total']++;
+            if ($idleMinutes !== null && $idleMinutes >= $rules[$state]) {
+                $sessionSummary[$state]['over_threshold']++;
+            }
+            if ($status === 'nudged') {
+                $sessionSummary[$state]['nudged']++;
+            } elseif ($status === 'closed') {
+                $sessionSummary[$state]['closed']++;
+            } elseif ($status === 'escalated') {
+                $sessionSummary[$state]['escalated']++;
+            }
+        }
+
+        $handoffSummary = [
+            'active' => 0,
+            'queued' => 0,
+            'assigned' => 0,
+            'older_than_24h' => 0,
+            'topics' => [],
+        ];
+
+        if (Schema::hasTable('whatsapp_handoffs')) {
+            $handoffs = DB::table('whatsapp_handoffs')
+                ->select(['status', 'topic', 'queued_at', 'created_at'])
+                ->whereIn('status', ['queued', 'assigned'])
+                ->get();
+
+            foreach ($handoffs as $handoff) {
+                $handoffSummary['active']++;
+                $status = strtolower(trim((string) ($handoff->status ?? '')));
+                if ($status === 'queued') {
+                    $handoffSummary['queued']++;
+                } elseif ($status === 'assigned') {
+                    $handoffSummary['assigned']++;
+                }
+
+                $topic = trim((string) ($handoff->topic ?? ''));
+                $topic = $topic !== '' ? $topic : '(sin_topic)';
+                $handoffSummary['topics'][$topic] = (int) ($handoffSummary['topics'][$topic] ?? 0) + 1;
+
+                $queuedAt = $this->parseNullableCarbon($handoff->queued_at ?? null)
+                    ?? $this->parseNullableCarbon($handoff->created_at ?? null);
+                if ($queuedAt !== null && $queuedAt->lessThanOrEqualTo(now()->subHours(24))) {
+                    $handoffSummary['older_than_24h']++;
+                }
+            }
+        }
+
+        uasort($handoffSummary['topics'], static fn (int $a, int $b): int => $b <=> $a);
+
+        return [
+            'sessions' => array_values($sessionSummary),
+            'handoffs' => $handoffSummary,
         ];
     }
 
@@ -207,6 +375,49 @@ class ConversationAbandonmentMonitorService
                 $idleMinutes
             ),
         };
+    }
+
+    private function closedReason(string $state): string
+    {
+        return match (true) {
+            $state === 'consentimiento_pendiente' => 'abandono_consentimiento',
+            in_array($state, ['esperando_cedula', 'esperando_correo_paciente_nuevo', 'esperando_origen_lead_paciente_nuevo'], true) => 'abandono_identificacion',
+            $this->isHighIntentState($state) => 'abandono_agenda_avanzada',
+            default => 'abandono_agenda_temprana',
+        };
+    }
+
+    private function isHighIntentState(string $state): bool
+    {
+        return in_array($state, [
+            'agenda_esperando_medico',
+            'esperando_nombre_doctor',
+            'agenda_esperando_doctor_directo',
+            'agenda_esperando_sede_directa',
+            'agenda_esperando_fecha_general',
+            'agenda_esperando_medico_general_por_fecha',
+            'agenda_esperando_horario_general_fecha',
+            'agenda_esperando_dia',
+            'agenda_esperando_horario',
+            'agenda_confirmar_cita',
+            'agenda_confirmar_cita_fecha_general',
+        ], true);
+    }
+
+    private function followupWindowExpired(CarbonImmutable $nudgedAt, string $state): bool
+    {
+        $minutes = $this->isHighIntentState($state)
+            ? max(1, (int) config('whatsapp.migration.abandonment_monitor.followup_minutes.high_intent', 10))
+            : max(1, (int) config('whatsapp.migration.abandonment_monitor.followup_minutes.low_intent', 10));
+
+        return $nudgedAt->addMinutes($minutes)->lessThanOrEqualTo(now());
+    }
+
+    private function sessionHasNoNewInboundSince(mixed $lastInteractionAt, ?CarbonImmutable $marker): bool
+    {
+        return $marker !== null
+            && $lastInteractionAt instanceof CarbonInterface
+            && $lastInteractionAt->lessThanOrEqualTo($marker);
     }
 
     private function stateLabel(string $state): string

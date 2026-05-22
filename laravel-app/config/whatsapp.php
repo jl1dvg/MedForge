@@ -27,11 +27,19 @@ return [
             'enabled' => (bool) env('WHATSAPP_LARAVEL_ABANDONMENT_MONITOR_ENABLED', false),
             'role_id' => (int) env('WHATSAPP_LARAVEL_ABANDONMENT_MONITOR_ROLE_ID', 4),
             'max_age_hours' => (int) env('WHATSAPP_LARAVEL_ABANDONMENT_MAX_AGE_HOURS', 72),
+            'nudge_message' => (string) env(
+                'WHATSAPP_LARAVEL_ABANDONMENT_NUDGE_MESSAGE',
+                '😔 Parece que se interrumpió tu proceso. Si aún deseas continuar con tu cita, responde este mensaje y con gusto te ayudo.'
+            ),
             'thresholds' => [
                 'consentimiento_pendiente' => (int) env('WHATSAPP_LARAVEL_ABANDONMENT_CONSENT_MINUTES', 15),
                 'esperando_cedula' => (int) env('WHATSAPP_LARAVEL_ABANDONMENT_IDENTIFIER_MINUTES', 15),
                 'agenda' => (int) env('WHATSAPP_LARAVEL_ABANDONMENT_AGENDA_MINUTES', 12),
                 'confirmacion' => (int) env('WHATSAPP_LARAVEL_ABANDONMENT_CONFIRMATION_MINUTES', 10),
+            ],
+            'followup_minutes' => [
+                'low_intent' => (int) env('WHATSAPP_LARAVEL_ABANDONMENT_FOLLOWUP_LOW_INTENT_MINUTES', 10),
+                'high_intent' => (int) env('WHATSAPP_LARAVEL_ABANDONMENT_FOLLOWUP_HIGH_INTENT_MINUTES', 10),
             ],
         ],
         'automation' => [
@@ -39,6 +47,18 @@ return [
             'compare_with_legacy' => (bool) env('WHATSAPP_LARAVEL_AUTOMATION_COMPARE_WITH_LEGACY', true),
             'fallback_to_legacy' => (bool) env('WHATSAPP_LARAVEL_AUTOMATION_FALLBACK_TO_LEGACY', true),
             'dry_run' => (bool) env('WHATSAPP_LARAVEL_AUTOMATION_DRY_RUN', true),
+        ],
+        'reminders' => [
+            'enabled' => (bool) env('WHATSAPP_LARAVEL_REMINDERS_ENABLED', false),
+            'consultation_template_code' => (string) env('WHATSAPP_LARAVEL_REMINDER_CONSULTATION_TEMPLATE', 'recordatorio_cita_medica_cive'),
+            'image_template_code' => (string) env('WHATSAPP_LARAVEL_REMINDER_IMAGE_TEMPLATE', 'recordatorio_cita_medica_cive'),
+            'timezone' => (string) env('WHATSAPP_LARAVEL_REMINDER_TIMEZONE', 'America/Guayaquil'),
+            'windows' => [
+                '24h' => (int) env('WHATSAPP_LARAVEL_REMINDER_WINDOW_24H_MINUTES', 1440),
+                '2h' => (int) env('WHATSAPP_LARAVEL_REMINDER_WINDOW_2H_MINUTES', 120),
+            ],
+            'window_tolerance_minutes' => (int) env('WHATSAPP_LARAVEL_REMINDER_WINDOW_TOLERANCE_MINUTES', 15),
+            'agent_role_id' => (int) env('WHATSAPP_LARAVEL_REMINDER_AGENT_ROLE_ID', 4),
         ],
     ],
     'transport' => [

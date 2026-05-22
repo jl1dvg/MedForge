@@ -20,6 +20,7 @@ use App\Modules\Whatsapp\Services\ConversationAbandonmentMonitorService;
 use App\Modules\Whatsapp\Services\ConversationOpsService;
 use App\Modules\Whatsapp\Services\FlowRuntimeShadowCompareService;
 use App\Modules\Whatsapp\Services\FlowRuntimeShadowObserverService;
+use App\Modules\Whatsapp\Services\WhatsappAppointmentReminderService;
 use App\Models\WhatsappConversation;
 use App\Models\WhatsappConversationAttribution;
 use App\Models\WhatsappMessage;
@@ -505,10 +506,12 @@ Artisan::command('whatsapp:monitor-abandonment
         }
 
         $this->table(
-            ['Scanned', 'Candidates', 'Enqueued', 'Skipped'],
+            ['Scanned', 'Candidates', 'Nudged', 'Closed', 'Escalated', 'Skipped'],
             [[
                 (int) ($result['scanned'] ?? 0),
                 (int) ($result['candidates'] ?? 0),
+                (int) ($result['nudged'] ?? 0),
+                (int) ($result['closed'] ?? 0),
                 (int) ($result['enqueued'] ?? 0),
                 (int) ($result['skipped'] ?? 0),
             ]]
@@ -519,6 +522,7 @@ Artisan::command('whatsapp:monitor-abandonment
             (string) ($row['state_label'] ?? $row['state'] ?? ''),
             (string) ($row['idle_minutes'] ?? ''),
             (string) ($row['threshold_minutes'] ?? ''),
+            (string) ($row['action'] ?? ''),
             (string) ($row['patient'] ?? ''),
             (string) ($row['wa_number'] ?? ''),
         ], $result['rows'] ?? []);
@@ -526,7 +530,7 @@ Artisan::command('whatsapp:monitor-abandonment
         if ($rows !== []) {
             $this->newLine();
             $this->table(
-                ['Conversation', 'Estado', 'Min inactivo', 'Umbral', 'Paciente', 'WA'],
+                ['Conversation', 'Estado', 'Min inactivo', 'Umbral', 'Acción', 'Paciente', 'WA'],
                 $rows
             );
         }
@@ -538,7 +542,136 @@ Artisan::command('whatsapp:monitor-abandonment
 
         return 0;
     }
-})->purpose('Detecta sesiones estancadas del bot y las envía a cola humana antes de perder el flujo');
+})->purpose('Detecta sesiones estancadas del bot, envía nudge y cierra o escala según criticidad');
+
+Artisan::command('whatsapp:abandonment-audit
+    {--max-age-hours=72 : Solo revisa sesiones recientes dentro de esta ventana}', function (): int {
+    /** @var ConversationAbandonmentMonitorService $service */
+    $service = app(ConversationAbandonmentMonitorService::class);
+
+    try {
+        $result = $service->audit([
+            'max_age_hours' => (int) $this->option('max-age-hours'),
+        ]);
+
+        if (!empty($result['error'])) {
+            $this->warn((string) $result['error']);
+        }
+
+        $sessionRows = array_map(static fn (array $row): array => [
+            (string) ($row['state_label'] ?? $row['state'] ?? ''),
+            (string) ($row['total'] ?? 0),
+            (string) ($row['over_threshold'] ?? 0),
+            (string) ($row['nudged'] ?? 0),
+            (string) ($row['closed'] ?? 0),
+            (string) ($row['escalated'] ?? 0),
+        ], $result['sessions'] ?? []);
+
+        if ($sessionRows !== []) {
+            $this->table(
+                ['Estado', 'Total', 'Fuera SLA', 'Nudged', 'Closed', 'Escalated'],
+                $sessionRows
+            );
+        }
+
+        $handoffs = is_array($result['handoffs'] ?? null) ? $result['handoffs'] : [];
+        if ($handoffs !== []) {
+            $this->newLine();
+            $this->table(
+                ['Métrica', 'Valor'],
+                [
+                    ['Handoffs activos', (string) ($handoffs['active'] ?? 0)],
+                    ['En cola', (string) ($handoffs['queued'] ?? 0)],
+                    ['Asignados', (string) ($handoffs['assigned'] ?? 0)],
+                    ['>24h', (string) ($handoffs['older_than_24h'] ?? 0)],
+                ]
+            );
+
+            $topicRows = [];
+            foreach ((array) ($handoffs['topics'] ?? []) as $topic => $count) {
+                $topicRows[] = [(string) $topic, (string) $count];
+            }
+
+            if ($topicRows !== []) {
+                $this->newLine();
+                $this->table(['Topic', 'Count'], $topicRows);
+            }
+        }
+
+        return 0;
+    } catch (\Throwable $e) {
+        $this->warn('No fue posible ejecutar la auditoría de abandono con la DB configurada.');
+        $this->line($e->getMessage());
+
+        return 0;
+    }
+})->purpose('Audita abandono del bot y backlog humano actual');
+
+Artisan::command('whatsapp:appointment-reminders
+    {window : Ventana a ejecutar (24h o 2h)}
+    {--dry-run : Solo muestra candidatos sin enviar}
+    {--limit=200 : Máximo de recordatorios a evaluar}
+    {--for-date= : Fuerza una fecha YYYY-MM-DD en lugar de la ventana natural}
+    {--override-wa= : Envía al número indicado en formato 593... en lugar del paciente real}
+    {--ignore-window : Ignora la validación de 24h/2h y usa solo la fecha indicada}
+    {--first=0 : Toma solo los primeros N eventos del día filtrado}', function (): int {
+    /** @var WhatsappAppointmentReminderService $service */
+    $service = app(WhatsappAppointmentReminderService::class);
+
+    try {
+        $result = $service->dispatchWindow(
+            trim((string) $this->argument('window')),
+            (bool) $this->option('dry-run'),
+            (int) $this->option('limit'),
+            [
+                'for_date' => trim((string) $this->option('for-date')),
+                'override_wa_number' => trim((string) $this->option('override-wa')),
+                'ignore_window' => (bool) $this->option('ignore-window'),
+                'first_only' => (int) $this->option('first'),
+            ]
+        );
+
+        if (!empty($result['error'])) {
+            $this->warn((string) $result['error']);
+        }
+
+        $this->table(
+            ['Scanned', 'Candidates', 'Sent', 'Failed', 'Skipped'],
+            [[
+                (int) ($result['scanned'] ?? 0),
+                (int) ($result['candidates'] ?? 0),
+                (int) ($result['sent'] ?? 0),
+                (int) ($result['failed'] ?? 0),
+                (int) ($result['skipped'] ?? 0),
+            ]]
+        );
+
+        $rows = array_map(static fn (array $row): array => [
+            (string) ($row['form_id'] ?? ''),
+            (string) ($row['hc_number'] ?? ''),
+            (string) ($row['source_type'] ?? ''),
+            (string) ($row['patient_name'] ?? ''),
+            (string) ($row['status'] ?? ''),
+            (string) ($row['wa_number'] ?? ''),
+            (string) ($row['reason'] ?? ''),
+        ], $result['rows'] ?? []);
+
+        if ($rows !== []) {
+            $this->newLine();
+            $this->table(
+                ['Form', 'HC', 'Tipo', 'Paciente', 'Estado', 'WA', 'Detalle'],
+                $rows
+            );
+        }
+
+        return 0;
+    } catch (\Throwable $e) {
+        $this->warn('No fue posible ejecutar los recordatorios automáticos.');
+        $this->line($e->getMessage());
+
+        return 0;
+    }
+})->purpose('Envía recordatorios automáticos de consultas e imágenes por WhatsApp');
 
 Artisan::command('whatsapp:sigcenter-doctor-catalog-sync
     {--dry-run : Solo calcula cuántas filas se reconstruirían}
@@ -969,10 +1102,23 @@ Artisan::command('derivaciones:scrape-missing
     {--limit=200 : Máximo de formularios por corrida}
     {--max-attempts=3 : Máximo de intentos por form_id}
     {--cooldown-hours=6 : Horas mínimas entre reintentos}', function (): int {
-    $service = new DerivacionesBatchSyncService(
-        DB::connection()->getPdo(),
-        dirname(base_path())
-    );
+    $syncServiceClass = 'Modules\\Derivaciones\\Services\\DerivacionesSyncService';
+    if (!defined('BASE_PATH')) {
+        define('BASE_PATH', dirname(base_path()));
+    }
+    if (!class_exists($syncServiceClass)) {
+        $syncServicePath = dirname(base_path()) . '/modules/Derivaciones/Services/DerivacionesSyncService.php';
+        if (!is_file($syncServicePath)) {
+            $this->components->error('No se encontró DerivacionesSyncService.');
+            return 1;
+        }
+
+        require_once $syncServicePath;
+    }
+
+    $pdo = DB::connection()->getPdo();
+    /** @var object{scrapeMissingDerivationsBatch:callable} $service */
+    $service = new $syncServiceClass($pdo);
 
     try {
         $result = $service->scrapeMissingDerivationsBatch(
@@ -2264,3 +2410,15 @@ Schedule::command("whatsapp:sigcenter-availability-sync --days=7 --specialty='of
     ->withoutOverlapping()
     ->runInBackground()
     ->when(static fn (): bool => (bool) config('whatsapp.migration.automation.enabled', false));
+
+Schedule::command('whatsapp:appointment-reminders 24h --limit=200')
+    ->everyFifteenMinutes()
+    ->withoutOverlapping()
+    ->runInBackground()
+    ->when(static fn (): bool => (bool) config('whatsapp.migration.reminders.enabled', false));
+
+Schedule::command('whatsapp:appointment-reminders 2h --limit=200')
+    ->everyFifteenMinutes()
+    ->withoutOverlapping()
+    ->runInBackground()
+    ->when(static fn (): bool => (bool) config('whatsapp.migration.reminders.enabled', false));

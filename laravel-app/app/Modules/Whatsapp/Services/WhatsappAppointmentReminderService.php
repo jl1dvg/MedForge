@@ -1,0 +1,948 @@
+<?php
+
+namespace App\Modules\Whatsapp\Services;
+
+use App\Models\WhatsappAppointmentReminder;
+use App\Models\WhatsappConversation;
+use App\Models\WhatsappMessageTemplate;
+use App\Modules\Shared\Support\SettingsOptionResolver;
+use Carbon\Carbon;
+use Carbon\CarbonInterface;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+
+class WhatsappAppointmentReminderService
+{
+    private ?SettingsOptionResolver $settingsResolver = null;
+
+    public function __construct(
+        private readonly AutomatedConversationDispatchService $dispatchService = new AutomatedConversationDispatchService(),
+        private readonly ConversationOpsService $conversationOpsService = new ConversationOpsService(),
+        private readonly WhatsappConfigService $configService = new WhatsappConfigService(),
+    ) {
+    }
+
+    /**
+     * @param array{for_date?:string,override_wa_number?:string,ignore_window?:bool,first_only?:int} $options
+     * @return array{scanned:int,candidates:int,sent:int,failed:int,skipped:int,rows:array<int,array<string,mixed>>,error?:string}
+     */
+    public function dispatchWindow(string $windowKey, bool $dryRun = false, int $limit = 200, array $options = []): array
+    {
+        if (!Schema::hasTable('whatsapp_appointment_reminders') || !Schema::hasTable('procedimiento_proyectado')) {
+            return [
+                'scanned' => 0,
+                'candidates' => 0,
+                'sent' => 0,
+                'failed' => 0,
+                'skipped' => 0,
+                'rows' => [],
+                'error' => 'Tablas de recordatorios o procedimiento_proyectado no disponibles.',
+            ];
+        }
+
+        if (!$this->remindersEnabled()) {
+            return [
+                'scanned' => 0,
+                'candidates' => 0,
+                'sent' => 0,
+                'failed' => 0,
+                'skipped' => 0,
+                'rows' => [],
+                'error' => 'Los recordatorios automáticos están desactivados por configuración.',
+            ];
+        }
+
+        $leadMinutes = $this->windowMinutes($windowKey);
+        if ($leadMinutes <= 0) {
+            return [
+                'scanned' => 0,
+                'candidates' => 0,
+                'sent' => 0,
+                'failed' => 0,
+                'skipped' => 0,
+                'rows' => [],
+                'error' => 'Ventana de recordatorio no configurada.',
+            ];
+        }
+
+        $limit = max(1, $limit);
+        $forDate = trim((string) ($options['for_date'] ?? ''));
+        $overrideWaNumber = $this->normalizePhone((string) ($options['override_wa_number'] ?? ''));
+        $ignoreWindow = (bool) ($options['ignore_window'] ?? false);
+        $firstOnly = max(0, (int) ($options['first_only'] ?? 0));
+        $effectiveLimit = $firstOnly > 0 ? min($firstOnly, $limit) : $limit;
+        $toleranceMinutes = max(5, $this->windowToleranceMinutes());
+        $now = now($this->reminderTimezone());
+        $windowStart = $now->copy()->addMinutes($leadMinutes - $toleranceMinutes);
+        $windowEnd = $now->copy()->addMinutes($leadMinutes + $toleranceMinutes);
+        $dateFrom = $forDate !== '' ? $forDate : $windowStart->copy()->startOfDay()->toDateString();
+        $dateTo = $forDate !== '' ? $forDate : $windowEnd->copy()->endOfDay()->toDateString();
+
+        $rows = [];
+        $scanned = 0;
+        $candidates = 0;
+        $sent = 0;
+        $failed = 0;
+        $skipped = 0;
+        $preparedCandidates = [];
+
+        $events = DB::table('procedimiento_proyectado')
+            ->select([
+                'id',
+                'form_id',
+                'hc_number',
+                'procedimiento_proyectado',
+                'doctor',
+                'sede_departamento',
+                'estado_agenda',
+                'fecha',
+                'hora',
+            ])
+            ->whereNotNull('form_id')
+            ->whereNotNull('hc_number')
+            ->whereNotNull('fecha')
+            ->whereNotNull('hora')
+            ->whereDate('fecha', '>=', $dateFrom)
+            ->whereDate('fecha', '<=', $dateTo)
+            ->orderBy('fecha')
+            ->orderBy('hora')
+            ->limit($effectiveLimit * 8)
+            ->get();
+
+        foreach ($events as $event) {
+            $scanned++;
+            $eventAt = $this->eventAt($event->fecha ?? null, $event->hora ?? null);
+            if (
+                !$eventAt instanceof CarbonInterface
+                || (!$ignoreWindow && ($eventAt->lt($now) || $eventAt->lt($windowStart) || $eventAt->gt($windowEnd)))
+            ) {
+                $skipped++;
+                continue;
+            }
+
+            $sourceType = $this->classifySourceType((string) ($event->procedimiento_proyectado ?? ''));
+            if ($sourceType === null) {
+                $skipped++;
+                continue;
+            }
+
+            if (!$this->estadoAgendaAllowsReminder((string) ($event->estado_agenda ?? ''))) {
+                $skipped++;
+                continue;
+            }
+
+            if ($sourceType === 'imagenes') {
+                $groupKey = implode('|', [
+                    'imagenes',
+                    (string) $event->hc_number,
+                    $eventAt->toDateString(),
+                ]);
+
+                if (!isset($preparedCandidates[$groupKey])) {
+                    $preparedCandidates[$groupKey] = [
+                        'form_id' => (int) $event->form_id,
+                        'hc_number' => (string) $event->hc_number,
+                        'source_type' => $sourceType,
+                        'doctor' => trim((string) ($event->doctor ?? '')),
+                        'sede_departamento' => trim((string) ($event->sede_departamento ?? '')),
+                        'procedimiento_proyectado' => 'Exámenes de imágenes programados',
+                        'event_at' => $eventAt,
+                        'group_date' => $eventAt->toDateString(),
+                        'group_count' => 1,
+                    ];
+                } else {
+                    $preparedCandidates[$groupKey]['group_count'] = (int) $preparedCandidates[$groupKey]['group_count'] + 1;
+
+                    if ($eventAt->lt($preparedCandidates[$groupKey]['event_at'])) {
+                        $preparedCandidates[$groupKey]['form_id'] = (int) $event->form_id;
+                        $preparedCandidates[$groupKey]['doctor'] = trim((string) ($event->doctor ?? ''));
+                        $preparedCandidates[$groupKey]['sede_departamento'] = trim((string) ($event->sede_departamento ?? ''));
+                        $preparedCandidates[$groupKey]['event_at'] = $eventAt;
+                    }
+                }
+
+                continue;
+            }
+
+            $preparedCandidates[] = [
+                'form_id' => (int) $event->form_id,
+                'hc_number' => (string) $event->hc_number,
+                'source_type' => $sourceType,
+                'doctor' => trim((string) ($event->doctor ?? '')),
+                'sede_departamento' => trim((string) ($event->sede_departamento ?? '')),
+                'procedimiento_proyectado' => trim((string) ($event->procedimiento_proyectado ?? '')),
+                'event_at' => $eventAt,
+                'group_date' => $eventAt->toDateString(),
+                'group_count' => 1,
+            ];
+        }
+
+        foreach (array_values($preparedCandidates) as $candidate) {
+            if ($candidates >= $effectiveLimit) {
+                break;
+            }
+
+            $eventAt = $candidate['event_at'];
+            $sourceType = (string) $candidate['source_type'];
+            $hcNumber = (string) $candidate['hc_number'];
+            $formId = (int) $candidate['form_id'];
+            $doctor = (string) $candidate['doctor'];
+            $sedeDepartamento = (string) $candidate['sede_departamento'];
+            $procedimiento = (string) $candidate['procedimiento_proyectado'];
+            $groupCount = (int) ($candidate['group_count'] ?? 1);
+
+            $template = $this->resolveTemplateForSource($sourceType);
+            if (!$template instanceof WhatsappMessageTemplate) {
+                $skipped++;
+                $rows[] = [
+                    'form_id' => $formId,
+                    'hc_number' => $hcNumber,
+                    'source_type' => $sourceType,
+                    'status' => 'skipped',
+                    'reason' => 'template_missing',
+                ];
+                continue;
+            }
+
+            $recipient = $this->resolveRecipient($hcNumber);
+            if ($recipient['wa_number'] === '') {
+                $skipped++;
+                $rows[] = [
+                    'form_id' => $formId,
+                    'hc_number' => $hcNumber,
+                    'source_type' => $sourceType,
+                    'status' => 'skipped',
+                    'reason' => 'recipient_missing',
+                ];
+                continue;
+            }
+
+            $targetWaNumber = $overrideWaNumber !== '' ? $overrideWaNumber : $recipient['wa_number'];
+            if ($targetWaNumber === '') {
+                $skipped++;
+                $rows[] = [
+                    'form_id' => $formId,
+                    'hc_number' => $hcNumber,
+                    'source_type' => $sourceType,
+                    'status' => 'skipped',
+                    'reason' => 'target_wa_missing',
+                ];
+                continue;
+            }
+
+            $activeConversation = WhatsappConversation::query()
+                ->where('wa_number', $targetWaNumber)
+                ->orderByDesc('last_message_at')
+                ->orderByDesc('id')
+                ->first();
+
+            if ($this->hasReachedPatientDailyLimit($hcNumber)) {
+                $skipped++;
+                $rows[] = [
+                    'form_id' => $formId,
+                    'hc_number' => $hcNumber,
+                    'source_type' => $sourceType,
+                    'status' => 'skipped',
+                    'reason' => 'daily_limit',
+                ];
+                continue;
+            }
+
+            if ($overrideWaNumber === '' && $this->hasRecentOutboundToRecipient($targetWaNumber)) {
+                $skipped++;
+                $rows[] = [
+                    'form_id' => $formId,
+                    'hc_number' => $hcNumber,
+                    'source_type' => $sourceType,
+                    'status' => 'skipped',
+                    'reason' => 'recent_outbound',
+                ];
+                continue;
+            }
+
+            $dedupeKey = $this->dedupeKey(
+                $sourceType,
+                $formId,
+                $hcNumber,
+                $windowKey,
+                $eventAt,
+                (string) ($candidate['group_date'] ?? '')
+            );
+
+            if (WhatsappAppointmentReminder::query()->where('dedupe_key', $dedupeKey)->exists()) {
+                $skipped++;
+                $rows[] = [
+                    'form_id' => $formId,
+                    'hc_number' => $hcNumber,
+                    'source_type' => $sourceType,
+                    'status' => 'skipped',
+                    'reason' => 'duplicate',
+                ];
+                continue;
+            }
+
+            $payload = [
+                'doctor' => $doctor,
+                'sede' => $sedeDepartamento,
+                'procedimiento' => $procedimiento,
+                'event_at' => $eventAt->toIso8601String(),
+                'window' => $windowKey,
+                'source_type' => $sourceType,
+                'group_count' => $groupCount,
+            ];
+
+            $candidates++;
+
+            if ($dryRun) {
+                $rows[] = [
+                    'form_id' => $formId,
+                    'hc_number' => $hcNumber,
+                    'source_type' => $sourceType,
+                    'status' => 'dry_run',
+                    'wa_number' => $targetWaNumber,
+                    'patient_name' => $recipient['patient_name'],
+                ];
+                continue;
+            }
+
+            $reminder = WhatsappAppointmentReminder::query()->create([
+                'conversation_id' => $activeConversation?->id,
+                'wa_number' => $targetWaNumber,
+                'hc_number' => $hcNumber,
+                'form_id' => $formId,
+                'source_type' => $sourceType,
+                'template_code' => (string) $template->template_code,
+                'reminder_window' => $windowKey,
+                'dedupe_key' => $dedupeKey,
+                'event_at' => $eventAt,
+                'status' => 'pending',
+                'payload' => $payload,
+            ]);
+
+            try {
+                $templateVariables = $this->templateVariables(
+                    $recipient['patient_name'],
+                    $sedeDepartamento,
+                    $eventAt,
+                    $doctor,
+                    $procedimiento
+                );
+
+                $result = $this->dispatchService->sendTemplate(
+                    $targetWaNumber,
+                    (int) $template->id,
+                    $recipient['patient_name'],
+                    $hcNumber,
+                    $recipient['patient_name'],
+                    $templateVariables
+                );
+
+                $reminder->fill([
+                    'conversation_id' => (int) data_get($result, 'conversation.id', 0) ?: $activeConversation?->id,
+                    'wa_number' => $targetWaNumber,
+                    'template_message_id' => (string) data_get($result, 'message.wa_message_id', ''),
+                    'status' => 'sent',
+                    'sent_at' => now(),
+                    'payload' => array_merge($payload, [
+                        'template_variables' => $templateVariables,
+                        'recipient_override' => $overrideWaNumber !== '' ? $overrideWaNumber : null,
+                    ]),
+                ])->save();
+
+                $sent++;
+                $rows[] = [
+                    'form_id' => $formId,
+                    'hc_number' => $hcNumber,
+                    'source_type' => $sourceType,
+                    'status' => 'sent',
+                    'wa_number' => $targetWaNumber,
+                    'patient_name' => $recipient['patient_name'],
+                ];
+            } catch (\Throwable $e) {
+                $reminder->fill([
+                    'status' => 'failed',
+                    'failed_at' => now(),
+                    'notes' => mb_substr($e->getMessage(), 0, 2000),
+                ])->save();
+
+                $failed++;
+                $rows[] = [
+                    'form_id' => $formId,
+                    'hc_number' => $hcNumber,
+                    'source_type' => $sourceType,
+                    'status' => 'failed',
+                    'wa_number' => $targetWaNumber,
+                    'reason' => $e->getMessage(),
+                ];
+            }
+        }
+
+        return [
+            'scanned' => $scanned,
+            'candidates' => $candidates,
+            'sent' => $sent,
+            'failed' => $failed,
+            'skipped' => $skipped,
+            'rows' => $rows,
+        ];
+    }
+
+    private function dedupeKey(
+        string $sourceType,
+        int $formId,
+        string $hcNumber,
+        string $windowKey,
+        CarbonInterface $eventAt,
+        string $groupDate
+    ): string {
+        if ($sourceType === 'imagenes' && $groupDate !== '') {
+            return sha1(implode('|', [
+                $sourceType,
+                $hcNumber,
+                $groupDate,
+                $windowKey,
+            ]));
+        }
+
+        return sha1(implode('|', [
+            $sourceType,
+            (string) $formId,
+            $windowKey,
+            $eventAt->format('Y-m-d H:i:s'),
+        ]));
+    }
+
+    /**
+     * @return array{handled:bool,messages_sent:int,handoff_requested:bool,reason:string}|null
+     */
+    public function handleInboundResponse(WhatsappConversation $conversation, string $text): ?array
+    {
+        if (!Schema::hasTable('whatsapp_appointment_reminders')) {
+            return null;
+        }
+
+        $normalized = $this->normalizeText($text);
+        if ($normalized === '') {
+            return null;
+        }
+
+        $reminder = WhatsappAppointmentReminder::query()
+            ->where(function ($query) use ($conversation): void {
+                $query->where('conversation_id', $conversation->id)
+                    ->orWhere('wa_number', (string) $conversation->wa_number);
+            })
+            ->where('status', 'sent')
+            ->whereNull('responded_at')
+            ->orderByDesc('sent_at')
+            ->orderByDesc('id')
+            ->first();
+
+        if (!$reminder instanceof WhatsappAppointmentReminder) {
+            return null;
+        }
+
+        if ($this->isReminderConfirmReply($normalized)) {
+            $reminder->fill([
+                'status' => 'responded',
+                'response_value' => 'confirmar',
+                'responded_at' => now(),
+            ])->save();
+
+            $this->dispatchService->sendSystemText(
+                $conversation,
+                '✅ Gracias por confirmar tu asistencia. Si necesitas algo más, escribe AYUDA o MENU.'
+            );
+
+            return [
+                'handled' => true,
+                'messages_sent' => 1,
+                'handoff_requested' => false,
+                'reason' => 'reminder_confirmed',
+            ];
+        }
+
+        if ($this->isReminderAgentReply($normalized)) {
+            $reminder->fill([
+                'status' => 'responded',
+                'response_value' => 'agente',
+                'responded_at' => now(),
+            ])->save();
+
+            $payload = is_array($reminder->payload) ? $reminder->payload : [];
+            $note = sprintf(
+                'Recordatorio WhatsApp. El paciente pidió comunicarse con un agente para su %s del %s (%s, %s).',
+                (string) ($reminder->source_type === 'imagenes' ? 'estudio' : 'cita'),
+                $this->formatEventForNote($reminder->event_at),
+                trim((string) ($payload['procedimiento'] ?? 'sin procedimiento')),
+                trim((string) ($payload['sede'] ?? 'sin sede'))
+            );
+
+            $this->conversationOpsService->enqueueConversationToRole(
+                (int) $conversation->id,
+                max(1, $this->agentRoleId()),
+                0,
+                true,
+                $note
+            );
+
+            $this->dispatchService->sendSystemText(
+                $conversation,
+                '🆘 Un agente revisará tu solicitud y te contactará por este mismo canal.'
+            );
+
+            return [
+                'handled' => true,
+                'messages_sent' => 1,
+                'handoff_requested' => true,
+                'reason' => 'reminder_agent_requested',
+            ];
+        }
+
+        return null;
+    }
+
+    private function classifySourceType(string $procedimiento): ?string
+    {
+        $normalized = $this->normalizeText($procedimiento);
+        if ($normalized === '') {
+            return null;
+        }
+
+        foreach ($this->imagingKeywords() as $keyword) {
+            if (str_contains($normalized, $keyword)) {
+                return 'imagenes';
+            }
+        }
+
+        foreach ($this->serviceKeywords() as $keyword) {
+            if (str_contains($normalized, $keyword)) {
+                return 'servicios_oftalmologicos_generales';
+            }
+        }
+
+        return null;
+    }
+
+    private function estadoAgendaAllowsReminder(string $estado): bool
+    {
+        $normalized = $this->normalizeText($estado);
+        if ($normalized === '') {
+            return true;
+        }
+
+        foreach (['cancel', 'anulad', 'atendid', 'cerrad', 'no show', 'no_show'] as $blocked) {
+            if (str_contains($normalized, $blocked)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function resolveTemplateForSource(string $sourceType): ?WhatsappMessageTemplate
+    {
+        $code = $sourceType === 'imagenes'
+            ? $this->imageTemplateCode()
+            : $this->serviceTemplateCode();
+
+        if ($code === '') {
+            return null;
+        }
+
+        return WhatsappMessageTemplate::query()
+            ->with('whatsapp_template_revision')
+            ->where('template_code', $code)
+            ->whereRaw('LOWER(status) in (?, ?)', ['approved', 'active'])
+            ->first();
+    }
+
+    /**
+     * @return array{wa_number:string,patient_name:string}
+     */
+    private function resolveRecipient(string $hcNumber): array
+    {
+        $conversation = WhatsappConversation::query()
+            ->where('patient_hc_number', $hcNumber)
+            ->orderByDesc('last_message_at')
+            ->orderByDesc('id')
+            ->first();
+
+        if ($conversation instanceof WhatsappConversation) {
+            $waNumber = $this->normalizePhone((string) $conversation->wa_number);
+            if ($waNumber !== '') {
+                return [
+                    'wa_number' => $waNumber,
+                    'patient_name' => (string) ($conversation->patient_full_name ?: $conversation->display_name ?: $waNumber),
+                ];
+            }
+        }
+
+        $patient = DB::table('patient_data')
+            ->select(['fname', 'mname', 'lname', 'lname2', 'celular'])
+            ->where('hc_number', $hcNumber)
+            ->orderByDesc('id')
+            ->first();
+
+        $waNumber = $this->normalizePhone((string) ($patient->celular ?? ''));
+        $patientName = trim(implode(' ', array_filter([
+            trim((string) ($patient->fname ?? '')),
+            trim((string) ($patient->mname ?? '')),
+            trim((string) ($patient->lname ?? '')),
+            trim((string) ($patient->lname2 ?? '')),
+        ])));
+
+        return [
+            'wa_number' => $waNumber,
+            'patient_name' => $patientName !== '' ? $patientName : $waNumber,
+        ];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function templateVariables(string $patientName, string $sede, CarbonInterface $eventAt, string $doctor, string $procedimiento): array
+    {
+        return [
+            $patientName !== '' ? $patientName : 'Paciente',
+            $sede !== '' ? $sede : 'Sede por confirmar',
+            $eventAt->locale('es')->translatedFormat('d/m/Y'),
+            $eventAt->format('H:i'),
+            trim($doctor) !== '' ? trim($doctor) : 'Por confirmar',
+            $this->sedeAddress($sede),
+            $procedimiento !== '' ? $procedimiento : 'Atención programada',
+        ];
+    }
+
+    private function sedeAddress(string $sede): string
+    {
+        $normalized = $this->normalizeText($sede);
+
+        return match (true) {
+            str_contains($normalized, 'villa') => 'Parroquia satélite La Aurora de Daule, km 12 Av. León Febres-Cordero. Junto a la Piazza Villa Club.',
+            str_contains($normalized, 'ceibos') => 'C.C. La Vista de San Eduardo #200, km 6.5 Av. del Bombero.',
+            default => 'Revisa la ubicación enviada por nuestro equipo o comunícate con un agente.',
+        };
+    }
+
+    private function eventAt(mixed $fecha, mixed $hora): ?CarbonInterface
+    {
+        $date = trim((string) $fecha);
+        $time = trim((string) $hora);
+        if ($date === '' || $date === '0000-00-00') {
+            return null;
+        }
+
+        $time = $this->normalizeTimeValue($time);
+        if ($time === null) {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($date . ' ' . $time, $this->reminderTimezone());
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    private function normalizeTimeValue(string $value): ?string
+    {
+        $value = trim($value);
+        if ($value === '' || str_starts_with($value, '0000-00-00')) {
+            return null;
+        }
+
+        if (preg_match('/^\d{2}:\d{2}:\d{2}$/', $value) === 1) {
+            return $value;
+        }
+
+        if (preg_match('/^\d{2}:\d{2}$/', $value) === 1) {
+            return $value . ':00';
+        }
+
+        try {
+            return Carbon::parse($value)->format('H:i:s');
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    private function isReminderConfirmReply(string $normalized): bool
+    {
+        return in_array($normalized, [
+            'confirmar',
+            'confirmo',
+            'confirmo asistencia',
+            'si confirmo',
+            'si',
+        ], true);
+    }
+
+    private function isReminderAgentReply(string $normalized): bool
+    {
+        return in_array($normalized, [
+            'comunicarse con un agente',
+            'comunicarse_con_un_agente',
+            'comunicarse con agente',
+            'comunicarse_con_agente',
+            'agente',
+            'necesito reagendar',
+            'reagendar',
+        ], true);
+    }
+
+    private function formatEventForNote(mixed $value): string
+    {
+        if (!$value instanceof CarbonInterface) {
+            return 'fecha no disponible';
+        }
+
+        return $value->format('Y-m-d H:i');
+    }
+
+    private function normalizePhone(string $value): string
+    {
+        $digits = preg_replace('/\D+/', '', trim($value));
+        if ($digits === '') {
+            return '';
+        }
+
+        $defaultCountryCode = preg_replace('/\D+/', '', (string) ($this->configService->get()['default_country_code'] ?? ''));
+        if ($defaultCountryCode !== '' && !str_starts_with($digits, $defaultCountryCode) && str_starts_with($digits, '0')) {
+            return $defaultCountryCode . ltrim($digits, '0');
+        }
+
+        return $digits;
+    }
+
+    private function remindersEnabled(): bool
+    {
+        return $this->settingBool(
+            'whatsapp_reminders_enabled',
+            (bool) config('whatsapp.migration.reminders.enabled', false)
+        );
+    }
+
+    private function windowMinutes(string $windowKey): int
+    {
+        $defaults = [
+            '24h' => (int) config('whatsapp.migration.reminders.windows.24h', 1440),
+            '2h' => (int) config('whatsapp.migration.reminders.windows.2h', 120),
+        ];
+
+        $enabledKey = $windowKey === '2h'
+            ? 'whatsapp_reminder_window_2h_enabled'
+            : 'whatsapp_reminder_window_24h_enabled';
+
+        if (!$this->settingBool($enabledKey, true)) {
+            return 0;
+        }
+
+        $minutesKey = $windowKey === '2h'
+            ? 'whatsapp_reminder_window_2h_minutes'
+            : 'whatsapp_reminder_window_24h_minutes';
+
+        return max(0, $this->settingInt($minutesKey, (int) ($defaults[$windowKey] ?? 0)));
+    }
+
+    private function windowToleranceMinutes(): int
+    {
+        return max(5, $this->settingInt(
+            'whatsapp_reminder_window_tolerance_minutes',
+            (int) config('whatsapp.migration.reminders.window_tolerance_minutes', 15)
+        ));
+    }
+
+    private function serviceTemplateCode(): string
+    {
+        return $this->settingString(
+            'whatsapp_reminder_service_template_code',
+            (string) config('whatsapp.migration.reminders.consultation_template_code', 'recordatorio_cita_medica_cive')
+        );
+    }
+
+    private function imageTemplateCode(): string
+    {
+        return $this->settingString(
+            'whatsapp_reminder_imaging_template_code',
+            (string) config('whatsapp.migration.reminders.image_template_code', 'recordatorio_cita_medica_cive')
+        );
+    }
+
+    /**
+     * @return array<int,string>
+     */
+    private function serviceKeywords(): array
+    {
+        $fallback = [
+            'consulta',
+            'servicio oftalmologico',
+            'servicios oftalmologicos',
+            'control',
+            'oftalmologica',
+            'oftalmologico',
+        ];
+
+        return $this->settingList('whatsapp_reminder_service_keywords', $fallback);
+    }
+
+    /**
+     * @return array<int,string>
+     */
+    private function imagingKeywords(): array
+    {
+        $fallback = [
+            'imagenes',
+            'imagen',
+            'oct',
+            'topografia',
+            'paquimetria',
+            'biometria',
+            'retinografia',
+            'angiografia',
+            'campo visual',
+            'ultrasonido',
+            'ecografia',
+            'examen',
+        ];
+
+        return $this->settingList('whatsapp_reminder_imaging_keywords', $fallback);
+    }
+
+    private function agentRoleId(): int
+    {
+        return max(1, $this->settingInt(
+            'whatsapp_reminder_agent_role_id',
+            (int) config('whatsapp.migration.reminders.agent_role_id', 4)
+        ));
+    }
+
+    private function hasRecentOutboundToRecipient(string $waNumber): bool
+    {
+        $hours = max(0, $this->settingInt('whatsapp_reminder_skip_if_recent_outbound_hours', 12));
+        if ($hours <= 0 || !Schema::hasTable('whatsapp_messages') || !Schema::hasTable('whatsapp_conversations')) {
+            return false;
+        }
+
+        return DB::table('whatsapp_messages as wm')
+            ->join('whatsapp_conversations as wc', 'wc.id', '=', 'wm.conversation_id')
+            ->where('wc.wa_number', $waNumber)
+            ->where('wm.direction', 'outbound')
+            ->where('wm.created_at', '>=', now($this->reminderTimezone())->subHours($hours))
+            ->exists();
+    }
+
+    private function hasReachedPatientDailyLimit(string $hcNumber): bool
+    {
+        $limit = max(0, $this->settingInt('whatsapp_reminder_max_per_patient_per_day', 2));
+        if ($limit <= 0) {
+            return false;
+        }
+
+        return WhatsappAppointmentReminder::query()
+            ->where('hc_number', $hcNumber)
+            ->whereDate('created_at', now($this->reminderTimezone())->toDateString())
+            ->count() >= $limit;
+    }
+
+    private function settingBool(string $key, bool $default): bool
+    {
+        $value = $this->settings()[$key] ?? null;
+        if ($value === null || trim((string) $value) === '') {
+            return $default;
+        }
+
+        return in_array(mb_strtolower(trim((string) $value), 'UTF-8'), ['1', 'true', 'yes', 'on', 'si'], true);
+    }
+
+    private function settingInt(string $key, int $default): int
+    {
+        $value = $this->settings()[$key] ?? null;
+        if (!is_scalar($value) || trim((string) $value) === '' || !is_numeric((string) $value)) {
+            return $default;
+        }
+
+        return (int) $value;
+    }
+
+    private function settingString(string $key, string $default): string
+    {
+        $value = $this->settings()[$key] ?? null;
+        if (!is_scalar($value) || trim((string) $value) === '') {
+            return $default;
+        }
+
+        return trim((string) $value);
+    }
+
+    /**
+     * @param array<int,string> $default
+     * @return array<int,string>
+     */
+    private function settingList(string $key, array $default): array
+    {
+        $value = $this->settings()[$key] ?? null;
+        if (!is_scalar($value) || trim((string) $value) === '') {
+            return $default;
+        }
+
+        $items = preg_split('/[\r\n,;]+/', (string) $value) ?: [];
+        $items = array_values(array_filter(array_map(function (string $item): string {
+            return $this->normalizeText($item);
+        }, $items)));
+
+        return $items !== [] ? $items : $default;
+    }
+
+    /**
+     * @return array<string,string>
+     */
+    private function settings(): array
+    {
+        return $this->settingsResolver()->getOptions([
+            'whatsapp_reminders_enabled',
+            'whatsapp_reminder_service_template_code',
+            'whatsapp_reminder_imaging_template_code',
+            'whatsapp_reminder_window_24h_enabled',
+            'whatsapp_reminder_window_2h_enabled',
+            'whatsapp_reminder_window_24h_minutes',
+            'whatsapp_reminder_window_2h_minutes',
+            'whatsapp_reminder_window_tolerance_minutes',
+            'whatsapp_reminder_max_per_patient_per_day',
+            'whatsapp_reminder_skip_if_recent_outbound_hours',
+            'whatsapp_reminder_agent_role_id',
+            'whatsapp_reminder_service_keywords',
+            'whatsapp_reminder_imaging_keywords',
+            'whatsapp_reminder_timezone',
+        ]);
+    }
+
+    private function reminderTimezone(): string
+    {
+        return $this->settingString(
+            'whatsapp_reminder_timezone',
+            (string) config('whatsapp.migration.reminders.timezone', 'America/Guayaquil')
+        );
+    }
+
+    private function settingsResolver(): SettingsOptionResolver
+    {
+        if (!$this->settingsResolver instanceof SettingsOptionResolver) {
+            $this->settingsResolver = new SettingsOptionResolver();
+        }
+
+        return $this->settingsResolver;
+    }
+
+    private function normalizeText(string $value): string
+    {
+        $value = trim(mb_strtolower($value, 'UTF-8'));
+        $value = str_replace(
+            ['á', 'é', 'í', 'ó', 'ú', 'ü', 'ñ'],
+            ['a', 'e', 'i', 'o', 'u', 'u', 'n'],
+            $value
+        );
+        $value = preg_replace('/\s+/', ' ', $value) ?: '';
+
+        return trim($value);
+    }
+}

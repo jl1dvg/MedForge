@@ -1126,6 +1126,95 @@ class SettingsHelper
                         ],
                     ],
                     [
+                        'id' => 'appointment_reminders',
+                        'title' => 'Recordatorios automáticos',
+                        'description' => 'Configura los recordatorios de citas por WhatsApp para servicios oftalmológicos generales e imágenes.',
+                        'fields' => [
+                            self::checkboxField(
+                                'whatsapp_reminders_enabled',
+                                'Habilitar recordatorios automáticos',
+                                false,
+                                'Activa el envío programado de recordatorios por plantilla oficial.'
+                            ),
+                            self::selectField(
+                                'whatsapp_reminder_timezone',
+                                'Zona horaria operativa',
+                                $timezones,
+                                'America/Guayaquil'
+                            ),
+                            self::textField(
+                                'whatsapp_reminder_service_template_code',
+                                'Plantilla para servicios oftalmológicos generales',
+                                false,
+                                'Código de plantilla oficial aprobado en Meta. Ejemplo: recordatorio_cita_medica_cive.'
+                            ),
+                            self::textField(
+                                'whatsapp_reminder_imaging_template_code',
+                                'Plantilla para imágenes',
+                                false,
+                                'Si no tienes una plantilla separada, puedes reutilizar temporalmente la misma de consulta.'
+                            ),
+                            self::checkboxField(
+                                'whatsapp_reminder_window_24h_enabled',
+                                'Enviar recordatorio 24 horas antes',
+                                true
+                            ),
+                            self::numberField(
+                                'whatsapp_reminder_window_24h_minutes',
+                                'Ventana 24h (minutos)',
+                                1440,
+                                'Mantén 1440 para 24 horas exactas.'
+                            ),
+                            self::checkboxField(
+                                'whatsapp_reminder_window_2h_enabled',
+                                'Enviar recordatorio 2 horas antes',
+                                true
+                            ),
+                            self::numberField(
+                                'whatsapp_reminder_window_2h_minutes',
+                                'Ventana 2h (minutos)',
+                                120,
+                                'Mantén 120 para 2 horas exactas.'
+                            ),
+                            self::numberField(
+                                'whatsapp_reminder_window_tolerance_minutes',
+                                'Tolerancia de ventana (minutos)',
+                                15,
+                                'Rango aceptado alrededor de la ventana objetivo para evitar perder eventos.'
+                            ),
+                            self::numberField(
+                                'whatsapp_reminder_max_per_patient_per_day',
+                                'Máximo de recordatorios por paciente al día',
+                                2,
+                                'Evita saturar al mismo paciente en un solo día.'
+                            ),
+                            self::numberField(
+                                'whatsapp_reminder_skip_if_recent_outbound_hours',
+                                'No reenviar si hubo outbound reciente (horas)',
+                                12,
+                                'Usa 0 para desactivar esta protección.'
+                            ),
+                            self::numberField(
+                                'whatsapp_reminder_agent_role_id',
+                                'Rol para solicitudes de agente',
+                                4,
+                                'Rol que recibirá el handoff cuando el paciente pulse la opción de hablar con un agente.'
+                            ),
+                            self::textareaField(
+                                'whatsapp_reminder_service_keywords',
+                                'Keywords de servicios oftalmológicos generales',
+                                'Una keyword por línea. Se usan para clasificar procedimiento_proyectado.',
+                                "servicios oftalmologicos generales\nservicio oftalmologico\nservicios oftalmologicos\nconsulta\ncontrol\noftalmologica\noftalmologico"
+                            ),
+                            self::textareaField(
+                                'whatsapp_reminder_imaging_keywords',
+                                'Keywords de imágenes',
+                                'Una keyword por línea. Se usan para clasificar procedimiento_proyectado.',
+                                "imagenes\nimagen\noct\ntopografia\npaquimetria\nbiometria\nretinografia\nangiografia\ncampo visual\nultrasonido\necografia\nexamen"
+                            ),
+                        ],
+                    ],
+                    [
                         'id' => 'handoff',
                         'title' => 'Handoff a agentes',
                         'description' => 'Define la asignación humana, tiempos de respuesta y notificaciones.',

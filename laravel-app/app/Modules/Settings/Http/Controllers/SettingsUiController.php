@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Settings\Http\Controllers;
 
 use App\Models\AppSetting;
+use App\Modules\Shared\Support\SettingsOptionResolver;
 use App\Modules\Shared\Support\LegacyCurrentUser;
 use App\Modules\Solicitudes\Services\SolicitudesSlaSettingsService;
 use Helpers\SettingsHelper;
@@ -62,6 +63,8 @@ class SettingsUiController
                 ]
             );
         }
+
+        SettingsOptionResolver::flush();
 
         if ($sectionId === 'crm_pipeline') {
             $slaSettings = new SolicitudesSlaSettingsService();

@@ -12,7 +12,7 @@ class SettingsOptionResolver
 {
     private const TABLE_CANDIDATES = ['app_settings', 'settings', 'tbloptions', 'options'];
     private const CACHE_TTL = 300;
-    private const CACHE_PREFIX = 'settings.resolver.';
+    private const CACHE_KEY_ALL = 'settings.resolver.all';
 
     private ?string $resolvedTable = null;
 
@@ -32,26 +32,30 @@ class SettingsOptionResolver
             return [];
         }
 
-        $cacheKey = self::CACHE_PREFIX . md5(implode(',', $keys));
-
-        /** @var array<string,string> $cached */
-        $cached = Cache::remember($cacheKey, self::CACHE_TTL, function () use ($keys): array {
-            return $this->fetchOptions($keys);
+        /** @var array<string,string> $all */
+        $all = Cache::remember(self::CACHE_KEY_ALL, self::CACHE_TTL, function (): array {
+            return $this->fetchAllOptions();
         });
 
-        return $cached;
+        $resolved = [];
+        foreach ($keys as $key) {
+            if (array_key_exists($key, $all)) {
+                $resolved[$key] = (string) $all[$key];
+            }
+        }
+
+        return $resolved;
     }
 
     public static function flush(): void
     {
-        Cache::flush();
+        Cache::forget(self::CACHE_KEY_ALL);
     }
 
     /**
-     * @param array<int,string> $keys
      * @return array<string,string>
      */
-    private function fetchOptions(array $keys): array
+    private function fetchAllOptions(): array
     {
         $table = $this->resolveTable();
         if ($table === null) {
@@ -63,19 +67,14 @@ class SettingsOptionResolver
             return [];
         }
 
-        $placeholders = implode(',', array_fill(0, count($keys), '?'));
-
         try {
             $rows = DB::select(
                 sprintf(
-                    'SELECT %s, %s FROM %s WHERE %s IN (%s)',
+                    'SELECT %s, %s FROM %s',
                     $columns['name'],
                     $columns['value'],
-                    $table,
-                    $columns['name'],
-                    $placeholders
-                ),
-                $keys
+                    $table
+                )
             );
         } catch (Throwable) {
             return [];
