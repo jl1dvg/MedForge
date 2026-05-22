@@ -122,8 +122,9 @@ class InsumoService
             Log::error('InsumoService::guardar failed', ['error' => $e->getMessage()]);
 
             return [
-                'success' => false,
-                'message' => 'Error al guardar el insumo: ' . $e->getMessage(),
+                'success'    => false,
+                'message'    => 'Error al guardar el insumo: ' . $e->getMessage(),
+                'error_type' => 'server_error',
             ];
         }
     }
@@ -169,8 +170,9 @@ class InsumoService
             Log::error('InsumoService::guardarMedicamento failed', ['error' => $e->getMessage()]);
 
             return [
-                'success' => false,
-                'message' => 'Error al guardar el medicamento: ' . $e->getMessage(),
+                'success'    => false,
+                'message'    => 'Error al guardar el medicamento: ' . $e->getMessage(),
+                'error_type' => 'server_error',
             ];
         }
     }
@@ -198,8 +200,9 @@ class InsumoService
             Log::error('InsumoService::eliminarMedicamento failed', ['id' => $id, 'error' => $e->getMessage()]);
 
             return [
-                'success' => false,
-                'message' => 'Error al eliminar el medicamento: ' . $e->getMessage(),
+                'success'    => false,
+                'message'    => 'Error al eliminar el medicamento: ' . $e->getMessage(),
+                'error_type' => 'server_error',
             ];
         }
     }

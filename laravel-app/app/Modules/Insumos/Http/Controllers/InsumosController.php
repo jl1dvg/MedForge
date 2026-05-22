@@ -36,7 +36,9 @@ class InsumosController
     {
         $payload   = $this->resolvePayload($request);
         $resultado = $this->service->guardar($payload);
-        $status    = ($resultado['success'] ?? false) ? 200 : 422;
+        $status    = ($resultado['success'] ?? false)
+            ? 200
+            : (($resultado['error_type'] ?? '') === 'server_error' ? 500 : 422);
 
         return response()->json($resultado, $status);
     }
@@ -61,7 +63,9 @@ class InsumosController
     {
         $payload   = $this->resolvePayload($request);
         $resultado = $this->service->guardarMedicamento($payload);
-        $status    = ($resultado['success'] ?? false) ? 200 : 422;
+        $status    = ($resultado['success'] ?? false)
+            ? 200
+            : (($resultado['error_type'] ?? '') === 'server_error' ? 500 : 422);
 
         return response()->json($resultado, $status);
     }
@@ -71,7 +75,9 @@ class InsumosController
         $payload   = $this->resolvePayload($request);
         $id        = isset($payload['id']) ? (int) $payload['id'] : 0;
         $resultado = $this->service->eliminarMedicamento($id);
-        $status    = ($resultado['success'] ?? false) ? 200 : 422;
+        $status    = ($resultado['success'] ?? false)
+            ? 200
+            : (($resultado['error_type'] ?? '') === 'server_error' ? 500 : 422);
 
         return response()->json($resultado, $status);
     }
