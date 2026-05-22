@@ -41,7 +41,9 @@ Route::middleware('web')->group(function (): void {
 require __DIR__ . '/v2/ai.php';
 
 // /search routes intentionally outside /v2 prefix — matches legacy paths
-require __DIR__ . '/v2/search.php';
+Route::middleware('web')->group(function (): void {
+    require __DIR__ . '/v2/search.php';
+});
 
 Route::middleware([
     'whatsapp.feature:webhook,/whatsapp/webhook',

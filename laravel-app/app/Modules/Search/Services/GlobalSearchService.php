@@ -413,7 +413,8 @@ class GlobalSearchService
 
     private function makeLike(string $term): string
     {
-        return '%' . $term . '%';
+        $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $term);
+        return '%' . $escaped . '%';
     }
 
     private function id(mixed $value): ?int
