@@ -18,7 +18,7 @@ use Modules\Examenes\Services\ExamenEstadoService;
 use Modules\Examenes\Services\ExamenMailLogService;
 use App\Modules\Mail\Services\MailProfileService;
 use App\Modules\Mail\Services\NotificationMailer;
-use Modules\MailTemplates\Services\CoberturaMailTemplateService;
+use App\Modules\MailTemplates\Services\CoberturaMailTemplateService;
 use Modules\Pacientes\Services\PacienteService;
 use PDO;
 use RuntimeException;
@@ -201,7 +201,7 @@ class ExamenesPrefacturaService
         $trazabilidad = $this->construirTrazabilidad($examen, $crmResumen);
 
         $afiliacion = trim((string) (($paciente['afiliacion'] ?? null) ?: ($examen['afiliacion'] ?? '')));
-        $templateService = new CoberturaMailTemplateService($this->db);
+        $templateService = new CoberturaMailTemplateService();
         $templateKey = $templateService->resolveImagenesTemplateKey($afiliacion);
         $templateAvailable = false;
         if ($templateKey && $templateService->hasEnabledTemplate($templateKey)) {

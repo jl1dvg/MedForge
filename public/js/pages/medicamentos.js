@@ -188,7 +188,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         fetch('/insumos/medicamentos/guardar', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': window.csrfToken },
             body: JSON.stringify(data),
         })
             .then((res) => res.json())
@@ -216,7 +216,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         fetch('/insumos/medicamentos/eliminar', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': window.csrfToken },
             body: JSON.stringify({ id }),
         })
             .then((res) => res.json())

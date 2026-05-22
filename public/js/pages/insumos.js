@@ -196,7 +196,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         fetch('/insumos/guardar', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': window.csrfToken },
             body: JSON.stringify(data),
         })
             .then((res) => res.json())

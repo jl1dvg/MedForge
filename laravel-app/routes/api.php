@@ -37,6 +37,39 @@ Route::middleware('web')->group(function (): void {
     require __DIR__ . '/v2/mail.php';
 });
 
+// /mail-templates routes intentionally outside /v2 prefix — matches legacy paths
+Route::middleware('web')->group(function (): void {
+    require __DIR__ . '/v2/mail_templates.php';
+});
+
+// /ai routes intentionally outside /v2 prefix — matches legacy paths
+require __DIR__ . '/v2/ai.php';
+
+// /kpis routes intentionally outside /v2 prefix — matches legacy paths
+Route::middleware('web')->group(function (): void {
+    require __DIR__ . '/v2/kpi.php';
+});
+
+// /search routes intentionally outside /v2 prefix — matches legacy paths
+Route::middleware('web')->group(function (): void {
+    require __DIR__ . '/v2/search.php';
+});
+
+// /insumos routes intentionally outside /v2 prefix — matches legacy paths
+Route::middleware('web')->group(function (): void {
+    require __DIR__ . '/v2/insumos.php';
+});
+
+// /doctores routes intentionally outside /v2 prefix — matches legacy paths
+Route::middleware('web')->group(function (): void {
+    require __DIR__ . '/v2/doctores.php';
+});
+
+// /api/cive-extension routes — consumed by Chrome extension (asistentecive.consulmed.me)
+Route::middleware('web')->group(function (): void {
+    require __DIR__ . '/v2/cive_extension.php';
+});
+
 Route::middleware([
     'whatsapp.feature:webhook,/whatsapp/webhook',
 ])->group(function (): void {

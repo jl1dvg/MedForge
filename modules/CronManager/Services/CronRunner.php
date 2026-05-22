@@ -16,7 +16,7 @@ use Modules\Derivaciones\Services\DerivacionesSyncService;
 use Modules\IdentityVerification\Models\VerificationModel;
 use Modules\IdentityVerification\Services\MissingEvidenceEscalationService;
 use Modules\IdentityVerification\Services\VerificationPolicyService;
-use Modules\KPI\Services\KpiCalculationService;
+use App\Modules\KPI\Services\KpiCalculationService;
 use Modules\Mail\Services\NotificationMailer;
 use Modules\Notifications\Services\PusherConfigService;
 use Modules\CronManager\Services\ExamenesReminderService;
@@ -253,7 +253,7 @@ class CronRunner
                     $yesterday = $today->sub(new DateInterval('P1D'));
 
                     $period = new DatePeriod($yesterday, new DateInterval('P1D'), $today->add(new DateInterval('P1D')));
-                    $service = new KpiCalculationService($this->pdo);
+                    $service = new KpiCalculationService();
                     $service->recalculateRange($period);
 
                     return [

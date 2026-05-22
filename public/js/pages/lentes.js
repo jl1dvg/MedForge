@@ -141,7 +141,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const guardar = (payload) => {
         fetchJSON('/insumos/lentes/guardar', {
             method: 'POST',
-            headers: {'Content-Type': 'application/json;charset=UTF-8'},
+            headers: {'Content-Type': 'application/json;charset=UTF-8', 'X-CSRF-TOKEN': window.csrfToken},
             body: JSON.stringify(payload),
         })
             .then(() => {
@@ -166,7 +166,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!res.isConfirmed) return;
             fetchJSON('/insumos/lentes/eliminar', {
                 method: 'POST',
-                headers: {'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'},
+                headers: {'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8', 'X-CSRF-TOKEN': window.csrfToken},
                 body: new URLSearchParams({id}),
             })
                 .then(() => {
