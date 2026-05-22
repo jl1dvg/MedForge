@@ -1,26 +1,26 @@
 <?php
 
-namespace Modules\CiveExtension\Services;
+declare(strict_types=1);
 
-use Modules\CiveExtension\Models\HealthCheckModel;
-use PDO;
+namespace App\Modules\CiveExtension\Services;
+
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Throwable;
 
 class HealthCheckService
 {
     private ConfigService $configService;
-    private HealthCheckModel $healthChecks;
 
-    public function __construct(private PDO $pdo)
+    public function __construct()
     {
-        $this->configService = new ConfigService($pdo);
-        $this->healthChecks = new HealthCheckModel($pdo);
+        $this->configService = new ConfigService();
     }
 
     /**
-     * @param bool $force Si es true, ignora flags y fuerza la ejecución inmediata.
-     * @return array{status:string,message:string,details:array<string,mixed>}
+     * @param bool $force If true, ignores flags and forces immediate execution.
+     * @return array{status:string, message:string, details:array<string, mixed>}
      */
     public function runScheduledChecks(bool $force = false): array
     {
@@ -52,13 +52,13 @@ class HealthCheckService
                 $result['name'] = $endpoint['name'];
                 $results[] = $result;
 
-                $this->healthChecks->store([
+                $this->storeResult([
                     'endpoint' => $endpoint['url'],
                     'method' => $endpoint['method'],
                     'status_code' => $result['statusCode'],
                     'success' => $result['success'],
                     'latency_ms' => $result['latencyMs'],
-                    'error_message' => $result['success'] ? null : $result['error'] ?? null,
+                    'error_message' => $result['success'] ? null : ($result['error'] ?? null),
                     'response_excerpt' => $result['responseExcerpt'],
                 ]);
 
@@ -76,7 +76,7 @@ class HealthCheckService
                     'responseExcerpt' => null,
                 ];
 
-                $this->healthChecks->store([
+                $this->storeResult([
                     'endpoint' => $endpoint['url'],
                     'method' => $endpoint['method'],
                     'status_code' => null,
@@ -104,11 +104,33 @@ class HealthCheckService
      */
     public function latestResults(int $limit = 20): array
     {
-        return $this->healthChecks->latest($limit);
+        return DB::table('cive_extension_health_checks')
+            ->select(['id', 'endpoint', 'method', 'status_code', 'success', 'latency_ms', 'error_message', 'response_excerpt', 'created_at'])
+            ->orderByDesc('id')
+            ->limit($limit)
+            ->get()
+            ->map(static fn($row) => (array) $row)
+            ->all();
     }
 
     /**
-     * @return array{success:bool,statusCode:int|null,latencyMs:int|null,error:?string,responseExcerpt:?string}
+     * @param array{endpoint:string, method:string, status_code:int|null, success:bool, latency_ms:int|null, error_message:string|null, response_excerpt:string|null} $payload
+     */
+    private function storeResult(array $payload): void
+    {
+        DB::table('cive_extension_health_checks')->insert([
+            'endpoint' => $payload['endpoint'],
+            'method' => $payload['method'],
+            'status_code' => $payload['status_code'],
+            'success' => $payload['success'] ? 1 : 0,
+            'latency_ms' => $payload['latency_ms'],
+            'error_message' => $payload['error_message'],
+            'response_excerpt' => $payload['response_excerpt'],
+        ]);
+    }
+
+    /**
+     * @return array{success:bool, statusCode:int|null, latencyMs:int|null, error:string|null, responseExcerpt:string|null}
      */
     private function checkEndpoint(string $url, string $method, int $timeoutMs): array
     {
@@ -156,7 +178,7 @@ class HealthCheckService
             'statusCode' => $status ?: null,
             'latencyMs' => $latencyMs,
             'error' => $success ? null : ($error !== '' ? $error : 'Respuesta HTTP no exitosa'),
-            'responseExcerpt' => $body !== false ? mb_substr($body, 0, 500) : null,
+            'responseExcerpt' => $body !== false ? mb_substr((string) $body, 0, 500) : null,
         ];
     }
 }

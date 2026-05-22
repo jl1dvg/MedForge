@@ -1,14 +1,14 @@
 <?php
 
-namespace Modules\CiveExtension\Services;
+declare(strict_types=1);
 
-use Models\SettingsModel;
-use PDO;
+namespace App\Modules\CiveExtension\Services;
+
+use App\Models\AppSetting;
 use RuntimeException;
 
 class ConfigService
 {
-    private SettingsModel $settings;
     private string $defaultApiBaseUrl;
     private string $defaultControlBaseUrl;
 
@@ -28,24 +28,25 @@ class ConfigService
         'extension_id_remote' => 'CIVE',
     ];
 
-    public function __construct(PDO $pdo)
+    public function __construct()
     {
-        $this->settings = new SettingsModel($pdo);
         $this->defaultControlBaseUrl = $this->resolveDefaultControlBaseUrl();
-        $this->defaultApiBaseUrl = $this->resolveDefaultApiBaseUrl($this->defaultControlBaseUrl);
+        $this->defaultApiBaseUrl = self::DEFAULTS['api_base_url'];
     }
 
     /**
      * @return array{
-     *     api: array{baseUrl:string, timeoutMs:int, maxRetries:int, retryDelayMs:int, cacheTtlMs:int},
+     *     api: array{baseUrl:string, timeoutMs:int, maxRetries:int, retryDelayMs:int, cacheTtlMs:int, credentialsMode:string},
      *     openAi: array{apiKey:string, model:string},
      *     health: array{enabled:bool, endpoints:array<int, array{name:string, method:string, url:string}>, maxAgeMinutes:int},
-     *     refreshIntervalMs:int
+     *     refreshIntervalMs:int,
+     *     flags: array<string, mixed>,
+     *     controlBaseUrl: string
      * }
      */
     public function getExtensionConfig(): array
     {
-        $options = $this->settings->getOptions([
+        $keys = [
             'cive_extension_control_base_url',
             'cive_extension_api_base_url',
             'cive_extension_timeout_ms',
@@ -62,7 +63,12 @@ class ConfigService
             'cive_extension_local_mode',
             'cive_extension_extension_id_local',
             'cive_extension_extension_id_remote',
-        ]);
+        ];
+
+        $options = AppSetting::query()
+            ->whereIn('name', $keys)
+            ->pluck('value', 'name')
+            ->all();
 
         $controlBaseUrl = $this->sanitizeControlBaseUrl($options['cive_extension_control_base_url'] ?? null);
         $apiBaseUrl = $this->sanitizeUrl($options['cive_extension_api_base_url'] ?? null, $this->defaultApiBaseUrl);
@@ -73,14 +79,14 @@ class ConfigService
         $cacheTtlMs = $this->sanitizeInt($options['cive_extension_procedures_cache_ttl_ms'] ?? null, self::DEFAULTS['procedures_cache_ttl_ms']);
         $refreshIntervalMs = $this->sanitizeInt($options['cive_extension_refresh_interval_ms'] ?? null, self::DEFAULTS['refresh_interval_ms']);
 
-        $healthEnabled = (bool)($options['cive_extension_health_enabled'] ?? self::DEFAULTS['health_enabled']);
+        $healthEnabled = (bool) ($options['cive_extension_health_enabled'] ?? self::DEFAULTS['health_enabled']);
         $healthMaxAge = $this->sanitizeInt($options['cive_extension_health_max_age_minutes'] ?? null, self::DEFAULTS['health_max_age_minutes']);
-        $healthEndpointsRaw = (string)($options['cive_extension_health_endpoints'] ?? '');
+        $healthEndpointsRaw = (string) ($options['cive_extension_health_endpoints'] ?? '');
         $healthEndpoints = $this->parseHealthEndpoints($healthEndpointsRaw);
 
-        $localMode = (bool)($options['cive_extension_local_mode'] ?? self::DEFAULTS['local_mode']);
-        $extensionIdLocal = trim((string)($options['cive_extension_extension_id_local'] ?? self::DEFAULTS['extension_id_local']));
-        $extensionIdRemote = trim((string)($options['cive_extension_extension_id_remote'] ?? self::DEFAULTS['extension_id_remote']));
+        $localMode = (bool) ($options['cive_extension_local_mode'] ?? self::DEFAULTS['local_mode']);
+        $extensionIdLocal = trim((string) ($options['cive_extension_extension_id_local'] ?? self::DEFAULTS['extension_id_local']));
+        $extensionIdRemote = trim((string) ($options['cive_extension_extension_id_remote'] ?? self::DEFAULTS['extension_id_remote']));
         $extensionId = $localMode
             ? ($extensionIdLocal !== '' ? $extensionIdLocal : self::DEFAULTS['extension_id_local'])
             : ($extensionIdRemote !== '' ? $extensionIdRemote : self::DEFAULTS['extension_id_remote']);
@@ -89,8 +95,8 @@ class ConfigService
         $consultasV2ReadsEnabled = $this->resolveEnvBoolFlag('CONSULTAS_V2_READS_ENABLED', $consultasV2ApiEnabled);
         $consultasV2WritesEnabled = $this->resolveEnvBoolFlag('CONSULTAS_V2_WRITES_ENABLED', $consultasV2ApiEnabled);
 
-        $openAiKey = trim((string)($options['cive_extension_openai_api_key'] ?? ''));
-        $openAiModel = trim((string)($options['cive_extension_openai_model'] ?? self::DEFAULTS['openai_model']));
+        $openAiKey = trim((string) ($options['cive_extension_openai_api_key'] ?? ''));
+        $openAiModel = trim((string) ($options['cive_extension_openai_model'] ?? self::DEFAULTS['openai_model']));
 
         return [
             'api' => [
@@ -274,7 +280,7 @@ class ConfigService
 
     private function sanitizeCredentialsMode(?string $value): string
     {
-        $value = strtolower(trim((string)($value ?? '')));
+        $value = strtolower(trim((string) ($value ?? '')));
         if (in_array($value, ['omit', 'same-origin', 'include'], true)) {
             return $value;
         }
@@ -284,7 +290,7 @@ class ConfigService
 
     private function resolveDefaultControlBaseUrl(): string
     {
-        $base = rtrim((string) \BASE_URL, '/');
+        $base = rtrim((string) config('app.url', ''), '/');
         if ($base === '' || $base === '/') {
             return 'https://cive.consulmed.me';
         }
@@ -296,51 +302,13 @@ class ConfigService
         return $base !== '' ? $base : 'https://cive.consulmed.me';
     }
 
-    private function resolveDefaultApiBaseUrl(string $controlBaseUrl): string
-    {
-        return self::DEFAULTS['api_base_url'];
-    }
-
     private function resolveEnvBoolFlag(string $flag, bool $default = false): bool
     {
-        static $dotenvFlags = null;
-
-        if ($dotenvFlags === null) {
-            $dotenvFlags = [];
-
-            $basePath = defined('BASE_PATH')
-                ? rtrim((string) BASE_PATH, DIRECTORY_SEPARATOR)
-                : dirname(__DIR__, 3);
-            $envPath = $basePath . DIRECTORY_SEPARATOR . '.env';
-
-            if (is_readable($envPath)) {
-                $lines = file($envPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [];
-                foreach ($lines as $line) {
-                    $line = trim((string) $line);
-                    if ($line === '' || str_starts_with($line, '#')) {
-                        continue;
-                    }
-
-                    [$key, $value] = array_pad(explode('=', $line, 2), 2, '');
-                    $key = trim($key);
-                    if ($key === '') {
-                        continue;
-                    }
-
-                    $dotenvFlags[$key] = trim($value, " \t\n\r\0\x0B\"'");
-                }
-            }
-        }
-
-        $rawFlag = $dotenvFlags[$flag] ?? null;
-        if ($rawFlag === null || trim((string) $rawFlag) === '') {
-            $rawFlag = $_ENV[$flag] ?? getenv($flag) ?? null;
-        }
-
-        if ($rawFlag === null || trim((string) $rawFlag) === '') {
+        $raw = env($flag);
+        if ($raw === null || trim((string) $raw) === '') {
             return $default;
         }
 
-        return filter_var((string) $rawFlag, FILTER_VALIDATE_BOOLEAN);
+        return filter_var((string) $raw, FILTER_VALIDATE_BOOLEAN);
     }
 }
