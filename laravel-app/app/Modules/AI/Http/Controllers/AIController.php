@@ -13,12 +13,10 @@ use Throwable;
 
 class AIController
 {
-    private AIConfigService $configService;
     private ?OpenAIHelper $ai = null;
 
-    public function __construct()
+    public function __construct(private readonly AIConfigService $configService)
     {
-        $this->configService = new AIConfigService();
     }
 
     // POST /ai/enfermedad

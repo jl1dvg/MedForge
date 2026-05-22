@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\AI\Services;
 
 use App\Models\AppSetting;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class AIConfigService
@@ -110,7 +111,7 @@ class AIConfigService
             $config['features'][self::FEATURE_CONSULTAS_ENFERMEDAD] = ($options['ai_enable_consultas_enfermedad'] ?? '1') === '1';
             $config['features'][self::FEATURE_CONSULTAS_PLAN] = ($options['ai_enable_consultas_plan'] ?? '1') === '1';
         } catch (Throwable $exception) {
-            error_log('No fue posible cargar la configuración de IA: ' . $exception->getMessage());
+            Log::warning('No fue posible cargar la configuración de IA', ['error' => $exception->getMessage()]);
         }
 
         $this->configCache = $config;
