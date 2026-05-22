@@ -113,6 +113,10 @@
         <div class="alert alert-success">Plantilla guardada correctamente.</div>
     @endif
 
+    @if (session('status_error'))
+        <div class="alert alert-danger">{{ session('status_error') }}</div>
+    @endif
+
     <div class="row g-3">
         <div class="col-lg-4">
             <div class="card shadow-sm">

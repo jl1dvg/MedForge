@@ -3,6 +3,7 @@
 namespace App\Modules\MailTemplates\Services;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class CoberturaMailTemplateService
 {
@@ -298,16 +299,21 @@ class CoberturaMailTemplateService
             'updated_by' => $userId > 0 ? $userId : null,
         ];
 
-        if ($existing !== null) {
-            DB::table('mail_templates')
-                ->where('context', self::CONTEXT)
-                ->where('template_key', $templateKey)
-                ->update($payload);
-        } else {
-            DB::table('mail_templates')->insert(array_merge($payload, [
-                'context' => self::CONTEXT,
-                'template_key' => $templateKey,
-            ]));
+        try {
+            if ($existing !== null) {
+                DB::table('mail_templates')
+                    ->where('context', self::CONTEXT)
+                    ->where('template_key', $templateKey)
+                    ->update($payload);
+            } else {
+                DB::table('mail_templates')->insert(array_merge($payload, [
+                    'context' => self::CONTEXT,
+                    'template_key' => $templateKey,
+                ]));
+            }
+        } catch (\Throwable $e) {
+            Log::error('MailTemplates: failed to save template', ['key' => $templateKey, 'error' => $e->getMessage()]);
+            throw $e;
         }
     }
 

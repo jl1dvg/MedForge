@@ -56,7 +56,7 @@ class CoberturaMailTemplateController
         }
 
         if ($templateKey === '') {
-            return redirect('/mail-templates/cobertura')->withErrors(['error' => 'El key de plantilla es obligatorio.']);
+            return redirect('/mail-templates/cobertura')->with('status_error', 'El key de plantilla es obligatorio.');
         }
 
         $data = [
@@ -72,7 +72,7 @@ class CoberturaMailTemplateController
         $userId = $this->currentUserId();
         $this->service->saveTemplate($templateKey, $data, $userId);
 
-        return redirect('/mail-templates/cobertura/' . urlencode($templateKey) . '?status=updated');
+        return redirect('/mail-templates/cobertura/' . rawurlencode($templateKey) . '?status=updated');
     }
 
     public function resolve(Request $request): JsonResponse
