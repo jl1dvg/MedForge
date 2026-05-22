@@ -12,6 +12,7 @@ use RuntimeException;
 class TemplateCatalogService
 {
     private const GRAPH_BASE_URL = 'https://graph.facebook.com';
+    private const STALE_SYNC_REASON = 'No existe en Meta para la WABA activa durante la última sincronización.';
 
     public function __construct(
         private readonly WhatsappConfigService $configService = new WhatsappConfigService(),
@@ -50,7 +51,7 @@ class TemplateCatalogService
 
     /**
      * @param array<string, mixed> $filters
-     * @return array{synced:int, templates:array<int, array<string,mixed>>}
+     * @return array{synced:int, stale:int, templates:array<int, array<string,mixed>>}
      */
     public function syncTemplates(array $filters = []): array
     {
@@ -67,9 +68,11 @@ class TemplateCatalogService
         foreach ($templates as $template) {
             $this->persistRemoteTemplate($template);
         }
+        $staleCount = $this->markMissingRemoteTemplatesAsStale($templates, $filters);
 
         return [
             'synced' => count($templates),
+            'stale' => $staleCount,
             'templates' => $templates,
         ];
     }
@@ -470,6 +473,71 @@ class TemplateCatalogService
         });
     }
 
+    /**
+     * @param array<int, array<string, mixed>> $remoteTemplates
+     */
+    private function markMissingRemoteTemplatesAsStale(array $remoteTemplates, array $filters): int
+    {
+        foreach (['search', 'status', 'category', 'language'] as $filterKey) {
+            if (trim((string) ($filters[$filterKey] ?? '')) !== '') {
+                return 0;
+            }
+        }
+
+        $limit = max(1, min(200, (int) ($filters['limit'] ?? 100)));
+        if (count($remoteTemplates) >= $limit) {
+            return 0;
+        }
+
+        $remoteNames = collect($remoteTemplates)
+            ->pluck('name')
+            ->filter()
+            ->map(static fn ($name): string => (string) $name)
+            ->unique()
+            ->values()
+            ->all();
+        if ($remoteNames === []) {
+            return 0;
+        }
+
+        $businessAccountId = (string) $this->configService->get()['business_account_id'];
+        $query = WhatsappMessageTemplate::query()
+            ->whereNotIn('template_code', $remoteNames)
+            ->whereNull('created_by')
+            ->whereRaw('UPPER(status) in (?, ?, ?)', ['APPROVED', 'ACTIVE', 'PENDING'])
+            ->where(function ($builder) use ($businessAccountId): void {
+                $builder->whereNull('wa_business_account')
+                    ->orWhere('wa_business_account', '')
+                    ->orWhere('wa_business_account', $businessAccountId);
+            });
+
+        $ids = (clone $query)->pluck('id')->all();
+        if ($ids === []) {
+            return 0;
+        }
+
+        WhatsappMessageTemplate::query()
+            ->whereIn('id', $ids)
+            ->update([
+                'status' => 'REJECTED',
+                'rejected_at' => now(),
+                'updated_by' => null,
+                'updated_at' => now(),
+            ]);
+
+        WhatsappTemplateRevision::query()
+            ->whereIn('template_id', $ids)
+            ->whereRaw('LOWER(status) in (?, ?, ?)', ['approved', 'active', 'pending'])
+            ->update([
+                'status' => 'rejected',
+                'rejection_reason' => self::STALE_SYNC_REASON,
+                'rejected_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+        return count($ids);
+    }
+
     private function hasTemplateTables(): bool
     {
         return Schema::hasTable('whatsapp_message_templates')
@@ -557,7 +625,7 @@ class TemplateCatalogService
                 'buttons' => $buttons,
                 'variables' => $variables,
             ],
-            'source' => 'local',
+            'source' => $editorialState === 'synced_meta' ? 'meta' : 'local',
             'editorial_state' => $editorialState,
             'editorial_label' => $this->editorialLabel($editorialState),
             'is_editable' => $this->isEditableLocalDraft($template),
@@ -876,6 +944,15 @@ class TemplateCatalogService
     {
         $status = strtoupper((string) $template->status);
         $revisionStatus = strtolower((string) ($revision?->status ?? ''));
+        $rejectionReason = trim((string) ($revision?->rejection_reason ?? ''));
+
+        if (
+            $status === 'STALE'
+            || $revisionStatus === 'stale'
+            || ($status === 'REJECTED' && $revisionStatus === 'rejected' && $rejectionReason === self::STALE_SYNC_REASON)
+        ) {
+            return 'stale_local';
+        }
 
         if ($this->isEditableLocalDraft($template)) {
             return $status === 'PENDING' || $revisionStatus === 'pending'
@@ -892,6 +969,7 @@ class TemplateCatalogService
             'draft' => 'Borrador local',
             'published_local' => 'Borrador publicado',
             'synced_meta' => 'Sincronizada desde Meta',
+            'stale_local' => 'Local desfasada',
             'remote' => 'Remota aprobada',
             default => 'Plantilla',
         };

@@ -26,6 +26,7 @@ class TemplateWriteController
                 'ok' => true,
                 'data' => [
                     'synced' => $result['synced'],
+                    'stale' => $result['stale'],
                     'templates' => $result['templates'],
                     'requested_by' => optional($request->user())->id ?? 'sistema',
                 ],

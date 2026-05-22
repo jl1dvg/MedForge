@@ -6,6 +6,7 @@
     $trends = is_array($dashboard['trends'] ?? null) ? $dashboard['trends'] : [];
     $breakdowns = is_array($dashboard['breakdowns'] ?? null) ? $dashboard['breakdowns'] : [];
     $analytics = is_array($dashboard['analytics'] ?? null) ? $dashboard['analytics'] : [];
+    $reminders = is_array($dashboard['reminders'] ?? null) ? $dashboard['reminders'] : [];
     $analyticsSummary = is_array($analytics['summary'] ?? null) ? $analytics['summary'] : [];
     $analyticsLifecycle = is_array($analytics['lifecycle'] ?? null) ? $analytics['lifecycle'] : [];
     $analyticsSources = is_array($analytics['sources'] ?? null) ? $analytics['sources'] : [];
@@ -18,6 +19,24 @@
     $analyticsFrictions = is_array($analytics['frictions'] ?? null) ? $analytics['frictions'] : [];
     $analyticsInsights = is_array($analytics['insights'] ?? null) ? $analytics['insights'] : [];
     $analyticsAds = is_array($analytics['ads'] ?? null) ? $analytics['ads'] : [];
+    $reminderSummary = is_array($reminders['summary'] ?? null) ? $reminders['summary'] : [];
+    $reminderConfig = is_array($reminders['config'] ?? null) ? $reminders['config'] : [];
+    $reminderBySourceWindow = is_array($reminders['by_source_window'] ?? null) ? $reminders['by_source_window'] : [];
+    $reminderRecent = is_array($reminders['recent'] ?? null) ? $reminders['recent'] : [];
+    $reminderTimezone = trim((string) ($reminderConfig['timezone'] ?? 'America/Guayaquil')) ?: 'America/Guayaquil';
+    $formatReminderDate = static function ($value, string $format = 'd/m H:i') use ($reminderTimezone): string {
+        if ($value === null || $value === '') {
+            return '—';
+        }
+
+        try {
+            return \Illuminate\Support\Carbon::parse((string) $value, 'UTC')
+                ->setTimezone($reminderTimezone)
+                ->format($format);
+        } catch (\Throwable) {
+            return '—';
+        }
+    };
     $options = is_array($dashboard['options'] ?? null) ? $dashboard['options'] : ['roles' => [], 'agents' => []];
     $filters = is_array($filters ?? null) ? $filters : [];
     $exportQuery = http_build_query(array_filter([
@@ -45,6 +64,9 @@
         'funnel' => 'Embudo desde conversación nueva hasta booking creado para entender pérdidas y avance comercial.',
         'insights' => 'Síntesis automática para gerencia basada en origen, intención, calidad y fricciones del canal.',
         'ads' => 'Ranking de anuncios que más aportan conversaciones, identificación, handoff y citas.',
+        'reminders_summary' => 'Volumen y resultado real de recordatorios persistidos en base: envío, entrega, respuesta y desvío a agente.',
+        'reminders_mix' => 'Corte por tipo de servicio y por ventana para distinguir comportamiento de servicios oftalmológicos generales frente a imágenes.',
+        'reminders_recent' => 'Últimos recordatorios generados con su estado, respuesta y plantilla usada para auditoría rápida.',
         'series' => 'Serie diaria del periodo para leer volumen general del canal y sus principales eventos.',
         'human_by_agent' => 'Qué agente absorbió más conversaciones y en cuánto tiempo respondió por primera vez tras el handoff.',
         'human_by_queue' => 'Tiempo de primera respuesta humana agrupado por cola operativa para diferenciar captación, operación, información y backlog crítico.',
@@ -847,6 +869,181 @@
                     @endforeach
                 </div>
 --}}
+            </div>
+
+            <div class="col-12">
+                <div class="wa-group-label">📣 Recordatorios automáticos</div>
+            </div>
+
+            <div class="col-12">
+                @php
+                    $reminderCards = [
+                        ['label' => 'Generados', 'value' => number_format((int) ($reminderSummary['total'] ?? 0)), 'sub' => 'Persistidos en el periodo'],
+                        ['label' => 'Enviados', 'value' => number_format((int) ($reminderSummary['sent'] ?? 0)), 'sub' => 'Templates emitidos'],
+                        ['label' => 'Entregados', 'value' => number_format((int) ($reminderSummary['delivered'] ?? 0)), 'sub' => ($reminderSummary['delivery_rate'] ?? 0) . '% de entrega'],
+                        ['label' => 'Respondidos', 'value' => number_format((int) ($reminderSummary['responded'] ?? 0)), 'sub' => ($reminderSummary['response_rate'] ?? 0) . '% respondió'],
+                        ['label' => 'Confirmaron', 'value' => number_format((int) ($reminderSummary['confirmed'] ?? 0)), 'sub' => ($reminderSummary['confirmation_rate'] ?? 0) . '% de respuestas'],
+                        ['label' => 'Pidieron agente', 'value' => number_format((int) ($reminderSummary['agent_requested'] ?? 0)), 'sub' => ($reminderSummary['agent_rate'] ?? 0) . '% de respuestas'],
+                        ['label' => 'Fallidos', 'value' => number_format((int) ($reminderSummary['failed'] ?? 0)), 'sub' => 'Revisar template o número'],
+                        ['label' => 'Pendientes', 'value' => number_format((int) ($reminderSummary['pending'] ?? 0)), 'sub' => 'Aún sin despacho final'],
+                    ];
+                    $reminderConfigChips = [
+                        'Estado' => !empty($reminderConfig['enabled']) ? 'Activo' : 'Inactivo',
+                        'Timezone' => $reminderConfig['timezone'] ?? 'America/Guayaquil',
+                        'Plantilla servicios' => $reminderConfig['service_template'] ?? '—',
+                        'Plantilla imágenes' => $reminderConfig['imaging_template'] ?? '—',
+                        'Ventana 24h' => !empty($reminderConfig['window_24h_enabled']) ? (($reminderConfig['window_24h_minutes'] ?? 1440) . ' min') : 'Apagada',
+                        'Ventana 2h' => !empty($reminderConfig['window_2h_enabled']) ? (($reminderConfig['window_2h_minutes'] ?? 120) . ' min') : 'Apagada',
+                        'Tolerancia' => ($reminderConfig['tolerance_minutes'] ?? 15) . ' min',
+                        'Máx. por paciente/día' => (string) ($reminderConfig['max_per_patient_per_day'] ?? 0),
+                        'Outbound reciente' => ($reminderConfig['recent_outbound_hours'] ?? 0) . ' h',
+                    ];
+                @endphp
+                <div class="wa-kpi-panel mb-20">
+                    <div class="wa-kpi-panel__head">
+                        <div class="wa-kpi-title-row">
+                            <div class="wa-kpi-sideheading__title">Resumen de recordatorios</div>
+                            <button type="button" class="wa-kpi-help" aria-label="Ver ayuda de Resumen de recordatorios">
+                                ?
+                                <span class="wa-kpi-help__tooltip">{{ $sectionHelp['reminders_summary'] }}</span>
+                            </button>
+                        </div>
+                        <div class="wa-kpi-sideheading__meta">Vista operativa de envíos, entrega, respuesta y confirmación para servicios e imágenes.</div>
+                    </div>
+                    <div class="wa-kpi-panel__body">
+                        <div class="wa-kpi-grid">
+                            @foreach($reminderCards as $card)
+                                <div class="wa-kpi-card">
+                                    <div class="wa-kpi-label">{{ $card['label'] }}</div>
+                                    <div class="wa-kpi-value">{{ $card['value'] }}</div>
+                                    <div class="wa-kpi-sub">{{ $card['sub'] }}</div>
+                                </div>
+                            @endforeach
+                        </div>
+                        <div class="wa-chart-chips mt-14">
+                            @foreach($reminderConfigChips as $label => $value)
+                                <div class="wa-chart-chip">
+                                    <div class="wa-chart-chip__val" style="font-size:12px;">{{ $value }}</div>
+                                    <div class="wa-chart-chip__lbl">{{ $label }}</div>
+                                </div>
+                            @endforeach
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-xl-6 col-12">
+                <div class="wa-kpi-panel">
+                    <div class="wa-kpi-panel__head">
+                        <div class="wa-kpi-title-row">
+                            <div class="wa-kpi-sideheading__title">Mix por tipo y ventana</div>
+                            <button type="button" class="wa-kpi-help" aria-label="Ver ayuda de Mix por tipo y ventana">
+                                ?
+                                <span class="wa-kpi-help__tooltip">{{ $sectionHelp['reminders_mix'] }}</span>
+                            </button>
+                        </div>
+                        <div class="wa-kpi-sideheading__meta">Separación entre servicios oftalmológicos generales e imágenes, y entre ventanas 24h y 2h.</div>
+                    </div>
+                    <div class="wa-kpi-panel__body">
+                        <div class="table-responsive">
+                            <table class="table table-sm wa-kpi-table mb-0">
+                                <thead>
+                                <tr>
+                                    <th>Tipo</th>
+                                    <th>Ventana</th>
+                                    <th>Total</th>
+                                    <th>Entregados</th>
+                                    <th>Respondidos</th>
+                                    <th>Confirmó</th>
+                                    <th>Agente</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                @forelse($reminderBySourceWindow as $row)
+                                    <tr>
+                                        <td>{{ $row['source_label'] ?? '—' }}</td>
+                                        <td>{{ $row['window_label'] ?? '—' }}</td>
+                                        <td>{{ number_format((int) ($row['total'] ?? 0)) }}</td>
+                                        <td>{{ number_format((int) ($row['delivered'] ?? 0)) }}</td>
+                                        <td>{{ number_format((int) ($row['responded'] ?? 0)) }} <span class="text-muted">({{ $row['response_rate'] ?? 0 }}%)</span></td>
+                                        <td>{{ number_format((int) ($row['confirmed'] ?? 0)) }}</td>
+                                        <td>{{ number_format((int) ($row['agent_requested'] ?? 0)) }}</td>
+                                    </tr>
+                                @empty
+                                    <tr>
+                                        <td colspan="7" class="text-muted">No hay recordatorios persistidos en el rango seleccionado.</td>
+                                    </tr>
+                                @endforelse
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-xl-6 col-12">
+                <div class="wa-kpi-panel">
+                    <div class="wa-kpi-panel__head">
+                        <div class="wa-kpi-title-row">
+                            <div class="wa-kpi-sideheading__title">Últimos recordatorios</div>
+                            <button type="button" class="wa-kpi-help" aria-label="Ver ayuda de Últimos recordatorios">
+                                ?
+                                <span class="wa-kpi-help__tooltip">{{ $sectionHelp['reminders_recent'] }}</span>
+                            </button>
+                        </div>
+                        <div class="wa-kpi-sideheading__meta">Auditoría rápida de los últimos envíos con paciente, estado y acción tomada.</div>
+                    </div>
+                    <div class="wa-kpi-panel__body">
+                        <div class="table-responsive">
+                            <table class="table table-sm wa-kpi-table mb-0">
+                                <thead>
+                                <tr>
+                                    <th>Evento</th>
+                                    <th>Paciente</th>
+                                    <th>Tipo</th>
+                                    <th>Estado</th>
+                                    <th>Respuesta</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                @forelse($reminderRecent as $row)
+                                    <tr>
+                                        <td>
+                                            <div>{{ $formatReminderDate($row['event_at'] ?? null) }}</div>
+                                            <div class="text-muted" style="font-size:12px;">{{ $row['window_label'] ?? '—' }} · #{{ $row['form_id'] ?? '—' }}</div>
+                                        </td>
+                                        <td>
+                                            <div>{{ $row['patient_name'] ?: 'Sin nombre' }}</div>
+                                            <div class="text-muted" style="font-size:12px;">HC {{ $row['hc_number'] ?: '—' }}</div>
+                                        </td>
+                                        <td>
+                                            <div>{{ $row['source_label'] ?? '—' }}</div>
+                                            <div class="text-muted" style="font-size:12px;">{{ $row['template_code'] ?? '—' }}</div>
+                                        </td>
+                                        <td>
+                                            <div>{{ $row['status_label'] ?? '—' }}</div>
+                                            <div class="text-muted" style="font-size:12px;">
+                                                @if(!empty($row['responded_at']))
+                                                    {{ $formatReminderDate($row['responded_at']) }}
+                                                @elseif(!empty($row['sent_at']))
+                                                    {{ $formatReminderDate($row['sent_at']) }}
+                                                @else
+                                                    {{ $formatReminderDate($row['created_at'] ?? null) }}
+                                                @endif
+                                            </div>
+                                        </td>
+                                        <td>{{ $row['response_label'] ?? 'Sin respuesta' }}</td>
+                                    </tr>
+                                @empty
+                                    <tr>
+                                        <td colspan="5" class="text-muted">No hay actividad de recordatorios en el rango actual.</td>
+                                    </tr>
+                                @endforelse
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             {{-- ── TENDENCIAS DEL CANAL ─────────────────────────────────────── --}}

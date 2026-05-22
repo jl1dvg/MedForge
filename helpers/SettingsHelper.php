@@ -1146,7 +1146,7 @@ class SettingsHelper
                                 'whatsapp_reminder_service_template_code',
                                 'Plantilla para servicios oftalmológicos generales',
                                 false,
-                                'Código de plantilla oficial aprobado en Meta. Ejemplo: recordatorio_cita_medica_cive.'
+                                'Código de plantilla oficial aprobado en Meta. Ejemplo: confirmacion_cita_med_v2.'
                             ),
                             self::textField(
                                 'whatsapp_reminder_imaging_template_code',

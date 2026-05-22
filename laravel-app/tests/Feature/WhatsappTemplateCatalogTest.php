@@ -243,6 +243,86 @@ class WhatsappTemplateCatalogTest extends TestCase
         ]);
     }
 
+    public function test_it_marks_local_approved_templates_missing_from_meta_as_stale_on_sync(): void
+    {
+        $staleTemplateId = \DB::table('whatsapp_message_templates')->insertGetId([
+            'template_code' => 'recordatorio_cita_medica_cive',
+            'display_name' => 'Recordatorio cita',
+            'language' => 'es',
+            'category' => 'UTILITY',
+            'status' => 'APPROVED',
+            'wa_business_account' => 'waba-test-1',
+            'description' => 'Local antigua',
+            'created_by' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $revisionId = \DB::table('whatsapp_template_revisions')->insertGetId([
+            'template_id' => $staleTemplateId,
+            'version' => 1,
+            'status' => 'approved',
+            'header_type' => 'text',
+            'header_text' => 'Recordatorio',
+            'body_text' => 'Paciente {{1}}, recuerda tu cita.',
+            'quality_rating' => 'unknown',
+            'created_at' => now(),
+        ]);
+
+        \DB::table('whatsapp_message_templates')
+            ->where('id', $staleTemplateId)
+            ->update(['current_revision_id' => $revisionId]);
+
+        Http::fake([
+            'https://graph.facebook.com/*' => Http::response([
+                'data' => [
+                    [
+                        'id' => 'wamid-template-2',
+                        'name' => 'confirmacion_cita_med_v2',
+                        'category' => 'UTILITY',
+                        'language' => 'es_EC',
+                        'status' => 'APPROVED',
+                        'quality_score' => ['score' => 'GREEN'],
+                        'components' => [
+                            ['type' => 'BODY', 'text' => 'Hola {{1}}, tu cita es {{2}} a las {{3}} con {{4}}.'],
+                        ],
+                    ],
+                ],
+            ], 200),
+        ]);
+
+        $response = $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->postJson('/v2/whatsapp/api/templates/sync', ['limit' => 200]);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('data.synced', 1)
+            ->assertJsonPath('data.stale', 1);
+
+        $this->assertDatabaseHas('whatsapp_message_templates', [
+            'template_code' => 'recordatorio_cita_medica_cive',
+            'status' => 'REJECTED',
+        ]);
+
+        $this->assertDatabaseHas('whatsapp_template_revisions', [
+            'template_id' => $staleTemplateId,
+            'status' => 'rejected',
+            'rejection_reason' => 'No existe en Meta para la WABA activa durante la última sincronización.',
+        ]);
+
+        $this->assertDatabaseHas('whatsapp_message_templates', [
+            'template_code' => 'confirmacion_cita_med_v2',
+            'language' => 'es_EC',
+            'status' => 'APPROVED',
+        ]);
+    }
+
     public function test_it_redirects_get_sync_requests_back_to_templates_ui(): void
     {
         $response = $this

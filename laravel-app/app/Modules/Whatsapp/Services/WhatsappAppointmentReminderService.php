@@ -14,6 +14,8 @@ use Illuminate\Support\Facades\Schema;
 class WhatsappAppointmentReminderService
 {
     private ?SettingsOptionResolver $settingsResolver = null;
+    private const LEGACY_REMINDER_TEMPLATE_CODE = 'recordatorio_cita_medica_cive';
+    private const META_CONFIRMATION_TEMPLATE_CODE = 'confirmacion_cita_med_v2';
 
     public function __construct(
         private readonly AutomatedConversationDispatchService $dispatchService = new AutomatedConversationDispatchService(),
@@ -114,7 +116,7 @@ class WhatsappAppointmentReminderService
             $eventAt = $this->eventAt($event->fecha ?? null, $event->hora ?? null);
             if (
                 !$eventAt instanceof CarbonInterface
-                || (!$ignoreWindow && ($eventAt->lt($now) || $eventAt->lt($windowStart) || $eventAt->gt($windowEnd)))
+                || (!$ignoreWindow && !$this->eventMatchesDispatchWindow($eventAt, $now, $windowStart, $windowEnd, $windowKey))
             ) {
                 $skipped++;
                 continue;
@@ -321,6 +323,7 @@ class WhatsappAppointmentReminderService
 
             try {
                 $templateVariables = $this->templateVariables(
+                    (string) $template->template_code,
                     $recipient['patient_name'],
                     $sedeDepartamento,
                     $eventAt,
@@ -385,6 +388,28 @@ class WhatsappAppointmentReminderService
             'skipped' => $skipped,
             'rows' => $rows,
         ];
+    }
+
+    private function eventMatchesDispatchWindow(
+        CarbonInterface $eventAt,
+        CarbonInterface $now,
+        CarbonInterface $windowStart,
+        CarbonInterface $windowEnd,
+        string $windowKey
+    ): bool {
+        if ($eventAt->betweenIncluded($windowStart, $windowEnd)) {
+            return true;
+        }
+
+        if ($windowKey !== '24h' || !$this->catchup24hEnabled()) {
+            return false;
+        }
+
+        if ($eventAt->lte($now) || $eventAt->gte($windowStart)) {
+            return false;
+        }
+
+        return $now->diffInMinutes($eventAt, false) >= $this->catchup24hMinLeadMinutes();
     }
 
     private function dedupeKey(
@@ -541,9 +566,10 @@ class WhatsappAppointmentReminderService
 
     private function resolveTemplateForSource(string $sourceType): ?WhatsappMessageTemplate
     {
-        $code = $sourceType === 'imagenes'
+        $configuredCode = $sourceType === 'imagenes'
             ? $this->imageTemplateCode()
             : $this->serviceTemplateCode();
+        $code = $this->effectiveTemplateCode($configuredCode);
 
         if ($code === '') {
             return null;
@@ -554,6 +580,16 @@ class WhatsappAppointmentReminderService
             ->where('template_code', $code)
             ->whereRaw('LOWER(status) in (?, ?)', ['approved', 'active'])
             ->first();
+    }
+
+    private function effectiveTemplateCode(string $code): string
+    {
+        $code = trim($code);
+        if ($code === self::LEGACY_REMINDER_TEMPLATE_CODE) {
+            return self::META_CONFIRMATION_TEMPLATE_CODE;
+        }
+
+        return $code;
     }
 
     /**
@@ -600,8 +636,23 @@ class WhatsappAppointmentReminderService
     /**
      * @return array<int, string>
      */
-    private function templateVariables(string $patientName, string $sede, CarbonInterface $eventAt, string $doctor, string $procedimiento): array
-    {
+    private function templateVariables(
+        string $templateCode,
+        string $patientName,
+        string $sede,
+        CarbonInterface $eventAt,
+        string $doctor,
+        string $procedimiento
+    ): array {
+        if ($templateCode === self::META_CONFIRMATION_TEMPLATE_CODE) {
+            return [
+                $patientName !== '' ? $patientName : 'Paciente',
+                $eventAt->locale('es')->translatedFormat('d/m/Y'),
+                $eventAt->format('H:i'),
+                trim($doctor) !== '' ? trim($doctor) : 'Por confirmar',
+            ];
+        }
+
         return [
             $patientName !== '' ? $patientName : 'Paciente',
             $sede !== '' ? $sede : 'Sede por confirmar',
@@ -750,6 +801,18 @@ class WhatsappAppointmentReminderService
             'whatsapp_reminder_window_tolerance_minutes',
             (int) config('whatsapp.migration.reminders.window_tolerance_minutes', 15)
         ));
+    }
+
+    private function catchup24hEnabled(): bool
+    {
+        return $this->settingBool('whatsapp_reminder_24h_catchup_enabled', true);
+    }
+
+    private function catchup24hMinLeadMinutes(): int
+    {
+        $default = max(180, $this->windowMinutes('2h') + $this->windowToleranceMinutes());
+
+        return max(30, $this->settingInt('whatsapp_reminder_24h_catchup_min_lead_minutes', $default));
     }
 
     private function serviceTemplateCode(): string
@@ -907,6 +970,8 @@ class WhatsappAppointmentReminderService
             'whatsapp_reminder_window_24h_minutes',
             'whatsapp_reminder_window_2h_minutes',
             'whatsapp_reminder_window_tolerance_minutes',
+            'whatsapp_reminder_24h_catchup_enabled',
+            'whatsapp_reminder_24h_catchup_min_lead_minutes',
             'whatsapp_reminder_max_per_patient_per_day',
             'whatsapp_reminder_skip_if_recent_outbound_hours',
             'whatsapp_reminder_agent_role_id',

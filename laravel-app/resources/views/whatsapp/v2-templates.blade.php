@@ -1137,7 +1137,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     'X-Requested-With': 'XMLHttpRequest',
                     'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
                 },
-                body: JSON.stringify({ limit: 100 }),
+                body: JSON.stringify({ limit: 200 }),
             });
 
             const payload = await response.json();

@@ -13,6 +13,7 @@ use App\Modules\Examenes\Services\ImagenesSigcenterIndexService;
 use App\Modules\Examenes\Services\NasImagenesService;
 use App\Modules\Farmacia\Services\RecetasConciliacionSyncService;
 use App\Modules\Shared\Support\AfiliacionDimensionService;
+use App\Modules\Shared\Support\SettingsOptionResolver;
 use App\Modules\Solicitudes\Services\SolicitudesChecklistBackfillService;
 use App\Modules\Solicitudes\Services\SolicitudesPrefacturaService;
 use App\Modules\Whatsapp\Services\ConversationAttributionService;
@@ -2415,10 +2416,28 @@ Schedule::command('whatsapp:appointment-reminders 24h --limit=200')
     ->everyFifteenMinutes()
     ->withoutOverlapping()
     ->runInBackground()
-    ->when(static fn (): bool => (bool) config('whatsapp.migration.reminders.enabled', false));
+    ->when(static function (): bool {
+        $settings = app(SettingsOptionResolver::class)->getOptions(['whatsapp_reminders_enabled']);
+        $value = $settings['whatsapp_reminders_enabled'] ?? null;
+
+        if ($value !== null && trim((string) $value) !== '') {
+            return in_array(strtolower(trim((string) $value)), ['1', 'true', 'yes', 'on', 'si'], true);
+        }
+
+        return (bool) config('whatsapp.migration.reminders.enabled', false);
+    });
 
 Schedule::command('whatsapp:appointment-reminders 2h --limit=200')
     ->everyFifteenMinutes()
     ->withoutOverlapping()
     ->runInBackground()
-    ->when(static fn (): bool => (bool) config('whatsapp.migration.reminders.enabled', false));
+    ->when(static function (): bool {
+        $settings = app(SettingsOptionResolver::class)->getOptions(['whatsapp_reminders_enabled']);
+        $value = $settings['whatsapp_reminders_enabled'] ?? null;
+
+        if ($value !== null && trim((string) $value) !== '') {
+            return in_array(strtolower(trim((string) $value)), ['1', 'true', 'yes', 'on', 'si'], true);
+        }
+
+        return (bool) config('whatsapp.migration.reminders.enabled', false);
+    });

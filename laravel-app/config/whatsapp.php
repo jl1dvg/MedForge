@@ -50,8 +50,8 @@ return [
         ],
         'reminders' => [
             'enabled' => (bool) env('WHATSAPP_LARAVEL_REMINDERS_ENABLED', false),
-            'consultation_template_code' => (string) env('WHATSAPP_LARAVEL_REMINDER_CONSULTATION_TEMPLATE', 'recordatorio_cita_medica_cive'),
-            'image_template_code' => (string) env('WHATSAPP_LARAVEL_REMINDER_IMAGE_TEMPLATE', 'recordatorio_cita_medica_cive'),
+            'consultation_template_code' => (string) env('WHATSAPP_LARAVEL_REMINDER_CONSULTATION_TEMPLATE', 'confirmacion_cita_med_v2'),
+            'image_template_code' => (string) env('WHATSAPP_LARAVEL_REMINDER_IMAGE_TEMPLATE', 'confirmacion_cita_med_v2'),
             'timezone' => (string) env('WHATSAPP_LARAVEL_REMINDER_TIMEZONE', 'America/Guayaquil'),
             'windows' => [
                 '24h' => (int) env('WHATSAPP_LARAVEL_REMINDER_WINDOW_24H_MINUTES', 1440),

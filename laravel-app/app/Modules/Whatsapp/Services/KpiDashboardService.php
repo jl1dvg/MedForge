@@ -2,6 +2,7 @@
 
 namespace App\Modules\Whatsapp\Services;
 
+use App\Modules\Shared\Support\SettingsOptionResolver;
 use DateInterval;
 use DatePeriod;
 use DateTimeImmutable;
@@ -13,6 +14,9 @@ use InvalidArgumentException;
 class KpiDashboardService
 {
     private const DEFAULT_SLA_TARGET_MINUTES = 15;
+
+    private ?SettingsOptionResolver $settingsResolver = null;
+    private ?array $settingsOptionCache = null;
 
     /**
      * @return array<string, mixed>
@@ -52,6 +56,7 @@ class KpiDashboardService
         $transfers = $this->transferSummary($fromSql, $toSql, $roleId, $agentId);
         $bookings = $this->sigcenterBookingSummary($fromSql, $toSql);
         $analytics = $this->conversationAnalytics($fromSql, $toSql, $roleId, $agentId);
+        $reminders = $this->appointmentReminderAnalytics($fromSql, $toSql);
 
         $summary = array_merge($summary, $human, $queue, $window, $sla, [
             'handoff_transfers' => $transfers,
@@ -127,6 +132,7 @@ class KpiDashboardService
                 'sigcenter_bookings_by_sede' => $this->sigcenterBookingsBySede($fromSql, $toSql),
             ],
             'analytics' => $analytics,
+            'reminders' => $reminders,
             'options' => [
                 'roles' => $this->roleOptions(),
                 'agents' => $this->agentOptions(),
@@ -2404,6 +2410,263 @@ class KpiDashboardService
             'informacion' => 'Información',
             default => 'Sin clasificar',
         };
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function appointmentReminderAnalytics(string $fromSql, string $toSql): array
+    {
+        if (!Schema::hasTable('whatsapp_appointment_reminders')) {
+            return [
+                'summary' => [
+                    'total' => 0,
+                    'sent' => 0,
+                    'delivered' => 0,
+                    'failed' => 0,
+                    'responded' => 0,
+                    'confirmed' => 0,
+                    'agent_requested' => 0,
+                    'pending' => 0,
+                    'delivery_rate' => 0.0,
+                    'response_rate' => 0.0,
+                    'confirmation_rate' => 0.0,
+                    'agent_rate' => 0.0,
+                ],
+                'config' => $this->appointmentReminderConfigSnapshot(),
+                'by_source_window' => [],
+                'recent' => [],
+            ];
+        }
+
+        $summaryRow = $this->selectOne(
+            'SELECT
+                COUNT(*) AS total,
+                SUM(CASE WHEN status = "sent" THEN 1 ELSE 0 END) AS sent,
+                SUM(CASE WHEN delivered_at IS NOT NULL THEN 1 ELSE 0 END) AS delivered,
+                SUM(CASE WHEN status = "failed" THEN 1 ELSE 0 END) AS failed,
+                SUM(CASE WHEN status = "responded" THEN 1 ELSE 0 END) AS responded,
+                SUM(CASE WHEN response_value = "confirmar" THEN 1 ELSE 0 END) AS confirmed,
+                SUM(CASE WHEN response_value = "agente" THEN 1 ELSE 0 END) AS agent_requested,
+                SUM(CASE WHEN status = "pending" THEN 1 ELSE 0 END) AS pending
+             FROM whatsapp_appointment_reminders
+             WHERE created_at >= ? AND created_at < ?',
+            [$fromSql, $toSql]
+        );
+
+        $summary = [
+            'total' => (int) ($summaryRow->total ?? 0),
+            'sent' => (int) ($summaryRow->sent ?? 0),
+            'delivered' => (int) ($summaryRow->delivered ?? 0),
+            'failed' => (int) ($summaryRow->failed ?? 0),
+            'responded' => (int) ($summaryRow->responded ?? 0),
+            'confirmed' => (int) ($summaryRow->confirmed ?? 0),
+            'agent_requested' => (int) ($summaryRow->agent_requested ?? 0),
+            'pending' => (int) ($summaryRow->pending ?? 0),
+        ];
+        $summary['delivery_rate'] = $summary['total'] > 0 ? round(($summary['delivered'] / $summary['total']) * 100, 1) : 0.0;
+        $summary['response_rate'] = $summary['total'] > 0 ? round(($summary['responded'] / $summary['total']) * 100, 1) : 0.0;
+        $summary['confirmation_rate'] = $summary['responded'] > 0 ? round(($summary['confirmed'] / $summary['responded']) * 100, 1) : 0.0;
+        $summary['agent_rate'] = $summary['responded'] > 0 ? round(($summary['agent_requested'] / $summary['responded']) * 100, 1) : 0.0;
+
+        $breakdownRows = DB::select(
+            'SELECT
+                source_type,
+                reminder_window,
+                COUNT(*) AS total,
+                SUM(CASE WHEN status = "sent" THEN 1 ELSE 0 END) AS sent,
+                SUM(CASE WHEN delivered_at IS NOT NULL THEN 1 ELSE 0 END) AS delivered,
+                SUM(CASE WHEN status = "failed" THEN 1 ELSE 0 END) AS failed,
+                SUM(CASE WHEN status = "responded" THEN 1 ELSE 0 END) AS responded,
+                SUM(CASE WHEN response_value = "confirmar" THEN 1 ELSE 0 END) AS confirmed,
+                SUM(CASE WHEN response_value = "agente" THEN 1 ELSE 0 END) AS agent_requested
+             FROM whatsapp_appointment_reminders
+             WHERE created_at >= ? AND created_at < ?
+             GROUP BY source_type, reminder_window
+             ORDER BY source_type ASC, reminder_window ASC',
+            [$fromSql, $toSql]
+        );
+
+        $recentRows = DB::select(
+            'SELECT
+                war.id,
+                war.form_id,
+                war.hc_number,
+                war.wa_number,
+                war.source_type,
+                war.template_code,
+                war.reminder_window,
+                war.event_at,
+                war.status,
+                war.response_value,
+                war.sent_at,
+                war.delivered_at,
+                war.failed_at,
+                war.responded_at,
+                war.created_at,
+                COALESCE(wc.patient_full_name, wc.display_name, war.hc_number) AS patient_name
+             FROM whatsapp_appointment_reminders war
+             LEFT JOIN whatsapp_conversations wc ON wc.id = war.conversation_id
+             WHERE war.created_at >= ? AND war.created_at < ?
+             ORDER BY COALESCE(war.sent_at, war.created_at) DESC, war.id DESC
+             LIMIT 12',
+            [$fromSql, $toSql]
+        );
+
+        return [
+            'summary' => $summary,
+            'config' => $this->appointmentReminderConfigSnapshot(),
+            'by_source_window' => array_map(function ($row): array {
+                $total = (int) ($row->total ?? 0);
+                $responded = (int) ($row->responded ?? 0);
+
+                return [
+                    'source_type' => (string) ($row->source_type ?? ''),
+                    'source_label' => $this->reminderSourceLabel((string) ($row->source_type ?? '')),
+                    'reminder_window' => (string) ($row->reminder_window ?? ''),
+                    'window_label' => $this->reminderWindowLabel((string) ($row->reminder_window ?? '')),
+                    'total' => $total,
+                    'sent' => (int) ($row->sent ?? 0),
+                    'delivered' => (int) ($row->delivered ?? 0),
+                    'failed' => (int) ($row->failed ?? 0),
+                    'responded' => $responded,
+                    'confirmed' => (int) ($row->confirmed ?? 0),
+                    'agent_requested' => (int) ($row->agent_requested ?? 0),
+                    'response_rate' => $total > 0 ? round(($responded / $total) * 100, 1) : 0.0,
+                ];
+            }, $breakdownRows),
+            'recent' => array_map(function ($row): array {
+                return [
+                    'id' => (int) ($row->id ?? 0),
+                    'form_id' => (int) ($row->form_id ?? 0),
+                    'hc_number' => trim((string) ($row->hc_number ?? '')),
+                    'wa_number' => trim((string) ($row->wa_number ?? '')),
+                    'patient_name' => trim((string) ($row->patient_name ?? '')),
+                    'source_type' => (string) ($row->source_type ?? ''),
+                    'source_label' => $this->reminderSourceLabel((string) ($row->source_type ?? '')),
+                    'template_code' => trim((string) ($row->template_code ?? '')),
+                    'reminder_window' => trim((string) ($row->reminder_window ?? '')),
+                    'window_label' => $this->reminderWindowLabel((string) ($row->reminder_window ?? '')),
+                    'event_at' => (string) ($row->event_at ?? ''),
+                    'status' => (string) ($row->status ?? ''),
+                    'status_label' => $this->reminderStatusLabel((string) ($row->status ?? '')),
+                    'response_value' => (string) ($row->response_value ?? ''),
+                    'response_label' => $this->reminderResponseLabel((string) ($row->response_value ?? '')),
+                    'sent_at' => (string) ($row->sent_at ?? ''),
+                    'delivered_at' => (string) ($row->delivered_at ?? ''),
+                    'failed_at' => (string) ($row->failed_at ?? ''),
+                    'responded_at' => (string) ($row->responded_at ?? ''),
+                    'created_at' => (string) ($row->created_at ?? ''),
+                ];
+            }, $recentRows),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function appointmentReminderConfigSnapshot(): array
+    {
+        return [
+            'enabled' => $this->settingBoolValue('whatsapp_reminders_enabled', false),
+            'timezone' => trim((string) $this->settingValue('whatsapp_reminder_timezone', config('app.timezone', 'America/Guayaquil'))),
+            'service_template' => trim((string) $this->settingValue('whatsapp_reminder_service_template_code', 'recordatorio_cita_medica_cive')),
+            'imaging_template' => trim((string) $this->settingValue('whatsapp_reminder_imaging_template_code', 'recordatorio_cita_medica_cive')),
+            'window_24h_enabled' => $this->settingBoolValue('whatsapp_reminder_window_24h_enabled', true),
+            'window_24h_minutes' => (int) $this->settingValue('whatsapp_reminder_window_24h_minutes', 1440),
+            'window_2h_enabled' => $this->settingBoolValue('whatsapp_reminder_window_2h_enabled', true),
+            'window_2h_minutes' => (int) $this->settingValue('whatsapp_reminder_window_2h_minutes', 120),
+            'tolerance_minutes' => (int) $this->settingValue('whatsapp_reminder_window_tolerance_minutes', 15),
+            'max_per_patient_per_day' => (int) $this->settingValue('whatsapp_reminder_max_per_patient_per_day', 2),
+            'recent_outbound_hours' => (int) $this->settingValue('whatsapp_reminder_skip_if_recent_outbound_hours', 12),
+        ];
+    }
+
+    private function reminderSourceLabel(string $value): string
+    {
+        return match ($value) {
+            'servicios_oftalmologicos_generales' => 'Servicios oftalmológicos generales',
+            'imagenes' => 'Imágenes',
+            default => $value !== '' ? $value : 'Sin clasificar',
+        };
+    }
+
+    private function reminderWindowLabel(string $value): string
+    {
+        return match ($value) {
+            '24h' => '24 horas',
+            '2h' => '2 horas',
+            default => $value !== '' ? $value : 'Sin ventana',
+        };
+    }
+
+    private function reminderStatusLabel(string $value): string
+    {
+        return match ($value) {
+            'pending' => 'Pendiente',
+            'sent' => 'Enviado',
+            'failed' => 'Fallido',
+            'responded' => 'Respondido',
+            default => $value !== '' ? ucfirst($value) : 'Sin estado',
+        };
+    }
+
+    private function reminderResponseLabel(string $value): string
+    {
+        return match ($value) {
+            'confirmar' => 'Confirmó',
+            'agente' => 'Pidió agente',
+            default => $value !== '' ? ucfirst($value) : 'Sin respuesta',
+        };
+    }
+
+    private function settingBoolValue(string $key, bool $default): bool
+    {
+        $value = $this->settingValue($key, $default ? '1' : '0');
+
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        return in_array(strtolower(trim((string) $value)), ['1', 'true', 'yes', 'on'], true);
+    }
+
+    private function settingValue(string $key, mixed $default = null): mixed
+    {
+        $options = $this->settingsOptionMap();
+
+        return array_key_exists($key, $options) ? $options[$key] : $default;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function settingsOptionMap(): array
+    {
+        if ($this->settingsOptionCache !== null) {
+            return $this->settingsOptionCache;
+        }
+
+        $keys = [
+            'whatsapp_reminders_enabled',
+            'whatsapp_reminder_timezone',
+            'whatsapp_reminder_service_template_code',
+            'whatsapp_reminder_imaging_template_code',
+            'whatsapp_reminder_window_24h_enabled',
+            'whatsapp_reminder_window_24h_minutes',
+            'whatsapp_reminder_window_2h_enabled',
+            'whatsapp_reminder_window_2h_minutes',
+            'whatsapp_reminder_window_tolerance_minutes',
+            'whatsapp_reminder_max_per_patient_per_day',
+            'whatsapp_reminder_skip_if_recent_outbound_hours',
+        ];
+
+        return $this->settingsOptionCache = $this->settingsResolver()->getOptions($keys);
+    }
+
+    private function settingsResolver(): SettingsOptionResolver
+    {
+        return $this->settingsResolver ??= app(SettingsOptionResolver::class);
     }
 
     private function parseNullableCarbon(mixed $value): ?Carbon

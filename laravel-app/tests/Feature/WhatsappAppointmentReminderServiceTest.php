@@ -195,9 +195,9 @@ class WhatsappAppointmentReminderServiceTest extends TestCase
 
         \DB::table('whatsapp_message_templates')->insert([
             'id' => 1,
-            'template_code' => 'recordatorio_cita_medica_cive',
+            'template_code' => 'confirmacion_cita_med_v2',
             'display_name' => 'Recordatorio cita',
-            'language' => 'es',
+            'language' => 'es_EC',
             'category' => 'utility',
             'status' => 'approved',
             'current_revision_id' => 11,
@@ -212,7 +212,7 @@ class WhatsappAppointmentReminderServiceTest extends TestCase
             'status' => 'approved',
             'header_type' => 'text',
             'header_text' => 'Recordatorio',
-            'body_text' => 'Hola {{1}}, te recordamos tu cita en {{2}} el {{3}} a las {{4}} con {{5}}. Dirección: {{6}}',
+            'body_text' => 'Hola {{1}}, te recordamos tu cita el {{2}} a las {{3}} con {{4}}.',
             'buttons' => json_encode([
                 ['type' => 'quick_reply', 'text' => 'Confirmo asistencia'],
                 ['type' => 'quick_reply', 'text' => 'Necesito reagendar'],
@@ -224,8 +224,8 @@ class WhatsappAppointmentReminderServiceTest extends TestCase
         config()->set('whatsapp.transport.dry_run', true);
         config()->set('whatsapp.migration.automation.dry_run', false);
         config()->set('whatsapp.migration.reminders.enabled', true);
-        config()->set('whatsapp.migration.reminders.consultation_template_code', 'recordatorio_cita_medica_cive');
-        config()->set('whatsapp.migration.reminders.image_template_code', 'recordatorio_cita_medica_cive');
+        config()->set('whatsapp.migration.reminders.consultation_template_code', 'confirmacion_cita_med_v2');
+        config()->set('whatsapp.migration.reminders.image_template_code', 'confirmacion_cita_med_v2');
         config()->set('whatsapp.migration.reminders.windows.24h', 1440);
         config()->set('whatsapp.migration.reminders.windows.2h', 120);
         config()->set('whatsapp.migration.reminders.window_tolerance_minutes', 15);
@@ -275,6 +275,48 @@ class WhatsappAppointmentReminderServiceTest extends TestCase
         $second = $service->dispatchWindow('24h', false, 50);
         $this->assertSame(0, $second['sent']);
         $this->assertDatabaseCount('whatsapp_appointment_reminders', 1);
+    }
+
+    public function test_it_dispatches_24h_catchup_when_event_was_loaded_late_but_is_still_useful(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-05-22 15:34:00', 'America/Guayaquil'));
+
+        try {
+            \DB::table('patient_data')->insert([
+                'hc_number' => 'HC-CATCHUP',
+                'fname' => 'Jennifer',
+                'lname' => 'Jurado',
+                'celular' => '0995167738',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            \DB::table('procedimiento_proyectado')->insert([
+                'form_id' => 7001,
+                'procedimiento_proyectado' => 'SERVICIOS OFTALMOLOGICOS GENERALES - CONTROL',
+                'doctor' => 'Pamela Guillen',
+                'hc_number' => 'HC-CATCHUP',
+                'sede_departamento' => 'Villa Club',
+                'estado_agenda' => 'AGENDADO',
+                'fecha' => '2026-05-23',
+                'hora' => '08:30:00',
+                'sigcenter_present' => 1,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            $service = app(WhatsappAppointmentReminderService::class);
+            $result = $service->dispatchWindow('24h', false, 50);
+
+            $this->assertSame(1, $result['sent']);
+            $this->assertDatabaseHas('whatsapp_appointment_reminders', [
+                'form_id' => 7001,
+                'status' => 'sent',
+                'source_type' => 'servicios_oftalmologicos_generales',
+            ]);
+        } finally {
+            Carbon::setTestNow();
+        }
     }
 
     public function test_it_marks_reminder_confirmed_when_patient_confirms(): void
