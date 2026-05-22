@@ -1,12 +1,14 @@
-<?php
-/** @var string $username */
-/** @var array $scripts */
-$scripts = array_merge($scripts ?? [], [
-    'assets/vendor_components/datatable/datatables.min.js',
-    'assets/vendor_components/tiny-editable/mindmup-editabletable.js',
-    'assets/vendor_components/tiny-editable/numeric-input-example.js',
-    'js/pages/medicamentos.js',
-]); ?>
+@extends('layouts.medforge')
+
+@push('scripts')
+    <script src="{{ asset('assets/vendor_components/datatable/datatables.min.js') }}"></script>
+    <script src="{{ asset('assets/vendor_components/tiny-editable/mindmup-editabletable.js') }}"></script>
+    <script src="{{ asset('assets/vendor_components/tiny-editable/numeric-input-example.js') }}"></script>
+    <script src="{{ asset('js/pages/medicamentos.js') }}"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+@endpush
+
+@section('content')
 <div class="content-header">
     <div class="d-flex align-items-center">
         <div class="me-auto">
@@ -30,7 +32,7 @@ $scripts = array_merge($scripts ?? [], [
             <div class="box">
                 <div class="box-header d-flex justify-content-between align-items-center">
                     <div>
-                        <h4 class="box-title">📋 <strong>Listado editable de medicamentos</strong></h4>
+                        <h4 class="box-title">&#128203; <strong>Listado editable de medicamentos</strong></h4>
                         <h6 class="subtitle">
                             Administra los medicamentos disponibles seleccionando su vía de administración y actualizando sus datos al vuelo.
                         </h6>
@@ -57,7 +59,9 @@ $scripts = array_merge($scripts ?? [], [
         </div>
     </div>
 </section>
+@endsection
 
+@push('styles')
 <style>
     table#MedicamentosEditable td,
     table#MedicamentosEditable th {
@@ -85,4 +89,4 @@ $scripts = array_merge($scripts ?? [], [
         min-width: 180px;
     }
 </style>
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+@endpush

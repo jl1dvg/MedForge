@@ -1,12 +1,14 @@
-<?php
-/** @var string $username */
-/** @var array $scripts */
-$scripts = array_merge($scripts ?? [], [
-    'assets/vendor_components/datatable/datatables.min.js',
-    'assets/vendor_components/tiny-editable/mindmup-editabletable.js',
-    'assets/vendor_components/tiny-editable/numeric-input-example.js',
-    'js/pages/insumos.js',
-]); ?>
+@extends('layouts.medforge')
+
+@push('scripts')
+    <script src="{{ asset('assets/vendor_components/datatable/datatables.min.js') }}"></script>
+    <script src="{{ asset('assets/vendor_components/tiny-editable/mindmup-editabletable.js') }}"></script>
+    <script src="{{ asset('assets/vendor_components/tiny-editable/numeric-input-example.js') }}"></script>
+    <script src="{{ asset('js/pages/insumos.js') }}"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+@endpush
+
+@section('content')
 <div class="content-header">
     <div class="d-flex align-items-center">
         <div class="me-auto">
@@ -30,7 +32,7 @@ $scripts = array_merge($scripts ?? [], [
             <div class="box">
                 <div class="box-header d-flex justify-content-between align-items-center">
                     <div>
-                        <h4 class="box-title">📋 <strong>Listado editable de insumos</strong></h4>
+                        <h4 class="box-title">&#128203; <strong>Listado editable de insumos</strong></h4>
                         <h6 class="subtitle">
                             Haz clic sobre cualquier celda para modificar su contenido y guarda los cambios con los
                             botones de acciones.
@@ -70,7 +72,9 @@ $scripts = array_merge($scripts ?? [], [
         </div>
     </div>
 </section>
+@endsection
 
+@push('styles')
 <style>
     table#insumosEditable td,
     table#insumosEditable th {
@@ -94,5 +98,4 @@ $scripts = array_merge($scripts ?? [], [
         outline: none;
     }
 </style>
-
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+@endpush

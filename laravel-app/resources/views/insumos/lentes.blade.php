@@ -1,10 +1,12 @@
-<?php
-/** @var string $username */
-/** @var array $scripts */
-$scripts = array_merge($scripts ?? [], [
-    'assets/vendor_components/datatable/datatables.min.js',
-    'js/pages/lentes.js',
-]); ?>
+@extends('layouts.medforge')
+
+@push('scripts')
+    <script src="{{ asset('assets/vendor_components/datatable/datatables.min.js') }}"></script>
+    <script src="{{ asset('js/pages/lentes.js') }}"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+@endpush
+
+@section('content')
 <div class="content-header">
     <div class="d-flex align-items-center">
         <div class="me-auto">
@@ -28,7 +30,7 @@ $scripts = array_merge($scripts ?? [], [
             <div class="box">
                 <div class="box-header d-flex justify-content-between align-items-center">
                     <div>
-                        <h4 class="box-title">📋 <strong>Catálogo de lentes</strong></h4>
+                        <h4 class="box-title">&#128203; <strong>Catálogo de lentes</strong></h4>
                         <h6 class="subtitle">
                             Administra marca, modelo, nombre y poder para usar en solicitudes quirúrgicas.
                         </h6>
@@ -64,7 +66,9 @@ $scripts = array_merge($scripts ?? [], [
         </div>
     </div>
 </section>
+@endsection
 
+@push('styles')
 <style>
     table#lentesTabla td,
     table#lentesTabla th {
@@ -93,4 +97,4 @@ $scripts = array_merge($scripts ?? [], [
         font-weight: 600;
     }
 </style>
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+@endpush

@@ -50,6 +50,11 @@ Route::middleware('web')->group(function (): void {
     require __DIR__ . '/v2/search.php';
 });
 
+// /insumos routes intentionally outside /v2 prefix — matches legacy paths
+Route::middleware('web')->group(function (): void {
+    require __DIR__ . '/v2/insumos.php';
+});
+
 // /api/cive-extension routes — consumed by Chrome extension (asistentecive.consulmed.me)
 Route::middleware('web')->group(function (): void {
     require __DIR__ . '/v2/cive_extension.php';
