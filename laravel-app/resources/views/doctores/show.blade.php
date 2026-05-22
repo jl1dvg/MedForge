@@ -200,7 +200,7 @@
                         <div class="d-flex justify-content-between align-items-center">
                             <h4 class="box-title mb-0">Agenda</h4>
                             @if ($appointmentsSelectedLabel)
-                                <span class="text-fade fs-12">{{ $appointmentsSelectedLabel }}</span>
+                                <span class="text-fade fs-12" data-appointments-date-label>{{ $appointmentsSelectedLabel }}</span>
                             @endif
                         </div>
                     </div>
@@ -384,7 +384,13 @@
                     <div class="box-body">
                         <dl class="row mb-0">
                             <dt class="col-sm-4 text-fade">Nombre completo</dt>
-                            <dd class="col-sm-8">{{ $doctor['name'] ?? '' ?: '<span class="text-fade">No registrado</span>' }}</dd>
+                            <dd class="col-sm-8">
+                                @if (!empty($doctor['name']))
+                                    {{ $doctor['name'] }}
+                                @else
+                                    <span class="text-fade">No registrado</span>
+                                @endif
+                            </dd>
 
                             <dt class="col-sm-4 text-fade">Usuario</dt>
                             <dd class="col-sm-8">

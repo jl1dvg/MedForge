@@ -45,7 +45,7 @@ class DoctoresController
             $doctorData = $this->service->findDoctor($doctor);
         } catch (Throwable $e) {
             Log::error('DoctoresController::show DB error: ' . $e->getMessage());
-            return response()->json(['error' => 'Error del servidor'], 500);
+            return redirect('/doctores')->with('status_error', 'No se pudo cargar el perfil del doctor.');
         }
 
         if ($doctorData === null) {

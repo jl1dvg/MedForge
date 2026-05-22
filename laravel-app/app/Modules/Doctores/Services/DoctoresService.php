@@ -8,8 +8,6 @@ use DateTimeImmutable;
 use DateTimeInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use PDO;
-use PDOException;
 use Throwable;
 
 class DoctoresService
@@ -20,13 +18,6 @@ class DoctoresService
     private array $doctorCardCache = [];
     /** @var array<string, bool> */
     private array $tableExistsCache = [];
-
-    private PDO $pdo;
-
-    public function __construct()
-    {
-        $this->pdo = DB::connection()->getPdo();
-    }
 
     // -------------------------------------------------------------------------
     // Public API
@@ -66,15 +57,13 @@ class DoctoresService
         SQL;
 
         try {
-            $stmt = $this->pdo->query($sql);
-            if (!$stmt) {
-                return [];
-            }
-            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        } catch (PDOException $e) {
+            $results = DB::select($sql);
+        } catch (Throwable $e) {
             Log::error('DoctoresService::allDoctors failed: ' . $e->getMessage());
             return [];
         }
+
+        $rows = array_map(static fn(object $r): array => (array) $r, $results);
 
         return array_map([$this, 'mapDoctorRow'], $rows);
     }
@@ -113,15 +102,19 @@ class DoctoresService
         SQL;
 
         try {
-            $stmt = $this->pdo->prepare($sql);
-            $stmt->execute(['id' => $id]);
-            $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        } catch (PDOException $e) {
+            $results = DB::select($sql, ['id' => $id]);
+        } catch (Throwable $e) {
             Log::error('DoctoresService::findDoctor failed: ' . $e->getMessage());
             return null;
         }
 
-        return $row ? $this->mapDoctorRow($row) : null;
+        if (empty($results)) {
+            return null;
+        }
+
+        $row = (array) $results[0];
+
+        return $this->mapDoctorRow($row);
     }
 
     /**
@@ -396,18 +389,17 @@ class DoctoresService
         SQL;
 
         try {
-            $stmt = $this->pdo->prepare($sql);
-            $stmt->execute($params);
-            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        } catch (PDOException $e) {
+            $results = DB::select($sql, $params);
+        } catch (Throwable $e) {
             Log::error('DoctoresService::runTodayPatientsQuery failed: ' . $e->getMessage());
             return [];
         }
 
-        if (empty($rows)) {
+        if (empty($results)) {
             return [];
         }
 
+        $rows = array_map(static fn(object $r): array => (array) $r, $results);
         $patients = [];
         foreach ($rows as $index => $row) {
             $patients[] = [
@@ -508,18 +500,17 @@ class DoctoresService
         SQL;
 
         try {
-            $stmt = $this->pdo->prepare($sql);
-            $stmt->execute($params);
-            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        } catch (PDOException $e) {
+            $results = DB::select($sql, $params);
+        } catch (Throwable $e) {
             Log::error('DoctoresService::runAppointmentsQuery failed: ' . $e->getMessage());
             return [];
         }
 
-        if (empty($rows)) {
+        if (empty($results)) {
             return [];
         }
 
+        $rows = array_map(static fn(object $r): array => (array) $r, $results);
         $appointments = [];
         foreach ($rows as $index => $row) {
             $dateKey = $this->normalizeDateKey($row['appointment_date'] ?? null);
@@ -536,6 +527,7 @@ class DoctoresService
                 'status_label' => $this->formatStatusLabel($row['estado_agenda'] ?? null),
                 'status_variant' => $this->resolveStatusVariant($row['estado_agenda'] ?? null),
                 'afiliacion_label' => $this->formatAfiliacionLabel($row['afiliacion'] ?? null),
+                'hc_number' => $row['hc_number'] ?? null,
                 'hc_label' => $this->formatHcLabel($row['hc_number'] ?? null),
                 'call_href' => $callHref ?? 'javascript:void(0);',
                 'call_disabled' => $callHref === null,
@@ -876,16 +868,15 @@ class DoctoresService
         SQL;
 
         try {
-            $stmt = $this->pdo->prepare($sql);
-            $stmt->execute(array_merge($params, [
+            $results = DB::select($sql, array_merge($params, [
                 ':agenda_start' => $start->format('Y-m-d'),
                 ':agenda_end' => $end->format('Y-m-d'),
             ]));
-            $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
-        } catch (PDOException $e) {
+        } catch (Throwable $e) {
             Log::error('DoctoresService::runDoctorAgendaAggregateQuery failed: ' . $e->getMessage());
             return ['total' => 0, 'unique_patients' => 0, 'completed' => 0, 'lost' => 0, 'rescheduled' => 0, 'first_hour' => '', 'last_hour' => '', 'weekdays' => '', 'latest_date' => ''];
         }
+        $row = !empty($results) ? (array) $results[0] : [];
 
         return [
             'total' => (int) ($row['total'] ?? 0),
@@ -946,16 +937,15 @@ class DoctoresService
         SQL;
 
         try {
-            $stmt = $this->pdo->prepare($sql);
-            $stmt->execute(array_merge($params, [
+            $results = DB::select($sql, array_merge($params, [
                 ':surgery_start' => $start->format('Y-m-d'),
                 ':surgery_end' => $end->format('Y-m-d'),
             ]));
-            $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
-        } catch (PDOException $e) {
+        } catch (Throwable $e) {
             Log::error('DoctoresService::runDoctorSurgeryAggregateQuery failed: ' . $e->getMessage());
             return ['total' => 0, 'reviewed' => 0, 'latest_date' => ''];
         }
+        $row = !empty($results) ? (array) $results[0] : [];
 
         return [
             'total' => (int) ($row['total'] ?? 0),
@@ -1016,16 +1006,15 @@ class DoctoresService
         SQL;
 
         try {
-            $stmt = $this->pdo->prepare($sql);
-            $stmt->execute(array_merge($params, [
+            $results = DB::select($sql, array_merge($params, [
                 ':request_start' => $start->format('Y-m-d'),
                 ':request_end' => $end->format('Y-m-d'),
             ]));
-            $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
-        } catch (PDOException $e) {
+        } catch (Throwable $e) {
             Log::error('DoctoresService::runDoctorRequestAggregateQuery failed: ' . $e->getMessage());
             return ['total' => 0, 'unique_patients' => 0, 'latest_date' => ''];
         }
+        $row = !empty($results) ? (array) $results[0] : [];
 
         return [
             'total' => (int) ($row['total'] ?? 0),
@@ -1091,16 +1080,15 @@ class DoctoresService
         SQL;
 
         try {
-            $stmt = $this->pdo->prepare($sql);
-            $stmt->execute(array_merge($params, [
+            $results = DB::select($sql, array_merge($params, [
                 ':exam_start' => $start->format('Y-m-d'),
                 ':exam_end' => $end->format('Y-m-d'),
             ]));
-            $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
-        } catch (PDOException $e) {
+        } catch (Throwable $e) {
             Log::error('DoctoresService::runDoctorExamAggregateQuery failed: ' . $e->getMessage());
             return ['total' => 0, 'unique_patients' => 0, 'latest_date' => ''];
         }
+        $row = !empty($results) ? (array) $results[0] : [];
 
         return [
             'total' => (int) ($row['total'] ?? 0),
@@ -1160,13 +1148,13 @@ class DoctoresService
         SQL;
 
         try {
-            $stmt = $this->pdo->prepare($sql);
-            $stmt->execute($params);
-            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-        } catch (PDOException $e) {
+            $results = DB::select($sql, $params);
+        } catch (Throwable $e) {
             Log::error('DoctoresService::runRecentSurgeryQuery failed: ' . $e->getMessage());
             return [];
         }
+
+        $rows = array_map(static fn(object $r): array => (array) $r, $results);
 
         return array_map(function (array $row): array {
             return [
@@ -1232,13 +1220,13 @@ class DoctoresService
         SQL;
 
         try {
-            $stmt = $this->pdo->prepare($sql);
-            $stmt->execute($params);
-            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-        } catch (PDOException $e) {
+            $results = DB::select($sql, $params);
+        } catch (Throwable $e) {
             Log::error('DoctoresService::runRecentRequestQuery failed: ' . $e->getMessage());
             return [];
         }
+
+        $rows = array_map(static fn(object $r): array => (array) $r, $results);
 
         return array_map(function (array $row): array {
             return [
@@ -1308,13 +1296,13 @@ class DoctoresService
         SQL;
 
         try {
-            $stmt = $this->pdo->prepare($sql);
-            $stmt->execute($params);
-            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-        } catch (PDOException $e) {
+            $results = DB::select($sql, $params);
+        } catch (Throwable $e) {
             Log::error('DoctoresService::runRecentExamQuery failed: ' . $e->getMessage());
             return [];
         }
+
+        $rows = array_map(static fn(object $r): array => (array) $r, $results);
 
         return array_map(function (array $row): array {
             return [
@@ -1474,13 +1462,13 @@ class DoctoresService
     private function runTopLabelsQuery(string $sql, array $params): array
     {
         try {
-            $stmt = $this->pdo->prepare($sql);
-            $stmt->execute($params);
-            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-        } catch (PDOException $e) {
+            $results = DB::select($sql, $params);
+        } catch (Throwable $e) {
             Log::error('DoctoresService::runTopLabelsQuery failed: ' . $e->getMessage());
             return [];
         }
+
+        $rows = array_map(static fn(object $r): array => (array) $r, $results);
 
         return array_map(function (array $row): array {
             return [
@@ -2256,12 +2244,12 @@ class DoctoresService
         }
 
         try {
-            $stmt = $this->pdo->prepare(
-                'SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = :table LIMIT 1'
+            $results = DB::select(
+                'SELECT 1 AS found FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = :table LIMIT 1',
+                [':table' => $table]
             );
-            $stmt->execute([':table' => $table]);
-            $this->tableExistsCache[$table] = (bool) $stmt->fetchColumn();
-        } catch (PDOException $e) {
+            $this->tableExistsCache[$table] = !empty($results);
+        } catch (Throwable $e) {
             Log::error('DoctoresService::tableExists failed: ' . $e->getMessage());
             $this->tableExistsCache[$table] = false;
         }
