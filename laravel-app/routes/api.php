@@ -37,6 +37,11 @@ Route::middleware('web')->group(function (): void {
     require __DIR__ . '/v2/mail.php';
 });
 
+// /mail-templates routes intentionally outside /v2 prefix — matches legacy paths
+Route::middleware('web')->group(function (): void {
+    require __DIR__ . '/v2/mail_templates.php';
+});
+
 // /ai routes intentionally outside /v2 prefix — matches legacy paths
 require __DIR__ . '/v2/ai.php';
 

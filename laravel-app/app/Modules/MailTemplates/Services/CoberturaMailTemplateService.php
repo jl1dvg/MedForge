@@ -1,9 +1,8 @@
 <?php
 
-namespace Modules\MailTemplates\Services;
+namespace App\Modules\MailTemplates\Services;
 
-use Modules\MailTemplates\Models\MailTemplateModel;
-use PDO;
+use Illuminate\Support\Facades\DB;
 
 class CoberturaMailTemplateService
 {
@@ -135,13 +134,6 @@ class CoberturaMailTemplateService
         ],
     ];
 
-    private MailTemplateModel $templates;
-
-    public function __construct(PDO $pdo)
-    {
-        $this->templates = new MailTemplateModel($pdo);
-    }
-
     public function resolveTemplateKey(string $afiliacion): ?string
     {
         $normalized = $this->normalize($afiliacion);
@@ -206,12 +198,12 @@ class CoberturaMailTemplateService
             return null;
         }
 
-        return $this->templates->findEnabledByKey(self::CONTEXT, $key);
+        return $this->findEnabledByKey(self::CONTEXT, $key);
     }
 
     public function hasEnabledTemplate(string $templateKey): bool
     {
-        return $this->templates->findEnabledByKey(self::CONTEXT, $templateKey) !== null;
+        return $this->findEnabledByKey(self::CONTEXT, $templateKey) !== null;
     }
 
     /**
@@ -221,20 +213,20 @@ class CoberturaMailTemplateService
      */
     public function hydrateTemplate(array $template, array $variables): array
     {
-        $subjectTemplate = (string)($template['subject_template'] ?? '');
+        $subjectTemplate = (string) ($template['subject_template'] ?? '');
         $bodyHtmlTemplate = $template['body_template_html'] ?? null;
         $bodyTextTemplate = $template['body_template_text'] ?? null;
 
         $subject = $this->replaceVariables($subjectTemplate, $variables, false);
         $bodyHtml = $bodyHtmlTemplate !== null
-            ? $this->replaceVariables((string)$bodyHtmlTemplate, $variables, true)
+            ? $this->replaceVariables((string) $bodyHtmlTemplate, $variables, true)
             : null;
         $bodyText = $bodyTextTemplate !== null
-            ? $this->replaceVariables((string)$bodyTextTemplate, $variables, false)
+            ? $this->replaceVariables((string) $bodyTextTemplate, $variables, false)
             : null;
 
         return [
-            'template_key' => (string)($template['template_key'] ?? ''),
+            'template_key' => (string) ($template['template_key'] ?? ''),
             'subject' => $subject,
             'body_html' => $bodyHtml,
             'body_text' => $bodyText,
@@ -249,7 +241,7 @@ class CoberturaMailTemplateService
      */
     public function buildVariables(array $payload): array
     {
-        $pdfUrl = trim((string)($payload['PDF_URL'] ?? ''));
+        $pdfUrl = trim((string) ($payload['PDF_URL'] ?? ''));
         return [
             '{PACIENTE}' => $payload['PACIENTE'] ?? 'Paciente',
             '{HC}' => $payload['HC'] ?? '—',
@@ -267,7 +259,12 @@ class CoberturaMailTemplateService
      */
     public function listTemplates(): array
     {
-        return $this->templates->getAllByContext(self::CONTEXT);
+        return DB::table('mail_templates')
+            ->where('context', self::CONTEXT)
+            ->orderBy('template_key')
+            ->get()
+            ->map(static fn($row) => (array) $row)
+            ->all();
     }
 
     /**
@@ -275,7 +272,12 @@ class CoberturaMailTemplateService
      */
     public function findTemplate(string $templateKey): ?array
     {
-        return $this->templates->findByKey(self::CONTEXT, $templateKey);
+        $row = DB::table('mail_templates')
+            ->where('context', self::CONTEXT)
+            ->where('template_key', $templateKey)
+            ->first();
+
+        return $row !== null ? (array) $row : null;
     }
 
     /**
@@ -283,7 +285,44 @@ class CoberturaMailTemplateService
      */
     public function saveTemplate(string $templateKey, array $data, int $userId): void
     {
-        $this->templates->upsert(self::CONTEXT, $templateKey, $data, $userId);
+        $existing = $this->findTemplate($templateKey);
+
+        $payload = [
+            'name' => $data['name'] ?? $templateKey,
+            'subject_template' => $data['subject_template'] ?? null,
+            'body_template_html' => $data['body_template_html'] ?? null,
+            'body_template_text' => $data['body_template_text'] ?? null,
+            'recipients_to' => $data['recipients_to'] ?? null,
+            'recipients_cc' => $data['recipients_cc'] ?? null,
+            'enabled' => (int) ($data['enabled'] ?? 0),
+            'updated_by' => $userId > 0 ? $userId : null,
+        ];
+
+        if ($existing !== null) {
+            DB::table('mail_templates')
+                ->where('context', self::CONTEXT)
+                ->where('template_key', $templateKey)
+                ->update($payload);
+        } else {
+            DB::table('mail_templates')->insert(array_merge($payload, [
+                'context' => self::CONTEXT,
+                'template_key' => $templateKey,
+            ]));
+        }
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function findEnabledByKey(string $context, string $templateKey): ?array
+    {
+        $row = DB::table('mail_templates')
+            ->where('context', $context)
+            ->where('template_key', $templateKey)
+            ->where('enabled', 1)
+            ->first();
+
+        return $row !== null ? (array) $row : null;
     }
 
     /**
