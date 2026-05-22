@@ -1,84 +1,79 @@
 <?php
 
-namespace Modules\Search\Controllers;
+declare(strict_types=1);
 
-use Core\BaseController;
-use Modules\Search\Services\GlobalSearchService;
+namespace App\Modules\Search\Http\Controllers;
+
+use App\Modules\Search\Services\GlobalSearchService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
-class SearchController extends BaseController
+class SearchController
 {
     private const HISTORY_KEY = 'global_search_history';
     private const HISTORY_LIMIT = 8;
 
-    public function index(): void
+    public function __construct(private readonly GlobalSearchService $service)
     {
-        $this->requireAuth();
+    }
 
-        $query = isset($_GET['q']) ? trim((string) $_GET['q']) : '';
-        $history = $this->getHistory();
+    public function index(Request $request): JsonResponse
+    {
+        $query   = trim((string) $request->query('q', ''));
+        $history = $this->getHistory($request);
 
         if ($query === '') {
-            $this->json([
-                'ok' => true,
-                'data' => [],
+            return response()->json([
+                'ok'      => true,
+                'data'    => [],
                 'history' => $history,
             ]);
-
-            return;
         }
 
         if ($this->length($query) < 2) {
-            $this->json([
-                'ok' => true,
-                'data' => [],
+            return response()->json([
+                'ok'      => true,
+                'data'    => [],
                 'history' => $history,
                 'message' => 'Ingresa al menos 2 caracteres para buscar.',
             ]);
-
-            return;
         }
 
         try {
-            $service = new GlobalSearchService($this->pdo);
-            $sections = $service->search($query);
-            $history = $this->pushHistory($query);
+            $sections = $this->service->search($query);
+            $history  = $this->pushHistory($request, $query);
 
-            $this->json([
-                'ok' => true,
-                'data' => $sections,
+            return response()->json([
+                'ok'      => true,
+                'data'    => $sections,
                 'history' => $history,
             ]);
         } catch (Throwable $exception) {
-            if (!headers_sent()) {
-                http_response_code(500);
-                header('Content-Type: application/json');
-            }
+            Log::error('Global search failed: ' . $exception->getMessage());
 
-            error_log('Global search failed: ' . $exception->getMessage());
-
-            echo json_encode([
-                'ok' => false,
+            return response()->json([
+                'ok'      => false,
                 'message' => 'No se pudo completar la búsqueda en este momento.',
-            ], JSON_UNESCAPED_UNICODE);
+            ], 500);
         }
     }
 
-    public function clearHistory(): void
+    public function clearHistory(Request $request): JsonResponse
     {
-        $this->requireAuth();
+        $request->session()->forget(self::HISTORY_KEY);
 
-        unset($_SESSION[self::HISTORY_KEY]);
-
-        $this->json([
-            'ok' => true,
+        return response()->json([
+            'ok'      => true,
             'history' => [],
         ]);
     }
 
-    private function getHistory(): array
+    private function getHistory(Request $request): array
     {
-        $history = $_SESSION[self::HISTORY_KEY] ?? [];
+        $history = $request->session()->get(self::HISTORY_KEY, []);
+
         if (!is_array($history)) {
             return [];
         }
@@ -93,9 +88,9 @@ class SearchController extends BaseController
         return $filtered;
     }
 
-    private function pushHistory(string $query): array
+    private function pushHistory(Request $request, string $query): array
     {
-        $history = $this->getHistory();
+        $history    = $this->getHistory($request);
         $normalized = $this->normalize($query);
 
         $history = array_values(array_filter($history, function ($item) use ($normalized) {
@@ -108,7 +103,7 @@ class SearchController extends BaseController
             $history = array_slice($history, 0, self::HISTORY_LIMIT);
         }
 
-        $_SESSION[self::HISTORY_KEY] = $history;
+        $request->session()->put(self::HISTORY_KEY, $history);
 
         return $history;
     }
