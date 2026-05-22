@@ -107,7 +107,7 @@ class InsumoService
         ];
 
         try {
-            if ($id) {
+            if ($id !== null && $id > 0) {
                 DB::table('insumos')->where('id', $id)->update($data);
             } else {
                 $id = (int) DB::table('insumos')->insertGetId($data);
@@ -148,7 +148,7 @@ class InsumoService
         $id     = isset($payload['id']) && $payload['id'] !== '' ? (int) $payload['id'] : null;
 
         try {
-            if ($id) {
+            if ($id !== null && $id > 0) {
                 DB::table('medicamentos')->where('id', $id)->update([
                     'medicamento'       => $nombre,
                     'via_administracion' => $via,

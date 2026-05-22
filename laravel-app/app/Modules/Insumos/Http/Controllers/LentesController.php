@@ -78,7 +78,7 @@ class LentesController
         ];
 
         try {
-            if ($id) {
+            if ($id !== null && $id > 0) {
                 DB::table('lentes_catalogo')->where('id', $id)->update($row);
             } else {
                 $id = (int) DB::table('lentes_catalogo')->insertGetId($row);
@@ -91,13 +91,13 @@ class LentesController
             return response()->json([
                 'success' => false,
                 'message' => 'Error al guardar el lente: ' . $e->getMessage(),
-            ], 422);
+            ], 500);
         }
     }
 
     public function eliminar(Request $request): JsonResponse
     {
-        $id = isset($request->post()['id']) ? (int) $request->post()['id'] : null;
+        $id = $request->integer('id') ?: null;
         if (!$id) {
             return response()->json(['success' => false, 'message' => 'ID requerido'], 400);
         }
@@ -112,7 +112,7 @@ class LentesController
             return response()->json([
                 'success' => false,
                 'message' => 'Error al eliminar el lente: ' . $e->getMessage(),
-            ], 422);
+            ], 500);
         }
     }
 
