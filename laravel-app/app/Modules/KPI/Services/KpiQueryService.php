@@ -13,12 +13,10 @@ use DateTimeInterface;
 
 class KpiQueryService
 {
-    private KpiSnapshotModel $snapshotModel;
-
-    public function __construct()
-    {
-        $this->snapshotModel = new KpiSnapshotModel();
-    }
+    public function __construct(
+        private readonly KpiSnapshotModel $snapshotModel = new KpiSnapshotModel(),
+        private readonly KpiCalculationService $calculationService = new KpiCalculationService(),
+    ) {}
 
     /**
      * @return array<string, array<string, mixed>>
@@ -39,8 +37,7 @@ class KpiQueryService
 
         if ($ensureFresh && $snapshots === []) {
             $calculationPeriod = $this->buildDailyPeriod($start, $end);
-            $calculator = new KpiCalculationService();
-            $calculator->recalculateRange($calculationPeriod, [$kpiKey]);
+            $this->calculationService->recalculateRange($calculationPeriod, [$kpiKey]);
             $snapshots = $this->snapshotModel->listSnapshots($kpiKey, $start, $end, $dimensionHash);
         }
 
@@ -57,8 +54,7 @@ class KpiQueryService
         $snapshot = $this->snapshotModel->latestSnapshot($kpiKey, $start, $end, $dimensionHash);
 
         if ($ensureFresh && $snapshot === null) {
-            $calculator = new KpiCalculationService();
-            $calculator->recalculateRange($this->buildDailyPeriod($start, $end), [$kpiKey]);
+            $this->calculationService->recalculateRange($this->buildDailyPeriod($start, $end), [$kpiKey]);
             $snapshot = $this->snapshotModel->latestSnapshot($kpiKey, $start, $end, $dimensionHash);
         }
 

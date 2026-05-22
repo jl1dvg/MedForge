@@ -19,12 +19,9 @@ class KpiCalculationService
 {
     private const REINGRESO_WINDOW_DAYS = 30;
 
-    private KpiSnapshotModel $snapshotModel;
-
-    public function __construct()
-    {
-        $this->snapshotModel = new KpiSnapshotModel();
-    }
+    public function __construct(
+        private readonly KpiSnapshotModel $snapshotModel = new KpiSnapshotModel(),
+    ) {}
 
     /**
      * @param DatePeriod $period Periodo que define fechas de inicio inclusivas.
@@ -73,38 +70,55 @@ class KpiCalculationService
         $results = [];
 
         foreach ($grouped as $calculator => $calculatorKeys) {
-            $calculatorResults = match ($calculator) {
-                'solicitudes' => $this->calculateSolicitudes($periodStart, $periodEnd, $calculatorKeys),
-                'cirugias_programacion' => $this->calculateCirugiasProgramacion($periodStart, $periodEnd, $calculatorKeys),
-                'crm_tasks' => $this->calculateCrmTasks($periodStart, $periodEnd, $calculatorKeys),
-                'protocolos_revision' => $this->calculateProtocolosRevision($periodStart, $periodEnd, $calculatorKeys),
-                'reingresos' => $this->calculateReingresosMismoDiagnostico($periodStart, $periodEnd, $calculatorKeys),
-                default => throw new RuntimeException(sprintf('Calculadora "%s" no implementada.', $calculator)),
-            };
+            try {
+                $calculatorResults = match ($calculator) {
+                    'solicitudes' => $this->calculateSolicitudes($periodStart, $periodEnd, $calculatorKeys),
+                    'cirugias_programacion' => $this->calculateCirugiasProgramacion($periodStart, $periodEnd, $calculatorKeys),
+                    'crm_tasks' => $this->calculateCrmTasks($periodStart, $periodEnd, $calculatorKeys),
+                    'protocolos_revision' => $this->calculateProtocolosRevision($periodStart, $periodEnd, $calculatorKeys),
+                    'reingresos' => $this->calculateReingresosMismoDiagnostico($periodStart, $periodEnd, $calculatorKeys),
+                    default => throw new RuntimeException(sprintf('Calculadora "%s" no implementada.', $calculator)),
+                };
+            } catch (Exception $e) {
+                Log::error('KPI calculation failed', [
+                    'calculator' => $calculator,
+                    'period' => $periodStart->format('Y-m-d'),
+                    'error' => $e->getMessage(),
+                ]);
+                continue;
+            }
 
             foreach ($calculatorResults as $kpiKey => $payload) {
-                $snapshot = new KpiSnapshot(
-                    kpiKey: $kpiKey,
-                    periodStart: $periodStart,
-                    periodEnd: $periodEnd,
-                    granularity: 'daily',
-                    dimensions: $payload['dimensions'] ?? [],
-                    value: (float) $payload['value'],
-                    numerator: isset($payload['numerator']) ? (float) $payload['numerator'] : null,
-                    denominator: isset($payload['denominator']) ? (float) $payload['denominator'] : null,
-                    extra: $payload['extra'] ?? null,
-                    sourceVersion: KpiRegistry::SOURCE_VERSION,
-                );
+                try {
+                    $snapshot = new KpiSnapshot(
+                        kpiKey: $kpiKey,
+                        periodStart: $periodStart,
+                        periodEnd: $periodEnd,
+                        granularity: 'daily',
+                        dimensions: $payload['dimensions'] ?? [],
+                        value: (float) $payload['value'],
+                        numerator: isset($payload['numerator']) ? (float) $payload['numerator'] : null,
+                        denominator: isset($payload['denominator']) ? (float) $payload['denominator'] : null,
+                        extra: $payload['extra'] ?? null,
+                        sourceVersion: KpiRegistry::SOURCE_VERSION,
+                    );
 
-                $this->snapshotModel->upsert($snapshot);
-                $results[$kpiKey] = [
-                    'value' => $snapshot->value,
-                    'numerator' => $snapshot->numerator,
-                    'denominator' => $snapshot->denominator,
-                    'extra' => $snapshot->extra,
-                    'period_start' => $periodStart->format('Y-m-d'),
-                    'period_end' => $periodEnd->format('Y-m-d'),
-                ];
+                    $this->snapshotModel->upsert($snapshot);
+                    $results[$kpiKey] = [
+                        'value' => $snapshot->value,
+                        'numerator' => $snapshot->numerator,
+                        'denominator' => $snapshot->denominator,
+                        'extra' => $snapshot->extra,
+                        'period_start' => $periodStart->format('Y-m-d'),
+                        'period_end' => $periodEnd->format('Y-m-d'),
+                    ];
+                } catch (Exception $e) {
+                    Log::error('KPI calculation failed', [
+                        'kpi' => $kpiKey,
+                        'period' => $periodStart->format('Y-m-d'),
+                        'error' => $e->getMessage(),
+                    ]);
+                }
             }
         }
 
