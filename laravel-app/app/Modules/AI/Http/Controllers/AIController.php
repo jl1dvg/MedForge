@@ -1,89 +1,79 @@
 <?php
-namespace Controllers;
 
-use Core\BaseController;
+declare(strict_types=1);
+
+namespace App\Modules\AI\Http\Controllers;
+
+use App\Modules\AI\Services\AIConfigService;
 use Helpers\OpenAIHelper;
-use Modules\AI\Services\AIConfigService;
-use PDO;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use RuntimeException;
 use Throwable;
 
-class AIController extends BaseController
+class AIController
 {
     private AIConfigService $configService;
     private ?OpenAIHelper $ai = null;
 
-    public function __construct(PDO $pdo)
+    public function __construct()
     {
-        parent::__construct($pdo);
-        $this->configService = new AIConfigService($pdo);
+        $this->configService = new AIConfigService();
     }
 
     // POST /ai/enfermedad
-    public function generarEnfermedad(): void
+    public function generarEnfermedad(Request $request): JsonResponse
     {
-        $this->requireAuth();
-        $this->requirePermission(['ai.consultas.enfermedad', 'ai.manage', 'administrativo']);
-
         if (!$this->configService->isFeatureEnabled(AIConfigService::FEATURE_CONSULTAS_ENFERMEDAD)) {
-            $this->json([
+            return response()->json([
                 'ok' => false,
                 'error' => 'La asistencia de IA para enfermedad actual está deshabilitada en la configuración.',
             ], 403);
-
-            return;
         }
 
-        $examen = trim($_POST['examen_fisico'] ?? '');
+        $examen = trim((string) $request->input('examen_fisico', ''));
         if ($examen === '') {
-            $this->json(['ok' => false, 'error' => 'examen_fisico es requerido'], 400);
-
-            return;
+            return response()->json(['ok' => false, 'error' => 'examen_fisico es requerido'], 400);
         }
 
         try {
             $texto = $this->client()->generateEnfermedadProblemaActual($examen);
-            $this->json(['ok' => true, 'data' => $texto]);
+
+            return response()->json(['ok' => true, 'data' => $texto]);
         } catch (RuntimeException $exception) {
-            $this->json(['ok' => false, 'error' => $exception->getMessage()], 503);
+            return response()->json(['ok' => false, 'error' => $exception->getMessage()], 503);
         } catch (Throwable $exception) {
-            $this->json(['ok' => false, 'error' => $exception->getMessage()], 500);
+            return response()->json(['ok' => false, 'error' => $exception->getMessage()], 500);
         }
     }
 
     // POST /ai/plan
-    public function generarPlan(): void
+    public function generarPlan(Request $request): JsonResponse
     {
-        $this->requireAuth();
-        $this->requirePermission(['ai.consultas.plan', 'ai.manage', 'administrativo']);
-
         if (!$this->configService->isFeatureEnabled(AIConfigService::FEATURE_CONSULTAS_PLAN)) {
-            $this->json([
+            return response()->json([
                 'ok' => false,
                 'error' => 'La generación asistida de planes está deshabilitada en la configuración de IA.',
             ], 403);
-
-            return;
         }
 
-        $plan = trim($_POST['plan'] ?? '');
-        $insurance = trim($_POST['insurance'] ?? '');
+        $plan = trim((string) $request->input('plan', ''));
+        $insurance = trim((string) $request->input('insurance', ''));
         if ($plan === '' || $insurance === '') {
-            $this->json(['ok' => false, 'error' => 'plan e insurance son requeridos'], 400);
-
-            return;
+            return response()->json(['ok' => false, 'error' => 'plan e insurance son requeridos'], 400);
         }
 
-        $procedimiento = $_POST['procedimiento'] ?? null;
-        $ojo = $_POST['ojo'] ?? null;
+        $procedimiento = $request->input('procedimiento');
+        $ojo = $request->input('ojo');
 
         try {
             $texto = $this->client()->generatePlanTratamiento($plan, $insurance, $procedimiento, $ojo);
-            $this->json(['ok' => true, 'data' => $texto]);
+
+            return response()->json(['ok' => true, 'data' => $texto]);
         } catch (RuntimeException $exception) {
-            $this->json(['ok' => false, 'error' => $exception->getMessage()], 503);
+            return response()->json(['ok' => false, 'error' => $exception->getMessage()], 503);
         } catch (Throwable $exception) {
-            $this->json(['ok' => false, 'error' => $exception->getMessage()], 500);
+            return response()->json(['ok' => false, 'error' => $exception->getMessage()], 500);
         }
     }
 
