@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Modules\KPI\Models;
+namespace App\Modules\KPI\Models;
 
 use DateTimeImmutable;
 

@@ -2,26 +2,28 @@
 
 declare(strict_types=1);
 
-namespace Modules\KPI\Services;
+namespace App\Modules\KPI\Services;
 
+use App\Modules\KPI\Models\KpiSnapshot;
+use App\Modules\KPI\Models\KpiSnapshotModel;
+use App\Modules\KPI\Support\KpiRegistry;
 use DatePeriod;
 use DateTimeImmutable;
 use DateTimeInterface;
 use Exception;
-use Modules\KPI\Models\KpiSnapshot;
-use Modules\KPI\Models\KpiSnapshotModel;
-use Modules\KPI\Support\KpiRegistry;
-use PDO;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
 class KpiCalculationService
 {
     private const REINGRESO_WINDOW_DAYS = 30;
+
     private KpiSnapshotModel $snapshotModel;
 
-    public function __construct(private readonly PDO $pdo)
+    public function __construct()
     {
-        $this->snapshotModel = new KpiSnapshotModel($pdo);
+        $this->snapshotModel = new KpiSnapshotModel();
     }
 
     /**
@@ -150,15 +152,12 @@ class KpiCalculationService
               AND COALESCE(sp.created_at, sp.fecha) BETWEEN :inicio AND :fin
         SQL;
 
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute([
+        $totals = DB::selectOne($sql, [
             ':inicio' => $start->format('Y-m-d 00:00:00'),
             ':fin' => $end->format('Y-m-d 23:59:59'),
-        ]);
+        ]) ?? (object) ['registradas' => 0, 'agendadas' => 0, 'urgentes_sin_turno' => 0];
 
-        $totals = $stmt->fetch(PDO::FETCH_ASSOC) ?: ['registradas' => 0, 'agendadas' => 0, 'urgentes_sin_turno' => 0];
-
-        $cirugiaStmt = $this->pdo->prepare(
+        $cirugiaRow = DB::selectOne(
             <<<'SQL'
             SELECT COUNT(DISTINCT sp.id) AS total
             FROM solicitud_procedimiento sp
@@ -168,20 +167,19 @@ class KpiCalculationService
               AND sp.procedimiento != 'SELECCIONE'
               AND COALESCE(sp.created_at, sp.fecha) BETWEEN :inicio_solicitud AND :fin_solicitud
               AND pr.fecha_inicio BETWEEN :inicio_protocolo AND :fin_protocolo
-            SQL
+            SQL,
+            [
+                ':inicio_solicitud' => $start->format('Y-m-d 00:00:00'),
+                ':fin_solicitud' => $end->format('Y-m-d 23:59:59'),
+                ':inicio_protocolo' => $start->format('Y-m-d 00:00:00'),
+                ':fin_protocolo' => $end->format('Y-m-d 23:59:59'),
+            ]
         );
+        $conCirugia = (int) ($cirugiaRow?->total ?? 0);
 
-        $cirugiaStmt->execute([
-            ':inicio_solicitud' => $start->format('Y-m-d 00:00:00'),
-            ':fin_solicitud' => $end->format('Y-m-d 23:59:59'),
-            ':inicio_protocolo' => $start->format('Y-m-d 00:00:00'),
-            ':fin_protocolo' => $end->format('Y-m-d 23:59:59'),
-        ]);
-        $conCirugia = (int) ($cirugiaStmt->fetchColumn() ?: 0);
-
-        $registradas = (int) ($totals['registradas'] ?? 0);
-        $agendadas = (int) ($totals['agendadas'] ?? 0);
-        $urgentes = (int) ($totals['urgentes_sin_turno'] ?? 0);
+        $registradas = (int) ($totals->registradas ?? 0);
+        $agendadas = (int) ($totals->agendadas ?? 0);
+        $urgentes = (int) ($totals->urgentes_sin_turno ?? 0);
         $conversion = $registradas > 0 ? round(($agendadas / $registradas) * 100, 2) : 0.0;
 
         $results = [];
@@ -253,19 +251,17 @@ class KpiCalculationService
                AND pr.hc_number = base.hc_number
         SQL;
 
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute([
+        $row = DB::selectOne($sql, [
             ':inicio_solicitud' => $start->format('Y-m-d 00:00:00'),
             ':fin_solicitud' => $end->format('Y-m-d 23:59:59'),
             ':inicio_cirugia' => $start->format('Y-m-d 00:00:00'),
             ':fin_cirugia' => $end->format('Y-m-d 23:59:59'),
-        ]);
+        ]) ?? (object) [];
 
-        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
-        $programadas = (int) ($row['programadas'] ?? 0);
-        $realizadas = (int) ($row['realizadas'] ?? 0);
-        $suspendidas = (int) ($row['suspendidas'] ?? 0);
-        $reprogramadas = (int) ($row['reprogramadas'] ?? 0);
+        $programadas = (int) ($row->programadas ?? 0);
+        $realizadas = (int) ($row->realizadas ?? 0);
+        $suspendidas = (int) ($row->suspendidas ?? 0);
+        $reprogramadas = (int) ($row->reprogramadas ?? 0);
 
         $cumplimiento = $programadas > 0 ? round(($realizadas / $programadas) * 100, 2) : 0.0;
         $tasaSuspendidas = $programadas > 0 ? round(($suspendidas / $programadas) * 100, 2) : 0.0;
@@ -315,16 +311,14 @@ class KpiCalculationService
             WHERE COALESCE(sp.created_at, sp.fecha) BETWEEN :inicio AND :fin
         SQL;
 
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute([
+        $row = DB::selectOne($sql, [
             ':inicio' => $start->format('Y-m-d 00:00:00'),
             ':fin' => $end->format('Y-m-d 23:59:59'),
-        ]);
+        ]) ?? (object) [];
 
-        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
-        $pendientes = (int) ($row['pendientes'] ?? 0);
-        $completadas = (int) ($row['completadas'] ?? 0);
-        $vencidas = (int) ($row['vencidas'] ?? 0);
+        $pendientes = (int) ($row->pendientes ?? 0);
+        $completadas = (int) ($row->completadas ?? 0);
+        $vencidas = (int) ($row->vencidas ?? 0);
         $total = $pendientes + $completadas;
         $avance = $total > 0 ? round(($completadas / $total) * 100, 2) : 0.0;
 
@@ -383,8 +377,7 @@ class KpiCalculationService
             WHERE pr.fecha_inicio BETWEEN :inicio AND :fin
         SQL;
 
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute([
+        $rows = DB::select($sql, [
             ':inicio' => $start->format('Y-m-d 00:00:00'),
             ':fin' => $end->format('Y-m-d 23:59:59'),
         ]);
@@ -394,37 +387,37 @@ class KpiCalculationService
         $revisados = 0;
         $noRevisados = 0;
 
-        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-            if ((int) ($row['status'] ?? 0) === 1) {
+        foreach ($rows as $row) {
+            if ((int) ($row->status ?? 0) === 1) {
                 $revisados++;
                 continue;
             }
 
             $required = [
-                $row['membrete'],
-                $row['dieresis'],
-                $row['exposicion'],
-                $row['hallazgo'],
-                $row['operatorio'],
-                $row['complicaciones_operatorio'],
-                $row['datos_cirugia'],
-                $row['procedimientos'],
-                $row['lateralidad'],
-                $row['tipo_anestesia'],
-                $row['diagnosticos'],
-                $row['procedimiento_proyectado'],
+                $row->membrete,
+                $row->dieresis,
+                $row->exposicion,
+                $row->hallazgo,
+                $row->operatorio,
+                $row->complicaciones_operatorio,
+                $row->datos_cirugia,
+                $row->procedimientos,
+                $row->lateralidad,
+                $row->tipo_anestesia,
+                $row->diagnosticos,
+                $row->procedimiento_proyectado,
             ];
 
             $staff = [
-                $row['cirujano_1'],
-                $row['instrumentista'],
-                $row['cirujano_2'],
-                $row['circulante'],
-                $row['primer_ayudante'],
-                $row['anestesiologo'],
-                $row['segundo_ayudante'],
-                $row['ayudante_anestesia'],
-                $row['tercer_ayudante'],
+                $row->cirujano_1,
+                $row->instrumentista,
+                $row->cirujano_2,
+                $row->circulante,
+                $row->primer_ayudante,
+                $row->anestesiologo,
+                $row->segundo_ayudante,
+                $row->ayudante_anestesia,
+                $row->tercer_ayudante,
             ];
 
             $invalid = false;
@@ -443,7 +436,7 @@ class KpiCalculationService
                 }
             }
 
-            if (trim((string) ($row['cirujano_1'] ?? '')) === '') {
+            if (trim((string) ($row->cirujano_1 ?? '')) === '') {
                 $invalid = true;
             }
 
@@ -522,8 +515,7 @@ class KpiCalculationService
             ORDER BY p.hc_number, dx.dx_code, p.fecha_inicio, p.form_id
         SQL;
 
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute([
+        $rows = DB::select($sql, [
             ':inicio_ventana' => $windowStart->format('Y-m-d 00:00:00'),
             ':fin' => $end->format('Y-m-d 23:59:59'),
         ]);
@@ -533,8 +525,8 @@ class KpiCalculationService
         $totalEpisodes = [];
         $readmissions = [];
 
-        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-            $rawDate = $row['fecha_inicio'] ?? '';
+        foreach ($rows as $row) {
+            $rawDate = $row->fecha_inicio ?? '';
 
             if ($rawDate === null || $rawDate === '') {
                 continue;
@@ -546,8 +538,8 @@ class KpiCalculationService
                 continue;
             }
 
-            $patient = trim((string) ($row['hc_number'] ?? ''));
-            $diagnosis = trim((string) ($row['dx_code'] ?? ''));
+            $patient = trim((string) ($row->hc_number ?? ''));
+            $diagnosis = trim((string) ($row->dx_code ?? ''));
 
             if ($patient === '' || $diagnosis === '') {
                 continue;
@@ -563,7 +555,7 @@ class KpiCalculationService
             ));
 
             if ($eventDate >= $start && $eventDate <= $end) {
-                $formId = trim((string) ($row['form_id'] ?? ''));
+                $formId = trim((string) ($row->form_id ?? ''));
                 $episodeKey = $formId !== ''
                     ? $formId . '|' . $diagnosis
                     : $eventDate->format(DateTimeImmutable::ATOM) . '|' . $patientDiagnosisKey;

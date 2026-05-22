@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Modules\KPI\Support;
+namespace App\Modules\KPI\Support;
 
 use InvalidArgumentException;
 

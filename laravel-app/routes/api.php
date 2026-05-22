@@ -45,6 +45,11 @@ Route::middleware('web')->group(function (): void {
 // /ai routes intentionally outside /v2 prefix — matches legacy paths
 require __DIR__ . '/v2/ai.php';
 
+// /kpis routes intentionally outside /v2 prefix — matches legacy paths
+Route::middleware('web')->group(function (): void {
+    require __DIR__ . '/v2/kpi.php';
+});
+
 // /search routes intentionally outside /v2 prefix — matches legacy paths
 Route::middleware('web')->group(function (): void {
     require __DIR__ . '/v2/search.php';

@@ -2,23 +2,22 @@
 
 declare(strict_types=1);
 
-namespace Modules\KPI\Services;
+namespace App\Modules\KPI\Services;
 
+use App\Modules\KPI\Models\KpiSnapshotModel;
+use App\Modules\KPI\Support\KpiRegistry;
 use DateInterval;
 use DatePeriod;
 use DateTimeImmutable;
 use DateTimeInterface;
-use Modules\KPI\Models\KpiSnapshotModel;
-use Modules\KPI\Support\KpiRegistry;
-use PDO;
 
 class KpiQueryService
 {
     private KpiSnapshotModel $snapshotModel;
 
-    public function __construct(private readonly PDO $pdo)
+    public function __construct()
     {
-        $this->snapshotModel = new KpiSnapshotModel($pdo);
+        $this->snapshotModel = new KpiSnapshotModel();
     }
 
     /**
@@ -40,7 +39,7 @@ class KpiQueryService
 
         if ($ensureFresh && $snapshots === []) {
             $calculationPeriod = $this->buildDailyPeriod($start, $end);
-            $calculator = new KpiCalculationService($this->pdo);
+            $calculator = new KpiCalculationService();
             $calculator->recalculateRange($calculationPeriod, [$kpiKey]);
             $snapshots = $this->snapshotModel->listSnapshots($kpiKey, $start, $end, $dimensionHash);
         }
@@ -58,7 +57,7 @@ class KpiQueryService
         $snapshot = $this->snapshotModel->latestSnapshot($kpiKey, $start, $end, $dimensionHash);
 
         if ($ensureFresh && $snapshot === null) {
-            $calculator = new KpiCalculationService($this->pdo);
+            $calculator = new KpiCalculationService();
             $calculator->recalculateRange($this->buildDailyPeriod($start, $end), [$kpiKey]);
             $snapshot = $this->snapshotModel->latestSnapshot($kpiKey, $start, $end, $dimensionHash);
         }

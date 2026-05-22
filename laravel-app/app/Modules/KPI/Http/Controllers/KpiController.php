@@ -2,41 +2,40 @@
 
 declare(strict_types=1);
 
-namespace Modules\KPI\Controllers;
+namespace App\Modules\KPI\Http\Controllers;
 
+use App\Modules\KPI\Services\KpiQueryService;
+use App\Modules\KPI\Support\KpiRegistry;
 use DateTimeImmutable;
 use DateTimeInterface;
-use Modules\KPI\Services\KpiQueryService;
-use Modules\KPI\Support\KpiRegistry;
-use PDO;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Throwable;
 
 class KpiController
 {
-    private KpiQueryService $queryService;
-
-    public function __construct(private readonly PDO $pdo)
+    public function __construct(private readonly KpiQueryService $queryService)
     {
-        $this->queryService = new KpiQueryService($pdo);
     }
 
-    public function index(): void
+    // GET /kpis
+    public function index(): JsonResponse
     {
-        $this->respondJson([
+        return response()->json([
             'kpis' => $this->queryService->listAvailable(),
         ]);
     }
 
-    public function show(string $kpiKey): void
+    // GET /kpis/{kpiKey}
+    public function show(Request $request, string $kpiKey): JsonResponse
     {
         try {
             $definition = KpiRegistry::get($kpiKey);
         } catch (Throwable) {
-            $this->respondJson(['error' => 'KPI no encontrado'], 404);
-            return;
+            return response()->json(['error' => 'KPI no encontrado'], 404);
         }
 
-        $params = $_GET;
+        $params = $request->query();
         $start = $this->resolveDate($params['start'] ?? null, new DateTimeImmutable('-29 days'));
         $end = $this->resolveDate($params['end'] ?? null, new DateTimeImmutable('today'));
 
@@ -50,7 +49,7 @@ class KpiController
 
         if ($aggregate) {
             $data = $this->queryService->getAggregatedValue($kpiKey, $start, $end, $dimensions, $ensureFresh);
-            $this->respondJson([
+            return response()->json([
                 'kpi' => $kpiKey,
                 'definition' => $definition,
                 'start' => $start->format('Y-m-d'),
@@ -58,11 +57,10 @@ class KpiController
                 'dimensions' => $dimensions,
                 'aggregate' => $data,
             ]);
-            return;
         }
 
         $snapshots = $this->queryService->getSnapshots($kpiKey, $start, $end, $dimensions, $ensureFresh);
-        $this->respondJson([
+        return response()->json([
             'kpi' => $kpiKey,
             'definition' => $definition,
             'start' => $start->format('Y-m-d'),
@@ -70,13 +68,6 @@ class KpiController
             'dimensions' => $dimensions,
             'snapshots' => $snapshots,
         ]);
-    }
-
-    private function respondJson(array $payload, int $status = 200): void
-    {
-        http_response_code($status);
-        header('Content-Type: application/json; charset=utf-8');
-        echo json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
     }
 
     private function resolveDate(?string $value, DateTimeInterface $default): DateTimeImmutable
