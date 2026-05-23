@@ -48,6 +48,7 @@ class FlowSigcenterAgendaService
     public function preview(array $action, array $context, array $input): array
     {
         $operation = $this->normalizeOperation((string) ($action['operation'] ?? 'list_days'));
+        $operation = $this->inferOperationFromAction($operation, $action);
         $payload = $this->buildPayload($operation, $action, $context, $input);
         $missing = $this->missingFields($operation, $payload);
 
@@ -1091,6 +1092,39 @@ class FlowSigcenterAgendaService
             'cancelar', 'cancel', 'cancel_appointment' => 'cancel_appointment',
             default => 'list_days',
         };
+    }
+
+    /**
+     * @param array<string, mixed> $action
+     */
+    private function inferOperationFromAction(string $operation, array $action): string
+    {
+        if ($operation !== 'list_specialties') {
+            return $operation;
+        }
+
+        $saveResponseAs = trim((string) ($action['save_response_as'] ?? ''));
+        $storeResultAs = trim((string) ($action['store_result_as'] ?? ''));
+        $nextState = trim((string) ($action['next_state'] ?? ''));
+
+        if (
+            $storeResultAs === 'agenda_medicos_fecha'
+            || str_contains($storeResultAs, 'medicos_fecha')
+            || str_contains($nextState, 'medico_general_por_fecha')
+            || ($saveResponseAs === 'trabajador_id' && str_contains($nextState, 'medico'))
+        ) {
+            return 'list_doctors_by_date';
+        }
+
+        if (
+            $saveResponseAs === 'fecha'
+            || str_contains($storeResultAs, 'agenda_fechas')
+            || str_contains($nextState, 'fecha_general')
+        ) {
+            return 'list_dates_by_specialty';
+        }
+
+        return $operation;
     }
 
     /**
