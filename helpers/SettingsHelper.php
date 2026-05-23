@@ -433,18 +433,17 @@ class SettingsHelper
                         'title' => 'Pipeline de oportunidades',
                         'description' => 'Define las etapas disponibles y preferencias del tablero clínico/CRM.',
                         'fields' => [
-                            self::textareaField(
+                            array_merge(self::textareaField(
                                 'crm_pipeline_stages',
                                 'Etapas del pipeline',
                                 'Ingresa una etapa por línea en el orden de tu pipeline.',
                                 "Recibido\nContacto inicial\nSeguimiento\nDocs completos\nAutorizado\nAgendado\nCerrado\nPerdido"
-                            ),
-                            self::textareaField(
+                            ), ['type' => 'line_list']),
+                            array_merge(self::textareaField(
                                 'crm_whatsapp_stage_templates',
                                 'Plantillas de WhatsApp por etapa',
-                                'Una regla por línea: Etapa | nombre_de_plantilla | idioma | componentes opcionales.'
-                                . " Ejemplo: Evaluación médica realizada | prequirurgico_confirmado | es | {\"components\":[{\"type\":\"body\",\"parameters\":[{\"type\":\"text\",\"text\":\"{{nombre}}\"}]}]}"
-                            ),
+                                'Configura qué plantilla se envía en cada etapa. Los componentes avanzados quedan reservados para soporte técnico.'
+                            ), ['type' => 'stage_template_rules']),
                             self::selectField(
                                 'crm_kanban_sort',
                                 'Orden predeterminado del Kanban',

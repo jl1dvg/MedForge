@@ -11,6 +11,16 @@
 
 @push('styles')
     <style>
+        body.fixed .wrapper {
+            height: auto !important;
+            min-height: 100dvh;
+            overflow: visible !important;
+        }
+
+        body.fixed .content-wrapper {
+            overflow: visible !important;
+        }
+
         .settings-sidenav-wrap {
             position: sticky;
             top: 20px;
@@ -39,6 +49,14 @@
             color: #fff;
         }
 
+        .settings-sidenav-icon {
+            width: 22px;
+            min-width: 22px;
+            text-align: center;
+            font-size: 18px;
+            line-height: 1;
+        }
+
         .settings-section-card textarea.form-control {
             min-height: 96px;
             resize: vertical;
@@ -46,6 +64,58 @@
 
         .settings-section-card .form-label {
             color: #233142;
+        }
+
+        .settings-group {
+            padding: 18px 0 8px;
+            border-top: 1px solid #e6edf5;
+        }
+
+        .settings-group:first-child {
+            padding-top: 0;
+            border-top: 0;
+        }
+
+        .settings-group-header {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .settings-group-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 34px;
+            height: 34px;
+            border-radius: 8px;
+            background: #eef4fb;
+            color: #145388;
+            font-size: 19px;
+            flex: 0 0 auto;
+        }
+
+        .settings-group-title {
+            margin: 0;
+            color: #172b4c;
+            font-size: 1.05rem;
+            font-weight: 700;
+            line-height: 1.25;
+        }
+
+        .settings-group-description {
+            margin: 4px 0 0;
+            color: #64748b;
+            font-size: .875rem;
+        }
+
+        .settings-field {
+            padding: 10px 0 14px;
+        }
+
+        .settings-field .form-text {
+            max-width: 780px;
         }
 
         .settings-advanced-json {
@@ -99,6 +169,55 @@
 
         .settings-weekly-day {
             font-weight: 600;
+        }
+
+        .settings-line-list,
+        .settings-template-rules {
+            border: 1px solid #d8e0ea;
+            border-radius: 8px;
+            background: #fff;
+            overflow: hidden;
+        }
+
+        .settings-line-row,
+        .settings-template-row {
+            display: grid;
+            gap: 12px;
+            align-items: start;
+            padding: 12px 14px;
+            border-top: 1px solid #e6edf5;
+        }
+
+        .settings-line-row:first-child,
+        .settings-template-row:first-child {
+            border-top: 0;
+        }
+
+        .settings-line-row {
+            grid-template-columns: 44px minmax(0, 1fr) 44px;
+        }
+
+        .settings-template-row {
+            grid-template-columns: minmax(180px, 1.2fr) minmax(180px, 1.2fr) minmax(90px, .5fr) 44px;
+        }
+
+        .settings-row-handle {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 36px;
+            height: 36px;
+            border-radius: 6px;
+            background: #eef4fb;
+            color: #52677f;
+            font-weight: 700;
+        }
+
+        @media (max-width: 767.98px) {
+            .settings-line-row,
+            .settings-template-row {
+                grid-template-columns: 1fr;
+            }
         }
 
         @media (max-width: 767.98px) {
@@ -218,12 +337,41 @@
                                         foreach (($section['groups'] ?? []) as $grp) {
                                             $fieldCount += count($grp['fields'] ?? []);
                                         }
+                                        $navIcons = [
+                                            'general' => 'mdi mdi-cog-outline',
+                                            'branding' => 'mdi mdi-palette-outline',
+                                            'email' => 'mdi mdi-email-outline',
+                                            'system_observability' => 'mdi mdi-chart-line',
+                                            'security_access' => 'mdi mdi-shield-lock-outline',
+                                            'audit' => 'mdi mdi-clipboard-check-outline',
+                                            'scheduler' => 'mdi mdi-clock-outline',
+                                            'delivery_queue' => 'mdi mdi-send-outline',
+                                            'locations' => 'mdi mdi-office-building-outline',
+                                            'privacy_exports' => 'mdi mdi-shield-account-outline',
+                                            'webhooks' => 'mdi mdi-webhook',
+                                            'feature_flags' => 'mdi mdi-toggle-switch-outline',
+                                            'crm' => 'mdi mdi-source-branch',
+                                            'examenes' => 'mdi mdi-eye-outline',
+                                            'notifications' => 'mdi mdi-bell-outline',
+                                            'turnero' => 'mdi mdi-monitor-dashboard',
+                                            'billing' => 'mdi mdi-file-document-outline',
+                                            'mailbox' => 'mdi mdi-inbox-outline',
+                                            'billing_informes' => 'mdi mdi-file-chart-outline',
+                                            'whatsapp' => 'mdi mdi-whatsapp',
+                                            'integrations' => 'mdi mdi-connection',
+                                            'ai' => 'mdi mdi-robot-outline',
+                                            'localization' => 'mdi mdi-earth',
+                                            'identity_verification' => 'mdi mdi-account-check-outline',
+                                            'solicitudes' => 'mdi mdi-notebook-outline',
+                                            'cive_extension' => 'mdi mdi-puzzle-outline',
+                                        ];
+                                        $navIcon = $navIcons[(string) $sectionId] ?? 'mdi mdi-circle-outline';
                                     @endphp
                                     <li class="nav-item">
                                         <a href="/v2/settings?section={{ urlencode((string) $sectionId) }}"
                                            data-section="{{ (string) $sectionId }}"
                                            class="nav-link d-flex align-items-center {{ $activeSection === (string) $sectionId ? 'active' : '' }}">
-                                            <i class="me-2 {{ (string) ($section['icon'] ?? 'fa-solid fa-circle') }}"></i>
+                                            <i class="settings-sidenav-icon me-2 {{ $navIcon }}"></i>
                                             <span class="flex-grow-1">{{ (string) ($section['title'] ?? $sectionId) }}</span>
                                             @if($fieldCount > 0)
                                                 <span class="badge bg-secondary ms-1" style="font-size:10px;">{{ $fieldCount }}</span>
@@ -256,11 +404,18 @@
                                 <input type="hidden" name="section" value="{{ (string) $sectionId }}">
 
                                 @foreach(($section['groups'] ?? []) as $group)
-                                    <div class="mb-4">
-                                        <h5 class="fw-600 mb-2">{{ (string) ($group['title'] ?? '') }}</h5>
-                                        @if(!empty($group['description']))
-                                            <p class="text-muted small mb-3">{{ (string) $group['description'] }}</p>
-                                        @endif
+                                    <div class="settings-group">
+                                        <div class="settings-group-header">
+                                            <span class="settings-group-icon" aria-hidden="true">
+                                                <i class="{{ $navIcons[(string) $sectionId] ?? 'mdi mdi-tune' }}"></i>
+                                            </span>
+                                            <div>
+                                                <h5 class="settings-group-title">{{ (string) ($group['title'] ?? '') }}</h5>
+                                                @if(!empty($group['description']))
+                                                    <p class="settings-group-description">{{ (string) $group['description'] }}</p>
+                                                @endif
+                                            </div>
+                                        </div>
 
                                         <div class="row">
                                             @foreach(($group['fields'] ?? []) as $field)
@@ -280,7 +435,7 @@
                                                         && in_array(substr($jsonCandidate, 0, 1), ['{', '['], true)
                                                         && (str_contains(strtolower($fieldLabel . ' ' . $fieldHelp), 'json') || json_decode($jsonCandidate, true) !== null);
                                                     $columnClass = match ($type) {
-                                                        'textarea', 'billing_rules', 'weekly_schedule' => 'col-12',
+                                                        'textarea', 'billing_rules', 'weekly_schedule', 'line_list', 'stage_template_rules', 'solicitudes_sla' => 'col-12',
                                                         'color' => 'col-md-4 col-sm-6',
                                                         'file', 'checkbox', 'checkbox_group' => 'col-md-6 col-sm-12',
                                                         default => 'col-md-6 col-sm-12',
@@ -288,7 +443,7 @@
                                                 @endphp
 
                                                 <div class="{{ $columnClass }}">
-                                                    <div class="mb-3">
+                                                    <div class="settings-field">
                                                         @if($type !== 'checkbox')
                                                             <label for="{{ $fieldId }}" class="form-label fw-500">
                                                                 {{ (string) ($field['label'] ?? $key) }}
@@ -298,7 +453,89 @@
                                                             </label>
                                                         @endif
 
-                                                        @if($type === 'weekly_schedule')
+                                                        @if($type === 'line_list')
+                                                            @php
+                                                                $linesRaw = is_string($displayValue) && trim($displayValue) !== '' ? (string) $displayValue : (string) ($field['default'] ?? '');
+                                                                $decodedLines = json_decode($linesRaw, true);
+                                                                if (is_array($decodedLines)) {
+                                                                    $lineItems = array_values(array_filter(array_map(static fn($item) => trim((string) $item), $decodedLines), static fn($item) => $item !== ''));
+                                                                } else {
+                                                                    $lineItems = array_values(array_filter(array_map('trim', preg_split('/\R/u', $linesRaw) ?: []), static fn($item) => $item !== ''));
+                                                                }
+                                                                if ($lineItems === []) {
+                                                                    $lineItems = [''];
+                                                                }
+                                                            @endphp
+                                                            <div class="settings-line-list" data-line-list data-target="{{ $fieldId }}">
+                                                                <div data-line-list-rows>
+                                                                    @foreach($lineItems as $lineIndex => $lineItem)
+                                                                        <div class="settings-line-row">
+                                                                            <span class="settings-row-handle">{{ $lineIndex + 1 }}</span>
+                                                                            <input type="text" class="form-control" data-line-value value="{{ $lineItem }}" placeholder="Nombre de la etapa">
+                                                                            <button type="button" class="btn btn-outline-danger" data-line-remove aria-label="Eliminar etapa">
+                                                                                <i class="mdi mdi-delete-outline"></i>
+                                                                            </button>
+                                                                        </div>
+                                                                    @endforeach
+                                                                </div>
+                                                                <div class="d-flex justify-content-between align-items-center p-2 bg-light">
+                                                                    <span class="text-muted small">Una etapa por fila, en el orden del tablero.</span>
+                                                                    <button type="button" class="btn btn-outline-primary btn-sm" data-line-add>
+                                                                        <i class="mdi mdi-plus me-1"></i> Agregar etapa
+                                                                    </button>
+                                                                </div>
+                                                                <textarea class="d-none" name="{{ $key }}" id="{{ $fieldId }}">{{ $linesRaw }}</textarea>
+                                                            </div>
+                                                        @elseif($type === 'stage_template_rules')
+                                                            @php
+                                                                $templatesRaw = is_string($displayValue) && trim($displayValue) !== '' ? (string) $displayValue : (string) ($field['default'] ?? '');
+                                                                $templateRows = [];
+                                                                foreach (preg_split('/\R/u', $templatesRaw) ?: [] as $templateLine) {
+                                                                    $templateLine = trim((string) $templateLine);
+                                                                    if ($templateLine === '') {
+                                                                        continue;
+                                                                    }
+                                                                    $parts = array_pad(array_map('trim', explode('|', $templateLine, 4)), 4, '');
+                                                                    $templateRows[] = ['stage' => $parts[0], 'template' => $parts[1], 'language' => $parts[2] !== '' ? $parts[2] : 'es', 'components' => $parts[3]];
+                                                                }
+                                                                if ($templateRows === []) {
+                                                                    $templateRows[] = ['stage' => '', 'template' => '', 'language' => 'es', 'components' => ''];
+                                                                }
+                                                            @endphp
+                                                            <div class="settings-template-rules" data-template-rules data-target="{{ $fieldId }}">
+                                                                <div data-template-rule-rows>
+                                                                    @foreach($templateRows as $templateRow)
+                                                                        <div class="settings-template-row">
+                                                                            <div>
+                                                                                <label class="form-label small text-muted mb-1">Etapa</label>
+                                                                                <input type="text" class="form-control" data-template-stage value="{{ $templateRow['stage'] }}" placeholder="Ej: Autorizado">
+                                                                            </div>
+                                                                            <div>
+                                                                                <label class="form-label small text-muted mb-1">Plantilla</label>
+                                                                                <input type="text" class="form-control" data-template-name value="{{ $templateRow['template'] }}" placeholder="nombre_de_plantilla">
+                                                                            </div>
+                                                                            <div>
+                                                                                <label class="form-label small text-muted mb-1">Idioma</label>
+                                                                                <input type="text" class="form-control" data-template-language value="{{ $templateRow['language'] }}" placeholder="es">
+                                                                            </div>
+                                                                            <div class="pt-md-4">
+                                                                                <button type="button" class="btn btn-outline-danger" data-template-remove aria-label="Eliminar plantilla">
+                                                                                    <i class="mdi mdi-delete-outline"></i>
+                                                                                </button>
+                                                                            </div>
+                                                                            <textarea class="d-none" data-template-components>{{ $templateRow['components'] }}</textarea>
+                                                                        </div>
+                                                                    @endforeach
+                                                                </div>
+                                                                <div class="d-flex justify-content-between align-items-center p-2 bg-light">
+                                                                    <span class="text-muted small">No necesitas escribir JSON. Soporte técnico puede ajustar componentes avanzados si hace falta.</span>
+                                                                    <button type="button" class="btn btn-outline-primary btn-sm" data-template-add>
+                                                                        <i class="mdi mdi-plus me-1"></i> Agregar plantilla
+                                                                    </button>
+                                                                </div>
+                                                                <textarea class="d-none" name="{{ $key }}" id="{{ $fieldId }}">{{ $templatesRaw }}</textarea>
+                                                            </div>
+                                                        @elseif($type === 'weekly_schedule')
                                                             @php
                                                                 $scheduleRaw = is_string($displayValue) && trim($displayValue) !== '' ? (string) $displayValue : (string) ($field['default'] ?? '{}');
                                                                 $scheduleValue = json_decode($scheduleRaw, true);
@@ -692,6 +929,89 @@
                 });
             }
 
+            function initLineLists() {
+                document.querySelectorAll('[data-line-list]').forEach(container => {
+                    const target = document.getElementById(container.dataset.target || '');
+                    const rows = container.querySelector('[data-line-list-rows]');
+                    const addBtn = container.querySelector('[data-line-add]');
+                    if (!target || !rows) return;
+
+                    function sync() {
+                        const values = Array.from(rows.querySelectorAll('[data-line-value]'))
+                            .map(input => input.value.trim())
+                            .filter(Boolean);
+                        target.value = values.join('\n');
+                        rows.querySelectorAll('.settings-row-handle').forEach((handle, index) => {
+                            handle.textContent = String(index + 1);
+                        });
+                        target.dispatchEvent(new Event('input', { bubbles: true }));
+                    }
+
+                    function addRow(value = '') {
+                        const row = document.createElement('div');
+                        row.className = 'settings-line-row';
+                        row.innerHTML = '<span class="settings-row-handle"></span><input type="text" class="form-control" data-line-value placeholder="Nombre de la etapa"><button type="button" class="btn btn-outline-danger" data-line-remove aria-label="Eliminar etapa"><i class="mdi mdi-delete-outline"></i></button>';
+                        row.querySelector('[data-line-value]').value = value;
+                        rows.appendChild(row);
+                        sync();
+                    }
+
+                    rows.addEventListener('input', event => {
+                        if (event.target.matches('[data-line-value]')) sync();
+                    });
+                    rows.addEventListener('click', event => {
+                        const btn = event.target.closest('[data-line-remove]');
+                        if (!btn) return;
+                        btn.closest('.settings-line-row')?.remove();
+                        if (!rows.querySelector('.settings-line-row')) addRow();
+                        sync();
+                    });
+                    addBtn?.addEventListener('click', () => addRow());
+                    sync();
+                });
+            }
+
+            function initTemplateRules() {
+                document.querySelectorAll('[data-template-rules]').forEach(container => {
+                    const target = document.getElementById(container.dataset.target || '');
+                    const rows = container.querySelector('[data-template-rule-rows]');
+                    const addBtn = container.querySelector('[data-template-add]');
+                    if (!target || !rows) return;
+
+                    function sync() {
+                        const values = Array.from(rows.querySelectorAll('.settings-template-row')).map(row => {
+                            const stage = row.querySelector('[data-template-stage]')?.value.trim() || '';
+                            const template = row.querySelector('[data-template-name]')?.value.trim() || '';
+                            const language = row.querySelector('[data-template-language]')?.value.trim() || 'es';
+                            const components = row.querySelector('[data-template-components]')?.value.trim() || '';
+                            if (!stage && !template) return '';
+                            return [stage, template, language, components].filter((value, index) => index < 3 || value !== '').join(' | ');
+                        }).filter(Boolean);
+                        target.value = values.join('\n');
+                        target.dispatchEvent(new Event('input', { bubbles: true }));
+                    }
+
+                    function addRow() {
+                        const row = document.createElement('div');
+                        row.className = 'settings-template-row';
+                        row.innerHTML = '<div><label class="form-label small text-muted mb-1">Etapa</label><input type="text" class="form-control" data-template-stage placeholder="Ej: Autorizado"></div><div><label class="form-label small text-muted mb-1">Plantilla</label><input type="text" class="form-control" data-template-name placeholder="nombre_de_plantilla"></div><div><label class="form-label small text-muted mb-1">Idioma</label><input type="text" class="form-control" data-template-language value="es" placeholder="es"></div><div class="pt-md-4"><button type="button" class="btn btn-outline-danger" data-template-remove aria-label="Eliminar plantilla"><i class="mdi mdi-delete-outline"></i></button></div><textarea class="d-none" data-template-components></textarea>';
+                        rows.appendChild(row);
+                        sync();
+                    }
+
+                    rows.addEventListener('input', sync);
+                    rows.addEventListener('click', event => {
+                        const btn = event.target.closest('[data-template-remove]');
+                        if (!btn) return;
+                        btn.closest('.settings-template-row')?.remove();
+                        if (!rows.querySelector('.settings-template-row')) addRow();
+                        sync();
+                    });
+                    addBtn?.addEventListener('click', addRow);
+                    sync();
+                });
+            }
+
             function initDirtyTracking() {
                 document.querySelectorAll('[data-settings-form]').forEach(form => {
                     const msg = form.querySelector('.settings-dirty-msg');
@@ -759,6 +1079,8 @@
                 initFileUpload();
                 initPasswordToggle();
                 initColorPreview();
+                initLineLists();
+                initTemplateRules();
                 initWeeklySchedules();
                 initDirtyTracking();
                 initAjaxSave();

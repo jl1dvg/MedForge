@@ -134,6 +134,89 @@
         });
     }
 
+    function initLineLists() {
+        document.querySelectorAll('[data-line-list]').forEach(container => {
+            const target = document.getElementById(container.dataset.target || '');
+            const rows = container.querySelector('[data-line-list-rows]');
+            const addBtn = container.querySelector('[data-line-add]');
+            if (!target || !rows) return;
+
+            function sync() {
+                const values = Array.from(rows.querySelectorAll('[data-line-value]'))
+                    .map(input => input.value.trim())
+                    .filter(Boolean);
+                target.value = values.join('\n');
+                rows.querySelectorAll('.settings-row-handle').forEach((handle, index) => {
+                    handle.textContent = String(index + 1);
+                });
+                target.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+
+            function addRow(value = '') {
+                const row = document.createElement('div');
+                row.className = 'settings-line-row';
+                row.innerHTML = '<span class="settings-row-handle"></span><input type="text" class="form-control" data-line-value placeholder="Nombre de la etapa"><button type="button" class="btn btn-outline-danger" data-line-remove aria-label="Eliminar etapa"><i class="mdi mdi-delete-outline"></i></button>';
+                row.querySelector('[data-line-value]').value = value;
+                rows.appendChild(row);
+                sync();
+            }
+
+            rows.addEventListener('input', event => {
+                if (event.target.matches('[data-line-value]')) sync();
+            });
+            rows.addEventListener('click', event => {
+                const btn = event.target.closest('[data-line-remove]');
+                if (!btn) return;
+                btn.closest('.settings-line-row')?.remove();
+                if (!rows.querySelector('.settings-line-row')) addRow();
+                sync();
+            });
+            addBtn?.addEventListener('click', () => addRow());
+            sync();
+        });
+    }
+
+    function initTemplateRules() {
+        document.querySelectorAll('[data-template-rules]').forEach(container => {
+            const target = document.getElementById(container.dataset.target || '');
+            const rows = container.querySelector('[data-template-rule-rows]');
+            const addBtn = container.querySelector('[data-template-add]');
+            if (!target || !rows) return;
+
+            function sync() {
+                const values = Array.from(rows.querySelectorAll('.settings-template-row')).map(row => {
+                    const stage = row.querySelector('[data-template-stage]')?.value.trim() || '';
+                    const template = row.querySelector('[data-template-name]')?.value.trim() || '';
+                    const language = row.querySelector('[data-template-language]')?.value.trim() || 'es';
+                    const components = row.querySelector('[data-template-components]')?.value.trim() || '';
+                    if (!stage && !template) return '';
+                    return [stage, template, language, components].filter((value, index) => index < 3 || value !== '').join(' | ');
+                }).filter(Boolean);
+                target.value = values.join('\n');
+                target.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+
+            function addRow() {
+                const row = document.createElement('div');
+                row.className = 'settings-template-row';
+                row.innerHTML = '<div><label class="form-label small text-muted mb-1">Etapa</label><input type="text" class="form-control" data-template-stage placeholder="Ej: Autorizado"></div><div><label class="form-label small text-muted mb-1">Plantilla</label><input type="text" class="form-control" data-template-name placeholder="nombre_de_plantilla"></div><div><label class="form-label small text-muted mb-1">Idioma</label><input type="text" class="form-control" data-template-language value="es" placeholder="es"></div><div class="pt-md-4"><button type="button" class="btn btn-outline-danger" data-template-remove aria-label="Eliminar plantilla"><i class="mdi mdi-delete-outline"></i></button></div><textarea class="d-none" data-template-components></textarea>';
+                rows.appendChild(row);
+                sync();
+            }
+
+            rows.addEventListener('input', sync);
+            rows.addEventListener('click', event => {
+                const btn = event.target.closest('[data-template-remove]');
+                if (!btn) return;
+                btn.closest('.settings-template-row')?.remove();
+                if (!rows.querySelector('.settings-template-row')) addRow();
+                sync();
+            });
+            addBtn?.addEventListener('click', addRow);
+            sync();
+        });
+    }
+
     // --- Dirty tracking: detecta cambios para mostrar aviso ---
     function initDirtyTracking() {
         document.querySelectorAll('[data-settings-form]').forEach(form => {
@@ -265,6 +348,8 @@
         initFileUpload();
         initPasswordToggle();
         initColorPreview();
+        initLineLists();
+        initTemplateRules();
         initWeeklySchedules();
         initDirtyTracking();
         initAjaxSave();
