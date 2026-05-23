@@ -297,20 +297,45 @@ class FlowRuntimeExecutionService
             return $this->result(true, true, (string)($scenario['id'] ?? 'fallback'), $run['messages_sent'], !empty($context['handoff_requested']), null);
         }
 
+        // During active agenda flows, stay silent to avoid interrupting the multi-step selection.
+        $currentState = (string) ($context['state'] ?? '');
+        if (str_starts_with($currentState, 'agenda_')) {
+            WhatsappAutoresponderSession::query()->updateOrCreate(
+                ['conversation_id' => $conversation->id],
+                [
+                    'wa_number'           => (string) $conversation->wa_number,
+                    'scenario_id'         => $session?->scenario_id,
+                    'node_id'             => $session?->node_id,
+                    'awaiting'            => isset($context['awaiting_field']) ? 'input' : null,
+                    'context'             => $context,
+                    'last_payload'        => $messagePayload,
+                    'last_interaction_at' => now(),
+                ]
+            );
+
+            return $this->result(true, false, null, 0, false, 'no_matching_scenario');
+        }
+
+        $fallbackBody = trim((string) ($flow['settings']['no_match_fallback_message'] ?? ''));
+        if ($fallbackBody === '') {
+            $fallbackBody = "No entendí tu mensaje.\nEscribe *MENU* para ver las opciones.";
+        }
+
+        $this->sendFlowMessage($conversation, ['type' => 'text', 'body' => $fallbackBody], $context);
+
         WhatsappAutoresponderSession::query()->updateOrCreate(
             ['conversation_id' => $conversation->id],
             [
-                'wa_number' => (string)$conversation->wa_number,
-                'scenario_id' => $session?->scenario_id,
-                'node_id' => $session?->node_id,
-                'awaiting' => isset($context['awaiting_field']) ? 'input' : null,
-                'context' => $context,
-                'last_payload' => $messagePayload,
+                'wa_number'           => (string) $conversation->wa_number,
+                'scenario_id'         => 'no_match_fallback',
+                'awaiting'            => null,
+                'context'             => $context,
+                'last_payload'        => $messagePayload,
                 'last_interaction_at' => now(),
             ]
         );
 
-        return $this->result(true, false, null, 0, false, 'no_matching_scenario');
+        return $this->result(true, false, 'no_match_fallback', 1, false, 'no_match');
     }
 
     /**

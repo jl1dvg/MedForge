@@ -2090,7 +2090,11 @@ class WhatsappWebhookControllerTest extends TestCase
     /**
      * @param array<int, array<string, mixed>> $scenarios
      */
-    private function publishFlowmakerScenarios(array $scenarios): void
+    /**
+     * @param array<int, mixed> $scenarios
+     * @param array<string, mixed> $settings
+     */
+    private function publishFlowmakerScenarios(array $scenarios, array $settings = []): void
     {
         $flowId = \DB::table('whatsapp_autoresponder_flows')->insertGetId([
             'flow_key' => 'default',
@@ -2107,6 +2111,7 @@ class WhatsappWebhookControllerTest extends TestCase
             'entry_settings' => json_encode([
                 'flow' => [
                     'name' => 'Flujo principal de WhatsApp',
+                    'settings' => $settings,
                     'scenarios' => $scenarios,
                 ],
             ], JSON_UNESCAPED_UNICODE),
@@ -2344,5 +2349,78 @@ class WhatsappWebhookControllerTest extends TestCase
             ->first();
         $ctx = json_decode($session->context, true);
         $this->assertSame('agenda_confirmar_cancelacion', $ctx['state']);
+    }
+
+    public function test_it_sends_no_match_fallback_message_when_no_scenario_matches(): void
+    {
+        Http::fake([
+            '*graph.facebook.com*' => Http::response(['messages' => [['id' => 'wamid.fallback.1']]], 200),
+        ]);
+
+        config()->set('whatsapp.migration.automation.enabled', true);
+        config()->set('whatsapp.migration.automation.dry_run', false);
+        config()->set('whatsapp.migration.api.phone_number_id', '123456');
+        config()->set('whatsapp.migration.api.token', 'test-token');
+
+        \DB::table('app_settings')->insert([
+            ['name' => 'whatsapp_cloud_enabled', 'value' => '1', 'category' => 'whatsapp', 'type' => 'text', 'autoload' => true, 'created_at' => now(), 'updated_at' => now()],
+            ['name' => 'whatsapp_cloud_phone_number_id', 'value' => '123456', 'category' => 'whatsapp', 'type' => 'text', 'autoload' => true, 'created_at' => now(), 'updated_at' => now()],
+            ['name' => 'whatsapp_cloud_access_token', 'value' => 'test-token', 'category' => 'whatsapp', 'type' => 'text', 'autoload' => true, 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        // Publicar un flow con el mensaje de fallback personalizado usando el helper de la clase
+        $this->publishFlowmakerScenarios(
+            scenarios: [[
+                'id' => 'primer_contacto',
+                'name' => 'Primer contacto',
+                'stage' => 'arrival',
+                'status' => 'published',
+                'conditions' => [['type' => 'message_contains', 'keywords' => ['hola']]],
+                'actions' => [[
+                    'type' => 'send_message',
+                    'message' => ['type' => 'text', 'body' => 'Hola desde el flow'],
+                ]],
+            ]],
+            settings: ['timezone' => 'America/Guayaquil', 'no_match_fallback_message' => 'Texto fallback de prueba. Escribe MENU.'],
+        );
+
+        // Mensaje que no va a hacer match con ningún escenario
+        $webhookPayload = [
+            'entry' => [[
+                'changes' => [[
+                    'value' => [
+                        'contacts' => [[
+                            'wa_id' => '593999333222',
+                            'profile' => ['name' => 'Paciente Fallback'],
+                        ]],
+                        'messages' => [[
+                            'from' => '593999333222',
+                            'id' => 'wamid.nomatch.1',
+                            'timestamp' => (string) now()->timestamp,
+                            'type' => 'text',
+                            'text' => ['body' => 'xyzabc123 mensaje sin sentido que nunca matchea'],
+                        ]],
+                    ],
+                ]],
+            ]],
+        ];
+
+        $response = $this->postJson('/whatsapp/webhook', $webhookPayload);
+
+        $response->assertOk()
+            ->assertJsonPath('data.automation_runs', 1)
+            ->assertJsonPath('data.automation_messages_sent', 1);
+
+        // Verificar que se envió el fallback personalizado
+        Http::assertSent(function ($request) {
+            $body = $request->data();
+            return str_contains($body['text']['body'] ?? '', 'Texto fallback de prueba');
+        });
+
+        // Sesión grabada como no_match_fallback
+        $this->assertDatabaseHas('whatsapp_autoresponder_sessions', [
+            'wa_number' => '593999333222',
+            'scenario_id' => 'no_match_fallback',
+        ]);
     }
 }

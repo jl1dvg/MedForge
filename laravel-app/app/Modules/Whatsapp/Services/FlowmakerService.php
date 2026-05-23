@@ -339,6 +339,7 @@ class FlowmakerService
             'description' => 'Esqueleto base para Flowmaker en Laravel.',
             'settings' => [
                 'timezone' => 'America/Guayaquil',
+                'no_match_fallback_message' => "No entendí tu mensaje 🤔\nEscribe *MENU* para ver las opciones disponibles.",
             ],
             'scenarios' => [
                 [
