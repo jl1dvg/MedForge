@@ -14,6 +14,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 
 class UsuariosUiController
@@ -223,6 +224,7 @@ class UsuariosUiController
         }
 
         $this->finalizeUploads($pendingUploads);
+        $this->maybeSyncDoctorCatalog($data);
 
         return redirect('/usuarios')
             ->with('status', 'created')
@@ -331,6 +333,7 @@ class UsuariosUiController
         }
 
         $this->finalizeUploads($pendingUploads);
+        $this->maybeSyncDoctorCatalog($data, $existing);
 
         if ($this->currentUserId() === $id) {
             $this->syncLegacySessionState(
@@ -1627,5 +1630,31 @@ class UsuariosUiController
             UPLOAD_ERR_EXTENSION => 'Una extensión del servidor bloqueó la carga del archivo.',
             default => 'No se pudo cargar el archivo. Intenta nuevamente.',
         };
+    }
+
+    /**
+     * Re-sync the WhatsApp doctor catalog whenever a Cirujano Oftalmólogo is
+     * created or updated.  We check both the new data and the previous record
+     * so that renaming a specialty away from ophthalmology also cleans up the
+     * catalog entry automatically.
+     *
+     * @param array<string, mixed> $newData   The payload that was just saved.
+     * @param array<string, mixed> $previous  The record as it was before the save (empty for create).
+     */
+    private function maybeSyncDoctorCatalog(array $newData, array $previous = []): void
+    {
+        $isOftalmologoNow   = ($newData['especialidad']   ?? '') === 'Cirujano Oftalmólogo';
+        $wasOftalmologoBefore = ($previous['especialidad'] ?? '') === 'Cirujano Oftalmólogo';
+
+        if (!$isOftalmologoNow && !$wasOftalmologoBefore) {
+            return;
+        }
+
+        try {
+            Artisan::call('whatsapp:sigcenter-doctor-catalog-sync');
+        } catch (\Throwable $e) {
+            // Log but never let a catalog sync failure block the HTTP response.
+            report($e);
+        }
     }
 }
