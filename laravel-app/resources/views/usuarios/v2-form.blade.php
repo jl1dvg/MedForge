@@ -57,7 +57,7 @@
 
     /* ── Multi-select config ───────────────────────────────────────────── */
     $subspecialties = $subspecialties ?? [];
-    $sedesConfig    = $sedesConfig    ?? [];
+    $sedesConfig    = $sedes_config   ?? [];
     $selectedSedes  = array_filter(array_map('trim', explode(',', (string) ($user['sede'] ?? ''))));
     $selectedSubs   = array_filter(array_map('trim', explode(',', (string) ($user['subespecialidad'] ?? ''))));
     $isOftalmologo  = ($user['especialidad'] ?? '') === 'Cirujano Oftalmólogo';
