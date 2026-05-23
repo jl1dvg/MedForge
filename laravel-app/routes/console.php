@@ -689,18 +689,40 @@ Artisan::command('whatsapp:sigcenter-doctor-catalog-sync
         return 1;
     }
 
-    $expandSedes = static function (string $rawSede): array {
-        $value = strtoupper(str_replace([' ', '-', '_'], '', trim($rawSede)));
+    // ── Config maps ──────────────────────────────────────────────────────
+    /** @var array<int, string> $sedesMap  [sede_id => sede_nombre] */
+    $sedesMap = config('medforge.sedes', []);
 
-        return match ($value) {
-            'CEIBOS' => [['sede_id' => '16', 'sede_nombre' => 'Ceibos']],
-            'VILLACLUB' => [['sede_id' => '1', 'sede_nombre' => 'Villa Club']],
-            'CEIBOSVILLACLUB' => [
-                ['sede_id' => '16', 'sede_nombre' => 'Ceibos'],
-                ['sede_id' => '1', 'sede_nombre' => 'Villa Club'],
-            ],
-            default => [],
-        };
+    /** @var array<string, array{label: string, catalog_key: string}> $subspecialtiesMap */
+    $subspecialtiesMap = config('medforge.subspecialties', []);
+
+    // ── Parse helpers ────────────────────────────────────────────────────
+
+    /**
+     * "1,16" → [['sede_id'=>'1','sede_nombre'=>'Villa Club'], ['sede_id'=>'16','sede_nombre'=>'Ceibos']]
+     */
+    $parseSedes = static function (string $rawSede) use ($sedesMap): array {
+        $result = [];
+        foreach (array_filter(array_map('trim', explode(',', $rawSede))) as $id) {
+            $intId = (int) $id;
+            if (isset($sedesMap[$intId])) {
+                $result[] = ['sede_id' => (string) $intId, 'sede_nombre' => $sedesMap[$intId]];
+            }
+        }
+        return $result;
+    };
+
+    /**
+     * "segmento_anterior,glaucoma" → ['oftalmologo general', 'glaucoma']  (catalog_key values)
+     */
+    $parseSubs = static function (string $rawSub) use ($subspecialtiesMap): array {
+        $result = [];
+        foreach (array_filter(array_map('trim', explode(',', $rawSub))) as $slug) {
+            if (isset($subspecialtiesMap[$slug])) {
+                $result[] = $subspecialtiesMap[$slug]['catalog_key'];
+            }
+        }
+        return $result;
     };
 
     $nullableString = static function (mixed $value, int $maxLength): ?string {
@@ -713,6 +735,7 @@ Artisan::command('whatsapp:sigcenter-doctor-catalog-sync
         return $string === '' ? null : $string;
     };
 
+    // ── Fetch source rows ────────────────────────────────────────────────
     $rows = DB::table('users')
         ->select(['id', 'nombre', 'email', 'profile_photo', 'especialidad', 'subespecialidad', 'id_trabajador', 'sede'])
         ->whereNotNull('id_trabajador')
@@ -728,43 +751,52 @@ Artisan::command('whatsapp:sigcenter-doctor-catalog-sync
 
     $now = now();
     $payload = [];
-    $ignoredSedes = [];
+    $ignoredRows = [];
 
     foreach ($rows as $row) {
-        $sedes = $expandSedes((string) ($row->sede ?? ''));
-        if ($sedes === []) {
-            $ignoredSedes[(string) ($row->sede ?? '')] = true;
+        $sedes = $parseSedes((string) ($row->sede ?? ''));
+        $subs  = $parseSubs((string) ($row->subespecialidad ?? ''));
+
+        if ($sedes === [] || $subs === []) {
+            $ignoredRows[] = sprintf(
+                'id=%s sede="%s" sub="%s"',
+                $row->id ?? '?',
+                $row->sede ?? '',
+                $row->subespecialidad ?? ''
+            );
             continue;
         }
 
         foreach ($sedes as $sede) {
-            $key = implode('|', [
-                (string) $row->id_trabajador,
-                trim((string) $row->subespecialidad),
-                $sede['sede_id'],
-            ]);
+            foreach ($subs as $catalogKey) {
+                $key = implode('|', [
+                    (string) $row->id_trabajador,
+                    $catalogKey,
+                    $sede['sede_id'],
+                ]);
 
-            $payload[$key] = [
-                'source_user_id' => $row->id !== null ? (int) $row->id : null,
-                'trabajador_id' => trim((string) $row->id_trabajador),
-                'doctor_nombre' => trim((string) ($row->nombre ?? '')),
-                'doctor_email' => $nullableString($row->email ?? null, 191),
-                'doctor_profile_photo' => $nullableText($row->profile_photo ?? null),
-                'especialidad' => $nullableString($row->especialidad ?? null, 191),
-                'subespecialidad' => trim((string) $row->subespecialidad),
-                'sede_id' => $sede['sede_id'],
-                'sede_nombre' => $sede['sede_nombre'],
-                'active' => true,
-                'last_synced_at' => $now,
-                'created_at' => $now,
-                'updated_at' => $now,
-            ];
+                $payload[$key] = [
+                    'source_user_id'       => $row->id !== null ? (int) $row->id : null,
+                    'trabajador_id'        => trim((string) $row->id_trabajador),
+                    'doctor_nombre'        => trim((string) ($row->nombre ?? '')),
+                    'doctor_email'         => $nullableString($row->email ?? null, 191),
+                    'doctor_profile_photo' => $nullableText($row->profile_photo ?? null),
+                    'especialidad'         => $nullableString($row->especialidad ?? null, 191),
+                    'subespecialidad'      => $catalogKey,
+                    'sede_id'              => $sede['sede_id'],
+                    'sede_nombre'          => $sede['sede_nombre'],
+                    'active'               => true,
+                    'last_synced_at'       => $now,
+                    'created_at'           => $now,
+                    'updated_at'           => $now,
+                ];
+            }
         }
     }
 
     $existingCount = DB::table($table)->count();
-    $newCount = count($payload);
-    $doctorCount = count(array_unique(array_map(
+    $newCount      = count($payload);
+    $doctorCount   = count(array_unique(array_map(
         static fn (array $item): string => (string) $item['trabajador_id'],
         array_values($payload)
     )));
@@ -772,20 +804,20 @@ Artisan::command('whatsapp:sigcenter-doctor-catalog-sync
     $this->table(
         ['Métrica', 'Valor'],
         [
-            ['rows_from_users', (string) $rows->count()],
-            ['distinct_doctors', (string) $doctorCount],
-            ['catalog_rows_new', (string) $newCount],
+            ['rows_from_users',       (string) $rows->count()],
+            ['distinct_doctors',      (string) $doctorCount],
+            ['catalog_rows_new',      (string) $newCount],
             ['catalog_rows_existing', (string) $existingCount],
-            ['ignored_sede_values', $ignoredSedes === [] ? '0' : (string) count($ignoredSedes)],
-            ['mode', (bool) $this->option('dry-run') ? 'dry-run' : 'write'],
+            ['ignored_rows',          (string) count($ignoredRows)],
+            ['mode',                  (bool) $this->option('dry-run') ? 'dry-run' : 'write'],
         ]
     );
 
-    if ($ignoredSedes !== []) {
+    if ($ignoredRows !== []) {
         $this->newLine();
-        $this->warn('Valores de sede ignorados por no poder normalizarse:');
-        foreach (array_keys($ignoredSedes) as $value) {
-            $this->line('- ' . ($value === '' ? '[vacío]' : $value));
+        $this->warn('Filas ignoradas (sede o subespecialidad no reconocidas en config):');
+        foreach ($ignoredRows as $info) {
+            $this->line('- ' . $info);
         }
     }
 
@@ -804,6 +836,7 @@ Artisan::command('whatsapp:sigcenter-doctor-catalog-sync
 
     $this->info('Catálogo médico-sede sincronizado.');
     return 0;
+
 })->purpose('Reconstruye el catálogo normalizado de médicos y sedes para el flujo de WhatsApp');
 
 Artisan::command('whatsapp:sigcenter-availability-sync
