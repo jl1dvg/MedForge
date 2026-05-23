@@ -118,6 +118,39 @@ class CiveExtensionAuthTest extends TestCase
         $this->assertEquals(401, $response->getStatusCode());
     }
 
+    public function test_allows_request_from_trusted_web_origin_sigcenter(): void
+    {
+        $request = Request::create('/consultas/anterior', 'GET');
+        $request->headers->set('Origin', 'http://sigcenter.ddns.net:18093');
+
+        $response = $this->middleware->handle($request, $this->next);
+
+        $this->assertTrue($this->nextCalled);
+        $this->assertEquals(200, $response->getStatusCode());
+    }
+
+    public function test_allows_request_from_trusted_web_origin_cive(): void
+    {
+        $request = Request::create('/consultas/anterior', 'GET');
+        $request->headers->set('Origin', 'https://cive.consulmed.me');
+
+        $response = $this->middleware->handle($request, $this->next);
+
+        $this->assertTrue($this->nextCalled);
+        $this->assertEquals(200, $response->getStatusCode());
+    }
+
+    public function test_rejects_request_from_untrusted_web_origin(): void
+    {
+        $request = Request::create('/consultas/anterior', 'GET');
+        $request->headers->set('Origin', 'https://evil-site.com');
+
+        $response = $this->middleware->handle($request, $this->next);
+
+        $this->assertFalse($this->nextCalled);
+        $this->assertEquals(401, $response->getStatusCode());
+    }
+
     public function test_rejects_request_with_no_origin_and_no_key(): void
     {
         $request = Request::create('/consultas/guardar', 'POST');
