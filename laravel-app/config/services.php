@@ -35,4 +35,11 @@ return [
         ],
     ],
 
+    'cive_extension' => [
+        // Clave secreta para llamadas server-to-server a los endpoints de CiveExtension.
+        // Para requests desde la extensión Chrome, la autenticación usa el Origin header
+        // (chrome-extension://<id>) y no requiere esta clave.
+        'secret_key' => env('CIVE_EXTENSION_SECRET_KEY', ''),
+    ],
+
 ];

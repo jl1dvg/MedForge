@@ -41,7 +41,7 @@ Route::prefix('v2')->group(function (): void {
     });
 });
 
-Route::middleware(['consultas.cors'])->group(function (): void {
+Route::middleware(['consultas.cors', 'cive.extension.auth'])->group(function (): void {
     foreach ([
         '/consultas/guardar',
         '/consultas/guardar.php',

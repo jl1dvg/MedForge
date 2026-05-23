@@ -19,7 +19,6 @@ class ConsultasCors
         'http://sigcenter.ddns.net',
         'https://sigcenter.ddns.net',
         'http://sigcenter.ddns.net:18093',
-        'http://sigcenter.ddns.net:18093',
         'https://sigcenter.ddns.net:18093',
         'http://192.168.1.13:8085',
         'http://localhost:8085',
@@ -66,7 +65,7 @@ class ConsultasCors
         }
 
         $response->headers->set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-        $response->headers->set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Request-Id, X-Requested-With');
+        $response->headers->set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Request-Id, X-Requested-With, X-CiveExtension-Key');
 
         return $response;
     }
