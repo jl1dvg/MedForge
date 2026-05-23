@@ -128,7 +128,7 @@ class CronRunner
             $finishedAt = new DateTimeImmutable('now');
             $durationMs = $this->calculateDuration($startedAt);
 
-            if ($status === 'skipped') {
+            if ($status === 'skipped' || $status === 'retired') {
                 $this->repository->finishLog($logId, 'skipped', $finishedAt, $message, $details, null, $durationMs);
                 $this->repository->markSkipped((int) $task['id'], $finishedAt, (int) $definition['interval'], $message, $details, $durationMs);
             } else {

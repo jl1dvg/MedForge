@@ -26,7 +26,6 @@ class CronManagerController
     {
         $results = $request->session()->pull('cron_manager_results');
 
-        $pdo = DB::connection()->getPdo();
         $tasks = $this->prepareTasks($this->repository->getAll());
         $logs = $this->prepareLogs($this->repository->getRecentLogs(20));
 
