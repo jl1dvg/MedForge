@@ -310,6 +310,7 @@ class FlowRuntimeExecutionService
                 'wa_number'           => (string) $conversation->wa_number,
                 'scenario_id'         => 'no_match_fallback',
                 'awaiting'            => null,
+                'node_id'             => null,
                 'context'             => $context,
                 'last_payload'        => $messagePayload,
                 'last_interaction_at' => now(),
