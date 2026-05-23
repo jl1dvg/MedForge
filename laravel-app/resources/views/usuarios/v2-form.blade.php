@@ -55,6 +55,13 @@
         'Imagenología' => 'Imagenología',
     ];
 
+    /* ── Multi-select config ───────────────────────────────────────────── */
+    $subspecialties = $subspecialties ?? [];
+    $sedesConfig    = $sedesConfig    ?? [];
+    $selectedSedes  = array_filter(array_map('trim', explode(',', (string) ($user['sede'] ?? ''))));
+    $selectedSubs   = array_filter(array_map('trim', explode(',', (string) ($user['subespecialidad'] ?? ''))));
+    $isOftalmologo  = ($user['especialidad'] ?? '') === 'Cirujano Oftalmólogo';
+
     /* ── Direct permissions for JS: selected minus inherited by current role */
     $inheritedByCurrentRole = $rolesWithPermissions[(string) ($user['role_id'] ?? '')] ?? [];
     $inheritedSet           = array_flip($inheritedByCurrentRole);
@@ -362,25 +369,41 @@
                            value="{!! $fieldValue('registro') !!}">
                 </div>
 
-                {{-- Sede --}}
-                <div>
-                    <label class="form-label" for="sede">Sede</label>
-                    <input type="text"
-                           name="sede"
-                           id="sede"
-                           class="form-control"
-                           value="{!! $fieldValue('sede') !!}">
+                {{-- Sede (multi-select checkboxes) --}}
+                <div class="col-full">
+                    <label class="form-label mb-1">Sede</label>
+                    <div class="d-flex flex-wrap gap-3">
+                        @foreach($sedesConfig as $sedeId => $sedeName)
+                        <div class="form-check">
+                            <input class="form-check-input"
+                                   type="checkbox"
+                                   name="sede[]"
+                                   id="sede_{{ $sedeId }}"
+                                   value="{{ $sedeId }}"
+                                   {{ in_array((string) $sedeId, $selectedSedes) ? 'checked' : '' }}>
+                            <label class="form-check-label" for="sede_{{ $sedeId }}">{{ $sedeName }}</label>
+                        </div>
+                        @endforeach
+                    </div>
                 </div>
 
-                {{-- Subespecialidad --}}
-                <div>
-                    <label class="form-label" for="subespecialidad">Subespecialidad</label>
-                    <input type="text"
-                           name="subespecialidad"
-                           id="subespecialidad"
-                           class="form-control"
-                           value="{!! $fieldValue('subespecialidad') !!}">
-                    <small class="text-muted">Solo para Cirujano Oftalmólogo.</small>
+                {{-- Subespecialidad (multi-select checkboxes, only for Cirujano Oftalmólogo) --}}
+                <div class="col-full" id="subespecialidad-group" @if(!$isOftalmologo) hidden @endif>
+                    <label class="form-label mb-1">Subespecialidad</label>
+                    <small class="text-muted d-block mb-2">Solo para Cirujano Oftalmólogo.</small>
+                    <div class="perm-grid">
+                        @foreach($subspecialties as $slug => $sub)
+                        <div class="form-check">
+                            <input class="form-check-input"
+                                   type="checkbox"
+                                   name="subespecialidad[]"
+                                   id="sub_{{ $slug }}"
+                                   value="{{ $slug }}"
+                                   {{ in_array($slug, $selectedSubs) ? 'checked' : '' }}>
+                            <label class="form-check-label" for="sub_{{ $slug }}">{{ $sub['label'] }}</label>
+                        </div>
+                        @endforeach
+                    </div>
                 </div>
 
                 {{-- WhatsApp --}}
