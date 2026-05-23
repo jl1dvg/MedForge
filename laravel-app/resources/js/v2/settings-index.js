@@ -217,6 +217,70 @@
         });
     }
 
+    function initDateLists() {
+        document.querySelectorAll('[data-date-list]').forEach(container => {
+            const target = document.getElementById(container.dataset.target || '');
+            const rows = container.querySelector('[data-date-list-rows]');
+            const input = container.querySelector('[data-date-input]');
+            const addBtn = container.querySelector('[data-date-add]');
+            const empty = container.querySelector('.settings-date-empty');
+            if (!target || !rows || !input) return;
+
+            function formatDate(value) {
+                if (!value) return '';
+                const parts = value.split('-');
+                if (parts.length !== 3) return value;
+                const date = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+                return new Intl.DateTimeFormat('es-EC', { day: '2-digit', month: 'long', year: 'numeric' }).format(date);
+            }
+
+            function sync() {
+                const values = Array.from(rows.querySelectorAll('[data-date-value]'))
+                    .map(row => row.dataset.dateValue)
+                    .filter(Boolean)
+                    .sort();
+                target.value = values.join('\n');
+                empty?.classList.toggle('d-none', values.length > 0);
+                target.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+
+            function addDate(value) {
+                if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return;
+                if (rows.querySelector(`[data-date-value="${value}"]`)) {
+                    input.value = '';
+                    return;
+                }
+                const row = document.createElement('div');
+                row.className = 'settings-date-row';
+                row.dataset.dateValue = value;
+                row.innerHTML = '<span class="settings-date-label"></span><button type="button" class="btn btn-outline-danger" data-date-remove aria-label="Eliminar feriado"><i class="mdi mdi-delete-outline"></i></button>';
+                row.querySelector('.settings-date-label').textContent = formatDate(value);
+                rows.appendChild(row);
+                input.value = '';
+                sync();
+            }
+
+            rows.querySelectorAll('[data-date-value]').forEach(row => {
+                const label = row.querySelector('.settings-date-label');
+                if (label) label.textContent = formatDate(row.dataset.dateValue || label.textContent.trim());
+            });
+            addBtn?.addEventListener('click', () => addDate(input.value));
+            input.addEventListener('keydown', event => {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    addDate(input.value);
+                }
+            });
+            rows.addEventListener('click', event => {
+                const btn = event.target.closest('[data-date-remove]');
+                if (!btn) return;
+                btn.closest('[data-date-value]')?.remove();
+                sync();
+            });
+            sync();
+        });
+    }
+
     // --- Dirty tracking: detecta cambios para mostrar aviso ---
     function initDirtyTracking() {
         document.querySelectorAll('[data-settings-form]').forEach(form => {
@@ -350,6 +414,7 @@
         initColorPreview();
         initLineLists();
         initTemplateRules();
+        initDateLists();
         initWeeklySchedules();
         initDirtyTracking();
         initAjaxSave();

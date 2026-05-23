@@ -1238,12 +1238,12 @@ class SettingsHelper
                                     'sunday' => ['enabled' => false, 'start' => '08:00', 'end' => '18:00'],
                                 ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)
                             ), ['type' => 'weekly_schedule']),
-                            self::textareaField(
+                            array_merge(self::textareaField(
                                 'whatsapp_handoff_business_holidays',
                                 'Feriados del Contact Center',
-                                'Una fecha por línea en formato YYYY-MM-DD. En esas fechas responde el bot aunque el día tenga horario.',
+                                'Agrega las fechas en las que responderá el bot aunque el día tenga horario.',
                                 ''
-                            ),
+                            ), ['type' => 'date_list']),
                         ],
                     ],
                     [

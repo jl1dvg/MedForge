@@ -172,7 +172,8 @@
         }
 
         .settings-line-list,
-        .settings-template-rules {
+        .settings-template-rules,
+        .settings-date-list {
             border: 1px solid #d8e0ea;
             border-radius: 8px;
             background: #fff;
@@ -180,7 +181,8 @@
         }
 
         .settings-line-row,
-        .settings-template-row {
+        .settings-template-row,
+        .settings-date-row {
             display: grid;
             gap: 12px;
             align-items: start;
@@ -189,7 +191,8 @@
         }
 
         .settings-line-row:first-child,
-        .settings-template-row:first-child {
+        .settings-template-row:first-child,
+        .settings-date-row:first-child {
             border-top: 0;
         }
 
@@ -199,6 +202,25 @@
 
         .settings-template-row {
             grid-template-columns: minmax(180px, 1.2fr) minmax(180px, 1.2fr) minmax(90px, .5fr) 44px;
+        }
+
+        .settings-date-add-row {
+            display: grid;
+            grid-template-columns: minmax(180px, 240px) auto minmax(0, 1fr);
+            gap: 10px;
+            align-items: end;
+            padding: 12px 14px;
+            background: #f8fafc;
+        }
+
+        .settings-date-row {
+            grid-template-columns: minmax(0, 1fr) 44px;
+            align-items: center;
+        }
+
+        .settings-date-label {
+            font-weight: 600;
+            color: #233142;
         }
 
         .settings-row-handle {
@@ -215,7 +237,9 @@
 
         @media (max-width: 767.98px) {
             .settings-line-row,
-            .settings-template-row {
+            .settings-template-row,
+            .settings-date-row,
+            .settings-date-add-row {
                 grid-template-columns: 1fr;
             }
         }
@@ -435,7 +459,7 @@
                                                         && in_array(substr($jsonCandidate, 0, 1), ['{', '['], true)
                                                         && (str_contains(strtolower($fieldLabel . ' ' . $fieldHelp), 'json') || json_decode($jsonCandidate, true) !== null);
                                                     $columnClass = match ($type) {
-                                                        'textarea', 'billing_rules', 'weekly_schedule', 'line_list', 'stage_template_rules', 'solicitudes_sla' => 'col-12',
+                                                        'textarea', 'billing_rules', 'weekly_schedule', 'line_list', 'stage_template_rules', 'date_list', 'solicitudes_sla' => 'col-12',
                                                         'color' => 'col-md-4 col-sm-6',
                                                         'file', 'checkbox', 'checkbox_group' => 'col-md-6 col-sm-12',
                                                         default => 'col-md-6 col-sm-12',
@@ -534,6 +558,35 @@
                                                                     </button>
                                                                 </div>
                                                                 <textarea class="d-none" name="{{ $key }}" id="{{ $fieldId }}">{{ $templatesRaw }}</textarea>
+                                                            </div>
+                                                        @elseif($type === 'date_list')
+                                                            @php
+                                                                $datesRaw = is_string($displayValue) && trim($displayValue) !== '' ? (string) $displayValue : (string) ($field['default'] ?? '');
+                                                                $dateItems = array_values(array_unique(array_filter(array_map('trim', preg_split('/\R/u', $datesRaw) ?: []), static fn($item) => preg_match('/^\d{4}-\d{2}-\d{2}$/', $item) === 1)));
+                                                            @endphp
+                                                            <div class="settings-date-list" data-date-list data-target="{{ $fieldId }}">
+                                                                <div class="settings-date-add-row">
+                                                                    <div>
+                                                                        <label class="form-label small text-muted mb-1" for="{{ $fieldId }}_picker">Fecha</label>
+                                                                        <input type="date" class="form-control" id="{{ $fieldId }}_picker" data-date-input>
+                                                                    </div>
+                                                                    <button type="button" class="btn btn-outline-primary" data-date-add>
+                                                                        <i class="mdi mdi-plus me-1"></i> Agregar feriado
+                                                                    </button>
+                                                                    <span class="text-muted small pb-2">En estas fechas responderá el bot aunque el horario semanal esté activo.</span>
+                                                                </div>
+                                                                <div data-date-list-rows>
+                                                                    @foreach($dateItems as $dateItem)
+                                                                        <div class="settings-date-row" data-date-value="{{ $dateItem }}">
+                                                                            <span class="settings-date-label">{{ $dateItem }}</span>
+                                                                            <button type="button" class="btn btn-outline-danger" data-date-remove aria-label="Eliminar feriado">
+                                                                                <i class="mdi mdi-delete-outline"></i>
+                                                                            </button>
+                                                                        </div>
+                                                                    @endforeach
+                                                                </div>
+                                                                <div class="settings-date-empty text-muted small p-3 {{ $dateItems === [] ? '' : 'd-none' }}">No hay feriados configurados.</div>
+                                                                <textarea class="d-none" name="{{ $key }}" id="{{ $fieldId }}">{{ implode("\n", $dateItems) }}</textarea>
                                                             </div>
                                                         @elseif($type === 'weekly_schedule')
                                                             @php
@@ -1012,6 +1065,70 @@
                 });
             }
 
+            function initDateLists() {
+                document.querySelectorAll('[data-date-list]').forEach(container => {
+                    const target = document.getElementById(container.dataset.target || '');
+                    const rows = container.querySelector('[data-date-list-rows]');
+                    const input = container.querySelector('[data-date-input]');
+                    const addBtn = container.querySelector('[data-date-add]');
+                    const empty = container.querySelector('.settings-date-empty');
+                    if (!target || !rows || !input) return;
+
+                    function formatDate(value) {
+                        if (!value) return '';
+                        const parts = value.split('-');
+                        if (parts.length !== 3) return value;
+                        const date = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+                        return new Intl.DateTimeFormat('es-EC', { day: '2-digit', month: 'long', year: 'numeric' }).format(date);
+                    }
+
+                    function sync() {
+                        const values = Array.from(rows.querySelectorAll('[data-date-value]'))
+                            .map(row => row.dataset.dateValue)
+                            .filter(Boolean)
+                            .sort();
+                        target.value = values.join('\n');
+                        empty?.classList.toggle('d-none', values.length > 0);
+                        target.dispatchEvent(new Event('input', { bubbles: true }));
+                    }
+
+                    function addDate(value) {
+                        if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return;
+                        if (rows.querySelector(`[data-date-value="${value}"]`)) {
+                            input.value = '';
+                            return;
+                        }
+                        const row = document.createElement('div');
+                        row.className = 'settings-date-row';
+                        row.dataset.dateValue = value;
+                        row.innerHTML = '<span class="settings-date-label"></span><button type="button" class="btn btn-outline-danger" data-date-remove aria-label="Eliminar feriado"><i class="mdi mdi-delete-outline"></i></button>';
+                        row.querySelector('.settings-date-label').textContent = formatDate(value);
+                        rows.appendChild(row);
+                        input.value = '';
+                        sync();
+                    }
+
+                    rows.querySelectorAll('[data-date-value]').forEach(row => {
+                        const label = row.querySelector('.settings-date-label');
+                        if (label) label.textContent = formatDate(row.dataset.dateValue || label.textContent.trim());
+                    });
+                    addBtn?.addEventListener('click', () => addDate(input.value));
+                    input.addEventListener('keydown', event => {
+                        if (event.key === 'Enter') {
+                            event.preventDefault();
+                            addDate(input.value);
+                        }
+                    });
+                    rows.addEventListener('click', event => {
+                        const btn = event.target.closest('[data-date-remove]');
+                        if (!btn) return;
+                        btn.closest('[data-date-value]')?.remove();
+                        sync();
+                    });
+                    sync();
+                });
+            }
+
             function initDirtyTracking() {
                 document.querySelectorAll('[data-settings-form]').forEach(form => {
                     const msg = form.querySelector('.settings-dirty-msg');
@@ -1081,6 +1198,7 @@
                 initColorPreview();
                 initLineLists();
                 initTemplateRules();
+                initDateLists();
                 initWeeklySchedules();
                 initDirtyTracking();
                 initAjaxSave();
