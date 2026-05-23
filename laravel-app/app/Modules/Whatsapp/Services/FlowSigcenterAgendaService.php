@@ -79,7 +79,7 @@ class FlowSigcenterAgendaService
             ]);
         }
 
-        if ($this->shouldSendResult($action) && $missing === [] && !in_array($operation, ['list_specialties', 'list_doctors', 'list_doctors_by_name'], true)) {
+        if ($this->shouldSendResult($action) && $missing === [] && !in_array($operation, ['list_specialties', 'list_doctors', 'list_doctors_by_name', 'list_times'], true)) {
             $stored = $context[(string) $preview['store_result_as']] ?? null;
             if (is_array($stored) && isset($stored['data']) && is_array($stored['data'])) {
                 $preview = array_merge($preview, [
