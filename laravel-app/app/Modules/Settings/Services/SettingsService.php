@@ -60,6 +60,10 @@ class SettingsService
                 'autoload' => true,
             ]
         );
+
+        if (str_starts_with($name, 'whatsapp_handoff_')) {
+            Cache::forget('whatsapp.queue_open_status');
+        }
     }
 
     /**

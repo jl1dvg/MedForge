@@ -1265,19 +1265,44 @@
 
         <div class="col-12">
             <div class="wa-flow-shell">
-                <div class="wa-flow-panel">
-                    <div class="wa-flow-panel__head">
-                        <div class="d-flex justify-content-between align-items-center gap-10">
-                            <div>
-                                <div class="wa-flow-sideheading__title">Escenarios</div>
-                                <div class="wa-flow-sideheading__meta">Selector lateral con la lógica publicada y acceso rápido al editor.</div>
+                <div style="display:flex;flex-direction:column;gap:18px;">
+                    <div class="wa-flow-panel" id="wa-flow-settings-panel">
+                        <div class="wa-flow-panel__head">
+                            <div class="wa-flow-sideheading__title">Configuración del flujo</div>
+                            <div class="wa-flow-sideheading__meta">Opciones globales que aplican a todo el flujo.</div>
+                        </div>
+                        <div class="wa-flow-panel__body">
+                            <div class="wa-flow-stack">
+                                <div>
+                                    <label class="form-label">Mensaje cuando ningún escenario responde</label>
+                                    <textarea
+                                        id="wa-flow-setting-fallback"
+                                        class="form-control"
+                                        rows="3"
+                                        placeholder="No entendí tu mensaje. Escribe MENU para ver las opciones."
+                                    ></textarea>
+                                    <div class="wa-flow-inline-note mt-6">
+                                        Se envía automáticamente cuando el usuario escribe algo que ningún escenario reconoce.
+                                    </div>
+                                </div>
                             </div>
-                            <button type="button" class="btn btn-sm btn-outline-primary" id="wa-flow-add-scenario-btn">Nuevo</button>
                         </div>
                     </div>
-                    <div class="wa-flow-panel__body">
-                        <input type="text" class="wa-flow-search mb-15" id="wa-flow-search" placeholder="Buscar escenario, stage o acción">
-                        <div class="wa-flow-list" id="wa-flow-scenario-list"></div>
+
+                    <div class="wa-flow-panel">
+                        <div class="wa-flow-panel__head">
+                            <div class="d-flex justify-content-between align-items-center gap-10">
+                                <div>
+                                    <div class="wa-flow-sideheading__title">Escenarios</div>
+                                    <div class="wa-flow-sideheading__meta">Selector lateral con la lógica publicada y acceso rápido al editor.</div>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-outline-primary" id="wa-flow-add-scenario-btn">Nuevo</button>
+                            </div>
+                        </div>
+                        <div class="wa-flow-panel__body">
+                            <input type="text" class="wa-flow-search mb-15" id="wa-flow-search" placeholder="Buscar escenario, stage o acción">
+                            <div class="wa-flow-list" id="wa-flow-scenario-list"></div>
+                        </div>
                     </div>
                 </div>
 
@@ -2248,6 +2273,13 @@ document.addEventListener('DOMContentLoaded', function () {
     };
     editorSchema = normalizeEditorSchema(editorSchema);
     selectedScenarioId = editorSchema.scenarios[0]?.id || null;
+
+    // Cargar el mensaje de fallback en el panel de configuración
+    const fallbackTextarea = document.getElementById('wa-flow-setting-fallback');
+    if (fallbackTextarea) {
+        fallbackTextarea.value = editorSchema.settings?.no_match_fallback_message ?? '';
+    }
+
     const activeVersionScenarioIds = () => {
         const flow = extractVersionFlow(activeVersion);
         const scenarios = Array.isArray(flow?.scenarios) ? flow.scenarios : [];
@@ -3855,6 +3887,13 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
 
+        // Incluir el fallback message en settings antes de publicar
+        const fallbackVal = document.getElementById('wa-flow-setting-fallback')?.value?.trim() ?? '';
+        if (!payload.settings || typeof payload.settings !== 'object') {
+            payload.settings = {};
+        }
+        payload.settings.no_match_fallback_message = fallbackVal;
+
         try {
             const response = await fetch('/v2/whatsapp/api/flowmaker/publish', {
                 method: 'POST',
@@ -4031,6 +4070,11 @@ document.addEventListener('DOMContentLoaded', function () {
             editorSchema = normalizeEditorSchema(parsed && typeof parsed === 'object' ? parsed : {});
             if (!selectedScenario() && getScenarios().length > 0) {
                 selectedScenarioId = getScenarios()[0].id;
+            }
+            // Cargar el mensaje de fallback en el panel de configuración
+            const fallbackTextareaSync = document.getElementById('wa-flow-setting-fallback');
+            if (fallbackTextareaSync) {
+                fallbackTextareaSync.value = editorSchema.settings?.no_match_fallback_message ?? '';
             }
             renderScenarioList();
             renderScenarioCanvas();

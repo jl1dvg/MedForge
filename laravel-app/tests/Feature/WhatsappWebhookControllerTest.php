@@ -28,8 +28,11 @@ class WhatsappWebhookControllerTest extends TestCase
 
         Schema::create('app_settings', function (Blueprint $table): void {
             $table->id();
+            $table->string('category')->nullable();
             $table->string('name')->unique();
             $table->text('value')->nullable();
+            $table->string('type')->nullable();
+            $table->boolean('autoload')->default(true);
             $table->timestamps();
         });
 
@@ -723,7 +726,7 @@ class WhatsappWebhookControllerTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.messages_persisted', 1)
             ->assertJsonPath('data.automation_runs', 1)
-            ->assertJsonPath('data.automation_messages_sent', 0);
+            ->assertJsonPath('data.automation_messages_sent', 1);
 
         $session = \DB::table('whatsapp_autoresponder_sessions')
             ->where('wa_number', '593999111445')
@@ -731,9 +734,12 @@ class WhatsappWebhookControllerTest extends TestCase
         $context = json_decode((string) $session?->context, true);
 
         $this->assertSame('2001', $context['trabajador_id'] ?? null);
-        $this->assertDatabaseMissing('whatsapp_messages', [
+        // Context preserved for agenda progress
+        $this->assertSame('agenda_esperando_medico', $context['state'] ?? null);
+        // Generic no-match message sent (context preserved, not the fallback scenario)
+        $this->assertDatabaseHas('whatsapp_messages', [
             'direction' => 'outbound',
-            'body' => 'Hola, somos CIVE. Un agente se pondrá en contacto contigo en breve.',
+            'body' => "No entendí tu mensaje.\nEscribe *MENU* para ver las opciones.",
         ]);
     }
 
@@ -2087,7 +2093,11 @@ class WhatsappWebhookControllerTest extends TestCase
     /**
      * @param array<int, array<string, mixed>> $scenarios
      */
-    private function publishFlowmakerScenarios(array $scenarios): void
+    /**
+     * @param array<int, mixed> $scenarios
+     * @param array<string, mixed> $settings
+     */
+    private function publishFlowmakerScenarios(array $scenarios, array $settings = []): void
     {
         $flowId = \DB::table('whatsapp_autoresponder_flows')->insertGetId([
             'flow_key' => 'default',
@@ -2104,6 +2114,7 @@ class WhatsappWebhookControllerTest extends TestCase
             'entry_settings' => json_encode([
                 'flow' => [
                     'name' => 'Flujo principal de WhatsApp',
+                    'settings' => $settings,
                     'scenarios' => $scenarios,
                 ],
             ], JSON_UNESCAPED_UNICODE),
@@ -2115,5 +2126,304 @@ class WhatsappWebhookControllerTest extends TestCase
         \DB::table('whatsapp_autoresponder_flows')
             ->where('id', $flowId)
             ->update(['active_version_id' => $versionId]);
+    }
+
+    public function test_it_invalidates_queue_open_cache_when_handoff_setting_changes(): void
+    {
+        // Primear el caché manualmente
+        \Illuminate\Support\Facades\Cache::put('whatsapp.queue_open_status', true, 60);
+        $this->assertTrue(\Illuminate\Support\Facades\Cache::has('whatsapp.queue_open_status'));
+
+        $service = app(\App\Modules\Settings\Services\SettingsService::class);
+        $service->upsert('whatsapp_handoff_business_timezone', 'America/Lima', 'whatsapp');
+
+        $this->assertFalse(\Illuminate\Support\Facades\Cache::has('whatsapp.queue_open_status'));
+    }
+
+    public function test_it_does_not_invalidate_queue_cache_for_non_handoff_settings(): void
+    {
+        \Illuminate\Support\Facades\Cache::put('whatsapp.queue_open_status', true, 60);
+
+        $service = app(\App\Modules\Settings\Services\SettingsService::class);
+        $service->upsert('whatsapp_cloud_api_token', 'abc123', 'whatsapp');
+
+        $this->assertTrue(\Illuminate\Support\Facades\Cache::has('whatsapp.queue_open_status'));
+    }
+
+    public function test_it_responds_to_audio_message_with_text_only_notice(): void
+    {
+        Http::fake([
+            '*graph.facebook.com*' => Http::response(['messages' => [['id' => 'wamid.out.1']]], 200),
+        ]);
+
+        config()->set('whatsapp.migration.automation.enabled', true);
+        config()->set('whatsapp.migration.automation.dry_run', false);
+        config()->set('whatsapp.migration.api.phone_number_id', '123456');
+        config()->set('whatsapp.migration.api.token', 'test-token');
+
+        \DB::table('app_settings')->insert([
+            ['name' => 'whatsapp_cloud_enabled', 'value' => '1', 'category' => 'whatsapp', 'type' => 'text', 'autoload' => true, 'created_at' => now(), 'updated_at' => now()],
+            ['name' => 'whatsapp_cloud_phone_number_id', 'value' => '123456', 'category' => 'whatsapp', 'type' => 'text', 'autoload' => true, 'created_at' => now(), 'updated_at' => now()],
+            ['name' => 'whatsapp_cloud_access_token', 'value' => 'test-token', 'category' => 'whatsapp', 'type' => 'text', 'autoload' => true, 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        $payload = [
+            'entry' => [[
+                'changes' => [[
+                    'value' => [
+                        'contacts' => [[
+                            'wa_id' => '593999888777',
+                            'profile' => ['name' => 'Paciente Audio'],
+                        ]],
+                        'messages' => [[
+                            'from' => '593999888777',
+                            'id' => 'wamid.audio.1',
+                            'timestamp' => '1712745600',
+                            'type' => 'audio',
+                            'audio' => ['id' => 'audio_media_id_001'],
+                        ]],
+                    ],
+                ]],
+            ]],
+        ];
+
+        $response = $this->postJson('/whatsapp/webhook', $payload);
+
+        $response->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('data.messages_persisted', 1)
+            ->assertJsonPath('data.automation_runs', 1)
+            ->assertJsonPath('data.automation_messages_sent', 1);
+
+        // El mensaje de audio fue persistido correctamente
+        $this->assertDatabaseHas('whatsapp_messages', [
+            'direction' => 'inbound',
+            'message_type' => 'audio',
+        ]);
+
+        // Verificar que se intentó enviar la respuesta de "solo proceso texto"
+        Http::assertSent(function ($request) {
+            $body = $request->data();
+            return str_contains($body['text']['body'] ?? '', 'MENU');
+        });
+    }
+
+    public function test_it_does_not_respond_to_audio_when_conversation_is_assigned_to_agent(): void
+    {
+        Http::fake([
+            '*graph.facebook.com*' => Http::response(['messages' => [['id' => 'wamid.out.2']]], 200),
+        ]);
+
+        config()->set('whatsapp.migration.automation.enabled', true);
+        config()->set('whatsapp.migration.api.phone_number_id', '123456');
+        config()->set('whatsapp.migration.api.token', 'test-token');
+
+        // Crear conversación asignada a un agente humano
+        \DB::table('whatsapp_conversations')->insert([
+            'wa_number' => '593999777666',
+            'needs_human' => false,
+            'assigned_user_id' => 999, // agente asignado
+            'unread_count' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // Insertar horario abierto para que humanQueueIsOpen() = true
+        \DB::table('app_settings')->insert([
+            ['name' => 'whatsapp_handoff_business_timezone', 'value' => 'America/Guayaquil', 'category' => 'whatsapp', 'type' => 'text', 'autoload' => true, 'created_at' => now(), 'updated_at' => now()],
+            ['name' => 'whatsapp_handoff_business_schedule', 'value' => '', 'category' => 'whatsapp', 'type' => 'text', 'autoload' => true, 'created_at' => now(), 'updated_at' => now()],
+            ['name' => 'whatsapp_handoff_business_start', 'value' => '00:00', 'category' => 'whatsapp', 'type' => 'text', 'autoload' => true, 'created_at' => now(), 'updated_at' => now()],
+            ['name' => 'whatsapp_handoff_business_end', 'value' => '00:00', 'category' => 'whatsapp', 'type' => 'text', 'autoload' => true, 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        $payload = [
+            'entry' => [[
+                'changes' => [[
+                    'value' => [
+                        'messages' => [[
+                            'from' => '593999777666',
+                            'id' => 'wamid.audio.assigned',
+                            'timestamp' => '1712745600',
+                            'type' => 'audio',
+                            'audio' => ['id' => 'audio_media_id_002'],
+                        ]],
+                    ],
+                ]],
+            ]],
+        ];
+
+        $response = $this->postJson('/whatsapp/webhook', $payload);
+
+        $response->assertOk()
+            ->assertJsonPath('data.automation_runs', 0)
+            ->assertJsonPath('data.automation_messages_sent', 0);
+
+        // El bot NO envió respuesta (el agente maneja la conversación)
+        Http::assertNothingSent();
+    }
+
+    public function test_it_re_asks_when_user_sends_unrecognized_text_during_cancel_confirmation(): void
+    {
+        Http::fake([
+            '*graph.facebook.com*' => Http::response(['messages' => [['id' => 'wamid.out.3']]], 200),
+        ]);
+
+        config()->set('whatsapp.migration.automation.enabled', true);
+        config()->set('whatsapp.migration.automation.dry_run', false);
+        config()->set('whatsapp.migration.api.phone_number_id', '123456');
+        config()->set('whatsapp.migration.api.token', 'test-token');
+
+        \DB::table('app_settings')->insert([
+            ['name' => 'whatsapp_cloud_enabled', 'value' => '1', 'category' => 'whatsapp', 'type' => 'text', 'autoload' => true, 'created_at' => now(), 'updated_at' => now()],
+            ['name' => 'whatsapp_cloud_phone_number_id', 'value' => '123456', 'category' => 'whatsapp', 'type' => 'text', 'autoload' => true, 'created_at' => now(), 'updated_at' => now()],
+            ['name' => 'whatsapp_cloud_access_token', 'value' => 'test-token', 'category' => 'whatsapp', 'type' => 'text', 'autoload' => true, 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        // Conversación con estado de cancelación pendiente
+        \DB::table('whatsapp_conversations')->insert([
+            'wa_number' => '593999555444',
+            'needs_human' => false,
+            'assigned_user_id' => null,
+            'unread_count' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $conversation = \DB::table('whatsapp_conversations')->where('wa_number', '593999555444')->first();
+
+        \DB::table('whatsapp_autoresponder_sessions')->insert([
+            'wa_number' => '593999555444',
+            'conversation_id' => $conversation->id,
+            'scenario_id' => 'agenda_cancelar',
+            'awaiting' => null,
+            'context' => json_encode([
+                'state' => 'agenda_confirmar_cancelacion',
+                'sigcenter_agenda_id' => '42',
+            ]),
+            'last_interaction_at' => now()->subMinutes(2),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // Registrar una cita activa en sigcenter bookings
+        \DB::table('whatsapp_sigcenter_bookings')->insert([
+            'conversation_id' => $conversation->id,
+            'wa_number' => '593999555444',
+            'sigcenter_agenda_id' => 42,
+            'status' => 'created',
+            'booked_at' => now()->subDay(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // Usuario manda texto ambiguo que no es ni SÍ ni NO
+        $payload = [
+            'entry' => [[
+                'changes' => [[
+                    'value' => [
+                        'messages' => [[
+                            'from' => '593999555444',
+                            'id' => 'wamid.cancel.ambiguous',
+                            'timestamp' => (string) now()->timestamp,
+                            'type' => 'text',
+                            'text' => ['body' => 'ok lo pienso'],
+                        ]],
+                    ],
+                ]],
+            ]],
+        ];
+
+        $response = $this->postJson('/whatsapp/webhook', $payload);
+
+        $response->assertOk()
+            ->assertJsonPath('data.automation_runs', 1)
+            ->assertJsonPath('data.automation_messages_sent', 1);
+
+        // El bot re-preguntó (no mostró el menú principal ni otro escenario)
+        Http::assertSent(function ($request) {
+            $body = $request->data();
+            return str_contains($body['text']['body'] ?? '', 'SÍ') &&
+                   str_contains($body['text']['body'] ?? '', 'NO');
+        });
+
+        // El estado de la sesión NO cambió a menu_principal
+        $session = \DB::table('whatsapp_autoresponder_sessions')
+            ->where('conversation_id', $conversation->id)
+            ->first();
+        $ctx = json_decode($session->context, true);
+        $this->assertSame('agenda_confirmar_cancelacion', $ctx['state']);
+    }
+
+    public function test_it_sends_no_match_fallback_message_when_no_scenario_matches(): void
+    {
+        Http::fake([
+            '*graph.facebook.com*' => Http::response(['messages' => [['id' => 'wamid.fallback.1']]], 200),
+        ]);
+
+        config()->set('whatsapp.migration.automation.enabled', true);
+        config()->set('whatsapp.migration.automation.dry_run', false);
+        config()->set('whatsapp.migration.api.phone_number_id', '123456');
+        config()->set('whatsapp.migration.api.token', 'test-token');
+
+        \DB::table('app_settings')->insert([
+            ['name' => 'whatsapp_cloud_enabled', 'value' => '1', 'category' => 'whatsapp', 'type' => 'text', 'autoload' => true, 'created_at' => now(), 'updated_at' => now()],
+            ['name' => 'whatsapp_cloud_phone_number_id', 'value' => '123456', 'category' => 'whatsapp', 'type' => 'text', 'autoload' => true, 'created_at' => now(), 'updated_at' => now()],
+            ['name' => 'whatsapp_cloud_access_token', 'value' => 'test-token', 'category' => 'whatsapp', 'type' => 'text', 'autoload' => true, 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        // Publicar un flow con el mensaje de fallback personalizado usando el helper de la clase
+        $this->publishFlowmakerScenarios(
+            scenarios: [[
+                'id' => 'primer_contacto',
+                'name' => 'Primer contacto',
+                'stage' => 'arrival',
+                'status' => 'published',
+                'conditions' => [['type' => 'message_contains', 'keywords' => ['hola']]],
+                'actions' => [[
+                    'type' => 'send_message',
+                    'message' => ['type' => 'text', 'body' => 'Hola desde el flow'],
+                ]],
+            ]],
+            settings: ['timezone' => 'America/Guayaquil', 'no_match_fallback_message' => 'Texto fallback de prueba. Escribe MENU.'],
+        );
+
+        // Mensaje que no va a hacer match con ningún escenario
+        $webhookPayload = [
+            'entry' => [[
+                'changes' => [[
+                    'value' => [
+                        'contacts' => [[
+                            'wa_id' => '593999333222',
+                            'profile' => ['name' => 'Paciente Fallback'],
+                        ]],
+                        'messages' => [[
+                            'from' => '593999333222',
+                            'id' => 'wamid.nomatch.1',
+                            'timestamp' => (string) now()->timestamp,
+                            'type' => 'text',
+                            'text' => ['body' => 'xyzabc123 mensaje sin sentido que nunca matchea'],
+                        ]],
+                    ],
+                ]],
+            ]],
+        ];
+
+        $response = $this->postJson('/whatsapp/webhook', $webhookPayload);
+
+        $response->assertOk()
+            ->assertJsonPath('data.automation_runs', 1)
+            ->assertJsonPath('data.automation_messages_sent', 1);
+
+        // Verificar que se envió el fallback personalizado
+        Http::assertSent(function ($request) {
+            $body = $request->data();
+            return str_contains($body['text']['body'] ?? '', 'Texto fallback de prueba');
+        });
+
+        // Sesión grabada como no_match_fallback
+        $this->assertDatabaseHas('whatsapp_autoresponder_sessions', [
+            'wa_number' => '593999333222',
+            'scenario_id' => 'no_match_fallback',
+        ]);
     }
 }

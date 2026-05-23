@@ -9,6 +9,7 @@ use App\Models\WhatsappConversationAttribution;
 use App\Models\WhatsappHandoff;
 use App\Models\WhatsappMessage;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use RuntimeException;
@@ -40,7 +41,10 @@ class FlowRuntimeExecutionService
         }
 
         $text = trim((string)($inboundMessage->body ?? ''));
-        if ($text === '') {
+        $type = trim((string)($inboundMessage->message_type ?? 'text'));
+        $isMediaMessage = $text === '' && in_array($type, ['audio', 'image', 'video', 'sticker', 'document', 'location'], true);
+
+        if ($text === '' && !$isMediaMessage) {
             return $this->result(false, false, null, 0, false, 'empty_text');
         }
 
@@ -66,6 +70,22 @@ class FlowRuntimeExecutionService
 
         if ((bool) ($conversation->needs_human ?? false)) {
             return $this->result(false, false, null, 0, false, 'conversation_needs_human');
+        }
+
+        if ($isMediaMessage) {
+            $mediaReplies = [
+                'audio'    => "Recibí un audio, pero solo proceso texto 📝\n¿Necesitas ayuda? Escribe *MENU*.",
+                'image'    => "Recibí una imagen, pero solo proceso texto 📝\n¿Necesitas ayuda? Escribe *MENU*.",
+                'video'    => "Recibí un video, pero solo proceso texto 📝\n¿Necesitas ayuda? Escribe *MENU*.",
+                'sticker'  => "¡Gracias! 😄 Si necesitas ayuda, escribe *MENU*.",
+                'document' => "Recibí un documento, pero solo proceso texto.\n¿Necesitas ayuda? Escribe *MENU*.",
+                'location' => "Recibí tu ubicación, pero no la proceso aún.\n¿Necesitas ayuda? Escribe *MENU*.",
+            ];
+            $this->sendFlowMessage($conversation, [
+                'type' => 'text',
+                'body' => $mediaReplies[$type] ?? "Solo proceso mensajes de texto.\nEscribe *MENU* para ver las opciones.",
+            ], []);
+            return $this->result(true, false, 'non_text_reply', 1, false, 'non_text_message');
         }
 
         $waNumber = (string)($conversation->wa_number ?? '');
@@ -155,6 +175,17 @@ class FlowRuntimeExecutionService
                 ], $context);
 
                 return $this->result(true, true, 'booking_cancel_rejected', 1, false, null);
+            }
+
+            // NUEVO: hermético — texto no reconocido mientras espera cancelación
+            if (($context['state'] ?? null) === 'agenda_confirmar_cancelacion' && $activeBooking !== null) {
+                $this->sendFlowMessage($conversation, [
+                    'type' => 'text',
+                    'body' => "No entendí tu respuesta 🤔\n\n"
+                        . "¿Confirmas la cancelación de tu cita?\n"
+                        . "Escribe *SÍ* para cancelar o *NO* para mantenerla.",
+                ], $context);
+                return $this->result(true, true, 'booking_cancel_awaiting', 1, false, null);
             }
         }
 
@@ -266,20 +297,27 @@ class FlowRuntimeExecutionService
             return $this->result(true, true, (string)($scenario['id'] ?? 'fallback'), $run['messages_sent'], !empty($context['handoff_requested']), null);
         }
 
+        $fallbackBody = trim((string) ($flow['settings']['no_match_fallback_message'] ?? ''));
+        if ($fallbackBody === '') {
+            $fallbackBody = "No entendí tu mensaje.\nEscribe *MENU* para ver las opciones.";
+        }
+
+        $this->sendFlowMessage($conversation, ['type' => 'text', 'body' => $fallbackBody], $context);
+
         WhatsappAutoresponderSession::query()->updateOrCreate(
             ['conversation_id' => $conversation->id],
             [
-                'wa_number' => (string)$conversation->wa_number,
-                'scenario_id' => $session?->scenario_id,
-                'node_id' => $session?->node_id,
-                'awaiting' => isset($context['awaiting_field']) ? 'input' : null,
-                'context' => $context,
-                'last_payload' => $messagePayload,
+                'wa_number'           => (string) $conversation->wa_number,
+                'scenario_id'         => 'no_match_fallback',
+                'awaiting'            => null,
+                'node_id'             => null,
+                'context'             => $context,
+                'last_payload'        => $messagePayload,
                 'last_interaction_at' => now(),
             ]
         );
 
-        return $this->result(true, false, null, 0, false, 'no_matching_scenario');
+        return $this->result(true, false, 'no_match_fallback', 1, false, 'no_match');
     }
 
     /**
@@ -508,14 +546,23 @@ class FlowRuntimeExecutionService
 
     private function humanQueueIsOpen(): bool
     {
-        $options = $this->settingsOptions([
-            'whatsapp_handoff_business_timezone',
-            'whatsapp_handoff_business_schedule',
-            'whatsapp_handoff_business_holidays',
-            'whatsapp_handoff_business_start',
-            'whatsapp_handoff_business_end',
-        ]);
+        return Cache::remember('whatsapp.queue_open_status', 60, function (): bool {
+            $options = $this->settingsOptions([
+                'whatsapp_handoff_business_timezone',
+                'whatsapp_handoff_business_schedule',
+                'whatsapp_handoff_business_holidays',
+                'whatsapp_handoff_business_start',
+                'whatsapp_handoff_business_end',
+            ]);
+            return $this->computeHumanQueueIsOpen($options);
+        });
+    }
 
+    /**
+     * @param array<string,string> $options
+     */
+    private function computeHumanQueueIsOpen(array $options): bool
+    {
         $timezone = trim((string) ($options['whatsapp_handoff_business_timezone'] ?? 'America/Guayaquil'));
         if ($timezone === '') {
             $timezone = 'America/Guayaquil';
