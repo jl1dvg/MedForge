@@ -1,6 +1,8 @@
 <?php
 
-namespace Modules\IdentityVerification\Services;
+declare(strict_types=1);
+
+namespace App\Modules\IdentityVerification\Services;
 
 class PythonBiometricClient
 {
@@ -11,13 +13,13 @@ class PythonBiometricClient
 
     public function __construct(?string $pythonBinary = null, ?string $scriptPath = null)
     {
-        $this->pythonBinary = $pythonBinary !== null && $pythonBinary !== ''
+        $this->pythonBinary = ($pythonBinary !== null && $pythonBinary !== '')
             ? $pythonBinary
             : (getenv('PYTHON3_BIN') ?: 'python3');
 
-        $this->scriptPath = $scriptPath !== null && $scriptPath !== ''
+        $this->scriptPath = ($scriptPath !== null && $scriptPath !== '')
             ? $scriptPath
-            : BASE_PATH . '/tools/biometrics/cli.py';
+            : base_path('tools/biometrics/cli.py');
     }
 
     public function isAvailable(): bool
@@ -93,7 +95,7 @@ class PythonBiometricClient
             2 => ['pipe', 'w'], // child STDERR (we read)
         ];
 
-        $process = @proc_open($command, $descriptorSpec, $pipes, BASE_PATH);
+        $process = @proc_open($command, $descriptorSpec, $pipes, base_path());
         if (!is_resource($process)) {
             return null;
         }
@@ -122,12 +124,12 @@ class PythonBiometricClient
         $status = proc_close($process);
         if ($status !== 0) {
             if (!empty($error)) {
-                error_log('[PythonBiometricClient] ' . trim($error));
+                error_log('[PythonBiometricClient] ' . trim((string) $error));
             }
             return null;
         }
 
-        $decoded = json_decode($output, true);
+        $decoded = json_decode((string) $output, true);
         if (is_array($decoded)) {
             return $decoded;
         }
@@ -135,6 +137,10 @@ class PythonBiometricClient
         return null;
     }
 
+    /**
+     * @param resource $process
+     * @param array<int, resource> $pipes
+     */
     private function closeProcess($process, array $pipes): void
     {
         foreach ($pipes as $pipe) {

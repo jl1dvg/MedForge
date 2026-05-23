@@ -1,18 +1,27 @@
 <?php
 
-namespace Modules\IdentityVerification\Controllers;
+declare(strict_types=1);
 
-use Core\BaseController;
-use Modules\IdentityVerification\Models\VerificationModel;
-use Modules\IdentityVerification\Services\ConsentDocumentService;
-use Modules\IdentityVerification\Services\FaceRecognitionService;
-use Modules\IdentityVerification\Services\MissingEvidenceEscalationService;
-use Modules\IdentityVerification\Services\PythonBiometricClient;
-use Modules\IdentityVerification\Services\SignatureAnalysisService;
-use Modules\IdentityVerification\Services\VerificationPolicyService;
-use PDO;
+namespace App\Modules\IdentityVerification\Http\Controllers;
 
-class VerificationController extends BaseController
+use App\Modules\IdentityVerification\Models\VerificationModel;
+use App\Modules\IdentityVerification\Services\ConsentDocumentService;
+use App\Modules\IdentityVerification\Services\FaceRecognitionService;
+use App\Modules\IdentityVerification\Services\MissingEvidenceEscalationService;
+use App\Modules\IdentityVerification\Services\PythonBiometricClient;
+use App\Modules\IdentityVerification\Services\SignatureAnalysisService;
+use App\Modules\IdentityVerification\Services\VerificationPolicyService;
+use App\Modules\Shared\Support\LegacyCurrentUser;
+use App\Modules\Shared\Support\SettingsOptionResolver;
+use Illuminate\Contracts\View\View;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+
+class VerificationController
 {
     private const STORAGE_PREFIX = 'storage/patient_verification/';
 
@@ -24,30 +33,32 @@ class VerificationController extends BaseController
     private VerificationPolicyService $policy;
     private MissingEvidenceEscalationService $escalationService;
 
-    public function __construct(PDO $pdo)
+    public function __construct()
     {
-        parent::__construct($pdo);
+        $pdo = DB::connection()->getPdo();
+        $settingsResolver = new SettingsOptionResolver();
+
         $this->verifications = new VerificationModel($pdo);
         $this->pythonBiometricClient = new PythonBiometricClient();
         $this->faceRecognition = new FaceRecognitionService($this->pythonBiometricClient);
         $this->signatureAnalysis = new SignatureAnalysisService($this->pythonBiometricClient);
-        $this->policy = new VerificationPolicyService($pdo);
+        $this->policy = new VerificationPolicyService($settingsResolver);
         $this->consentDocumentService = new ConsentDocumentService($this->policy);
-        $this->escalationService = new MissingEvidenceEscalationService($pdo, $this->policy);
+        $this->escalationService = new MissingEvidenceEscalationService($this->policy);
     }
 
-    public function index(): void
+    public function index(Request $request): View
     {
-        $this->requireAuth();
-        $this->requirePermission(['administrativo', 'pacientes.verification.view', 'pacientes.verification.manage']);
-
         $certifications = $this->verifications->getRecent(25);
-        $status = $_GET['status'] ?? null;
+        $status = $request->query('status');
         $errors = [];
         $selectedPatient = null;
         $old = [];
 
-        $lookupPatientId = isset($_GET['patient_id']) ? $this->normalizePatientId((string) $_GET['patient_id']) : '';
+        $lookupPatientId = $request->has('patient_id')
+            ? $this->normalizePatientId((string) $request->query('patient_id'))
+            : '';
+
         if ($lookupPatientId !== '') {
             $selectedPatient = $this->verifications->findPatientSummary($lookupPatientId);
             if ($selectedPatient) {
@@ -61,8 +72,9 @@ class VerificationController extends BaseController
             }
         }
 
-        $this->render(BASE_PATH . '/modules/IdentityVerification/views/index.php', [
+        return view('identity_verification.index', [
             'pageTitle' => 'Certificación biométrica de pacientes',
+            'currentUser' => LegacyCurrentUser::resolve($request),
             'certifications' => $certifications,
             'status' => $status,
             'errors' => $errors,
@@ -74,12 +86,9 @@ class VerificationController extends BaseController
         ]);
     }
 
-    public function store(): void
+    public function store(Request $request): View|RedirectResponse
     {
-        $this->requireAuth();
-        $this->requirePermission(['administrativo', 'pacientes.verification.manage']);
-
-        $input = $this->collectInput();
+        $input = $this->collectInput($request);
         $input['patient_id'] = $this->normalizePatientId($input['patient_id'] ?? '');
 
         $existing = null;
@@ -96,8 +105,9 @@ class VerificationController extends BaseController
 
         if (!empty($errors)) {
             $certifications = $this->verifications->getRecent(25);
-            $this->render(BASE_PATH . '/modules/IdentityVerification/views/index.php', [
+            return view('identity_verification.index', [
                 'pageTitle' => 'Certificación biométrica de pacientes',
+                'currentUser' => LegacyCurrentUser::resolve($request),
                 'certifications' => $certifications,
                 'status' => null,
                 'errors' => $errors,
@@ -107,39 +117,40 @@ class VerificationController extends BaseController
                     'js/modules/patient-verification.js',
                 ],
             ]);
-            return;
         }
 
         $signaturePath = $existing['signature_path'] ?? null;
         $signatureTemplate = $existing['signature_template'] ?? null;
         if (!empty($input['signature_data'])) {
-            $newSignaturePath = $this->persistDataUri($input['signature_data'], 'signatures');
+            $newSignaturePath = $this->persistDataUri((string) $input['signature_data'], 'signatures');
             if ($newSignaturePath !== null) {
                 $signaturePath = $newSignaturePath;
-                $signatureTemplate = $this->signatureAnalysis->createTemplateFromFile(BASE_PATH . '/' . $signaturePath);
+                $signatureTemplate = $this->signatureAnalysis->createTemplateFromFile(base_path($signaturePath));
             }
         }
 
         $facePath = $existing['face_image_path'] ?? null;
         $faceTemplate = $existing['face_template'] ?? null;
         if (!empty($input['face_image'])) {
-            $newFacePath = $this->persistDataUri($input['face_image'], 'faces');
+            $newFacePath = $this->persistDataUri((string) $input['face_image'], 'faces');
             if ($newFacePath !== null) {
                 $facePath = $newFacePath;
-                $faceTemplate = $this->faceRecognition->createTemplateFromFile(BASE_PATH . '/' . $facePath);
+                $faceTemplate = $this->faceRecognition->createTemplateFromFile(base_path($facePath));
             }
         }
 
         $documentSignaturePath = $existing['document_signature_path'] ?? null;
         if (!empty($input['document_signature_data'])) {
-            $newDocumentSignaturePath = $this->persistDataUri($input['document_signature_data'], 'document_signatures');
+            $newDocumentSignaturePath = $this->persistDataUri((string) $input['document_signature_data'], 'document_signatures');
             if ($newDocumentSignaturePath !== null) {
                 $documentSignaturePath = $newDocumentSignaturePath;
             }
         }
 
-        $documentFrontPath = $this->persistUploadedFile('document_front', 'documents') ?? ($existing['document_front_path'] ?? null);
-        $documentBackPath = $this->persistUploadedFile('document_back', 'documents') ?? ($existing['document_back_path'] ?? null);
+        $documentFrontPath = $this->persistUploadedFile($request, 'document_front', 'documents') ?? ($existing['document_front_path'] ?? null);
+        $documentBackPath = $this->persistUploadedFile($request, 'document_back', 'documents') ?? ($existing['document_back_path'] ?? null);
+
+        $userId = Auth::id();
 
         $payload = [
             'patient_id' => $input['patient_id'],
@@ -160,7 +171,7 @@ class VerificationController extends BaseController
                 'document_number' => $input['document_number'],
                 'existing_status' => $existing['status'] ?? null,
             ]),
-            'updated_by' => $_SESSION['user_id'] ?? null,
+            'updated_by' => $userId,
             'expired_at' => null,
         ];
 
@@ -170,21 +181,19 @@ class VerificationController extends BaseController
             }
             $this->verifications->update((int) $existing['id'], $payload);
         } else {
-            $payload['created_by'] = $_SESSION['user_id'] ?? null;
+            $payload['created_by'] = $userId;
             $this->verifications->create($payload);
         }
 
-        header('Location: /pacientes/certificaciones?status=stored');
-        exit;
+        return redirect('/pacientes/certificaciones?status=stored');
     }
 
-    public function show(): void
+    public function show(Request $request): JsonResponse
     {
-        $this->requireAuth();
-        $this->requirePermission(['administrativo', 'pacientes.verification.view', 'pacientes.verification.manage']);
-
-        $id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
-        $patientId = isset($_GET['patient_id']) ? $this->normalizePatientId((string) $_GET['patient_id']) : '';
+        $id = $request->has('id') ? (int) $request->query('id') : 0;
+        $patientId = $request->has('patient_id')
+            ? $this->normalizePatientId((string) $request->query('patient_id'))
+            : '';
 
         $certification = null;
         if ($id > 0) {
@@ -194,26 +203,57 @@ class VerificationController extends BaseController
         }
 
         if (!$certification) {
-            $this->json([
+            return response()->json([
                 'ok' => false,
                 'message' => 'No se encontró una certificación para el paciente solicitado.',
             ], 404);
-            return;
         }
 
-        $this->json([
+        return response()->json([
             'ok' => true,
             'data' => $certification,
         ]);
     }
 
-    public function verify(): void
+    public function consentDocument(Request $request): View|JsonResponse
     {
-        $this->requireAuth();
-        $this->requirePermission(['administrativo', 'pacientes.verification.view', 'pacientes.verification.manage']);
+        $id = $request->has('id') ? (int) $request->query('id') : 0;
+        $patientId = $request->has('patient_id')
+            ? $this->normalizePatientId((string) $request->query('patient_id'))
+            : '';
 
-        $certificationId = isset($_POST['certification_id']) ? (int) $_POST['certification_id'] : 0;
-        $patientId = isset($_POST['patient_id']) ? $this->normalizePatientId((string) $_POST['patient_id']) : '';
+        $certification = null;
+        if ($id > 0) {
+            $certification = $this->verifications->find($id);
+        } elseif ($patientId !== '') {
+            $certification = $this->verifications->findByPatient($patientId);
+        }
+
+        if (!$certification) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'No se encontró la certificación solicitada.',
+            ], 404);
+        }
+
+        $checkinId = $request->has('checkin_id') ? (int) $request->query('checkin_id') : 0;
+        $checkin = $checkinId > 0 ? $this->verifications->findCheckin($checkinId) : null;
+
+        return view('identity_verification.consent_document', [
+            'pageTitle' => 'Documento de consentimiento / atención',
+            'currentUser' => LegacyCurrentUser::resolve($request),
+            'certification' => $certification,
+            'checkin' => $checkin,
+            'canRenderConsent' => $checkin !== null,
+        ]);
+    }
+
+    public function verify(Request $request): JsonResponse
+    {
+        $certificationId = $request->has('certification_id') ? (int) $request->input('certification_id') : 0;
+        $patientId = $request->has('patient_id')
+            ? $this->normalizePatientId((string) $request->input('patient_id'))
+            : '';
 
         $certification = null;
         if ($certificationId > 0) {
@@ -225,25 +265,28 @@ class VerificationController extends BaseController
         }
 
         if (!$certification) {
-            $this->json([
+            return response()->json([
                 'ok' => false,
                 'message' => 'No existe una certificación registrada para el paciente proporcionado.',
             ], 404);
-            return;
         }
 
         $certification = $this->refreshBiometricTemplates($certification);
 
+        $metadata = [
+            'patient_id' => $certification['patient_id'],
+            'document_number' => $certification['document_number'],
+        ];
+
         if (empty($certification['face_template']) && empty($certification['signature_template'])) {
             $this->escalateMissingEvidence($certification, 'missing_biometrics', [
                 'metadata' => $metadata,
-                'user_id' => $_SESSION['user_id'] ?? null,
+                'user_id' => Auth::id(),
             ]);
-            $this->json([
+            return response()->json([
                 'ok' => false,
                 'message' => 'La certificación no cuenta con datos biométricos suficientes. Complete el registro antes de continuar.',
             ], 409);
-            return;
         }
 
         $requiresFace = !empty($certification['face_template']);
@@ -254,18 +297,13 @@ class VerificationController extends BaseController
         $hasSignatureCapture = false;
         $hasFaceCapture = false;
 
-        $metadata = [
-            'patient_id' => $certification['patient_id'],
-            'document_number' => $certification['document_number'],
-        ];
-
-        $faceData = trim((string) ($_POST['face_image'] ?? ''));
+        $faceData = trim((string) ($request->input('face_image', '')));
         if ($faceData !== '') {
             $faceTempPath = $this->persistDataUri($faceData, 'verifications');
             if ($faceTempPath) {
                 $hasFaceCapture = true;
                 $metadata['face_capture'] = $faceTempPath;
-                $template = $this->faceRecognition->createTemplateFromFile(BASE_PATH . '/' . $faceTempPath);
+                $template = $this->faceRecognition->createTemplateFromFile(base_path($faceTempPath));
                 if ($template) {
                     $faceScore = $this->faceRecognition->compareTemplates(
                         $certification['face_template'] ?? null,
@@ -280,13 +318,13 @@ class VerificationController extends BaseController
             }
         }
 
-        $signatureData = trim((string) ($_POST['signature_data'] ?? ''));
+        $signatureData = trim((string) ($request->input('signature_data', '')));
         if ($signatureData !== '' && !empty($certification['signature_template'])) {
             $signatureTempPath = $this->persistDataUri($signatureData, 'verifications');
             if ($signatureTempPath) {
                 $hasSignatureCapture = true;
                 $metadata['signature_capture'] = $signatureTempPath;
-                $template = $this->signatureAnalysis->createTemplateFromFile(BASE_PATH . '/' . $signatureTempPath);
+                $template = $this->signatureAnalysis->createTemplateFromFile(base_path($signatureTempPath));
                 if ($template) {
                     $signatureScore = $this->signatureAnalysis->compareTemplates(
                         $certification['signature_template'] ?? null,
@@ -301,40 +339,39 @@ class VerificationController extends BaseController
             }
         }
 
+        $userId = Auth::id();
+
         if ($requiresFace && !$hasFaceCapture) {
             $this->escalateMissingEvidence($certification, 'missing_face_capture', [
                 'metadata' => $metadata,
-                'user_id' => $_SESSION['user_id'] ?? null,
+                'user_id' => $userId,
             ]);
-            $this->json([
+            return response()->json([
                 'ok' => false,
                 'message' => 'Debe capturar el rostro del paciente para realizar el check-in.',
             ], 422);
-            return;
         }
 
         if ($requiresSignature && !$hasSignatureCapture) {
             $this->escalateMissingEvidence($certification, 'missing_signature_capture', [
                 'metadata' => $metadata,
-                'user_id' => $_SESSION['user_id'] ?? null,
+                'user_id' => $userId,
             ]);
-            $this->json([
+            return response()->json([
                 'ok' => false,
                 'message' => 'Debe capturar la firma del paciente para realizar el check-in.',
             ], 422);
-            return;
         }
 
         if (!$hasSignatureCapture && !$hasFaceCapture) {
             $this->escalateMissingEvidence($certification, 'missing_biometrics', [
                 'metadata' => $metadata,
-                'user_id' => $_SESSION['user_id'] ?? null,
+                'user_id' => $userId,
             ]);
-            $this->json([
+            return response()->json([
                 'ok' => false,
                 'message' => 'Debe adjuntar una captura válida para verificar.',
             ], 422);
-            return;
         }
 
         $result = $this->determineResult($signatureScore, $faceScore);
@@ -344,7 +381,7 @@ class VerificationController extends BaseController
             'verified_face_score' => $faceScore,
             'verification_result' => $result,
             'metadata' => $metadata,
-            'created_by' => $_SESSION['user_id'] ?? null,
+            'created_by' => $userId,
         ]);
 
         $this->verifications->touchVerificationMetadata((int) $certification['id'], $result);
@@ -355,7 +392,7 @@ class VerificationController extends BaseController
             $consentPath = $this->consentDocumentService->generate($certification, $checkin, $patientSummary);
         }
 
-        $this->json([
+        return response()->json([
             'ok' => true,
             'result' => $result,
             'signatureScore' => $signatureScore,
@@ -364,13 +401,12 @@ class VerificationController extends BaseController
         ]);
     }
 
-    public function destroy(): void
+    public function destroy(Request $request): JsonResponse
     {
-        $this->requireAuth();
-        $this->requirePermission(['administrativo', 'pacientes.verification.manage']);
-
-        $certificationId = isset($_POST['certification_id']) ? (int) $_POST['certification_id'] : 0;
-        $patientId = isset($_POST['patient_id']) ? $this->normalizePatientId((string) $_POST['patient_id']) : '';
+        $certificationId = $request->has('certification_id') ? (int) $request->input('certification_id') : 0;
+        $patientId = $request->has('patient_id')
+            ? $this->normalizePatientId((string) $request->input('patient_id'))
+            : '';
 
         $certification = null;
         if ($certificationId > 0) {
@@ -382,11 +418,10 @@ class VerificationController extends BaseController
         }
 
         if (!$certification) {
-            $this->json([
+            return response()->json([
                 'ok' => false,
                 'message' => 'No se encontró la certificación solicitada.',
             ], 404);
-            return;
         }
 
         $paths = [];
@@ -410,18 +445,17 @@ class VerificationController extends BaseController
         $paths = array_values(array_unique($paths));
 
         if (!$this->verifications->delete((int) $certification['id'])) {
-            $this->json([
+            return response()->json([
                 'ok' => false,
                 'message' => 'No fue posible eliminar la certificación. Intente nuevamente.',
             ], 500);
-            return;
         }
 
         foreach ($paths as $relativePath) {
             $this->deleteStoragePath($relativePath);
         }
 
-        $this->json([
+        return response()->json([
             'ok' => true,
             'message' => 'La certificación biométrica se eliminó correctamente.',
             'patient_id' => $certification['patient_id'],
@@ -518,7 +552,7 @@ class VerificationController extends BaseController
             return null;
         }
 
-        $directory = BASE_PATH . '/storage/patient_verification/' . $folder;
+        $directory = base_path('storage/patient_verification/' . $folder);
         if (!is_dir($directory) && !mkdir($directory, 0775, true) && !is_dir($directory)) {
             throw new \RuntimeException('No fue posible crear el directorio de almacenamiento: ' . $directory);
         }
@@ -532,19 +566,16 @@ class VerificationController extends BaseController
         return 'storage/patient_verification/' . $folder . '/' . $filename;
     }
 
-    private function persistUploadedFile(string $field, string $folder): ?string
+    private function persistUploadedFile(Request $request, string $field, string $folder): ?string
     {
-        if (!isset($_FILES[$field]) || !is_array($_FILES[$field])) {
+        if (!$request->hasFile($field)) {
             return null;
         }
 
-        $file = $_FILES[$field];
-        if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
-            return null;
-        }
+        /** @var UploadedFile $file */
+        $file = $request->file($field);
 
-        $tmpName = $file['tmp_name'] ?? null;
-        if (!$tmpName || !is_uploaded_file($tmpName)) {
+        if (!$file->isValid()) {
             return null;
         }
 
@@ -555,34 +586,35 @@ class VerificationController extends BaseController
             'application/pdf' => 'pdf',
         ];
 
-        $finfo = finfo_open(FILEINFO_MIME_TYPE);
-        $mime = $finfo ? finfo_file($finfo, $tmpName) : null;
-        if ($finfo) {
-            finfo_close($finfo);
-        }
+        $mime = $file->getMimeType() ?? '';
 
-        if ($mime === false || !isset($allowed[$mime])) {
+        if (!isset($allowed[$mime])) {
             return null;
         }
 
-        $directory = BASE_PATH . '/storage/patient_verification/' . $folder;
+        $directory = base_path('storage/patient_verification/' . $folder);
         if (!is_dir($directory) && !mkdir($directory, 0775, true) && !is_dir($directory)) {
             throw new \RuntimeException('No fue posible crear el directorio de almacenamiento: ' . $directory);
         }
 
         $filename = $folder . '-' . uniqid('', true) . '.' . $allowed[$mime];
         $destination = $directory . '/' . $filename;
-        if (!move_uploaded_file($tmpName, $destination)) {
+
+        if (!$file->move($directory, $filename)) {
+            return null;
+        }
+
+        if (!is_file($destination)) {
             return null;
         }
 
         return 'storage/patient_verification/' . $folder . '/' . $filename;
     }
 
-    private function collectInput(): array
+    private function collectInput(Request $request): array
     {
         $data = [];
-        foreach ($_POST as $key => $value) {
+        foreach ($request->post() as $key => $value) {
             $data[$key] = is_string($value) ? trim($value) : $value;
         }
         return $data;
@@ -626,7 +658,7 @@ class VerificationController extends BaseController
                 'face_image_path' => $certification['face_image_path'] ?? null,
                 'face_template' => $certification['face_template'] ?? null,
                 'status' => $certification['status'] ?? 'pending',
-                'updated_by' => $_SESSION['user_id'] ?? null,
+                'updated_by' => Auth::id(),
             ];
 
             $this->verifications->update((int) $certification['id'], $payload);
@@ -635,7 +667,7 @@ class VerificationController extends BaseController
         return $certification;
     }
 
-    private function isHashOnlyTemplate($template): bool
+    private function isHashOnlyTemplate(mixed $template): bool
     {
         if (!is_array($template)) {
             return false;
@@ -667,7 +699,7 @@ class VerificationController extends BaseController
 
         $cleanPath = ltrim($relativePath, '/');
 
-        return BASE_PATH . '/' . $cleanPath;
+        return base_path($cleanPath);
     }
 
     private function deleteStoragePath(?string $relativePath): void
@@ -677,23 +709,23 @@ class VerificationController extends BaseController
         }
 
         $cleanPath = ltrim($relativePath, '/');
-        if (strncmp($cleanPath, self::STORAGE_PREFIX, strlen(self::STORAGE_PREFIX)) !== 0) {
+        if (!str_starts_with($cleanPath, self::STORAGE_PREFIX)) {
             return;
         }
 
-        $fullPath = BASE_PATH . '/' . $cleanPath;
+        $fullPath = base_path($cleanPath);
         if (!file_exists($fullPath)) {
             return;
         }
 
-        $baseDirectory = realpath(BASE_PATH . '/' . self::STORAGE_PREFIX);
+        $baseDirectory = realpath(base_path(self::STORAGE_PREFIX));
         $realPath = realpath($fullPath);
         if ($realPath === false || $baseDirectory === false) {
             @unlink($fullPath);
             return;
         }
 
-        if (strncmp($realPath, $baseDirectory, strlen($baseDirectory)) === 0) {
+        if (str_starts_with($realPath, $baseDirectory)) {
             @unlink($realPath);
         }
     }

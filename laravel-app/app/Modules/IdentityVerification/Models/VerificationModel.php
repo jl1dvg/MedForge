@@ -1,6 +1,8 @@
 <?php
 
-namespace Modules\IdentityVerification\Models;
+declare(strict_types=1);
+
+namespace App\Modules\IdentityVerification\Models;
 
 use PDO;
 
@@ -351,7 +353,7 @@ class VerificationModel
         return $row;
     }
 
-    private function encodeTemplate($data): ?string
+    private function encodeTemplate(mixed $data): ?string
     {
         if ($data === null) {
             return null;
@@ -360,7 +362,7 @@ class VerificationModel
         return json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 
-    private function decodeTemplate($json)
+    private function decodeTemplate(mixed $json): mixed
     {
         if ($json === null || $json === '') {
             return null;

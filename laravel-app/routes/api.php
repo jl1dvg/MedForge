@@ -26,6 +26,9 @@ Route::prefix('v2')->group(function (): void {
     Route::middleware('web')->group(function (): void {
         require __DIR__ . '/v2/examenes.php';
     });
+    Route::middleware('web')->group(function (): void {
+        require __DIR__ . '/v2/identity_verification.php';
+    });
     require __DIR__ . '/v2/consultas.php';
     require __DIR__ . '/v2/crm.php';
     require __DIR__ . '/v2/codes.php';

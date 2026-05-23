@@ -13,9 +13,10 @@ use Models\BillingMainModel;
 use Modules\CronManager\Repositories\CronTaskRepository;
 use Modules\CiveExtension\Services\HealthCheckService;
 use Modules\Derivaciones\Services\DerivacionesSyncService;
-use Modules\IdentityVerification\Models\VerificationModel;
-use Modules\IdentityVerification\Services\MissingEvidenceEscalationService;
-use Modules\IdentityVerification\Services\VerificationPolicyService;
+use App\Modules\IdentityVerification\Models\VerificationModel;
+use App\Modules\IdentityVerification\Services\MissingEvidenceEscalationService;
+use App\Modules\IdentityVerification\Services\VerificationPolicyService;
+use App\Modules\Shared\Support\SettingsOptionResolver;
 use App\Modules\KPI\Services\KpiCalculationService;
 use Modules\Mail\Services\NotificationMailer;
 use Modules\Notifications\Services\PusherConfigService;
@@ -1703,7 +1704,7 @@ class CronRunner
      */
     private function runIdentityVerificationExpirationTask(): array
     {
-        $policy = new VerificationPolicyService($this->pdo);
+        $policy = new VerificationPolicyService(new SettingsOptionResolver());
         $validity = $policy->getValidityDays();
 
         if ($validity <= 0) {
@@ -1724,7 +1725,7 @@ class CronRunner
             ];
         }
 
-        $escalation = new MissingEvidenceEscalationService($this->pdo, $policy);
+        $escalation = new MissingEvidenceEscalationService($policy);
         foreach ($result['certifications'] as $certification) {
             $escalation->escalate($certification, 'expired_certification', [
                 'metadata' => [

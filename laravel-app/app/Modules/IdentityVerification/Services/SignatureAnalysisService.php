@@ -1,10 +1,13 @@
 <?php
 
-namespace Modules\IdentityVerification\Services;
+declare(strict_types=1);
 
-class FaceRecognitionService
+namespace App\Modules\IdentityVerification\Services;
+
+class SignatureAnalysisService
 {
-    private const TARGET_SIZE = 32;
+    private const TARGET_WIDTH = 64;
+    private const TARGET_HEIGHT = 32;
 
     private ?PythonBiometricClient $pythonClient;
 
@@ -35,7 +38,7 @@ class FaceRecognitionService
 
         $pythonFallback = null;
         if ($this->pythonClient) {
-            $template = $this->pythonClient->generateTemplate('face', $binary);
+            $template = $this->pythonClient->generateTemplate('signature', $binary);
             if (is_array($template)) {
                 if (($template['algorithm'] ?? null) !== 'hash-only' && !empty($template['vector'])) {
                     return $template;
@@ -66,34 +69,34 @@ class FaceRecognitionService
 
         $width = imagesx($image);
         $height = imagesy($image);
-        $target = imagecreatetruecolor(self::TARGET_SIZE, self::TARGET_SIZE);
-        imagecopyresampled($target, $image, 0, 0, 0, 0, self::TARGET_SIZE, self::TARGET_SIZE, $width, $height);
+
+        $target = imagecreatetruecolor(self::TARGET_WIDTH, self::TARGET_HEIGHT);
+        imagealphablending($target, false);
+        imagesavealpha($target, true);
+        $transparent = imagecolorallocatealpha($target, 255, 255, 255, 127);
+        imagefilledrectangle($target, 0, 0, self::TARGET_WIDTH, self::TARGET_HEIGHT, $transparent);
+
+        imagecopyresampled($target, $image, 0, 0, 0, 0, self::TARGET_WIDTH, self::TARGET_HEIGHT, $width, $height);
 
         $vector = [];
-        for ($y = 0; $y < self::TARGET_SIZE; $y++) {
-            for ($x = 0; $x < self::TARGET_SIZE; $x++) {
-                $rgb = imagecolorat($target, $x, $y);
-                $r = ($rgb >> 16) & 0xFF;
-                $g = ($rgb >> 8) & 0xFF;
-                $b = $rgb & 0xFF;
+        for ($y = 0; $y < self::TARGET_HEIGHT; $y++) {
+            for ($x = 0; $x < self::TARGET_WIDTH; $x++) {
+                $rgba = imagecolorat($target, $x, $y);
+                $alpha = ($rgba & 0x7F000000) >> 24;
+                $opacity = 1 - ($alpha / 127);
+                $r = ($rgba >> 16) & 0xFF;
+                $g = ($rgba >> 8) & 0xFF;
+                $b = $rgba & 0xFF;
                 $gray = ($r * 0.3 + $g * 0.59 + $b * 0.11) / 255;
-                $vector[] = round($gray, 4);
+                $vector[] = round($gray * $opacity, 4);
             }
         }
 
         imagedestroy($target);
         imagedestroy($image);
 
-        $norm = $this->euclideanNorm($vector);
-        if ($norm > 0) {
-            foreach ($vector as &$value) {
-                $value = round($value / $norm, 6);
-            }
-            unset($value);
-        }
-
         $template = [
-            'algorithm' => 'gd-grayscale-' . self::TARGET_SIZE,
+            'algorithm' => 'signature-grid',
             'vector' => $vector,
         ];
 
@@ -108,7 +111,7 @@ class FaceRecognitionService
 
         $pythonScore = null;
         if ($this->pythonClient) {
-            $score = $this->pythonClient->compare('face', $reference, $sample);
+            $score = $this->pythonClient->compare('signature', $reference, $sample);
             if ($score !== null) {
                 $pythonScore = round($score, 2);
                 if ($pythonScore > 0) {
@@ -129,40 +132,19 @@ class FaceRecognitionService
         $b = $sample['vector'];
         $length = min(count($a), count($b));
         if ($length === 0) {
-            return null;
-        }
-
-        $dot = 0.0;
-        $normA = 0.0;
-        $normB = 0.0;
-
-        for ($i = 0; $i < $length; $i++) {
-            $va = (float) $a[$i];
-            $vb = (float) $b[$i];
-            $dot += $va * $vb;
-            $normA += $va * $va;
-            $normB += $vb * $vb;
-        }
-
-        if ($normA <= 0 || $normB <= 0) {
             return $pythonScore !== null ? $pythonScore : 0.0;
         }
 
-        $similarity = $dot / (sqrt($normA) * sqrt($normB));
-        $score = max(0.0, min(1.0, $similarity));
+        $diff = 0.0;
+        for ($i = 0; $i < $length; $i++) {
+            $diff += abs(((float) $a[$i]) - ((float) $b[$i]));
+        }
+
+        $maxDiff = $length;
+        $score = 1 - min(1.0, $diff / $maxDiff);
 
         $legacyScore = round($score * 100, 2);
 
         return $pythonScore !== null ? max($pythonScore, $legacyScore) : $legacyScore;
-    }
-
-    private function euclideanNorm(array $vector): float
-    {
-        $sum = 0.0;
-        foreach ($vector as $value) {
-            $sum += ((float) $value) ** 2;
-        }
-
-        return sqrt($sum);
     }
 }

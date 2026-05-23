@@ -1,25 +1,18 @@
 <?php
 
-namespace Modules\IdentityVerification\Services;
+declare(strict_types=1);
 
-use Modules\CRM\Models\TicketModel;
+namespace App\Modules\IdentityVerification\Services;
+
+use Illuminate\Support\Facades\DB;
 use PDO;
-use RuntimeException;
 use Throwable;
 
 class MissingEvidenceEscalationService
 {
-    private ?TicketModel $tickets = null;
-
     public function __construct(
-        private PDO $pdo,
-        private VerificationPolicyService $policy
+        private readonly VerificationPolicyService $policy
     ) {
-        try {
-            $this->tickets = new TicketModel($pdo);
-        } catch (RuntimeException) {
-            $this->tickets = null;
-        }
     }
 
     /**
@@ -37,10 +30,6 @@ class MissingEvidenceEscalationService
             return;
         }
 
-        if (!($this->tickets instanceof TicketModel)) {
-            return;
-        }
-
         $subject = $this->buildSubject($certification, $reason);
         $message = $this->buildMessage($certification, $reason, $context);
         $assignee = $this->policy->getEscalationAssignee();
@@ -50,12 +39,12 @@ class MissingEvidenceEscalationService
 
         $existing = $this->findActiveTicketBySubject($subject);
         if ($existing !== null) {
-            $this->tickets->addMessage($existing, $userId, $message);
+            $this->addMessage($existing, $userId, $message);
             return;
         }
 
         try {
-            $this->tickets->create([
+            $this->createTicket([
                 'subject' => $subject,
                 'status' => 'abierto',
                 'priority' => $priority,
@@ -65,6 +54,52 @@ class MissingEvidenceEscalationService
         } catch (Throwable) {
             // Evitar romper flujo principal si no se puede escalar
         }
+    }
+
+    private function createTicket(array $data, ?int $userId): void
+    {
+        $status = strtolower(trim((string) ($data['status'] ?? 'abierto')));
+        $priority = strtolower(trim((string) ($data['priority'] ?? 'media')));
+        $assigned = !empty($data['assigned_to']) ? (int) $data['assigned_to'] : null;
+
+        $pdo = DB::connection()->getPdo();
+        $stmt = $pdo->prepare("
+            INSERT INTO crm_tickets
+                (subject, status, priority, assigned_to, created_by)
+            VALUES
+                (:subject, :status, :priority, :assigned_to, :created_by)
+        ");
+
+        $stmt->bindValue(':subject', trim((string) ($data['subject'] ?? '')));
+        $stmt->bindValue(':status', $status);
+        $stmt->bindValue(':priority', $priority);
+        $stmt->bindValue(':assigned_to', $assigned, $assigned !== null ? PDO::PARAM_INT : PDO::PARAM_NULL);
+        $stmt->bindValue(':created_by', $userId, $userId !== null ? PDO::PARAM_INT : PDO::PARAM_NULL);
+        $stmt->execute();
+
+        $ticketId = (int) $pdo->lastInsertId();
+
+        if (!empty($data['message'])) {
+            $this->addMessage($ticketId, $userId, $data['message']);
+        }
+    }
+
+    private function addMessage(int $ticketId, ?int $authorId, string $message): void
+    {
+        $pdo = DB::connection()->getPdo();
+        $stmt = $pdo->prepare("
+            INSERT INTO crm_ticket_messages (ticket_id, author_id, message)
+            VALUES (:ticket_id, :author_id, :message)
+        ");
+
+        $stmt->execute([
+            ':ticket_id' => $ticketId,
+            ':author_id' => $authorId ?: null,
+            ':message' => trim($message),
+        ]);
+
+        $pdo->prepare('UPDATE crm_tickets SET updated_at = CURRENT_TIMESTAMP WHERE id = :id')
+            ->execute([':id' => $ticketId]);
     }
 
     /**
@@ -92,7 +127,7 @@ class MissingEvidenceEscalationService
     {
         $patientId = $certification['patient_id'] ?? 'Sin HC';
         $document = $certification['document_number'] ?? 'Sin documento';
-        $documentType = strtoupper((string) ($certification['document_type'] ?? '')); 
+        $documentType = strtoupper((string) ($certification['document_type'] ?? ''));
         $fullName = $certification['full_name'] ?? ($context['patient_name'] ?? 'Paciente');
         $metadata = $context['metadata'] ?? [];
         $metadataLines = [];
@@ -119,7 +154,7 @@ class MissingEvidenceEscalationService
             sprintf('Paciente: %s', $fullName),
             sprintf('Historia clínica: %s', $patientId),
             sprintf('Documento: %s %s', $documentType, $document),
-            sprintf('Enlace de certificación: %s', $this->buildCertificationUrl($patientId)),
+            sprintf('Enlace de certificación: %s', $this->buildCertificationUrl((string) $patientId)),
         ];
 
         if ($metadataLines !== []) {
@@ -133,15 +168,16 @@ class MissingEvidenceEscalationService
 
     private function buildCertificationUrl(string $patientId): string
     {
-        $base = rtrim(BASE_URL ?? '/', '/');
+        $base = rtrim(config('app.url', ''), '/');
 
         return $base . '/pacientes/certificaciones?patient_id=' . urlencode($patientId);
     }
 
     private function findActiveTicketBySubject(string $subject): ?int
     {
+        $pdo = DB::connection()->getPdo();
         $sql = "SELECT id, status FROM crm_tickets WHERE subject = :subject ORDER BY created_at DESC LIMIT 1";
-        $stmt = $this->pdo->prepare($sql);
+        $stmt = $pdo->prepare($sql);
         $stmt->execute([':subject' => $subject]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
 

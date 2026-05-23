@@ -1,6 +1,8 @@
 <?php
 
-namespace Modules\IdentityVerification\Services;
+declare(strict_types=1);
+
+namespace App\Modules\IdentityVerification\Services;
 
 use Mpdf\Mpdf;
 use Mpdf\Output\Destination;
@@ -9,13 +11,13 @@ use Throwable;
 
 class ConsentDocumentService
 {
-    public function __construct(private VerificationPolicyService $policy)
+    public function __construct(private readonly VerificationPolicyService $policy)
     {
     }
 
     public function generate(array $certification, ?array $checkin, ?array $patientSummary): ?string
     {
-        $directory = BASE_PATH . '/storage/patient_verification/consents';
+        $directory = storage_path('patient_verification/consents');
         if (!is_dir($directory) && !mkdir($directory, 0775, true) && !is_dir($directory)) {
             return null;
         }
@@ -34,20 +36,20 @@ class ConsentDocumentService
         $consentId = 'consent-' . preg_replace('/[^A-Za-z0-9_-]/', '-', (string) ($certification['patient_id'] ?? '')) . '-' . date('YmdHis');
         $filename = $consentId . '.html';
         $relativeHtmlPath = 'storage/patient_verification/consents/' . $filename;
-        $path = BASE_PATH . '/' . $relativeHtmlPath;
+        $path = base_path($relativeHtmlPath);
 
         $signatureImg = $signaturePath ? '<img src="/' . ltrim($signaturePath, '/') . '" alt="Firma del paciente" style="max-height:140px;">' : '<em>No disponible</em>';
         $documentImg = $this->isEmbeddableImage($documentFront)
             ? '<img src="/' . ltrim((string) $documentFront, '/') . '" alt="Documento del paciente" style="max-height:140px;">'
             : '<em>No adjunto</em>';
 
-        $patientNameEsc = $this->escape($patientName);
-        $createdAtEsc = $this->escape($createdAt);
-        $resultEsc = $this->escape($result);
+        $patientNameEsc = $this->escape((string) $patientName);
+        $createdAtEsc = $this->escape((string) $createdAt);
+        $resultEsc = $this->escape((string) $result);
         $userIdEsc = $this->escape((string) $userId);
         $patientIdEsc = $this->escape((string) ($certification['patient_id'] ?? ''));
-        $documentTypeEsc = $this->escape(strtoupper($documentType));
-        $documentNumberEsc = $this->escape($documentNumber);
+        $documentTypeEsc = $this->escape(strtoupper((string) $documentType));
+        $documentNumberEsc = $this->escape((string) $documentNumber);
         $faceScoreLabel = $faceScore !== null
             ? $this->escape(number_format((float) $faceScore, 2))
             : $this->escape('N/A');
@@ -132,7 +134,7 @@ HTML;
                     'patient_name' => $patientName,
                     'patient_id' => (string) ($certification['patient_id'] ?? ''),
                     'document_number' => $documentNumber,
-                    'document_type' => strtoupper($documentType),
+                    'document_type' => strtoupper((string) $documentType),
                     'created_at' => $createdAt,
                     'result' => $result,
                     'user_id' => $userId,
@@ -208,7 +210,7 @@ HTML;
         $relativePdfPath = 'storage/patient_verification/consents/' . $consentId . '.pdf';
 
         try {
-            $mpdf->Output(BASE_PATH . '/' . $relativePdfPath, Destination::FILE);
+            $mpdf->Output(base_path($relativePdfPath), Destination::FILE);
         } catch (Throwable) {
             return null;
         }
@@ -318,7 +320,7 @@ HTML;
         }
 
         $mime = mime_content_type($absolute) ?: '';
-        if (strpos($mime, 'image/') !== 0) {
+        if (!str_starts_with($mime, 'image/')) {
             return null;
         }
 
@@ -332,7 +334,7 @@ HTML;
 
     private function ensureTempDir(): string
     {
-        $directory = BASE_PATH . '/storage/cache/mpdf';
+        $directory = storage_path('cache/mpdf');
         if (!is_dir($directory) && !mkdir($directory, 0775, true) && !is_dir($directory)) {
             throw new RuntimeException('No fue posible crear el directorio temporal para PDF.');
         }
@@ -350,7 +352,7 @@ HTML;
             $relative = ltrim($relative, '/');
         }
 
-        $path = BASE_PATH . '/' . $relative;
+        $path = base_path($relative);
 
         return is_file($path) ? $path : null;
     }
@@ -363,7 +365,7 @@ HTML;
         }
 
         $mime = mime_content_type($absolute) ?: '';
-        if (strpos($mime, 'image/') !== 0) {
+        if (!str_starts_with($mime, 'image/')) {
             return null;
         }
 
@@ -381,6 +383,6 @@ HTML;
 
         $mime = mime_content_type($absolute) ?: '';
 
-        return strpos($mime, 'image/') === 0;
+        return str_starts_with($mime, 'image/');
     }
 }

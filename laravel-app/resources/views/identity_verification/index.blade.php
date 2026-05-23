@@ -1,10 +1,10 @@
-<?php
-/** @var array $certifications */
-/** @var array $errors */
-/** @var array $old */
-/** @var array|null $selectedPatient */
-/** @var string|null $status */
-?>
+@extends('layouts.medforge')
+
+@push('scripts')
+    <script src="{{ asset('js/modules/patient-verification.js') }}"></script>
+@endpush
+
+@section('content')
 <div class="content-header">
     <div class="d-flex align-items-center justify-content-between flex-wrap gap-3">
         <div>
@@ -22,20 +22,20 @@
         <div class="col-xxl-7 col-xl-8">
             <div id="uploadA11yStatus" class="visually-hidden" aria-live="polite"></div>
 
-            <?php if (!empty($status) && $status === 'stored'): ?>
+            @if(!empty($status) && $status === 'stored')
                 <div class="alert alert-success" role="alert" aria-live="assertive"><i class="mdi mdi-check-circle"></i> La certificación se guardó correctamente.</div>
-            <?php endif; ?>
+            @endif
 
-            <?php if (!empty($errors)): ?>
+            @if(!empty($errors))
                 <div class="alert alert-danger" role="alert" aria-live="assertive" tabindex="-1" id="validationErrors">
                     <strong>Revise los datos ingresados:</strong>
                     <ul class="mb-0 mt-2">
-                        <?php foreach ($errors as $message): ?>
-                            <li><?= htmlspecialchars($message, ENT_QUOTES, 'UTF-8') ?></li>
-                        <?php endforeach; ?>
+                        @foreach($errors as $message)
+                            <li>{{ $message }}</li>
+                        @endforeach
                     </ul>
                 </div>
-            <?php endif; ?>
+            @endif
 
             <div class="box">
                 <div class="box-body">
@@ -53,24 +53,24 @@
                         <form id="verificationLookupForm" class="row g-3">
                             <div class="col-md-6">
                                 <label for="lookupPatientId" class="form-label">Historia clínica / ID interno<span class="text-danger">*</span></label>
-                                <input type="text" class="form-control" id="lookupPatientId" name="patient_id" value="<?= htmlspecialchars($old['patient_id'] ?? '', ENT_QUOTES, 'UTF-8') ?>" required>
+                                <input type="text" class="form-control" id="lookupPatientId" name="patient_id" value="{{ $old['patient_id'] ?? '' }}" required>
                             </div>
                             <div class="col-md-6">
                                 <label for="lookupDocument" class="form-label">Cédula del paciente</label>
-                                <input type="text" class="form-control" id="lookupDocument" name="document_number" value="<?= htmlspecialchars($old['document_number'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
+                                <input type="text" class="form-control" id="lookupDocument" name="document_number" value="{{ $old['document_number'] ?? '' }}">
                             </div>
                             <div class="col-12 text-end">
                                 <button type="submit" class="btn btn-primary"><i class="mdi mdi-account-search"></i> Buscar paciente</button>
                                 <button type="button" class="btn btn-outline-secondary" data-action="start-registration">Iniciar registro sin resultados</button>
                             </div>
                         </form>
-                        <?php if (!empty($selectedPatient)): ?>
+                        @if(!empty($selectedPatient))
                             <div class="alert alert-info mt-3">
                                 <strong>Paciente preseleccionado:</strong>
-                                <div><?= htmlspecialchars($selectedPatient['full_name'] ?: ('Historia clínica ' . ($selectedPatient['hc_number'] ?? '')), ENT_QUOTES, 'UTF-8') ?></div>
-                                <small class="text-muted">HC: <?= htmlspecialchars($selectedPatient['hc_number'] ?? '', ENT_QUOTES, 'UTF-8') ?><?php if (!empty($selectedPatient['cedula'])): ?> · Cédula registrada: <?= htmlspecialchars($selectedPatient['cedula'], ENT_QUOTES, 'UTF-8') ?><?php endif; ?></small>
+                                <div>{{ $selectedPatient['full_name'] ?: ('Historia clínica ' . ($selectedPatient['hc_number'] ?? '')) }}</div>
+                                <small class="text-muted">HC: {{ $selectedPatient['hc_number'] ?? '' }}@if(!empty($selectedPatient['cedula'])) · Cédula registrada: {{ $selectedPatient['cedula'] }}@endif</small>
                             </div>
-                        <?php endif; ?>
+                        @endif
                     </div>
 
                     <div class="wizard-panel d-none" data-step-panel="register">
@@ -80,7 +80,8 @@
                         </div>
                         <div class="alert alert-warning d-none" id="registrationMissingData" role="alert" aria-live="polite"></div>
                         <form id="patientCertificationForm" action="/pacientes/certificaciones" method="post" enctype="multipart/form-data">
-                            <input type="hidden" name="patient_id" id="registrationPatientId" value="<?= htmlspecialchars($old['patient_id'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
+                            @csrf
+                            <input type="hidden" name="patient_id" id="registrationPatientId" value="{{ $old['patient_id'] ?? '' }}">
                             <div class="row g-3">
                                 <div class="col-md-6">
                                     <label for="registrationDocumentNumber" class="form-label">Cédula de identidad<span class="text-danger">*</span></label>
@@ -88,18 +89,11 @@
                                 </div>
                                 <div class="col-md-6">
                                     <label for="registrationDocumentType" class="form-label">Tipo de documento</label>
+                                    @php $documentType = $old['document_type'] ?? 'cedula'; @endphp
                                     <select class="form-select" id="registrationDocumentType" name="document_type" data-default="cedula">
-                                        <?php
-                                        $documentType = $old['document_type'] ?? 'cedula';
-                                        $documentOptions = [
-                                            'cedula' => 'Cédula de identidad',
-                                            'pasaporte' => 'Pasaporte',
-                                            'otro' => 'Otro',
-                                        ];
-                                        foreach ($documentOptions as $value => $label):
-                                        ?>
-                                            <option value="<?= $value ?>" <?= $documentType === $value ? 'selected' : '' ?>><?= $label ?></option>
-                                        <?php endforeach; ?>
+                                        <option value="cedula" {{ $documentType === 'cedula' ? 'selected' : '' }}>Cédula de identidad</option>
+                                        <option value="pasaporte" {{ $documentType === 'pasaporte' ? 'selected' : '' }}>Pasaporte</option>
+                                        <option value="otro" {{ $documentType === 'otro' ? 'selected' : '' }}>Otro</option>
                                     </select>
                                 </div>
                             </div>
@@ -166,25 +160,25 @@
                                     <label class="form-label mb-0">Captura facial del paciente</label>
                                     <span class="badge bg-secondary" data-field-state="face">Pendiente</span>
                                 </div>
-                                  <div class="face-capture drop-zone" data-target="face" data-drop-zone="faceUpload" tabindex="0" aria-label="Zona para captura de rostro" aria-describedby="faceGuidance">
-                                      <div class="ratio ratio-4x3 bg-dark rounded position-relative overflow-hidden">
-                                          <video id="faceCaptureVideo" autoplay playsinline class="position-absolute top-0 start-0 w-100 h-100 object-fit-cover"></video>
-                                          <canvas id="faceCaptureCanvas" class="position-absolute top-0 start-0 w-100 h-100 d-none"></canvas>
-                                      </div>
+                                <div class="face-capture drop-zone" data-target="face" data-drop-zone="faceUpload" tabindex="0" aria-label="Zona para captura de rostro" aria-describedby="faceGuidance">
+                                    <div class="ratio ratio-4x3 bg-dark rounded position-relative overflow-hidden">
+                                        <video id="faceCaptureVideo" autoplay playsinline class="position-absolute top-0 start-0 w-100 h-100 object-fit-cover"></video>
+                                        <canvas id="faceCaptureCanvas" class="position-absolute top-0 start-0 w-100 h-100 d-none"></canvas>
+                                    </div>
                                     <div class="mt-2 d-flex flex-wrap gap-2">
                                         <button class="btn btn-sm btn-outline-primary" type="button" data-action="start-camera">Iniciar cámara</button>
                                         <button class="btn btn-sm btn-outline-success" type="button" data-action="capture-face">Capturar</button>
-                                          <button class="btn btn-sm btn-outline-secondary" type="button" data-action="reset-face">Resetear</button>
-                                          <button class="btn btn-sm btn-outline-primary" type="button" data-action="load-from-file" data-input="faceUpload">Cargar imagen</button>
-                                          <input type="file" accept="image/*" class="d-none" id="faceUpload">
-                                      </div>
-                                      <div class="progress progress-xs mt-2 d-none" data-upload-progress="faceUpload" aria-hidden="true">
-                                          <div class="progress-bar" role="progressbar" style="width: 0%">0%</div>
-                                      </div>
-                                      <div class="text-danger small mt-2 d-none" data-upload-error="faceUpload" role="alert"></div>
-                                      <small class="text-muted d-block mt-2" id="faceGuidance">Para mayor precisión, use una imagen iluminada de 960x720 px aprox. Formatos: JPG, PNG o WebP. Máximo 5 MB. Puede arrastrar el archivo o cargarlo manualmente.</small>
-                                      <small class="text-muted d-block" data-upload-preview="faceUpload"></small>
-                                  </div>
+                                        <button class="btn btn-sm btn-outline-secondary" type="button" data-action="reset-face">Resetear</button>
+                                        <button class="btn btn-sm btn-outline-primary" type="button" data-action="load-from-file" data-input="faceUpload">Cargar imagen</button>
+                                        <input type="file" accept="image/*" class="d-none" id="faceUpload">
+                                    </div>
+                                    <div class="progress progress-xs mt-2 d-none" data-upload-progress="faceUpload" aria-hidden="true">
+                                        <div class="progress-bar" role="progressbar" style="width: 0%">0%</div>
+                                    </div>
+                                    <div class="text-danger small mt-2 d-none" data-upload-error="faceUpload" role="alert"></div>
+                                    <small class="text-muted d-block mt-2" id="faceGuidance">Para mayor precisión, use una imagen iluminada de 960x720 px aprox. Formatos: JPG, PNG o WebP. Máximo 5 MB. Puede arrastrar el archivo o cargarlo manualmente.</small>
+                                    <small class="text-muted d-block" data-upload-preview="faceUpload"></small>
+                                </div>
                                 <input type="hidden" name="face_image" id="faceImageDataField">
                             </div>
 
@@ -202,6 +196,7 @@
                         </div>
                         <div class="alert alert-info" id="checkinInstructions">Capture el rostro del paciente para validar su identidad. Si la certificación no tiene plantilla facial aún, se le solicitará la firma.</div>
                         <form id="verificationCheckinForm" action="/pacientes/certificaciones/verificar" method="post">
+                            @csrf
                             <input type="hidden" name="certification_id" id="checkinCertificationId">
                             <input type="hidden" name="patient_id" id="checkinPatientId">
                             <div class="row g-3 mb-3">
@@ -215,48 +210,48 @@
                                 </div>
                             </div>
 
-                              <div class="mb-4" id="checkinFaceCapture">
-                                  <label class="form-label d-block">Captura facial (momento actual)<span class="text-danger">*</span></label>
-                                  <div class="face-capture drop-zone" data-target="verification-face" data-drop-zone="verificationFaceUpload" tabindex="0" aria-label="Zona para captura facial de verificación" aria-describedby="verificationFaceGuidance">
-                                      <div class="ratio ratio-4x3 bg-dark rounded position-relative overflow-hidden">
-                                          <video id="verificationFaceVideo" autoplay playsinline class="position-absolute top-0 start-0 w-100 h-100 object-fit-cover"></video>
-                                          <canvas id="verificationFaceCanvas" class="position-absolute top-0 start-0 w-100 h-100 d-none"></canvas>
-                                      </div>
+                            <div class="mb-4" id="checkinFaceCapture">
+                                <label class="form-label d-block">Captura facial (momento actual)<span class="text-danger">*</span></label>
+                                <div class="face-capture drop-zone" data-target="verification-face" data-drop-zone="verificationFaceUpload" tabindex="0" aria-label="Zona para captura facial de verificación" aria-describedby="verificationFaceGuidance">
+                                    <div class="ratio ratio-4x3 bg-dark rounded position-relative overflow-hidden">
+                                        <video id="verificationFaceVideo" autoplay playsinline class="position-absolute top-0 start-0 w-100 h-100 object-fit-cover"></video>
+                                        <canvas id="verificationFaceCanvas" class="position-absolute top-0 start-0 w-100 h-100 d-none"></canvas>
+                                    </div>
                                     <div class="mt-2 d-flex flex-wrap gap-2">
                                         <button class="btn btn-sm btn-outline-primary" type="button" data-action="start-verification-camera">Iniciar cámara</button>
                                         <button class="btn btn-sm btn-outline-success" type="button" data-action="capture-verification-face">Capturar</button>
-                                          <button class="btn btn-sm btn-outline-secondary" type="button" data-action="reset-verification-face">Resetear</button>
-                                          <button class="btn btn-sm btn-outline-primary" type="button" data-action="load-from-file" data-input="verificationFaceUpload">Cargar imagen</button>
-                                          <input type="file" accept="image/*" class="d-none" id="verificationFaceUpload">
-                                      </div>
-                                      <div class="progress progress-xs mt-2 d-none" data-upload-progress="verificationFaceUpload" aria-hidden="true">
-                                          <div class="progress-bar" role="progressbar" style="width: 0%">0%</div>
-                                      </div>
-                                      <div class="text-danger small mt-2 d-none" data-upload-error="verificationFaceUpload" role="alert"></div>
-                                      <small class="text-muted d-block mt-2" id="verificationFaceGuidance">Arrastre una foto reciente o capture desde la cámara. Formatos: JPG, PNG o WebP. Tamaño sugerido: 960x720 px. Máximo 5 MB.</small>
-                                      <small class="text-muted d-block" data-upload-preview="verificationFaceUpload"></small>
-                                  </div>
-                                  <input type="hidden" name="face_image" id="verificationFaceDataField">
-                              </div>
+                                        <button class="btn btn-sm btn-outline-secondary" type="button" data-action="reset-verification-face">Resetear</button>
+                                        <button class="btn btn-sm btn-outline-primary" type="button" data-action="load-from-file" data-input="verificationFaceUpload">Cargar imagen</button>
+                                        <input type="file" accept="image/*" class="d-none" id="verificationFaceUpload">
+                                    </div>
+                                    <div class="progress progress-xs mt-2 d-none" data-upload-progress="verificationFaceUpload" aria-hidden="true">
+                                        <div class="progress-bar" role="progressbar" style="width: 0%">0%</div>
+                                    </div>
+                                    <div class="text-danger small mt-2 d-none" data-upload-error="verificationFaceUpload" role="alert"></div>
+                                    <small class="text-muted d-block mt-2" id="verificationFaceGuidance">Arrastre una foto reciente o capture desde la cámara. Formatos: JPG, PNG o WebP. Tamaño sugerido: 960x720 px. Máximo 5 MB.</small>
+                                    <small class="text-muted d-block" data-upload-preview="verificationFaceUpload"></small>
+                                </div>
+                                <input type="hidden" name="face_image" id="verificationFaceDataField">
+                            </div>
 
-                              <div class="mb-4 d-none" id="checkinSignatureCapture">
-                                  <label class="form-label d-block">Firma actual del paciente<span class="text-danger">*</span></label>
-                                  <div class="signature-pad drop-zone" data-target="verification-signature" data-drop-zone="verificationSignatureUpload" tabindex="0" aria-label="Zona para firma de verificación" aria-describedby="verificationSignatureGuidance">
-                                      <canvas id="verificationSignatureCanvas" width="520" height="180" class="border rounded bg-white w-100"></canvas>
-                                      <div class="mt-2 d-flex gap-2 flex-wrap">
-                                          <button class="btn btn-sm btn-outline-secondary" type="button" data-action="clear-verification-signature">Limpiar</button>
-                                          <button class="btn btn-sm btn-outline-primary" type="button" data-action="load-from-file" data-input="verificationSignatureUpload">Cargar imagen</button>
-                                          <input type="file" accept="image/*" class="d-none" id="verificationSignatureUpload">
-                                      </div>
-                                      <div class="progress progress-xs mt-2 d-none" data-upload-progress="verificationSignatureUpload" aria-hidden="true">
-                                          <div class="progress-bar" role="progressbar" style="width: 0%">0%</div>
-                                      </div>
-                                      <div class="text-danger small mt-2 d-none" data-upload-error="verificationSignatureUpload" role="alert"></div>
-                                      <small class="text-muted d-block mt-2" id="verificationSignatureGuidance">Si no hay plantilla facial disponible, suba o dibuje la firma actual. Formatos: JPG, PNG o WebP. Tamaño sugerido: 800x400 px. Máximo 5 MB.</small>
-                                      <small class="text-muted d-block" data-upload-preview="verificationSignatureUpload"></small>
-                                  </div>
-                                  <input type="hidden" name="signature_data" id="verificationSignatureDataField">
-                              </div>
+                            <div class="mb-4 d-none" id="checkinSignatureCapture">
+                                <label class="form-label d-block">Firma actual del paciente<span class="text-danger">*</span></label>
+                                <div class="signature-pad drop-zone" data-target="verification-signature" data-drop-zone="verificationSignatureUpload" tabindex="0" aria-label="Zona para firma de verificación" aria-describedby="verificationSignatureGuidance">
+                                    <canvas id="verificationSignatureCanvas" width="520" height="180" class="border rounded bg-white w-100"></canvas>
+                                    <div class="mt-2 d-flex gap-2 flex-wrap">
+                                        <button class="btn btn-sm btn-outline-secondary" type="button" data-action="clear-verification-signature">Limpiar</button>
+                                        <button class="btn btn-sm btn-outline-primary" type="button" data-action="load-from-file" data-input="verificationSignatureUpload">Cargar imagen</button>
+                                        <input type="file" accept="image/*" class="d-none" id="verificationSignatureUpload">
+                                    </div>
+                                    <div class="progress progress-xs mt-2 d-none" data-upload-progress="verificationSignatureUpload" aria-hidden="true">
+                                        <div class="progress-bar" role="progressbar" style="width: 0%">0%</div>
+                                    </div>
+                                    <div class="text-danger small mt-2 d-none" data-upload-error="verificationSignatureUpload" role="alert"></div>
+                                    <small class="text-muted d-block mt-2" id="verificationSignatureGuidance">Si no hay plantilla facial disponible, suba o dibuje la firma actual. Formatos: JPG, PNG o WebP. Tamaño sugerido: 800x400 px. Máximo 5 MB.</small>
+                                    <small class="text-muted d-block" data-upload-preview="verificationSignatureUpload"></small>
+                                </div>
+                                <input type="hidden" name="signature_data" id="verificationSignatureDataField">
+                            </div>
 
                             <div class="d-flex justify-content-between align-items-center">
                                 <button type="button" class="btn btn-outline-secondary" data-action="back-to-registration"><i class="mdi mdi-chevron-left"></i> Volver al registro</button>
@@ -287,7 +282,7 @@
             <div class="box">
                 <div class="box-header with-border d-flex justify-content-between align-items-center">
                     <h4 class="box-title mb-0">Certificaciones recientes</h4>
-                    <small class="text-muted">Últimos <?= count($certifications) ?> registros</small>
+                    <small class="text-muted">Últimos {{ count($certifications) }} registros</small>
                 </div>
                 <div class="box-body p-0">
                     <div class="table-responsive">
@@ -302,45 +297,45 @@
                                 </tr>
                             </thead>
                             <tbody>
-                            <?php if (empty($certifications)): ?>
+                            @if(empty($certifications))
                                 <tr>
                                     <td colspan="5" class="text-center text-muted py-4">Todavía no existen certificaciones registradas.</td>
                                 </tr>
-                            <?php else: ?>
-                                <?php foreach ($certifications as $cert): ?>
+                            @else
+                                @foreach($certifications as $cert)
+                                    @php
+                                        $statusBadge = [
+                                            'verified' => 'success',
+                                            'pending' => 'warning',
+                                            'revoked' => 'danger',
+                                            'expired' => 'danger',
+                                        ];
+                                        $badge = $statusBadge[$cert['status']] ?? 'secondary';
+                                    @endphp
                                     <tr>
-                                        <td>#<?= (int) $cert['id'] ?></td>
+                                        <td>#{{ (int) $cert['id'] }}</td>
                                         <td>
-                                            <strong><?= htmlspecialchars($cert['full_name'] ?: 'Sin nombre registrado', ENT_QUOTES, 'UTF-8') ?></strong><br>
-                                            <small class="text-muted">HC: <?= htmlspecialchars($cert['patient_id'], ENT_QUOTES, 'UTF-8') ?></small>
+                                            <strong>{{ $cert['full_name'] ?: 'Sin nombre registrado' }}</strong><br>
+                                            <small class="text-muted">HC: {{ $cert['patient_id'] }}</small>
                                         </td>
                                         <td>
-                                            <div><?= htmlspecialchars(strtoupper($cert['document_type']), ENT_QUOTES, 'UTF-8') ?></div>
-                                            <small class="text-muted"><?= htmlspecialchars($cert['document_number'], ENT_QUOTES, 'UTF-8') ?></small>
+                                            <div>{{ strtoupper($cert['document_type']) }}</div>
+                                            <small class="text-muted">{{ $cert['document_number'] }}</small>
                                         </td>
                                         <td>
-                                            <?php
-                                            $statusBadge = [
-                                                'verified' => 'success',
-                                                'pending' => 'warning',
-                                                'revoked' => 'danger',
-                                                'expired' => 'danger',
-                                            ];
-                                            $badge = $statusBadge[$cert['status']] ?? 'secondary';
-                                            ?>
-                                            <span class="badge bg-<?= $badge ?>"><?= ucfirst($cert['status']) ?></span>
+                                            <span class="badge bg-{{ $badge }}">{{ ucfirst($cert['status']) }}</span>
                                         </td>
                                         <td>
-                                            <?php if (!empty($cert['last_verification_at'])): ?>
-                                                <span class="d-block"><?= htmlspecialchars($cert['last_verification_at'], ENT_QUOTES, 'UTF-8') ?></span>
-                                                <small class="text-muted">Resultado: <?= htmlspecialchars($cert['last_verification_result'] ?? 'N/A', ENT_QUOTES, 'UTF-8') ?></small>
-                                            <?php else: ?>
+                                            @if(!empty($cert['last_verification_at']))
+                                                <span class="d-block">{{ $cert['last_verification_at'] }}</span>
+                                                <small class="text-muted">Resultado: {{ $cert['last_verification_result'] ?? 'N/A' }}</small>
+                                            @else
                                                 <span class="text-muted">Sin verificaciones</span>
-                                            <?php endif; ?>
+                                            @endif
                                         </td>
                                     </tr>
-                                <?php endforeach; ?>
-                            <?php endif; ?>
+                                @endforeach
+                            @endif
                             </tbody>
                         </table>
                     </div>
@@ -349,3 +344,4 @@
         </div>
     </div>
 </section>
+@endsection

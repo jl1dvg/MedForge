@@ -1,10 +1,10 @@
 <?php
 
-namespace Modules\IdentityVerification\Services;
+declare(strict_types=1);
 
-use Models\SettingsModel;
-use PDO;
-use RuntimeException;
+namespace App\Modules\IdentityVerification\Services;
+
+use App\Modules\Shared\Support\SettingsOptionResolver;
 use Throwable;
 
 class VerificationPolicyService
@@ -39,16 +39,10 @@ class VerificationPolicyService
         ],
     ];
 
-    private ?SettingsModel $settingsModel = null;
     private ?array $cache = null;
 
-    public function __construct(PDO $pdo)
+    public function __construct(private readonly SettingsOptionResolver $settingsResolver)
     {
-        try {
-            $this->settingsModel = new SettingsModel($pdo);
-        } catch (RuntimeException) {
-            $this->settingsModel = null;
-        }
     }
 
     public function getValidityDays(): int
@@ -170,14 +164,8 @@ class VerificationPolicyService
 
         $config = self::DEFAULTS;
 
-        if (!($this->settingsModel instanceof SettingsModel)) {
-            $this->cache = $config;
-
-            return $this->cache;
-        }
-
         try {
-            $options = $this->settingsModel->getOptions([
+            $options = $this->settingsResolver->getOptions([
                 'identity_verification_validity_days',
                 'identity_verification_face_approve_threshold',
                 'identity_verification_face_reject_threshold',
