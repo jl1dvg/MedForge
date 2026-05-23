@@ -5,6 +5,7 @@ use App\Http\Middleware\MarkLegacyAliasUsage;
 use App\Http\Middleware\EnsureWhatsappFeatureEnabled;
 use App\Http\Middleware\RequireAppPermission;
 use App\Http\Middleware\RequireAppSession;
+use App\Http\Middleware\CiveExtensionAuth;
 use App\Http\Middleware\ConsultasCors;
 use App\Http\Middleware\RequireLegacyPermission;
 use App\Http\Middleware\RequireLegacySession;
@@ -31,6 +32,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'legacy.permission' => RequireLegacyPermission::class,
             'legacy.alias' => MarkLegacyAliasUsage::class,
             'consultas.cors' => ConsultasCors::class,
+            'cive.extension.auth' => CiveExtensionAuth::class,
             'whatsapp.feature' => EnsureWhatsappFeatureEnabled::class,
         ]);
     })
