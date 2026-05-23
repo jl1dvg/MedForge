@@ -157,6 +157,10 @@ return new class extends Migration {
 
     public function down(): void
     {
+        if (app()->environment('production')) {
+            throw new RuntimeException('No se permite revertir tablas críticas de WhatsApp en producción.');
+        }
+
         Schema::dropIfExists('whatsapp_agent_presence');
         Schema::dropIfExists('whatsapp_handoff_events');
         Schema::dropIfExists('whatsapp_handoffs');
