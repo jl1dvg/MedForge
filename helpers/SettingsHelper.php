@@ -362,7 +362,7 @@ class SettingsHelper
                         'description' => 'Define sedes y el comportamiento por defecto.',
                         'fields' => [
                             self::checkboxField('locations_enabled', 'Habilitar multi-sede'),
-                            self::textareaField('locations_list', 'Sedes', 'Formato JSON o id|nombre|color|logo|timezone por línea.'),
+                            self::textareaField('locations_list', 'Sedes', 'Una sede por línea: id | nombre | color | logo | zona horaria.'),
                             self::textField('default_location_id', 'Sede predeterminada'),
                             self::checkboxField('location_scoped_settings', 'Aislar settings por sede'),
                         ],
@@ -442,7 +442,7 @@ class SettingsHelper
                             self::textareaField(
                                 'crm_whatsapp_stage_templates',
                                 'Plantillas de WhatsApp por etapa',
-                                'Una regla por línea: Etapa | nombre_de_plantilla | idioma | componentes (JSON opcional).'
+                                'Una regla por línea: Etapa | nombre_de_plantilla | idioma | componentes opcionales.'
                                 . " Ejemplo: Evaluación médica realizada | prequirurgico_confirmado | es | {\"components\":[{\"type\":\"body\",\"parameters\":[{\"type\":\"text\",\"text\":\"{{nombre}}\"}]}]}"
                             ),
                             self::selectField(
@@ -969,12 +969,12 @@ class SettingsHelper
                     [
                         'id' => 'custom',
                         'title' => 'Grupos adicionales',
-                        'description' => 'Define reglas extra en formato JSON compatibles con el arreglo $grupoConfigs.',
+                        'description' => 'Define grupos adicionales solo cuando soporte técnico lo solicite.',
                         'fields' => [
                             self::textareaField(
                                 'billing_informes_custom_groups',
-                                'Configuración avanzada (JSON)',
-                                'Ejemplo: [{"slug":"seguroxyz","titulo":"Informe Seguro XYZ","basePath":"/informes/seguroxyz","afiliaciones":["seguro xyz"],"excelButtons":[{"grupo":"XYZ","label":"Excel"}]}]'
+                                'Configuración avanzada',
+                                'Uso reservado para soporte técnico.'
                             ),
                         ],
                     ],
@@ -1225,9 +1225,9 @@ class SettingsHelper
                                 $timezones,
                                 'America/Guayaquil'
                             ),
-                            self::textareaField(
+                            array_merge(self::textareaField(
                                 'whatsapp_handoff_business_schedule',
-                                'Horario semanal del Contact Center (JSON)',
+                                'Horario semanal del Contact Center',
                                 'Define por día si humano atiende y en qué horario. Fuera de este horario responde el bot.',
                                 json_encode([
                                     'monday' => ['enabled' => true, 'start' => '08:00', 'end' => '18:00'],
@@ -1238,7 +1238,7 @@ class SettingsHelper
                                     'saturday' => ['enabled' => true, 'start' => '08:00', 'end' => '18:00'],
                                     'sunday' => ['enabled' => false, 'start' => '08:00', 'end' => '18:00'],
                                 ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)
-                            ),
+                            ), ['type' => 'weekly_schedule']),
                             self::textareaField(
                                 'whatsapp_handoff_business_holidays',
                                 'Feriados del Contact Center',
@@ -1363,7 +1363,7 @@ class SettingsHelper
                             array_merge(
                                 self::textareaField(
                                     'whatsapp_autoresponder_action_catalog',
-                                    'Catálogo de acciones del Flow (JSON)',
+                                    'Catálogo de acciones del Flow',
                                     'Personaliza etiquetas y ayudas del constructor no-code. Si queda vacío, usa el catálogo estándar.',
                                     "[{\"value\":\"send_message\",\"label\":\"Enviar mensaje o multimedia\",\"help\":\"Entrega un mensaje simple, imagen, documento o ubicación.\"},{\"value\":\"send_sequence\",\"label\":\"Enviar secuencia de mensajes\",\"help\":\"Combina varios mensajes consecutivos en una sola acción.\"},{\"value\":\"send_buttons\",\"label\":\"Enviar botones\",\"help\":\"Presenta botones interactivos para guiar la respuesta.\"},{\"value\":\"send_list\",\"label\":\"Enviar lista interactiva\",\"help\":\"Muestra un menú desplegable con secciones y múltiples opciones.\"},{\"value\":\"send_template\",\"label\":\"Enviar plantilla aprobada\",\"help\":\"Usa una plantilla autorizada por Meta con variables predefinidas.\"},{\"value\":\"set_state\",\"label\":\"Actualizar estado\",\"help\":\"Actualiza el estado del flujo para controlar próximos pasos.\"},{\"value\":\"set_context\",\"label\":\"Guardar en contexto\",\"help\":\"Almacena pares clave-valor disponibles en mensajes futuros.\"},{\"value\":\"store_consent\",\"label\":\"Guardar consentimiento\",\"help\":\"Registra si el paciente aceptó o rechazó la autorización.\"},{\"value\":\"lookup_patient\",\"label\":\"Validar cédula en BD\",\"help\":\"Busca al paciente usando la cédula o historia clínica proporcionada.\"},{\"value\":\"handoff_agent\",\"label\":\"Derivar a agente\",\"help\":\"Marca la conversación para atención humana y define el equipo responsable.\"},{\"value\":\"conditional\",\"label\":\"Condicional\",\"help\":\"Divide el flujo en acciones alternativas según una condición.\"},{\"value\":\"goto_menu\",\"label\":\"Redirigir al menú\",\"help\":\"Envía nuevamente el mensaje de menú configurado más abajo.\"},{\"value\":\"upsert_patient_from_context\",\"label\":\"Guardar paciente con datos actuales\",\"help\":\"Crea o actualiza el paciente con los datos capturados en contexto.\"}]"
                                 ),
@@ -1797,8 +1797,8 @@ class SettingsHelper
                             self::numberField('solicitudes.sla.critical_hours', 'SLA crítico (horas)', 24),
                             self::textareaField(
                                 'solicitudes.sla.labels',
-                                'Etiquetas SLA (JSON)',
-                                'Opcional. Define labels/íconos por estado SLA.',
+                                'Etiquetas SLA',
+                                'Opcional. Define etiquetas e iconos por estado SLA.',
                                 json_encode([
                                     'en_rango' => ['color' => 'success', 'label' => 'SLA en rango', 'icon' => 'mdi-check-circle-outline'],
                                     'advertencia' => ['color' => 'warning', 'label' => 'SLA 72h', 'icon' => 'mdi-timer-sand'],
@@ -1845,8 +1845,8 @@ class SettingsHelper
                             ),
                             self::textareaField(
                                 'solicitudes.report.quick_metrics',
-                                'Quick reports (JSON)',
-                                'Formato JSON con label y estado/sla_status por clave.',
+                                'Reportes rápidos',
+                                'Uso avanzado para definir accesos directos de reportes.',
                                 json_encode([
                                     'anestesia' => [
                                         'label' => 'Pendientes de apto de anestesia',
@@ -1914,7 +1914,7 @@ class SettingsHelper
                             self::textareaField(
                                 'cive_extension_custom_headers',
                                 'Headers por tenant',
-                                'Formato JSON: {"tenantA":{"X-Tenant":"A"},"tenantB":{"X-Tenant":"B","X-Region":"EU"}}',
+                                'Uso avanzado para soporte técnico.',
                                 'Se aplican en cada solicitud saliente desde la extensión.'
                             ),
                         ],

@@ -618,6 +618,10 @@ class FlowRuntimeExecutionService
             return $context;
         }
 
+        if ($this->isNavigationCommand($text)) {
+            return $context;
+        }
+
         [$value, $interactiveLabel] = $this->resolveCapturedInputValue($text, $inboundMessage);
         $field = trim($field);
         $context[$field] = $value;
@@ -636,6 +640,17 @@ class FlowRuntimeExecutionService
         unset($context['awaiting_field']);
 
         return $context;
+    }
+
+    private function isNavigationCommand(string $text): bool
+    {
+        return in_array($this->normalizeText(str_replace('_', ' ', $text)), [
+            'atras',
+            'volver',
+            'menu',
+            'inicio',
+            'salir',
+        ], true);
     }
 
     /**

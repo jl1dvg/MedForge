@@ -1108,6 +1108,22 @@ class FlowSigcenterAgendaService
         $nextState = trim((string) ($action['next_state'] ?? ''));
 
         if (
+            $storeResultAs === 'agenda_medicos_busqueda'
+            || str_contains($storeResultAs, 'medicos_busqueda')
+            || str_contains($nextState, 'doctor_directo')
+        ) {
+            return 'list_doctors_by_name';
+        }
+
+        if (
+            $storeResultAs === 'sigcenter_sedes_doctor'
+            || str_contains($storeResultAs, 'sedes_doctor')
+            || str_contains($nextState, 'sede_directa')
+        ) {
+            return 'list_sedes_by_doctor';
+        }
+
+        if (
             $storeResultAs === 'agenda_medicos_fecha'
             || str_contains($storeResultAs, 'medicos_fecha')
             || str_contains($nextState, 'medico_general_por_fecha')
@@ -2045,6 +2061,7 @@ class FlowSigcenterAgendaService
             ->where('active', true)
             ->where('sede_id', $sedeId)
             ->where('subespecialidad', $subespecialidad)
+            ->whereDate('fecha', '>=', Carbon::now('America/Guayaquil')->toDateString())
             ->groupBy('fecha')
             ->orderBy('fecha')
             ->get()

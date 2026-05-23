@@ -101,6 +101,39 @@
         });
     }
 
+    function initWeeklySchedules() {
+        document.querySelectorAll('[data-weekly-schedule]').forEach(container => {
+            const target = document.getElementById(container.dataset.target || '');
+            if (!target) return;
+
+            function sync() {
+                const schedule = {};
+                container.querySelectorAll('.settings-weekly-row[data-day]').forEach(row => {
+                    const enabledInput = row.querySelector('[data-schedule-enabled]');
+                    const startInput = row.querySelector('[data-schedule-start]');
+                    const endInput = row.querySelector('[data-schedule-end]');
+                    const enabled = !!enabledInput?.checked;
+                    row.classList.toggle('is-disabled', !enabled);
+                    if (startInput) startInput.disabled = !enabled;
+                    if (endInput) endInput.disabled = !enabled;
+                    schedule[row.dataset.day] = {
+                        enabled,
+                        start: startInput?.value || '08:00',
+                        end: endInput?.value || '18:00',
+                    };
+                });
+                target.value = JSON.stringify(schedule);
+                target.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+
+            container.querySelectorAll('input').forEach(input => {
+                input.addEventListener('change', sync);
+                input.addEventListener('input', sync);
+            });
+            sync();
+        });
+    }
+
     // --- Dirty tracking: detecta cambios para mostrar aviso ---
     function initDirtyTracking() {
         document.querySelectorAll('[data-settings-form]').forEach(form => {
@@ -232,6 +265,7 @@
         initFileUpload();
         initPasswordToggle();
         initColorPreview();
+        initWeeklySchedules();
         initDirtyTracking();
         initAjaxSave();
     });

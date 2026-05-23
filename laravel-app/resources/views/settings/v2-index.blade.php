@@ -44,6 +44,69 @@
             resize: vertical;
         }
 
+        .settings-section-card .form-label {
+            color: #233142;
+        }
+
+        .settings-advanced-json {
+            border: 1px solid #d8e0ea;
+            border-radius: 8px;
+            background: #f8fafc;
+        }
+
+        .settings-advanced-json summary {
+            min-height: 44px;
+            padding: 10px 14px;
+            cursor: pointer;
+            color: #334155;
+            font-weight: 600;
+            list-style-position: inside;
+        }
+
+        .settings-advanced-json__body {
+            border-top: 1px solid #d8e0ea;
+            padding: 14px;
+        }
+
+        .settings-weekly-schedule {
+            border: 1px solid #d8e0ea;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .settings-weekly-row {
+            display: grid;
+            grid-template-columns: minmax(120px, 1fr) minmax(120px, 150px) minmax(120px, 150px) minmax(132px, auto);
+            gap: 12px;
+            align-items: center;
+            padding: 12px 14px;
+            border-top: 1px solid #e6edf5;
+            background: #fff;
+        }
+
+        .settings-weekly-row:first-child {
+            border-top: 0;
+        }
+
+        .settings-weekly-row.is-disabled {
+            background: #f8fafc;
+            color: #64748b;
+        }
+
+        .settings-weekly-row.is-disabled input[type="time"] {
+            opacity: 0.55;
+        }
+
+        .settings-weekly-day {
+            font-weight: 600;
+        }
+
+        @media (max-width: 767.98px) {
+            .settings-weekly-row {
+                grid-template-columns: 1fr;
+            }
+        }
+
         .settings-file-preview img {
             max-height: 54px;
             max-width: 180px;
@@ -208,8 +271,16 @@
                                                     $displayValue = $field['display_value'] ?? '';
                                                     $hasValue = !empty($field['has_value']);
                                                     $required = !empty($field['required']);
+                                                    $fieldLabel = (string) ($field['label'] ?? $key);
+                                                    $fieldHelp = (string) ($field['help'] ?? $field['description'] ?? '');
+                                                    $stringValue = is_string($displayValue) ? trim($displayValue) : '';
+                                                    $jsonCandidate = $stringValue !== '' ? $stringValue : (is_string($field['default'] ?? null) ? trim((string) $field['default']) : '');
+                                                    $looksStructuredJson = $type === 'textarea'
+                                                        && $jsonCandidate !== ''
+                                                        && in_array(substr($jsonCandidate, 0, 1), ['{', '['], true)
+                                                        && (str_contains(strtolower($fieldLabel . ' ' . $fieldHelp), 'json') || json_decode($jsonCandidate, true) !== null);
                                                     $columnClass = match ($type) {
-                                                        'textarea', 'billing_rules' => 'col-12',
+                                                        'textarea', 'billing_rules', 'weekly_schedule' => 'col-12',
                                                         'color' => 'col-md-4 col-sm-6',
                                                         'file', 'checkbox', 'checkbox_group' => 'col-md-6 col-sm-12',
                                                         default => 'col-md-6 col-sm-12',
@@ -227,7 +298,58 @@
                                                             </label>
                                                         @endif
 
-                                                        @if($type === 'textarea')
+                                                        @if($type === 'weekly_schedule')
+                                                            @php
+                                                                $scheduleRaw = is_string($displayValue) && trim($displayValue) !== '' ? (string) $displayValue : (string) ($field['default'] ?? '{}');
+                                                                $scheduleValue = json_decode($scheduleRaw, true);
+                                                                if (!is_array($scheduleValue)) {
+                                                                    $scheduleValue = [];
+                                                                }
+                                                                $weekdays = [
+                                                                    'monday' => 'Lunes',
+                                                                    'tuesday' => 'Martes',
+                                                                    'wednesday' => 'Miércoles',
+                                                                    'thursday' => 'Jueves',
+                                                                    'friday' => 'Viernes',
+                                                                    'saturday' => 'Sábado',
+                                                                    'sunday' => 'Domingo',
+                                                                ];
+                                                            @endphp
+                                                            <div class="settings-weekly-schedule" data-weekly-schedule data-target="{{ $fieldId }}">
+                                                                @foreach($weekdays as $dayKey => $dayLabel)
+                                                                    @php
+                                                                        $day = is_array($scheduleValue[$dayKey] ?? null) ? $scheduleValue[$dayKey] : [];
+                                                                        $enabled = array_key_exists('enabled', $day) ? (bool) $day['enabled'] : !in_array($dayKey, ['sunday'], true);
+                                                                        $start = (string) ($day['start'] ?? '08:00');
+                                                                        $end = (string) ($day['end'] ?? '18:00');
+                                                                    @endphp
+                                                                    <div class="settings-weekly-row {{ $enabled ? '' : 'is-disabled' }}" data-day="{{ $dayKey }}">
+                                                                        <div class="settings-weekly-day">{{ $dayLabel }}</div>
+                                                                        <div>
+                                                                            <label class="form-label small text-muted mb-1" for="{{ $fieldId }}_{{ $dayKey }}_start">Inicio</label>
+                                                                            <input type="time" class="form-control" id="{{ $fieldId }}_{{ $dayKey }}_start" data-schedule-start value="{{ $start }}" @disabled(!$enabled)>
+                                                                        </div>
+                                                                        <div>
+                                                                            <label class="form-label small text-muted mb-1" for="{{ $fieldId }}_{{ $dayKey }}_end">Fin</label>
+                                                                            <input type="time" class="form-control" id="{{ $fieldId }}_{{ $dayKey }}_end" data-schedule-end value="{{ $end }}" @disabled(!$enabled)>
+                                                                        </div>
+                                                                        <div class="form-check form-switch mb-0">
+                                                                            <input class="form-check-input" type="checkbox" role="switch" id="{{ $fieldId }}_{{ $dayKey }}_enabled" data-schedule-enabled @checked($enabled)>
+                                                                            <label class="form-check-label" for="{{ $fieldId }}_{{ $dayKey }}_enabled">Atiende este día</label>
+                                                                        </div>
+                                                                    </div>
+                                                                @endforeach
+                                                                <textarea class="d-none" name="{{ $key }}" id="{{ $fieldId }}">{{ $scheduleRaw }}</textarea>
+                                                            </div>
+                                                        @elseif($type === 'textarea' && $looksStructuredJson)
+                                                            <details class="settings-advanced-json">
+                                                                <summary>Configuración avanzada para soporte técnico</summary>
+                                                                <div class="settings-advanced-json__body">
+                                                                    <textarea class="form-control font-monospace" rows="8" name="{{ $key }}" id="{{ $fieldId }}" @required($required)>{{ (string) $displayValue }}</textarea>
+                                                                    <p class="form-text text-muted mb-0">Este campo conserva una estructura interna. Cambiarlo manualmente puede afectar el funcionamiento del módulo.</p>
+                                                                </div>
+                                                            </details>
+                                                        @elseif($type === 'textarea')
                                                             <textarea class="form-control" rows="4" name="{{ $key }}" id="{{ $fieldId }}" @required($required)>{{ (string) $displayValue }}</textarea>
                                                         @elseif($type === 'select')
                                                             <select class="form-select" name="{{ $key }}" id="{{ $fieldId }}" @required($required)>
@@ -420,7 +542,7 @@
                                                             <input type="{{ $type }}" class="form-control" name="{{ $key }}" id="{{ $fieldId }}" value="{{ (string) $displayValue }}" @required($required)>
                                                         @endif
 
-                                                        @if(!empty($field['help']))
+                                                        @if(!empty($field['help']) && !$looksStructuredJson)
                                                             <p class="form-text text-muted mb-0">{{ (string) $field['help'] }}</p>
                                                         @elseif($type === 'password' && $hasValue)
                                                             <p class="form-text text-muted mb-0">Deja el campo vacío para mantener la contraseña actual.</p>
@@ -537,6 +659,39 @@
                 });
             }
 
+            function initWeeklySchedules() {
+                document.querySelectorAll('[data-weekly-schedule]').forEach(container => {
+                    const target = document.getElementById(container.dataset.target || '');
+                    if (!target) return;
+
+                    function sync() {
+                        const schedule = {};
+                        container.querySelectorAll('.settings-weekly-row[data-day]').forEach(row => {
+                            const enabledInput = row.querySelector('[data-schedule-enabled]');
+                            const startInput = row.querySelector('[data-schedule-start]');
+                            const endInput = row.querySelector('[data-schedule-end]');
+                            const enabled = !!enabledInput?.checked;
+                            row.classList.toggle('is-disabled', !enabled);
+                            if (startInput) startInput.disabled = !enabled;
+                            if (endInput) endInput.disabled = !enabled;
+                            schedule[row.dataset.day] = {
+                                enabled,
+                                start: startInput?.value || '08:00',
+                                end: endInput?.value || '18:00',
+                            };
+                        });
+                        target.value = JSON.stringify(schedule);
+                        target.dispatchEvent(new Event('input', { bubbles: true }));
+                    }
+
+                    container.querySelectorAll('input').forEach(input => {
+                        input.addEventListener('change', sync);
+                        input.addEventListener('input', sync);
+                    });
+                    sync();
+                });
+            }
+
             function initDirtyTracking() {
                 document.querySelectorAll('[data-settings-form]').forEach(form => {
                     const msg = form.querySelector('.settings-dirty-msg');
@@ -604,6 +759,7 @@
                 initFileUpload();
                 initPasswordToggle();
                 initColorPreview();
+                initWeeklySchedules();
                 initDirtyTracking();
                 initAjaxSave();
             });
