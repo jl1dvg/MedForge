@@ -726,7 +726,7 @@ class WhatsappWebhookControllerTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.messages_persisted', 1)
             ->assertJsonPath('data.automation_runs', 1)
-            ->assertJsonPath('data.automation_messages_sent', 0);
+            ->assertJsonPath('data.automation_messages_sent', 1);
 
         $session = \DB::table('whatsapp_autoresponder_sessions')
             ->where('wa_number', '593999111445')
@@ -734,9 +734,12 @@ class WhatsappWebhookControllerTest extends TestCase
         $context = json_decode((string) $session?->context, true);
 
         $this->assertSame('2001', $context['trabajador_id'] ?? null);
-        $this->assertDatabaseMissing('whatsapp_messages', [
+        // Context preserved for agenda progress
+        $this->assertSame('agenda_esperando_medico', $context['state'] ?? null);
+        // Generic no-match message sent (context preserved, not the fallback scenario)
+        $this->assertDatabaseHas('whatsapp_messages', [
             'direction' => 'outbound',
-            'body' => 'Hola, somos CIVE. Un agente se pondrá en contacto contigo en breve.',
+            'body' => "No entendí tu mensaje.\nEscribe *MENU* para ver las opciones.",
         ]);
     }
 
