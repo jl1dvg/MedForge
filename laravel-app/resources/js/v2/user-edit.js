@@ -177,20 +177,30 @@
 
     nameFields.forEach(function (f) { f.addEventListener('input', updateFullName); });
 
-    /* ── Subespecialidad enable/disable ─────────────────────────────────── */
-    var especialidadSelect   = document.getElementById('especialidad');
-    var subespecialidadInput = document.getElementById('subespecialidad');
+    /* ── Subespecialidad group show/hide ────────────────────────────────── */
+    var especialidadSelect        = document.getElementById('especialidad');
+    var subespecialidadGroup      = document.getElementById('subespecialidad-group');
+    var subespecialidadCheckboxes = Array.from(
+        document.querySelectorAll('input[name="subespecialidad[]"]')
+    );
 
     function toggleSubespecialidad() {
-        if (!especialidadSelect || !subespecialidadInput) return;
+        if (!especialidadSelect) return;
         var isOftalmologo = especialidadSelect.value === 'Cirujano Oftalmólogo';
-        subespecialidadInput.disabled = !isOftalmologo;
-        if (!isOftalmologo) subespecialidadInput.value = '';
+
+        if (subespecialidadGroup) {
+            subespecialidadGroup.toggleAttribute('hidden', !isOftalmologo);
+        }
+
+        // Uncheck all when hiding so hidden checkboxes are not submitted
+        if (!isOftalmologo) {
+            subespecialidadCheckboxes.forEach(function (cb) { cb.checked = false; });
+        }
     }
 
     if (especialidadSelect) {
         especialidadSelect.addEventListener('change', toggleSubespecialidad);
-        toggleSubespecialidad();
+        toggleSubespecialidad(); // apply on page load
     }
 
     /* ── Delete confirmation modal ──────────────────────────────────────── */
