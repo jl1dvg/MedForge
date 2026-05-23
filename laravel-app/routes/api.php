@@ -26,6 +26,9 @@ Route::prefix('v2')->group(function (): void {
     Route::middleware('web')->group(function (): void {
         require __DIR__ . '/v2/examenes.php';
     });
+    Route::middleware('web')->group(function (): void {
+        require __DIR__ . '/v2/identity_verification.php';
+    });
     require __DIR__ . '/v2/consultas.php';
     require __DIR__ . '/v2/crm.php';
     require __DIR__ . '/v2/codes.php';
@@ -159,6 +162,11 @@ Route::middleware('web')->group(function (): void {
 // /doctores routes intentionally outside /v2 prefix — matches legacy paths
 Route::middleware('web')->group(function (): void {
     require __DIR__ . '/v2/doctores.php';
+});
+
+// /cron-manager routes intentionally outside /v2 prefix — matches legacy paths
+Route::middleware('web')->group(function (): void {
+    require __DIR__ . '/v2/cron_manager.php';
 });
 
 // /api/cive-extension routes — consumed by Chrome extension (asistentecive.consulmed.me)
