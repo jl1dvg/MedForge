@@ -85,7 +85,7 @@ class FlowRuntimeExecutionService
                 'type' => 'text',
                 'body' => $mediaReplies[$type] ?? "Solo proceso mensajes de texto.\nEscribe *MENU* para ver las opciones.",
             ], []);
-            return $this->result(true, false, 'non_text_reply', 1, false, 'empty_text');
+            return $this->result(true, false, 'non_text_reply', 1, false, 'non_text_message');
         }
 
         $waNumber = (string)($conversation->wa_number ?? '');
