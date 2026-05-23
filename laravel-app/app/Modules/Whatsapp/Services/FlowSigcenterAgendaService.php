@@ -389,18 +389,26 @@ class FlowSigcenterAgendaService
             'list_dates_by_specialty' => [
                 'outbound_message' => [
                     'type' => 'text',
-                    'body' => trim((string) ($action['empty_message'] ?? 'No encontré fechas disponibles para esa sede en los próximos días. Si deseas, escribe MENU para intentar otra opción.')),
+                    'body' => trim((string) ($action['empty_message'] ?? 'No pude confirmar fechas disponibles automáticamente en este momento. Ya pasé tu solicitud al equipo de agenda para que revise cupos y te ayude a continuar.')),
                 ],
                 'save_response_as' => null,
-                'next_state' => (string) ($action['empty_next_state'] ?? 'menu_principal'),
+                'next_state' => (string) ($action['empty_next_state'] ?? 'handoff_agenda_disponibilidad'),
+                'handoff_requested' => true,
+                'handoff_topic' => 'agenda_sin_disponibilidad',
+                'handoff_priority' => 'high',
+                'handoff_note' => $this->availabilityHandoffNote($result, 'No hubo fechas futuras en disponibilidad local por sede/especialidad.'),
             ],
             'list_doctors_by_date' => [
                 'outbound_message' => [
                     'type' => 'text',
-                    'body' => trim((string) ($action['empty_message'] ?? 'No encontré médicos disponibles para esa fecha. Puedes elegir otra fecha o escribir MENU.')),
+                    'body' => trim((string) ($action['empty_message'] ?? 'No pude confirmar médicos disponibles para esa fecha automáticamente. Ya pasé tu solicitud al equipo de agenda para que revise cupos y te ayude a continuar.')),
                 ],
                 'save_response_as' => null,
-                'next_state' => (string) ($action['empty_next_state'] ?? 'agenda_esperando_fecha_general'),
+                'next_state' => (string) ($action['empty_next_state'] ?? 'handoff_agenda_disponibilidad'),
+                'handoff_requested' => true,
+                'handoff_topic' => 'agenda_sin_disponibilidad',
+                'handoff_priority' => 'high',
+                'handoff_note' => $this->availabilityHandoffNote($result, 'No hubo médicos disponibles en disponibilidad local para fecha/sede/especialidad.'),
             ],
             'list_procedimientos' => [
                 'outbound_message' => [
@@ -413,21 +421,50 @@ class FlowSigcenterAgendaService
             'list_days' => [
                 'outbound_message' => [
                     'type' => 'text',
-                    'body' => trim((string) ($action['empty_message'] ?? 'No encontré fechas disponibles con esa selección. Puedes escribir ATRÁS para volver o MENU para intentar otra opción.')),
+                    'body' => trim((string) ($action['empty_message'] ?? 'No pude confirmar fechas disponibles con esa selección automáticamente. Ya pasé tu solicitud al equipo de agenda para que revise cupos y te ayude a continuar.')),
                 ],
                 'save_response_as' => null,
-                'next_state' => (string) ($action['empty_next_state'] ?? 'menu_principal'),
+                'next_state' => (string) ($action['empty_next_state'] ?? 'handoff_agenda_disponibilidad'),
+                'handoff_requested' => true,
+                'handoff_topic' => 'agenda_sin_disponibilidad',
+                'handoff_priority' => 'high',
+                'handoff_note' => $this->availabilityHandoffNote($result, 'Sigcenter no devolvió días disponibles para médico/sede.'),
             ],
             'list_times' => [
                 'outbound_message' => [
                     'type' => 'text',
-                    'body' => trim((string) ($action['empty_message'] ?? 'No encontré horarios disponibles para esa fecha. Puedes escribir ATRÁS para volver o MENU para intentar otra opción.')),
+                    'body' => trim((string) ($action['empty_message'] ?? 'No pude confirmar horarios disponibles para esa fecha automáticamente. Ya pasé tu solicitud al equipo de agenda para que revise cupos y te ayude a continuar.')),
                 ],
                 'save_response_as' => null,
-                'next_state' => (string) ($action['empty_next_state'] ?? 'menu_principal'),
+                'next_state' => (string) ($action['empty_next_state'] ?? 'handoff_agenda_disponibilidad'),
+                'handoff_requested' => true,
+                'handoff_topic' => 'agenda_sin_disponibilidad',
+                'handoff_priority' => 'high',
+                'handoff_note' => $this->availabilityHandoffNote($result, 'Sigcenter no devolvió horarios disponibles para médico/sede/fecha.'),
             ],
             default => null,
         };
+    }
+
+    /**
+     * @param array<string, mixed> $result
+     */
+    private function availabilityHandoffNote(array $result, string $reason): string
+    {
+        $payload = is_array($result['payload'] ?? null) ? $result['payload'] : [];
+        $context = is_array($result['context_snapshot'] ?? null) ? $result['context_snapshot'] : [];
+
+        $parts = array_filter([
+            'Rescate automático de agenda WhatsApp.',
+            $reason,
+            'Operación: ' . (string) ($result['operation'] ?? ''),
+            'Sede: ' . (string) ($payload['sede_id'] ?? $context['sede_id_label'] ?? $context['sede_id'] ?? ''),
+            'Especialidad: ' . (string) ($payload['subespecialidad'] ?? $context['subespecialidad_label'] ?? $context['subespecialidad'] ?? ''),
+            'Médico: ' . (string) ($payload['trabajador_id'] ?? $context['trabajador_id_label'] ?? $context['trabajador_id'] ?? ''),
+            'Fecha: ' . (string) ($payload['fecha'] ?? $payload['FECHA'] ?? $context['fecha_label'] ?? $context['fecha'] ?? ''),
+        ], static fn (string $value): bool => trim($value) !== '' && !str_ends_with(trim($value), ':'));
+
+        return implode(' · ', $parts);
     }
 
     /**
@@ -1024,7 +1061,9 @@ class FlowSigcenterAgendaService
         }
 
         if ($method === 'GET') {
-            return $pending->get($endpoint, $payload);
+            // Sigcenter documents these lookups as GET, but its Yii controller reads
+            // request body params instead of query-string params.
+            return $pending->send('GET', $endpoint, ['json' => $payload]);
         }
 
         return $pending->send($method, $endpoint, ['json' => $payload]);
@@ -1323,8 +1362,8 @@ class FlowSigcenterAgendaService
             'list_dates_by_specialty' => 'local://availability/fechas-por-especialidad',
             'list_doctors_by_date' => 'local://availability/doctores-por-fecha',
             'list_procedimientos' => 'https://sigcenter.ddns.net:18093/restful/api-agenda/procedimiento-doctor-crm',
-            'list_days' => 'https://sigcenter.ddns.net:18093/restful/api-agenda/horarios-disponibles-dias-online',
-            'list_times' => 'https://sigcenter.ddns.net:18093/restful/api-agenda/horarios-disponibles-especifico-online',
+            'list_days' => 'https://sigcenter.ddns.net:18093/restful/api-agenda/horarios-disponibles-dias',
+            'list_times' => 'https://sigcenter.ddns.net:18093/restful/api-agenda/horarios-disponibles-especifico',
             'book_appointment' => 'https://sigcenter.ddns.net:18093/restful/api-eva/agendar-facturar',
             'cancel_appointment' => 'https://sigcenter.ddns.net:18093/restful/api-agenda/cancelar-cita',
             default => '',

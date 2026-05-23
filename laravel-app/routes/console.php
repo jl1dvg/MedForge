@@ -2440,7 +2440,7 @@ Schedule::command('whatsapp:monitor-abandonment --limit=100')
         && (bool) config('whatsapp.migration.abandonment_monitor.enabled', false));
 
 Schedule::command("whatsapp:sigcenter-availability-sync --days=7 --specialty='oftalmologo general'")
-    ->dailyAt('05:00')
+    ->hourly()
     ->withoutOverlapping()
     ->runInBackground()
     ->when(static fn (): bool => (bool) config('whatsapp.migration.automation.enabled', false));

@@ -775,6 +775,19 @@ class FlowRuntimeExecutionService
                     'executed_at' => now()->toISOString(),
                 ];
 
+                if (!empty($preview['handoff_requested'])) {
+                    $context['handoff_requested'] = true;
+                    if (is_string($preview['handoff_note'] ?? null) && trim($preview['handoff_note']) !== '') {
+                        $context['handoff_note'] = trim($preview['handoff_note']);
+                    }
+                    if (is_string($preview['handoff_topic'] ?? null) && trim($preview['handoff_topic']) !== '') {
+                        $context['handoff_topic'] = trim($preview['handoff_topic']);
+                    }
+                    if (is_string($preview['handoff_priority'] ?? null) && trim($preview['handoff_priority']) !== '') {
+                        $context['handoff_priority'] = trim(strtolower($preview['handoff_priority']));
+                    }
+                }
+
                 if (($preview['operation'] ?? null) === 'list_procedimientos') {
                     $context['resolved_cita_tipo'] = (string)($preview['resolved_cita_tipo'] ?? 'sin_clasificacion');
                     $context['resolved_procedimiento_ids'] = is_array($preview['resolved_procedimiento_ids'] ?? null)
