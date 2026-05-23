@@ -273,3 +273,18 @@ Route::get('/imagenes/informes/012b/pdf', static fn(Request $request) => $legacy
 Route::get('/imagenes/informes/012b/paquete', static fn(Request $request) => $legacyRedirect($request, '/v2/reports/imagenes/012b/paquete'));
 Route::match(['GET', 'POST'], '/imagenes/informes/012b/paquete/seleccion', static fn(Request $request) => $legacyRedirect($request, '/v2/reports/imagenes/012b/paquete/seleccion', 307));
 Route::get('/examenes/cobertura-012a/pdf', static fn(Request $request) => $legacyRedirect($request, '/v2/reports/imagenes/012a/pdf'));
+
+// /cirugias and /pacientes are now intercepted by the Laravel bridge (Onda 4).
+// Redirect non-prefixed paths to their canonical /v2/ equivalents so bookmarks
+// and legacy links still work.
+foreach (['/cirugias', '/pacientes'] as $module) {
+    Route::match(
+        ['GET', 'POST'],
+        $module . '{path?}',
+        static function (Request $request, string $path = '') use ($legacyRedirect, $module) {
+            $method = $request->method();
+            $status = $method === 'POST' ? 307 : 302;
+            return $legacyRedirect($request, '/v2' . $module . $path, $status);
+        }
+    )->where('path', '(/.+)?');
+}
