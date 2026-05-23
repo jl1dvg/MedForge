@@ -427,6 +427,8 @@ class UsuariosUiController
             'canDelete' => (bool) ($context['canDelete'] ?? false),
             'status' => $context['status'] ?? null,
             'canAssignSuperuser' => $this->currentUserIsSuperuser($request),
+            'subspecialties'     => config('medforge.subspecialties', []),
+            'sedes_config'       => config('medforge.sedes', []),
         ]);
     }
 
@@ -515,9 +517,13 @@ class UsuariosUiController
             'national_id' => $nationalId,
             'passport_number' => $passportNumber,
             'registro' => trim((string) $request->input('registro', '')),
-            'sede' => trim((string) $request->input('sede', '')),
+            'sede' => implode(',', array_values(array_filter(
+                array_map('trim', (array) $request->input('sede', []))
+            ))),
             'especialidad' => trim((string) $request->input('especialidad', '')),
-            'subespecialidad' => trim((string) $request->input('subespecialidad', '')),
+            'subespecialidad' => implode(',', array_values(array_filter(
+                array_map('trim', (array) $request->input('subespecialidad', []))
+            ))),
             'is_subscribed' => $request->boolean('is_subscribed') ? 1 : 0,
             'is_approved' => $request->boolean('is_approved') ? 1 : 0,
             'seal_status' => $this->sanitizeStatus((string) $request->input('seal_status', $existing['seal_status'] ?? 'pending')),
