@@ -428,7 +428,7 @@ class PacientesParityService
         return str_starts_with($texto, 'PNI') || str_starts_with($texto, 'CIRUGIAS');
     }
 
-    private function getPatientDetails(string $hcNumber): array
+    public function getPatientDetails(string $hcNumber): array
     {
         $stmt = $this->db->prepare('SELECT * FROM patient_data WHERE hc_number = ?');
         $stmt->execute([$hcNumber]);
