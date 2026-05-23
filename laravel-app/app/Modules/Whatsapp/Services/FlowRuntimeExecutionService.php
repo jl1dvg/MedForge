@@ -2273,29 +2273,17 @@ class FlowRuntimeExecutionService
             $available
         ), static fn(string $value): bool => $value !== ''));
 
-        $visibleMap = [
-            'Oculoplastia' => ['title' => 'Oculoplastia', 'description' => ''],
-            'Retina y Vítreo' => ['title' => 'Retina y Vítreo', 'description' => ''],
-            'Oftalmopediatría' => ['title' => 'Oftalmopediatría', 'description' => ''],
-            'oftalmologo general' => ['title' => 'Segmento Anterior', 'description' => 'Superficie ocular, cirugía de catarata'],
-            'Glaucoma' => ['title' => 'Glaucoma', 'description' => ''],
-            'Córnea y Cirugía Refractiva' => ['title' => 'Córnea y Cirugía Refractiva', 'description' => ''],
-        ];
-
-        $preferredOrder = [
-            'Oculoplastia',
-            'Retina y Vítreo',
-            'Oftalmopediatría',
-            'oftalmologo general',
-            'Glaucoma',
-            'Córnea y Cirugía Refractiva',
-        ];
+        $availableByKey = [];
+        foreach ($available as $value) {
+            $availableByKey[$this->specialtyKey($value)] = $value;
+        }
 
         $items = [];
         $seen = [];
 
-        $appendItem = static function (string $value, array $meta) use (&$items, &$seen): void {
-            $dedupeKey = mb_strtolower(trim((string)($meta['title'] ?? $value)), 'UTF-8');
+        $appendItem = function (string $value) use (&$items, &$seen): void {
+            $meta = $this->specialtyDisplayMeta($value);
+            $dedupeKey = $this->specialtyKey((string)($meta['title'] ?? $value));
             if ($dedupeKey === '' || isset($seen[$dedupeKey])) {
                 return;
             }
@@ -2310,19 +2298,94 @@ class FlowRuntimeExecutionService
             $seen[$dedupeKey] = true;
         };
 
-        foreach ($preferredOrder as $value) {
-            if (!in_array($value, $available, true)) {
+        foreach ($this->preferredSpecialtyOrder() as $preferred) {
+            $value = $availableByKey[$this->specialtyKey($preferred)] ?? null;
+            if ($value === null) {
                 continue;
             }
 
-            $appendItem($value, $visibleMap[$value] ?? ['title' => $value, 'description' => '']);
+            $appendItem($value);
         }
 
         foreach ($available as $value) {
-            $appendItem($value, $visibleMap[$value] ?? ['title' => $value, 'description' => '']);
+            $appendItem($value);
         }
 
         return $items;
+    }
+
+    /**
+     * @return array{title:string,description:string}
+     */
+    private function specialtyDisplayMeta(string $value): array
+    {
+        $key = $this->specialtyKey($value);
+        $map = [
+            'oculoplastia' => ['title' => 'Oculoplástica', 'description' => ''],
+            'retina y vitreo' => ['title' => 'Retina y Vítreo', 'description' => ''],
+            'oftalmopediatria' => ['title' => 'Oftalmopediatría', 'description' => ''],
+            'oftalmologo general' => ['title' => 'Segmento Anterior', 'description' => 'Superficie Ocular, Cirugía de Catarata'],
+            'segmento anterior' => ['title' => 'Segmento Anterior', 'description' => 'Superficie Ocular, Cirugía de Catarata'],
+            'glaucoma' => ['title' => 'Glaucoma', 'description' => ''],
+            'cornea y cirugia refractiva' => ['title' => 'Córnea y Cirugía Refractiva', 'description' => ''],
+            'oncologia ocular' => ['title' => 'Oncología Ocular', 'description' => ''],
+            'contactologia y baja vision' => ['title' => 'Contactología y Baja Visión', 'description' => ''],
+        ];
+
+        return $map[$key] ?? ['title' => $this->titleCaseSpecialty($value), 'description' => ''];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function preferredSpecialtyOrder(): array
+    {
+        return [
+            'oculoplastia',
+            'retina y vitreo',
+            'oftalmopediatria',
+            'oftalmologo general',
+            'segmento anterior',
+            'glaucoma',
+            'cornea y cirugia refractiva',
+            'oncologia ocular',
+            'contactologia y baja vision',
+        ];
+    }
+
+    private function specialtyKey(string $value): string
+    {
+        $value = mb_strtolower(trim($value), 'UTF-8');
+        $value = strtr($value, [
+            'á' => 'a',
+            'é' => 'e',
+            'í' => 'i',
+            'ó' => 'o',
+            'ú' => 'u',
+            'ü' => 'u',
+        ]);
+
+        return preg_replace('/\s+/', ' ', $value) ?? $value;
+    }
+
+    private function titleCaseSpecialty(string $value): string
+    {
+        $value = preg_replace('/\s+/', ' ', mb_strtolower(trim($value), 'UTF-8')) ?? trim($value);
+        if ($value === '') {
+            return '';
+        }
+
+        $smallWords = ['y', 'e', 'de', 'del', 'la', 'las', 'los', 'en'];
+        $words = preg_split('/\s+/', $value) ?: [];
+
+        return implode(' ', array_map(static function (string $word, int $index) use ($smallWords): string {
+            if ($index > 0 && in_array($word, $smallWords, true)) {
+                return $word;
+            }
+
+            return mb_strtoupper(mb_substr($word, 0, 1, 'UTF-8'), 'UTF-8')
+                . mb_substr($word, 1, null, 'UTF-8');
+        }, $words, array_keys($words)));
     }
 
     /**
