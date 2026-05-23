@@ -27,13 +27,13 @@
             <div class="row mb-4">
                 <div class="col-md-6">
                     <h5 class="mb-1">Datos del paciente</h5>
-                    <p class="mb-0"><strong>Nombre:</strong> {{ $checkin['full_name'] ?? 'Sin registro' }}</p>
-                    <p class="mb-0"><strong>Historia clínica:</strong> {{ $checkin['patient_id'] ?? '' }}</p>
-                    @if(!empty($checkin['cedula']))
-                        <p class="mb-0"><strong>Cédula registrada:</strong> {{ $checkin['cedula'] }}</p>
+                    <p class="mb-0"><strong>Nombre:</strong> {{ $certification['full_name'] ?? 'Sin registro' }}</p>
+                    <p class="mb-0"><strong>Historia clínica:</strong> {{ $certification['patient_id'] ?? '' }}</p>
+                    @if(!empty($certification['cedula']))
+                        <p class="mb-0"><strong>Cédula registrada:</strong> {{ $certification['cedula'] }}</p>
                     @endif
-                    @if(!empty($checkin['afiliacion']))
-                        <p class="mb-0"><strong>Afiliación:</strong> {{ $checkin['afiliacion'] }}</p>
+                    @if(!empty($certification['afiliacion']))
+                        <p class="mb-0"><strong>Afiliación:</strong> {{ $certification['afiliacion'] }}</p>
                     @endif
                 </div>
                 <div class="col-md-6">
@@ -52,28 +52,28 @@
             <div class="row mb-4">
                 <div class="col-md-6">
                     <h5 class="mb-2">Documento de identidad</h5>
-                    <p class="mb-1"><strong>Número:</strong> {{ $checkin['document_number'] ?? '' }}</p>
-                    <p class="mb-3"><strong>Tipo:</strong> {{ strtoupper($checkin['document_type'] ?? '') }}</p>
+                    <p class="mb-1"><strong>Número:</strong> {{ $certification['document_number'] ?? '' }}</p>
+                    <p class="mb-3"><strong>Tipo:</strong> {{ strtoupper($certification['document_type'] ?? '') }}</p>
                     <div class="d-flex gap-3 flex-wrap">
-                        @if(!empty($checkin['document_front_path']))
+                        @if(!empty($certification['document_front_path']))
                             <div>
                                 <small class="text-muted d-block">Anverso</small>
-                                <img src="/{{ ltrim($checkin['document_front_path'], '/') }}" alt="Documento anverso" class="img-thumbnail" style="max-width: 240px;">
+                                <img src="/{{ ltrim($certification['document_front_path'], '/') }}" alt="Documento anverso" class="img-thumbnail" style="max-width: 240px;">
                             </div>
                         @endif
-                        @if(!empty($checkin['document_back_path']))
+                        @if(!empty($certification['document_back_path']))
                             <div>
                                 <small class="text-muted d-block">Reverso</small>
-                                <img src="/{{ ltrim($checkin['document_back_path'], '/') }}" alt="Documento reverso" class="img-thumbnail" style="max-width: 240px;">
+                                <img src="/{{ ltrim($certification['document_back_path'], '/') }}" alt="Documento reverso" class="img-thumbnail" style="max-width: 240px;">
                             </div>
                         @endif
                     </div>
                 </div>
                 <div class="col-md-6">
                     <h5 class="mb-2">Firma del consentimiento</h5>
-                    @if(!empty($checkin['signature_path']))
+                    @if(!empty($certification['signature_path']))
                         <div class="border rounded p-3 bg-white">
-                            <img src="/{{ ltrim($checkin['signature_path'], '/') }}" alt="Firma del paciente" class="img-fluid">
+                            <img src="/{{ ltrim($certification['signature_path'], '/') }}" alt="Firma del paciente" class="img-fluid">
                         </div>
                     @else
                         <p class="text-muted">No se registró firma manuscrita en la certificación.</p>
