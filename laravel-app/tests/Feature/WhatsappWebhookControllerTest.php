@@ -15,6 +15,7 @@ class WhatsappWebhookControllerTest extends TestCase
 
         Schema::dropIfExists('whatsapp_inbox_messages');
         Schema::dropIfExists('whatsapp_sigcenter_bookings');
+        Schema::dropIfExists('whatsapp_handoffs');
         Schema::dropIfExists('whatsapp_messages');
         Schema::dropIfExists('whatsapp_conversations');
         Schema::dropIfExists('whatsapp_flow_shadow_runs');
@@ -77,6 +78,23 @@ class WhatsappWebhookControllerTest extends TestCase
             $table->timestamp('sent_at')->nullable();
             $table->timestamp('delivered_at')->nullable();
             $table->timestamp('read_at')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('whatsapp_handoffs', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('conversation_id');
+            $table->string('wa_number', 32);
+            $table->string('status', 32)->default('queued');
+            $table->string('priority', 32)->default('normal');
+            $table->string('topic', 64)->nullable();
+            $table->unsignedBigInteger('handoff_role_id')->nullable();
+            $table->unsignedBigInteger('assigned_agent_id')->nullable();
+            $table->timestamp('assigned_at')->nullable();
+            $table->timestamp('assigned_until')->nullable();
+            $table->timestamp('queued_at')->nullable();
+            $table->timestamp('last_activity_at')->nullable();
+            $table->text('notes')->nullable();
             $table->timestamps();
         });
 
@@ -849,6 +867,245 @@ class WhatsappWebhookControllerTest extends TestCase
             'body' => 'Hola Jorge Luis De Vera Gutiérrez 👋',
             'status' => 'accepted',
         ]);
+    }
+
+    public function test_menu_reactivates_bot_when_conversation_is_in_unassigned_human_queue(): void
+    {
+        config()->set('whatsapp.migration.automation.enabled', true);
+        config()->set('whatsapp.migration.automation.dry_run', true);
+
+        $this->publishFlowmakerScenarios([
+            [
+                'id' => 'menu_reactivation',
+                'name' => 'Reactivar menú',
+                'status' => 'published',
+                'conditions' => [
+                    ['type' => 'message_matches', 'pattern' => '^menu$'],
+                ],
+                'actions' => [
+                    ['type' => 'set_state', 'state' => 'menu_principal'],
+                    ['type' => 'goto_menu'],
+                ],
+            ],
+        ]);
+
+        $conversationId = \DB::table('whatsapp_conversations')->insertGetId([
+            'wa_number' => '593997190401',
+            'display_name' => 'Jorge WhatsApp',
+            'needs_human' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        \DB::table('whatsapp_autoresponder_sessions')->insert([
+            'conversation_id' => $conversationId,
+            'wa_number' => '593997190401',
+            'scenario_id' => 'abandono',
+            'context' => json_encode([
+                'state' => 'menu_agendar_modo',
+                'abandonment_monitor' => [
+                    'abandonment_status' => 'closed',
+                    'closed_reason' => 'abandono_agenda_temprana',
+                ],
+            ]),
+            'last_payload' => json_encode([]),
+            'last_interaction_at' => now()->subDay(),
+            'created_at' => now()->subDay(),
+            'updated_at' => now()->subDay(),
+        ]);
+
+        $this->postJson('/whatsapp/webhook', [
+            'entry' => [[
+                'changes' => [[
+                    'value' => [
+                        'messages' => [[
+                            'from' => '593997190401',
+                            'id' => 'wamid.menu.reactivation.1',
+                            'timestamp' => '1712745600',
+                            'type' => 'text',
+                            'text' => ['body' => 'MEnú'],
+                        ]],
+                    ],
+                ]],
+            ]],
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.automation_runs', 1)
+            ->assertJsonPath('data.automation_messages_sent', 1);
+
+        $this->assertDatabaseHas('whatsapp_conversations', [
+            'wa_number' => '593997190401',
+            'needs_human' => false,
+        ]);
+
+        $session = \DB::table('whatsapp_autoresponder_sessions')
+            ->where('wa_number', '593997190401')
+            ->first();
+        $context = json_decode((string) $session?->context, true);
+
+        $this->assertSame('menu_principal', $context['state'] ?? null);
+        $this->assertArrayNotHasKey('abandonment_monitor', $context);
+
+        $this->assertDatabaseHas('whatsapp_messages', [
+            'direction' => 'outbound',
+            'message_type' => 'interactive',
+            'status' => 'accepted',
+        ]);
+    }
+
+    public function test_interactive_bot_reply_does_not_reopen_resolved_human_handoff(): void
+    {
+        config()->set('whatsapp.migration.automation.enabled', true);
+        config()->set('whatsapp.migration.automation.dry_run', true);
+
+        $this->publishFlowmakerScenarios([
+            [
+                'id' => 'agendar_desde_menu',
+                'name' => 'Agendar desde menú',
+                'status' => 'published',
+                'conditions' => [
+                    ['type' => 'message_matches', 'pattern' => '^agendar$'],
+                ],
+                'actions' => [
+                    ['type' => 'send_message', 'message' => ['type' => 'text', 'body' => 'Vamos a agendar tu cita.']],
+                ],
+            ],
+        ]);
+
+        $conversationId = \DB::table('whatsapp_conversations')->insertGetId([
+            'wa_number' => '593997190401',
+            'display_name' => 'Jorge WhatsApp',
+            'needs_human' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        \DB::table('whatsapp_handoffs')->insert([
+            'conversation_id' => $conversationId,
+            'wa_number' => '593997190401',
+            'status' => 'resolved',
+            'assigned_agent_id' => 44,
+            'queued_at' => now()->subHour(),
+            'assigned_at' => now()->subHour(),
+            'last_activity_at' => now()->subMinutes(30),
+            'created_at' => now()->subHour(),
+            'updated_at' => now()->subMinutes(30),
+        ]);
+
+        $this->postJson('/whatsapp/webhook', [
+            'entry' => [[
+                'changes' => [[
+                    'value' => [
+                        'messages' => [[
+                            'from' => '593997190401',
+                            'id' => 'wamid.interactive.agendar.1',
+                            'timestamp' => '1712745600',
+                            'type' => 'interactive',
+                            'interactive' => [
+                                'type' => 'list_reply',
+                                'list_reply' => [
+                                    'id' => 'agendar',
+                                    'title' => '📅 Agendar cita',
+                                ],
+                            ],
+                        ]],
+                    ],
+                ]],
+            ]],
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.automation_runs', 1)
+            ->assertJsonPath('data.automation_messages_sent', 1);
+
+        $this->assertDatabaseHas('whatsapp_conversations', [
+            'wa_number' => '593997190401',
+            'needs_human' => false,
+        ]);
+
+        $this->assertDatabaseHas('whatsapp_messages', [
+            'direction' => 'outbound',
+            'body' => 'Vamos a agendar tu cita.',
+            'status' => 'accepted',
+        ]);
+    }
+
+    public function test_after_hours_text_does_not_reopen_human_queue_and_bot_answers(): void
+    {
+        config()->set('whatsapp.migration.automation.enabled', true);
+        config()->set('whatsapp.migration.automation.dry_run', true);
+
+        $now = \Carbon\CarbonImmutable::parse('2026-05-22 19:30:00', 'America/Guayaquil');
+        \Carbon\Carbon::setTestNow($now);
+        \Carbon\CarbonImmutable::setTestNow($now);
+
+        try {
+            $this->publishFlowmakerScenarios([
+                [
+                    'id' => 'after_hours_bot',
+                    'name' => 'Bot fuera de horario',
+                    'status' => 'published',
+                    'conditions' => [
+                        ['type' => 'message_matches', 'pattern' => '.*'],
+                    ],
+                    'actions' => [
+                        ['type' => 'send_message', 'message' => ['type' => 'text', 'body' => 'Estoy aquí para ayudarte.']],
+                    ],
+                ],
+            ]);
+
+            $conversationId = \DB::table('whatsapp_conversations')->insertGetId([
+                'wa_number' => '593997190401',
+                'display_name' => 'Jorge WhatsApp',
+                'needs_human' => false,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            \DB::table('whatsapp_handoffs')->insert([
+                'conversation_id' => $conversationId,
+                'wa_number' => '593997190401',
+                'status' => 'resolved',
+                'assigned_agent_id' => 44,
+                'queued_at' => now()->subHour(),
+                'assigned_at' => now()->subHour(),
+                'last_activity_at' => now()->subMinutes(30),
+                'created_at' => now()->subHour(),
+                'updated_at' => now()->subMinutes(30),
+            ]);
+
+            $this->postJson('/whatsapp/webhook', [
+                'entry' => [[
+                    'changes' => [[
+                        'value' => [
+                            'messages' => [[
+                                'from' => '593997190401',
+                                'id' => 'wamid.after.hours.1',
+                                'timestamp' => '1712745600',
+                                'type' => 'text',
+                                'text' => ['body' => 'tengo una duda'],
+                            ]],
+                        ],
+                    ]],
+                ]],
+            ])
+                ->assertOk()
+                ->assertJsonPath('data.automation_runs', 1)
+                ->assertJsonPath('data.automation_messages_sent', 1);
+
+            $this->assertDatabaseHas('whatsapp_conversations', [
+                'wa_number' => '593997190401',
+                'needs_human' => false,
+            ]);
+
+            $this->assertDatabaseHas('whatsapp_messages', [
+                'direction' => 'outbound',
+                'body' => 'Estoy aquí para ayudarte.',
+                'status' => 'accepted',
+            ]);
+        } finally {
+            \Carbon\Carbon::setTestNow();
+            \Carbon\CarbonImmutable::setTestNow();
+        }
     }
 
     public function test_it_persists_media_preview_for_inbound_document_and_voice_note(): void

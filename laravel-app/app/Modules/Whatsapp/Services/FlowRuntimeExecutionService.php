@@ -39,17 +39,33 @@ class FlowRuntimeExecutionService
             return $this->result(false, false, null, 0, false, 'automation_disabled');
         }
 
+        $text = trim((string)($inboundMessage->body ?? ''));
+        if ($text === '') {
+            return $this->result(false, false, null, 0, false, 'empty_text');
+        }
+
+        if ((bool)($conversation->assigned_user_id ?? false)) {
+            if (!$this->humanQueueIsOpen()) {
+                $this->releaseConversationToBot($conversation);
+            } else {
+                return $this->result(false, false, null, 0, false, 'conversation_assigned');
+            }
+        }
+
+        if ((bool) ($conversation->needs_human ?? false)) {
+            if (!$this->humanQueueIsOpen() || $this->isBotReactivationCommand($text)) {
+                $this->releaseConversationToBot($conversation);
+            } else {
+                return $this->result(false, false, null, 0, false, 'conversation_needs_human');
+            }
+        }
+
         if ((bool)($conversation->assigned_user_id ?? false)) {
             return $this->result(false, false, null, 0, false, 'conversation_assigned');
         }
 
         if ((bool) ($conversation->needs_human ?? false)) {
             return $this->result(false, false, null, 0, false, 'conversation_needs_human');
-        }
-
-        $text = trim((string)($inboundMessage->body ?? ''));
-        if ($text === '') {
-            return $this->result(false, false, null, 0, false, 'empty_text');
         }
 
         $waNumber = (string)($conversation->wa_number ?? '');
@@ -426,6 +442,169 @@ class FlowRuntimeExecutionService
         unset($context['abandonment_monitor']);
 
         return $context;
+    }
+
+    private function isBotReactivationCommand(string $text): bool
+    {
+        $normalized = $this->normalizeKeyword($text);
+
+        return in_array($normalized, [
+            'menu',
+            'hola',
+            'inicio',
+            'iniciar',
+            'empezar',
+            'comenzar',
+            'agendar',
+            'agendar cita',
+            'consultar cita',
+            'servicios y sedes',
+            'sedes',
+            'promociones',
+        ], true);
+    }
+
+    private function normalizeKeyword(string $text): string
+    {
+        $normalized = mb_strtolower(trim($text), 'UTF-8');
+        $normalized = strtr($normalized, [
+            'á' => 'a',
+            'é' => 'e',
+            'í' => 'i',
+            'ó' => 'o',
+            'ú' => 'u',
+            'ü' => 'u',
+            'ñ' => 'n',
+        ]);
+
+        return preg_replace('/\s+/', ' ', $normalized) ?? $normalized;
+    }
+
+    private function releaseConversationToBot(WhatsappConversation $conversation): void
+    {
+        $conversation->fill([
+            'needs_human' => false,
+            'handoff_notes' => null,
+            'handoff_role_id' => null,
+            'assigned_user_id' => null,
+            'assigned_at' => null,
+            'handoff_requested_at' => null,
+        ])->save();
+
+        if (Schema::hasTable('whatsapp_handoffs')) {
+            WhatsappHandoff::query()
+                ->where('conversation_id', $conversation->id)
+                ->whereIn('status', ['queued', 'assigned', 'expired'])
+                ->update([
+                    'status' => 'resolved',
+                    'assigned_until' => null,
+                    'last_activity_at' => now(),
+                    'updated_at' => now(),
+                ]);
+        }
+
+        $conversation->refresh();
+    }
+
+    private function humanQueueIsOpen(): bool
+    {
+        $options = $this->settingsOptions([
+            'whatsapp_handoff_business_timezone',
+            'whatsapp_handoff_business_schedule',
+            'whatsapp_handoff_business_holidays',
+            'whatsapp_handoff_business_start',
+            'whatsapp_handoff_business_end',
+        ]);
+
+        $timezone = trim((string) ($options['whatsapp_handoff_business_timezone'] ?? 'America/Guayaquil'));
+        if ($timezone === '') {
+            $timezone = 'America/Guayaquil';
+        }
+
+        $now = Carbon::now($timezone);
+        if ($this->isConfiguredHoliday($now->toDateString(), (string) ($options['whatsapp_handoff_business_holidays'] ?? ''))) {
+            return false;
+        }
+
+        $daySchedule = $this->resolveDaySchedule($now->isoWeekday(), $options);
+        if ($daySchedule === null || !($daySchedule['enabled'] ?? false)) {
+            return false;
+        }
+
+        $start = $this->minutesFromHour((string) ($daySchedule['start'] ?? '08:00'), 8 * 60);
+        $end = $this->minutesFromHour((string) ($daySchedule['end'] ?? '18:00'), 18 * 60);
+        $current = ((int) $now->format('H')) * 60 + (int) $now->format('i');
+
+        if ($start === $end) {
+            return true;
+        }
+
+        if ($start < $end) {
+            return $current >= $start && $current < $end;
+        }
+
+        return $current >= $start || $current < $end;
+    }
+
+    /**
+     * @param array<string,string> $options
+     * @return array{enabled:bool,start:string,end:string}|null
+     */
+    private function resolveDaySchedule(int $isoWeekday, array $options): ?array
+    {
+        $schedule = json_decode((string) ($options['whatsapp_handoff_business_schedule'] ?? ''), true);
+        if (!is_array($schedule)) {
+            $start = (string) ($options['whatsapp_handoff_business_start'] ?? '08:00');
+            $end = (string) ($options['whatsapp_handoff_business_end'] ?? '18:00');
+
+            return $isoWeekday >= 1 && $isoWeekday <= 6
+                ? ['enabled' => true, 'start' => $start, 'end' => $end]
+                : ['enabled' => false, 'start' => $start, 'end' => $end];
+        }
+
+        $dayKey = [
+            1 => 'monday',
+            2 => 'tuesday',
+            3 => 'wednesday',
+            4 => 'thursday',
+            5 => 'friday',
+            6 => 'saturday',
+            7 => 'sunday',
+        ][$isoWeekday] ?? 'monday';
+
+        $day = $schedule[$dayKey] ?? null;
+        if (is_string($day) && preg_match('/^(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})$/', $day, $matches)) {
+            return ['enabled' => true, 'start' => $matches[1], 'end' => $matches[2]];
+        }
+
+        if (!is_array($day)) {
+            return null;
+        }
+
+        return [
+            'enabled' => filter_var($day['enabled'] ?? true, FILTER_VALIDATE_BOOLEAN),
+            'start' => (string) ($day['start'] ?? '08:00'),
+            'end' => (string) ($day['end'] ?? '18:00'),
+        ];
+    }
+
+    private function isConfiguredHoliday(string $date, string $configured): bool
+    {
+        $dates = preg_split('/[\r\n,]+/', $configured) ?: [];
+
+        return in_array($date, array_map(static fn(string $value): string => trim($value), $dates), true);
+    }
+
+    private function minutesFromHour(string $value, int $default): int
+    {
+        if (!preg_match('/^(\d{1,2}):(\d{2})$/', trim($value), $matches)) {
+            return $default;
+        }
+
+        $hour = max(0, min(23, (int) $matches[1]));
+        $minute = max(0, min(59, (int) $matches[2]));
+
+        return ($hour * 60) + $minute;
     }
 
     /**

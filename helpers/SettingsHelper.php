@@ -1215,6 +1215,39 @@ class SettingsHelper
                         ],
                     ],
                     [
+                        'id' => 'handoff_business_hours',
+                        'title' => 'Horario Contact Center',
+                        'description' => 'Define cuándo los agentes humanos atienden WhatsApp. Fuera de estos horarios o en feriados, responde el bot.',
+                        'fields' => [
+                            self::selectField(
+                                'whatsapp_handoff_business_timezone',
+                                'Zona horaria del Contact Center',
+                                $timezones,
+                                'America/Guayaquil'
+                            ),
+                            self::textareaField(
+                                'whatsapp_handoff_business_schedule',
+                                'Horario semanal del Contact Center (JSON)',
+                                'Define por día si humano atiende y en qué horario. Fuera de este horario responde el bot.',
+                                json_encode([
+                                    'monday' => ['enabled' => true, 'start' => '08:00', 'end' => '18:00'],
+                                    'tuesday' => ['enabled' => true, 'start' => '08:00', 'end' => '18:00'],
+                                    'wednesday' => ['enabled' => true, 'start' => '08:00', 'end' => '18:00'],
+                                    'thursday' => ['enabled' => true, 'start' => '08:00', 'end' => '18:00'],
+                                    'friday' => ['enabled' => true, 'start' => '08:00', 'end' => '18:00'],
+                                    'saturday' => ['enabled' => true, 'start' => '08:00', 'end' => '18:00'],
+                                    'sunday' => ['enabled' => false, 'start' => '08:00', 'end' => '18:00'],
+                                ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)
+                            ),
+                            self::textareaField(
+                                'whatsapp_handoff_business_holidays',
+                                'Feriados del Contact Center',
+                                'Una fecha por línea en formato YYYY-MM-DD. En esas fechas responde el bot aunque el día tenga horario.',
+                                ''
+                            ),
+                        ],
+                    ],
+                    [
                         'id' => 'handoff',
                         'title' => 'Handoff a agentes',
                         'description' => 'Define la asignación humana, tiempos de respuesta y notificaciones.',

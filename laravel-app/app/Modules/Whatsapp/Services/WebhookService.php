@@ -2,14 +2,18 @@
 
 namespace App\Modules\Whatsapp\Services;
 
+use App\Modules\Shared\Support\SettingsOptionResolver;
 use App\Models\WhatsappConversation;
 use App\Models\WhatsappHandoff;
 use App\Models\WhatsappMessage;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class WebhookService
 {
+    private ?SettingsOptionResolver $settingsResolver = null;
+
     public function __construct(
         private readonly WhatsappConfigService $configService = new WhatsappConfigService(),
         private readonly FlowRuntimeShadowObserverService $shadowObserver = new FlowRuntimeShadowObserverService(),
@@ -246,15 +250,9 @@ class WebhookService
             $conversation->last_message_preview = $previewText !== null ? mb_substr($previewText, 0, 512) : null;
             $conversation->unread_count = (int) $conversation->unread_count + 1;
 
-            // Auto-reopen conversations that were closed by an agent when patient writes back
-            if (!$conversation->wasRecentlyCreated && !$conversation->needs_human) {
-                $hasResolvedHandoff = WhatsappHandoff::query()
-                    ->where('conversation_id', $conversation->id)
-                    ->where('status', 'resolved')
-                    ->exists();
-                if ($hasResolvedHandoff) {
-                    $conversation->needs_human = true;
-                }
+            // Auto-reopen only real human conversations; bot quick replies must keep flowing through automation.
+            if ($this->shouldAutoReopenHumanQueue($conversation, $type, $body)) {
+                $conversation->needs_human = true;
             }
 
             $conversation->save();
@@ -289,6 +287,185 @@ class WebhookService
         }
 
         return true;
+    }
+
+    private function shouldAutoReopenHumanQueue(WhatsappConversation $conversation, string $type, ?string $body): bool
+    {
+        if ($conversation->wasRecentlyCreated || (bool) $conversation->needs_human) {
+            return false;
+        }
+
+        if ($type === 'interactive') {
+            return false;
+        }
+
+        if ($this->isBotResumeText($body)) {
+            return false;
+        }
+
+        if (!$this->humanQueueIsOpen()) {
+            return false;
+        }
+
+        if (!Schema::hasTable('whatsapp_handoffs')) {
+            return false;
+        }
+
+        return WhatsappHandoff::query()
+            ->where('conversation_id', $conversation->id)
+            ->where('status', 'resolved')
+            ->whereNotNull('assigned_agent_id')
+            ->exists();
+    }
+
+    private function isBotResumeText(?string $body): bool
+    {
+        $normalized = $this->normalizeText((string) $body);
+
+        return in_array($normalized, [
+            'menu',
+            'hola',
+            'inicio',
+            'iniciar',
+            'empezar',
+            'comenzar',
+            'agendar',
+            'agendar cita',
+            'consultar cita',
+            'servicios y sedes',
+            'sedes',
+            'promociones',
+        ], true);
+    }
+
+    private function normalizeText(string $value): string
+    {
+        $normalized = mb_strtolower(trim($value), 'UTF-8');
+        $normalized = strtr($normalized, [
+            'á' => 'a',
+            'é' => 'e',
+            'í' => 'i',
+            'ó' => 'o',
+            'ú' => 'u',
+            'ü' => 'u',
+            'ñ' => 'n',
+        ]);
+
+        return preg_replace('/\s+/', ' ', $normalized) ?? $normalized;
+    }
+
+    private function humanQueueIsOpen(): bool
+    {
+        $options = $this->settingsOptions([
+            'whatsapp_handoff_business_timezone',
+            'whatsapp_handoff_business_schedule',
+            'whatsapp_handoff_business_holidays',
+            'whatsapp_handoff_business_start',
+            'whatsapp_handoff_business_end',
+        ]);
+
+        $timezone = trim((string) ($options['whatsapp_handoff_business_timezone'] ?? 'America/Guayaquil'));
+        if ($timezone === '') {
+            $timezone = 'America/Guayaquil';
+        }
+
+        $now = CarbonImmutable::now($timezone);
+        if ($this->isConfiguredHoliday($now->toDateString(), (string) ($options['whatsapp_handoff_business_holidays'] ?? ''))) {
+            return false;
+        }
+
+        $daySchedule = $this->resolveDaySchedule($now->isoWeekday(), $options);
+        if ($daySchedule === null || !($daySchedule['enabled'] ?? false)) {
+            return false;
+        }
+
+        $start = $this->minutesFromHour((string) ($daySchedule['start'] ?? '08:00'), 8 * 60);
+        $end = $this->minutesFromHour((string) ($daySchedule['end'] ?? '18:00'), 18 * 60);
+        $current = ((int) $now->format('H')) * 60 + (int) $now->format('i');
+
+        if ($start === $end) {
+            return true;
+        }
+
+        if ($start < $end) {
+            return $current >= $start && $current < $end;
+        }
+
+        return $current >= $start || $current < $end;
+    }
+
+    /**
+     * @param array<string,string> $options
+     * @return array{enabled:bool,start:string,end:string}|null
+     */
+    private function resolveDaySchedule(int $isoWeekday, array $options): ?array
+    {
+        $schedule = json_decode((string) ($options['whatsapp_handoff_business_schedule'] ?? ''), true);
+        if (!is_array($schedule)) {
+            $start = (string) ($options['whatsapp_handoff_business_start'] ?? '08:00');
+            $end = (string) ($options['whatsapp_handoff_business_end'] ?? '18:00');
+
+            return $isoWeekday >= 1 && $isoWeekday <= 6
+                ? ['enabled' => true, 'start' => $start, 'end' => $end]
+                : ['enabled' => false, 'start' => $start, 'end' => $end];
+        }
+
+        $dayKey = [
+            1 => 'monday',
+            2 => 'tuesday',
+            3 => 'wednesday',
+            4 => 'thursday',
+            5 => 'friday',
+            6 => 'saturday',
+            7 => 'sunday',
+        ][$isoWeekday] ?? 'monday';
+
+        $day = $schedule[$dayKey] ?? null;
+        if (is_string($day) && preg_match('/^(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})$/', $day, $matches)) {
+            return ['enabled' => true, 'start' => $matches[1], 'end' => $matches[2]];
+        }
+
+        if (!is_array($day)) {
+            return null;
+        }
+
+        return [
+            'enabled' => filter_var($day['enabled'] ?? true, FILTER_VALIDATE_BOOLEAN),
+            'start' => (string) ($day['start'] ?? '08:00'),
+            'end' => (string) ($day['end'] ?? '18:00'),
+        ];
+    }
+
+    private function isConfiguredHoliday(string $date, string $configured): bool
+    {
+        $dates = preg_split('/[\r\n,]+/', $configured) ?: [];
+
+        return in_array($date, array_map(static fn(string $value): string => trim($value), $dates), true);
+    }
+
+    private function minutesFromHour(string $value, int $default): int
+    {
+        if (!preg_match('/^(\d{1,2}):(\d{2})$/', trim($value), $matches)) {
+            return $default;
+        }
+
+        $hour = max(0, min(23, (int) $matches[1]));
+        $minute = max(0, min(59, (int) $matches[2]));
+
+        return ($hour * 60) + $minute;
+    }
+
+    /**
+     * @param array<int,string> $keys
+     * @return array<string,string>
+     */
+    private function settingsOptions(array $keys): array
+    {
+        if (!$this->settingsResolver instanceof SettingsOptionResolver) {
+            $this->settingsResolver = new SettingsOptionResolver();
+        }
+
+        return $this->settingsResolver->getOptions($keys);
     }
 
     /**
