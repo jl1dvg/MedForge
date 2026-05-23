@@ -1265,42 +1265,44 @@
 
         <div class="col-12">
             <div class="wa-flow-shell">
-                <div class="wa-flow-panel" id="wa-flow-settings-panel">
-                    <div class="wa-flow-panel__head">
-                        <div class="wa-flow-sideheading__title">Configuración del flujo</div>
-                        <div class="wa-flow-sideheading__meta">Opciones globales que aplican a todo el flujo.</div>
-                    </div>
-                    <div class="wa-flow-panel__body">
-                        <div class="wa-flow-stack">
-                            <div>
-                                <label class="form-label">Mensaje cuando ningún escenario responde</label>
-                                <textarea
-                                    id="wa-flow-setting-fallback"
-                                    class="form-control"
-                                    rows="3"
-                                    placeholder="No entendí tu mensaje. Escribe MENU para ver las opciones."
-                                ></textarea>
-                                <div class="wa-flow-inline-note mt-6">
-                                    Se envía automáticamente cuando el usuario escribe algo que ningún escenario reconoce.
+                <div style="display:flex;flex-direction:column;gap:18px;">
+                    <div class="wa-flow-panel" id="wa-flow-settings-panel">
+                        <div class="wa-flow-panel__head">
+                            <div class="wa-flow-sideheading__title">Configuración del flujo</div>
+                            <div class="wa-flow-sideheading__meta">Opciones globales que aplican a todo el flujo.</div>
+                        </div>
+                        <div class="wa-flow-panel__body">
+                            <div class="wa-flow-stack">
+                                <div>
+                                    <label class="form-label">Mensaje cuando ningún escenario responde</label>
+                                    <textarea
+                                        id="wa-flow-setting-fallback"
+                                        class="form-control"
+                                        rows="3"
+                                        placeholder="No entendí tu mensaje. Escribe MENU para ver las opciones."
+                                    ></textarea>
+                                    <div class="wa-flow-inline-note mt-6">
+                                        Se envía automáticamente cuando el usuario escribe algo que ningún escenario reconoce.
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
-                </div>
 
-                <div class="wa-flow-panel">
-                    <div class="wa-flow-panel__head">
-                        <div class="d-flex justify-content-between align-items-center gap-10">
-                            <div>
-                                <div class="wa-flow-sideheading__title">Escenarios</div>
-                                <div class="wa-flow-sideheading__meta">Selector lateral con la lógica publicada y acceso rápido al editor.</div>
+                    <div class="wa-flow-panel">
+                        <div class="wa-flow-panel__head">
+                            <div class="d-flex justify-content-between align-items-center gap-10">
+                                <div>
+                                    <div class="wa-flow-sideheading__title">Escenarios</div>
+                                    <div class="wa-flow-sideheading__meta">Selector lateral con la lógica publicada y acceso rápido al editor.</div>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-outline-primary" id="wa-flow-add-scenario-btn">Nuevo</button>
                             </div>
-                            <button type="button" class="btn btn-sm btn-outline-primary" id="wa-flow-add-scenario-btn">Nuevo</button>
                         </div>
-                    </div>
-                    <div class="wa-flow-panel__body">
-                        <input type="text" class="wa-flow-search mb-15" id="wa-flow-search" placeholder="Buscar escenario, stage o acción">
-                        <div class="wa-flow-list" id="wa-flow-scenario-list"></div>
+                        <div class="wa-flow-panel__body">
+                            <input type="text" class="wa-flow-search mb-15" id="wa-flow-search" placeholder="Buscar escenario, stage o acción">
+                            <div class="wa-flow-list" id="wa-flow-scenario-list"></div>
+                        </div>
                     </div>
                 </div>
 
