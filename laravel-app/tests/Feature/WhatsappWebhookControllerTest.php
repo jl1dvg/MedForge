@@ -28,8 +28,11 @@ class WhatsappWebhookControllerTest extends TestCase
 
         Schema::create('app_settings', function (Blueprint $table): void {
             $table->id();
+            $table->string('category')->nullable();
             $table->string('name')->unique();
             $table->text('value')->nullable();
+            $table->string('type')->nullable();
+            $table->boolean('autoload')->default(true);
             $table->timestamps();
         });
 
@@ -2115,5 +2118,27 @@ class WhatsappWebhookControllerTest extends TestCase
         \DB::table('whatsapp_autoresponder_flows')
             ->where('id', $flowId)
             ->update(['active_version_id' => $versionId]);
+    }
+
+    public function test_it_invalidates_queue_open_cache_when_handoff_setting_changes(): void
+    {
+        // Primear el caché manualmente
+        \Illuminate\Support\Facades\Cache::put('whatsapp.queue_open_status', true, 60);
+        $this->assertTrue(\Illuminate\Support\Facades\Cache::has('whatsapp.queue_open_status'));
+
+        $service = app(\App\Modules\Settings\Services\SettingsService::class);
+        $service->upsert('whatsapp_handoff_business_timezone', 'America/Lima', 'whatsapp');
+
+        $this->assertFalse(\Illuminate\Support\Facades\Cache::has('whatsapp.queue_open_status'));
+    }
+
+    public function test_it_does_not_invalidate_queue_cache_for_non_handoff_settings(): void
+    {
+        \Illuminate\Support\Facades\Cache::put('whatsapp.queue_open_status', true, 60);
+
+        $service = app(\App\Modules\Settings\Services\SettingsService::class);
+        $service->upsert('whatsapp_cloud_api_token', 'abc123', 'whatsapp');
+
+        $this->assertTrue(\Illuminate\Support\Facades\Cache::has('whatsapp.queue_open_status'));
     }
 }

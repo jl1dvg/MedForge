@@ -9,6 +9,7 @@ use App\Models\WhatsappConversationAttribution;
 use App\Models\WhatsappHandoff;
 use App\Models\WhatsappMessage;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use RuntimeException;
@@ -508,14 +509,23 @@ class FlowRuntimeExecutionService
 
     private function humanQueueIsOpen(): bool
     {
-        $options = $this->settingsOptions([
-            'whatsapp_handoff_business_timezone',
-            'whatsapp_handoff_business_schedule',
-            'whatsapp_handoff_business_holidays',
-            'whatsapp_handoff_business_start',
-            'whatsapp_handoff_business_end',
-        ]);
+        return Cache::remember('whatsapp.queue_open_status', 60, function (): bool {
+            $options = $this->settingsOptions([
+                'whatsapp_handoff_business_timezone',
+                'whatsapp_handoff_business_schedule',
+                'whatsapp_handoff_business_holidays',
+                'whatsapp_handoff_business_start',
+                'whatsapp_handoff_business_end',
+            ]);
+            return $this->computeHumanQueueIsOpen($options);
+        });
+    }
 
+    /**
+     * @param array<string,string> $options
+     */
+    private function computeHumanQueueIsOpen(array $options): bool
+    {
         $timezone = trim((string) ($options['whatsapp_handoff_business_timezone'] ?? 'America/Guayaquil'));
         if ($timezone === '') {
             $timezone = 'America/Guayaquil';
