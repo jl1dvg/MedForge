@@ -95,7 +95,7 @@ async function fetchRemoteConfig(reason = "auto") {
   try {
     const response = await fetch(endpoint, {
       method: "GET",
-      credentials: "include",
+      credentials: "omit", // Config es público, no requiere cookies de sesión MedForge
     });
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
