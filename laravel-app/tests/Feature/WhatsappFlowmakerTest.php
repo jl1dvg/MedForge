@@ -1607,6 +1607,33 @@ class WhatsappFlowmakerTest extends TestCase
         ];
     }
 
+    public function test_default_flow_payload_includes_no_match_fallback_message(): void
+    {
+        $service = app(\App\Modules\Whatsapp\Services\FlowmakerService::class);
+        $payload = $service->getActiveFlowPayload();
+
+        $this->assertArrayHasKey('settings', $payload);
+        $this->assertArrayHasKey('no_match_fallback_message', $payload['settings']);
+        $this->assertNotEmpty($payload['settings']['no_match_fallback_message']);
+    }
+
+    public function test_sanitize_flow_preserves_no_match_fallback_message(): void
+    {
+        $service = app(\App\Modules\Whatsapp\Services\FlowmakerService::class);
+
+        $customMessage = 'Mensaje personalizado de prueba para fallback.';
+        $flowPayload = $service->getActiveFlowPayload();
+        $flowPayload['settings']['no_match_fallback_message'] = $customMessage;
+
+        // Publicar (esto pasa por sanitizeFlow internamente)
+        $result = $service->publish(['flow' => $flowPayload]);
+        $this->assertTrue($result['status'] === 'ok', 'El publish debería ser exitoso');
+
+        // Leer el flow publicado y verificar que el campo se preservó
+        $saved = $service->getActiveFlowPayload();
+        $this->assertSame($customMessage, $saved['settings']['no_match_fallback_message'] ?? null);
+    }
+
     private function publishDefaultFlow(): void
     {
         $this
