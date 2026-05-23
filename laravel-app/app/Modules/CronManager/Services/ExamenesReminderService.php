@@ -1,13 +1,19 @@
 <?php
 
-namespace Modules\CronManager\Services;
+declare(strict_types=1);
+
+namespace App\Modules\CronManager\Services;
 
 use DateInterval;
 use DateTimeImmutable;
-use Models\SolicitudModel;
-use Modules\Notifications\Services\PusherConfigService;
 use PDO;
 
+/**
+ * Dispatches surgical and examination reminders via Pusher.
+ *
+ * Depends on legacy SolicitudModel and PusherConfigService, both loaded via
+ * the legacy bootstrap. These will be migrated in a later Onda.
+ */
 class ExamenesReminderService
 {
     private const CACHE_FILENAME = '/storage/cache/surgery_reminders.json';
@@ -36,7 +42,7 @@ class ExamenesReminderService
      */
     private const SCENARIOS = [
         'preop' => [
-            'event' => PusherConfigService::EVENT_PREOP_REMINDER,
+            'event' => 'preop_reminder',
             'label' => 'Preparación preoperatoria',
             'context' => 'Revisar checklist, confirmar ayuno y adjuntar consentimientos previos.',
             'minOffsetHours' => 24.0,
@@ -44,7 +50,7 @@ class ExamenesReminderService
             'source' => 'scheduled',
         ],
         'surgery' => [
-            'event' => PusherConfigService::EVENT_SURGERY_REMINDER,
+            'event' => 'surgery_reminder',
             'label' => 'Recordatorio de cirugía',
             'context' => 'Verificar disponibilidad de quirófano y equipo para la intervención.',
             'minOffsetHours' => 0.0,
@@ -52,7 +58,7 @@ class ExamenesReminderService
             'source' => 'scheduled',
         ],
         'postop' => [
-            'event' => PusherConfigService::EVENT_POSTOP_REMINDER,
+            'event' => 'postop_reminder',
             'label' => 'Control postoperatorio',
             'context' => 'Agendar control, confirmar indicaciones y gestionar incidencias reportadas.',
             'minOffsetHours' => -48.0,
@@ -60,7 +66,7 @@ class ExamenesReminderService
             'source' => 'scheduled',
         ],
         'exams' => [
-            'event' => PusherConfigService::EVENT_EXAMS_EXPIRING,
+            'event' => 'exams_expiring',
             'label' => 'Exámenes por vencer',
             'context' => 'Validar vigencia de biometría, topografía o consentimientos del paciente.',
             'minOffsetHours' => 0.0,
@@ -70,24 +76,21 @@ class ExamenesReminderService
     ];
 
     private PDO $pdo;
-    private PusherConfigService $pusher;
-    private SolicitudModel $solicitudModel;
+    private object $pusher;
+    private object $solicitudModel;
     private string $cachePath;
 
-    public function __construct(PDO $pdo, PusherConfigService $pusher)
+    public function __construct(PDO $pdo, object $pusher)
     {
         $this->pdo = $pdo;
         $this->pusher = $pusher;
-        $this->solicitudModel = new SolicitudModel($pdo);
-        $this->cachePath = BASE_PATH . self::CACHE_FILENAME;
+        $this->solicitudModel = $this->buildSolicitudModel($pdo);
+        $this->cachePath = $this->resolveBasePath() . self::CACHE_FILENAME;
     }
 
     /**
      * Busca procedimientos programados y fechas de caducidad relevantes para disparar
      * recordatorios operativos (preoperatorio, cirugía, postoperatorio y vigencias).
-     *
-     * El servicio calcula ventanas relativas según cada escenario y evita duplicados
-     * mediante caché en disco.
      *
      * @return array<int, array<string, mixed>> Lista de recordatorios enviados.
      */
@@ -161,6 +164,10 @@ class ExamenesReminderService
                     }
                 }
 
+                $channels = method_exists($this->pusher, 'getNotificationChannels')
+                    ? $this->pusher->getNotificationChannels()
+                    : [];
+
                 $payload = [
                     'id' => (int) $solicitud['id'],
                     'form_id' => $solicitud['form_id'] ?? null,
@@ -179,7 +186,7 @@ class ExamenesReminderService
                     'reminder_type' => $scenarioKey,
                     'reminder_label' => $scenario['label'],
                     'reminder_context' => $scenario['context'],
-                    'channels' => $this->pusher->getNotificationChannels(),
+                    'channels' => $channels,
                 ];
 
                 if ($fechaCaducidad instanceof DateTimeImmutable) {
@@ -299,5 +306,42 @@ class ExamenesReminderService
             $this->cachePath,
             json_encode($cache, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)
         );
+    }
+
+    private function resolveBasePath(): string
+    {
+        // Laravel base_path() points to laravel-app/; the cache lives one level up in the repo root.
+        if (function_exists('base_path')) {
+            return dirname(base_path());
+        }
+
+        return defined('BASE_PATH') ? (string) BASE_PATH : dirname(__DIR__, 6);
+    }
+
+    private function buildSolicitudModel(PDO $pdo): object
+    {
+        $this->ensureLegacyBootstrap();
+
+        return new \Models\SolicitudModel($pdo);
+    }
+
+    private function ensureLegacyBootstrap(): void
+    {
+        if (class_exists(\Models\SolicitudModel::class)) {
+            return;
+        }
+
+        $basePath = defined('BASE_PATH') ? (string) BASE_PATH : dirname(base_path());
+        if (!defined('BASE_PATH')) {
+            define('BASE_PATH', $basePath);
+        }
+        if (!defined('PUBLIC_PATH')) {
+            define('PUBLIC_PATH', $basePath . '/public');
+        }
+
+        $bootstrapFile = $basePath . '/bootstrap.php';
+        if (is_file($bootstrapFile)) {
+            require_once $bootstrapFile;
+        }
     }
 }

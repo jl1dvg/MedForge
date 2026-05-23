@@ -2,34 +2,36 @@
 
 declare(strict_types=1);
 
-namespace Modules\CronManager\Services;
+namespace App\Modules\CronManager\Services;
 
-use Core\Permissions;
-use Controllers\DerivacionController;
-use DateInterval;
-use DateTimeImmutable;
-use DatePeriod;
-use Models\BillingMainModel;
-use Modules\CronManager\Repositories\CronTaskRepository;
-use Modules\CiveExtension\Services\HealthCheckService;
-use Modules\Derivaciones\Services\DerivacionesSyncService;
+use App\Modules\CiveExtension\Services\ConfigService as CiveConfigService;
+use App\Modules\CiveExtension\Services\HealthCheckService;
 use App\Modules\IdentityVerification\Models\VerificationModel;
 use App\Modules\IdentityVerification\Services\MissingEvidenceEscalationService;
 use App\Modules\IdentityVerification\Services\VerificationPolicyService;
-use App\Modules\Shared\Support\SettingsOptionResolver;
 use App\Modules\KPI\Services\KpiCalculationService;
-use Modules\Mail\Services\NotificationMailer;
-use Modules\Notifications\Services\PusherConfigService;
-use Modules\CronManager\Services\ExamenesReminderService;
-use Modules\WhatsApp\Services\HandoffService;
+use App\Modules\CronManager\Repositories\CronTaskRepository;
+use App\Modules\Shared\Support\SettingsOptionResolver;
+use DateInterval;
+use DateTimeImmutable;
+use DatePeriod;
 use PDO;
 use RuntimeException;
 use Throwable;
 
+/**
+ * Orchestrates all cron tasks in MedForge.
+ *
+ * Services already in Laravel are imported directly.
+ * Services still in legacy modules (PusherConfigService, HandoffService,
+ * BillingMainModel, SolicitudModel, Permissions, DerivacionController,
+ * DerivacionesSyncService) are loaded via the legacy bootstrap adapter
+ * ensureLegacyBootstrap(). These will be migrated in later Ondas.
+ */
 class CronRunner
 {
     private CronTaskRepository $repository;
-    private bool $solicitudesLoaded = false;
+    private bool $legacyLoaded = false;
     private ?HealthCheckService $civeHealthService = null;
 
     public function __construct(private PDO $pdo)
@@ -96,7 +98,7 @@ class CronRunner
                 'slug' => $definition['slug'],
                 'name' => $definition['name'],
                 'status' => 'skipped',
-                'message' => sprintf('Próxima ejecución programada para %s', $nextRunAt->format('Y-m-d H:i')), 
+                'message' => sprintf('Próxima ejecución programada para %s', $nextRunAt->format('Y-m-d H:i')),
                 'details' => null,
                 'ran' => false,
             ];
@@ -300,8 +302,7 @@ class CronRunner
                 'description' => 'Obtiene códigos de derivación y vincula formID en el esquema normalizado.',
                 'interval' => 900,
                 'callback' => function (): array {
-                    $service = new DerivacionesSyncService($this->pdo);
-                    return $service->syncFromLegacyDerivaciones();
+                    return $this->runIessDerivacionesSyncTask();
                 },
             ],
             [
@@ -310,8 +311,7 @@ class CronRunner
                 'description' => 'Ejecuta el scraper para formularios sin código de derivación en billing_main.',
                 'interval' => 900,
                 'callback' => function (): array {
-                    $service = new DerivacionesSyncService($this->pdo);
-                    return $service->scrapeMissingDerivationsBatch();
+                    return $this->runIessDerivacionesScrapeMissingTask();
                 },
             ],
             [
@@ -320,8 +320,7 @@ class CronRunner
                 'description' => 'Replica facturación asociada a derivaciones hacia la tabla derivaciones_invoices.',
                 'interval' => 900,
                 'callback' => function (): array {
-                    $service = new DerivacionesSyncService($this->pdo);
-                    return $service->syncInvoicesFromBilling();
+                    return $this->runIessBillingSyncTask();
                 },
             ],
             [
@@ -354,6 +353,9 @@ class CronRunner
         ];
     }
 
+    // -------------------------------------------------------------------------
+    // Task implementations
+    // -------------------------------------------------------------------------
 
     /**
      * @return array{status?:string,message?:string,details?:array}
@@ -385,7 +387,7 @@ class CronRunner
     private function civeHealthService(): HealthCheckService
     {
         if (!($this->civeHealthService instanceof HealthCheckService)) {
-            $this->civeHealthService = new HealthCheckService($this->pdo);
+            $this->civeHealthService = new HealthCheckService(new CiveConfigService());
         }
 
         return $this->civeHealthService;
@@ -399,7 +401,7 @@ class CronRunner
         $terminalStatuses = [
             'atendido', 'atendida', 'cancelado', 'cancelada', 'cerrado', 'cerrada',
             'suspendido', 'suspendida', 'facturado', 'facturada', 'reprogramado', 'reprogramada',
-            'pagado', 'pagada', 'no procede'
+            'pagado', 'pagada', 'no procede',
         ];
 
         $placeholders = implode(', ', array_fill(0, count($terminalStatuses), '?'));
@@ -446,7 +448,9 @@ class CronRunner
      */
     private function runRemindersTask(): array
     {
-        $pusher = new PusherConfigService($this->pdo);
+        $this->ensureLegacyBootstrap();
+
+        $pusher = new \Modules\Notifications\Services\PusherConfigService($this->pdo);
         $config = $pusher->getConfig();
 
         if (empty($config['enabled'])) {
@@ -456,7 +460,6 @@ class CronRunner
             ];
         }
 
-        $this->ensureSolicitudModuleLoaded();
         $service = new ExamenesReminderService($this->pdo, $pusher);
         $sent = $service->dispatchUpcoming(72, 48);
 
@@ -473,6 +476,8 @@ class CronRunner
      */
     private function runCrmTaskRemindersTask(): array
     {
+        $this->ensureLegacyBootstrap();
+
         $now = new DateTimeImmutable('now');
         $sql = <<<'SQL'
             SELECT
@@ -517,9 +522,11 @@ class CronRunner
             ];
         }
 
-        $pusher = new PusherConfigService($this->pdo);
+        $pusher = new \Modules\Notifications\Services\PusherConfigService($this->pdo);
         $pusherConfig = $pusher->getConfig();
-        $mailer = new NotificationMailer($this->pdo);
+
+        $mailerClass = \App\Modules\Mail\Services\NotificationMailer::class;
+        $mailer = new $mailerClass($this->pdo);
         $mailerConfigured = $mailer->isConfigured();
         $notificationChannels = $pusher->getNotificationChannels();
 
@@ -557,7 +564,7 @@ class CronRunner
                     $shouldDelete = true;
                 } else {
                     $payload = $this->buildCrmTaskReminderPayload($row, $notificationChannels);
-                    $isSent = $pusher->trigger($payload, null, PusherConfigService::EVENT_CRM_TASK_REMINDER);
+                    $isSent = $pusher->trigger($payload, null, 'crm_task_reminder');
                     if ($isSent) {
                         $sentInApp++;
                         $shouldDelete = true;
@@ -602,7 +609,7 @@ class CronRunner
                     }
                 }
             } else {
-                // Canal no implementado en este flujo: se descarta para evitar reintentos infinitos.
+                // Canal no implementado — se descarta para evitar reintentos infinitos.
                 $shouldDelete = true;
             }
 
@@ -649,6 +656,8 @@ class CronRunner
      */
     private function runCrmTaskSupervisorEscalationsTask(): array
     {
+        $this->ensureLegacyBootstrap();
+
         $now = new DateTimeImmutable('now');
         $graceMinutes = 120;
         $cutoff = $now->sub(new DateInterval('PT' . $graceMinutes . 'M'));
@@ -714,10 +723,12 @@ class CronRunner
         }
 
         $supervisors = $this->resolveCrmTaskSupervisors();
-        $pusher = new PusherConfigService($this->pdo);
+        $pusher = new \Modules\Notifications\Services\PusherConfigService($this->pdo);
         $pusherConfig = $pusher->getConfig();
         $notificationChannels = $pusher->getNotificationChannels();
-        $mailer = new NotificationMailer($this->pdo);
+
+        $mailerClass = \App\Modules\Mail\Services\NotificationMailer::class;
+        $mailer = new $mailerClass($this->pdo);
         $mailerConfigured = $mailer->isConfigured();
 
         $escalated = 0;
@@ -752,7 +763,7 @@ class CronRunner
             $sentInAppForTask = false;
             if (!empty($pusherConfig['enabled']) && $supervisorIds !== []) {
                 $payload = $this->buildCrmTaskSupervisorEscalationPayload($row, $supervisorIds, $notificationChannels, $graceMinutes, $now);
-                $sentInAppForTask = $pusher->trigger($payload, null, PusherConfigService::EVENT_CRM_TASK_REMINDER);
+                $sentInAppForTask = $pusher->trigger($payload, null, 'crm_task_reminder');
                 if ($sentInAppForTask) {
                     $sentInApp++;
                 } else {
@@ -807,14 +818,14 @@ class CronRunner
             }
 
             if ($sentInAppForTask || $sentEmailsForTask > 0) {
-                $payload = [
+                $evidencePayload = [
                     'escalated_at' => $now->format('Y-m-d H:i:s'),
                     'grace_minutes' => $graceMinutes,
                     'supervisor_ids' => $supervisorIds,
                     'in_app_sent' => $sentInAppForTask,
                     'emails_sent' => $sentEmailsForTask,
                 ];
-                if ($this->insertCrmTaskEscalationEvidence($taskId, $companyId, $payload)) {
+                if ($this->insertCrmTaskEscalationEvidence($taskId, $companyId, $evidencePayload)) {
                     $evidenceLogged++;
                 }
                 $escalated++;
@@ -878,8 +889,8 @@ class CronRunner
                 continue;
             }
 
-            $permissions = Permissions::merge($row['permisos'] ?? [], $row['role_permissions'] ?? []);
-            if (!Permissions::containsAny($permissions, ['crm.tasks.manage', 'crm.manage', 'administrativo'])) {
+            $permissions = $this->mergePermissions($row['permisos'] ?? [], $row['role_permissions'] ?? []);
+            if (!$this->hasAnyPermission($permissions, ['crm.tasks.manage', 'crm.manage', 'administrativo'])) {
                 continue;
             }
 
@@ -1133,7 +1144,7 @@ class CronRunner
      */
     private function buildCrmTaskReminderUrl(array $row): string
     {
-        $base = defined('BASE_URL') ? rtrim((string) BASE_URL, '/') : '';
+        $base = defined('BASE_URL') ? rtrim((string) \BASE_URL, '/') : '';
         $sourceModule = strtolower(trim((string) ($row['source_module'] ?? '')));
         $sourceRefId = trim((string) ($row['source_ref_id'] ?? ''));
 
@@ -1165,7 +1176,9 @@ class CronRunner
      */
     private function runWhatsappHandoffRequeueTask(): array
     {
-        $service = new HandoffService($this->pdo);
+        $this->ensureLegacyBootstrap();
+
+        $service = new \Modules\WhatsApp\Services\HandoffService($this->pdo);
         $requeueResult = $service->requeueExpired();
         $escalationResult = $service->escalateQueued();
 
@@ -1205,9 +1218,11 @@ class CronRunner
      */
     private function runBillingTask(): array
     {
+        $this->ensureLegacyBootstrap();
+
         $eligibleStatuses = [
             'docs completos', 'facturacion', 'facturación', 'prefactura', 'prefacturación',
-            'cobertura aprobada', 'para facturar', 'lista para facturar', 'prefactura lista'
+            'cobertura aprobada', 'para facturar', 'lista para facturar', 'prefactura lista',
         ];
 
         $placeholders = implode(', ', array_fill(0, count($eligibleStatuses), '?'));
@@ -1233,7 +1248,7 @@ class CronRunner
             ];
         }
 
-        $model = new BillingMainModel($this->pdo);
+        $model = new \Models\BillingMainModel($this->pdo);
         $created = 0;
 
         foreach ($rows as $row) {
@@ -1281,7 +1296,7 @@ class CronRunner
         $terminalStatuses = [
             'atendido', 'atendida', 'cancelado', 'cancelada', 'cerrado', 'cerrada',
             'suspendido', 'suspendida', 'facturado', 'facturada', 'reprogramado', 'reprogramada',
-            'pagado', 'pagada', 'no procede', 'atrasada'
+            'pagado', 'pagada', 'no procede', 'atrasada',
         ];
 
         $today = (new DateTimeImmutable('today'))->format('Y-m-d');
@@ -1338,7 +1353,8 @@ class CronRunner
      */
     private function runAiSyncTask(): array
     {
-        $script = BASE_PATH . '/tools/ai_batch.py';
+        $basePath = $this->resolveRepoRoot();
+        $script = $basePath . '/tools/ai_batch.py';
 
         if (!is_file($script)) {
             return [
@@ -1354,7 +1370,7 @@ class CronRunner
             2 => ['pipe', 'w'],
         ];
 
-        $process = @proc_open($command, $descriptors, $pipes, BASE_PATH);
+        $process = @proc_open($command, $descriptors, $pipes, $basePath);
 
         if (!is_resource($process)) {
             throw new RuntimeException('No fue posible iniciar el proceso de Python.');
@@ -1390,7 +1406,8 @@ class CronRunner
      */
     private function runIndexAdmisionesSyncTask(): array
     {
-        $script = BASE_PATH . '/scrapping/sync_index_admisiones.php';
+        $basePath = $this->resolveRepoRoot();
+        $script = $basePath . '/scrapping/sync_index_admisiones.php';
 
         if (!is_file($script)) {
             return [
@@ -1419,7 +1436,7 @@ class CronRunner
             2 => ['pipe', 'w'],
         ];
 
-        $process = @proc_open($command, $descriptors, $pipes, BASE_PATH);
+        $process = @proc_open($command, $descriptors, $pipes, $basePath);
 
         if (!is_resource($process)) {
             throw new RuntimeException('No fue posible iniciar el proceso de index-admisiones.');
@@ -1451,18 +1468,54 @@ class CronRunner
     }
 
     /**
+     * Derivaciones sync — forwarded to the Laravel DerivacionesBatchSyncService
+     * (covers iess-derivaciones-scrape-missing).
+     * syncFromLegacyDerivaciones and syncInvoicesFromBilling are legacy-only tasks
+     * that have been superseded by Artisan commands registered in console.php.
+     *
      * @return array{status?:string,message?:string,details?:array}
      */
+    private function runIessDerivacionesSyncTask(): array
+    {
+        // Migrated to Artisan: derivaciones:scrape (runs periodically via Laravel scheduler).
+        return [
+            'status' => 'retired',
+            'message' => 'Tarea migrada a Artisan derivaciones:scrape (Laravel scheduler).',
+        ];
+    }
+
+    /**
+     * @return array{status?:string,message?:string,details?:array}
+     */
+    private function runIessDerivacionesScrapeMissingTask(): array
+    {
+        $pdo = $this->pdo;
+        $basePath = $this->resolveRepoRoot();
+        $service = new \App\Modules\Derivaciones\Services\DerivacionesBatchSyncService($pdo, $basePath);
+
+        return $service->scrapeMissingDerivationsBatch();
+    }
+
+    /**
+     * @return array{status?:string,message?:string,details?:array}
+     */
+    private function runIessBillingSyncTask(): array
+    {
+        // Migrated to Artisan: billing:sync-derivaciones (runs periodically via Laravel scheduler).
+        return [
+            'status' => 'retired',
+            'message' => 'Tarea migrada a Artisan billing:sync-derivaciones (Laravel scheduler).',
+        ];
+    }
+
     /**
      * @return array{status?:string,message?:string,details?:array}
      */
     private function runSolicitudesCrmSyncTask(): array
     {
-        // Retirado: esta tarea es ahora ejecutada por el comando Artisan
-        // `solicitudes:crm-sync` registrado en el scheduler de Laravel.
-        // Ver routes/console.php: Schedule::command('solicitudes:crm-sync ...')->hourly()
+        // Migrated to Artisan solicitudes:crm-sync registered in the Laravel scheduler.
         return [
-            'status'  => 'retired',
+            'status' => 'retired',
             'message' => 'Tarea migrada a Artisan solicitudes:crm-sync (Laravel scheduler).',
         ];
     }
@@ -1472,13 +1525,16 @@ class CronRunner
      */
     private function runSolicitudesDerivacionesRefreshTask(): array
     {
-        $script = BASE_PATH . '/scrapping/scrape_derivacion.py';
+        $basePath = $this->resolveRepoRoot();
+        $script = $basePath . '/scrapping/scrape_derivacion.py';
         if (!is_file($script)) {
             return [
                 'status' => 'skipped',
                 'message' => 'No se encontró el script de derivaciones.',
             ];
         }
+
+        $this->ensureLegacyBootstrap();
 
         $afiliaciones = ['iess', 'isspol', 'issfa', 'msp'];
         $placeholders = implode(', ', array_fill(0, count($afiliaciones), '?'));
@@ -1597,7 +1653,7 @@ class CronRunner
         $saved = false;
 
         if ($codDerivacion !== '' && $archivoPath !== '') {
-            $derivacionController = new DerivacionController($this->pdo);
+            $derivacionController = new \Controllers\DerivacionController($this->pdo);
             $derivacionId = $derivacionController->guardarDerivacion(
                 $codDerivacion,
                 $formId,
@@ -1688,17 +1744,6 @@ class CronRunner
         ];
     }
 
-    private function decodeJson(?string $value): ?array
-    {
-        if ($value === null || trim($value) === '') {
-            return null;
-        }
-
-        $decoded = json_decode($value, true);
-
-        return is_array($decoded) ? $decoded : null;
-    }
-
     /**
      * @return array{status?:string,message?:string,details?:array}
      */
@@ -1743,6 +1788,10 @@ class CronRunner
         ];
     }
 
+    // -------------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------------
+
     private function buildLockKey(string $slug): string
     {
         return 'medforge:cron:' . $slug;
@@ -1778,11 +1827,15 @@ class CronRunner
         return $elapsed <= 0 ? 0 : (int) round($elapsed * 1000);
     }
 
-    private function ensureSolicitudModuleLoaded(): void
+    private function decodeJson(?string $value): ?array
     {
-        // Legacy bootstrap removed — modules/solicitudes/ retired.
-        // ExamenesReminderService lives in Modules\CronManager\Services.
-        $this->solicitudesLoaded = true;
+        if ($value === null || trim($value) === '') {
+            return null;
+        }
+
+        $decoded = json_decode($value, true);
+
+        return is_array($decoded) ? $decoded : null;
     }
 
     /**
@@ -1810,5 +1863,87 @@ class CronRunner
         }
 
         return is_numeric($value) ? (float) $value : 0.0;
+    }
+
+    /**
+     * Returns the repository root (one level above laravel-app/).
+     */
+    private function resolveRepoRoot(): string
+    {
+        if (defined('BASE_PATH')) {
+            return (string) \BASE_PATH;
+        }
+
+        return dirname(base_path());
+    }
+
+    /**
+     * Loads the legacy autoloader + bootstrap so that legacy classes
+     * (PusherConfigService, HandoffService, BillingMainModel, etc.) are available.
+     *
+     * Called lazily — only when a task actually needs legacy services.
+     * Idempotent: safe to call multiple times.
+     */
+    private function ensureLegacyBootstrap(): void
+    {
+        if ($this->legacyLoaded) {
+            return;
+        }
+
+        $basePath = $this->resolveRepoRoot();
+
+        if (!defined('BASE_PATH')) {
+            define('BASE_PATH', $basePath);
+        }
+        if (!defined('PUBLIC_PATH')) {
+            define('PUBLIC_PATH', $basePath . '/public');
+        }
+
+        $bootstrapFile = $basePath . '/bootstrap.php';
+        if (is_file($bootstrapFile)) {
+            require_once $bootstrapFile;
+        }
+
+        $this->legacyLoaded = true;
+    }
+
+    /**
+     * Merges user-level and role-level permissions (replaces legacy Core\Permissions::merge).
+     *
+     * @param mixed $userPerms
+     * @param mixed $rolePerms
+     * @return array<string, bool>
+     */
+    private function mergePermissions(mixed $userPerms, mixed $rolePerms): array
+    {
+        $decode = static function (mixed $perms): array {
+            if (is_array($perms)) {
+                return $perms;
+            }
+            if (is_string($perms) && trim($perms) !== '') {
+                $decoded = json_decode($perms, true);
+                return is_array($decoded) ? $decoded : [];
+            }
+            return [];
+        };
+
+        return array_merge($decode($rolePerms), $decode($userPerms));
+    }
+
+    /**
+     * Checks if any of the given permission keys are truthy in the merged set.
+     *
+     * @param array<string, bool> $permissions
+     * @param array<string> $keys
+     */
+    private function hasAnyPermission(array $permissions, array $keys): bool
+    {
+        foreach ($keys as $key) {
+            if (!empty($permissions[$key])) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

@@ -2,62 +2,58 @@
 
 declare(strict_types=1);
 
-namespace Modules\CronManager\Controllers;
+namespace App\Modules\CronManager\Http\Controllers;
 
-use Core\BaseController;
-use Modules\CronManager\Repositories\CronTaskRepository;
-use Modules\CronManager\Services\CronRunner;
-use PDO;
+use App\Modules\CronManager\Repositories\CronTaskRepository;
+use App\Modules\CronManager\Services\CronRunner;
+use App\Modules\Shared\Support\LegacyCurrentUser;
+use Illuminate\Contracts\View\View;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
-class CronManagerController extends BaseController
+class CronManagerController
 {
     private CronTaskRepository $repository;
 
-    public function __construct(PDO $pdo)
+    public function __construct()
     {
-        parent::__construct($pdo);
+        $pdo = DB::connection()->getPdo();
         $this->repository = new CronTaskRepository($pdo);
     }
 
-    public function index(): void
+    public function index(Request $request): View
     {
-        $this->requireAuth();
-        $this->requirePermission(['settings.manage', 'administrativo']);
+        $results = $request->session()->pull('cron_manager_results');
 
-        $results = $_SESSION['cron_manager_results'] ?? null;
-        unset($_SESSION['cron_manager_results']);
-
+        $pdo = DB::connection()->getPdo();
         $tasks = $this->prepareTasks($this->repository->getAll());
         $logs = $this->prepareLogs($this->repository->getRecentLogs(20));
 
-        $this->render('modules/CronManager/views/index.php', [
+        return view('cron_manager.index', [
             'pageTitle' => 'Cron Manager',
+            'currentUser' => LegacyCurrentUser::resolve($request),
             'tasks' => $tasks,
             'logs' => $logs,
             'results' => $results,
         ]);
     }
 
-    public function runAll(): void
+    public function runAll(Request $request): RedirectResponse
     {
-        $this->requireAuth();
-        $this->requirePermission(['settings.manage', 'administrativo']);
-
-        $runner = new CronRunner($this->pdo);
+        $pdo = DB::connection()->getPdo();
+        $runner = new CronRunner($pdo);
         $results = $runner->runAll(true);
 
-        $_SESSION['cron_manager_results'] = $results;
+        $request->session()->put('cron_manager_results', $results);
 
-        header('Location: /cron-manager');
-        exit;
+        return redirect('/cron-manager');
     }
 
-    public function runTask(string $slug): void
+    public function runTask(Request $request, string $slug): RedirectResponse
     {
-        $this->requireAuth();
-        $this->requirePermission(['settings.manage', 'administrativo']);
-
-        $runner = new CronRunner($this->pdo);
+        $pdo = DB::connection()->getPdo();
+        $runner = new CronRunner($pdo);
         $result = $runner->runBySlug($slug, true);
 
         if ($result === null) {
@@ -69,31 +65,26 @@ class CronManagerController extends BaseController
             ];
         }
 
-        $_SESSION['cron_manager_results'] = [$result];
+        $request->session()->put('cron_manager_results', [$result]);
 
-        header('Location: /cron-manager');
-        exit;
+        return redirect('/cron-manager');
     }
 
-    public function updateSettings(string $slug): void
+    public function updateSettings(Request $request, string $slug): RedirectResponse
     {
-        $this->requireAuth();
-        $this->requirePermission(['settings.manage', 'administrativo']);
-
         $task = $this->repository->findBySlug($slug);
         if ($task === null) {
-            $_SESSION['cron_manager_results'] = [[
+            $request->session()->put('cron_manager_results', [[
                 'slug' => $slug,
                 'status' => 'failed',
                 'message' => 'La tarea solicitada no existe.',
                 'ran' => false,
-            ]];
-            header('Location: /cron-manager');
-            exit;
+            ]]);
+            return redirect('/cron-manager');
         }
 
-        $start = trim((string) ($_POST['date_start'] ?? ''));
-        $end = trim((string) ($_POST['date_end'] ?? ''));
+        $start = trim((string) $request->input('date_start', ''));
+        $end = trim((string) $request->input('date_end', ''));
         $settings = [];
 
         if ($start !== '' || $end !== '') {
@@ -101,37 +92,34 @@ class CronManagerController extends BaseController
             $endDate = $this->parseDate($end);
 
             if ($startDate === null || $endDate === null) {
-                $_SESSION['cron_manager_results'] = [[
+                $request->session()->put('cron_manager_results', [[
                     'slug' => $slug,
                     'status' => 'failed',
                     'message' => 'Formato de fecha inválido. Usa YYYY-MM-DD.',
                     'ran' => false,
-                ]];
-                header('Location: /cron-manager');
-                exit;
+                ]]);
+                return redirect('/cron-manager');
             }
 
             if ($startDate > $endDate) {
-                $_SESSION['cron_manager_results'] = [[
+                $request->session()->put('cron_manager_results', [[
                     'slug' => $slug,
                     'status' => 'failed',
                     'message' => 'El rango de fechas es inválido: inicio mayor que fin.',
                     'ran' => false,
-                ]];
-                header('Location: /cron-manager');
-                exit;
+                ]]);
+                return redirect('/cron-manager');
             }
 
             $days = $startDate->diff($endDate)->days ?? 0;
             if ($days > 31) {
-                $_SESSION['cron_manager_results'] = [[
+                $request->session()->put('cron_manager_results', [[
                     'slug' => $slug,
                     'status' => 'failed',
                     'message' => 'El rango máximo permitido es de 31 días.',
                     'ran' => false,
-                ]];
-                header('Location: /cron-manager');
-                exit;
+                ]]);
+                return redirect('/cron-manager');
             }
 
             $settings = [
@@ -142,17 +130,16 @@ class CronManagerController extends BaseController
 
         $this->repository->updateSettings((int) $task['id'], $settings ?: null);
 
-        $_SESSION['cron_manager_results'] = [[
+        $request->session()->put('cron_manager_results', [[
             'slug' => $slug,
             'name' => $task['name'] ?? $slug,
             'status' => 'success',
             'message' => $settings ? 'Configuración guardada.' : 'Configuración restablecida a automático.',
             'details' => $settings ?: ['modo' => 'automatico'],
             'ran' => false,
-        ]];
+        ]]);
 
-        header('Location: /cron-manager');
-        exit;
+        return redirect('/cron-manager');
     }
 
     /**

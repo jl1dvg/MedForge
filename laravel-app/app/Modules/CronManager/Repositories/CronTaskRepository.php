@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Modules\CronManager\Repositories;
+namespace App\Modules\CronManager\Repositories;
 
 use DateInterval;
 use DateTimeImmutable;
@@ -268,7 +268,7 @@ class CronTaskRepository
 
         try {
             return $runAt->add(new DateInterval('PT' . $seconds . 'S'));
-        } catch (\Exception $exception) {
+        } catch (\Exception) {
             return $runAt->add(new DateInterval('PT300S'));
         }
     }
@@ -281,7 +281,7 @@ class CronTaskRepository
 
         try {
             return json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        } catch (\Throwable $exception) {
+        } catch (\Throwable) {
             return null;
         }
     }

@@ -38,6 +38,7 @@ $laravelBridgePrefixes = [
     '/insumos',
     '/kpis',
     '/doctores',
+    '/cron-manager',
 ];
 
 if (in_array($requestPath, $laravelBridgeExact, true)) {
