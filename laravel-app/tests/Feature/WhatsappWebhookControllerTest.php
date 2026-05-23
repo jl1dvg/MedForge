@@ -2253,4 +2253,96 @@ class WhatsappWebhookControllerTest extends TestCase
         // El bot NO envió respuesta (el agente maneja la conversación)
         Http::assertNothingSent();
     }
+
+    public function test_it_re_asks_when_user_sends_unrecognized_text_during_cancel_confirmation(): void
+    {
+        Http::fake([
+            '*graph.facebook.com*' => Http::response(['messages' => [['id' => 'wamid.out.3']]], 200),
+        ]);
+
+        config()->set('whatsapp.migration.automation.enabled', true);
+        config()->set('whatsapp.migration.automation.dry_run', false);
+        config()->set('whatsapp.migration.api.phone_number_id', '123456');
+        config()->set('whatsapp.migration.api.token', 'test-token');
+
+        \DB::table('app_settings')->insert([
+            ['name' => 'whatsapp_cloud_enabled', 'value' => '1', 'category' => 'whatsapp', 'type' => 'text', 'autoload' => true, 'created_at' => now(), 'updated_at' => now()],
+            ['name' => 'whatsapp_cloud_phone_number_id', 'value' => '123456', 'category' => 'whatsapp', 'type' => 'text', 'autoload' => true, 'created_at' => now(), 'updated_at' => now()],
+            ['name' => 'whatsapp_cloud_access_token', 'value' => 'test-token', 'category' => 'whatsapp', 'type' => 'text', 'autoload' => true, 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        // Conversación con estado de cancelación pendiente
+        \DB::table('whatsapp_conversations')->insert([
+            'wa_number' => '593999555444',
+            'needs_human' => false,
+            'assigned_user_id' => null,
+            'unread_count' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $conversation = \DB::table('whatsapp_conversations')->where('wa_number', '593999555444')->first();
+
+        \DB::table('whatsapp_autoresponder_sessions')->insert([
+            'wa_number' => '593999555444',
+            'conversation_id' => $conversation->id,
+            'scenario_id' => 'agenda_cancelar',
+            'awaiting' => null,
+            'context' => json_encode([
+                'state' => 'agenda_confirmar_cancelacion',
+                'sigcenter_agenda_id' => '42',
+            ]),
+            'last_interaction_at' => now()->subMinutes(2),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // Registrar una cita activa en sigcenter bookings
+        \DB::table('whatsapp_sigcenter_bookings')->insert([
+            'conversation_id' => $conversation->id,
+            'wa_number' => '593999555444',
+            'sigcenter_agenda_id' => 42,
+            'status' => 'created',
+            'booked_at' => now()->subDay(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // Usuario manda texto ambiguo que no es ni SÍ ni NO
+        $payload = [
+            'entry' => [[
+                'changes' => [[
+                    'value' => [
+                        'messages' => [[
+                            'from' => '593999555444',
+                            'id' => 'wamid.cancel.ambiguous',
+                            'timestamp' => (string) now()->timestamp,
+                            'type' => 'text',
+                            'text' => ['body' => 'ok lo pienso'],
+                        ]],
+                    ],
+                ]],
+            ]],
+        ];
+
+        $response = $this->postJson('/whatsapp/webhook', $payload);
+
+        $response->assertOk()
+            ->assertJsonPath('data.automation_runs', 1)
+            ->assertJsonPath('data.automation_messages_sent', 1);
+
+        // El bot re-preguntó (no mostró el menú principal ni otro escenario)
+        Http::assertSent(function ($request) {
+            $body = $request->data();
+            return str_contains($body['text']['body'] ?? '', 'SÍ') &&
+                   str_contains($body['text']['body'] ?? '', 'NO');
+        });
+
+        // El estado de la sesión NO cambió a menu_principal
+        $session = \DB::table('whatsapp_autoresponder_sessions')
+            ->where('conversation_id', $conversation->id)
+            ->first();
+        $ctx = json_decode($session->context, true);
+        $this->assertSame('agenda_confirmar_cancelacion', $ctx['state']);
+    }
 }

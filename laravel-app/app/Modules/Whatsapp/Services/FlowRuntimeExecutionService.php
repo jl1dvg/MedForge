@@ -176,6 +176,17 @@ class FlowRuntimeExecutionService
 
                 return $this->result(true, true, 'booking_cancel_rejected', 1, false, null);
             }
+
+            // NUEVO: hermético — texto no reconocido mientras espera cancelación
+            if (($context['state'] ?? null) === 'agenda_confirmar_cancelacion' && $activeBooking !== null) {
+                $this->sendFlowMessage($conversation, [
+                    'type' => 'text',
+                    'body' => "No entendí tu respuesta 🤔\n\n"
+                        . "¿Confirmas la cancelación de tu cita?\n"
+                        . "Escribe *SÍ* para cancelar o *NO* para mantenerla.",
+                ], $context);
+                return $this->result(true, true, 'booking_cancel_awaiting', 1, false, null);
+            }
         }
 
         if ($this->isBookingChangeRequest($text)) {
