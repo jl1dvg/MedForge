@@ -2141,4 +2141,116 @@ class WhatsappWebhookControllerTest extends TestCase
 
         $this->assertTrue(\Illuminate\Support\Facades\Cache::has('whatsapp.queue_open_status'));
     }
+
+    public function test_it_responds_to_audio_message_with_text_only_notice(): void
+    {
+        Http::fake([
+            '*graph.facebook.com*' => Http::response(['messages' => [['id' => 'wamid.out.1']]], 200),
+        ]);
+
+        config()->set('whatsapp.migration.automation.enabled', true);
+        config()->set('whatsapp.migration.automation.dry_run', false);
+        config()->set('whatsapp.migration.api.phone_number_id', '123456');
+        config()->set('whatsapp.migration.api.token', 'test-token');
+
+        \DB::table('app_settings')->insert([
+            ['name' => 'whatsapp_cloud_enabled', 'value' => '1', 'category' => 'whatsapp', 'type' => 'text', 'autoload' => true, 'created_at' => now(), 'updated_at' => now()],
+            ['name' => 'whatsapp_cloud_phone_number_id', 'value' => '123456', 'category' => 'whatsapp', 'type' => 'text', 'autoload' => true, 'created_at' => now(), 'updated_at' => now()],
+            ['name' => 'whatsapp_cloud_access_token', 'value' => 'test-token', 'category' => 'whatsapp', 'type' => 'text', 'autoload' => true, 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        $payload = [
+            'entry' => [[
+                'changes' => [[
+                    'value' => [
+                        'contacts' => [[
+                            'wa_id' => '593999888777',
+                            'profile' => ['name' => 'Paciente Audio'],
+                        ]],
+                        'messages' => [[
+                            'from' => '593999888777',
+                            'id' => 'wamid.audio.1',
+                            'timestamp' => '1712745600',
+                            'type' => 'audio',
+                            'audio' => ['id' => 'audio_media_id_001'],
+                        ]],
+                    ],
+                ]],
+            ]],
+        ];
+
+        $response = $this->postJson('/whatsapp/webhook', $payload);
+
+        $response->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('data.messages_persisted', 1)
+            ->assertJsonPath('data.automation_runs', 1)
+            ->assertJsonPath('data.automation_messages_sent', 1);
+
+        // El mensaje de audio fue persistido correctamente
+        $this->assertDatabaseHas('whatsapp_messages', [
+            'direction' => 'inbound',
+            'message_type' => 'audio',
+        ]);
+
+        // Verificar que se intentó enviar la respuesta de "solo proceso texto"
+        Http::assertSent(function ($request) {
+            $body = $request->data();
+            return str_contains($body['text']['body'] ?? '', 'MENU');
+        });
+    }
+
+    public function test_it_does_not_respond_to_audio_when_conversation_is_assigned_to_agent(): void
+    {
+        Http::fake([
+            '*graph.facebook.com*' => Http::response(['messages' => [['id' => 'wamid.out.2']]], 200),
+        ]);
+
+        config()->set('whatsapp.migration.automation.enabled', true);
+        config()->set('whatsapp.migration.api.phone_number_id', '123456');
+        config()->set('whatsapp.migration.api.token', 'test-token');
+
+        // Crear conversación asignada a un agente humano
+        \DB::table('whatsapp_conversations')->insert([
+            'wa_number' => '593999777666',
+            'needs_human' => false,
+            'assigned_user_id' => 999, // agente asignado
+            'unread_count' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // Insertar horario abierto para que humanQueueIsOpen() = true
+        \DB::table('app_settings')->insert([
+            ['name' => 'whatsapp_handoff_business_timezone', 'value' => 'America/Guayaquil', 'category' => 'whatsapp', 'type' => 'text', 'autoload' => true, 'created_at' => now(), 'updated_at' => now()],
+            ['name' => 'whatsapp_handoff_business_schedule', 'value' => '', 'category' => 'whatsapp', 'type' => 'text', 'autoload' => true, 'created_at' => now(), 'updated_at' => now()],
+            ['name' => 'whatsapp_handoff_business_start', 'value' => '00:00', 'category' => 'whatsapp', 'type' => 'text', 'autoload' => true, 'created_at' => now(), 'updated_at' => now()],
+            ['name' => 'whatsapp_handoff_business_end', 'value' => '00:00', 'category' => 'whatsapp', 'type' => 'text', 'autoload' => true, 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        $payload = [
+            'entry' => [[
+                'changes' => [[
+                    'value' => [
+                        'messages' => [[
+                            'from' => '593999777666',
+                            'id' => 'wamid.audio.assigned',
+                            'timestamp' => '1712745600',
+                            'type' => 'audio',
+                            'audio' => ['id' => 'audio_media_id_002'],
+                        ]],
+                    ],
+                ]],
+            ]],
+        ];
+
+        $response = $this->postJson('/whatsapp/webhook', $payload);
+
+        $response->assertOk()
+            ->assertJsonPath('data.automation_runs', 0)
+            ->assertJsonPath('data.automation_messages_sent', 0);
+
+        // El bot NO envió respuesta (el agente maneja la conversación)
+        Http::assertNothingSent();
+    }
 }

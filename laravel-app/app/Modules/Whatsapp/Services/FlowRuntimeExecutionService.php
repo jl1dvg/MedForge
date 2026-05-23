@@ -41,7 +41,10 @@ class FlowRuntimeExecutionService
         }
 
         $text = trim((string)($inboundMessage->body ?? ''));
-        if ($text === '') {
+        $type = trim((string)($inboundMessage->message_type ?? 'text'));
+        $isMediaMessage = $text === '' && in_array($type, ['audio', 'image', 'video', 'sticker', 'document', 'location'], true);
+
+        if ($text === '' && !$isMediaMessage) {
             return $this->result(false, false, null, 0, false, 'empty_text');
         }
 
@@ -67,6 +70,22 @@ class FlowRuntimeExecutionService
 
         if ((bool) ($conversation->needs_human ?? false)) {
             return $this->result(false, false, null, 0, false, 'conversation_needs_human');
+        }
+
+        if ($isMediaMessage) {
+            $mediaReplies = [
+                'audio'    => "Recibí un audio, pero solo proceso texto 📝\n¿Necesitas ayuda? Escribe *MENU*.",
+                'image'    => "Recibí una imagen, pero solo proceso texto 📝\n¿Necesitas ayuda? Escribe *MENU*.",
+                'video'    => "Recibí un video, pero solo proceso texto 📝\n¿Necesitas ayuda? Escribe *MENU*.",
+                'sticker'  => "¡Gracias! 😄 Si necesitas ayuda, escribe *MENU*.",
+                'document' => "Recibí un documento, pero solo proceso texto.\n¿Necesitas ayuda? Escribe *MENU*.",
+                'location' => "Recibí tu ubicación, pero no la proceso aún.\n¿Necesitas ayuda? Escribe *MENU*.",
+            ];
+            $this->sendFlowMessage($conversation, [
+                'type' => 'text',
+                'body' => $mediaReplies[$type] ?? "Solo proceso mensajes de texto.\nEscribe *MENU* para ver las opciones.",
+            ], []);
+            return $this->result(true, false, 'non_text_reply', 1, false, 'empty_text');
         }
 
         $waNumber = (string)($conversation->wa_number ?? '');
