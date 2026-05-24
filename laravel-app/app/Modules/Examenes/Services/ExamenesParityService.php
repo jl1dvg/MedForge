@@ -14,7 +14,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
 use Modules\CRM\Services\LeadConfigurationService;
-use Modules\Examenes\Models\ExamenModel;
+use Models\ExamenModel;
 use Modules\Examenes\Services\ExamenCrmService;
 use Modules\Examenes\Services\ExamenEstadoService;
 use Modules\Examenes\Services\ExamenMailLogService;
