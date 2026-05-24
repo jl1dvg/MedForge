@@ -17,6 +17,7 @@ use RuntimeException;
 class FlowRuntimeExecutionService
 {
     private ?SettingsOptionResolver $settingsResolver = null;
+    private int $sessionVersion = 0;
 
     public function __construct(
         private readonly FlowmakerService           $flowmakerService = new FlowmakerService(),
@@ -96,6 +97,8 @@ class FlowRuntimeExecutionService
             ->where('conversation_id', $conversation->id)
             ->first();
 
+        $this->sessionVersion = (int) ($session?->session_version ?? 0);
+
         $context = is_array($session?->context) ? $session->context : [];
         if (!isset($context['state'])) {
             $context['state'] = 'inicio';
@@ -106,17 +109,14 @@ class FlowRuntimeExecutionService
 
         $reminderResult = $this->appointmentReminderService->handleInboundResponse($conversation, $text);
         if (is_array($reminderResult) && !empty($reminderResult['handled'])) {
-            WhatsappAutoresponderSession::query()->updateOrCreate(
-                ['conversation_id' => $conversation->id],
-                [
-                    'wa_number' => (string) $conversation->wa_number,
-                    'scenario_id' => 'appointment_reminder_response',
-                    'node_id' => null,
-                    'awaiting' => null,
-                    'context' => array_merge($context, ['state' => 'menu_principal']),
-                    'last_payload' => $messagePayload,
-                    'last_interaction_at' => now(),
-                ]
+            $this->saveSession(
+                $conversation,
+                (string) $conversation->wa_number,
+                'appointment_reminder_response',
+                null,
+                null,
+                array_merge($context, ['state' => 'menu_principal']),
+                $messagePayload,
             );
 
             return $this->result(
@@ -152,17 +152,14 @@ class FlowRuntimeExecutionService
                     $context
                 );
 
-                WhatsappAutoresponderSession::query()->updateOrCreate(
-                    ['conversation_id' => $conversation->id],
-                    [
-                        'wa_number' => (string)$conversation->wa_number,
-                        'scenario_id' => 'booking_cancel_confirmation',
-                        'node_id' => null,
-                        'awaiting' => null,
-                        'context' => array_merge($context, ['state' => 'menu_principal']),
-                        'last_payload' => $messagePayload,
-                        'last_interaction_at' => now(),
-                    ]
+                $this->saveSession(
+                    $conversation,
+                    (string) $conversation->wa_number,
+                    'booking_cancel_confirmation',
+                    null,
+                    null,
+                    array_merge($context, ['state' => 'menu_principal']),
+                    $messagePayload,
                 );
 
                 return $this->result(true, true, 'booking_cancel_confirmation', 1, false, null);
@@ -201,20 +198,17 @@ class FlowRuntimeExecutionService
                     $this->sendFlowMessage($conversation, $this->bookingChangeRequestMessage($activeBooking, $changeType), $context);
                 }
 
-                WhatsappAutoresponderSession::query()->updateOrCreate(
-                    ['conversation_id' => $conversation->id],
-                    [
-                        'wa_number' => (string)$conversation->wa_number,
-                        'scenario_id' => $session?->scenario_id,
-                        'node_id' => $session?->node_id,
-                        'awaiting' => null,
-                        'context' => array_merge($context, [
-                            'state' => $changeType === 'cancel' ? 'agenda_confirmar_cancelacion' : 'soporte_cita',
-                            'booking_change_requested' => $changeType,
-                        ]),
-                        'last_payload' => $messagePayload,
-                        'last_interaction_at' => now(),
-                    ]
+                $this->saveSession(
+                    $conversation,
+                    (string) $conversation->wa_number,
+                    $session?->scenario_id ?? 'booking_change_request',
+                    $session?->node_id,
+                    null,
+                    array_merge($context, [
+                        'state' => $changeType === 'cancel' ? 'agenda_confirmar_cancelacion' : 'soporte_cita',
+                        'booking_change_requested' => $changeType,
+                    ]),
+                    $messagePayload,
                 );
 
                 return $this->result(true, true, 'booking_change_request', 1, $changeType !== 'cancel', null);
@@ -244,17 +238,14 @@ class FlowRuntimeExecutionService
             $run = $this->executeActions($scenario['actions'] ?? [], $context, $conversation, $inboundMessage, $text, (string)($scenario['id'] ?? ''));
             $context = $run['context'];
 
-            WhatsappAutoresponderSession::query()->updateOrCreate(
-                ['conversation_id' => $conversation->id],
-                [
-                    'wa_number' => (string)$conversation->wa_number,
-                    'scenario_id' => (string)($scenario['id'] ?? 'scenario'),
-                    'node_id' => null,
-                    'awaiting' => isset($context['awaiting_field']) ? 'input' : null,
-                    'context' => $context,
-                    'last_payload' => $messagePayload,
-                    'last_interaction_at' => now(),
-                ]
+            $this->saveSession(
+                $conversation,
+                (string) $conversation->wa_number,
+                (string) ($scenario['id'] ?? 'scenario'),
+                null,
+                isset($context['awaiting_field']) ? 'input' : null,
+                $context,
+                $messagePayload,
             );
 
             if (!empty($context['handoff_requested'])) {
@@ -277,17 +268,14 @@ class FlowRuntimeExecutionService
             $run = $this->executeActions($scenario['actions'] ?? [], $context, $conversation, $inboundMessage, $text, (string)($scenario['id'] ?? 'fallback'));
             $context = $run['context'];
 
-            WhatsappAutoresponderSession::query()->updateOrCreate(
-                ['conversation_id' => $conversation->id],
-                [
-                    'wa_number' => (string)$conversation->wa_number,
-                    'scenario_id' => (string)($scenario['id'] ?? 'fallback'),
-                    'node_id' => null,
-                    'awaiting' => isset($context['awaiting_field']) ? 'input' : null,
-                    'context' => $context,
-                    'last_payload' => $messagePayload,
-                    'last_interaction_at' => now(),
-                ]
+            $this->saveSession(
+                $conversation,
+                (string) $conversation->wa_number,
+                (string) ($scenario['id'] ?? 'fallback'),
+                null,
+                isset($context['awaiting_field']) ? 'input' : null,
+                $context,
+                $messagePayload,
             );
 
             if (!empty($context['handoff_requested'])) {
@@ -304,17 +292,14 @@ class FlowRuntimeExecutionService
 
         $this->sendFlowMessage($conversation, ['type' => 'text', 'body' => $fallbackBody], $context);
 
-        WhatsappAutoresponderSession::query()->updateOrCreate(
-            ['conversation_id' => $conversation->id],
-            [
-                'wa_number'           => (string) $conversation->wa_number,
-                'scenario_id'         => 'no_match_fallback',
-                'awaiting'            => null,
-                'node_id'             => null,
-                'context'             => $context,
-                'last_payload'        => $messagePayload,
-                'last_interaction_at' => now(),
-            ]
+        $this->saveSession(
+            $conversation,
+            (string) $conversation->wa_number,
+            'no_match_fallback',
+            null,
+            null,
+            $context,
+            $messagePayload,
         );
 
         return $this->result(true, false, 'no_match_fallback', 1, false, 'no_match');
@@ -343,17 +328,14 @@ class FlowRuntimeExecutionService
             $context['state'] = 'consentimiento_pendiente';
             unset($context['awaiting_field']);
 
-            WhatsappAutoresponderSession::query()->updateOrCreate(
-                ['conversation_id' => $conversation->id],
-                [
-                    'wa_number' => (string)$conversation->wa_number,
-                    'scenario_id' => 'consent_retry',
-                    'node_id' => $session?->node_id,
-                    'awaiting' => null,
-                    'context' => $context,
-                    'last_payload' => $messagePayload,
-                    'last_interaction_at' => now(),
-                ]
+            $this->saveSession(
+                $conversation,
+                (string) $conversation->wa_number,
+                'consent_retry',
+                $session?->node_id,
+                null,
+                $context,
+                $messagePayload,
             );
 
             return $this->result(true, true, 'consent_retry', 1, false, null);
@@ -364,17 +346,14 @@ class FlowRuntimeExecutionService
             $context['state'] = 'esperando_cedula';
             $context['awaiting_field'] = 'cedula';
 
-            WhatsappAutoresponderSession::query()->updateOrCreate(
-                ['conversation_id' => $conversation->id],
-                [
-                    'wa_number' => (string)$conversation->wa_number,
-                    'scenario_id' => 'cedula_retry',
-                    'node_id' => $session?->node_id,
-                    'awaiting' => 'input',
-                    'context' => $context,
-                    'last_payload' => $messagePayload,
-                    'last_interaction_at' => now(),
-                ]
+            $this->saveSession(
+                $conversation,
+                (string) $conversation->wa_number,
+                'cedula_retry',
+                $session?->node_id,
+                'input',
+                $context,
+                $messagePayload,
             );
 
             return $this->result(true, true, 'cedula_retry', 1, false, null);
@@ -386,17 +365,14 @@ class FlowRuntimeExecutionService
                 $context['state'] = 'consentimiento_pendiente';
                 unset($context['awaiting_field']);
 
-                WhatsappAutoresponderSession::query()->updateOrCreate(
-                    ['conversation_id' => $conversation->id],
-                    [
-                        'wa_number' => (string)$conversation->wa_number,
-                        'scenario_id' => 'natural_schedule_consent',
-                        'node_id' => null,
-                        'awaiting' => null,
-                        'context' => $context,
-                        'last_payload' => $messagePayload,
-                        'last_interaction_at' => now(),
-                    ]
+                $this->saveSession(
+                    $conversation,
+                    (string) $conversation->wa_number,
+                    'natural_schedule_consent',
+                    null,
+                    null,
+                    $context,
+                    $messagePayload,
                 );
 
                 return $this->result(true, true, 'natural_schedule_consent', 1, false, null);
@@ -407,17 +383,14 @@ class FlowRuntimeExecutionService
                 $context['state'] = 'esperando_cedula';
                 $context['awaiting_field'] = 'cedula';
 
-                WhatsappAutoresponderSession::query()->updateOrCreate(
-                    ['conversation_id' => $conversation->id],
-                    [
-                        'wa_number' => (string)$conversation->wa_number,
-                        'scenario_id' => 'natural_schedule_identifier',
-                        'node_id' => null,
-                        'awaiting' => 'input',
-                        'context' => $context,
-                        'last_payload' => $messagePayload,
-                        'last_interaction_at' => now(),
-                    ]
+                $this->saveSession(
+                    $conversation,
+                    (string) $conversation->wa_number,
+                    'natural_schedule_identifier',
+                    null,
+                    'input',
+                    $context,
+                    $messagePayload,
                 );
 
                 return $this->result(true, true, 'natural_schedule_identifier', 1, false, null);
@@ -428,17 +401,14 @@ class FlowRuntimeExecutionService
                 $run = $this->executeActions($scenario['actions'] ?? [], $context, $conversation, $inboundMessage, $text, (string)($scenario['id'] ?? 'natural_schedule'));
                 $context = $run['context'];
 
-                WhatsappAutoresponderSession::query()->updateOrCreate(
-                    ['conversation_id' => $conversation->id],
-                    [
-                        'wa_number' => (string)$conversation->wa_number,
-                        'scenario_id' => (string)($scenario['id'] ?? 'natural_schedule'),
-                        'node_id' => null,
-                        'awaiting' => isset($context['awaiting_field']) ? 'input' : null,
-                        'context' => $context,
-                        'last_payload' => $messagePayload,
-                        'last_interaction_at' => now(),
-                    ]
+                $this->saveSession(
+                    $conversation,
+                    (string) $conversation->wa_number,
+                    (string) ($scenario['id'] ?? 'natural_schedule'),
+                    null,
+                    isset($context['awaiting_field']) ? 'input' : null,
+                    $context,
+                    $messagePayload,
                 );
 
                 return $this->result(true, true, (string)($scenario['id'] ?? 'natural_schedule'), $run['messages_sent'], !empty($context['handoff_requested']), null);
@@ -448,17 +418,14 @@ class FlowRuntimeExecutionService
             $context['state'] = 'menu_principal';
             unset($context['awaiting_field']);
 
-            WhatsappAutoresponderSession::query()->updateOrCreate(
-                ['conversation_id' => $conversation->id],
-                [
-                    'wa_number' => (string)$conversation->wa_number,
-                    'scenario_id' => 'natural_schedule_menu',
-                    'node_id' => null,
-                    'awaiting' => null,
-                    'context' => $context,
-                    'last_payload' => $messagePayload,
-                    'last_interaction_at' => now(),
-                ]
+            $this->saveSession(
+                $conversation,
+                (string) $conversation->wa_number,
+                'natural_schedule_menu',
+                null,
+                null,
+                $context,
+                $messagePayload,
             );
 
             return $this->result(true, true, 'natural_schedule_menu', 1, false, null);
@@ -3085,5 +3052,58 @@ class FlowRuntimeExecutionService
             'handoff_requested' => $handoffRequested,
             'reason' => $reason,
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     * @param array<string, mixed> $messagePayload
+     */
+    private function saveSession(
+        WhatsappConversation $conversation,
+        string $waNumber,
+        string $scenarioId,
+        ?string $nodeId,
+        ?string $awaiting,
+        array $context,
+        array $messagePayload,
+    ): void {
+        $nextVersion = ($this->sessionVersion % 255) + 1;
+
+        $data = [
+            'wa_number'           => $waNumber,
+            'scenario_id'         => $scenarioId,
+            'node_id'             => $nodeId,
+            'awaiting'            => $awaiting,
+            'context'             => $context,
+            'last_payload'        => $messagePayload,
+            'last_interaction_at' => now(),
+            'session_version'     => $nextVersion,
+        ];
+
+        if ($this->sessionVersion === 0) {
+            WhatsappAutoresponderSession::create(
+                array_merge($data, [
+                    'conversation_id' => $conversation->id,
+                    'session_version' => 1,
+                ])
+            );
+            $this->sessionVersion = 1;
+            return;
+        }
+
+        $affected = WhatsappAutoresponderSession::query()
+            ->where('conversation_id', $conversation->id)
+            ->where('session_version', $this->sessionVersion)
+            ->update($data);
+
+        if ($affected === 0) {
+            \Illuminate\Support\Facades\Log::warning('whatsapp.session_conflict', [
+                'wa_number'      => $waNumber,
+                'loaded_version' => $this->sessionVersion,
+            ]);
+            return;
+        }
+
+        $this->sessionVersion = $nextVersion;
     }
 }

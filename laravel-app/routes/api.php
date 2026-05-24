@@ -181,6 +181,7 @@ Route::middleware([
     Route::post('/whatsapp/webhook', [WebhookController::class, 'receive']);
     Route::get('/v2/whatsapp/webhook', [WebhookController::class, 'verify']);
     Route::post('/v2/whatsapp/webhook', [WebhookController::class, 'receive']);
+    Route::post('/v2/whatsapp/receive', [WebhookController::class, 'receive']);
 });
 
 $legacyRedirect = static function (Request $request, string $target, int $status = 302) {
