@@ -14,6 +14,7 @@ class WhatsappConversationReadControllerTest extends TestCase
 
         Schema::dropIfExists('users');
         Schema::dropIfExists('roles');
+        Schema::dropIfExists('whatsapp_sigcenter_bookings');
         Schema::dropIfExists('whatsapp_messages');
         Schema::dropIfExists('whatsapp_conversations');
 
@@ -62,6 +63,9 @@ class WhatsappConversationReadControllerTest extends TestCase
             $table->timestamp('assigned_at')->nullable();
             $table->timestamp('handoff_requested_at')->nullable();
             $table->unsignedInteger('unread_count')->default(0);
+            $table->timestamp('closed_at')->nullable();
+            $table->unsignedBigInteger('closed_by_user_id')->nullable();
+            $table->string('close_reason', 64)->nullable();
             $table->timestamps();
         });
 
@@ -78,6 +82,13 @@ class WhatsappConversationReadControllerTest extends TestCase
             $table->timestamp('sent_at')->nullable();
             $table->timestamp('delivered_at')->nullable();
             $table->timestamp('read_at')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('whatsapp_sigcenter_bookings', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('conversation_id');
+            $table->string('status', 32)->default('created');
             $table->timestamps();
         });
 
@@ -259,6 +270,155 @@ class WhatsappConversationReadControllerTest extends TestCase
             ->assertJsonPath('meta.tab_counts.window_open', 1)
             ->assertJsonPath('meta.tab_counts.needs_template', 0)
             ->assertJsonPath('meta.tab_counts.resolved', 1);
+    }
+
+    public function test_it_exposes_operational_statuses_priority_and_new_filters(): void
+    {
+        $now = now();
+
+        \DB::table('whatsapp_conversations')->insert([
+            [
+                'id' => 51,
+                'wa_number' => '593999111251',
+                'display_name' => 'Sin Agente',
+                'last_message_direction' => 'inbound',
+                'last_message_type' => 'text',
+                'last_message_preview' => 'Necesito ayuda',
+                'last_message_at' => $now,
+                'needs_human' => 1,
+                'assigned_user_id' => null,
+                'unread_count' => 3,
+                'closed_at' => null,
+                'close_reason' => null,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+            [
+                'id' => 52,
+                'wa_number' => '593999111252',
+                'display_name' => 'En Gestion',
+                'last_message_direction' => 'inbound',
+                'last_message_type' => 'text',
+                'last_message_preview' => 'Listo',
+                'last_message_at' => $now->subMinute(),
+                'needs_human' => 1,
+                'assigned_user_id' => 7,
+                'unread_count' => 1,
+                'closed_at' => null,
+                'close_reason' => null,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+            [
+                'id' => 53,
+                'wa_number' => '593999111253',
+                'display_name' => 'Esperando',
+                'last_message_direction' => 'outbound',
+                'last_message_type' => 'text',
+                'last_message_preview' => 'Quedo atento',
+                'last_message_at' => $now->subMinutes(2),
+                'needs_human' => 1,
+                'assigned_user_id' => 7,
+                'unread_count' => 0,
+                'closed_at' => null,
+                'close_reason' => null,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+            [
+                'id' => 54,
+                'wa_number' => '593999111254',
+                'display_name' => 'Resuelto',
+                'last_message_direction' => 'outbound',
+                'last_message_type' => null,
+                'last_message_preview' => null,
+                'last_message_at' => $now->subMinutes(3),
+                'needs_human' => 0,
+                'assigned_user_id' => null,
+                'unread_count' => 0,
+                'closed_at' => $now,
+                'close_reason' => 'resolved',
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+            [
+                'id' => 55,
+                'wa_number' => '593999111255',
+                'display_name' => 'Seguimiento',
+                'last_message_direction' => 'outbound',
+                'last_message_type' => null,
+                'last_message_preview' => null,
+                'last_message_at' => $now->subMinutes(4),
+                'needs_human' => 0,
+                'assigned_user_id' => null,
+                'unread_count' => 0,
+                'closed_at' => $now,
+                'close_reason' => 'followup_closed',
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+            [
+                'id' => 56,
+                'wa_number' => '593999111256',
+                'display_name' => 'Agendado',
+                'last_message_direction' => 'outbound',
+                'last_message_type' => null,
+                'last_message_preview' => null,
+                'last_message_at' => $now->subMinutes(5),
+                'needs_human' => 0,
+                'assigned_user_id' => null,
+                'unread_count' => 0,
+                'closed_at' => null,
+                'close_reason' => null,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+        ]);
+
+        \DB::table('whatsapp_sigcenter_bookings')->insert([
+            'conversation_id' => 56,
+            'status' => 'created',
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        $requiresAttention = $this->withoutMiddleware()->getJson('/v2/whatsapp/api/conversations?filter=requires_attention');
+        $inProgress = $this->withoutMiddleware()->getJson('/v2/whatsapp/api/conversations?filter=in_progress');
+        $waitingPatient = $this->withoutMiddleware()->getJson('/v2/whatsapp/api/conversations?filter=waiting_patient');
+        $scheduled = $this->withoutMiddleware()->getJson('/v2/whatsapp/api/conversations?filter=scheduled');
+        $closed = $this->withoutMiddleware()->getJson('/v2/whatsapp/api/conversations?filter=closed');
+
+        $requiresAttention
+            ->assertOk()
+            ->assertJsonPath('data.0.id', 51)
+            ->assertJsonPath('data.0.operational_status', 'requires_attention')
+            ->assertJsonPath('data.0.operational_status_label', 'Requiere atención')
+            ->assertJsonPath('data.0.priority_level', 'critical')
+            ->assertJsonPath('data.0.last_message_actor_label', 'Paciente')
+            ->assertJsonPath('meta.tab_counts.requires_attention', 1)
+            ->assertJsonPath('meta.tab_counts.in_progress', 1)
+            ->assertJsonPath('meta.tab_counts.waiting_patient', 1)
+            ->assertJsonPath('meta.tab_counts.scheduled', 1)
+            ->assertJsonPath('meta.tab_counts.closed', 2);
+
+        $inProgress
+            ->assertOk()
+            ->assertJsonPath('data.0.id', 52)
+            ->assertJsonPath('data.0.operational_status', 'in_progress');
+
+        $waitingPatient
+            ->assertOk()
+            ->assertJsonPath('data.0.id', 53)
+            ->assertJsonPath('data.0.operational_status', 'waiting_patient');
+
+        $scheduled
+            ->assertOk()
+            ->assertJsonPath('data.0.id', 56)
+            ->assertJsonPath('data.0.operational_status', 'scheduled');
+
+        $closed
+            ->assertOk()
+            ->assertJsonCount(2, 'data');
     }
 
     public function test_it_filters_by_window_open_and_needs_template(): void
