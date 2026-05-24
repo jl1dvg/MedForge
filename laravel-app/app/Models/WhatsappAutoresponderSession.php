@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Model;
 
 /**
  * Class WhatsappAutoresponderSession
- * 
+ *
  * @property int $id
  * @property int $conversation_id
  * @property string $wa_number
@@ -21,9 +21,10 @@ use Illuminate\Database\Eloquent\Model;
  * @property array|null $context
  * @property array|null $last_payload
  * @property Carbon $last_interaction_at
+ * @property int $session_version
  * @property Carbon $created_at
  * @property Carbon $updated_at
- * 
+ *
  * @property WhatsappConversation $whatsapp_conversation
  *
  * @package App\Models
@@ -34,6 +35,7 @@ class WhatsappAutoresponderSession extends Model
 
 	protected $casts = [
 		'conversation_id' => 'int',
+		'session_version' => 'int',
 		'context' => 'json',
 		'last_payload' => 'json',
 		'last_interaction_at' => 'datetime'
@@ -47,7 +49,8 @@ class WhatsappAutoresponderSession extends Model
 		'awaiting',
 		'context',
 		'last_payload',
-		'last_interaction_at'
+		'last_interaction_at',
+		'session_version'
 	];
 
 	public function whatsapp_conversation()
