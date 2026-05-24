@@ -174,6 +174,7 @@ class WhatsappWebhookControllerTest extends TestCase
             $table->json('context')->nullable();
             $table->json('last_payload')->nullable();
             $table->timestamp('last_interaction_at')->nullable();
+            $table->unsignedTinyInteger('session_version')->default(1);
             $table->timestamps();
         });
 
@@ -2410,5 +2411,50 @@ class WhatsappWebhookControllerTest extends TestCase
         $response->assertOk();
         $response->assertJson(['ok' => true, 'data' => ['queued' => true]]);
         \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\ProcessInboundMessageJob::class);
+    }
+
+    public function test_session_version_increments_after_successful_processing(): void
+    {
+        \Illuminate\Support\Facades\Http::fake([
+            '*graph.facebook.com*' => \Illuminate\Support\Facades\Http::response(['messages' => [['id' => 'wamid.version_test_1']]], 200),
+        ]);
+
+        config()->set('whatsapp.migration.automation.enabled', true);
+        config()->set('whatsapp.migration.automation.dry_run', false);
+        config()->set('whatsapp.migration.api.phone_number_id', '123456');
+        config()->set('whatsapp.migration.api.token', 'test-token');
+
+        \DB::table('app_settings')->insert([
+            ['name' => 'whatsapp_cloud_enabled', 'value' => '1', 'category' => 'whatsapp', 'type' => 'text', 'autoload' => true, 'created_at' => now(), 'updated_at' => now()],
+            ['name' => 'whatsapp_cloud_phone_number_id', 'value' => '123456', 'category' => 'whatsapp', 'type' => 'text', 'autoload' => true, 'created_at' => now(), 'updated_at' => now()],
+            ['name' => 'whatsapp_cloud_access_token', 'value' => 'test-token', 'category' => 'whatsapp', 'type' => 'text', 'autoload' => true, 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        // Publish a flow so the bot has something to process against
+        $this->publishFlowmakerScenarios([]);
+
+        $payload = [
+            'entry' => [[
+                'changes' => [[
+                    'value' => [
+                        'contacts' => [['wa_id' => '593999000088', 'profile' => ['name' => 'Test Version']]],
+                        'messages' => [[
+                            'from' => '593999000088',
+                            'id'   => 'wamid.version_test_1',
+                            'type' => 'text',
+                            'text' => ['body' => 'hola'],
+                            'timestamp' => (string) now()->timestamp,
+                        ]],
+                    ],
+                    'field' => 'messages',
+                ]],
+            ]],
+        ];
+
+        $this->postJson('/whatsapp/webhook', $payload)->assertOk();
+
+        $session = \App\Models\WhatsappAutoresponderSession::where('wa_number', '593999000088')->first();
+        $this->assertNotNull($session, 'Session should exist after processing');
+        $this->assertGreaterThan(0, $session->session_version, 'session_version should be > 0 after save');
     }
 }
