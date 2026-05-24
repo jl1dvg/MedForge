@@ -2,7 +2,6 @@
 
 namespace App\Modules\Whatsapp\Http\Controllers;
 
-use App\Jobs\ProcessInboundMessageJob;
 use App\Modules\Whatsapp\Services\WebhookService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -42,20 +41,21 @@ class WebhookController
             ], 400);
         }
 
-        $waNumber = $this->extractWaNumber($payload);
-        ProcessInboundMessageJob::dispatch($payload, $waNumber);
+        try {
+            $result = $this->service->process($payload);
 
-        return response()->json([
-            'ok' => true,
-            'data' => ['queued' => true],
-        ]);
-    }
+            return response()->json([
+                'ok' => true,
+                'data' => $result,
+            ]);
+        } catch (\Throwable $exception) {
+            report($exception);
 
-    private function extractWaNumber(array $payload): string
-    {
-        $entry    = $payload['entry'][0] ?? [];
-        $change   = $entry['changes'][0] ?? [];
-        $messages = $change['value']['messages'] ?? [];
-        return (string) ($messages[0]['from'] ?? 'unknown');
+            return response()->json([
+                'ok' => false,
+                'error' => 'No fue posible procesar el webhook desde Laravel.',
+                'detail' => $exception->getMessage(),
+            ], 500);
+        }
     }
 }

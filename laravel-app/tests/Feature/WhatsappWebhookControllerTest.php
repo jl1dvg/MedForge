@@ -2402,9 +2402,11 @@ class WhatsappWebhookControllerTest extends TestCase
         ]);
     }
 
-    public function test_inbound_webhook_dispatches_job_and_returns_queued(): void
+    public function test_inbound_webhook_processes_synchronously_and_returns_ok(): void
     {
-        \Illuminate\Support\Facades\Queue::fake();
+        \Illuminate\Support\Facades\Http::fake([
+            '*graph.facebook.com*' => \Illuminate\Support\Facades\Http::response(['messages' => [['id' => 'wamid.test_sync']]], 200),
+        ]);
 
         $payload = [
             'object' => 'whatsapp_business_account',
@@ -2413,7 +2415,7 @@ class WhatsappWebhookControllerTest extends TestCase
                     'value' => [
                         'messages' => [[
                             'from' => '593999000001',
-                            'id'   => 'wamid.test_dispatch',
+                            'id'   => 'wamid.test_sync',
                             'type' => 'text',
                             'text' => ['body' => 'hola'],
                             'timestamp' => (string) now()->timestamp,
@@ -2429,8 +2431,8 @@ class WhatsappWebhookControllerTest extends TestCase
         $response = $this->postJson('/v2/whatsapp/receive', $payload);
 
         $response->assertOk();
-        $response->assertJson(['ok' => true, 'data' => ['queued' => true]]);
-        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\ProcessInboundMessageJob::class);
+        $response->assertJsonPath('ok', true);
+        $response->assertJsonStructure(['ok', 'data' => ['messages_persisted']]);
     }
 
     public function test_session_version_increments_after_successful_processing(): void
