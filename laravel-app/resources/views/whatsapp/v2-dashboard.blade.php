@@ -628,6 +628,13 @@
                             </div>
                         </div>
                         <div class="wa-dashboard-pagebar__meta">
+                            <a
+                                href="https://medforge.my.canva.site/manual-de-entrega-operativa-whatsapp"
+                                class="wa-dashboard-hero-pill"
+                                target="_blank"
+                                rel="noopener">
+                                <i class="mdi mdi-school-outline"></i> Manual operativo
+                            </a>
                             @if(!empty($filters['date_from']) || !empty($filters['date_to']))
                                 <span class="wa-dashboard-hero-pill"><i class="mdi mdi-calendar-range"></i> {{ $filters['date_from'] ?? '—' }} → {{ $filters['date_to'] ?? '—' }}</span>
                             @endif
