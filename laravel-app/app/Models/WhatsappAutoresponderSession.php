@@ -35,6 +35,7 @@ class WhatsappAutoresponderSession extends Model
 
 	protected $casts = [
 		'conversation_id' => 'int',
+		'session_version' => 'int',
 		'context' => 'json',
 		'last_payload' => 'json',
 		'last_interaction_at' => 'datetime'
