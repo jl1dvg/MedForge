@@ -46,7 +46,7 @@ class WhatsappUiController
     ) {
     }
 
-    public function chat(Request $request): View|Factory
+    public function chat(Request $request, string $view = 'whatsapp.v2-chat'): View|Factory
     {
         $currentUser = $this->resolveCurrentUser();
         $permissions = $this->resolvePermissions();
@@ -107,7 +107,7 @@ class WhatsappUiController
             ->values()
             ->all();
 
-        return view('whatsapp.v2-chat', [
+        return view($view, [
             'pageTitle' => 'WhatsApp V2 - Chat',
             'currentUser' => $currentUser,
             'canSupervise' => $canSupervise,
@@ -152,6 +152,15 @@ class WhatsappUiController
             'canSupervise' => $canSupervise,
             'scope' => 'chat',
         ]));
+    }
+
+    /**
+     * Modern minimal redesign of the chat surface. Delegates to chat()
+     * with a v3 view name so both routes share the same data pipeline.
+     */
+    public function chatV3(Request $request): View|Factory
+    {
+        return $this->chat($request, 'whatsapp.v3-chat');
     }
 
     public function templates(Request $request): View

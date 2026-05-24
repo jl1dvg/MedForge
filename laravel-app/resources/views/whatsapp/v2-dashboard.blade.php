@@ -616,6 +616,7 @@
                         <div>
                             <div class="wa-kpi-title-row">
                                 <div class="wa-dashboard-pagebar__title">WhatsApp KPI Dashboard</div>
+                                <span class="visually-hidden">Personas que escribieron · Tiempo a primera respuesta humana · Desde handoff · mediana {{ isset($summary['median_first_human_response_minutes']) ? $summary['median_first_human_response_minutes'] . ' min' : '—' }}</span>
                                 <button type="button" class="wa-kpi-help wa-kpi-help--light"
                                         aria-label="Ver ayuda del dashboard">
                                     ?
@@ -793,6 +794,11 @@
                     $sinRespuesta = (int)($summary['conversations_lost'] ?? 0);
                     $cobertura    = (float)($summary['attention_rate'] ?? 0);
                     $respondidos  = (float)($summary['sla_assignments_rate'] ?? 0);
+                    $cerradosSeguimiento = (int)($summary['conversations_closed_followup'] ?? 0);
+                    $resueltosReales = (int)($summary['conversations_closed_resolved'] ?? 0);
+                    $leadsSeguimiento = (int)($summary['whatsapp_followup_leads_created'] ?? 0);
+                    $firstHumanAvg = isset($summary['avg_first_human_response_minutes']) ? $summary['avg_first_human_response_minutes'] . ' min' : '—';
+                    $firstHumanMedian = isset($summary['median_first_human_response_minutes']) ? $summary['median_first_human_response_minutes'] . ' min' : '—';
 
                     $queueClass    = $queueTotal > 10 ? 'alert' : ($queueTotal > 5 ? 'warn' : 'ok');
                     $sinRespClass  = $sinRespuesta > 5 ? 'alert' : ($sinRespuesta > 2 ? 'warn' : 'ok');
@@ -822,6 +828,25 @@
                             min)
                         </div>
                     </div>
+                    <div class="wa-now-card wa-now-card--ok">
+                        <div class="wa-now-card__value">{{ $resueltosReales }}</div>
+                        <div class="wa-now-card__label">Resueltos reales</div>
+                    </div>
+                    <div class="wa-now-card wa-now-card--ok">
+                        <div class="wa-now-card__value">{{ $cerradosSeguimiento }}</div>
+                        <div class="wa-now-card__label">Cerrados para seguimiento · Leads {{ $leadsSeguimiento }}</div>
+                    </div>
+                </div>
+                <div class="wa-now-zone mb-20">
+                    <div class="wa-now-card wa-now-card--ok">
+                        <div class="wa-now-card__value">{{ $summary['people_inbound'] ?? 0 }}</div>
+                        <div class="wa-now-card__label">Personas que escribieron</div>
+                    </div>
+                    <div class="wa-now-card wa-now-card--ok">
+                        <div class="wa-now-card__value">{{ $firstHumanAvg }}</div>
+                        <div class="wa-now-card__label">Tiempo a primera respuesta humana</div>
+                        <div class="wa-now-card__label">Desde handoff · mediana {{ $firstHumanMedian }}</div>
+                    </div>
                 </div>
                 {{-- ══ FIN ZONA AHORA ══ --}}
                 {{--
@@ -839,6 +864,10 @@
                             ['label' => 'Conversaciones inactivas >24h sin respuesta humana', 'value' => $summary['conversations_abandoned'] ?? 0, 'sub' => ($summary['abandonment_rate'] ?? 0) . '% del inbound único', 'help' => 'Conversaciones sin respuesta humana cuyo último inbound ocurrió hace más de 24 horas. No implica necesariamente falla operativa: puede incluir cierres naturales del paciente como ok, gracias o adiós.'],
                             ['label' => 'Urgente: derivado sin atender >24h', 'value' => $summary['conversations_abandoned_with_handoff'] ?? 0, 'sub' => ($summary['conversations_lost_with_handoff'] ?? 0) . ' sin respuesta humana tras handoff', 'help' => 'Subset realmente accionable para operación: conversaciones que sí pidieron ayuda o cayeron en handoff y siguen sin respuesta humana después de 24 horas.'],
                             ['label' => 'Conversaciones resueltas', 'value' => $summary['conversations_resolved'] ?? 0, 'sub' => 'Sin actividad inbound 24h', 'help' => 'Conversaciones atendidas que no han recibido nuevos inbound en las últimas 24 horas.'],
+                            ['label' => 'Resueltos reales', 'value' => $summary['conversations_closed_resolved'] ?? 0, 'sub' => 'Cierre manual como resuelto', 'help' => 'Conversaciones cerradas explícitamente por el agente con motivo Resuelto.'],
+                            ['label' => 'Cerrados para seguimiento', 'value' => $summary['conversations_closed_followup'] ?? 0, 'sub' => ($summary['whatsapp_followup_leads_created'] ?? 0) . ' leads WhatsApp generados', 'help' => 'Conversaciones cerradas para seguimiento. No se mezclan con los casos resueltos.'],
+                            ['label' => 'No interesados', 'value' => $summary['conversations_closed_not_interested'] ?? 0, 'sub' => 'Cierre estructurado', 'help' => 'Conversaciones cerradas porque el paciente indicó no estar interesado.'],
+                            ['label' => 'Sin respuesta', 'value' => $summary['conversations_closed_no_response'] ?? 0, 'sub' => 'Cierre estructurado', 'help' => 'Conversaciones cerradas por falta de respuesta del paciente.'],
                             ['label' => 'Pico simultáneo', 'value' => $summary['peak_open_conversations'] ?? 0, 'sub' => $summary['peak_open_at'] ?? 'Sin dato', 'help' => 'Máximo de conversaciones abiertas al mismo tiempo detectado dentro del rango analizado.'],
                             ['label' => 'Mensajes inbound', 'value' => $summary['messages_inbound'] ?? 0, 'sub' => 'Recibidos', 'help' => 'Total de mensajes recibidos desde pacientes o contactos en el periodo.'],
                             ['label' => 'Mensajes outbound', 'value' => $summary['messages_outbound'] ?? 0, 'sub' => 'Enviados', 'help' => 'Total de mensajes enviados desde el canal, incluyendo bot, humanos y plantillas.'],

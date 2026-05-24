@@ -28,6 +28,9 @@ use Illuminate\Database\Eloquent\Model;
  * @property int|null $assigned_user_id
  * @property Carbon|null $assigned_at
  * @property Carbon|null $handoff_requested_at
+ * @property Carbon|null $closed_at
+ * @property int|null $closed_by_user_id
+ * @property string|null $close_reason
  * @property int $unread_count
  * @property Carbon $created_at
  * @property Carbon $updated_at
@@ -48,6 +51,8 @@ class WhatsappConversation extends Model
 		'assigned_user_id' => 'int',
 		'assigned_at' => 'datetime',
 		'handoff_requested_at' => 'datetime',
+		'closed_at' => 'datetime',
+		'closed_by_user_id' => 'int',
 		'unread_count' => 'int'
 	];
 
@@ -66,6 +71,9 @@ class WhatsappConversation extends Model
 		'assigned_user_id',
 		'assigned_at',
 		'handoff_requested_at',
+		'closed_at',
+		'closed_by_user_id',
+		'close_reason',
 		'unread_count'
 	];
 

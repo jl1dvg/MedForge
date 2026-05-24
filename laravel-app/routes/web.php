@@ -209,6 +209,9 @@ Route::middleware(['app.auth'])->group(function (): void {
     Route::get('/v2/whatsapp/chat', [WhatsappUiController::class, 'chat'])
         ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.view,whatsapp.chat.send,whatsapp.chat.assign,whatsapp.chat.supervise,settings.manage')
         ->middleware('whatsapp.feature:ui,/whatsapp/chat');
+    Route::get('/v2/whatsapp/chat-v3', [WhatsappUiController::class, 'chatV3'])
+        ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.view,whatsapp.chat.send,whatsapp.chat.assign,whatsapp.chat.supervise,settings.manage')
+        ->middleware('whatsapp.feature:ui,/whatsapp/chat');
     Route::get('/v2/whatsapp/campaigns', [WhatsappUiController::class, 'campaigns'])
         ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.send,whatsapp.templates.manage,settings.manage')
         ->middleware('whatsapp.feature:ui,/whatsapp/campaigns');

@@ -489,6 +489,10 @@ class ConversationReadService
             'can_send_freeform' => $this->resolveMessagingWindowState($conversation) === 'window_open',
             'assigned_at' => optional($conversation->assigned_at)?->toISOString(),
             'handoff_requested_at' => optional($conversation->handoff_requested_at)?->toISOString(),
+            'closed_at' => optional($conversation->closed_at)?->toISOString(),
+            'closed_by_user_id' => $conversation->closed_by_user_id,
+            'close_reason' => $conversation->close_reason,
+            'close_reason_label' => $this->closeReasonLabel((string) ($conversation->close_reason ?? '')),
             'unread_count' => (int) $conversation->unread_count,
             'source' => 'laravel-v2',
             // Attribution / origen
@@ -583,17 +587,19 @@ class ConversationReadService
         $threshold = $this->windowThreshold()->format('Y-m-d H:i:s');
         $criticalThreshold = now()->toImmutable()->subHours(24)->format('Y-m-d H:i:s');
         $viewerUserId = $viewerUserId !== null && $viewerUserId > 0 ? $viewerUserId : 0;
+        $queuedAtSql = $this->activeHandoffQueuedAtSql();
+        $prioritySql = $this->activeHandoffPrioritySql();
 
         return $query
             ->orderByRaw(
                 'CASE
                     WHEN needs_human = 1
                         AND assigned_user_id IS NULL
-                        AND COALESCE(wh_active_handoff.queued_at, whatsapp_conversations.handoff_requested_at) IS NOT NULL
-                        AND COALESCE(wh_active_handoff.queued_at, whatsapp_conversations.handoff_requested_at) <= ? THEN 140
+                        AND ' . $queuedAtSql . ' IS NOT NULL
+                        AND ' . $queuedAtSql . ' <= ? THEN 140
                     WHEN needs_human = 1
                         AND assigned_user_id IS NULL
-                        AND COALESCE(wh_active_handoff.priority, "") = "high" THEN 130
+                        AND ' . $prioritySql . ' = "high" THEN 130
                     WHEN needs_human = 1 AND assigned_user_id IS NULL AND unread_count > 0 THEN 120
                     WHEN needs_human = 1 AND assigned_user_id IS NULL THEN 110
                     WHEN ? > 0 AND needs_human = 1 AND assigned_user_id = ? AND unread_count > 0 THEN 100
@@ -666,32 +672,60 @@ class ConversationReadService
 
     private function applyOperationalQueueFilter(Builder $query, string $queue): Builder
     {
+        $topicSql = $this->activeHandoffTopicSql();
+        $sourceSql = $this->attributionColumnSql('source_category');
+        $patientSegmentSql = $this->attributionColumnSql('patient_segment');
+        $initialIntentSql = $this->attributionColumnSql('initial_intent');
+        $conversationTypeSql = $this->attributionColumnSql('conversation_type');
+
         return match ($queue) {
             'captacion' => $query->where('needs_human', true)->where(function (Builder $builder): void {
+                $topicSql = $this->activeHandoffTopicSql();
+                $sourceSql = $this->attributionColumnSql('source_category');
+                $patientSegmentSql = $this->attributionColumnSql('patient_segment');
+                $initialIntentSql = $this->attributionColumnSql('initial_intent');
+
                 $builder
-                    ->where('wh_active_handoff.topic', 'like', 'captacion_%')
+                    ->whereRaw($topicSql . ' LIKE ?', ['captacion_%'])
                     ->orWhere(function (Builder $captacion): void {
+                        $sourceSql = $this->attributionColumnSql('source_category');
+                        $patientSegmentSql = $this->attributionColumnSql('patient_segment');
+
                         $captacion
-                            ->whereIn(DB::raw('COALESCE(wa_attr.source_category, "")'), ['ad', 'organic_direct'])
-                            ->where(DB::raw('COALESCE(wa_attr.patient_segment, "unknown")'), 'new_patient');
+                            ->whereIn(DB::raw($sourceSql), ['ad', 'organic_direct'])
+                            ->where(DB::raw($patientSegmentSql), 'new_patient');
                     })
-                    ->orWhere(DB::raw('COALESCE(wa_attr.initial_intent, "")'), 'booking');
+                    ->orWhere(DB::raw($initialIntentSql), 'booking');
             })->whereRaw('NOT (' . $this->criticalBacklogSql() . ')', [now()->toImmutable()->subHours(24)->format('Y-m-d H:i:s')]),
             'operacion' => $query->where('needs_human', true)->where(function (Builder $builder): void {
+                $topicSql = $this->activeHandoffTopicSql();
+                $sourceSql = $this->attributionColumnSql('source_category');
+                $conversationTypeSql = $this->attributionColumnSql('conversation_type');
+
                 $builder
-                    ->where('wh_active_handoff.topic', 'like', 'operacion_%')
-                    ->orWhereIn(DB::raw('COALESCE(wa_attr.source_category, "")'), ['support_operational', 'campaign_outbound'])
-                    ->orWhereIn(DB::raw('COALESCE(wa_attr.conversation_type, "")'), ['reschedule', 'cancel', 'results', 'human_help', 'campaign_response']);
+                    ->whereRaw($topicSql . ' LIKE ?', ['operacion_%'])
+                    ->orWhereIn(DB::raw($sourceSql), ['support_operational', 'campaign_outbound'])
+                    ->orWhereIn(DB::raw($conversationTypeSql), ['reschedule', 'cancel', 'results', 'human_help', 'campaign_response']);
             })->whereRaw('NOT (' . $this->criticalBacklogSql() . ')', [now()->toImmutable()->subHours(24)->format('Y-m-d H:i:s')]),
             'informacion' => $query->where('needs_human', true)->where(function (Builder $builder): void {
+                $topicSql = $this->activeHandoffTopicSql();
+                $initialIntentSql = $this->attributionColumnSql('initial_intent');
+                $conversationTypeSql = $this->attributionColumnSql('conversation_type');
+                $sourceSql = $this->attributionColumnSql('source_category');
+
                 $builder
-                    ->whereIn(DB::raw('COALESCE(wh_active_handoff.topic, "")'), ['faq_escalada', 'promociones', 'caso_especial'])
+                    ->whereIn(DB::raw($topicSql), ['faq_escalada', 'promociones', 'caso_especial'])
                     ->orWhere(function (Builder $fallback): void {
+                        $topicSql = $this->activeHandoffTopicSql();
+                        $initialIntentSql = $this->attributionColumnSql('initial_intent');
+                        $conversationTypeSql = $this->attributionColumnSql('conversation_type');
+                        $sourceSql = $this->attributionColumnSql('source_category');
+
                         $fallback
-                            ->whereRaw('COALESCE(wh_active_handoff.topic, "") = ""')
-                            ->whereRaw('COALESCE(wa_attr.initial_intent, "") NOT IN ("booking")')
-                            ->whereRaw('COALESCE(wa_attr.conversation_type, "") NOT IN ("reschedule", "cancel", "results", "human_help", "campaign_response")')
-                            ->whereRaw('COALESCE(wa_attr.source_category, "") NOT IN ("ad", "organic_direct", "support_operational", "campaign_outbound")');
+                            ->whereRaw($topicSql . ' = ""')
+                            ->whereRaw($initialIntentSql . ' NOT IN ("booking")')
+                            ->whereRaw($conversationTypeSql . ' NOT IN ("reschedule", "cancel", "results", "human_help", "campaign_response")')
+                            ->whereRaw($sourceSql . ' NOT IN ("ad", "organic_direct", "support_operational", "campaign_outbound")');
                     });
             })->whereRaw('NOT (' . $this->criticalBacklogSql() . ')', [now()->toImmutable()->subHours(24)->format('Y-m-d H:i:s')]),
             default => $query,
@@ -918,6 +952,17 @@ class ConversationReadService
         };
     }
 
+    private function closeReasonLabel(string $reason): string
+    {
+        return match ($reason) {
+            'resolved' => 'Resuelto',
+            'followup_closed' => 'Seguimiento cerrado',
+            'not_interested' => 'No interesado',
+            'no_response' => 'Sin respuesta',
+            default => 'Cerrado',
+        };
+    }
+
     private function handoffPriorityLabel(string $priority): ?string
     {
         return match ($priority) {
@@ -949,7 +994,35 @@ class ConversationReadService
 
     private function criticalBacklogSql(): string
     {
-        return 'COALESCE(wh_active_handoff.queued_at, whatsapp_conversations.handoff_requested_at) <= ?';
+        return $this->activeHandoffQueuedAtSql() . ' <= ?';
+    }
+
+    private function activeHandoffQueuedAtSql(): string
+    {
+        return Schema::hasTable('whatsapp_handoffs')
+            ? 'COALESCE(wh_active_handoff.queued_at, whatsapp_conversations.handoff_requested_at)'
+            : 'whatsapp_conversations.handoff_requested_at';
+    }
+
+    private function activeHandoffPrioritySql(): string
+    {
+        return Schema::hasTable('whatsapp_handoffs')
+            ? 'COALESCE(wh_active_handoff.priority, "")'
+            : '""';
+    }
+
+    private function activeHandoffTopicSql(): string
+    {
+        return Schema::hasTable('whatsapp_handoffs')
+            ? 'COALESCE(wh_active_handoff.topic, "")'
+            : '""';
+    }
+
+    private function attributionColumnSql(string $column): string
+    {
+        return Schema::hasTable('whatsapp_conversation_attributions')
+            ? 'COALESCE(wa_attr.' . $column . ', "")'
+            : '""';
     }
 
     private function resolveConversationPriority(WhatsappConversation $conversation): string

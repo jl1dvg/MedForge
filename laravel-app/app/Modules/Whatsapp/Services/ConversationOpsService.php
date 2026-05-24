@@ -432,21 +432,34 @@ class ConversationOpsService
         }
 
         DB::transaction(function () use ($conversation, $actorUserId): void {
-            $conversation->fill([
+            $now = now();
+            $payload = [
                 'needs_human' => false,
                 'handoff_notes' => null,
                 'handoff_role_id' => null,
                 'assigned_user_id' => null,
                 'assigned_at' => null,
                 'unread_count' => 0,
-            ])->save();
+            ];
+
+            if (Schema::hasColumn('whatsapp_conversations', 'closed_at')) {
+                $payload['closed_at'] = $now;
+            }
+            if (Schema::hasColumn('whatsapp_conversations', 'closed_by_user_id')) {
+                $payload['closed_by_user_id'] = $actorUserId > 0 ? $actorUserId : null;
+            }
+            if (Schema::hasColumn('whatsapp_conversations', 'close_reason')) {
+                $payload['close_reason'] = 'resolved';
+            }
+
+            $conversation->fill($payload)->save();
 
             $activeHandoff = $this->findActiveHandoff($conversation->id);
             if ($activeHandoff instanceof WhatsappHandoff) {
                 $activeHandoff->fill([
                     'status' => 'resolved',
                     'assigned_until' => null,
-                    'last_activity_at' => now(),
+                    'last_activity_at' => $now,
                 ])->save();
 
                 $this->insertHandoffEvent($activeHandoff->id, 'resolved', $actorUserId, 'Cerrado desde Laravel V2');

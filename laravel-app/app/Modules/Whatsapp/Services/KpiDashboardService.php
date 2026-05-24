@@ -57,11 +57,12 @@ class KpiDashboardService
         $bookings = $this->sigcenterBookingSummary($fromSql, $toSql);
         $analytics = $this->conversationAnalytics($fromSql, $toSql, $roleId, $agentId);
         $reminders = $this->appointmentReminderAnalytics($fromSql, $toSql);
+        $closeReasons = $this->closeReasonSummary($fromSql, $toSql, $roleId, $agentId);
 
         $summary = array_merge($summary, $human, $queue, $window, $sla, [
             'handoff_transfers' => $transfers,
             'peak_open_conversations' => (int) ($human['peak_open_conversations'] ?? 0),
-        ], $bookings);
+        ], $bookings, $closeReasons);
 
         return [
             'period' => [
@@ -1261,6 +1262,79 @@ class KpiDashboardService
             'peak_open_conversations' => $intervalPeak['count'],
             'peak_open_at' => $intervalPeak['at'],
         ];
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private function closeReasonSummary(string $fromSql, string $toSql, ?int $roleId, ?int $agentId): array
+    {
+        $defaults = [
+            'conversations_closed_resolved' => 0,
+            'conversations_closed_followup' => 0,
+            'conversations_closed_not_interested' => 0,
+            'conversations_closed_no_response' => 0,
+            'whatsapp_followup_leads_created' => 0,
+        ];
+
+        if (!Schema::hasColumn('whatsapp_conversations', 'close_reason')
+            || !Schema::hasColumn('whatsapp_conversations', 'closed_at')
+        ) {
+            return $defaults;
+        }
+
+        $bindings = [$fromSql, $toSql];
+        $userJoin = '';
+        $userWhere = '';
+
+        $hasClosedBy = Schema::hasColumn('whatsapp_conversations', 'closed_by_user_id');
+
+        if ($agentId !== null && $agentId > 0 && $hasClosedBy) {
+            $userWhere .= ' AND c.closed_by_user_id = ?';
+            $bindings[] = $agentId;
+        } elseif ($roleId !== null && $roleId > 0 && $hasClosedBy && Schema::hasTable('users')) {
+            $userJoin = ' LEFT JOIN users u ON u.id = c.closed_by_user_id';
+            $userWhere .= ' AND u.role_id = ?';
+            $bindings[] = $roleId;
+        }
+
+        $row = DB::selectOne(
+            'SELECT
+                SUM(CASE WHEN c.close_reason = "resolved" THEN 1 ELSE 0 END) AS resolved,
+                SUM(CASE WHEN c.close_reason = "followup_closed" THEN 1 ELSE 0 END) AS followup_closed,
+                SUM(CASE WHEN c.close_reason = "not_interested" THEN 1 ELSE 0 END) AS not_interested,
+                SUM(CASE WHEN c.close_reason = "no_response" THEN 1 ELSE 0 END) AS no_response
+             FROM whatsapp_conversations c' . $userJoin . '
+             WHERE c.closed_at >= ? AND c.closed_at < ?' . $userWhere,
+            $bindings
+        );
+
+        $leadBindings = [$fromSql, $toSql];
+        $leadJoin = '';
+        $leadWhere = '';
+        if (Schema::hasTable('whatsapp_leads')) {
+            if ($agentId !== null && $agentId > 0) {
+                $leadWhere .= ' AND wl.created_by_user_id = ?';
+                $leadBindings[] = $agentId;
+            } elseif ($roleId !== null && $roleId > 0 && Schema::hasTable('users')) {
+                $leadJoin = ' LEFT JOIN users wu ON wu.id = wl.created_by_user_id';
+                $leadWhere .= ' AND wu.role_id = ?';
+                $leadBindings[] = $roleId;
+            }
+
+            $defaults['whatsapp_followup_leads_created'] = $this->scalarInt(
+                'SELECT COUNT(*) FROM whatsapp_leads wl' . $leadJoin . '
+                 WHERE wl.created_at >= ? AND wl.created_at < ?' . $leadWhere,
+                $leadBindings
+            );
+        }
+
+        $defaults['conversations_closed_resolved'] = (int) ($row->resolved ?? 0);
+        $defaults['conversations_closed_followup'] = (int) ($row->followup_closed ?? 0);
+        $defaults['conversations_closed_not_interested'] = (int) ($row->not_interested ?? 0);
+        $defaults['conversations_closed_no_response'] = (int) ($row->no_response ?? 0);
+
+        return $defaults;
     }
 
     /**

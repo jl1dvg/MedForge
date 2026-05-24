@@ -5,6 +5,7 @@ namespace App\Modules\Whatsapp\Http\Controllers;
 use App\Modules\Whatsapp\Services\WhatsappLeadService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use RuntimeException;
 
 class WhatsappLeadWriteController
@@ -18,7 +19,7 @@ class WhatsappLeadWriteController
     {
         try {
             $motivoBaja = trim((string) ($request->input('motivo_baja', '')));
-            $actorUserId = (int) ($request->attributes->get('auth_user_id') ?? 0);
+            $actorUserId = (int) ($request->attributes->get('auth_user_id') ?? Auth::id() ?? 0);
 
             $lead = $this->service->createFromConversation($conversationId, $motivoBaja, $actorUserId);
 
