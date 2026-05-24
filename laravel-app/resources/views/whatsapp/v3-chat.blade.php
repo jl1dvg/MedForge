@@ -1,0 +1,888 @@
+@extends('layouts.medforge')
+
+{{--
+    MedForge — WhatsApp Chat V3
+    Modern, minimal redesign of v2-chat.blade.php.
+
+    Consumes the SAME data passed by WhatsappUiController::chat() — to use it,
+    add a sibling controller method (chatV3) that calls `view('whatsapp.v3-chat', [...])`
+    with identical view data. See the accompanying patch.
+
+    Keeps JS hook IDs compatible with the existing v2 scripts (wa-v2-message-input,
+    wa-v2-message-list, wa-v2-composer-send, data-wa-action="...", data-wa-conversation-item),
+    so when you're ready you can copy the @push('scripts') block from v2-chat into this
+    file unchanged and everything will wire up. By default this view ships with a small,
+    self-contained JS that handles: menu open/close, composer autosize, and a fetch-based
+    send via the existing /whatsapp/api/conversations/{id}/messages endpoint.
+--}}
+
+@php
+    $currentUser = is_array($currentUser ?? null) ? $currentUser : ['id' => null, 'display_name' => 'Usuario'];
+    $selectedFilter = (string) ($selectedFilter ?? 'all');
+    $search = (string) ($search ?? '');
+    $listData = is_array($listData ?? null) ? $listData : [];
+    $tabCounts = is_array($tabCounts ?? null) ? $tabCounts : [];
+    $agents = is_array($agents ?? null) ? $agents : [];
+    $roleOptions = is_array($roleOptions ?? null) ? $roleOptions : [];
+    $selectedConversation = is_array($selectedConversation ?? null) ? $selectedConversation : null;
+    $canOperateConversation = (bool) ($canOperateConversation ?? false);
+    $quickReplies = is_array($quickReplies ?? null) ? $quickReplies : [];
+    $templateOptions = is_array($templateOptions ?? null) ? $templateOptions : [];
+
+    $formatWaBody = static function (string $text): string {
+        $safe = htmlspecialchars($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $safe = preg_replace('/\*([^*\r\n]+)\*/', '<strong>$1</strong>', $safe) ?? $safe;
+        $safe = preg_replace('/_([^_\r\n]+)_/', '<em>$1</em>', $safe) ?? $safe;
+        $safe = preg_replace('/~([^~\r\n]+)~/', '<del>$1</del>', $safe) ?? $safe;
+        $safe = preg_replace('/`([^`\r\n]+)`/', '<code>$1</code>', $safe) ?? $safe;
+        $safe = str_replace(["\r\n", "\r", "\n"], '<br>', $safe);
+        return $safe;
+    };
+
+    // Tone for avatars — stable colour per name so users learn to recognise them.
+    $avatarTone = static function (string $seed): string {
+        $tones = ['violet', 'green', 'amber', 'rose', 'blue', 'cyan'];
+        return $tones[abs(crc32($seed)) % count($tones)];
+    };
+
+    $tabs = [
+        'all'        => ['label' => 'Todos',      'icon' => 'mdi-inbox-multiple'],
+        'handoff'    => ['label' => 'Cola',       'icon' => 'mdi-tray-arrow-down'],
+        'mine'       => ['label' => 'Mías',       'icon' => 'mdi-account-check-outline'],
+        'window_open'=> ['label' => 'Esperando',  'icon' => 'mdi-timer-sand'],
+        'resolved'   => ['label' => 'Resueltos',  'icon' => 'mdi-check-circle-outline'],
+    ];
+
+    $buildLink = static function (array $extra = []) use ($selectedFilter, $search) {
+        $qs = array_filter(array_merge([
+            'filter' => $selectedFilter,
+            'search' => $search,
+        ], $extra), static fn ($v) => $v !== null && $v !== '');
+        return '/v2/whatsapp/chat-v3?' . http_build_query($qs);
+    };
+@endphp
+
+@push('styles')
+    <style>
+        .wa3 {
+            --wa3-accent:      #5156be;
+            --wa3-accent-soft: #edf2ff;
+            --wa3-accent-fg:   #ffffff;
+            --wa3-bg:          #f7f8fb;
+            --wa3-surface:     #ffffff;
+            --wa3-surface-2:   #f3f4f8;
+            --wa3-border:      #ececf2;
+            --wa3-border-soft: #f1f1f6;
+            --wa3-text:        #172b4c;
+            --wa3-text-mute:   #7e8299;
+            --wa3-text-fade:   #b5b5c3;
+            --wa3-bubble-in:   #ffffff;
+            --wa3-bubble-out:  #eaecfb;
+            --wa3-success:     #05825f;
+            --wa3-danger:      #ee3158;
+            --wa3-warning:     #ffa800;
+            --wa3-radius:      14px;
+            --wa3-radius-sm:   10px;
+            display: grid;
+            grid-template-columns: 360px 1fr;
+            height: calc(100vh - 64px);
+            background: var(--wa3-bg);
+            color: var(--wa3-text);
+            font-family: var(--bs-body-font-family, "IBM Plex Sans", system-ui, sans-serif);
+        }
+        .wa3.has-drawer { grid-template-columns: 360px 1fr 340px; }
+
+        /* INBOX */
+        .wa3-inbox { background: var(--wa3-surface); border-right: 1px solid var(--wa3-border); display: flex; flex-direction: column; overflow: hidden; }
+        .wa3-inbox__head { padding: 18px 20px 12px; display: flex; flex-direction: column; gap: 12px; }
+        .wa3-inbox__title-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+        .wa3-inbox__title { font: 600 18px/1.2 var(--font-display, "Rubik", system-ui, sans-serif); margin: 0; color: var(--wa3-text); }
+        .wa3-iconbtn { width: 32px; height: 32px; display: inline-grid; place-items: center; background: transparent; border: 0; border-radius: 8px; color: var(--wa3-text-mute); cursor: pointer; font-size: 18px; transition: background .12s, color .12s; }
+        .wa3-iconbtn:hover { background: var(--wa3-surface-2); color: var(--wa3-text); }
+        .wa3-iconbtn.is-primary { color: var(--wa3-accent); }
+        .wa3-iconbtn.is-primary:hover { background: var(--wa3-accent-soft); }
+
+        .wa3-search { position: relative; }
+        .wa3-search input { width: 100%; padding: 9px 14px 9px 36px; font: 400 13px var(--bs-body-font-family); color: var(--wa3-text); background: var(--wa3-surface-2); border: 1px solid transparent; border-radius: 999px; transition: background .12s, border-color .12s, box-shadow .12s; }
+        .wa3-search input::placeholder { color: var(--wa3-text-fade); }
+        .wa3-search input:focus { outline: 0; background: #fff; border-color: var(--wa3-accent); box-shadow: 0 0 0 3px rgba(81, 86, 190, .18); }
+        .wa3-search i { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--wa3-text-mute); font-size: 18px; }
+
+        .wa3-chips { display: flex; gap: 6px; padding: 0 16px 10px; overflow-x: auto; scrollbar-width: none; }
+        .wa3-chips::-webkit-scrollbar { display: none; }
+        .wa3-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; background: transparent; border: 1px solid var(--wa3-border); color: var(--wa3-text-mute); font: 500 12px var(--bs-body-font-family); white-space: nowrap; cursor: pointer; text-decoration: none; transition: background .12s, color .12s, border-color .12s; }
+        .wa3-chip:hover { color: var(--wa3-text); border-color: var(--wa3-text-fade); text-decoration: none; }
+        .wa3-chip.is-active { background: var(--wa3-text); border-color: var(--wa3-text); color: #fff; }
+        .wa3-chip__count { font: 700 11px var(--bs-body-font-family); padding: 0 6px; border-radius: 999px; background: rgba(255,255,255,.18); color: inherit; min-width: 18px; text-align: center; }
+        .wa3-chip:not(.is-active) .wa3-chip__count { background: var(--wa3-surface-2); color: var(--wa3-text-mute); }
+
+        .wa3-list { flex: 1; overflow-y: auto; padding: 4px 0 8px; }
+        .wa3-row { display: grid; grid-template-columns: 44px 1fr auto; align-items: start; gap: 12px; padding: 12px 18px; cursor: pointer; border-left: 3px solid transparent; text-decoration: none; color: inherit; transition: background .12s; }
+        .wa3-row:hover { background: var(--wa3-surface-2); text-decoration: none; color: inherit; }
+        .wa3-row.is-active { background: var(--wa3-accent-soft); border-left-color: var(--wa3-accent); }
+        .wa3-row + .wa3-row { border-top: 1px solid var(--wa3-border-soft); }
+
+        .wa3-avatar { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; font: 600 15px var(--bs-body-font-family); color: var(--wa3-accent); background: var(--wa3-accent-soft); flex-shrink: 0; position: relative; }
+        .wa3-avatar[data-tone="green"]  { background: #e0f3eb; color: #05825f; }
+        .wa3-avatar[data-tone="amber"]  { background: #fff0d1; color: #8a5d0a; }
+        .wa3-avatar[data-tone="rose"]   { background: #fde2e7; color: #9f2d3e; }
+        .wa3-avatar[data-tone="blue"]   { background: #e3edf9; color: #2e5e99; }
+        .wa3-avatar[data-tone="violet"] { background: #e9e7fb; color: #4e48a8; }
+        .wa3-avatar[data-tone="cyan"]   { background: #d6f4f7; color: #0e7a87; }
+        .wa3-avatar__status { position: absolute; bottom: 0; right: 0; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--wa3-surface); background: var(--wa3-text-fade); }
+        .wa3-avatar__status[data-state="open"]   { background: var(--wa3-success); }
+        .wa3-avatar__status[data-state="urgent"] { background: var(--wa3-danger); }
+        .wa3-avatar__status[data-state="warn"]   { background: var(--wa3-warning); }
+
+        .wa3-row__main { min-width: 0; }
+        .wa3-row__name { font: 600 14px var(--bs-body-font-family); color: var(--wa3-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .wa3-row__sub { font: 400 11.5px var(--bs-body-font-family); color: var(--wa3-text-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+        .wa3-row__preview { font: 400 12.5px var(--bs-body-font-family); color: var(--wa3-text-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 4px; }
+        .wa3-row.is-unread .wa3-row__preview, .wa3-row.is-unread .wa3-row__name { color: var(--wa3-text); font-weight: 600; }
+        .wa3-row__aside { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex-shrink: 0; padding-top: 2px; }
+        .wa3-row__time { font: 500 10.5px var(--bs-body-font-family); color: var(--wa3-text-mute); white-space: nowrap; }
+        .wa3-row.is-unread .wa3-row__time { color: var(--wa3-accent); font-weight: 700; }
+        .wa3-row__unread { background: var(--wa3-accent); color: #fff; font: 700 10px var(--bs-body-font-family); min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; display: inline-grid; place-items: center; }
+        .wa3-row__tag { font: 600 10px var(--bs-body-font-family); letter-spacing: .04em; text-transform: uppercase; padding: 2px 6px; border-radius: 4px; background: var(--wa3-surface-2); color: var(--wa3-text-mute); }
+        .wa3-row__tag[data-tone="urgent"]   { background: #fde2e7; color: #9f2d3e; }
+        .wa3-row__tag[data-tone="mine"]     { background: #e9e7fb; color: #4e48a8; }
+        .wa3-row__tag[data-tone="waiting"]  { background: #fff0d1; color: #8a5d0a; }
+        .wa3-row__tag[data-tone="resolved"] { background: #e0f3eb; color: #05825f; }
+
+        /* THREAD */
+        .wa3-thread { display: flex; flex-direction: column; background: var(--wa3-bg); min-width: 0; overflow: hidden; }
+        .wa3-thread__head { background: var(--wa3-surface); border-bottom: 1px solid var(--wa3-border); padding: 12px 22px; display: flex; align-items: center; gap: 14px; }
+        .wa3-thread__main { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1; }
+        .wa3-thread__id { min-width: 0; }
+        .wa3-thread__name { font: 600 15px var(--bs-body-font-family); color: var(--wa3-text); margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .wa3-thread__meta { font: 400 12px var(--bs-body-font-family); color: var(--wa3-text-mute); display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+        .wa3-thread__meta .sep { color: var(--wa3-text-fade); }
+        .wa3-thread__actions { display: flex; align-items: center; gap: 4px; }
+        .wa3-thread__actions .wa3-iconbtn { width: 36px; height: 36px; font-size: 19px; }
+
+        /* Pill buttons in chat header */
+        .wa3-hbtn-wrap { position: relative; }
+        .wa3-hbtn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 11px; border-radius: 8px; background: transparent; border: 1px solid transparent; color: var(--wa3-text); cursor: pointer; font: 500 12.5px var(--bs-body-font-family); line-height: 1; transition: background .12s, border-color .12s, color .12s; }
+        .wa3-hbtn i { font-size: 16px; color: var(--wa3-text-mute); }
+        .wa3-hbtn:hover { background: var(--wa3-surface-2); }
+        .wa3-hbtn:hover i { color: var(--wa3-text); }
+        .wa3-hbtn.is-open { background: var(--wa3-accent-soft); color: var(--wa3-accent); }
+        .wa3-hbtn.is-open i { color: var(--wa3-accent); }
+        .wa3-hbtn.is-success { color: var(--wa3-success); border-color: rgba(5, 130, 95, .28); }
+        .wa3-hbtn.is-success i { color: var(--wa3-success); }
+        .wa3-hbtn.is-success:hover { background: rgba(5, 130, 95, .1); }
+        .wa3-hbtn__menu { position: absolute; top: calc(100% + 6px); right: 0; min-width: 280px; max-width: 360px; background: var(--wa3-surface); border: 1px solid var(--wa3-border); border-radius: 12px; box-shadow: 0 12px 32px rgba(16,24,40,.12); padding: 8px; z-index: 30; }
+        .wa3-hbtn__menu[hidden] { display: none; }
+        .wa3-hbtn__menu h6 { font: 600 10px var(--bs-body-font-family); color: var(--wa3-text-mute); text-transform: uppercase; letter-spacing: .08em; padding: 6px 10px 4px; margin: 0; }
+        .wa3-menu-item { display: grid; grid-template-columns: 28px 1fr auto; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; background: transparent; border: 0; width: 100%; text-align: left; color: var(--wa3-text); cursor: pointer; font: 500 13px var(--bs-body-font-family); line-height: 1.3; }
+        .wa3-menu-item:hover { background: var(--wa3-surface-2); }
+        .wa3-menu-item i.lead { font-size: 18px; color: var(--wa3-text-mute); width: 28px; text-align: center; }
+        .wa3-menu-item .meta { font: 400 11.5px var(--bs-body-font-family); color: var(--wa3-text-mute); display: block; }
+        .wa3-menu-item .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--wa3-text-fade); }
+        .wa3-menu-item .dot[data-state="online"] { background: var(--wa3-success); }
+        .wa3-menu-item .dot[data-state="busy"]   { background: var(--wa3-warning); }
+        .wa3-menu-footer { display: flex; gap: 6px; padding: 6px 4px 2px; margin-top: 4px; border-top: 1px solid var(--wa3-border-soft); }
+        .wa3-menu-footer input, .wa3-menu-footer select { flex: 1; padding: 7px 10px; border: 1px solid var(--wa3-border); border-radius: 8px; background: var(--wa3-surface-2); color: var(--wa3-text); font: 400 12.5px var(--bs-body-font-family); }
+        .wa3-menu-footer button { padding: 7px 14px; border-radius: 8px; border: 0; background: var(--wa3-accent); color: #fff; font: 600 12px var(--bs-body-font-family); cursor: pointer; }
+        .wa3-iconbtn--sep { width: 1px; height: 20px; background: var(--wa3-border); margin: 0 4px; }
+
+        /* Context bar */
+        .wa3-context { background: var(--wa3-surface); border-bottom: 1px solid var(--wa3-border); padding: 8px 22px; display: flex; align-items: center; gap: 10px; overflow-x: auto; scrollbar-width: none; }
+        .wa3-context::-webkit-scrollbar { display: none; }
+        .wa3-context__item { display: inline-flex; align-items: center; gap: 6px; font: 500 11.5px var(--bs-body-font-family); color: var(--wa3-text-mute); white-space: nowrap; padding: 4px 0; }
+        .wa3-context__item i { font-size: 14px; color: var(--wa3-text-fade); }
+        .wa3-context__item strong { color: var(--wa3-text); font-weight: 600; }
+        .wa3-context__item--open i  { color: var(--wa3-success); }
+        .wa3-context__item--mine i  { color: var(--wa3-accent); }
+        .wa3-context .sep { color: var(--wa3-border); }
+
+        /* Messages */
+        .wa3-messages { flex: 1; overflow-y: auto; padding: 18px 22px 8px; display: flex; flex-direction: column; gap: 6px; background: radial-gradient(circle at 20% 10%, rgba(81,86,190,.05), transparent 50%), radial-gradient(circle at 90% 90%, rgba(81,86,190,.03), transparent 60%), var(--wa3-bg); }
+        .wa3-date { align-self: center; font: 600 11px var(--bs-body-font-family); color: var(--wa3-text-mute); background: var(--wa3-surface); border: 1px solid var(--wa3-border); padding: 4px 12px; border-radius: 999px; margin: 12px 0 8px; }
+        .wa3-msg { display: flex; max-width: 640px; }
+        .wa3-msg.is-out { align-self: flex-end; justify-content: flex-end; }
+        .wa3-msg.is-in  { align-self: flex-start; }
+        .wa3-bubble { background: var(--wa3-bubble-in); border: 1px solid var(--wa3-border-soft); padding: 8px 12px 7px; border-radius: var(--wa3-radius); font: 400 13.5px/1.45 var(--bs-body-font-family); color: var(--wa3-text); position: relative; max-width: 100%; box-shadow: 0 1px 2px rgba(16, 24, 40, .03); }
+        .wa3-msg.is-out .wa3-bubble { background: var(--wa3-bubble-out); border-color: transparent; color: var(--wa3-text); }
+        .wa3-bubble__meta { display: flex; justify-content: flex-end; align-items: center; gap: 4px; font: 500 10px var(--bs-body-font-family); color: var(--wa3-text-mute); margin-top: 4px; line-height: 1; }
+        .wa3-bubble__meta i { font-size: 13px; }
+        .wa3-bubble__meta .read { color: #2196f3; }
+        .wa3-event { align-self: center; font: 500 11px var(--bs-body-font-family); color: var(--wa3-text-mute); background: rgba(255,168,0,.18); padding: 4px 12px; border-radius: 999px; margin: 4px 0; display: inline-flex; align-items: center; gap: 6px; }
+        .wa3-event i { font-size: 13px; }
+        .wa3-media { display: flex; align-items: center; gap: 10px; background: rgba(0,0,0,.04); border-radius: 8px; padding: 8px 12px; margin: 0 -4px 6px; font: 500 12.5px var(--bs-body-font-family); }
+        .wa3-media i { font-size: 22px; color: var(--wa3-text-mute); }
+        .wa3-media small { color: var(--wa3-text-mute); font-weight: 400; display: block; }
+        .wa3-media img, .wa3-media video { max-width: 240px; width: 100%; border-radius: 10px; display: block; margin-top: 6px; }
+
+        /* Composer */
+        .wa3-composer { background: var(--wa3-surface); border-top: 1px solid var(--wa3-border); padding: 12px 18px; }
+        .wa3-composer__quickreplies { display: flex; gap: 6px; padding-bottom: 8px; overflow-x: auto; scrollbar-width: none; }
+        .wa3-composer__quickreplies::-webkit-scrollbar { display: none; }
+        .wa3-quickreply { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 999px; background: var(--wa3-surface-2); border: 1px solid var(--wa3-border); color: var(--wa3-text); font: 500 12px var(--bs-body-font-family); cursor: pointer; white-space: nowrap; }
+        .wa3-quickreply:hover { background: var(--wa3-accent-soft); border-color: var(--wa3-accent); color: var(--wa3-accent); }
+        .wa3-composer__row { display: flex; align-items: flex-end; gap: 10px; background: var(--wa3-surface-2); border: 1px solid var(--wa3-border); border-radius: 24px; padding: 6px 6px 6px 12px; transition: border-color .12s, box-shadow .12s; }
+        .wa3-composer__row:focus-within { background: #fff; border-color: var(--wa3-accent); box-shadow: 0 0 0 3px rgba(81, 86, 190, .18); }
+        .wa3-composer textarea { flex: 1; resize: none; background: transparent; border: 0; font: 400 13.5px/1.5 var(--bs-body-font-family); color: var(--wa3-text); padding: 8px 4px; min-height: 24px; max-height: 140px; }
+        .wa3-composer textarea:focus { outline: 0; }
+        .wa3-composer__tools { display: flex; align-items: center; gap: 2px; }
+        .wa3-send { width: 38px; height: 38px; border-radius: 50%; border: 0; cursor: pointer; background: var(--wa3-accent); color: #fff; display: grid; place-items: center; font-size: 20px; transition: transform .12s, background .12s; }
+        .wa3-send:hover:not(:disabled) { background: #3c40a0; }
+        .wa3-send:disabled { background: var(--wa3-border); color: #fff; cursor: not-allowed; }
+        .wa3-composer__hint { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; font: 400 11px var(--bs-body-font-family); color: var(--wa3-text-mute); }
+        .wa3-composer__hint kbd { font: 600 10px ui-monospace, monospace; padding: 1px 5px; border-radius: 4px; background: var(--wa3-surface-2); border: 1px solid var(--wa3-border); color: var(--wa3-text-mute); }
+
+        /* Drawer */
+        .wa3-drawer { background: var(--wa3-surface); border-left: 1px solid var(--wa3-border); overflow-y: auto; }
+        .wa3-drawer__profile { padding: 28px 22px 18px; text-align: center; border-bottom: 1px solid var(--wa3-border-soft); }
+        .wa3-drawer__profile .wa3-avatar { width: 76px; height: 76px; font-size: 26px; margin: 0 auto 10px; }
+        .wa3-drawer__profile h3 { font: 600 17px var(--font-display, "Rubik", system-ui, sans-serif); margin: 0; color: var(--wa3-text); }
+        .wa3-drawer__profile p { font: 400 12.5px var(--bs-body-font-family); color: var(--wa3-text-mute); margin: 4px 0 14px; }
+        .wa3-drawer__quickactions { display: flex; gap: 6px; justify-content: center; }
+        .wa3-quickaction { flex: 1; max-width: 80px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 6px; border-radius: var(--wa3-radius-sm); background: var(--wa3-surface-2); border: 1px solid transparent; color: var(--wa3-text); cursor: pointer; font: 500 10.5px var(--bs-body-font-family); text-align: center; transition: border-color .12s, color .12s, background .12s; }
+        .wa3-quickaction:hover { border-color: var(--wa3-accent); color: var(--wa3-accent); background: var(--wa3-accent-soft); }
+        .wa3-quickaction i { font-size: 18px; color: var(--wa3-text-mute); }
+        .wa3-quickaction:hover i { color: var(--wa3-accent); }
+        .wa3-drawer__section { padding: 14px 22px; border-bottom: 1px solid var(--wa3-border-soft); }
+        .wa3-drawer__section h6 { font: 600 10px var(--bs-body-font-family); color: var(--wa3-text-mute); text-transform: uppercase; letter-spacing: .1em; margin: 0 0 10px; }
+        .wa3-kv { display: grid; grid-template-columns: 1fr; gap: 8px; }
+        .wa3-kv__row { display: flex; justify-content: space-between; gap: 12px; }
+        .wa3-kv__row .k { font: 500 12px var(--bs-body-font-family); color: var(--wa3-text-mute); display: inline-flex; align-items: center; gap: 6px; }
+        .wa3-kv__row .v { font: 500 12.5px var(--bs-body-font-family); color: var(--wa3-text); text-align: right; }
+        .wa3-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+        .wa3-tag { font: 500 11px var(--bs-body-font-family); padding: 3px 9px; border-radius: 999px; background: var(--wa3-accent-soft); color: var(--wa3-accent); }
+
+        .wa3-empty { display: flex; align-items: center; justify-content: center; height: 100%; padding: 40px; }
+        .wa3-empty__card { text-align: center; max-width: 360px; }
+        .wa3-empty__icon { width: 64px; height: 64px; margin: 0 auto 16px; border-radius: 50%; background: var(--wa3-accent-soft); color: var(--wa3-accent); display: grid; place-items: center; font-size: 32px; }
+        .wa3-empty h3 { font: 600 16px var(--font-display, "Rubik", system-ui, sans-serif); margin: 0 0 6px; }
+        .wa3-empty p { font: 400 13px var(--bs-body-font-family); color: var(--wa3-text-mute); margin: 0; }
+
+        @media (max-width: 1280px) { .wa3.has-drawer { grid-template-columns: 320px 1fr 0; } .wa3.has-drawer .wa3-drawer { display: none; } }
+        @media (max-width: 1000px) { .wa3 { grid-template-columns: 280px 1fr; } }
+    </style>
+@endpush
+
+@section('content')
+<div class="wa3 has-drawer" id="wa3-root">
+
+    {{-- ================= INBOX ================= --}}
+    <aside class="wa3-inbox">
+        <div class="wa3-inbox__head">
+            <div class="wa3-inbox__title-row">
+                <h2 class="wa3-inbox__title">Conversaciones</h2>
+                <div style="display:flex;gap:2px;">
+                    <button class="wa3-iconbtn" title="Nueva conversación" type="button"
+                            onclick="document.getElementById('wa3-new-modal')?.removeAttribute('hidden')">
+                        <i class="mdi mdi-plus"></i>
+                    </button>
+                    <button class="wa3-iconbtn" title="Filtros avanzados" type="button"><i class="mdi mdi-tune-variant"></i></button>
+                </div>
+            </div>
+            <form method="GET" action="/v2/whatsapp/chat-v3" class="wa3-search">
+                <i class="mdi mdi-magnify"></i>
+                <input type="search" name="search" value="{{ $search }}" placeholder="Buscar nombre, número o HC…">
+                <input type="hidden" name="filter" value="{{ $selectedFilter }}">
+            </form>
+        </div>
+
+        <nav class="wa3-chips">
+            @foreach($tabs as $key => $t)
+                <a href="{{ $buildLink(['filter' => $key]) }}"
+                   class="wa3-chip {{ $selectedFilter === $key ? 'is-active' : '' }}">
+                    {{ $t['label'] }}
+                    @if(isset($tabCounts[$key]))
+                        <span class="wa3-chip__count">{{ $tabCounts[$key] }}</span>
+                    @endif
+                </a>
+            @endforeach
+        </nav>
+
+        <div class="wa3-list">
+            @forelse($listData as $c)
+                @php
+                    $isActive = $selectedConversation && (int) $selectedConversation['id'] === (int) $c['id'];
+                    $isUnread = (int) ($c['unread_count'] ?? 0) > 0;
+                    $name = $c['display_name'] ?: $c['wa_number'];
+                    $initials = mb_strtoupper(mb_substr($name, 0, 1) . mb_substr(strpos($name, ' ') !== false ? substr($name, strpos($name, ' ') + 1) : '', 0, 1));
+                    $tone = $avatarTone($name);
+
+                    $statusDot = null;
+                    if (!empty($c['needs_human'])) {
+                        $statusDot = !empty($c['handoff_priority_label']) ? 'urgent' : 'open';
+                    } elseif (($c['messaging_window_state'] ?? '') === 'window_open') {
+                        $statusDot = 'open';
+                    }
+
+                    $tagTone = 'gray'; $tagLabel = null;
+                    if (!empty($c['needs_human'])) { $tagTone = 'urgent';  $tagLabel = 'Cola'; }
+                    elseif (($c['ownership_label'] ?? '') === 'Mía' || ($c['assigned_user_id'] ?? null) === ($currentUser['id'] ?? -1)) { $tagTone = 'mine'; $tagLabel = 'Mía'; }
+                    elseif (($c['messaging_window_state'] ?? '') === 'window_open') { $tagTone = 'waiting'; $tagLabel = 'Esperando'; }
+                    elseif (empty($c['needs_human'])) { $tagTone = 'resolved'; $tagLabel = 'Listo'; }
+                @endphp
+                <a href="{{ $buildLink(['conversation' => $c['id']]) }}"
+                   class="wa3-row {{ $isActive ? 'is-active' : '' }} {{ $isUnread ? 'is-unread' : '' }}"
+                   data-wa-conversation-item="{{ (int) $c['id'] }}">
+                    <div class="wa3-avatar" data-tone="{{ $tone }}">
+                        {{ $initials }}
+                        @if($statusDot)
+                            <span class="wa3-avatar__status" data-state="{{ $statusDot }}"></span>
+                        @endif
+                    </div>
+                    <div class="wa3-row__main">
+                        <div class="wa3-row__name">{{ $name }}</div>
+                        <div class="wa3-row__sub">
+                            {{ $c['patient_full_name'] ?: $c['wa_number'] }}
+                            @if(!empty($c['patient_hc_number'])) · HC {{ $c['patient_hc_number'] }} @endif
+                        </div>
+                        <div class="wa3-row__preview"
+                             data-wa-conversation-preview="{{ (int) $c['id'] }}">{{ $c['last_message_preview'] ?: '[' . ($c['last_message_type'] ?: 'mensaje') . ']' }}</div>
+                    </div>
+                    <div class="wa3-row__aside">
+                        <span class="wa3-row__time" data-ts="{{ $c['last_message_at'] ?? '' }}">
+                            @if(!empty($c['last_message_at']))
+                                {{ \Carbon\Carbon::parse($c['last_message_at'])->isToday() ? \Carbon\Carbon::parse($c['last_message_at'])->format('H:i') : \Carbon\Carbon::parse($c['last_message_at'])->format('d/m') }}
+                            @endif
+                        </span>
+                        @if($isUnread)
+                            <span class="wa3-row__unread"
+                                  data-wa-conversation-unread="{{ (int) $c['id'] }}">{{ (int) $c['unread_count'] }}</span>
+                        @elseif($tagLabel)
+                            <span class="wa3-row__tag" data-tone="{{ $tagTone }}">{{ $tagLabel }}</span>
+                        @endif
+                    </div>
+                </a>
+            @empty
+                <div style="padding:24px;text-align:center;color:var(--wa3-text-mute);font:400 13px var(--bs-body-font-family);">
+                    No hay conversaciones para este filtro.
+                </div>
+            @endforelse
+        </div>
+    </aside>
+
+    {{-- ================= THREAD ================= --}}
+    <section class="wa3-thread">
+        @if($selectedConversation)
+            @php
+                $selName = $selectedConversation['display_name'] ?: $selectedConversation['wa_number'];
+                $selInit = mb_strtoupper(mb_substr($selName, 0, 1) . mb_substr(strpos($selName, ' ') !== false ? substr($selName, strpos($selName, ' ') + 1) : '', 0, 1));
+                $selTone = $avatarTone($selName);
+                $selWState = $selectedConversation['messaging_window_state'] ?? '';
+                $selAssignedUserId = (int) ($selectedConversation['assigned_user_id'] ?? 0);
+                $currentUserId = (int) ($currentUser['id'] ?? 0);
+                $canReplyHere = $selAssignedUserId > 0 && $selAssignedUserId === $currentUserId;
+                $isMine = $canReplyHere;
+            @endphp
+
+            <header class="wa3-thread__head">
+                <div class="wa3-thread__main">
+                    <div class="wa3-avatar" data-tone="{{ $selTone }}">
+                        {{ $selInit }}
+                        <span class="wa3-avatar__status" data-state="{{ $selWState === 'window_open' ? 'open' : 'warn' }}"></span>
+                    </div>
+                    <div class="wa3-thread__id">
+                        <h3 class="wa3-thread__name">{{ $selName }}</h3>
+                        <div class="wa3-thread__meta">
+                            <span>{{ $selectedConversation['wa_number'] }}</span>
+                            @if(!empty($selectedConversation['patient_full_name']))
+                                <span class="sep">·</span>
+                                <span>{{ $selectedConversation['patient_full_name'] }}</span>
+                            @endif
+                            @if(!empty($selectedConversation['patient_hc_number']))
+                                <span class="sep">·</span>
+                                <span>HC {{ $selectedConversation['patient_hc_number'] }}</span>
+                            @endif
+                        </div>
+                    </div>
+                </div>
+
+                <div class="wa3-thread__actions">
+                    <button class="wa3-iconbtn" title="Llamar" type="button"><i class="mdi mdi-phone-outline"></i></button>
+                    <button class="wa3-iconbtn" title="Buscar en chat" type="button"><i class="mdi mdi-magnify"></i></button>
+                    <span class="wa3-iconbtn--sep"></span>
+
+                    {{-- Transferir --}}
+                    <div class="wa3-hbtn-wrap" data-wa3-menu="transfer">
+                        <button class="wa3-hbtn" type="button" data-wa3-menu-toggle="transfer">
+                            <i class="mdi mdi-account-arrow-right-outline"></i><span>Transferir</span>
+                        </button>
+                        <div class="wa3-hbtn__menu" hidden>
+                            <h6>Transferir conversación</h6>
+                            @forelse($agents as $a)
+                                <button class="wa3-menu-item" type="button"
+                                        data-wa-action="transfer"
+                                        data-conversation-id="{{ $selectedConversation['id'] }}"
+                                        data-user-id="{{ $a['id'] }}">
+                                    <i class="mdi mdi-account-outline lead"></i>
+                                    <span>{{ $a['name'] }}<span class="meta">{{ $a['role_name'] ?? '—' }} · {{ $a['active_conversations'] ?? 0 }} chats</span></span>
+                                    <span class="dot" data-state="{{ ($a['presence_status'] ?? '') === 'available' ? 'online' : (($a['presence_status'] ?? '') === 'busy' ? 'busy' : 'away') }}"></span>
+                                </button>
+                            @empty
+                                <div style="padding:10px;color:var(--wa3-text-mute);font-size:12.5px;">No hay agentes disponibles.</div>
+                            @endforelse
+                            <div class="wa3-menu-footer">
+                                <input type="text" id="wa3-transfer-note" placeholder="Nota (opcional)">
+                            </div>
+                        </div>
+                    </div>
+
+                    {{-- Plantillas --}}
+                    <div class="wa3-hbtn-wrap" data-wa3-menu="templates">
+                        <button class="wa3-hbtn" type="button" data-wa3-menu-toggle="templates">
+                            <i class="mdi mdi-file-document-outline"></i><span>Plantillas</span>
+                        </button>
+                        <div class="wa3-hbtn__menu" hidden>
+                            <h6>Plantillas aprobadas</h6>
+                            @forelse($templateOptions as $tpl)
+                                <button class="wa3-menu-item" type="button"
+                                        data-wa3-template-body="{{ $tpl['preview'] ?? ($tpl['name'] ?? '') }}">
+                                    <i class="mdi mdi-clipboard-text-outline lead"></i>
+                                    <span>{{ $tpl['name'] ?? 'Plantilla' }}<span class="meta">{{ strtoupper($tpl['category'] ?? 'UTILITY') }} · {{ strtoupper($tpl['language'] ?? 'ES') }}</span></span>
+                                </button>
+                            @empty
+                                <div style="padding:10px;color:var(--wa3-text-mute);font-size:12.5px;">No hay plantillas configuradas.</div>
+                            @endforelse
+                        </div>
+                    </div>
+
+                    {{-- Programar --}}
+                    <div class="wa3-hbtn-wrap" data-wa3-menu="schedule">
+                        <button class="wa3-hbtn" type="button" data-wa3-menu-toggle="schedule">
+                            <i class="mdi mdi-clock-outline"></i><span>Programar</span>
+                        </button>
+                        <div class="wa3-hbtn__menu" hidden>
+                            <h6>Programar envío</h6>
+                            <button class="wa3-menu-item" type="button" data-wa3-schedule="+1h">
+                                <i class="mdi mdi-clock-fast lead"></i>
+                                <span>En 1 hora<span class="meta">Hoy</span></span>
+                            </button>
+                            <button class="wa3-menu-item" type="button" data-wa3-schedule="evening">
+                                <i class="mdi mdi-weather-night lead"></i>
+                                <span>Esta tarde<span class="meta">Hoy a las 17:00</span></span>
+                            </button>
+                            <button class="wa3-menu-item" type="button" data-wa3-schedule="tomorrow">
+                                <i class="mdi mdi-weather-sunny lead"></i>
+                                <span>Mañana<span class="meta">9:00 am</span></span>
+                            </button>
+                            <div class="wa3-menu-footer">
+                                <input type="datetime-local" id="wa3-schedule-at">
+                                <button type="button" id="wa3-schedule-apply">Programar</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <span class="wa3-iconbtn--sep"></span>
+
+                    @if($canOperateConversation)
+                        <button class="wa3-hbtn is-success" type="button"
+                                data-wa-action="close" data-conversation-id="{{ $selectedConversation['id'] }}">
+                            <i class="mdi mdi-check-circle-outline"></i><span>Resolver</span>
+                        </button>
+                    @endif
+
+                    <button class="wa3-iconbtn is-primary" id="wa3-toggle-drawer" type="button"
+                            title="Ocultar ficha"><i class="mdi mdi-account-details-outline"></i></button>
+                    <button class="wa3-iconbtn" title="Más opciones" type="button"><i class="mdi mdi-dots-vertical"></i></button>
+                </div>
+            </header>
+
+            <div class="wa3-context">
+                @if($isMine)
+                    <span class="wa3-context__item wa3-context__item--mine"><i class="mdi mdi-account-check-outline"></i><strong>Asignada a ti</strong></span>
+                @elseif(!empty($selectedConversation['assigned_user_name']))
+                    <span class="wa3-context__item"><i class="mdi mdi-account-outline"></i>{{ $selectedConversation['assigned_user_name'] }}</span>
+                @endif
+                @if($selWState === 'window_open')
+                    <span class="sep">·</span>
+                    <span class="wa3-context__item wa3-context__item--open"><i class="mdi mdi-timer-sand"></i>Ventana 24h <strong>abierta</strong></span>
+                @else
+                    <span class="sep">·</span>
+                    <span class="wa3-context__item"><i class="mdi mdi-file-document-edit-outline"></i>Sólo plantilla</span>
+                @endif
+                @if(!empty($selectedConversation['queue_bucket_label']))
+                    <span class="sep">·</span>
+                    <span class="wa3-context__item"><i class="mdi mdi-tag-outline"></i>{{ $selectedConversation['queue_bucket_label'] }}</span>
+                @endif
+                @if(!empty($selectedConversation['attribution_headline']))
+                    <span class="sep">·</span>
+                    <span class="wa3-context__item"><i class="mdi mdi-bullseye-arrow"></i>{{ $selectedConversation['attribution_headline'] }}</span>
+                @endif
+            </div>
+
+            <div class="wa3-messages" id="wa-v2-message-list">
+                @php $lastMsgDate = null; @endphp
+                @foreach(($selectedConversation['messages'] ?? []) as $message)
+                    @php
+                        $msgDateStr = '';
+                        $dividerLabel = null;
+                        if (!empty($message['message_timestamp'])) {
+                            try {
+                                $mc = \Carbon\Carbon::parse($message['message_timestamp']);
+                                $msgDateStr = $mc->toDateString();
+                                if ($msgDateStr !== $lastMsgDate) {
+                                    $lastMsgDate = $msgDateStr;
+                                    $dividerLabel = match ($msgDateStr) {
+                                        \Carbon\Carbon::today()->toDateString()     => 'Hoy',
+                                        \Carbon\Carbon::yesterday()->toDateString() => 'Ayer',
+                                        default => $mc->format('d/m/Y'),
+                                    };
+                                }
+                                $msgTimeShort = $mc->format('H:i');
+                            } catch (\Exception $e) { $msgTimeShort = ''; }
+                        } else { $msgTimeShort = ''; }
+                        $msgDir = $message['direction'] ?? 'inbound';
+                        $msgStatus = $message['status'] ?? '';
+                    @endphp
+                    @if($dividerLabel !== null)
+                        <div class="wa3-date">{{ $dividerLabel }}</div>
+                    @endif
+                    <div class="wa3-msg is-{{ $msgDir === 'outbound' ? 'out' : 'in' }}"
+                         data-message-id="{{ (int) ($message['id'] ?? 0) }}"
+                         data-status="{{ $msgStatus }}">
+                        <div class="wa3-bubble">
+                            @if(!empty($message['media']) && is_array($message['media']))
+                                @php $media = $message['media']; @endphp
+                                <div class="wa3-media">
+                                    @if(($message['message_type'] ?? '') === 'image' && !empty($media['download_url']))
+                                        <div>
+                                            <strong>{{ $media['filename'] ?: 'Imagen' }}</strong>
+                                            <small>{{ $media['mime_type'] ?? 'image' }}</small>
+                                            <img src="{{ $media['download_url'] }}" alt="">
+                                        </div>
+                                    @elseif(($message['message_type'] ?? '') === 'video' && !empty($media['download_url']))
+                                        <div>
+                                            <strong>{{ $media['filename'] ?: 'Video' }}</strong>
+                                            <small>{{ $media['mime_type'] ?? 'video' }}</small>
+                                            <video controls preload="metadata"><source src="{{ $media['download_url'] }}" type="{{ $media['mime_type'] ?: 'video/mp4' }}"></video>
+                                        </div>
+                                    @elseif(($message['message_type'] ?? '') === 'audio' && !empty($media['download_url']))
+                                        <div style="flex:1;">
+                                            <strong>{{ !empty($media['voice']) ? 'Mensaje de voz' : 'Audio' }}</strong>
+                                            <audio controls preload="metadata" style="width:100%;"><source src="{{ $media['download_url'] }}" type="{{ $media['mime_type'] ?: 'audio/ogg' }}"></audio>
+                                        </div>
+                                    @else
+                                        <i class="mdi mdi-file-document-outline"></i>
+                                        <div>
+                                            <strong>{{ $media['filename'] ?: 'Archivo' }}</strong>
+                                            <small>{{ $media['mime_type'] ?? '' }}</small>
+                                        </div>
+                                        @if(!empty($media['download_url']))
+                                            <a href="{{ $media['download_url'] }}" target="_blank" rel="noopener" style="margin-left:auto;color:var(--wa3-accent);font-size:12px;">Abrir</a>
+                                        @endif
+                                    @endif
+                                </div>
+                            @endif
+                            @if(!empty($message['body']))
+                                <div>{!! $formatWaBody($message['body']) !!}</div>
+                            @endif
+                            <div class="wa3-bubble__meta">
+                                <span>{{ $msgTimeShort }}</span>
+                                @if($msgDir === 'outbound')
+                                    @if($msgStatus === 'read')      <i class="mdi mdi-check-all read"></i>
+                                    @elseif($msgStatus === 'delivered') <i class="mdi mdi-check-all"></i>
+                                    @elseif($msgStatus === 'sent')      <i class="mdi mdi-check"></i>
+                                    @elseif($msgStatus === 'failed')    <i class="mdi mdi-alert-circle-outline" style="color:var(--wa3-danger);"></i>
+                                    @elseif($msgStatus === 'pending')   <i class="mdi mdi-clock-outline"></i>
+                                    @endif
+                                @endif
+                            </div>
+                        </div>
+                    </div>
+                @endforeach
+            </div>
+
+            @if($canOperateConversation)
+                <div class="wa3-composer">
+                    @if(count($quickReplies) > 0)
+                        <div class="wa3-composer__quickreplies">
+                            @foreach($quickReplies as $qr)
+                                <button type="button" class="wa3-quickreply"
+                                        data-wa3-quick-body="{{ $qr['body'] ?? '' }}">
+                                    <i class="mdi mdi-lightning-bolt-outline"></i>{{ $qr['title'] ?? $qr['body'] ?? 'Respuesta' }}
+                                </button>
+                            @endforeach
+                        </div>
+                    @endif
+                    <form id="wa-v2-send-form"
+                          data-conversation-id="{{ $selectedConversation['id'] }}"
+                          onsubmit="return false;">
+                        <div class="wa3-composer__row">
+                            <button class="wa3-iconbtn" type="button" title="Adjuntar"
+                                    onclick="document.getElementById('wa-v2-media-file').click()">
+                                <i class="mdi mdi-paperclip"></i>
+                            </button>
+                            <textarea id="wa-v2-message-input" rows="1"
+                                      placeholder="Escribe un mensaje…" {{ $canReplyHere ? '' : 'disabled' }}></textarea>
+                            <input type="hidden" id="wa-v2-message-type" value="text">
+                            <input type="file" id="wa-v2-media-file" style="display:none;">
+                            <div class="wa3-composer__tools">
+                                <button class="wa3-iconbtn" type="button" title="Emoji"><i class="mdi mdi-emoticon-outline"></i></button>
+                                <button class="wa3-iconbtn" type="button" title="Nota interna"><i class="mdi mdi-note-edit-outline"></i></button>
+                            </div>
+                            <button class="wa3-send wa-v2-composer-send" type="button" id="wa3-send-btn"
+                                    title="Enviar (Enter)" {{ $canReplyHere ? '' : 'disabled' }}>
+                                <i class="mdi mdi-send"></i>
+                            </button>
+                        </div>
+                        <div class="wa3-composer__hint">
+                            <span>
+                                @if($selWState === 'window_open')
+                                    Ventana de 24h abierta — puedes responder libremente.
+                                @else
+                                    Ventana cerrada — usa una plantilla aprobada para iniciar.
+                                @endif
+                            </span>
+                            <span><kbd>Enter</kbd> enviar · <kbd>Shift+Enter</kbd> nueva línea</span>
+                        </div>
+                    </form>
+                </div>
+            @endif
+        @else
+            <div class="wa3-empty">
+                <div class="wa3-empty__card">
+                    <div class="wa3-empty__icon"><i class="mdi mdi-message-text-outline"></i></div>
+                    <h3>Selecciona una conversación</h3>
+                    <p>Elige un chat del panel izquierdo para comenzar a atender al paciente.</p>
+                </div>
+            </div>
+        @endif
+    </section>
+
+    {{-- ================= DRAWER ================= --}}
+    @if($selectedConversation)
+        <aside class="wa3-drawer" id="wa3-drawer">
+            @php
+                $selName = $selectedConversation['display_name'] ?: $selectedConversation['wa_number'];
+                $selInit = mb_strtoupper(mb_substr($selName, 0, 1) . mb_substr(strpos($selName, ' ') !== false ? substr($selName, strpos($selName, ' ') + 1) : '', 0, 1));
+                $selTone = $avatarTone($selName);
+            @endphp
+            <div class="wa3-drawer__profile">
+                <div class="wa3-avatar" data-tone="{{ $selTone }}">{{ $selInit }}</div>
+                <h3>{{ $selectedConversation['patient_full_name'] ?: $selName }}</h3>
+                <p>
+                    @if(!empty($selectedConversation['patient_hc_number']))
+                        HC {{ $selectedConversation['patient_hc_number'] }}
+                    @else
+                        Sin paciente vinculado
+                    @endif
+                </p>
+                <div class="wa3-drawer__quickactions">
+                    <button class="wa3-quickaction" type="button"><i class="mdi mdi-phone-outline"></i>Llamar</button>
+                    <button class="wa3-quickaction" type="button"><i class="mdi mdi-calendar-plus-outline"></i>Agendar</button>
+                    <button class="wa3-quickaction" type="button"><i class="mdi mdi-file-eye-outline"></i>Ficha</button>
+                </div>
+            </div>
+
+            <div class="wa3-drawer__section">
+                <h6>Paciente</h6>
+                <div class="wa3-kv">
+                    <div class="wa3-kv__row">
+                        <span class="k"><i class="mdi mdi-phone-outline"></i>Teléfono</span>
+                        <span class="v">{{ $selectedConversation['wa_number'] }}</span>
+                    </div>
+                    @if(!empty($selectedConversation['assigned_role_name']))
+                        <div class="wa3-kv__row">
+                            <span class="k"><i class="mdi mdi-account-group-outline"></i>Equipo</span>
+                            <span class="v">{{ $selectedConversation['assigned_role_name'] }}</span>
+                        </div>
+                    @endif
+                    @if(!empty($selectedConversation['ownership_label']))
+                        <div class="wa3-kv__row">
+                            <span class="k"><i class="mdi mdi-tag-outline"></i>Ownership</span>
+                            <span class="v">{{ $selectedConversation['ownership_label'] }}</span>
+                        </div>
+                    @endif
+                    @if(!empty($selectedConversation['messaging_window_label']))
+                        <div class="wa3-kv__row">
+                            <span class="k"><i class="mdi mdi-timer-sand"></i>Ventana</span>
+                            <span class="v">{{ $selectedConversation['messaging_window_label'] }}</span>
+                        </div>
+                    @endif
+                </div>
+            </div>
+
+            @if(!empty($selectedConversation['attribution_headline']))
+                <div class="wa3-drawer__section">
+                    <h6>Atribución</h6>
+                    <div class="wa3-tags">
+                        <span class="wa3-tag">{{ $selectedConversation['attribution_source_category'] ?? 'Origen' }}</span>
+                        <span class="wa3-tag">{{ $selectedConversation['attribution_headline'] }}</span>
+                    </div>
+                </div>
+            @endif
+
+            @if(count($conversationNotes ?? []) > 0)
+                <div class="wa3-drawer__section">
+                    <h6>Notas internas</h6>
+                    <div class="wa3-kv">
+                        @foreach($conversationNotes as $note)
+                            <div style="font:400 12.5px var(--bs-body-font-family);color:var(--wa3-text);padding:6px 0;border-bottom:1px solid var(--wa3-border-soft);">
+                                <div style="font-weight:600;color:var(--wa3-accent);font-size:11px;">
+                                    {{ $note['author_name'] ?? 'Equipo' }} · {{ !empty($note['created_at']) ? \Carbon\Carbon::parse($note['created_at'])->diffForHumans() : '' }}
+                                </div>
+                                {{ $note['body'] ?? '' }}
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+            @endif
+        </aside>
+    @endif
+</div>
+@endsection
+
+@push('scripts')
+<script>
+(function () {
+    'use strict';
+
+    // ── Header menus (Transferir / Plantillas / Programar) ──────────────────
+    const wraps = document.querySelectorAll('[data-wa3-menu]');
+    wraps.forEach((w) => {
+        const btn = w.querySelector('[data-wa3-menu-toggle]');
+        const menu = w.querySelector('.wa3-hbtn__menu');
+        if (!btn || !menu) return;
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isOpen = !menu.hasAttribute('hidden');
+            // Close all
+            wraps.forEach((other) => {
+                other.querySelector('.wa3-hbtn__menu')?.setAttribute('hidden', '');
+                other.querySelector('[data-wa3-menu-toggle]')?.classList.remove('is-open');
+            });
+            if (!isOpen) { menu.removeAttribute('hidden'); btn.classList.add('is-open'); }
+        });
+    });
+    document.addEventListener('mousedown', (e) => {
+        if (!e.target.closest('.wa3-hbtn-wrap')) {
+            wraps.forEach((w) => {
+                w.querySelector('.wa3-hbtn__menu')?.setAttribute('hidden', '');
+                w.querySelector('[data-wa3-menu-toggle]')?.classList.remove('is-open');
+            });
+        }
+    });
+
+    // ── Drawer toggle ───────────────────────────────────────────────────────
+    const root = document.getElementById('wa3-root');
+    const drawerBtn = document.getElementById('wa3-toggle-drawer');
+    if (drawerBtn && root) {
+        drawerBtn.addEventListener('click', () => {
+            root.classList.toggle('has-drawer');
+            drawerBtn.classList.toggle('is-primary', root.classList.contains('has-drawer'));
+            drawerBtn.title = root.classList.contains('has-drawer') ? 'Ocultar ficha' : 'Ver ficha del paciente';
+        });
+    }
+
+    // ── Composer ────────────────────────────────────────────────────────────
+    const ta = document.getElementById('wa-v2-message-input');
+    const sendBtn = document.getElementById('wa3-send-btn');
+    const form = document.getElementById('wa-v2-send-form');
+
+    const autosize = () => {
+        if (!ta) return;
+        ta.style.height = 'auto';
+        ta.style.height = Math.min(ta.scrollHeight, 140) + 'px';
+    };
+    ta?.addEventListener('input', autosize);
+
+    // Quick replies + templates populate the composer
+    document.querySelectorAll('[data-wa3-quick-body]').forEach((b) => {
+        b.addEventListener('click', () => { if (ta) { ta.value = b.dataset.wa3QuickBody; autosize(); ta.focus(); } });
+    });
+    document.querySelectorAll('[data-wa3-template-body]').forEach((b) => {
+        b.addEventListener('click', () => { if (ta) { ta.value = b.dataset.wa3TemplateBody; autosize(); ta.focus(); } });
+    });
+
+    // Send via existing /whatsapp/api/conversations/{id}/messages endpoint
+    const csrfTokenEl = document.querySelector('meta[name="csrf-token"]');
+    const csrfToken = csrfTokenEl ? csrfTokenEl.getAttribute('content') : '';
+
+    async function sendMessage() {
+        if (!form || !ta) return;
+        const text = (ta.value || '').trim();
+        if (!text || sendBtn?.disabled) return;
+        const conversationId = form.dataset.conversationId;
+        sendBtn.disabled = true;
+
+        try {
+            const res = await fetch(`/whatsapp/api/conversations/${conversationId}/messages`, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify({ message_type: 'text', body: text }),
+            });
+            if (!res.ok) throw new Error('Send failed (' + res.status + ')');
+
+            // Optimistic UI: append the bubble locally
+            const list = document.getElementById('wa-v2-message-list');
+            if (list) {
+                const wrap = document.createElement('div');
+                wrap.className = 'wa3-msg is-out';
+                wrap.dataset.status = 'sent';
+                wrap.innerHTML = `<div class="wa3-bubble"><div>${text.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))}</div><div class="wa3-bubble__meta"><span>${new Date().toTimeString().slice(0,5)}</span><i class="mdi mdi-check"></i></div></div>`;
+                list.appendChild(wrap);
+                list.scrollTop = list.scrollHeight;
+            }
+            ta.value = '';
+            autosize();
+        } catch (err) {
+            console.error('[wa3] send error', err);
+            alert('No se pudo enviar el mensaje. Inténtalo nuevamente.');
+        } finally {
+            sendBtn.disabled = false;
+            ta.focus();
+        }
+    }
+
+    sendBtn?.addEventListener('click', sendMessage);
+    ta?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+    });
+
+    // ── Transfer / Close actions wired to existing endpoints ────────────────
+    document.querySelectorAll('[data-wa-action="transfer"]').forEach((b) => {
+        b.addEventListener('click', async () => {
+            const note = document.getElementById('wa3-transfer-note')?.value || '';
+            const conversationId = b.dataset.conversationId;
+            const userId = b.dataset.userId;
+            if (!confirm(`¿Transferir esta conversación?`)) return;
+            try {
+                const res = await fetch(`/whatsapp/api/conversations/${conversationId}/transfer`, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'X-Requested-With': 'XMLHttpRequest' },
+                    body: JSON.stringify({ assigned_user_id: Number(userId), note }),
+                });
+                if (!res.ok) throw new Error('Transfer failed');
+                window.location.reload();
+            } catch (err) { console.error('[wa3] transfer error', err); alert('No se pudo transferir la conversación.'); }
+        });
+    });
+
+    document.querySelectorAll('[data-wa-action="close"]').forEach((b) => {
+        b.addEventListener('click', async () => {
+            const conversationId = b.dataset.conversationId;
+            if (!confirm('¿Marcar como resuelta?')) return;
+            try {
+                const res = await fetch(`/whatsapp/api/conversations/${conversationId}/close`, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'X-Requested-With': 'XMLHttpRequest' },
+                    body: JSON.stringify({}),
+                });
+                if (!res.ok) throw new Error('Close failed');
+                window.location.href = '/v2/whatsapp/chat-v3?filter=resolved';
+            } catch (err) { console.error('[wa3] close error', err); alert('No se pudo resolver la conversación.'); }
+        });
+    });
+
+    // ── Auto-scroll to bottom on initial load ───────────────────────────────
+    const list = document.getElementById('wa-v2-message-list');
+    if (list) list.scrollTop = list.scrollHeight;
+})();
+</script>
+@endpush
