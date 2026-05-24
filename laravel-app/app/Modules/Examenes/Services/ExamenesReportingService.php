@@ -8,7 +8,7 @@ use DateTimeImmutable;
 use DateTimeInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Modules\Examenes\Models\ExamenModel;
+use Models\ExamenModel;
 use Modules\Examenes\Services\ExamenEstadoService;
 use Modules\Examenes\Services\ExamenReminderService;
 use Modules\Examenes\Services\ExamenReportExcelService;

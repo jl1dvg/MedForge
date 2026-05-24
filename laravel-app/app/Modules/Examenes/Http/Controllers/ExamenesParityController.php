@@ -34,7 +34,7 @@ use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
-use Modules\Examenes\Models\ExamenModel;
+use Models\ExamenModel;
 use Modules\CRM\Services\LeadConfigurationService;
 use Symfony\Component\HttpFoundation\Response;
 use Services\PreviewService;
