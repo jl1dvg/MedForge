@@ -3,6 +3,7 @@
 use App\Modules\Consultas\Http\Controllers\ConsultasReadController;
 use App\Modules\Consultas\Http\Controllers\ConsultasWriteController;
 use App\Modules\Pacientes\Services\PacientesFlujoService;
+use App\Modules\Procedimientos\Http\Controllers\ProcedimientosReadController;
 use App\Modules\Solicitudes\Http\Controllers\SolicitudesWriteController;
 use App\Modules\Whatsapp\Http\Controllers\WebhookController;
 use Illuminate\Http\Request;
@@ -274,3 +275,14 @@ Route::get('/imagenes/informes/012b/pdf', static fn(Request $request) => $legacy
 Route::get('/imagenes/informes/012b/paquete', static fn(Request $request) => $legacyRedirect($request, '/v2/reports/imagenes/012b/paquete'));
 Route::match(['GET', 'POST'], '/imagenes/informes/012b/paquete/seleccion', static fn(Request $request) => $legacyRedirect($request, '/v2/reports/imagenes/012b/paquete/seleccion', 307));
 Route::get('/examenes/cobertura-012a/pdf', static fn(Request $request) => $legacyRedirect($request, '/v2/reports/imagenes/012a/pdf'));
+
+// /procedimientos routes intentionally outside /v2 prefix — consumed by CiveExtension.
+// The extension builds the URL from its configured apiBaseUrl; depending on whether that
+// setting includes "/api" or not, the path may arrive as /procedimientos/listar.php OR
+// /api/procedimientos/listar.php.  Both are covered here with CORS + extension auth.
+Route::middleware(['consultas.cors', 'cive.extension.auth'])->group(function (): void {
+    foreach (['/procedimientos/listar.php', '/api/procedimientos/listar.php'] as $path) {
+        Route::options($path, static fn () => response('', 204));
+        Route::get($path, [ProcedimientosReadController::class, 'listar']);
+    }
+});
