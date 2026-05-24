@@ -14,6 +14,9 @@ class FlowSigcenterAgendaService
 {
     private const DOCTOR_CATALOG_TABLE = 'whatsapp_sigcenter_doctor_catalog';
     private const DOCTOR_AVAILABILITY_TABLE = 'whatsapp_sigcenter_doctor_availability';
+
+    /** @var array<string, bool> */
+    private static array $tableExistsCache = [];
     private const COMPANY_ID = 113;
     /** @var array<int, string> */
     private const DEFAULT_ALLOWED_SEDE_IDS = ['16', '1'];
@@ -786,7 +789,7 @@ class FlowSigcenterAgendaService
 
     private function latestConsultaAt(string $identifier): ?Carbon
     {
-        if ($identifier === '' || !Schema::hasTable('consulta_data')) {
+        if ($identifier === '' || !$this->tableExists('consulta_data')) {
             return null;
         }
 
@@ -801,7 +804,7 @@ class FlowSigcenterAgendaService
 
     private function latestSurgeryAt(string $identifier): ?Carbon
     {
-        if ($identifier === '' || !Schema::hasTable('protocolo_data')) {
+        if ($identifier === '' || !$this->tableExists('protocolo_data')) {
             return null;
         }
 
@@ -2297,7 +2300,7 @@ class FlowSigcenterAgendaService
 
     private function doctorAvailabilityAvailable(): bool
     {
-        return Schema::hasTable(self::DOCTOR_AVAILABILITY_TABLE);
+        return $this->tableExists(self::DOCTOR_AVAILABILITY_TABLE);
     }
 
     /**
@@ -2383,9 +2386,17 @@ class FlowSigcenterAgendaService
         };
     }
 
+    private function tableExists(string $table): bool
+    {
+        if (!isset(self::$tableExistsCache[$table])) {
+            self::$tableExistsCache[$table] = Schema::hasTable($table);
+        }
+        return self::$tableExistsCache[$table];
+    }
+
     private function doctorCatalogAvailable(): bool
     {
-        if (!Schema::hasTable(self::DOCTOR_CATALOG_TABLE)) {
+        if (!$this->tableExists(self::DOCTOR_CATALOG_TABLE)) {
             return false;
         }
 
@@ -2442,7 +2453,7 @@ class FlowSigcenterAgendaService
 
     private function findActiveWhatsappBooking(string $hcNumber): ?array
     {
-        if (!Schema::hasTable('whatsapp_sigcenter_bookings')) {
+        if (!$this->tableExists('whatsapp_sigcenter_bookings')) {
             return null;
         }
 
@@ -2468,7 +2479,7 @@ class FlowSigcenterAgendaService
 
     private function findActiveProjectedAppointment(string $hcNumber): ?array
     {
-        if (!Schema::hasTable('procedimiento_proyectado')) {
+        if (!$this->tableExists('procedimiento_proyectado')) {
             return null;
         }
 
