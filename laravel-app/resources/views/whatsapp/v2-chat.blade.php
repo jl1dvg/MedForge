@@ -32,9 +32,14 @@
     };
 
     $tabs = [
-        'all' => 'Todos',
+        'requires_attention' => 'Requieren atención',
         'mine' => 'Mis chats',
-        'handoff' => 'Pendientes',
+        'in_progress' => 'En gestión',
+        'waiting_patient' => 'Esperando paciente',
+        'scheduled' => 'Agendados',
+        'closed' => 'Cerrados',
+    ];
+    $advancedTabs = [
         'captacion' => 'Captación',
         'operacion' => 'Operación',
         'informacion' => 'Información',
@@ -42,11 +47,17 @@
         'unread' => 'Sin leer',
         'window_open' => '24h abierta',
         'needs_template' => 'Plantilla',
+        'all' => 'Todos',
         'resolved' => 'Resueltos',
     ];
     $tabDescriptions = [
+        'requires_attention' => 'Requieren atención — Conversaciones sin agente o con acción humana pendiente.',
         'mine'             => 'Mis chats — Conversaciones asignadas actualmente a ti.',
-        'handoff'          => 'Pendientes — Solicitudes de atención humana que aún no tienen agente asignado.',
+        'in_progress'      => 'En gestión — Conversaciones asignadas donde el paciente escribió último.',
+        'waiting_patient'  => 'Esperando paciente — Ya respondimos y esperamos respuesta del paciente.',
+        'scheduled'        => 'Agendados — Conversaciones con cita registrada.',
+        'closed'           => 'Cerrados — Resueltos, seguimientos cerrados y otros cierres.',
+        'handoff'          => 'Pendientes — Alias anterior para solicitudes sin agente.',
         'captacion'        => 'Captación — Pacientes nuevos o consultas de primer contacto.',
         'operacion'        => 'Operación — Pacientes en proceso quirúrgico o de seguimiento post-consulta.',
         'informacion'      => 'Información — Consultas generales que no requieren proceso activo.',
@@ -2043,6 +2054,11 @@
                                 @foreach($tabs as $key => $label)
                                     @php
                                         $tabIcons = [
+                                            'requires_attention' => 'mdi mdi-alert-circle-outline',
+                                            'in_progress' => 'mdi mdi-account-clock-outline',
+                                            'waiting_patient' => 'mdi mdi-account-arrow-left-outline',
+                                            'scheduled' => 'mdi mdi-calendar-check-outline',
+                                            'closed' => 'mdi mdi-archive-check-outline',
                                             'critical_backlog' => 'mdi mdi-alert-octagon-outline',
                                             'captacion' => 'mdi mdi-bullseye-arrow',
                                             'operacion' => 'mdi mdi-calendar-sync-outline',
@@ -2077,41 +2093,62 @@
                             <i class="mdi mdi-chevron-right"></i>
                         </button>
                     </div>
+                    <details class="mt-10">
+                        <summary class="text-muted" style="cursor:pointer;font-size:12px;font-weight:700;padding:0 4px;">
+                            Filtros avanzados
+                        </summary>
+                        <div class="wa-v2-tabs mt-8" aria-label="Filtros avanzados de conversaciones">
+                            @foreach($advancedTabs as $key => $label)
+                                @php
+                                    $tabIcons = [
+                                        'critical_backlog' => 'mdi mdi-alert-octagon-outline',
+                                        'captacion' => 'mdi mdi-bullseye-arrow',
+                                        'operacion' => 'mdi mdi-calendar-sync-outline',
+                                        'informacion' => 'mdi mdi-information-outline',
+                                        'window_open' => 'mdi mdi-timer-sand',
+                                        'unread' => 'mdi mdi-bell-outline',
+                                        'needs_template' => 'mdi mdi-file-document-edit-outline',
+                                        'resolved' => 'mdi mdi-check-circle-outline',
+                                        'all' => 'mdi mdi-message-text-outline',
+                                    ];
+                                    $icon = $tabIcons[$key] ?? 'mdi mdi-circle-small';
+                                @endphp
+                                <a
+                                    href="{{ '/v2/whatsapp/chat?' . http_build_query(array_filter(['filter' => $key, 'search' => $search, 'date_from' => $dateFrom, 'date_to' => $dateTo, 'agent_id' => $selectedAgentId, 'role_id' => $selectedRoleId], static fn ($value) => $value !== null && $value !== '')) }}"
+                                    class="wa-v2-tab {{ $selectedFilter === $key ? 'is-active' : '' }}"
+                                    title="{{ $tabDescriptions[$key] ?? $label }}">
+                                    <span class="wa-v2-icon-label"><i class="{{ $icon }}"></i></span>
+                                    <span class="wa-v2-counter">{{ (int) ($tabCounts[$key] ?? 0) }}</span>
+                                </a>
+                            @endforeach
+                        </div>
+                    </details>
                 </div>
 
                 <div class="wa-v2-list">
                     @forelse($listData as $conversation)
                         @php
                             $isActive = (int) ($selectedConversation['id'] ?? 0) === (int) $conversation['id'];
-                            $priorityState = match (true) {
-                                ($conversation['queue_bucket'] ?? '') === 'critical_backlog' => 'critical_backlog',
-                                ($conversation['queue_bucket'] ?? '') === 'captacion' => 'captacion',
-                                ($conversation['queue_bucket'] ?? '') === 'operacion' => 'operacion',
-                                !empty($conversation['needs_human']) && empty($conversation['assigned_user_id']) => 'pending',
-                                ($conversation['ownership_state'] ?? '') === 'mine' => 'mine',
-                                ($conversation['messaging_window_state'] ?? '') === 'window_open' => 'window_open',
-                                !empty($conversation['needs_human']) => 'needs_template',
-                                default => 'resolved',
-                            };
-                            $priorityLabel = match ($priorityState) {
-                                'critical_backlog' => 'Backlog >24h',
-                                'captacion' => 'Captación',
-                                'operacion' => 'Operación',
-                                'pending' => 'Pendiente',
-                                'mine' => 'Mío',
-                                'window_open' => '24h abierta',
-                                'needs_template' => 'Plantilla',
-                                default => 'Resuelto',
-                            };
+                            $priorityState = (string) ($conversation['operational_status'] ?? 'new');
+                            $priorityLevel = (string) ($conversation['priority_level'] ?? 'low');
+                            $priorityLabel = (string) ($conversation['operational_status_label'] ?? 'Sin estado');
                             $priorityClass = match ($priorityState) {
-                                'critical_backlog' => 'is-pending',
-                                'captacion' => 'is-window-open',
-                                'operacion' => 'is-needs-template',
-                                'pending' => 'is-pending',
-                                'mine' => 'is-mine',
-                                'window_open' => 'is-window-open',
-                                'needs_template' => 'is-needs-template',
-                                default => 'is-resolved',
+                                'requires_attention' => 'is-pending',
+                                'in_progress' => 'is-mine',
+                                'waiting_patient' => 'is-window-open',
+                                'scheduled' => 'is-window-open',
+                                'resolved', 'closed_followup', 'closed_other' => 'is-resolved',
+                                default => $priorityLevel === 'critical' ? 'is-pending' : 'is-needs-template',
+                            };
+                            $priorityIcon = match ($priorityState) {
+                                'requires_attention' => 'mdi-alert-circle-outline',
+                                'in_progress' => 'mdi-account-clock-outline',
+                                'waiting_patient' => 'mdi-account-arrow-left-outline',
+                                'scheduled' => 'mdi-calendar-check-outline',
+                                'resolved' => 'mdi-check-circle-outline',
+                                'closed_followup' => 'mdi-archive-arrow-down-outline',
+                                'closed_other' => 'mdi-archive-outline',
+                                default => 'mdi-message-text-outline',
                             };
                         @endphp
                         <a
@@ -2139,10 +2176,17 @@
                                 class="wa-v2-preview">{{ $conversation['last_message_preview'] ?: '[' . ($conversation['last_message_type'] ?: 'mensaje') . ']' }}</div>
                             <div class="wa-v2-priority-line">
                                 <span class="wa-v2-priority-badge {{ $priorityClass }}">
-                                    <i class="mdi {{ $priorityState === 'critical_backlog' ? 'mdi-alert-octagon-outline' : ($priorityState === 'captacion' ? 'mdi-bullseye-arrow' : ($priorityState === 'operacion' ? 'mdi-calendar-sync-outline' : ($priorityState === 'pending' ? 'mdi-alert-circle-outline' : ($priorityState === 'mine' ? 'mdi-account-check-outline' : ($priorityState === 'window_open' ? 'mdi-timer-sand' : ($priorityState === 'needs_template' ? 'mdi-file-document-edit-outline' : 'mdi-check-circle-outline')))))) }}"></i>
+                                    <i class="mdi {{ $priorityIcon }}"></i>
                                     {{ $priorityLabel }}
                                 </span>
                                 <div class="wa-v2-meta" data-ts="{{ $conversation['last_message_at'] ?? '' }}"></div>
+                            </div>
+                            <div class="wa-v2-meta mt-4">
+                                Último: {{ $conversation['last_message_actor_label'] ?? 'Sin mensajes' }}
+                                · Prioridad {{ $conversation['priority_level_label'] ?? 'Baja' }}
+                                @if(!empty($conversation['priority_score']))
+                                    · {{ (int) $conversation['priority_score'] }} pts
+                                @endif
                             </div>
                             <div class="d-flex flex-wrap gap-8 mt-10">
                                 @if((int) $conversation['unread_count'] > 0)
@@ -2159,6 +2203,9 @@
                                 @endif
                                 @if(!empty($conversation['handoff_priority_label']) && !empty($conversation['needs_human']))
                                     <span class="wa-v2-pill"><i class="mdi mdi-flag-outline"></i> {{ $conversation['handoff_priority_label'] }}</span>
+                                @endif
+                                @if(!empty($conversation['priority_level_label']) && !empty($conversation['needs_human']))
+                                    <span class="wa-v2-pill"><i class="mdi mdi-speedometer"></i> Prioridad {{ $conversation['priority_level_label'] }}</span>
                                 @endif
                                 <span
                                     class="wa-v2-pill {{ ($conversation['messaging_window_state'] ?? '') === 'window_open' ? 'is-unread' : '' }}">
@@ -2183,6 +2230,13 @@
                         $selectedAssignedUserId = (int) ($selectedConversation['assigned_user_id'] ?? 0);
                         $currentUserId = (int) ($currentUser['id'] ?? 0);
                         $canReplyHere = $selectedAssignedUserId > 0 && $selectedAssignedUserId === $currentUserId;
+                        $selectedPriorityLevel = (string) ($selectedConversation['priority_level'] ?? 'low');
+                        $selectedPriorityIcon = match ($selectedPriorityLevel) {
+                            'critical' => 'mdi-alert-octagon-outline',
+                            'high' => 'mdi-alert-circle-outline',
+                            'normal' => 'mdi-speedometer',
+                            default => 'mdi-speedometer-slow',
+                        };
                     @endphp
                     <div class="wa-v2-panel__header">
                         <div class="wa-v2-chat-header">
@@ -2254,6 +2308,9 @@
                         </div>
                         <div class="wa-v2-toolbar">
                             <div class="wa-v2-toolbar__badges">
+                                <span class="wa-v2-pill"><i class="mdi mdi-map-marker-path"></i> {{ $selectedConversation['operational_status_label'] ?? 'Sin estado' }}</span>
+                                <span class="wa-v2-pill"><i class="mdi {{ $selectedPriorityIcon }}"></i> Prioridad {{ $selectedConversation['priority_level_label'] ?? 'Baja' }}{{ !empty($selectedConversation['priority_score']) ? ' · ' . (int) $selectedConversation['priority_score'] . ' pts' : '' }}</span>
+                                <span class="wa-v2-pill"><i class="mdi mdi-account-voice"></i> Último: {{ $selectedConversation['last_message_actor_label'] ?? 'Sin mensajes' }}</span>
                                 @if(!empty($selectedConversation['needs_human']))
                                     <span class="wa-v2-pill is-queue"><i
                                             class="mdi mdi-tray-arrow-down"></i> En cola</span>

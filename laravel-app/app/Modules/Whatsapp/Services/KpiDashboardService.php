@@ -58,11 +58,12 @@ class KpiDashboardService
         $analytics = $this->conversationAnalytics($fromSql, $toSql, $roleId, $agentId);
         $reminders = $this->appointmentReminderAnalytics($fromSql, $toSql);
         $closeReasons = $this->closeReasonSummary($fromSql, $toSql, $roleId, $agentId);
+        $operationalInbox = $this->operationalInboxSummary($roleId, $agentId);
 
         $summary = array_merge($summary, $human, $queue, $window, $sla, [
             'handoff_transfers' => $transfers,
             'peak_open_conversations' => (int) ($human['peak_open_conversations'] ?? 0),
-        ], $bookings, $closeReasons);
+        ], $bookings, $closeReasons, $operationalInbox);
 
         return [
             'period' => [
@@ -1333,6 +1334,104 @@ class KpiDashboardService
         $defaults['conversations_closed_followup'] = (int) ($row->followup_closed ?? 0);
         $defaults['conversations_closed_not_interested'] = (int) ($row->not_interested ?? 0);
         $defaults['conversations_closed_no_response'] = (int) ($row->no_response ?? 0);
+
+        return $defaults;
+    }
+
+    /**
+     * Current operational inbox snapshot used by the WhatsApp chat dashboard.
+     *
+     * @return array<string, int>
+     */
+    private function operationalInboxSummary(?int $roleId, ?int $agentId): array
+    {
+        $defaults = [
+            'operational_status_new' => 0,
+            'operational_status_requires_attention' => 0,
+            'operational_status_in_progress' => 0,
+            'operational_status_waiting_patient' => 0,
+            'operational_status_scheduled' => 0,
+            'operational_status_resolved' => 0,
+            'operational_status_closed_followup' => 0,
+            'operational_status_closed_other' => 0,
+            'priority_critical' => 0,
+            'priority_high' => 0,
+            'priority_normal' => 0,
+            'priority_low' => 0,
+            'my_active_chats' => 0,
+            'limbo_unassigned' => 0,
+            'limbo_assigned_inactive' => 0,
+            'limbo_waiting_patient_overdue' => 0,
+        ];
+
+        if (!Schema::hasTable('whatsapp_conversations')) {
+            return $defaults;
+        }
+
+        $filter = $this->conversationScopeFilterSql('c', 'u_assigned', $roleId, $agentId, 'operational_inbox');
+        $hasCloseReason = Schema::hasColumn('whatsapp_conversations', 'close_reason');
+        $hasBookings = Schema::hasTable('whatsapp_sigcenter_bookings');
+        $closedReasonSql = $hasCloseReason ? 'COALESCE(c.close_reason, "")' : '""';
+        $scheduledSql = $hasBookings
+            ? 'EXISTS (
+                SELECT 1 FROM whatsapp_sigcenter_bookings wsb
+                WHERE wsb.conversation_id = c.id
+                  AND wsb.status IN ("created", "confirmed")
+            )'
+            : '0 = 1';
+
+        $fourHoursAgo = Carbon::now()->subHours(4)->format('Y-m-d H:i:s');
+        $twentyFourHoursAgo = Carbon::now()->subHours(24)->format('Y-m-d H:i:s');
+        $params = [$fourHoursAgo, $twentyFourHoursAgo];
+        $sql = 'SELECT
+                    SUM(CASE WHEN c.needs_human = 0 AND ' . $closedReasonSql . ' = "" AND NOT (' . $scheduledSql . ') THEN 1 ELSE 0 END) AS status_new,
+                    SUM(CASE WHEN c.needs_human = 1 AND c.assigned_user_id IS NULL THEN 1 ELSE 0 END) AS status_requires_attention,
+                    SUM(CASE WHEN c.needs_human = 1 AND c.assigned_user_id IS NOT NULL AND c.last_message_direction = "inbound" THEN 1 ELSE 0 END) AS status_in_progress,
+                    SUM(CASE WHEN c.needs_human = 1 AND c.assigned_user_id IS NOT NULL AND (c.last_message_direction <> "inbound" OR c.last_message_direction IS NULL) THEN 1 ELSE 0 END) AS status_waiting_patient,
+                    SUM(CASE WHEN c.needs_human = 0 AND ' . $closedReasonSql . ' = "" AND (' . $scheduledSql . ') THEN 1 ELSE 0 END) AS status_scheduled,
+                    SUM(CASE WHEN c.needs_human = 0 AND ' . $closedReasonSql . ' = "resolved" THEN 1 ELSE 0 END) AS status_resolved,
+                    SUM(CASE WHEN c.needs_human = 0 AND ' . $closedReasonSql . ' = "followup_closed" THEN 1 ELSE 0 END) AS status_closed_followup,
+                    SUM(CASE WHEN c.needs_human = 0 AND ' . $closedReasonSql . ' IN ("not_interested", "no_response", "duplicate", "scheduled_elsewhere") THEN 1 ELSE 0 END) AS status_closed_other,
+                    SUM(CASE WHEN c.needs_human = 1 AND c.assigned_user_id IS NULL AND c.unread_count > 0 THEN 1 ELSE 0 END) AS priority_critical,
+                    SUM(CASE WHEN c.needs_human = 1 AND c.assigned_user_id IS NOT NULL AND c.last_message_direction = "inbound" THEN 1 ELSE 0 END) AS priority_high,
+                    SUM(CASE WHEN c.needs_human = 1 AND NOT (c.assigned_user_id IS NULL AND c.unread_count > 0) AND NOT (c.assigned_user_id IS NOT NULL AND c.last_message_direction = "inbound") THEN 1 ELSE 0 END) AS priority_normal,
+                    SUM(CASE WHEN c.needs_human = 0 THEN 1 ELSE 0 END) AS priority_low,
+                    SUM(CASE WHEN c.needs_human = 1 AND c.assigned_user_id IS NULL THEN 1 ELSE 0 END) AS limbo_unassigned,
+                    SUM(CASE WHEN c.needs_human = 1 AND c.assigned_user_id IS NOT NULL AND COALESCE(c.last_message_at, c.updated_at, c.created_at) <= ? THEN 1 ELSE 0 END) AS limbo_assigned_inactive,
+                    SUM(CASE WHEN c.needs_human = 1 AND c.assigned_user_id IS NOT NULL AND (c.last_message_direction <> "inbound" OR c.last_message_direction IS NULL) AND COALESCE(c.last_message_at, c.updated_at, c.created_at) <= ? THEN 1 ELSE 0 END) AS limbo_waiting_patient_overdue
+                FROM whatsapp_conversations c
+                LEFT JOIN users u_assigned ON u_assigned.id = c.assigned_user_id
+                WHERE 1 = 1';
+
+        if ($filter['where'] !== '') {
+            $sql .= ' AND ' . $filter['where'];
+            $params = array_merge($params, array_values($filter['params']));
+        }
+
+        $row = DB::selectOne($sql, $params) ?? (object) [];
+
+        $defaults['operational_status_new'] = (int) ($row->status_new ?? 0);
+        $defaults['operational_status_requires_attention'] = (int) ($row->status_requires_attention ?? 0);
+        $defaults['operational_status_in_progress'] = (int) ($row->status_in_progress ?? 0);
+        $defaults['operational_status_waiting_patient'] = (int) ($row->status_waiting_patient ?? 0);
+        $defaults['operational_status_scheduled'] = (int) ($row->status_scheduled ?? 0);
+        $defaults['operational_status_resolved'] = (int) ($row->status_resolved ?? 0);
+        $defaults['operational_status_closed_followup'] = (int) ($row->status_closed_followup ?? 0);
+        $defaults['operational_status_closed_other'] = (int) ($row->status_closed_other ?? 0);
+        $defaults['priority_critical'] = (int) ($row->priority_critical ?? 0);
+        $defaults['priority_high'] = (int) ($row->priority_high ?? 0);
+        $defaults['priority_normal'] = (int) ($row->priority_normal ?? 0);
+        $defaults['priority_low'] = (int) ($row->priority_low ?? 0);
+        $defaults['limbo_unassigned'] = (int) ($row->limbo_unassigned ?? 0);
+        $defaults['limbo_assigned_inactive'] = (int) ($row->limbo_assigned_inactive ?? 0);
+        $defaults['limbo_waiting_patient_overdue'] = (int) ($row->limbo_waiting_patient_overdue ?? 0);
+
+        if ($agentId !== null && $agentId > 0) {
+            $defaults['my_active_chats'] = $this->scalarInt(
+                'SELECT COUNT(*) FROM whatsapp_conversations WHERE needs_human = 1 AND assigned_user_id = ?',
+                [$agentId]
+            );
+        }
 
         return $defaults;
     }
