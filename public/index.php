@@ -17,6 +17,7 @@ $laravelBridgeExact = [
 ];
 $laravelBridgePrefixes = [
     '/v2',
+    '/v3',
     '/usuarios',
     '/roles',
     '/feedback',
