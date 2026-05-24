@@ -2,10 +2,12 @@
 
 namespace App\Modules\Whatsapp\Services;
 
+use App\Models\ProcedimientoProyectado;
 use Illuminate\Support\Carbon;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 class FlowSigcenterAgendaService
@@ -49,6 +51,11 @@ class FlowSigcenterAgendaService
     {
         $operation = $this->normalizeOperation((string) ($action['operation'] ?? 'list_days'));
         $operation = $this->inferOperationFromAction($operation, $action);
+
+        if ($operation === 'check_pending_appointment') {
+            return $this->executeCheckPendingAppointment($action, $context);
+        }
+
         $payload = $this->buildPayload($operation, $action, $context, $input);
         $missing = $this->missingFields($operation, $payload);
 
@@ -107,6 +114,10 @@ class FlowSigcenterAgendaService
     {
         $preview = $this->preview($action, $context, $input);
         $operation = (string) $preview['operation'];
+
+        if ($operation === 'check_pending_appointment') {
+            return $preview;
+        }
 
         if (in_array($operation, ['list_specialties', 'list_doctors', 'list_sedes', 'list_doctors_by_name', 'list_sedes_by_doctor', 'list_dates_by_specialty', 'list_doctors_by_date'], true)) {
             return $this->withConversationOutput($action, array_merge($preview, $this->executeLocalCatalog($preview), [
@@ -1129,6 +1140,7 @@ class FlowSigcenterAgendaService
             'horarios', 'times', 'list_times' => 'list_times',
             'agendar', 'book', 'book_appointment' => 'book_appointment',
             'cancelar', 'cancel', 'cancel_appointment' => 'cancel_appointment',
+            'check_pending_appointment', 'verificar_cita' => 'check_pending_appointment',
             default => 'list_days',
         };
     }
@@ -2381,5 +2393,123 @@ class FlowSigcenterAgendaService
             ->where('active', true)
             ->limit(1)
             ->exists();
+    }
+
+    private function executeCheckPendingAppointment(array $action, array $context): array
+    {
+        $hcNumber = $this->patientIdentifierFromContext($action, $context);
+
+        $base = [
+            'type'                  => 'sigcenter_agenda',
+            'operation'             => 'check_pending_appointment',
+            'mutates_agenda'        => false,
+            'requires_confirmation' => false,
+            'preview_only'          => false,
+            'executed'              => true,
+        ];
+
+        if ($hcNumber === '') {
+            return array_merge($base, [
+                'found'       => false,
+                'send_result' => false,
+                'next_state'  => (string) ($action['not_found_next_state'] ?? ''),
+            ]);
+        }
+
+        try {
+            $booking = $this->findActiveWhatsappBooking($hcNumber);
+            if ($booking !== null) {
+                return array_merge($base, $this->buildFoundResult($action, $booking));
+            }
+
+            $projected = $this->findActiveProjectedAppointment($hcNumber);
+            if ($projected !== null) {
+                return array_merge($base, $this->buildFoundResult($action, $projected));
+            }
+        } catch (\Throwable $e) {
+            Log::warning('whatsapp.check_pending_appointment_error', [
+                'hc_number' => $hcNumber,
+                'error'     => $e->getMessage(),
+            ]);
+        }
+
+        return array_merge($base, [
+            'found'       => false,
+            'send_result' => false,
+            'next_state'  => (string) ($action['not_found_next_state'] ?? ''),
+        ]);
+    }
+
+    private function findActiveWhatsappBooking(string $hcNumber): ?array
+    {
+        if (!Schema::hasTable('whatsapp_sigcenter_bookings')) {
+            return null;
+        }
+
+        $row = DB::table('whatsapp_sigcenter_bookings')
+            ->where('patient_hc_number', $hcNumber)
+            ->where('status', 'created')
+            ->where('fecha_inicio', '>=', now())
+            ->orderBy('fecha_inicio')
+            ->first();
+
+        if ($row === null) {
+            return null;
+        }
+
+        $fechaInicio = Carbon::parse($row->fecha_inicio);
+        return [
+            'fecha'  => $fechaInicio->format('d/m/Y'),
+            'hora'   => $fechaInicio->format('H:i'),
+            'medico' => (string) ($row->medico_nombre ?? ''),
+            'sede'   => (string) ($row->sede_nombre ?? ''),
+        ];
+    }
+
+    private function findActiveProjectedAppointment(string $hcNumber): ?array
+    {
+        if (!Schema::hasTable('procedimiento_proyectado')) {
+            return null;
+        }
+
+        $row = ProcedimientoProyectado::query()
+            ->where('hc_number', $hcNumber)
+            ->whereRaw("UPPER(procedimiento_proyectado) LIKE 'SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT%'")
+            ->whereBetween('fecha', [now()->startOfDay(), now()->addDays(7)->endOfDay()])
+            ->where(function ($q): void {
+                $q->whereNull('estado_agenda')
+                  ->orWhere('estado_agenda', '!=', 'CANCELADO');
+            })
+            ->orderBy('fecha')
+            ->first();
+
+        if ($row === null) {
+            return null;
+        }
+
+        return [
+            'fecha'  => Carbon::parse($row->fecha)->format('d/m/Y'),
+            'hora'   => $row->hora ? Carbon::parse($row->hora)->format('H:i') : '',
+            'medico' => (string) ($row->doctor ?? ''),
+            'sede'   => (string) ($row->sede_departamento ?? ''),
+        ];
+    }
+
+    private function buildFoundResult(array $action, array $cita): array
+    {
+        $template = (string) ($action['found_message'] ?? 'Ya tienes una cita agendada para el {{fecha}} a las {{hora}}.');
+        $body = strtr($template, [
+            '{{fecha}}'  => $cita['fecha'],
+            '{{hora}}'   => $cita['hora'],
+            '{{medico}}' => $cita['medico'],
+            '{{sede}}'   => $cita['sede'],
+        ]);
+
+        return [
+            'found'            => true,
+            'send_result'      => true,
+            'next_state'       => (string) ($action['found_next_state'] ?? ''),
+            'outbound_message' => ['type' => 'text', 'body' => $body],
+        ];
     }
 }
