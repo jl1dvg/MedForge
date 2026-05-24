@@ -542,17 +542,65 @@
             </div>
             <div class="box-body">
                 <form method="GET" action="/v2/informes/particulares" class="row g-10 align-items-end">
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <label for="date_from" class="form-label">Desde</label>
                         <input type="date" name="date_from" id="date_from" class="form-control"
                                value="{{ $dateFromSeleccionado }}">
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <label for="date_to" class="form-label">Hasta</label>
                         <input type="date" name="date_to" id="date_to" class="form-control"
                                value="{{ $dateToSeleccionado }}">
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
+                        <label for="sede" class="form-label">Sede</label>
+                        <select name="sede" id="sede" class="form-select">
+                            <option value="">Todas</option>
+                            @foreach(($catalogos['sedes'] ?? []) as $sede)
+                                @php $sedeValue = strtoupper(trim((string) $sede)); @endphp
+                                <option
+                                    value="{{ $sedeValue }}" {{ $sedeSeleccionada === $sedeValue ? 'selected' : '' }}>
+                                    {{ $sedeValue }}
+                                </option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label for="tipo" class="form-label">Tipo de atención</label>
+                        <select name="tipo" id="tipo" class="form-select">
+                            <option value="">Todos</option>
+                            @foreach(($catalogos['tipos_atencion'] ?? []) as $tipoAtencion)
+                                @php $tipoAtencionValue = strtoupper(trim((string) $tipoAtencion)); @endphp
+                                <option
+                                    value="{{ $tipoAtencionValue }}" {{ $tipoSeleccionado === $tipoAtencionValue ? 'selected' : '' }}>
+                                    {{ $tipoAtencionValue }}
+                                </option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label for="auditoria" class="form-label">Auditoría</label>
+                        <select name="auditoria" id="auditoria" class="form-select">
+                            <option value="">Todos</option>
+                            <option value="si" {{ $auditoriaSeleccionada === 'si' ? 'selected' : '' }}>Solo alertas</option>
+                            <option value="no" {{ $auditoriaSeleccionada === 'no' ? 'selected' : '' }}>Solo sin alertas</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label for="categoria_madre_referido" class="form-label">Categoría madre referido</label>
+                        <select name="categoria_madre_referido" id="categoria_madre_referido" class="form-select">
+                            <option value="">Todas</option>
+                            @foreach(($catalogos['categorias_madre_referido'] ?? []) as $categoriaMadreReferido)
+                                @php $categoriaMadreReferidoValue = strtoupper(trim((string) $categoriaMadreReferido)); @endphp
+                                <option
+                                    value="{{ $categoriaMadreReferidoValue }}" {{ $categoriaMadreReferidoSeleccionada === $categoriaMadreReferidoValue ? 'selected' : '' }}>
+                                    {{ $categoriaMadreReferidoValue }}
+                                </option>
+                            @endforeach
+                        </select>
+                    </div>
+
+                    <div class="col-md-2">
                         <label for="categoria_cliente" class="form-label">Categoría cliente</label>
                         <select name="categoria_cliente" id="categoria_cliente" class="form-select">
                             <option value="">Todas</option>
@@ -568,46 +616,7 @@
                             @endforeach
                         </select>
                     </div>
-                    <div class="col-md-3">
-                        <label for="categoria_madre_referido" class="form-label">Categoría madre referido</label>
-                        <select name="categoria_madre_referido" id="categoria_madre_referido" class="form-select">
-                            <option value="">Todas</option>
-                            @foreach(($catalogos['categorias_madre_referido'] ?? []) as $categoriaMadreReferido)
-                                @php $categoriaMadreReferidoValue = strtoupper(trim((string) $categoriaMadreReferido)); @endphp
-                                <option
-                                    value="{{ $categoriaMadreReferidoValue }}" {{ $categoriaMadreReferidoSeleccionada === $categoriaMadreReferidoValue ? 'selected' : '' }}>
-                                    {{ $categoriaMadreReferidoValue }}
-                                </option>
-                            @endforeach
-                        </select>
-                    </div>
-                    <div class="col-md-3">
-                        <label for="tipo" class="form-label">Tipo de atención</label>
-                        <select name="tipo" id="tipo" class="form-select">
-                            <option value="">Todos</option>
-                            @foreach(($catalogos['tipos_atencion'] ?? []) as $tipoAtencion)
-                                @php $tipoAtencionValue = strtoupper(trim((string) $tipoAtencion)); @endphp
-                                <option
-                                    value="{{ $tipoAtencionValue }}" {{ $tipoSeleccionado === $tipoAtencionValue ? 'selected' : '' }}>
-                                    {{ $tipoAtencionValue }}
-                                </option>
-                            @endforeach
-                        </select>
-                    </div>
-                    <div class="col-md-3">
-                        <label for="sede" class="form-label">Sede</label>
-                        <select name="sede" id="sede" class="form-select">
-                            <option value="">Todas</option>
-                            @foreach(($catalogos['sedes'] ?? []) as $sede)
-                                @php $sedeValue = strtoupper(trim((string) $sede)); @endphp
-                                <option
-                                    value="{{ $sedeValue }}" {{ $sedeSeleccionada === $sedeValue ? 'selected' : '' }}>
-                                    {{ $sedeValue }}
-                                </option>
-                            @endforeach
-                        </select>
-                    </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <label for="empresa_seguro" class="form-label">Empresa de seguro</label>
                         <select name="empresa_seguro" id="empresa_seguro" class="form-select">
                             <option value="">Todas</option>
@@ -623,7 +632,7 @@
                             @endforeach
                         </select>
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <label for="afiliacion" class="form-label">Seguro / plan</label>
                         <select name="afiliacion" id="afiliacion" class="form-select">
                             <option value="">Todas</option>
@@ -636,7 +645,7 @@
                             @endforeach
                         </select>
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <label for="procedimiento" class="form-label">Procedimiento</label>
                         <input
                             type="text"
@@ -647,14 +656,7 @@
                             placeholder="Ej: consulta oftalmologica"
                         >
                     </div>
-                    <div class="col-md-3">
-                        <label for="auditoria" class="form-label">Auditoría</label>
-                        <select name="auditoria" id="auditoria" class="form-select">
-                            <option value="">Todos</option>
-                            <option value="si" {{ $auditoriaSeleccionada === 'si' ? 'selected' : '' }}>Solo alertas</option>
-                            <option value="no" {{ $auditoriaSeleccionada === 'no' ? 'selected' : '' }}>Solo sin alertas</option>
-                        </select>
-                    </div>
+
                     <div class="col-md-2">
                         <button type="submit" class="btn btn-primary btn-sm">
                             <i class="mdi mdi-filter-variant"></i> Aplicar filtros

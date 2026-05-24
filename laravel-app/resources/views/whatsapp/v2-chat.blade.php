@@ -2152,7 +2152,7 @@
                                     <span class="wa-v2-pill is-queue"><i
                                             class="mdi mdi-tray-arrow-down"></i> En cola</span>
                                 @else
-                                    <span class="wa-v2-pill"><i class="mdi mdi-check"></i> Resuelto</span>
+                                    <span class="wa-v2-pill"><i class="mdi mdi-check"></i> {{ $conversation['close_reason_label'] ?? 'Cerrado' }}</span>
                                 @endif
                                 @if(!empty($conversation['queue_bucket_label']) && !empty($conversation['needs_human']))
                                     <span class="wa-v2-pill"><i class="mdi mdi-shape-outline"></i> {{ $conversation['queue_bucket_label'] }}</span>
@@ -2258,7 +2258,7 @@
                                     <span class="wa-v2-pill is-queue"><i
                                             class="mdi mdi-tray-arrow-down"></i> En cola</span>
                                 @else
-                                    <span class="wa-v2-pill"><i class="mdi mdi-check"></i> Resuelto</span>
+                                    <span class="wa-v2-pill"><i class="mdi mdi-check"></i> {{ $selectedConversation['close_reason_label'] ?? 'Cerrado' }}</span>
                                 @endif
                                 @if(!empty($selectedConversation['queue_bucket_label']) && !empty($selectedConversation['needs_human']))
                                     <span class="wa-v2-pill"><i class="mdi mdi-shape-outline"></i> {{ $selectedConversation['queue_bucket_label'] }}</span>
@@ -2706,16 +2706,22 @@
                             </div>
                         </details>
 
-                        {{-- Dar de baja / Lead de seguimiento --}}
-                        <div style="padding: 4px 0 8px;">
-                            <button type="button"
-                                    id="wa-v2-baja-btn"
-                                    class="waves-effect waves-light btn mb-5 bg-gradient-success"
-                                    data-placeholder="Dar de baja y generar lead"
-                                    data-conversation-id="{{ $selectedConversation['id'] }}">
-                                <i class="mdi mdi-account-remove-outline"></i>
-                            </button>
-                        </div>
+                        {{-- Acciones administrativas --}}
+                        <details style="padding: 4px 0 8px;">
+                            <summary class="text-muted" style="cursor:pointer;font-size:12px;font-weight:700;">
+                                Acciones administrativas
+                            </summary>
+                            <div style="padding-top:8px;">
+                                <button type="button"
+                                        id="wa-v2-baja-btn"
+                                        class="waves-effect waves-light btn btn-outline-secondary btn-sm"
+                                        data-placeholder="Cerrar seguimiento y generar lead"
+                                        data-conversation-id="{{ $selectedConversation['id'] }}">
+                                    <i class="mdi mdi-archive-arrow-down-outline"></i>
+                                    Cerrar seguimiento
+                                </button>
+                            </div>
+                        </details>
 
                     </div>
                 @else
@@ -2725,28 +2731,27 @@
                 @endif
             </div>
 
-            {{-- Modal: Dar de baja --}}
+            {{-- Modal: Cerrar seguimiento --}}
             <div class="wa-v2-modal-backdrop" id="wa-v2-baja-modal" style="display:none;">
                 <div class="wa-v2-modal" style="max-width:480px;">
                     <div class="wa-v2-modal__header">
-                        <div class="fw-700" style="font-size:16px;">📋 Dar de baja — Lead de seguimiento</div>
+                        <div class="fw-700" style="font-size:16px;">📋 Cerrar seguimiento</div>
                         <button type="button" class="btn-close" id="wa-v2-baja-close"></button>
                     </div>
                     <div class="wa-v2-modal__body">
                         <p class="text-muted" style="font-size:13px; margin-bottom:14px;">
-                            Esta acción archiva la conversación y genera un lead en la lista de re-campaña.
-                            No elimina el historial del chat.
+                            Esto no elimina al paciente ni el historial. Cerrará la conversación activa y generará un lead de seguimiento.
                         </p>
                         <div class="mb-12">
-                            <label class="form-label fw-700" style="font-size:13px;">Motivo de la baja <span class="text-danger">*</span></label>
+                            <label class="form-label fw-700" style="font-size:13px;">Motivo del cierre <span class="text-danger">*</span></label>
                             <textarea id="wa-v2-baja-motivo" class="form-control" rows="3"
-                                      placeholder="Ej: Paciente no responde, ya fue atendido, cambió de número…"></textarea>
+                                      placeholder="Ej: Paciente no responde, requiere seguimiento posterior, cambió de número..."></textarea>
                         </div>
                         <div id="wa-v2-baja-feedback" class="text-danger" style="font-size:12px;"></div>
                     </div>
                     <div class="wa-v2-modal__footer">
                         <button type="button" class="btn btn-outline-secondary" id="wa-v2-baja-cancel">Cancelar</button>
-                        <button type="button" class="btn btn-danger" id="wa-v2-baja-submit">Confirmar baja</button>
+                        <button type="button" class="btn btn-primary" id="wa-v2-baja-submit">Cerrar seguimiento</button>
                     </div>
                 </div>
             </div>
@@ -4517,7 +4522,7 @@
                 });
             })();
 
-            // ── Dar de baja / Lead de seguimiento ────────────────────────────
+            // ── Cerrar seguimiento / Lead de seguimiento ─────────────────────
             (function () {
                 const bajaBtn    = document.getElementById('wa-v2-baja-btn');
                 const bajaModal  = document.getElementById('wa-v2-baja-modal');
@@ -4552,7 +4557,7 @@
                 bajaSubmit.addEventListener('click', async function () {
                     const motivo = bajaMotivo.value.trim();
                     if (!motivo) {
-                        bajaFeed.textContent = 'El motivo de la baja es obligatorio.';
+                        bajaFeed.textContent = 'El motivo del cierre de seguimiento es obligatorio.';
                         bajaMotivo.focus();
                         return;
                     }
@@ -4580,12 +4585,12 @@
                         } else {
                             bajaFeed.textContent = json.error ?? 'No se pudo generar el lead.';
                             bajaSubmit.disabled = false;
-                            bajaSubmit.textContent = 'Confirmar baja';
+                            bajaSubmit.textContent = 'Cerrar seguimiento';
                         }
                     } catch (e) {
                         bajaFeed.textContent = 'Error de red. Intenta de nuevo.';
                         bajaSubmit.disabled = false;
-                        bajaSubmit.textContent = 'Confirmar baja';
+                        bajaSubmit.textContent = 'Cerrar seguimiento';
                     }
                 });
             })();

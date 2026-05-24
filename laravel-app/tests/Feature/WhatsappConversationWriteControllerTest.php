@@ -23,6 +23,7 @@ class WhatsappConversationWriteControllerTest extends TestCase
         Schema::dropIfExists('whatsapp_template_revisions');
         Schema::dropIfExists('whatsapp_message_templates');
         Schema::dropIfExists('whatsapp_contact_consent');
+        Schema::dropIfExists('whatsapp_leads');
         Schema::dropIfExists('crm_leads');
         Schema::dropIfExists('patient_data');
         Schema::dropIfExists('app_settings');
@@ -80,6 +81,9 @@ class WhatsappConversationWriteControllerTest extends TestCase
             $table->unsignedBigInteger('assigned_user_id')->nullable();
             $table->timestamp('assigned_at')->nullable();
             $table->timestamp('handoff_requested_at')->nullable();
+            $table->timestamp('closed_at')->nullable();
+            $table->unsignedBigInteger('closed_by_user_id')->nullable();
+            $table->string('close_reason', 64)->nullable();
             $table->unsignedInteger('unread_count')->default(0);
             $table->timestamps();
         });
@@ -197,6 +201,21 @@ class WhatsappConversationWriteControllerTest extends TestCase
             $table->text('notes')->nullable();
             $table->unsignedBigInteger('assigned_to')->nullable();
             $table->unsignedBigInteger('created_by')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('whatsapp_leads', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('conversation_id');
+            $table->unsignedBigInteger('crm_lead_id')->nullable();
+            $table->string('wa_number', 30);
+            $table->string('display_name', 255)->nullable();
+            $table->string('hc_number', 100)->nullable();
+            $table->string('cedula', 30)->nullable();
+            $table->string('patient_full_name', 255)->nullable();
+            $table->text('motivo_baja');
+            $table->string('status', 30)->default('pendiente');
+            $table->unsignedBigInteger('created_by_user_id')->nullable();
             $table->timestamps();
         });
 
@@ -386,6 +405,99 @@ class WhatsappConversationWriteControllerTest extends TestCase
             ->assertStatus(422)
             ->assertJsonPath('ok', false)
             ->assertJsonPath('error', 'Debes tomar esta conversación antes de responder.');
+    }
+
+    public function test_it_closes_conversation_as_resolved_with_structured_reason(): void
+    {
+        \DB::table('whatsapp_conversations')->insert([
+            'id' => 460,
+            'wa_number' => '0999111460',
+            'display_name' => 'Paciente Resuelto',
+            'assigned_user_id' => 99,
+            'needs_human' => 1,
+            'unread_count' => 2,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $response = $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->postJson('/v2/whatsapp/api/conversations/460/close');
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('ok', true);
+
+        $this->assertDatabaseHas('whatsapp_conversations', [
+            'id' => 460,
+            'needs_human' => 0,
+            'assigned_user_id' => null,
+            'closed_by_user_id' => 99,
+            'close_reason' => 'resolved',
+            'unread_count' => 0,
+        ]);
+
+        $this->assertNotNull(\DB::table('whatsapp_conversations')->where('id', 460)->value('closed_at'));
+    }
+
+    public function test_it_closes_followup_and_keeps_generating_whatsapp_lead(): void
+    {
+        \DB::table('whatsapp_conversations')->insert([
+            'id' => 461,
+            'wa_number' => '593999111461',
+            'display_name' => 'Paciente Seguimiento',
+            'patient_hc_number' => 'HC-461',
+            'patient_full_name' => 'Paciente Seguimiento',
+            'assigned_user_id' => 99,
+            'needs_human' => 1,
+            'unread_count' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $response = $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->postJson('/v2/whatsapp/api/conversations/461/leads', [
+                'motivo_baja' => 'Paciente no responde, cerrar para seguimiento posterior.',
+            ]);
+
+        $response
+            ->assertCreated()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('data.conversation_id', 461)
+            ->assertJsonPath('data.status', 'pendiente');
+
+        $this->assertDatabaseHas('whatsapp_leads', [
+            'conversation_id' => 461,
+            'wa_number' => '593999111461',
+            'motivo_baja' => 'Paciente no responde, cerrar para seguimiento posterior.',
+            'created_by_user_id' => 99,
+        ]);
+
+        $this->assertDatabaseHas('crm_leads', [
+            'hc_number' => 'HC-461',
+            'source' => 'whatsapp_followup_closed',
+            'status' => 'nuevo',
+        ]);
+
+        $this->assertDatabaseHas('whatsapp_conversations', [
+            'id' => 461,
+            'needs_human' => 0,
+            'assigned_user_id' => null,
+            'closed_by_user_id' => 99,
+            'close_reason' => 'followup_closed',
+            'unread_count' => 0,
+        ]);
+
+        $this->assertNotNull(\DB::table('whatsapp_conversations')->where('id', 461)->value('closed_at'));
     }
 
     public function test_it_sends_and_persists_an_outbound_document_message(): void

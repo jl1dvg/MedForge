@@ -1,0 +1,11 @@
+[23-May-2026 09:01:00 America/Guayaquil] PHP Warning:  Constant BASE_PATH already defined in /Users/jorgeluisdevera/PhpstormProjects/MedForge/bootstrap.php on line 106
+[23-May-2026 09:01:00 America/Guayaquil] PHP Warning:  Constant PUBLIC_PATH already defined in /Users/jorgeluisdevera/PhpstormProjects/MedForge/bootstrap.php on line 111
+[23-May-2026 09:01:00 America/Guayaquil] PHP Fatal error:  Uncaught Error: Class "App\Modules\Pacientes\Services\PacientesParityService" not found in /Users/jorgeluisdevera/PhpstormProjects/MedForge/modules/Pacientes/Services/PacienteService.php:14
+Stack trace:
+#0 /Users/jorgeluisdevera/PhpstormProjects/MedForge/bootstrap.php(50): require_once()
+#1 [internal function]: {closure}('Modules\\Pacient...')
+#2 Command line code(7): class_exists('Modules\\Pacient...')
+#3 {main}
+  thrown in /Users/jorgeluisdevera/PhpstormProjects/MedForge/modules/Pacientes/Services/PacienteService.php on line 14
+[23-May-2026 09:02:23 America/Guayaquil] PHP Warning:  Constant BASE_PATH already defined in /Users/jorgeluisdevera/PhpstormProjects/MedForge/bootstrap.php on line 106
+[23-May-2026 09:02:23 America/Guayaquil] PHP Warning:  Constant PUBLIC_PATH already defined in /Users/jorgeluisdevera/PhpstormProjects/MedForge/bootstrap.php on line 111

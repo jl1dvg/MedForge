@@ -127,7 +127,7 @@
             <div class="wa-leads-bar">
                 <div>
                     <div class="wa-leads-bar__title">📋 Leads de seguimiento</div>
-                    <div class="wa-leads-bar__sub">Contactos dados de baja del inbox para re-campaña</div>
+                    <div class="wa-leads-bar__sub">Contactos cerrados para seguimiento desde el inbox</div>
                 </div>
                 <div class="wa-leads-bar__meta">
                     <div class="wa-leads-stat">
@@ -183,7 +183,7 @@
                                 <th>Contacto</th>
                                 <th>Número WA</th>
                                 <th>HC / Cédula</th>
-                                <th>Motivo de baja</th>
+                                <th>Motivo del cierre</th>
                                 <th>Estado</th>
                                 <th>Fecha</th>
                                 <th>Chat</th>
@@ -245,7 +245,7 @@
                     <div class="wa-leads-empty">
                         <div style="font-size:32px; margin-bottom:10px;">📋</div>
                         <div class="fw-700 mb-5">Sin leads registrados</div>
-                        <div style="font-size:13px;">Los leads se generan desde el chat cuando un agente da de baja una conversación.</div>
+                        <div style="font-size:13px;">Los leads se generan desde el chat cuando un agente cierra una conversación para seguimiento.</div>
                     </div>
                 @endif
             </div>

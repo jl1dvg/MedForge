@@ -9,6 +9,7 @@ use App\Models\WhatsappHandoff;
 use App\Models\WhatsappHandoffEvent;
 use App\Models\WhatsappLead;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use RuntimeException;
 
 class WhatsappLeadService
@@ -26,7 +27,7 @@ class WhatsappLeadService
     ): array {
         $motivoBaja = trim($motivoBaja);
         if ($motivoBaja === '') {
-            throw new RuntimeException('El motivo de la baja es obligatorio.');
+            throw new RuntimeException('El motivo del cierre de seguimiento es obligatorio.');
         }
 
         $conversation = WhatsappConversation::query()->find($conversationId);
@@ -40,7 +41,7 @@ class WhatsappLeadService
         $result = DB::transaction(function () use ($conversation, $motivoBaja, $cedula, $actorUserId): array {
             // 1. Crear o actualizar crm_lead (uq_crm_leads_hc_number puede ya existir)
             $actor = $actorUserId > 0 ? $actorUserId : null;
-            $newNotes = "Dado de baja desde WhatsApp.\nNúmero: {$conversation->wa_number}\nMotivo: {$motivoBaja}"
+            $newNotes = "Cierre de seguimiento desde WhatsApp.\nNúmero: {$conversation->wa_number}\nMotivo: {$motivoBaja}"
                 . ($cedula ? "\nCédula: {$cedula}" : '');
 
             $crmLead = CrmLead::query()->updateOrCreate(
@@ -49,7 +50,7 @@ class WhatsappLeadService
                     'name'        => $conversation->patient_full_name ?: $conversation->display_name ?: $conversation->wa_number,
                     'phone'       => $conversation->wa_number,
                     'status'      => 'nuevo',
-                    'source'      => 'whatsapp_baja',
+                    'source'      => 'whatsapp_followup_closed',
                     'notes'       => $newNotes,
                     'created_by'  => $actor,
                     'assigned_to' => $actor,
@@ -74,12 +75,24 @@ class WhatsappLeadService
             $this->resolveActiveHandoff($conversation, $actorUserId, $motivoBaja);
 
             // 4. Limpiar asignación de la conversación
-            $conversation->fill([
+            $payload = [
                 'needs_human'       => false,
                 'assigned_user_id'  => null,
                 'assigned_at'       => null,
-            ]);
-            $conversation->save();
+                'unread_count'      => 0,
+            ];
+
+            if (Schema::hasColumn('whatsapp_conversations', 'closed_at')) {
+                $payload['closed_at'] = now();
+            }
+            if (Schema::hasColumn('whatsapp_conversations', 'closed_by_user_id')) {
+                $payload['closed_by_user_id'] = $actorUserId > 0 ? $actorUserId : null;
+            }
+            if (Schema::hasColumn('whatsapp_conversations', 'close_reason')) {
+                $payload['close_reason'] = 'followup_closed';
+            }
+
+            $conversation->fill($payload)->save();
 
             return [
                 'lead'    => $lead,
@@ -160,6 +173,10 @@ class WhatsappLeadService
 
     private function resolveCedula(WhatsappConversation $conversation): ?string
     {
+        if (!Schema::hasTable('whatsapp_autoresponder_sessions')) {
+            return null;
+        }
+
         $session = WhatsappAutoresponderSession::query()
             ->where('conversation_id', $conversation->id)
             ->first();
@@ -181,7 +198,7 @@ class WhatsappLeadService
 
     private function resolveActiveHandoff(WhatsappConversation $conversation, int $actorUserId, string $notes): void
     {
-        if (!class_exists(WhatsappHandoff::class)) {
+        if (!class_exists(WhatsappHandoff::class) || !Schema::hasTable('whatsapp_handoffs')) {
             return;
         }
 
@@ -202,12 +219,12 @@ class WhatsappLeadService
         ]);
         $handoff->save();
 
-        if (class_exists(WhatsappHandoffEvent::class)) {
+        if (class_exists(WhatsappHandoffEvent::class) && Schema::hasTable('whatsapp_handoff_events')) {
             DB::table('whatsapp_handoff_events')->insert([
                 'handoff_id'    => $handoff->id,
                 'event_type'    => 'resolved',
                 'actor_user_id' => $actorUserId,
-                'notes'         => 'Baja: ' . mb_substr($notes, 0, 500),
+                'notes'         => 'Cierre de seguimiento: ' . mb_substr($notes, 0, 500),
                 'created_at'    => $now,
             ]);
         }
