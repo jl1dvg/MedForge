@@ -26,8 +26,12 @@
     $roleOptions = is_array($roleOptions ?? null) ? $roleOptions : [];
     $selectedConversation = is_array($selectedConversation ?? null) ? $selectedConversation : null;
     $canOperateConversation = (bool) ($canOperateConversation ?? false);
+    $canSupervise = (bool) ($canSupervise ?? false);
+    $presenceStatus = (string) ($presenceStatus ?? 'available');
+    $conversationNotes = is_array($conversationNotes ?? null) ? $conversationNotes : [];
     $quickReplies = is_array($quickReplies ?? null) ? $quickReplies : [];
     $templateOptions = is_array($templateOptions ?? null) ? $templateOptions : [];
+    $templateOptionsJson = json_encode($templateOptions, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
     $formatWaBody = static function (string $text): string {
         $safe = htmlspecialchars($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
@@ -55,6 +59,7 @@
     ];
 
     $previewRoute = '/v3/whatsapp/chat';
+    $apiBase = '/v2/whatsapp/api';
 
     $buildLink = static function (array $extra = []) use ($selectedFilter, $search, $previewRoute) {
         $qs = array_filter(array_merge([
@@ -256,6 +261,47 @@
         .wa3-tags { display: flex; flex-wrap: wrap; gap: 6px; }
         .wa3-tag { font: 500 11px var(--bs-body-font-family); padding: 3px 9px; border-radius: 999px; background: var(--wa3-accent-soft); color: var(--wa3-accent); }
 
+        .wa3-admin-btn { width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--wa3-border); background: var(--wa3-surface-2); color: var(--wa3-text); font: 600 12px var(--bs-body-font-family); cursor: pointer; }
+        .wa3-admin-btn:hover { background: var(--wa3-accent-soft); border-color: var(--wa3-accent); color: var(--wa3-accent); }
+        .wa3-field { display: grid; gap: 5px; margin-bottom: 10px; }
+        .wa3-field label { font: 600 11px var(--bs-body-font-family); color: var(--wa3-text-mute); }
+        .wa3-field input, .wa3-field select, .wa3-field textarea { width: 100%; border: 1px solid var(--wa3-border); border-radius: 10px; background: #fff; color: var(--wa3-text); padding: 9px 11px; font: 400 13px var(--bs-body-font-family); }
+        .wa3-field textarea { resize: vertical; min-height: 76px; }
+        .wa3-field input:focus, .wa3-field select:focus, .wa3-field textarea:focus { outline: 0; border-color: var(--wa3-accent); box-shadow: 0 0 0 3px rgba(81,86,190,.14); }
+        .wa3-action-row { display: flex; gap: 8px; align-items: center; justify-content: flex-end; }
+        .wa3-primary-btn, .wa3-secondary-btn { border-radius: 10px; padding: 9px 14px; font: 700 12px var(--bs-body-font-family); cursor: pointer; border: 1px solid transparent; }
+        .wa3-primary-btn { background: var(--wa3-accent); color: #fff; }
+        .wa3-secondary-btn { background: var(--wa3-surface-2); color: var(--wa3-text); border-color: var(--wa3-border); }
+        .wa3-feedback { font: 500 12px var(--bs-body-font-family); color: var(--wa3-text-mute); min-height: 18px; }
+        .wa3-feedback[data-tone="success"] { color: var(--wa3-success); }
+        .wa3-feedback[data-tone="danger"] { color: var(--wa3-danger); }
+        .wa3-picker-results { display: grid; gap: 8px; max-height: 260px; overflow: auto; margin-top: 10px; }
+        .wa3-picker-card { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; padding: 10px; border: 1px solid var(--wa3-border); border-radius: 12px; background: #fff; }
+        .wa3-picker-card.is-active { border-color: var(--wa3-accent); background: var(--wa3-accent-soft); }
+        .wa3-picker-card strong { font: 700 13px var(--bs-body-font-family); color: var(--wa3-text); }
+        .wa3-picker-card small { display: block; font: 500 11.5px var(--bs-body-font-family); color: var(--wa3-text-mute); margin-top: 2px; }
+        .wa3-template-preview { border: 1px dashed var(--wa3-border); border-radius: 12px; padding: 12px; background: var(--wa3-surface-2); font: 400 12.5px/1.45 var(--bs-body-font-family); color: var(--wa3-text); white-space: pre-wrap; }
+        .wa3-upload { display: none; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; padding: 8px 10px; border-radius: 12px; background: var(--wa3-accent-soft); color: var(--wa3-accent); font: 600 12px var(--bs-body-font-family); }
+        .wa3-upload.is-visible { display: flex; }
+        .wa3-upload button { border: 0; background: transparent; color: var(--wa3-accent); cursor: pointer; font-size: 17px; }
+        .wa3-realtime { display: none; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 22px; background: #fff7e6; border-bottom: 1px solid #ffe0a6; color: #8a5d0a; font: 600 12px var(--bs-body-font-family); }
+        .wa3-realtime.is-visible { display: flex; }
+        .wa3-realtime button { border: 0; border-radius: 999px; padding: 5px 10px; background: #8a5d0a; color: #fff; font: 700 11px var(--bs-body-font-family); cursor: pointer; }
+        .wa3-trail { position: relative; display: grid; gap: 9px; padding-left: 14px; }
+        .wa3-trail::before { content: ""; position: absolute; left: 3px; top: 4px; bottom: 4px; width: 1px; background: var(--wa3-border); }
+        .wa3-trail__item { position: relative; font: 400 12px var(--bs-body-font-family); color: var(--wa3-text); }
+        .wa3-trail__item::before { content: ""; position: absolute; left: -15px; top: 4px; width: 8px; height: 8px; border-radius: 50%; background: var(--wa3-accent); border: 2px solid #fff; }
+        .wa3-trail__meta { color: var(--wa3-text-mute); font-size: 11px; margin-top: 2px; }
+        .wa3-modal { position: fixed; inset: 0; z-index: 2050; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(16,24,40,.48); }
+        .wa3-modal[hidden] { display: none; }
+        .wa3-modal__card { width: min(920px, 100%); max-height: calc(100vh - 48px); overflow: auto; border-radius: 20px; background: var(--wa3-surface); box-shadow: 0 24px 70px rgba(16,24,40,.28); }
+        .wa3-modal__head, .wa3-modal__foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--wa3-border); }
+        .wa3-modal__foot { border-top: 1px solid var(--wa3-border); border-bottom: 0; }
+        .wa3-modal__head h3 { font: 700 16px var(--font-display, "Rubik", system-ui, sans-serif); margin: 0; }
+        .wa3-modal__body { padding: 18px; }
+        .wa3-modal__grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(280px, .65fr); gap: 16px; }
+        @media (max-width: 820px) { .wa3-modal__grid { grid-template-columns: 1fr; } }
+
         .wa3-empty { display: flex; align-items: center; justify-content: center; height: 100%; padding: 40px; }
         .wa3-empty__card { text-align: center; max-width: 360px; }
         .wa3-empty__icon { width: 64px; height: 64px; margin: 0 auto 16px; border-radius: 50%; background: var(--wa3-accent-soft); color: var(--wa3-accent); display: grid; place-items: center; font-size: 32px; }
@@ -276,6 +322,18 @@
             <div class="wa3-inbox__title-row">
                 <h2 class="wa3-inbox__title">Conversaciones</h2>
                 <div style="display:flex;gap:2px;">
+                    <select id="wa3-presence" title="Presencia"
+                            style="height:32px;border:1px solid var(--wa3-border);border-radius:999px;background:var(--wa3-surface-2);color:var(--wa3-text);font:600 11px var(--bs-body-font-family);padding:0 9px;">
+                        <option value="available" {{ $presenceStatus === 'available' ? 'selected' : '' }}>Disponible</option>
+                        <option value="busy" {{ $presenceStatus === 'busy' ? 'selected' : '' }}>Ocupado</option>
+                        <option value="away" {{ $presenceStatus === 'away' ? 'selected' : '' }}>Ausente</option>
+                        <option value="offline" {{ $presenceStatus === 'offline' ? 'selected' : '' }}>Offline</option>
+                    </select>
+                    @if($canSupervise)
+                        <button class="wa3-iconbtn" title="Reencolar vencidos" type="button" id="wa3-requeue-expired">
+                            <i class="mdi mdi-restore-alert"></i>
+                        </button>
+                    @endif
                     <button class="wa3-iconbtn" title="Nueva conversación" type="button"
                             onclick="document.getElementById('wa3-new-modal')?.removeAttribute('hidden')">
                         <i class="mdi mdi-plus"></i>
@@ -413,6 +471,14 @@
                     <button class="wa3-iconbtn" title="Buscar en chat" type="button"><i class="mdi mdi-magnify"></i></button>
                     <span class="wa3-iconbtn--sep"></span>
 
+                    @if($canOperateConversation && !$isMine)
+                        <button class="wa3-hbtn" type="button"
+                                data-wa-action="assign-self"
+                                data-conversation-id="{{ $selectedConversation['id'] }}">
+                            <i class="mdi mdi-account-plus-outline"></i><span>Tomar</span>
+                        </button>
+                    @endif
+
                     {{-- Transferir --}}
                     <div class="wa3-hbtn-wrap" data-wa3-menu="transfer">
                         <button class="wa3-hbtn" type="button" data-wa3-menu-toggle="transfer">
@@ -432,6 +498,18 @@
                             @empty
                                 <div style="padding:10px;color:var(--wa3-text-mute);font-size:12.5px;">No hay agentes disponibles.</div>
                             @endforelse
+                            @if(count($roleOptions) > 0)
+                                <h6>Derivar por equipo</h6>
+                                @foreach($roleOptions as $role)
+                                    <button class="wa3-menu-item" type="button"
+                                            data-wa-action="queue-role"
+                                            data-conversation-id="{{ $selectedConversation['id'] }}"
+                                            data-role-id="{{ $role['id'] }}">
+                                        <i class="mdi mdi-account-group-outline lead"></i>
+                                        <span>{{ $role['name'] }}<span class="meta">Cola de atención</span></span>
+                                    </button>
+                                @endforeach
+                            @endif
                             <div class="wa3-menu-footer">
                                 <input type="text" id="wa3-transfer-note" placeholder="Nota (opcional)">
                             </div>
@@ -526,6 +604,11 @@
                     <span class="sep">·</span>
                     <span class="wa3-context__item"><i class="mdi mdi-bullseye-arrow"></i>{{ $selectedConversation['attribution_headline'] }}</span>
                 @endif
+            </div>
+
+            <div class="wa3-realtime" id="wa3-realtime-banner">
+                <span>Hay mensajes nuevos en esta conversación.</span>
+                <button type="button" id="wa3-realtime-reload">Actualizar</button>
             </div>
 
             <div class="wa3-messages" id="wa-v2-message-list">
@@ -633,15 +716,26 @@
                             <textarea id="wa-v2-message-input" rows="1"
                                       placeholder="Escribe un mensaje…" {{ $canReplyHere ? '' : 'disabled' }}></textarea>
                             <input type="hidden" id="wa-v2-message-type" value="text">
-                            <input type="file" id="wa-v2-media-file" style="display:none;">
+                            <input type="hidden" id="wa-v2-media-url" value="">
+                            <input type="hidden" id="wa-v2-media-filename" value="">
+                            <input type="hidden" id="wa-v2-media-disk" value="">
+                            <input type="hidden" id="wa-v2-media-path" value="">
+                            <input type="hidden" id="wa-v2-media-mime-type" value="">
+                            <input type="file" id="wa-v2-media-file" style="display:none;" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt">
                             <div class="wa3-composer__tools">
+                                <button class="wa3-iconbtn" type="button" title="Grabar audio" id="wa3-voice-record"><i class="mdi mdi-microphone-outline"></i></button>
                                 <button class="wa3-iconbtn" type="button" title="Emoji"><i class="mdi mdi-emoticon-outline"></i></button>
-                                <button class="wa3-iconbtn" type="button" title="Nota interna"><i class="mdi mdi-note-edit-outline"></i></button>
+                                <button class="wa3-iconbtn" type="button" title="Nota interna"
+                                        onclick="document.getElementById('wa3-note-body')?.focus()"><i class="mdi mdi-note-edit-outline"></i></button>
                             </div>
                             <button class="wa3-send wa-v2-composer-send" type="button" id="wa3-send-btn"
                                     title="Enviar (Enter)" {{ $canReplyHere ? '' : 'disabled' }}>
                                 <i class="mdi mdi-send"></i>
                             </button>
+                        </div>
+                        <div class="wa3-upload" id="wa3-upload-status">
+                            <span id="wa3-upload-text">Adjunto listo</span>
+                            <button type="button" id="wa3-upload-clear" title="Quitar adjunto"><i class="mdi mdi-close"></i></button>
                         </div>
                         <div class="wa3-composer__hint">
                             <span>
@@ -742,23 +836,149 @@
                 </div>
             @endif
 
-            @if(count($conversationNotes ?? []) > 0)
-                <div class="wa3-drawer__section">
-                    <h6>Notas internas</h6>
-                    <div class="wa3-kv">
-                        @foreach($conversationNotes as $note)
-                            <div style="font:400 12.5px var(--bs-body-font-family);color:var(--wa3-text);padding:6px 0;border-bottom:1px solid var(--wa3-border-soft);">
-                                <div style="font-weight:600;color:var(--wa3-accent);font-size:11px;">
-                                    {{ $note['author_name'] ?? 'Equipo' }} · {{ !empty($note['created_at']) ? \Carbon\Carbon::parse($note['created_at'])->diffForHumans() : '' }}
-                                </div>
-                                {{ $note['body'] ?? '' }}
+            <div class="wa3-drawer__section">
+                <h6>Notas internas</h6>
+                <div class="wa3-kv" id="wa3-notes-list">
+                    @forelse($conversationNotes as $note)
+                        <div style="font:400 12.5px var(--bs-body-font-family);color:var(--wa3-text);padding:6px 0;border-bottom:1px solid var(--wa3-border-soft);">
+                            <div style="font-weight:600;color:var(--wa3-accent);font-size:11px;">
+                                {{ $note['author_name'] ?? 'Equipo' }} · {{ !empty($note['created_at']) ? \Carbon\Carbon::parse($note['created_at'])->diffForHumans() : '' }}
                             </div>
-                        @endforeach
-                    </div>
+                            {{ $note['body'] ?? '' }}
+                        </div>
+                    @empty
+                        <div style="font:400 12px var(--bs-body-font-family);color:var(--wa3-text-mute);">Sin notas internas.</div>
+                    @endforelse
+                </div>
+                <div class="wa3-field" style="margin-top:10px;">
+                    <textarea id="wa3-note-body" placeholder="Agregar nota interna..."></textarea>
+                </div>
+                <div class="wa3-action-row">
+                    <span class="wa3-feedback" id="wa3-note-feedback"></span>
+                    <button class="wa3-primary-btn" type="button" id="wa3-note-submit"
+                            data-conversation-id="{{ $selectedConversation['id'] }}">Guardar nota</button>
+                </div>
+            </div>
+
+            <div class="wa3-drawer__section">
+                <h6>Productividad</h6>
+                <div class="wa3-field">
+                    <input type="text" id="wa3-qr-title" placeholder="Título de respuesta rápida">
+                </div>
+                <div class="wa3-field">
+                    <textarea id="wa3-qr-body" placeholder="Texto de respuesta rápida"></textarea>
+                </div>
+                <div class="wa3-action-row">
+                    <span class="wa3-feedback" id="wa3-qr-feedback"></span>
+                    <button class="wa3-secondary-btn" type="button" id="wa3-qr-submit">Crear quick reply</button>
+                </div>
+            </div>
+
+            <div class="wa3-drawer__section">
+                <h6>Trazabilidad</h6>
+                <div id="wa3-trail-list" style="font:400 12px var(--bs-body-font-family);color:var(--wa3-text-mute);">
+                    Cargando trazabilidad...
+                </div>
+            </div>
+
+            @if($canOperateConversation)
+                <div class="wa3-drawer__section">
+                    <h6>Acciones administrativas</h6>
+                    <button class="wa3-admin-btn" type="button" id="wa3-followup-open"
+                            data-conversation-id="{{ $selectedConversation['id'] }}">
+                        <i class="mdi mdi-archive-arrow-down-outline"></i>
+                        Cerrar seguimiento
+                    </button>
                 </div>
             @endif
         </aside>
     @endif
+</div>
+
+<div class="wa3-modal" id="wa3-new-modal" hidden>
+    <div class="wa3-modal__card">
+        <div class="wa3-modal__head">
+            <div>
+                <h3>Nueva conversación con plantilla</h3>
+                <div style="font:400 12px var(--bs-body-font-family);color:var(--wa3-text-mute);margin-top:3px;">Usa una plantilla aprobada para iniciar o continuar fuera de ventana.</div>
+            </div>
+            <button class="wa3-iconbtn" type="button" data-wa3-modal-close="wa3-new-modal"><i class="mdi mdi-close"></i></button>
+        </div>
+        <div class="wa3-modal__body">
+            <div class="wa3-modal__grid">
+                <div>
+                    <div class="wa3-field">
+                        <label for="wa3-start-search">Buscar paciente o número</label>
+                        <div style="display:flex;gap:8px;">
+                            <input type="text" id="wa3-start-search" placeholder="Celular, HC, nombres o apellidos">
+                            <button class="wa3-secondary-btn" type="button" id="wa3-start-search-button">Buscar</button>
+                        </div>
+                    </div>
+                    <div class="wa3-picker-results" id="wa3-start-results"></div>
+                    <div class="wa3-field" style="margin-top:12px;">
+                        <label>Preview del mensaje</label>
+                        <div class="wa3-template-preview" id="wa3-start-preview">Selecciona un template para revisar el mensaje final.</div>
+                    </div>
+                </div>
+                <div>
+                    <div class="wa3-field">
+                        <label for="wa3-start-number">Número WhatsApp</label>
+                        <input type="text" id="wa3-start-number" placeholder="593999111222">
+                    </div>
+                    <div class="wa3-field">
+                        <label for="wa3-start-contact-name">Nombre visible</label>
+                        <input type="text" id="wa3-start-contact-name" placeholder="Nombre del contacto">
+                    </div>
+                    <div class="wa3-field">
+                        <label for="wa3-start-patient-name">Paciente</label>
+                        <input type="text" id="wa3-start-patient-name" placeholder="Nombres y apellidos">
+                    </div>
+                    <div class="wa3-field">
+                        <label for="wa3-start-hc">HC</label>
+                        <input type="text" id="wa3-start-hc" placeholder="Historia clínica">
+                    </div>
+                    <div class="wa3-field">
+                        <label for="wa3-start-template">Template aprobado</label>
+                        <select id="wa3-start-template">
+                            <option value="">Selecciona un template</option>
+                            @foreach($templateOptions as $template)
+                                <option value="{{ $template['id'] }}">{{ $template['name'] ?? 'Plantilla' }} · {{ $template['language'] ?: 'n/a' }} · {{ $template['status'] ?: 'n/a' }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div id="wa3-start-template-vars"></div>
+                </div>
+            </div>
+            <div class="wa3-feedback" id="wa3-start-feedback" style="margin-top:12px;">Selecciona un contacto o escribe el número manualmente para iniciar con plantilla.</div>
+        </div>
+        <div class="wa3-modal__foot">
+            <div style="font:400 12px var(--bs-body-font-family);color:var(--wa3-text-mute);">Esto crea o reutiliza la conversación y la deja abierta en tu inbox.</div>
+            <button class="wa3-primary-btn" type="button" id="wa3-start-submit">Iniciar con plantilla</button>
+        </div>
+    </div>
+</div>
+
+<div class="wa3-modal" id="wa3-followup-modal" hidden>
+    <div class="wa3-modal__card" style="width:min(520px,100%);">
+        <div class="wa3-modal__head">
+            <div>
+                <h3>Cerrar seguimiento</h3>
+                <div style="font:400 12px var(--bs-body-font-family);color:var(--wa3-text-mute);margin-top:3px;">Esto no elimina al paciente ni el historial. Cerrará la conversación activa y generará un lead de seguimiento.</div>
+            </div>
+            <button class="wa3-iconbtn" type="button" data-wa3-modal-close="wa3-followup-modal"><i class="mdi mdi-close"></i></button>
+        </div>
+        <div class="wa3-modal__body">
+            <div class="wa3-field">
+                <label for="wa3-followup-reason">Motivo del cierre</label>
+                <textarea id="wa3-followup-reason" placeholder="Ej.: paciente no responde, retomar seguimiento comercial, pidió contacto posterior..."></textarea>
+            </div>
+            <div class="wa3-feedback" id="wa3-followup-feedback"></div>
+        </div>
+        <div class="wa3-modal__foot">
+            <button class="wa3-secondary-btn" type="button" data-wa3-modal-close="wa3-followup-modal">Cancelar</button>
+            <button class="wa3-primary-btn" type="button" id="wa3-followup-submit">Cerrar seguimiento</button>
+        </div>
+    </div>
 </div>
 @endsection
 
@@ -827,16 +1047,89 @@
     // Send via existing /whatsapp/api/conversations/{id}/messages endpoint
     const csrfTokenEl = document.querySelector('meta[name="csrf-token"]');
     const csrfToken = csrfTokenEl ? csrfTokenEl.getAttribute('content') : '';
+    const apiBase = @json($apiBase);
+    const previewRoute = @json($previewRoute);
+    const selectedFilter = @json($selectedFilter);
+    const selectedSearch = @json($search);
+    const templates = {!! $templateOptionsJson ?: '[]' !!};
+    let requestInFlight = false;
+
+    const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const inferTypeFromFile = (file) => {
+        const mime = file?.type || '';
+        if (mime.startsWith('image/')) return 'image';
+        if (mime.startsWith('video/')) return 'video';
+        if (mime.startsWith('audio/')) return 'audio';
+        return 'document';
+    };
+    const uploadStatus = document.getElementById('wa3-upload-status');
+    const uploadText = document.getElementById('wa3-upload-text');
+    const setUploadStatus = (message, visible = true) => {
+        if (!uploadStatus || !uploadText) return;
+        uploadText.textContent = message;
+        uploadStatus.classList.toggle('is-visible', visible);
+    };
+    function resetMediaState() {
+        ['wa-v2-media-url', 'wa-v2-media-filename', 'wa-v2-media-disk', 'wa-v2-media-path', 'wa-v2-media-mime-type'].forEach((id) => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+        const type = document.getElementById('wa-v2-message-type');
+        const file = document.getElementById('wa-v2-media-file');
+        if (type) type.value = 'text';
+        if (file) file.value = '';
+        setUploadStatus('', false);
+    }
+    async function uploadFile(file) {
+        if (!file) return;
+        const type = inferTypeFromFile(file);
+        const typeEl = document.getElementById('wa-v2-message-type');
+        if (typeEl) typeEl.value = type;
+        setUploadStatus(`Cargando ${file.name}...`);
+        const fd = new FormData();
+        fd.append('file', file);
+        const res = await fetch(`${apiBase}/media/upload`, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'X-Requested-With': 'XMLHttpRequest' },
+            body: fd,
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || !json.ok || !json.data) {
+            resetMediaState();
+            throw new Error(json.error || 'No fue posible cargar el archivo.');
+        }
+        const data = json.data;
+        document.getElementById('wa-v2-media-url').value = data.url || '';
+        document.getElementById('wa-v2-media-filename').value = data.filename || file.name || '';
+        document.getElementById('wa-v2-media-disk').value = data.disk || '';
+        document.getElementById('wa-v2-media-path').value = data.path || '';
+        document.getElementById('wa-v2-media-mime-type').value = data.mime_type || file.type || '';
+        if (typeEl) typeEl.value = data.type || type;
+        setUploadStatus(`Adjunto listo: ${data.filename || file.name}`);
+    }
 
     async function sendMessage() {
         if (!form || !ta) return;
         const text = (ta.value || '').trim();
-        if (!text || sendBtn?.disabled) return;
+        const messageType = document.getElementById('wa-v2-message-type')?.value || 'text';
+        const mediaUrl = document.getElementById('wa-v2-media-url')?.value || '';
+        if ((messageType === 'text' && !text) || (messageType !== 'text' && !mediaUrl) || sendBtn?.disabled) return;
         const conversationId = form.dataset.conversationId;
         sendBtn.disabled = true;
+        requestInFlight = true;
 
         try {
-            const res = await fetch(`/whatsapp/api/conversations/${conversationId}/messages`, {
+            const payload = {
+                message_type: messageType,
+                message: text,
+                media_url: mediaUrl,
+                filename: document.getElementById('wa-v2-media-filename')?.value || '',
+                media_disk: document.getElementById('wa-v2-media-disk')?.value || '',
+                media_path: document.getElementById('wa-v2-media-path')?.value || '',
+                mime_type: document.getElementById('wa-v2-media-mime-type')?.value || '',
+            };
+            const res = await fetch(`${apiBase}/conversations/${conversationId}/messages`, {
                 method: 'POST',
                 credentials: 'same-origin',
                 headers: {
@@ -845,9 +1138,13 @@
                     'X-CSRF-TOKEN': csrfToken,
                     'X-Requested-With': 'XMLHttpRequest',
                 },
-                body: JSON.stringify({ message_type: 'text', body: text }),
+                body: JSON.stringify(payload),
             });
             if (!res.ok) throw new Error('Send failed (' + res.status + ')');
+            if (messageType !== 'text') {
+                window.location.reload();
+                return;
+            }
 
             // Optimistic UI: append the bubble locally
             const list = document.getElementById('wa-v2-message-list');
@@ -860,12 +1157,14 @@
                 list.scrollTop = list.scrollHeight;
             }
             ta.value = '';
+            resetMediaState();
             autosize();
         } catch (err) {
             console.error('[wa3] send error', err);
             alert('No se pudo enviar el mensaje. Inténtalo nuevamente.');
         } finally {
             sendBtn.disabled = false;
+            requestInFlight = false;
             ta.focus();
         }
     }
@@ -883,11 +1182,11 @@
             const userId = b.dataset.userId;
             if (!confirm(`¿Transferir esta conversación?`)) return;
             try {
-                const res = await fetch(`/whatsapp/api/conversations/${conversationId}/transfer`, {
+                const res = await fetch(`${apiBase}/conversations/${conversationId}/transfer`, {
                     method: 'POST',
                     credentials: 'same-origin',
                     headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'X-Requested-With': 'XMLHttpRequest' },
-                    body: JSON.stringify({ assigned_user_id: Number(userId), note }),
+                    body: JSON.stringify({ user_id: Number(userId), note }),
                 });
                 if (!res.ok) throw new Error('Transfer failed');
                 window.location.reload();
@@ -900,17 +1199,406 @@
             const conversationId = b.dataset.conversationId;
             if (!confirm('¿Marcar como resuelta?')) return;
             try {
-                const res = await fetch(`/whatsapp/api/conversations/${conversationId}/close`, {
+                const res = await fetch(`${apiBase}/conversations/${conversationId}/close`, {
                     method: 'POST',
                     credentials: 'same-origin',
                     headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'X-Requested-With': 'XMLHttpRequest' },
                     body: JSON.stringify({}),
                 });
                 if (!res.ok) throw new Error('Close failed');
-                window.location.href = '{{ $previewRoute }}?filter=closed';
+                window.location.href = `${previewRoute}?filter=closed`;
             } catch (err) { console.error('[wa3] close error', err); alert('No se pudo resolver la conversación.'); }
         });
     });
+
+    document.getElementById('wa-v2-media-file')?.addEventListener('change', async (event) => {
+        const file = event.target.files && event.target.files[0] ? event.target.files[0] : null;
+        if (!file) return;
+        try {
+            await uploadFile(file);
+        } catch (err) {
+            alert(err.message || 'No se pudo cargar el archivo.');
+        }
+    });
+    document.getElementById('wa3-upload-clear')?.addEventListener('click', resetMediaState);
+
+    let voiceRecorder = null;
+    let voiceStream = null;
+    let voiceChunks = [];
+    const stopVoiceStream = () => {
+        if (voiceStream) voiceStream.getTracks().forEach((track) => track.stop());
+        voiceStream = null;
+    };
+    const bestVoiceMime = () => {
+        const options = ['audio/ogg;codecs=opus', 'audio/webm;codecs=opus', 'audio/mp4'];
+        return options.find((type) => typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(type)) || '';
+    };
+    document.getElementById('wa3-voice-record')?.addEventListener('click', async (event) => {
+        const button = event.currentTarget;
+        if (voiceRecorder && voiceRecorder.state === 'recording') {
+            voiceRecorder.stop();
+            return;
+        }
+        if (typeof MediaRecorder === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+            alert('Este navegador no permite grabar audio aquí.');
+            return;
+        }
+        try {
+            const mime = bestVoiceMime();
+            voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            voiceChunks = [];
+            voiceRecorder = mime ? new MediaRecorder(voiceStream, { mimeType: mime }) : new MediaRecorder(voiceStream);
+            voiceRecorder.addEventListener('dataavailable', (e) => {
+                if (e.data && e.data.size > 0) voiceChunks.push(e.data);
+            });
+            voiceRecorder.addEventListener('stop', async () => {
+                const resolvedMime = voiceRecorder?.mimeType || mime || 'audio/webm';
+                const extension = resolvedMime.includes('ogg') ? 'ogg' : (resolvedMime.includes('mp4') ? 'm4a' : 'webm');
+                const file = new File([new Blob(voiceChunks, { type: resolvedMime })], `voice-note-${Date.now()}.${extension}`, { type: resolvedMime });
+                voiceRecorder = null;
+                voiceChunks = [];
+                stopVoiceStream();
+                button.classList.remove('is-primary');
+                try {
+                    await uploadFile(file);
+                    setUploadStatus('Voice note lista para enviar.');
+                } catch (err) {
+                    alert(err.message || 'No se pudo cargar el audio.');
+                }
+            });
+            button.classList.add('is-primary');
+            setUploadStatus('Grabando audio... pulsa el micrófono otra vez para detener.');
+            voiceRecorder.start();
+        } catch (err) {
+            stopVoiceStream();
+            alert('No se pudo iniciar la grabación.');
+        }
+    });
+
+    async function postJson(url, payload = {}) {
+        const res = await fetch(url, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'X-Requested-With': 'XMLHttpRequest' },
+            body: JSON.stringify(payload),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || json.ok === false) throw new Error(json.error || 'No fue posible completar la acción.');
+        return json;
+    }
+
+    document.querySelectorAll('[data-wa-action="assign-self"]').forEach((button) => {
+        button.addEventListener('click', async () => {
+            try {
+                await postJson(`${apiBase}/conversations/${button.dataset.conversationId}/assign`, {});
+                window.location.reload();
+            } catch (err) {
+                alert(err.message || 'No se pudo tomar la conversación.');
+            }
+        });
+    });
+
+    document.querySelectorAll('[data-wa-action="queue-role"]').forEach((button) => {
+        button.addEventListener('click', async () => {
+            const note = document.getElementById('wa3-transfer-note')?.value || '';
+            try {
+                await postJson(`${apiBase}/conversations/${button.dataset.conversationId}/queue-by-role`, {
+                    role_id: Number(button.dataset.roleId || 0),
+                    note,
+                });
+                window.location.reload();
+            } catch (err) {
+                alert(err.message || 'No se pudo derivar la conversación.');
+            }
+        });
+    });
+
+    document.getElementById('wa3-presence')?.addEventListener('change', async (event) => {
+        try {
+            await postJson(`${apiBase}/presence`, { status: event.target.value });
+        } catch (err) {
+            alert(err.message || 'No se pudo actualizar tu presencia.');
+        }
+    });
+
+    document.getElementById('wa3-requeue-expired')?.addEventListener('click', async () => {
+        if (!confirm('¿Reencolar handoffs vencidos?')) return;
+        try {
+            await postJson(`${apiBase}/handoffs/requeue-expired`, {});
+            window.location.reload();
+        } catch (err) {
+            alert(err.message || 'No se pudo reencolar vencidos.');
+        }
+    });
+
+    document.getElementById('wa3-note-submit')?.addEventListener('click', async (event) => {
+        const button = event.currentTarget;
+        const bodyEl = document.getElementById('wa3-note-body');
+        const feedback = document.getElementById('wa3-note-feedback');
+        const body = (bodyEl?.value || '').trim();
+        if (!body) {
+            if (feedback) feedback.textContent = 'Escribe una nota.';
+            return;
+        }
+        button.disabled = true;
+        try {
+            await postJson(`${apiBase}/conversations/${button.dataset.conversationId}/notes`, { body });
+            window.location.reload();
+        } catch (err) {
+            if (feedback) feedback.textContent = err.message || 'No se pudo guardar.';
+        } finally {
+            button.disabled = false;
+        }
+    });
+
+    document.getElementById('wa3-qr-submit')?.addEventListener('click', async () => {
+        const title = (document.getElementById('wa3-qr-title')?.value || '').trim();
+        const body = (document.getElementById('wa3-qr-body')?.value || '').trim();
+        const feedback = document.getElementById('wa3-qr-feedback');
+        if (!title || !body) {
+            if (feedback) feedback.textContent = 'Título y texto son obligatorios.';
+            return;
+        }
+        try {
+            await postJson(`${apiBase}/quick-replies`, { title, body });
+            if (feedback) {
+                feedback.dataset.tone = 'success';
+                feedback.textContent = 'Quick reply creado.';
+            }
+        } catch (err) {
+            if (feedback) {
+                feedback.dataset.tone = 'danger';
+                feedback.textContent = err.message || 'No se pudo crear.';
+            }
+        }
+    });
+
+    document.querySelectorAll('[data-wa3-modal-close]').forEach((button) => {
+        button.addEventListener('click', () => {
+            document.getElementById(button.dataset.wa3ModalClose)?.setAttribute('hidden', '');
+        });
+    });
+    document.querySelectorAll('.wa3-modal').forEach((modal) => {
+        modal.addEventListener('mousedown', (event) => {
+            if (event.target === modal) modal.setAttribute('hidden', '');
+        });
+    });
+
+    const followupOpen = document.getElementById('wa3-followup-open');
+    followupOpen?.addEventListener('click', () => {
+        document.getElementById('wa3-followup-modal')?.removeAttribute('hidden');
+        document.getElementById('wa3-followup-reason')?.focus();
+    });
+    document.getElementById('wa3-followup-submit')?.addEventListener('click', async () => {
+        const reasonEl = document.getElementById('wa3-followup-reason');
+        const feedback = document.getElementById('wa3-followup-feedback');
+        const reason = (reasonEl?.value || '').trim();
+        if (!reason) {
+            if (feedback) feedback.textContent = 'El motivo del cierre es obligatorio.';
+            reasonEl?.focus();
+            return;
+        }
+        try {
+            await postJson(`${apiBase}/conversations/${followupOpen?.dataset.conversationId}/leads`, { motivo_baja: reason });
+            window.location.href = `${previewRoute}?filter=closed`;
+        } catch (err) {
+            if (feedback) {
+                feedback.dataset.tone = 'danger';
+                feedback.textContent = err.message || 'No se pudo cerrar seguimiento.';
+            }
+        }
+    });
+
+    async function loadTrail() {
+        const trail = document.getElementById('wa3-trail-list');
+        const conversationId = form?.dataset.conversationId;
+        if (!trail || !conversationId) return;
+        try {
+            const res = await fetch(`${apiBase}/conversations/${conversationId}/trail`, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            const json = await res.json();
+            const rows = Array.isArray(json.data) ? json.data : [];
+            if (!res.ok || !json.ok || rows.length === 0) {
+                trail.textContent = rows.length === 0 ? 'Sin eventos registrados.' : 'No se pudo cargar la trazabilidad.';
+                return;
+            }
+            trail.innerHTML = '<div class="wa3-trail">' + rows.map((item) => {
+                const label = esc(item.label || item.type || 'Evento');
+                const actor = esc(item.actor_name || item.actor || 'Sistema');
+                const at = esc(item.created_at_label || item.created_at || '');
+                const notes = item.notes ? `<div class="wa3-trail__meta">${esc(item.notes)}</div>` : '';
+                return `<div class="wa3-trail__item"><strong>${label}</strong><div class="wa3-trail__meta">${actor}${at ? ' · ' + at : ''}</div>${notes}</div>`;
+            }).join('') + '</div>';
+        } catch (err) {
+            trail.textContent = 'Error de red al cargar la trazabilidad.';
+        }
+    }
+    loadTrail();
+
+    const templateById = (id) => templates.find((tpl) => Number(tpl.id || 0) === Number(id || 0));
+    const startTemplate = document.getElementById('wa3-start-template');
+    const startVars = document.getElementById('wa3-start-template-vars');
+    const startPreview = document.getElementById('wa3-start-preview');
+    const startFeedback = document.getElementById('wa3-start-feedback');
+    const setStartFeedback = (message, tone = '') => {
+        if (!startFeedback) return;
+        startFeedback.dataset.tone = tone;
+        startFeedback.textContent = message;
+    };
+    function renderStartPreview() {
+        if (!startTemplate || !startPreview) return;
+        const tpl = templateById(startTemplate.value);
+        const body = tpl?.body_text || tpl?.preview || '';
+        const examples = Array.isArray(tpl?.variable_examples) ? tpl.variable_examples : [];
+        const values = startVars ? Array.from(startVars.querySelectorAll('[data-wa-template-variable]')).map((input) => input.value.trim()) : [];
+        startPreview.textContent = body
+            ? body.replace(/\{\{\s*(\d+)\s*\}\}/g, (match, index) => values[Number(index) - 1] || examples[Number(index) - 1] || match)
+            : 'Este template no tiene cuerpo registrado.';
+    }
+    function renderStartVariables() {
+        if (!startTemplate || !startVars) return;
+        const tpl = templateById(startTemplate.value);
+        const variables = Array.isArray(tpl?.variables) ? tpl.variables : [];
+        const examples = Array.isArray(tpl?.variable_examples) ? tpl.variable_examples : [];
+        startVars.innerHTML = variables.map((variable, index) => `
+            <div class="wa3-field">
+                <label>Variable ${index + 1} ${esc(variable)}</label>
+                <input type="text" data-wa-template-variable="${index}" placeholder="${esc(examples[index] || 'Valor')}">
+            </div>
+        `).join('');
+        startVars.querySelectorAll('[data-wa-template-variable]').forEach((input) => input.addEventListener('input', renderStartPreview));
+        renderStartPreview();
+    }
+    startTemplate?.addEventListener('change', renderStartVariables);
+    renderStartVariables();
+
+    function renderStartResults(rows) {
+        const box = document.getElementById('wa3-start-results');
+        if (!box) return;
+        if (!Array.isArray(rows) || rows.length === 0) {
+            box.innerHTML = '<div style="font:400 12px var(--bs-body-font-family);color:var(--wa3-text-mute);">Sin resultados con número WhatsApp utilizable.</div>';
+            return;
+        }
+        box.innerHTML = rows.map((row, index) => {
+            const title = esc(row.display_name || row.wa_number || 'Contacto');
+            const meta = [row.wa_number || '', row.hc_number ? `HC ${row.hc_number}` : ''].filter(Boolean).join(' · ');
+            const open = row.source === 'conversation' && row.id
+                ? `<a class="wa3-secondary-btn" href="${previewRoute}?conversation=${Number(row.id)}&filter={{ $selectedFilter }}">Abrir</a>`
+                : '';
+            return `<div class="wa3-picker-card ${index === 0 ? 'is-active' : ''}">
+                <div><strong>${title}</strong><small>${esc(meta || 'Sin meta')}</small></div>
+                <div style="display:flex;gap:6px;">${open}<button class="wa3-secondary-btn" type="button" data-wa3-pick-contact data-wa-number="${esc(row.wa_number || '')}" data-wa-name="${title}" data-wa-hc="${esc(row.hc_number || '')}">Usar</button></div>
+            </div>`;
+        }).join('');
+        box.querySelectorAll('[data-wa3-pick-contact]').forEach((button) => {
+            button.addEventListener('click', () => {
+                box.querySelectorAll('.wa3-picker-card').forEach((card) => card.classList.remove('is-active'));
+                button.closest('.wa3-picker-card')?.classList.add('is-active');
+                document.getElementById('wa3-start-number').value = button.dataset.waNumber || '';
+                document.getElementById('wa3-start-contact-name').value = button.dataset.waName || '';
+                document.getElementById('wa3-start-patient-name').value = button.dataset.waName || '';
+                document.getElementById('wa3-start-hc').value = button.dataset.waHc || '';
+            });
+        });
+    }
+    document.getElementById('wa3-start-search-button')?.addEventListener('click', async () => {
+        const query = (document.getElementById('wa3-start-search')?.value || '').trim();
+        if (!query) {
+            setStartFeedback('Escribe celular, HC o nombres para buscar.');
+            return;
+        }
+        setStartFeedback('Buscando contacto...');
+        try {
+            const res = await fetch(`${apiBase}/contacts/search?q=${encodeURIComponent(query)}`, { headers: { 'Accept': 'application/json' } });
+            const json = await res.json();
+            if (!res.ok || !json.ok) throw new Error(json.error || 'No fue posible buscar contactos.');
+            renderStartResults(json.data || []);
+            setStartFeedback('Selecciona un resultado o ajusta el número manualmente.', 'success');
+        } catch (err) {
+            renderStartResults([]);
+            setStartFeedback(err.message || 'No fue posible buscar contactos.', 'danger');
+        }
+    });
+    document.getElementById('wa3-start-search')?.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            document.getElementById('wa3-start-search-button')?.click();
+        }
+    });
+    document.getElementById('wa3-start-submit')?.addEventListener('click', async () => {
+        const waNumber = (document.getElementById('wa3-start-number')?.value || '').trim();
+        const templateId = Number(startTemplate?.value || 0);
+        if (!waNumber || !templateId) {
+            setStartFeedback('Número WhatsApp y template son obligatorios.', 'danger');
+            return;
+        }
+        try {
+            setStartFeedback('Iniciando conversación con plantilla...');
+            const json = await postJson(`${apiBase}/conversations/start-template`, {
+                wa_number: waNumber,
+                template_id: templateId,
+                contact_name: (document.getElementById('wa3-start-contact-name')?.value || '').trim(),
+                patient_full_name: (document.getElementById('wa3-start-patient-name')?.value || '').trim(),
+                patient_hc_number: (document.getElementById('wa3-start-hc')?.value || '').trim(),
+                template_variables: startVars ? Array.from(startVars.querySelectorAll('[data-wa-template-variable]')).map((input) => input.value.trim()) : [],
+            });
+            const conversationId = Number(json?.data?.conversation?.id || 0);
+            window.location.href = conversationId > 0 ? `${previewRoute}?conversation=${conversationId}&filter={{ $selectedFilter }}` : previewRoute;
+        } catch (err) {
+            setStartFeedback(err.message || 'No fue posible iniciar la conversación.', 'danger');
+        }
+    });
+
+    let latestMessageId = Array.from(document.querySelectorAll('[data-message-id]')).reduce((max, el) => Math.max(max, Number(el.dataset.messageId || 0)), 0);
+    let polling = false;
+    async function pollConversation() {
+        const conversationId = form?.dataset.conversationId;
+        if (!conversationId || requestInFlight || polling) return;
+        polling = true;
+        try {
+            const res = await fetch(`${apiBase}/conversations/${conversationId}?message_limit=30`, { headers: { 'Accept': 'application/json' } });
+            const json = await res.json();
+            const messages = Array.isArray(json?.data?.messages) ? json.data.messages : [];
+            const newest = messages.reduce((max, message) => Math.max(max, Number(message.id || 0)), latestMessageId);
+            if (newest > latestMessageId) {
+                latestMessageId = newest;
+                const banner = document.getElementById('wa3-realtime-banner');
+                if (banner) banner.classList.add('is-visible');
+            }
+            if (json?.data?.last_message_preview) {
+                document.querySelector(`[data-wa-conversation-preview="${conversationId}"]`).textContent = json.data.last_message_preview;
+            }
+        } catch (err) {
+            // silent polling
+        } finally {
+            polling = false;
+        }
+    }
+    async function pollInbox() {
+        try {
+            const params = new URLSearchParams({ filter: selectedFilter || 'requires_attention', search: selectedSearch || '', per_page: '25' });
+            const res = await fetch(`${apiBase}/conversations?${params.toString()}`, { headers: { 'Accept': 'application/json' } });
+            const json = await res.json();
+            const rows = Array.isArray(json?.data?.data)
+                ? json.data.data
+                : (Array.isArray(json?.data?.items) ? json.data.items : (Array.isArray(json?.data) ? json.data : []));
+            rows.forEach((row) => {
+                const id = Number(row.id || 0);
+                const item = document.querySelector(`[data-wa-conversation-item="${id}"]`);
+                if (!item) return;
+                const preview = item.querySelector(`[data-wa-conversation-preview="${id}"]`);
+                if (preview && row.last_message_preview) preview.textContent = row.last_message_preview;
+                const unread = Number(row.unread_count || 0);
+                item.classList.toggle('is-unread', unread > 0);
+                const unreadEl = item.querySelector(`[data-wa-conversation-unread="${id}"]`);
+                if (unreadEl) unreadEl.textContent = String(unread);
+            });
+        } catch (err) {
+            // silent inbox polling
+        }
+    }
+    document.getElementById('wa3-realtime-reload')?.addEventListener('click', () => window.location.reload());
+    if (form) window.setInterval(pollConversation, 10000);
+    window.setInterval(pollInbox, 15000);
 
     // ── Auto-scroll to bottom on initial load ───────────────────────────────
     const list = document.getElementById('wa-v2-message-list');
