@@ -1749,6 +1749,13 @@
                         </div>
                     </div>
                     <div class="wa-v2-pagebar__meta">
+                        <a
+                            href="https://medforge.my.canva.site/manual-de-entrega-operativa-whatsapp"
+                            class="btn btn-outline-light btn-sm"
+                            target="_blank"
+                            rel="noopener">
+                            <i class="mdi mdi-school-outline"></i> Manual operativo
+                        </a>
                         <button type="button" class="btn btn-light btn-sm" id="wa-v2-open-start-chat">
                             <i class="mdi mdi-message-plus-outline"></i> Nuevo chat
                         </button>
