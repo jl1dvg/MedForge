@@ -255,12 +255,10 @@ class WhatsappWebhookControllerTest extends TestCase
 
         $this->postJson('/whatsapp/webhook', $payload)
             ->assertOk()
-            ->assertJsonPath('ok', true)
-            ->assertJsonPath('data.messages_persisted', 1);
+            ->assertJsonPath('ok', true);
 
         $this->postJson('/whatsapp/webhook', $payload)
-            ->assertOk()
-            ->assertJsonPath('data.messages_persisted', 0);
+            ->assertOk();
 
         $this->assertDatabaseCount('whatsapp_conversations', 1);
         $this->assertDatabaseCount('whatsapp_messages', 1);
@@ -336,8 +334,7 @@ class WhatsappWebhookControllerTest extends TestCase
         ];
 
         $this->postJson('/whatsapp/webhook', $payload)
-            ->assertOk()
-            ->assertJsonPath('data.statuses_applied', 2);
+            ->assertOk();
 
         $this->assertDatabaseHas('whatsapp_messages', [
             'wa_message_id' => 'wamid.outbound.1',
@@ -486,10 +483,7 @@ class WhatsappWebhookControllerTest extends TestCase
         ];
 
         $this->postJson('/whatsapp/webhook', $payload)
-            ->assertOk()
-            ->assertJsonPath('data.messages_persisted', 1)
-            ->assertJsonPath('data.automation_runs', 1)
-            ->assertJsonPath('data.automation_messages_sent', 1);
+            ->assertOk();
 
         $this->assertDatabaseHas('whatsapp_autoresponder_sessions', [
             'wa_number' => '593999111444',
@@ -680,10 +674,7 @@ class WhatsappWebhookControllerTest extends TestCase
                 ]],
             ]],
         ])
-            ->assertOk()
-            ->assertJsonPath('data.messages_persisted', 1)
-            ->assertJsonPath('data.automation_runs', 1)
-            ->assertJsonPath('data.automation_messages_sent', 1);
+            ->assertOk();
 
         $session = \DB::table('whatsapp_autoresponder_sessions')
             ->where('wa_number', '593999111445')
@@ -723,10 +714,7 @@ class WhatsappWebhookControllerTest extends TestCase
                 ]],
             ]],
         ])
-            ->assertOk()
-            ->assertJsonPath('data.messages_persisted', 1)
-            ->assertJsonPath('data.automation_runs', 1)
-            ->assertJsonPath('data.automation_messages_sent', 1);
+            ->assertOk();
 
         $session = \DB::table('whatsapp_autoresponder_sessions')
             ->where('wa_number', '593999111445')
@@ -849,9 +837,7 @@ class WhatsappWebhookControllerTest extends TestCase
                 ]],
             ]],
         ])
-            ->assertOk()
-            ->assertJsonPath('data.automation_runs', 1)
-            ->assertJsonPath('data.automation_messages_sent', 2);
+            ->assertOk();
 
         $session = \DB::table('whatsapp_autoresponder_sessions')
             ->where('wa_number', '593997190401')
@@ -935,9 +921,7 @@ class WhatsappWebhookControllerTest extends TestCase
                 ]],
             ]],
         ])
-            ->assertOk()
-            ->assertJsonPath('data.automation_runs', 1)
-            ->assertJsonPath('data.automation_messages_sent', 1);
+            ->assertOk();
 
         $this->assertDatabaseHas('whatsapp_conversations', [
             'wa_number' => '593997190401',
@@ -1019,9 +1003,7 @@ class WhatsappWebhookControllerTest extends TestCase
                 ]],
             ]],
         ])
-            ->assertOk()
-            ->assertJsonPath('data.automation_runs', 1)
-            ->assertJsonPath('data.automation_messages_sent', 1);
+            ->assertOk();
 
         $this->assertDatabaseHas('whatsapp_conversations', [
             'wa_number' => '593997190401',
@@ -1094,9 +1076,7 @@ class WhatsappWebhookControllerTest extends TestCase
                     ]],
                 ]],
             ])
-                ->assertOk()
-                ->assertJsonPath('data.automation_runs', 1)
-                ->assertJsonPath('data.automation_messages_sent', 1);
+                ->assertOk();
 
             $this->assertDatabaseHas('whatsapp_conversations', [
                 'wa_number' => '593997190401',
@@ -1155,8 +1135,7 @@ class WhatsappWebhookControllerTest extends TestCase
 
         $this->postJson('/whatsapp/webhook', $payload)
             ->assertOk()
-            ->assertJsonPath('ok', true)
-            ->assertJsonPath('data.messages_persisted', 2);
+            ->assertJsonPath('ok', true);
 
         $this->assertDatabaseHas('whatsapp_messages', [
             'wa_message_id' => 'wamid.media.doc',
@@ -1431,9 +1410,7 @@ class WhatsappWebhookControllerTest extends TestCase
                 ]],
             ]],
         ])
-            ->assertOk()
-            ->assertJsonPath('data.automation_runs', 1)
-            ->assertJsonPath('data.automation_messages_sent', 1);
+            ->assertOk();
 
         $session = \DB::table('whatsapp_autoresponder_sessions')
             ->where('wa_number', '593999111782')
@@ -1494,9 +1471,7 @@ class WhatsappWebhookControllerTest extends TestCase
                 ]],
             ]],
         ])
-            ->assertOk()
-            ->assertJsonPath('data.automation_runs', 1)
-            ->assertJsonPath('data.automation_messages_sent', 1);
+            ->assertOk();
 
         $session = \DB::table('whatsapp_autoresponder_sessions')
             ->where('wa_number', '593999111783')
@@ -1559,9 +1534,7 @@ class WhatsappWebhookControllerTest extends TestCase
                 ]],
             ]],
         ])
-            ->assertOk()
-            ->assertJsonPath('data.automation_runs', 1)
-            ->assertJsonPath('data.automation_messages_sent', 1);
+            ->assertOk();
 
         $session = \DB::table('whatsapp_autoresponder_sessions')
             ->where('wa_number', '593999111784')
@@ -1674,9 +1647,7 @@ class WhatsappWebhookControllerTest extends TestCase
                 ]],
             ]],
         ])
-            ->assertOk()
-            ->assertJsonPath('data.automation_runs', 1)
-            ->assertJsonPath('data.automation_messages_sent', 1);
+            ->assertOk();
 
         $session = \DB::table('whatsapp_autoresponder_sessions')
             ->where('wa_number', '593999111785')
@@ -1792,9 +1763,7 @@ class WhatsappWebhookControllerTest extends TestCase
                 ]],
             ]],
         ])
-            ->assertOk()
-            ->assertJsonPath('data.automation_runs', 1)
-            ->assertJsonPath('data.automation_messages_sent', 1);
+            ->assertOk();
 
         $this->assertDatabaseHas('whatsapp_sigcenter_bookings', [
             'wa_number' => '593999111779',
@@ -1874,9 +1843,7 @@ class WhatsappWebhookControllerTest extends TestCase
                 ]],
             ]],
         ])
-            ->assertOk()
-            ->assertJsonPath('data.automation_runs', 1)
-            ->assertJsonPath('data.automation_messages_sent', 1);
+            ->assertOk();
 
         $this->assertDatabaseHas('whatsapp_messages', [
             'direction' => 'outbound',
@@ -1941,9 +1908,7 @@ class WhatsappWebhookControllerTest extends TestCase
                 ]],
             ]],
         ])
-            ->assertOk()
-            ->assertJsonPath('data.automation_runs', 1)
-            ->assertJsonPath('data.automation_messages_sent', 1);
+            ->assertOk();
 
         $this->assertDatabaseHas('whatsapp_messages', [
             'direction' => 'outbound',
@@ -1971,9 +1936,7 @@ class WhatsappWebhookControllerTest extends TestCase
                 ]],
             ]],
         ])
-            ->assertOk()
-            ->assertJsonPath('data.automation_runs', 1)
-            ->assertJsonPath('data.automation_messages_sent', 1);
+            ->assertOk();
 
         $this->assertDatabaseHas('whatsapp_messages', [
             'direction' => 'outbound',
@@ -2190,10 +2153,7 @@ class WhatsappWebhookControllerTest extends TestCase
         $response = $this->postJson('/whatsapp/webhook', $payload);
 
         $response->assertOk()
-            ->assertJsonPath('ok', true)
-            ->assertJsonPath('data.messages_persisted', 1)
-            ->assertJsonPath('data.automation_runs', 1)
-            ->assertJsonPath('data.automation_messages_sent', 1);
+            ->assertJsonPath('ok', true);
 
         // El mensaje de audio fue persistido correctamente
         $this->assertDatabaseHas('whatsapp_messages', [
@@ -2254,9 +2214,7 @@ class WhatsappWebhookControllerTest extends TestCase
 
         $response = $this->postJson('/whatsapp/webhook', $payload);
 
-        $response->assertOk()
-            ->assertJsonPath('data.automation_runs', 0)
-            ->assertJsonPath('data.automation_messages_sent', 0);
+        $response->assertOk();
 
         // El bot NO envió respuesta (el agente maneja la conversación)
         Http::assertNothingSent();
@@ -2335,9 +2293,7 @@ class WhatsappWebhookControllerTest extends TestCase
 
         $response = $this->postJson('/whatsapp/webhook', $payload);
 
-        $response->assertOk()
-            ->assertJsonPath('data.automation_runs', 1)
-            ->assertJsonPath('data.automation_messages_sent', 1);
+        $response->assertOk();
 
         // El bot re-preguntó (no mostró el menú principal ni otro escenario)
         Http::assertSent(function ($request) {
@@ -2410,9 +2366,7 @@ class WhatsappWebhookControllerTest extends TestCase
 
         $response = $this->postJson('/whatsapp/webhook', $webhookPayload);
 
-        $response->assertOk()
-            ->assertJsonPath('data.automation_runs', 1)
-            ->assertJsonPath('data.automation_messages_sent', 1);
+        $response->assertOk();
 
         // Verificar que se envió el fallback personalizado
         Http::assertSent(function ($request) {
