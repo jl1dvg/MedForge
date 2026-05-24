@@ -15,6 +15,7 @@ class WhatsappWebhookControllerTest extends TestCase
 
         Schema::dropIfExists('whatsapp_inbox_messages');
         Schema::dropIfExists('whatsapp_sigcenter_bookings');
+        Schema::dropIfExists('procedimiento_proyectado');
         Schema::dropIfExists('whatsapp_handoffs');
         Schema::dropIfExists('whatsapp_messages');
         Schema::dropIfExists('whatsapp_conversations');
@@ -132,6 +133,25 @@ class WhatsappWebhookControllerTest extends TestCase
             $table->json('response')->nullable();
             $table->text('error')->nullable();
             $table->timestamp('booked_at')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('procedimiento_proyectado', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedInteger('form_id')->default(0);
+            $table->string('procedimiento_proyectado', 191);
+            $table->string('doctor', 191)->nullable();
+            $table->string('hc_number', 64)->index();
+            $table->string('sede_departamento', 191)->nullable();
+            $table->integer('id_sede')->nullable();
+            $table->string('estado_agenda', 64)->nullable();
+            $table->string('afiliacion', 64)->nullable();
+            $table->date('fecha')->nullable();
+            $table->time('hora')->nullable();
+            $table->boolean('sigcenter_present')->default(true);
+            $table->timestamp('sigcenter_last_seen_at')->nullable();
+            $table->timestamp('sigcenter_missing_at')->nullable();
+            $table->integer('visita_id')->nullable();
             $table->timestamps();
         });
 
@@ -2456,5 +2476,314 @@ class WhatsappWebhookControllerTest extends TestCase
         $session = \App\Models\WhatsappAutoresponderSession::where('wa_number', '593999000088')->first();
         $this->assertNotNull($session, 'Session should exist after processing');
         $this->assertGreaterThan(0, $session->session_version, 'session_version should be > 0 after save');
+    }
+
+    public function test_check_pending_appointment_blocks_when_wa_booking_exists(): void
+    {
+        config()->set('whatsapp.migration.automation.enabled', true);
+        config()->set('whatsapp.migration.automation.dry_run', true);
+
+        $this->publishFlowmakerScenarios([[
+            'id'         => 'check_cita',
+            'name'       => 'Check cita activa',
+            'stage'      => 'custom',
+            'status'     => 'published',
+            'conditions' => [
+                ['type' => 'message_contains', 'value' => 'check_cita_test_wa'],
+            ],
+            'actions' => [[
+                'type'                  => 'sigcenter_agenda',
+                'operation'             => 'check_pending_appointment',
+                'found_message'         => 'Ya tienes cita el {{fecha}} a las {{hora}} con {{medico}} en {{sede}}.',
+                'found_next_state'      => 'menu_principal',
+                'not_found_next_state'  => 'agenda_esperando_subespecialidad',
+            ]],
+        ]]);
+
+        $conversationId = \DB::table('whatsapp_conversations')->insertGetId([
+            'wa_number'    => '593900000001',
+            'display_name' => 'Test',
+            'created_at'   => now(),
+            'updated_at'   => now(),
+        ]);
+
+        \DB::table('whatsapp_autoresponder_sessions')->insert([
+            'conversation_id'      => $conversationId,
+            'wa_number'            => '593900000001',
+            'scenario_id'          => 'check_cita',
+            'context'              => json_encode(['state' => 'menu_principal', 'cedula' => '1000001']),
+            'last_payload'         => json_encode([]),
+            'last_interaction_at'  => now(),
+            'session_version'      => 1,
+            'created_at'           => now(),
+            'updated_at'           => now(),
+        ]);
+
+        \DB::table('whatsapp_sigcenter_bookings')->insert([
+            'wa_number'          => '593900000001',
+            'patient_hc_number'  => '1000001',
+            'status'             => 'created',
+            'medico_nombre'      => 'Dr. García',
+            'sede_nombre'        => 'Villa Club',
+            'fecha_inicio'       => now()->addDays(3)->setTime(10, 30),
+            'created_at'         => now(),
+            'updated_at'         => now(),
+        ]);
+
+        $this->postJson('/whatsapp/webhook', [
+            'entry' => [[
+                'changes' => [[
+                    'value' => [
+                        'messages' => [[
+                            'from'      => '593900000001',
+                            'id'        => 'wamid.check-cita-wa',
+                            'timestamp' => (string) now()->timestamp,
+                            'type'      => 'text',
+                            'text'      => ['body' => 'check_cita_test_wa'],
+                        ]],
+                    ],
+                ]],
+            ]],
+        ])->assertOk();
+
+        $session = \DB::table('whatsapp_autoresponder_sessions')
+            ->where('wa_number', '593900000001')->first();
+        $ctx = json_decode((string) $session?->context, true);
+
+        $this->assertSame('menu_principal', $ctx['state'] ?? null);
+
+        $msg = \DB::table('whatsapp_messages')
+            ->where('conversation_id', $conversationId)
+            ->where('direction', 'outbound')
+            ->first();
+        $this->assertNotNull($msg, 'Expected an outbound message to be sent');
+        $this->assertStringContainsString('Dr. García', (string) $msg?->body);
+        $this->assertStringContainsString('Villa Club', (string) $msg?->body);
+        $this->assertStringNotContainsString('{{fecha}}', (string) $msg?->body);
+        $this->assertStringNotContainsString('{{hora}}', (string) $msg?->body);
+    }
+
+    public function test_check_pending_appointment_blocks_when_projected_appointment_exists(): void
+    {
+        config()->set('whatsapp.migration.automation.enabled', true);
+        config()->set('whatsapp.migration.automation.dry_run', true);
+
+        $this->publishFlowmakerScenarios([[
+            'id'         => 'check_cita_pp',
+            'name'       => 'Check cita proyectada',
+            'stage'      => 'custom',
+            'status'     => 'published',
+            'conditions' => [
+                ['type' => 'message_contains', 'value' => 'check_cita_test_pp'],
+            ],
+            'actions' => [[
+                'type'                  => 'sigcenter_agenda',
+                'operation'             => 'check_pending_appointment',
+                'found_message'         => 'Tienes cita el {{fecha}} con {{medico}}.',
+                'found_next_state'      => 'menu_principal',
+                'not_found_next_state'  => 'agenda_esperando_subespecialidad',
+            ]],
+        ]]);
+
+        $conversationId = \DB::table('whatsapp_conversations')->insertGetId([
+            'wa_number'    => '593900000002',
+            'display_name' => 'Test PP',
+            'created_at'   => now(),
+            'updated_at'   => now(),
+        ]);
+
+        \DB::table('whatsapp_autoresponder_sessions')->insert([
+            'conversation_id'      => $conversationId,
+            'wa_number'            => '593900000002',
+            'scenario_id'          => 'check_cita_pp',
+            'context'              => json_encode(['state' => 'menu_principal', 'cedula' => '1000002']),
+            'last_payload'         => json_encode([]),
+            'last_interaction_at'  => now(),
+            'session_version'      => 1,
+            'created_at'           => now(),
+            'updated_at'           => now(),
+        ]);
+
+        \DB::table('procedimiento_proyectado')->insert([
+            'form_id'                  => 1,
+            'procedimiento_proyectado' => 'SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-001',
+            'doctor'                   => 'Dra. Mora',
+            'hc_number'                => '1000002',
+            'sede_departamento'        => 'Sede Norte',
+            'fecha'                    => now()->addDays(2)->toDateString(),
+            'hora'                     => '09:00:00',
+            'estado_agenda'            => null,
+            'sigcenter_present'        => true,
+            'created_at'               => now(),
+            'updated_at'               => now(),
+        ]);
+
+        $this->postJson('/whatsapp/webhook', [
+            'entry' => [[
+                'changes' => [[
+                    'value' => [
+                        'messages' => [[
+                            'from'      => '593900000002',
+                            'id'        => 'wamid.check-cita-pp',
+                            'timestamp' => (string) now()->timestamp,
+                            'type'      => 'text',
+                            'text'      => ['body' => 'check_cita_test_pp'],
+                        ]],
+                    ],
+                ]],
+            ]],
+        ])->assertOk();
+
+        $session = \DB::table('whatsapp_autoresponder_sessions')
+            ->where('wa_number', '593900000002')->first();
+        $ctx = json_decode((string) $session?->context, true);
+
+        $this->assertSame('menu_principal', $ctx['state'] ?? null);
+
+        $msg = \DB::table('whatsapp_messages')
+            ->where('conversation_id', $conversationId)
+            ->where('direction', 'outbound')
+            ->first();
+        $this->assertNotNull($msg, 'Expected an outbound message to be sent');
+        $this->assertStringContainsString('Dra. Mora', (string) $msg?->body);
+        $this->assertStringNotContainsString('{{fecha}}', (string) $msg?->body);
+    }
+
+    public function test_check_pending_appointment_passes_through_when_no_active_booking(): void
+    {
+        config()->set('whatsapp.migration.automation.enabled', true);
+        config()->set('whatsapp.migration.automation.dry_run', true);
+
+        $this->publishFlowmakerScenarios([[
+            'id'         => 'check_libre',
+            'name'       => 'Sin cita activa',
+            'stage'      => 'custom',
+            'status'     => 'published',
+            'conditions' => [
+                ['type' => 'message_contains', 'value' => 'check_libre_test'],
+            ],
+            'actions' => [[
+                'type'                  => 'sigcenter_agenda',
+                'operation'             => 'check_pending_appointment',
+                'found_message'         => 'Ya tienes cita.',
+                'found_next_state'      => 'menu_principal',
+                'not_found_next_state'  => 'agenda_esperando_subespecialidad',
+            ]],
+        ]]);
+
+        $conversationId = \DB::table('whatsapp_conversations')->insertGetId([
+            'wa_number'    => '593900000003',
+            'display_name' => 'Sin cita',
+            'created_at'   => now(),
+            'updated_at'   => now(),
+        ]);
+
+        \DB::table('whatsapp_autoresponder_sessions')->insert([
+            'conversation_id'      => $conversationId,
+            'wa_number'            => '593900000003',
+            'scenario_id'          => 'check_libre',
+            'context'              => json_encode(['state' => 'menu_principal', 'cedula' => '1000003']),
+            'last_payload'         => json_encode([]),
+            'last_interaction_at'  => now(),
+            'session_version'      => 1,
+            'created_at'           => now(),
+            'updated_at'           => now(),
+        ]);
+
+        $this->postJson('/whatsapp/webhook', [
+            'entry' => [[
+                'changes' => [[
+                    'value' => [
+                        'messages' => [[
+                            'from'      => '593900000003',
+                            'id'        => 'wamid.check-libre',
+                            'timestamp' => (string) now()->timestamp,
+                            'type'      => 'text',
+                            'text'      => ['body' => 'check_libre_test'],
+                        ]],
+                    ],
+                ]],
+            ]],
+        ])->assertOk();
+
+        $session = \DB::table('whatsapp_autoresponder_sessions')
+            ->where('wa_number', '593900000003')->first();
+        $ctx = json_decode((string) $session?->context, true);
+
+        $this->assertSame('agenda_esperando_subespecialidad', $ctx['state'] ?? null);
+
+        $this->assertDatabaseMissing('whatsapp_messages', [
+            'conversation_id' => $conversationId,
+            'direction'       => 'outbound',
+        ]);
+    }
+
+    public function test_check_pending_appointment_skips_when_no_hc_number_in_context(): void
+    {
+        config()->set('whatsapp.migration.automation.enabled', true);
+        config()->set('whatsapp.migration.automation.dry_run', true);
+
+        $this->publishFlowmakerScenarios([[
+            'id'         => 'check_sin_hc',
+            'name'       => 'Sin HC',
+            'stage'      => 'custom',
+            'status'     => 'published',
+            'conditions' => [
+                ['type' => 'message_contains', 'value' => 'check_sin_hc_test'],
+            ],
+            'actions' => [[
+                'type'                  => 'sigcenter_agenda',
+                'operation'             => 'check_pending_appointment',
+                'found_message'         => 'Ya tienes cita.',
+                'found_next_state'      => 'menu_principal',
+                'not_found_next_state'  => 'agenda_esperando_subespecialidad',
+            ]],
+        ]]);
+
+        $conversationId = \DB::table('whatsapp_conversations')->insertGetId([
+            'wa_number'    => '593900000004',
+            'display_name' => 'Sin HC',
+            'created_at'   => now(),
+            'updated_at'   => now(),
+        ]);
+
+        \DB::table('whatsapp_autoresponder_sessions')->insert([
+            'conversation_id'      => $conversationId,
+            'wa_number'            => '593900000004',
+            'scenario_id'          => 'check_sin_hc',
+            'context'              => json_encode(['state' => 'menu_principal']),
+            'last_payload'         => json_encode([]),
+            'last_interaction_at'  => now(),
+            'session_version'      => 1,
+            'created_at'           => now(),
+            'updated_at'           => now(),
+        ]);
+
+        $this->postJson('/whatsapp/webhook', [
+            'entry' => [[
+                'changes' => [[
+                    'value' => [
+                        'messages' => [[
+                            'from'      => '593900000004',
+                            'id'        => 'wamid.check-sin-hc',
+                            'timestamp' => (string) now()->timestamp,
+                            'type'      => 'text',
+                            'text'      => ['body' => 'check_sin_hc_test'],
+                        ]],
+                    ],
+                ]],
+            ]],
+        ])->assertOk();
+
+        $session = \DB::table('whatsapp_autoresponder_sessions')
+            ->where('wa_number', '593900000004')->first();
+        $ctx = json_decode((string) $session?->context, true);
+
+        $this->assertSame('agenda_esperando_subespecialidad', $ctx['state'] ?? null);
+
+        $this->assertDatabaseMissing('whatsapp_messages', [
+            'conversation_id' => $conversationId,
+            'direction'       => 'outbound',
+        ]);
     }
 }
