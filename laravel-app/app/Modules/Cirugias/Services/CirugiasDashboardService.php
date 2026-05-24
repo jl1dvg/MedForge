@@ -894,7 +894,7 @@ class CirugiasDashboardService
         $sedeExpr = $this->sedeExpr('pp');
         $categoriaContext = $this->resolveAfiliacionCategoriaContext("COALESCE(p.afiliacion, '')", 'acm');
         $stmt = $this->db->prepare(
-            "SELECT NULLIF(TRIM(membrete), '') AS procedimiento, COUNT(*) AS total
+            "SELECT NULLIF(TRIM(pr.membrete), '') AS procedimiento, COUNT(*) AS total
              FROM protocolo_data pr
              LEFT JOIN patient_data p
                 ON CONVERT(p.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
@@ -907,7 +907,7 @@ class CirugiasDashboardService
                AND (:afiliacion_categoria_filter = '' OR {$categoriaContext['expr']} = :afiliacion_categoria_filter_match)
                {$this->seguroFilterSql($seguroKeyExpr)}
                AND (:sede_filter = '' OR {$sedeExpr} = :sede_filter_match)
-             GROUP BY NULLIF(TRIM(membrete), '')
+             GROUP BY NULLIF(TRIM(pr.membrete), '')
              ORDER BY total DESC
              LIMIT :limit"
         );
