@@ -46,19 +46,22 @@
     };
 
     $tabs = [
-        'all'        => ['label' => 'Todos',      'icon' => 'mdi-inbox-multiple'],
-        'handoff'    => ['label' => 'Cola',       'icon' => 'mdi-tray-arrow-down'],
-        'mine'       => ['label' => 'Mías',       'icon' => 'mdi-account-check-outline'],
-        'window_open'=> ['label' => 'Esperando',  'icon' => 'mdi-timer-sand'],
-        'resolved'   => ['label' => 'Resueltos',  'icon' => 'mdi-check-circle-outline'],
+        'requires_attention' => ['label' => 'Atención', 'icon' => 'mdi-alert-circle-outline'],
+        'mine' => ['label' => 'Mías', 'icon' => 'mdi-account-check-outline'],
+        'in_progress' => ['label' => 'En gestión', 'icon' => 'mdi-account-clock-outline'],
+        'waiting_patient' => ['label' => 'Esperando', 'icon' => 'mdi-account-arrow-left-outline'],
+        'scheduled' => ['label' => 'Agendados', 'icon' => 'mdi-calendar-check-outline'],
+        'closed' => ['label' => 'Cerrados', 'icon' => 'mdi-archive-check-outline'],
     ];
 
-    $buildLink = static function (array $extra = []) use ($selectedFilter, $search) {
+    $previewRoute = '/v3/whatsapp/chat';
+
+    $buildLink = static function (array $extra = []) use ($selectedFilter, $search, $previewRoute) {
         $qs = array_filter(array_merge([
             'filter' => $selectedFilter,
             'search' => $search,
         ], $extra), static fn ($v) => $v !== null && $v !== '');
-        return '/v2/whatsapp/chat-v3?' . http_build_query($qs);
+        return $previewRoute . '?' . http_build_query($qs);
     };
 @endphp
 
@@ -148,6 +151,8 @@
         .wa3-row__tag[data-tone="mine"]     { background: #e9e7fb; color: #4e48a8; }
         .wa3-row__tag[data-tone="waiting"]  { background: #fff0d1; color: #8a5d0a; }
         .wa3-row__tag[data-tone="resolved"] { background: #e0f3eb; color: #05825f; }
+        .wa3-row__tag[data-tone="scheduled"] { background: #dff3ff; color: #0b5f84; }
+        .wa3-row__tag[data-tone="closed"] { background: #eef0f4; color: #667085; }
 
         /* THREAD */
         .wa3-thread { display: flex; flex-direction: column; background: var(--wa3-bg); min-width: 0; overflow: hidden; }
@@ -278,7 +283,7 @@
                     <button class="wa3-iconbtn" title="Filtros avanzados" type="button"><i class="mdi mdi-tune-variant"></i></button>
                 </div>
             </div>
-            <form method="GET" action="/v2/whatsapp/chat-v3" class="wa3-search">
+            <form method="GET" action="{{ $previewRoute }}" class="wa3-search">
                 <i class="mdi mdi-magnify"></i>
                 <input type="search" name="search" value="{{ $search }}" placeholder="Buscar nombre, número o HC…">
                 <input type="hidden" name="filter" value="{{ $selectedFilter }}">
@@ -306,18 +311,24 @@
                     $initials = mb_strtoupper(mb_substr($name, 0, 1) . mb_substr(strpos($name, ' ') !== false ? substr($name, strpos($name, ' ') + 1) : '', 0, 1));
                     $tone = $avatarTone($name);
 
-                    $statusDot = null;
-                    if (!empty($c['needs_human'])) {
-                        $statusDot = !empty($c['handoff_priority_label']) ? 'urgent' : 'open';
-                    } elseif (($c['messaging_window_state'] ?? '') === 'window_open') {
-                        $statusDot = 'open';
-                    }
+                    $operationalStatus = (string) ($c['operational_status'] ?? 'new');
+                    $priorityLevel = (string) ($c['priority_level'] ?? 'low');
+                    $statusDot = match (true) {
+                        $priorityLevel === 'critical' => 'urgent',
+                        in_array($operationalStatus, ['requires_attention', 'in_progress'], true) => 'open',
+                        $operationalStatus === 'waiting_patient' => 'warn',
+                        default => null,
+                    };
 
-                    $tagTone = 'gray'; $tagLabel = null;
-                    if (!empty($c['needs_human'])) { $tagTone = 'urgent';  $tagLabel = 'Cola'; }
-                    elseif (($c['ownership_label'] ?? '') === 'Mía' || ($c['assigned_user_id'] ?? null) === ($currentUser['id'] ?? -1)) { $tagTone = 'mine'; $tagLabel = 'Mía'; }
-                    elseif (($c['messaging_window_state'] ?? '') === 'window_open') { $tagTone = 'waiting'; $tagLabel = 'Esperando'; }
-                    elseif (empty($c['needs_human'])) { $tagTone = 'resolved'; $tagLabel = 'Listo'; }
+                    $tagTone = match ($operationalStatus) {
+                        'requires_attention' => 'urgent',
+                        'in_progress' => 'mine',
+                        'waiting_patient' => 'waiting',
+                        'scheduled' => 'scheduled',
+                        'resolved', 'closed_followup', 'closed_other' => 'closed',
+                        default => 'gray',
+                    };
+                    $tagLabel = (string) ($c['operational_status_label'] ?? 'Nuevo');
                 @endphp
                 <a href="{{ $buildLink(['conversation' => $c['id']]) }}"
                    class="wa3-row {{ $isActive ? 'is-active' : '' }} {{ $isUnread ? 'is-unread' : '' }}"
@@ -371,6 +382,8 @@
                 $currentUserId = (int) ($currentUser['id'] ?? 0);
                 $canReplyHere = $selAssignedUserId > 0 && $selAssignedUserId === $currentUserId;
                 $isMine = $canReplyHere;
+                $selOperationalStatus = (string) ($selectedConversation['operational_status'] ?? 'new');
+                $selPriorityLevel = (string) ($selectedConversation['priority_level'] ?? 'low');
             @endphp
 
             <header class="wa3-thread__head">
@@ -486,9 +499,16 @@
             </header>
 
             <div class="wa3-context">
+                <span class="wa3-context__item"><i class="mdi mdi-map-marker-path"></i>{{ $selectedConversation['operational_status_label'] ?? 'Sin estado' }}</span>
+                <span class="sep">·</span>
+                <span class="wa3-context__item"><i class="mdi mdi-speedometer"></i>Prioridad <strong>{{ $selectedConversation['priority_level_label'] ?? 'Baja' }}</strong></span>
+                <span class="sep">·</span>
+                <span class="wa3-context__item"><i class="mdi mdi-account-voice"></i>Último: {{ $selectedConversation['last_message_actor_label'] ?? 'Sin mensajes' }}</span>
                 @if($isMine)
+                    <span class="sep">·</span>
                     <span class="wa3-context__item wa3-context__item--mine"><i class="mdi mdi-account-check-outline"></i><strong>Asignada a ti</strong></span>
                 @elseif(!empty($selectedConversation['assigned_user_name']))
+                    <span class="sep">·</span>
                     <span class="wa3-context__item"><i class="mdi mdi-account-outline"></i>{{ $selectedConversation['assigned_user_name'] }}</span>
                 @endif
                 @if($selWState === 'window_open')
@@ -691,6 +711,18 @@
                             <span class="v">{{ $selectedConversation['ownership_label'] }}</span>
                         </div>
                     @endif
+                    @if(!empty($selectedConversation['operational_status_label']))
+                        <div class="wa3-kv__row">
+                            <span class="k"><i class="mdi mdi-map-marker-path"></i>Estado operativo</span>
+                            <span class="v">{{ $selectedConversation['operational_status_label'] }}</span>
+                        </div>
+                    @endif
+                    @if(!empty($selectedConversation['priority_level_label']))
+                        <div class="wa3-kv__row">
+                            <span class="k"><i class="mdi mdi-speedometer"></i>Prioridad</span>
+                            <span class="v">{{ $selectedConversation['priority_level_label'] }}</span>
+                        </div>
+                    @endif
                     @if(!empty($selectedConversation['messaging_window_label']))
                         <div class="wa3-kv__row">
                             <span class="k"><i class="mdi mdi-timer-sand"></i>Ventana</span>
@@ -875,7 +907,7 @@
                     body: JSON.stringify({}),
                 });
                 if (!res.ok) throw new Error('Close failed');
-                window.location.href = '/v2/whatsapp/chat-v3?filter=resolved';
+                window.location.href = '{{ $previewRoute }}?filter=closed';
             } catch (err) { console.error('[wa3] close error', err); alert('No se pudo resolver la conversación.'); }
         });
     });
