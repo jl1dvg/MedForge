@@ -2426,4 +2426,35 @@ class WhatsappWebhookControllerTest extends TestCase
             'scenario_id' => 'no_match_fallback',
         ]);
     }
+
+    public function test_inbound_webhook_dispatches_job_and_returns_queued(): void
+    {
+        \Illuminate\Support\Facades\Queue::fake();
+
+        $payload = [
+            'object' => 'whatsapp_business_account',
+            'entry' => [[
+                'changes' => [[
+                    'value' => [
+                        'messages' => [[
+                            'from' => '593999000001',
+                            'id'   => 'wamid.test_dispatch',
+                            'type' => 'text',
+                            'text' => ['body' => 'hola'],
+                            'timestamp' => (string) now()->timestamp,
+                        ]],
+                        'contacts' => [['profile' => ['name' => 'Test'], 'wa_id' => '593999000001']],
+                        'metadata'  => ['display_phone_number' => '593XXXXXXX', 'phone_number_id' => 'PHONE_ID'],
+                    ],
+                    'field' => 'messages',
+                ]],
+            ]],
+        ];
+
+        $response = $this->postJson('/v2/whatsapp/receive', $payload);
+
+        $response->assertOk();
+        $response->assertJson(['ok' => true, 'data' => ['queued' => true]]);
+        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\ProcessInboundMessageJob::class);
+    }
 }
