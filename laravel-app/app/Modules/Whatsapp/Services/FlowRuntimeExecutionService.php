@@ -847,10 +847,13 @@ class FlowRuntimeExecutionService
                         $context['state'] = $preview['next_state'];
                     }
                 }
-                if (($preview['operation'] ?? null) === 'check_pending_appointment'
-                    && is_string($preview['next_state'] ?? null)
-                    && $preview['next_state'] !== '') {
-                    $context['state'] = $preview['next_state'];
+                if (($preview['operation'] ?? null) === 'check_pending_appointment') {
+                    if (is_string($preview['next_state'] ?? null) && $preview['next_state'] !== '') {
+                        $context['state'] = $preview['next_state'];
+                    }
+                    if (!empty($preview['found'])) {
+                        break;
+                    }
                 }
                 continue;
             }
