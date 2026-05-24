@@ -41,6 +41,8 @@ $laravelBridgePrefixes = [
     '/cron-manager',
     '/cirugias',
     '/pacientes',
+    '/procedimientos',
+    '/api/procedimientos',
 ];
 
 if (in_array($requestPath, $laravelBridgeExact, true)) {

@@ -656,21 +656,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       sendResponse({ success: false, error: "Falta hcNumber" });
       return false;
     }
-    const primaryUrl = new URL(
-      "https://asistentecive.consulmed.me/api/solicitudes/estado.php",
-    );
-    primaryUrl.searchParams.set("hcNumber", hcNumber);
-
-    const fallbacks = [];
-    if (pageOrigin && /^https?:\/\//i.test(pageOrigin)) {
-      try {
-        const alt = new URL("/api/solicitudes/estado.php", pageOrigin);
-        alt.searchParams.set("hcNumber", hcNumber);
-        fallbacks.push(alt.toString());
-      } catch (e) {
-        // ignore malformed origin
-      }
-    }
 
     const tryFetch = async (url) => {
       const resp = await fetch(url, { method: "GET", credentials: "include" });
@@ -679,8 +664,36 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     };
 
     (async () => {
+      // Usar la URL configurada (apiBaseUrl de storage) en lugar de una URL
+      // hardcodeada, para que funcione con cualquier configuración de servidor.
+      let primaryUrl;
+      try {
+        primaryUrl = await buildApiUrl("/api/solicitudes/estado.php", {
+          hcNumber,
+        });
+      } catch (e) {
+        primaryUrl =
+          "https://asistentecive.consulmed.me/api/solicitudes/estado.php?hcNumber=" +
+          encodeURIComponent(hcNumber);
+      }
+
+      const fallbacks = [];
+      if (pageOrigin && /^https?:\/\//i.test(pageOrigin)) {
+        try {
+          const alt = new URL("/api/solicitudes/estado.php", pageOrigin);
+          alt.searchParams.set("hcNumber", hcNumber);
+          // Solo agregar como fallback si es diferente a la URL primaria.
+          const altStr = alt.toString();
+          if (altStr !== primaryUrl) {
+            fallbacks.push(altStr);
+          }
+        } catch (e) {
+          // ignore malformed origin
+        }
+      }
+
       const errors = [];
-      for (const url of [primaryUrl.toString(), ...fallbacks]) {
+      for (const url of [primaryUrl, ...fallbacks]) {
         try {
           const data = await tryFetch(url);
           sendResponse({ success: true, data });
