@@ -97,6 +97,11 @@ class ConversationReadService
         $base = $this->baseVisibleQuery($viewerUserId, $includeAssignedOthers, $assignedUserId, $roleId);
         $base = $this->applyDateRange($base, $dateFrom, $dateTo);
         $filters = [
+            'requires_attention',
+            'in_progress',
+            'waiting_patient',
+            'scheduled',
+            'closed',
             'critical_backlog',
             'captacion',
             'operacion',
@@ -458,6 +463,9 @@ class ConversationReadService
         $assignedUser = $assignedUserId > 0 ? ($assignedUsers[$assignedUserId] ?? null) : null;
         $handoffRoleId = (int) ($conversation->handoff_role_id ?? 0);
         $handoffRoleName = $handoffRoleId > 0 ? ($roleLabels[$handoffRoleId] ?? null) : null;
+        $operationalStatus = $this->resolveOperationalStatus($conversation, $viewerUserId);
+        $priorityScore = $this->resolvePriorityScore($conversation, $viewerUserId);
+        $priorityLevel = $this->resolvePriorityLevel($priorityScore);
 
         return [
             'id' => $conversation->id,
@@ -469,6 +477,7 @@ class ConversationReadService
             'last_message_direction' => $conversation->last_message_direction,
             'last_message_type' => $conversation->last_message_type,
             'last_message_preview' => $conversation->last_message_preview,
+            'last_message_actor_label' => $this->lastMessageActorLabel((string) ($conversation->last_message_direction ?? ''), (string) ($conversation->last_message_type ?? '')),
             'needs_human' => (bool) $conversation->needs_human,
             'handoff_notes' => $conversation->handoff_notes,
             'handoff_role_id' => $conversation->handoff_role_id,
@@ -482,6 +491,12 @@ class ConversationReadService
             'queue_bucket' => $this->resolveOperationalQueue($conversation),
             'queue_bucket_label' => $this->operationalQueueLabel($this->resolveOperationalQueue($conversation)),
             'queue_age_minutes' => $this->resolveQueueAgeMinutes($conversation),
+            'operational_status' => $operationalStatus,
+            'operational_status_label' => $this->resolveOperationalStatusLabel($operationalStatus),
+            'priority_score' => $priorityScore,
+            'priority_level' => $priorityLevel,
+            'priority_level_label' => $this->resolvePriorityLevelLabel($priorityLevel),
+            'priority_reasons' => $this->resolvePriorityReasons($conversation, $viewerUserId),
             'ownership_state' => $this->resolveOwnershipState($conversation, $viewerUserId),
             'ownership_label' => $this->resolveOwnershipLabel($conversation, $viewerUserId, $assignedUser, $handoffRoleName),
             'messaging_window_state' => $this->resolveMessagingWindowState($conversation),
@@ -519,6 +534,19 @@ class ConversationReadService
                     $query->where('direction', 'inbound');
                 },
             ], 'message_timestamp');
+
+        if (Schema::hasTable('whatsapp_sigcenter_bookings')) {
+            $query->selectSub(function ($subquery): void {
+                $subquery
+                    ->from('whatsapp_sigcenter_bookings as wsb')
+                    ->selectRaw('1')
+                    ->whereColumn('wsb.conversation_id', 'whatsapp_conversations.id')
+                    ->whereIn('wsb.status', ['created', 'confirmed'])
+                    ->limit(1);
+            }, 'has_sigcenter_booking');
+        } else {
+            $query->addSelect(DB::raw('0 as has_sigcenter_booking'));
+        }
 
         $query = $this->applyActiveHandoffJoin($query);
         $query = $this->applyAttributionJoin($query);
@@ -566,6 +594,12 @@ class ConversationReadService
     private function applyFilter(Builder $query, string $filter, ?int $viewerUserId): Builder
     {
         return match (trim($filter) !== '' ? trim($filter) : 'all') {
+            'requires_attention' => $this->applyOperationalStatusFilter($query, 'requires_attention', $viewerUserId),
+            'in_progress' => $this->applyOperationalStatusFilter($query, 'in_progress', $viewerUserId),
+            'waiting_patient' => $this->applyOperationalStatusFilter($query, 'waiting_patient', $viewerUserId),
+            'scheduled' => $this->applyOperationalStatusFilter($query, 'scheduled', $viewerUserId),
+            'closed' => $this->applyOperationalStatusFilter($query, 'closed', $viewerUserId),
+            'new' => $this->applyOperationalStatusFilter($query, 'new', $viewerUserId),
             'critical_backlog' => $this->applyCriticalBacklogFilter($query),
             'captacion' => $this->applyOperationalQueueFilter($query, 'captacion'),
             'operacion' => $this->applyOperationalQueueFilter($query, 'operacion'),
@@ -582,38 +616,137 @@ class ConversationReadService
         };
     }
 
+    private function applyOperationalStatusFilter(Builder $query, string $status, ?int $viewerUserId): Builder
+    {
+        return match ($status) {
+            'requires_attention' => $this->excludeScheduled($query->where('needs_human', true)->whereNull('assigned_user_id')),
+            'in_progress' => $this->excludeScheduled($query
+                ->where('needs_human', true)
+                ->whereNotNull('assigned_user_id')
+                ->where('last_message_direction', 'inbound')),
+            'waiting_patient' => $this->excludeScheduled($query
+                ->where('needs_human', true)
+                ->whereNotNull('assigned_user_id')
+                ->where(function (Builder $builder): void {
+                    $builder
+                        ->where('last_message_direction', '<>', 'inbound')
+                        ->orWhereNull('last_message_direction');
+                })),
+            'scheduled' => $this->applyScheduledFilter($query),
+            'closed' => $this->applyClosedFilter($query),
+            'new' => $this->applyNewConversationFilter($query),
+            default => $query,
+        };
+    }
+
+    private function applyNewConversationFilter(Builder $query): Builder
+    {
+        $query
+            ->where('needs_human', false)
+            ->whereNull('assigned_user_id')
+            ->whereNotExists(function ($subquery): void {
+                $subquery
+                    ->selectRaw('1')
+                    ->from('whatsapp_messages as wm')
+                    ->whereColumn('wm.conversation_id', 'whatsapp_conversations.id');
+            });
+
+        if (Schema::hasColumn('whatsapp_conversations', 'close_reason')) {
+            $query->whereNull('close_reason');
+        }
+
+        return $query;
+    }
+
+    private function applyScheduledFilter(Builder $query): Builder
+    {
+        if (!Schema::hasTable('whatsapp_sigcenter_bookings')) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return $query->whereExists(function ($subquery): void {
+            $subquery
+                ->selectRaw('1')
+                ->from('whatsapp_sigcenter_bookings as wsb')
+                ->whereColumn('wsb.conversation_id', 'whatsapp_conversations.id')
+                ->whereIn('wsb.status', ['created', 'confirmed']);
+        });
+    }
+
+    private function applyClosedFilter(Builder $query): Builder
+    {
+        $query->where('needs_human', false);
+
+        if (Schema::hasColumn('whatsapp_conversations', 'close_reason')) {
+            $query->whereIn('close_reason', [
+                'resolved',
+                'followup_closed',
+                'not_interested',
+                'no_response',
+                'duplicate',
+                'scheduled_elsewhere',
+            ]);
+        }
+
+        return $query;
+    }
+
+    private function excludeScheduled(Builder $query): Builder
+    {
+        if (!Schema::hasTable('whatsapp_sigcenter_bookings')) {
+            return $query;
+        }
+
+        return $query->whereNotExists(function ($subquery): void {
+            $subquery
+                ->selectRaw('1')
+                ->from('whatsapp_sigcenter_bookings as wsb')
+                ->whereColumn('wsb.conversation_id', 'whatsapp_conversations.id')
+                ->whereIn('wsb.status', ['created', 'confirmed']);
+        });
+    }
+
     private function applyPriorityOrdering(Builder $query, ?int $viewerUserId): Builder
     {
-        $threshold = $this->windowThreshold()->format('Y-m-d H:i:s');
-        $criticalThreshold = now()->toImmutable()->subHours(24)->format('Y-m-d H:i:s');
         $viewerUserId = $viewerUserId !== null && $viewerUserId > 0 ? $viewerUserId : 0;
-        $queuedAtSql = $this->activeHandoffQueuedAtSql();
-        $prioritySql = $this->activeHandoffPrioritySql();
 
         return $query
-            ->orderByRaw(
-                'CASE
-                    WHEN needs_human = 1
-                        AND assigned_user_id IS NULL
-                        AND ' . $queuedAtSql . ' IS NOT NULL
-                        AND ' . $queuedAtSql . ' <= ? THEN 140
-                    WHEN needs_human = 1
-                        AND assigned_user_id IS NULL
-                        AND ' . $prioritySql . ' = "high" THEN 130
-                    WHEN needs_human = 1 AND assigned_user_id IS NULL AND unread_count > 0 THEN 120
-                    WHEN needs_human = 1 AND assigned_user_id IS NULL THEN 110
-                    WHEN ? > 0 AND needs_human = 1 AND assigned_user_id = ? AND unread_count > 0 THEN 100
-                    WHEN ? > 0 AND needs_human = 1 AND assigned_user_id = ? THEN 90
-                    WHEN needs_human = 1 AND unread_count > 0 AND latest_inbound_at IS NOT NULL AND latest_inbound_at >= ? THEN 80
-                    WHEN needs_human = 1 AND latest_inbound_at IS NOT NULL AND latest_inbound_at >= ? THEN 70
-                    WHEN needs_human = 1 AND unread_count > 0 THEN 60
-                    WHEN needs_human = 1 THEN 50
-                    ELSE 10
-                END DESC',
-                [$criticalThreshold, $viewerUserId, $viewerUserId, $viewerUserId, $viewerUserId, $threshold, $threshold]
-            )
+            ->orderByRaw($this->priorityScoreSql($viewerUserId) . ' DESC')
             ->orderByDesc('unread_count')
             ->orderByDesc('last_message_at');
+    }
+
+    private function priorityScoreSql(int $viewerUserId): string
+    {
+        $criticalThreshold = now()->toImmutable()->subHours(24)->format('Y-m-d H:i:s');
+        $soonThreshold = now()->toImmutable()->subHours(20)->format('Y-m-d H:i:s');
+        $queuedAtSql = $this->activeHandoffQueuedAtSql();
+        $prioritySql = $this->activeHandoffPrioritySql();
+        $scheduledSql = $this->scheduledExistsSql();
+
+        return sprintf(
+            'CASE
+                WHEN needs_human = 0 THEN 0
+                WHEN %1$s THEN 40
+                WHEN needs_human = 1 AND assigned_user_id IS NULL AND %2$s IS NOT NULL AND %2$s <= "%3$s" THEN 180
+                WHEN needs_human = 1 AND assigned_user_id IS NULL AND %4$s = "high" THEN 170
+                WHEN needs_human = 1 AND assigned_user_id IS NULL AND unread_count > 0 THEN 160
+                WHEN needs_human = 1 AND assigned_user_id IS NULL THEN 150
+                WHEN %5$d > 0 AND needs_human = 1 AND assigned_user_id = %5$d AND last_message_direction = "inbound" AND unread_count > 0 THEN 140
+                WHEN needs_human = 1 AND assigned_user_id IS NOT NULL AND last_message_direction = "inbound" AND unread_count > 0 THEN 130
+                WHEN needs_human = 1 AND assigned_user_id IS NOT NULL AND last_message_direction = "inbound" THEN 120
+                WHEN needs_human = 1 AND latest_inbound_at IS NOT NULL AND latest_inbound_at <= "%6$s" THEN 90
+                WHEN needs_human = 1 AND assigned_user_id IS NOT NULL THEN 70
+                WHEN needs_human = 1 THEN 50
+                ELSE 0
+            END',
+            $scheduledSql,
+            $queuedAtSql,
+            $criticalThreshold,
+            $prioritySql,
+            $viewerUserId,
+            $soonThreshold
+        );
     }
 
     private function applyActiveHandoffJoin(Builder $query): Builder
@@ -893,6 +1026,179 @@ class ConversationReadService
             : 'needs_template';
     }
 
+    private function resolveOperationalStatus(WhatsappConversation $conversation, ?int $viewerUserId): string
+    {
+        $closeReason = $this->scalarString($conversation->close_reason ?? null);
+        $needsHuman = (bool) $conversation->needs_human;
+        $assignedUserId = (int) ($conversation->assigned_user_id ?? 0);
+        $lastDirection = trim((string) ($conversation->last_message_direction ?? ''));
+
+        if ($this->hasSuccessfulBooking($conversation) && $closeReason === '') {
+            return 'scheduled';
+        }
+
+        if (!$needsHuman) {
+            return match ($closeReason) {
+                'followup_closed' => 'closed_followup',
+                'resolved' => 'resolved',
+                'not_interested', 'no_response', 'duplicate', 'scheduled_elsewhere' => 'closed_other',
+                default => $lastDirection === '' ? 'new' : 'resolved',
+            };
+        }
+
+        if ($assignedUserId <= 0) {
+            return 'requires_attention';
+        }
+
+        return $lastDirection === 'inbound' ? 'in_progress' : 'waiting_patient';
+    }
+
+    private function resolveOperationalStatusLabel(string $status): string
+    {
+        return match ($status) {
+            'new' => 'Nuevo',
+            'requires_attention' => 'Requiere atención',
+            'in_progress' => 'En gestión',
+            'waiting_patient' => 'Esperando paciente',
+            'scheduled' => 'Agendado',
+            'resolved' => 'Resuelto',
+            'closed_followup' => 'Seguimiento cerrado',
+            'closed_other' => 'Cerrado',
+            default => 'Sin estado',
+        };
+    }
+
+    private function resolvePriorityScore(WhatsappConversation $conversation, ?int $viewerUserId): int
+    {
+        if (!(bool) $conversation->needs_human) {
+            return 0;
+        }
+
+        $score = 0;
+        $assignedUserId = (int) ($conversation->assigned_user_id ?? 0);
+        $unreadCount = (int) ($conversation->unread_count ?? 0);
+        $lastDirection = trim((string) ($conversation->last_message_direction ?? ''));
+        $queueAge = $this->resolveQueueAgeMinutes($conversation);
+
+        if ($assignedUserId <= 0) {
+            $score += 100;
+        }
+        if ($lastDirection === 'inbound' && $unreadCount > 0) {
+            $score += 80;
+        }
+        if ($assignedUserId <= 0) {
+            $score += 70;
+        }
+        if ($queueAge !== null && $queueAge >= 30) {
+            $score += 60;
+        }
+        if (in_array($this->resolveOperationalQueue($conversation), ['critical_backlog', 'operacion', 'captacion'], true)) {
+            $score += 50;
+        }
+        if ($this->latestInboundNearWindowClose($conversation)) {
+            $score += 40;
+        }
+        if ($viewerUserId !== null && $viewerUserId > 0 && $assignedUserId === $viewerUserId && $lastDirection === 'inbound') {
+            $score += 30;
+        }
+        if ($lastDirection !== 'inbound') {
+            $score += 10;
+        }
+
+        return $score;
+    }
+
+    private function resolvePriorityLevel(int $score): string
+    {
+        return match (true) {
+            $score >= 170 => 'critical',
+            $score >= 90 => 'high',
+            $score > 0 => 'normal',
+            default => 'low',
+        };
+    }
+
+    private function resolvePriorityLevelLabel(string $level): string
+    {
+        return match ($level) {
+            'critical' => 'Crítica',
+            'high' => 'Alta',
+            'normal' => 'Normal',
+            default => 'Baja',
+        };
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function resolvePriorityReasons(WhatsappConversation $conversation, ?int $viewerUserId): array
+    {
+        if (!(bool) $conversation->needs_human) {
+            return [];
+        }
+
+        $reasons = [];
+        $assignedUserId = (int) ($conversation->assigned_user_id ?? 0);
+        $unreadCount = (int) ($conversation->unread_count ?? 0);
+        $lastDirection = trim((string) ($conversation->last_message_direction ?? ''));
+        $queueAge = $this->resolveQueueAgeMinutes($conversation);
+
+        if ($assignedUserId <= 0) {
+            $reasons[] = 'Sin agente asignado';
+        }
+        if ($lastDirection === 'inbound' && $unreadCount > 0) {
+            $reasons[] = 'Paciente escribió y está sin leer';
+        }
+        if ($queueAge !== null && $queueAge >= 30) {
+            $reasons[] = 'Más de 30 min en cola';
+        }
+        if ($this->resolveOperationalQueue($conversation) === 'critical_backlog') {
+            $reasons[] = 'Backlog crítico';
+        }
+        if ($this->latestInboundNearWindowClose($conversation)) {
+            $reasons[] = 'Ventana WhatsApp próxima a cerrar';
+        }
+        if ($viewerUserId !== null && $viewerUserId > 0 && $assignedUserId === $viewerUserId && $lastDirection === 'inbound') {
+            $reasons[] = 'Asignada a ti con respuesta pendiente';
+        }
+        if ($lastDirection !== 'inbound') {
+            $reasons[] = 'Esperando respuesta del paciente';
+        }
+
+        return array_values(array_unique($reasons));
+    }
+
+    private function lastMessageActorLabel(string $direction, string $messageType = ''): string
+    {
+        return match (trim(strtolower($direction))) {
+            'inbound' => 'Paciente',
+            'outbound' => trim(strtolower($messageType)) === 'template' ? 'Bot/plantilla' : 'Equipo/Bot',
+            default => 'Sin mensajes',
+        };
+    }
+
+    private function hasSuccessfulBooking(WhatsappConversation $conversation): bool
+    {
+        return (int) ($conversation->getAttribute('has_sigcenter_booking') ?? 0) > 0;
+    }
+
+    private function latestInboundNearWindowClose(WhatsappConversation $conversation): bool
+    {
+        $latestInbound = $conversation->getAttribute('latest_inbound_at');
+        if ($latestInbound === null || $latestInbound === '') {
+            return false;
+        }
+
+        try {
+            $expiresAt = CarbonImmutable::parse((string) $latestInbound, 'UTC')->addHours(24);
+            $minutesLeft = (int) now()->toImmutable()->diffInMinutes($expiresAt, false);
+
+            return $minutesLeft > 0 && $minutesLeft <= 240;
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
     private function resolveOperationalQueue(WhatsappConversation $conversation): string
     {
         if (!(bool) $conversation->needs_human) {
@@ -959,6 +1265,8 @@ class ConversationReadService
             'followup_closed' => 'Seguimiento cerrado',
             'not_interested' => 'No interesado',
             'no_response' => 'Sin respuesta',
+            'duplicate' => 'Duplicado',
+            'scheduled_elsewhere' => 'Agendado por otro canal',
             default => 'Cerrado',
         };
     }
@@ -1016,6 +1324,19 @@ class ConversationReadService
         return Schema::hasTable('whatsapp_handoffs')
             ? 'COALESCE(wh_active_handoff.topic, "")'
             : '""';
+    }
+
+    private function scheduledExistsSql(): string
+    {
+        if (!Schema::hasTable('whatsapp_sigcenter_bookings')) {
+            return '0 = 1';
+        }
+
+        return 'EXISTS (
+            SELECT 1 FROM whatsapp_sigcenter_bookings wsb
+            WHERE wsb.conversation_id = whatsapp_conversations.id
+              AND wsb.status IN ("created", "confirmed")
+        )';
     }
 
     private function attributionColumnSql(string $column): string

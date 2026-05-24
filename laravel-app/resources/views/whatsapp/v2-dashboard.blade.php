@@ -848,6 +848,33 @@
                         <div class="wa-now-card__label">Desde handoff · mediana {{ $firstHumanMedian }}</div>
                     </div>
                 </div>
+                <div class="wa-group-label">🧭 Bandejas operativas</div>
+                <div class="wa-now-zone mb-20">
+                    <div class="wa-now-card wa-now-card--{{ ((int)($summary['operational_status_requires_attention'] ?? 0)) > 0 ? 'alert' : 'ok' }}">
+                        <div class="wa-now-card__value">{{ $summary['operational_status_requires_attention'] ?? 0 }}</div>
+                        <div class="wa-now-card__label">Requieren atención</div>
+                    </div>
+                    <div class="wa-now-card wa-now-card--warn">
+                        <div class="wa-now-card__value">{{ $summary['operational_status_in_progress'] ?? 0 }}</div>
+                        <div class="wa-now-card__label">En gestión</div>
+                    </div>
+                    <div class="wa-now-card wa-now-card--ok">
+                        <div class="wa-now-card__value">{{ $summary['operational_status_waiting_patient'] ?? 0 }}</div>
+                        <div class="wa-now-card__label">Esperando paciente</div>
+                    </div>
+                    <div class="wa-now-card wa-now-card--ok">
+                        <div class="wa-now-card__value">{{ $summary['operational_status_scheduled'] ?? 0 }}</div>
+                        <div class="wa-now-card__label">Agendados</div>
+                    </div>
+                    <div class="wa-now-card wa-now-card--{{ ((int)($summary['priority_critical'] ?? 0)) > 0 ? 'alert' : 'ok' }}">
+                        <div class="wa-now-card__value">{{ $summary['priority_critical'] ?? 0 }}</div>
+                        <div class="wa-now-card__label">Prioridad crítica</div>
+                    </div>
+                    <div class="wa-now-card wa-now-card--{{ ((int)($summary['limbo_unassigned'] ?? 0)) > 0 ? 'alert' : 'ok' }}">
+                        <div class="wa-now-card__value">{{ $summary['limbo_unassigned'] ?? 0 }}</div>
+                        <div class="wa-now-card__label">Limbo sin agente</div>
+                    </div>
+                </div>
                 {{-- ══ FIN ZONA AHORA ══ --}}
                 {{--
                 <div class="wa-kpi-grid">
