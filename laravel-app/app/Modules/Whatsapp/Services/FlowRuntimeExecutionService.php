@@ -107,7 +107,10 @@ class FlowRuntimeExecutionService
         $context = $this->seedPatientContextFromConversation($context, $conversation);
         $context = $this->captureAwaitingInput($context, $text, $inboundMessage);
 
-        $reminderResult = $this->appointmentReminderService->handleInboundResponse($conversation, $text);
+        $currentState = (string) ($context['state'] ?? '');
+        $reminderResult = str_starts_with($currentState, 'agenda_')
+            ? null
+            : $this->appointmentReminderService->handleInboundResponse($conversation, $text);
         if (is_array($reminderResult) && !empty($reminderResult['handled'])) {
             $this->saveSession(
                 $conversation,
