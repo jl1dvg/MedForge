@@ -84,6 +84,18 @@ class CronRunner
             ];
         }
 
+        // Respetar cron_schedule.enabled y cron_expression si existe la tabla.
+        if (!$force && !$this->isScheduledToRun($definition['slug'])) {
+            return [
+                'slug' => $definition['slug'],
+                'name' => $definition['name'],
+                'status' => 'skipped',
+                'message' => 'No programado en este ciclo (cron_schedule).',
+                'details' => null,
+                'ran' => false,
+            ];
+        }
+
         $nextRunAt = null;
         if (!empty($task['next_run_at'])) {
             try {
@@ -131,9 +143,11 @@ class CronRunner
             if ($status === 'skipped' || $status === 'retired') {
                 $this->repository->finishLog($logId, 'skipped', $finishedAt, $message, $details, null, $durationMs);
                 $this->repository->markSkipped((int) $task['id'], $finishedAt, (int) $definition['interval'], $message, $details, $durationMs);
+                $this->updateScheduleExecution($definition['slug'], 'skipped');
             } else {
                 $this->repository->finishLog($logId, 'success', $finishedAt, $message, $details, null, $durationMs);
                 $this->repository->markSuccess((int) $task['id'], $finishedAt, (int) $definition['interval'], $message, $details, $durationMs);
+                $this->updateScheduleExecution($definition['slug'], 'ok');
             }
 
             return [
@@ -154,6 +168,7 @@ class CronRunner
 
             $this->repository->finishLog($logId, 'failed', $finishedAt, $message, $details, $exception->getTraceAsString(), $durationMs);
             $this->repository->markFailure((int) $task['id'], $finishedAt, (int) $definition['interval'], $message, $details, $durationMs);
+            $this->updateScheduleExecution($definition['slug'], 'failed');
 
             return [
                 'slug' => $definition['slug'],
@@ -165,6 +180,52 @@ class CronRunner
             ];
         } finally {
             $this->releaseLock($lockKey);
+        }
+    }
+
+    private function isScheduledToRun(string $slug): bool
+    {
+        try {
+            $schedule = \Illuminate\Support\Facades\DB::table('cron_schedule')
+                ->where('slug', $slug)
+                ->where('type', 'legacy')
+                ->first();
+
+            if ($schedule === null || ! $schedule->enabled) {
+                return false;
+            }
+
+            $expr = new \Cron\CronExpression($schedule->cron_expression);
+            $now = new \DateTimeImmutable('now');
+            $prevRun = \DateTimeImmutable::createFromMutable($expr->getPreviousRunDate('now', 0, true));
+
+            // Ventana de 310s (cron.php corre cada 5 min + margen de drift).
+            $withinWindow = ($now->getTimestamp() - $prevRun->getTimestamp()) <= 310;
+
+            $lastRun = $schedule->last_run_at
+                ? new \DateTimeImmutable($schedule->last_run_at)
+                : null;
+
+            $notRunRecently = $lastRun === null || $prevRun->getTimestamp() > $lastRun->getTimestamp();
+
+            return $withinWindow && $notRunRecently;
+        } catch (\Throwable) {
+            return true; // Si falla, dejar correr (fallback seguro).
+        }
+    }
+
+    private function updateScheduleExecution(string $slug, string $status): void
+    {
+        try {
+            \Illuminate\Support\Facades\DB::table('cron_schedule')
+                ->where('slug', $slug)
+                ->where('type', 'legacy')
+                ->update([
+                    'last_run_at' => (new \DateTimeImmutable('now'))->format('Y-m-d H:i:s'),
+                    'last_status' => $status,
+                ]);
+        } catch (\Throwable) {
+            // No fatal si la tabla no existe.
         }
     }
 
