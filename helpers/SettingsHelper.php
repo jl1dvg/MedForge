@@ -2,7 +2,6 @@
 
 namespace Helpers;
 
-use App\Modules\Whatsapp\Services\ReminderTemplateVariableCatalog;
 use DateTimeZone;
 
 class SettingsHelper
@@ -1155,13 +1154,13 @@ class SettingsHelper
                                 'Si no tienes una plantilla separada, puedes reutilizar temporalmente la misma de consulta.'
                             ),
                             self::templateVariableMapperField(
-                                ReminderTemplateVariableCatalog::SERVICE_MAPPING_KEY,
+                                'whatsapp_reminder_service_template_variable_map',
                                 'Variables para servicios oftalmológicos generales',
                                 'whatsapp_reminder_service_template_code',
                                 'Elige qué dato llena cada variable de la plantilla de servicios.'
                             ),
                             self::templateVariableMapperField(
-                                ReminderTemplateVariableCatalog::IMAGING_MAPPING_KEY,
+                                'whatsapp_reminder_imaging_template_variable_map',
                                 'Variables para imágenes',
                                 'whatsapp_reminder_imaging_template_code',
                                 'Elige qué dato llena cada variable de la plantilla de imágenes.'
@@ -2141,9 +2140,133 @@ class SettingsHelper
             'label' => $label,
             'template_key' => $templateKey,
             'help' => $help,
-            'options' => ReminderTemplateVariableCatalog::optionGroups(),
-            'recommended_mappings' => ReminderTemplateVariableCatalog::recommendedMappings(),
-            'sample_values' => ReminderTemplateVariableCatalog::sampleValues(),
+            'options' => self::whatsappReminderVariableOptionGroups(),
+            'recommended_mappings' => self::whatsappReminderRecommendedMappings(),
+            'sample_values' => self::whatsappReminderSampleValues(),
+        ];
+    }
+
+    private static function whatsappReminderVariableOptionGroups(): array
+    {
+        return [
+            'Paciente' => [
+                'label' => 'Paciente',
+                'options' => [
+                    'patient.name' => 'Nombre completo',
+                    'patient.first_name' => 'Primer nombre',
+                    'patient.last_name' => 'Apellidos',
+                    'patient.hc_number' => 'HC / identificación',
+                    'patient.phone' => 'Teléfono clínico',
+                    'patient.wa_number' => 'WhatsApp',
+                    'patient.email' => 'Email',
+                    'patient.affiliation' => 'Afiliación',
+                    'patient.gender' => 'Sexo',
+                    'patient.birth_date' => 'Fecha de nacimiento',
+                ],
+            ],
+            'Cita' => [
+                'label' => 'Cita',
+                'options' => [
+                    'appointment.date' => 'Fecha de cita',
+                    'appointment.date_iso' => 'Fecha ISO',
+                    'appointment.time' => 'Hora de cita',
+                    'appointment.datetime' => 'Fecha y hora',
+                    'appointment.doctor' => 'Médico tratante',
+                    'appointment.procedure' => 'Procedimiento completo',
+                    'appointment.procedure_short' => 'Procedimiento resumido',
+                    'appointment.service_type' => 'Tipo de servicio',
+                    'appointment.form_id' => 'Form ID',
+                    'appointment.status' => 'Estado de agenda',
+                    'appointment.source_type' => 'Tipo técnico',
+                ],
+            ],
+            'Sede' => [
+                'label' => 'Sede',
+                'options' => [
+                    'site.name' => 'Nombre de sede',
+                    'site.address' => 'Dirección',
+                    'site.maps_url' => 'Link Google Maps',
+                    'site.phone' => 'Teléfono de sede',
+                    'site.contact_center' => 'Contact Center',
+                ],
+            ],
+            'Clínica' => [
+                'label' => 'Clínica',
+                'options' => [
+                    'clinic.name' => 'Nombre comercial',
+                    'clinic.short_name' => 'Nombre corto',
+                    'clinic.website' => 'Sitio web',
+                    'clinic.phone' => 'Teléfono principal',
+                ],
+            ],
+            'Recordatorio' => [
+                'label' => 'Recordatorio',
+                'options' => [
+                    'reminder.window' => 'Ventana',
+                    'reminder.type' => 'Tipo de recordatorio',
+                    'fallback.empty' => 'Texto seguro',
+                ],
+            ],
+        ];
+    }
+
+    private static function whatsappReminderRecommendedMappings(): array
+    {
+        return [
+            'confirmacion_cita_med_v2' => [
+                1 => 'patient.name',
+                2 => 'appointment.date',
+                3 => 'appointment.time',
+                4 => 'appointment.doctor',
+            ],
+            'recordatorio_cita_pni_imagen_villaclub' => [
+                1 => 'patient.name',
+                2 => 'appointment.date',
+                3 => 'appointment.time',
+                4 => 'appointment.doctor',
+                5 => 'appointment.procedure',
+                6 => 'site.name',
+                7 => 'site.maps_url',
+            ],
+        ];
+    }
+
+    private static function whatsappReminderSampleValues(): array
+    {
+        return [
+            'patient.name' => 'María Pérez',
+            'patient.first_name' => 'María',
+            'patient.last_name' => 'Pérez',
+            'patient.hc_number' => '0912345678',
+            'patient.phone' => '0999999999',
+            'patient.wa_number' => '593999999999',
+            'patient.email' => 'paciente@ejemplo.com',
+            'patient.affiliation' => 'Particular',
+            'patient.gender' => 'F',
+            'patient.birth_date' => '01/01/1990',
+            'appointment.date' => '25/05/2026',
+            'appointment.date_iso' => '2026-05-25',
+            'appointment.time' => '09:30',
+            'appointment.datetime' => '25/05/2026 09:30',
+            'appointment.doctor' => 'Pamela Guillén',
+            'appointment.procedure' => 'Consulta oftalmológica',
+            'appointment.procedure_short' => 'Consulta oftalmológica',
+            'appointment.service_type' => 'Servicios oftalmológicos generales',
+            'appointment.form_id' => '281193',
+            'appointment.status' => 'AGENDADO',
+            'appointment.source_type' => 'servicios_oftalmologicos_generales',
+            'site.name' => 'Villa Club',
+            'site.address' => 'Parroquia satélite La Aurora de Daule, km 12 Av. León Febres-Cordero. Junto a la Piazza Villa Club.',
+            'site.maps_url' => 'https://maps.app.goo.gl/i1ryHLC6JUzkefHa6',
+            'site.phone' => '043710160',
+            'site.contact_center' => '043710160',
+            'clinic.name' => 'Clínica Internacional de la Visión del Ecuador',
+            'clinic.short_name' => 'CIVE',
+            'clinic.website' => 'https://cive.ec/',
+            'clinic.phone' => '043710160',
+            'reminder.window' => '24h',
+            'reminder.type' => 'Servicios oftalmológicos generales',
+            'fallback.empty' => 'Por confirmar',
         ];
     }
 
