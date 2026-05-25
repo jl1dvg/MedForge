@@ -1211,6 +1211,42 @@ class SettingsHelper
                                 4,
                                 'Rol que recibirá el handoff cuando el paciente pulse la opción de hablar con un agente.'
                             ),
+                            self::textField(
+                                'whatsapp_reminder_site_maps_matriz',
+                                'Google Maps - Matriz',
+                                false,
+                                'URL que se enviará cuando la sede sea Matriz.'
+                            ),
+                            self::textField(
+                                'whatsapp_reminder_site_maps_villa_club',
+                                'Google Maps - Villa Club',
+                                false,
+                                'URL que se enviará cuando la sede sea Villa Club.'
+                            ),
+                            self::textField(
+                                'whatsapp_reminder_site_maps_ceibos',
+                                'Google Maps - Ceibos',
+                                false,
+                                'URL que se enviará cuando la sede sea Ceibos.'
+                            ),
+                            self::textField(
+                                'whatsapp_reminder_site_address_matriz',
+                                'Dirección - Matriz',
+                                false,
+                                'Dirección textual que se enviará si la plantilla usa dirección.'
+                            ),
+                            self::textField(
+                                'whatsapp_reminder_site_address_villa_club',
+                                'Dirección - Villa Club',
+                                false,
+                                'Dirección textual que se enviará si la plantilla usa dirección.'
+                            ),
+                            self::textField(
+                                'whatsapp_reminder_site_address_ceibos',
+                                'Dirección - Ceibos',
+                                false,
+                                'Dirección textual que se enviará si la plantilla usa dirección.'
+                            ),
                             self::textareaField(
                                 'whatsapp_reminder_service_keywords',
                                 'Keywords de servicios oftalmológicos generales',
@@ -1222,6 +1258,12 @@ class SettingsHelper
                                 'Keywords de imágenes',
                                 'Una keyword por línea. Se usan para clasificar procedimiento_proyectado.',
                                 "imagenes\nimagen\noct\ntopografia\npaquimetria\nbiometria\nretinografia\nangiografia\ncampo visual\nultrasonido\necografia\nexamen"
+                            ),
+                            self::textareaField(
+                                'whatsapp_reminder_excluded_keywords',
+                                'Keywords excluidas',
+                                'Si aparecen en el procedimiento o médico, no se envía recordatorio. Útil para optometría.',
+                                "optometria\noptometrista"
                             ),
                         ],
                     ],

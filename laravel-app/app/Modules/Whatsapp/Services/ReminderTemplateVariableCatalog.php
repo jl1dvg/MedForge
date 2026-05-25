@@ -40,8 +40,9 @@ class ReminderTemplateVariableCatalog
                     'appointment.time' => 'Hora de cita',
                     'appointment.datetime' => 'Fecha y hora',
                     'appointment.doctor' => 'Médico tratante',
-                    'appointment.procedure' => 'Procedimiento completo',
+                    'appointment.procedure' => 'Procedimiento limpio',
                     'appointment.procedure_short' => 'Procedimiento resumido',
+                    'appointment.procedure_full' => 'Procedimiento completo original',
                     'appointment.service_type' => 'Tipo de servicio',
                     'appointment.form_id' => 'Form ID',
                     'appointment.status' => 'Estado de agenda',
@@ -72,6 +73,7 @@ class ReminderTemplateVariableCatalog
                 'options' => [
                     'reminder.window' => 'Ventana',
                     'reminder.type' => 'Tipo de recordatorio',
+                    'reminder.group_count' => 'Cantidad agrupada',
                     'fallback.empty' => 'Texto seguro',
                 ],
             ],
@@ -140,6 +142,7 @@ class ReminderTemplateVariableCatalog
             'clinic.phone' => '043710160',
             'reminder.window' => '24h',
             'reminder.type' => 'Servicios oftalmológicos generales',
+            'reminder.group_count' => '3',
             'fallback.empty' => 'Por confirmar',
         ];
     }

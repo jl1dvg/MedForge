@@ -474,7 +474,7 @@ class WhatsappAppointmentReminderServiceTest extends TestCase
             2 => 'appointment.date',
             3 => 'appointment.time',
             4 => 'appointment.doctor',
-            5 => 'appointment.procedure_short',
+            5 => 'appointment.procedure',
             6 => 'site.name',
             7 => 'site.maps_url',
         ]);
@@ -494,7 +494,7 @@ class WhatsappAppointmentReminderServiceTest extends TestCase
             'procedimiento_proyectado' => 'SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-010 - CONSULTA POSTERIOR PROCEDIMIENTO QUIRURGICO',
             'doctor' => 'Pamela Guillen',
             'hc_number' => 'HC-MAP',
-            'sede_departamento' => 'Villa Club',
+            'sede_departamento' => 'MATRIZ',
             'estado_agenda' => 'AGENDADO',
             'fecha' => $eventAt->toDateString(),
             'hora' => $eventAt->format('H:i:s'),
@@ -506,6 +506,7 @@ class WhatsappAppointmentReminderServiceTest extends TestCase
         $service = new WhatsappAppointmentReminderService(settingsOverride: [
             'whatsapp_reminder_service_template_code' => 'recordatorio_cita_pni_imagen_villaclub',
             'whatsapp_reminder_service_template_variable_map' => (string) $mapping,
+            'whatsapp_reminder_site_maps_matriz' => 'https://maps.app.goo.gl/matriz-test',
         ]);
         $result = $service->dispatchWindow('24h', false, 50);
 
@@ -520,9 +521,43 @@ class WhatsappAppointmentReminderServiceTest extends TestCase
             $eventAt->format('H:i'),
             'Pamela Guillen',
             'CONSULTA POSTERIOR PROCEDIMIENTO QUIRURGICO',
-            'Villa Club',
-            'https://maps.app.goo.gl/i1ryHLC6JUzkefHa6',
+            'Matriz',
+            'https://maps.app.goo.gl/matriz-test',
         ], $payload['template_variables'] ?? []);
+    }
+
+    public function test_it_skips_optometry_reminders_even_when_procedure_matches_images(): void
+    {
+        $eventAt = Carbon::now('America/Guayaquil')->addMinutes(1440);
+
+        \DB::table('patient_data')->insert([
+            'hc_number' => 'HC-OPT',
+            'fname' => 'Juan',
+            'lname' => 'Bravo',
+            'celular' => '0999000888',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        \DB::table('procedimiento_proyectado')->insert([
+            'form_id' => 9101,
+            'procedimiento_proyectado' => 'IMAGENES - EXAMEN VISUAL PROGRAMADO',
+            'doctor' => 'OPTOMETRIA OPT',
+            'hc_number' => 'HC-OPT',
+            'sede_departamento' => 'MATRIZ',
+            'estado_agenda' => 'AGENDADO',
+            'fecha' => $eventAt->toDateString(),
+            'hora' => $eventAt->format('H:i:s'),
+            'sigcenter_present' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $service = app(WhatsappAppointmentReminderService::class);
+        $result = $service->dispatchWindow('24h', false, 50);
+
+        $this->assertSame(0, $result['sent']);
+        $this->assertDatabaseCount('whatsapp_appointment_reminders', 0);
     }
 
     public function test_it_routes_reminder_to_agent_when_patient_requests_agent(): void
