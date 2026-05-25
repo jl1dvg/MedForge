@@ -184,7 +184,7 @@
         .wa3-filter-link small { display: block; font: 400 11px var(--bs-body-font-family); color: var(--wa3-text-mute); margin-top: 1px; }
         .wa3-filter-link .count { font: 800 10px var(--bs-body-font-family); min-width: 18px; text-align: center; padding: 2px 6px; border-radius: 999px; background: var(--wa3-surface-2); color: var(--wa3-text-mute); }
         .wa3-filter-link.is-active .count { background: rgba(81,86,190,.14); color: var(--wa3-accent); }
-        .wa3-manager-btn { height: 32px; padding: 0 10px; border-radius: 999px; background: var(--wa3-surface-2); color: var(--wa3-accent); font-weight: 700; }
+        .wa3-manager-btn { width: 32px; height: 32px; padding: 0; justify-content: center; border-radius: 999px; background: var(--wa3-surface-2); color: var(--wa3-accent); font-weight: 700; }
         .wa3-manager-btn i { color: var(--wa3-accent); }
         .wa3-manager-menu { min-width: 320px; }
         .wa3-metric-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 6px 4px 8px; }
@@ -438,8 +438,8 @@
                 <div style="display:flex;gap:2px;">
                     @if($canSupervise)
                         <div class="wa3-hbtn-wrap" data-wa3-menu="manager">
-                            <button class="wa3-hbtn wa3-manager-btn" type="button" data-wa3-menu-toggle="manager">
-                                <i class="mdi mdi-view-dashboard-outline"></i><span>Vista gerencial</span>
+                            <button class="wa3-hbtn wa3-manager-btn" type="button" data-wa3-menu-toggle="manager" title="Vista gerencial" aria-label="Vista gerencial">
+                                <i class="mdi mdi-view-dashboard-outline"></i>
                             </button>
                             <div class="wa3-hbtn__menu wa3-manager-menu" hidden>
                                 <h6>Métricas rápidas</h6>
