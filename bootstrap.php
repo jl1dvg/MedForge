@@ -254,9 +254,11 @@ function getAssetVersionKey(string $relativePath): ?string
 }
 
 // Helper para generar URLs públicas
-function asset($path)
-{
-    return buildAssetUrl($path);
+if (!function_exists('asset')) {
+    function asset($path)
+    {
+        return buildAssetUrl($path);
+    }
 }
 
 function img($path)
