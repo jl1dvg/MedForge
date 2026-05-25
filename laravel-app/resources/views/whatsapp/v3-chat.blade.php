@@ -257,6 +257,13 @@
         .wa3-context__item--open i  { color: var(--wa3-success); }
         .wa3-context__item--mine i  { color: var(--wa3-accent); }
         .wa3-context .sep { color: var(--wa3-border); }
+        .wa3-chat-search { display: none; align-items: center; gap: 8px; padding: 8px 22px; background: #fff; border-bottom: 1px solid var(--wa3-border); }
+        .wa3-chat-search.is-open { display: flex; }
+        .wa3-chat-search input { flex: 1; min-width: 0; border: 1px solid var(--wa3-border); border-radius: 999px; background: var(--wa3-surface-2); color: var(--wa3-text); padding: 8px 12px; font: 500 12.5px var(--bs-body-font-family); }
+        .wa3-chat-search input:focus { outline: 0; background: #fff; border-color: var(--wa3-accent); box-shadow: 0 0 0 3px rgba(81,86,190,.14); }
+        .wa3-chat-search__count { min-width: 58px; text-align: center; font: 700 11px var(--bs-body-font-family); color: var(--wa3-text-mute); }
+        .wa3-msg.is-search-match .wa3-bubble { border-color: rgba(81,86,190,.45); box-shadow: 0 0 0 3px rgba(81,86,190,.12); }
+        .wa3-msg.is-search-current .wa3-bubble { border-color: var(--wa3-accent); box-shadow: 0 0 0 4px rgba(81,86,190,.22); }
 
         /* Messages */
         .wa3-messages { flex: 1; overflow-y: auto; padding: 18px 22px 8px; display: flex; flex-direction: column; gap: 6px; background: radial-gradient(circle at 20% 10%, rgba(81,86,190,.05), transparent 50%), radial-gradient(circle at 90% 90%, rgba(81,86,190,.03), transparent 60%), var(--wa3-bg); }
@@ -304,6 +311,8 @@
         .wa3-quickaction:hover { border-color: var(--wa3-accent); color: var(--wa3-accent); background: var(--wa3-accent-soft); }
         .wa3-quickaction i { font-size: 18px; color: var(--wa3-text-mute); }
         .wa3-quickaction:hover i { color: var(--wa3-accent); }
+        a.wa3-quickaction { text-decoration: none; }
+        .wa3-quickaction[aria-disabled="true"] { opacity: .45; cursor: not-allowed; pointer-events: none; }
         .wa3-drawer__section { padding: 14px 22px; border-bottom: 1px solid var(--wa3-border-soft); }
         .wa3-drawer__section h6 { font: 600 10px var(--bs-body-font-family); color: var(--wa3-text-mute); text-transform: uppercase; letter-spacing: .1em; margin: 0 0 10px; }
         .wa3-kv { display: grid; grid-template-columns: 1fr; gap: 8px; }
@@ -603,7 +612,7 @@
 
                 <div class="wa3-thread__actions">
                     <button class="wa3-iconbtn" title="Llamar" type="button"><i class="mdi mdi-phone-outline"></i></button>
-                    <button class="wa3-iconbtn" title="Buscar en chat" type="button"><i class="mdi mdi-magnify"></i></button>
+                    <button class="wa3-iconbtn" title="Buscar en chat" type="button" id="wa3-chat-search-toggle"><i class="mdi mdi-magnify"></i></button>
                     <span class="wa3-iconbtn--sep"></span>
 
                     @if($canOperateConversation && !$isMine)
@@ -744,6 +753,15 @@
                     <span class="sep">·</span>
                     <span class="wa3-context__item"><i class="mdi mdi-bullseye-arrow"></i>{{ $selectedConversation['attribution_headline'] }}</span>
                 @endif
+            </div>
+
+            <div class="wa3-chat-search" id="wa3-chat-search" aria-hidden="true">
+                <i class="mdi mdi-magnify" style="color:var(--wa3-text-mute);font-size:18px;"></i>
+                <input type="search" id="wa3-chat-search-input" placeholder="Buscar dentro de esta conversación...">
+                <span class="wa3-chat-search__count" id="wa3-chat-search-count">0/0</span>
+                <button class="wa3-iconbtn" type="button" id="wa3-chat-search-prev" title="Anterior"><i class="mdi mdi-chevron-up"></i></button>
+                <button class="wa3-iconbtn" type="button" id="wa3-chat-search-next" title="Siguiente"><i class="mdi mdi-chevron-down"></i></button>
+                <button class="wa3-iconbtn" type="button" id="wa3-chat-search-close" title="Cerrar búsqueda"><i class="mdi mdi-close"></i></button>
             </div>
 
             <div class="wa3-realtime" id="wa3-realtime-banner">
@@ -922,7 +940,18 @@
                 <div class="wa3-drawer__quickactions">
                     <button class="wa3-quickaction" type="button"><i class="mdi mdi-phone-outline"></i>Llamar</button>
                     <button class="wa3-quickaction" type="button"><i class="mdi mdi-calendar-plus-outline"></i>Agendar</button>
-                    <button class="wa3-quickaction" type="button"><i class="mdi mdi-file-eye-outline"></i>Ficha</button>
+                    @if(!empty($selectedConversation['patient_hc_number']))
+                        <a class="wa3-quickaction"
+                           href="/v2/pacientes/detalles?hc_number={{ urlencode((string) $selectedConversation['patient_hc_number']) }}"
+                           target="_blank"
+                           rel="noopener">
+                            <i class="mdi mdi-file-eye-outline"></i>Ficha
+                        </a>
+                    @else
+                        <button class="wa3-quickaction" type="button" aria-disabled="true" title="No hay HC vinculado">
+                            <i class="mdi mdi-file-eye-outline"></i>Ficha
+                        </button>
+                    @endif
                 </div>
             </div>
 
@@ -1163,6 +1192,105 @@
             drawerBtn.title = root.classList.contains('has-drawer') ? 'Ocultar ficha' : 'Ver ficha del paciente';
         });
     }
+
+    // ── Search inside current conversation ─────────────────────────────────
+    const chatSearch = document.getElementById('wa3-chat-search');
+    const chatSearchToggle = document.getElementById('wa3-chat-search-toggle');
+    const chatSearchInput = document.getElementById('wa3-chat-search-input');
+    const chatSearchCount = document.getElementById('wa3-chat-search-count');
+    let chatSearchMatches = [];
+    let chatSearchIndex = -1;
+
+    function clearChatSearchMarks() {
+        document.querySelectorAll('.wa3-msg.is-search-match, .wa3-msg.is-search-current').forEach((node) => {
+            node.classList.remove('is-search-match', 'is-search-current');
+        });
+    }
+
+    function updateChatSearchCount() {
+        if (!chatSearchCount) return;
+        chatSearchCount.textContent = chatSearchMatches.length > 0
+            ? `${chatSearchIndex + 1}/${chatSearchMatches.length}`
+            : '0/0';
+    }
+
+    function focusChatSearchMatch(index) {
+        if (chatSearchMatches.length === 0) {
+            chatSearchIndex = -1;
+            updateChatSearchCount();
+            return;
+        }
+
+        chatSearchMatches.forEach((node) => node.classList.remove('is-search-current'));
+        chatSearchIndex = (index + chatSearchMatches.length) % chatSearchMatches.length;
+        const current = chatSearchMatches[chatSearchIndex];
+        current.classList.add('is-search-current');
+        current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        updateChatSearchCount();
+    }
+
+    function runChatSearch() {
+        const query = (chatSearchInput?.value || '').trim().toLowerCase();
+        clearChatSearchMarks();
+        chatSearchMatches = [];
+        chatSearchIndex = -1;
+
+        if (query === '') {
+            updateChatSearchCount();
+            return;
+        }
+
+        document.querySelectorAll('#wa-v2-message-list .wa3-msg').forEach((message) => {
+            const text = (message.textContent || '').toLowerCase();
+            if (!text.includes(query)) return;
+            message.classList.add('is-search-match');
+            chatSearchMatches.push(message);
+        });
+
+        focusChatSearchMatch(0);
+    }
+
+    function openChatSearch() {
+        if (!chatSearch || !chatSearchInput) return;
+        chatSearch.classList.add('is-open');
+        chatSearch.setAttribute('aria-hidden', 'false');
+        chatSearchInput.focus();
+        chatSearchInput.select();
+        runChatSearch();
+    }
+
+    function closeChatSearch() {
+        if (!chatSearch || !chatSearchInput) return;
+        chatSearch.classList.remove('is-open');
+        chatSearch.setAttribute('aria-hidden', 'true');
+        chatSearchInput.value = '';
+        clearChatSearchMarks();
+        chatSearchMatches = [];
+        chatSearchIndex = -1;
+        updateChatSearchCount();
+    }
+
+    chatSearchToggle?.addEventListener('click', () => {
+        if (chatSearch?.classList.contains('is-open')) {
+            closeChatSearch();
+            return;
+        }
+        openChatSearch();
+    });
+    chatSearchInput?.addEventListener('input', runChatSearch);
+    chatSearchInput?.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            closeChatSearch();
+        }
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            focusChatSearchMatch(chatSearchIndex + (event.shiftKey ? -1 : 1));
+        }
+    });
+    document.getElementById('wa3-chat-search-prev')?.addEventListener('click', () => focusChatSearchMatch(chatSearchIndex - 1));
+    document.getElementById('wa3-chat-search-next')?.addEventListener('click', () => focusChatSearchMatch(chatSearchIndex + 1));
+    document.getElementById('wa3-chat-search-close')?.addEventListener('click', closeChatSearch);
 
     // ── Composer ────────────────────────────────────────────────────────────
     const ta = document.getElementById('wa-v2-message-input');
