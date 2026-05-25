@@ -1218,7 +1218,7 @@
 
                         const token = document.createElement('span');
                         token.className = 'settings-template-variable-token';
-                        token.textContent = `{{${position}}}`;
+                        token.textContent = '{' + '{' + position + '}' + '}';
                         row.appendChild(token);
 
                         const select = document.createElement('select');
