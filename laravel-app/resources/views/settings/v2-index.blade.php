@@ -603,24 +603,7 @@
                                                                         }
                                                                     }
                                                                 }
-                                                                $templateMeta = [];
-                                                                if (\Illuminate\Support\Facades\Schema::hasTable('whatsapp_message_templates') && \Illuminate\Support\Facades\Schema::hasTable('whatsapp_template_revisions')) {
-                                                                    $templates = \App\Models\WhatsappMessageTemplate::query()
-                                                                        ->with('whatsapp_template_revision')
-                                                                        ->whereRaw('LOWER(status) in (?, ?)', ['approved', 'active'])
-                                                                        ->orderBy('template_code')
-                                                                        ->get();
-                                                                    foreach ($templates as $templateItem) {
-                                                                        $bodyText = (string) ($templateItem->whatsapp_template_revision?->body_text ?? '');
-                                                                        preg_match_all('/\{\{\s*(\d+)\s*\}\}/', $bodyText, $placeholderMatches);
-                                                                        $positions = array_map('intval', $placeholderMatches[1] ?? []);
-                                                                        $templateMeta[(string) $templateItem->template_code] = [
-                                                                            'label' => (string) ($templateItem->display_name ?: $templateItem->template_code),
-                                                                            'body' => mb_substr($bodyText, 0, 500, 'UTF-8'),
-                                                                            'variable_count' => $positions !== [] ? max($positions) : 0,
-                                                                        ];
-                                                                    }
-                                                                }
+                                                                $templateMeta = is_array($whatsappTemplateMetadata ?? null) ? $whatsappTemplateMetadata : [];
                                                                 $recommendedMappings = is_array($field['recommended_mappings'] ?? null) ? $field['recommended_mappings'] : [];
                                                                 $initialRecommended = is_array($recommendedMappings[$currentTemplateCode] ?? null) ? $recommendedMappings[$currentTemplateCode] : [];
                                                                 $initialVariableCount = (int) ($templateMeta[$currentTemplateCode]['variable_count'] ?? 0);

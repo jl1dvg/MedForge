@@ -881,15 +881,9 @@ class WhatsappAppointmentReminderService
 
     private function templateVariableCount(WhatsappMessageTemplate $template): int
     {
-        $body = (string) ($template->whatsapp_template_revision?->body_text ?? '');
-        if ($body === '') {
-            return 0;
-        }
-
-        preg_match_all('/\{\{\s*(\d+)\s*\}\}/', $body, $matches);
-        $positions = array_map('intval', $matches[1] ?? []);
-
-        return $positions !== [] ? max($positions) : 0;
+        return $this->variableCatalog->countTemplateVariables(
+            (string) ($template->whatsapp_template_revision?->body_text ?? '')
+        );
     }
 
     private function sedeAddress(string $sede): string
