@@ -634,9 +634,12 @@
                                                                 </div>
                                                                 <div data-template-variable-rows>
                                                                     @for($variableIndex = 1; $variableIndex <= $initialRows; $variableIndex++)
-                                                                        @php $selectedVariableKey = (string) ($decodedMapping[$variableIndex] ?? $decodedMapping[(string) $variableIndex] ?? $initialRecommended[$variableIndex] ?? ''); @endphp
+                                                                        @php
+                                                                            $selectedVariableKey = (string) ($decodedMapping[$variableIndex] ?? $decodedMapping[(string) $variableIndex] ?? $initialRecommended[$variableIndex] ?? '');
+                                                                            $variableToken = '{' . '{' . $variableIndex . '}' . '}';
+                                                                        @endphp
                                                                         <div class="settings-template-variable-row" data-variable-position="{{ $variableIndex }}">
-                                                                            <span class="settings-template-variable-token">{{ '{{' . $variableIndex . '}}' }}</span>
+                                                                            <span class="settings-template-variable-token">{{ $variableToken }}</span>
                                                                             <select class="form-select" data-template-variable-select>
                                                                                 <option value="">Sin asignar</option>
                                                                                 @foreach(($field['options'] ?? []) as $groupLabel => $group)
