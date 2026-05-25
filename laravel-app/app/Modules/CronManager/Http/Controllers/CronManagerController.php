@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Modules\CronManager\Http\Controllers;
 
+use App\Modules\CronManager\Repositories\CronScheduleRepository;
 use App\Modules\CronManager\Repositories\CronTaskRepository;
 use App\Modules\CronManager\Services\CronRunner;
 use App\Modules\Shared\Support\LegacyCurrentUser;
+use Cron\CronExpression;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -14,34 +16,86 @@ use Illuminate\Support\Facades\DB;
 
 class CronManagerController
 {
-    private CronTaskRepository $repository;
+    private ?CronTaskRepository $repository = null;
+    private CronScheduleRepository $scheduleRepository;
 
     public function __construct()
     {
-        $pdo = DB::connection()->getPdo();
-        $this->repository = new CronTaskRepository($pdo);
+        $this->scheduleRepository = new CronScheduleRepository();
+    }
+
+    private function getRepository(): CronTaskRepository
+    {
+        if ($this->repository === null) {
+            $this->repository = new CronTaskRepository(DB::connection()->getPdo());
+        }
+
+        return $this->repository;
     }
 
     public function index(Request $request): View
     {
         $results = $request->session()->pull('cron_manager_results');
 
-        $tasks = $this->prepareTasks($this->repository->getAll());
-        $logs = $this->prepareLogs($this->repository->getRecentLogs(20));
+        $tasks = $this->scheduleRepository->getAll();
+        $logs  = $this->prepareLogs($this->getRepository()->getRecentLogs(20));
 
         return view('cron_manager.index', [
-            'pageTitle' => 'Cron Manager',
+            'pageTitle'   => 'Cron Manager',
             'currentUser' => LegacyCurrentUser::resolve($request),
-            'tasks' => $tasks,
-            'logs' => $logs,
-            'results' => $results,
+            'tasks'       => $tasks,
+            'logs'        => $logs,
+            'results'     => $results,
         ]);
+    }
+
+    public function toggle(Request $request, string $slug): RedirectResponse
+    {
+        $task = $this->scheduleRepository->findBySlug($slug);
+
+        if ($task === null) {
+            return redirect('/cron-manager')->withErrors(['error' => "Tarea '{$slug}' no encontrada."]);
+        }
+
+        $this->scheduleRepository->toggle($slug);
+
+        return redirect('/cron-manager');
+    }
+
+    public function edit(Request $request, string $slug): RedirectResponse
+    {
+        $task = $this->scheduleRepository->findBySlug($slug);
+
+        if ($task === null) {
+            return redirect('/cron-manager')->withErrors(['error' => "Tarea '{$slug}' no encontrada."]);
+        }
+
+        $validated = $request->validate([
+            'cron_expression'     => ['required', 'string', 'max:100', function (string $attr, mixed $value, \Closure $fail): void {
+                try {
+                    new CronExpression((string) $value);
+                } catch (\Throwable) {
+                    $fail('La expresión cron no es válida.');
+                }
+            }],
+            'enabled'             => ['nullable', 'in:0,1'],
+            'run_in_background'   => ['nullable', 'in:0,1'],
+            'without_overlapping' => ['nullable', 'in:0,1'],
+        ]);
+
+        $this->scheduleRepository->update($slug, [
+            'cron_expression'     => $validated['cron_expression'],
+            'enabled'             => (int) ($validated['enabled'] ?? 0),
+            'run_in_background'   => (int) ($validated['run_in_background'] ?? 0),
+            'without_overlapping' => (int) ($validated['without_overlapping'] ?? 0),
+        ]);
+
+        return redirect('/cron-manager');
     }
 
     public function runAll(Request $request): RedirectResponse
     {
-        $pdo = DB::connection()->getPdo();
-        $runner = new CronRunner($pdo);
+        $runner = new CronRunner(DB::connection()->getPdo());
         $results = $runner->runAll(true);
 
         $request->session()->put('cron_manager_results', $results);
@@ -51,8 +105,7 @@ class CronManagerController
 
     public function runTask(Request $request, string $slug): RedirectResponse
     {
-        $pdo = DB::connection()->getPdo();
-        $runner = new CronRunner($pdo);
+        $runner = new CronRunner(DB::connection()->getPdo());
         $result = $runner->runBySlug($slug, true);
 
         if ($result === null) {
@@ -71,7 +124,7 @@ class CronManagerController
 
     public function updateSettings(Request $request, string $slug): RedirectResponse
     {
-        $task = $this->repository->findBySlug($slug);
+        $task = $this->getRepository()->findBySlug($slug);
         if ($task === null) {
             $request->session()->put('cron_manager_results', [[
                 'slug' => $slug,
@@ -127,7 +180,7 @@ class CronManagerController
             ];
         }
 
-        $this->repository->updateSettings((int) $task['id'], $settings ?: null);
+        $this->getRepository()->updateSettings((int) $task['id'], $settings ?: null);
 
         $request->session()->put('cron_manager_results', [[
             'slug' => $slug,

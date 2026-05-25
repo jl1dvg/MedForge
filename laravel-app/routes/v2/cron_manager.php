@@ -8,4 +8,6 @@ Route::middleware(['app.auth', 'app.permission:administrativo,settings.manage'])
     Route::post('/cron-manager/run', [CronManagerController::class, 'runAll']);
     Route::post('/cron-manager/run/{slug}', [CronManagerController::class, 'runTask']);
     Route::post('/cron-manager/settings/{slug}', [CronManagerController::class, 'updateSettings']);
+    Route::post('/cron-manager/toggle/{slug}', [CronManagerController::class, 'toggle']);
+    Route::post('/cron-manager/edit/{slug}', [CronManagerController::class, 'edit']);
 });

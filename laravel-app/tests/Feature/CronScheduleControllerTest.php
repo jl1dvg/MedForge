@@ -69,7 +69,7 @@ class CronScheduleControllerTest extends TestCase
     public function test_toggle_disables_enabled_task(): void
     {
         $this->actingAsAdmin()
-            ->post('/v2/cron-manager/toggle/test-task')
+            ->post('/cron-manager/toggle/test-task')
             ->assertRedirect();
 
         $this->assertSame(0, (int) DB::table('cron_schedule')->where('slug', 'test-task')->value('enabled'));
@@ -80,7 +80,7 @@ class CronScheduleControllerTest extends TestCase
         DB::table('cron_schedule')->where('slug', 'test-task')->update(['enabled' => 0]);
 
         $this->actingAsAdmin()
-            ->post('/v2/cron-manager/toggle/test-task')
+            ->post('/cron-manager/toggle/test-task')
             ->assertRedirect();
 
         $this->assertSame(1, (int) DB::table('cron_schedule')->where('slug', 'test-task')->value('enabled'));
@@ -89,7 +89,7 @@ class CronScheduleControllerTest extends TestCase
     public function test_edit_updates_cron_expression(): void
     {
         $this->actingAsAdmin()
-            ->post('/v2/cron-manager/edit/test-task', [
+            ->post('/cron-manager/edit/test-task', [
                 'cron_expression'     => '0 * * * *',
                 'enabled'             => '1',
                 'run_in_background'   => '1',
@@ -103,7 +103,7 @@ class CronScheduleControllerTest extends TestCase
     public function test_edit_rejects_invalid_cron_expression(): void
     {
         $this->actingAsAdmin()
-            ->post('/v2/cron-manager/edit/test-task', [
+            ->post('/cron-manager/edit/test-task', [
                 'cron_expression' => 'not-valid',
                 'enabled'         => '1',
             ])
@@ -113,7 +113,7 @@ class CronScheduleControllerTest extends TestCase
     public function test_toggle_unknown_slug_redirects_with_error(): void
     {
         $this->actingAsAdmin()
-            ->post('/v2/cron-manager/toggle/does-not-exist')
+            ->post('/cron-manager/toggle/does-not-exist')
             ->assertRedirect();
     }
 
