@@ -722,7 +722,7 @@ SQL;
         $timestamp = now();
         $columns = $this->billingFacturacionRealColumns();
         $exists = DB::table('billing_facturacion_real')
-            ->where('dedupe_key', $dedupeKey)
+            ->where('form_id', $formId)
             ->exists();
 
         if ($exists) {
@@ -735,7 +735,7 @@ SQL;
             }
 
             DB::table('billing_facturacion_real')
-                ->where('dedupe_key', $dedupeKey)
+                ->where('form_id', $formId)
                 ->update($updatePayload);
 
             return;

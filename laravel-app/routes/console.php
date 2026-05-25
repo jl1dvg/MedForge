@@ -2474,3 +2474,47 @@ Schedule::command('whatsapp:appointment-reminders 2h --limit=200')
 
         return (bool) config('whatsapp.migration.reminders.enabled', false);
     });
+
+// ── Crons migrados desde crontab ────────────────────────────────────────────
+
+// Índice NAS — cada 2h entre 7:00 y 19:00 (corto: últimos 2 días).
+Schedule::command('imagenes:nas-index --days=2')
+    ->cron('0 7-19/2 * * *')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Índice NAS — fullscan de 30 días a las 2:30 (reindex nocturno).
+Schedule::command('imagenes:nas-index --days=30 --force')
+    ->dailyAt('02:30')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Sincronización de admisiones — ventana corta, cada 15 min.
+Schedule::command('index-admisiones:sync --lookback=1 --lookahead=0 --extractor=scraper')
+    ->everyFifteenMinutes()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Sincronización de admisiones — ventana amplia, 4 veces al día.
+Schedule::command('index-admisiones:sync --lookback=14 --lookahead=14 --extractor=scraper')
+    ->cron('0 0,6,12,18 * * *')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Facturación real — cada 4 horas para el mes actual.
+Schedule::command('billing:facturacion-real-sync --extractor=scraper')
+    ->everyFourHours()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Conciliación de recetas farmacia — ventana corta, cada 15 min.
+Schedule::command('farmacia:conciliar-recetas --lookback=14 --lookahead=0')
+    ->everyFifteenMinutes()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Conciliación de recetas farmacia — ventana amplia, noche.
+Schedule::command('farmacia:conciliar-recetas --lookback=45 --lookahead=0')
+    ->dailyAt('02:30')
+    ->withoutOverlapping()
+    ->runInBackground();

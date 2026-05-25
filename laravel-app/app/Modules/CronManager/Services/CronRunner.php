@@ -525,9 +525,15 @@ class CronRunner
         $pusher = new \Modules\Notifications\Services\PusherConfigService($this->pdo);
         $pusherConfig = $pusher->getConfig();
 
-        $mailerClass = \App\Modules\Mail\Services\NotificationMailer::class;
-        $mailer = new $mailerClass($this->pdo);
-        $mailerConfigured = $mailer->isConfigured();
+        $mailer = null;
+        $mailerConfigured = false;
+        try {
+            $mailerClass = \App\Modules\Mail\Services\NotificationMailer::class;
+            $mailer = new $mailerClass($this->pdo);
+            $mailerConfigured = $mailer->isConfigured();
+        } catch (\Throwable $e) {
+            // NotificationMailer no disponible en contexto legacy
+        }
         $notificationChannels = $pusher->getNotificationChannels();
 
         $deleteStmt = $this->pdo->prepare('DELETE FROM crm_task_reminders WHERE id = :id');
@@ -694,7 +700,6 @@ class CronRunner
                   SELECT 1
                   FROM crm_task_evidence e
                   WHERE e.task_id = t.id
-                    AND e.company_id = t.company_id
                     AND e.evidence_type = 'supervisor_escalation'
               )
             ORDER BY COALESCE(t.due_at, CONCAT(t.due_date, ' 23:59:59'), t.remind_at) ASC
@@ -727,9 +732,15 @@ class CronRunner
         $pusherConfig = $pusher->getConfig();
         $notificationChannels = $pusher->getNotificationChannels();
 
-        $mailerClass = \App\Modules\Mail\Services\NotificationMailer::class;
-        $mailer = new $mailerClass($this->pdo);
-        $mailerConfigured = $mailer->isConfigured();
+        $mailer = null;
+        $mailerConfigured = false;
+        try {
+            $mailerClass = \App\Modules\Mail\Services\NotificationMailer::class;
+            $mailer = new $mailerClass($this->pdo);
+            $mailerConfigured = $mailer->isConfigured();
+        } catch (\Throwable $e) {
+            // NotificationMailer no disponible en contexto legacy
+        }
 
         $escalated = 0;
         $sentInApp = 0;
