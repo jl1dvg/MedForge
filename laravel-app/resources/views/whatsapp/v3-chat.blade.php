@@ -20,6 +20,10 @@
     $currentUser = is_array($currentUser ?? null) ? $currentUser : ['id' => null, 'display_name' => 'Usuario'];
     $selectedFilter = (string) ($selectedFilter ?? 'all');
     $search = (string) ($search ?? '');
+    $dateFrom = (string) ($dateFrom ?? '');
+    $dateTo = (string) ($dateTo ?? '');
+    $selectedAgentId = isset($selectedAgentId) && $selectedAgentId !== null ? (int) $selectedAgentId : null;
+    $selectedRoleId = isset($selectedRoleId) && $selectedRoleId !== null ? (int) $selectedRoleId : null;
     $listData = is_array($listData ?? null) ? $listData : [];
     $tabCounts = is_array($tabCounts ?? null) ? $tabCounts : [];
     $agents = is_array($agents ?? null) ? $agents : [];
@@ -61,13 +65,43 @@
         'closed' => ['label' => 'Cerrados', 'icon' => 'mdi-archive-check-outline'],
     ];
 
+    $advancedFilters = [
+        'critical_backlog' => ['label' => 'Backlog >24h', 'icon' => 'mdi-alert-octagon-outline', 'hint' => 'Casos vencidos o sin atención oportuna.'],
+        'captacion' => ['label' => 'Captación', 'icon' => 'mdi-bullseye-arrow', 'hint' => 'Pacientes nuevos o intención de agendar.'],
+        'operacion' => ['label' => 'Operación', 'icon' => 'mdi-calendar-sync-outline', 'hint' => 'Citas vigentes, cambios, resultados o seguimiento.'],
+        'informacion' => ['label' => 'Información', 'icon' => 'mdi-information-outline', 'hint' => 'Consultas generales sin proceso activo.'],
+        'unread' => ['label' => 'Sin leer', 'icon' => 'mdi-bell-outline', 'hint' => 'Mensajes entrantes pendientes de revisión.'],
+        'window_open' => ['label' => '24h abierta', 'icon' => 'mdi-timer-sand', 'hint' => 'Chats donde se puede responder libremente.'],
+        'needs_template' => ['label' => 'Requiere plantilla', 'icon' => 'mdi-file-document-edit-outline', 'hint' => 'Ventana vencida; requiere template aprobado.'],
+    ];
+
+    $emptyCopy = [
+        'requires_attention' => 'No hay conversaciones nuevas que requieran atención inmediata.',
+        'mine' => 'No tienes conversaciones activas asignadas en este rango.',
+        'in_progress' => 'No hay conversaciones en gestión para este filtro.',
+        'waiting_patient' => 'No hay conversaciones esperando respuesta del paciente.',
+        'scheduled' => 'No hay conversaciones agendadas en este rango.',
+        'closed' => 'No hay conversaciones cerradas en este rango.',
+        'critical_backlog' => 'No hay backlog crítico mayor a 24 horas.',
+        'captacion' => 'No hay conversaciones de captación en este rango.',
+        'operacion' => 'No hay conversaciones de operación en este rango.',
+        'informacion' => 'No hay conversaciones de información en este rango.',
+        'unread' => 'No hay mensajes sin leer en este rango.',
+        'window_open' => 'No hay conversaciones con ventana de 24h abierta.',
+        'needs_template' => 'No hay conversaciones que requieran plantilla.',
+    ];
+
     $previewRoute = '/v3/whatsapp/chat';
     $apiBase = '/v2/whatsapp/api';
 
-    $buildLink = static function (array $extra = []) use ($selectedFilter, $search, $previewRoute) {
+    $buildLink = static function (array $extra = []) use ($selectedFilter, $search, $dateFrom, $dateTo, $selectedAgentId, $selectedRoleId, $previewRoute) {
         $qs = array_filter(array_merge([
             'filter' => $selectedFilter,
             'search' => $search,
+            'date_from' => $dateFrom,
+            'date_to' => $dateTo,
+            'agent_id' => $selectedAgentId,
+            'role_id' => $selectedRoleId,
         ], $extra), static fn ($v) => $v !== null && $v !== '');
         return $previewRoute . '?' . http_build_query($qs);
     };
@@ -102,6 +136,7 @@
             font-family: var(--bs-body-font-family, "IBM Plex Sans", system-ui, sans-serif);
         }
         .wa3.has-drawer { grid-template-columns: 360px 1fr 340px; }
+        .wa3:not(.has-drawer) .wa3-drawer { display: none; }
 
         /* INBOX */
         .wa3-inbox { background: var(--wa3-surface); border-right: 1px solid var(--wa3-border); display: flex; flex-direction: column; overflow: hidden; }
@@ -126,6 +161,20 @@
         .wa3-chip.is-active { background: var(--wa3-text); border-color: var(--wa3-text); color: #fff; }
         .wa3-chip__count { font: 700 11px var(--bs-body-font-family); padding: 0 6px; border-radius: 999px; background: rgba(255,255,255,.18); color: inherit; min-width: 18px; text-align: center; }
         .wa3-chip:not(.is-active) .wa3-chip__count { background: var(--wa3-surface-2); color: var(--wa3-text-mute); }
+        .wa3-filter-menu { min-width: 340px; max-width: 380px; }
+        .wa3-filter-menu .wa3-field { margin-bottom: 8px; }
+        .wa3-filter-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 4px 6px 8px; }
+        .wa3-filter-grid .wa3-field { margin-bottom: 0; }
+        .wa3-filter-list { display: grid; gap: 4px; padding: 4px; }
+        .wa3-filter-link { display: grid; grid-template-columns: 24px 1fr auto; gap: 8px; align-items: center; padding: 8px; border-radius: 10px; text-decoration: none; color: var(--wa3-text); }
+        .wa3-filter-link:hover { background: var(--wa3-surface-2); color: var(--wa3-text); text-decoration: none; }
+        .wa3-filter-link.is-active { background: var(--wa3-accent-soft); color: var(--wa3-accent); }
+        .wa3-filter-link i { font-size: 17px; color: var(--wa3-text-mute); }
+        .wa3-filter-link.is-active i { color: var(--wa3-accent); }
+        .wa3-filter-link strong { display: block; font: 700 12px var(--bs-body-font-family); }
+        .wa3-filter-link small { display: block; font: 400 11px var(--bs-body-font-family); color: var(--wa3-text-mute); margin-top: 1px; }
+        .wa3-filter-link .count { font: 800 10px var(--bs-body-font-family); min-width: 18px; text-align: center; padding: 2px 6px; border-radius: 999px; background: var(--wa3-surface-2); color: var(--wa3-text-mute); }
+        .wa3-filter-link.is-active .count { background: rgba(81,86,190,.14); color: var(--wa3-accent); }
 
         .wa3-list { flex: 1; overflow-y: auto; padding: 4px 0 8px; }
         .wa3-row { display: grid; grid-template-columns: 44px 1fr auto; align-items: start; gap: 12px; padding: 12px 18px; cursor: pointer; border-left: 3px solid transparent; text-decoration: none; color: inherit; transition: background .12s; }
@@ -356,13 +405,71 @@
                             onclick="document.getElementById('wa3-new-modal')?.removeAttribute('hidden')">
                         <i class="mdi mdi-plus"></i>
                     </button>
-                    <button class="wa3-iconbtn" title="Filtros avanzados" type="button"><i class="mdi mdi-tune-variant"></i></button>
+                    <div class="wa3-hbtn-wrap" data-wa3-menu="filters">
+                        <button class="wa3-iconbtn" title="Filtros avanzados" type="button" data-wa3-menu-toggle="filters">
+                            <i class="mdi mdi-tune-variant"></i>
+                        </button>
+                        <div class="wa3-hbtn__menu wa3-filter-menu" hidden>
+                            <h6>Rango de conversaciones</h6>
+                            <form method="GET" action="{{ $previewRoute }}">
+                                <input type="hidden" name="filter" value="{{ $selectedFilter }}">
+                                <input type="hidden" name="search" value="{{ $search }}">
+                                @if($selectedAgentId !== null)
+                                    <input type="hidden" name="agent_id" value="{{ $selectedAgentId }}">
+                                @endif
+                                @if($selectedRoleId !== null)
+                                    <input type="hidden" name="role_id" value="{{ $selectedRoleId }}">
+                                @endif
+                                <div class="wa3-filter-grid">
+                                    <div class="wa3-field">
+                                        <label for="wa3-date-from">Desde</label>
+                                        <input type="date" id="wa3-date-from" name="date_from" value="{{ $dateFrom }}">
+                                    </div>
+                                    <div class="wa3-field">
+                                        <label for="wa3-date-to">Hasta</label>
+                                        <input type="date" id="wa3-date-to" name="date_to" value="{{ $dateTo }}">
+                                    </div>
+                                </div>
+                                <div class="wa3-menu-footer">
+                                    <a class="wa3-secondary-btn" href="{{ $buildLink(['date_from' => null, 'date_to' => null]) }}"
+                                       style="text-decoration:none;display:inline-flex;align-items:center;">Limpiar</a>
+                                    <button type="submit">Aplicar fechas</button>
+                                </div>
+                            </form>
+                            <h6>Bandejas avanzadas</h6>
+                            <div class="wa3-filter-list">
+                                @foreach($advancedFilters as $key => $filterMeta)
+                                    <a href="{{ $buildLink(['filter' => $key]) }}"
+                                       class="wa3-filter-link {{ $selectedFilter === $key ? 'is-active' : '' }}">
+                                        <i class="mdi {{ $filterMeta['icon'] }}"></i>
+                                        <span>
+                                            <strong>{{ $filterMeta['label'] }}</strong>
+                                            <small>{{ $filterMeta['hint'] }}</small>
+                                        </span>
+                                        <span class="count">{{ (int) ($tabCounts[$key] ?? 0) }}</span>
+                                    </a>
+                                @endforeach
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
             <form method="GET" action="{{ $previewRoute }}" class="wa3-search">
                 <i class="mdi mdi-magnify"></i>
                 <input type="search" name="search" value="{{ $search }}" placeholder="Buscar nombre, número o HC…">
                 <input type="hidden" name="filter" value="{{ $selectedFilter }}">
+                @if($dateFrom !== '')
+                    <input type="hidden" name="date_from" value="{{ $dateFrom }}">
+                @endif
+                @if($dateTo !== '')
+                    <input type="hidden" name="date_to" value="{{ $dateTo }}">
+                @endif
+                @if($selectedAgentId !== null)
+                    <input type="hidden" name="agent_id" value="{{ $selectedAgentId }}">
+                @endif
+                @if($selectedRoleId !== null)
+                    <input type="hidden" name="role_id" value="{{ $selectedRoleId }}">
+                @endif
             </form>
         </div>
 
@@ -440,7 +547,17 @@
                 </a>
             @empty
                 <div style="padding:24px;text-align:center;color:var(--wa3-text-mute);font:400 13px var(--bs-body-font-family);">
-                    No hay conversaciones para este filtro.
+                    <div style="width:44px;height:44px;margin:0 auto 10px;border-radius:14px;background:var(--wa3-surface-2);display:grid;place-items:center;color:var(--wa3-text-fade);font-size:22px;">
+                        <i class="mdi mdi-inbox-outline"></i>
+                    </div>
+                    <div style="font-weight:700;color:var(--wa3-text);margin-bottom:4px;">
+                        {{ $tabs[$selectedFilter]['label'] ?? $advancedFilters[$selectedFilter]['label'] ?? 'Filtro' }}
+                    </div>
+                    <div>{{ $emptyCopy[$selectedFilter] ?? 'No hay conversaciones para este filtro.' }}</div>
+                    @if($dateFrom !== '' || $dateTo !== '' || $search !== '')
+                        <a href="{{ $buildLink(['search' => null, 'date_from' => null, 'date_to' => null]) }}"
+                           style="display:inline-flex;margin-top:10px;color:var(--wa3-accent);font-weight:700;text-decoration:none;">Limpiar búsqueda y fechas</a>
+                    @endif
                 </div>
             @endforelse
         </div>
@@ -1082,6 +1199,8 @@
     const previewRoute = @json($previewRoute);
     const selectedFilter = @json($selectedFilter);
     const selectedSearch = @json($search);
+    const selectedDateFrom = @json($dateFrom);
+    const selectedDateTo = @json($dateTo);
     const templates = {!! $templateOptionsJson ?: '[]' !!};
     let requestInFlight = false;
 
@@ -1611,6 +1730,8 @@
     async function pollInbox() {
         try {
             const params = new URLSearchParams({ filter: selectedFilter || 'requires_attention', search: selectedSearch || '', per_page: '25' });
+            if (selectedDateFrom) params.set('date_from', selectedDateFrom);
+            if (selectedDateTo) params.set('date_to', selectedDateTo);
             const res = await fetch(`${apiBase}/conversations?${params.toString()}`, { headers: { 'Accept': 'application/json' } });
             const json = await res.json();
             const rows = Array.isArray(json?.data?.data)
