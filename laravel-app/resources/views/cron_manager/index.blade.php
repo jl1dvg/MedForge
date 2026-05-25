@@ -69,142 +69,88 @@
                             <table class="table table-striped mb-0 align-middle">
                                 <thead class="table-light">
                                     <tr>
-                                        <th>Tarea</th>
+                                        <th>Nombre</th>
+                                        <th>Tipo</th>
+                                        <th>Frecuencia</th>
+                                        <th>Último run</th>
                                         <th class="text-center">Estado</th>
-                                        <th>Última ejecución</th>
-                                        <th>Próxima ejecución</th>
-                                        <th>Duración</th>
-                                        <th class="text-center">Fallos</th>
                                         <th class="text-end">Acciones</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     @forelse ($tasks as $task)
                                         @php
-                                            $slug          = (string) ($task['slug'] ?? '');
-                                            $name          = (string) ($task['name'] ?? 'Tarea sin nombre');
-                                            $description   = (string) ($task['description'] ?? '');
-                                            $status        = $task['last_status'] ?? null;
-                                            $lastMessage   = (string) ($task['last_message'] ?? '');
-                                            $lastOutput    = $task['last_output_decoded'] ?? null;
-                                            $lastError     = (string) ($task['last_error'] ?? '');
-                                            $failureCount  = (int) ($task['failure_count'] ?? 0);
-                                            $intervalLabel = (string) ($task['interval_label'] ?? '—');
-                                            $settings      = $task['settings_decoded'] ?? null;
-
-                                            $statusStr   = strtolower((string) $status);
-                                            $badgeClass  = match ($statusStr) {
-                                                'success' => 'badge bg-success',
+                                            $statusStr  = strtolower((string) ($task->last_status ?? ''));
+                                            $badgeClass = match ($statusStr) {
+                                                'ok'      => 'badge bg-success',
                                                 'failed'  => 'badge bg-danger',
                                                 'skipped' => 'badge bg-warning text-dark',
-                                                'running' => 'badge bg-info text-dark',
                                                 default   => 'badge bg-secondary',
                                             };
-
-                                            // Format datetimes
-                                            $formatDt = function (?string $v): string {
-                                                if ($v === null || trim($v) === '') return '—';
-                                                try { return (new DateTimeImmutable($v))->format('d/m/Y H:i'); }
-                                                catch (Throwable) { return e($v); }
-                                            };
-
-                                            // Format duration
-                                            $formatDuration = function (?int $ms): string {
-                                                if ($ms === null || $ms <= 0) return '—';
-                                                if ($ms < 1000) return $ms . ' ms';
-                                                $s = $ms / 1000;
-                                                if ($s < 60) return number_format($s, 2) . ' s';
-                                                $m = floor($s / 60);
-                                                $r = $s - ($m * 60);
-                                                return $r < 1 ? $m . ' min' : sprintf('%d min %0.1f s', $m, $r);
-                                            };
                                         @endphp
-                                        <tr>
+                                        <tr class="{{ $task->enabled ? '' : 'opacity-50' }}">
                                             <td>
-                                                <div class="fw-600">{{ $name }}</div>
-                                                @if ($description !== '')
-                                                    <div class="text-muted small">{{ $description }}</div>
-                                                @endif
-                                                <div class="small text-muted mt-5">Frecuencia: {{ $intervalLabel }}</div>
-                                                @if ($lastMessage !== '')
-                                                    <div class="small mt-5">Resultado: {{ $lastMessage }}</div>
-                                                @endif
-                                                @if (!empty($lastOutput))
-                                                    @php
-                                                        $json = json_encode($lastOutput, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
-                                                    @endphp
-                                                    <div class="mt-5 small">
-                                                        <details>
-                                                            <summary>Ver detalles</summary>
-                                                            <pre class="mb-0"><code>{{ $json ?: '—' }}</code></pre>
-                                                        </details>
-                                                    </div>
-                                                @endif
-                                                @if ($lastError !== '')
-                                                    <div class="mt-5 small text-danger">
-                                                        <i class="fa-solid fa-circle-exclamation me-1"></i>
-                                                        {{ $lastError }}
-                                                    </div>
-                                                @endif
-                                                @if ($slug === 'cive-index-admisiones-sync')
-                                                    @php
-                                                        $defaultStart  = (new DateTimeImmutable('today'))->sub(new DateInterval('P1D'))->format('Y-m-d');
-                                                        $defaultEnd    = (new DateTimeImmutable('today'))->add(new DateInterval('P1D'))->format('Y-m-d');
-                                                        $currentStart  = $settings['date_start'] ?? '';
-                                                        $currentEnd    = $settings['date_end'] ?? '';
-                                                    @endphp
-                                                    <div class="mt-10 border-top pt-10 small">
-                                                        <div class="fw-600 mb-5">Rango para index-admisiones</div>
-                                                        <div class="text-muted mb-5">
-                                                            Automático: {{ $defaultStart }} &rarr; {{ $defaultEnd }}
-                                                        </div>
-                                                        <form method="post" action="/cron-manager/settings/{{ $slug }}" class="row g-2 align-items-end">
-                                                            @csrf
-                                                            <div class="col-12 col-md-5">
-                                                                <label class="form-label mb-1">Inicio</label>
-                                                                <input type="date" name="date_start" class="form-control form-control-sm" value="{{ $currentStart }}">
-                                                            </div>
-                                                            <div class="col-12 col-md-5">
-                                                                <label class="form-label mb-1">Fin</label>
-                                                                <input type="date" name="date_end" class="form-control form-control-sm" value="{{ $currentEnd }}">
-                                                            </div>
-                                                            <div class="col-12 col-md-2">
-                                                                <button type="submit" class="btn btn-outline-secondary btn-sm w-100">
-                                                                    Guardar
-                                                                </button>
-                                                            </div>
-                                                            <div class="col-12">
-                                                                <small class="text-muted">Deja en blanco para usar automático (máx. 31 días en modo manual).</small>
-                                                            </div>
-                                                        </form>
-                                                    </div>
+                                                <div class="fw-600">{{ $task->name }}</div>
+                                                @if (!empty($task->description))
+                                                    <div class="text-muted small">{{ $task->description }}</div>
                                                 @endif
                                             </td>
-                                            <td class="text-center">
-                                                <span class="{{ $badgeClass }} text-uppercase">{{ $statusStr ?: 'desconocido' }}</span>
+                                            <td>
+                                                <span class="badge {{ $task->type === 'artisan' ? 'bg-primary' : 'bg-secondary' }}">
+                                                    {{ $task->type }}
+                                                </span>
                                             </td>
-                                            <td>{{ $formatDt($task['last_run_at'] ?? null) }}</td>
-                                            <td>{{ $formatDt($task['next_run_at'] ?? null) }}</td>
-                                            <td>{{ $formatDuration(isset($task['last_duration_ms']) ? (int) $task['last_duration_ms'] : null) }}</td>
-                                            <td class="text-center">
-                                                @if ($failureCount > 0)
-                                                    <span class="badge bg-danger">{{ $failureCount }}</span>
+                                            <td><code class="small">{{ $task->cron_expression }}</code></td>
+                                            <td class="small">
+                                                @if ($task->last_run_at)
+                                                    {{ \Carbon\Carbon::parse($task->last_run_at)->diffForHumans() }}
                                                 @else
-                                                    <span class="text-muted">0</span>
+                                                    —
                                                 @endif
                                             </td>
-                                            <td class="text-end">
-                                                <form method="post" action="/cron-manager/run/{{ $slug }}">
+                                            <td class="text-center">
+                                                @if ($statusStr !== '')
+                                                    <span class="{{ $badgeClass }} text-uppercase">{{ $statusStr }}</span>
+                                                @else
+                                                    <span class="text-muted">—</span>
+                                                @endif
+                                            </td>
+                                            <td class="text-end text-nowrap">
+                                                {{-- Editar --}}
+                                                <button type="button"
+                                                        class="btn btn-sm btn-outline-secondary"
+                                                        data-bs-toggle="modal"
+                                                        data-bs-target="#editCronModal"
+                                                        data-slug="{{ $task->slug }}"
+                                                        data-name="{{ $task->name }}"
+                                                        data-cron="{{ $task->cron_expression }}"
+                                                        data-enabled="{{ $task->enabled }}"
+                                                        data-bg="{{ $task->run_in_background }}"
+                                                        data-overlap="{{ $task->without_overlapping }}"
+                                                        title="Editar frecuencia">
+                                                    <i class="fa-solid fa-pen-to-square"></i>
+                                                </button>
+                                                {{-- Ejecutar ahora --}}
+                                                <form method="POST" action="/cron-manager/run/{{ $task->slug }}" style="display:inline">
                                                     @csrf
-                                                    <button type="submit" class="btn btn-outline-primary btn-sm">
-                                                        <i class="fa-solid fa-rotate me-1"></i> Ejecutar
+                                                    <button type="submit" class="btn btn-sm btn-outline-primary" title="Ejecutar ahora">
+                                                        <i class="fa-solid fa-rotate"></i>
+                                                    </button>
+                                                </form>
+                                                {{-- Toggle enabled --}}
+                                                <form method="POST" action="/cron-manager/toggle/{{ $task->slug }}" style="display:inline">
+                                                    @csrf
+                                                    <button type="submit"
+                                                            class="btn btn-sm {{ $task->enabled ? 'btn-outline-warning' : 'btn-outline-success' }}"
+                                                            title="{{ $task->enabled ? 'Pausar' : 'Activar' }}">
+                                                        <i class="fa-solid {{ $task->enabled ? 'fa-pause' : 'fa-play' }}"></i>
                                                     </button>
                                                 </form>
                                             </td>
                                         </tr>
                                     @empty
                                         <tr>
-                                            <td colspan="7" class="text-center py-4 text-muted">
+                                            <td colspan="6" class="text-center py-4 text-muted">
                                                 No hay tareas registradas todavía.
                                             </td>
                                         </tr>
@@ -308,4 +254,63 @@
             </div>
         </div>
     </section>
+
+    {{-- Modal de edición de frecuencia --}}
+    <div class="modal fade" id="editCronModal" tabindex="-1" aria-labelledby="editCronModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <form method="POST" id="editCronForm" action="">
+                @csrf
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="editCronModalLabel">Editar: <span id="editCronModalTitle"></span></h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label fw-600">Frecuencia (cron expression)</label>
+                            <input type="text" name="cron_expression" id="editCronExpression"
+                                   class="form-control font-monospace" required
+                                   placeholder="*/15 * * * *">
+                            <div class="form-text text-muted">Formato: minuto hora día-mes mes día-semana</div>
+                        </div>
+                        <div class="form-check mb-2">
+                            <input type="checkbox" name="enabled" id="editCronEnabled"
+                                   class="form-check-input" value="1">
+                            <label class="form-check-label" for="editCronEnabled">Activo</label>
+                        </div>
+                        <div class="form-check mb-2">
+                            <input type="checkbox" name="run_in_background" id="editCronBg"
+                                   class="form-check-input" value="1">
+                            <label class="form-check-label" for="editCronBg">En background</label>
+                        </div>
+                        <div class="form-check">
+                            <input type="checkbox" name="without_overlapping" id="editCronOverlap"
+                                   class="form-check-input" value="1">
+                            <label class="form-check-label" for="editCronOverlap">Sin solapamiento</label>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-primary">Guardar</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    @push('scripts')
+    <script>
+    document.getElementById('editCronModal').addEventListener('show.bs.modal', function(event) {
+        const btn = event.relatedTarget;
+        const slug = btn.dataset.slug;
+
+        document.getElementById('editCronForm').action = '/cron-manager/edit/' + slug;
+        document.getElementById('editCronModalTitle').textContent = btn.dataset.name;
+        document.getElementById('editCronExpression').value = btn.dataset.cron;
+        document.getElementById('editCronEnabled').checked = btn.dataset.enabled === '1';
+        document.getElementById('editCronBg').checked = btn.dataset.bg === '1';
+        document.getElementById('editCronOverlap').checked = btn.dataset.overlap === '1';
+    });
+    </script>
+    @endpush
 @endsection

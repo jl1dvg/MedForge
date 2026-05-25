@@ -25,9 +25,11 @@ use App\Modules\Whatsapp\Services\WhatsappAppointmentReminderService;
 use App\Models\WhatsappConversation;
 use App\Models\WhatsappConversationAttribution;
 use App\Models\WhatsappMessage;
+use App\Modules\CronManager\Repositories\CronScheduleRepository;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schedule;
 use Illuminate\Support\Facades\Schema;
 
@@ -2384,137 +2386,23 @@ Artisan::command('whatsapp:kb-import-triage
     return 0;
 })->purpose('Carga o actualiza una semilla base de Knowledge Base para triage de síntomas');
 
-Schedule::command('solicitudes:evaluar-sla')
-    ->everyThirtyMinutes()
-    ->withoutOverlapping()
-    ->runInBackground();
+// ── Scheduler DB-driven ──────────────────────────────────────────────────────
+// Las frecuencias viven en la tabla cron_schedule y son editables desde el UI.
 
-Schedule::command('derivaciones:scrape-missing --limit=200 --max-attempts=3 --cooldown-hours=6')
-    ->hourly()
-    ->withoutOverlapping();
-
-// Recordatorios quirúrgicos — cada mañana a las 8:00.
-Schedule::command('solicitudes:enviar-recordatorios')
-    ->dailyAt('08:00')
-    ->withoutOverlapping()
-    ->runInBackground();
-
-// Sincronización SigCenter — cada hora en horario hábil.
-Schedule::command('solicitudes:crm-sync --lookback=3 --lookahead=14')
-    ->hourly()
-    ->withoutOverlapping()
-    ->runInBackground();
-
-// Refresh derivaciones — dos veces al día.
-Schedule::command('solicitudes:derivaciones-refresh --solo-sin-numero')
-    ->twiceDaily(7, 14)
-    ->withoutOverlapping();
-
-// Detección de derivaciones vencidas — cada mañana a las 7:00.
-Schedule::command('solicitudes:marcar-vencidas')
-    ->dailyAt('07:00')
-    ->withoutOverlapping()
-    ->runInBackground();
-
-// Recordatorios de tareas CRM — cada 30 minutos.
-Schedule::command('solicitudes:crm-task-reminders --limit=100')
-    ->everyThirtyMinutes()
-    ->withoutOverlapping()
-    ->runInBackground();
-
-Schedule::command('whatsapp:handoff-requeue-expired')
-    ->everyFiveMinutes()
-    ->withoutOverlapping()
-    ->when(static fn (): bool => (bool) config('whatsapp.migration.handoff.requeue_schedule_enabled', false));
-
-Schedule::command('whatsapp:flowmaker-shadow-sync --limit=100')
-    ->everyFiveMinutes()
-    ->withoutOverlapping()
-    ->when(static fn (): bool => (bool) config('whatsapp.migration.automation.enabled', false)
-        && (bool) config('whatsapp.migration.automation.compare_with_legacy', true));
-
-Schedule::command('whatsapp:monitor-abandonment --limit=100')
-    ->everyFiveMinutes()
-    ->withoutOverlapping()
-    ->when(static fn (): bool => (bool) config('whatsapp.migration.automation.enabled', false)
-        && (bool) config('whatsapp.migration.abandonment_monitor.enabled', false));
-
-Schedule::command("whatsapp:sigcenter-availability-sync --days=7 --specialty='oftalmologo general'")
-    ->everyFifteenMinutes()
-    ->withoutOverlapping()
-    ->runInBackground()
-    ->when(static fn (): bool => (bool) config('whatsapp.migration.automation.enabled', false));
-
-Schedule::command('whatsapp:appointment-reminders 24h --limit=200')
-    ->everyFifteenMinutes()
-    ->withoutOverlapping()
-    ->runInBackground()
-    ->when(static function (): bool {
-        $settings = app(SettingsOptionResolver::class)->getOptions(['whatsapp_reminders_enabled']);
-        $value = $settings['whatsapp_reminders_enabled'] ?? null;
-
-        if ($value !== null && trim((string) $value) !== '') {
-            return in_array(strtolower(trim((string) $value)), ['1', 'true', 'yes', 'on', 'si'], true);
+(static function (): void {
+    try {
+        $repo = new CronScheduleRepository();
+        foreach ($repo->getEnabled('artisan') as $task) {
+            $cmd = Schedule::command($task->command)->cron($task->cron_expression);
+            if ($task->without_overlapping) {
+                $cmd->withoutOverlapping();
+            }
+            if ($task->run_in_background) {
+                $cmd->runInBackground();
+            }
         }
-
-        return (bool) config('whatsapp.migration.reminders.enabled', false);
-    });
-
-Schedule::command('whatsapp:appointment-reminders 2h --limit=200')
-    ->everyFifteenMinutes()
-    ->withoutOverlapping()
-    ->runInBackground()
-    ->when(static function (): bool {
-        $settings = app(SettingsOptionResolver::class)->getOptions(['whatsapp_reminders_enabled']);
-        $value = $settings['whatsapp_reminders_enabled'] ?? null;
-
-        if ($value !== null && trim((string) $value) !== '') {
-            return in_array(strtolower(trim((string) $value)), ['1', 'true', 'yes', 'on', 'si'], true);
-        }
-
-        return (bool) config('whatsapp.migration.reminders.enabled', false);
-    });
-
-// ── Crons migrados desde crontab ────────────────────────────────────────────
-
-// Índice NAS — cada 2h entre 7:00 y 19:00 (corto: últimos 2 días).
-Schedule::command('imagenes:nas-index --days=2')
-    ->cron('0 7-19/2 * * *')
-    ->withoutOverlapping()
-    ->runInBackground();
-
-// Índice NAS — fullscan de 30 días a las 2:30 (reindex nocturno).
-Schedule::command('imagenes:nas-index --days=30 --force')
-    ->dailyAt('02:30')
-    ->withoutOverlapping()
-    ->runInBackground();
-
-// Sincronización de admisiones — ventana corta, cada 15 min.
-Schedule::command('index-admisiones:sync --lookback=1 --lookahead=0 --extractor=scraper')
-    ->everyFifteenMinutes()
-    ->withoutOverlapping()
-    ->runInBackground();
-
-// Sincronización de admisiones — ventana amplia, 4 veces al día.
-Schedule::command('index-admisiones:sync --lookback=14 --lookahead=14 --extractor=scraper')
-    ->cron('0 0,6,12,18 * * *')
-    ->withoutOverlapping()
-    ->runInBackground();
-
-// Facturación real — cada 4 horas para el mes actual.
-Schedule::command('billing:facturacion-real-sync --extractor=scraper')
-    ->everyFourHours()
-    ->withoutOverlapping()
-    ->runInBackground();
-
-// Conciliación de recetas farmacia — ventana corta, cada 15 min.
-Schedule::command('farmacia:conciliar-recetas --lookback=14 --lookahead=0')
-    ->everyFifteenMinutes()
-    ->withoutOverlapping()
-    ->runInBackground();
-
-// Conciliación de recetas farmacia — ventana amplia, noche.
-Schedule::command('farmacia:conciliar-recetas --lookback=45 --lookahead=0')
-    ->dailyAt('02:30')
-    ->withoutOverlapping()
-    ->runInBackground();
+    } catch (\Throwable $e) {
+        // Si la tabla no existe aún (ej: primera migración), no crashear el scheduler.
+        Log::warning('cron_schedule: no se pudo registrar schedule desde DB', ['error' => $e->getMessage()]);
+    }
+})();
