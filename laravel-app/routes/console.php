@@ -2393,6 +2393,7 @@ Artisan::command('whatsapp:kb-import-triage
     try {
         $repo = new CronScheduleRepository();
         foreach ($repo->getEnabled('artisan') as $task) {
+            $slug = $task->slug;
             $cmd = Schedule::command($task->command)->cron($task->cron_expression);
             if ($task->without_overlapping) {
                 $cmd->withoutOverlapping();
@@ -2400,6 +2401,11 @@ Artisan::command('whatsapp:kb-import-triage
             if ($task->run_in_background) {
                 $cmd->runInBackground();
             }
+            $cmd->onSuccess(static function () use ($repo, $slug): void {
+                $repo->updateExecution($slug, 'ok');
+            })->onFailure(static function () use ($repo, $slug): void {
+                $repo->updateExecution($slug, 'failed');
+            });
         }
     } catch (\Throwable $e) {
         // Si la tabla no existe aún (ej: primera migración), no crashear el scheduler.
