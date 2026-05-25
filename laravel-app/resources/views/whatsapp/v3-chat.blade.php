@@ -75,6 +75,15 @@
         'needs_template' => ['label' => 'Requiere plantilla', 'icon' => 'mdi-file-document-edit-outline', 'hint' => 'Ventana vencida; requiere template aprobado.'],
     ];
 
+    $managerMetrics = [
+        'critical_backlog' => ['label' => 'SLA / backlog', 'value' => (int) ($tabCounts['critical_backlog'] ?? 0), 'tone' => 'danger'],
+        'requires_attention' => ['label' => 'Atención', 'value' => (int) ($tabCounts['requires_attention'] ?? 0), 'tone' => 'danger'],
+        'unread' => ['label' => 'Sin leer', 'value' => (int) ($tabCounts['unread'] ?? 0), 'tone' => 'accent'],
+        'waiting_patient' => ['label' => 'Esperando', 'value' => (int) ($tabCounts['waiting_patient'] ?? 0), 'tone' => 'warning'],
+        'needs_template' => ['label' => 'Plantilla', 'value' => (int) ($tabCounts['needs_template'] ?? 0), 'tone' => 'muted'],
+        'scheduled' => ['label' => 'Agendados', 'value' => (int) ($tabCounts['scheduled'] ?? 0), 'tone' => 'success'],
+    ];
+
     $emptyCopy = [
         'requires_attention' => 'No hay conversaciones nuevas que requieran atención inmediata.',
         'mine' => 'No tienes conversaciones activas asignadas en este rango.',
@@ -175,6 +184,17 @@
         .wa3-filter-link small { display: block; font: 400 11px var(--bs-body-font-family); color: var(--wa3-text-mute); margin-top: 1px; }
         .wa3-filter-link .count { font: 800 10px var(--bs-body-font-family); min-width: 18px; text-align: center; padding: 2px 6px; border-radius: 999px; background: var(--wa3-surface-2); color: var(--wa3-text-mute); }
         .wa3-filter-link.is-active .count { background: rgba(81,86,190,.14); color: var(--wa3-accent); }
+        .wa3-manager-btn { height: 32px; padding: 0 10px; border-radius: 999px; background: var(--wa3-surface-2); color: var(--wa3-accent); font-weight: 700; }
+        .wa3-manager-btn i { color: var(--wa3-accent); }
+        .wa3-manager-menu { min-width: 320px; }
+        .wa3-metric-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 6px 4px 8px; }
+        .wa3-metric { border: 1px solid var(--wa3-border); border-radius: 12px; padding: 9px 10px; background: #fff; }
+        .wa3-metric strong { display: block; font: 800 17px/1 var(--font-display, "Rubik", system-ui, sans-serif); color: var(--wa3-text); }
+        .wa3-metric span { display: block; margin-top: 4px; font: 600 10.5px var(--bs-body-font-family); color: var(--wa3-text-mute); text-transform: uppercase; letter-spacing: .04em; }
+        .wa3-metric[data-tone="danger"] strong { color: var(--wa3-danger); }
+        .wa3-metric[data-tone="warning"] strong { color: #8a5d0a; }
+        .wa3-metric[data-tone="success"] strong { color: var(--wa3-success); }
+        .wa3-metric[data-tone="accent"] strong { color: var(--wa3-accent); }
 
         .wa3-list { flex: 1; overflow-y: auto; padding: 4px 0 8px; }
         .wa3-row { display: grid; grid-template-columns: 44px 1fr auto; align-items: start; gap: 12px; padding: 12px 18px; cursor: pointer; border-left: 3px solid transparent; text-decoration: none; color: inherit; transition: background .12s; }
@@ -240,10 +260,14 @@
         .wa3-menu-item:hover { background: var(--wa3-surface-2); }
         .wa3-menu-item i.lead { font-size: 18px; color: var(--wa3-text-mute); width: 28px; text-align: center; }
         .wa3-menu-item .meta { font: 400 11.5px var(--bs-body-font-family); color: var(--wa3-text-mute); display: block; }
+        a.wa3-menu-item { text-decoration: none; }
+        a.wa3-menu-item:hover { color: var(--wa3-text); text-decoration: none; }
         .wa3-menu-item .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--wa3-text-fade); }
         .wa3-menu-item .dot[data-state="online"] { background: var(--wa3-success); }
         .wa3-menu-item .dot[data-state="busy"]   { background: var(--wa3-warning); }
         .wa3-menu-footer { display: flex; gap: 6px; padding: 6px 4px 2px; margin-top: 4px; border-top: 1px solid var(--wa3-border-soft); }
+        .wa3-manager-menu .wa3-menu-footer { flex-wrap: wrap; }
+        .wa3-manager-menu .wa3-secondary-btn { padding: 7px 10px; }
         .wa3-menu-footer input, .wa3-menu-footer select { flex: 1; padding: 7px 10px; border: 1px solid var(--wa3-border); border-radius: 8px; background: var(--wa3-surface-2); color: var(--wa3-text); font: 400 12.5px var(--bs-body-font-family); }
         .wa3-menu-footer button { padding: 7px 14px; border-radius: 8px; border: 0; background: var(--wa3-accent); color: #fff; font: 600 12px var(--bs-body-font-family); cursor: pointer; }
         .wa3-iconbtn--sep { width: 1px; height: 20px; background: var(--wa3-border); margin: 0 4px; }
@@ -294,6 +318,13 @@
         .wa3-composer textarea { flex: 1; resize: none; background: transparent; border: 0; font: 400 13.5px/1.5 var(--bs-body-font-family); color: var(--wa3-text); padding: 8px 4px; min-height: 24px; max-height: 140px; }
         .wa3-composer textarea:focus { outline: 0; }
         .wa3-composer__tools { display: flex; align-items: center; gap: 2px; }
+        .wa3-emoji-wrap { position: relative; }
+        .wa3-emoji-popover { position: absolute; right: 0; bottom: calc(100% + 10px); width: 248px; padding: 10px; border: 1px solid var(--wa3-border); border-radius: 14px; background: #fff; box-shadow: 0 14px 36px rgba(16,24,40,.14); z-index: 35; }
+        .wa3-emoji-popover[hidden] { display: none; }
+        .wa3-emoji-popover h6 { font: 700 10px var(--bs-body-font-family); color: var(--wa3-text-mute); text-transform: uppercase; letter-spacing: .08em; margin: 0 0 8px; }
+        .wa3-emoji-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; }
+        .wa3-emoji { width: 26px; height: 26px; border: 0; border-radius: 8px; background: transparent; cursor: pointer; font-size: 17px; line-height: 1; }
+        .wa3-emoji:hover { background: var(--wa3-surface-2); }
         .wa3-send { width: 38px; height: 38px; border-radius: 50%; border: 0; cursor: pointer; background: var(--wa3-accent); color: #fff; display: grid; place-items: center; font-size: 20px; transition: transform .12s, background .12s; }
         .wa3-send:hover:not(:disabled) { background: #3c40a0; }
         .wa3-send:disabled { background: var(--wa3-border); color: #fff; cursor: not-allowed; }
@@ -405,6 +436,34 @@
             <div class="wa3-inbox__title-row">
                 <h2 class="wa3-inbox__title">Conversaciones</h2>
                 <div style="display:flex;gap:2px;">
+                    @if($canSupervise)
+                        <div class="wa3-hbtn-wrap" data-wa3-menu="manager">
+                            <button class="wa3-hbtn wa3-manager-btn" type="button" data-wa3-menu-toggle="manager">
+                                <i class="mdi mdi-view-dashboard-outline"></i><span>Vista gerencial</span>
+                            </button>
+                            <div class="wa3-hbtn__menu wa3-manager-menu" hidden>
+                                <h6>Métricas rápidas</h6>
+                                <div class="wa3-metric-grid">
+                                    @foreach($managerMetrics as $metric)
+                                        <div class="wa3-metric" data-tone="{{ $metric['tone'] }}">
+                                            <strong>{{ $metric['value'] }}</strong>
+                                            <span>{{ $metric['label'] }}</span>
+                                        </div>
+                                    @endforeach
+                                </div>
+                                <div class="wa3-menu-footer">
+                                    <a class="wa3-secondary-btn" href="/v2/whatsapp/dashboard"
+                                       style="text-decoration:none;display:inline-flex;align-items:center;">Dashboard</a>
+                                    <a class="wa3-secondary-btn" href="{{ $buildLink(['filter' => 'critical_backlog']) }}"
+                                       style="text-decoration:none;display:inline-flex;align-items:center;">Ver backlog</a>
+                                    <a class="wa3-secondary-btn" href="{{ $buildLink(['filter' => 'unread']) }}"
+                                       style="text-decoration:none;display:inline-flex;align-items:center;">Sin leer</a>
+                                    <a class="wa3-secondary-btn" href="{{ $buildLink(['filter' => 'needs_template']) }}"
+                                       style="text-decoration:none;display:inline-flex;align-items:center;">Plantilla</a>
+                                </div>
+                            </div>
+                        </div>
+                    @endif
                     @if($canSupervise)
                         <button class="wa3-iconbtn" title="Reencolar vencidos" type="button" id="wa3-requeue-expired">
                             <i class="mdi mdi-restore-alert"></i>
@@ -611,7 +670,6 @@
                 </div>
 
                 <div class="wa3-thread__actions">
-                    <button class="wa3-iconbtn" title="Llamar" type="button"><i class="mdi mdi-phone-outline"></i></button>
                     <button class="wa3-iconbtn" title="Buscar en chat" type="button" id="wa3-chat-search-toggle"><i class="mdi mdi-magnify"></i></button>
                     <span class="wa3-iconbtn--sep"></span>
 
@@ -684,32 +742,6 @@
                         </div>
                     </div>
 
-                    {{-- Programar --}}
-                    <div class="wa3-hbtn-wrap" data-wa3-menu="schedule">
-                        <button class="wa3-hbtn" type="button" data-wa3-menu-toggle="schedule">
-                            <i class="mdi mdi-clock-outline"></i><span>Programar</span>
-                        </button>
-                        <div class="wa3-hbtn__menu" hidden>
-                            <h6>Programar envío</h6>
-                            <button class="wa3-menu-item" type="button" data-wa3-schedule="+1h">
-                                <i class="mdi mdi-clock-fast lead"></i>
-                                <span>En 1 hora<span class="meta">Hoy</span></span>
-                            </button>
-                            <button class="wa3-menu-item" type="button" data-wa3-schedule="evening">
-                                <i class="mdi mdi-weather-night lead"></i>
-                                <span>Esta tarde<span class="meta">Hoy a las 17:00</span></span>
-                            </button>
-                            <button class="wa3-menu-item" type="button" data-wa3-schedule="tomorrow">
-                                <i class="mdi mdi-weather-sunny lead"></i>
-                                <span>Mañana<span class="meta">9:00 am</span></span>
-                            </button>
-                            <div class="wa3-menu-footer">
-                                <input type="datetime-local" id="wa3-schedule-at">
-                                <button type="button" id="wa3-schedule-apply">Programar</button>
-                            </div>
-                        </div>
-                    </div>
-
                     <span class="wa3-iconbtn--sep"></span>
 
                     @if($canOperateConversation)
@@ -721,7 +753,45 @@
 
                     <button class="wa3-iconbtn is-primary" id="wa3-toggle-drawer" type="button"
                             title="Ocultar ficha"><i class="mdi mdi-account-details-outline"></i></button>
-                    <button class="wa3-iconbtn" title="Más opciones" type="button"><i class="mdi mdi-dots-vertical"></i></button>
+                    <div class="wa3-hbtn-wrap" data-wa3-menu="more">
+                        <button class="wa3-iconbtn" title="Más opciones" type="button" data-wa3-menu-toggle="more">
+                            <i class="mdi mdi-dots-vertical"></i>
+                        </button>
+                        <div class="wa3-hbtn__menu" hidden>
+                            <h6>Más opciones</h6>
+                            <button class="wa3-menu-item" type="button" data-wa3-copy="{{ $selectedConversation['wa_number'] ?? '' }}">
+                                <i class="mdi mdi-content-copy lead"></i>
+                                <span>Copiar WhatsApp<span class="meta">{{ $selectedConversation['wa_number'] ?? '' }}</span></span>
+                            </button>
+                            @if(!empty($selectedConversation['patient_hc_number']))
+                                <button class="wa3-menu-item" type="button" data-wa3-copy="{{ $selectedConversation['patient_hc_number'] }}">
+                                    <i class="mdi mdi-card-account-details-outline lead"></i>
+                                    <span>Copiar HC<span class="meta">{{ $selectedConversation['patient_hc_number'] }}</span></span>
+                                </button>
+                                <a class="wa3-menu-item"
+                                   href="/v2/pacientes/detalles?hc_number={{ urlencode((string) $selectedConversation['patient_hc_number']) }}"
+                                   target="_blank"
+                                   rel="noopener">
+                                    <i class="mdi mdi-file-eye-outline lead"></i>
+                                    <span>Abrir ficha<span class="meta">Detalle del paciente</span></span>
+                                </a>
+                            @endif
+                            <button class="wa3-menu-item" type="button" id="wa3-more-trail">
+                                <i class="mdi mdi-timeline-text-outline lead"></i>
+                                <span>Ver trazabilidad<span class="meta">Abrir panel lateral</span></span>
+                            </button>
+                            @if($canOperateConversation)
+                                <button class="wa3-menu-item" type="button" id="wa3-more-followup">
+                                    <i class="mdi mdi-archive-arrow-down-outline lead"></i>
+                                    <span>Cerrar seguimiento<span class="meta">Genera lead WhatsApp</span></span>
+                                </button>
+                            @endif
+                            <button class="wa3-menu-item" type="button" data-wa3-copy="{{ $buildLink(['conversation' => $selectedConversation['id']]) }}">
+                                <i class="mdi mdi-link-variant lead"></i>
+                                <span>Copiar link<span class="meta">Abrir esta conversación</span></span>
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </header>
 
@@ -882,7 +952,17 @@
                             <input type="file" id="wa-v2-media-file" style="display:none;" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt">
                             <div class="wa3-composer__tools">
                                 <button class="wa3-iconbtn" type="button" title="Grabar audio" id="wa3-voice-record"><i class="mdi mdi-microphone-outline"></i></button>
-                                <button class="wa3-iconbtn" type="button" title="Emoji"><i class="mdi mdi-emoticon-outline"></i></button>
+                                <div class="wa3-emoji-wrap">
+                                    <button class="wa3-iconbtn" type="button" title="Emoji" id="wa3-emoji-toggle"><i class="mdi mdi-emoticon-outline"></i></button>
+                                    <div class="wa3-emoji-popover" id="wa3-emoji-popover" hidden>
+                                        <h6>Emojis rápidos</h6>
+                                        <div class="wa3-emoji-grid">
+                                            @foreach(['👁️','👀','🙂','😊','🙏','✅','📅','🕒','📍','🏥','👨‍⚕️','👩‍⚕️','🤓','💬','📄','🔎','⚠️','😔','👍','✨','🟢','🔴','🟡','📞'] as $emoji)
+                                                <button class="wa3-emoji" type="button" data-wa3-emoji="{{ $emoji }}">{{ $emoji }}</button>
+                                            @endforeach
+                                        </div>
+                                    </div>
+                                </div>
                                 <button class="wa3-iconbtn" type="button" title="Nota interna"
                                         onclick="document.getElementById('wa3-note-body')?.focus()"><i class="mdi mdi-note-edit-outline"></i></button>
                             </div>
@@ -926,6 +1006,13 @@
                 $selName = $selectedConversation['display_name'] ?: $selectedConversation['wa_number'];
                 $selInit = mb_strtoupper(mb_substr($selName, 0, 1) . mb_substr(strpos($selName, ' ') !== false ? substr($selName, strpos($selName, ' ') + 1) : '', 0, 1));
                 $selTone = $avatarTone($selName);
+                $agendaQuery = http_build_query(array_filter([
+                    'hc_number' => $selectedConversation['patient_hc_number'] ?? null,
+                    'wa_number' => $selectedConversation['wa_number'] ?? null,
+                    'conversation_id' => $selectedConversation['id'] ?? null,
+                ], static fn ($value) => $value !== null && $value !== ''));
+                $agendaHref = '/v2/agenda' . ($agendaQuery !== '' ? '?' . $agendaQuery : '');
+                $canOpenAgenda = !empty($selectedConversation['patient_hc_number']) || !empty($selectedConversation['wa_number']);
             @endphp
             <div class="wa3-drawer__profile">
                 <div class="wa3-avatar" data-tone="{{ $selTone }}">{{ $selInit }}</div>
@@ -938,8 +1025,18 @@
                     @endif
                 </p>
                 <div class="wa3-drawer__quickactions">
-                    <button class="wa3-quickaction" type="button"><i class="mdi mdi-phone-outline"></i>Llamar</button>
-                    <button class="wa3-quickaction" type="button"><i class="mdi mdi-calendar-plus-outline"></i>Agendar</button>
+                    @if($canOpenAgenda)
+                        <a class="wa3-quickaction"
+                           href="{{ $agendaHref }}"
+                           target="_blank"
+                           rel="noopener">
+                            <i class="mdi mdi-calendar-plus-outline"></i>Agendar
+                        </a>
+                    @else
+                        <button class="wa3-quickaction" type="button" aria-disabled="true" title="No hay datos suficientes para abrir agenda">
+                            <i class="mdi mdi-calendar-plus-outline"></i>Agendar
+                        </button>
+                    @endif
                     @if(!empty($selectedConversation['patient_hc_number']))
                         <a class="wa3-quickaction"
                            href="/v2/pacientes/detalles?hc_number={{ urlencode((string) $selectedConversation['patient_hc_number']) }}"
@@ -1156,8 +1253,14 @@
 (function () {
     'use strict';
 
-    // ── Header menus (Transferir / Plantillas / Programar) ──────────────────
+    // ── Header menus (Transferir / Plantillas / Más opciones) ────────────────
     const wraps = document.querySelectorAll('[data-wa3-menu]');
+    const closeWa3Menus = () => {
+        wraps.forEach((w) => {
+            w.querySelector('.wa3-hbtn__menu')?.setAttribute('hidden', '');
+            w.querySelector('[data-wa3-menu-toggle]')?.classList.remove('is-open');
+        });
+    };
     wraps.forEach((w) => {
         const btn = w.querySelector('[data-wa3-menu-toggle]');
         const menu = w.querySelector('.wa3-hbtn__menu');
@@ -1165,20 +1268,13 @@
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
             const isOpen = !menu.hasAttribute('hidden');
-            // Close all
-            wraps.forEach((other) => {
-                other.querySelector('.wa3-hbtn__menu')?.setAttribute('hidden', '');
-                other.querySelector('[data-wa3-menu-toggle]')?.classList.remove('is-open');
-            });
+            closeWa3Menus();
             if (!isOpen) { menu.removeAttribute('hidden'); btn.classList.add('is-open'); }
         });
     });
     document.addEventListener('mousedown', (e) => {
         if (!e.target.closest('.wa3-hbtn-wrap')) {
-            wraps.forEach((w) => {
-                w.querySelector('.wa3-hbtn__menu')?.setAttribute('hidden', '');
-                w.querySelector('[data-wa3-menu-toggle]')?.classList.remove('is-open');
-            });
+            closeWa3Menus();
         }
     });
 
@@ -1304,6 +1400,35 @@
     };
     ta?.addEventListener('input', autosize);
 
+    const emojiToggle = document.getElementById('wa3-emoji-toggle');
+    const emojiPopover = document.getElementById('wa3-emoji-popover');
+    const insertAtCursor = (textarea, value) => {
+        if (!textarea || textarea.disabled) return;
+        const start = textarea.selectionStart ?? textarea.value.length;
+        const end = textarea.selectionEnd ?? textarea.value.length;
+        textarea.value = textarea.value.slice(0, start) + value + textarea.value.slice(end);
+        const next = start + value.length;
+        textarea.focus();
+        textarea.setSelectionRange(next, next);
+        autosize();
+    };
+    emojiToggle?.addEventListener('click', (event) => {
+        event.stopPropagation();
+        if (!emojiPopover) return;
+        emojiPopover.toggleAttribute('hidden');
+    });
+    document.querySelectorAll('[data-wa3-emoji]').forEach((button) => {
+        button.addEventListener('click', () => {
+            insertAtCursor(ta, button.dataset.wa3Emoji || '');
+            emojiPopover?.setAttribute('hidden', '');
+        });
+    });
+    document.addEventListener('mousedown', (event) => {
+        if (!event.target.closest('.wa3-emoji-wrap')) {
+            emojiPopover?.setAttribute('hidden', '');
+        }
+    });
+
     // Quick replies populate the composer; templates open the approved-template modal.
     document.querySelectorAll('[data-wa3-quick-body]').forEach((b) => {
         b.addEventListener('click', () => { if (ta) { ta.value = b.dataset.wa3QuickBody; autosize(); ta.focus(); } });
@@ -1333,6 +1458,42 @@
     let requestInFlight = false;
 
     const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const copyText = async (value, button = null) => {
+        const text = String(value || '');
+        if (!text) return;
+        const finalText = text.startsWith('/') ? `${window.location.origin}${text}` : text;
+        if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(finalText);
+        } else {
+            const scratch = document.createElement('textarea');
+            scratch.value = finalText;
+            scratch.setAttribute('readonly', '');
+            scratch.style.position = 'fixed';
+            scratch.style.opacity = '0';
+            document.body.appendChild(scratch);
+            scratch.select();
+            document.execCommand('copy');
+            scratch.remove();
+        }
+        if (button) {
+            const original = button.querySelector('.meta')?.textContent || '';
+            const meta = button.querySelector('.meta');
+            if (meta) {
+                meta.textContent = 'Copiado';
+                window.setTimeout(() => { meta.textContent = original; }, 1400);
+            }
+        }
+    };
+    document.querySelectorAll('[data-wa3-copy]').forEach((button) => {
+        button.addEventListener('click', async () => {
+            try {
+                await copyText(button.dataset.wa3Copy || '', button);
+                closeWa3Menus();
+            } catch (err) {
+                alert('No se pudo copiar al portapapeles.');
+            }
+        });
+    });
     const inferTypeFromFile = (file) => {
         const mime = file?.type || '';
         if (mime.startsWith('image/')) return 'image';
@@ -1658,6 +1819,17 @@
     followupOpen?.addEventListener('click', () => {
         document.getElementById('wa3-followup-modal')?.removeAttribute('hidden');
         document.getElementById('wa3-followup-reason')?.focus();
+    });
+    document.getElementById('wa3-more-followup')?.addEventListener('click', () => {
+        closeWa3Menus();
+        followupOpen?.click();
+    });
+    document.getElementById('wa3-more-trail')?.addEventListener('click', () => {
+        closeWa3Menus();
+        root?.classList.add('has-drawer');
+        drawerBtn?.classList.add('is-primary');
+        const trail = document.getElementById('wa3-trail-list');
+        trail?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     });
     document.getElementById('wa3-followup-submit')?.addEventListener('click', async () => {
         const reasonEl = document.getElementById('wa3-followup-reason');
