@@ -2677,9 +2677,16 @@ class KpiDashboardService
                 war.failed_at,
                 war.responded_at,
                 war.created_at,
-                COALESCE(wc.patient_full_name, wc.display_name, war.hc_number) AS patient_name
+                COALESCE(
+                    NULLIF(JSON_UNQUOTE(JSON_EXTRACT(war.payload, "$.patient_name")), ""),
+                    NULLIF(TRIM(CONCAT_WS(" ", NULLIF(pd.fname, ""), NULLIF(pd.mname, ""), NULLIF(pd.lname, ""), NULLIF(pd.lname2, ""))), ""),
+                    NULLIF(wc.patient_full_name, ""),
+                    NULLIF(wc.display_name, ""),
+                    war.hc_number
+                ) AS patient_name
              FROM whatsapp_appointment_reminders war
              LEFT JOIN whatsapp_conversations wc ON wc.id = war.conversation_id
+             LEFT JOIN patient_data pd ON pd.hc_number = war.hc_number
              WHERE war.created_at >= ? AND war.created_at < ?
              ORDER BY COALESCE(war.sent_at, war.created_at) DESC, war.id DESC
              LIMIT 12',

@@ -37,6 +37,18 @@
             return '—';
         }
     };
+    $formatReminderEventDate = static function ($value, string $format = 'd/m H:i') use ($reminderTimezone): string {
+        if ($value === null || $value === '') {
+            return '—';
+        }
+
+        try {
+            return \Illuminate\Support\Carbon::parse((string) $value, $reminderTimezone)
+                ->format($format);
+        } catch (\Throwable) {
+            return '—';
+        }
+    };
     $options = is_array($dashboard['options'] ?? null) ? $dashboard['options'] : ['roles' => [], 'agents' => []];
     $filters = is_array($filters ?? null) ? $filters : [];
     $exportQuery = http_build_query(array_filter([
@@ -1072,7 +1084,7 @@
                                 @forelse($reminderRecent as $row)
                                     <tr>
                                         <td>
-                                            <div>{{ $formatReminderDate($row['event_at'] ?? null) }}</div>
+                                            <div>{{ $formatReminderEventDate($row['event_at'] ?? null) }}</div>
                                             <div class="text-muted" style="font-size:12px;">{{ $row['window_label'] ?? '—' }} · #{{ $row['form_id'] ?? '—' }}</div>
                                         </td>
                                         <td>

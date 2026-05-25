@@ -124,6 +124,14 @@ class WhatsappAppointmentReminderService
                 continue;
             }
 
+            if ($this->shouldSkipByExcludedKeywords(
+                (string) ($event->procedimiento_proyectado ?? ''),
+                (string) ($event->doctor ?? '')
+            )) {
+                $skipped++;
+                continue;
+            }
+
             $sourceType = $this->classifySourceType((string) ($event->procedimiento_proyectado ?? ''));
             if ($sourceType === null) {
                 $skipped++;
@@ -290,6 +298,7 @@ class WhatsappAppointmentReminderService
             }
 
             $payload = [
+                'patient_name' => (string) ($recipient['patient_name'] ?? ''),
                 'doctor' => $doctor,
                 'sede' => $sedeDepartamento,
                 'procedimiento' => $procedimiento,
@@ -746,7 +755,7 @@ class WhatsappAppointmentReminderService
             $eventAt->format('H:i'),
             trim($doctor) !== '' ? trim($doctor) : 'Por confirmar',
             $this->sedeAddress($sede),
-            $procedimiento !== '' ? $procedimiento : 'Atención programada',
+            $this->cleanProcedure($procedimiento),
         ];
     }
 
@@ -770,6 +779,7 @@ class WhatsappAppointmentReminderService
     ): array {
         $site = $this->siteContext($sede);
         $patientName = trim((string) ($recipient['patient_name'] ?? ''));
+        $cleanProcedure = $this->cleanProcedure($procedimiento);
 
         return [
             'patient' => [
@@ -791,8 +801,9 @@ class WhatsappAppointmentReminderService
                 'time' => $eventAt->format('H:i'),
                 'datetime' => $eventAt->locale('es')->translatedFormat('d/m/Y H:i'),
                 'doctor' => trim($doctor) !== '' ? trim($doctor) : 'Por confirmar',
-                'procedure' => trim($procedimiento) !== '' ? trim($procedimiento) : 'Atención programada',
+                'procedure' => $cleanProcedure,
                 'procedure_short' => $this->shortProcedure($procedimiento),
+                'procedure_full' => trim($procedimiento) !== '' ? trim($procedimiento) : 'Atención programada',
                 'service_type' => $sourceType === 'imagenes' ? 'Imágenes' : 'Servicios oftalmológicos generales',
                 'status' => trim($estadoAgenda),
                 'source_type' => $sourceType,
@@ -826,8 +837,14 @@ class WhatsappAppointmentReminderService
         if (str_contains($normalized, 'villa')) {
             return [
                 'name' => 'Villa Club',
-                'address' => 'Parroquia satélite La Aurora de Daule, km 12 Av. León Febres-Cordero. Junto a la Piazza Villa Club.',
-                'maps_url' => 'https://maps.app.goo.gl/i1ryHLC6JUzkefHa6',
+                'address' => $this->settingString(
+                    'whatsapp_reminder_site_address_villa_club',
+                    'Parroquia satélite La Aurora de Daule, km 12 Av. León Febres-Cordero. Junto a la Piazza Villa Club.'
+                ),
+                'maps_url' => $this->settingString(
+                    'whatsapp_reminder_site_maps_villa_club',
+                    'https://maps.app.goo.gl/i1ryHLC6JUzkefHa6'
+                ),
                 'phone' => $contactCenter,
                 'contact_center' => $contactCenter,
             ];
@@ -836,8 +853,30 @@ class WhatsappAppointmentReminderService
         if (str_contains($normalized, 'ceibos')) {
             return [
                 'name' => 'Ceibos',
-                'address' => 'C.C. La Vista de San Eduardo #200, km 6.5 Av. del Bombero.',
-                'maps_url' => 'Comunícate con nuestro equipo para confirmar la ubicación.',
+                'address' => $this->settingString(
+                    'whatsapp_reminder_site_address_ceibos',
+                    'C.C. La Vista de San Eduardo #200, km 6.5 Av. del Bombero.'
+                ),
+                'maps_url' => $this->settingString(
+                    'whatsapp_reminder_site_maps_ceibos',
+                    'Comunícate con nuestro equipo para confirmar la ubicación.'
+                ),
+                'phone' => $contactCenter,
+                'contact_center' => $contactCenter,
+            ];
+        }
+
+        if (str_contains($normalized, 'matriz')) {
+            return [
+                'name' => 'Matriz',
+                'address' => $this->settingString(
+                    'whatsapp_reminder_site_address_matriz',
+                    'Comunícate con nuestro equipo para confirmar la ubicación.'
+                ),
+                'maps_url' => $this->settingString(
+                    'whatsapp_reminder_site_maps_matriz',
+                    'Comunícate con nuestro equipo para confirmar la ubicación.'
+                ),
                 'phone' => $contactCenter,
                 'contact_center' => $contactCenter,
             ];
@@ -854,15 +893,38 @@ class WhatsappAppointmentReminderService
 
     private function shortProcedure(string $procedimiento): string
     {
+        return mb_substr($this->cleanProcedure($procedimiento), 0, 120, 'UTF-8');
+    }
+
+    private function cleanProcedure(string $procedimiento): string
+    {
         $value = trim($procedimiento);
         if ($value === '') {
             return 'Atención programada';
         }
 
-        $parts = array_values(array_filter(array_map('trim', explode(' - ', $value))));
-        $short = (string) end($parts);
+        $parts = array_values(array_filter(array_map('trim', preg_split('/\s+-\s+/', $value) ?: [])));
+        while ($parts !== []) {
+            $head = (string) $parts[0];
+            $normalized = $this->normalizeText($head);
+            if (
+                in_array($normalized, ['servicios oftalmologicos generales', 'servicio oftalmologico general', 'imagenes'], true)
+                || preg_match('/^[A-Z]{2,}(?:-[A-Z0-9]+)+$/i', $head) === 1
+                || preg_match('/^\d+$/', $head) === 1
+            ) {
+                array_shift($parts);
+                continue;
+            }
 
-        return mb_substr($short !== '' ? $short : $value, 0, 120, 'UTF-8');
+            break;
+        }
+
+        $clean = trim(implode(' - ', $parts));
+        if ($clean === '') {
+            $clean = (string) end($parts);
+        }
+
+        return mb_substr($clean !== '' ? $clean : $value, 0, 180, 'UTF-8');
     }
 
     private function formatDateValue(string $value): string
@@ -888,13 +950,7 @@ class WhatsappAppointmentReminderService
 
     private function sedeAddress(string $sede): string
     {
-        $normalized = $this->normalizeText($sede);
-
-        return match (true) {
-            str_contains($normalized, 'villa') => 'Parroquia satélite La Aurora de Daule, km 12 Av. León Febres-Cordero. Junto a la Piazza Villa Club.',
-            str_contains($normalized, 'ceibos') => 'C.C. La Vista de San Eduardo #200, km 6.5 Av. del Bombero.',
-            default => 'Revisa la ubicación enviada por nuestro equipo o comunícate con un agente.',
-        };
+        return (string) ($this->siteContext($sede)['address'] ?? 'Revisa la ubicación enviada por nuestro equipo o comunícate con un agente.');
     }
 
     private function eventAt(mixed $fecha, mixed $hora): ?CarbonInterface
@@ -1093,6 +1149,33 @@ class WhatsappAppointmentReminderService
         return $this->settingList('whatsapp_reminder_imaging_keywords', $fallback);
     }
 
+    /**
+     * @return array<int,string>
+     */
+    private function excludedKeywords(): array
+    {
+        return $this->settingList('whatsapp_reminder_excluded_keywords', [
+            'optometria',
+            'optometrista',
+        ]);
+    }
+
+    private function shouldSkipByExcludedKeywords(string $procedimiento, string $doctor): bool
+    {
+        $haystack = $this->normalizeText($procedimiento . ' ' . $doctor);
+        if ($haystack === '') {
+            return false;
+        }
+
+        foreach ($this->excludedKeywords() as $keyword) {
+            if ($keyword !== '' && str_contains($haystack, $keyword)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private function agentRoleId(): int
     {
         return max(1, $this->settingInt(
@@ -1201,6 +1284,13 @@ class WhatsappAppointmentReminderService
             'whatsapp_reminder_agent_role_id',
             'whatsapp_reminder_service_keywords',
             'whatsapp_reminder_imaging_keywords',
+            'whatsapp_reminder_excluded_keywords',
+            'whatsapp_reminder_site_maps_villa_club',
+            'whatsapp_reminder_site_maps_ceibos',
+            'whatsapp_reminder_site_maps_matriz',
+            'whatsapp_reminder_site_address_villa_club',
+            'whatsapp_reminder_site_address_ceibos',
+            'whatsapp_reminder_site_address_matriz',
             'whatsapp_reminder_timezone',
             'companyname',
             'companywebsite',
