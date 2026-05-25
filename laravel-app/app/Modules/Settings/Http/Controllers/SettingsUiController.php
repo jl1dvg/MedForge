@@ -8,7 +8,6 @@ use App\Models\AppSetting;
 use App\Modules\Shared\Support\SettingsOptionResolver;
 use App\Modules\Shared\Support\LegacyCurrentUser;
 use App\Modules\Solicitudes\Services\SolicitudesSlaSettingsService;
-use App\Modules\Whatsapp\Services\ReminderTemplateVariableCatalog;
 use Helpers\SettingsHelper;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
@@ -28,7 +27,6 @@ class SettingsUiController
         $options = $this->resolveOptions($sections);
         $sections = SettingsHelper::populateSections($sections, $options);
         $slaSettings = new SolicitudesSlaSettingsService();
-        $reminderVariableCatalog = new ReminderTemplateVariableCatalog();
 
         return view('settings.v2-index', [
             'pageTitle' => 'Configuración',
@@ -39,7 +37,7 @@ class SettingsUiController
             'stageRules' => $slaSettings->stageRules(),
             'categoryLabels' => $slaSettings->categoryLabels(),
             'stageLabels' => $slaSettings->stageLabels(),
-            'whatsappTemplateMetadata' => $reminderVariableCatalog->templateMetadata(),
+            'whatsappTemplateMetadata' => [],
         ]);
     }
 
