@@ -264,29 +264,29 @@
         .wa3-tags { display: flex; flex-wrap: wrap; gap: 6px; }
         .wa3-tag { font: 500 11px var(--bs-body-font-family); padding: 3px 9px; border-radius: 999px; background: var(--wa3-accent-soft); color: var(--wa3-accent); }
 
-        .wa3-admin-btn { width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--wa3-border); background: var(--wa3-surface-2); color: var(--wa3-text); font: 600 12px var(--bs-body-font-family); cursor: pointer; }
-        .wa3-admin-btn:hover { background: var(--wa3-accent-soft); border-color: var(--wa3-accent); color: var(--wa3-accent); }
+        .wa3-admin-btn { width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--wa3-border, #ececf2); background: var(--wa3-surface-2, #f3f4f8); color: var(--wa3-text, #172b4c); font: 600 12px var(--bs-body-font-family); cursor: pointer; }
+        .wa3-admin-btn:hover { background: var(--wa3-accent-soft, #edf2ff); border-color: var(--wa3-accent, #5156be); color: var(--wa3-accent, #5156be); }
         .wa3-field { display: grid; gap: 5px; margin-bottom: 10px; }
-        .wa3-field label { font: 600 11px var(--bs-body-font-family); color: var(--wa3-text-mute); }
-        .wa3-field input, .wa3-field select, .wa3-field textarea { width: 100%; border: 1px solid var(--wa3-border); border-radius: 10px; background: #fff; color: var(--wa3-text); padding: 9px 11px; font: 400 13px var(--bs-body-font-family); }
+        .wa3-field label { font: 600 11px var(--bs-body-font-family); color: var(--wa3-text-mute, #7e8299); }
+        .wa3-field input, .wa3-field select, .wa3-field textarea { width: 100%; border: 1px solid var(--wa3-border, #ececf2); border-radius: 10px; background: #fff; color: var(--wa3-text, #172b4c); padding: 9px 11px; font: 400 13px var(--bs-body-font-family); }
         .wa3-field textarea { resize: vertical; min-height: 76px; }
-        .wa3-field input:focus, .wa3-field select:focus, .wa3-field textarea:focus { outline: 0; border-color: var(--wa3-accent); box-shadow: 0 0 0 3px rgba(81,86,190,.14); }
+        .wa3-field input:focus, .wa3-field select:focus, .wa3-field textarea:focus { outline: 0; border-color: var(--wa3-accent, #5156be); box-shadow: 0 0 0 3px rgba(81,86,190,.14); }
         .wa3-action-row { display: flex; gap: 8px; align-items: center; justify-content: flex-end; }
         .wa3-primary-btn, .wa3-secondary-btn { border-radius: 10px; padding: 9px 14px; font: 700 12px var(--bs-body-font-family); cursor: pointer; border: 1px solid transparent; }
-        .wa3-primary-btn { background: var(--wa3-accent); color: #fff; }
-        .wa3-secondary-btn { background: var(--wa3-surface-2); color: var(--wa3-text); border-color: var(--wa3-border); }
-        .wa3-feedback { font: 500 12px var(--bs-body-font-family); color: var(--wa3-text-mute); min-height: 18px; }
-        .wa3-feedback[data-tone="success"] { color: var(--wa3-success); }
-        .wa3-feedback[data-tone="danger"] { color: var(--wa3-danger); }
+        .wa3-primary-btn { background: var(--wa3-accent, #5156be); color: #fff; }
+        .wa3-secondary-btn { background: var(--wa3-surface-2, #f3f4f8); color: var(--wa3-text, #172b4c); border-color: var(--wa3-border, #ececf2); }
+        .wa3-feedback { font: 500 12px var(--bs-body-font-family); color: var(--wa3-text-mute, #7e8299); min-height: 18px; }
+        .wa3-feedback[data-tone="success"] { color: var(--wa3-success, #05825f); }
+        .wa3-feedback[data-tone="danger"] { color: var(--wa3-danger, #ee3158); }
         .wa3-picker-results { display: grid; gap: 8px; max-height: 260px; overflow: auto; margin-top: 10px; }
-        .wa3-picker-card { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; padding: 10px; border: 1px solid var(--wa3-border); border-radius: 12px; background: #fff; }
-        .wa3-picker-card.is-active { border-color: var(--wa3-accent); background: var(--wa3-accent-soft); }
-        .wa3-picker-card strong { font: 700 13px var(--bs-body-font-family); color: var(--wa3-text); }
-        .wa3-picker-card small { display: block; font: 500 11.5px var(--bs-body-font-family); color: var(--wa3-text-mute); margin-top: 2px; }
-        .wa3-template-preview { border: 1px dashed var(--wa3-border); border-radius: 12px; padding: 12px; background: var(--wa3-surface-2); font: 400 12.5px/1.45 var(--bs-body-font-family); color: var(--wa3-text); white-space: pre-wrap; }
-        .wa3-upload { display: none; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; padding: 8px 10px; border-radius: 12px; background: var(--wa3-accent-soft); color: var(--wa3-accent); font: 600 12px var(--bs-body-font-family); }
+        .wa3-picker-card { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; padding: 10px; border: 1px solid var(--wa3-border, #ececf2); border-radius: 12px; background: #fff; }
+        .wa3-picker-card.is-active { border-color: var(--wa3-accent, #5156be); background: var(--wa3-accent-soft, #edf2ff); }
+        .wa3-picker-card strong { font: 700 13px var(--bs-body-font-family); color: var(--wa3-text, #172b4c); }
+        .wa3-picker-card small { display: block; font: 500 11.5px var(--bs-body-font-family); color: var(--wa3-text-mute, #7e8299); margin-top: 2px; }
+        .wa3-template-preview { border: 1px dashed var(--wa3-border, #ececf2); border-radius: 12px; padding: 12px; background: var(--wa3-surface-2, #f3f4f8); font: 400 12.5px/1.45 var(--bs-body-font-family); color: var(--wa3-text, #172b4c); white-space: pre-wrap; }
+        .wa3-upload { display: none; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; padding: 8px 10px; border-radius: 12px; background: var(--wa3-accent-soft, #edf2ff); color: var(--wa3-accent, #5156be); font: 600 12px var(--bs-body-font-family); }
         .wa3-upload.is-visible { display: flex; }
-        .wa3-upload button { border: 0; background: transparent; color: var(--wa3-accent); cursor: pointer; font-size: 17px; }
+        .wa3-upload button { border: 0; background: transparent; color: var(--wa3-accent, #5156be); cursor: pointer; font-size: 17px; }
         .wa3-realtime { display: none; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 22px; background: #fff7e6; border-bottom: 1px solid #ffe0a6; color: #8a5d0a; font: 600 12px var(--bs-body-font-family); }
         .wa3-realtime.is-visible { display: flex; }
         .wa3-realtime button { border: 0; border-radius: 999px; padding: 5px 10px; background: #8a5d0a; color: #fff; font: 700 11px var(--bs-body-font-family); cursor: pointer; }
@@ -296,12 +296,33 @@
         .wa3-trail__item::before { content: ""; position: absolute; left: -15px; top: 4px; width: 8px; height: 8px; border-radius: 50%; background: var(--wa3-accent); border: 2px solid #fff; }
         .wa3-trail__meta { color: var(--wa3-text-mute); font-size: 11px; margin-top: 2px; }
         .wa3-trail-scroll { max-height: 260px; overflow-y: auto; padding-right: 4px; }
-        .wa3-modal { position: fixed; inset: 0; z-index: 2147483000; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(16,24,40,.58); isolation: isolate; backdrop-filter: blur(2px); }
+        .wa3-modal {
+            --wa3-accent: #5156be;
+            --wa3-accent-soft: #edf2ff;
+            --wa3-bg: #f7f8fb;
+            --wa3-surface: #ffffff;
+            --wa3-surface-2: #f3f4f8;
+            --wa3-border: #ececf2;
+            --wa3-text: #172b4c;
+            --wa3-text-mute: #7e8299;
+            --wa3-success: #05825f;
+            --wa3-danger: #ee3158;
+            position: fixed;
+            inset: 0;
+            z-index: 2147483000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            background: rgba(16,24,40,.62);
+            isolation: isolate;
+            backdrop-filter: blur(2px);
+        }
         .wa3-modal[hidden] { display: none; }
-        .wa3-modal__card { position: relative; z-index: 1; width: min(920px, 100%); max-height: calc(100vh - 48px); overflow: auto; border-radius: 20px; background: var(--wa3-surface); box-shadow: 0 24px 70px rgba(16,24,40,.28); }
-        .wa3-modal__head, .wa3-modal__foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--wa3-border); }
-        .wa3-modal__foot { border-top: 1px solid var(--wa3-border); border-bottom: 0; }
-        .wa3-modal__head h3 { font: 700 16px var(--font-display, "Rubik", system-ui, sans-serif); margin: 0; }
+        .wa3-modal__card { position: relative; z-index: 1; width: min(920px, 100%); max-height: calc(100vh - 48px); overflow: auto; border-radius: 20px; background: #fff; color: #172b4c; box-shadow: 0 24px 70px rgba(16,24,40,.28); opacity: 1; }
+        .wa3-modal__head, .wa3-modal__foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 18px; border-bottom: 1px solid #ececf2; background: #fff; }
+        .wa3-modal__foot { border-top: 1px solid #ececf2; border-bottom: 0; }
+        .wa3-modal__head h3 { font: 700 16px var(--font-display, "Rubik", system-ui, sans-serif); margin: 0; color: #172b4c; }
         .wa3-modal__body { padding: 18px; }
         .wa3-modal__grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(280px, .65fr); gap: 16px; }
         @media (max-width: 820px) { .wa3-modal__grid { grid-template-columns: 1fr; } }
@@ -902,7 +923,7 @@
         <div class="wa3-modal__head">
             <div>
                 <h3>Nueva conversación con plantilla</h3>
-                <div style="font:400 12px var(--bs-body-font-family);color:var(--wa3-text-mute);margin-top:3px;">Usa una plantilla aprobada para iniciar o continuar fuera de ventana.</div>
+                <div style="font:400 12px var(--bs-body-font-family);color:#7e8299;margin-top:3px;">Usa una plantilla aprobada para iniciar o continuar fuera de ventana.</div>
             </div>
             <button class="wa3-iconbtn" type="button" data-wa3-modal-close="wa3-new-modal"><i class="mdi mdi-close"></i></button>
         </div>
@@ -954,7 +975,7 @@
             <div class="wa3-feedback" id="wa3-start-feedback" style="margin-top:12px;">Selecciona un contacto o escribe el número manualmente para iniciar con plantilla.</div>
         </div>
         <div class="wa3-modal__foot">
-            <div style="font:400 12px var(--bs-body-font-family);color:var(--wa3-text-mute);">Esto crea o reutiliza la conversación y la deja abierta en tu inbox.</div>
+            <div style="font:400 12px var(--bs-body-font-family);color:#7e8299;">Esto crea o reutiliza la conversación y la deja abierta en tu inbox.</div>
             <button class="wa3-primary-btn" type="button" id="wa3-start-submit">Iniciar con plantilla</button>
         </div>
     </div>
@@ -965,7 +986,7 @@
         <div class="wa3-modal__head">
             <div>
                 <h3>Cerrar seguimiento</h3>
-                <div style="font:400 12px var(--bs-body-font-family);color:var(--wa3-text-mute);margin-top:3px;">Esto no elimina al paciente ni el historial. Cerrará la conversación activa y generará un lead de seguimiento.</div>
+                <div style="font:400 12px var(--bs-body-font-family);color:#7e8299;margin-top:3px;">Esto no elimina al paciente ni el historial. Cerrará la conversación activa y generará un lead de seguimiento.</div>
             </div>
             <button class="wa3-iconbtn" type="button" data-wa3-modal-close="wa3-followup-modal"><i class="mdi mdi-close"></i></button>
         </div>
