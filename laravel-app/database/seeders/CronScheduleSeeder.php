@@ -7,8 +7,19 @@ use Illuminate\Support\Facades\DB;
 
 class CronScheduleSeeder extends Seeder
 {
+    /** @var string[] */
+    private const OBSOLETE_SLUGS = [
+        'cive-index-admisiones-sync',      // SSH ya no disponible
+        'crm-task-reminders-legacy',       // cubierto por artisan solicitudes:crm-task-reminders
+        'whatsapp-handoff-requeue',        // cubierto por artisan whatsapp:handoff-requeue-expired
+        'solicitudes-crm-sync-legacy',     // cubierto por artisan solicitudes:crm-sync
+        'reporting-async-queue',           // deprecado desde 2026-03-06
+    ];
+
     public function run(): void
     {
+        DB::table('cron_schedule')->whereIn('slug', self::OBSOLETE_SLUGS)->delete();
+
         $artisan = [
             ['slug' => 'evaluar-sla', 'name' => 'Evaluar SLA solicitudes', 'command' => 'solicitudes:evaluar-sla', 'cron_expression' => '*/30 * * * *', 'run_in_background' => 1, 'without_overlapping' => 1, 'description' => 'Evalúa y marca solicitudes fuera de SLA.'],
             ['slug' => 'derivaciones-scrape-missing', 'name' => 'Scraping derivaciones faltantes', 'command' => 'derivaciones:scrape-missing --limit=200 --max-attempts=3 --cooldown-hours=6', 'cron_expression' => '0 * * * *', 'run_in_background' => 0, 'without_overlapping' => 1, 'description' => 'Scraping de derivaciones sin código en billing_main.'],
@@ -33,12 +44,9 @@ class CronScheduleSeeder extends Seeder
         ];
 
         $legacy = [
-            ['slug' => 'cive-index-admisiones-sync', 'name' => 'Scraping index-admisiones (legacy)', 'command' => 'cive-index-admisiones-sync', 'cron_expression' => '0 2 * * *', 'run_in_background' => 0, 'without_overlapping' => 1, 'description' => 'Sincroniza pacientes desde CIVE (legacy).', 'enabled' => 0],
             ['slug' => 'solicitudes-overdue', 'name' => 'Actualizar solicitudes atrasadas', 'command' => 'solicitudes-overdue', 'cron_expression' => '*/5 * * * *', 'run_in_background' => 0, 'without_overlapping' => 1, 'description' => 'Marca solicitudes vencidas (legacy).'],
             ['slug' => 'solicitudes-reminders', 'name' => 'Recordatorios de cirugías (legacy)', 'command' => 'solicitudes-reminders', 'cron_expression' => '*/10 * * * *', 'run_in_background' => 0, 'without_overlapping' => 1, 'description' => 'Notificaciones para cirugías próximas (legacy).'],
-            ['slug' => 'crm-task-reminders-legacy', 'name' => 'Recordatorios CRM (legacy)', 'command' => 'crm-task-reminders', 'cron_expression' => '* * * * *', 'run_in_background' => 0, 'without_overlapping' => 1, 'description' => 'Dispara avisos CRM (legacy — cubierto por artisan).', 'enabled' => 0],
             ['slug' => 'crm-task-supervisor-escalations', 'name' => 'Escalamientos CRM', 'command' => 'crm-task-supervisor-escalations', 'cron_expression' => '*/5 * * * *', 'run_in_background' => 0, 'without_overlapping' => 1, 'description' => 'Notifica supervisores cuando una tarea CRM vence.'],
-            ['slug' => 'whatsapp-handoff-requeue', 'name' => 'Reencolar handoffs (legacy)', 'command' => 'whatsapp-handoff-requeue', 'cron_expression' => '*/5 * * * *', 'run_in_background' => 0, 'without_overlapping' => 1, 'description' => 'Reencola conversaciones (legacy — cubierto por artisan).', 'enabled' => 0],
             ['slug' => 'billing-autocreation', 'name' => 'Prefacturación automática', 'command' => 'billing-autocreation', 'cron_expression' => '*/15 * * * *', 'run_in_background' => 0, 'without_overlapping' => 1, 'description' => 'Crea registros en billing_main para solicitudes listas.'],
             ['slug' => 'stats-refresh', 'name' => 'Estadísticas diarias', 'command' => 'stats-refresh', 'cron_expression' => '0 * * * *', 'run_in_background' => 0, 'without_overlapping' => 1, 'description' => 'Recalcula métricas operativas.'],
             ['slug' => 'kpi-refresh', 'name' => 'Snapshots de KPIs', 'command' => 'kpi-refresh', 'cron_expression' => '0 * * * *', 'run_in_background' => 0, 'without_overlapping' => 1, 'description' => 'Recalcula KPIs para dashboards.'],
@@ -48,9 +56,7 @@ class CronScheduleSeeder extends Seeder
             ['slug' => 'iess-derivaciones-sync', 'name' => 'Derivaciones IESS sync', 'command' => 'iess-derivaciones-sync', 'cron_expression' => '*/15 * * * *', 'run_in_background' => 0, 'without_overlapping' => 1, 'description' => 'Sincroniza derivaciones IESS.'],
             ['slug' => 'iess-derivaciones-scrape-missing', 'name' => 'Scraping derivaciones IESS', 'command' => 'iess-derivaciones-scrape-missing', 'cron_expression' => '*/15 * * * *', 'run_in_background' => 0, 'without_overlapping' => 1, 'description' => 'Scraping de derivaciones IESS faltantes.'],
             ['slug' => 'iess-billing-sync', 'name' => 'Facturas IESS sync', 'command' => 'iess-billing-sync', 'cron_expression' => '*/15 * * * *', 'run_in_background' => 0, 'without_overlapping' => 1, 'description' => 'Sincroniza facturación IESS.'],
-            ['slug' => 'solicitudes-crm-sync-legacy', 'name' => 'CRM solicitudes sync (legacy)', 'command' => 'solicitudes-crm-sync', 'cron_expression' => '*/30 * * * *', 'run_in_background' => 0, 'without_overlapping' => 1, 'description' => 'Reintenta vincular solicitudes sin lead CRM (legacy).', 'enabled' => 0],
             ['slug' => 'solicitudes-derivaciones-refresh', 'name' => 'Derivaciones en solicitudes', 'command' => 'solicitudes-derivaciones-refresh', 'cron_expression' => '*/15 * * * *', 'run_in_background' => 0, 'without_overlapping' => 1, 'description' => 'Actualiza derivaciones para solicitudes estatales.'],
-            ['slug' => 'reporting-async-queue', 'name' => 'Reportes PDF async (DEPRECATED)', 'command' => 'reporting-async-queue', 'cron_expression' => '* * * * *', 'run_in_background' => 0, 'without_overlapping' => 1, 'description' => 'Deprecado desde 2026-03-06 — reportes en /v2/reports.', 'enabled' => 0],
         ];
 
         $rows = [];
