@@ -2,6 +2,7 @@
 
 namespace Helpers;
 
+use App\Modules\Whatsapp\Services\ReminderTemplateVariableCatalog;
 use DateTimeZone;
 
 class SettingsHelper
@@ -1153,6 +1154,18 @@ class SettingsHelper
                                 false,
                                 'Si no tienes una plantilla separada, puedes reutilizar temporalmente la misma de consulta.'
                             ),
+                            self::templateVariableMapperField(
+                                ReminderTemplateVariableCatalog::SERVICE_MAPPING_KEY,
+                                'Variables para servicios oftalmológicos generales',
+                                'whatsapp_reminder_service_template_code',
+                                'Elige qué dato llena cada variable de la plantilla de servicios.'
+                            ),
+                            self::templateVariableMapperField(
+                                ReminderTemplateVariableCatalog::IMAGING_MAPPING_KEY,
+                                'Variables para imágenes',
+                                'whatsapp_reminder_imaging_template_code',
+                                'Elige qué dato llena cada variable de la plantilla de imágenes.'
+                            ),
                             self::checkboxField(
                                 'whatsapp_reminder_window_24h_enabled',
                                 'Enviar recordatorio 24 horas antes',
@@ -2117,6 +2130,20 @@ class SettingsHelper
             'label' => $label,
             'options' => $options,
             'default' => $default,
+        ];
+    }
+
+    private static function templateVariableMapperField(string $key, string $label, string $templateKey, ?string $help = null): array
+    {
+        return [
+            'type' => 'template_variable_mapper',
+            'key' => $key,
+            'label' => $label,
+            'template_key' => $templateKey,
+            'help' => $help,
+            'options' => ReminderTemplateVariableCatalog::optionGroups(),
+            'recommended_mappings' => ReminderTemplateVariableCatalog::recommendedMappings(),
+            'sample_values' => ReminderTemplateVariableCatalog::sampleValues(),
         ];
     }
 

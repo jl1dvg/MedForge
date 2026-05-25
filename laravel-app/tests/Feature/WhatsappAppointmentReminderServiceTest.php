@@ -221,6 +221,34 @@ class WhatsappAppointmentReminderServiceTest extends TestCase
             'updated_at' => now(),
         ]);
 
+        \DB::table('whatsapp_message_templates')->insert([
+            'id' => 2,
+            'template_code' => 'recordatorio_cita_pni_imagen_villaclub',
+            'display_name' => 'Recordatorio PNI imagen Villa Club',
+            'language' => 'es_EC',
+            'category' => 'utility',
+            'status' => 'approved',
+            'current_revision_id' => 12,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        \DB::table('whatsapp_template_revisions')->insert([
+            'id' => 12,
+            'template_id' => 2,
+            'version' => 1,
+            'status' => 'approved',
+            'header_type' => 'text',
+            'header_text' => 'Confirmación',
+            'body_text' => 'Hola {{1}}. Fecha {{2}} Hora {{3}} Médico {{4}} Procedimiento {{5}} Sede {{6}} Ubicación {{7}}.',
+            'buttons' => json_encode([
+                ['type' => 'quick_reply', 'text' => 'Confirmar'],
+                ['type' => 'quick_reply', 'text' => 'Agente'],
+            ]),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
         config()->set('whatsapp.transport.dry_run', true);
         config()->set('whatsapp.migration.automation.dry_run', false);
         config()->set('whatsapp.migration.reminders.enabled', true);
@@ -435,6 +463,66 @@ class WhatsappAppointmentReminderServiceTest extends TestCase
         $this->assertSame('Exámenes de imágenes programados', $payload['procedimiento'] ?? null);
         $this->assertSame(3, $payload['group_count'] ?? null);
         $this->assertSame('09:10', Carbon::parse((string) $reminder->event_at, 'America/Guayaquil')->format('H:i'));
+    }
+
+    public function test_it_uses_no_code_template_variable_mapping_for_reminders(): void
+    {
+        $eventAt = Carbon::now('America/Guayaquil')->addMinutes(1440);
+
+        $mapping = json_encode([
+            1 => 'patient.name',
+            2 => 'appointment.date',
+            3 => 'appointment.time',
+            4 => 'appointment.doctor',
+            5 => 'appointment.procedure_short',
+            6 => 'site.name',
+            7 => 'site.maps_url',
+        ]);
+
+        \DB::table('patient_data')->insert([
+            'hc_number' => 'HC-MAP',
+            'fname' => 'Ana',
+            'lname' => 'Cedeño',
+            'celular' => '0999000777',
+            'email' => 'ana@example.test',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        \DB::table('procedimiento_proyectado')->insert([
+            'form_id' => 9001,
+            'procedimiento_proyectado' => 'SERVICIOS OFTALMOLOGICOS GENERALES - SER-OFT-010 - CONSULTA POSTERIOR PROCEDIMIENTO QUIRURGICO',
+            'doctor' => 'Pamela Guillen',
+            'hc_number' => 'HC-MAP',
+            'sede_departamento' => 'Villa Club',
+            'estado_agenda' => 'AGENDADO',
+            'fecha' => $eventAt->toDateString(),
+            'hora' => $eventAt->format('H:i:s'),
+            'sigcenter_present' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $service = new WhatsappAppointmentReminderService(settingsOverride: [
+            'whatsapp_reminder_service_template_code' => 'recordatorio_cita_pni_imagen_villaclub',
+            'whatsapp_reminder_service_template_variable_map' => (string) $mapping,
+        ]);
+        $result = $service->dispatchWindow('24h', false, 50);
+
+        $this->assertSame(1, $result['sent']);
+
+        $reminder = \App\Models\WhatsappAppointmentReminder::query()->where('form_id', 9001)->firstOrFail();
+        $payload = is_array($reminder->payload) ? $reminder->payload : [];
+
+        $this->assertSame([
+            'Ana Cedeño',
+            $eventAt->format('d/m/Y'),
+            $eventAt->format('H:i'),
+            'Pamela Guillen',
+            'CONSULTA POSTERIOR PROCEDIMIENTO QUIRURGICO',
+            'Villa Club',
+            'https://maps.app.goo.gl/i1ryHLC6JUzkefHa6',
+        ], $payload['template_variables'] ?? []);
     }
 
     public function test_it_routes_reminder_to_agent_when_patient_requests_agent(): void
