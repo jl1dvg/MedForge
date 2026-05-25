@@ -31,7 +31,10 @@
     $conversationNotes = is_array($conversationNotes ?? null) ? $conversationNotes : [];
     $quickReplies = is_array($quickReplies ?? null) ? $quickReplies : [];
     $templateOptions = is_array($templateOptions ?? null) ? $templateOptions : [];
-    $templateOptionsJson = json_encode($templateOptions, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    $approvedTemplateOptions = array_values(array_filter($templateOptions, static function (array $template): bool {
+        return strtolower((string) ($template['status'] ?? '')) === 'approved';
+    }));
+    $templateOptionsJson = json_encode($approvedTemplateOptions, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
     $formatWaBody = static function (string $text): string {
         $safe = htmlspecialchars($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
@@ -292,9 +295,10 @@
         .wa3-trail__item { position: relative; font: 400 12px var(--bs-body-font-family); color: var(--wa3-text); }
         .wa3-trail__item::before { content: ""; position: absolute; left: -15px; top: 4px; width: 8px; height: 8px; border-radius: 50%; background: var(--wa3-accent); border: 2px solid #fff; }
         .wa3-trail__meta { color: var(--wa3-text-mute); font-size: 11px; margin-top: 2px; }
-        .wa3-modal { position: fixed; inset: 0; z-index: 2050; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(16,24,40,.48); }
+        .wa3-trail-scroll { max-height: 260px; overflow-y: auto; padding-right: 4px; }
+        .wa3-modal { position: fixed; inset: 0; z-index: 2147483000; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(16,24,40,.58); isolation: isolate; backdrop-filter: blur(2px); }
         .wa3-modal[hidden] { display: none; }
-        .wa3-modal__card { width: min(920px, 100%); max-height: calc(100vh - 48px); overflow: auto; border-radius: 20px; background: var(--wa3-surface); box-shadow: 0 24px 70px rgba(16,24,40,.28); }
+        .wa3-modal__card { position: relative; z-index: 1; width: min(920px, 100%); max-height: calc(100vh - 48px); overflow: auto; border-radius: 20px; background: var(--wa3-surface); box-shadow: 0 24px 70px rgba(16,24,40,.28); }
         .wa3-modal__head, .wa3-modal__foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--wa3-border); }
         .wa3-modal__foot { border-top: 1px solid var(--wa3-border); border-bottom: 0; }
         .wa3-modal__head h3 { font: 700 16px var(--font-display, "Rubik", system-ui, sans-serif); margin: 0; }
@@ -322,13 +326,6 @@
             <div class="wa3-inbox__title-row">
                 <h2 class="wa3-inbox__title">Conversaciones</h2>
                 <div style="display:flex;gap:2px;">
-                    <select id="wa3-presence" title="Presencia"
-                            style="height:32px;border:1px solid var(--wa3-border);border-radius:999px;background:var(--wa3-surface-2);color:var(--wa3-text);font:600 11px var(--bs-body-font-family);padding:0 9px;">
-                        <option value="available" {{ $presenceStatus === 'available' ? 'selected' : '' }}>Disponible</option>
-                        <option value="busy" {{ $presenceStatus === 'busy' ? 'selected' : '' }}>Ocupado</option>
-                        <option value="away" {{ $presenceStatus === 'away' ? 'selected' : '' }}>Ausente</option>
-                        <option value="offline" {{ $presenceStatus === 'offline' ? 'selected' : '' }}>Offline</option>
-                    </select>
                     @if($canSupervise)
                         <button class="wa3-iconbtn" title="Reencolar vencidos" type="button" id="wa3-requeue-expired">
                             <i class="mdi mdi-restore-alert"></i>
@@ -523,9 +520,14 @@
                         </button>
                         <div class="wa3-hbtn__menu" hidden>
                             <h6>Plantillas aprobadas</h6>
-                            @forelse($templateOptions as $tpl)
+                            @forelse($approvedTemplateOptions as $tpl)
                                 <button class="wa3-menu-item" type="button"
-                                        data-wa3-template-body="{{ $tpl['preview'] ?? ($tpl['name'] ?? '') }}">
+                                        data-wa3-template-id="{{ $tpl['id'] ?? '' }}"
+                                        data-wa3-template-start="1"
+                                        data-wa-number="{{ $selectedConversation['wa_number'] ?? '' }}"
+                                        data-contact-name="{{ $selectedConversation['display_name'] ?? '' }}"
+                                        data-patient-name="{{ $selectedConversation['patient_full_name'] ?? '' }}"
+                                        data-hc-number="{{ $selectedConversation['patient_hc_number'] ?? '' }}">
                                     <i class="mdi mdi-clipboard-text-outline lead"></i>
                                     <span>{{ $tpl['name'] ?? 'Plantilla' }}<span class="meta">{{ strtoupper($tpl['category'] ?? 'UTILITY') }} · {{ strtoupper($tpl['language'] ?? 'ES') }}</span></span>
                                 </button>
@@ -837,6 +839,13 @@
             @endif
 
             <div class="wa3-drawer__section">
+                <h6>Trazabilidad</h6>
+                <div id="wa3-trail-list" class="wa3-trail-scroll" style="font:400 12px var(--bs-body-font-family);color:var(--wa3-text-mute);">
+                    Cargando trazabilidad...
+                </div>
+            </div>
+
+            <div class="wa3-drawer__section">
                 <h6>Notas internas</h6>
                 <div class="wa3-kv" id="wa3-notes-list">
                     @forelse($conversationNotes as $note)
@@ -871,13 +880,6 @@
                 <div class="wa3-action-row">
                     <span class="wa3-feedback" id="wa3-qr-feedback"></span>
                     <button class="wa3-secondary-btn" type="button" id="wa3-qr-submit">Crear quick reply</button>
-                </div>
-            </div>
-
-            <div class="wa3-drawer__section">
-                <h6>Trazabilidad</h6>
-                <div id="wa3-trail-list" style="font:400 12px var(--bs-body-font-family);color:var(--wa3-text-mute);">
-                    Cargando trazabilidad...
                 </div>
             </div>
 
@@ -941,7 +943,7 @@
                         <label for="wa3-start-template">Template aprobado</label>
                         <select id="wa3-start-template">
                             <option value="">Selecciona un template</option>
-                            @foreach($templateOptions as $template)
+                            @foreach($approvedTemplateOptions as $template)
                                 <option value="{{ $template['id'] }}">{{ $template['name'] ?? 'Plantilla' }} · {{ $template['language'] ?: 'n/a' }} · {{ $template['status'] ?: 'n/a' }}</option>
                             @endforeach
                         </select>
@@ -1036,12 +1038,20 @@
     };
     ta?.addEventListener('input', autosize);
 
-    // Quick replies + templates populate the composer
+    // Quick replies populate the composer; templates open the approved-template modal.
     document.querySelectorAll('[data-wa3-quick-body]').forEach((b) => {
         b.addEventListener('click', () => { if (ta) { ta.value = b.dataset.wa3QuickBody; autosize(); ta.focus(); } });
     });
-    document.querySelectorAll('[data-wa3-template-body]').forEach((b) => {
-        b.addEventListener('click', () => { if (ta) { ta.value = b.dataset.wa3TemplateBody; autosize(); ta.focus(); } });
+    document.querySelectorAll('[data-wa3-template-start]').forEach((b) => {
+        b.addEventListener('click', () => {
+            openStartTemplateModal({
+                templateId: b.dataset.wa3TemplateId || '',
+                waNumber: b.dataset.waNumber || '',
+                contactName: b.dataset.contactName || '',
+                patientName: b.dataset.patientName || '',
+                hcNumber: b.dataset.hcNumber || '',
+            });
+        });
     });
 
     // Send via existing /whatsapp/api/conversations/{id}/messages endpoint
@@ -1313,14 +1323,6 @@
         });
     });
 
-    document.getElementById('wa3-presence')?.addEventListener('change', async (event) => {
-        try {
-            await postJson(`${apiBase}/presence`, { status: event.target.value });
-        } catch (err) {
-            alert(err.message || 'No se pudo actualizar tu presencia.');
-        }
-    });
-
     document.getElementById('wa3-requeue-expired')?.addEventListener('click', async () => {
         if (!confirm('¿Reencolar handoffs vencidos?')) return;
         try {
@@ -1444,6 +1446,18 @@
         startFeedback.dataset.tone = tone;
         startFeedback.textContent = message;
     };
+    function openStartTemplateModal(payload = {}) {
+        document.getElementById('wa3-new-modal')?.removeAttribute('hidden');
+        if (payload.waNumber !== undefined) document.getElementById('wa3-start-number').value = payload.waNumber || '';
+        if (payload.contactName !== undefined) document.getElementById('wa3-start-contact-name').value = payload.contactName || '';
+        if (payload.patientName !== undefined) document.getElementById('wa3-start-patient-name').value = payload.patientName || '';
+        if (payload.hcNumber !== undefined) document.getElementById('wa3-start-hc').value = payload.hcNumber || '';
+        if (payload.templateId && startTemplate) {
+            startTemplate.value = String(payload.templateId);
+            renderStartVariables();
+        }
+        setStartFeedback('Completa las variables del template antes de enviarlo.', 'success');
+    }
     function renderStartPreview() {
         if (!startTemplate || !startPreview) return;
         const tpl = templateById(startTemplate.value);
