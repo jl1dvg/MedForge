@@ -173,7 +173,8 @@
 
         .settings-line-list,
         .settings-template-rules,
-        .settings-date-list {
+        .settings-date-list,
+        .settings-template-variable-mapper {
             border: 1px solid #d8e0ea;
             border-radius: 8px;
             background: #fff;
@@ -182,7 +183,8 @@
 
         .settings-line-row,
         .settings-template-row,
-        .settings-date-row {
+        .settings-date-row,
+        .settings-template-variable-row {
             display: grid;
             gap: 12px;
             align-items: start;
@@ -192,7 +194,8 @@
 
         .settings-line-row:first-child,
         .settings-template-row:first-child,
-        .settings-date-row:first-child {
+        .settings-date-row:first-child,
+        .settings-template-variable-row:first-child {
             border-top: 0;
         }
 
@@ -218,6 +221,28 @@
             align-items: center;
         }
 
+        .settings-template-variable-row {
+            grid-template-columns: 74px minmax(220px, 1fr) minmax(180px, 1fr);
+            align-items: center;
+        }
+
+        .settings-template-variable-token {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 36px;
+            border-radius: 8px;
+            background: #ecfdf5;
+            color: #047857;
+            font-weight: 800;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+        }
+
+        .settings-template-variable-preview {
+            color: #475569;
+            font-size: .82rem;
+        }
+
         .settings-date-label {
             font-weight: 600;
             color: #233142;
@@ -239,7 +264,8 @@
             .settings-line-row,
             .settings-template-row,
             .settings-date-row,
-            .settings-date-add-row {
+            .settings-date-add-row,
+            .settings-template-variable-row {
                 grid-template-columns: 1fr;
             }
         }
@@ -459,7 +485,7 @@
                                                         && in_array(substr($jsonCandidate, 0, 1), ['{', '['], true)
                                                         && (str_contains(strtolower($fieldLabel . ' ' . $fieldHelp), 'json') || json_decode($jsonCandidate, true) !== null);
                                                     $columnClass = match ($type) {
-                                                        'textarea', 'billing_rules', 'weekly_schedule', 'line_list', 'stage_template_rules', 'date_list', 'solicitudes_sla' => 'col-12',
+                                                        'textarea', 'billing_rules', 'weekly_schedule', 'line_list', 'stage_template_rules', 'date_list', 'template_variable_mapper', 'solicitudes_sla' => 'col-12',
                                                         'color' => 'col-md-4 col-sm-6',
                                                         'file', 'checkbox', 'checkbox_group' => 'col-md-6 col-sm-12',
                                                         default => 'col-md-6 col-sm-12',
@@ -558,6 +584,94 @@
                                                                     </button>
                                                                 </div>
                                                                 <textarea class="d-none" name="{{ $key }}" id="{{ $fieldId }}">{{ $templatesRaw }}</textarea>
+                                                            </div>
+                                                        @elseif($type === 'template_variable_mapper')
+                                                            @php
+                                                                $mappingRaw = is_string($displayValue) && trim($displayValue) !== '' ? (string) $displayValue : (string) ($field['default'] ?? '');
+                                                                $decodedMapping = json_decode($mappingRaw, true);
+                                                                if (!is_array($decodedMapping)) {
+                                                                    $decodedMapping = [];
+                                                                }
+                                                                $decodedMapping = array_filter($decodedMapping, static fn($value) => trim((string) $value) !== '');
+                                                                $templateKey = (string) ($field['template_key'] ?? '');
+                                                                $currentTemplateCode = '';
+                                                                foreach (($section['groups'] ?? []) as $templateGroup) {
+                                                                    foreach (($templateGroup['fields'] ?? []) as $templateField) {
+                                                                        if ((string) ($templateField['key'] ?? '') === $templateKey) {
+                                                                            $currentTemplateCode = trim((string) ($templateField['display_value'] ?? $templateField['default'] ?? ''));
+                                                                            break 2;
+                                                                        }
+                                                                    }
+                                                                }
+                                                                $templateMeta = [];
+                                                                if (\Illuminate\Support\Facades\Schema::hasTable('whatsapp_message_templates') && \Illuminate\Support\Facades\Schema::hasTable('whatsapp_template_revisions')) {
+                                                                    $templates = \App\Models\WhatsappMessageTemplate::query()
+                                                                        ->with('whatsapp_template_revision')
+                                                                        ->whereRaw('LOWER(status) in (?, ?)', ['approved', 'active'])
+                                                                        ->orderBy('template_code')
+                                                                        ->get();
+                                                                    foreach ($templates as $templateItem) {
+                                                                        $bodyText = (string) ($templateItem->whatsapp_template_revision?->body_text ?? '');
+                                                                        preg_match_all('/\{\{\s*(\d+)\s*\}\}/', $bodyText, $placeholderMatches);
+                                                                        $positions = array_map('intval', $placeholderMatches[1] ?? []);
+                                                                        $templateMeta[(string) $templateItem->template_code] = [
+                                                                            'label' => (string) ($templateItem->display_name ?: $templateItem->template_code),
+                                                                            'body' => mb_substr($bodyText, 0, 500, 'UTF-8'),
+                                                                            'variable_count' => $positions !== [] ? max($positions) : 0,
+                                                                        ];
+                                                                    }
+                                                                }
+                                                                $recommendedMappings = is_array($field['recommended_mappings'] ?? null) ? $field['recommended_mappings'] : [];
+                                                                $initialRecommended = is_array($recommendedMappings[$currentTemplateCode] ?? null) ? $recommendedMappings[$currentTemplateCode] : [];
+                                                                $initialVariableCount = (int) ($templateMeta[$currentTemplateCode]['variable_count'] ?? 0);
+                                                                $initialRows = max($initialVariableCount, count($decodedMapping), count($initialRecommended));
+                                                                if ($initialRows <= 0) {
+                                                                    $initialRows = 10;
+                                                                }
+                                                            @endphp
+                                                            <div
+                                                                class="settings-template-variable-mapper"
+                                                                data-template-variable-mapper
+                                                                data-target="{{ $fieldId }}"
+                                                                data-template-input-name="{{ $templateKey }}"
+                                                                data-options='@json($field['options'] ?? [])'
+                                                                data-recommended='@json($recommendedMappings)'
+                                                                data-samples='@json($field['sample_values'] ?? [])'
+                                                                data-templates='@json($templateMeta)'
+                                                            >
+                                                                <div class="d-flex justify-content-between align-items-start gap-2 p-3 bg-light border-bottom">
+                                                                    <div>
+                                                                        <div class="fw-600">Mapeo visual de variables</div>
+                                                                        <div class="text-muted small">Selecciona el dato que llenará cada variable de Meta. No necesitas escribir JSON.</div>
+                                                                        <div class="text-muted small mt-1" data-template-variable-status></div>
+                                                                    </div>
+                                                                    <button type="button" class="btn btn-outline-primary btn-sm" data-template-variable-recommended>
+                                                                        <i class="mdi mdi-auto-fix me-1"></i> Usar configuración recomendada
+                                                                    </button>
+                                                                </div>
+                                                                <div data-template-variable-rows>
+                                                                    @for($variableIndex = 1; $variableIndex <= $initialRows; $variableIndex++)
+                                                                        @php $selectedVariableKey = (string) ($decodedMapping[$variableIndex] ?? $decodedMapping[(string) $variableIndex] ?? $initialRecommended[$variableIndex] ?? ''); @endphp
+                                                                        <div class="settings-template-variable-row" data-variable-position="{{ $variableIndex }}">
+                                                                            <span class="settings-template-variable-token">{{ '{{' . $variableIndex . '}}' }}</span>
+                                                                            <select class="form-select" data-template-variable-select>
+                                                                                <option value="">Sin asignar</option>
+                                                                                @foreach(($field['options'] ?? []) as $groupLabel => $group)
+                                                                                    <optgroup label="{{ (string) ($group['label'] ?? $groupLabel) }}">
+                                                                                        @foreach(($group['options'] ?? []) as $optionValue => $optionLabel)
+                                                                                            <option value="{{ (string) $optionValue }}" @selected($selectedVariableKey === (string) $optionValue)>{{ (string) $optionLabel }}</option>
+                                                                                        @endforeach
+                                                                                    </optgroup>
+                                                                                @endforeach
+                                                                            </select>
+                                                                            <div class="settings-template-variable-preview" data-template-variable-preview>Vista previa</div>
+                                                                        </div>
+                                                                    @endfor
+                                                                </div>
+                                                                <div class="p-2 bg-light border-top">
+                                                                    <span class="text-muted small">Si la plantilla local no tiene variables sincronizadas, se muestran hasta 10 espacios configurables.</span>
+                                                                </div>
+                                                                <textarea class="d-none" name="{{ $key }}" id="{{ $fieldId }}">{{ json_encode($decodedMapping, JSON_UNESCAPED_UNICODE) }}</textarea>
                                                             </div>
                                                         @elseif($type === 'date_list')
                                                             @php
@@ -1065,6 +1179,159 @@
                 });
             }
 
+            function initTemplateVariableMappers() {
+                document.querySelectorAll('[data-template-variable-mapper]').forEach(container => {
+                    const target = document.getElementById(container.dataset.target || '');
+                    const rows = container.querySelector('[data-template-variable-rows]');
+                    const status = container.querySelector('[data-template-variable-status]');
+                    const recommendedBtn = container.querySelector('[data-template-variable-recommended]');
+                    const form = container.closest('form');
+                    const templateInput = form?.querySelector(`[name="${container.dataset.templateInputName || ''}"]`);
+                    if (!target || !rows || !templateInput) return;
+
+                    const options = JSON.parse(container.dataset.options || '{}');
+                    const recommended = JSON.parse(container.dataset.recommended || '{}');
+                    const samples = JSON.parse(container.dataset.samples || '{}');
+                    const templates = JSON.parse(container.dataset.templates || '{}');
+
+                    function currentMapping() {
+                        try {
+                            const parsed = JSON.parse(target.value || '{}');
+                            return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+                        } catch (error) {
+                            return {};
+                        }
+                    }
+
+                    function createOptionList(select, selected) {
+                        select.innerHTML = '';
+                        const empty = document.createElement('option');
+                        empty.value = '';
+                        empty.textContent = 'Sin asignar';
+                        select.appendChild(empty);
+
+                        Object.keys(options).forEach(groupName => {
+                            const group = options[groupName] || {};
+                            const optgroup = document.createElement('optgroup');
+                            optgroup.label = group.label || groupName;
+                            Object.entries(group.options || {}).forEach(([value, label]) => {
+                                const option = document.createElement('option');
+                                option.value = value;
+                                option.textContent = label;
+                                option.selected = value === selected;
+                                optgroup.appendChild(option);
+                            });
+                            select.appendChild(optgroup);
+                        });
+                    }
+
+                    function buildRow(position, selected) {
+                        const row = document.createElement('div');
+                        row.className = 'settings-template-variable-row';
+                        row.dataset.variablePosition = String(position);
+
+                        const token = document.createElement('span');
+                        token.className = 'settings-template-variable-token';
+                        token.textContent = `{{${position}}}`;
+                        row.appendChild(token);
+
+                        const select = document.createElement('select');
+                        select.className = 'form-select';
+                        select.dataset.templateVariableSelect = '';
+                        createOptionList(select, selected || '');
+                        row.appendChild(select);
+
+                        const preview = document.createElement('div');
+                        preview.className = 'settings-template-variable-preview';
+                        preview.dataset.templateVariablePreview = '';
+                        row.appendChild(preview);
+
+                        return row;
+                    }
+
+                    function templateCode() {
+                        return (templateInput.value || '').trim();
+                    }
+
+                    function desiredRowCount(mapping) {
+                        const code = templateCode();
+                        const templateCount = Number(templates[code]?.variable_count || 0);
+                        const recommendedCount = Object.keys(recommended[code] || {}).length;
+                        const mappingCount = Object.keys(mapping || {}).length;
+                        const count = Math.max(templateCount, recommendedCount, mappingCount);
+                        return count > 0 ? count : 10;
+                    }
+
+                    function renderRows(preferredMapping = null) {
+                        const mapping = preferredMapping || currentMapping();
+                        const count = desiredRowCount(mapping);
+                        rows.innerHTML = '';
+                        for (let position = 1; position <= count; position += 1) {
+                            rows.appendChild(buildRow(position, mapping[String(position)] || mapping[position] || ''));
+                        }
+                        updateStatus();
+                        sync();
+                    }
+
+                    function sync() {
+                        const mapping = {};
+                        rows.querySelectorAll('.settings-template-variable-row').forEach(row => {
+                            const position = row.dataset.variablePosition;
+                            const select = row.querySelector('[data-template-variable-select]');
+                            const preview = row.querySelector('[data-template-variable-preview]');
+                            const value = select?.value || '';
+                            if (value !== '') {
+                                mapping[position] = value;
+                            }
+                            if (preview) {
+                                preview.textContent = value !== ''
+                                    ? `Ejemplo: ${samples[value] || 'Por confirmar'}`
+                                    : 'Sin dato asignado';
+                            }
+                        });
+                        target.value = JSON.stringify(mapping);
+                        target.dispatchEvent(new Event('input', { bubbles: true }));
+                    }
+
+                    function updateStatus() {
+                        if (!status) return;
+                        const code = templateCode();
+                        const meta = templates[code] || null;
+                        if (!code) {
+                            status.textContent = 'Selecciona una plantilla para detectar sus variables.';
+                            return;
+                        }
+                        if (!meta) {
+                            status.textContent = 'Plantilla no sincronizada localmente. Se muestran 10 variables configurables.';
+                            return;
+                        }
+                        const count = Number(meta.variable_count || 0);
+                        status.textContent = count > 0
+                            ? `Plantilla detectada: ${meta.label || code}. Variables encontradas: ${count}.`
+                            : `Plantilla detectada: ${meta.label || code}. No se detectaron variables; se muestran 10 espacios.`;
+                    }
+
+                    rows.addEventListener('change', event => {
+                        if (event.target.matches('[data-template-variable-select]')) sync();
+                    });
+
+                    templateInput.addEventListener('change', () => {
+                        const code = templateCode();
+                        renderRows(recommended[code] || {});
+                    });
+
+                    templateInput.addEventListener('input', updateStatus);
+
+                    recommendedBtn?.addEventListener('click', () => {
+                        const code = templateCode();
+                        renderRows(recommended[code] || {});
+                    });
+
+                    sync();
+                    updateStatus();
+                });
+            }
+
             function initDateLists() {
                 document.querySelectorAll('[data-date-list]').forEach(container => {
                     const target = document.getElementById(container.dataset.target || '');
@@ -1198,6 +1465,7 @@
                 initColorPreview();
                 initLineLists();
                 initTemplateRules();
+                initTemplateVariableMappers();
                 initDateLists();
                 initWeeklySchedules();
                 initDirtyTracking();

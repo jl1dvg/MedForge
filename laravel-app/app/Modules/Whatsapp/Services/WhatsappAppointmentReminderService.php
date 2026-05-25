@@ -21,6 +21,8 @@ class WhatsappAppointmentReminderService
         private readonly AutomatedConversationDispatchService $dispatchService = new AutomatedConversationDispatchService(),
         private readonly ConversationOpsService $conversationOpsService = new ConversationOpsService(),
         private readonly WhatsappConfigService $configService = new WhatsappConfigService(),
+        private readonly ReminderTemplateVariableCatalog $variableCatalog = new ReminderTemplateVariableCatalog(),
+        private readonly array $settingsOverride = [],
     ) {
     }
 
@@ -147,6 +149,7 @@ class WhatsappAppointmentReminderService
                         'source_type' => $sourceType,
                         'doctor' => trim((string) ($event->doctor ?? '')),
                         'sede_departamento' => trim((string) ($event->sede_departamento ?? '')),
+                        'estado_agenda' => trim((string) ($event->estado_agenda ?? '')),
                         'procedimiento_proyectado' => 'Exámenes de imágenes programados',
                         'event_at' => $eventAt,
                         'group_date' => $eventAt->toDateString(),
@@ -159,6 +162,7 @@ class WhatsappAppointmentReminderService
                         $preparedCandidates[$groupKey]['form_id'] = (int) $event->form_id;
                         $preparedCandidates[$groupKey]['doctor'] = trim((string) ($event->doctor ?? ''));
                         $preparedCandidates[$groupKey]['sede_departamento'] = trim((string) ($event->sede_departamento ?? ''));
+                        $preparedCandidates[$groupKey]['estado_agenda'] = trim((string) ($event->estado_agenda ?? ''));
                         $preparedCandidates[$groupKey]['event_at'] = $eventAt;
                     }
                 }
@@ -172,6 +176,7 @@ class WhatsappAppointmentReminderService
                 'source_type' => $sourceType,
                 'doctor' => trim((string) ($event->doctor ?? '')),
                 'sede_departamento' => trim((string) ($event->sede_departamento ?? '')),
+                'estado_agenda' => trim((string) ($event->estado_agenda ?? '')),
                 'procedimiento_proyectado' => trim((string) ($event->procedimiento_proyectado ?? '')),
                 'event_at' => $eventAt,
                 'group_date' => $eventAt->toDateString(),
@@ -190,6 +195,7 @@ class WhatsappAppointmentReminderService
             $formId = (int) $candidate['form_id'];
             $doctor = (string) $candidate['doctor'];
             $sedeDepartamento = (string) $candidate['sede_departamento'];
+            $estadoAgenda = (string) ($candidate['estado_agenda'] ?? '');
             $procedimiento = (string) $candidate['procedimiento_proyectado'];
             $groupCount = (int) ($candidate['group_count'] ?? 1);
 
@@ -324,11 +330,19 @@ class WhatsappAppointmentReminderService
             try {
                 $templateVariables = $this->templateVariables(
                     (string) $template->template_code,
-                    $recipient['patient_name'],
-                    $sedeDepartamento,
+                    $sourceType,
+                    $recipient,
+                    $hcNumber,
+                    $targetWaNumber,
+                    $formId,
                     $eventAt,
                     $doctor,
-                    $procedimiento
+                    $procedimiento,
+                    $sedeDepartamento,
+                    $estadoAgenda,
+                    $windowKey,
+                    $groupCount,
+                    $this->templateVariableCount($template)
                 );
 
                 $result = $this->dispatchService->sendTemplate(
@@ -593,10 +607,44 @@ class WhatsappAppointmentReminderService
     }
 
     /**
-     * @return array{wa_number:string,patient_name:string}
+     * @return array{wa_number:string,patient_name:string,first_name:string,last_name:string,phone:string,email:string,affiliation:string,gender:string,birth_date:string}
      */
     private function resolveRecipient(string $hcNumber): array
     {
+        $patient = null;
+        if (Schema::hasTable('patient_data')) {
+            $columns = array_values(array_filter([
+                'fname',
+                'mname',
+                'lname',
+                'lname2',
+                'celular',
+                Schema::hasColumn('patient_data', 'email') ? 'email' : null,
+                Schema::hasColumn('patient_data', 'afiliacion') ? 'afiliacion' : null,
+                Schema::hasColumn('patient_data', 'sexo') ? 'sexo' : null,
+                Schema::hasColumn('patient_data', 'fecha_nacimiento') ? 'fecha_nacimiento' : null,
+            ]));
+
+            $patient = DB::table('patient_data')
+                ->select($columns)
+                ->where('hc_number', $hcNumber)
+                ->orderByDesc('id')
+                ->first();
+        }
+
+        $patientName = trim(implode(' ', array_filter([
+            trim((string) ($patient->fname ?? '')),
+            trim((string) ($patient->mname ?? '')),
+            trim((string) ($patient->lname ?? '')),
+            trim((string) ($patient->lname2 ?? '')),
+        ])));
+        $firstName = trim((string) ($patient->fname ?? ''));
+        $lastName = trim(implode(' ', array_filter([
+            trim((string) ($patient->lname ?? '')),
+            trim((string) ($patient->lname2 ?? '')),
+        ])));
+        $clinicalPhone = $this->normalizePhone((string) ($patient->celular ?? ''));
+
         $conversation = WhatsappConversation::query()
             ->where('patient_hc_number', $hcNumber)
             ->orderByDesc('last_message_at')
@@ -606,30 +654,32 @@ class WhatsappAppointmentReminderService
         if ($conversation instanceof WhatsappConversation) {
             $waNumber = $this->normalizePhone((string) $conversation->wa_number);
             if ($waNumber !== '') {
+                $name = trim((string) ($conversation->patient_full_name ?: $conversation->display_name ?: $patientName));
+
                 return [
                     'wa_number' => $waNumber,
-                    'patient_name' => (string) ($conversation->patient_full_name ?: $conversation->display_name ?: $waNumber),
+                    'patient_name' => $name !== '' ? $name : $waNumber,
+                    'first_name' => $firstName,
+                    'last_name' => $lastName,
+                    'phone' => $clinicalPhone,
+                    'email' => trim((string) ($patient->email ?? '')),
+                    'affiliation' => trim((string) ($patient->afiliacion ?? '')),
+                    'gender' => trim((string) ($patient->sexo ?? '')),
+                    'birth_date' => trim((string) ($patient->fecha_nacimiento ?? '')),
                 ];
             }
         }
 
-        $patient = DB::table('patient_data')
-            ->select(['fname', 'mname', 'lname', 'lname2', 'celular'])
-            ->where('hc_number', $hcNumber)
-            ->orderByDesc('id')
-            ->first();
-
-        $waNumber = $this->normalizePhone((string) ($patient->celular ?? ''));
-        $patientName = trim(implode(' ', array_filter([
-            trim((string) ($patient->fname ?? '')),
-            trim((string) ($patient->mname ?? '')),
-            trim((string) ($patient->lname ?? '')),
-            trim((string) ($patient->lname2 ?? '')),
-        ])));
-
         return [
-            'wa_number' => $waNumber,
-            'patient_name' => $patientName !== '' ? $patientName : $waNumber,
+            'wa_number' => $clinicalPhone,
+            'patient_name' => $patientName !== '' ? $patientName : $clinicalPhone,
+            'first_name' => $firstName,
+            'last_name' => $lastName,
+            'phone' => $clinicalPhone,
+            'email' => trim((string) ($patient->email ?? '')),
+            'affiliation' => trim((string) ($patient->afiliacion ?? '')),
+            'gender' => trim((string) ($patient->sexo ?? '')),
+            'birth_date' => trim((string) ($patient->fecha_nacimiento ?? '')),
         ];
     }
 
@@ -638,12 +688,48 @@ class WhatsappAppointmentReminderService
      */
     private function templateVariables(
         string $templateCode,
-        string $patientName,
-        string $sede,
+        string $sourceType,
+        array $recipient,
+        string $hcNumber,
+        string $waNumber,
+        int $formId,
         CarbonInterface $eventAt,
         string $doctor,
-        string $procedimiento
+        string $procedimiento,
+        string $sede,
+        string $estadoAgenda,
+        string $windowKey,
+        int $groupCount,
+        int $expectedCount
     ): array {
+        $context = $this->templateVariableContext(
+            $recipient,
+            $hcNumber,
+            $waNumber,
+            $formId,
+            $eventAt,
+            $doctor,
+            $procedimiento,
+            $sede,
+            $estadoAgenda,
+            $sourceType,
+            $windowKey,
+            $groupCount
+        );
+
+        $mappedVariables = $this->variableCatalog->resolveVariables(
+            $sourceType,
+            $templateCode,
+            $expectedCount,
+            $this->settings(),
+            $context
+        );
+
+        if ($mappedVariables !== []) {
+            return $mappedVariables;
+        }
+
+        $patientName = (string) ($recipient['patient_name'] ?? '');
         if ($templateCode === self::META_CONFIRMATION_TEMPLATE_CODE) {
             return [
                 $patientName !== '' ? $patientName : 'Paciente',
@@ -662,6 +748,148 @@ class WhatsappAppointmentReminderService
             $this->sedeAddress($sede),
             $procedimiento !== '' ? $procedimiento : 'Atención programada',
         ];
+    }
+
+    /**
+     * @param array<string,string> $recipient
+     * @return array<string,mixed>
+     */
+    private function templateVariableContext(
+        array $recipient,
+        string $hcNumber,
+        string $waNumber,
+        int $formId,
+        CarbonInterface $eventAt,
+        string $doctor,
+        string $procedimiento,
+        string $sede,
+        string $estadoAgenda,
+        string $sourceType,
+        string $windowKey,
+        int $groupCount
+    ): array {
+        $site = $this->siteContext($sede);
+        $patientName = trim((string) ($recipient['patient_name'] ?? ''));
+
+        return [
+            'patient' => [
+                'name' => $patientName !== '' ? $patientName : 'Paciente',
+                'first_name' => trim((string) ($recipient['first_name'] ?? '')),
+                'last_name' => trim((string) ($recipient['last_name'] ?? '')),
+                'hc_number' => $hcNumber,
+                'phone' => trim((string) ($recipient['phone'] ?? '')),
+                'wa_number' => $waNumber,
+                'email' => trim((string) ($recipient['email'] ?? '')),
+                'affiliation' => trim((string) ($recipient['affiliation'] ?? '')),
+                'gender' => trim((string) ($recipient['gender'] ?? '')),
+                'birth_date' => $this->formatDateValue((string) ($recipient['birth_date'] ?? '')),
+            ],
+            'appointment' => [
+                'form_id' => (string) $formId,
+                'date' => $eventAt->locale('es')->translatedFormat('d/m/Y'),
+                'date_iso' => $eventAt->toDateString(),
+                'time' => $eventAt->format('H:i'),
+                'datetime' => $eventAt->locale('es')->translatedFormat('d/m/Y H:i'),
+                'doctor' => trim($doctor) !== '' ? trim($doctor) : 'Por confirmar',
+                'procedure' => trim($procedimiento) !== '' ? trim($procedimiento) : 'Atención programada',
+                'procedure_short' => $this->shortProcedure($procedimiento),
+                'service_type' => $sourceType === 'imagenes' ? 'Imágenes' : 'Servicios oftalmológicos generales',
+                'status' => trim($estadoAgenda),
+                'source_type' => $sourceType,
+            ],
+            'site' => $site,
+            'clinic' => [
+                'name' => $this->settingString('companyname', 'Clínica Internacional de la Visión del Ecuador'),
+                'short_name' => 'CIVE',
+                'website' => $this->settingString('companywebsite', 'https://cive.ec/'),
+                'phone' => $this->settingString('companyphone', '043710160'),
+            ],
+            'reminder' => [
+                'window' => $windowKey,
+                'type' => $sourceType === 'imagenes' ? 'Imágenes' : 'Servicios oftalmológicos generales',
+                'group_count' => (string) $groupCount,
+            ],
+            'fallback' => [
+                'empty' => 'Por confirmar',
+            ],
+        ];
+    }
+
+    /**
+     * @return array{name:string,address:string,maps_url:string,phone:string,contact_center:string}
+     */
+    private function siteContext(string $sede): array
+    {
+        $normalized = $this->normalizeText($sede);
+        $contactCenter = $this->settingString('companyphone', '043710160');
+
+        if (str_contains($normalized, 'villa')) {
+            return [
+                'name' => 'Villa Club',
+                'address' => 'Parroquia satélite La Aurora de Daule, km 12 Av. León Febres-Cordero. Junto a la Piazza Villa Club.',
+                'maps_url' => 'https://maps.app.goo.gl/i1ryHLC6JUzkefHa6',
+                'phone' => $contactCenter,
+                'contact_center' => $contactCenter,
+            ];
+        }
+
+        if (str_contains($normalized, 'ceibos')) {
+            return [
+                'name' => 'Ceibos',
+                'address' => 'C.C. La Vista de San Eduardo #200, km 6.5 Av. del Bombero.',
+                'maps_url' => 'Comunícate con nuestro equipo para confirmar la ubicación.',
+                'phone' => $contactCenter,
+                'contact_center' => $contactCenter,
+            ];
+        }
+
+        return [
+            'name' => trim($sede) !== '' ? trim($sede) : 'Sede por confirmar',
+            'address' => 'Comunícate con nuestro equipo para confirmar la ubicación.',
+            'maps_url' => 'Comunícate con nuestro equipo para confirmar la ubicación.',
+            'phone' => $contactCenter,
+            'contact_center' => $contactCenter,
+        ];
+    }
+
+    private function shortProcedure(string $procedimiento): string
+    {
+        $value = trim($procedimiento);
+        if ($value === '') {
+            return 'Atención programada';
+        }
+
+        $parts = array_values(array_filter(array_map('trim', explode(' - ', $value))));
+        $short = (string) end($parts);
+
+        return mb_substr($short !== '' ? $short : $value, 0, 120, 'UTF-8');
+    }
+
+    private function formatDateValue(string $value): string
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return '';
+        }
+
+        try {
+            return Carbon::parse($value, $this->reminderTimezone())->format('d/m/Y');
+        } catch (\Throwable) {
+            return $value;
+        }
+    }
+
+    private function templateVariableCount(WhatsappMessageTemplate $template): int
+    {
+        $body = (string) ($template->whatsapp_template_revision?->body_text ?? '');
+        if ($body === '') {
+            return 0;
+        }
+
+        preg_match_all('/\{\{\s*(\d+)\s*\}\}/', $body, $matches);
+        $positions = array_map('intval', $matches[1] ?? []);
+
+        return $positions !== [] ? max($positions) : 0;
     }
 
     private function sedeAddress(string $sede): string
@@ -961,10 +1189,12 @@ class WhatsappAppointmentReminderService
      */
     private function settings(): array
     {
-        return $this->settingsResolver()->getOptions([
+        $settings = $this->settingsResolver()->getOptions([
             'whatsapp_reminders_enabled',
             'whatsapp_reminder_service_template_code',
             'whatsapp_reminder_imaging_template_code',
+            ReminderTemplateVariableCatalog::SERVICE_MAPPING_KEY,
+            ReminderTemplateVariableCatalog::IMAGING_MAPPING_KEY,
             'whatsapp_reminder_window_24h_enabled',
             'whatsapp_reminder_window_2h_enabled',
             'whatsapp_reminder_window_24h_minutes',
@@ -978,7 +1208,12 @@ class WhatsappAppointmentReminderService
             'whatsapp_reminder_service_keywords',
             'whatsapp_reminder_imaging_keywords',
             'whatsapp_reminder_timezone',
+            'companyname',
+            'companywebsite',
+            'companyphone',
         ]);
+
+        return $this->settingsOverride !== [] ? array_merge($settings, $this->settingsOverride) : $settings;
     }
 
     private function reminderTimezone(): string
