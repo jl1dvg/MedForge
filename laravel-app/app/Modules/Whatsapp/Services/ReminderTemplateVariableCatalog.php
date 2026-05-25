@@ -2,7 +2,9 @@
 
 namespace App\Modules\Whatsapp\Services;
 
+use App\Models\WhatsappMessageTemplate;
 use Carbon\CarbonInterface;
+use Illuminate\Support\Facades\Schema;
 
 class ReminderTemplateVariableCatalog
 {
@@ -140,6 +142,50 @@ class ReminderTemplateVariableCatalog
             'reminder.type' => 'Servicios oftalmológicos generales',
             'fallback.empty' => 'Por confirmar',
         ];
+    }
+
+    /**
+     * @return array<string,array{label:string,body:string,variable_count:int}>
+     */
+    public function templateMetadata(): array
+    {
+        if (!Schema::hasTable('whatsapp_message_templates') || !Schema::hasTable('whatsapp_template_revisions')) {
+            return [];
+        }
+
+        try {
+            $templates = WhatsappMessageTemplate::query()
+                ->with('whatsapp_template_revision')
+                ->whereRaw('LOWER(status) in (?, ?)', ['approved', 'active'])
+                ->orderBy('template_code')
+                ->get();
+        } catch (\Throwable) {
+            return [];
+        }
+
+        $metadata = [];
+        foreach ($templates as $template) {
+            $bodyText = (string) ($template->whatsapp_template_revision?->body_text ?? '');
+            $metadata[(string) $template->template_code] = [
+                'label' => (string) ($template->display_name ?: $template->template_code),
+                'body' => mb_substr($bodyText, 0, 500, 'UTF-8'),
+                'variable_count' => $this->countTemplateVariables($bodyText),
+            ];
+        }
+
+        return $metadata;
+    }
+
+    public function countTemplateVariables(string $bodyText): int
+    {
+        if (trim($bodyText) === '') {
+            return 0;
+        }
+
+        preg_match_all('/\{\{\s*(\d+)\s*\}\}/', $bodyText, $matches);
+        $positions = array_map('intval', $matches[1] ?? []);
+
+        return $positions !== [] ? max($positions) : 0;
     }
 
     /**
