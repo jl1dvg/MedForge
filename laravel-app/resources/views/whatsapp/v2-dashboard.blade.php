@@ -1015,6 +1015,7 @@
                                     <th>Tipo</th>
                                     <th>Ventana</th>
                                     <th>Total</th>
+                                    <th>Enviados</th>
                                     <th>Entregados</th>
                                     <th>Respondidos</th>
                                     <th>Confirmó</th>
@@ -1027,6 +1028,7 @@
                                         <td>{{ $row['source_label'] ?? '—' }}</td>
                                         <td>{{ $row['window_label'] ?? '—' }}</td>
                                         <td>{{ number_format((int) ($row['total'] ?? 0)) }}</td>
+                                        <td>{{ number_format((int) ($row['sent'] ?? 0)) }}</td>
                                         <td>{{ number_format((int) ($row['delivered'] ?? 0)) }}</td>
                                         <td>{{ number_format((int) ($row['responded'] ?? 0)) }} <span class="text-muted">({{ $row['response_rate'] ?? 0 }}%)</span></td>
                                         <td>{{ number_format((int) ($row['confirmed'] ?? 0)) }}</td>
@@ -1034,7 +1036,7 @@
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="7" class="text-muted">No hay recordatorios persistidos en el rango seleccionado.</td>
+                                        <td colspan="8" class="text-muted">No hay recordatorios persistidos en el rango seleccionado.</td>
                                     </tr>
                                 @endforelse
                                 </tbody>
