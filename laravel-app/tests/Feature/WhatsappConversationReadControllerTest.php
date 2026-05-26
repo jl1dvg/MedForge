@@ -15,6 +15,8 @@ class WhatsappConversationReadControllerTest extends TestCase
         Schema::dropIfExists('users');
         Schema::dropIfExists('roles');
         Schema::dropIfExists('whatsapp_sigcenter_bookings');
+        Schema::dropIfExists('whatsapp_handoff_events');
+        Schema::dropIfExists('whatsapp_handoffs');
         Schema::dropIfExists('whatsapp_messages');
         Schema::dropIfExists('whatsapp_conversations');
 
@@ -83,6 +85,32 @@ class WhatsappConversationReadControllerTest extends TestCase
             $table->timestamp('delivered_at')->nullable();
             $table->timestamp('read_at')->nullable();
             $table->timestamps();
+        });
+
+        Schema::create('whatsapp_handoffs', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('conversation_id');
+            $table->string('wa_number', 32);
+            $table->string('status', 24)->default('queued');
+            $table->string('priority', 24)->default('normal');
+            $table->string('topic', 191)->nullable();
+            $table->unsignedBigInteger('handoff_role_id')->nullable();
+            $table->unsignedBigInteger('assigned_agent_id')->nullable();
+            $table->timestamp('assigned_at')->nullable();
+            $table->timestamp('assigned_until')->nullable();
+            $table->timestamp('queued_at')->nullable();
+            $table->timestamp('last_activity_at')->nullable();
+            $table->text('notes')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('whatsapp_handoff_events', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('handoff_id');
+            $table->string('event_type', 64);
+            $table->unsignedBigInteger('actor_user_id')->nullable();
+            $table->text('notes')->nullable();
+            $table->timestamp('created_at')->useCurrent();
         });
 
         Schema::create('whatsapp_sigcenter_bookings', function (Blueprint $table): void {
@@ -210,6 +238,31 @@ class WhatsappConversationReadControllerTest extends TestCase
             'id' => 10,
             'unread_count' => 0,
         ]);
+    }
+
+    public function test_it_returns_trail_timestamp_label_in_guayaquil_time(): void
+    {
+        config()->set('app.timezone', 'UTC');
+
+        \DB::table('whatsapp_conversations')->insert([
+            'id' => 12,
+            'wa_number' => '593999111214',
+            'display_name' => 'Paciente Trail',
+            'last_message_preview' => 'Hola',
+            'last_message_direction' => 'inbound',
+            'last_message_type' => 'text',
+            'created_at' => '2026-05-26 20:14:06',
+            'updated_at' => '2026-05-26 20:14:06',
+        ]);
+
+        $response = $this->withoutMiddleware()->getJson('/v2/whatsapp/api/conversations/12/trail');
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('ok', true)
+            ->assertJsonPath('data.0.event_label', 'Conversación iniciada')
+            ->assertJsonPath('data.0.created_at', '2026-05-26T20:14:06.000000Z')
+            ->assertJsonPath('data.0.created_at_label', '26/05/2026 15:14');
     }
 
     public function test_it_filters_conversations_and_returns_tab_counts(): void
