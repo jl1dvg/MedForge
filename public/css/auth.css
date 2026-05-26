@@ -1,11 +1,49 @@
+@font-face {
+    font-family: "Poppins";
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+    src: url("../fonts/poppins.regular.ttf") format("truetype");
+}
+
+:root {
+    --mf-primary: #5156be;
+    --mf-primary-hover: #3c40a0;
+    --mf-info: #3596f7;
+    --mf-brand-cyan: #1eccdd;
+    --mf-brand-violet: #7c4dff;
+    --mf-brand-navy: #060b28;
+    --mf-brand-navy-2: #0e2053;
+    --mf-fg-1: #172b4c;
+    --mf-fg-2: #3f4254;
+    --mf-fg-muted: #7e8299;
+    --mf-border: #e4e6ef;
+    --mf-surface: #ffffff;
+    --mf-focus: 0 0 0 3px rgba(81, 86, 190, 0.22);
+    --mf-shadow-hero: 0 20px 45px rgba(5, 24, 54, 0.25);
+    --mf-radius: 8px;
+    --mf-radius-xl: 28px;
+}
+
 body.auth-body {
     min-height: 100vh;
-    background: linear-gradient(135deg, rgba(6, 11, 40, 0.95), rgba(14, 32, 83, 0.85)),
-    url("../images/auth-bg/bg-1.jpg") center/cover no-repeat fixed;
+    background:
+        linear-gradient(135deg, rgba(6, 11, 40, 0.95), rgba(14, 32, 83, 0.86)),
+        radial-gradient(at top right, rgba(30, 204, 221, 0.16), transparent 58%),
+        radial-gradient(at bottom left, rgba(124, 77, 255, 0.16), transparent 56%),
+        url("../images/auth-bg/bg-1.jpg") center/cover no-repeat fixed;
     display: flex;
     align-items: center;
     justify-content: center;
     font-family: "Poppins", "Helvetica Neue", Arial, sans-serif;
+    color: var(--mf-fg-1);
+    -webkit-font-smoothing: antialiased;
+}
+
+body.auth-body .wrapper {
+    width: 100%;
+    min-height: 100vh;
+    background: transparent;
 }
 
 .auth-wrapper {
@@ -21,11 +59,11 @@ body.auth-body {
     border-radius: 999px;
     text-transform: uppercase;
     font-size: 0.75rem;
-    letter-spacing: 0.08em;
     font-weight: 600;
     color: #fff;
     background: rgba(255, 255, 255, 0.15);
     backdrop-filter: blur(4px);
+    letter-spacing: 0;
 }
 
 .auth-hero {
@@ -35,8 +73,11 @@ body.auth-body {
     padding: 2.5rem;
     height: 100%;
     min-height: 460px;
-    background: linear-gradient(135deg, #03386d, #05518e);
+    background:
+        linear-gradient(135deg, rgba(3, 56, 109, 0.96), rgba(5, 81, 142, 0.94)),
+        linear-gradient(135deg, rgba(30, 204, 221, 0.18), rgba(124, 77, 255, 0.18));
     color: #fff;
+    box-shadow: var(--mf-shadow-hero);
 }
 
 .auth-hero::after {
@@ -53,11 +94,13 @@ body.auth-body {
     font-weight: 700;
     margin-top: 1.5rem;
     margin-bottom: 0.75rem;
+    letter-spacing: 0;
 }
 
 .auth-hero p {
     color: rgba(255, 255, 255, 0.85);
     font-size: 0.95rem;
+    line-height: 1.55;
 }
 
 .auth-hero-features {
@@ -77,7 +120,7 @@ body.auth-body {
 .auth-hero-features i {
     width: 32px;
     height: 32px;
-    border-radius: 50%;
+    border-radius: var(--mf-radius);
     background: rgba(255, 255, 255, 0.15);
     display: flex;
     align-items: center;
@@ -88,33 +131,45 @@ body.auth-body {
     background: rgba(255, 255, 255, 0.96);
     border-radius: 1.75rem;
     padding: 2.5rem;
-    box-shadow: 0 20px 45px rgba(5, 24, 54, 0.25);
+    box-shadow: var(--mf-shadow-hero);
     backdrop-filter: blur(10px);
     min-height: 100%;
+    border: 1px solid rgba(255, 255, 255, 0.78);
 }
 
 .auth-card h1 {
     font-size: 1.75rem;
     font-weight: 700;
-    color: #061141;
+    color: var(--mf-fg-1);
     margin-bottom: 0.25rem;
+    letter-spacing: 0;
 }
 
 .auth-card p.description {
-    color: #6f6f8b;
+    color: var(--mf-fg-muted);
     margin-bottom: 1.5rem;
+    line-height: 1.5;
 }
 
 .form-floating .form-control {
-    border-radius: 0.9rem;
-    border: 1px solid rgba(6, 17, 65, 0.15);
+    min-height: 56px;
+    border-radius: var(--mf-radius);
+    border: 1px solid var(--mf-border);
     padding: 1.1rem 1rem 0.35rem;
     font-size: 1rem;
     background-color: rgba(6, 11, 40, 0.02);
+    color: var(--mf-fg-1);
+    transition: border-color 160ms ease-out, box-shadow 160ms ease-out, background-color 160ms ease-out;
+}
+
+.form-floating .form-control:focus {
+    border-color: var(--mf-primary);
+    background-color: var(--mf-surface);
+    box-shadow: var(--mf-focus);
 }
 
 .form-floating label {
-    color: #6f6f8b;
+    color: var(--mf-fg-muted);
 }
 
 .input-icon {
@@ -124,40 +179,57 @@ body.auth-body {
     right: 1rem;
     color: #9fa8c5;
     cursor: pointer;
+    min-width: 44px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .password-toggle {
     font-size: 0.875rem;
 }
 
-.auth-card .btn-primary {
+.auth-card .btn-primary,
+.auth-card button.btn-primary.w-100 {
+    width: 100% !important;
+    min-height: 48px;
     padding: 0.85rem;
-    border-radius: 1rem;
+    border-radius: var(--mf-radius);
     font-size: 1rem;
     font-weight: 600;
-    background: linear-gradient(135deg, #ff6b6b, #f43f5e);
+    background: linear-gradient(135deg, var(--mf-primary), var(--mf-info));
     border: none;
-    box-shadow: 0 15px 30px rgba(244, 63, 94, 0.35);
+    box-shadow: 0 12px 24px rgba(81, 86, 190, 0.32);
+    transition: transform 140ms ease-out, box-shadow 140ms ease-out, background 140ms ease-out;
+    white-space: nowrap;
 }
 
 .auth-card .btn-primary:hover {
     transform: translateY(-1px);
-    box-shadow: 0 18px 35px rgba(244, 63, 94, 0.45);
+    box-shadow: 0 16px 30px rgba(81, 86, 190, 0.4);
+}
+
+.auth-card .btn-primary:focus-visible,
+.auth-card a:focus-visible,
+.password-toggle:focus-visible {
+    outline: 0;
+    box-shadow: var(--mf-focus);
 }
 
 .auth-footnote {
     font-size: 0.875rem;
-    color: #6f6f8b;
+    color: var(--mf-fg-muted);
     margin-top: 1rem;
 }
 
 .auth-footnote a {
     font-weight: 600;
-    color: #f43f5e;
+    color: var(--mf-primary);
 }
 
 .status-badge {
-    border-radius: 0.9rem;
+    border-radius: var(--mf-radius);
     padding: 0.9rem 1rem;
     font-size: 0.9rem;
     font-weight: 500;
@@ -192,5 +264,32 @@ body.auth-body {
 
     .auth-card {
         padding: 2rem;
+    }
+}
+
+@media (max-width: 575px) {
+    .auth-wrapper {
+        padding: 1rem;
+    }
+
+    .auth-hero,
+    .auth-card {
+        border-radius: 1rem;
+        padding: 1.5rem;
+    }
+
+    .auth-hero {
+        min-height: auto;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 1ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+        transition-duration: 1ms !important;
     }
 }

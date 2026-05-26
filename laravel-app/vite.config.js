@@ -9,6 +9,7 @@ export default defineConfig({
                 'resources/css/app.css',
                 'resources/js/app.js',
                 'resources/css/medforge.css',
+                'resources/css/auth.css',
                 'resources/js/medforge.js',
                 'resources/js/v2/codes-index.js',
                 'resources/js/v2/patients-index.js',
