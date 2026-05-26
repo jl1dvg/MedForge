@@ -603,6 +603,12 @@ label {
   font-size: 10px;
 }
 
+@media (min-width: 768px) {
+  .sidebar-mini.sidebar-collapse .sidebar-menu > li {
+    padding: 0;
+  }
+}
+
 @media (max-width: 991.98px) {
   .content,
   .container-full > .content {
