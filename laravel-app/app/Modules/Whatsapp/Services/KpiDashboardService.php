@@ -2617,7 +2617,7 @@ class KpiDashboardService
             'SELECT
                 COUNT(*) AS total,
                 SUM(CASE WHEN status = "sent" THEN 1 ELSE 0 END) AS sent,
-                SUM(CASE WHEN delivered_at IS NOT NULL THEN 1 ELSE 0 END) AS delivered,
+                SUM(CASE WHEN delivered_at IS NOT NULL OR responded_at IS NOT NULL THEN 1 ELSE 0 END) AS delivered,
                 SUM(CASE WHEN status = "failed" THEN 1 ELSE 0 END) AS failed,
                 SUM(CASE WHEN status = "responded" THEN 1 ELSE 0 END) AS responded,
                 SUM(CASE WHEN response_value = "confirmar" THEN 1 ELSE 0 END) AS confirmed,
@@ -2639,7 +2639,7 @@ class KpiDashboardService
             'pending' => (int) ($summaryRow->pending ?? 0),
         ];
         $summary['delivery_rate'] = $summary['total'] > 0 ? round(($summary['delivered'] / $summary['total']) * 100, 1) : 0.0;
-        $summary['response_rate'] = $summary['total'] > 0 ? round(($summary['responded'] / $summary['total']) * 100, 1) : 0.0;
+        $summary['response_rate'] = $summary['delivered'] > 0 ? round(($summary['responded'] / $summary['delivered']) * 100, 1) : 0.0;
         $summary['confirmation_rate'] = $summary['responded'] > 0 ? round(($summary['confirmed'] / $summary['responded']) * 100, 1) : 0.0;
         $summary['agent_rate'] = $summary['responded'] > 0 ? round(($summary['agent_requested'] / $summary['responded']) * 100, 1) : 0.0;
 
@@ -2649,7 +2649,7 @@ class KpiDashboardService
                 reminder_window,
                 COUNT(*) AS total,
                 SUM(CASE WHEN status = "sent" THEN 1 ELSE 0 END) AS sent,
-                SUM(CASE WHEN delivered_at IS NOT NULL THEN 1 ELSE 0 END) AS delivered,
+                SUM(CASE WHEN delivered_at IS NOT NULL OR responded_at IS NOT NULL THEN 1 ELSE 0 END) AS delivered,
                 SUM(CASE WHEN status = "failed" THEN 1 ELSE 0 END) AS failed,
                 SUM(CASE WHEN status = "responded" THEN 1 ELSE 0 END) AS responded,
                 SUM(CASE WHEN response_value = "confirmar" THEN 1 ELSE 0 END) AS confirmed,
@@ -2699,6 +2699,7 @@ class KpiDashboardService
             'config' => $this->appointmentReminderConfigSnapshot(),
             'by_source_window' => array_map(function ($row): array {
                 $total = (int) ($row->total ?? 0);
+                $delivered = (int) ($row->delivered ?? 0);
                 $responded = (int) ($row->responded ?? 0);
 
                 return [
@@ -2708,12 +2709,12 @@ class KpiDashboardService
                     'window_label' => $this->reminderWindowLabel((string) ($row->reminder_window ?? '')),
                     'total' => $total,
                     'sent' => (int) ($row->sent ?? 0),
-                    'delivered' => (int) ($row->delivered ?? 0),
+                    'delivered' => $delivered,
                     'failed' => (int) ($row->failed ?? 0),
                     'responded' => $responded,
                     'confirmed' => (int) ($row->confirmed ?? 0),
                     'agent_requested' => (int) ($row->agent_requested ?? 0),
-                    'response_rate' => $total > 0 ? round(($responded / $total) * 100, 1) : 0.0,
+                    'response_rate' => $delivered > 0 ? round(($responded / $delivered) * 100, 1) : 0.0,
                 ];
             }, $breakdownRows),
             'recent' => array_map(function ($row): array {
