@@ -48,6 +48,7 @@
     </div>
 
     @include('layouts.partials.feedback_widget')
+    @include('layouts.partials.welcome_tour')
 
     <footer class="main-footer">
         <script>document.write(new Date().getFullYear())</script>
@@ -74,28 +75,7 @@
 @endif
 <script src="/js/pages/feedback-widget.js"></script>
 
-@if (session('post_login_feedback_prompt'))
-    <script>
-        document.addEventListener('DOMContentLoaded', function () {
-            const modalElement = document.getElementById('feedbackWidgetModal');
-            if (!modalElement || typeof bootstrap === 'undefined' || !bootstrap.Modal) {
-                return;
-            }
-
-            let feedbackModal = null;
-
-            if (typeof bootstrap.Modal.getOrCreateInstance === 'function') {
-                feedbackModal = bootstrap.Modal.getOrCreateInstance(modalElement);
-            } else if (typeof bootstrap.Modal.getInstance === 'function') {
-                feedbackModal = bootstrap.Modal.getInstance(modalElement) || new bootstrap.Modal(modalElement);
-            } else {
-                feedbackModal = new bootstrap.Modal(modalElement);
-            }
-
-            feedbackModal.show();
-        });
-    </script>
-@endif
+{{-- El tour de bienvenida al nuevo menú se gestiona desde welcome_tour.blade.php via localStorage --}}
 
 @if (!empty($whatsappNotificationPanelEnabled))
     <script>

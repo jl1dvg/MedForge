@@ -141,10 +141,6 @@ class MedforgeNavigation
             $permissions,
             ['administrativo', 'whatsapp.manage', 'whatsapp.chat.send', 'whatsapp.templates.manage', 'settings.manage']
         );
-        $canConfigureWhatsApp = LegacyPermissionCatalog::containsAny(
-            $permissions,
-            ['administrativo', 'whatsapp.manage', 'whatsapp.templates.manage', 'whatsapp.autoresponder.manage', 'settings.manage']
-        );
         $canAccessWhatsAppTemplates = LegacyPermissionCatalog::containsAny(
             $permissions,
             ['administrativo', 'whatsapp.manage', 'whatsapp.templates.manage', 'settings.manage']
@@ -220,38 +216,16 @@ class MedforgeNavigation
             'label' => $text,
         ];
 
-        $commercial = $group('Comercial', 'mdi mdi-briefcase-outline', array_filter([
-            $canAccessCRM
-                ? $link('CRM', '/crm', 'mdi mdi-ticket-account', [
-                'prefix' => ['/crm'],
-            ])
-                : null,
-            $canAccessPacientesFlujo
-                ? $link('Flujo de Pacientes', '/v2/pacientes/flujo', 'mdi mdi-transit-connection-variant', [
-                'prefix' => ['/v2/pacientes/flujo'],
-            ])
-                : null,
-            $canAccessLeads
-                ? $link('Campanas y Leads', '/leads', 'mdi mdi-bullhorn-outline', [
-                'prefix' => ['/leads'],
-            ])
-                : null,
-            $canAccessWhatsAppFlowmaker
-                ? $link('Flowmaker WhatsApp', '/v2/whatsapp/flowmaker', 'mdi mdi-robot-outline', [
-                'prefix' => ['/v2/whatsapp/flowmaker'],
-            ])
-                : null,
-            $canAccessWhatsAppTemplates
-                ? $link('Plantillas de WhatsApp', '/v2/whatsapp/templates', 'mdi mdi-message-badge-outline', [
-                'prefix' => ['/v2/whatsapp/templates'],
-            ])
-                : null,
-        ]));
-
-        $dailyOperations = $group('Operacion diaria', 'mdi mdi-stethoscope', array_filter([
+        // ── Consulta ────────────────────────────────────────────────────────────
+        $consulta = $group('Consulta', 'mdi mdi-stethoscope', array_filter([
             $canAccessAgenda
                 ? $link('Agenda', '/v2/agenda', 'mdi mdi-calendar-clock-outline', [
                 'prefix' => ['/v2/agenda'],
+            ])
+                : null,
+            $canAccessAgenda
+                ? $link('Agendamiento', '/turnoAgenda/agenda-doctor/index', 'mdi mdi-calendar-check-outline', [
+                'prefix' => ['/turnoAgenda'],
             ])
                 : null,
             $canAccessPacientes
@@ -265,44 +239,15 @@ class MedforgeNavigation
                 'prefix' => ['/v2/derivaciones'],
             ])
                 : null,
-            $canAccessAgenda
-                ? $link('Agendamiento', '/turnoAgenda/agenda-doctor/index', 'mdi mdi-calendar-check-outline', [
-                'prefix' => ['/turnoAgenda'],
-            ])
-                : null,
             $canAccessPatientVerification
                 ? $link('Certificacion biometrica', '/pacientes/certificaciones', 'mdi mdi-qrcode-scan', [
                 'prefix' => ['/pacientes/certificaciones'],
             ])
                 : null,
-            $canAccessWhatsAppChat
-                ? $link('Chat de WhatsApp', '/v2/whatsapp/chat', 'mdi mdi-message-text-outline', [
-                'prefix' => ['/v2/whatsapp/chat'],
-            ])
-                : null,
-            $canAccessWhatsAppDashboard
-                ? $link('Dashboard WhatsApp', '/v2/whatsapp/dashboard', 'mdi mdi-chart-line', [
-                'prefix' => ['/v2/whatsapp/dashboard'],
-            ])
-                : null,
-            $canAccessWhatsAppCampaigns
-                ? $link('Campañas WhatsApp', '/v2/whatsapp/campaigns', 'mdi mdi-bullhorn-outline', [
-                'prefix' => ['/v2/whatsapp/campaigns'],
-            ])
-                : null,
-            $canAccessWhatsAppLeads
-                ? $link('Bajas WhatsApp', '/v2/whatsapp/leads', 'mdi mdi-account-remove-outline', [
-                'prefix' => ['/v2/whatsapp/leads'],
-            ])
-                : null,
-            $canAccessMailbox
-                ? $link('Mailbox', '/mailbox', 'mdi mdi-email-open-outline', [
-                'prefix' => ['/mailbox', '/mail'],
-            ])
-                : null,
         ]));
 
-        $clinical = $group('Clinica', 'mdi mdi-hospital-box-outline', array_filter([
+        // ── Quirúrgico ───────────────────────────────────────────────────────────
+        $quirurgico = $group('Quirurgico', 'mdi mdi-hospital-box-outline', array_filter([
             $label('Quirúrgicos'),
             $canAccessSolicitudes
                 ? $link('Solicitudes', '/v2/solicitudes', 'mdi mdi-file-document-outline', [
@@ -336,7 +281,10 @@ class MedforgeNavigation
                 'prefix' => ['/protocolos'],
             ])
                 : null,
-            $label('Imágenes'),
+        ]));
+
+        // ── Imágenes ─────────────────────────────────────────────────────────────
+        $imagenes = $group('Imagenes', 'mdi mdi-image-multiple-outline', array_filter([
             $canAccessExamenes
                 ? $link('Examenes', '/v2/examenes', 'mdi mdi-image-filter-center-focus', [
                 'prefix' => ['/v2/examenes'],
@@ -354,7 +302,66 @@ class MedforgeNavigation
                 : null,
         ]));
 
-        $inventory = $group('Inventario', 'mdi mdi-package-variant-closed', array_filter([
+        // ── Comercial ────────────────────────────────────────────────────────────
+        $comercial = $group('Comercial', 'mdi mdi-briefcase-outline', array_filter([
+            $canAccessCRM
+                ? $link('CRM', '/crm', 'mdi mdi-ticket-account', [
+                'prefix' => ['/crm'],
+            ])
+                : null,
+            $canAccessPacientesFlujo
+                ? $link('Flujo de Pacientes', '/v2/pacientes/flujo', 'mdi mdi-transit-connection-variant', [
+                'prefix' => ['/v2/pacientes/flujo'],
+            ])
+                : null,
+            $canAccessLeads
+                ? $link('Campanas y Leads', '/leads', 'mdi mdi-bullhorn-outline', [
+                'prefix' => ['/leads'],
+            ])
+                : null,
+        ]));
+
+        // ── Comunicaciones ───────────────────────────────────────────────────────
+        $comunicaciones = $group('Comunicaciones', 'mdi mdi-message-outline', array_filter([
+            $canAccessWhatsAppChat
+                ? $link('Chat WhatsApp', '/v2/whatsapp/chat', 'mdi mdi-message-text-outline', [
+                'prefix' => ['/v2/whatsapp/chat'],
+            ])
+                : null,
+            $canAccessWhatsAppCampaigns
+                ? $link('Campanas WhatsApp', '/v2/whatsapp/campaigns', 'mdi mdi-bullhorn-outline', [
+                'prefix' => ['/v2/whatsapp/campaigns'],
+            ])
+                : null,
+            $canAccessWhatsAppDashboard
+                ? $link('Dashboard WhatsApp', '/v2/whatsapp/dashboard', 'mdi mdi-chart-line', [
+                'prefix' => ['/v2/whatsapp/dashboard'],
+            ])
+                : null,
+            $canAccessWhatsAppLeads
+                ? $link('Bajas WhatsApp', '/v2/whatsapp/leads', 'mdi mdi-account-remove-outline', [
+                'prefix' => ['/v2/whatsapp/leads'],
+            ])
+                : null,
+            $canAccessWhatsAppFlowmaker
+                ? $link('Flowmaker WhatsApp', '/v2/whatsapp/flowmaker', 'mdi mdi-robot-outline', [
+                'prefix' => ['/v2/whatsapp/flowmaker'],
+            ])
+                : null,
+            $canAccessWhatsAppTemplates
+                ? $link('Plantillas de WhatsApp', '/v2/whatsapp/templates', 'mdi mdi-message-badge-outline', [
+                'prefix' => ['/v2/whatsapp/templates'],
+            ])
+                : null,
+            $canAccessMailbox
+                ? $link('Mailbox', '/mailbox', 'mdi mdi-email-open-outline', [
+                'prefix' => ['/mailbox', '/mail'],
+            ])
+                : null,
+        ]));
+
+        // ── Inventario ───────────────────────────────────────────────────────────
+        $inventario = $group('Inventario', 'mdi mdi-package-variant-closed', array_filter([
             $canAccessInsumos
                 ? $link('Lista de insumos', '/insumos', 'mdi mdi-format-list-bulleted', [
                 'exact' => ['/insumos'],
@@ -377,9 +384,10 @@ class MedforgeNavigation
                 : null,
         ]));
 
-        $finance = $group('Finanzas', 'mdi mdi-cash-multiple', array_filter([
+        // ── Facturación (operativa) ───────────────────────────────────────────────
+        $facturacion = $group('Facturacion', 'mdi mdi-cash-multiple', array_filter([
             ($canAccessBillingIess || $canAccessBillingIsspol || $canAccessBillingIssfa || $canAccessBillingMsp)
-                ? $label('Facturacion por afiliacion')
+                ? $label('Por afiliacion')
                 : null,
             $canAccessBillingIsspol
                 ? $link('ISSPOL', '/v2/informes/isspol', 'mdi mdi-shield-outline', [
@@ -406,9 +414,16 @@ class MedforgeNavigation
                 'prefix' => ['/v2/billing/no-facturados'],
             ])
                 : null,
-            ($canAccessBillingParticulares || $canAccessBillingDashboard || $canAccessBillingHonorarios || $canAccessFinanceReports || $canAccessBillingIndex)
-                ? $label('Reportes y estadisticas')
+            $canAccessBillingIndex
+                ? $link('Facturas', '/v2/billing', 'mdi mdi-receipt-text-outline', [
+                'prefix' => ['/v2/billing'],
+                'exclude_prefix' => ['/v2/billing/no-facturados', '/v2/billing/dashboard', '/v2/billing/honorarios'],
+            ])
                 : null,
+        ]));
+
+        // ── Reportes (gerencial) ──────────────────────────────────────────────────
+        $reportes = $group('Reportes', 'mdi mdi-chart-box-outline', array_filter([
             $canAccessBillingParticulares
                 ? $link('Particulares', '/v2/informes/particulares', 'mdi mdi-account-outline', [
                 'prefix' => ['/v2/informes/particulares'],
@@ -429,15 +444,10 @@ class MedforgeNavigation
                 'prefix' => ['/views/reportes/estadistica_flujo.php'],
             ])
                 : null,
-            $canAccessBillingIndex
-                ? $link('Facturas', '/v2/billing', 'mdi mdi-receipt-text-outline', [
-                'prefix' => ['/v2/billing'],
-                'exclude_prefix' => ['/v2/billing/no-facturados', '/v2/billing/dashboard', '/v2/billing/honorarios'],
-            ])
-                : null,
         ]));
 
-        $administration = $group('Administracion', 'mdi mdi-shield-crown-outline', array_filter([
+        // ── Administración ────────────────────────────────────────────────────────
+        $administracion = $group('Administracion', 'mdi mdi-shield-crown-outline', array_filter([
             $canAccessDoctors
                 ? $link('Doctores', '/doctores', 'mdi mdi-stethoscope', [
                 'prefix' => ['/doctores'],
@@ -533,17 +543,31 @@ class MedforgeNavigation
         ]));
 
         $sidebar = array_values(array_filter([
+            // 1. Inicio
             $canAccessDashboard
                 ? $link('Inicio', '/v2/dashboard', 'mdi mdi-view-dashboard-outline', [
                 'prefix' => ['/v2/dashboard'],
             ])
                 : null,
-            $commercial['children'] !== [] ? $commercial : null,
-            $dailyOperations['children'] !== [] ? $dailyOperations : null,
-            $clinical['children'] !== [] ? $clinical : null,
-            $inventory['children'] !== [] ? $inventory : null,
-            $finance['children'] !== [] ? $finance : null,
-            $administration['children'] !== [] ? $administration : null,
+            // 2. Consulta
+            $consulta['children'] !== [] ? $consulta : null,
+            // 3. Quirúrgico
+            $quirurgico['children'] !== [] ? $quirurgico : null,
+            // 4. Imágenes
+            $imagenes['children'] !== [] ? $imagenes : null,
+            // 5. Comercial
+            $comercial['children'] !== [] ? $comercial : null,
+            // 6. Comunicaciones
+            $comunicaciones['children'] !== [] ? $comunicaciones : null,
+            // 7. Inventario
+            $inventario['children'] !== [] ? $inventario : null,
+            // 8. Facturación
+            $facturacion['children'] !== [] ? $facturacion : null,
+            // 9. Reportes
+            $reportes['children'] !== [] ? $reportes : null,
+            // 10. Administración
+            $administracion['children'] !== [] ? $administracion : null,
+            // 11. Cerrar sesión
             $link('Cerrar sesion', '/auth/logout', 'mdi mdi-logout'),
         ]));
 
