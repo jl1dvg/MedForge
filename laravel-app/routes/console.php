@@ -26,6 +26,7 @@ use App\Models\WhatsappConversation;
 use App\Models\WhatsappConversationAttribution;
 use App\Models\WhatsappMessage;
 use App\Modules\CronManager\Repositories\CronScheduleRepository;
+use App\Modules\CronManager\Services\CronRunner;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -2385,6 +2386,44 @@ Artisan::command('whatsapp:kb-import-triage
 
     return 0;
 })->purpose('Carga o actualiza una semilla base de Knowledge Base para triage de síntomas');
+
+// ── Wrapper para tareas legacy migradas a Laravel scheduler ──────────────────
+// Permite ejecutar tareas del CronRunner (slugs legacy) desde el scheduler de
+// Laravel sin depender del cron.php heredado. El scheduler maneja el timing;
+// force=true omite el re-chequeo interno del CronRunner.
+
+Artisan::command('cron:legacy-task {slug : Slug de la tarea en cron_schedule}', function (): int {
+    $slug = (string) $this->argument('slug');
+
+    try {
+        $pdo = DB::connection()->getPdo();
+        $runner = new CronRunner($pdo);
+        $result = $runner->runBySlug($slug, force: true);
+
+        if ($result === null) {
+            $this->warn("Tarea '{$slug}' no encontrada en CronRunner.");
+            Log::warning("cron:legacy-task: slug no encontrado", ['slug' => $slug]);
+            return 1;
+        }
+
+        $status = $result['status'] ?? 'ok';
+        $message = $result['message'] ?? '';
+
+        if ($status === 'failed') {
+            $this->error("[{$slug}] {$message}");
+            Log::error("cron:legacy-task failed", ['slug' => $slug, 'result' => $result]);
+            return 1;
+        }
+
+        $this->line("[{$slug}] {$status}: {$message}");
+        Log::info("cron:legacy-task ok", ['slug' => $slug, 'status' => $status]);
+        return 0;
+    } catch (\Throwable $e) {
+        $this->error("[{$slug}] Exception: " . $e->getMessage());
+        Log::error("cron:legacy-task exception", ['slug' => $slug, 'error' => $e->getMessage()]);
+        return 1;
+    }
+})->purpose('Ejecuta una tarea del CronRunner legacy por slug desde el scheduler de Laravel');
 
 // ── Scheduler DB-driven ──────────────────────────────────────────────────────
 // Las frecuencias viven en la tabla cron_schedule y son editables desde el UI.
