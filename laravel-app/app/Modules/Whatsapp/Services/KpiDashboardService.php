@@ -32,6 +32,7 @@ class KpiDashboardService
         $toExclusive = $endDate->setTime(0, 0, 0)->modify('+1 day');
         $fromSql = $from->format('Y-m-d H:i:s');
         $toSql = $toExclusive->format('Y-m-d H:i:s');
+        [$reminderFromSql, $reminderToSql] = $this->localReminderDateRangeSql($from, $endDate);
         $slaTargetMinutes = $this->resolveSlaTargetMinutes($slaTargetMinutes);
 
         $summary = [
@@ -56,7 +57,7 @@ class KpiDashboardService
         $transfers = $this->transferSummary($fromSql, $toSql, $roleId, $agentId);
         $bookings = $this->sigcenterBookingSummary($fromSql, $toSql);
         $analytics = $this->conversationAnalytics($fromSql, $toSql, $roleId, $agentId);
-        $reminders = $this->appointmentReminderAnalytics($fromSql, $toSql);
+        $reminders = $this->appointmentReminderAnalytics($reminderFromSql, $reminderToSql);
         $closeReasons = $this->closeReasonSummary($fromSql, $toSql, $roleId, $agentId);
         $operationalInbox = $this->operationalInboxSummary($roleId, $agentId);
 
@@ -2753,6 +2754,27 @@ class KpiDashboardService
             'max_per_patient_per_day' => (int) $this->settingValue('whatsapp_reminder_max_per_patient_per_day', 2),
             'recent_outbound_hours' => (int) $this->settingValue('whatsapp_reminder_skip_if_recent_outbound_hours', 12),
         ];
+    }
+
+    /**
+     * @return array{0:string,1:string}
+     */
+    private function localReminderDateRangeSql(DateTimeImmutable $from, DateTimeImmutable $endDate): array
+    {
+        $timezone = trim((string) $this->settingValue(
+            'whatsapp_reminder_timezone',
+            config('app.timezone', 'America/Guayaquil')
+        )) ?: 'America/Guayaquil';
+
+        $fromUtc = Carbon::parse($from->format('Y-m-d') . ' 00:00:00', $timezone)
+            ->setTimezone('UTC')
+            ->format('Y-m-d H:i:s');
+        $toUtc = Carbon::parse($endDate->format('Y-m-d') . ' 00:00:00', $timezone)
+            ->addDay()
+            ->setTimezone('UTC')
+            ->format('Y-m-d H:i:s');
+
+        return [$fromUtc, $toUtc];
     }
 
     private function reminderSourceLabel(string $value): string
