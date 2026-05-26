@@ -49,10 +49,6 @@ class MedforgeNavigation
             $permissions,
             ['administrativo', 'cirugias.view', 'cirugias.manage']
         );
-        $canAccessIpl = LegacyPermissionCatalog::containsAny(
-            $permissions,
-            ['administrativo', 'ipl.view', 'cirugias.view', 'cirugias.manage', 'solicitudes.view', 'solicitudes.manage']
-        );
         $canAccessInsumos = LegacyPermissionCatalog::containsAny(
             $permissions,
             ['administrativo', 'insumos.view', 'insumos.manage']
@@ -239,6 +235,11 @@ class MedforgeNavigation
                 'prefix' => ['/v2/derivaciones'],
             ])
                 : null,
+            $canAccessPacientesFlujo
+                ? $link('Flujo de Pacientes', '/v2/pacientes/flujo', 'mdi mdi-transit-connection-variant', [
+                'prefix' => ['/v2/pacientes/flujo'],
+            ])
+                : null,
             $canAccessPatientVerification
                 ? $link('Certificacion biometrica', '/pacientes/certificaciones', 'mdi mdi-qrcode-scan', [
                 'prefix' => ['/pacientes/certificaciones'],
@@ -271,11 +272,6 @@ class MedforgeNavigation
                 'prefix' => ['/v2/cirugias/dashboard', '/v2/solicitudes/dashboard'],
             ])
                 : null,
-            $canAccessIpl
-                ? $link('Planificador de IPL', '/ipl', 'mdi mdi-calendar-multiselect-outline', [
-                'prefix' => ['/ipl', '/views/ipl'],
-            ])
-                : null,
             $canAccessProtocolTemplates
                 ? $link('Plantillas de protocolos', '/protocolos', 'mdi mdi-note-multiple-outline', [
                 'prefix' => ['/protocolos'],
@@ -286,7 +282,7 @@ class MedforgeNavigation
         // ── Imágenes ─────────────────────────────────────────────────────────────
         $imagenes = $group('Imagenes', 'mdi mdi-image-multiple-outline', array_filter([
             $canAccessExamenes
-                ? $link('Examenes', '/v2/examenes', 'mdi mdi-image-filter-center-focus', [
+                ? $link('Examenes Solicitados', '/v2/examenes', 'mdi mdi-image-filter-center-focus', [
                 'prefix' => ['/v2/examenes'],
             ])
                 : null,
@@ -309,14 +305,20 @@ class MedforgeNavigation
                 'prefix' => ['/crm'],
             ])
                 : null,
-            $canAccessPacientesFlujo
-                ? $link('Flujo de Pacientes', '/v2/pacientes/flujo', 'mdi mdi-transit-connection-variant', [
-                'prefix' => ['/v2/pacientes/flujo'],
-            ])
-                : null,
             $canAccessLeads
                 ? $link('Campanas y Leads', '/leads', 'mdi mdi-bullhorn-outline', [
                 'prefix' => ['/leads'],
+            ])
+                : null,
+            $canAccessCodes
+                ? $link('Catalogo de codigos', '/v2/codes', 'mdi mdi-tag-multiple-outline', [
+                'prefix' => ['/v2/codes'],
+                'exclude_prefix' => ['/v2/codes/packages'],
+            ])
+                : null,
+            $canAccessCodes
+                ? $link('Constructor de paquetes', '/v2/codes/packages', 'mdi mdi-package-variant', [
+                'prefix' => ['/v2/codes/packages'],
             ])
                 : null,
         ]));
@@ -324,32 +326,32 @@ class MedforgeNavigation
         // ── Comunicaciones ───────────────────────────────────────────────────────
         $comunicaciones = $group('Comunicaciones', 'mdi mdi-message-outline', array_filter([
             $canAccessWhatsAppChat
-                ? $link('Chat WhatsApp', '/v2/whatsapp/chat', 'mdi mdi-message-text-outline', [
+                ? $link('Chat', '/v2/whatsapp/chat', 'mdi mdi-message-text-outline', [
                 'prefix' => ['/v2/whatsapp/chat'],
             ])
                 : null,
             $canAccessWhatsAppCampaigns
-                ? $link('Campanas WhatsApp', '/v2/whatsapp/campaigns', 'mdi mdi-bullhorn-outline', [
+                ? $link('Campanas', '/v2/whatsapp/campaigns', 'mdi mdi-bullhorn-outline', [
                 'prefix' => ['/v2/whatsapp/campaigns'],
             ])
                 : null,
             $canAccessWhatsAppDashboard
-                ? $link('Dashboard WhatsApp', '/v2/whatsapp/dashboard', 'mdi mdi-chart-line', [
+                ? $link('Dashboard', '/v2/whatsapp/dashboard', 'mdi mdi-chart-line', [
                 'prefix' => ['/v2/whatsapp/dashboard'],
             ])
                 : null,
             $canAccessWhatsAppLeads
-                ? $link('Bajas WhatsApp', '/v2/whatsapp/leads', 'mdi mdi-account-remove-outline', [
+                ? $link('Bajas', '/v2/whatsapp/leads', 'mdi mdi-account-remove-outline', [
                 'prefix' => ['/v2/whatsapp/leads'],
             ])
                 : null,
             $canAccessWhatsAppFlowmaker
-                ? $link('Flowmaker WhatsApp', '/v2/whatsapp/flowmaker', 'mdi mdi-robot-outline', [
+                ? $link('Flowmaker', '/v2/whatsapp/flowmaker', 'mdi mdi-robot-outline', [
                 'prefix' => ['/v2/whatsapp/flowmaker'],
             ])
                 : null,
             $canAccessWhatsAppTemplates
-                ? $link('Plantillas de WhatsApp', '/v2/whatsapp/templates', 'mdi mdi-message-badge-outline', [
+                ? $link('Plantillas', '/v2/whatsapp/templates', 'mdi mdi-message-badge-outline', [
                 'prefix' => ['/v2/whatsapp/templates'],
             ])
                 : null,
@@ -439,11 +441,6 @@ class MedforgeNavigation
                 'prefix' => ['/v2/billing/honorarios'],
             ])
                 : null,
-            $canAccessFinanceReports
-                ? $link('Flujo de pacientes', '/views/reportes/estadistica_flujo.php', 'mdi mdi-chart-timeline-variant', [
-                'prefix' => ['/views/reportes/estadistica_flujo.php'],
-            ])
-                : null,
         ]));
 
         // ── Administración ────────────────────────────────────────────────────────
@@ -481,17 +478,6 @@ class MedforgeNavigation
             $canAccessCronManager
                 ? $link('Cron Manager', '/cron-manager', 'mdi mdi-timer-cog-outline', [
                 'prefix' => ['/cron-manager'],
-            ])
-                : null,
-            $canAccessCodes
-                ? $link('Catalogo de codigos', '/v2/codes', 'mdi mdi-tag-multiple-outline', [
-                'prefix' => ['/v2/codes'],
-                'exclude_prefix' => ['/v2/codes/packages'],
-            ])
-                : null,
-            $canAccessCodes
-                ? $link('Constructor de paquetes', '/v2/codes/packages', 'mdi mdi-package-variant', [
-                'prefix' => ['/v2/codes/packages'],
             ])
                 : null,
         ]));
