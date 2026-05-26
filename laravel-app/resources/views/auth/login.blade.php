@@ -27,6 +27,9 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+    @php
+        $hasMedforgeViteBuild = \App\Modules\Shared\Support\MedforgeAssets::hasViteBuild();
+    @endphp
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -34,11 +37,15 @@
     <meta name="author" content="">
     <link rel="icon" href="/images/favicon.ico">
     <title>MedForge{{ isset($pageTitle) && $pageTitle !== '' ? ' - ' . $pageTitle : '' }}</title>
-    <link rel="stylesheet" href="/css/vendors_css.css">
-    <link rel="stylesheet" href="/css/horizontal-menu.css">
-    <link rel="stylesheet" href="/css/style.css">
-    <link rel="stylesheet" href="/css/skin_color.css">
-    <link rel="stylesheet" href="/css/auth.css">
+    @if ($hasMedforgeViteBuild)
+        @vite('resources/css/auth.css')
+    @else
+        <link rel="stylesheet" href="/css/vendors_css.css">
+        <link rel="stylesheet" href="/css/horizontal-menu.css">
+        <link rel="stylesheet" href="/css/style.css">
+        <link rel="stylesheet" href="/css/skin_color.css">
+        <link rel="stylesheet" href="/css/auth.css">
+    @endif
 </head>
 <body class="hold-transition auth-body">
 <div class="wrapper">
@@ -49,14 +56,14 @@
                     <div class="col-lg-6">
                         <section class="auth-hero h-100">
                             <span class="brand-pill">
-                                <i class="fa-solid fa-shield-heart"></i> MedForge Identity
+                                <i class="mdi mdi-shield-heart-outline" aria-hidden="true"></i> MedForge Identity
                             </span>
                             <h2>La forma más segura de volver a tu trabajo clínico</h2>
                             <p>Centraliza agendas, solicitudes y reportes en una sola plataforma diseñada para equipos de salud.</p>
                             <ul class="auth-hero-features">
-                                <li><i class="fa-solid fa-chart-simple"></i> Panel clínico en tiempo real</li>
-                                <li><i class="fa-solid fa-user-shield"></i> Accesos según permisos y roles</li>
-                                <li><i class="fa-solid fa-laptop-medical"></i> Integración con turnero y kanban</li>
+                                <li><i class="mdi mdi-chart-line" aria-hidden="true"></i> Panel clínico en tiempo real</li>
+                                <li><i class="mdi mdi-account-shield-outline" aria-hidden="true"></i> Accesos según permisos y roles</li>
+                                <li><i class="mdi mdi-laptop" aria-hidden="true"></i> Integración con turnero y kanban</li>
                             </ul>
                         </section>
                     </div>
@@ -68,7 +75,7 @@
                             </div>
                             @if($statusBag)
                                 <div class="status-badge {{ $statusClass }}">
-                                    <i class="fa-solid fa-circle-info"></i>
+                                    <i class="mdi mdi-information-outline" aria-hidden="true"></i>
                                     <span>{{ $statusBag['message'] ?? '' }}</span>
                                 </div>
                             @endif
@@ -94,7 +101,7 @@
                                     >
                                     <label for="username">Usuario o correo</label>
                                     <span class="input-icon">
-                                        <i class="fa-regular fa-user"></i>
+                                        <i class="mdi mdi-account-outline" aria-hidden="true"></i>
                                     </span>
                                 </div>
                                 <div class="mb-2 form-floating position-relative">
@@ -108,7 +115,7 @@
                                     >
                                     <label for="password">Contraseña</label>
                                     <button type="button" class="btn btn-link password-toggle input-icon" data-target="#password">
-                                        <i class="fa-regular fa-eye"></i>
+                                        <i class="mdi mdi-eye-outline" aria-hidden="true"></i>
                                     </button>
                                 </div>
                                 <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
@@ -135,8 +142,10 @@
     </div>
 </div>
 
-<script src="/js/vendors.min.js"></script>
-<script src="/assets/vendor_components/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+@unless ($hasMedforgeViteBuild)
+    <script src="/js/vendors.min.js"></script>
+    <script src="/assets/vendor_components/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+@endunless
 <script>
     (function () {
         const toggles = document.querySelectorAll('.password-toggle');
@@ -152,8 +161,8 @@
                 target.setAttribute('type', isPassword ? 'text' : 'password');
                 const icon = toggle.querySelector('i');
                 if (icon) {
-                    icon.classList.toggle('fa-eye');
-                    icon.classList.toggle('fa-eye-slash');
+                    icon.classList.toggle('mdi-eye-outline');
+                    icon.classList.toggle('mdi-eye-off-outline');
                 }
             });
         });
