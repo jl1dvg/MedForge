@@ -869,8 +869,10 @@
                 </div>
                 <div class="wa-group-label">🧭 Bandejas operativas</div>
                 <div class="wa-now-zone mb-20">
-                    <div class="wa-now-card wa-now-card--{{ ((int)($summary['operational_status_requires_attention'] ?? 0)) > 0 ? 'alert' : 'ok' }}">
-                        <div class="wa-now-card__value">{{ $summary['operational_status_requires_attention'] ?? 0 }}</div>
+                    <div
+                        class="wa-now-card wa-now-card--{{ ((int)($summary['operational_status_requires_attention'] ?? 0)) > 0 ? 'alert' : 'ok' }}">
+                        <div
+                            class="wa-now-card__value">{{ $summary['operational_status_requires_attention'] ?? 0 }}</div>
                         <div class="wa-now-card__label">Requieren atención</div>
                     </div>
                     <div class="wa-now-card wa-now-card--warn">
@@ -885,11 +887,13 @@
                         <div class="wa-now-card__value">{{ $summary['operational_status_scheduled'] ?? 0 }}</div>
                         <div class="wa-now-card__label">Agendados</div>
                     </div>
-                    <div class="wa-now-card wa-now-card--{{ ((int)($summary['priority_critical'] ?? 0)) > 0 ? 'alert' : 'ok' }}">
+                    <div
+                        class="wa-now-card wa-now-card--{{ ((int)($summary['priority_critical'] ?? 0)) > 0 ? 'alert' : 'ok' }}">
                         <div class="wa-now-card__value">{{ $summary['priority_critical'] ?? 0 }}</div>
                         <div class="wa-now-card__label">Prioridad crítica</div>
                     </div>
-                    <div class="wa-now-card wa-now-card--{{ ((int)($summary['limbo_unassigned'] ?? 0)) > 0 ? 'alert' : 'ok' }}">
+                    <div
+                        class="wa-now-card wa-now-card--{{ ((int)($summary['limbo_unassigned'] ?? 0)) > 0 ? 'alert' : 'ok' }}">
                         <div class="wa-now-card__value">{{ $summary['limbo_unassigned'] ?? 0 }}</div>
                         <div class="wa-now-card__label">Limbo sin agente</div>
                     </div>
@@ -978,12 +982,15 @@
                     <div class="wa-kpi-panel__head">
                         <div class="wa-kpi-title-row">
                             <div class="wa-kpi-sideheading__title">Resumen de recordatorios</div>
-                            <button type="button" class="wa-kpi-help" aria-label="Ver ayuda de Resumen de recordatorios">
+                            <button type="button" class="wa-kpi-help"
+                                    aria-label="Ver ayuda de Resumen de recordatorios">
                                 ?
                                 <span class="wa-kpi-help__tooltip">{{ $sectionHelp['reminders_summary'] }}</span>
                             </button>
                         </div>
-                        <div class="wa-kpi-sideheading__meta">Vista operativa de envíos, entrega, respuesta y confirmación para servicios e imágenes.</div>
+                        <div class="wa-kpi-sideheading__meta">Vista operativa de envíos, entrega, respuesta y
+                            confirmación para servicios e imágenes.
+                        </div>
                     </div>
                     <div class="wa-kpi-panel__body">
                         <div class="wa-kpi-grid">
@@ -1006,123 +1013,122 @@
                     </div>
                 </div>
             </div>
-
-            <div class="col-xl-6 col-12">
-                <div class="wa-kpi-panel">
-                    <div class="wa-kpi-panel__head">
-                        <div class="wa-kpi-title-row">
-                            <div class="wa-kpi-sideheading__title">Mix por tipo y ventana</div>
-                            <button type="button" class="wa-kpi-help" aria-label="Ver ayuda de Mix por tipo y ventana">
-                                ?
-                                <span class="wa-kpi-help__tooltip">{{ $sectionHelp['reminders_mix'] }}</span>
-                            </button>
+            {{--
+                        <div class="col-xl-6 col-12">
+                            <div class="wa-kpi-panel">
+                                <div class="wa-kpi-panel__head">
+                                    <div class="wa-kpi-title-row">
+                                        <div class="wa-kpi-sideheading__title">Mix por tipo y ventana</div>
+                                        <button type="button" class="wa-kpi-help" aria-label="Ver ayuda de Mix por tipo y ventana">
+                                            ?
+                                            <span class="wa-kpi-help__tooltip">{{ $sectionHelp['reminders_mix'] }}</span>
+                                        </button>
+                                    </div>
+                                    <div class="wa-kpi-sideheading__meta">Separación entre servicios oftalmológicos generales e imágenes, y entre ventanas 24h y 2h.</div>
+                                </div>
+                                <div class="wa-kpi-panel__body">
+                                    <div class="table-responsive">
+                                        <table class="table table-sm wa-kpi-table mb-0">
+                                            <thead>
+                                            <tr>
+                                                <th>Tipo</th>
+                                                <th>Ventana</th>
+                                                <th>Total</th>
+                                                <th>Enviados</th>
+                                                <th>Entregados</th>
+                                                <th>Respondidos</th>
+                                                <th>Confirmó</th>
+                                                <th>Agente</th>
+                                            </tr>
+                                            </thead>
+                                            <tbody>
+                                            @forelse($reminderBySourceWindow as $row)
+                                                <tr>
+                                                    <td>{{ $row['source_label'] ?? '—' }}</td>
+                                                    <td>{{ $row['window_label'] ?? '—' }}</td>
+                                                    <td>{{ number_format((int) ($row['total'] ?? 0)) }}</td>
+                                                    <td>{{ number_format((int) ($row['sent'] ?? 0)) }}</td>
+                                                    <td>{{ number_format((int) ($row['delivered'] ?? 0)) }}</td>
+                                                    <td>{{ number_format((int) ($row['responded'] ?? 0)) }} <span class="text-muted">({{ $row['response_rate'] ?? 0 }}%)</span></td>
+                                                    <td>{{ number_format((int) ($row['confirmed'] ?? 0)) }}</td>
+                                                    <td>{{ number_format((int) ($row['agent_requested'] ?? 0)) }}</td>
+                                                </tr>
+                                            @empty
+                                                <tr>
+                                                    <td colspan="8" class="text-muted">No hay recordatorios persistidos en el rango seleccionado.</td>
+                                                </tr>
+                                            @endforelse
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                        <div class="wa-kpi-sideheading__meta">Separación entre servicios oftalmológicos generales e imágenes, y entre ventanas 24h y 2h.</div>
-                    </div>
-                    <div class="wa-kpi-panel__body">
-                        <div class="table-responsive">
-                            <table class="table table-sm wa-kpi-table mb-0">
-                                <thead>
-                                <tr>
-                                    <th>Tipo</th>
-                                    <th>Ventana</th>
-                                    <th>Total</th>
-                                    <th>Enviados</th>
-                                    <th>Entregados</th>
-                                    <th>Respondidos</th>
-                                    <th>Confirmó</th>
-                                    <th>Agente</th>
-                                </tr>
-                                </thead>
-                                <tbody>
-                                @forelse($reminderBySourceWindow as $row)
-                                    <tr>
-                                        <td>{{ $row['source_label'] ?? '—' }}</td>
-                                        <td>{{ $row['window_label'] ?? '—' }}</td>
-                                        <td>{{ number_format((int) ($row['total'] ?? 0)) }}</td>
-                                        <td>{{ number_format((int) ($row['sent'] ?? 0)) }}</td>
-                                        <td>{{ number_format((int) ($row['delivered'] ?? 0)) }}</td>
-                                        <td>{{ number_format((int) ($row['responded'] ?? 0)) }} <span class="text-muted">({{ $row['response_rate'] ?? 0 }}%)</span></td>
-                                        <td>{{ number_format((int) ($row['confirmed'] ?? 0)) }}</td>
-                                        <td>{{ number_format((int) ($row['agent_requested'] ?? 0)) }}</td>
-                                    </tr>
-                                @empty
-                                    <tr>
-                                        <td colspan="8" class="text-muted">No hay recordatorios persistidos en el rango seleccionado.</td>
-                                    </tr>
-                                @endforelse
-                                </tbody>
-                            </table>
+                        <div class="col-xl-6 col-12">
+                            <div class="wa-kpi-panel">
+                                <div class="wa-kpi-panel__head">
+                                    <div class="wa-kpi-title-row">
+                                        <div class="wa-kpi-sideheading__title">Últimos recordatorios</div>
+                                        <button type="button" class="wa-kpi-help" aria-label="Ver ayuda de Últimos recordatorios">
+                                            ?
+                                            <span class="wa-kpi-help__tooltip">{{ $sectionHelp['reminders_recent'] }}</span>
+                                        </button>
+                                    </div>
+                                    <div class="wa-kpi-sideheading__meta">Auditoría rápida de los últimos envíos con paciente, estado y acción tomada.</div>
+                                </div>
+                                <div class="wa-kpi-panel__body">
+                                    <div class="table-responsive">
+                                        <table class="table table-sm wa-kpi-table mb-0">
+                                            <thead>
+                                            <tr>
+                                                <th>Evento</th>
+                                                <th>Paciente</th>
+                                                <th>Tipo</th>
+                                                <th>Estado</th>
+                                                <th>Respuesta</th>
+                                            </tr>
+                                            </thead>
+                                            <tbody>
+                                            @forelse($reminderRecent as $row)
+                                                <tr>
+                                                    <td>
+                                                        <div>{{ $formatReminderEventDate($row['event_at'] ?? null) }}</div>
+                                                        <div class="text-muted" style="font-size:12px;">{{ $row['window_label'] ?? '—' }} · #{{ $row['form_id'] ?? '—' }}</div>
+                                                    </td>
+                                                    <td>
+                                                        <div>{{ $row['patient_name'] ?: 'Sin nombre' }}</div>
+                                                        <div class="text-muted" style="font-size:12px;">HC {{ $row['hc_number'] ?: '—' }}</div>
+                                                    </td>
+                                                    <td>
+                                                        <div>{{ $row['source_label'] ?? '—' }}</div>
+                                                        <div class="text-muted" style="font-size:12px;">{{ $row['template_code'] ?? '—' }}</div>
+                                                    </td>
+                                                    <td>
+                                                        <div>{{ $row['status_label'] ?? '—' }}</div>
+                                                        <div class="text-muted" style="font-size:12px;">
+                                                            @if(!empty($row['responded_at']))
+                                                                {{ $formatReminderDate($row['responded_at']) }}
+                                                            @elseif(!empty($row['sent_at']))
+                                                                {{ $formatReminderDate($row['sent_at']) }}
+                                                            @else
+                                                                {{ $formatReminderDate($row['created_at'] ?? null) }}
+                                                            @endif
+                                                        </div>
+                                                    </td>
+                                                    <td>{{ $row['response_label'] ?? 'Sin respuesta' }}</td>
+                                                </tr>
+                                            @empty
+                                                <tr>
+                                                    <td colspan="5" class="text-muted">No hay actividad de recordatorios en el rango actual.</td>
+                                                </tr>
+                                            @endforelse
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="col-xl-6 col-12">
-                <div class="wa-kpi-panel">
-                    <div class="wa-kpi-panel__head">
-                        <div class="wa-kpi-title-row">
-                            <div class="wa-kpi-sideheading__title">Últimos recordatorios</div>
-                            <button type="button" class="wa-kpi-help" aria-label="Ver ayuda de Últimos recordatorios">
-                                ?
-                                <span class="wa-kpi-help__tooltip">{{ $sectionHelp['reminders_recent'] }}</span>
-                            </button>
-                        </div>
-                        <div class="wa-kpi-sideheading__meta">Auditoría rápida de los últimos envíos con paciente, estado y acción tomada.</div>
-                    </div>
-                    <div class="wa-kpi-panel__body">
-                        <div class="table-responsive">
-                            <table class="table table-sm wa-kpi-table mb-0">
-                                <thead>
-                                <tr>
-                                    <th>Evento</th>
-                                    <th>Paciente</th>
-                                    <th>Tipo</th>
-                                    <th>Estado</th>
-                                    <th>Respuesta</th>
-                                </tr>
-                                </thead>
-                                <tbody>
-                                @forelse($reminderRecent as $row)
-                                    <tr>
-                                        <td>
-                                            <div>{{ $formatReminderEventDate($row['event_at'] ?? null) }}</div>
-                                            <div class="text-muted" style="font-size:12px;">{{ $row['window_label'] ?? '—' }} · #{{ $row['form_id'] ?? '—' }}</div>
-                                        </td>
-                                        <td>
-                                            <div>{{ $row['patient_name'] ?: 'Sin nombre' }}</div>
-                                            <div class="text-muted" style="font-size:12px;">HC {{ $row['hc_number'] ?: '—' }}</div>
-                                        </td>
-                                        <td>
-                                            <div>{{ $row['source_label'] ?? '—' }}</div>
-                                            <div class="text-muted" style="font-size:12px;">{{ $row['template_code'] ?? '—' }}</div>
-                                        </td>
-                                        <td>
-                                            <div>{{ $row['status_label'] ?? '—' }}</div>
-                                            <div class="text-muted" style="font-size:12px;">
-                                                @if(!empty($row['responded_at']))
-                                                    {{ $formatReminderDate($row['responded_at']) }}
-                                                @elseif(!empty($row['sent_at']))
-                                                    {{ $formatReminderDate($row['sent_at']) }}
-                                                @else
-                                                    {{ $formatReminderDate($row['created_at'] ?? null) }}
-                                                @endif
-                                            </div>
-                                        </td>
-                                        <td>{{ $row['response_label'] ?? 'Sin respuesta' }}</td>
-                                    </tr>
-                                @empty
-                                    <tr>
-                                        <td colspan="5" class="text-muted">No hay actividad de recordatorios en el rango actual.</td>
-                                    </tr>
-                                @endforelse
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
+            --}}
             {{-- ── TENDENCIAS DEL CANAL ─────────────────────────────────────── --}}
             <div class="col-12">
                 <div class="wa-group-label">📊 Tendencias del canal</div>
