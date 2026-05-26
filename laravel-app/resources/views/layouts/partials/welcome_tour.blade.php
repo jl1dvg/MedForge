@@ -16,7 +16,7 @@
                             <span class="fs-5">📅</span>
                             <div>
                                 <div class="fw-semibold small">Consulta</div>
-                                <div class="text-muted" style="font-size:0.8rem">Agenda, agendamiento, pacientes y derivaciones.</div>
+                                <div class="text-muted" style="font-size:0.8rem">Agenda, agendamiento, pacientes, derivaciones y flujo de pacientes.</div>
                             </div>
                         </div>
                     </div>
@@ -25,7 +25,7 @@
                             <span class="fs-5">🔬</span>
                             <div>
                                 <div class="fw-semibold small">Quirúrgico</div>
-                                <div class="text-muted" style="font-size:0.8rem">Solicitudes, protocolos, IPL y dashboard quirúrgico.</div>
+                                <div class="text-muted" style="font-size:0.8rem">Solicitudes, protocolos, plantillas y dashboard quirúrgico.</div>
                             </div>
                         </div>
                     </div>
@@ -43,7 +43,7 @@
                             <span class="fs-5">📈</span>
                             <div>
                                 <div class="fw-semibold small">Comercial</div>
-                                <div class="text-muted" style="font-size:0.8rem">CRM, flujo de pacientes y campañas/leads.</div>
+                                <div class="text-muted" style="font-size:0.8rem">CRM, leads, catálogo de códigos y constructor de paquetes.</div>
                             </div>
                         </div>
                     </div>
@@ -52,7 +52,7 @@
                             <span class="fs-5">💬</span>
                             <div>
                                 <div class="fw-semibold small">Comunicaciones</div>
-                                <div class="text-muted" style="font-size:0.8rem">Chat, campañas, flowmaker y plantillas de WhatsApp + Mailbox.</div>
+                                <div class="text-muted" style="font-size:0.8rem">Chat, campañas, dashboard, bajas, flowmaker, plantillas y Mailbox.</div>
                             </div>
                         </div>
                     </div>
@@ -79,7 +79,7 @@
                             <span class="fs-5">📊</span>
                             <div>
                                 <div class="fw-semibold small">Reportes</div>
-                                <div class="text-muted" style="font-size:0.8rem">Particulares, billing, honorarios y flujo gerencial.</div>
+                                <div class="text-muted" style="font-size:0.8rem">Particulares, dashboard de billing y honorarios.</div>
                             </div>
                         </div>
                     </div>
@@ -88,7 +88,7 @@
                             <span class="fs-5">⚙️</span>
                             <div>
                                 <div class="fw-semibold small">Administración</div>
-                                <div class="text-muted" style="font-size:0.8rem">Usuarios, roles, ajustes y sugerencias/errores (antes como popup al inicio).</div>
+                                <div class="text-muted" style="font-size:0.8rem">Usuarios, roles, ajustes y sugerencias/errores.</div>
                             </div>
                         </div>
                     </div>
@@ -105,7 +105,7 @@
 
 <script>
 (function () {
-    var TOUR_KEY = 'medforge_menu_tour_v1';
+    var TOUR_KEY = 'medforge_menu_tour_v2';
 
     function showTour() {
         var el = document.getElementById('welcomeTourModal');
