@@ -298,6 +298,7 @@ class WhatsappAppointmentReminderService
             }
 
             $payload = [
+                'patient_name' => (string) ($recipient['patient_name'] ?? ''),
                 'doctor' => $doctor,
                 'sede' => $sedeDepartamento,
                 'procedimiento' => $procedimiento,
