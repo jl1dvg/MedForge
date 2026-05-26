@@ -236,4 +236,17 @@ Route::middleware(['app.auth'])->group(function (): void {
     Route::get('/v2/whatsapp/leads', [WhatsappUiController::class, 'leads'])
         ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.supervise,whatsapp.chat.assign,settings.manage')
         ->middleware('whatsapp.feature:ui,/whatsapp/chat');
+    // Legacy UI paths — serve the same controllers once /whatsapp bridge is active
+    Route::get('/whatsapp/chat', [WhatsappUiController::class, 'chat'])
+        ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.view,whatsapp.chat.send,whatsapp.chat.assign,whatsapp.chat.supervise,settings.manage')
+        ->middleware('whatsapp.feature:ui,/whatsapp/chat');
+    Route::get('/whatsapp/templates', [WhatsappUiController::class, 'templates'])
+        ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.templates.manage,settings.manage')
+        ->middleware('whatsapp.feature:ui,/whatsapp/templates');
+    Route::get('/whatsapp/dashboard', [WhatsappUiController::class, 'dashboard'])
+        ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.view,whatsapp.chat.supervise,settings.manage')
+        ->middleware('whatsapp.feature:ui,/whatsapp/dashboard');
+    Route::get('/whatsapp/flowmaker', [WhatsappUiController::class, 'flowmaker'])
+        ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.autoresponder.manage,settings.manage')
+        ->middleware('whatsapp.feature:ui,/whatsapp/flowmaker');
 });
