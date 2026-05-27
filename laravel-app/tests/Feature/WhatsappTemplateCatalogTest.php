@@ -948,4 +948,45 @@ class WhatsappTemplateCatalogTest extends TestCase
             ->assertSee('Motivo del rechazo')
             ->assertSee('Contenido promocional no permitido para la categoría Utility.');
     }
+
+    public function test_settings_ui_receives_local_template_variable_metadata(): void
+    {
+        $templateId = \DB::table('whatsapp_message_templates')->insertGetId([
+            'template_code' => 'recordatorio_cita_pni_imagen',
+            'display_name' => 'Recordatorio cita PNI imagen',
+            'language' => 'es',
+            'category' => 'UTILITY',
+            'status' => 'PENDING',
+            'wa_business_account' => 'waba-test-1',
+            'description' => 'Recordatorio con variables',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $revisionId = \DB::table('whatsapp_template_revisions')->insertGetId([
+            'template_id' => $templateId,
+            'version' => 1,
+            'status' => 'draft',
+            'header_type' => 'image',
+            'header_text' => null,
+            'body_text' => 'Hola {{1}}, tu cita es el {{2}} a las {{3}}.',
+            'quality_rating' => 'UNKNOWN',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        \DB::table('whatsapp_message_templates')
+            ->where('id', $templateId)
+            ->update(['current_revision_id' => $revisionId]);
+
+        $response = $this
+            ->withoutMiddleware()
+            ->get('/v2/settings?section=whatsapp');
+
+        $response->assertOk();
+
+        $metadata = $response->viewData('whatsappTemplateMetadata');
+
+        $this->assertSame(3, $metadata['recordatorio_cita_pni_imagen']['variable_count'] ?? null);
+    }
 }

@@ -159,7 +159,6 @@ class ReminderTemplateVariableCatalog
         try {
             $templates = WhatsappMessageTemplate::query()
                 ->with('whatsapp_template_revision')
-                ->whereRaw('LOWER(status) in (?, ?)', ['approved', 'active'])
                 ->orderBy('template_code')
                 ->get();
         } catch (\Throwable) {
