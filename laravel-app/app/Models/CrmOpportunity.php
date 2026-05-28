@@ -5,47 +5,51 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 class CrmOpportunity extends Model
 {
     protected $table = 'crm_opportunities';
 
     protected $fillable = [
-        'contact_id', 'title', 'stage', 'source',
-        'source_id', 'source_type', 'assigned_to', 'lost_reason',
+        'contact_id', 'title', 'stage', 'phase',
+        'source', 'source_id', 'source_type',
+        'assigned_to', 'lost_reason',
+        'last_activity_at', 'escalation_at',
     ];
 
     protected $casts = [
-        'contact_id'  => 'integer',
-        'source_id'   => 'integer',
-        'assigned_to' => 'integer',
-        'created_at'  => 'datetime',
-        'updated_at'  => 'datetime',
+        'contact_id'      => 'integer',
+        'source_id'       => 'integer',
+        'assigned_to'     => 'integer',
+        'last_activity_at'=> 'datetime',
+        'escalation_at'   => 'datetime',
+        'created_at'      => 'datetime',
+        'updated_at'      => 'datetime',
     ];
 
-    public const STAGE_NUEVO            = 'nuevo';
-    public const STAGE_EN_CONTACTO      = 'en_contacto';
-    public const STAGE_INTERESADO       = 'interesado';
-    public const STAGE_PROPUESTA        = 'propuesta_enviada';
-    public const STAGE_GANADO           = 'ganado';
-    public const STAGE_PERDIDO          = 'perdido';
+    // Stages — Phase 1: operational
+    public const STAGE_NUEVO        = 'nuevo';
+    public const STAGE_CONTACTADO   = 'contactado';
+    public const STAGE_EN_EVALUACION = 'en_evaluacion';
+    // Stages — Phase 2: commercial
+    public const STAGE_PROPUESTA    = 'propuesta';
+    public const STAGE_COMPROMETIDO = 'comprometido';
+    public const STAGE_GANADO       = 'ganado';
+    public const STAGE_PERDIDO      = 'perdido';
 
     public const STAGES = [
-        self::STAGE_NUEVO,
-        self::STAGE_EN_CONTACTO,
-        self::STAGE_INTERESADO,
-        self::STAGE_PROPUESTA,
-        self::STAGE_GANADO,
-        self::STAGE_PERDIDO,
+        self::STAGE_NUEVO, self::STAGE_CONTACTADO, self::STAGE_EN_EVALUACION,
+        self::STAGE_PROPUESTA, self::STAGE_COMPROMETIDO,
+        self::STAGE_GANADO, self::STAGE_PERDIDO,
     ];
 
-    public const SOURCE_ENTRY_STAGE = [
-        'whatsapp'  => self::STAGE_NUEVO,
-        'solicitud' => self::STAGE_INTERESADO,
-        'examen'    => self::STAGE_PROPUESTA,
-        'manual'    => self::STAGE_NUEVO,
+    public const COMMERCIAL_STAGES = [
+        self::STAGE_PROPUESTA, self::STAGE_COMPROMETIDO,
+        self::STAGE_GANADO, self::STAGE_PERDIDO,
     ];
+
+    public const PHASE_OPERATIONAL = 'operational';
+    public const PHASE_COMMERCIAL  = 'commercial';
 
     public function contact(): BelongsTo
     {
@@ -55,11 +59,6 @@ class CrmOpportunity extends Model
     public function activities(): HasMany
     {
         return $this->hasMany(CrmActivity::class, 'opportunity_id')->orderBy('created_at', 'desc');
-    }
-
-    public function sourceable(): MorphTo
-    {
-        return $this->morphTo('sourceable', 'source_type', 'source_id');
     }
 
     public function scopeActive($query)
@@ -72,16 +71,25 @@ class CrmOpportunity extends Model
         return $query->where('stage', $stage);
     }
 
-    public function scopeUrgent($query, int $waHours = 6, int $defaultHours = 48)
+    public function scopeByPhase($query, string $phase)
     {
-        return $query->active()->where(function ($q) use ($waHours, $defaultHours): void {
-            $q->where(function ($sub) use ($waHours): void {
-                $sub->where('source', 'whatsapp')
-                    ->where('updated_at', '<', now()->subHours($waHours));
-            })->orWhere(function ($sub) use ($defaultHours): void {
-                $sub->whereIn('source', ['solicitud', 'examen'])
-                    ->where('updated_at', '<', now()->subHours($defaultHours));
-            });
+        return $query->where('phase', $phase);
+    }
+
+    /** Opportunities that should have auto-escalated already. */
+    public function scopePendingEscalation($query)
+    {
+        return $query->where('phase', self::PHASE_OPERATIONAL)
+            ->whereNotNull('escalation_at')
+            ->where('escalation_at', '<=', now());
+    }
+
+    /** Opportunities with no activity for longer than the given hours. */
+    public function scopeStaleFor($query, int $hours)
+    {
+        return $query->active()->where(function ($q) use ($hours): void {
+            $q->where('last_activity_at', '<', now()->subHours($hours))
+              ->orWhereNull('last_activity_at');
         });
     }
 }
