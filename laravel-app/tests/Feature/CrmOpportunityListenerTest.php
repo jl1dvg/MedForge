@@ -36,11 +36,14 @@ class CrmOpportunityListenerTest extends TestCase
             $table->unsignedBigInteger('contact_id')->index();
             $table->string('title', 255);
             $table->string('stage', 30)->default('nuevo');
+            $table->string('phase', 20)->default('operational');
             $table->string('source', 30)->default('manual');
             $table->unsignedBigInteger('source_id')->nullable();
             $table->string('source_type', 255)->nullable();
             $table->unsignedBigInteger('assigned_to')->nullable();
             $table->string('lost_reason', 500)->nullable();
+            $table->timestamp('last_activity_at')->nullable();
+            $table->timestamp('escalation_at')->nullable();
             $table->timestamps();
         });
         Schema::create('crm_activities', function (Blueprint $table): void {
@@ -49,6 +52,8 @@ class CrmOpportunityListenerTest extends TestCase
             $table->string('type', 30)->default('nota');
             $table->text('description');
             $table->unsignedBigInteger('user_id')->nullable();
+            $table->unsignedBigInteger('source_id')->nullable();
+            $table->string('source_type', 100)->nullable();
             $table->timestamp('created_at')->useCurrent();
         });
         Schema::create('whatsapp_leads', function (Blueprint $table): void {
@@ -139,5 +144,28 @@ class CrmOpportunityListenerTest extends TestCase
 
         $this->assertEquals(1, CrmContact::query()->count());
         $this->assertEquals(1, CrmOpportunity::query()->count());
+    }
+
+    public function test_log_clinical_creates_activity_with_source(): void
+    {
+        $contact = \App\Models\CrmContact::query()->create([
+            'name' => 'Test', 'phone' => '0999000001', 'resolution' => 'provisional', 'source' => 'examen',
+        ]);
+        $opp = \App\Models\CrmOpportunity::query()->create([
+            'contact_id' => $contact->id, 'title' => 'Test', 'stage' => 'nuevo', 'source' => 'examen',
+        ]);
+
+        $service = app(\App\Modules\CRM\Services\CrmActivityService::class);
+        $activity = $service->logClinical(
+            opportunityId: $opp->id,
+            type: \App\Models\CrmActivity::TYPE_EXAMEN,
+            description: 'OCT Macular realizado',
+            sourceId: 42,
+            sourceType: 'consulta_examenes',
+        );
+
+        $this->assertEquals('examen', $activity->type);
+        $this->assertEquals(42, $activity->source_id);
+        $this->assertEquals('consulta_examenes', $activity->source_type);
     }
 }
