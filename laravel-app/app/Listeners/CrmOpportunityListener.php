@@ -5,7 +5,6 @@ namespace App\Listeners;
 use App\Events\Crm\ExamenSolicitado;
 use App\Events\Crm\SolicitudCreada;
 use App\Events\Crm\WhatsappLeadQualified;
-use App\Modules\CRM\Services\CrmActivityService;
 use App\Modules\CRM\Services\CrmContactResolverService;
 use App\Modules\CRM\Services\CrmOpportunityService;
 use Illuminate\Contracts\Queue\ShouldQueue;
