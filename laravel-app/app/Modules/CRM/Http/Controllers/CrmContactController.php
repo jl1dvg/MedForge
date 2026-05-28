@@ -45,14 +45,16 @@ class CrmContactController
         ]);
         if (isset($validated['cedula'])) {
             $contact->cedula = $validated['cedula'];
-            $contact->resolution = isset($validated['patient_id'])
-                ? CrmContact::RESOLUTION_LINKED
-                : CrmContact::RESOLUTION_IDENTIFIED;
         }
         if (array_key_exists('patient_id', $validated)) {
             $contact->patient_id = $validated['patient_id'];
-            if ($contact->cedula) {
+        }
+        // Recompute resolution from current state after applying both fields
+        if ($contact->isDirty('cedula') || $contact->isDirty('patient_id')) {
+            if ($contact->cedula && $contact->patient_id) {
                 $contact->resolution = CrmContact::RESOLUTION_LINKED;
+            } elseif ($contact->cedula) {
+                $contact->resolution = CrmContact::RESOLUTION_IDENTIFIED;
             }
         }
         $contact->fill(array_intersect_key($validated, array_flip(['name', 'email'])));
@@ -65,7 +67,10 @@ class CrmContactController
         if (!Auth::check()) {
             return response()->json(['error' => 'Sesión expirada'], 401);
         }
-        $validated = $request->validate(['merge_into_id' => 'required|integer|different:id']);
+        $validated = $request->validate(['merge_into_id' => 'required|integer']);
+        if ((int) $validated['merge_into_id'] === $id) {
+            return response()->json(['error' => 'No se puede fusionar un contacto consigo mismo'], 422);
+        }
         $source = CrmContact::query()->find($id);
         $target = CrmContact::query()->find($validated['merge_into_id']);
         if (!$source instanceof CrmContact || !$target instanceof CrmContact) {

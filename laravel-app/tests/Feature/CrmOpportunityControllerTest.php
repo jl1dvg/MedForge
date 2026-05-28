@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Http\Middleware\LegacySessionBridge;
+use App\Http\Middleware\RequireAppPermission;
+use App\Http\Middleware\RequireAppSession;
 use App\Http\Middleware\RequireLegacyPermission;
 use App\Http\Middleware\RequireLegacySession;
 use App\Models\CrmContact;
@@ -75,7 +77,7 @@ class CrmOpportunityControllerTest extends TestCase
         CrmOpportunity::query()->create(['contact_id' => $contact->id, 'title' => 'Op 2', 'stage' => 'interesado', 'source' => 'solicitud']);
 
         $this->actingAs($this->makeUser())
-            ->withoutMiddleware([LegacySessionBridge::class, RequireLegacySession::class, RequireLegacyPermission::class])
+            ->withoutMiddleware([LegacySessionBridge::class, RequireLegacySession::class, RequireLegacyPermission::class, RequireAppSession::class, RequireAppPermission::class])
             ->getJson('/v2/crm/opportunities')
             ->assertOk()
             ->assertJsonPath('meta.total', 2);
@@ -88,7 +90,7 @@ class CrmOpportunityControllerTest extends TestCase
         CrmOpportunity::query()->create(['contact_id' => $contact->id, 'title' => 'Interesado', 'stage' => 'interesado', 'source' => 'solicitud']);
 
         $this->actingAs($this->makeUser())
-            ->withoutMiddleware([LegacySessionBridge::class, RequireLegacySession::class, RequireLegacyPermission::class])
+            ->withoutMiddleware([LegacySessionBridge::class, RequireLegacySession::class, RequireLegacyPermission::class, RequireAppSession::class, RequireAppPermission::class])
             ->getJson('/v2/crm/opportunities?stage=nuevo')
             ->assertOk()
             ->assertJsonPath('meta.total', 1)
@@ -101,7 +103,7 @@ class CrmOpportunityControllerTest extends TestCase
         $opp = CrmOpportunity::query()->create(['contact_id' => $contact->id, 'title' => 'Test', 'stage' => 'nuevo', 'source' => 'whatsapp']);
 
         $this->actingAs($this->makeUser())
-            ->withoutMiddleware([LegacySessionBridge::class, RequireLegacySession::class, RequireLegacyPermission::class])
+            ->withoutMiddleware([LegacySessionBridge::class, RequireLegacySession::class, RequireLegacyPermission::class, RequireAppSession::class, RequireAppPermission::class])
             ->patchJson("/v2/crm/opportunities/{$opp->id}", ['stage' => 'en_contacto'])
             ->assertOk()
             ->assertJsonPath('data.stage', 'en_contacto');
@@ -113,7 +115,7 @@ class CrmOpportunityControllerTest extends TestCase
         $opp = CrmOpportunity::query()->create(['contact_id' => $contact->id, 'title' => 'Test', 'stage' => 'nuevo', 'source' => 'whatsapp']);
 
         $this->actingAs($this->makeUser())
-            ->withoutMiddleware([LegacySessionBridge::class, RequireLegacySession::class, RequireLegacyPermission::class])
+            ->withoutMiddleware([LegacySessionBridge::class, RequireLegacySession::class, RequireLegacyPermission::class, RequireAppSession::class, RequireAppPermission::class])
             ->patchJson("/v2/crm/opportunities/{$opp->id}", ['stage' => 'etapa_falsa'])
             ->assertStatus(422);
     }

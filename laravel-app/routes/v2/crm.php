@@ -44,6 +44,7 @@ Route::middleware([
 // ── CRM Pipeline (nuevo panel centralizado) ───────────────────────────────────
 Route::middleware([
     'app.auth',
+    'app.permission:administrativo,crm.view,crm.manage',
 ])->group(function (): void {
     Route::get('/crm/opportunities',                   [CrmOpportunityController::class, 'index']);
     Route::post('/crm/opportunities',                  [CrmOpportunityController::class, 'store']);
