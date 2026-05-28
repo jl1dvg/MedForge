@@ -137,7 +137,8 @@ Una oportunidad escala de `operational → commercial` cuando se cumple **cualqu
 ### Implementación
 
 **Comando artisan:** `crm:escalate`
-- Ejecuta diariamente (cron: `0 8 * * *`)
+- Registrado en `Console/Kernel.php` → `$schedule->command('crm:escalate')->dailyAt('08:00')`
+- En IONOS: el cron del servidor apunta al scheduler de Laravel (`* * * * * cd /path && php artisan schedule:run`) — **no** un cron directo al comando
 - Busca oportunidades donde `phase = operational AND escalation_at <= NOW()`
 - Para cada una: `phase = commercial`, registra actividad de tipo `cambio_etapa` con descripción "Escalado automáticamente a Comercial — sin actividad por X días"
 - Recalcula `escalation_at` al registrar cualquier actividad nueva en una oportunidad
@@ -213,31 +214,51 @@ Evento entrante (WhatsappLeadQualified | SolicitudCreada | ExamenSolicitado)
 
 ## 6. Panel Comercial — UI
 
-### Sin cambios de stack
+### Stack
 
-React + Vite (ya configurado). La app continúa montada en `GET /crm`.
+React + Vite (ya configurado). La app continúa montada en `GET /crm` dentro del layout `medforge.blade.php`.
+
+### Design system: MedForge (no Tailwind genérico)
+
+El panel anterior usaba clases Tailwind genéricas (`bg-slate-100`, `border-slate-200`) que no corresponden al estilo de MedForge. El nuevo panel usa el design system de `medforge-design-system.css`:
+
+**Tokens CSS a usar:**
+- Fondo de página: `var(--bg-soft)` (#f3f6f9)
+- Superficies/cards: `var(--bg-surface)` (#ffffff)
+- Bordes: `var(--border)` (#e4e6ef), suave: `var(--border-soft)`
+- Texto: `var(--fg-1)` (#172b4c) principal, `var(--fg-2)` secundario, `var(--fg-mute)` muted
+- Primary: `var(--primary)` (#5156be) y `var(--primary-fade)` para fondos
+- Ganado/success: `var(--success)` (#05825f) + `var(--success-light)`
+- Escalación/warning: `var(--warning)` (#ffa800) + `var(--warning-light)`
+- Perdido/danger: `var(--danger)` (#ee3158) + `var(--danger-light)`
+- Operativo (info): `var(--info)` (#3596f7) + `var(--info-light)`
+
+**Patrones de componentes:**
+- Contenedores: `border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-surface); box-shadow: var(--shadow-xs)`
+- Botones: `btn btn-primary` (MedForge/Bootstrap), `btn btn-sm` para acciones de fila
+- Badges de etapa: `background: var(--primary-fade); color: var(--primary)` para primary, semánticos por etapa
+- Tabla: header con `font-size: 11px; text-transform: uppercase; color: var(--fg-1)`, rows con `border-color: var(--border-soft)`
+- Tipografía: `font-family: var(--font-body)` (IBM Plex Sans); valores KPI con `var(--font-display)` (Rubik)
+- Actividades clínicas: usar los colores de categoría — `var(--cat-examen-bg)`/`var(--cat-examen-fg)`, `var(--cat-cirugia-bg)`/`var(--cat-cirugia-fg)`
+
+**Inyección de tokens en React:** El React se monta dentro del layout MedForge que ya carga el CSS. Los componentes usan `style={{ color: 'var(--fg-1)' }}` o un archivo `crm-panel.css` separado que referencia las variables — no clases Tailwind hardcodeadas.
 
 ### Cambios en la tabla principal
 
 | Antes | Ahora |
 |-------|-------|
 | TATIANA PINEDA ×3 filas | TATIANA PINEDA ×1 fila |
-| Sin indicador de fase | Badge `Operativo` / `Comercial` |
-| Sin historial de actividad | `last_activity_at` visible |
-| Sin escalación visible | Indicador de riesgo de escalación |
-
-### Nuevo: indicador de fase
-
-Cada fila muestra:
-- Badge azul `Operativo` o verde `Comercial`
-- Tiempo desde última actividad (ej. "hace 5 días")
-- Si está próxima a escalar: borde naranja + texto "Escala en X días"
+| Colores Tailwind genéricos (slate/blue) | Tokens MedForge (primary #5156be, etc.) |
+| Sin indicador de fase | Badge `Operativo` (info) / `Comercial` (success) |
+| Sin historial de actividad | `last_activity_at` visible en `var(--fg-mute)` |
+| Sin escalación visible | Fila con fondo `var(--warning-light)` + "Escala en X días" |
 
 ### Panel de detalle
 
-- La **línea de tiempo** muestra actividades de todos los tipos (exámenes, solicitudes, notas, llamadas, WA, cambios de etapa)
-- Cada actividad clínica (type = examen | solicitud) tiene link "Ver en módulo" que navega al registro original
+- La **línea de tiempo** muestra todas las actividades: exámenes, solicitudes, notas, llamadas, WA, cambios de etapa — cada tipo con su color de categoría MedForge
+- Cada actividad clínica tiene link "Ver en módulo" → navega al registro original
 - Indicador de fase visible y editable por comercial (con confirmación)
+- Selector visual de etapa: 7 chips en fila, activo con `background: var(--primary); color: #fff`
 
 ---
 
