@@ -9,3 +9,7 @@ Stack trace:
   thrown in /Users/jorgeluisdevera/PhpstormProjects/MedForge/modules/Pacientes/Services/PacienteService.php on line 14
 [23-May-2026 09:02:23 America/Guayaquil] PHP Warning:  Constant BASE_PATH already defined in /Users/jorgeluisdevera/PhpstormProjects/MedForge/bootstrap.php on line 106
 [23-May-2026 09:02:23 America/Guayaquil] PHP Warning:  Constant PUBLIC_PATH already defined in /Users/jorgeluisdevera/PhpstormProjects/MedForge/bootstrap.php on line 111
+[28-May-2026 08:24:34 America/Guayaquil] PHP Warning:  Constant BASE_PATH already defined in /Users/jorgeluisdevera/PhpstormProjects/MedForge/bootstrap.php on line 106
+[28-May-2026 08:24:34 America/Guayaquil] PHP Warning:  Constant PUBLIC_PATH already defined in /Users/jorgeluisdevera/PhpstormProjects/MedForge/bootstrap.php on line 111
+[28-May-2026 08:24:45 America/Guayaquil] PHP Warning:  Constant BASE_PATH already defined in /Users/jorgeluisdevera/PhpstormProjects/MedForge/bootstrap.php on line 106
+[28-May-2026 08:24:45 America/Guayaquil] PHP Warning:  Constant PUBLIC_PATH already defined in /Users/jorgeluisdevera/PhpstormProjects/MedForge/bootstrap.php on line 111
