@@ -1063,11 +1063,66 @@ class CirugiaService
             $stmt = $this->db->prepare("SELECT id FROM protocolo_data WHERE form_id = :form_id");
             $stmt->execute([':form_id' => $data['form_id']]);
             $protocoloId = (int)$stmt->fetchColumn();
+            $auditUserId = isset($data['audit_user_id']) ? (int)$data['audit_user_id'] : null;
+
+            if ($auditUserId !== null && $auditUserId > 0) {
+                $this->registrarAuditoriaGuardado(
+                    $protocoloId,
+                    (string)$data['form_id'],
+                    (string)$data['hc_number'],
+                    (int)($data['status'] ?? 0),
+                    $auditUserId
+                );
+            }
 
             return ['success' => true, 'message' => 'Datos guardados correctamente', 'protocolo_id' => $protocoloId];
         }
 
         return ['success' => false, 'message' => $this->lastError ?? 'Error al guardar el protocolo'];
+    }
+
+    private function registrarAuditoriaGuardado(
+        int $protocoloId,
+        string $formId,
+        string $hcNumber,
+        int $status,
+        int $userId
+    ): void {
+        try {
+            if (!$this->tableExists('protocolo_auditoria')) {
+                return;
+            }
+
+            $version = 0;
+            if ($this->columnExists('protocolo_data', 'version')) {
+                $versionStmt = $this->db->prepare(
+                    'SELECT version FROM protocolo_data WHERE form_id = :form_id AND hc_number = :hc_number LIMIT 1'
+                );
+                $versionStmt->execute([
+                    ':form_id' => $formId,
+                    ':hc_number' => $hcNumber,
+                ]);
+                $version = (int)($versionStmt->fetchColumn() ?: 0);
+            }
+
+            $auditStmt = $this->db->prepare(
+                'INSERT INTO protocolo_auditoria
+                    (protocolo_id, form_id, hc_number, evento, status, version, usuario_id, creado_en)
+                 VALUES
+                    (:protocolo_id, :form_id, :hc_number, :evento, :status, :version, :usuario_id, NOW())'
+            );
+            $auditStmt->execute([
+                ':protocolo_id' => $protocoloId > 0 ? $protocoloId : null,
+                ':form_id' => $formId,
+                ':hc_number' => $hcNumber,
+                ':evento' => 'guardado',
+                ':status' => $status,
+                ':version' => $version,
+                ':usuario_id' => $userId,
+            ]);
+        } catch (\Throwable $exception) {
+            error_log('No se pudo registrar auditoría de guardado de protocolo: ' . $exception->getMessage());
+        }
     }
 
     public function actualizarPrinted(string $formId, string $hcNumber, int $printed): bool

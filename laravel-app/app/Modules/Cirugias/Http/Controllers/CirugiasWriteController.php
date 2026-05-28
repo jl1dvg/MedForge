@@ -65,6 +65,45 @@ class CirugiasWriteController
         return response()->json($response, $statusCode);
     }
 
+    public function guardarDesdeExtension(Request $request): JsonResponse
+    {
+        $payload = $this->payload($request);
+        $auditUser = $this->validarHuellaAuditoria($payload);
+
+        if ($auditUser === false) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Usuario o contraseña inválidos. Vuelve a intentarlo.',
+            ]);
+        }
+
+        if ($auditUser === null) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Debes ingresar usuario y contraseña para registrar la huella de auditoría.',
+            ]);
+        }
+
+        $payload['audit_source'] = $payload['audit_source'] ?? 'cive_extension_protocolos';
+        $payload['audit_user_id'] = (int) $auditUser['id'];
+        $payload['audit_username_resolved'] = (string) $auditUser['username'];
+        unset($payload['audit_password']);
+
+        try {
+            return response()->json($this->service->guardarDesdeApi($payload));
+        } catch (\Throwable $exception) {
+            Log::error('cirugias.protocolos.extension_guardar.error', [
+                'payload_keys' => array_keys($payload),
+                'error' => $exception->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error interno al guardar el protocolo.',
+            ], 500);
+        }
+    }
+
     public function autosave(Request $request): JsonResponse
     {
         if (!Auth::check()) {
@@ -190,5 +229,47 @@ class CirugiasWriteController
         $ok = $this->service->actualizarStatus($formId, $hcNumber, $status, is_numeric(Auth::id()) ? (int) Auth::id() : null);
 
         return response()->json(['success' => $ok]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function payload(Request $request): array
+    {
+        $json = $request->json()->all();
+        if (is_array($json) && $json !== []) {
+            return $json;
+        }
+
+        $all = $request->all();
+        return is_array($all) ? $all : [];
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     * @return array{id:int,username:string}|false|null
+     */
+    private function validarHuellaAuditoria(array $payload): array|false|null
+    {
+        $username = trim((string) ($payload['audit_username'] ?? ''));
+        $password = (string) ($payload['audit_password'] ?? '');
+
+        if ($username === '' || $password === '') {
+            return null;
+        }
+
+        $user = DB::table('users')
+            ->select(['id', 'username', 'password'])
+            ->where('username', $username)
+            ->first();
+
+        if (!$user || !password_verify($password, (string) ($user->password ?? ''))) {
+            return false;
+        }
+
+        return [
+            'id' => (int) $user->id,
+            'username' => (string) $user->username,
+        ];
     }
 }
