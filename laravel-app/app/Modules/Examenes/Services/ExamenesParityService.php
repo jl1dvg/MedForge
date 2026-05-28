@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Examenes\Services;
 
+use App\Events\Crm\ExamenSolicitado;
 use App\Models\WhatsappConversation;
 use App\Modules\Shared\Support\AfiliacionDimensionService;
 use App\Modules\Whatsapp\Services\ConversationWriteService;
@@ -1336,6 +1337,29 @@ class ExamenesParityService
             'derivacion_fecha_vigencia_sel' => $vigencia !== '' ? $vigencia : null,
             'derivacion_prefactura' => $prefactura !== '' ? $prefactura : null,
         ]);
+
+        if ($saved) {
+            // Fetch patient identifier for CRM — best effort, failure is non-fatal
+            $hcNumber = '';
+            try {
+                $stmt = $this->db->prepare('SELECT hc_number FROM consulta_examenes WHERE id = ? LIMIT 1');
+                $stmt->execute([$examenId]);
+                $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+                $hcNumber = is_array($row) ? (string) ($row['hc_number'] ?? '') : '';
+            } catch (\Throwable) {
+                // non-fatal
+            }
+
+            ExamenSolicitado::dispatch(
+                examenId: $examenId,
+                examenData: [
+                    'paciente_nombre'    => '',
+                    'paciente_cedula'    => $hcNumber,
+                    'paciente_telefono'  => '',
+                    'descripcion_examen' => 'Examen con derivación preseleccionada',
+                ],
+            );
+        }
 
         return [
             'status' => 200,

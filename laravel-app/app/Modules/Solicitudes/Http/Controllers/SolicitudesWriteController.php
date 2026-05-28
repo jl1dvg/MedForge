@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Solicitudes\Http\Controllers;
 
+use App\Events\Crm\SolicitudCreada;
 use App\Modules\CRM\Services\CrmProposalService;
 use App\Modules\Solicitudes\Services\SolicitudesCreateService;
 use App\Modules\Solicitudes\Services\SolicitudesReadParityService;
@@ -722,6 +723,20 @@ class SolicitudesWriteController
         $data = $request->all();
         $result = (new SolicitudesCreateService())->guardar($data);
         $status = ($result['success'] ?? false) ? 200 : 422;
+
+        if (($result['success'] ?? false) && !empty($result['ids'])) {
+            $solicitudes = $data['solicitudes'] ?? [];
+            SolicitudCreada::dispatch(
+                solicitudId: (int) $result['ids'][0],
+                solicitudData: [
+                    'paciente_nombre'   => '',
+                    'paciente_cedula'   => (string) ($data['hcNumber'] ?? ''),
+                    'paciente_telefono' => '',
+                    'servicio'          => (string) ($solicitudes[0]['procedimiento'] ?? 'Solicitud médica'),
+                ],
+            );
+        }
+
         return new JsonResponse($result, $status);
     }
 

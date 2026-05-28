@@ -9,6 +9,7 @@ use App\Modules\Farmacia\Http\Controllers\FarmaciaUiController;
 use App\Modules\Auth\Http\Controllers\LoginController;
 use App\Modules\Auth\Http\Controllers\UnifiedLogoutController;
 use App\Modules\CRM\Http\Controllers\CrmProposalController;
+use App\Modules\CRM\Http\Controllers\CrmUiController;
 use App\Modules\Codes\Http\Controllers\CodesUiController;
 use App\Modules\Codes\Http\Controllers\CodesWriteController;
 use App\Modules\Derivaciones\Http\Controllers\DerivacionesUiController;
@@ -252,3 +253,10 @@ Route::middleware(['app.auth'])->group(function (): void {
         ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.autoresponder.manage,settings.manage')
         ->middleware('whatsapp.feature:ui,/whatsapp/flowmaker');
 });
+
+Route::middleware(['app.auth', 'app.permission:administrativo,crm.view,crm.manage'])->group(function (): void {
+    Route::get('/v2/crm', [CrmUiController::class, 'index']);
+});
+
+Route::redirect('/crm', '/v2/crm');
+Route::redirect('/leads', '/v2/crm');

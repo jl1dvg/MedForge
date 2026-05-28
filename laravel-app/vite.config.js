@@ -39,6 +39,7 @@ export default defineConfig({
                 'resources/css/usuarios.css',
                 'resources/js/v2/usuarios-index.js',
                 'resources/js/v2/settings-index.js',
+                'resources/js/crm/main.tsx',
             ],
             refresh: true,
         }),
