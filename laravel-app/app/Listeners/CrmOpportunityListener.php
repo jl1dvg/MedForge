@@ -7,12 +7,9 @@ use App\Events\Crm\SolicitudCreada;
 use App\Events\Crm\WhatsappLeadQualified;
 use App\Modules\CRM\Services\CrmContactResolverService;
 use App\Modules\CRM\Services\CrmOpportunityService;
-use Illuminate\Contracts\Queue\ShouldQueue;
 
-class CrmOpportunityListener implements ShouldQueue
+class CrmOpportunityListener
 {
-    public string $queue = 'crm';
-
     public function __construct(
         private readonly CrmContactResolverService $contactResolver,
         private readonly CrmOpportunityService $opportunityService,
