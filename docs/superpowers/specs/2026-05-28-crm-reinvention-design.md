@@ -149,6 +149,9 @@ $contact = CrmContact::firstOrCreate(['phone' => $waNumber, 'cedula' => null], [
 
 ## 5. Panel Comercial — UI
 
+### Stack frontend: React + Vite (mini-SPA embebida)
+Laravel sirve `GET /crm` → Blade shell → monta la app React. Toda la interactividad (filtros, panel de detalle, timeline en tiempo real vía Pusher) vive en React. Los datos llegan por las rutas JSON del punto 7. Tailwind CSS 4 para estilos (ya configurado).
+
 ### Vista principal: Lista con filtros
 
 - **Barra de stats** con 5 KPIs del día: sin contactar, activas total, ganadas este mes, tiempo de respuesta promedio, tasa de conversión
@@ -232,8 +235,8 @@ El plan original portaba 8 rutas de leads legacy. Con esta reinvención:
 
 ## 9. Decisiones técnicas pendientes para el plan
 
-- [ ] ¿Livewire o Blade + Alpine.js para el panel? (impacta el panel de detalle en tiempo real)
-- [ ] ¿Cola de eventos (queued listeners) para no bloquear Solicitudes/Examenes?
-- [ ] ¿Migración de leads existentes del CRM legacy a `crm_contacts + crm_opportunities`?
-- [ ] Umbral de tiempo para marcar una oportunidad como "urgente" — **default propuesto: 6h para WhatsApp (respuesta esperada rápida), 48h para Solicitudes y Exámenes** — confirmar con equipo comercial antes de implementar
-- [ ] Definir exactamente qué evento de Examenes dispara `ExamenSolicitado` — ¿cuando el médico ordena el examen, o cuando el sistema registra que no hay pago confirmado?
+- [x] **Frontend: React + Vite** — el proyecto ya tiene Vite configurado y Pusher.js instalado. El panel CRM es una mini-SPA React montada en una ruta Laravel (`GET /crm`). El resto del app sigue en Blade — no hay conflicto.
+- [x] **Queued listeners con fallback síncrono** — `CrmOpportunityListener implements ShouldQueue`. No bloquea al usuario al guardar Solicitudes/Examenes, reintentos automáticos si falla. Si no hay worker activo (dev local sin Redis), Laravel ejecuta síncrono automáticamente como fallback.
+- [x] **Migrar leads existentes** — los leads del CRM legacy se migran a `crm_contacts + crm_opportunities` como parte del plan de implementación. Un comando artisan `crm:migrate-legacy-leads` manejará la migración con mapeo de fuentes.
+- [x] **Thresholds de urgencia configurables desde Settings** — defaults: 6h WhatsApp, 48h Solicitudes y Exámenes. Configurables en el módulo Settings para que el equipo comercial los ajuste sin tocar código. Clave sugerida: `crm.urgency_threshold_hours.whatsapp`, `crm.urgency_threshold_hours.solicitud`, `crm.urgency_threshold_hours.examen`.
+- [x] **Trigger de `ExamenSolicitado`** — se dispara cuando el sistema detecta un examen ordenado que **aún no tiene pago ni confirmación operativa asociada**. No cuando el médico lo ordena (eso puede ser sin intención de pago inmediato), sino cuando el examen queda en estado pendiente de confirmación operativa.
