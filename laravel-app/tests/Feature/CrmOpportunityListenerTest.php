@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Events\Crm\ExamenSolicitado;
 use App\Events\Crm\SolicitudCreada;
 use App\Events\Crm\WhatsappLeadQualified;
 use App\Models\CrmContact;
@@ -99,6 +100,24 @@ class CrmOpportunityListenerTest extends TestCase
         $this->assertEquals(1, CrmOpportunity::query()->count());
         $this->assertEquals('interesado', CrmOpportunity::query()->first()->stage);
         $this->assertEquals(42, CrmOpportunity::query()->first()->source_id);
+    }
+
+    public function test_examen_solicitado_creates_propuesta_opportunity(): void
+    {
+        event(new ExamenSolicitado(
+            examenId: 77,
+            examenData: [
+                'paciente_nombre'    => 'Laura Rivas',
+                'paciente_cedula'    => '1712345678',
+                'paciente_telefono'  => '+593995551234',
+                'descripcion_examen' => 'Radiografía de tórax',
+            ],
+        ));
+
+        $this->assertEquals(1, CrmOpportunity::query()->count());
+        $this->assertEquals('propuesta_enviada', CrmOpportunity::query()->first()->stage);
+        $this->assertEquals('examen', CrmOpportunity::query()->first()->source);
+        $this->assertEquals(77, CrmOpportunity::query()->first()->source_id);
     }
 
     public function test_duplicate_cedula_reuses_contact(): void

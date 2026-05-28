@@ -3,6 +3,7 @@
 namespace App\Modules\CRM\Services;
 
 use App\Models\CrmContact;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 
 class CrmContactResolverService
@@ -49,17 +50,25 @@ class CrmContactResolverService
                     return $provisional;
                 }
 
-                // Crear nuevo contacto identificado
-                return CrmContact::query()->create([
-                    'name'       => $name,
-                    'phone'      => $phone,
-                    'cedula'     => $cedula,
-                    'resolution' => $patientId !== null
-                        ? CrmContact::RESOLUTION_LINKED
-                        : CrmContact::RESOLUTION_IDENTIFIED,
-                    'source'     => $source,
-                    'patient_id' => $patientId,
-                ]);
+                // Crear nuevo contacto identificado (con protección ante race condition)
+                try {
+                    return CrmContact::query()->create([
+                        'name'       => $name,
+                        'phone'      => $phone,
+                        'cedula'     => $cedula,
+                        'resolution' => $patientId !== null
+                            ? CrmContact::RESOLUTION_LINKED
+                            : CrmContact::RESOLUTION_IDENTIFIED,
+                        'source'     => $source,
+                        'patient_id' => $patientId,
+                    ]);
+                } catch (QueryException $e) {
+                    // Otro worker insertó el mismo cédula concurrentemente — devolver el existente
+                    if ((int) $e->errorInfo[1] === 1062) {
+                        return CrmContact::query()->byCedula($cedula)->firstOrFail();
+                    }
+                    throw $e;
+                }
             }
 
             // 2. Match débil por teléfono (provisional)

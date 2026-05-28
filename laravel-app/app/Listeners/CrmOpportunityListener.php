@@ -31,10 +31,10 @@ class CrmOpportunityListener implements ShouldQueue
 
         $this->opportunityService->createFromEvent(
             contact: $contact,
-            title: 'Lead WhatsApp: ' . ($lead->motivo_baja),
+            title: 'Lead WhatsApp: ' . ($lead->motivo_baja ?: 'sin motivo registrado'),
             source: 'whatsapp',
             sourceId: $lead->id,
-            sourceType: 'App\Models\WhatsappLead',
+            sourceType: 'whatsapp_lead',
             assignedTo: $event->actorUserId,
         );
     }
