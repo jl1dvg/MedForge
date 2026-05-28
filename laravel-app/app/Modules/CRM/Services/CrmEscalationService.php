@@ -23,14 +23,17 @@ class CrmEscalationService
             ->get();
 
         $escalated = 0;
+        $skipped   = 0;
 
         foreach ($pending as $opp) {
-            if (!$dryRun) {
+            if ($dryRun) {
+                $skipped++;
+            } else {
                 $this->opportunityService->escalateToCommercial($opp);
+                $escalated++;
             }
-            $escalated++;
         }
 
-        return ['escalated' => $escalated, 'skipped' => 0];
+        return ['escalated' => $escalated, 'skipped' => $skipped];
     }
 }

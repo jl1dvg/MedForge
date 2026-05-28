@@ -20,13 +20,13 @@ class CrmEscalate extends Command
     {
         $dryRun = (bool) $this->option('dry-run');
 
+        ['escalated' => $escalated, 'skipped' => $skipped] = $this->escalationService->run($dryRun);
+
         if ($dryRun) {
-            $this->warn('Modo dry-run — no se escribirá nada.');
+            $this->warn("Modo dry-run — no se escribirá nada. Oportunidades a escalar: {$skipped}");
+        } else {
+            $this->info("Oportunidades escaladas: {$escalated}");
         }
-
-        ['escalated' => $escalated] = $this->escalationService->run($dryRun);
-
-        $this->info("Oportunidades escaladas: {$escalated}");
 
         return 0;
     }

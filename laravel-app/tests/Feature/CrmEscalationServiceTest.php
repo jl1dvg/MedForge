@@ -97,5 +97,6 @@ class CrmEscalationServiceTest extends TestCase
         app(CrmEscalationService::class)->run(dryRun: true);
 
         $this->assertDatabaseHas('crm_opportunities', ['phase' => CrmOpportunity::PHASE_OPERATIONAL]);
+        $this->assertDatabaseMissing('crm_activities', ['type' => 'nota']);
     }
 }
