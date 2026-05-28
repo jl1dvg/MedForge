@@ -21,7 +21,7 @@ export default function App() {
     search: filters.search || undefined,
   };
 
-  const { data, meta, loading, refresh } = useOpportunities(apiFilters);
+  const { data, meta, loading, error, refresh } = useOpportunities(apiFilters);
   const { stats } = useStats();
 
   const handleFilterChange = useCallback((partial: Partial<ActiveFilters>) => {
@@ -34,57 +34,42 @@ export default function App() {
   }, [refresh]);
 
   return (
-    <div className="flex h-screen bg-slate-100 overflow-hidden">
-      <aside className="w-52 bg-slate-800 flex flex-col flex-shrink-0">
-        <div className="px-4 py-5 border-b border-slate-700">
-          <p className="text-white font-bold text-base">MedForge</p>
-          <p className="text-slate-400 text-xs">Panel Comercial</p>
+    <div className="flex flex-col bg-slate-100" style={{ minHeight: 'calc(100vh - 120px)' }}>
+      <div className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between">
+        <div>
+          <h1 className="text-lg font-bold text-slate-900">Oportunidades Comerciales</h1>
+          <p className="text-xs text-slate-500">Pipeline centralizado — todas las fuentes</p>
         </div>
-        <nav className="p-2 flex-1">
-          {[
-            { icon: 'O', label: 'Oportunidades', active: true, badge: stats?.urgent ?? 0 },
-            { icon: 'C', label: 'Contactos',     active: false, badge: 0 },
-            { icon: 'R', label: 'Reportes',      active: false, badge: 0 },
-          ].map(({ icon, label, active, badge }) => (
-            <div
-              key={label}
-              className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm cursor-pointer mb-0.5
-                ${active ? 'bg-blue-500 text-white' : 'text-slate-400 hover:bg-slate-700 hover:text-white'}`}
-            >
-              <span>{icon}</span>
-              <span>{label}</span>
-              {badge > 0 && (
-                <span className="ml-auto bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
-                  {badge}
-                </span>
-              )}
-            </div>
-          ))}
-        </nav>
-      </aside>
-
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="bg-white border-b border-slate-200 px-6 h-14 flex items-center justify-between flex-shrink-0">
-          <h1 className="text-lg font-bold text-slate-900">Oportunidades</h1>
-          <button className="bg-blue-500 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-blue-600">
+        <div className="flex items-center gap-3">
+          {stats && stats.urgent > 0 && (
+            <span className="bg-red-100 text-red-700 text-xs font-semibold px-3 py-1 rounded-full">
+              {stats.urgent} urgentes
+            </span>
+          )}
+          <button className="bg-blue-500 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors">
             + Nueva oportunidad
           </button>
-        </header>
+        </div>
+      </div>
 
-        <main className="flex-1 overflow-y-auto p-6">
-          <StatsBar stats={stats} />
-          <FilterChips
-            filters={filters}
-            total={meta.total}
-            urgentCount={stats?.urgent ?? 0}
-            onChange={handleFilterChange}
-          />
-          <OpportunityTable
-            opportunities={data}
-            loading={loading}
-            onSelect={setSelected}
-          />
-        </main>
+      <div className="flex-1 overflow-y-auto p-6">
+        {error && (
+          <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+            {error}
+          </div>
+        )}
+        <StatsBar stats={stats} />
+        <FilterChips
+          filters={filters}
+          total={meta.total}
+          urgentCount={stats?.urgent ?? 0}
+          onChange={handleFilterChange}
+        />
+        <OpportunityTable
+          opportunities={data}
+          loading={loading}
+          onSelect={setSelected}
+        />
       </div>
 
       {selected && (
