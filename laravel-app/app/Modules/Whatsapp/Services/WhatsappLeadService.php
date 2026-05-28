@@ -2,6 +2,7 @@
 
 namespace App\Modules\Whatsapp\Services;
 
+use App\Events\Crm\WhatsappLeadQualified;
 use App\Models\CrmLead;
 use App\Models\WhatsappAutoresponderSession;
 use App\Models\WhatsappConversation;
@@ -102,6 +103,8 @@ class WhatsappLeadService
 
         /** @var WhatsappLead $lead */
         $lead = $result['lead'];
+
+        WhatsappLeadQualified::dispatch($lead, $actorUserId);
 
         return $this->serializeLead($lead, $result['crm_lead_id']);
     }
