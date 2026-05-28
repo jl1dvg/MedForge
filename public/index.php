@@ -46,6 +46,8 @@ $laravelBridgePrefixes = [
     '/api/procedimientos',
     '/billing',    // Onda 5-A
     '/informes',   // Onda 5-A
+    '/crm',        // Onda 5 — reinvención CRM
+    '/leads',      // Onda 5 — legacy /leads alias
 ];
 
 if (in_array($requestPath, $laravelBridgeExact, true)) {

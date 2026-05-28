@@ -255,3 +255,6 @@ Route::middleware(['app.auth'])->group(function (): void {
 Route::middleware(['app.auth', 'app.permission:administrativo,crm.view,crm.manage'])->group(function (): void {
     Route::get('/v2/crm', [CrmUiController::class, 'index']);
 });
+
+Route::redirect('/crm', '/v2/crm');
+Route::redirect('/leads', '/v2/crm');
