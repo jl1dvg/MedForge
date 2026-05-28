@@ -4,7 +4,6 @@ use App\Modules\Dashboard\Http\Controllers\DashboardUiController;
 use App\Modules\Consultas\Http\Controllers\ConsultasUiController;
 use App\Modules\Cirugias\Http\Controllers\ProtocolosLegacyBridgeController;
 use App\Modules\Examenes\Http\Controllers\ExamenesUiController;
-use App\Modules\Examenes\Http\Controllers\ImagenesDashboardV3Controller;
 use App\Modules\Examenes\Http\Controllers\ImagenesUiController;
 use App\Modules\Farmacia\Http\Controllers\FarmaciaUiController;
 use App\Modules\Auth\Http\Controllers\LoginController;
@@ -67,10 +66,6 @@ Route::middleware(['app.auth', 'app.permission:administrativo,examenes.view,exam
     Route::get('/v2/examenes/turnero', [ExamenesUiController::class, 'turnero']);
     Route::get('/v2/imagenes/examenes-realizados', [ImagenesUiController::class, 'realizadas']);
     Route::get('/v2/imagenes/dashboard', [ImagenesUiController::class, 'dashboard']);
-    Route::get('/v3/imagenes/dashboard', [ImagenesDashboardV3Controller::class, 'index'])->name('imagenes.dashboard.v3');
-    Route::get('/v3/imagenes/dashboard/data', [ImagenesDashboardV3Controller::class, 'data'])->name('imagenes.dashboard.v3.data');
-    Route::get('/v3/imagenes/dashboard/detail', [ImagenesDashboardV3Controller::class, 'detail'])->name('imagenes.dashboard.v3.detail');
-    Route::get('/v3/imagenes/dashboard/export', [ImagenesDashboardV3Controller::class, 'export'])->name('imagenes.dashboard.v3.export');
 });
 
 Route::middleware(['app.auth', 'app.permission:administrativo,agenda.view,pacientes.view,solicitudes.view,examenes.view'])->group(function (): void {
