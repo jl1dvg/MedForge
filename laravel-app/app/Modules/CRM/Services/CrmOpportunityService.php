@@ -161,7 +161,7 @@ class CrmOpportunityService
             $opportunity->escalation_at = null;
             $opportunity->save();
 
-            $daysSince = (int) $opportunity->last_activity_at?->diffInDays(now()) ?? 0;
+            $daysSince = (int) ($opportunity->last_activity_at?->diffInDays(now()) ?? 0);
             $this->activityService->logSystemEvent(
                 $opportunity->id,
                 "Escalado automáticamente a Comercial — sin actividad por {$daysSince} días",
@@ -172,8 +172,10 @@ class CrmOpportunityService
     private function touchLastActivity(CrmOpportunity $opportunity): void
     {
         $opportunity->last_activity_at = now();
-        // Also refresh escalation_at since there was activity
-        $opportunity->escalation_at = $this->computeEscalationAt($opportunity->stage);
+        // Only refresh escalation_at for operational opportunities — commercial phase has no escalation timer
+        if ($opportunity->phase === CrmOpportunity::PHASE_OPERATIONAL) {
+            $opportunity->escalation_at = $this->computeEscalationAt($opportunity->stage);
+        }
         $opportunity->save();
     }
 
