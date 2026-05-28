@@ -146,6 +146,59 @@ class CrmOpportunityListenerTest extends TestCase
         $this->assertEquals(1, CrmOpportunity::query()->count());
     }
 
+    public function test_upsert_creates_opportunity_when_contact_has_none(): void
+    {
+        $contact = \App\Models\CrmContact::query()->create([
+            'name' => 'Nuevo', 'phone' => '0999000010', 'resolution' => 'provisional', 'source' => 'examen',
+        ]);
+
+        $service = app(\App\Modules\CRM\Services\CrmOpportunityService::class);
+        $opp = $service->upsertFromEvent(
+            contact: $contact,
+            title: 'Examen: OCT Macular',
+            source: 'examen',
+            sourceId: 99,
+            sourceType: 'consulta_examenes',
+        );
+
+        $this->assertDatabaseHas('crm_opportunities', [
+            'contact_id' => $contact->id,
+            'stage'      => 'nuevo',
+            'phase'      => 'operational',
+        ]);
+        $this->assertDatabaseHas('crm_activities', [
+            'opportunity_id' => $opp->id,
+            'type'           => 'examen',
+            'source_id'      => 99,
+        ]);
+    }
+
+    public function test_upsert_creates_activity_when_contact_already_has_opportunity(): void
+    {
+        $contact = \App\Models\CrmContact::query()->create([
+            'name' => 'Existente', 'phone' => '0999000011', 'resolution' => 'provisional', 'source' => 'examen',
+        ]);
+        \App\Models\CrmOpportunity::query()->create([
+            'contact_id' => $contact->id, 'title' => 'Primera vez', 'stage' => 'contactado', 'source' => 'examen',
+        ]);
+
+        $before = \App\Models\CrmOpportunity::query()->where('contact_id', $contact->id)->count();
+
+        $service = app(\App\Modules\CRM\Services\CrmOpportunityService::class);
+        $service->upsertFromEvent(
+            contact: $contact,
+            title: 'Examen: Angiografía',
+            source: 'examen',
+            sourceId: 100,
+            sourceType: 'consulta_examenes',
+        );
+
+        // No new opportunity created
+        $this->assertEquals($before, \App\Models\CrmOpportunity::query()->where('contact_id', $contact->id)->count());
+        // Activity created
+        $this->assertDatabaseHas('crm_activities', ['source_id' => 100, 'type' => 'examen']);
+    }
+
     public function test_log_clinical_creates_activity_with_source(): void
     {
         $contact = \App\Models\CrmContact::query()->create([
