@@ -20,7 +20,7 @@ class DashboardUiController
         $this->service = new DashboardParityService();
     }
 
-    public function index(Request $request): View|RedirectResponse
+    public function index(Request $request, string $view = 'dashboard.v2'): View|RedirectResponse
     {
         if (!Auth::check()) {
             return redirect('/auth/login?auth_required=1');
@@ -61,7 +61,7 @@ class DashboardUiController
 
         $currentUser = LegacyCurrentUser::resolve($request);
 
-        return view('dashboard.v2', [
+        return view($view, [
             'pageTitle' => 'Dashboard',
             'summaryEndpoint' => '/v2/dashboard/summary',
             'startDate' => $startDate,
@@ -69,5 +69,15 @@ class DashboardUiController
             'currentUser' => $currentUser,
             ...$uiPayload,
         ]);
+    }
+
+    /**
+     * Modern, single-screen "Centro de operaciones" redesign of the dashboard.
+     * Delegates to index() with a v3 view name so both routes share the
+     * same data pipeline; data wiring lives in DashboardParityService.
+     */
+    public function indexV3(Request $request): View|RedirectResponse
+    {
+        return $this->index($request, 'dashboard.v3');
     }
 }
