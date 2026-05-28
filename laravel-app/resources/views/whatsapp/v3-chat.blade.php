@@ -1,19 +1,9 @@
 @extends('layouts.medforge')
 
 {{--
-    MedForge — WhatsApp Chat V3
-    Modern, minimal redesign of v2-chat.blade.php.
-
-    Consumes the SAME data passed by WhatsappUiController::chat() — to use it,
-    add a sibling controller method (chatV3) that calls `view('whatsapp.v3-chat', [...])`
-    with identical view data. See the accompanying patch.
-
-    Keeps JS hook IDs compatible with the existing v2 scripts (wa-v2-message-input,
-    wa-v2-message-list, wa-v2-composer-send, data-wa-action="...", data-wa-conversation-item),
-    so when you're ready you can copy the @push('scripts') block from v2-chat into this
-    file unchanged and everything will wire up. By default this view ships with a small,
-    self-contained JS that handles: menu open/close, composer autosize, and a fetch-based
-    send via the existing /whatsapp/api/conversations/{id}/messages endpoint.
+    MedForge — WhatsApp Chat V3.
+    Shares the WhatsappUiController::chat() data pipeline and keeps v2 hook IDs
+    for compatibility with existing WhatsApp API endpoints.
 --}}
 
 @php
@@ -72,7 +62,7 @@
         'informacion' => ['label' => 'Información', 'icon' => 'mdi-information-outline', 'hint' => 'Consultas generales sin proceso activo.'],
         'unread' => ['label' => 'Sin leer', 'icon' => 'mdi-bell-outline', 'hint' => 'Mensajes entrantes pendientes de revisión.'],
         'window_open' => ['label' => '24h abierta', 'icon' => 'mdi-timer-sand', 'hint' => 'Chats donde se puede responder libremente.'],
-        'needs_template' => ['label' => 'Requiere plantilla', 'icon' => 'mdi-file-document-edit-outline', 'hint' => 'Ventana vencida; requiere template aprobado.'],
+        'needs_template' => ['label' => 'Requiere plantilla', 'icon' => 'mdi-file-document-edit-outline', 'hint' => 'Ventana vencida; requiere plantilla aprobada.'],
     ];
 
     $managerMetrics = [
@@ -144,6 +134,7 @@
             color: var(--wa3-text);
             font-family: var(--bs-body-font-family, "IBM Plex Sans", system-ui, sans-serif);
         }
+        .wa3-sr-only { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border: 0 !important; }
         .wa3.has-drawer { grid-template-columns: 360px 1fr 340px; }
         .wa3:not(.has-drawer) .wa3-drawer { display: none; }
 
@@ -415,6 +406,12 @@
         .wa3-modal__body { padding: 18px; }
         .wa3-modal__grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(280px, .65fr); gap: 16px; }
         @media (max-width: 820px) { .wa3-modal__grid { grid-template-columns: 1fr; } }
+        .wa3-tour-modal .wa3-modal__card { width: min(560px, 100%); }
+        .wa3-tour-modal .wa3-modal__body p { margin: 0 0 10px; font: 400 13px/1.5 var(--bs-body-font-family); color: var(--wa3-text-mute); }
+        .wa3-tour-step { display: flex; align-items: center; gap: 8px; margin-top: 12px; color: var(--wa3-text-mute); font: 700 11px var(--bs-body-font-family); text-transform: uppercase; letter-spacing: .06em; }
+        .wa3-tour-step__bar { flex: 1; height: 4px; border-radius: 999px; background: var(--wa3-surface-2); overflow: hidden; }
+        .wa3-tour-step__bar span { display: block; height: 100%; width: 0; border-radius: inherit; background: var(--wa3-accent); transition: width .18s ease-out; }
+        .wa3-tour-focus { position: relative; z-index: 2147482999; outline: 3px solid rgba(81, 86, 190, .75); outline-offset: 4px; box-shadow: 0 0 0 8px rgba(81, 86, 190, .14); border-radius: 12px; }
 
         .wa3-empty { display: flex; align-items: center; justify-content: center; height: 100%; padding: 40px; }
         .wa3-empty__card { text-align: center; max-width: 360px; }
@@ -424,6 +421,18 @@
 
         @media (max-width: 1280px) { .wa3.has-drawer { grid-template-columns: 320px 1fr 0; } .wa3.has-drawer .wa3-drawer { display: none; } }
         @media (max-width: 1000px) { .wa3 { grid-template-columns: 280px 1fr; } }
+        @media (max-width: 760px) {
+            .wa3, .wa3.has-drawer { grid-template-columns: 1fr; grid-template-rows: minmax(220px, 40vh) minmax(0, 1fr); height: auto; min-height: calc(100vh - 64px); }
+            .wa3-inbox { border-right: 0; border-bottom: 1px solid var(--wa3-border); min-width: 0; }
+            .wa3-thread__head { align-items: flex-start; flex-wrap: wrap; padding: 12px 14px; }
+            .wa3-thread__actions { width: 100%; overflow-x: auto; padding-bottom: 2px; }
+            .wa3-context, .wa3-chat-search, .wa3-realtime { padding-left: 14px; padding-right: 14px; }
+            .wa3-messages { min-height: 48vh; padding-left: 14px; padding-right: 14px; }
+            .wa3-composer { padding: 10px 12px; }
+            .wa3-composer__tools { display: none; }
+            .wa3-modal { padding: 12px; align-items: flex-end; }
+            .wa3-modal__card { max-height: calc(100vh - 24px); border-radius: 16px 16px 0 0; }
+        }
     </style>
 @endpush
 
@@ -440,6 +449,7 @@
                         <div class="wa3-hbtn-wrap" data-wa3-menu="manager">
                             <button class="wa3-hbtn wa3-manager-btn" type="button" data-wa3-menu-toggle="manager" title="Vista gerencial" aria-label="Vista gerencial">
                                 <i class="mdi mdi-view-dashboard-outline"></i>
+                                <span class="wa3-sr-only">Vista gerencial</span>
                             </button>
                             <div class="wa3-hbtn__menu wa3-manager-menu" hidden>
                                 <h6>Métricas rápidas</h6>
@@ -465,17 +475,20 @@
                         </div>
                     @endif
                     @if($canSupervise)
-                        <button class="wa3-iconbtn" title="Reencolar vencidos" type="button" id="wa3-requeue-expired">
+                        <button class="wa3-iconbtn" title="Reencolar vencidos" aria-label="Reencolar vencidos" type="button" id="wa3-requeue-expired">
                             <i class="mdi mdi-restore-alert"></i>
+                            <span class="wa3-sr-only">Reencolar vencidos</span>
                         </button>
                     @endif
-                    <button class="wa3-iconbtn" title="Nueva conversación" type="button"
+                    <button class="wa3-iconbtn" title="Nueva conversación" aria-label="Nueva conversación" type="button"
                             onclick="document.getElementById('wa3-new-modal')?.removeAttribute('hidden')">
                         <i class="mdi mdi-plus"></i>
+                        <span class="wa3-sr-only">Nueva conversación</span>
                     </button>
                     <div class="wa3-hbtn-wrap" data-wa3-menu="filters">
-                        <button class="wa3-iconbtn" title="Filtros avanzados" type="button" data-wa3-menu-toggle="filters">
+                        <button class="wa3-iconbtn" title="Filtros avanzados" aria-label="Filtros avanzados" type="button" data-wa3-menu-toggle="filters">
                             <i class="mdi mdi-tune-variant"></i>
+                            <span class="wa3-sr-only">Filtros avanzados</span>
                         </button>
                         <div class="wa3-hbtn__menu wa3-filter-menu" hidden>
                             <h6>Rango de conversaciones</h6>
@@ -670,7 +683,7 @@
                 </div>
 
                 <div class="wa3-thread__actions">
-                    <button class="wa3-iconbtn" title="Buscar en chat" type="button" id="wa3-chat-search-toggle"><i class="mdi mdi-magnify"></i></button>
+                    <button class="wa3-iconbtn" title="Buscar en chat" aria-label="Buscar en chat" type="button" id="wa3-chat-search-toggle"><i class="mdi mdi-magnify"></i><span class="wa3-sr-only">Buscar en chat</span></button>
                     <span class="wa3-iconbtn--sep"></span>
 
                     @if($canOperateConversation && !$isMine)
@@ -752,10 +765,11 @@
                     @endif
 
                     <button class="wa3-iconbtn is-primary" id="wa3-toggle-drawer" type="button"
-                            title="Ocultar ficha"><i class="mdi mdi-account-details-outline"></i></button>
+                            title="Ocultar ficha" aria-label="Ocultar ficha del paciente"><i class="mdi mdi-account-details-outline"></i><span class="wa3-sr-only">Ocultar ficha del paciente</span></button>
                     <div class="wa3-hbtn-wrap" data-wa3-menu="more">
-                        <button class="wa3-iconbtn" title="Más opciones" type="button" data-wa3-menu-toggle="more">
+                        <button class="wa3-iconbtn" title="Más opciones" aria-label="Más opciones" type="button" data-wa3-menu-toggle="more">
                             <i class="mdi mdi-dots-vertical"></i>
+                            <span class="wa3-sr-only">Más opciones</span>
                         </button>
                         <div class="wa3-hbtn__menu" hidden>
                             <h6>Más opciones</h6>
@@ -829,9 +843,9 @@
                 <i class="mdi mdi-magnify" style="color:var(--wa3-text-mute);font-size:18px;"></i>
                 <input type="search" id="wa3-chat-search-input" placeholder="Buscar dentro de esta conversación...">
                 <span class="wa3-chat-search__count" id="wa3-chat-search-count">0/0</span>
-                <button class="wa3-iconbtn" type="button" id="wa3-chat-search-prev" title="Anterior"><i class="mdi mdi-chevron-up"></i></button>
-                <button class="wa3-iconbtn" type="button" id="wa3-chat-search-next" title="Siguiente"><i class="mdi mdi-chevron-down"></i></button>
-                <button class="wa3-iconbtn" type="button" id="wa3-chat-search-close" title="Cerrar búsqueda"><i class="mdi mdi-close"></i></button>
+                <button class="wa3-iconbtn" type="button" id="wa3-chat-search-prev" title="Anterior" aria-label="Resultado anterior"><i class="mdi mdi-chevron-up"></i><span class="wa3-sr-only">Resultado anterior</span></button>
+                <button class="wa3-iconbtn" type="button" id="wa3-chat-search-next" title="Siguiente" aria-label="Resultado siguiente"><i class="mdi mdi-chevron-down"></i><span class="wa3-sr-only">Resultado siguiente</span></button>
+                <button class="wa3-iconbtn" type="button" id="wa3-chat-search-close" title="Cerrar búsqueda" aria-label="Cerrar búsqueda"><i class="mdi mdi-close"></i><span class="wa3-sr-only">Cerrar búsqueda</span></button>
             </div>
 
             <div class="wa3-realtime" id="wa3-realtime-banner">
@@ -877,7 +891,7 @@
                                         <div>
                                             <strong>{{ $media['filename'] ?: 'Imagen' }}</strong>
                                             <small>{{ $media['mime_type'] ?? 'image' }}</small>
-                                            <img src="{{ $media['download_url'] }}" alt="">
+                                            <img src="{{ $media['download_url'] }}" alt="Imagen adjunta de WhatsApp">
                                         </div>
                                     @elseif(($message['message_type'] ?? '') === 'video' && !empty($media['download_url']))
                                         <div>
@@ -937,9 +951,10 @@
                           data-conversation-id="{{ $selectedConversation['id'] }}"
                           onsubmit="return false;">
                         <div class="wa3-composer__row">
-                            <button class="wa3-iconbtn" type="button" title="Adjuntar"
+                            <button class="wa3-iconbtn" type="button" title="Adjuntar" aria-label="Adjuntar archivo"
                                     onclick="document.getElementById('wa-v2-media-file').click()">
                                 <i class="mdi mdi-paperclip"></i>
+                                <span class="wa3-sr-only">Adjuntar archivo</span>
                             </button>
                             <textarea id="wa-v2-message-input" rows="1"
                                       placeholder="Escribe un mensaje…" {{ $canReplyHere ? '' : 'disabled' }}></textarea>
@@ -951,9 +966,9 @@
                             <input type="hidden" id="wa-v2-media-mime-type" value="">
                             <input type="file" id="wa-v2-media-file" style="display:none;" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt">
                             <div class="wa3-composer__tools">
-                                <button class="wa3-iconbtn" type="button" title="Grabar audio" id="wa3-voice-record"><i class="mdi mdi-microphone-outline"></i></button>
+                                <button class="wa3-iconbtn" type="button" title="Grabar audio" aria-label="Grabar audio" id="wa3-voice-record"><i class="mdi mdi-microphone-outline"></i><span class="wa3-sr-only">Grabar audio</span></button>
                                 <div class="wa3-emoji-wrap">
-                                    <button class="wa3-iconbtn" type="button" title="Emoji" id="wa3-emoji-toggle"><i class="mdi mdi-emoticon-outline"></i></button>
+                                    <button class="wa3-iconbtn" type="button" title="Emoji" aria-label="Abrir emojis" id="wa3-emoji-toggle"><i class="mdi mdi-emoticon-outline"></i><span class="wa3-sr-only">Abrir emojis</span></button>
                                     <div class="wa3-emoji-popover" id="wa3-emoji-popover" hidden>
                                         <h6>Emojis rápidos</h6>
                                         <div class="wa3-emoji-grid">
@@ -963,17 +978,18 @@
                                         </div>
                                     </div>
                                 </div>
-                                <button class="wa3-iconbtn" type="button" title="Nota interna"
-                                        onclick="document.getElementById('wa3-note-body')?.focus()"><i class="mdi mdi-note-edit-outline"></i></button>
+                                <button class="wa3-iconbtn" type="button" title="Nota interna" aria-label="Ir a nota interna"
+                                        onclick="document.getElementById('wa3-note-body')?.focus()"><i class="mdi mdi-note-edit-outline"></i><span class="wa3-sr-only">Ir a nota interna</span></button>
                             </div>
                             <button class="wa3-send wa-v2-composer-send" type="button" id="wa3-send-btn"
-                                    title="Enviar (Enter)" {{ $canReplyHere ? '' : 'disabled' }}>
+                                    title="Enviar (Enter)" aria-label="Enviar mensaje" {{ $canReplyHere ? '' : 'disabled' }}>
                                 <i class="mdi mdi-send"></i>
+                                <span class="wa3-sr-only">Enviar mensaje</span>
                             </button>
                         </div>
                         <div class="wa3-upload" id="wa3-upload-status">
                             <span id="wa3-upload-text">Adjunto listo</span>
-                            <button type="button" id="wa3-upload-clear" title="Quitar adjunto"><i class="mdi mdi-close"></i></button>
+                            <button type="button" id="wa3-upload-clear" title="Quitar adjunto" aria-label="Quitar adjunto"><i class="mdi mdi-close"></i><span class="wa3-sr-only">Quitar adjunto</span></button>
                         </div>
                         <div class="wa3-composer__hint">
                             <span>
@@ -1067,7 +1083,7 @@
                     @endif
                     @if(!empty($selectedConversation['ownership_label']))
                         <div class="wa3-kv__row">
-                            <span class="k"><i class="mdi mdi-tag-outline"></i>Ownership</span>
+                            <span class="k"><i class="mdi mdi-tag-outline"></i>Responsable</span>
                             <span class="v">{{ $selectedConversation['ownership_label'] }}</span>
                         </div>
                     @endif
@@ -1143,7 +1159,7 @@
                 </div>
                 <div class="wa3-action-row">
                     <span class="wa3-feedback" id="wa3-qr-feedback"></span>
-                    <button class="wa3-secondary-btn" type="button" id="wa3-qr-submit">Crear quick reply</button>
+                    <button class="wa3-secondary-btn" type="button" id="wa3-qr-submit">Crear respuesta rápida</button>
                 </div>
             </div>
 
@@ -1168,7 +1184,7 @@
                 <h3>Nueva conversación con plantilla</h3>
                 <div style="font:400 12px var(--bs-body-font-family);color:#7e8299;margin-top:3px;">Usa una plantilla aprobada para iniciar o continuar fuera de ventana.</div>
             </div>
-            <button class="wa3-iconbtn" type="button" data-wa3-modal-close="wa3-new-modal"><i class="mdi mdi-close"></i></button>
+            <button class="wa3-iconbtn" type="button" data-wa3-modal-close="wa3-new-modal" aria-label="Cerrar nueva conversación"><i class="mdi mdi-close"></i><span class="wa3-sr-only">Cerrar nueva conversación</span></button>
         </div>
         <div class="wa3-modal__body">
             <div class="wa3-modal__grid">
@@ -1183,7 +1199,7 @@
                     <div class="wa3-picker-results" id="wa3-start-results"></div>
                     <div class="wa3-field" style="margin-top:12px;">
                         <label>Preview del mensaje</label>
-                        <div class="wa3-template-preview" id="wa3-start-preview">Selecciona un template para revisar el mensaje final.</div>
+                        <div class="wa3-template-preview" id="wa3-start-preview">Selecciona una plantilla para revisar el mensaje final.</div>
                     </div>
                 </div>
                 <div>
@@ -1204,9 +1220,9 @@
                         <input type="text" id="wa3-start-hc" placeholder="Historia clínica">
                     </div>
                     <div class="wa3-field">
-                        <label for="wa3-start-template">Template aprobado</label>
+                        <label for="wa3-start-template">Plantilla aprobada</label>
                         <select id="wa3-start-template">
-                            <option value="">Selecciona un template</option>
+                            <option value="">Selecciona una plantilla</option>
                             @foreach($approvedTemplateOptions as $template)
                                 <option value="{{ $template['id'] }}">{{ $template['name'] ?? 'Plantilla' }} · {{ $template['language'] ?: 'n/a' }} · {{ $template['status'] ?: 'n/a' }}</option>
                             @endforeach
@@ -1231,7 +1247,7 @@
                 <h3>Cerrar seguimiento</h3>
                 <div style="font:400 12px var(--bs-body-font-family);color:#7e8299;margin-top:3px;">Esto no elimina al paciente ni el historial. Cerrará la conversación activa y generará un lead de seguimiento.</div>
             </div>
-            <button class="wa3-iconbtn" type="button" data-wa3-modal-close="wa3-followup-modal"><i class="mdi mdi-close"></i></button>
+            <button class="wa3-iconbtn" type="button" data-wa3-modal-close="wa3-followup-modal" aria-label="Cerrar seguimiento"><i class="mdi mdi-close"></i><span class="wa3-sr-only">Cerrar seguimiento</span></button>
         </div>
         <div class="wa3-modal__body">
             <div class="wa3-field">
@@ -1243,6 +1259,38 @@
         <div class="wa3-modal__foot">
             <button class="wa3-secondary-btn" type="button" data-wa3-modal-close="wa3-followup-modal">Cancelar</button>
             <button class="wa3-primary-btn" type="button" id="wa3-followup-submit">Cerrar seguimiento</button>
+        </div>
+    </div>
+</div>
+
+<div class="wa3-modal wa3-tour-modal" id="wa3-tour-modal" hidden role="dialog" aria-modal="true" aria-labelledby="wa3-tour-title">
+    <div class="wa3-modal__card">
+        <div class="wa3-modal__head">
+            <div>
+                <h3 id="wa3-tour-title">Nuevo Chat de WhatsApp</h3>
+                <div style="font:400 12px var(--bs-body-font-family);color:#7e8299;margin-top:3px;">Una vista más clara para atender conversaciones.</div>
+            </div>
+            <button class="wa3-iconbtn" type="button" id="wa3-tour-close" aria-label="Cerrar tour">
+                <i class="mdi mdi-close"></i>
+                <span class="wa3-sr-only">Cerrar tour</span>
+            </button>
+        </div>
+        <div class="wa3-modal__body">
+            <p>Ahora las conversaciones, los mensajes y la ficha del paciente están separados para que encuentres cada cosa más rápido.</p>
+            <p>El chat también muestra acciones principales en la parte superior y accesos rápidos junto al campo de escritura.</p>
+            <div class="wa3-tour-step">
+                <span id="wa3-tour-counter">Paso 1 de 5</span>
+                <span class="wa3-tour-step__bar"><span id="wa3-tour-progress"></span></span>
+            </div>
+            <h4 id="wa3-tour-step-title" style="font:700 16px var(--font-display, 'Rubik', system-ui, sans-serif);color:#172b4c;margin:14px 0 6px;">Conversaciones</h4>
+            <p id="wa3-tour-step-copy">Aquí eliges qué chat atender.</p>
+        </div>
+        <div class="wa3-modal__foot">
+            <button class="wa3-secondary-btn" type="button" id="wa3-tour-prev">Anterior</button>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
+                <button class="wa3-secondary-btn" type="button" id="wa3-tour-next">Siguiente</button>
+                <button class="wa3-primary-btn" type="button" id="wa3-tour-done">Entendido, explorar</button>
+            </div>
         </div>
     </div>
 </div>
@@ -1284,8 +1332,10 @@
     if (drawerBtn && root) {
         drawerBtn.addEventListener('click', () => {
             root.classList.toggle('has-drawer');
-            drawerBtn.classList.toggle('is-primary', root.classList.contains('has-drawer'));
-            drawerBtn.title = root.classList.contains('has-drawer') ? 'Ocultar ficha' : 'Ver ficha del paciente';
+            const isOpen = root.classList.contains('has-drawer');
+            drawerBtn.classList.toggle('is-primary', isOpen);
+            drawerBtn.title = isOpen ? 'Ocultar ficha' : 'Ver ficha del paciente';
+            drawerBtn.setAttribute('aria-label', isOpen ? 'Ocultar ficha del paciente' : 'Ver ficha del paciente');
         });
     }
 
@@ -1445,7 +1495,7 @@
         });
     });
 
-    // Send via existing /whatsapp/api/conversations/{id}/messages endpoint
+    // Send via existing WhatsApp message endpoint.
     const csrfTokenEl = document.querySelector('meta[name="csrf-token"]');
     const csrfToken = csrfTokenEl ? csrfTokenEl.getAttribute('content') : '';
     const apiBase = @json($apiBase);
@@ -1599,7 +1649,6 @@
             resetMediaState();
             autosize();
         } catch (err) {
-            console.error('[wa3] send error', err);
             alert('No se pudo enviar el mensaje. Inténtalo nuevamente.');
         } finally {
             sendBtn.disabled = false;
@@ -1629,7 +1678,7 @@
                 });
                 if (!res.ok) throw new Error('Transfer failed');
                 window.location.reload();
-            } catch (err) { console.error('[wa3] transfer error', err); alert('No se pudo transferir la conversación.'); }
+            } catch (err) { alert('No se pudo transferir la conversación.'); }
         });
     });
 
@@ -1646,7 +1695,7 @@
                 });
                 if (!res.ok) throw new Error('Close failed');
                 window.location.href = `${previewRoute}?filter=closed`;
-            } catch (err) { console.error('[wa3] close error', err); alert('No se pudo resolver la conversación.'); }
+            } catch (err) { alert('No se pudo resolver la conversación.'); }
         });
     });
 
@@ -1700,7 +1749,7 @@
                 button.classList.remove('is-primary');
                 try {
                     await uploadFile(file);
-                    setUploadStatus('Voice note lista para enviar.');
+                    setUploadStatus('Audio listo para enviar.');
                 } catch (err) {
                     alert(err.message || 'No se pudo cargar el audio.');
                 }
@@ -1794,7 +1843,7 @@
             await postJson(`${apiBase}/quick-replies`, { title, body });
             if (feedback) {
                 feedback.dataset.tone = 'success';
-                feedback.textContent = 'Quick reply creado.';
+                feedback.textContent = 'Respuesta rápida creada.';
             }
         } catch (err) {
             if (feedback) {
@@ -1896,7 +1945,7 @@
             startTemplate.value = String(payload.templateId);
             renderStartVariables();
         }
-        setStartFeedback('Completa las variables del template antes de enviarlo.', 'success');
+        setStartFeedback('Completa los datos de la plantilla antes de enviarla.', 'success');
     }
     function renderStartPreview() {
         if (!startTemplate || !startPreview) return;
@@ -1906,7 +1955,7 @@
         const values = startVars ? Array.from(startVars.querySelectorAll('[data-wa-template-variable]')).map((input) => input.value.trim()) : [];
         startPreview.textContent = body
             ? body.replace(/\{\{\s*(\d+)\s*\}\}/g, (match, index) => values[Number(index) - 1] || examples[Number(index) - 1] || match)
-            : 'Este template no tiene cuerpo registrado.';
+            : 'Esta plantilla no tiene mensaje registrado.';
     }
     function renderStartVariables() {
         if (!startTemplate || !startVars) return;
@@ -1982,7 +2031,7 @@
         const waNumber = (document.getElementById('wa3-start-number')?.value || '').trim();
         const templateId = Number(startTemplate?.value || 0);
         if (!waNumber || !templateId) {
-            setStartFeedback('Número WhatsApp y template son obligatorios.', 'danger');
+            setStartFeedback('Número WhatsApp y plantilla son obligatorios.', 'danger');
             return;
         }
         try {
@@ -2019,7 +2068,8 @@
                 if (banner) banner.classList.add('is-visible');
             }
             if (json?.data?.last_message_preview) {
-                document.querySelector(`[data-wa-conversation-preview="${conversationId}"]`).textContent = json.data.last_message_preview;
+                const selectedPreview = document.querySelector(`[data-wa-conversation-preview="${conversationId}"]`);
+                if (selectedPreview) selectedPreview.textContent = json.data.last_message_preview;
             }
         } catch (err) {
             // silent polling
@@ -2059,6 +2109,82 @@
     // ── Auto-scroll to bottom on initial load ───────────────────────────────
     const list = document.getElementById('wa-v2-message-list');
     if (list) list.scrollTop = list.scrollHeight;
+
+    // ── First-visit welcome tour ───────────────────────────────────────────
+    const tourStorageKey = 'medforge_chat_tour_visto';
+    const tourModal = document.getElementById('wa3-tour-modal');
+    const tourClose = document.getElementById('wa3-tour-close');
+    const tourPrev = document.getElementById('wa3-tour-prev');
+    const tourNext = document.getElementById('wa3-tour-next');
+    const tourDone = document.getElementById('wa3-tour-done');
+    const tourCounter = document.getElementById('wa3-tour-counter');
+    const tourProgress = document.getElementById('wa3-tour-progress');
+    const tourStepTitle = document.getElementById('wa3-tour-step-title');
+    const tourStepCopy = document.getElementById('wa3-tour-step-copy');
+    const tourSteps = [
+        { selector: '.wa3-inbox', title: 'Lista de conversaciones', copy: 'Aquí eliges el chat que vas a revisar. Usa las pestañas para ver pendientes, tuyas o cerradas.' },
+        { selector: '.wa3-thread', title: 'Mensajes del paciente', copy: 'En el centro ves el historial completo. Los mensajes nuevos aparecen en esta zona.' },
+        { selector: '.wa3-thread__actions', title: 'Acciones principales', copy: 'Desde arriba puedes tomar, transferir, usar plantillas, resolver o abrir más opciones del chat.' },
+        { selector: '.wa3-composer', title: 'Campo para escribir', copy: 'Escribe la respuesta abajo. También puedes adjuntar archivos, usar respuestas rápidas o enviar audio si está disponible.' },
+        { selector: '.wa3-drawer, #wa3-toggle-drawer', title: 'Ficha del paciente', copy: 'A la derecha están los datos del paciente, notas internas, trazabilidad y accesos como agenda o ficha.' },
+    ].filter((step) => document.querySelector(step.selector));
+    let tourIndex = 0;
+    let activeTourTarget = null;
+
+    function clearTourFocus() {
+        if (activeTourTarget) activeTourTarget.classList.remove('wa3-tour-focus');
+        activeTourTarget = null;
+    }
+
+    function closeTour() {
+        clearTourFocus();
+        tourModal?.setAttribute('hidden', '');
+        try { window.localStorage.setItem(tourStorageKey, '1'); } catch (err) {}
+    }
+
+    function renderTourStep() {
+        if (!tourModal || tourSteps.length === 0) return;
+        clearTourFocus();
+        const step = tourSteps[tourIndex];
+        activeTourTarget = document.querySelector(step.selector);
+        if (activeTourTarget) {
+            activeTourTarget.classList.add('wa3-tour-focus');
+            activeTourTarget.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+        }
+        if (tourCounter) tourCounter.textContent = `Paso ${tourIndex + 1} de ${tourSteps.length}`;
+        if (tourProgress) tourProgress.style.width = `${((tourIndex + 1) / tourSteps.length) * 100}%`;
+        if (tourStepTitle) tourStepTitle.textContent = step.title;
+        if (tourStepCopy) tourStepCopy.textContent = step.copy;
+        if (tourPrev) tourPrev.disabled = tourIndex === 0;
+        if (tourNext) tourNext.hidden = tourIndex === tourSteps.length - 1;
+    }
+
+    function openTourIfNeeded() {
+        if (!tourModal || tourSteps.length === 0) return;
+        try {
+            if (window.localStorage.getItem(tourStorageKey) === '1') return;
+        } catch (err) {}
+        tourModal.removeAttribute('hidden');
+        renderTourStep();
+    }
+
+    tourPrev?.addEventListener('click', () => {
+        tourIndex = Math.max(0, tourIndex - 1);
+        renderTourStep();
+    });
+    tourNext?.addEventListener('click', () => {
+        tourIndex = Math.min(tourSteps.length - 1, tourIndex + 1);
+        renderTourStep();
+    });
+    tourDone?.addEventListener('click', closeTour);
+    tourClose?.addEventListener('click', closeTour);
+    tourModal?.addEventListener('mousedown', (event) => {
+        if (event.target === tourModal) closeTour();
+    });
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && tourModal && !tourModal.hasAttribute('hidden')) closeTour();
+    });
+    window.setTimeout(openTourIfNeeded, 350);
 })();
 </script>
 @endpush

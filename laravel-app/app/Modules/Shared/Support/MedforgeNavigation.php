@@ -296,6 +296,11 @@ class MedforgeNavigation
                 'prefix' => ['/v2/imagenes/dashboard'],
             ])
                 : null,
+            $canAccessImagenesDashboard
+                ? $link('Dashboard imagenes V3', '/v3/imagenes/dashboard', 'mdi mdi-view-dashboard-outline', [
+                'prefix' => ['/v3/imagenes/dashboard'],
+            ])
+                : null,
         ]));
 
         // ── Comercial ────────────────────────────────────────────────────────────

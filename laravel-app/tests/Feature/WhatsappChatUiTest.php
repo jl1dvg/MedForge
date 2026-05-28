@@ -225,4 +225,24 @@ class WhatsappChatUiTest extends TestCase
             CarbonImmutable::setTestNow();
         }
     }
+
+    public function test_v3_chat_renders_welcome_tour(): void
+    {
+        $this->actingAs(User::query()->findOrFail(40));
+
+        $response = $this->withoutMiddleware([
+            LegacySessionBridge::class,
+            RequireLegacySession::class,
+            RequireLegacyPermission::class,
+        ])->get('/v3/whatsapp/chat?conversation=840');
+
+        $response
+            ->assertOk()
+            ->assertSee('Nuevo Chat de WhatsApp')
+            ->assertSee('medforge_chat_tour_visto')
+            ->assertSee('Lista de conversaciones')
+            ->assertSee('Mensajes del paciente')
+            ->assertSee('Campo para escribir')
+            ->assertSee('Entendido, explorar');
+    }
 }

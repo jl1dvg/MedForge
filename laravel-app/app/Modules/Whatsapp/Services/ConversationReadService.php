@@ -40,7 +40,7 @@ class ConversationReadService
         }
 
         return $query
-            ->orderByDesc('id')
+            ->orderByDesc('whatsapp_conversations.id')
             ->paginate($perPage);
     }
 
@@ -126,11 +126,11 @@ class ConversationReadService
     private function applyDateRange(Builder $query, ?CarbonImmutable $dateFrom, ?CarbonImmutable $dateTo): Builder
     {
         if ($dateFrom !== null) {
-            $query->where('last_message_at', '>=', $dateFrom->startOfDay());
+            $query->where('whatsapp_conversations.last_message_at', '>=', $dateFrom->startOfDay());
         }
 
         if ($dateTo !== null) {
-            $query->where('last_message_at', '<=', $dateTo->endOfDay());
+            $query->where('whatsapp_conversations.last_message_at', '<=', $dateTo->endOfDay());
         }
 
         return $query;
@@ -415,15 +415,20 @@ class ConversationReadService
         // ── Sort chronologically ──────────────────────────────────────────────
         usort($entries, fn (array $a, array $b): int => strcmp($a['sort_key'], $b['sort_key']));
 
-        // ── Serialize timestamps as UTC ISO for frontend ──────────────────────
+        // ── Serialize timestamps as UTC ISO plus a local clinic label ─────────
         $appTz = config('app.timezone', 'UTC');
+        $displayTz = 'America/Guayaquil';
 
-        return array_values(array_map(function (array $entry) use ($appTz): array {
+        return array_values(array_map(function (array $entry) use ($appTz, $displayTz): array {
             unset($entry['sort_key']);
-            $entry['created_at'] = CarbonImmutable::parse(
+            $createdAt = CarbonImmutable::parse(
                 (string) ($entry['created_at'] ?? ''),
                 $appTz
-            )->toISOString();
+            );
+            $entry['created_at'] = $createdAt->toISOString();
+            $entry['created_at_label'] = $createdAt
+                ->setTimezone($displayTz)
+                ->format('d/m/Y H:i');
 
             return $entry;
         }, $entries));
@@ -554,21 +559,21 @@ class ConversationReadService
         if (!$includeAssignedOthers && $viewerUserId !== null && $viewerUserId > 0) {
             $query->where(function (Builder $builder) use ($viewerUserId): void {
                 $builder
-                    ->whereNull('assigned_user_id')
-                    ->orWhere('assigned_user_id', $viewerUserId);
+                    ->whereNull('whatsapp_conversations.assigned_user_id')
+                    ->orWhere('whatsapp_conversations.assigned_user_id', $viewerUserId);
             });
         }
 
         if ($assignedUserId !== null) {
             if ($assignedUserId <= 0) {
-                $query->whereNull('assigned_user_id');
+                $query->whereNull('whatsapp_conversations.assigned_user_id');
             } else {
-                $query->where('assigned_user_id', $assignedUserId);
+                $query->where('whatsapp_conversations.assigned_user_id', $assignedUserId);
             }
         }
 
         if ($roleId !== null && $roleId > 0) {
-            $query->where('handoff_role_id', $roleId);
+            $query->where('whatsapp_conversations.handoff_role_id', $roleId);
         }
 
         return $query;
@@ -604,14 +609,14 @@ class ConversationReadService
             'captacion' => $this->applyOperationalQueueFilter($query, 'captacion'),
             'operacion' => $this->applyOperationalQueueFilter($query, 'operacion'),
             'informacion' => $this->applyOperationalQueueFilter($query, 'informacion'),
-            'unread' => $query->where('unread_count', '>', 0),
+            'unread' => $query->where('whatsapp_conversations.unread_count', '>', 0),
             'mine' => $viewerUserId !== null && $viewerUserId > 0
-                ? $query->where('assigned_user_id', $viewerUserId)->where('needs_human', true)
+                ? $query->where('whatsapp_conversations.assigned_user_id', $viewerUserId)->where('whatsapp_conversations.needs_human', true)
                 : $query->whereRaw('1 = 0'),
-            'handoff', 'pending' => $query->where('needs_human', true)->whereNull('assigned_user_id'),
-            'window_open' => $this->applyWindowOpenFilter($query->where('needs_human', true)),
-            'needs_template' => $this->applyNeedsTemplateFilter($query->where('needs_human', true)),
-            'resolved' => $query->where('needs_human', false),
+            'handoff', 'pending' => $query->where('whatsapp_conversations.needs_human', true)->whereNull('whatsapp_conversations.assigned_user_id'),
+            'window_open' => $this->applyWindowOpenFilter($query->where('whatsapp_conversations.needs_human', true)),
+            'needs_template' => $this->applyNeedsTemplateFilter($query->where('whatsapp_conversations.needs_human', true)),
+            'resolved' => $query->where('whatsapp_conversations.needs_human', false),
             default => $query,
         };
     }
@@ -619,18 +624,18 @@ class ConversationReadService
     private function applyOperationalStatusFilter(Builder $query, string $status, ?int $viewerUserId): Builder
     {
         return match ($status) {
-            'requires_attention' => $this->excludeScheduled($query->where('needs_human', true)->whereNull('assigned_user_id')),
+            'requires_attention' => $this->excludeScheduled($query->where('whatsapp_conversations.needs_human', true)->whereNull('whatsapp_conversations.assigned_user_id')),
             'in_progress' => $this->excludeScheduled($query
-                ->where('needs_human', true)
-                ->whereNotNull('assigned_user_id')
-                ->where('last_message_direction', 'inbound')),
+                ->where('whatsapp_conversations.needs_human', true)
+                ->whereNotNull('whatsapp_conversations.assigned_user_id')
+                ->where('whatsapp_conversations.last_message_direction', 'inbound')),
             'waiting_patient' => $this->excludeScheduled($query
-                ->where('needs_human', true)
-                ->whereNotNull('assigned_user_id')
+                ->where('whatsapp_conversations.needs_human', true)
+                ->whereNotNull('whatsapp_conversations.assigned_user_id')
                 ->where(function (Builder $builder): void {
                     $builder
-                        ->where('last_message_direction', '<>', 'inbound')
-                        ->orWhereNull('last_message_direction');
+                        ->where('whatsapp_conversations.last_message_direction', '<>', 'inbound')
+                        ->orWhereNull('whatsapp_conversations.last_message_direction');
                 })),
             'scheduled' => $this->applyScheduledFilter($query),
             'closed' => $this->applyClosedFilter($query),
@@ -642,8 +647,8 @@ class ConversationReadService
     private function applyNewConversationFilter(Builder $query): Builder
     {
         $query
-            ->where('needs_human', false)
-            ->whereNull('assigned_user_id')
+            ->where('whatsapp_conversations.needs_human', false)
+            ->whereNull('whatsapp_conversations.assigned_user_id')
             ->whereNotExists(function ($subquery): void {
                 $subquery
                     ->selectRaw('1')
@@ -652,7 +657,7 @@ class ConversationReadService
             });
 
         if (Schema::hasColumn('whatsapp_conversations', 'close_reason')) {
-            $query->whereNull('close_reason');
+            $query->whereNull('whatsapp_conversations.close_reason');
         }
 
         return $query;
@@ -675,10 +680,10 @@ class ConversationReadService
 
     private function applyClosedFilter(Builder $query): Builder
     {
-        $query->where('needs_human', false);
+        $query->where('whatsapp_conversations.needs_human', false);
 
         if (Schema::hasColumn('whatsapp_conversations', 'close_reason')) {
-            $query->whereIn('close_reason', [
+            $query->whereIn('whatsapp_conversations.close_reason', [
                 'resolved',
                 'followup_closed',
                 'not_interested',
@@ -712,8 +717,8 @@ class ConversationReadService
 
         return $query
             ->orderByRaw($this->priorityScoreSql($viewerUserId) . ' DESC')
-            ->orderByDesc('unread_count')
-            ->orderByDesc('last_message_at');
+            ->orderByDesc('whatsapp_conversations.unread_count')
+            ->orderByDesc('whatsapp_conversations.last_message_at');
     }
 
     private function priorityScoreSql(int $viewerUserId): string
@@ -726,18 +731,18 @@ class ConversationReadService
 
         return sprintf(
             'CASE
-                WHEN needs_human = 0 THEN 0
+                WHEN whatsapp_conversations.needs_human = 0 THEN 0
                 WHEN %1$s THEN 40
-                WHEN needs_human = 1 AND assigned_user_id IS NULL AND %2$s IS NOT NULL AND %2$s <= "%3$s" THEN 180
-                WHEN needs_human = 1 AND assigned_user_id IS NULL AND %4$s = "high" THEN 170
-                WHEN needs_human = 1 AND assigned_user_id IS NULL AND unread_count > 0 THEN 160
-                WHEN needs_human = 1 AND assigned_user_id IS NULL THEN 150
-                WHEN %5$d > 0 AND needs_human = 1 AND assigned_user_id = %5$d AND last_message_direction = "inbound" AND unread_count > 0 THEN 140
-                WHEN needs_human = 1 AND assigned_user_id IS NOT NULL AND last_message_direction = "inbound" AND unread_count > 0 THEN 130
-                WHEN needs_human = 1 AND assigned_user_id IS NOT NULL AND last_message_direction = "inbound" THEN 120
-                WHEN needs_human = 1 AND latest_inbound_at IS NOT NULL AND latest_inbound_at <= "%6$s" THEN 90
-                WHEN needs_human = 1 AND assigned_user_id IS NOT NULL THEN 70
-                WHEN needs_human = 1 THEN 50
+                WHEN whatsapp_conversations.needs_human = 1 AND whatsapp_conversations.assigned_user_id IS NULL AND %2$s IS NOT NULL AND %2$s <= "%3$s" THEN 180
+                WHEN whatsapp_conversations.needs_human = 1 AND whatsapp_conversations.assigned_user_id IS NULL AND %4$s = "high" THEN 170
+                WHEN whatsapp_conversations.needs_human = 1 AND whatsapp_conversations.assigned_user_id IS NULL AND whatsapp_conversations.unread_count > 0 THEN 160
+                WHEN whatsapp_conversations.needs_human = 1 AND whatsapp_conversations.assigned_user_id IS NULL THEN 150
+                WHEN %5$d > 0 AND whatsapp_conversations.needs_human = 1 AND whatsapp_conversations.assigned_user_id = %5$d AND whatsapp_conversations.last_message_direction = "inbound" AND whatsapp_conversations.unread_count > 0 THEN 140
+                WHEN whatsapp_conversations.needs_human = 1 AND whatsapp_conversations.assigned_user_id IS NOT NULL AND whatsapp_conversations.last_message_direction = "inbound" AND whatsapp_conversations.unread_count > 0 THEN 130
+                WHEN whatsapp_conversations.needs_human = 1 AND whatsapp_conversations.assigned_user_id IS NOT NULL AND whatsapp_conversations.last_message_direction = "inbound" THEN 120
+                WHEN whatsapp_conversations.needs_human = 1 AND latest_inbound_at IS NOT NULL AND latest_inbound_at <= "%6$s" THEN 90
+                WHEN whatsapp_conversations.needs_human = 1 AND whatsapp_conversations.assigned_user_id IS NOT NULL THEN 70
+                WHEN whatsapp_conversations.needs_human = 1 THEN 50
                 ELSE 0
             END',
             $scheduledSql,
@@ -798,8 +803,8 @@ class ConversationReadService
     private function applyCriticalBacklogFilter(Builder $query): Builder
     {
         return $query
-            ->where('needs_human', true)
-            ->whereNull('assigned_user_id')
+            ->where('whatsapp_conversations.needs_human', true)
+            ->whereNull('whatsapp_conversations.assigned_user_id')
             ->whereRaw($this->criticalBacklogSql(), [now()->toImmutable()->subHours(24)->format('Y-m-d H:i:s')]);
     }
 
@@ -812,7 +817,7 @@ class ConversationReadService
         $conversationTypeSql = $this->attributionColumnSql('conversation_type');
 
         return match ($queue) {
-            'captacion' => $query->where('needs_human', true)->where(function (Builder $builder): void {
+            'captacion' => $query->where('whatsapp_conversations.needs_human', true)->where(function (Builder $builder): void {
                 $topicSql = $this->activeHandoffTopicSql();
                 $sourceSql = $this->attributionColumnSql('source_category');
                 $patientSegmentSql = $this->attributionColumnSql('patient_segment');
@@ -830,7 +835,7 @@ class ConversationReadService
                     })
                     ->orWhere(DB::raw($initialIntentSql), 'booking');
             })->whereRaw('NOT (' . $this->criticalBacklogSql() . ')', [now()->toImmutable()->subHours(24)->format('Y-m-d H:i:s')]),
-            'operacion' => $query->where('needs_human', true)->where(function (Builder $builder): void {
+            'operacion' => $query->where('whatsapp_conversations.needs_human', true)->where(function (Builder $builder): void {
                 $topicSql = $this->activeHandoffTopicSql();
                 $sourceSql = $this->attributionColumnSql('source_category');
                 $conversationTypeSql = $this->attributionColumnSql('conversation_type');
@@ -840,7 +845,7 @@ class ConversationReadService
                     ->orWhereIn(DB::raw($sourceSql), ['support_operational', 'campaign_outbound'])
                     ->orWhereIn(DB::raw($conversationTypeSql), ['reschedule', 'cancel', 'results', 'human_help', 'campaign_response']);
             })->whereRaw('NOT (' . $this->criticalBacklogSql() . ')', [now()->toImmutable()->subHours(24)->format('Y-m-d H:i:s')]),
-            'informacion' => $query->where('needs_human', true)->where(function (Builder $builder): void {
+            'informacion' => $query->where('whatsapp_conversations.needs_human', true)->where(function (Builder $builder): void {
                 $topicSql = $this->activeHandoffTopicSql();
                 $initialIntentSql = $this->attributionColumnSql('initial_intent');
                 $conversationTypeSql = $this->attributionColumnSql('conversation_type');
