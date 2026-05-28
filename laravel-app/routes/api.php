@@ -2,6 +2,7 @@
 
 use App\Modules\Consultas\Http\Controllers\ConsultasReadController;
 use App\Modules\Consultas\Http\Controllers\ConsultasWriteController;
+use App\Modules\Cirugias\Http\Controllers\CirugiasWriteController;
 use App\Modules\Pacientes\Services\PacientesFlujoService;
 use App\Modules\Procedimientos\Http\Controllers\ProcedimientosReadController;
 use App\Modules\Solicitudes\Http\Controllers\SolicitudesWriteController;
@@ -52,6 +53,17 @@ Route::middleware(['consultas.cors', 'cive.extension.auth'])->group(function ():
         Route::options($path, static fn () => response('', 204));
         Route::post($path, static function (Request $request, ConsultasWriteController $controller) {
             return $controller->guardar($request);
+        });
+    }
+
+    foreach ([
+        '/protocolos/guardar.php',
+        '/api/protocolos/guardar',
+        '/api/protocolos/guardar.php',
+    ] as $path) {
+        Route::options($path, static fn () => response('', 204));
+        Route::post($path, static function (Request $request, CirugiasWriteController $controller) {
+            return $controller->guardarDesdeExtension($request);
         });
     }
 
