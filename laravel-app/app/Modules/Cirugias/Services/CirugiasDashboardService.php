@@ -894,20 +894,23 @@ class CirugiasDashboardService
         $sedeExpr = $this->sedeExpr('pp');
         $categoriaContext = $this->resolveAfiliacionCategoriaContext("COALESCE(p.afiliacion, '')", 'acm');
         $stmt = $this->db->prepare(
-            "SELECT NULLIF(TRIM(pr.membrete), '') AS procedimiento, COUNT(*) AS total
-             FROM protocolo_data pr
-             LEFT JOIN patient_data p
-                ON CONVERT(p.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
-                 = CONVERT(pr.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
-             LEFT JOIN procedimiento_proyectado pp
-                ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number AND COALESCE(pp.sigcenter_present, 1) = 1
-             {$categoriaContext['join']}
-             WHERE pr.fecha_inicio BETWEEN :inicio AND :fin
-               AND (:afiliacion_filter = '' OR {$afiliacionKeyExpr} = :afiliacion_filter_match)
-               AND (:afiliacion_categoria_filter = '' OR {$categoriaContext['expr']} = :afiliacion_categoria_filter_match)
-               {$this->seguroFilterSql($seguroKeyExpr)}
-               AND (:sede_filter = '' OR {$sedeExpr} = :sede_filter_match)
-             GROUP BY NULLIF(TRIM(pr.membrete), '')
+            "SELECT base.procedimiento, COUNT(*) AS total
+             FROM (
+                 SELECT NULLIF(TRIM(COALESCE(pr.membrete, '')), '') AS procedimiento
+                 FROM protocolo_data pr
+                 LEFT JOIN patient_data p
+                    ON CONVERT(p.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                     = CONVERT(pr.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                 LEFT JOIN procedimiento_proyectado pp
+                    ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number AND COALESCE(pp.sigcenter_present, 1) = 1
+                 {$categoriaContext['join']}
+                 WHERE pr.fecha_inicio BETWEEN :inicio AND :fin
+                   AND (:afiliacion_filter = '' OR {$afiliacionKeyExpr} = :afiliacion_filter_match)
+                   AND (:afiliacion_categoria_filter = '' OR {$categoriaContext['expr']} = :afiliacion_categoria_filter_match)
+                   {$this->seguroFilterSql($seguroKeyExpr)}
+                   AND (:sede_filter = '' OR {$sedeExpr} = :sede_filter_match)
+             ) base
+             GROUP BY base.procedimiento
              ORDER BY total DESC
              LIMIT :limit"
         );
@@ -951,20 +954,23 @@ class CirugiasDashboardService
         $sedeExpr = $this->sedeExpr('pp');
         $categoriaContext = $this->resolveAfiliacionCategoriaContext("COALESCE(p.afiliacion, '')", 'acm');
         $stmt = $this->db->prepare(
-            "SELECT NULLIF(TRIM(cirujano_1), '') AS cirujano, COUNT(*) AS total
-             FROM protocolo_data pr
-             LEFT JOIN patient_data p
-                ON CONVERT(p.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
-                 = CONVERT(pr.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
-             LEFT JOIN procedimiento_proyectado pp
-                ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number AND COALESCE(pp.sigcenter_present, 1) = 1
-             {$categoriaContext['join']}
-             WHERE pr.fecha_inicio BETWEEN :inicio AND :fin
-               AND (:afiliacion_filter = '' OR {$afiliacionKeyExpr} = :afiliacion_filter_match)
-               AND (:afiliacion_categoria_filter = '' OR {$categoriaContext['expr']} = :afiliacion_categoria_filter_match)
-               {$this->seguroFilterSql($seguroKeyExpr)}
-               AND (:sede_filter = '' OR {$sedeExpr} = :sede_filter_match)
-             GROUP BY NULLIF(TRIM(cirujano_1), '')
+            "SELECT base.cirujano, COUNT(*) AS total
+             FROM (
+                 SELECT NULLIF(TRIM(COALESCE(pr.cirujano_1, '')), '') AS cirujano
+                 FROM protocolo_data pr
+                 LEFT JOIN patient_data p
+                    ON CONVERT(p.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                     = CONVERT(pr.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                 LEFT JOIN procedimiento_proyectado pp
+                    ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number AND COALESCE(pp.sigcenter_present, 1) = 1
+                 {$categoriaContext['join']}
+                 WHERE pr.fecha_inicio BETWEEN :inicio AND :fin
+                   AND (:afiliacion_filter = '' OR {$afiliacionKeyExpr} = :afiliacion_filter_match)
+                   AND (:afiliacion_categoria_filter = '' OR {$categoriaContext['expr']} = :afiliacion_categoria_filter_match)
+                   {$this->seguroFilterSql($seguroKeyExpr)}
+                   AND (:sede_filter = '' OR {$sedeExpr} = :sede_filter_match)
+             ) base
+             GROUP BY base.cirujano
              ORDER BY total DESC
              LIMIT :limit"
         );
@@ -1128,20 +1134,23 @@ class CirugiasDashboardService
         $breakdownByPlan = $afiliacionFilterValue !== '';
         $breakdownLabelExpr = $breakdownByPlan ? $seguroLabelExpr : $afiliacionLabelExpr;
         $stmt = $this->db->prepare(
-            "SELECT {$breakdownLabelExpr} AS afiliacion, COUNT(*) AS total
-             FROM protocolo_data pr
-             LEFT JOIN patient_data p
-                ON CONVERT(p.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
-                 = CONVERT(pr.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
-             LEFT JOIN procedimiento_proyectado pp
-                ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number AND COALESCE(pp.sigcenter_present, 1) = 1
-             {$categoriaContext['join']}
-             WHERE pr.fecha_inicio BETWEEN :inicio AND :fin
-               AND (:afiliacion_filter = '' OR {$afiliacionKeyExpr} = :afiliacion_filter_match)
-               AND (:afiliacion_categoria_filter = '' OR {$categoriaContext['expr']} = :afiliacion_categoria_filter_match)
-               {$this->seguroFilterSql($seguroKeyExpr)}
-               AND (:sede_filter = '' OR {$sedeExpr} = :sede_filter_match)
-             GROUP BY {$breakdownLabelExpr}
+            "SELECT base.afiliacion, COUNT(*) AS total
+             FROM (
+                 SELECT {$breakdownLabelExpr} AS afiliacion
+                 FROM protocolo_data pr
+                 LEFT JOIN patient_data p
+                    ON CONVERT(p.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                     = CONVERT(pr.hc_number USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                 LEFT JOIN procedimiento_proyectado pp
+                    ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number AND COALESCE(pp.sigcenter_present, 1) = 1
+                 {$categoriaContext['join']}
+                 WHERE pr.fecha_inicio BETWEEN :inicio AND :fin
+                   AND (:afiliacion_filter = '' OR {$afiliacionKeyExpr} = :afiliacion_filter_match)
+                   AND (:afiliacion_categoria_filter = '' OR {$categoriaContext['expr']} = :afiliacion_categoria_filter_match)
+                   {$this->seguroFilterSql($seguroKeyExpr)}
+                   AND (:sede_filter = '' OR {$sedeExpr} = :sede_filter_match)
+             ) base
+             GROUP BY base.afiliacion
              ORDER BY total DESC"
         );
         $stmt->execute(array_merge([

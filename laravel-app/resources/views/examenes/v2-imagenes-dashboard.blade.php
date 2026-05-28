@@ -95,8 +95,8 @@ $cardNumber = static function (string $label) use ($cardIndex): float {
 $operationCoreCards = $pickCards([
     'Agendas del periodo',
     'Atendidos',
-    'Informadas',
     'Facturados',
+    'Informadas',
     'Cumplimiento cita->realización',
     'SLA informe <= 48h',
     'Día pico de tráfico',
@@ -117,13 +117,13 @@ $operationFinanceCards = $pickCards([
 $requestCards = $pickCards([
     'Solicitudes de exámenes',
     'Agendadas al corte',
+    'Solicitudes sin agenda',
     'Realizadas al corte',
+    'Ausentes de cohorte',
     'Realizadas posterior al corte',
+    'Pendientes vigentes de cohorte',
     'Cumplimiento al corte',
     'Pérdida económica por no agendar',
-    'Solicitudes sin agenda',
-    'Ausentes de cohorte',
-    'Pendientes vigentes de cohorte',
 ]);
 
 $rangeSummary = trim((string) ($filters['fecha_inicio'] ?? '')) !== '' && trim((string) ($filters['fecha_fin'] ?? '')) !== ''
@@ -267,13 +267,13 @@ if ($requestHighlights === []) {
                            value="<?= htmlspecialchars($filters['fecha_fin'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
                 </div>
                 <div class="col-sm-6 col-md-2">
-                    <label class="form-label">Empresa de seguro</label>
-                    <select class="form-select" name="afiliacion">
-                        <?php foreach ($afiliacionOptions as $option): ?>
+                    <label class="form-label">Sede</label>
+                    <select class="form-select" name="sede">
+                        <?php foreach ($sedeOptions as $option): ?>
                             <?php $optionValue = (string)($option['value'] ?? ''); ?>
-                            <option value="<?= htmlspecialchars($optionValue, ENT_QUOTES, 'UTF-8') ?>" <?= ($optionValue === (string)($filters['afiliacion'] ?? '')) ? 'selected' : '' ?>>
+                        <option value="<?= htmlspecialchars($optionValue, ENT_QUOTES, 'UTF-8') ?>" <?= ($optionValue === (string)($filters['sede'] ?? '')) ? 'selected' : '' ?>>
                                 <?= htmlspecialchars((string)($option['label'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
-                            </option>
+                        </option>
                         <?php endforeach; ?>
                     </select>
                 </div>
@@ -289,22 +289,22 @@ if ($requestHighlights === []) {
                     </select>
                 </div>
                 <div class="col-sm-6 col-md-2">
+                    <label class="form-label">Empresa de seguro</label>
+                    <select class="form-select" name="afiliacion">
+                        <?php foreach ($afiliacionOptions as $option): ?>
+                            <?php $optionValue = (string)($option['value'] ?? ''); ?>
+                        <option value="<?= htmlspecialchars($optionValue, ENT_QUOTES, 'UTF-8') ?>" <?= ($optionValue === (string)($filters['afiliacion'] ?? '')) ? 'selected' : '' ?>>
+                                <?= htmlspecialchars((string)($option['label'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
+                        </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-sm-6 col-md-2">
                     <label class="form-label">Seguro / plan</label>
                     <select class="form-select" name="seguro">
                         <?php foreach ($seguroOptions as $option): ?>
                             <?php $optionValue = (string)($option['value'] ?? ''); ?>
                             <option value="<?= htmlspecialchars($optionValue, ENT_QUOTES, 'UTF-8') ?>" <?= ($optionValue === (string)($filters['seguro'] ?? '')) ? 'selected' : '' ?>>
-                                <?= htmlspecialchars((string)($option['label'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <div class="col-sm-6 col-md-2">
-                    <label class="form-label">Sede</label>
-                    <select class="form-select" name="sede">
-                        <?php foreach ($sedeOptions as $option): ?>
-                            <?php $optionValue = (string)($option['value'] ?? ''); ?>
-                            <option value="<?= htmlspecialchars($optionValue, ENT_QUOTES, 'UTF-8') ?>" <?= ($optionValue === (string)($filters['sede'] ?? '')) ? 'selected' : '' ?>>
                                 <?= htmlspecialchars((string)($option['label'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
                             </option>
                         <?php endforeach; ?>
@@ -322,7 +322,7 @@ if ($requestHighlights === []) {
                            value="<?= htmlspecialchars($filters['paciente'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
                            placeholder="Nombre o ID">
                 </div>
-                <div class="col-sm-6 col-md-2">
+                {{--<div class="col-sm-6 col-md-2">
                     <label class="form-label">Estado agenda</label>
                     <select class="form-select" name="estado_agenda">
                         <option value="">Todos</option>
@@ -332,7 +332,7 @@ if ($requestHighlights === []) {
                             </option>
                         <?php endforeach; ?>
                     </select>
-                </div>
+                </div>--}}
                 <div class="col-12 d-flex gap-2">
                     <button type="submit" class="btn btn-primary btn-sm">
                         <i class="mdi mdi-filter-variant"></i> Aplicar filtros
