@@ -176,7 +176,7 @@
     $maxType   = $maxShare($convTypes);
     $brkPalette = ['#5156be', '#3596f7', '#05825f', '#ffa800', '#0863be', '#7479d4'];
 
-    $agents = array_slice(is_array($breakdowns['agent_live_status'] ?? null) ? $breakdowns['agent_live_status'] : [], 0, 8);
+    $agents = array_slice(is_array($breakdowns['agent_live_status'] ?? null) ? $breakdowns['agent_live_status'] : [], 0, 5);
     $teams  = array_slice(is_array($breakdowns['handoffs_by_role'] ?? null) ? $breakdowns['handoffs_by_role'] : [], 0, 4);
     $teamTotals = ['queued' => 0, 'assigned' => 0, 'resolved' => 0];
     foreach ($teams as $tm) {
