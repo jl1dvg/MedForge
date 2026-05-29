@@ -12,6 +12,7 @@ use App\Http\Middleware\RequireLegacySession;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Session\TokenMismatchException;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -23,8 +24,11 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->encryptCookies(except: ['PHPSESSID']);
-        $middleware->web(prepend: [LegacySessionBridge::class]);
-        $middleware->api(prepend: [LegacySessionBridge::class]);
+        // Append instead of prepend so LegacySessionBridge runs AFTER Laravel's
+        // StartSession and VerifyCsrfToken — prevents PHP native session_start()
+        // from interfering with Laravel's session handler and causing 419 errors.
+        $middleware->web(append: [LegacySessionBridge::class]);
+        $middleware->api(append: [LegacySessionBridge::class]);
         $middleware->alias([
             'app.auth' => RequireAppSession::class,
             'app.permission' => RequireAppPermission::class,
@@ -37,5 +41,12 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
+        $exceptions->render(function (TokenMismatchException $e, $request) {
+            if ($request->expectsJson()) {
+                return response()->json(['error' => 'Sesión expirada'], 419);
+            }
+
+            return redirect('/auth/login?expired=1')
+                ->withInput($request->only('username'));
+        });
     })->create();
