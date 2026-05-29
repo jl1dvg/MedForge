@@ -163,7 +163,7 @@ class DashboardParityService
                  FROM procedimiento_proyectado pp
                  LEFT JOIN visitas v ON v.id = pp.visita_id
                  WHERE COALESCE(pp.sigcenter_present, 1) = 1
-                   AND COALESCE(DATE(pp.fecha), v.fecha_visita) = ?' . $this->sedeWhere('pp') . ',
+                   AND COALESCE(DATE(pp.fecha), v.fecha_visita) = ?' . $this->sedeWhere('pp'),
                 [$today->format('Y-m-d')]
             );
         } catch (Throwable) {
@@ -199,7 +199,7 @@ class DashboardParityService
                  FROM procedimiento_proyectado pp
                  WHERE COALESCE(pp.sigcenter_present, 1) = 1
                    AND DATE(pp.fecha) = ?
-                   AND UPPER(TRIM(COALESCE(pp.procedimiento_proyectado, ""))) LIKE "CIRUGIAS%"' . $this->sedeWhere('pp') . ',
+                   AND UPPER(TRIM(COALESCE(pp.procedimiento_proyectado, ""))) LIKE "CIRUGIAS%"' . $this->sedeWhere('pp'),
                 [$date]
             );
         } catch (Throwable) {
@@ -256,7 +256,7 @@ class DashboardParityService
                  WHERE COALESCE(pp.sigcenter_present, 1) = 1
                    AND COALESCE(DATE(pp.fecha), v.fecha_visita) = ?
                    AND pp.doctor IS NOT NULL
-                   AND TRIM(pp.doctor) != ''' . $this->sedeWhere('pp') . '
+                   AND TRIM(pp.doctor) != ''" . $this->sedeWhere('pp') . "
                  GROUP BY pp.doctor
                  ORDER BY en_espera DESC, total_agenda DESC
                  LIMIT 10",
