@@ -184,6 +184,18 @@
         $teamTotals['assigned'] += (int) ($tm['assigned'] ?? 0);
         $teamTotals['resolved'] += (int) ($tm['resolved'] ?? 0);
     }
+    /* Bot & Flow panel */
+    $botSummary   = is_array($analytics['summary'] ?? null) ? $analytics['summary'] : [];
+    $handoffRate  = (float) ($botSummary['handoff_rate'] ?? 0);
+    $identRate    = (float) ($botSummary['identification_rate'] ?? 0);
+    $bookingRateB = (float) ($botSummary['booking_rate'] ?? 0);
+    $totalConvs   = (int) ($botSummary['total_conversations'] ?? 0);
+    $handoffConvs = (int) ($botSummary['handoff_conversations'] ?? 0);
+    $containRate  = $handoffRate > 0 ? round(100 - $handoffRate, 1) : 0.0;
+    $frictions    = array_slice(is_array($analytics['frictions'] ?? null) ? $analytics['frictions'] : [], 0, 5);
+    $maxFriction  = max(1, ...array_map(fn($f) => (int)($f['total'] ?? 0), $frictions ?: [['total'=>1]]));
+    $frictionPalette = ['#ee3158','#ffa800','#5156be','#3596f7','#05825f'];
+
     $initials = static function (string $name): string {
         $parts = preg_split('/\s+/', trim($name)) ?: [];
         $parts = array_values(array_filter($parts));
@@ -270,14 +282,15 @@ body:has(.wad) { overflow: hidden; }
 .wad-dot--danger { background:var(--danger); }
 .wad-dot--info { background:var(--info); }
 
-.wad-panels { display:grid; gap:12px; min-height:0; grid-template-columns:1.15fr 1fr 1fr; grid-template-rows:1fr 1fr; grid-template-areas:"bandeja embudo intencion" "agente handoffs origen"; }
-.wad[data-layout="operacion"] .wad-panels { grid-template-columns:1.3fr 1fr 1fr 1fr; grid-template-areas:"bandeja embudo intencion intencion" "bandeja agente handoffs origen"; }
+.wad-panels { display:grid; gap:12px; min-height:0; grid-template-columns:1.15fr 1fr 1fr 1fr; grid-template-rows:1fr 1fr; grid-template-areas:"bandeja embudo intencion bot" "agente handoffs origen bot"; }
+.wad[data-layout="operacion"] .wad-panels { grid-template-columns:1.3fr 1fr 1fr 1fr; grid-template-areas:"bandeja embudo intencion bot" "bandeja agente handoffs origen"; }
 .wad-panel--bandeja { grid-area:bandeja; }
 .wad-panel--embudo { grid-area:embudo; }
 .wad-panel--intencion { grid-area:intencion; }
 .wad-panel--agente { grid-area:agente; }
 .wad-panel--handoffs { grid-area:handoffs; }
 .wad-panel--origen { grid-area:origen; }
+.wad-panel--bot { grid-area:bot; }
 
 .wad-panel { background:#fff; border:1px solid var(--border); border-radius:12px; box-shadow:var(--shadow-xs); display:flex; flex-direction:column; min-height:0; overflow:hidden; }
 .wad-panel-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:11px 16px; border-bottom:1px solid var(--border-soft); background:linear-gradient(180deg,#fff 0%,#fafbfd 100%); }
@@ -391,6 +404,25 @@ body:has(.wad) { overflow: hidden; }
 .wad-sd-foot { display:flex; justify-content:space-between; gap:10px; margin-top:auto; padding-top:11px; border-top:1px dashed var(--border-soft); font:400 11px var(--font-body); color:var(--fg-mute); }
 .wad-sd-foot strong { color:var(--fg-1); font-weight:700; }
 
+.wad-bot { display:flex; flex-direction:column; gap:14px; height:100%; }
+.wad-bot-kpis { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.wad-bot-kpi { background:var(--bg-soft); border-radius:10px; padding:10px 12px; display:flex; flex-direction:column; gap:2px; }
+.wad-bot-kpi-label { font:600 9.5px var(--font-body); color:var(--fg-mute); text-transform:uppercase; letter-spacing:.07em; }
+.wad-bot-kpi-value { font:700 22px/1 var(--font-display); color:var(--fg-1); font-variant-numeric:tabular-nums; }
+.wad-bot-kpi-value span { font-size:13px; font-weight:600; color:var(--fg-3); }
+.wad-bot-kpi--good .wad-bot-kpi-value { color:var(--success); }
+.wad-bot-kpi--warn .wad-bot-kpi-value { color:#8a5d0a; }
+.wad-bot-kpi--bad  .wad-bot-kpi-value { color:var(--danger); }
+.wad-bot-frictions { display:flex; flex-direction:column; gap:8px; flex:1; min-height:0; overflow-y:auto; }
+.wad-bot-fr-h { font:700 9.5px var(--font-body); text-transform:uppercase; letter-spacing:.06em; color:var(--fg-mute); display:flex; align-items:center; gap:8px; margin-bottom:2px; }
+.wad-bot-fr-h::after { content:""; flex:1; height:1px; background:var(--border-soft); }
+.wad-bot-fr-row { display:flex; flex-direction:column; gap:4px; }
+.wad-bot-fr-top { display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
+.wad-bot-fr-name { font:500 12px var(--font-body); color:var(--fg-1); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+.wad-bot-fr-meta { font:700 11.5px var(--font-display); color:var(--fg-1); font-variant-numeric:tabular-nums; white-space:nowrap; flex-shrink:0; }
+.wad-bot-fr-track { height:7px; background:var(--bg-soft); border-radius:4px; overflow:hidden; }
+.wad-bot-fr-fill { height:100%; border-radius:4px; }
+
 .wad[data-density="compacto"] { gap:10px; padding:12px 18px 14px; }
 .wad[data-density="compacto"] .wad-kpi { padding:10px 13px; gap:7px; }
 .wad[data-density="compacto"] .wad-kpi-value { font-size:23px; }
@@ -446,7 +478,8 @@ body:has(.wad) { overflow: hidden; }
             "intencion"
             "agente"
             "handoffs"
-            "origen" !important;
+            "origen"
+            "bot" !important;
     }
     .wad-panel { min-height: 280px; }
 }
@@ -700,6 +733,58 @@ body:has(.wad) { overflow: hidden; }
                         <span><strong>{{ $bookingRate }}%</strong> global</span>
                     </div>
                 @endif
+            </div>
+        </article>
+
+        {{-- Bot & Flujo --}}
+        <article class="wad-panel wad-panel--bot">
+            <header class="wad-panel-head">
+                <h3><i class="mdi mdi-robot-outline"></i>Bot & Flujo</h3>
+                <span class="wad-chip wad-chip--muted">{{ $totalConvs }} convs.</span>
+            </header>
+            <div class="wad-panel-body wad-bot">
+                <div class="wad-bot-kpis">
+                    @php
+                        $containSev = $containRate >= 60 ? 'good' : ($containRate >= 40 ? 'warn' : 'bad');
+                        $identSev   = $identRate >= 70 ? 'good' : ($identRate >= 40 ? 'warn' : 'bad');
+                        $bookSev    = $bookingRateB >= 20 ? 'good' : ($bookingRateB >= 10 ? 'warn' : 'bad');
+                        $handSev    = $handoffRate <= 30 ? 'good' : ($handoffRate <= 50 ? 'warn' : 'bad');
+                    @endphp
+                    <div class="wad-bot-kpi wad-bot-kpi--{{ $containSev }}">
+                        <span class="wad-bot-kpi-label">Contenido por bot</span>
+                        <span class="wad-bot-kpi-value">{{ $containRate }}<span>%</span></span>
+                    </div>
+                    <div class="wad-bot-kpi wad-bot-kpi--{{ $handSev }}">
+                        <span class="wad-bot-kpi-label">Escalado a humano</span>
+                        <span class="wad-bot-kpi-value">{{ round($handoffRate, 1) }}<span>%</span></span>
+                    </div>
+                    <div class="wad-bot-kpi wad-bot-kpi--{{ $identSev }}">
+                        <span class="wad-bot-kpi-label">Identificación</span>
+                        <span class="wad-bot-kpi-value">{{ round($identRate, 1) }}<span>%</span></span>
+                    </div>
+                    <div class="wad-bot-kpi wad-bot-kpi--{{ $bookSev }}">
+                        <span class="wad-bot-kpi-label">Conv. a cita</span>
+                        <span class="wad-bot-kpi-value">{{ round($bookingRateB, 1) }}<span>%</span></span>
+                    </div>
+                </div>
+
+                <div class="wad-bot-frictions">
+                    <div class="wad-bot-fr-h">Puntos de fricción del flow</div>
+                    @forelse($frictions as $i => $fr)
+                        <div class="wad-bot-fr-row">
+                            <div class="wad-bot-fr-top">
+                                <span class="wad-bot-fr-name">{{ $fr['friction_label'] ?? $fr['friction_state'] }}</span>
+                                <span class="wad-bot-fr-meta">{{ (int)($fr['total'] ?? 0) }} · {{ (float)($fr['share'] ?? 0) }}%</span>
+                            </div>
+                            <div class="wad-bot-fr-track">
+                                <div class="wad-bot-fr-fill"
+                                     style="width:{{ ((int)($fr['total'] ?? 0) / $maxFriction) * 100 }}%;background:{{ $frictionPalette[$i % count($frictionPalette)] }}"></div>
+                            </div>
+                        </div>
+                    @empty
+                        <div class="wad-empty">Sin fricción registrada en el periodo.</div>
+                    @endforelse
+                </div>
             </div>
         </article>
 
