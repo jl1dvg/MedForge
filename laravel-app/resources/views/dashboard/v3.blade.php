@@ -37,48 +37,20 @@
     $flujoColumns = is_array($dashboardV3['flujo_columns'] ?? null) ? $dashboardV3['flujo_columns'] : [];
     $salas        = is_array($dashboardV3['salas'] ?? null) ? $dashboardV3['salas'] : [];
 
-    $etapas      = is_array($solicitudesFunnel['etapas'] ?? null) ? $solicitudesFunnel['etapas'] : [];
-    $conversion  = (float) ($solicitudesFunnel['totales']['conversion_agendada'] ?? 0.0);
-    $funnelColors = ['#5156be', '#7479d4', '#3596f7', '#0863be', '#05825f'];
-    $funnelLabels = [
-        'recibido' => 'Recibido',
-        'llamado' => 'Llamado',
-        'en-atencion' => 'En atención',
-        'revision-codigos' => 'Rev. códigos',
-        'docs-completos' => 'Docs completos',
-        'aprobacion-anestesia' => 'Aprob. anestesia',
-        'listo-para-agenda' => 'Listo agenda',
-        'otros' => 'Otros',
-    ];
-    $funnelStages = [];
-    $i = 0;
-    foreach (array_slice((array) $etapas, 0, 5, true) as $label => $value) {
-        $funnelStages[] = [
-            'label' => (string) ($funnelLabels[(string) $label] ?? $label),
-            'value' => (int) $value,
-            'color' => $funnelColors[$i] ?? '#5156be',
-        ];
-        $i++;
-    }
+    $referidosHoy   = is_array($dashboardV3['referidos_hoy'] ?? null) ? $dashboardV3['referidos_hoy'] : ['total' => 0, 'breakdown' => []];
+    $referidosTotal = (int) ($referidosHoy['total'] ?? 0);
+    $referidosBreak = is_array($referidosHoy['breakdown'] ?? null) ? $referidosHoy['breakdown'] : [];
+    $referidosColors = ['#5156be', '#0863be', '#05825f', '#f5a623', '#e74c3c', '#7479d4', '#3596f7', '#2ecc71'];
 
     $ops = is_array($dashboardV3['ops'] ?? null) ? $dashboardV3['ops'] : [];
 
-    if (!empty($doctoresTop)) {
-        $equipo = array_map(static function ($row) {
-            $name = trim((string) ($row['cirujano_1'] ?? ''));
-            $initials = strtoupper(substr(preg_replace('/[^A-Za-zÁÉÍÓÚÑáéíóúñ]/u', '', $name), 0, 1)
-                                . substr(preg_replace('/[^A-Za-zÁÉÍÓÚÑáéíóúñ]/u', '', explode(' ', $name)[1] ?? ''), 0, 1));
-            return [
-                'initials' => $initials !== '' ? $initials : 'DR',
-                'name'     => $name !== '' ? $name : 'Sin nombre',
-                'role'     => 'Equipo quirúrgico',
-                'cir'      => (int) ($row['total'] ?? 0),
-                'cons'     => 0,
-            ];
-        }, array_slice($doctoresTop, 0, 3));
-    } else {
-        $equipo = [];
-    }
+    $congestionMedicos = is_array($dashboardV3['congestion_medicos'] ?? null) ? $dashboardV3['congestion_medicos'] : [];
+    $congestionMedicos = array_map(static function (array $m): array {
+        $name     = $m['doctor'];
+        $words    = preg_split('/\s+/u', $name);
+        $initials = strtoupper(mb_substr($words[0] ?? '', 0, 1) . mb_substr($words[1] ?? '', 0, 1));
+        return array_merge($m, ['initials' => $initials !== '' ? $initials : 'DR']);
+    }, $congestionMedicos);
 
     $iaSuggestions = is_array($dashboardV3['ia_suggestions'] ?? null) ? $dashboardV3['ia_suggestions'] : [];
     $iaProvider = !empty($aiSummary['provider']) ? strtoupper((string) $aiSummary['provider']) : 'OPENAI';
@@ -259,30 +231,25 @@
 
     {{-- =================== Row 2 — backlog =================== --}}
     <section class="dash3-row">
-        {{-- Embudo solicitudes --}}
+        {{-- Referidos hoy --}}
         <article class="dash3-panel">
             <header class="dash3-panel-head">
-                <h3><i class="mdi mdi-filter-variant"></i>Embudo solicitudes</h3>
-                <span class="dash3-chip dash3-chip--success">{{ number_format($conversion, 1) }} % conversión</span>
+                <h3><i class="mdi mdi-account-arrow-right-outline"></i>Referidos hoy</h3>
+                <span class="dash3-chip dash3-chip--muted">{{ $referidosTotal }} pacientes</span>
             </header>
             <div class="dash3-panel-body dash3-funnel">
-                @php $max = max(array_column($funnelStages, 'value')) ?: 1; @endphp
-                @forelse($funnelStages as $s)
+                @php $maxRef = $referidosTotal ?: 1; @endphp
+                @forelse($referidosBreak as $idx => $r)
                     <div class="dash3-fn-row">
-                        <span class="dash3-fn-label">{{ $s['label'] }}</span>
+                        <span class="dash3-fn-label">{{ $r['label'] }}</span>
                         <div class="dash3-fn-track">
-                            <div class="dash3-fn-fill" style="width: {{ ($s['value'] / $max) * 100 }}%; background: {{ $s['color'] }};"></div>
+                            <div class="dash3-fn-fill" style="width: {{ $r['pct'] }}%; background: {{ $referidosColors[$idx] ?? '#5156be' }};"></div>
                         </div>
-                        <span class="dash3-fn-value">{{ $s['value'] }}</span>
+                        <span class="dash3-fn-value">{{ $r['n'] }} <small style="color:#999">{{ $r['pct'] }}%</small></span>
                     </div>
                 @empty
-                    <div class="dash3-empty">No hay solicitudes quirúrgicas en el rango.</div>
+                    <div class="dash3-empty">Sin datos de referidos para hoy.</div>
                 @endforelse
-                <div class="dash3-fn-foot">
-                    <span>Registradas <strong>{{ (int) ($solicitudesFunnel['totales']['registradas'] ?? 0) }}</strong></span>
-                    <span>Agendadas <strong>{{ (int) ($solicitudesFunnel['totales']['agendadas'] ?? 0) }}</strong></span>
-                    <span>Con cirugía <strong>{{ (int) ($solicitudesFunnel['totales']['con_cirugia'] ?? 0) }}</strong></span>
-                </div>
             </div>
         </article>
 
@@ -315,48 +282,45 @@
             </div>
         </article>
 
-        {{-- Equipo + IA --}}
+        {{-- Congestión médicos hoy --}}
         <article class="dash3-panel">
             <header class="dash3-panel-head">
-                <h3><i class="mdi mdi-account-tie-outline"></i>Equipo &amp; Asistente IA</h3>
-                <span class="dash3-chip dash3-chip--{{ $iaActive ? 'success' : 'muted' }}">
-                    @if($iaActive)<span class="dash3-pulse dash3-pulse--success"></span>@endif
-                    IA {{ $iaActive ? 'activa' : 'inactiva' }}
-                </span>
+                <h3><i class="mdi mdi-account-clock-outline"></i>Congestión médicos</h3>
+                <span class="dash3-chip dash3-chip--muted">Hoy</span>
             </header>
             <div class="dash3-panel-body dash3-team">
                 <div class="dash3-team-list">
-                    @forelse($equipo as $d)
+                    @forelse($congestionMedicos as $m)
+                        @php
+                            $pct = $m['total_agenda'] > 0
+                                ? round($m['atendidos'] / $m['total_agenda'] * 100)
+                                : 0;
+                            $espera = $m['avg_espera_min'];
+                            $esperaLabel = $espera !== null
+                                ? ($espera >= 60
+                                    ? floor($espera / 60) . 'h ' . ($espera % 60) . 'min'
+                                    : $espera . ' min')
+                                : '--';
+                            $congChip = $m['en_espera'] >= 5 ? 'danger' : ($m['en_espera'] >= 2 ? 'warning' : 'success');
+                        @endphp
                         <div class="dash3-tm-row">
-                            <span class="dash3-tm-avatar">{{ $d['initials'] }}</span>
+                            <span class="dash3-tm-avatar">{{ $m['initials'] }}</span>
                             <div class="dash3-tm-info">
-                                <p class="dash3-tm-name">{{ $d['name'] }}</p>
-                                <p class="dash3-tm-role">{{ $d['role'] }}</p>
+                                <p class="dash3-tm-name">{{ $m['doctor'] }}</p>
+                                <p class="dash3-tm-role">
+                                    {{ $m['atendidos'] }}/{{ $m['total_agenda'] }} atendidos
+                                    &nbsp;·&nbsp;
+                                    <span class="dash3-dot dash3-dot--{{ $congChip }}"></span>
+                                    {{ $m['en_espera'] }} en espera
+                                </p>
                             </div>
-                            <div class="dash3-tm-stats">
-                                <span><strong>{{ $d['cir'] }}</strong>cir</span>
-                                <span><strong>{{ $d['cons'] }}</strong>cons</span>
+                            <div class="dash3-tm-stats" style="min-width:60px;text-align:right">
+                                <span style="font-size:.75rem;color:#666">⏱ {{ $esperaLabel }}</span>
                             </div>
                         </div>
                     @empty
-                        <div class="dash3-empty">No hay actividad quirúrgica de equipo en el rango.</div>
+                        <div class="dash3-empty">Sin médicos con agenda activa hoy.</div>
                     @endforelse
-                </div>
-                <div class="dash3-ia">
-                    <div class="dash3-ia-head">
-                        <span class="dash3-ia-tile"><i class="mdi mdi-auto-fix"></i></span>
-                        <div class="dash3-ia-meta">
-                            <p class="dash3-ia-title">Asistente IA · {{ $iaProvider }}</p>
-                            <p class="dash3-ia-sub">{{ $iaActive ? 'Métricas IA conectadas' : 'Sin fuente IA conectada' }}</p>
-                        </div>
-                    </div>
-                    <ul class="dash3-ia-list">
-                        @forelse($iaSuggestions as $s)
-                            <li><i class="mdi mdi-circle-small"></i>{{ $s }}</li>
-                        @empty
-                            <li><i class="mdi mdi-circle-small"></i>No hay sugerencias recientes conectadas.</li>
-                        @endforelse
-                    </ul>
                 </div>
             </div>
         </article>

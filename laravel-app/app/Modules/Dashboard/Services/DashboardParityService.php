@@ -53,12 +53,14 @@ class DashboardParityService
         $today = CarbonImmutable::today();
 
         return [
-            'hero_kpis' => $this->getDashboardV3HeroKpis($today, $summaryData),
-            'agenda' => $this->getDashboardV3Agenda($today),
+            'hero_kpis'     => $this->getDashboardV3HeroKpis($today, $summaryData),
+            'agenda'        => $this->getDashboardV3Agenda($today),
             'flujo_columns' => $this->getDashboardV3FlujoColumns($today),
-            'salas' => $this->getDashboardV3Salas($today),
-            'ops' => $this->getDashboardV3Ops($start, $end, $summaryData),
-            'ia_suggestions' => [],
+            'salas'         => $this->getDashboardV3Salas($today),
+            'ops'           => $this->getDashboardV3Ops($start, $end, $summaryData),
+            'referidos_hoy'     => $this->getReferidosHoyStats($today),
+            'congestion_medicos' => $this->getCongestionMedicosHoy($today),
+            'ia_suggestions'    => [],
         ];
     }
 
@@ -68,12 +70,10 @@ class DashboardParityService
      */
     private function getDashboardV3HeroKpis(CarbonImmutable $today, array $summaryData): array
     {
-        $patients = $this->getPatientsTodayStats($today);
-        $cirugias = $this->getCirugiasTodayStats($today);
-        $solicitudes = is_array($summaryData['solicitudes_funnel']['totales'] ?? null)
-            ? $summaryData['solicitudes_funnel']['totales']
-            : [];
-        $whatsapp = $this->getWhatsappUnansweredStats();
+        $patients       = $this->getPatientsTodayStats($today);
+        $cirugias       = $this->getCirugiasTodayStats($today);
+        $solicitudesHoy = $this->getSolicitudesHoyStats($today);
+        $whatsapp       = $this->getWhatsappUnansweredStats();
 
         return [
             [
@@ -85,7 +85,7 @@ class DashboardParityService
                 'breakdown' => [
                     ['dot' => 'success', 'n' => (int) $patients['atendidos'], 'label' => 'Atendidos'],
                     ['dot' => 'warning', 'n' => (int) $patients['en_sala'], 'label' => 'En sala'],
-                    ['dot' => 'info', 'n' => (int) $patients['esperando'], 'label' => 'Esperando'],
+                    ['dot' => 'info', 'n' => (int) $patients['esperando'], 'label' => 'Sin llegar'],
                 ],
             ],
             [
@@ -93,7 +93,7 @@ class DashboardParityService
                 'tone' => 'danger',
                 'label' => 'Cirugías hoy',
                 'value' => (int) $cirugias['total'],
-                'trend' => 'Protocolos y agenda quirúrgica',
+                'trend' => 'Agenda quirúrgica de hoy',
                 'breakdown' => [
                     ['dot' => 'success', 'n' => (int) $cirugias['realizadas'], 'label' => 'Realizadas'],
                     ['dot' => 'info', 'n' => (int) $cirugias['programadas'], 'label' => 'Programadas'],
@@ -104,24 +104,24 @@ class DashboardParityService
                 'icon' => 'mdi-clipboard-text-clock-outline',
                 'tone' => 'info',
                 'label' => 'Solicitudes quirúrgicas',
-                'value' => (int) ($solicitudes['registradas'] ?? 0),
-                'trend' => 'Rango seleccionado',
+                'value' => (int) $solicitudesHoy['total'],
+                'trend' => 'Nuevas hoy',
                 'breakdown' => [
-                    ['dot' => 'primary', 'n' => (int) ($solicitudes['agendadas'] ?? 0), 'label' => 'Agendadas'],
-                    ['dot' => 'warning', 'n' => (int) ($solicitudes['urgentes_sin_turno'] ?? 0), 'label' => 'Urg. sin turno'],
-                    ['dot' => 'success', 'n' => (int) ($solicitudes['con_cirugia'] ?? 0), 'label' => 'Con cirugía'],
+                    ['dot' => 'danger',  'n' => (int) $solicitudesHoy['urgentes'],   'label' => 'Urgentes'],
+                    ['dot' => 'info',    'n' => (int) $solicitudesHoy['recibidas'],  'label' => 'Recibidas'],
+                    ['dot' => 'warning', 'n' => (int) $solicitudesHoy['en_gestion'], 'label' => 'En gestión'],
                 ],
             ],
             [
                 'icon' => 'mdi-whatsapp',
                 'tone' => 'success',
-                'label' => 'WhatsApp sin responder',
+                'label' => 'WhatsApp pendientes',
                 'value' => (int) $whatsapp['unanswered'],
                 'trend' => (string) $whatsapp['source_label'],
                 'breakdown' => [
-                    ['dot' => 'success', 'n' => (int) $whatsapp['assigned'], 'label' => 'Asignadas'],
-                    ['dot' => 'info', 'n' => (int) $whatsapp['open_24h'], 'label' => 'Ventana 24h'],
-                    ['dot' => 'danger', 'n' => (int) $whatsapp['outside_24h'], 'label' => 'Fuera 24h'],
+                    ['dot' => 'danger',  'n' => (int) $whatsapp['sin_asignar'],        'label' => 'Sin asignar'],
+                    ['dot' => 'warning', 'n' => (int) $whatsapp['en_progreso'],         'label' => 'En progreso'],
+                    ['dot' => 'info',    'n' => (int) $whatsapp['esperando_paciente'],  'label' => 'Esp. paciente'],
                 ],
             ],
         ];
@@ -174,45 +174,168 @@ class DashboardParityService
     {
         $date = $today->format('Y-m-d');
         try {
-            $realizadas = (int) (DB::selectOne(
-                'SELECT COUNT(*) AS total FROM protocolo_data WHERE DATE(fecha_inicio) = ?',
-                [$date]
-            )->total ?? 0);
-
-            $programadas = (int) (DB::selectOne(
-                'SELECT COUNT(*) AS total
+            $row = DB::selectOne(
+                'SELECT
+                    COUNT(*) AS programadas,
+                    SUM(CASE WHEN EXISTS (
+                        SELECT 1 FROM protocolo_data pr
+                        WHERE pr.form_id = pp.form_id AND pr.hc_number = pp.hc_number
+                    ) THEN 1 ELSE 0 END) AS realizadas
                  FROM procedimiento_proyectado pp
                  WHERE COALESCE(pp.sigcenter_present, 1) = 1
                    AND DATE(pp.fecha) = ?
-                   AND (
-                       UPPER(COALESCE(pp.procedimiento_proyectado, "")) LIKE "%CIRUG%"
-                       OR UPPER(COALESCE(pp.procedimiento_proyectado, "")) LIKE "%QUIR%"
-                   )',
+                   AND UPPER(TRIM(COALESCE(pp.procedimiento_proyectado, ""))) LIKE "CIRUGIAS%"',
                 [$date]
-            )->total ?? 0);
+            );
         } catch (Throwable) {
             return ['total' => 0, 'realizadas' => 0, 'programadas' => 0, 'sin_protocolo' => 0];
         }
 
+        $programadas = (int) ($row->programadas ?? 0);
+        $realizadas  = (int) ($row->realizadas ?? 0);
+
         return [
-            'total' => max($realizadas, $programadas),
-            'realizadas' => $realizadas,
-            'programadas' => $programadas,
+            'total'        => $programadas,
+            'realizadas'   => $realizadas,
+            'programadas'  => $programadas,
             'sin_protocolo' => max(0, $programadas - $realizadas),
         ];
     }
 
     /**
-     * @return array{unanswered:int, assigned:int, open_24h:int, outside_24h:int, source_label:string}
+     * @return array{total:int, urgentes:int, con_turno:int, con_cirugia:int}
+     */
+    /**
+     * @return array{total: int, breakdown: array<int, array{label: string, n: int, pct: float}>}
+     */
+    /**
+     * @return array<int, array{doctor:string, total_agenda:int, en_espera:int, atendidos:int, avg_espera_min:int|null}>
+     */
+    private function getCongestionMedicosHoy(CarbonImmutable $today): array
+    {
+        $date = $today->format('Y-m-d');
+        $doneStates   = ['ATENDIDAS', 'TERMINADO', 'ATENDIDO', 'CONSULTA_TERMINADO'];
+        $arrivedStates = ['LLEGADO', 'CONFIRMADO', 'CONSULTA', 'OPTOMETRIA'];
+        $inDone    = implode(',', array_fill(0, count($doneStates), '?'));
+        $inArrived = implode(',', array_fill(0, count($arrivedStates), '?'));
+
+        try {
+            $rows = DB::select(
+                "SELECT
+                    pp.doctor,
+                    COUNT(*) AS total_agenda,
+                    SUM(CASE WHEN UPPER(TRIM(COALESCE(pp.estado_agenda,''))) IN ($inDone)
+                             THEN 1 ELSE 0 END) AS atendidos,
+                    SUM(CASE WHEN UPPER(TRIM(COALESCE(pp.estado_agenda,''))) IN ($inArrived)
+                             THEN 1 ELSE 0 END) AS en_espera,
+                    AVG(CASE
+                        WHEN UPPER(TRIM(COALESCE(pp.estado_agenda,''))) IN ($inArrived)
+                             AND v.hora_llegada IS NOT NULL
+                        THEN TIMESTAMPDIFF(MINUTE,
+                             CONCAT(CURDATE(), ' ', v.hora_llegada),
+                             NOW())
+                        ELSE NULL
+                    END) AS avg_espera_min
+                 FROM procedimiento_proyectado pp
+                 LEFT JOIN visitas v ON v.id = pp.visita_id
+                 WHERE COALESCE(pp.sigcenter_present, 1) = 1
+                   AND COALESCE(DATE(pp.fecha), v.fecha_visita) = ?
+                   AND pp.doctor IS NOT NULL
+                   AND TRIM(pp.doctor) != ''
+                 GROUP BY pp.doctor
+                 ORDER BY en_espera DESC, total_agenda DESC
+                 LIMIT 10",
+                array_merge($doneStates, $arrivedStates, $arrivedStates, [$date])
+            );
+        } catch (Throwable) {
+            return [];
+        }
+
+        return array_map(static fn(object $r): array => [
+            'doctor'        => trim((string) ($r->doctor ?? '')),
+            'total_agenda'  => (int) ($r->total_agenda ?? 0),
+            'atendidos'     => (int) ($r->atendidos ?? 0),
+            'en_espera'     => (int) ($r->en_espera ?? 0),
+            'avg_espera_min' => $r->avg_espera_min !== null ? (int) round((float) $r->avg_espera_min) : null,
+        ], $rows);
+    }
+
+        private function getReferidosHoyStats(CarbonImmutable $today): array
+    {
+        try {
+            $rows = DB::select(
+                'SELECT
+                    COALESCE(NULLIF(TRIM(referido_prefactura_por), ""), "Sin especificar") AS fuente,
+                    COUNT(DISTINCT hc_number) AS total
+                 FROM procedimiento_proyectado
+                 WHERE COALESCE(sigcenter_present, 1) = 1
+                   AND DATE(fecha) = ?
+                 GROUP BY fuente
+                 ORDER BY total DESC',
+                [$today->format('Y-m-d')]
+            );
+        } catch (Throwable) {
+            return ['total' => 0, 'breakdown' => []];
+        }
+
+        $grand = array_sum(array_column($rows, 'total'));
+        if ($grand === 0) {
+            return ['total' => 0, 'breakdown' => []];
+        }
+
+        $breakdown = [];
+        foreach ($rows as $row) {
+            $n = (int) $row->total;
+            $breakdown[] = [
+                'label' => (string) $row->fuente,
+                'n'     => $n,
+                'pct'   => round($n / $grand * 100, 1),
+            ];
+        }
+
+        return ['total' => $grand, 'breakdown' => $breakdown];
+    }
+
+        private function getSolicitudesHoyStats(CarbonImmutable $today): array
+    {
+        try {
+            $row = DB::selectOne(
+                'SELECT
+                    COUNT(*) AS total,
+                    SUM(CASE WHEN UPPER(TRIM(COALESCE(sp.prioridad, ""))) = "URGENTE" THEN 1 ELSE 0 END) AS urgentes,
+                    SUM(CASE WHEN UPPER(TRIM(COALESCE(sp.estado, ""))) = "RECIBIDO" THEN 1 ELSE 0 END) AS recibidas,
+                    SUM(CASE WHEN TRIM(COALESCE(sp.estado, "")) != ""
+                              AND UPPER(TRIM(sp.estado)) != "RECIBIDO" THEN 1 ELSE 0 END) AS en_gestion
+                 FROM solicitud_procedimiento sp
+                 WHERE sp.procedimiento IS NOT NULL
+                   AND sp.procedimiento != ""
+                   AND sp.procedimiento != "SELECCIONE"
+                   AND DATE(COALESCE(sp.created_at, sp.fecha)) = ?',
+                [$today->format('Y-m-d')]
+            );
+        } catch (Throwable) {
+            return ['total' => 0, 'urgentes' => 0, 'recibidas' => 0, 'en_gestion' => 0];
+        }
+
+        return [
+            'total'     => (int) ($row->total ?? 0),
+            'urgentes'  => (int) ($row->urgentes ?? 0),
+            'recibidas' => (int) ($row->recibidas ?? 0),
+            'en_gestion' => (int) ($row->en_gestion ?? 0),
+        ];
+    }
+
+        /**
+     * @return array{unanswered:int, sin_asignar:int, en_progreso:int, esperando_paciente:int, source_label:string}
      */
     private function getWhatsappUnansweredStats(): array
     {
         if (!$this->tableExists('whatsapp_conversations')) {
             return [
                 'unanswered' => 0,
-                'assigned' => 0,
-                'open_24h' => 0,
-                'outside_24h' => 0,
+                'sin_asignar' => 0,
+                'en_progreso' => 0,
+                'esperando_paciente' => 0,
                 'source_label' => 'Sin fuente conectada',
             ];
         }
@@ -221,35 +344,41 @@ class DashboardParityService
             $row = DB::selectOne(
                 'SELECT
                     COUNT(*) AS unanswered,
-                    SUM(CASE WHEN assigned_to IS NOT NULL THEN 1 ELSE 0 END) AS assigned,
-                    SUM(CASE WHEN updated_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR) THEN 1 ELSE 0 END) AS open_24h,
-                    SUM(CASE WHEN updated_at < DATE_SUB(NOW(), INTERVAL 24 HOUR) THEN 1 ELSE 0 END) AS outside_24h
+                    SUM(CASE WHEN assigned_user_id IS NULL THEN 1 ELSE 0 END) AS sin_asignar,
+                    SUM(CASE WHEN assigned_user_id IS NOT NULL
+                              AND last_message_direction = "inbound" THEN 1 ELSE 0 END) AS en_progreso,
+                    SUM(CASE WHEN assigned_user_id IS NOT NULL
+                              AND (last_message_direction IS NULL
+                                   OR last_message_direction != "inbound") THEN 1 ELSE 0 END) AS esperando_paciente
                  FROM whatsapp_conversations
-                 WHERE status IS NULL OR status NOT IN ("closed", "cerrado", "resolved", "resuelto")'
+                 WHERE needs_human = 1'
             );
         } catch (Throwable) {
             return [
                 'unanswered' => 0,
-                'assigned' => 0,
-                'open_24h' => 0,
-                'outside_24h' => 0,
+                'sin_asignar' => 0,
+                'en_progreso' => 0,
+                'esperando_paciente' => 0,
                 'source_label' => 'Sin métrica disponible',
             ];
         }
 
         return [
-            'unanswered' => (int) ($row->unanswered ?? 0),
-            'assigned' => (int) ($row->assigned ?? 0),
-            'open_24h' => (int) ($row->open_24h ?? 0),
-            'outside_24h' => (int) ($row->outside_24h ?? 0),
-            'source_label' => 'Conversaciones abiertas',
+            'unanswered'        => (int) ($row->unanswered ?? 0),
+            'sin_asignar'       => (int) ($row->sin_asignar ?? 0),
+            'en_progreso'       => (int) ($row->en_progreso ?? 0),
+            'esperando_paciente' => (int) ($row->esperando_paciente ?? 0),
+            'source_label'      => 'Requieren atención humana',
         ];
     }
 
     /**
-     * @return array<int, array<string, mixed>>
+     * Returns all agenda items for today ordered by time, plus a pivot_index pointing
+     * to the entry closest to the current clock time so the frontend can center the scroll.
+     *
+     * @return array{items: array<int, array<string, mixed>>, pivot_index: int}
      */
-    private function getDashboardV3Agenda(CarbonImmutable $today, int $limit = 8): array
+    private function getDashboardV3Agenda(CarbonImmutable $today): array
     {
         try {
             $rows = DB::select(
@@ -261,57 +390,72 @@ class DashboardParityService
                     pp.hora,
                     pp.estado_agenda,
                     COALESCE(NULLIF(TRIM(pp.sede_departamento), ""), NULLIF(TRIM(pp.id_sede), ""), "") AS sede,
-                    TRIM(CONCAT_WS(" ", pd.fname, pd.mname, pd.lname, pd.lname2)) AS paciente,
-                    CASE WHEN EXISTS (
-                        SELECT 1 FROM consulta_data cd
-                        WHERE cd.form_id = pp.form_id AND cd.hc_number = pp.hc_number
-                    ) THEN 1 ELSE 0 END AS tiene_consulta
+                    TRIM(CONCAT_WS(" ", pd.fname, pd.mname, pd.lname, pd.lname2)) AS paciente
                  FROM procedimiento_proyectado pp
                  LEFT JOIN patient_data pd ON pd.hc_number = pp.hc_number
                  LEFT JOIN visitas v ON v.id = pp.visita_id
                  WHERE COALESCE(pp.sigcenter_present, 1) = 1
                    AND COALESCE(DATE(pp.fecha), v.fecha_visita) = ?
                  ORDER BY pp.hora ASC, pp.form_id ASC
-                 LIMIT ' . (int) $limit,
+                 LIMIT 200',
                 [$today->format('Y-m-d')]
             );
         } catch (Throwable) {
-            return [];
+            return ['items' => [], 'pivot_index' => 0];
         }
 
-        return array_map(function (object $row): array {
-            $procedure = (string) ($row->procedimiento_proyectado ?? '');
-            $estado = strtolower((string) ($row->estado_agenda ?? ''));
-            $hasConsulta = (int) ($row->tiene_consulta ?? 0) === 1;
+        $nowMinutes = (int) date('H') * 60 + (int) date('i');
+        $pivotIndex = 0;
+        $pivotDiff = PHP_INT_MAX;
 
-            $state = 'next';
-            if ($hasConsulta || preg_match('/realiz|atendid|complet/u', $estado) === 1) {
+        $doneStates = ['ATENDIDAS', 'TERMINADO', 'ATENDIDO', 'CONSULTA_TERMINADO'];
+        $liveStates = ['CONSULTA', 'OPTOMETRIA', 'LLEGADO', 'CONFIRMADO'];
+
+        $items = [];
+        foreach ($rows as $i => $row) {
+            $estado = strtoupper(trim((string) ($row->estado_agenda ?? '')));
+
+            if (in_array($estado, $doneStates, true)) {
                 $state = 'done';
-            } elseif (preg_match('/curso|sala|llam/u', $estado) === 1) {
+            } elseif (in_array($estado, $liveStates, true)) {
                 $state = 'live';
+            } else {
+                $state = 'next';
             }
 
-            return [
-                'time' => substr((string) ($row->hora ?? ''), 0, 5) ?: '--:--',
+            $timeStr = substr((string) ($row->hora ?? ''), 0, 5);
+            if ($timeStr !== '' && str_contains($timeStr, ':')) {
+                [$h, $m] = explode(':', $timeStr);
+                $diff = abs((int) $h * 60 + (int) $m - $nowMinutes);
+                if ($diff < $pivotDiff) {
+                    $pivotDiff = $diff;
+                    $pivotIndex = $i;
+                }
+            }
+
+            $items[] = [
+                'time'  => $timeStr ?: '--:--',
                 'state' => $state,
-                'cat' => $this->classifyDashboardV3Procedure($procedure),
-                'name' => trim((string) ($row->paciente ?? '')) ?: ('HC ' . (string) ($row->hc_number ?? '')),
-                'doc' => trim((string) ($row->doctor ?? 'Sin médico')),
-                'room' => trim((string) ($row->sede ?? 'Sin sede')),
+                'cat'   => $this->classifyDashboardV3Procedure((string) ($row->procedimiento_proyectado ?? '')),
+                'name'  => trim((string) ($row->paciente ?? '')) ?: ('HC ' . (string) ($row->hc_number ?? '')),
+                'doc'   => trim((string) ($row->doctor ?? '')) ?: 'Sin médico',
+                'room'  => trim((string) ($row->sede ?? '')) ?: 'Sin sede',
             ];
-        }, $rows);
+        }
+
+        return ['items' => $items, 'pivot_index' => $pivotIndex];
     }
 
     private function classifyDashboardV3Procedure(string $procedure): string
     {
-        $upper = strtoupper($procedure);
-        if (str_contains($upper, 'CIRUG') || str_contains($upper, 'QUIR')) {
+        $upper = strtoupper(trim($procedure));
+        if (str_starts_with($upper, 'CIRUGIAS')) {
             return 'cirugia';
         }
-        if (str_contains($upper, 'EXAM') || str_contains($upper, 'ECO') || str_contains($upper, 'OCT')) {
+        if (str_starts_with($upper, 'IMAGENES')) {
             return 'examen';
         }
-        if (str_contains($upper, 'OPTOM')) {
+        if (str_contains($upper, 'OPTOMETRIA')) {
             return 'optometria';
         }
         return 'consulta';
@@ -324,24 +468,19 @@ class DashboardParityService
     {
         $date = $today->format('Y-m-d');
         $columns = [
-            'espera' => ['id' => 'espera', 'label' => 'Llegaron', 'count' => 0, 'sample' => []],
-            'revision' => ['id' => 'revision', 'label' => 'Agendados', 'count' => 0, 'sample' => []],
-            'sala' => ['id' => 'sala', 'label' => 'Con consulta', 'count' => 0, 'sample' => []],
-            'lista' => ['id' => 'lista', 'label' => 'Quirúrgicos', 'count' => 0, 'sample' => []],
+            'espera'   => ['id' => 'espera',   'label' => 'Llegaron',     'count' => 0, 'sample' => []],
+            'revision' => ['id' => 'revision', 'label' => 'Agendados',    'count' => 0, 'sample' => []],
+            'sala'     => ['id' => 'sala',     'label' => 'Con consulta', 'count' => 0, 'sample' => []],
+            'lista'    => ['id' => 'lista',    'label' => 'Quirúrgicos',  'count' => 0, 'sample' => []],
         ];
 
         try {
             $rows = DB::select(
                 'SELECT
-                    pp.form_id,
                     pp.hc_number,
                     pp.procedimiento_proyectado,
-                    v.hora_llegada,
-                    TRIM(CONCAT_WS(" ", pd.fname, pd.lname)) AS paciente,
-                    CASE WHEN EXISTS (
-                        SELECT 1 FROM consulta_data cd
-                        WHERE cd.form_id = pp.form_id AND cd.hc_number = pp.hc_number
-                    ) THEN 1 ELSE 0 END AS tiene_consulta
+                    pp.estado_agenda,
+                    TRIM(CONCAT_WS(" ", pd.fname, pd.lname)) AS paciente
                  FROM procedimiento_proyectado pp
                  LEFT JOIN patient_data pd ON pd.hc_number = pp.hc_number
                  LEFT JOIN visitas v ON v.id = pp.visita_id
@@ -354,33 +493,35 @@ class DashboardParityService
             return array_values($columns);
         }
 
+        $llegadoStates   = ['LLEGADO', 'CONFIRMADO', 'CONSULTA', 'OPTOMETRIA'];
+        $consultaStates  = ['CONSULTA_TERMINADO', 'ATENDIDAS', 'TERMINADO', 'ATENDIDO'];
+
         foreach ($rows as $row) {
-            $label = trim((string) ($row->paciente ?? '')) ?: ('HC ' . (string) ($row->hc_number ?? ''));
-            $line = $label . ' · ' . (string) ($row->hc_number ?? '');
-            $procedure = strtoupper((string) ($row->procedimiento_proyectado ?? ''));
-            $hasConsulta = (int) ($row->tiene_consulta ?? 0) === 1;
-            $hasArrival = trim((string) ($row->hora_llegada ?? '')) !== '';
+            $label  = trim((string) ($row->paciente ?? '')) ?: ('HC ' . (string) ($row->hc_number ?? ''));
+            $line   = $label . ' · ' . (string) ($row->hc_number ?? '');
+            $estado = strtoupper(trim((string) ($row->estado_agenda ?? '')));
+            $proc   = strtoupper(trim((string) ($row->procedimiento_proyectado ?? '')));
 
             $columns['revision']['count']++;
             if (count($columns['revision']['sample']) < 2) {
                 $columns['revision']['sample'][] = $line;
             }
 
-            if ($hasArrival) {
+            if (in_array($estado, $llegadoStates, true)) {
                 $columns['espera']['count']++;
                 if (count($columns['espera']['sample']) < 2) {
                     $columns['espera']['sample'][] = $line;
                 }
             }
 
-            if ($hasConsulta) {
+            if (in_array($estado, $consultaStates, true)) {
                 $columns['sala']['count']++;
                 if (count($columns['sala']['sample']) < 2) {
                     $columns['sala']['sample'][] = $line;
                 }
             }
 
-            if (str_contains($procedure, 'CIRUG') || str_contains($procedure, 'QUIR')) {
+            if (str_starts_with($proc, 'CIRUGIAS')) {
                 $columns['lista']['count']++;
                 if (count($columns['lista']['sample']) < 2) {
                     $columns['lista']['sample'][] = $line;
@@ -396,20 +537,39 @@ class DashboardParityService
      */
     private function getDashboardV3Salas(CarbonImmutable $today): array
     {
+        $date = $today->format('Y-m-d');
+        $presentStates = ['LLEGADO', 'CONFIRMADO', 'CONSULTA', 'OPTOMETRIA',
+                          'CONSULTA_TERMINADO', 'ATENDIDAS', 'TERMINADO', 'ATENDIDO'];
+        $inList = implode(',', array_fill(0, count($presentStates), '?'));
+
         try {
             $rows = DB::select(
-                'SELECT
-                    pr.hc_number,
-                    pr.membrete,
-                    pr.cirujano_1,
-                    pr.fecha_inicio,
-                    TRIM(CONCAT_WS(" ", pd.fname, pd.lname, pd.lname2)) AS paciente
-                 FROM protocolo_data pr
-                 LEFT JOIN patient_data pd ON pd.hc_number = pr.hc_number
-                 WHERE DATE(pr.fecha_inicio) = ?
-                 ORDER BY pr.fecha_inicio DESC, pr.id DESC
-                 LIMIT 3',
-                [$today->format('Y-m-d')]
+                "SELECT
+                    pp.hc_number,
+                    pp.hora,
+                    pp.procedimiento_proyectado,
+                    pp.doctor,
+                    pp.estado_agenda,
+                    TRIM(CONCAT_WS(' ', pd.fname, pd.lname, pd.lname2)) AS paciente,
+                    pr.form_id        AS protocolo_form_id,
+                    pr.membrete       AS protocolo_membrete,
+                    pr.cirujano_1     AS protocolo_cirujano,
+                    pr.fecha_inicio   AS protocolo_fecha_inicio
+                 FROM procedimiento_proyectado pp
+                 LEFT JOIN patient_data pd ON pd.hc_number = pp.hc_number
+                 LEFT JOIN visitas v ON v.id = pp.visita_id
+                 LEFT JOIN protocolo_data pr
+                        ON pr.form_id    = pp.form_id
+                       AND pr.hc_number  = pp.hc_number
+                 WHERE COALESCE(pp.sigcenter_present, 1) = 1
+                   AND COALESCE(DATE(pp.fecha), v.fecha_visita) = ?
+                   AND UPPER(TRIM(COALESCE(pp.procedimiento_proyectado, ''))) LIKE 'CIRUGIAS%'
+                   AND (
+                       UPPER(TRIM(COALESCE(pp.estado_agenda, ''))) IN ($inList)
+                       OR pr.form_id IS NOT NULL
+                   )
+                 ORDER BY pp.hora ASC, pp.form_id ASC",
+                array_merge([$date], $presentStates)
             );
         } catch (Throwable) {
             return [];
@@ -417,19 +577,30 @@ class DashboardParityService
 
         $salas = [];
         foreach ($rows as $index => $row) {
+            $hasProtocolo = $row->protocolo_form_id !== null;
+
+            $proc = $hasProtocolo
+                ? trim((string) ($row->protocolo_membrete ?? ''))
+                : trim((string) ($row->procedimiento_proyectado ?? ''));
+
+            $doc = $hasProtocolo
+                ? trim((string) ($row->protocolo_cirujano ?? ''))
+                : trim((string) ($row->doctor ?? ''));
+
             $time = '';
-            if (!empty($row->fecha_inicio)) {
-                $time = date('H:i', strtotime((string) $row->fecha_inicio));
+            if ($hasProtocolo && !empty($row->protocolo_fecha_inicio)) {
+                $time = date('H:i', strtotime((string) $row->protocolo_fecha_inicio));
+            } elseif (!empty($row->hora)) {
+                $time = substr((string) $row->hora, 0, 5);
             }
 
             $salas[] = [
-                'n' => $index + 1,
-                'state' => 'registrado',
+                'n'       => $index + 1,
+                'state'   => $hasProtocolo ? 'realizada' : 'pendiente',
                 'patient' => trim((string) ($row->paciente ?? '')) ?: ('HC ' . (string) ($row->hc_number ?? '')),
-                'proc' => trim((string) ($row->membrete ?? 'Procedimiento sin membrete')),
-                'doc' => trim((string) ($row->cirujano_1 ?? 'Sin cirujano')),
-                'elapsed' => $time !== '' ? ('Registrada ' . $time) : 'Registrada hoy',
-                'pct' => 100,
+                'proc'    => $proc ?: 'Sin procedimiento',
+                'doc'     => $doc ?: 'Sin cirujano',
+                'time'    => $time ?: '--:--',
             ];
         }
 
@@ -451,7 +622,7 @@ class DashboardParityService
                 'module' => 'Facturación',
                 'value' => $this->countDashboardV3Unbilled($start, $end),
                 'label' => 'sin facturar',
-                'sub' => 'Protocolos del rango sin billing_main',
+                'sub' => 'Agendados del período sin registro en facturación',
                 'href' => '/v2/billing',
             ],
             [
@@ -468,18 +639,18 @@ class DashboardParityService
                 'tone' => 'danger',
                 'module' => 'Farmacia',
                 'value' => $this->countDashboardV3PharmacyPending($start, $end),
-                'label' => 'sin despacho',
-                'sub' => 'Recetas sin total_farmacia',
+                'label' => 'medicamentos prescritos',
+                'sub' => 'Ítems de receta del período',
                 'href' => '/v2/farmacia',
             ],
             [
-                'icon' => 'mdi-share-variant-outline',
+                'icon' => 'mdi-file-document-edit-outline',
                 'tone' => 'primary',
-                'module' => 'Derivaciones',
-                'value' => $this->countDashboardV3DerivacionesOpen(),
-                'label' => 'en cola',
-                'sub' => 'Scraping pendiente o fallido',
-                'href' => '/v2/derivaciones',
+                'module' => 'Protocolos',
+                'value' => $this->countDashboardV3ProtocolosSinRevisar($start, $end),
+                'label' => 'sin revisar',
+                'sub' => 'Protocolos del período sin marcar como revisados',
+                'href' => '/v2/cirugias',
             ],
             [
                 'icon' => 'mdi-cash-fast',
@@ -495,18 +666,20 @@ class DashboardParityService
 
     private function countDashboardV3Unbilled(CarbonImmutable $start, CarbonImmutable $end): int
     {
-        if (!$this->tableExists('billing_main')) {
+        if (!$this->tableExists('billing_facturacion_real')) {
             return 0;
         }
 
         try {
             return (int) (DB::selectOne(
                 'SELECT COUNT(*) AS total
-                 FROM protocolo_data pr
-                 LEFT JOIN billing_main bm ON bm.form_id = pr.form_id
-                 WHERE pr.fecha_inicio BETWEEN ? AND ?
-                   AND bm.id IS NULL',
-                [$start->format('Y-m-d 00:00:00'), $end->format('Y-m-d 23:59:59')]
+                 FROM procedimiento_proyectado pp
+                 LEFT JOIN visitas v ON v.id = pp.visita_id
+                 LEFT JOIN billing_facturacion_real bfr ON bfr.form_id = pp.form_id
+                 WHERE COALESCE(pp.sigcenter_present, 1) = 1
+                   AND COALESCE(DATE(pp.fecha), v.fecha_visita) BETWEEN ? AND ?
+                   AND bfr.id IS NULL',
+                [$start->format('Y-m-d'), $end->format('Y-m-d')]
             )->total ?? 0);
         } catch (Throwable) {
             return 0;
@@ -515,17 +688,21 @@ class DashboardParityService
 
     private function countDashboardV3PendingExams(CarbonImmutable $start, CarbonImmutable $end): int
     {
-        if (!$this->tableExists('consulta_examenes')) {
+        if (!$this->tableExists('imagenes_nas_index')) {
             return 0;
         }
 
         try {
             return (int) (DB::selectOne(
                 'SELECT COUNT(*) AS total
-                 FROM consulta_examenes
-                 WHERE consulta_fecha BETWEEN ? AND ?
-                   AND (estado IS NULL OR estado NOT IN ("realizado", "completado", "cancelado"))',
-                [$start->format('Y-m-d 00:00:00'), $end->format('Y-m-d 23:59:59')]
+                 FROM procedimiento_proyectado pp
+                 LEFT JOIN visitas v ON v.id = pp.visita_id
+                 LEFT JOIN imagenes_nas_index idx ON idx.form_id = pp.form_id
+                 WHERE COALESCE(pp.sigcenter_present, 1) = 1
+                   AND COALESCE(DATE(pp.fecha), v.fecha_visita) BETWEEN ? AND ?
+                   AND UPPER(TRIM(COALESCE(pp.procedimiento_proyectado, ""))) LIKE "IMAGENES%"
+                   AND idx.form_id IS NULL',
+                [$start->format('Y-m-d'), $end->format('Y-m-d')]
             )->total ?? 0);
         } catch (Throwable) {
             return 0;
@@ -551,17 +728,15 @@ class DashboardParityService
         }
     }
 
-    private function countDashboardV3DerivacionesOpen(): int
+    private function countDashboardV3ProtocolosSinRevisar(CarbonImmutable $start, CarbonImmutable $end): int
     {
-        if (!$this->tableExists('derivaciones_scrape_queue')) {
-            return 0;
-        }
-
         try {
             return (int) (DB::selectOne(
                 'SELECT COUNT(*) AS total
-                 FROM derivaciones_scrape_queue
-                 WHERE status IS NULL OR status NOT IN ("success", "completed", "completado")'
+                 FROM protocolo_data
+                 WHERE fecha_inicio BETWEEN ? AND ?
+                   AND (status IS NULL OR status != 1)',
+                [$start->format('Y-m-d 00:00:00'), $end->format('Y-m-d 23:59:59')]
             )->total ?? 0);
         } catch (Throwable) {
             return 0;
