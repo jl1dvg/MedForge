@@ -31,6 +31,7 @@
     $p75          = (int) ($summary['p75_first_human_response_minutes'] ?? $avg);
     $slaRate      = $n('sla_assignments_rate');
     $peopleIn     = $n('people_inbound');
+    $peopleHandoff = $n('people_handoff');
     $attended     = $n('conversations_attended_human');
     $resolved     = $n('conversations_resolved');
     $lost         = $n('conversations_lost');
@@ -101,11 +102,11 @@
             'icon' => 'mdi-account-heart-outline', 'tone' => $sevCoverage,
             'label' => 'Cobertura humana', 'value' => $attention, 'unit' => '%',
             'badge' => ['sev' => $sevCoverage, 'text' => $sevCoverage === 'success' ? 'En meta' : ($sevCoverage === 'warning' ? 'Vigilar' : 'Crítico')],
-            'trend' => $attended . ' de ' . $peopleIn . ' atendidas por persona',
+            'trend' => $attended . ' de ' . $peopleHandoff . ' que solicitaron humano',
             'breakdown' => [
-                ['dot' => 'success', 'n' => $attended, 'label' => 'Atendidas'],
-                ['dot' => 'danger',  'n' => $lost,     'label' => 'Sin respuesta'],
-                ['dot' => 'info',    'n' => $peopleIn, 'label' => 'Personas'],
+                ['dot' => 'success', 'n' => $attended,     'label' => 'Atendidas'],
+                ['dot' => 'danger',  'n' => $lost,         'label' => 'Sin respuesta'],
+                ['dot' => 'info',    'n' => $peopleHandoff,'label' => 'Con handoff'],
             ],
         ],
         [

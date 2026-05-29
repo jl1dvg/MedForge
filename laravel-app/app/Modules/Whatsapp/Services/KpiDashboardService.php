@@ -1186,6 +1186,7 @@ class KpiDashboardService
         $threshold24h = Carbon::now()->subHours(24);
         $peopleInboundSet = [];
         $peopleAttendedSet = [];
+        $peopleHandoffSet = [];
         $peopleLostSet = [];
         $attended = 0;
         $lost = 0;
@@ -1207,6 +1208,10 @@ class KpiDashboardService
             $handoffRequestedAt = isset($row->handoff_requested_at) ? Carbon::parse((string) $row->handoff_requested_at) : null;
             $firstHandoffAt = isset($row->first_handoff_at) ? Carbon::parse((string) $row->first_handoff_at) : null;
             $responseStart = $handoffRequestedAt ?? $firstHandoffAt;
+
+            if ($responseStart !== null && $waNumber !== '') {
+                $peopleHandoffSet[$waNumber] = true;
+            }
 
             if ($firstReply !== null) {
                 $attended++;
@@ -1241,6 +1246,7 @@ class KpiDashboardService
 
         $peopleInbound = count($peopleInboundSet);
         $peopleAttended = count($peopleAttendedSet);
+        $peopleHandoff = count($peopleHandoffSet);
         $peopleLost = count($peopleLostSet);
         $avgSeconds = $responseSeconds !== [] ? array_sum($responseSeconds) / count($responseSeconds) : null;
         $medianSeconds = $this->median($responseSeconds);
@@ -1249,14 +1255,15 @@ class KpiDashboardService
 
         return [
             'people_inbound' => $peopleInbound,
+            'people_handoff' => $peopleHandoff,
             'inbound_conversations_human' => count($rows),
             'conversations_attended_human' => $attended,
             'people_attended_human' => $peopleAttended,
             'conversations_lost' => $lost,
             'people_lost' => $peopleLost,
             'conversations_lost_with_handoff' => $lostWithHandoff,
-            'attention_rate' => $peopleInbound > 0 ? round(($peopleAttended / $peopleInbound) * 100, 2) : 0.0,
-            'loss_rate' => $peopleInbound > 0 ? round(($peopleLost / $peopleInbound) * 100, 2) : 0.0,
+            'attention_rate' => $peopleHandoff > 0 ? round(($peopleAttended / $peopleHandoff) * 100, 2) : 0.0,
+            'loss_rate' => $peopleHandoff > 0 ? round(($peopleLost / $peopleHandoff) * 100, 2) : 0.0,
             'conversations_abandoned' => $abandoned,
             'conversations_abandoned_needs_human' => $abandonedNeedsHuman,
             'conversations_abandoned_with_handoff' => $abandonedWithHandoff,
