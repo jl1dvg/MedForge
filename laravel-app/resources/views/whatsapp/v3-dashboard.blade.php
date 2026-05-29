@@ -487,7 +487,7 @@ body:has(.wad) { overflow: hidden; }
 </style>
 @endpush
 
-@push('head')
+@push('scripts')
     @vite('resources/js/v2/whatsapp-dashboard-v3.js')
 @endpush
 
