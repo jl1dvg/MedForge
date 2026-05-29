@@ -488,7 +488,73 @@ body:has(.wad) { overflow: hidden; }
 @endpush
 
 @push('scripts')
-    @vite('resources/js/v2/whatsapp-dashboard-v3.js')
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+    'use strict';
+    if (typeof Chart === 'undefined') return;
+
+    Chart.defaults.font.family = '"IBM Plex Sans", system-ui, sans-serif';
+    Chart.defaults.color = '#7e8299';
+    const PALETTE = ['#5156be','#3596f7','#05825f','#ffa800','#ee3158','#7479d4'];
+
+    // Embudo de servicio — barras verticales
+    (function () {
+        const el = document.getElementById('wad-chart-embudo');
+        if (!el) return;
+        new Chart(el, {
+            type: 'bar',
+            data: {
+                labels: JSON.parse(el.dataset.labels || '[]'),
+                datasets: [{ data: JSON.parse(el.dataset.values || '[]'), backgroundColor: ['#5156be','#3596f7','#0863be','#05825f'], borderRadius: 6, borderSkipped: false }],
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${ctx.parsed.y.toLocaleString()} conversaciones` } } }, scales: { x: { grid: { display: false }, border: { display: false } }, y: { grid: { color: '#ebedf3' }, border: { display: false }, ticks: { precision: 0 } } } },
+        });
+    }());
+
+    // Handoffs por equipo — barras horizontales apiladas
+    (function () {
+        const el = document.getElementById('wad-chart-handoffs');
+        if (!el) return;
+        new Chart(el, {
+            type: 'bar',
+            data: {
+                labels: JSON.parse(el.dataset.labels || '[]'),
+                datasets: [
+                    { label: 'En cola',   data: JSON.parse(el.dataset.queued   || '[]'), backgroundColor: '#ffa800', borderRadius: 0 },
+                    { label: 'Asignadas', data: JSON.parse(el.dataset.assigned || '[]'), backgroundColor: '#3596f7', borderRadius: 0 },
+                    { label: 'Resueltas', data: JSON.parse(el.dataset.resolved || '[]'), backgroundColor: '#05825f', borderRadius: 0 },
+                ],
+            },
+            options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, boxHeight: 10, padding: 10, font: { size: 11 } } }, tooltip: { mode: 'index' } }, scales: { x: { stacked: true, grid: { color: '#ebedf3' }, border: { display: false }, ticks: { precision: 0 } }, y: { stacked: true, grid: { display: false }, border: { display: false } } } },
+        });
+    }());
+
+    // Origen de demanda — donut
+    (function () {
+        const el = document.getElementById('wad-chart-origen');
+        if (!el) return;
+        const values = JSON.parse(el.dataset.values || '[]');
+        const total  = values.reduce((a, b) => a + b, 0);
+        new Chart(el, {
+            type: 'doughnut',
+            data: { labels: JSON.parse(el.dataset.labels || '[]'), datasets: [{ data: values, backgroundColor: PALETTE, borderWidth: 2, borderColor: '#fff', hoverOffset: 6 }] },
+            options: { responsive: true, maintainAspectRatio: false, cutout: '62%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, boxHeight: 10, padding: 10, font: { size: 11 } } }, tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${ctx.parsed.toLocaleString()} (${total > 0 ? Math.round(ctx.parsed / total * 100) : 0}%)` } } } },
+        });
+    }());
+
+    // Bot & Flujo — donut contenido vs escalado
+    (function () {
+        const el = document.getElementById('wad-chart-bot');
+        if (!el) return;
+        new Chart(el, {
+            type: 'doughnut',
+            data: { labels: ['Contenido por bot','Escalado a humano'], datasets: [{ data: [parseFloat(el.dataset.contain || 0), parseFloat(el.dataset.escalado || 0)], backgroundColor: ['#05825f','#ee3158'], borderWidth: 2, borderColor: '#fff', hoverOffset: 4 }] },
+            options: { responsive: true, maintainAspectRatio: false, cutout: '68%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, boxHeight: 10, padding: 8, font: { size: 11 } } }, tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${ctx.parsed}%` } } } },
+        });
+    }());
+}());
+</script>
 @endpush
 
 @section('content')
