@@ -229,6 +229,10 @@ class WhatsappUiController
      */
     public function dashboardV3(Request $request): View
     {
+        if (!$request->has('date_from')) {
+            $today = date('Y-m-d');
+            $request->merge(['date_from' => $today, 'date_to' => $today]);
+        }
         return $this->dashboard($request, 'whatsapp.v3-dashboard');
     }
 
