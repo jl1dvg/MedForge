@@ -103,7 +103,7 @@ class CrmOpportunityListenerTest extends TestCase
         ));
 
         $this->assertEquals(1, CrmOpportunity::query()->count());
-        $this->assertEquals('interesado', CrmOpportunity::query()->first()->stage);
+        $this->assertEquals('nuevo', CrmOpportunity::query()->first()->stage);
         $this->assertEquals(42, CrmOpportunity::query()->first()->source_id);
     }
 
@@ -120,7 +120,7 @@ class CrmOpportunityListenerTest extends TestCase
         ));
 
         $this->assertEquals(1, CrmOpportunity::query()->count());
-        $this->assertEquals('propuesta_enviada', CrmOpportunity::query()->first()->stage);
+        $this->assertEquals('nuevo', CrmOpportunity::query()->first()->stage);
         $this->assertEquals('examen', CrmOpportunity::query()->first()->source);
         $this->assertEquals(77, CrmOpportunity::query()->first()->source_id);
     }

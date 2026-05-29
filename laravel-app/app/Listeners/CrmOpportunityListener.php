@@ -26,7 +26,7 @@ class CrmOpportunityListener
             source: 'whatsapp',
         );
 
-        $this->opportunityService->createFromEvent(
+        $this->opportunityService->upsertFromEvent(
             contact: $contact,
             title: 'Lead WhatsApp: ' . ($lead->motivo_baja ?: 'sin motivo registrado'),
             source: 'whatsapp',
@@ -47,12 +47,12 @@ class CrmOpportunityListener
             source: 'solicitud',
         );
 
-        $this->opportunityService->createFromEvent(
+        $this->opportunityService->upsertFromEvent(
             contact: $contact,
             title: 'Solicitud: ' . (string) ($data['servicio'] ?? 'Servicio médico'),
             source: 'solicitud',
             sourceId: $event->solicitudId,
-            sourceType: 'solicitud',
+            sourceType: 'solicitud_procedimiento',
         );
     }
 
@@ -67,12 +67,12 @@ class CrmOpportunityListener
             source: 'examen',
         );
 
-        $this->opportunityService->createFromEvent(
+        $this->opportunityService->upsertFromEvent(
             contact: $contact,
             title: 'Examen: ' . (string) ($data['descripcion_examen'] ?? 'Examen solicitado'),
             source: 'examen',
             sourceId: $event->examenId,
-            sourceType: 'examen',
+            sourceType: 'consulta_examenes',
         );
     }
 }
