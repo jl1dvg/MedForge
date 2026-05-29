@@ -191,7 +191,7 @@ class WhatsappUiController
         ]));
     }
 
-    public function dashboard(Request $request): View
+    public function dashboard(Request $request, string $view = 'whatsapp.v2-dashboard'): View
     {
         $today = new DateTimeImmutable('today');
         $dateFrom = trim((string) $request->query('date_from', $today->modify('-29 days')->format('Y-m-d')));
@@ -208,7 +208,7 @@ class WhatsappUiController
             $slaTargetMinutes
         );
 
-        return view('whatsapp.v2-dashboard', [
+        return view($view, [
             'pageTitle' => 'WhatsApp V2 - Dashboard',
             'dashboard' => $dashboard,
             'filters' => [
@@ -221,6 +221,15 @@ class WhatsappUiController
         ] + $this->buildWhatsappNotificationViewData($request, [
             'scope' => 'dashboard',
         ]));
+    }
+
+    /**
+     * Single-screen V3 dashboard. Delegates to dashboard() with a v3 view
+     * name so both routes share the same KPI data pipeline.
+     */
+    public function dashboardV3(Request $request): View
+    {
+        return $this->dashboard($request, 'whatsapp.v3-dashboard');
     }
 
     public function flowmaker(Request $request): View
