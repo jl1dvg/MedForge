@@ -51,7 +51,8 @@ class CrmConsolidateOpportunities extends Command
                 continue;
             }
 
-            DB::transaction(function () use ($canonical, $extras): void {
+            $mergedCount = 0;
+            DB::transaction(function () use ($canonical, $extras, &$mergedCount): void {
                 foreach ($extras as $extra) {
                     // Move all activities from extra to canonical
                     CrmActivity::query()
@@ -64,6 +65,7 @@ class CrmConsolidateOpportunities extends Command
                         'type'           => CrmActivity::TYPE_NOTA,
                         'description'    => "Registro consolidado desde opp #{$extra->id} ({$extra->source} #{$extra->source_id})",
                         'user_id'        => null,
+                        'created_at'     => now(),
                     ]);
 
                     // Update source tables to point to canonical
@@ -72,6 +74,7 @@ class CrmConsolidateOpportunities extends Command
                     }
 
                     $extra->delete();
+                    $mergedCount++;
                 }
 
                 // Determine best stage from clinical records
@@ -81,11 +84,13 @@ class CrmConsolidateOpportunities extends Command
                 $canonical->save();
             });
 
-            $totalMerged += $extras->count();
+            $totalMerged += $mergedCount;
         }
 
         $this->info("Oportunidades consolidadas/eliminadas: {$totalMerged}");
-        $this->info('Si ejecutaste sin dry-run, corre: php artisan migrate (para agregar UNIQUE constraint)');
+        if (!$dryRun) {
+            $this->info('Corre: php artisan migrate (para agregar UNIQUE constraint)');
+        }
 
         return 0;
     }
@@ -137,7 +142,7 @@ class CrmConsolidateOpportunities extends Command
             ->where('crm_opportunities.contact_id', $contactId)
             ->max('solicitud_procedimiento.fecha');
 
-        $latest = max($latestExamen, $latestSolicitud);
+        $latest = collect([$latestExamen, $latestSolicitud])->filter()->max();
 
         if ($latest === null) {
             return CrmOpportunity::STAGE_NUEVO;
