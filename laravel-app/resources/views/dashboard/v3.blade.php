@@ -33,7 +33,9 @@
     $greeting = $hour < 12 ? 'Buenos días' : ($hour < 19 ? 'Buenas tardes' : 'Buenas noches');
 
     $heroKpis     = is_array($dashboardV3['hero_kpis'] ?? null) ? $dashboardV3['hero_kpis'] : [];
-    $agenda       = is_array($dashboardV3['agenda'] ?? null) ? $dashboardV3['agenda'] : [];
+    $agendaRaw    = is_array($dashboardV3['agenda'] ?? null) ? $dashboardV3['agenda'] : [];
+    $agenda       = is_array($agendaRaw['items'] ?? null) ? $agendaRaw['items'] : $agendaRaw;
+    $agendaPivot  = (int) ($agendaRaw['pivot_index'] ?? 0);
     $flujoColumns = is_array($dashboardV3['flujo_columns'] ?? null) ? $dashboardV3['flujo_columns'] : [];
     $salas        = is_array($dashboardV3['salas'] ?? null) ? $dashboardV3['salas'] : [];
 
@@ -53,6 +55,23 @@
     }, $congestionMedicos);
 
     $iaSuggestions = is_array($dashboardV3['ia_suggestions'] ?? null) ? $dashboardV3['ia_suggestions'] : [];
+
+    // Period buttons
+    $today = date('Y-m-d');
+    $activePeriod = 'hoy';
+    $sd = trim((string) ($start_date ?? ''));
+    $ed = trim((string) ($end_date ?? ''));
+    if ($sd !== '' || $ed !== '') {
+        $days = (strtotime($ed ?: $today) - strtotime($sd ?: $today)) / 86400 + 1;
+        if ($days <= 1)  { $activePeriod = 'hoy'; }
+        elseif ($days <= 7)  { $activePeriod = '7d'; }
+        else             { $activePeriod = '30d'; }
+    }
+    $periodUrls = [
+        'hoy' => '/v3/dashboard?start_date=' . $today . '&end_date=' . $today,
+        '7d'  => '/v3/dashboard?start_date=' . date('Y-m-d', strtotime('-6 days')) . '&end_date=' . $today,
+        '30d' => '/v3/dashboard?start_date=' . date('Y-m-d', strtotime('-29 days')) . '&end_date=' . $today,
+    ];
     $iaProvider = !empty($aiSummary['provider']) ? strtoupper((string) $aiSummary['provider']) : 'OPENAI';
     $iaActive   = (bool) ($aiSummary['provider_configured'] ?? false);
 
@@ -86,17 +105,13 @@
         </div>
         <div class="dash3-head-right">
             <div class="dash3-period" role="tablist">
-                <button type="button" class="active" data-period="hoy">Hoy</button>
-                <button type="button" data-period="7d">7 días</button>
-                <button type="button" data-period="30d">30 días</button>
+                <a href="{{ $periodUrls['hoy'] }}" class="dash3-period-btn {{ $activePeriod === 'hoy' ? 'active' : '' }}">Hoy</a>
+                <a href="{{ $periodUrls['7d'] }}"  class="dash3-period-btn {{ $activePeriod === '7d'  ? 'active' : '' }}">7 días</a>
+                <a href="{{ $periodUrls['30d'] }}" class="dash3-period-btn {{ $activePeriod === '30d' ? 'active' : '' }}">30 días</a>
             </div>
             <div class="dash3-ctx">
-                <span class="dash3-ctx-chip"><i class="mdi mdi-calendar-today"></i>{{ $rangeLabel }}</span>
                 <span class="dash3-ctx-chip"><i class="mdi mdi-domain"></i>{{ (string) ($currentUser['sede_name'] ?? 'Todas las sedes') }}</span>
             </div>
-            <a href="/v2/dashboard" class="dash3-ctx-btn" title="Volver al dashboard clásico">
-                <i class="mdi mdi-tune"></i>Filtros
-            </a>
         </div>
     </header>
 
@@ -196,34 +211,23 @@
                 @forelse($salas as $s)
                     <div class="dash3-sala dash3-sala--{{ $s['state'] }}">
                         <div class="dash3-sala-head">
-                            <span class="dash3-sala-name">
-                                <span class="dash3-sala-id">Q{{ $s['n'] }}</span>
-                                Quirófano {{ $s['n'] }}
-                            </span>
+                            <span class="dash3-sala-name">{{ $s['patient'] }}</span>
                             <span class="dash3-sala-state">
-                                @if($s['state'] === 'ocupado')
-                                    <span class="dash3-pulse dash3-pulse--danger"></span>ocupado
-                                @elseif($s['state'] === 'preparando')
-                                    <span class="dash3-pulse dash3-pulse--warning"></span>preparando
-                                @elseif($s['state'] === 'registrado')
-                                    registrado
+                                @if($s['state'] === 'realizada')
+                                    <span class="dash3-pulse dash3-pulse--success"></span>realizada
                                 @else
-                                    {{ $s['state'] }}
+                                    <span class="dash3-pulse dash3-pulse--warning"></span>pendiente
                                 @endif
                             </span>
                         </div>
-                        <p class="dash3-sala-patient">{{ $s['patient'] }}</p>
                         <p class="dash3-sala-proc">{{ $s['proc'] }}</p>
-                        <div class="dash3-sala-bar">
-                            <div class="dash3-sala-bar-fill" style="width: {{ (int) $s['pct'] }}%"></div>
-                        </div>
                         <div class="dash3-sala-foot">
                             <span><i class="mdi mdi-doctor"></i> {{ $s['doc'] }}</span>
-                            <span><i class="mdi mdi-clock-outline"></i> {{ $s['elapsed'] }}</span>
+                            <span><i class="mdi mdi-clock-outline"></i> {{ $s['time'] }}</span>
                         </div>
                     </div>
                 @empty
-                    <div class="dash3-empty">No hay cirugías registradas hoy.</div>
+                    <div class="dash3-empty">Sin cirugías con pacientes presentes hoy.</div>
                 @endforelse
             </div>
         </article>
@@ -328,18 +332,4 @@
 </section>
 @endsection
 
-@push('scripts')
-<script>
-    /* Period segmented control — purely visual for now. Wire to a real
-       query-string filter once `today / 7d / 30d` aggregates exist. */
-    (function () {
-        var btns = document.querySelectorAll('.dash3-period button');
-        btns.forEach(function (b) {
-            b.addEventListener('click', function () {
-                btns.forEach(function (x) { x.classList.remove('active'); });
-                b.classList.add('active');
-            });
-        });
-    })();
-</script>
-@endpush
+
