@@ -1,8 +1,10 @@
 import React from 'react';
+import type { Stage, Phase } from '../types';
 
 export interface ActiveFilters {
-  stage: string;
+  stage: Stage | '';
   source: string;
+  phase: Phase | '';
   urgent: boolean;
   search: string;
 }
@@ -11,68 +13,70 @@ interface Props {
   filters: ActiveFilters;
   total: number;
   urgentCount: number;
-  onChange: (f: Partial<ActiveFilters>) => void;
+  onChange: (partial: Partial<ActiveFilters>) => void;
 }
 
-const STAGES = [
-  { value: '', label: 'Todas' },
-  { value: '__urgent__', label: 'Urgentes' },
-  { value: 'nuevo', label: 'Nuevas' },
-  { value: 'propuesta_enviada', label: 'Propuesta' },
-];
-
-const SOURCES = [
-  { value: '', label: 'Todos los origenes' },
-  { value: 'whatsapp', label: 'WhatsApp' },
-  { value: 'solicitud', label: 'Solicitudes' },
-  { value: 'examen', label: 'Examenes' },
+const STAGES: { value: Stage | ''; label: string }[] = [
+  { value: '', label: 'Todas las etapas' },
+  { value: 'nuevo', label: 'Nuevo' },
+  { value: 'contactado', label: 'Contactado' },
+  { value: 'en_evaluacion', label: 'En evaluación' },
+  { value: 'propuesta', label: 'Propuesta' },
+  { value: 'comprometido', label: 'Comprometido' },
+  { value: 'ganado', label: 'Ganado' },
+  { value: 'perdido', label: 'Perdido' },
 ];
 
 export function FilterChips({ filters, total, urgentCount, onChange }: Props) {
   return (
-    <div className="flex items-center gap-2 mb-4 flex-wrap">
-      {STAGES.map(({ value, label }) => {
-        const isActive = value === '__urgent__' ? filters.urgent : filters.stage === value && !filters.urgent;
-        return (
+    <div style={{ marginBottom: '1rem' }}>
+      <div className="crm-filter-row" style={{ marginBottom: '.5rem' }}>
+        <span style={{ fontSize: '.75rem', color: 'var(--fg-mute)', marginRight: '.25rem' }}>
+          {total} oportunidades
+        </span>
+        {urgentCount > 0 && (
           <button
-            key={value}
-            onClick={() => value === '__urgent__'
-              ? onChange({ urgent: !filters.urgent, stage: '' })
-              : onChange({ stage: value, urgent: false })}
-            className={`px-3 py-1.5 rounded-full text-xs font-semibold border-2 transition-all
-              ${isActive
-                ? value === '__urgent__'
-                  ? 'bg-red-100 text-red-700 border-red-300'
-                  : 'bg-blue-500 text-white border-blue-500'
-                : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400'}`}
+            className={`crm-chip${filters.urgent ? ' active' : ''}`}
+            onClick={() => onChange({ urgent: !filters.urgent })}
           >
-            {label} {value === '' && `(${total})`}
-            {value === '__urgent__' && `(${urgentCount})`}
+            ⚠ Sin contactar ({urgentCount})
           </button>
-        );
-      })}
-
-      <div className="h-5 w-px bg-slate-200 mx-1" />
-
-      {SOURCES.slice(1).map(({ value, label }) => (
+        )}
         <button
-          key={value}
-          onClick={() => onChange({ source: filters.source === value ? '' : value })}
-          className={`px-3 py-1.5 rounded-full text-xs font-semibold border-2 transition-all
-            ${filters.source === value
-              ? 'bg-slate-700 text-white border-slate-700'
-              : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400'}`}
+          className={`crm-chip${filters.phase === 'operational' ? ' active' : ''}`}
+          onClick={() => onChange({ phase: filters.phase === 'operational' ? '' : 'operational' })}
         >
-          {label}
+          Operativo
         </button>
-      ))}
-
-      <input
-        className="ml-auto border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-600 bg-white outline-none w-52"
-        placeholder="Buscar paciente o cedula..."
-        value={filters.search}
-        onChange={e => onChange({ search: e.target.value })}
-      />
+        <button
+          className={`crm-chip${filters.phase === 'commercial' ? ' active' : ''}`}
+          onClick={() => onChange({ phase: filters.phase === 'commercial' ? '' : 'commercial' })}
+        >
+          Comercial
+        </button>
+        <input
+          type="text"
+          placeholder="Buscar paciente..."
+          value={filters.search}
+          onChange={e => onChange({ search: e.target.value })}
+          style={{
+            height: '2rem', padding: '.25rem .625rem', borderRadius: 'var(--radius-pill)',
+            border: '1.5px solid var(--border)', fontSize: '.75rem', outline: 'none',
+            background: 'var(--bg-surface)', color: 'var(--fg-1)', marginLeft: 'auto',
+          }}
+        />
+      </div>
+      <div className="crm-filter-row">
+        {STAGES.map(({ value, label }) => (
+          <button
+            key={value || 'all'}
+            className={`crm-chip${filters.stage === value ? ' active' : ''}`}
+            onClick={() => onChange({ stage: value as Stage | '' })}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

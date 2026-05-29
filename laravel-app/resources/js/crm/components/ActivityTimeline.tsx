@@ -1,11 +1,12 @@
 import React from 'react';
 import type { CrmActivity, ActivityType } from '../types';
 
-const DOT_COLOR: Record<ActivityType, string> = {
-  nota: 'bg-amber-400', llamada: 'bg-blue-400',
-  cambio_etapa: 'bg-violet-500', email: 'bg-pink-400',
-  examen: 'bg-sky-400', solicitud: 'bg-purple-500', whatsapp: 'bg-green-500',
+const TYPE_LABEL: Record<ActivityType, string> = {
+  nota: 'Nota', llamada: 'Llamada', cambio_etapa: 'Cambio de etapa',
+  email: 'Email', examen: 'Examen', solicitud: 'Solicitud', whatsapp: 'WhatsApp',
 };
+
+const CLINICAL_TYPES = new Set<ActivityType>(['examen', 'solicitud', 'whatsapp']);
 
 function formatDate(d: string): string {
   const diff = (Date.now() - new Date(d).getTime()) / 60_000;
@@ -18,20 +19,28 @@ interface Props { activities: CrmActivity[] }
 
 export function ActivityTimeline({ activities }: Props) {
   if (activities.length === 0) {
-    return <p className="text-sm text-slate-400 text-center py-4">Sin actividades registradas</p>;
+    return (
+      <p style={{ fontSize: '.8125rem', color: 'var(--fg-mute)', textAlign: 'center', padding: '1rem 0' }}>
+        Sin actividades registradas
+      </p>
+    );
   }
   return (
-    <div className="relative pl-5">
-      <div className="absolute left-2 top-0 bottom-0 w-0.5 bg-slate-200" />
-      <div className="flex flex-col gap-3">
+    <div className="crm-timeline">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '.625rem' }}>
         {activities.map(a => (
-          <div key={a.id} className="relative">
-            <div className={`absolute -left-3 top-1 w-2.5 h-2.5 rounded-full ${DOT_COLOR[a.type]}`} />
-            <div className="bg-white border border-slate-200 rounded-lg px-3 py-2.5 shadow-sm">
-              <p className="text-xs text-slate-700 leading-relaxed">{a.description}</p>
-              <p className="text-xs text-slate-400 mt-1">
-                {formatDate(a.created_at)} · {a.user_id ? `Usuario #${a.user_id}` : 'Sistema'}
-              </p>
+          <div key={a.id} className="crm-timeline-item">
+            <div className={`crm-timeline-dot ${a.type}`} />
+            <div className={`crm-timeline-card${CLINICAL_TYPES.has(a.type) ? ` ${a.type}` : ''}`}>
+              <div className="crm-timeline-desc">{a.description}</div>
+              <div className="crm-timeline-meta">
+                {TYPE_LABEL[a.type]} · {formatDate(a.created_at)} · {a.user_id ? `Usuario #${a.user_id}` : 'Sistema'}
+                {a.source_id != null && (
+                  <span style={{ marginLeft: '.375rem', color: 'var(--primary)', fontWeight: 600 }}>
+                    #{a.source_id}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         ))}

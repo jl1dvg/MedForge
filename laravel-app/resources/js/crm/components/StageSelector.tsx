@@ -1,14 +1,14 @@
 import React from 'react';
 import type { Stage } from '../types';
 
-const STAGES: { value: Stage; label: string; classes: string }[] = [
-  { value: 'nuevo',         label: 'Nuevo',         classes: 'bg-sky-100 text-sky-700 border-sky-200' },
-  { value: 'contactado',    label: 'Contactado',    classes: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
-  { value: 'en_evaluacion', label: 'En evaluación', classes: 'bg-violet-100 text-violet-700 border-violet-200' },
-  { value: 'propuesta',     label: 'Propuesta',     classes: 'bg-pink-100 text-pink-700 border-pink-200' },
-  { value: 'comprometido',  label: 'Comprometido',  classes: 'bg-teal-100 text-teal-700 border-teal-200' },
-  { value: 'ganado',        label: 'Ganado',        classes: 'bg-green-100 text-green-700 border-green-200' },
-  { value: 'perdido',       label: 'Perdido',       classes: 'bg-red-100 text-red-700 border-red-200' },
+const STAGES: { value: Stage; label: string }[] = [
+  { value: 'nuevo',         label: 'Nuevo'         },
+  { value: 'contactado',    label: 'Contactado'    },
+  { value: 'en_evaluacion', label: 'En evaluación' },
+  { value: 'propuesta',     label: 'Propuesta'     },
+  { value: 'comprometido',  label: 'Comprometido'  },
+  { value: 'ganado',        label: 'Ganado'        },
+  { value: 'perdido',       label: 'Perdido'       },
 ];
 
 interface Props {
@@ -19,15 +19,13 @@ interface Props {
 
 export function StageSelector({ current, onChange, loading }: Props) {
   return (
-    <div className="flex gap-2 flex-wrap">
-      {STAGES.map(({ value, label, classes }) => (
+    <div className="crm-stage-selector">
+      {STAGES.map(({ value, label }) => (
         <button
           key={value}
           disabled={loading}
           onClick={() => onChange(value)}
-          className={`px-3 py-1 rounded-lg text-xs font-semibold border-2 transition-all
-            ${current === value ? `${classes} ring-2 ring-offset-1 ring-blue-400` : 'bg-slate-50 text-slate-400 border-slate-200 hover:border-slate-400'}
-            disabled:opacity-50`}
+          className={`crm-stage-btn${current === value ? ' active' : ''}`}
         >
           {label}
         </button>

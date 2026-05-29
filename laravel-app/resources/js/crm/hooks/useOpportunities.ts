@@ -2,29 +2,28 @@ import { useState, useEffect, useCallback } from 'react';
 import { api, type OpportunityFilters } from '../api';
 import type { CrmOpportunity, ApiMeta } from '../types';
 
-interface State {
-  data: CrmOpportunity[];
-  meta: ApiMeta;
-  loading: boolean;
-  error: string | null;
-}
-
-const INITIAL: State = { data: [], meta: { total: 0, limit: 25, offset: 0 }, loading: true, error: null };
-
-export function useOpportunities(filters: OpportunityFilters = {}) {
-  const [state, setState] = useState<State>(INITIAL);
+export function useOpportunities(filters: OpportunityFilters) {
+  const [data, setData] = useState<CrmOpportunity[]>([]);
+  const [meta, setMeta] = useState<ApiMeta>({ total: 0, limit: 25, offset: 0 });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    setState(s => ({ ...s, loading: true, error: null }));
+    setLoading(true);
+    setError(null);
     try {
       const res = await api.opportunities.list(filters);
-      setState({ data: res.data, meta: res.meta, loading: false, error: null });
+      setData(res.data);
+      setMeta(res.meta);
     } catch {
-      setState(s => ({ ...s, loading: false, error: 'No se pudo cargar las oportunidades' }));
+      setError('No se pudo cargar las oportunidades. Verifica tu sesión.');
+    } finally {
+      setLoading(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(filters)]);
 
   useEffect(() => { void load(); }, [load]);
 
-  return { ...state, refresh: load };
+  return { data, meta, loading, error, refresh: load };
 }

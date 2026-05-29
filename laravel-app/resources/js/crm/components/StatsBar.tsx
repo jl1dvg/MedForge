@@ -3,24 +3,23 @@ import type { PanelStats } from '../types';
 
 interface Props { stats: PanelStats | null }
 
-const cards = [
-  { key: 'urgent',          label: 'Sin contactar',    colorClass: 'text-red-600',    bg: 'border-red-200 bg-red-50' },
-  { key: 'active',          label: 'Activas total',    colorClass: 'text-blue-600',   bg: '' },
-  { key: 'won_this_month',  label: 'Ganadas mes',      colorClass: 'text-green-600',  bg: '' },
-  { key: 'avg_response_h',  label: 'Resp. prom. (h)',  colorClass: 'text-amber-600',  bg: '' },
-  { key: 'conversion_rate', label: 'Conversion %',     colorClass: 'text-violet-600', bg: '' },
-] as const;
+const CARDS: Array<{ key: keyof PanelStats; label: string; urgent: boolean; suffix?: string }> = [
+  { key: 'urgent',          label: 'Sin contactar',  urgent: true  },
+  { key: 'active',          label: 'Activas',         urgent: false },
+  { key: 'won_this_month',  label: 'Ganadas mes',     urgent: false },
+  { key: 'avg_response_h',  label: 'Respuesta prom.', urgent: false, suffix: 'h' },
+  { key: 'conversion_rate', label: 'Conversión',      urgent: false, suffix: '%' },
+];
 
 export function StatsBar({ stats }: Props) {
   return (
-    <div className="grid grid-cols-5 gap-3 mb-5">
-      {cards.map(({ key, label, colorClass, bg }) => (
-        <div key={key} className={`bg-white rounded-xl border p-4 ${bg}`}>
-          <div className={`text-3xl font-extrabold leading-none mb-1 ${colorClass}`}>
-            {stats ? String((stats as Record<string, number>)[key]) : '—'}
-            {key === 'conversion_rate' && stats ? '%' : ''}
+    <div className="crm-kpi-grid">
+      {CARDS.map(({ key, label, urgent, suffix }) => (
+        <div key={key} className={`crm-kpi-card${urgent ? ' urgent' : ''}`}>
+          <div className="crm-kpi-value">
+            {stats != null ? String(stats[key]) : '—'}{stats != null && suffix ? suffix : ''}
           </div>
-          <div className="text-xs text-slate-500">{label}</div>
+          <div className="crm-kpi-label">{label}</div>
         </div>
       ))}
     </div>

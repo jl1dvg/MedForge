@@ -1,33 +1,37 @@
 import React from 'react';
-import type { CrmOpportunity, Stage, Source } from '../types';
+import type { CrmOpportunity, Stage, Source, Phase } from '../types';
 
-const STAGE_BADGE: Record<Stage, string> = {
-  nuevo:          'bg-sky-100 text-sky-700',
-  contactado:     'bg-yellow-100 text-yellow-700',
-  en_evaluacion:  'bg-violet-100 text-violet-700',
-  propuesta:      'bg-pink-100 text-pink-700',
-  comprometido:   'bg-teal-100 text-teal-700',
-  ganado:         'bg-green-100 text-green-700',
-  perdido:        'bg-red-100 text-red-700',
-};
 const STAGE_LABEL: Record<Stage, string> = {
   nuevo: 'Nuevo', contactado: 'Contactado', en_evaluacion: 'En evaluación',
   propuesta: 'Propuesta', comprometido: 'Comprometido', ganado: 'Ganado', perdido: 'Perdido',
 };
+
 const SOURCE_LABEL: Record<Source, string> = {
   whatsapp: 'WhatsApp', solicitud: 'Solicitud', examen: 'Examen', manual: 'Manual',
 };
-const ACTION_LABEL: Partial<Record<Stage, string>> = {
-  nuevo: 'Contactar', contactado: 'Avanzar',
-  en_evaluacion: 'Avanzar', propuesta: 'Seguimiento',
+
+const PHASE_LABEL: Record<Phase, string> = {
+  operational: 'Operativo',
+  commercial: 'Comercial',
 };
 
-function timeAgo(dateStr: string): { label: string; urgent: boolean } {
+const ACTION_LABEL: Partial<Record<Stage, string>> = {
+  nuevo: 'Contactar', contactado: 'Avanzar', en_evaluacion: 'Avanzar', propuesta: 'Seguimiento',
+};
+
+function timeAgo(dateStr: string | null): { label: string; urgentDays: number } {
+  if (!dateStr) return { label: 'Sin actividad', urgentDays: 999 };
   const diffH = (Date.now() - new Date(dateStr).getTime()) / 3_600_000;
-  if (diffH < 1) return { label: 'hace < 1h', urgent: false };
-  if (diffH < 6) return { label: `hace ${Math.floor(diffH)}h`, urgent: false };
-  if (diffH < 24) return { label: `${Math.floor(diffH)}h sin resp.`, urgent: true };
-  return { label: `${Math.floor(diffH / 24)}d sin resp.`, urgent: true };
+  const days = Math.floor(diffH / 24);
+  if (diffH < 1) return { label: 'hace < 1h', urgentDays: 0 };
+  if (diffH < 24) return { label: `hace ${Math.floor(diffH)}h`, urgentDays: 0 };
+  return { label: `hace ${days}d`, urgentDays: days };
+}
+
+function daysUntilEscalation(escalationAt: string | null): number | null {
+  if (!escalationAt) return null;
+  const diff = (new Date(escalationAt).getTime() - Date.now()) / 86_400_000;
+  return diff > 0 ? Math.ceil(diff) : 0;
 }
 
 interface Props {
@@ -36,34 +40,45 @@ interface Props {
 }
 
 export function OpportunityRow({ opp, onClick }: Props) {
-  const time = timeAgo(opp.updated_at);
-  const isUrgent = time.urgent && !['ganado', 'perdido'].includes(opp.stage);
+  const { label: timeLabel, urgentDays } = timeAgo(opp.last_activity_at);
+  const daysLeft = daysUntilEscalation(opp.escalation_at);
+  const isEscalating = daysLeft !== null && daysLeft <= 2 && opp.phase === 'operational';
 
   return (
-    <tr
-      onClick={() => onClick(opp)}
-      className={`border-b border-slate-100 cursor-pointer transition-colors
-        ${isUrgent ? 'bg-amber-50 hover:bg-amber-100' : 'hover:bg-slate-50'}`}
-    >
-      <td className="px-4 py-3">
-        <div className="font-bold text-slate-900 text-sm">{opp.contact?.name ?? '—'}</div>
-        <div className="text-xs text-slate-400 mt-0.5">
-          {opp.contact?.cedula ? opp.contact.cedula : opp.contact?.phone ?? '—'}
+    <tr className={isEscalating ? 'escalating' : ''} onClick={() => onClick(opp)}>
+      <td>
+        <div style={{ fontWeight: 700, color: 'var(--fg-1)', fontSize: '.8125rem' }}>
+          {opp.contact?.name ?? '—'}
+        </div>
+        <div style={{ fontSize: '.6875rem', color: 'var(--fg-mute)', marginTop: '.1rem' }}>
+          {opp.contact?.cedula ?? opp.contact?.phone ?? '—'}
         </div>
       </td>
-      <td className="px-4 py-3">
-        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${STAGE_BADGE[opp.stage]}`}>
-          {STAGE_LABEL[opp.stage]}
-        </span>
+      <td>
+        <span className={`crm-stage-badge ${opp.stage}`}>{STAGE_LABEL[opp.stage]}</span>
       </td>
-      <td className="px-4 py-3 text-xs text-slate-500">{SOURCE_LABEL[opp.source]}</td>
-      <td className="px-4 py-3 text-xs text-slate-500">—</td>
-      <td className={`px-4 py-3 text-xs font-semibold ${time.urgent ? 'text-red-600' : 'text-slate-400'}`}>
-        {time.label}
+      <td>
+        <span className={`crm-phase-badge ${opp.phase}`}>{PHASE_LABEL[opp.phase]}</span>
+        {isEscalating && (
+          <div className="crm-escalation-warn" style={{ marginTop: '.2rem' }}>
+            Escala en {daysLeft}d
+          </div>
+        )}
       </td>
-      <td className="px-4 py-3">
+      <td style={{ color: 'var(--fg-mute)', fontSize: '.75rem' }}>{SOURCE_LABEL[opp.source]}</td>
+      <td style={{
+        fontSize: '.75rem',
+        color: urgentDays > 7 ? 'var(--danger)' : urgentDays > 3 ? 'var(--warning)' : 'var(--fg-mute)',
+      }}>
+        {timeLabel}
+      </td>
+      <td>
         {ACTION_LABEL[opp.stage] && (
-          <button className="bg-blue-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-blue-600">
+          <button
+            className="btn btn-sm"
+            style={{ background: 'var(--primary-fade)', color: 'var(--primary)', border: 'none' }}
+            onClick={e => { e.stopPropagation(); onClick(opp); }}
+          >
             {ACTION_LABEL[opp.stage]}
           </button>
         )}

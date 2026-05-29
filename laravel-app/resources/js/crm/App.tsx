@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import type { CrmOpportunity } from './types';
+import type { CrmOpportunity, Phase } from './types';
 import type { ActiveFilters } from './components/FilterChips';
 import { useOpportunities } from './hooks/useOpportunities';
 import { useStats } from './hooks/useStats';
@@ -8,7 +8,7 @@ import { FilterChips } from './components/FilterChips';
 import { OpportunityTable } from './components/OpportunityTable';
 import { DetailPanel } from './components/DetailPanel';
 
-const DEFAULT_FILTERS: ActiveFilters = { stage: '', source: '', urgent: false, search: '' };
+const DEFAULT_FILTERS: ActiveFilters = { stage: '', source: '', phase: '', urgent: false, search: '' };
 
 export default function App() {
   const [filters, setFilters] = useState<ActiveFilters>(DEFAULT_FILTERS);
@@ -17,6 +17,7 @@ export default function App() {
   const apiFilters = {
     stage: filters.stage || undefined,
     source: filters.source || undefined,
+    phase: (filters.phase || undefined) as Phase | undefined,
     urgent: filters.urgent || undefined,
     search: filters.search || undefined,
   };
@@ -34,50 +35,45 @@ export default function App() {
   }, [refresh]);
 
   return (
-    <div className="flex flex-col bg-slate-100" style={{ minHeight: 'calc(100vh - 120px)' }}>
-      <div className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between">
+    <div className="crm-panel-root">
+      <div className="crm-panel-header">
         <div>
-          <h1 className="text-lg font-bold text-slate-900">Oportunidades Comerciales</h1>
-          <p className="text-xs text-slate-500">Pipeline centralizado — todas las fuentes</p>
+          <h1 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--fg-1)', fontFamily: 'var(--font-display)' }}>
+            Pipeline Comercial
+          </h1>
+          <p style={{ margin: 0, fontSize: '.75rem', color: 'var(--fg-mute)' }}>
+            Oportunidades centralizadas — todas las fuentes
+          </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '.75rem' }}>
           {stats && stats.urgent > 0 && (
-            <span className="bg-red-100 text-red-700 text-xs font-semibold px-3 py-1 rounded-full">
-              {stats.urgent} urgentes
+            <span style={{
+              background: 'var(--danger-light)', color: 'var(--danger)',
+              fontSize: '.75rem', fontWeight: 700, padding: '.25rem .75rem', borderRadius: 'var(--radius-pill)',
+            }}>
+              {stats.urgent} sin contactar
             </span>
           )}
-          <button className="bg-blue-500 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors">
-            + Nueva oportunidad
-          </button>
+          <button className="btn btn-primary btn-sm">+ Nueva oportunidad</button>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="crm-panel-body">
         {error && (
-          <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+          <div style={{
+            marginBottom: '1rem', background: 'var(--danger-light)', border: `1px solid var(--danger)`,
+            color: 'var(--danger)', padding: '.75rem 1rem', borderRadius: 'var(--radius)', fontSize: '.8125rem',
+          }}>
             {error}
           </div>
         )}
         <StatsBar stats={stats} />
-        <FilterChips
-          filters={filters}
-          total={meta.total}
-          urgentCount={stats?.urgent ?? 0}
-          onChange={handleFilterChange}
-        />
-        <OpportunityTable
-          opportunities={data}
-          loading={loading}
-          onSelect={setSelected}
-        />
+        <FilterChips filters={filters} total={meta.total} urgentCount={stats?.urgent ?? 0} onChange={handleFilterChange} />
+        <OpportunityTable opportunities={data} loading={loading} onSelect={setSelected} />
       </div>
 
       {selected && (
-        <DetailPanel
-          opportunity={selected}
-          onClose={() => setSelected(null)}
-          onUpdated={handleUpdated}
-        />
+        <DetailPanel opportunity={selected} onClose={() => setSelected(null)} onUpdated={handleUpdated} />
       )}
     </div>
   );
