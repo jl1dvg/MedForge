@@ -19,6 +19,9 @@ const ACTION_LABEL: Partial<Record<Stage, string>> = {
   nuevo: 'Contactar', contactado: 'Avanzar', en_evaluacion: 'Avanzar', propuesta: 'Seguimiento',
 };
 
+const STALE_WARNING_DAYS = 3;  // orange warning after 3 days without activity
+const STALE_DANGER_DAYS  = 7;  // red danger after 7 days without activity
+
 function timeAgo(dateStr: string | null): { label: string; urgentDays: number } {
   if (!dateStr) return { label: 'Sin actividad', urgentDays: 999 };
   const diffH = (Date.now() - new Date(dateStr).getTime()) / 3_600_000;
@@ -68,7 +71,11 @@ export function OpportunityRow({ opp, onClick }: Props) {
       <td style={{ color: 'var(--fg-mute)', fontSize: '.75rem' }}>{SOURCE_LABEL[opp.source]}</td>
       <td style={{
         fontSize: '.75rem',
-        color: urgentDays > 7 ? 'var(--danger)' : urgentDays > 3 ? 'var(--warning)' : 'var(--fg-mute)',
+        color: urgentDays >= STALE_DANGER_DAYS
+          ? 'var(--danger)'
+          : urgentDays >= STALE_WARNING_DAYS
+          ? 'var(--warning)'
+          : 'var(--fg-mute)',
       }}>
         {timeLabel}
       </td>

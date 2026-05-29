@@ -21,10 +21,6 @@ const RESOLUTION_LABEL: Record<string, string> = {
   provisional: 'Provisional', identified: 'Identificado', linked: 'Vinculado',
 };
 
-const PHASE_STYLE: Record<string, React.CSSProperties> = {
-  operational: { background: 'var(--info-light)', color: 'var(--info)' },
-  commercial:  { background: 'var(--success-light)', color: 'var(--success)' },
-};
 
 export function DetailPanel({ opportunity: initial, onClose, onUpdated }: Props) {
   const [opp, setOpp] = useState(initial);
@@ -60,7 +56,7 @@ export function DetailPanel({ opportunity: initial, onClose, onUpdated }: Props)
               {contact?.name ?? '—'}
             </h2>
             <div style={{ display: 'flex', alignItems: 'center', gap: '.375rem', marginTop: '.375rem', flexWrap: 'wrap' }}>
-              <span className="crm-phase-badge" style={PHASE_STYLE[opp.phase]}>
+              <span className={`crm-phase-badge ${opp.phase}`}>
                 {opp.phase === 'operational' ? 'Operativo' : 'Comercial'}
               </span>
               <span style={{
