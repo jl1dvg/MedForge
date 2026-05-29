@@ -483,7 +483,12 @@ body:has(.wad) { overflow: hidden; }
     }
     .wad-panel { min-height: 280px; }
 }
+.wad-chart-wrap { flex:1; min-height:0; position:relative; padding:10px 14px 12px; }
 </style>
+@endpush
+
+@push('head')
+    @vite('resources/js/v2/whatsapp-dashboard-v3.js')
 @endpush
 
 @section('content')
@@ -571,19 +576,10 @@ body:has(.wad) { overflow: hidden; }
                 <h3><i class="mdi mdi-filter-variant"></i>Embudo de servicio</h3>
                 <span class="wad-chip wad-chip--success">{{ $bookingRate }}% a cita</span>
             </header>
-            <div class="wad-panel-body wad-funnel">
-                @foreach($funnel as $f)
-                    <div class="wad-fn-row">
-                        <span class="wad-fn-label">{{ $f['label'] }}</span>
-                        <div class="wad-fn-track"><div class="wad-fn-fill" style="width:{{ ($f['value'] / $funnelMax) * 100 }}%;background:{{ $f['color'] }}"></div></div>
-                        <span class="wad-fn-value">{{ $f['value'] }}</span>
-                    </div>
-                @endforeach
-                <div class="wad-fn-foot">
-                    <span>Cobertura <strong class="accent">{{ $attention }}%</strong></span>
-                    <span>Resolución <strong>{{ $resolRate }}%</strong></span>
-                    <span>Conversión <strong>{{ $bookingRate }}%</strong></span>
-                </div>
+            <div class="wad-chart-wrap">
+                <canvas id="wad-chart-embudo"
+                    data-labels='@json(array_column($funnel, "label"))'
+                    data-values='@json(array_column($funnel, "value"))'></canvas>
             </div>
         </article>
 
@@ -678,33 +674,17 @@ body:has(.wad) { overflow: hidden; }
                 <h3><i class="mdi mdi-swap-horizontal-bold"></i>Handoffs por equipo</h3>
                 <span class="wad-chip wad-chip--muted">{{ $handoffs }} total</span>
             </header>
-            <div class="wad-panel-body">
-                <div class="wad-teams">
-                    @forelse($teams as $tm)
-                        @php
-                            $q = (int) ($tm['queued'] ?? 0); $as = (int) ($tm['assigned'] ?? 0); $rs = (int) ($tm['resolved'] ?? 0);
-                            $tot = max(1, $q + $as + $rs);
-                        @endphp
-                        <div class="wad-tm-row">
-                            <div class="wad-tm-top"><span class="wad-tm-name">{{ $tm['role_name'] ?? 'Sin rol' }}</span><span class="wad-tm-total">{{ (int) ($tm['total'] ?? $tot) }}</span></div>
-                            <div class="wad-tm-bar">
-                                <div class="wad-tm-seg wad-tm-seg--queued" style="width:{{ ($q / $tot) * 100 }}%"></div>
-                                <div class="wad-tm-seg wad-tm-seg--assigned" style="width:{{ ($as / $tot) * 100 }}%"></div>
-                                <div class="wad-tm-seg wad-tm-seg--resolved" style="width:{{ ($rs / $tot) * 100 }}%"></div>
-                            </div>
-                        </div>
-                    @empty
-                        <div class="wad-empty">Sin handoffs registrados en el periodo.</div>
-                    @endforelse
+            @if(count($teams))
+                <div class="wad-chart-wrap">
+                    <canvas id="wad-chart-handoffs"
+                        data-labels='@json(array_column($teams, "role_name"))'
+                        data-queued='@json(array_column($teams, "queued"))'
+                        data-assigned='@json(array_column($teams, "assigned"))'
+                        data-resolved='@json(array_column($teams, "resolved"))'></canvas>
                 </div>
-                @if(count($teams))
-                    <div class="wad-tm-legend">
-                        <span class="wad-tm-leg"><b style="background:var(--warning)"></b>En cola <span class="n">{{ $teamTotals['queued'] }}</span></span>
-                        <span class="wad-tm-leg"><b style="background:var(--info)"></b>Asignadas <span class="n">{{ $teamTotals['assigned'] }}</span></span>
-                        <span class="wad-tm-leg"><b style="background:var(--success)"></b>Resueltas <span class="n">{{ $teamTotals['resolved'] }}</span></span>
-                    </div>
-                @endif
-            </div>
+            @else
+                <div class="wad-empty">Sin handoffs registrados en el periodo.</div>
+            @endif
         </article>
 
         {{-- Origen de demanda --}}
@@ -713,27 +693,15 @@ body:has(.wad) { overflow: hidden; }
                 <h3><i class="mdi mdi-bullhorn-outline"></i>Origen de demanda</h3>
                 <span class="wad-chip wad-chip--muted">{{ count($sources) }} fuentes</span>
             </header>
-            <div class="wad-panel-body wad-brk">
-                <div class="wad-brk-section">
-                    @forelse($sources as $i => $sc)
-                        <div>
-                            <div class="wad-brk-top">
-                                <span class="wad-brk-name">{{ $sc['source_label'] ?? ($sc['source_category'] ?? '—') }}</span>
-                                <span class="wad-brk-meta"><strong>{{ (int) ($sc['total'] ?? 0) }}</strong> · {{ (float) ($sc['booking_rate'] ?? 0) }}% cita</span>
-                            </div>
-                            <div class="wad-brk-track"><div class="wad-brk-fill" style="width:{{ ((float) ($sc['share'] ?? 0) / $maxSource) * 100 }}%;background:{{ $brkPalette[$i % count($brkPalette)] }}"></div></div>
-                        </div>
-                    @empty
-                        <div class="wad-empty">Sin origen registrado en el periodo.</div>
-                    @endforelse
+            @if(count($sources))
+                <div class="wad-chart-wrap">
+                    <canvas id="wad-chart-origen"
+                        data-labels='@json(array_map(fn($s) => $s["source_label"] ?? ($s["source_category"] ?? "—"), $sources))'
+                        data-values='@json(array_column($sources, "total"))'></canvas>
                 </div>
-                @if(count($sources))
-                    <div class="wad-brk-foot">
-                        <span>Conversión a cita</span>
-                        <span><strong>{{ $bookingRate }}%</strong> global</span>
-                    </div>
-                @endif
-            </div>
+            @else
+                <div class="wad-empty">Sin origen registrado en el periodo.</div>
+            @endif
         </article>
 
         {{-- Bot & Flujo --}}
@@ -743,6 +711,11 @@ body:has(.wad) { overflow: hidden; }
                 <span class="wad-chip wad-chip--muted">{{ $totalConvs }} convs.</span>
             </header>
             <div class="wad-panel-body wad-bot">
+                <div style="height:140px;position:relative;">
+                    <canvas id="wad-chart-bot"
+                        data-contain="{{ $containRate }}"
+                        data-escalado="{{ round($handoffRate, 1) }}"></canvas>
+                </div>
                 <div class="wad-bot-kpis">
                     @php
                         $containSev = $containRate >= 60 ? 'good' : ($containRate >= 40 ? 'warn' : 'bad');
