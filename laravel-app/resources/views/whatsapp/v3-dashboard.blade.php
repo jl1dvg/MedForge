@@ -63,6 +63,24 @@
     $layout  = request()->query('layout')  === 'operacion' ? 'operacion' : 'ejecutivo';
     $density = request()->query('density') === 'compacto'  ? 'compacto'  : 'comodo';
 
+    $today     = date('Y-m-d');
+    $minus7    = date('Y-m-d', strtotime('-6 days'));
+    $minus29   = date('Y-m-d', strtotime('-29 days'));
+
+    $activeFrom = trim((string) ($filters['date_from'] ?? ''));
+    $activeTo   = trim((string) ($filters['date_to']   ?? ''));
+
+    $quickRanges = [
+        'hoy'   => ['label' => 'Hoy',    'from' => $today,  'to' => $today],
+        '7d'    => ['label' => '7 días', 'from' => $minus7, 'to' => $today],
+        '30d'   => ['label' => '30 días','from' => $minus29,'to' => $today],
+    ];
+
+    $activeRange = '30d';
+    foreach ($quickRanges as $key => $r) {
+        if ($activeFrom === $r['from'] && $activeTo === $r['to']) { $activeRange = $key; break; }
+    }
+
     $periodLabel = trim((string) ($filters['date_from'] ?? '')) !== ''
         ? ($filters['date_from'] . ' → ' . ($filters['date_to'] ?? ''))
         : 'Últimos 30 días';
@@ -398,8 +416,13 @@ body:has(.wad) { overflow: hidden; }
                 <a class="{{ $layout === 'ejecutivo' ? 'active' : '' }}" href="?{{ http_build_query(array_merge(request()->query(), ['layout' => 'ejecutivo'])) }}">Ejecutivo</a>
                 <a class="{{ $layout === 'operacion' ? 'active' : '' }}" href="?{{ http_build_query(array_merge(request()->query(), ['layout' => 'operacion'])) }}">Operación</a>
             </div>
+            <div class="wad-period">
+                @foreach($quickRanges as $key => $r)
+                    <a class="{{ $activeRange === $key ? 'active' : '' }}"
+                       href="?{{ http_build_query(array_merge(request()->query(), ['date_from' => $r['from'], 'date_to' => $r['to']])) }}">{{ $r['label'] }}</a>
+                @endforeach
+            </div>
             <div class="wad-ctx">
-                <span class="wad-ctx-chip"><i class="mdi mdi-calendar-range"></i>{{ $periodLabel }}</span>
                 <span class="wad-ctx-chip"><i class="mdi mdi-timer-outline"></i>SLA {{ $slaMeta }} min</span>
             </div>
             <a class="wad-report-btn" href="/v2/whatsapp/dashboard{{ $exportQuery ? '?' . $exportQuery : '' }}" title="Abrir el reporte detallado con tablas y exportación">
