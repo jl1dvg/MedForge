@@ -399,6 +399,49 @@ body:has(.wad) { overflow: hidden; }
     .wad-kpi-tile { width:38px; height:38px; font-size:20px; }
     .wad-head h1 { font-size:20px; }
 }
+
+/* ── Mobile ── */
+@media (max-width:768px) {
+    body:has(.wad) .content-wrapper,
+    body:has(.wad) .content-wrapper > .content {
+        height: auto; overflow: auto;
+    }
+    body:has(.wad) { overflow: auto; }
+
+    .wad {
+        height: auto; min-height: 100vh;
+        padding: 14px 14px 32px;
+        grid-template-rows: auto auto auto;
+        overflow: visible;
+    }
+
+    /* Header apilado y compacto */
+    .wad-head { flex-direction: column; align-items: flex-start; gap: 10px; }
+    .wad-head h1 { font-size: 18px; }
+    .wad-head-right { width: 100%; flex-wrap: wrap; gap: 8px; }
+    .wad-period a { padding: 5px 11px; font-size: 11px; }
+    .wad-report-btn { width: 100%; justify-content: center; }
+
+    /* KPIs 2×2 */
+    .wad-kpis { grid-template-columns: repeat(2, 1fr); }
+    .wad-kpi-value { font-size: 22px; }
+    .wad-kpi-tile { width: 36px; height: 36px; font-size: 18px; }
+    .wad-kpi-break { display: none; }
+
+    /* Paneles columna única */
+    .wad-panels {
+        grid-template-columns: 1fr !important;
+        grid-template-rows: auto !important;
+        grid-template-areas:
+            "bandeja"
+            "embudo"
+            "intencion"
+            "agente"
+            "handoffs"
+            "origen" !important;
+    }
+    .wad-panel { min-height: 280px; }
+}
 </style>
 @endpush
 
