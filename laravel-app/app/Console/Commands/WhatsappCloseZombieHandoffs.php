@@ -55,9 +55,14 @@ class WhatsappCloseZombieHandoffs extends Command
         $conversationIds = array_unique(array_column($rows, 'conversation_id'));
 
         // Cerrar handoffs
+        $handoffUpdate = ['status' => 'auto_closed', 'last_activity_at' => $now];
+        if (Schema::hasColumn('whatsapp_handoffs', 'resolved_at')) {
+            $handoffUpdate['resolved_at'] = $now;
+        }
+
         DB::table('whatsapp_handoffs')
             ->whereIn('id', $handoffIds)
-            ->update(['status' => 'resolved', 'resolved_at' => $now, 'last_activity_at' => $now]);
+            ->update($handoffUpdate);
 
         // Quitar flag needs_human de las conversaciones
         DB::table('whatsapp_conversations')
@@ -68,7 +73,7 @@ class WhatsappCloseZombieHandoffs extends Command
         if (Schema::hasTable('whatsapp_handoff_events')) {
             $events = array_map(fn ($id) => [
                 'handoff_id'    => $id,
-                'event_type'    => 'resolved',
+                'event_type'    => 'auto_closed',
                 'actor_user_id' => null,
                 'notes'         => "Auto-cierre: sin actividad en más de {$days} días",
                 'created_at'    => $now,
