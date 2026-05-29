@@ -90,7 +90,7 @@ class CrmOpportunityListenerTest extends TestCase
         $this->assertEquals('whatsapp', CrmOpportunity::query()->first()->source);
     }
 
-    public function test_solicitud_creada_creates_interesado_opportunity(): void
+    public function test_solicitud_creada_creates_nuevo_opportunity(): void
     {
         event(new SolicitudCreada(
             solicitudId: 42,
@@ -107,7 +107,7 @@ class CrmOpportunityListenerTest extends TestCase
         $this->assertEquals(42, CrmOpportunity::query()->first()->source_id);
     }
 
-    public function test_examen_solicitado_creates_propuesta_opportunity(): void
+    public function test_examen_solicitado_creates_nuevo_opportunity(): void
     {
         event(new ExamenSolicitado(
             examenId: 77,

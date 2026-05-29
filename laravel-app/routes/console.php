@@ -2425,9 +2425,6 @@ Artisan::command('cron:legacy-task {slug : Slug de la tarea en cron_schedule}', 
     }
 })->purpose('Ejecuta una tarea del CronRunner legacy por slug desde el scheduler de Laravel');
 
-// ── CRM escalation — escalate stale operational opportunities daily at 08:00 ─
-Schedule::command('crm:escalate')->dailyAt('08:00');
-
 // ── Scheduler DB-driven ──────────────────────────────────────────────────────
 // Las frecuencias viven en la tabla cron_schedule y son editables desde el UI.
 
