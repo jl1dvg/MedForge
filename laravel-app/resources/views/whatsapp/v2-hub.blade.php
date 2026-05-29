@@ -9,7 +9,7 @@
         'chat' => '/v2/whatsapp/chat',
         'campaigns' => '/v2/whatsapp/campaigns',
         'templates' => '/v2/whatsapp/templates',
-        'dashboard' => '/v2/whatsapp/dashboard',
+        'dashboard' => '/v2/whatsapp/dashboard-v3',
         'flowmaker' => '/v2/whatsapp/flowmaker',
         'leads' => '/v2/whatsapp/leads',
     ];
