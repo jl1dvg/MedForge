@@ -27,7 +27,8 @@ class DashboardUiController
         }
 
         $startDate = trim((string) $request->query('start_date', ''));
-        $endDate = trim((string) $request->query('end_date', ''));
+        $endDate   = trim((string) $request->query('end_date', ''));
+        $sede      = trim((string) $request->query('sede', ''));
         $uiPayload = [
             'summary' => [
                 'data' => [],
@@ -49,7 +50,7 @@ class DashboardUiController
         ];
 
         try {
-            $uiPayload = $this->service->buildUiPayload($startDate, $endDate);
+            $uiPayload = $this->service->buildUiPayload($startDate, $endDate, $sede);
         } catch (\Throwable $e) {
             Log::error('dashboard.ui.summary.error', [
                 'error' => $e->getMessage(),
@@ -65,7 +66,8 @@ class DashboardUiController
             'pageTitle' => 'Dashboard',
             'summaryEndpoint' => '/v2/dashboard/summary',
             'startDate' => $startDate,
-            'endDate' => $endDate,
+            'endDate'   => $endDate,
+            'sede'      => $sede,
             'currentUser' => $currentUser,
             ...$uiPayload,
         ]);

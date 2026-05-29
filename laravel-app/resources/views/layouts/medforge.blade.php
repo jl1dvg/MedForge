@@ -93,5 +93,15 @@
 @endif
 
 @stack('scripts')
+<script>
+    (function () {
+        try {
+            var tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            if (tz) {
+                document.cookie = 'app_timezone=' + encodeURIComponent(tz) + '; path=/; max-age=86400; SameSite=Lax';
+            }
+        } catch (e) {}
+    })();
+</script>
 </body>
 </html>
