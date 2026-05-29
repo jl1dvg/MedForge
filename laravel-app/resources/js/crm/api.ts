@@ -1,12 +1,12 @@
 import axios from 'axios';
-import type { CrmOpportunity, CrmContact, CrmActivity, OpportunitiesResponse, PanelStats } from './types';
+import type { CrmOpportunity, CrmContact, CrmActivity, OpportunitiesResponse, PanelStats, Phase } from './types';
 
 const client = axios.create({ baseURL: '/v2/crm', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
 
 export interface OpportunityFilters {
   stage?: string;
   source?: string;
-  phase?: string;
+  phase?: Phase;
   search?: string;
   urgent?: boolean;
   limit?: number;

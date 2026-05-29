@@ -57,7 +57,7 @@
 }
 
 .crm-kpi-card.urgent .crm-kpi-value { color: var(--danger); }
-.crm-kpi-card.urgent { border-color: var(--danger-light); background: #fdf4f6; }
+.crm-kpi-card.urgent { border-color: var(--danger-light); background: var(--danger-bg, #fdf4f6); }
 
 /* ── Filter Chips ────────────────────────────────────────────── */
 .crm-filter-row {
@@ -133,9 +133,9 @@
   transition: background-color var(--dur-fast) var(--ease-out);
 }
 
-.crm-table tbody tr:hover { background: #f8fafd; }
-.crm-table tbody tr.escalating { background: #fff9ec; }
-.crm-table tbody tr.escalating:hover { background: #fff3d4; }
+.crm-table tbody tr:hover { background: var(--bg-hover, #f8fafd); }
+.crm-table tbody tr.escalating { background: var(--warning-bg, #fff9ec); }
+.crm-table tbody tr.escalating:hover { background: var(--warning-bg-hover, #fff3d4); }
 .crm-table tbody tr:last-child td { border-bottom: none; }
 
 /* ── Stage Badges ────────────────────────────────────────────── */
@@ -206,10 +206,10 @@
 .crm-timeline-dot.nota         { background: var(--warning); }
 .crm-timeline-dot.llamada      { background: var(--info); }
 .crm-timeline-dot.cambio_etapa { background: var(--primary); }
-.crm-timeline-dot.email        { background: #ec4899; }
+.crm-timeline-dot.email        { background: var(--cat-email, #ec4899); }
 .crm-timeline-dot.examen       { background: var(--cat-examen, #0ea5e9); }
 .crm-timeline-dot.solicitud    { background: var(--cat-consulta, #8b5cf6); }
-.crm-timeline-dot.whatsapp     { background: #22c55e; }
+.crm-timeline-dot.whatsapp     { background: var(--cat-whatsapp, #22c55e); }
 
 .crm-timeline-card {
   background: var(--bg-surface);
@@ -221,7 +221,7 @@
 
 .crm-timeline-card.examen     { border-left: 3px solid var(--cat-examen, #0ea5e9); }
 .crm-timeline-card.solicitud  { border-left: 3px solid var(--cat-consulta, #8b5cf6); }
-.crm-timeline-card.whatsapp   { border-left: 3px solid #22c55e; }
+.crm-timeline-card.whatsapp   { border-left: 3px solid var(--cat-whatsapp, #22c55e); }
 
 .crm-timeline-desc { font-size: .75rem; color: var(--fg-2); line-height: 1.45; }
 .crm-timeline-meta { font-size: .6875rem; color: var(--fg-mute); margin-top: .2rem; }
@@ -293,7 +293,7 @@
 .crm-stage-btn.active {
   background: var(--primary);
   border-color: var(--primary);
-  color: #fff;
+  color: var(--fg-on-primary, #fff);
 }
 
 /* ── Contact info block ──────────────────────────────────────── */
