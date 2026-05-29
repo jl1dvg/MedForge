@@ -67,10 +67,17 @@
         elseif ($days <= 7)  { $activePeriod = '7d'; }
         else             { $activePeriod = '30d'; }
     }
+    $activeSede  = strtoupper(trim((string) ($sede ?? '')));
+    $sedeParam   = $activeSede !== '' ? '&sede=' . $activeSede : '';
     $periodUrls = [
-        'hoy' => '/v3/dashboard?start_date=' . $today . '&end_date=' . $today,
-        '7d'  => '/v3/dashboard?start_date=' . date('Y-m-d', strtotime('-6 days')) . '&end_date=' . $today,
-        '30d' => '/v3/dashboard?start_date=' . date('Y-m-d', strtotime('-29 days')) . '&end_date=' . $today,
+        'hoy' => '/v3/dashboard?start_date=' . $today . '&end_date=' . $today . $sedeParam,
+        '7d'  => '/v3/dashboard?start_date=' . date('Y-m-d', strtotime('-6 days')) . '&end_date=' . $today . $sedeParam,
+        '30d' => '/v3/dashboard?start_date=' . date('Y-m-d', strtotime('-29 days')) . '&end_date=' . $today . $sedeParam,
+    ];
+    $sedeUrls = [
+        ''       => '/v3/dashboard?start_date=' . ($sd ?: $today) . '&end_date=' . ($ed ?: $today),
+        'MATRIZ' => '/v3/dashboard?start_date=' . ($sd ?: $today) . '&end_date=' . ($ed ?: $today) . '&sede=MATRIZ',
+        'CEIBOS' => '/v3/dashboard?start_date=' . ($sd ?: $today) . '&end_date=' . ($ed ?: $today) . '&sede=CEIBOS',
     ];
     $iaProvider = !empty($aiSummary['provider']) ? strtoupper((string) $aiSummary['provider']) : 'OPENAI';
     $iaActive   = (bool) ($aiSummary['provider_configured'] ?? false);
@@ -111,6 +118,11 @@
             </div>
             <div class="dash3-ctx">
                 <span class="dash3-ctx-chip"><i class="mdi mdi-domain"></i>{{ (string) ($currentUser['sede_name'] ?? 'Todas las sedes') }}</span>
+            </div>
+            <div class="dash3-period" role="tablist">
+                <a href="{{ $sedeUrls[''] }}"       class="dash3-period-btn {{ $activeSede === ''       ? 'active' : '' }}">Todas</a>
+                <a href="{{ $sedeUrls['MATRIZ'] }}"  class="dash3-period-btn {{ $activeSede === 'MATRIZ'  ? 'active' : '' }}">Matriz</a>
+                <a href="{{ $sedeUrls['CEIBOS'] }}"  class="dash3-period-btn {{ $activeSede === 'CEIBOS'  ? 'active' : '' }}">Ceibos</a>
             </div>
         </div>
     </header>
