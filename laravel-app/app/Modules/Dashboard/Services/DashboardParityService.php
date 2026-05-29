@@ -57,7 +57,7 @@ class DashboardParityService
             'agenda'        => $this->getDashboardV3Agenda($today),
             'flujo_columns' => $this->getDashboardV3FlujoColumns($today),
             'salas'         => $this->getDashboardV3Salas($today),
-            'ops'           => $this->getDashboardV3Ops($start, $end, $summaryData),
+            'ops'           => $this->getDashboardV3Ops($today, $start, $end, $summaryData),
             'referidos_hoy'     => $this->getReferidosHoyStats($today),
             'congestion_medicos' => $this->getCongestionMedicosHoy($today),
             'ia_suggestions'    => [],
@@ -611,7 +611,7 @@ class DashboardParityService
      * @param array<string, mixed> $summaryData
      * @return array<int, array<string, mixed>>
      */
-    private function getDashboardV3Ops(CarbonImmutable $start, CarbonImmutable $end, array $summaryData): array
+    private function getDashboardV3Ops(CarbonImmutable $today, CarbonImmutable $start, CarbonImmutable $end, array $summaryData): array
     {
         $crmBacklog = is_array($summaryData['crm_backlog'] ?? null) ? $summaryData['crm_backlog'] : [];
 
@@ -620,9 +620,9 @@ class DashboardParityService
                 'icon' => 'mdi-cash-register',
                 'tone' => 'warning',
                 'module' => 'Facturación',
-                'value' => $this->countDashboardV3Unbilled($start, $end),
+                'value' => $this->countDashboardV3Unbilled($today, $today),
                 'label' => 'sin facturar',
-                'sub' => 'Agendados del período sin registro en facturación',
+                'sub' => 'Agendados hoy sin registro en facturación',
                 'href' => '/v2/billing',
             ],
             [
@@ -638,9 +638,9 @@ class DashboardParityService
                 'icon' => 'mdi-pill-multiple',
                 'tone' => 'danger',
                 'module' => 'Farmacia',
-                'value' => $this->countDashboardV3PharmacyPending($start, $end),
+                'value' => $this->countDashboardV3PharmacyPending($today, $today),
                 'label' => 'medicamentos prescritos',
-                'sub' => 'Ítems de receta del período',
+                'sub' => 'Ítems de receta de hoy',
                 'href' => '/v2/farmacia',
             ],
             [
@@ -719,7 +719,7 @@ class DashboardParityService
             return (int) (DB::selectOne(
                 'SELECT COUNT(*) AS total
                  FROM recetas_items
-                 WHERE DATE(COALESCE(NULLIF(fecha_receta, "0000-00-00"), created_at)) BETWEEN ? AND ?',
+                 WHERE DATE(created_at) BETWEEN ? AND ?',
                 [$start->format('Y-m-d'), $end->format('Y-m-d')]
             )->total ?? 0);
         } catch (Throwable) {
