@@ -1261,6 +1261,7 @@ class KpiDashboardService
             'avg_first_human_response_minutes' => $avgSeconds !== null ? round($avgSeconds / 60, 2) : null,
             'median_first_human_response_seconds' => $medianSeconds !== null ? round($medianSeconds, 2) : null,
             'median_first_human_response_minutes' => $medianSeconds !== null ? round($medianSeconds / 60, 2) : null,
+            'p75_first_human_response_minutes' => ($p75s = $this->percentile($responseSeconds, 75)) !== null ? (int) round($p75s / 60) : null,
             'peak_open_conversations' => $intervalPeak['count'],
             'peak_open_at' => $intervalPeak['at'],
         ];
@@ -2903,5 +2904,21 @@ class KpiDashboardService
         }
 
         return ((float) $values[$middle - 1] + (float) $values[$middle]) / 2;
+    }
+
+    private function percentile(array $values, float $p): ?float
+    {
+        if ($values === []) {
+            return null;
+        }
+
+        sort($values, SORT_NUMERIC);
+        $count = count($values);
+        $index = ($p / 100) * ($count - 1);
+        $lower = (int) floor($index);
+        $upper = (int) ceil($index);
+        $fraction = $index - $lower;
+
+        return (float) $values[$lower] + $fraction * ((float) ($values[$upper] ?? $values[$lower]) - (float) $values[$lower]);
     }
 }

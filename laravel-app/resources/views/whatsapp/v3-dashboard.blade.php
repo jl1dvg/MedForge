@@ -28,6 +28,7 @@
     $attention    = $n('attention_rate');
     $median       = $n('median_first_human_response_minutes');
     $avg          = $n('avg_first_human_response_minutes');
+    $p75          = (int) ($summary['p75_first_human_response_minutes'] ?? $avg);
     $slaRate      = $n('sla_assignments_rate');
     $peopleIn     = $n('people_inbound');
     $attended     = $n('conversations_attended_human');
@@ -110,10 +111,10 @@
             'icon' => 'mdi-timer-sand', 'tone' => $sevResp,
             'label' => '1ª respuesta humana', 'value' => $median, 'unit' => 'min',
             'badge' => ['sev' => $sevResp, 'text' => 'Meta ' . $slaMeta . ' min'],
-            'trend' => 'Mediana desde el handoff · promedio ' . $avg . ' min',
+            'trend' => 'Mediana desde el handoff · P75 ' . $p75 . ' min',
             'breakdown' => [
                 ['dot' => 'success', 'n' => $slaRate . '%', 'label' => 'SLA cumplido'],
-                ['dot' => 'warning', 'n' => $avg,           'label' => 'Prom. min'],
+                ['dot' => 'warning', 'n' => $p75,           'label' => 'P75 min'],
                 ['dot' => 'info',    'n' => $handoffs,      'label' => 'Handoffs'],
             ],
         ],
