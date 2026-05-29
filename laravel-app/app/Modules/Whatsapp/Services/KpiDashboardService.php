@@ -1722,6 +1722,7 @@ class KpiDashboardService
         $lastMsgAt = Schema::hasColumn('whatsapp_conversations', 'last_message_at')
             ? 'c.last_message_at'
             : 'NULL';
+        $cutoff7d = Carbon::now()->subDays(7)->format('Y-m-d H:i:s');
 
         $sql = 'SELECT
                     c.assigned_user_id AS user_id,
@@ -1734,12 +1735,13 @@ class KpiDashboardService
                 FROM whatsapp_conversations c
                 LEFT JOIN users u ON u.id = c.assigned_user_id
                 WHERE c.needs_human = 1
-                  AND c.assigned_user_id IS NOT NULL';
+                  AND c.assigned_user_id IS NOT NULL
+                  AND COALESCE(' . $lastMsgAt . ', c.updated_at, c.created_at) >= ?';
 
-        $params = [];
+        $params = [$cutoff7d];
         if ($filter['where'] !== '') {
             $sql .= ' AND ' . $filter['where'];
-            $params = array_values($filter['params']);
+            $params = array_merge($params, array_values($filter['params']));
         }
         $sql .= ' GROUP BY c.assigned_user_id, agent_name
                   ORDER BY unread_conversations DESC, active_conversations DESC';
