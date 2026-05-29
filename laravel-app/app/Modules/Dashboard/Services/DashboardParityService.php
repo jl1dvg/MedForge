@@ -719,9 +719,8 @@ class DashboardParityService
             return (int) (DB::selectOne(
                 'SELECT COUNT(*) AS total
                  FROM recetas_items
-                 WHERE fecha_receta BETWEEN ? AND ?
-                   AND COALESCE(total_farmacia, 0) <= 0',
-                [$start->format('Y-m-d 00:00:00'), $end->format('Y-m-d 23:59:59')]
+                 WHERE DATE(COALESCE(NULLIF(fecha_receta, "0000-00-00"), created_at)) BETWEEN ? AND ?',
+                [$start->format('Y-m-d'), $end->format('Y-m-d')]
             )->total ?? 0);
         } catch (Throwable) {
             return 0;
