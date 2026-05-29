@@ -42,7 +42,8 @@
     $windowOpen   = $n('queue_window_open');
     $needsTpl     = $n('queue_needs_template');
     $awaitingTpl  = $n('queue_awaiting_template_reply');
-    $abandoned    = $n('conversations_abandoned');
+    $abandoned        = $n('conversations_abandoned');
+    $abandonedReal    = $n('conversations_abandoned_needs_human');
     $handoffs     = $n('handoff_transfers');
 
     $bookingRate = $peopleIn > 0 ? (int) round(($bookings / $peopleIn) * 100) : 0;
@@ -122,7 +123,7 @@
             'icon' => 'mdi-inbox-multiple-outline', 'tone' => $sevQueue,
             'label' => 'Cola activa ahora', 'value' => $queueTotal, 'unit' => '', 'live' => true,
             'badge' => ['sev' => $sevQueue, 'text' => $sevQueue === 'danger' ? 'Saturada' : ($sevQueue === 'warning' ? 'Atención' : 'Al día')],
-            'trend' => $queued . ' sin asignar · ' . $abandoned . ' inactivas +24h',
+            'trend' => $queued . ' sin asignar · ' . $abandonedReal . ' abandonadas con handoff',
             'breakdown' => [
                 ['dot' => 'warning', 'n' => $queued,     'label' => 'Sin asignar'],
                 ['dot' => 'info',    'n' => $windowOpen, 'label' => 'Ventana 24h'],
@@ -147,9 +148,9 @@
         ['icon' => 'mdi-message-text-clock-outline',  'tone' => 'info',    'label' => 'Ventana 24h abierta',            'sub' => 'Se puede responder libremente',   'n' => $windowOpen,  'sev' => 'muted'],
         ['icon' => 'mdi-file-document-edit-outline',  'tone' => 'danger',  'label' => 'Requiere plantilla',             'sub' => 'Fuera de ventana — usar HSM',     'n' => $needsTpl,    'sev' => $needsTpl > 0 ? 'danger' : 'success'],
         ['icon' => 'mdi-timer-sand-paused',           'tone' => 'primary', 'label' => 'Esperando respuesta a plantilla','sub' => 'Plantilla enviada, sin réplica',  'n' => $awaitingTpl, 'sev' => 'muted'],
-        ['icon' => 'mdi-account-alert-outline',       'tone' => 'danger',  'label' => 'Inactivas +24h sin respuesta',   'sub' => 'Riesgo de abandono',              'n' => $abandoned,   'sev' => $abandoned > 10 ? 'danger' : 'warning'],
+        ['icon' => 'mdi-account-alert-outline',       'tone' => 'danger',  'label' => 'Abandonadas con handoff +24h',   'sub' => 'Pidieron humano, nadie respondió', 'n' => $abandonedReal, 'sev' => $abandonedReal > 10 ? 'danger' : 'warning'],
     ];
-    $maxInbox = max(1, $queued, $windowOpen, $needsTpl, $awaitingTpl, $abandoned);
+    $maxInbox = max(1, $queued, $windowOpen, $needsTpl, $awaitingTpl, $abandonedReal);
 
     $funnel = [
         ['label' => 'Escribieron', 'value' => $peopleIn, 'color' => '#5156be'],

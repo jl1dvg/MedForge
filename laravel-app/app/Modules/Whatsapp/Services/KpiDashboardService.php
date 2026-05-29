@@ -1191,6 +1191,7 @@ class KpiDashboardService
         $lost = 0;
         $lostWithHandoff = 0;
         $abandoned = 0;
+        $abandonedNeedsHuman = 0;
         $abandonedWithHandoff = 0;
         $resolved = 0;
         $responseSeconds = [];
@@ -1228,6 +1229,9 @@ class KpiDashboardService
                 }
                 if ($lastInbound !== null && $lastInbound->lessThanOrEqualTo($threshold24h)) {
                     $abandoned++;
+                    if ((bool) ($row->needs_human ?? false)) {
+                        $abandonedNeedsHuman++;
+                    }
                     if ($responseStart !== null) {
                         $abandonedWithHandoff++;
                     }
@@ -1254,6 +1258,7 @@ class KpiDashboardService
             'attention_rate' => $peopleInbound > 0 ? round(($peopleAttended / $peopleInbound) * 100, 2) : 0.0,
             'loss_rate' => $peopleInbound > 0 ? round(($peopleLost / $peopleInbound) * 100, 2) : 0.0,
             'conversations_abandoned' => $abandoned,
+            'conversations_abandoned_needs_human' => $abandonedNeedsHuman,
             'conversations_abandoned_with_handoff' => $abandonedWithHandoff,
             'abandonment_rate' => $peopleInbound > 0 ? round(($abandoned / $peopleInbound) * 100, 2) : 0.0,
             'conversations_resolved' => $resolved,
@@ -2438,6 +2443,7 @@ class KpiDashboardService
         $sql = 'SELECT
                     c.id AS conversation_id,
                     c.wa_number,
+                    c.needs_human,
                     ' . $handoffRequestedSelect . ',
                     MIN(m.message_timestamp) AS first_inbound_at,
                     MAX(m.message_timestamp) AS last_inbound_at
@@ -2452,7 +2458,7 @@ class KpiDashboardService
             $sql .= ' AND ' . $filter['where'];
             $params = array_merge($params, array_values($filter['params']));
         }
-        $sql .= ' GROUP BY c.id, c.wa_number';
+        $sql .= ' GROUP BY c.id, c.wa_number, c.needs_human';
         if (Schema::hasColumn('whatsapp_conversations', 'handoff_requested_at')) {
             $sql .= ', c.handoff_requested_at';
         }
