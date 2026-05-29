@@ -15,7 +15,6 @@ class CrmStatsService
 
         // Stale = no activity in escalaDias days AND not yet commercial
         $urgent = CrmOpportunity::query()
-            ->active()
             ->where('phase', CrmOpportunity::PHASE_OPERATIONAL)
             ->staleFor($escalaDias * 24)
             ->count();

@@ -62,7 +62,7 @@ class CrmOpportunityController
         ]);
     }
 
-    public function show(int $id, Request $request): JsonResponse
+    public function show(int $id): JsonResponse
     {
         if (!Auth::check()) {
             return response()->json(['error' => 'Sesión expirada'], 401);
