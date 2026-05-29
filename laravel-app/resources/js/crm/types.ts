@@ -1,13 +1,18 @@
 export type Resolution = 'provisional' | 'identified' | 'linked';
 export type Source = 'whatsapp' | 'solicitud' | 'examen' | 'manual';
+export type Phase = 'operational' | 'commercial';
 export type Stage =
   | 'nuevo'
-  | 'en_contacto'
-  | 'interesado'
-  | 'propuesta_enviada'
+  | 'contactado'
+  | 'en_evaluacion'
+  | 'propuesta'
+  | 'comprometido'
   | 'ganado'
   | 'perdido';
-export type ActivityType = 'nota' | 'llamada' | 'cambio_etapa' | 'email';
+
+export type ActivityType =
+  | 'nota' | 'llamada' | 'cambio_etapa' | 'email'
+  | 'examen' | 'solicitud' | 'whatsapp';
 
 export interface CrmContact {
   id: number;
@@ -28,6 +33,8 @@ export interface CrmActivity {
   type: ActivityType;
   description: string;
   user_id: number | null;
+  source_id: number | null;
+  source_type: string | null;
   created_at: string;
 }
 
@@ -36,11 +43,14 @@ export interface CrmOpportunity {
   contact_id: number;
   title: string;
   stage: Stage;
+  phase: Phase;
   source: Source;
   source_id: number | null;
   source_type: string | null;
   assigned_to: number | null;
   lost_reason: string | null;
+  last_activity_at: string | null;
+  escalation_at: string | null;
   created_at: string;
   updated_at: string;
   contact?: CrmContact;

@@ -2,12 +2,13 @@ import React from 'react';
 import type { Stage } from '../types';
 
 const STAGES: { value: Stage; label: string; classes: string }[] = [
-  { value: 'nuevo',             label: 'Nuevo',        classes: 'bg-sky-100 text-sky-700 border-sky-200' },
-  { value: 'en_contacto',       label: 'En contacto',  classes: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
-  { value: 'interesado',        label: 'Interesado',   classes: 'bg-violet-100 text-violet-700 border-violet-200' },
-  { value: 'propuesta_enviada', label: 'Propuesta',    classes: 'bg-pink-100 text-pink-700 border-pink-200' },
-  { value: 'ganado',            label: 'Ganado',       classes: 'bg-green-100 text-green-700 border-green-200' },
-  { value: 'perdido',           label: 'Perdido',      classes: 'bg-red-100 text-red-700 border-red-200' },
+  { value: 'nuevo',         label: 'Nuevo',         classes: 'bg-sky-100 text-sky-700 border-sky-200' },
+  { value: 'contactado',    label: 'Contactado',    classes: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
+  { value: 'en_evaluacion', label: 'En evaluación', classes: 'bg-violet-100 text-violet-700 border-violet-200' },
+  { value: 'propuesta',     label: 'Propuesta',     classes: 'bg-pink-100 text-pink-700 border-pink-200' },
+  { value: 'comprometido',  label: 'Comprometido',  classes: 'bg-teal-100 text-teal-700 border-teal-200' },
+  { value: 'ganado',        label: 'Ganado',        classes: 'bg-green-100 text-green-700 border-green-200' },
+  { value: 'perdido',       label: 'Perdido',       classes: 'bg-red-100 text-red-700 border-red-200' },
 ];
 
 interface Props {

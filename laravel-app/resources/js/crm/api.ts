@@ -6,6 +6,7 @@ const client = axios.create({ baseURL: '/v2/crm', headers: { 'X-Requested-With':
 export interface OpportunityFilters {
   stage?: string;
   source?: string;
+  phase?: string;
   search?: string;
   urgent?: boolean;
   limit?: number;
@@ -20,7 +21,7 @@ export const api = {
     get: (id: number): Promise<CrmOpportunity> =>
       client.get(`/opportunities/${id}`).then(r => r.data.data),
 
-    update: (id: number, payload: Partial<Pick<CrmOpportunity, 'stage' | 'assigned_to' | 'lost_reason'>>): Promise<CrmOpportunity> =>
+    update: (id: number, payload: Partial<Pick<CrmOpportunity, 'stage' | 'phase' | 'assigned_to' | 'lost_reason'>>): Promise<CrmOpportunity> =>
       client.patch(`/opportunities/${id}`, payload).then(r => r.data.data),
 
     addActivity: (id: number, type: string, description: string): Promise<CrmActivity> =>
@@ -36,7 +37,7 @@ export const api = {
   },
 
   stats: {
-    panel: (): Promise<{ panel: PanelStats; by_stage: Record<string, number> }> =>
+    panel: (): Promise<{ panel: PanelStats; by_stage: Record<string, number>; by_phase: Record<string, number> }> =>
       client.get('/stats').then(r => r.data.data),
   },
 };

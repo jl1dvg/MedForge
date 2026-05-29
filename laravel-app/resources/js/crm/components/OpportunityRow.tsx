@@ -2,23 +2,24 @@ import React from 'react';
 import type { CrmOpportunity, Stage, Source } from '../types';
 
 const STAGE_BADGE: Record<Stage, string> = {
-  nuevo:             'bg-sky-100 text-sky-700',
-  en_contacto:       'bg-yellow-100 text-yellow-700',
-  interesado:        'bg-violet-100 text-violet-700',
-  propuesta_enviada: 'bg-pink-100 text-pink-700',
-  ganado:            'bg-green-100 text-green-700',
-  perdido:           'bg-red-100 text-red-700',
+  nuevo:          'bg-sky-100 text-sky-700',
+  contactado:     'bg-yellow-100 text-yellow-700',
+  en_evaluacion:  'bg-violet-100 text-violet-700',
+  propuesta:      'bg-pink-100 text-pink-700',
+  comprometido:   'bg-teal-100 text-teal-700',
+  ganado:         'bg-green-100 text-green-700',
+  perdido:        'bg-red-100 text-red-700',
 };
 const STAGE_LABEL: Record<Stage, string> = {
-  nuevo: 'Nuevo', en_contacto: 'En contacto', interesado: 'Interesado',
-  propuesta_enviada: 'Propuesta', ganado: 'Ganado', perdido: 'Perdido',
+  nuevo: 'Nuevo', contactado: 'Contactado', en_evaluacion: 'En evaluación',
+  propuesta: 'Propuesta', comprometido: 'Comprometido', ganado: 'Ganado', perdido: 'Perdido',
 };
 const SOURCE_LABEL: Record<Source, string> = {
   whatsapp: 'WhatsApp', solicitud: 'Solicitud', examen: 'Examen', manual: 'Manual',
 };
 const ACTION_LABEL: Partial<Record<Stage, string>> = {
-  nuevo: 'Contactar', en_contacto: 'Avanzar',
-  interesado: 'Avanzar', propuesta_enviada: 'Seguimiento',
+  nuevo: 'Contactar', contactado: 'Avanzar',
+  en_evaluacion: 'Avanzar', propuesta: 'Seguimiento',
 };
 
 function timeAgo(dateStr: string): { label: string; urgent: boolean } {

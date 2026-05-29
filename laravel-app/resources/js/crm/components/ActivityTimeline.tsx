@@ -4,6 +4,7 @@ import type { CrmActivity, ActivityType } from '../types';
 const DOT_COLOR: Record<ActivityType, string> = {
   nota: 'bg-amber-400', llamada: 'bg-blue-400',
   cambio_etapa: 'bg-violet-500', email: 'bg-pink-400',
+  examen: 'bg-sky-400', solicitud: 'bg-purple-500', whatsapp: 'bg-green-500',
 };
 
 function formatDate(d: string): string {
