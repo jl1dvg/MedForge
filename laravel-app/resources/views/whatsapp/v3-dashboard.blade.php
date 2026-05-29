@@ -28,8 +28,10 @@
     $attention    = $n('attention_rate');
     $median       = $n('median_first_human_response_minutes');
     $avg          = $n('avg_first_human_response_minutes');
+    $p75          = (int) ($summary['p75_first_human_response_minutes'] ?? $avg);
     $slaRate      = $n('sla_assignments_rate');
     $peopleIn     = $n('people_inbound');
+    $peopleHandoff = $n('people_handoff');
     $attended     = $n('conversations_attended_human');
     $resolved     = $n('conversations_resolved');
     $lost         = $n('conversations_lost');
@@ -41,7 +43,8 @@
     $windowOpen   = $n('queue_window_open');
     $needsTpl     = $n('queue_needs_template');
     $awaitingTpl  = $n('queue_awaiting_template_reply');
-    $abandoned    = $n('conversations_abandoned');
+    $abandoned        = $n('conversations_abandoned');
+    $abandonedReal    = $n('conversations_abandoned_needs_human');
     $handoffs     = $n('handoff_transfers');
 
     $bookingRate = $peopleIn > 0 ? (int) round(($bookings / $peopleIn) * 100) : 0;
@@ -63,6 +66,24 @@
     $layout  = request()->query('layout')  === 'operacion' ? 'operacion' : 'ejecutivo';
     $density = request()->query('density') === 'compacto'  ? 'compacto'  : 'comodo';
 
+    $today     = date('Y-m-d');
+    $minus7    = date('Y-m-d', strtotime('-6 days'));
+    $minus29   = date('Y-m-d', strtotime('-29 days'));
+
+    $activeFrom = trim((string) ($filters['date_from'] ?? ''));
+    $activeTo   = trim((string) ($filters['date_to']   ?? ''));
+
+    $quickRanges = [
+        'hoy'   => ['label' => 'Hoy',    'from' => $today,  'to' => $today],
+        '7d'    => ['label' => '7 días', 'from' => $minus7, 'to' => $today],
+        '30d'   => ['label' => '30 días','from' => $minus29,'to' => $today],
+    ];
+
+    $activeRange = '30d';
+    foreach ($quickRanges as $key => $r) {
+        if ($activeFrom === $r['from'] && $activeTo === $r['to']) { $activeRange = $key; break; }
+    }
+
     $periodLabel = trim((string) ($filters['date_from'] ?? '')) !== ''
         ? ($filters['date_from'] . ' → ' . ($filters['date_to'] ?? ''))
         : 'Últimos 30 días';
@@ -81,29 +102,29 @@
             'icon' => 'mdi-account-heart-outline', 'tone' => $sevCoverage,
             'label' => 'Cobertura humana', 'value' => $attention, 'unit' => '%',
             'badge' => ['sev' => $sevCoverage, 'text' => $sevCoverage === 'success' ? 'En meta' : ($sevCoverage === 'warning' ? 'Vigilar' : 'Crítico')],
-            'trend' => $attended . ' de ' . $peopleIn . ' atendidas por persona',
+            'trend' => $attended . ' de ' . $peopleHandoff . ' que solicitaron humano',
             'breakdown' => [
-                ['dot' => 'success', 'n' => $attended, 'label' => 'Atendidas'],
-                ['dot' => 'danger',  'n' => $lost,     'label' => 'Sin respuesta'],
-                ['dot' => 'info',    'n' => $peopleIn, 'label' => 'Personas'],
+                ['dot' => 'success', 'n' => $attended,     'label' => 'Atendidas'],
+                ['dot' => 'danger',  'n' => $lost,         'label' => 'Sin respuesta'],
+                ['dot' => 'info',    'n' => $peopleHandoff,'label' => 'Con handoff'],
             ],
         ],
         [
             'icon' => 'mdi-timer-sand', 'tone' => $sevResp,
             'label' => '1ª respuesta humana', 'value' => $median, 'unit' => 'min',
             'badge' => ['sev' => $sevResp, 'text' => 'Meta ' . $slaMeta . ' min'],
-            'trend' => 'Mediana desde el handoff · promedio ' . $avg . ' min',
+            'trend' => 'Mediana desde el handoff · P75 ' . $p75 . ' min',
             'breakdown' => [
                 ['dot' => 'success', 'n' => $slaRate . '%', 'label' => 'SLA cumplido'],
-                ['dot' => 'warning', 'n' => $avg,           'label' => 'Prom. min'],
+                ['dot' => 'warning', 'n' => $p75,           'label' => 'P75 min'],
                 ['dot' => 'info',    'n' => $handoffs,      'label' => 'Handoffs'],
             ],
         ],
         [
             'icon' => 'mdi-inbox-multiple-outline', 'tone' => $sevQueue,
-            'label' => 'Cola activa ahora', 'value' => $queueTotal, 'unit' => '',
+            'label' => 'Cola activa ahora', 'value' => $queueTotal, 'unit' => '', 'live' => true,
             'badge' => ['sev' => $sevQueue, 'text' => $sevQueue === 'danger' ? 'Saturada' : ($sevQueue === 'warning' ? 'Atención' : 'Al día')],
-            'trend' => $queued . ' sin asignar · ' . $abandoned . ' inactivas +24h',
+            'trend' => $queued . ' sin asignar · ' . $abandonedReal . ' abandonadas con handoff',
             'breakdown' => [
                 ['dot' => 'warning', 'n' => $queued,     'label' => 'Sin asignar'],
                 ['dot' => 'info',    'n' => $windowOpen, 'label' => 'Ventana 24h'],
@@ -128,9 +149,9 @@
         ['icon' => 'mdi-message-text-clock-outline',  'tone' => 'info',    'label' => 'Ventana 24h abierta',            'sub' => 'Se puede responder libremente',   'n' => $windowOpen,  'sev' => 'muted'],
         ['icon' => 'mdi-file-document-edit-outline',  'tone' => 'danger',  'label' => 'Requiere plantilla',             'sub' => 'Fuera de ventana — usar HSM',     'n' => $needsTpl,    'sev' => $needsTpl > 0 ? 'danger' : 'success'],
         ['icon' => 'mdi-timer-sand-paused',           'tone' => 'primary', 'label' => 'Esperando respuesta a plantilla','sub' => 'Plantilla enviada, sin réplica',  'n' => $awaitingTpl, 'sev' => 'muted'],
-        ['icon' => 'mdi-account-alert-outline',       'tone' => 'danger',  'label' => 'Inactivas +24h sin respuesta',   'sub' => 'Riesgo de abandono',              'n' => $abandoned,   'sev' => $abandoned > 10 ? 'danger' : 'warning'],
+        ['icon' => 'mdi-account-alert-outline',       'tone' => 'danger',  'label' => 'Abandonadas con handoff +24h',   'sub' => 'Pidieron humano, nadie respondió', 'n' => $abandonedReal, 'sev' => $abandonedReal > 10 ? 'danger' : 'warning'],
     ];
-    $maxInbox = max(1, $queued, $windowOpen, $needsTpl, $awaitingTpl, $abandoned);
+    $maxInbox = max(1, $queued, $windowOpen, $needsTpl, $awaitingTpl, $abandonedReal);
 
     $funnel = [
         ['label' => 'Escribieron', 'value' => $peopleIn, 'color' => '#5156be'],
@@ -155,7 +176,7 @@
     $maxType   = $maxShare($convTypes);
     $brkPalette = ['#5156be', '#3596f7', '#05825f', '#ffa800', '#0863be', '#7479d4'];
 
-    $agents = array_slice(is_array($breakdowns['human_attention_by_agent'] ?? null) ? $breakdowns['human_attention_by_agent'] : [], 0, 5);
+    $agents = array_slice(is_array($breakdowns['agent_live_status'] ?? null) ? $breakdowns['agent_live_status'] : [], 0, 5);
     $teams  = array_slice(is_array($breakdowns['handoffs_by_role'] ?? null) ? $breakdowns['handoffs_by_role'] : [], 0, 4);
     $teamTotals = ['queued' => 0, 'assigned' => 0, 'resolved' => 0];
     foreach ($teams as $tm) {
@@ -163,6 +184,18 @@
         $teamTotals['assigned'] += (int) ($tm['assigned'] ?? 0);
         $teamTotals['resolved'] += (int) ($tm['resolved'] ?? 0);
     }
+    /* Bot & Flow panel */
+    $botSummary   = is_array($analytics['summary'] ?? null) ? $analytics['summary'] : [];
+    $handoffRate  = (float) ($botSummary['handoff_rate'] ?? 0);
+    $identRate    = (float) ($botSummary['identification_rate'] ?? 0);
+    $bookingRateB = (float) ($botSummary['booking_rate'] ?? 0);
+    $totalConvs   = (int) ($botSummary['total_conversations'] ?? 0);
+    $handoffConvs = (int) ($botSummary['handoff_conversations'] ?? 0);
+    $containRate  = $handoffRate > 0 ? round(100 - $handoffRate, 1) : 0.0;
+    $frictions    = array_slice(is_array($analytics['frictions'] ?? null) ? $analytics['frictions'] : [], 0, 5);
+    $maxFriction  = max(1, ...array_map(fn($f) => (int)($f['total'] ?? 0), $frictions ?: [['total'=>1]]));
+    $frictionPalette = ['#ee3158','#ffa800','#5156be','#3596f7','#05825f'];
+
     $initials = static function (string $name): string {
         $parts = preg_split('/\s+/', trim($name)) ?: [];
         $parts = array_values(array_filter($parts));
@@ -178,9 +211,10 @@
 /* ===== WhatsApp Dashboard V3 — self-contained tokens + styles ===== */
 body:has(.wad) .content-wrapper,
 body:has(.wad) .content-wrapper > .content {
-    height: calc(100vh - 60px); overflow: hidden; padding: 0; margin: 0;
+    height: 100vh; overflow: hidden; padding: 0; margin: 0;
 }
-body:has(.wad) .content-header, body:has(.wad) .footer-main { display: none !important; }
+body:has(.wad) .main-header, body:has(.wad) .main-footer { display: none !important; }
+body:has(.wad) { overflow: hidden; }
 
 .wad {
     --primary:#5156be; --primary-hover:#3c40a0; --primary-light:#c8c9ee; --primary-fade:#edf2ff;
@@ -248,14 +282,15 @@ body:has(.wad) .content-header, body:has(.wad) .footer-main { display: none !imp
 .wad-dot--danger { background:var(--danger); }
 .wad-dot--info { background:var(--info); }
 
-.wad-panels { display:grid; gap:12px; min-height:0; grid-template-columns:1.15fr 1fr 1fr; grid-template-rows:1fr 1fr; grid-template-areas:"bandeja embudo intencion" "agente handoffs origen"; }
-.wad[data-layout="operacion"] .wad-panels { grid-template-columns:1.3fr 1fr 1fr 1fr; grid-template-areas:"bandeja embudo intencion intencion" "bandeja agente handoffs origen"; }
+.wad-panels { display:grid; gap:12px; min-height:0; grid-template-columns:1.15fr 1fr 1fr 1fr; grid-template-rows:1fr 1fr; grid-template-areas:"bandeja embudo intencion bot" "agente handoffs origen bot"; }
+.wad[data-layout="operacion"] .wad-panels { grid-template-columns:1.3fr 1fr 1fr 1fr; grid-template-areas:"bandeja embudo intencion bot" "bandeja agente handoffs origen"; }
 .wad-panel--bandeja { grid-area:bandeja; }
 .wad-panel--embudo { grid-area:embudo; }
 .wad-panel--intencion { grid-area:intencion; }
 .wad-panel--agente { grid-area:agente; }
 .wad-panel--handoffs { grid-area:handoffs; }
 .wad-panel--origen { grid-area:origen; }
+.wad-panel--bot { grid-area:bot; }
 
 .wad-panel { background:#fff; border:1px solid var(--border); border-radius:12px; box-shadow:var(--shadow-xs); display:flex; flex-direction:column; min-height:0; overflow:hidden; }
 .wad-panel-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:11px 16px; border-bottom:1px solid var(--border-soft); background:linear-gradient(180deg,#fff 0%,#fafbfd 100%); }
@@ -336,8 +371,13 @@ body:has(.wad) .content-header, body:has(.wad) .footer-main { display: none !imp
 .wad-ag-att { text-align:right; }
 .wad-ag-att strong { font:700 14px/1 var(--font-display); color:var(--fg-1); font-variant-numeric:tabular-nums; }
 .wad-ag-att span { display:block; font:500 9px var(--font-body); color:var(--fg-mute); text-transform:uppercase; letter-spacing:.04em; margin-top:2px; }
+.wad-ag-unread { position:absolute; top:-5px; right:-5px; min-width:18px; height:18px; padding:0 4px; border-radius:999px; background:var(--warning); color:#fff; font:700 10px var(--font-body); display:grid; place-items:center; border:2px solid #fff; }
+.wad-ag-unread--alarm { background:var(--danger); animation:wad-badge-alarm .7s ease-in-out infinite alternate; }
+@keyframes wad-badge-alarm { from { transform:scale(1); } to { transform:scale(1.25); box-shadow:0 0 0 4px rgba(238,49,88,.25); } }
 .wad-ag-resp { display:inline-flex; align-items:center; gap:4px; min-width:52px; justify-content:center; padding:4px 8px; border-radius:999px; font:700 11px var(--font-body); font-variant-numeric:tabular-nums; }
 .wad-ag-resp i { font-size:12px; }
+.wad-ag-resp--alarm { animation:wad-chip-alarm .7s ease-in-out infinite alternate; }
+@keyframes wad-chip-alarm { from { opacity:1; } to { opacity:.65; box-shadow:0 0 0 3px rgba(238,49,88,.3); } }
 
 .wad-teams { display:flex; flex-direction:column; gap:10px; }
 .wad-tm-row { display:flex; flex-direction:column; gap:5px; }
@@ -364,6 +404,25 @@ body:has(.wad) .content-header, body:has(.wad) .footer-main { display: none !imp
 .wad-sd-foot { display:flex; justify-content:space-between; gap:10px; margin-top:auto; padding-top:11px; border-top:1px dashed var(--border-soft); font:400 11px var(--font-body); color:var(--fg-mute); }
 .wad-sd-foot strong { color:var(--fg-1); font-weight:700; }
 
+.wad-bot { display:flex; flex-direction:column; gap:14px; height:100%; }
+.wad-bot-kpis { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.wad-bot-kpi { background:var(--bg-soft); border-radius:10px; padding:10px 12px; display:flex; flex-direction:column; gap:2px; }
+.wad-bot-kpi-label { font:600 9.5px var(--font-body); color:var(--fg-mute); text-transform:uppercase; letter-spacing:.07em; }
+.wad-bot-kpi-value { font:700 22px/1 var(--font-display); color:var(--fg-1); font-variant-numeric:tabular-nums; }
+.wad-bot-kpi-value span { font-size:13px; font-weight:600; color:var(--fg-3); }
+.wad-bot-kpi--good .wad-bot-kpi-value { color:var(--success); }
+.wad-bot-kpi--warn .wad-bot-kpi-value { color:#8a5d0a; }
+.wad-bot-kpi--bad  .wad-bot-kpi-value { color:var(--danger); }
+.wad-bot-frictions { display:flex; flex-direction:column; gap:8px; flex:1; min-height:0; overflow-y:auto; }
+.wad-bot-fr-h { font:700 9.5px var(--font-body); text-transform:uppercase; letter-spacing:.06em; color:var(--fg-mute); display:flex; align-items:center; gap:8px; margin-bottom:2px; }
+.wad-bot-fr-h::after { content:""; flex:1; height:1px; background:var(--border-soft); }
+.wad-bot-fr-row { display:flex; flex-direction:column; gap:4px; }
+.wad-bot-fr-top { display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
+.wad-bot-fr-name { font:500 12px var(--font-body); color:var(--fg-1); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+.wad-bot-fr-meta { font:700 11.5px var(--font-display); color:var(--fg-1); font-variant-numeric:tabular-nums; white-space:nowrap; flex-shrink:0; }
+.wad-bot-fr-track { height:7px; background:var(--bg-soft); border-radius:4px; overflow:hidden; }
+.wad-bot-fr-fill { height:100%; border-radius:4px; }
+
 .wad[data-density="compacto"] { gap:10px; padding:12px 18px 14px; }
 .wad[data-density="compacto"] .wad-kpi { padding:10px 13px; gap:7px; }
 .wad[data-density="compacto"] .wad-kpi-value { font-size:23px; }
@@ -380,7 +439,122 @@ body:has(.wad) .content-header, body:has(.wad) .footer-main { display: none !imp
     .wad-kpi-tile { width:38px; height:38px; font-size:20px; }
     .wad-head h1 { font-size:20px; }
 }
+
+/* ── Mobile ── */
+@media (max-width:768px) {
+    body:has(.wad) .content-wrapper,
+    body:has(.wad) .content-wrapper > .content {
+        height: auto; overflow: auto;
+    }
+    body:has(.wad) { overflow: auto; }
+
+    .wad {
+        height: auto; min-height: 100vh;
+        padding: 14px 14px 32px;
+        grid-template-rows: auto auto auto;
+        overflow: visible;
+    }
+
+    /* Header apilado y compacto */
+    .wad-head { flex-direction: column; align-items: flex-start; gap: 10px; }
+    .wad-head h1 { font-size: 18px; }
+    .wad-head-right { width: 100%; flex-wrap: wrap; gap: 8px; }
+    .wad-period a { padding: 5px 11px; font-size: 11px; }
+    .wad-report-btn { width: 100%; justify-content: center; }
+
+    /* KPIs 2×2 */
+    .wad-kpis { grid-template-columns: repeat(2, 1fr); }
+    .wad-kpi-value { font-size: 22px; }
+    .wad-kpi-tile { width: 36px; height: 36px; font-size: 18px; }
+    .wad-kpi-break { display: none; }
+
+    /* Paneles columna única */
+    .wad-panels {
+        grid-template-columns: 1fr !important;
+        grid-template-rows: auto !important;
+        grid-template-areas:
+            "bandeja"
+            "embudo"
+            "intencion"
+            "agente"
+            "handoffs"
+            "origen"
+            "bot" !important;
+    }
+    .wad-panel { min-height: 280px; }
+}
+.wad-chart-wrap { flex:1; min-height:0; position:relative; padding:10px 14px 12px; }
 </style>
+@endpush
+
+@push('scripts')
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+    'use strict';
+    if (typeof Chart === 'undefined') return;
+
+    Chart.defaults.font.family = '"IBM Plex Sans", system-ui, sans-serif';
+    Chart.defaults.color = '#7e8299';
+    const PALETTE = ['#5156be','#3596f7','#05825f','#ffa800','#ee3158','#7479d4'];
+
+    // Embudo de servicio — barras verticales
+    (function () {
+        const el = document.getElementById('wad-chart-embudo');
+        if (!el) return;
+        new Chart(el, {
+            type: 'bar',
+            data: {
+                labels: JSON.parse(el.dataset.labels || '[]'),
+                datasets: [{ data: JSON.parse(el.dataset.values || '[]'), backgroundColor: ['#5156be','#3596f7','#0863be','#05825f'], borderRadius: 6, borderSkipped: false }],
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${ctx.parsed.y.toLocaleString()} conversaciones` } } }, scales: { x: { grid: { display: false }, border: { display: false } }, y: { grid: { color: '#ebedf3' }, border: { display: false }, ticks: { precision: 0 } } } },
+        });
+    }());
+
+    // Handoffs por equipo — barras horizontales apiladas
+    (function () {
+        const el = document.getElementById('wad-chart-handoffs');
+        if (!el) return;
+        new Chart(el, {
+            type: 'bar',
+            data: {
+                labels: JSON.parse(el.dataset.labels || '[]'),
+                datasets: [
+                    { label: 'En cola',   data: JSON.parse(el.dataset.queued   || '[]'), backgroundColor: '#ffa800', borderRadius: 0 },
+                    { label: 'Asignadas', data: JSON.parse(el.dataset.assigned || '[]'), backgroundColor: '#3596f7', borderRadius: 0 },
+                    { label: 'Resueltas', data: JSON.parse(el.dataset.resolved || '[]'), backgroundColor: '#05825f', borderRadius: 0 },
+                ],
+            },
+            options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, boxHeight: 10, padding: 10, font: { size: 11 } } }, tooltip: { mode: 'index' } }, scales: { x: { stacked: true, grid: { color: '#ebedf3' }, border: { display: false }, ticks: { precision: 0 } }, y: { stacked: true, grid: { display: false }, border: { display: false } } } },
+        });
+    }());
+
+    // Origen de demanda — donut
+    (function () {
+        const el = document.getElementById('wad-chart-origen');
+        if (!el) return;
+        const values = JSON.parse(el.dataset.values || '[]');
+        const total  = values.reduce((a, b) => a + b, 0);
+        new Chart(el, {
+            type: 'doughnut',
+            data: { labels: JSON.parse(el.dataset.labels || '[]'), datasets: [{ data: values, backgroundColor: PALETTE, borderWidth: 2, borderColor: '#fff', hoverOffset: 6 }] },
+            options: { responsive: true, maintainAspectRatio: false, cutout: '62%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, boxHeight: 10, padding: 10, font: { size: 11 } } }, tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${ctx.parsed.toLocaleString()} (${total > 0 ? Math.round(ctx.parsed / total * 100) : 0}%)` } } } },
+        });
+    }());
+
+    // Bot & Flujo — donut contenido vs escalado
+    (function () {
+        const el = document.getElementById('wad-chart-bot');
+        if (!el) return;
+        new Chart(el, {
+            type: 'doughnut',
+            data: { labels: ['Contenido por bot','Escalado a humano'], datasets: [{ data: [parseFloat(el.dataset.contain || 0), parseFloat(el.dataset.escalado || 0)], backgroundColor: ['#05825f','#ee3158'], borderWidth: 2, borderColor: '#fff', hoverOffset: 4 }] },
+            options: { responsive: true, maintainAspectRatio: false, cutout: '68%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, boxHeight: 10, padding: 8, font: { size: 11 } } }, tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${ctx.parsed}%` } } } },
+        });
+    }());
+}());
+</script>
 @endpush
 
 @section('content')
@@ -397,8 +571,13 @@ body:has(.wad) .content-header, body:has(.wad) .footer-main { display: none !imp
                 <a class="{{ $layout === 'ejecutivo' ? 'active' : '' }}" href="?{{ http_build_query(array_merge(request()->query(), ['layout' => 'ejecutivo'])) }}">Ejecutivo</a>
                 <a class="{{ $layout === 'operacion' ? 'active' : '' }}" href="?{{ http_build_query(array_merge(request()->query(), ['layout' => 'operacion'])) }}">Operación</a>
             </div>
+            <div class="wad-period">
+                @foreach($quickRanges as $key => $r)
+                    <a class="{{ $activeRange === $key ? 'active' : '' }}"
+                       href="?{{ http_build_query(array_merge(request()->query(), ['date_from' => $r['from'], 'date_to' => $r['to']])) }}">{{ $r['label'] }}</a>
+                @endforeach
+            </div>
             <div class="wad-ctx">
-                <span class="wad-ctx-chip"><i class="mdi mdi-calendar-range"></i>{{ $periodLabel }}</span>
                 <span class="wad-ctx-chip"><i class="mdi mdi-timer-outline"></i>SLA {{ $slaMeta }} min</span>
             </div>
             <a class="wad-report-btn" href="/v2/whatsapp/dashboard{{ $exportQuery ? '?' . $exportQuery : '' }}" title="Abrir el reporte detallado con tablas y exportación">
@@ -415,7 +594,7 @@ body:has(.wad) .content-header, body:has(.wad) .footer-main { display: none !imp
                 <div class="wad-kpi-top">
                     <span class="wad-kpi-tile" style="background:{{ $t['bg'] }};color:{{ $t['fg'] }}"><i class="mdi {{ $k['icon'] }}"></i></span>
                     <div class="wad-kpi-main">
-                        <p class="wad-kpi-label">{{ $k['label'] }}</p>
+                        <p class="wad-kpi-label">{{ $k['label'] }}@if(!empty($k['live'])) &nbsp;<span class="wad-pulse wad-pulse--{{ $sevQueue === 'danger' ? 'danger' : ($sevQueue === 'warning' ? 'warning' : '') }}" style="width:6px;height:6px;vertical-align:middle;margin-bottom:1px;"></span>@endif</p>
                         <div class="wad-kpi-valrow">
                             <p class="wad-kpi-value">{{ $k['value'] }}@if($k['unit'])<span class="wad-kpi-unit">{{ $k['unit'] }}</span>@endif</p>
                             @if(!empty($k['badge']))<span class="wad-kpi-badge wad-kpi-badge--{{ $k['badge']['sev'] }}">{{ $k['badge']['text'] }}</span>@endif
@@ -463,19 +642,10 @@ body:has(.wad) .content-header, body:has(.wad) .footer-main { display: none !imp
                 <h3><i class="mdi mdi-filter-variant"></i>Embudo de servicio</h3>
                 <span class="wad-chip wad-chip--success">{{ $bookingRate }}% a cita</span>
             </header>
-            <div class="wad-panel-body wad-funnel">
-                @foreach($funnel as $f)
-                    <div class="wad-fn-row">
-                        <span class="wad-fn-label">{{ $f['label'] }}</span>
-                        <div class="wad-fn-track"><div class="wad-fn-fill" style="width:{{ ($f['value'] / $funnelMax) * 100 }}%;background:{{ $f['color'] }}"></div></div>
-                        <span class="wad-fn-value">{{ $f['value'] }}</span>
-                    </div>
-                @endforeach
-                <div class="wad-fn-foot">
-                    <span>Cobertura <strong class="accent">{{ $attention }}%</strong></span>
-                    <span>Resolución <strong>{{ $resolRate }}%</strong></span>
-                    <span>Conversión <strong>{{ $bookingRate }}%</strong></span>
-                </div>
+            <div class="wad-chart-wrap">
+                <canvas id="wad-chart-embudo"
+                    data-labels='@json(array_column($funnel, "label"))'
+                    data-values='@json(array_column($funnel, "value"))'></canvas>
             </div>
         </article>
 
@@ -517,31 +687,49 @@ body:has(.wad) .content-header, body:has(.wad) .footer-main { display: none !imp
             </div>
         </article>
 
-        {{-- Desempeño por agente --}}
+        {{-- Estado en vivo por agente --}}
         <article class="wad-panel wad-panel--agente">
             <header class="wad-panel-head">
-                <h3><i class="mdi mdi-account-supervisor-outline"></i>Desempeño por agente</h3>
+                <h3><i class="mdi mdi-account-supervisor-outline"></i>Agentes en vivo</h3>
                 <span class="wad-chip wad-chip--muted">{{ count($agents) }} activos</span>
             </header>
             <div class="wad-panel-body wad-agents">
-                @forelse($agents as $i => $a)
+                @forelse($agents as $a)
                     @php
-                        $resp = (int) round((float) ($a['avg_first_response_minutes'] ?? 0));
-                        $att  = (int) ($a['attended_conversations'] ?? 0);
-                        $name = (string) ($a['agent_name'] ?? 'Agente');
-                        $sev  = ($resp > 0 && $resp <= $slaMeta) ? 'success' : ($resp <= $slaMeta * 2 ? 'warning' : 'danger');
-                        $rt   = $tone[$sev];
+                        $name    = (string) ($a['agent_name'] ?? 'Agente');
+                        $unread  = (int) ($a['unread_conversations'] ?? 0);
+                        $active  = (int) ($a['active_conversations'] ?? 0);
+                        $wait    = (int) ($a['max_unread_wait_minutes'] ?? 0);
+                        $waitSev = $wait >= $slaMeta * 2 ? 'danger' : ($wait >= $slaMeta ? 'warning' : 'success');
+                        $waitBg  = $tone[$waitSev];
+                        $alarm   = $waitSev === 'danger';
                     @endphp
                     <div class="wad-ag-row">
-                        <span class="wad-ag-avatar">@if($i < 3)<span class="wad-ag-rank">{{ $i + 1 }}</span>@endif{{ $initials($name) }}</span>
-                        <div class="wad-ag-info"><p class="wad-ag-name">{{ $name }}</p><p class="wad-ag-role">Atención humana</p></div>
+                        <span class="wad-ag-avatar">
+                            {{ $initials($name) }}
+                            @if($unread > 0)
+                                <span class="wad-ag-unread {{ $alarm ? 'wad-ag-unread--alarm' : '' }}">{{ $unread }}</span>
+                            @endif
+                        </span>
+                        <div class="wad-ag-info">
+                            <p class="wad-ag-name">{{ $name }}</p>
+                            <p class="wad-ag-role">{{ $active }} asignada{{ $active !== 1 ? 's' : '' }} · {{ $unread }} sin leer</p>
+                        </div>
                         <div class="wad-ag-stats">
-                            <div class="wad-ag-att"><strong>{{ $att }}</strong><span>Atendidas</span></div>
-                            <span class="wad-ag-resp" style="background:{{ $rt['bg'] }};color:{{ $rt['fg'] }}"><i class="mdi mdi-timer-outline"></i>{{ $resp > 0 ? $resp . 'm' : '—' }}</span>
+                            @if($unread > 0)
+                                <span class="wad-ag-resp {{ $alarm ? 'wad-ag-resp--alarm' : '' }}"
+                                      style="background:{{ $waitBg['bg'] }};color:{{ $waitBg['fg'] }}">
+                                    <i class="mdi mdi-timer-outline"></i>{{ $wait > 0 ? $wait . 'm' : '<1m' }}
+                                </span>
+                            @else
+                                <span class="wad-ag-resp" style="background:#dff5ee;color:#05825f">
+                                    <i class="mdi mdi-check-circle-outline"></i>Al día
+                                </span>
+                            @endif
                         </div>
                     </div>
                 @empty
-                    <div class="wad-empty">Sin actividad de agentes en el periodo.</div>
+                    <div class="wad-empty">No hay agentes con conversaciones activas.</div>
                 @endforelse
             </div>
         </article>
@@ -552,33 +740,17 @@ body:has(.wad) .content-header, body:has(.wad) .footer-main { display: none !imp
                 <h3><i class="mdi mdi-swap-horizontal-bold"></i>Handoffs por equipo</h3>
                 <span class="wad-chip wad-chip--muted">{{ $handoffs }} total</span>
             </header>
-            <div class="wad-panel-body">
-                <div class="wad-teams">
-                    @forelse($teams as $tm)
-                        @php
-                            $q = (int) ($tm['queued'] ?? 0); $as = (int) ($tm['assigned'] ?? 0); $rs = (int) ($tm['resolved'] ?? 0);
-                            $tot = max(1, $q + $as + $rs);
-                        @endphp
-                        <div class="wad-tm-row">
-                            <div class="wad-tm-top"><span class="wad-tm-name">{{ $tm['role_name'] ?? 'Sin rol' }}</span><span class="wad-tm-total">{{ (int) ($tm['total'] ?? $tot) }}</span></div>
-                            <div class="wad-tm-bar">
-                                <div class="wad-tm-seg wad-tm-seg--queued" style="width:{{ ($q / $tot) * 100 }}%"></div>
-                                <div class="wad-tm-seg wad-tm-seg--assigned" style="width:{{ ($as / $tot) * 100 }}%"></div>
-                                <div class="wad-tm-seg wad-tm-seg--resolved" style="width:{{ ($rs / $tot) * 100 }}%"></div>
-                            </div>
-                        </div>
-                    @empty
-                        <div class="wad-empty">Sin handoffs registrados en el periodo.</div>
-                    @endforelse
+            @if(count($teams))
+                <div class="wad-chart-wrap">
+                    <canvas id="wad-chart-handoffs"
+                        data-labels='@json(array_column($teams, "role_name"))'
+                        data-queued='@json(array_column($teams, "queued"))'
+                        data-assigned='@json(array_column($teams, "assigned"))'
+                        data-resolved='@json(array_column($teams, "resolved"))'></canvas>
                 </div>
-                @if(count($teams))
-                    <div class="wad-tm-legend">
-                        <span class="wad-tm-leg"><b style="background:var(--warning)"></b>En cola <span class="n">{{ $teamTotals['queued'] }}</span></span>
-                        <span class="wad-tm-leg"><b style="background:var(--info)"></b>Asignadas <span class="n">{{ $teamTotals['assigned'] }}</span></span>
-                        <span class="wad-tm-leg"><b style="background:var(--success)"></b>Resueltas <span class="n">{{ $teamTotals['resolved'] }}</span></span>
-                    </div>
-                @endif
-            </div>
+            @else
+                <div class="wad-empty">Sin handoffs registrados en el periodo.</div>
+            @endif
         </article>
 
         {{-- Origen de demanda --}}
@@ -587,26 +759,71 @@ body:has(.wad) .content-header, body:has(.wad) .footer-main { display: none !imp
                 <h3><i class="mdi mdi-bullhorn-outline"></i>Origen de demanda</h3>
                 <span class="wad-chip wad-chip--muted">{{ count($sources) }} fuentes</span>
             </header>
-            <div class="wad-panel-body wad-brk">
-                <div class="wad-brk-section">
-                    @forelse($sources as $i => $sc)
-                        <div>
-                            <div class="wad-brk-top">
-                                <span class="wad-brk-name">{{ $sc['source_label'] ?? ($sc['source_category'] ?? '—') }}</span>
-                                <span class="wad-brk-meta"><strong>{{ (int) ($sc['total'] ?? 0) }}</strong> · {{ (float) ($sc['booking_rate'] ?? 0) }}% cita</span>
+            @if(count($sources))
+                <div class="wad-chart-wrap">
+                    <canvas id="wad-chart-origen"
+                        data-labels='@json(array_map(fn($s) => $s["source_label"] ?? ($s["source_category"] ?? "—"), $sources))'
+                        data-values='@json(array_column($sources, "total"))'></canvas>
+                </div>
+            @else
+                <div class="wad-empty">Sin origen registrado en el periodo.</div>
+            @endif
+        </article>
+
+        {{-- Bot & Flujo --}}
+        <article class="wad-panel wad-panel--bot">
+            <header class="wad-panel-head">
+                <h3><i class="mdi mdi-robot-outline"></i>Bot & Flujo</h3>
+                <span class="wad-chip wad-chip--muted">{{ $totalConvs }} convs.</span>
+            </header>
+            <div class="wad-panel-body wad-bot">
+                <div style="height:140px;position:relative;">
+                    <canvas id="wad-chart-bot"
+                        data-contain="{{ $containRate }}"
+                        data-escalado="{{ round($handoffRate, 1) }}"></canvas>
+                </div>
+                <div class="wad-bot-kpis">
+                    @php
+                        $containSev = $containRate >= 60 ? 'good' : ($containRate >= 40 ? 'warn' : 'bad');
+                        $identSev   = $identRate >= 70 ? 'good' : ($identRate >= 40 ? 'warn' : 'bad');
+                        $bookSev    = $bookingRateB >= 20 ? 'good' : ($bookingRateB >= 10 ? 'warn' : 'bad');
+                        $handSev    = $handoffRate <= 30 ? 'good' : ($handoffRate <= 50 ? 'warn' : 'bad');
+                    @endphp
+                    <div class="wad-bot-kpi wad-bot-kpi--{{ $containSev }}">
+                        <span class="wad-bot-kpi-label">Contenido por bot</span>
+                        <span class="wad-bot-kpi-value">{{ $containRate }}<span>%</span></span>
+                    </div>
+                    <div class="wad-bot-kpi wad-bot-kpi--{{ $handSev }}">
+                        <span class="wad-bot-kpi-label">Escalado a humano</span>
+                        <span class="wad-bot-kpi-value">{{ round($handoffRate, 1) }}<span>%</span></span>
+                    </div>
+                    <div class="wad-bot-kpi wad-bot-kpi--{{ $identSev }}">
+                        <span class="wad-bot-kpi-label">Identificación</span>
+                        <span class="wad-bot-kpi-value">{{ round($identRate, 1) }}<span>%</span></span>
+                    </div>
+                    <div class="wad-bot-kpi wad-bot-kpi--{{ $bookSev }}">
+                        <span class="wad-bot-kpi-label">Conv. a cita</span>
+                        <span class="wad-bot-kpi-value">{{ round($bookingRateB, 1) }}<span>%</span></span>
+                    </div>
+                </div>
+
+                <div class="wad-bot-frictions">
+                    <div class="wad-bot-fr-h">Puntos de fricción del flow</div>
+                    @forelse($frictions as $i => $fr)
+                        <div class="wad-bot-fr-row">
+                            <div class="wad-bot-fr-top">
+                                <span class="wad-bot-fr-name">{{ $fr['friction_label'] ?? $fr['friction_state'] }}</span>
+                                <span class="wad-bot-fr-meta">{{ (int)($fr['total'] ?? 0) }} · {{ (float)($fr['share'] ?? 0) }}%</span>
                             </div>
-                            <div class="wad-brk-track"><div class="wad-brk-fill" style="width:{{ ((float) ($sc['share'] ?? 0) / $maxSource) * 100 }}%;background:{{ $brkPalette[$i % count($brkPalette)] }}"></div></div>
+                            <div class="wad-bot-fr-track">
+                                <div class="wad-bot-fr-fill"
+                                     style="width:{{ ((int)($fr['total'] ?? 0) / $maxFriction) * 100 }}%;background:{{ $frictionPalette[$i % count($frictionPalette)] }}"></div>
+                            </div>
                         </div>
                     @empty
-                        <div class="wad-empty">Sin origen registrado en el periodo.</div>
+                        <div class="wad-empty">Sin fricción registrada en el periodo.</div>
                     @endforelse
                 </div>
-                @if(count($sources))
-                    <div class="wad-brk-foot">
-                        <span>Conversión a cita</span>
-                        <span><strong>{{ $bookingRate }}%</strong> global</span>
-                    </div>
-                @endif
             </div>
         </article>
 
