@@ -176,7 +176,7 @@
     $maxType   = $maxShare($convTypes);
     $brkPalette = ['#5156be', '#3596f7', '#05825f', '#ffa800', '#0863be', '#7479d4'];
 
-    $agents = array_slice(is_array($breakdowns['human_attention_by_agent'] ?? null) ? $breakdowns['human_attention_by_agent'] : [], 0, 5);
+    $agents = array_slice(is_array($breakdowns['agent_live_status'] ?? null) ? $breakdowns['agent_live_status'] : [], 0, 8);
     $teams  = array_slice(is_array($breakdowns['handoffs_by_role'] ?? null) ? $breakdowns['handoffs_by_role'] : [], 0, 4);
     $teamTotals = ['queued' => 0, 'assigned' => 0, 'resolved' => 0];
     foreach ($teams as $tm) {
@@ -358,8 +358,13 @@ body:has(.wad) { overflow: hidden; }
 .wad-ag-att { text-align:right; }
 .wad-ag-att strong { font:700 14px/1 var(--font-display); color:var(--fg-1); font-variant-numeric:tabular-nums; }
 .wad-ag-att span { display:block; font:500 9px var(--font-body); color:var(--fg-mute); text-transform:uppercase; letter-spacing:.04em; margin-top:2px; }
+.wad-ag-unread { position:absolute; top:-5px; right:-5px; min-width:18px; height:18px; padding:0 4px; border-radius:999px; background:var(--warning); color:#fff; font:700 10px var(--font-body); display:grid; place-items:center; border:2px solid #fff; }
+.wad-ag-unread--alarm { background:var(--danger); animation:wad-badge-alarm .7s ease-in-out infinite alternate; }
+@keyframes wad-badge-alarm { from { transform:scale(1); } to { transform:scale(1.25); box-shadow:0 0 0 4px rgba(238,49,88,.25); } }
 .wad-ag-resp { display:inline-flex; align-items:center; gap:4px; min-width:52px; justify-content:center; padding:4px 8px; border-radius:999px; font:700 11px var(--font-body); font-variant-numeric:tabular-nums; }
 .wad-ag-resp i { font-size:12px; }
+.wad-ag-resp--alarm { animation:wad-chip-alarm .7s ease-in-out infinite alternate; }
+@keyframes wad-chip-alarm { from { opacity:1; } to { opacity:.65; box-shadow:0 0 0 3px rgba(238,49,88,.3); } }
 
 .wad-teams { display:flex; flex-direction:column; gap:10px; }
 .wad-tm-row { display:flex; flex-direction:column; gap:5px; }
@@ -587,31 +592,49 @@ body:has(.wad) { overflow: hidden; }
             </div>
         </article>
 
-        {{-- Desempeño por agente --}}
+        {{-- Estado en vivo por agente --}}
         <article class="wad-panel wad-panel--agente">
             <header class="wad-panel-head">
-                <h3><i class="mdi mdi-account-supervisor-outline"></i>Desempeño por agente</h3>
+                <h3><i class="mdi mdi-account-supervisor-outline"></i>Agentes en vivo</h3>
                 <span class="wad-chip wad-chip--muted">{{ count($agents) }} activos</span>
             </header>
             <div class="wad-panel-body wad-agents">
-                @forelse($agents as $i => $a)
+                @forelse($agents as $a)
                     @php
-                        $resp = (int) round((float) ($a['avg_first_response_minutes'] ?? 0));
-                        $att  = (int) ($a['attended_conversations'] ?? 0);
-                        $name = (string) ($a['agent_name'] ?? 'Agente');
-                        $sev  = ($resp > 0 && $resp <= $slaMeta) ? 'success' : ($resp <= $slaMeta * 2 ? 'warning' : 'danger');
-                        $rt   = $tone[$sev];
+                        $name    = (string) ($a['agent_name'] ?? 'Agente');
+                        $unread  = (int) ($a['unread_conversations'] ?? 0);
+                        $active  = (int) ($a['active_conversations'] ?? 0);
+                        $wait    = (int) ($a['max_unread_wait_minutes'] ?? 0);
+                        $waitSev = $wait >= $slaMeta * 2 ? 'danger' : ($wait >= $slaMeta ? 'warning' : 'success');
+                        $waitBg  = $tone[$waitSev];
+                        $alarm   = $waitSev === 'danger';
                     @endphp
                     <div class="wad-ag-row">
-                        <span class="wad-ag-avatar">@if($i < 3)<span class="wad-ag-rank">{{ $i + 1 }}</span>@endif{{ $initials($name) }}</span>
-                        <div class="wad-ag-info"><p class="wad-ag-name">{{ $name }}</p><p class="wad-ag-role">Atención humana</p></div>
+                        <span class="wad-ag-avatar">
+                            {{ $initials($name) }}
+                            @if($unread > 0)
+                                <span class="wad-ag-unread {{ $alarm ? 'wad-ag-unread--alarm' : '' }}">{{ $unread }}</span>
+                            @endif
+                        </span>
+                        <div class="wad-ag-info">
+                            <p class="wad-ag-name">{{ $name }}</p>
+                            <p class="wad-ag-role">{{ $active }} asignada{{ $active !== 1 ? 's' : '' }} · {{ $unread }} sin leer</p>
+                        </div>
                         <div class="wad-ag-stats">
-                            <div class="wad-ag-att"><strong>{{ $att }}</strong><span>Atendidas</span></div>
-                            <span class="wad-ag-resp" style="background:{{ $rt['bg'] }};color:{{ $rt['fg'] }}"><i class="mdi mdi-timer-outline"></i>{{ $resp > 0 ? $resp . 'm' : '—' }}</span>
+                            @if($unread > 0)
+                                <span class="wad-ag-resp {{ $alarm ? 'wad-ag-resp--alarm' : '' }}"
+                                      style="background:{{ $waitBg['bg'] }};color:{{ $waitBg['fg'] }}">
+                                    <i class="mdi mdi-timer-outline"></i>{{ $wait > 0 ? $wait . 'm' : '<1m' }}
+                                </span>
+                            @else
+                                <span class="wad-ag-resp" style="background:#dff5ee;color:#05825f">
+                                    <i class="mdi mdi-check-circle-outline"></i>Al día
+                                </span>
+                            @endif
                         </div>
                     </div>
                 @empty
-                    <div class="wad-empty">Sin actividad de agentes en el periodo.</div>
+                    <div class="wad-empty">No hay agentes con conversaciones activas.</div>
                 @endforelse
             </div>
         </article>

@@ -131,6 +131,7 @@ class KpiDashboardService
                 'handoffs_by_role' => $this->handoffsByRole($fromSql, $toSql, $roleId, $agentId),
                 'handoffs_by_agent' => $this->handoffsByAgent($fromSql, $toSql, $roleId, $agentId),
                 'human_attention_by_agent' => $this->humanAttentionByAgent($fromSql, $toSql, $roleId, $agentId),
+                'agent_live_status' => $this->agentLiveStatus($roleId, $agentId),
                 'human_response_by_queue' => $this->humanResponseByQueue($fromSql, $toSql, $roleId, $agentId),
                 'sigcenter_bookings_by_sede' => $this->sigcenterBookingsBySede($fromSql, $toSql),
             ],
@@ -1704,6 +1705,52 @@ class KpiDashboardService
                 ? round(((float) $row->avg_first_response_seconds) / 60, 2)
                 : null,
         ], DB::select($sql, array_values($reply['params'])));
+    }
+
+    /**
+     * Estado en vivo por agente: conversaciones asignadas, sin leer y espera máxima.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function agentLiveStatus(?int $roleId = null, ?int $agentId = null): array
+    {
+        if (!Schema::hasTable('whatsapp_conversations')) {
+            return [];
+        }
+
+        $filter = $this->conversationScopeFilterSql('c', 'u', $roleId, $agentId, 'agent_live');
+        $lastMsgAt = Schema::hasColumn('whatsapp_conversations', 'last_message_at')
+            ? 'c.last_message_at'
+            : 'NULL';
+
+        $sql = 'SELECT
+                    c.assigned_user_id AS user_id,
+                    ' . $this->agentNameSql('u', 'c.assigned_user_id', 'Agente') . ' AS agent_name,
+                    COUNT(*) AS active_conversations,
+                    SUM(CASE WHEN c.unread_count > 0 THEN 1 ELSE 0 END) AS unread_conversations,
+                    MAX(CASE WHEN c.unread_count > 0 AND c.last_message_direction = "inbound"
+                             THEN TIMESTAMPDIFF(MINUTE, ' . $lastMsgAt . ', NOW())
+                             ELSE 0 END) AS max_unread_wait_minutes
+                FROM whatsapp_conversations c
+                LEFT JOIN users u ON u.id = c.assigned_user_id
+                WHERE c.needs_human = 1
+                  AND c.assigned_user_id IS NOT NULL';
+
+        $params = [];
+        if ($filter['where'] !== '') {
+            $sql .= ' AND ' . $filter['where'];
+            $params = array_values($filter['params']);
+        }
+        $sql .= ' GROUP BY c.assigned_user_id, agent_name
+                  ORDER BY unread_conversations DESC, active_conversations DESC';
+
+        return array_map(fn ($row) => [
+            'user_id'              => (int) ($row->user_id ?? 0),
+            'agent_name'           => (string) ($row->agent_name ?? ''),
+            'active_conversations' => (int) ($row->active_conversations ?? 0),
+            'unread_conversations' => (int) ($row->unread_conversations ?? 0),
+            'max_unread_wait_minutes' => (int) ($row->max_unread_wait_minutes ?? 0),
+        ], DB::select($sql, $params));
     }
 
     /**
