@@ -4,7 +4,6 @@
 
 @push('styles')
 @vite('resources/css/app.css')
-@vite('resources/css/crm-panel.css')
 @endpush
 
 @section('content')
