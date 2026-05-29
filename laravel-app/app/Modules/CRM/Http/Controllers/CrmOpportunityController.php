@@ -8,6 +8,7 @@ use App\Modules\CRM\Services\CrmOpportunityService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 class CrmOpportunityController
 {
@@ -28,9 +29,28 @@ class CrmOpportunityController
         $source = trim((string) $request->query('source', ''));
         $phase  = trim((string) $request->query('phase', ''));
         $search = trim((string) $request->query('search', ''));
-        $urgent = filter_var($request->query('urgent', false), FILTER_VALIDATE_BOOLEAN);
+        $urgent         = filter_var($request->query('urgent', false), FILTER_VALIDATE_BOOLEAN);
+        $includePublico = filter_var($request->query('include_publico', false), FILTER_VALIDATE_BOOLEAN);
 
         $query = CrmOpportunity::query()->with('contact');
+
+        // Exclude public-affiliation opportunities by default
+        if (!$includePublico) {
+            $query->whereNotExists(function ($sub): void {
+                $sub->select(DB::raw(1))
+                    ->from('solicitud_procedimiento as sp_pub')
+                    ->join('afiliacion_categoria_map as acm_pub', function ($join): void {
+                        $join->on(
+                            DB::raw('LOWER(TRIM(acm_pub.afiliacion_norm))'),
+                            '=',
+                            DB::raw('LOWER(TRIM(sp_pub.afiliacion))')
+                        );
+                    })
+                    ->whereColumn('sp_pub.id', 'crm_opportunities.source_id')
+                    ->whereRaw('crm_opportunities.source_type = ?', ['solicitud_procedimiento'])
+                    ->where('acm_pub.categoria', 'publico');
+            });
+        }
 
         if ($stage !== '') {
             $query->where('stage', $stage);
