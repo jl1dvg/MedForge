@@ -120,7 +120,7 @@
         ],
         [
             'icon' => 'mdi-inbox-multiple-outline', 'tone' => $sevQueue,
-            'label' => 'Cola activa ahora', 'value' => $queueTotal, 'unit' => '',
+            'label' => 'Cola activa ahora', 'value' => $queueTotal, 'unit' => '', 'live' => true,
             'badge' => ['sev' => $sevQueue, 'text' => $sevQueue === 'danger' ? 'Saturada' : ($sevQueue === 'warning' ? 'Atención' : 'Al día')],
             'trend' => $queued . ' sin asignar · ' . $abandoned . ' inactivas +24h',
             'breakdown' => [
@@ -483,7 +483,7 @@ body:has(.wad) { overflow: hidden; }
                 <div class="wad-kpi-top">
                     <span class="wad-kpi-tile" style="background:{{ $t['bg'] }};color:{{ $t['fg'] }}"><i class="mdi {{ $k['icon'] }}"></i></span>
                     <div class="wad-kpi-main">
-                        <p class="wad-kpi-label">{{ $k['label'] }}</p>
+                        <p class="wad-kpi-label">{{ $k['label'] }}@if(!empty($k['live'])) &nbsp;<span class="wad-pulse wad-pulse--{{ $sevQueue === 'danger' ? 'danger' : ($sevQueue === 'warning' ? 'warning' : '') }}" style="width:6px;height:6px;vertical-align:middle;margin-bottom:1px;"></span>@endif</p>
                         <div class="wad-kpi-valrow">
                             <p class="wad-kpi-value">{{ $k['value'] }}@if($k['unit'])<span class="wad-kpi-unit">{{ $k['unit'] }}</span>@endif</p>
                             @if(!empty($k['badge']))<span class="wad-kpi-badge wad-kpi-badge--{{ $k['badge']['sev'] }}">{{ $k['badge']['text'] }}</span>@endif
