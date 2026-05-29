@@ -33,7 +33,9 @@
     $greeting = $hour < 12 ? 'Buenos días' : ($hour < 19 ? 'Buenas tardes' : 'Buenas noches');
 
     $heroKpis     = is_array($dashboardV3['hero_kpis'] ?? null) ? $dashboardV3['hero_kpis'] : [];
-    $agenda       = is_array($dashboardV3['agenda'] ?? null) ? $dashboardV3['agenda'] : [];
+    $agendaRaw    = is_array($dashboardV3['agenda'] ?? null) ? $dashboardV3['agenda'] : [];
+    $agenda       = is_array($agendaRaw['items'] ?? null) ? $agendaRaw['items'] : $agendaRaw;
+    $agendaPivot  = (int) ($agendaRaw['pivot_index'] ?? 0);
     $flujoColumns = is_array($dashboardV3['flujo_columns'] ?? null) ? $dashboardV3['flujo_columns'] : [];
     $salas        = is_array($dashboardV3['salas'] ?? null) ? $dashboardV3['salas'] : [];
 
