@@ -5,4 +5,11 @@ return [
         'whatsapp' => env('CRM_URGENCY_WA_HOURS', 6),
         'default'  => env('CRM_URGENCY_DEFAULT_HOURS', 48),
     ],
+
+    'escalacion' => [
+        // Days stuck in 'contactado' before escalating to commercial
+        'dias_contactado'     => (int) env('CRM_ESC_DIAS_CONTACTADO', 7),
+        // Days stuck in 'en_evaluacion' before escalating to commercial
+        'dias_en_evaluacion'  => (int) env('CRM_ESC_DIAS_EN_EVALUACION', 14),
+    ],
 ];

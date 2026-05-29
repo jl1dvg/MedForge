@@ -1,197 +1,264 @@
-# CRM Reinvention — Diseño Aprobado
+# CRM Reinvention — Diseño Final
 
-**Fecha:** 2026-05-28  
-**Estado:** Aprobado — listo para plan de implementación  
-**Reemplaza:** planes Onda 5-B y Onda 5-C (ver sección "Impacto en ondas existentes")
+**Fecha:** 2026-05-28
+**Estado:** Aprobado — listo para plan de implementación
+**Sesión de brainstorming:** `/brainstorming Rediseño del modelo de datos CRM`
 
 ---
 
 ## Visión
 
-El CRM deja de ser un módulo aislado de leads y se convierte en el **hub centralizado de inteligencia comercial** de MedForge. WhatsApp, Solicitudes y Examenes Solicitados alimentan automáticamente un pipeline unificado de oportunidades. El departamento comercial tiene un panel dedicado para saber qué oportunidades requieren atención y dónde se están perdiendo pacientes.
+El CRM deja de ser un módulo de leads aislado y se convierte en el **hub centralizado de inteligencia comercial** de MedForge. Todos los módulos (WhatsApp, Solicitudes, Exámenes Solicitados) alimentan automáticamente un pipeline unificado. El departamento comercial tiene un panel dedicado para ver **dónde se quedan las oportunidades** y actuar sobre ellas. El equipo operativo no tiene carga manual extra — el sistema mapea los estados clínicos automáticamente.
+
+**Problema actual resuelto:** 21,505 oportunidades (una por examen/solicitud) → ~5,994 (una por paciente). TATIANA PINEDA aparece 1 vez, con sus 3 exámenes como actividades en su línea de tiempo.
 
 ---
 
 ## 1. Modelo de Datos
 
-### Entidad: Oportunidad = Contacto + Oportunidad por servicio
+### Regla de oro del grain
 
-Una oportunidad es el intento de cerrar un servicio específico con una persona. La misma persona puede tener múltiples oportunidades abiertas al mismo tiempo (ej: una cirugía, un examen, una consulta). Esto aplica tanto a pacientes nuevos (primera atención, generados por WhatsApp) como a pacientes existentes que generan nuevos servicios.
+**Una oportunidad = un paciente (crm_contact).**
 
-### Tablas nuevas
+Todos sus exámenes, solicitudes y conversaciones de WhatsApp se convierten en **actividades** dentro de esa oportunidad. No en filas separadas. Un paciente con cirugía + seguimiento posterior sigue siendo la misma oportunidad — el pipeline refleja el estado actual de la relación comercial.
 
-#### `crm_contacts`
+---
+
+### `crm_contacts` — sin cambios estructurales
+
 | Campo | Tipo | Notas |
 |-------|------|-------|
 | id | bigint PK | |
-| patient_id | bigint FK nullable | Vinculado cuando se convierte o ya existe |
+| patient_id | bigint FK nullable | Vinculado cuando tiene expediente clínico |
 | name | string | |
-| phone | string | Siempre disponible (WA) |
-| email | string nullable | |
+| phone | string | |
 | cedula | string nullable | Identificador canónico fuerte |
 | resolution | enum | `provisional` · `identified` · `linked` |
 | source | enum | `whatsapp` · `solicitud` · `examen` · `manual` |
 | created_at, updated_at | timestamps | |
 
-#### `crm_opportunities`
+---
+
+### `crm_opportunities` — cambios significativos
+
 | Campo | Tipo | Notas |
 |-------|------|-------|
 | id | bigint PK | |
-| contact_id | bigint FK | → crm_contacts |
-| title | string | Descripción breve del servicio |
+| contact_id | bigint FK | → crm_contacts (UNIQUE — 1 por paciente) |
+| title | string | Nombre descriptivo del paciente/relación |
 | stage | enum | Ver pipeline abajo |
-| source | enum | `whatsapp` · `solicitud` · `examen` · `manual` |
-| source_id | bigint nullable | ID del registro origen |
-| source_type | string nullable | Morph: App\Modules\Solicitudes\... etc. |
+| **phase** | enum | `operational` · `commercial` — fase actual de propiedad |
+| source | enum | `whatsapp` · `solicitud` · `examen` · `manual` (primera fuente que creó la opp) |
+| source_id | bigint nullable | ID del registro de primera fuente (se conserva del schema actual) |
+| source_type | string nullable | Morph de primera fuente (se conserva del schema actual) |
 | assigned_to | bigint FK nullable | → users |
-| lost_reason | string nullable | Motivo si stage = perdido |
+| **last_activity_at** | timestamp nullable | Última actividad registrada (auto-updated) |
+| **escalation_at** | timestamp nullable | Cuándo debe dispararse la escalación automática |
+| lost_reason | string nullable | |
 | created_at, updated_at | timestamps | |
 
-#### `crm_activities`
+> **UNIQUE constraint:** `contact_id` debe ser único — una oportunidad por contacto.
+
+**Cambio de schema requerido (migración nueva):**
+```sql
+ALTER TABLE crm_opportunities
+  ADD COLUMN phase VARCHAR(20) NOT NULL DEFAULT 'operational' AFTER stage,
+  ADD COLUMN last_activity_at TIMESTAMP NULL AFTER assigned_to,
+  ADD COLUMN escalation_at TIMESTAMP NULL AFTER last_activity_at;
+
+-- Nuevos valores del enum de stage
+-- nuevo | contactado | en_evaluacion | propuesta | comprometido | ganado | perdido
+-- (reemplaza: nuevo | en_contacto | interesado | propuesta_enviada | ganado | perdido)
+```
+
+---
+
+### `crm_activities` — nuevos tipos de fuente
+
 | Campo | Tipo | Notas |
 |-------|------|-------|
 | id | bigint PK | |
 | opportunity_id | bigint FK | → crm_opportunities |
-| type | enum | `nota` · `llamada` · `cambio_etapa` · `email` |
+| type | enum | `nota` · `llamada` · `cambio_etapa` · `email` · **`examen`** · **`solicitud`** · **`whatsapp`** |
 | description | text | |
+| **source_id** | bigint nullable | ID en la tabla de origen clínico |
+| **source_type** | string nullable | `consulta_examenes` · `solicitud_procedimiento` · `whatsapp_lead` |
 | user_id | bigint FK nullable | null = Sistema |
 | created_at | timestamp | |
 
-### Enums
-
-**stage:** `nuevo` · `en_contacto` · `interesado` · `propuesta_enviada` · `ganado` · `perdido`
-
-**resolution:** `provisional` (solo teléfono) · `identified` (tiene cédula, sin expediente) · `linked` (cédula + patient_id vinculado)
+Los registros clínicos (exámenes, solicitudes, leads WA) se registran como actividades con `source_id + source_type` para navegación bidireccional.
 
 ---
 
 ## 2. Pipeline de Etapas
 
-6 etapas diseñadas para equipo comercial con acceso digital limitado:
-
 ```
-🆕 Nuevo → 📞 En contacto → 💬 Interesado → 📋 Propuesta enviada → ✅ Ganado
-                                                                   ↘ ❌ Perdido
+[FASE OPERATIVA]                    [FASE COMERCIAL]
+🆕 Nuevo → 📞 Contactado → 🔍 En evaluación ⟶⚡⟶ 📋 Propuesta → 🤝 Comprometido → ✅ Ganado
+                                                                                    ↘ ❌ Perdido
 ```
 
-### Entrada automática por fuente
+### Definición de etapas
 
-| Fuente | Etapa de entrada | Trigger |
-|--------|-----------------|---------|
-| WhatsApp | `nuevo` | Lead calificado en conversación |
-| Solicitudes | `interesado` | Nueva solicitud de servicio creada |
-| Examenes Solicitados | `propuesta_enviada` | Examen ordenado sin confirmar pago |
-| Manual | Elige el comercial | Registro manual en el panel |
+| Etapa | Fase | Significado |
+|-------|------|-------------|
+| `nuevo` | operational | Registro ingresó — nadie ha contactado aún |
+| `contactado` | operational | Ejecutivo hizo contacto y el paciente respondió |
+| `en_evaluacion` | operational | Exámenes en curso o cita de evaluación agendada |
+| `propuesta` | commercial | Plan de tratamiento + precio presentado |
+| `comprometido` | commercial | Paciente confirmó, coordinando fecha/pago |
+| `ganado` | commercial | **Procedimiento realizado** |
+| `perdido` | commercial | Paciente descartó, no responde, fue a otra clínica |
+
+**"Ganado" = procedimiento realizado.** No es "cirugía agendada" ni "pago recibido" — es la entrega efectiva del servicio.
+
+### Reglas de transición automática
+
+| Trigger | Acción |
+|---------|--------|
+| Nueva solicitud/examen entra | Oportunidad creada en `nuevo` (o actividad si ya existe) |
+| Oportunidad llega a `propuesta` | `phase = commercial`, `assigned_to` limpiado (ahora es del equipo comercial) |
+| Escalación por tiempo (ver §3) | `phase = commercial`, notificación al equipo comercial |
+| `ganado` registrado | `last_activity_at = now()`, KPI de conversión actualizado |
 
 ---
 
-## 3. Arquitectura de Eventos (Laravel Event/Listener)
+## 3. Motor de Escalación
 
-Los módulos NO dependen del CRM. Disparan eventos que ya deberían disparar por su propia lógica. El CRM escucha y reacciona.
+### Regla
 
-### Eventos
+Una oportunidad escala de `operational → commercial` cuando se cumple **cualquiera** de:
 
-| Evento | Clase | Módulo origen | Payload |
-|--------|-------|--------------|---------|
-| WhatsApp lead calificado | `WhatsappLeadQualified` | Whatsapp | `$lead`, `$conversation` |
-| Solicitud creada | `SolicitudCreada` | Solicitudes | `$solicitud`, `$paciente` |
-| Examen solicitado | `ExamenSolicitado` | Examenes | `$examen`, `$paciente` |
+1. **Por etapa:** llega a `propuesta` — siempre pasa a comercial inmediatamente
+2. **Por tiempo sin actividad:**
+   - En `contactado` sin actividad ≥ `crm.escalacion.dias_contactado` días (default: **7**)
+   - En `en_evaluacion` sin actividad ≥ `crm.escalacion.dias_en_evaluacion` días (default: **14**)
 
-### Listener central
+### Implementación
 
-**`CrmOpportunityListener`** — escucha los 3 eventos, delega a `CrmContactResolverService` y luego crea la oportunidad.
+**Comando artisan:** `crm:escalate`
+- Registrado en `Console/Kernel.php` → `$schedule->command('crm:escalate')->dailyAt('08:00')`
+- En IONOS: el cron del servidor apunta al scheduler de Laravel (`* * * * * cd /path && php artisan schedule:run`) — **no** un cron directo al comando
+- Busca oportunidades donde `phase = operational AND escalation_at <= NOW()`
+- Para cada una: `phase = commercial`, registra actividad de tipo `cambio_etapa` con descripción "Escalado automáticamente a Comercial — sin actividad por X días"
+- Recalcula `escalation_at` al registrar cualquier actividad nueva en una oportunidad
+
+**Configuración (Settings):**
+```php
+// config/crm.php
+'escalacion' => [
+    'dias_contactado'    => env('CRM_ESC_DIAS_CONTACTADO', 7),
+    'dias_en_evaluacion' => env('CRM_ESC_DIAS_EN_EVALUACION', 14),
+],
+```
+
+Estos valores son editables desde el módulo Settings de MedForge (sin tocar código ni `.env`). Se guardan en la tabla `settings` con clave `crm.escalacion.dias_contactado` y `crm.escalacion.dias_en_evaluacion`.
+
+---
+
+## 4. Migración de Consolidación (21K → ~5,994)
+
+### Estrategia
+
+**Comando:** `crm:consolidate-opportunities`
+
+Para cada `crm_contact`:
+1. Obtener todas sus `crm_opportunities` ordenadas por `created_at ASC`
+2. Tomar la **más antigua** como oportunidad canónica (la que más historial tiene)
+3. Mover todas las demás oportunidades a actividades en la canónica
+4. Determinar etapa inicial con mapeo automático (ver tabla abajo)
+5. Actualizar `crm_opportunity_id` en tablas clínicas para apuntar a la canónica
+6. Borrar las oportunidades no-canónicas
+
+### Mapeo automático de etapa inicial
+
+El comando revisa todos los registros clínicos del paciente y asigna la etapa según:
+
+| Condición (evaluada en orden) | Etapa asignada |
+|-------------------------------|----------------|
+| Alguna `solicitud_procedimiento` con estado `en_proceso` | `en_evaluacion` |
+| Alguna `solicitud_procedimiento` con estado `aprobada` | `contactado` |
+| Registro clínico más reciente < 30 días | `nuevo` |
+| Registro clínico más reciente 30–90 días | `contactado` |
+| Todos los registros clínicos > 6 meses | `ganado` (procedimiento histórico ya entregado) |
+| Sin registros clínicos identificables | `nuevo` |
+
+### Estimación de impacto
+
+| Métrica | Antes | Después |
+|---------|-------|---------|
+| crm_opportunities | 21,505 | ~5,994 |
+| crm_activities | existentes | existentes + actividades migradas |
+| Filas duplicadas visibles | TATIANA ×3 | TATIANA ×1 con 3 actividades |
+
+---
+
+## 5. Arquitectura de Eventos — sin cambios
+
+El listener ya existe y funciona sincrónico. El cambio es que cuando entra un evento para un contacto **que ya tiene oportunidad**, en lugar de crear una nueva oportunidad se crea una actividad en la existente.
 
 ```
-Evento entrante
+Evento entrante (WhatsappLeadQualified | SolicitudCreada | ExamenSolicitado)
   → CrmContactResolverService::resolve($payload)
-      → ¿Tiene cédula? → firstOrCreate por cédula  (strong match)
-      → ¿Solo teléfono? → firstOrCreate por phone   (provisional)
-      → ¿Cédula nueva pero teléfono ya existe? → merge propuesto
-  → CrmOpportunityService::createFromEvent($contact, $event, $stage)
-      → Crea crm_opportunity con source_id + source_type
-      → Registra crm_activity tipo 'cambio_etapa' (Sistema)
+      → Encuentra o crea crm_contact
+  → CrmOpportunityService::upsertFromEvent($contact, $event)
+      → ¿Ya tiene oportunidad?
+          SÍ → crear crm_activity en la existente (type = examen|solicitud|whatsapp)
+          NO → crear crm_opportunity (stage = nuevo, phase = operational)
+               + crear primera crm_activity
 ```
 
-### Trazabilidad bidireccional
-
-- Desde CRM → `source_id + source_type` lleva al registro original (Solicitud, Examen, WA Lead)
-- Desde Solicitud/Examen → `crm_opportunity_id` (campo agregado en tabla origen) lleva al CRM
+**Método nuevo en `CrmOpportunityService`:** `upsertFromEvent()` — reemplaza `createFromEvent()`.
 
 ---
 
-## 4. Resolución de Contacto (deduplicación)
+## 6. Panel Comercial — UI
 
-El punto más frágil del sistema. Dos niveles de confianza:
+### Stack
 
-### Nivel 1 — Identificación fuerte (cédula disponible)
-Aplica cuando: Solicitudes, Examenes, o WhatsApp con cédula compartida.
-```php
-$contact = CrmContact::firstOrCreate(['cedula' => $cedula], [...]);
-// resolution: identified o linked si ya tiene patient_id
-```
+React + Vite (ya configurado). La app continúa montada en `GET /crm` dentro del layout `medforge.blade.php`.
 
-### Nivel 2 — Identificación provisional (solo teléfono)
-Aplica cuando: WhatsApp sin cédula compartida. La oportunidad **sí se crea** — no se bloquea.
-```php
-$contact = CrmContact::firstOrCreate(['phone' => $waNumber, 'cedula' => null], [
-    'resolution' => 'provisional', ...
-]);
-```
+### Design system: MedForge (no Tailwind genérico)
 
-### Flujo de resolución posterior
-1. Comercial ingresa cédula en el panel de detalle
-2. Sistema busca: ¿existe `crm_contact` con esa cédula?
-   - **No existe** → actualiza el contacto provisional, `resolution = identified`
-   - **Sí existe** → propone fusión: el comercial confirma con un clic, oportunidades se consolidan bajo un solo contacto
-3. Al vincular con `patient_id` → `resolution = linked`
+El panel anterior usaba clases Tailwind genéricas (`bg-slate-100`, `border-slate-200`) que no corresponden al estilo de MedForge. El nuevo panel usa el design system de `medforge-design-system.css`:
 
----
+**Tokens CSS a usar:**
+- Fondo de página: `var(--bg-soft)` (#f3f6f9)
+- Superficies/cards: `var(--bg-surface)` (#ffffff)
+- Bordes: `var(--border)` (#e4e6ef), suave: `var(--border-soft)`
+- Texto: `var(--fg-1)` (#172b4c) principal, `var(--fg-2)` secundario, `var(--fg-mute)` muted
+- Primary: `var(--primary)` (#5156be) y `var(--primary-fade)` para fondos
+- Ganado/success: `var(--success)` (#05825f) + `var(--success-light)`
+- Escalación/warning: `var(--warning)` (#ffa800) + `var(--warning-light)`
+- Perdido/danger: `var(--danger)` (#ee3158) + `var(--danger-light)`
+- Operativo (info): `var(--info)` (#3596f7) + `var(--info-light)`
 
-## 5. Panel Comercial — UI
+**Patrones de componentes:**
+- Contenedores: `border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-surface); box-shadow: var(--shadow-xs)`
+- Botones: `btn btn-primary` (MedForge/Bootstrap), `btn btn-sm` para acciones de fila
+- Badges de etapa: `background: var(--primary-fade); color: var(--primary)` para primary, semánticos por etapa
+- Tabla: header con `font-size: 11px; text-transform: uppercase; color: var(--fg-1)`, rows con `border-color: var(--border-soft)`
+- Tipografía: `font-family: var(--font-body)` (IBM Plex Sans); valores KPI con `var(--font-display)` (Rubik)
+- Actividades clínicas: usar los colores de categoría — `var(--cat-examen-bg)`/`var(--cat-examen-fg)`, `var(--cat-cirugia-bg)`/`var(--cat-cirugia-fg)`
 
-### Stack frontend: React + Vite (mini-SPA embebida)
-Laravel sirve `GET /crm` → Blade shell → monta la app React. Toda la interactividad (filtros, panel de detalle, timeline en tiempo real vía Pusher) vive en React. Los datos llegan por las rutas JSON del punto 7. Tailwind CSS 4 para estilos (ya configurado).
+**Inyección de tokens en React:** El React se monta dentro del layout MedForge que ya carga el CSS. Los componentes usan `style={{ color: 'var(--fg-1)' }}` o un archivo `crm-panel.css` separado que referencia las variables — no clases Tailwind hardcodeadas.
 
-### Vista principal: Lista con filtros
+### Cambios en la tabla principal
 
-- **Barra de stats** con 5 KPIs del día: sin contactar, activas total, ganadas este mes, tiempo de respuesta promedio, tasa de conversión
-- **Filtros rápidos** como chips: Todas · Urgentes · Nuevas · Propuesta · Por fuente (WA / Solicitudes / Exámenes)
-- **Tabla de oportunidades** con columnas: Paciente/Contacto · Etapa · Origen · Asignado a · Tiempo · Acción
-- **Filas urgentes** (sin contactar > umbral configurable) resaltadas en amarillo con ícono de alerta
-- **Badge de resolución** por contacto: provisional / identificado / vinculado
-- **Botón de acción contextual** por fila (cambia según etapa): Contactar · Avanzar · Seguimiento · Ver detalle
+| Antes | Ahora |
+|-------|-------|
+| TATIANA PINEDA ×3 filas | TATIANA PINEDA ×1 fila |
+| Colores Tailwind genéricos (slate/blue) | Tokens MedForge (primary #5156be, etc.) |
+| Sin indicador de fase | Badge `Operativo` (info) / `Comercial` (success) |
+| Sin historial de actividad | `last_activity_at` visible en `var(--fg-mute)` |
+| Sin escalación visible | Fila con fondo `var(--warning-light)` + "Escala en X días" |
 
-### Panel de detalle (50% del cuerpo, estilo PerfexCRM/Notion)
+### Panel de detalle
 
-Se abre al hacer clic en cualquier fila. Dos columnas internas:
-
-**Columna izquierda — datos y acciones:**
-- Card del contacto con avatar, nombre, teléfono, cédula, email, badge de resolución
-- Vínculo al origen (link directo a Solicitud/Examen/WA Lead)
-- Selector visual de etapa (6 chips clicables)
-- Asignación con opción de cambiar
-- Botones de acción rápida: Llamar / Enviar email / Marcar como perdido
-
-**Columna derecha — actividad:**
-- Campo de texto para registrar nota/actividad (con botón Guardar)
-- Timeline vertical con tarjetas por evento: cambios de etapa, notas del comercial, eventos del sistema
-
-### Diseño UX para usuario digitalmente limitado
-- Un solo CTA por fila (el más relevante según etapa)
-- Etiquetas con íconos en todo — sin íconos solos
-- Filas urgentes visualmente distintas sin necesidad de leer el texto
-- Cambiar etapa = un clic en el chip, sin dropdown ni confirmación extra
-
----
-
-## 6. Servicios Laravel a crear
-
-| Servicio | Responsabilidad |
-|---------|----------------|
-| `CrmContactResolverService` | Deduplicación, resolución provisional/identificado/linked, propuesta de merge |
-| `CrmOpportunityService` | CRUD de oportunidades, cambios de etapa, registro de actividad |
-| `CrmActivityService` | Registro de notas, llamadas, eventos del sistema |
-| `CrmStatsService` | Cálculo de KPIs del panel (urgentes, conversión, tiempo respuesta) |
+- La **línea de tiempo** muestra todas las actividades: exámenes, solicitudes, notas, llamadas, WA, cambios de etapa — cada tipo con su color de categoría MedForge
+- Cada actividad clínica tiene link "Ver en módulo" → navega al registro original
+- Indicador de fase visible y editable por comercial (con confirmación)
+- Selector visual de etapa: 7 chips en fila, activo con `background: var(--primary); color: #fff`
 
 ---
 
@@ -199,44 +266,60 @@ Se abre al hacer clic en cualquier fila. Dos columnas internas:
 
 | Ruta | Controlador | Acción |
 |------|------------|-------|
-| `GET /crm` | `CrmUiController::index` | Panel comercial (SPA parcial) |
-| `GET /crm/opportunities` | `CrmOpportunityController::index` | Lista con filtros (JSON) |
-| `GET /crm/opportunities/{id}` | `CrmOpportunityController::show` | Detalle (JSON) |
-| `PATCH /crm/opportunities/{id}` | `CrmOpportunityController::update` | Cambio de etapa / asignación |
+| `GET /crm` | `CrmUiController::index` | Panel SPA |
+| `GET /crm/opportunities` | `CrmOpportunityController::index` | Lista con filtros (JSON), paginada |
+| `GET /crm/opportunities/{id}` | `CrmOpportunityController::show` | Detalle con actividades (JSON) |
+| `PATCH /crm/opportunities/{id}` | `CrmOpportunityController::update` | Cambio de etapa / asignación / fase |
 | `POST /crm/opportunities` | `CrmOpportunityController::store` | Registro manual |
-| `POST /crm/opportunities/{id}/activities` | `CrmActivityController::store` | Agregar nota/llamada |
-| `GET /crm/contacts` | `CrmContactController::index` | Lista de contactos |
-| `PATCH /crm/contacts/{id}` | `CrmContactController::update` | Identificar / vincular cédula |
-| `POST /crm/contacts/{id}/merge` | `CrmContactController::merge` | Fusión de duplicados |
-| `GET /crm/stats` | `CrmStatsController::index` | KPIs del panel |
+| `POST /crm/opportunities/{id}/activities` | `CrmActivityController::store` | Nota/llamada |
+| `GET /crm/contacts` | `CrmContactController::index` | Lista contactos |
+| `PATCH /crm/contacts/{id}` | `CrmContactController::update` | Identificar / cédula |
+| `POST /crm/contacts/{id}/merge` | `CrmContactController::merge` | Fusión duplicados |
+| `GET /crm/stats` | `CrmStatsController::index` | KPIs |
 
 ---
 
-## 8. Impacto en planes Onda 5-B y Onda 5-C
+## 8. Servicios
 
-### Onda 5-B (CRM Leads) — **REEMPLAZADA**
-El plan original portaba 8 rutas de leads legacy. Con esta reinvención:
-- El concepto "lead" desaparece — se reemplaza por `crm_contacts + crm_opportunities`
-- Las rutas `/crm/leads/{id}`, `/crm/leads/{id}/profile`, etc. **no se portan** — se reemplazan por las rutas nuevas del punto 7
-- La ruta `POST /crm/leads/convert` se convierte en `PATCH /crm/contacts/{id}` (vincular a patient_id)
-- La `CrmUiController` sí se crea (como se planificaba), pero sirve el nuevo panel
-
-### Onda 5-C (CRM Entities + Delete) — **PARCIALMENTE VIGENTE**
-- **Projects, Tasks, Tickets, Proposals:** se portan igual, no cambian con esta reinvención
-- **Agregar `/crm` al bridge:** vigente, pero las rutas son las nuevas del punto 7
-- **Eliminar `modules/CRM/`:** vigente — el legacy se elimina al terminar
-
-### Orden de ejecución recomendado
-1. **Onda 5-CRM-Core** (nueva): migraciones + modelos + eventos + listeners + servicios
-2. **Onda 5-CRM-UI** (nueva): panel comercial, controladores, rutas, Blade/Livewire
-3. **Onda 5-C reducida**: Projects, Tasks, Tickets, Proposals + bridge + delete legacy
+| Servicio | Responsabilidad clave |
+|---------|----------------------|
+| `CrmContactResolverService` | Deduplicación. Sin cambios — ya funciona. |
+| `CrmOpportunityService` | Agregar `upsertFromEvent()`. Lógica de "crear o agregar actividad". Recalcular `escalation_at` al registrar actividad. |
+| `CrmActivityService` | Agregar soporte para types clínicos (`examen`, `solicitud`, `whatsapp`). |
+| `CrmStatsService` | Agregar KPIs de fase (cuántas en operativo vs comercial, tasa de escalación). |
+| `CrmEscalationService` | Nuevo. Lógica de escalación, invocado por el comando `crm:escalate`. |
 
 ---
 
-## 9. Decisiones técnicas pendientes para el plan
+## 9. Comandos artisan
 
-- [x] **Frontend: React + Vite** — el proyecto ya tiene Vite configurado y Pusher.js instalado. El panel CRM es una mini-SPA React montada en una ruta Laravel (`GET /crm`). El resto del app sigue en Blade — no hay conflicto.
-- [x] **Queued listeners con fallback síncrono** — `CrmOpportunityListener implements ShouldQueue`. No bloquea al usuario al guardar Solicitudes/Examenes, reintentos automáticos si falla. Si no hay worker activo (dev local sin Redis), Laravel ejecuta síncrono automáticamente como fallback.
-- [x] **Migrar leads existentes** — los leads del CRM legacy se migran a `crm_contacts + crm_opportunities` como parte del plan de implementación. Un comando artisan `crm:migrate-legacy-leads` manejará la migración con mapeo de fuentes.
-- [x] **Thresholds de urgencia configurables desde Settings** — defaults: 6h WhatsApp, 48h Solicitudes y Exámenes. Configurables en el módulo Settings para que el equipo comercial los ajuste sin tocar código. Clave sugerida: `crm.urgency_threshold_hours.whatsapp`, `crm.urgency_threshold_hours.solicitud`, `crm.urgency_threshold_hours.examen`.
-- [x] **Trigger de `ExamenSolicitado`** — se dispara cuando el sistema detecta un examen ordenado que **aún no tiene pago ni confirmación operativa asociada**. No cuando el médico lo ordena (eso puede ser sin intención de pago inmediato), sino cuando el examen queda en estado pendiente de confirmación operativa.
+| Comando | Cuándo ejecutar |
+|---------|----------------|
+| `crm:consolidate-opportunities` | **Una vez** en producción (migración). Tiene `--dry-run`. |
+| `crm:escalate` | Diario (cron). Escala oportunidades por tiempo. |
+| `crm:backfill-clinical` | Ya existe. Respaldo por si quedan registros sin `crm_opportunity_id`. |
+
+---
+
+## 10. Impacto en planes existentes
+
+### Planes Onda 5-B y 5-C — **REEMPLAZADOS**
+
+Las ondas 5-B y 5-C ya están **parcialmente implementadas**. Esta reinvención requiere:
+
+1. **Nueva migración** (`ALTER TABLE crm_opportunities` + nuevas columnas `phase`, `last_activity_at`, `escalation_at`)
+2. **Cambio de enum** de etapas en la tabla (requiere `ALTER TABLE` con los nuevos valores)
+3. **`upsertFromEvent()`** en `CrmOpportunityService` — el listener necesita este método
+4. **UNIQUE constraint en `contact_id`** — consolidación primero, luego `ALTER TABLE crm_opportunities ADD UNIQUE(contact_id)` en una migración separada
+5. **React UI** — cambios visuales de fase + indicadores de escalación
+6. **`crm:escalate` command** — nuevo
+7. **`crm:consolidate-opportunities` command** — nuevo, ejecutar en producción tras migración
+
+### Orden de ejecución
+
+1. **Migración DB**: columnas nuevas + enum nuevo
+2. **Backend**: `upsertFromEvent()`, `CrmEscalationService`, comandos
+3. **Frontend**: UI de fase + indicadores
+4. **Datos**: ejecutar `crm:consolidate-opportunities --dry-run` → revisar → sin dry-run
+5. **Cron**: activar `crm:escalate` en el scheduler de Laravel
+6. **Settings**: agregar sección de escalación en UI de Settings

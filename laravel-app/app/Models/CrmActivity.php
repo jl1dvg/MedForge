@@ -11,12 +11,14 @@ class CrmActivity extends Model
     public $timestamps = false;
 
     protected $fillable = [
-        'opportunity_id', 'type', 'description', 'user_id',
+        'opportunity_id', 'type', 'description',
+        'user_id', 'source_id', 'source_type',
     ];
 
     protected $casts = [
         'opportunity_id' => 'integer',
         'user_id'        => 'integer',
+        'source_id'      => 'integer',
         'created_at'     => 'datetime',
     ];
 
@@ -24,6 +26,9 @@ class CrmActivity extends Model
     public const TYPE_LLAMADA      = 'llamada';
     public const TYPE_CAMBIO_ETAPA = 'cambio_etapa';
     public const TYPE_EMAIL        = 'email';
+    public const TYPE_EXAMEN       = 'examen';
+    public const TYPE_SOLICITUD    = 'solicitud';
+    public const TYPE_WHATSAPP     = 'whatsapp';
 
     public function opportunity(): BelongsTo
     {

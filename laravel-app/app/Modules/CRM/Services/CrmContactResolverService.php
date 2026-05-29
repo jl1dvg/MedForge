@@ -9,9 +9,28 @@ use Illuminate\Support\Facades\DB;
 class CrmContactResolverService
 {
     /**
+     * Normaliza teléfonos ecuatorianos a formato 10 dígitos (0XXXXXXXXX).
+     * +593981... y 593981... → 0981...
+     */
+    public static function normalizePhone(string $phone): string
+    {
+        $digits = preg_replace('/\D/', '', $phone);
+        if ($digits === null || $digits === '') {
+            return $phone;
+        }
+        if (strlen($digits) === 12 && str_starts_with($digits, '593')) {
+            return '0' . substr($digits, 3);
+        }
+        if (strlen($digits) === 11 && str_starts_with($digits, '93')) {
+            return '0' . substr($digits, 2);
+        }
+        return strlen($digits) >= 7 ? $digits : $phone;
+    }
+
+    /**
      * Encuentra o crea un contacto CRM resolviendo la identidad con la estrategia correcta.
      *
-     * Prioridad: cédula (fuerte) > teléfono provisional (débil)
+     * Prioridad: patient_id (más fuerte) > cédula > teléfono provisional (débil)
      */
     public function resolve(
         string $phone,
@@ -20,7 +39,22 @@ class CrmContactResolverService
         string $source,
         ?int $patientId = null,
     ): CrmContact {
+        $phone = self::normalizePhone($phone);
+
         return DB::transaction(function () use ($phone, $name, $cedula, $source, $patientId): CrmContact {
+            // 0. Match más fuerte por patient_id (único por paciente clínico)
+            if ($patientId !== null) {
+                $existing = CrmContact::query()->where('patient_id', $patientId)->first();
+                if ($existing instanceof CrmContact) {
+                    $existing->fill(['name' => $name]);
+                    if ($phone !== '' && $existing->phone === '') {
+                        $existing->phone = $phone;
+                    }
+                    $existing->save();
+                    return $existing;
+                }
+            }
+
             // 1. Match fuerte por cédula
             if ($cedula !== null && $cedula !== '') {
                 $existing = CrmContact::query()->byCedula($cedula)->first();

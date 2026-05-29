@@ -36,11 +36,14 @@ class CrmOpportunityListenerTest extends TestCase
             $table->unsignedBigInteger('contact_id')->index();
             $table->string('title', 255);
             $table->string('stage', 30)->default('nuevo');
+            $table->string('phase', 20)->default('operational');
             $table->string('source', 30)->default('manual');
             $table->unsignedBigInteger('source_id')->nullable();
             $table->string('source_type', 255)->nullable();
             $table->unsignedBigInteger('assigned_to')->nullable();
             $table->string('lost_reason', 500)->nullable();
+            $table->timestamp('last_activity_at')->nullable();
+            $table->timestamp('escalation_at')->nullable();
             $table->timestamps();
         });
         Schema::create('crm_activities', function (Blueprint $table): void {
@@ -49,6 +52,8 @@ class CrmOpportunityListenerTest extends TestCase
             $table->string('type', 30)->default('nota');
             $table->text('description');
             $table->unsignedBigInteger('user_id')->nullable();
+            $table->unsignedBigInteger('source_id')->nullable();
+            $table->string('source_type', 100)->nullable();
             $table->timestamp('created_at')->useCurrent();
         });
         Schema::create('whatsapp_leads', function (Blueprint $table): void {
@@ -85,7 +90,7 @@ class CrmOpportunityListenerTest extends TestCase
         $this->assertEquals('whatsapp', CrmOpportunity::query()->first()->source);
     }
 
-    public function test_solicitud_creada_creates_interesado_opportunity(): void
+    public function test_solicitud_creada_creates_nuevo_opportunity(): void
     {
         event(new SolicitudCreada(
             solicitudId: 42,
@@ -98,11 +103,11 @@ class CrmOpportunityListenerTest extends TestCase
         ));
 
         $this->assertEquals(1, CrmOpportunity::query()->count());
-        $this->assertEquals('interesado', CrmOpportunity::query()->first()->stage);
+        $this->assertEquals('nuevo', CrmOpportunity::query()->first()->stage);
         $this->assertEquals(42, CrmOpportunity::query()->first()->source_id);
     }
 
-    public function test_examen_solicitado_creates_propuesta_opportunity(): void
+    public function test_examen_solicitado_creates_nuevo_opportunity(): void
     {
         event(new ExamenSolicitado(
             examenId: 77,
@@ -115,7 +120,7 @@ class CrmOpportunityListenerTest extends TestCase
         ));
 
         $this->assertEquals(1, CrmOpportunity::query()->count());
-        $this->assertEquals('propuesta_enviada', CrmOpportunity::query()->first()->stage);
+        $this->assertEquals('nuevo', CrmOpportunity::query()->first()->stage);
         $this->assertEquals('examen', CrmOpportunity::query()->first()->source);
         $this->assertEquals(77, CrmOpportunity::query()->first()->source_id);
     }
@@ -139,5 +144,81 @@ class CrmOpportunityListenerTest extends TestCase
 
         $this->assertEquals(1, CrmContact::query()->count());
         $this->assertEquals(1, CrmOpportunity::query()->count());
+    }
+
+    public function test_upsert_creates_opportunity_when_contact_has_none(): void
+    {
+        $contact = \App\Models\CrmContact::query()->create([
+            'name' => 'Nuevo', 'phone' => '0999000010', 'resolution' => 'provisional', 'source' => 'examen',
+        ]);
+
+        $service = app(\App\Modules\CRM\Services\CrmOpportunityService::class);
+        $opp = $service->upsertFromEvent(
+            contact: $contact,
+            title: 'Examen: OCT Macular',
+            source: 'examen',
+            sourceId: 99,
+            sourceType: 'consulta_examenes',
+        );
+
+        $this->assertDatabaseHas('crm_opportunities', [
+            'contact_id' => $contact->id,
+            'stage'      => 'nuevo',
+            'phase'      => 'operational',
+        ]);
+        $this->assertDatabaseHas('crm_activities', [
+            'opportunity_id' => $opp->id,
+            'type'           => 'examen',
+            'source_id'      => 99,
+        ]);
+    }
+
+    public function test_upsert_creates_activity_when_contact_already_has_opportunity(): void
+    {
+        $contact = \App\Models\CrmContact::query()->create([
+            'name' => 'Existente', 'phone' => '0999000011', 'resolution' => 'provisional', 'source' => 'examen',
+        ]);
+        \App\Models\CrmOpportunity::query()->create([
+            'contact_id' => $contact->id, 'title' => 'Primera vez', 'stage' => 'contactado', 'source' => 'examen',
+        ]);
+
+        $before = \App\Models\CrmOpportunity::query()->where('contact_id', $contact->id)->count();
+
+        $service = app(\App\Modules\CRM\Services\CrmOpportunityService::class);
+        $service->upsertFromEvent(
+            contact: $contact,
+            title: 'Examen: Angiografía',
+            source: 'examen',
+            sourceId: 100,
+            sourceType: 'consulta_examenes',
+        );
+
+        // No new opportunity created
+        $this->assertEquals($before, \App\Models\CrmOpportunity::query()->where('contact_id', $contact->id)->count());
+        // Activity created
+        $this->assertDatabaseHas('crm_activities', ['source_id' => 100, 'type' => 'examen']);
+    }
+
+    public function test_log_clinical_creates_activity_with_source(): void
+    {
+        $contact = \App\Models\CrmContact::query()->create([
+            'name' => 'Test', 'phone' => '0999000001', 'resolution' => 'provisional', 'source' => 'examen',
+        ]);
+        $opp = \App\Models\CrmOpportunity::query()->create([
+            'contact_id' => $contact->id, 'title' => 'Test', 'stage' => 'nuevo', 'source' => 'examen',
+        ]);
+
+        $service = app(\App\Modules\CRM\Services\CrmActivityService::class);
+        $activity = $service->logClinical(
+            opportunityId: $opp->id,
+            type: \App\Models\CrmActivity::TYPE_EXAMEN,
+            description: 'OCT Macular realizado',
+            sourceId: 42,
+            sourceType: 'consulta_examenes',
+        );
+
+        $this->assertEquals('examen', $activity->type);
+        $this->assertEquals(42, $activity->source_id);
+        $this->assertEquals('consulta_examenes', $activity->source_type);
     }
 }

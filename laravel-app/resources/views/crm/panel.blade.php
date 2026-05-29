@@ -1,12 +1,16 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CRM — Panel Comercial</title>
-    @vite(['resources/css/app.css', 'resources/js/crm/main.tsx'])
-</head>
-<body class="bg-slate-100">
-    <div id="crm-root"></div>
-</body>
-</html>
+@extends('layouts.medforge')
+
+@php $pageTitle = 'Panel Comercial CRM'; @endphp
+
+@push('styles')
+@vite('resources/css/app.css')
+@vite('resources/css/crm-panel.css')
+@endpush
+
+@section('content')
+<div id="crm-root"></div>
+@endsection
+
+@push('scripts')
+@vite('resources/js/crm/main.tsx')
+@endpush

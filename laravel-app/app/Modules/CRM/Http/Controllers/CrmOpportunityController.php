@@ -26,6 +26,7 @@ class CrmOpportunityController
         $offset = max((int) $request->query('offset', 0), 0);
         $stage  = trim((string) $request->query('stage', ''));
         $source = trim((string) $request->query('source', ''));
+        $phase  = trim((string) $request->query('phase', ''));
         $search = trim((string) $request->query('search', ''));
         $urgent = filter_var($request->query('urgent', false), FILTER_VALIDATE_BOOLEAN);
 
@@ -37,6 +38,9 @@ class CrmOpportunityController
         if ($source !== '') {
             $query->where('source', $source);
         }
+        if ($phase !== '') {
+            $query->where('phase', $phase);
+        }
         if ($search !== '') {
             $query->whereHas('contact', fn ($q) => $q->where('name', 'like', "%{$search}%")
                 ->orWhere('cedula', 'like', "%{$search}%")
@@ -44,13 +48,12 @@ class CrmOpportunityController
             );
         }
         if ($urgent) {
-            $waH  = (int) config('crm.urgency_threshold_hours.whatsapp', 6);
-            $defH = (int) config('crm.urgency_threshold_hours.default', 48);
-            $query->urgent($waH, $defH);
+            $staleDays = (int) config('crm.escalacion.dias_contactado', 7);
+            $query->staleFor($staleDays * 24);
         }
 
         $total = $query->count();
-        $rows  = $query->orderBy('updated_at', 'asc')
+        $rows  = $query->orderByRaw('COALESCE(last_activity_at, created_at) ASC')
             ->limit($limit)->offset($offset)->get();
 
         return response()->json([
@@ -64,10 +67,9 @@ class CrmOpportunityController
         if (!Auth::check()) {
             return response()->json(['error' => 'Sesión expirada'], 401);
         }
-        $opp = CrmOpportunity::query()->with(['contact', 'activities'])->find($id);
-        if (!$opp instanceof CrmOpportunity) {
-            return response()->json(['error' => 'No encontrado'], 404);
-        }
+
+        $opp = CrmOpportunity::query()->with(['contact', 'activities'])->findOrFail($id);
+
         return response()->json(['data' => $opp]);
     }
 

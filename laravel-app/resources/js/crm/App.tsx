@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import type { CrmOpportunity } from './types';
+import type { CrmOpportunity, Phase } from './types';
 import type { ActiveFilters } from './components/FilterChips';
 import { useOpportunities } from './hooks/useOpportunities';
 import { useStats } from './hooks/useStats';
@@ -8,7 +8,7 @@ import { FilterChips } from './components/FilterChips';
 import { OpportunityTable } from './components/OpportunityTable';
 import { DetailPanel } from './components/DetailPanel';
 
-const DEFAULT_FILTERS: ActiveFilters = { stage: '', source: '', urgent: false, search: '' };
+const DEFAULT_FILTERS: ActiveFilters = { stage: '', source: '', phase: '', urgent: false, search: '' };
 
 export default function App() {
   const [filters, setFilters] = useState<ActiveFilters>(DEFAULT_FILTERS);
@@ -17,11 +17,12 @@ export default function App() {
   const apiFilters = {
     stage: filters.stage || undefined,
     source: filters.source || undefined,
+    phase: (filters.phase || undefined) as Phase | undefined,
     urgent: filters.urgent || undefined,
     search: filters.search || undefined,
   };
 
-  const { data, meta, loading, refresh } = useOpportunities(apiFilters);
+  const { data, meta, loading, error, refresh } = useOpportunities(apiFilters);
   const { stats } = useStats();
 
   const handleFilterChange = useCallback((partial: Partial<ActiveFilters>) => {
@@ -34,65 +35,45 @@ export default function App() {
   }, [refresh]);
 
   return (
-    <div className="flex h-screen bg-slate-100 overflow-hidden">
-      <aside className="w-52 bg-slate-800 flex flex-col flex-shrink-0">
-        <div className="px-4 py-5 border-b border-slate-700">
-          <p className="text-white font-bold text-base">MedForge</p>
-          <p className="text-slate-400 text-xs">Panel Comercial</p>
+    <div className="crm-panel-root">
+      <div className="crm-panel-header">
+        <div>
+          <h1 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--fg-1)', fontFamily: 'var(--font-display)' }}>
+            Pipeline Comercial
+          </h1>
+          <p style={{ margin: 0, fontSize: '.75rem', color: 'var(--fg-mute)' }}>
+            Oportunidades centralizadas — todas las fuentes
+          </p>
         </div>
-        <nav className="p-2 flex-1">
-          {[
-            { icon: 'O', label: 'Oportunidades', active: true, badge: stats?.urgent ?? 0 },
-            { icon: 'C', label: 'Contactos',     active: false, badge: 0 },
-            { icon: 'R', label: 'Reportes',      active: false, badge: 0 },
-          ].map(({ icon, label, active, badge }) => (
-            <div
-              key={label}
-              className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm cursor-pointer mb-0.5
-                ${active ? 'bg-blue-500 text-white' : 'text-slate-400 hover:bg-slate-700 hover:text-white'}`}
-            >
-              <span>{icon}</span>
-              <span>{label}</span>
-              {badge > 0 && (
-                <span className="ml-auto bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
-                  {badge}
-                </span>
-              )}
-            </div>
-          ))}
-        </nav>
-      </aside>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '.75rem' }}>
+          {stats && stats.urgent > 0 && (
+            <span style={{
+              background: 'var(--danger-light)', color: 'var(--danger)',
+              fontSize: '.75rem', fontWeight: 700, padding: '.25rem .75rem', borderRadius: 'var(--radius-pill)',
+            }}>
+              {stats.urgent} sin contactar
+            </span>
+          )}
+          <button className="btn btn-primary btn-sm">+ Nueva oportunidad</button>
+        </div>
+      </div>
 
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="bg-white border-b border-slate-200 px-6 h-14 flex items-center justify-between flex-shrink-0">
-          <h1 className="text-lg font-bold text-slate-900">Oportunidades</h1>
-          <button className="bg-blue-500 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-blue-600">
-            + Nueva oportunidad
-          </button>
-        </header>
-
-        <main className="flex-1 overflow-y-auto p-6">
-          <StatsBar stats={stats} />
-          <FilterChips
-            filters={filters}
-            total={meta.total}
-            urgentCount={stats?.urgent ?? 0}
-            onChange={handleFilterChange}
-          />
-          <OpportunityTable
-            opportunities={data}
-            loading={loading}
-            onSelect={setSelected}
-          />
-        </main>
+      <div className="crm-panel-body">
+        {error && (
+          <div style={{
+            marginBottom: '1rem', background: 'var(--danger-light)', border: `1px solid var(--danger)`,
+            color: 'var(--danger)', padding: '.75rem 1rem', borderRadius: 'var(--radius)', fontSize: '.8125rem',
+          }}>
+            {error}
+          </div>
+        )}
+        <StatsBar stats={stats} />
+        <FilterChips filters={filters} total={meta.total} urgentCount={stats?.urgent ?? 0} onChange={handleFilterChange} />
+        <OpportunityTable opportunities={data} loading={loading} onSelect={setSelected} />
       </div>
 
       {selected && (
-        <DetailPanel
-          opportunity={selected}
-          onClose={() => setSelected(null)}
-          onUpdated={handleUpdated}
-        />
+        <DetailPanel opportunity={selected} onClose={() => setSelected(null)} onUpdated={handleUpdated} />
       )}
     </div>
   );

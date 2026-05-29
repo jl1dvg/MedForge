@@ -9,12 +9,15 @@ class CrmStatsService
 {
     public function panelStats(): array
     {
-        $waHours      = (int) config('crm.urgency_threshold_hours.whatsapp', 6);
-        $defaultHours = (int) config('crm.urgency_threshold_hours.default', 48);
+        $escalaDias = (int) config('crm.escalacion.dias_contactado', 7);
 
         $active = CrmOpportunity::query()->active()->count();
 
-        $urgent = CrmOpportunity::query()->urgent($waHours, $defaultHours)->count();
+        // Stale = no activity in escalaDias days AND not yet commercial
+        $urgent = CrmOpportunity::query()
+            ->where('phase', CrmOpportunity::PHASE_OPERATIONAL)
+            ->staleFor($escalaDias * 24)
+            ->count();
 
         $wonThisMonth = CrmOpportunity::query()
             ->where('stage', CrmOpportunity::STAGE_GANADO)
@@ -25,7 +28,7 @@ class CrmStatsService
         $avgResponseHours = DB::table('crm_activities')
             ->join('crm_opportunities', 'crm_activities.opportunity_id', '=', 'crm_opportunities.id')
             ->where('crm_activities.type', 'cambio_etapa')
-            ->whereRaw("crm_activities.description LIKE '%nuevo%en_contacto%'")
+            ->whereRaw("crm_activities.description LIKE '%nuevo%contactado%'")
             ->avg(DB::raw('TIMESTAMPDIFF(HOUR, crm_opportunities.created_at, crm_activities.created_at)'));
 
         $total = CrmOpportunity::query()
@@ -42,11 +45,11 @@ class CrmStatsService
         $conversionRate = $total > 0 ? round(($won / $total) * 100) : 0;
 
         return [
-            'urgent'           => $urgent,
-            'active'           => $active,
-            'won_this_month'   => $wonThisMonth,
-            'avg_response_h'   => round((float) ($avgResponseHours ?? 0), 1),
-            'conversion_rate'  => $conversionRate,
+            'urgent'          => $urgent,
+            'active'          => $active,
+            'won_this_month'  => $wonThisMonth,
+            'avg_response_h'  => round((float) ($avgResponseHours ?? 0), 1),
+            'conversion_rate' => $conversionRate,
         ];
     }
 
@@ -58,6 +61,17 @@ class CrmStatsService
             ->selectRaw('stage, COUNT(*) as total')
             ->groupBy('stage')
             ->pluck('total', 'stage')
+            ->toArray();
+    }
+
+    /** @return array<string, int> */
+    public function byPhase(): array
+    {
+        return CrmOpportunity::query()
+            ->active()
+            ->selectRaw('phase, COUNT(*) as total')
+            ->groupBy('phase')
+            ->pluck('total', 'phase')
             ->toArray();
     }
 }

@@ -19,6 +19,7 @@ class CrmStatsController
             'data' => [
                 'panel'    => $this->statsService->panelStats(),
                 'by_stage' => $this->statsService->byStage(),
+                'by_phase' => $this->statsService->byPhase(),
             ],
         ]);
     }

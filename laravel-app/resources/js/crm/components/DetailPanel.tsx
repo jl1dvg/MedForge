@@ -11,11 +11,16 @@ interface Props {
   onUpdated: (opp: CrmOpportunity) => void;
 }
 
-const RESOLUTION_BADGE: Record<string, string> = {
-  provisional: 'bg-yellow-100 text-yellow-700',
-  identified:  'bg-sky-100 text-sky-700',
-  linked:      'bg-green-100 text-green-700',
+const RESOLUTION_STYLE: Record<string, React.CSSProperties> = {
+  provisional: { background: 'var(--warning-light)', color: 'var(--warning)' },
+  identified:  { background: 'var(--info-light)',    color: 'var(--info)' },
+  linked:      { background: 'var(--success-light)', color: 'var(--success)' },
 };
+
+const RESOLUTION_LABEL: Record<string, string> = {
+  provisional: 'Provisional', identified: 'Identificado', linked: 'Vinculado',
+};
+
 
 export function DetailPanel({ opportunity: initial, onClose, onUpdated }: Props) {
   const [opp, setOpp] = useState(initial);
@@ -23,10 +28,13 @@ export function DetailPanel({ opportunity: initial, onClose, onUpdated }: Props)
 
   const handleStageChange = async (stage: Stage) => {
     setStageLoading(true);
-    const updated = await api.opportunities.update(opp.id, { stage });
-    setOpp(updated);
-    onUpdated(updated);
-    setStageLoading(false);
+    try {
+      const updated = await api.opportunities.update(opp.id, { stage });
+      setOpp(updated);
+      onUpdated(updated);
+    } finally {
+      setStageLoading(false);
+    }
   };
 
   const handleSaveNote = async (type: string, description: string) => {
@@ -37,65 +45,83 @@ export function DetailPanel({ opportunity: initial, onClose, onUpdated }: Props)
   };
 
   const contact = opp.contact;
-  const activities = opp.activities ?? [];
   const resolution = contact?.resolution ?? 'provisional';
 
   return (
-    <div className="fixed inset-y-0 right-0 w-1/2 bg-white shadow-2xl border-l border-slate-200 z-50 flex flex-col">
-      <div className="px-5 py-4 border-b border-slate-200 flex items-start justify-between flex-shrink-0">
-        <div>
-          <h2 className="text-lg font-extrabold text-slate-900">{contact?.name ?? '—'}</h2>
-          <div className="flex items-center gap-2 mt-1 flex-wrap">
-            <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${RESOLUTION_BADGE[resolution] ?? ''}`}>
-              {resolution === 'linked' ? 'vinculado' : resolution === 'identified' ? 'identificado' : 'provisional'}
-            </span>
+    <div className="crm-detail-panel">
+      <div className="crm-detail-header">
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--fg-1)', fontFamily: 'var(--font-display)' }}>
+              {contact?.name ?? '—'}
+            </h2>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '.375rem', marginTop: '.375rem', flexWrap: 'wrap' }}>
+              <span className={`crm-phase-badge ${opp.phase}`}>
+                {opp.phase === 'operational' ? 'Operativo' : 'Comercial'}
+              </span>
+              <span style={{
+                fontSize: '.6875rem', fontWeight: 700, padding: '.15rem .45rem',
+                borderRadius: 'var(--radius-pill)', ...RESOLUTION_STYLE[resolution],
+              }}>
+                {RESOLUTION_LABEL[resolution]}
+              </span>
+            </div>
           </div>
+          <button
+            onClick={onClose}
+            style={{
+              width: '2rem', height: '2rem', borderRadius: 'var(--radius-sm)',
+              border: '1px solid var(--border)', background: 'transparent',
+              cursor: 'pointer', color: 'var(--fg-mute)', fontSize: '1.25rem', lineHeight: 1,
+            }}
+          >
+            ×
+          </button>
         </div>
-        <button onClick={onClose} className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center text-slate-400 hover:bg-slate-100">
-          X
-        </button>
       </div>
 
-      <div className="flex flex-1 overflow-hidden">
-        <div className="w-1/2 border-r border-slate-100 overflow-y-auto p-5 flex flex-col gap-5">
+      <div className="crm-detail-body">
+        {/* Left: contact info + stage selector + actions */}
+        <div className="crm-detail-left">
           <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">Contacto</p>
-            <div className="bg-slate-50 rounded-xl p-3 text-sm space-y-1.5">
-              <p className="text-slate-700">{contact?.phone ?? '—'}</p>
-              {contact?.cedula && <p className="text-slate-700">{contact.cedula}</p>}
-              {contact?.email && <p className="text-blue-500">{contact.email}</p>}
+            <p className="crm-section-label">Contacto</p>
+            <div className="crm-contact-info">
+              <p style={{ margin: '0 0 .25rem', fontSize: '.8125rem', color: 'var(--fg-2)' }}>{contact?.phone ?? '—'}</p>
+              {contact?.cedula && <p style={{ margin: '0 0 .25rem', fontSize: '.8125rem', color: 'var(--fg-2)' }}>{contact.cedula}</p>}
+              {contact?.email && <p style={{ margin: 0, fontSize: '.8125rem', color: 'var(--primary)' }}>{contact.email}</p>}
             </div>
           </div>
 
           <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">Origen</p>
-            <div className="inline-flex items-center gap-2 bg-slate-100 rounded-lg px-3 py-2 text-sm text-blue-600 font-semibold">
-              Ver {opp.source} #{opp.source_id}
-            </div>
+            <p className="crm-section-label">Etapa actual</p>
+            <StageSelector current={opp.stage} onChange={s => { void handleStageChange(s); }} loading={stageLoading} />
           </div>
 
-          <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">Etapa actual</p>
-            <StageSelector current={opp.stage} onChange={(s) => { void handleStageChange(s); }} loading={stageLoading} />
-          </div>
-
-          <div className="mt-auto grid grid-cols-2 gap-2">
-            <button className="bg-amber-500 text-white text-sm font-semibold py-2.5 rounded-lg hover:bg-amber-600">Llamar</button>
-            <button className="bg-violet-500 text-white text-sm font-semibold py-2.5 rounded-lg hover:bg-violet-600">Email</button>
-            <button className="col-span-2 bg-red-100 text-red-600 text-sm font-semibold py-2.5 rounded-lg hover:bg-red-200">
+          <div className="crm-action-grid">
+            <button className="btn btn-sm" style={{ background: 'var(--warning-light)', color: 'var(--fg-1)', border: 'none' }}>
+              📞 Llamar
+            </button>
+            <button className="btn btn-sm" style={{ background: 'var(--info-light)', color: 'var(--info)', border: 'none' }}>
+              ✉ Email
+            </button>
+            <button className="btn btn-sm" style={{
+              gridColumn: '1 / -1', background: 'var(--danger-light)',
+              color: 'var(--danger)', border: '1px solid var(--danger-light)',
+            }}>
               Marcar como perdido
             </button>
           </div>
         </div>
 
-        <div className="w-1/2 overflow-y-auto p-5 bg-slate-50 flex flex-col gap-5">
+        {/* Right: note form + activity timeline */}
+        <div className="crm-detail-right">
           <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">Registrar actividad</p>
+            <p className="crm-section-label">Registrar actividad</p>
             <NoteForm onSave={handleSaveNote} />
           </div>
           <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3">Historial</p>
-            <ActivityTimeline activities={activities} />
+            <p className="crm-section-label">Historial</p>
+            <ActivityTimeline activities={opp.activities ?? []} />
           </div>
         </div>
       </div>
