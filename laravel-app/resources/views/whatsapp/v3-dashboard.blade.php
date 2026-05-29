@@ -516,10 +516,15 @@ body:has(.wad) { overflow: hidden; }
     (function () {
         const el = document.getElementById('wad-chart-handoffs');
         if (!el) return;
+        const wrapLabel = (str, max = 16) => {
+            if (str.length <= max) return str;
+            const mid = str.lastIndexOf(' ', max);
+            return mid > 0 ? [str.slice(0, mid), str.slice(mid + 1)] : [str.slice(0, max), str.slice(max)];
+        };
         new Chart(el, {
             type: 'bar',
             data: {
-                labels: JSON.parse(el.dataset.labels || '[]'),
+                labels: JSON.parse(el.dataset.labels || '[]').map(l => wrapLabel(l)),
                 datasets: [
                     { label: 'En cola',   data: JSON.parse(el.dataset.queued   || '[]'), backgroundColor: '#ffa800', borderRadius: 0 },
                     { label: 'Asignadas', data: JSON.parse(el.dataset.assigned || '[]'), backgroundColor: '#3596f7', borderRadius: 0 },
