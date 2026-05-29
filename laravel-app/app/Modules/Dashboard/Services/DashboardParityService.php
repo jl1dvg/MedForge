@@ -115,13 +115,13 @@ class DashboardParityService
             [
                 'icon' => 'mdi-whatsapp',
                 'tone' => 'success',
-                'label' => 'WhatsApp pendientes',
-                'value' => (int) $whatsapp['unanswered'],
-                'trend' => (string) $whatsapp['source_label'],
+                'label' => 'Cola activa ahora',
+                'value' => (int) $whatsapp['cola_total'],
+                'trend' => ($whatsapp['saturada'] ? 'SATURADA' : 'Normal') . ' · ' . (int) $whatsapp['sin_asignar'] . ' sin asignar · ' . (int) $whatsapp['abandonadas_handoff'] . ' abandonadas con handoff',
                 'breakdown' => [
-                    ['dot' => 'danger',  'n' => (int) $whatsapp['sin_asignar'],        'label' => 'Sin asignar'],
-                    ['dot' => 'warning', 'n' => (int) $whatsapp['en_progreso'],         'label' => 'En progreso'],
-                    ['dot' => 'info',    'n' => (int) $whatsapp['esperando_paciente'],  'label' => 'Esp. paciente'],
+                    ['dot' => 'warning', 'n' => (int) $whatsapp['sin_asignar'],   'label' => 'Sin asignar'],
+                    ['dot' => 'primary', 'n' => (int) $whatsapp['ventana_24h'],   'label' => 'Ventana 24h'],
+                    ['dot' => 'danger',  'n' => (int) $whatsapp['req_plantilla'], 'label' => 'Req. plantilla'],
                 ],
             ],
         ];
@@ -326,50 +326,81 @@ class DashboardParityService
     }
 
         /**
-     * @return array{unanswered:int, sin_asignar:int, en_progreso:int, esperando_paciente:int, source_label:string}
+     * @return array{cola_total:int, sin_asignar:int, ventana_24h:int, req_plantilla:int, abandonadas_handoff:int, saturada:bool}
      */
     private function getWhatsappUnansweredStats(): array
     {
+        $empty = [
+            'cola_total'         => 0,
+            'sin_asignar'        => 0,
+            'ventana_24h'        => 0,
+            'req_plantilla'      => 0,
+            'abandonadas_handoff' => 0,
+            'saturada'           => false,
+        ];
+
         if (!$this->tableExists('whatsapp_conversations')) {
-            return [
-                'unanswered' => 0,
-                'sin_asignar' => 0,
-                'en_progreso' => 0,
-                'esperando_paciente' => 0,
-                'source_label' => 'Sin fuente conectada',
-            ];
+            return $empty;
         }
 
         try {
+            $threshold24h = date('Y-m-d H:i:s', strtotime('-24 hours'));
+
+            // Cola activa y sin asignar: desde whatsapp_handoffs (fuente canónica del WA dashboard)
+            $queueRow = null;
+            $sinAsignarVal = 0;
+            if ($this->tableExists('whatsapp_handoffs')) {
+                $queueRow = DB::selectOne(
+                    'SELECT
+                        SUM(CASE WHEN status IN ("queued","assigned") THEN 1 ELSE 0 END) AS total,
+                        SUM(CASE WHEN status = "queued" THEN 1 ELSE 0 END) AS sin_asignar
+                     FROM whatsapp_handoffs
+                     WHERE status IN ("queued","assigned")'
+                );
+                $sinAsignarVal = (int) ($queueRow->sin_asignar ?? 0);
+            }
+            $colaTotal = (int) ($queueRow->total ?? 0);
+
+            // Ventana 24h y req plantilla desde conversations
             $row = DB::selectOne(
                 'SELECT
-                    COUNT(*) AS unanswered,
-                    SUM(CASE WHEN assigned_user_id IS NULL THEN 1 ELSE 0 END) AS sin_asignar,
-                    SUM(CASE WHEN assigned_user_id IS NOT NULL
-                              AND last_message_direction = "inbound" THEN 1 ELSE 0 END) AS en_progreso,
-                    SUM(CASE WHEN assigned_user_id IS NOT NULL
-                              AND (last_message_direction IS NULL
-                                   OR last_message_direction != "inbound") THEN 1 ELSE 0 END) AS esperando_paciente
-                 FROM whatsapp_conversations
-                 WHERE needs_human = 1'
+                    SUM(CASE WHEN inb.last_inbound_at IS NOT NULL AND inb.last_inbound_at >= ? THEN 1 ELSE 0 END) AS ventana_24h,
+                    SUM(CASE WHEN inb.last_inbound_at IS NULL OR inb.last_inbound_at < ? THEN 1 ELSE 0 END) AS req_plantilla
+                 FROM whatsapp_conversations c
+                 LEFT JOIN (
+                     SELECT m.conversation_id, MAX(COALESCE(m.message_timestamp, m.created_at)) AS last_inbound_at
+                     FROM whatsapp_messages m WHERE m.direction = "inbound"
+                     GROUP BY m.conversation_id
+                 ) inb ON inb.conversation_id = c.id
+                 WHERE EXISTS (SELECT 1 FROM whatsapp_messages m2 WHERE m2.conversation_id = c.id)',
+                [$threshold24h, $threshold24h]
             );
-        } catch (Throwable) {
-            return [
-                'unanswered' => 0,
-                'sin_asignar' => 0,
-                'en_progreso' => 0,
-                'esperando_paciente' => 0,
-                'source_label' => 'Sin métrica disponible',
-            ];
-        }
 
-        return [
-            'unanswered'        => (int) ($row->unanswered ?? 0),
-            'sin_asignar'       => (int) ($row->sin_asignar ?? 0),
-            'en_progreso'       => (int) ($row->en_progreso ?? 0),
-            'esperando_paciente' => (int) ($row->esperando_paciente ?? 0),
-            'source_label'      => 'Requieren atención humana',
-        ];
+            // Abandonadas con handoff hoy
+            $abandonadas = 0;
+            if ($this->tableExists('whatsapp_handoffs')) {
+                $abRow = DB::selectOne(
+                    'SELECT COUNT(*) AS total FROM whatsapp_handoffs
+                     WHERE status = "expired" AND DATE(created_at) = CURDATE()'
+                );
+                $abandonadas = (int) ($abRow->total ?? 0);
+            }
+
+            $sinAsignar   = $sinAsignarVal;
+            $ventana24h   = (int) ($row->ventana_24h ?? 0);
+            $reqPlantilla = (int) ($row->req_plantilla ?? 0);
+
+            return [
+                'cola_total'          => $colaTotal,
+                'sin_asignar'         => $sinAsignar,
+                'ventana_24h'         => $ventana24h,
+                'req_plantilla'       => $reqPlantilla,
+                'abandonadas_handoff' => $abandonadas,
+                'saturada'            => $colaTotal > 50 || $sinAsignar > 30,
+            ];
+        } catch (Throwable) {
+            return $empty;
+        }
     }
 
     /**
