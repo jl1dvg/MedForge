@@ -178,9 +178,10 @@
 /* ===== WhatsApp Dashboard V3 — self-contained tokens + styles ===== */
 body:has(.wad) .content-wrapper,
 body:has(.wad) .content-wrapper > .content {
-    height: calc(100vh - 60px); overflow: hidden; padding: 0; margin: 0;
+    height: 100vh; overflow: hidden; padding: 0; margin: 0;
 }
-body:has(.wad) .content-header, body:has(.wad) .footer-main { display: none !important; }
+body:has(.wad) .main-header, body:has(.wad) .main-footer { display: none !important; }
+body:has(.wad) { overflow: hidden; }
 
 .wad {
     --primary:#5156be; --primary-hover:#3c40a0; --primary-light:#c8c9ee; --primary-fade:#edf2ff;
