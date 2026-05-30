@@ -283,6 +283,22 @@ class ConversationStartService
             ];
         }
 
+        if ($revision->header_type === 'location') {
+            $location = is_array($templateVariables['_location'] ?? null) ? $templateVariables['_location'] : [];
+            $components[] = [
+                'type' => 'header',
+                'parameters' => [[
+                    'type' => 'location',
+                    'location' => [
+                        'latitude'  => (string) ($location['latitude']  ?? '-2.0485221'),
+                        'longitude' => (string) ($location['longitude'] ?? '-79.8906157'),
+                        'name'      => (string) ($location['name']      ?? 'CIVE'),
+                        'address'   => (string) ($location['address']   ?? ''),
+                    ],
+                ]],
+            ];
+        }
+
         $bodyParameters = $this->buildTextParameterValues(
             (string) $revision->body_text,
             $contactName,
