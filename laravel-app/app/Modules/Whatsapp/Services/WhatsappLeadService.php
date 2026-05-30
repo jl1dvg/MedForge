@@ -169,6 +169,13 @@ class WhatsappLeadService
         $lead->status = $newStatus;
         $lead->save();
 
+        if ($newStatus === 'cerrado' && $lead->conversation_id) {
+            $conversation = WhatsappConversation::query()->find($lead->conversation_id);
+            if ($conversation instanceof WhatsappConversation) {
+                $this->resolveActiveHandoff($conversation, 0, 'Lead cerrado');
+            }
+        }
+
         return $this->serializeLead($lead);
     }
 

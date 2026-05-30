@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\ApplyBrowserTimezone;
 use App\Http\Middleware\LegacySessionBridge;
 use App\Http\Middleware\MarkLegacyAliasUsage;
 use App\Http\Middleware\EnsureWhatsappFeatureEnabled;
@@ -23,11 +24,9 @@ return Application::configure(basePath: dirname(__DIR__))
         apiPrefix: '',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        $middleware->encryptCookies(except: ['PHPSESSID']);
-        // Append instead of prepend so LegacySessionBridge runs AFTER Laravel's
-        // StartSession and VerifyCsrfToken — prevents PHP native session_start()
-        // from interfering with Laravel's session handler and causing 419 errors.
-        $middleware->web(append: [LegacySessionBridge::class]);
+        $middleware->encryptCookies(except: ['PHPSESSID', 'app_timezone']);
+        // LegacySessionBridge runs after Laravel session; ApplyBrowserTimezone reads cookie.
+        $middleware->web(append: [LegacySessionBridge::class, ApplyBrowserTimezone::class]);
         $middleware->api(append: [LegacySessionBridge::class]);
         $middleware->alias([
             'app.auth' => RequireAppSession::class,

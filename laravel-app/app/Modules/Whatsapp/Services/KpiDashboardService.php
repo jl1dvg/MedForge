@@ -131,6 +131,7 @@ class KpiDashboardService
                 'handoffs_by_role' => $this->handoffsByRole($fromSql, $toSql, $roleId, $agentId),
                 'handoffs_by_agent' => $this->handoffsByAgent($fromSql, $toSql, $roleId, $agentId),
                 'human_attention_by_agent' => $this->humanAttentionByAgent($fromSql, $toSql, $roleId, $agentId),
+                'agent_live_status' => $this->agentLiveStatus($roleId, $agentId),
                 'human_response_by_queue' => $this->humanResponseByQueue($fromSql, $toSql, $roleId, $agentId),
                 'sigcenter_bookings_by_sede' => $this->sigcenterBookingsBySede($fromSql, $toSql),
             ],
@@ -1315,11 +1316,13 @@ class KpiDashboardService
         $threshold24h = Carbon::now()->subHours(24);
         $peopleInboundSet = [];
         $peopleAttendedSet = [];
+        $peopleHandoffSet = [];
         $peopleLostSet = [];
         $attended = 0;
         $lost = 0;
         $lostWithHandoff = 0;
         $abandoned = 0;
+        $abandonedNeedsHuman = 0;
         $abandonedWithHandoff = 0;
         $resolved = 0;
         $responseSeconds = [];
@@ -1335,6 +1338,10 @@ class KpiDashboardService
             $handoffRequestedAt = isset($row->handoff_requested_at) ? Carbon::parse((string) $row->handoff_requested_at) : null;
             $firstHandoffAt = isset($row->first_handoff_at) ? Carbon::parse((string) $row->first_handoff_at) : null;
             $responseStart = $handoffRequestedAt ?? $firstHandoffAt;
+
+            if ($responseStart !== null && $waNumber !== '') {
+                $peopleHandoffSet[$waNumber] = true;
+            }
 
             if ($firstReply !== null) {
                 $attended++;
@@ -1357,6 +1364,9 @@ class KpiDashboardService
                 }
                 if ($lastInbound !== null && $lastInbound->lessThanOrEqualTo($threshold24h)) {
                     $abandoned++;
+                    if ((bool) ($row->needs_human ?? false)) {
+                        $abandonedNeedsHuman++;
+                    }
                     if ($responseStart !== null) {
                         $abandonedWithHandoff++;
                     }
@@ -1366,6 +1376,7 @@ class KpiDashboardService
 
         $peopleInbound = count($peopleInboundSet);
         $peopleAttended = count($peopleAttendedSet);
+        $peopleHandoff = count($peopleHandoffSet);
         $peopleLost = count($peopleLostSet);
         $avgSeconds = $responseSeconds !== [] ? array_sum($responseSeconds) / count($responseSeconds) : null;
         $medianSeconds = $this->median($responseSeconds);
@@ -1374,15 +1385,17 @@ class KpiDashboardService
 
         return [
             'people_inbound' => $peopleInbound,
+            'people_handoff' => $peopleHandoff,
             'inbound_conversations_human' => count($rows),
             'conversations_attended_human' => $attended,
             'people_attended_human' => $peopleAttended,
             'conversations_lost' => $lost,
             'people_lost' => $peopleLost,
             'conversations_lost_with_handoff' => $lostWithHandoff,
-            'attention_rate' => $peopleInbound > 0 ? round(($peopleAttended / $peopleInbound) * 100, 2) : 0.0,
-            'loss_rate' => $peopleInbound > 0 ? round(($peopleLost / $peopleInbound) * 100, 2) : 0.0,
+            'attention_rate' => $peopleHandoff > 0 ? round(($peopleAttended / $peopleHandoff) * 100, 2) : 0.0,
+            'loss_rate' => $peopleHandoff > 0 ? round(($peopleLost / $peopleHandoff) * 100, 2) : 0.0,
             'conversations_abandoned' => $abandoned,
+            'conversations_abandoned_needs_human' => $abandonedNeedsHuman,
             'conversations_abandoned_with_handoff' => $abandonedWithHandoff,
             'abandonment_rate' => $peopleInbound > 0 ? round(($abandoned / $peopleInbound) * 100, 2) : 0.0,
             'conversations_resolved' => $resolved,
@@ -1390,6 +1403,7 @@ class KpiDashboardService
             'avg_first_human_response_minutes' => $avgSeconds !== null ? round($avgSeconds / 60, 2) : null,
             'median_first_human_response_seconds' => $medianSeconds !== null ? round($medianSeconds, 2) : null,
             'median_first_human_response_minutes' => $medianSeconds !== null ? round($medianSeconds / 60, 2) : null,
+            'p75_first_human_response_minutes' => ($p75s = $this->percentile($responseSeconds, 75)) !== null ? (int) round($p75s / 60) : null,
             'peak_open_conversations' => $intervalPeak['count'],
             'peak_open_at' => $intervalPeak['at'],
         ];
@@ -1831,7 +1845,7 @@ class KpiDashboardService
         }
 
         return array_values(array_map(function (array $agent): array {
-            $p75 = $this->percentile75($agent['seconds']);
+            $p75 = $this->percentile($agent['seconds'], 75);
             return [
                 'user_id' => $agent['user_id'],
                 'agent_name' => $agent['agent_name'],
@@ -1839,6 +1853,54 @@ class KpiDashboardService
                 'p75_first_response_minutes' => $p75 !== null ? round($p75 / 60, 1) : null,
             ];
         }, $agents));
+    }
+
+    /**
+     * Estado en vivo por agente: conversaciones asignadas, sin leer y espera máxima.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function agentLiveStatus(?int $roleId = null, ?int $agentId = null): array
+    {
+        if (!Schema::hasTable('whatsapp_conversations')) {
+            return [];
+        }
+
+        $filter = $this->conversationScopeFilterSql('c', 'u', $roleId, $agentId, 'agent_live');
+        $lastMsgAt = Schema::hasColumn('whatsapp_conversations', 'last_message_at')
+            ? 'c.last_message_at'
+            : 'NULL';
+        $cutoff7d = Carbon::now()->subDays(7)->format('Y-m-d H:i:s');
+
+        $sql = 'SELECT
+                    c.assigned_user_id AS user_id,
+                    ' . $this->agentNameSql('u', 'c.assigned_user_id', 'Agente') . ' AS agent_name,
+                    COUNT(*) AS active_conversations,
+                    SUM(CASE WHEN c.unread_count > 0 THEN 1 ELSE 0 END) AS unread_conversations,
+                    MAX(CASE WHEN c.unread_count > 0 AND c.last_message_direction = "inbound"
+                             THEN TIMESTAMPDIFF(MINUTE, ' . $lastMsgAt . ', NOW())
+                             ELSE 0 END) AS max_unread_wait_minutes
+                FROM whatsapp_conversations c
+                LEFT JOIN users u ON u.id = c.assigned_user_id
+                WHERE c.needs_human = 1
+                  AND c.assigned_user_id IS NOT NULL
+                  AND COALESCE(' . $lastMsgAt . ', c.updated_at, c.created_at) >= ?';
+
+        $params = [$cutoff7d];
+        if ($filter['where'] !== '') {
+            $sql .= ' AND ' . $filter['where'];
+            $params = array_merge($params, array_values($filter['params']));
+        }
+        $sql .= ' GROUP BY c.assigned_user_id, agent_name
+                  ORDER BY unread_conversations DESC, active_conversations DESC';
+
+        return array_map(fn ($row) => [
+            'user_id'              => (int) ($row->user_id ?? 0),
+            'agent_name'           => (string) ($row->agent_name ?? ''),
+            'active_conversations' => (int) ($row->active_conversations ?? 0),
+            'unread_conversations' => (int) ($row->unread_conversations ?? 0),
+            'max_unread_wait_minutes' => (int) ($row->max_unread_wait_minutes ?? 0),
+        ], DB::select($sql, $params));
     }
 
     /**
@@ -1920,7 +1982,7 @@ class KpiDashboardService
         $order = ['critical_backlog' => 0, 'captacion' => 1, 'operacion' => 2, 'informacion' => 3];
         $rows = array_map(function (array $bucket): array {
             $seconds = $bucket['response_seconds'];
-            $p75    = $this->percentile75($seconds);
+            $p75    = $this->percentile($seconds, 75);
             $median = $this->median($seconds);
 
             unset($bucket['response_seconds']);
@@ -2585,6 +2647,7 @@ class KpiDashboardService
         $sql = 'SELECT
                     c.id AS conversation_id,
                     c.wa_number,
+                    c.needs_human,
                     ' . $handoffRequestedSelect . ',
                     MIN(m.message_timestamp) AS first_inbound_at,
                     MAX(m.message_timestamp) AS last_inbound_at
@@ -2599,7 +2662,7 @@ class KpiDashboardService
             $sql .= ' AND ' . $filter['where'];
             $params = array_merge($params, array_values($filter['params']));
         }
-        $sql .= ' GROUP BY c.id, c.wa_number';
+        $sql .= ' GROUP BY c.id, c.wa_number, c.needs_human';
         if (Schema::hasColumn('whatsapp_conversations', 'handoff_requested_at')) {
             $sql .= ', c.handoff_requested_at';
         }
@@ -3053,16 +3116,19 @@ class KpiDashboardService
         return ((float) $values[$middle - 1] + (float) $values[$middle]) / 2;
     }
 
-    /**
-     * @param array<int, int|float> $values
-     */
-    private function percentile75(array $values): ?float
+    private function percentile(array $values, float $p): ?float
     {
         if ($values === []) {
             return null;
         }
+
         sort($values, SORT_NUMERIC);
-        $index = (int) ceil(0.75 * count($values)) - 1;
-        return (float) $values[max(0, $index)];
+        $count = count($values);
+        $index = ($p / 100) * ($count - 1);
+        $lower = (int) floor($index);
+        $upper = (int) ceil($index);
+        $fraction = $index - $lower;
+
+        return (float) $values[$lower] + $fraction * ((float) ($values[$upper] ?? $values[$lower]) - (float) $values[$lower]);
     }
 }
