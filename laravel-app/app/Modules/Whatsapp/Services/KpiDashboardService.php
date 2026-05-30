@@ -1528,6 +1528,12 @@ class KpiDashboardService
             'limbo_unassigned' => 0,
             'limbo_assigned_inactive' => 0,
             'limbo_waiting_patient_overdue' => 0,
+            'operational_status_requires_attention_today' => 0,
+            'operational_status_requires_attention_week'  => 0,
+            'operational_status_requires_attention_older' => 0,
+            'priority_critical_today'  => 0,
+            'priority_critical_week'   => 0,
+            'priority_critical_older'  => 0,
         ];
 
         if (!Schema::hasTable('whatsapp_conversations')) {
@@ -1548,7 +1554,15 @@ class KpiDashboardService
 
         $fourHoursAgo = Carbon::now()->subHours(4)->format('Y-m-d H:i:s');
         $twentyFourHoursAgo = Carbon::now()->subHours(24)->format('Y-m-d H:i:s');
-        $params = [$fourHoursAgo, $twentyFourHoursAgo];
+        $oneDayAgo    = Carbon::now()->subHours(24)->format('Y-m-d H:i:s');
+        $sevenDaysAgo = Carbon::now()->subDays(7)->format('Y-m-d H:i:s');
+        $params = [$fourHoursAgo, $twentyFourHoursAgo,
+                   $oneDayAgo,
+                   $oneDayAgo, $sevenDaysAgo,
+                   $sevenDaysAgo,
+                   $oneDayAgo,
+                   $oneDayAgo, $sevenDaysAgo,
+                   $sevenDaysAgo];
         $sql = 'SELECT
                     SUM(CASE WHEN c.needs_human = 0 AND ' . $closedReasonSql . ' = "" AND NOT (' . $scheduledSql . ') THEN 1 ELSE 0 END) AS status_new,
                     SUM(CASE WHEN c.needs_human = 1 AND c.assigned_user_id IS NULL THEN 1 ELSE 0 END) AS status_requires_attention,
@@ -1558,6 +1572,12 @@ class KpiDashboardService
                     SUM(CASE WHEN c.needs_human = 0 AND ' . $closedReasonSql . ' = "resolved" THEN 1 ELSE 0 END) AS status_resolved,
                     SUM(CASE WHEN c.needs_human = 0 AND ' . $closedReasonSql . ' = "followup_closed" THEN 1 ELSE 0 END) AS status_closed_followup,
                     SUM(CASE WHEN c.needs_human = 0 AND ' . $closedReasonSql . ' IN ("not_interested", "no_response", "duplicate", "scheduled_elsewhere") THEN 1 ELSE 0 END) AS status_closed_other,
+                    SUM(CASE WHEN c.needs_human = 1 AND c.assigned_user_id IS NULL AND c.created_at >= ? THEN 1 ELSE 0 END) AS req_attention_today,
+                    SUM(CASE WHEN c.needs_human = 1 AND c.assigned_user_id IS NULL AND c.created_at < ? AND c.created_at >= ? THEN 1 ELSE 0 END) AS req_attention_week,
+                    SUM(CASE WHEN c.needs_human = 1 AND c.assigned_user_id IS NULL AND c.created_at < ? THEN 1 ELSE 0 END) AS req_attention_older,
+                    SUM(CASE WHEN c.needs_human = 1 AND c.assigned_user_id IS NULL AND c.unread_count > 0 AND c.created_at >= ? THEN 1 ELSE 0 END) AS priority_critical_today,
+                    SUM(CASE WHEN c.needs_human = 1 AND c.assigned_user_id IS NULL AND c.unread_count > 0 AND c.created_at < ? AND c.created_at >= ? THEN 1 ELSE 0 END) AS priority_critical_week,
+                    SUM(CASE WHEN c.needs_human = 1 AND c.assigned_user_id IS NULL AND c.unread_count > 0 AND c.created_at < ? THEN 1 ELSE 0 END) AS priority_critical_older,
                     SUM(CASE WHEN c.needs_human = 1 AND c.assigned_user_id IS NULL AND c.unread_count > 0 THEN 1 ELSE 0 END) AS priority_critical,
                     SUM(CASE WHEN c.needs_human = 1 AND c.assigned_user_id IS NOT NULL AND c.last_message_direction = "inbound" THEN 1 ELSE 0 END) AS priority_high,
                     SUM(CASE WHEN c.needs_human = 1 AND NOT (c.assigned_user_id IS NULL AND c.unread_count > 0) AND NOT (c.assigned_user_id IS NOT NULL AND c.last_message_direction = "inbound") THEN 1 ELSE 0 END) AS priority_normal,
@@ -1585,6 +1605,12 @@ class KpiDashboardService
         $defaults['operational_status_closed_followup'] = (int) ($row->status_closed_followup ?? 0);
         $defaults['operational_status_closed_other'] = (int) ($row->status_closed_other ?? 0);
         $defaults['priority_critical'] = (int) ($row->priority_critical ?? 0);
+        $defaults['operational_status_requires_attention_today'] = (int) ($row->req_attention_today ?? 0);
+        $defaults['operational_status_requires_attention_week']  = (int) ($row->req_attention_week  ?? 0);
+        $defaults['operational_status_requires_attention_older'] = (int) ($row->req_attention_older ?? 0);
+        $defaults['priority_critical_today']  = (int) ($row->priority_critical_today ?? 0);
+        $defaults['priority_critical_week']   = (int) ($row->priority_critical_week  ?? 0);
+        $defaults['priority_critical_older']  = (int) ($row->priority_critical_older ?? 0);
         $defaults['priority_high'] = (int) ($row->priority_high ?? 0);
         $defaults['priority_normal'] = (int) ($row->priority_normal ?? 0);
         $defaults['priority_low'] = (int) ($row->priority_low ?? 0);
@@ -1611,7 +1637,8 @@ class KpiDashboardService
         $now = Carbon::now()->format('Y-m-d H:i:s');
         $sql = 'SELECT
                     h.status,
-                    h.assigned_until
+                    h.assigned_until,
+                    COALESCE(h.queued_at, h.created_at) AS entered_at
                 FROM whatsapp_handoffs h
                 WHERE h.status IN ("queued", "assigned", "expired")';
         $params = [];
@@ -1624,13 +1651,19 @@ class KpiDashboardService
         $queued = 0;
         $assigned = 0;
         $overdue = 0;
+        $queuedToday   = 0;
+        $queuedBacklog = 0;
+        $threshold24hQ = Carbon::now()->subHours(24);
 
         foreach ($rows as $row) {
             $status = (string) ($row->status ?? '');
             $assignedUntil = $row->assigned_until ?? null;
+            $enteredAt = isset($row->entered_at) ? Carbon::parse((string) $row->entered_at) : null;
+            $isToday   = $enteredAt !== null && $enteredAt->greaterThan($threshold24hQ);
 
             if ($status === 'queued') {
                 $queued++;
+                $isToday ? $queuedToday++ : $queuedBacklog++;
                 continue;
             }
 
@@ -1640,10 +1673,12 @@ class KpiDashboardService
 
             if ($assignedUntil === null || (string) $assignedUntil > $now) {
                 $assigned++;
+                $isToday ? $queuedToday++ : $queuedBacklog++;
                 continue;
             }
 
             $overdue++;
+            $isToday ? $queuedToday++ : $queuedBacklog++;
         }
 
         return [
@@ -1651,6 +1686,8 @@ class KpiDashboardService
             'live_queue_assigned' => $assigned,
             'live_queue_assigned_overdue' => $overdue,
             'live_queue_total' => $queued + $assigned + $overdue,
+            'live_queue_today'   => $queuedToday,
+            'live_queue_backlog' => $queuedBacklog,
         ];
     }
 
