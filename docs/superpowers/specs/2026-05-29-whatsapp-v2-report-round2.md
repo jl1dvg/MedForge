@@ -189,11 +189,90 @@ Actualmente aparecen juntas. Se separan en dos bloques distintos con un divisor 
 
 ---
 
+## Componente 5: Diseño visual — sistema de tarjetas
+
+### Patrón único de KPI card (3 niveles siempre visibles)
+
+```
+┌─────────────────────────────────┐
+│ 🟡  Cobertura humana            │  ← título corto + ícono semáforo
+│     74%                         │  ← número grande
+│     74 de cada 100 personas que │  ← frase llana SIEMPRE visible
+│     escribieron recibieron      │    (sin necesidad de abrir ?)
+│     respuesta de un agente      │
+└─────────────────────────────────┘
+```
+
+- Semáforo: 🟢🟡🔴 (color + ícono, sin texto de estado)
+- Tooltip `?` se mantiene para detalle técnico, pero la frase llana lo hace opcional
+- Lenguaje mixto: título técnico corto + frase en lenguaje completamente llano debajo
+- Máximo 2 columnas (desktop + tablet)
+- Las 3 secciones abiertas por defecto al cargar
+
+### Frases llanas por KPI (reemplaza subtexto actual)
+
+| KPI actual | Frase llana nueva |
+|---|---|
+| `attention_rate 74%` | "74 de cada 100 personas que escribieron recibieron respuesta de un agente" |
+| `sla_response_rate 38%` | "Solo 38 de cada 100 respondidos dentro de los 15 min acordados" |
+| `conversations_attended_human` | "Conversaciones donde un agente respondió directamente" |
+| `conversations_lost_needs_human` | "Personas que pidieron ayuda y no recibieron respuesta" |
+| `conversations_resolved_by_bot` | "Personas que resolvieron solos o con el bot sin necesitar agente" |
+| `live_queue_today` | "Entraron hoy y siguen esperando respuesta" |
+| `live_queue_backlog` | "Llevan más de 24 horas sin respuesta — revisar" |
+
+### Layout Sección 1 — "Operación de hoy" (2 columnas)
+
+```
+┌─────────────────────┬─────────────────────┐
+│ DEL PERIODO         │ ESTADO AHORA MISMO  │
+│─────────────────────│─────────────────────│
+│ 🟡 74% Cobertura    │ 🔴 12 hoy           │
+│ 37 Atendidas        │    Requieren atención│
+│ 🔴 13 Necesitaban   │ 🟡 87 esta semana   │
+│    ayuda            │ ⚪ 319 backlog       │
+│ ✅ 62 Resueltas     │ [Ver conversaciones]│
+│    con bot          │                     │
+├─────────────────────┼─────────────────────┤
+│ Carga por agente    │ ¿Quién respondió    │
+│ (tabla)             │ más rápido? (tabla) │
+└─────────────────────┴─────────────────────┘
+```
+
+Divisor visual explícito con etiquetas "Del periodo seleccionado" vs "Estado actual (ahora mismo)".
+
+### Layout Sección 2 — "Rendimiento del canal"
+
+4 KPIs grandes en 2×2. Tabla "Primera respuesta por cola" con dos columnas de tiempo:
+
+```
+Cola        P75 laboral    P75 reloj    SLA
+Captación   42 min         4251 min     🔴
+Operación   18 min         35 min       🟡
+```
+
+Nota aclaratoria fija: _"El tiempo laboral descuenta horas fuera del horario de atención (L-S 08:00-18:00)"_
+
+### Layout Sección 3 — "Marketing" (2 tarjetas sin atender)
+
+```
+┌─────────────────────┬─────────────────────┐
+│ 🔴 13               │ ✅ 62               │
+│ Pidieron ayuda y    │ Resueltas sin       │
+│ no fueron atendidas │ agente humano       │
+│ 13 solicitaron      │ Bot, baja o cierre  │
+│ agente              │ natural             │
+└─────────────────────┴─────────────────────┘
+```
+
+---
+
 ## Criterios de éxito
 
-1. P75 con 10h de espera nocturna muestra `10h reloj / 2h laborales` — el semáforo usa 2h
-2. "Sin atender" son dos tarjetas: 13 rojas (reales) + 62 verdes (bot) — no 75 juntas confundiendo
-3. "418 Requieren atención" muestra desglose: 12 hoy / 87 semana / 319 backlog
-4. "105 En espera" tiene link a `/v2/whatsapp` con desglose hoy/backlog
-5. Label "Cobertura humana del canal" en lugar de frase confusa
-6. Usuarios sin experiencia técnica entienden qué acción tomar con cada número
+1. P75 con 10h de espera nocturna muestra `10h reloj / 2h laborales` — el semáforo usa tiempo laboral
+2. "Sin atender" son dos tarjetas: 🔴13 reales + ✅62 bot — no 75 juntas confundiendo
+3. "418 Requieren atención" muestra pills: 🔴12 hoy / 🟡87 semana / ⚪319 backlog con links
+4. "105 En espera" clickeable → `/v2/whatsapp` con desglose hoy/backlog visible
+5. Label "Cobertura humana del canal" + frase llana en lugar de "74% De cada 10..."
+6. Cada KPI tiene frase en lenguaje llano siempre visible sin necesidad de abrir tooltip
+7. Secciones abiertas al cargar, layout 2 columnas máximo, funciona en tablet
