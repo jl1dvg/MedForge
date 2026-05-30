@@ -51,7 +51,7 @@ class KpiDashboardService
             ),
         ];
 
-        $human = $this->humanAttentionSummary($fromSql, $toSql, $roleId, $agentId);
+        $human = $this->humanAttentionSummary($fromSql, $toSql, $roleId, $agentId, $slaTargetMinutes);
         $queue = $this->queueSummary($roleId, $agentId);
         $window = $this->conversationWindowSummary($roleId, $agentId);
         $sla = $this->slaSummary($fromSql, $toSql, $roleId, $agentId, $slaTargetMinutes);
@@ -1289,7 +1289,7 @@ class KpiDashboardService
     /**
      * @return array<string, mixed>
      */
-    private function humanAttentionSummary(string $fromSql, string $toSql, ?int $roleId, ?int $agentId): array
+    private function humanAttentionSummary(string $fromSql, string $toSql, ?int $roleId, ?int $agentId, int $slaTargetMinutes = 15): array
     {
         $scope = $this->inboundScopeSubquery($fromSql, $toSql, $roleId, $agentId, 'human_attention');
         $reply = $this->humanReplySubquery($roleId, $agentId, 'human_attention');
@@ -1428,6 +1428,12 @@ class KpiDashboardService
                 ? round($p75b / 60, 1) : null,
             'median_business_first_human_response_minutes' => ($medb = $this->median($businessSeconds)) !== null
                 ? round($medb / 60, 1) : null,
+            // SLA real: % de conversaciones respondidas dentro del target (segundos laborales)
+            'sla_response_rate' => count($businessSeconds) > 0
+                ? round(count(array_filter($businessSeconds, fn ($s) => $s <= $slaTargetMinutes * 60)) / count($businessSeconds) * 100, 1)
+                : (count($responseSeconds) > 0
+                    ? round(count(array_filter($responseSeconds, fn ($s) => $s <= $slaTargetMinutes * 60)) / count($responseSeconds) * 100, 1)
+                    : 0.0),
         ];
     }
 
