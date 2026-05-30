@@ -823,6 +823,14 @@
             </div>
 
             <div class="col-12">
+                <div style="border-top:2px solid #e2e8f0;margin:4px 0;display:flex;align-items:center;gap:10px">
+                    <span style="font-size:11px;color:#94a3b8;white-space:nowrap;font-weight:600;background:#f8fafc;padding:0 8px">DEL PERIODO SELECCIONADO</span>
+                    <div style="flex:1"></div>
+                    <span style="font-size:11px;color:#94a3b8;white-space:nowrap;font-weight:600;background:#f8fafc;padding:0 8px">ESTADO ACTUAL (AHORA MISMO)</span>
+                </div>
+            </div>
+
+            <div class="col-12">
                 {{-- ══ ZONA AHORA ══ --}}
                 @php
                     $queueTotal   = (int)($summary['live_queue_total'] ?? 0);
@@ -842,12 +850,25 @@
                 @endphp
                 <div class="wa-group-label">⚡ En este momento</div>
                 <div class="wa-now-zone mb-20">
-                    <div class="wa-now-card wa-now-card--{{ $queueClass }}">
-                        <div class="wa-now-card__value">{{ $queueTotal }}</div>
+                    <div class="wa-now-card wa-now-card--{{ ($summary['live_queue_total'] ?? 0) > 0 ? 'warn' : 'ok' }}">
+                        <div class="wa-now-card__value">
+                            <a href="/v2/whatsapp?status=needs_human" style="color:inherit;text-decoration:none">
+                                {{ $summary['live_queue_total'] ?? 0 }}
+                            </a>
+                        </div>
                         <div class="wa-now-card__label">En espera ahora</div>
-                        @if($queueTotal > 0)
-                            <a href="/v2/whatsapp" class="wa-now-card__action">Ver conversaciones →</a>
-                        @endif
+                        <div class="mt-1" style="font-size:11px;line-height:1.8">
+                            @if(($summary['live_queue_today'] ?? 0) > 0)
+                                <a href="/v2/whatsapp?status=needs_human&since=today" class="badge bg-success text-decoration-none">🟢 {{ $summary['live_queue_today'] }} hoy</a>
+                            @endif
+                            @if(($summary['live_queue_backlog'] ?? 0) > 0)
+                                <span class="badge bg-secondary ms-1">⚪ {{ $summary['live_queue_backlog'] }} backlog</span>
+                            @endif
+                            <div style="margin-top:3px">
+                                Cola {{ $summary['live_queue_queued'] ?? 0 }} · Asignadas {{ $summary['live_queue_assigned'] ?? 0 }}
+                            </div>
+                        </div>
+                        <a href="/v2/whatsapp" class="wa-now-card__action" style="font-size:11px">Ver conversaciones →</a>
                     </div>
                     <div class="wa-now-card wa-now-card--{{ $sinRespClass }}">
                         <div class="wa-now-card__value">{{ $sinRespuesta }}</div>
