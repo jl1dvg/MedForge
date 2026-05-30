@@ -1879,14 +1879,11 @@
                                 </tr>
                                 </thead>
                                 <tbody>
-                                @php
-                                    $agentRows = $breakdowns['handoffs_by_agent'] ?? [];
-                                    $maxAssigned = count($agentRows) > 0 ? max(1, ...array_map(fn($r) => (int)($r['assigned_count'] ?? 0), $agentRows)) : 1;
-                                @endphp
+                                @php $loadCap = 10; @endphp
                                 @forelse(($breakdowns['handoffs_by_agent'] ?? []) as $row)
                                     @php
-                                        $loadPct = (int)round(($row['assigned_count'] / $maxAssigned) * 100);
-                                        $colorL  = $loadPct >= 90 ? 'red' : ($loadPct >= 70 ? 'yellow' : 'green');
+                                        $loadPct = (int) min(100, round(($row['assigned_count'] / $loadCap) * 100));
+                                        $colorL  = $loadPct >= 85 ? 'red' : ($loadPct >= 60 ? 'yellow' : 'green');
                                     @endphp
                                     <tr>
                                         <td>{{ $row['agent_name'] }}</td>
@@ -1899,16 +1896,13 @@
                                                     <div class="wa-prog-fill wa-prog-fill--{{ $colorL }}"
                                                          style="width:{{ $loadPct }}%"></div>
                                                 </div>
-                                                <span
-                                                    class="wa-prog-val wa-prog-val--{{ $colorL }}">{{ $loadPct }}%</span>
+                                                <span class="wa-prog-val wa-prog-val--{{ $colorL }}">{{ $row['assigned_count'] }}/{{ $loadCap }}</span>
                                             </div>
                                         </td>
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="5" class="text-center text-muted py-20">Sin datos para el rango
-                                            actual.
-                                        </td>
+                                        <td colspan="5" class="text-center text-muted py-20">Sin agentes con carga activa.</td>
                                     </tr>
                                 @endforelse
                                 </tbody>
