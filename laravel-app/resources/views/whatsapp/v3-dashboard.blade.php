@@ -29,7 +29,8 @@
     $median       = $n('median_first_human_response_minutes');
     $avg          = $n('avg_first_human_response_minutes');
     $p75          = (int) ($summary['p75_first_human_response_minutes'] ?? $avg);
-    $slaRate      = $n('sla_assignments_rate');
+    $slaRate      = (int) ($summary['sla_response_rate'] ?? $n('sla_assignments_rate'));
+    $p75biz       = (int) ($summary['p75_business_first_human_response_minutes'] ?? 0);
     $peopleIn     = $n('people_inbound');
     $peopleHandoff = $n('people_handoff');
     $attended     = $n('conversations_attended_human');
@@ -113,10 +114,10 @@
             'icon' => 'mdi-timer-sand', 'tone' => $sevResp,
             'label' => '1ª respuesta humana', 'value' => $median, 'unit' => 'min',
             'badge' => ['sev' => $sevResp, 'text' => 'Meta ' . $slaMeta . ' min'],
-            'trend' => 'Mediana desde el handoff · P75 ' . $p75 . ' min',
+            'trend' => 'Mediana en reloj · P75 laboral ' . ($p75biz ?: $p75) . ' min · P75 reloj ' . $p75 . ' min',
             'breakdown' => [
-                ['dot' => 'success', 'n' => $slaRate . '%', 'label' => 'SLA cumplido'],
-                ['dot' => 'warning', 'n' => $p75,           'label' => 'P75 min'],
+                ['dot' => 'success', 'n' => $slaRate . '%', 'label' => 'SLA (tiempo laboral L-S 08-18)'],
+                ['dot' => 'warning', 'n' => ($p75biz ?: $p75), 'label' => 'P75 laboral'],
                 ['dot' => 'info',    'n' => $handoffs,      'label' => 'Handoffs'],
             ],
         ],
