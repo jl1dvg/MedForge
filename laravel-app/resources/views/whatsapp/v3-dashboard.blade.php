@@ -35,7 +35,8 @@
     $peopleHandoff = $n('people_handoff');
     $attended     = $n('conversations_attended_human');
     $resolved     = $n('conversations_resolved');
-    $lost         = $n('conversations_lost');
+    $lost         = $n('conversations_lost_needs_human', $n('conversations_lost'));
+    $resolvedBot  = $n('conversations_resolved_by_bot');
     $bookings     = $n('sigcenter_bookings_created');
     $bookingPats  = $n('sigcenter_booking_patients');
     $bookingFails = $n('sigcenter_booking_failures');
@@ -105,9 +106,9 @@
             'badge' => ['sev' => $sevCoverage, 'text' => $sevCoverage === 'success' ? 'En meta' : ($sevCoverage === 'warning' ? 'Vigilar' : 'Crítico')],
             'trend' => $attended . ' de ' . $peopleHandoff . ' que solicitaron humano',
             'breakdown' => [
-                ['dot' => 'success', 'n' => $attended,     'label' => 'Atendidas'],
-                ['dot' => 'danger',  'n' => $lost,         'label' => 'Sin respuesta'],
-                ['dot' => 'info',    'n' => $peopleHandoff,'label' => 'Con handoff'],
+                ['dot' => 'success', 'n' => $attended,    'label' => 'Atendidas'],
+                ['dot' => 'danger',  'n' => $lost,        'label' => 'Pidieron ayuda sin respuesta'],
+                ['dot' => 'muted',   'n' => $resolvedBot, 'label' => 'Resueltas por bot'],
             ],
         ],
         [
