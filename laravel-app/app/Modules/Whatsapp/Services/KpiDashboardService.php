@@ -1841,6 +1841,8 @@ class KpiDashboardService
         $sql = 'SELECT
                     first_reply.assigned_agent_id AS user_id,
                     ' . $this->agentNameSql('u', 'first_reply.assigned_agent_id', 'Usuario #') . ' AS agent_name,
+                    first_reply.assigned_at,
+                    first_reply.first_human_reply_at,
                     ' . ($this->isSqlite()
                         ? '(julianday(first_reply.first_human_reply_at) - julianday(first_reply.assigned_at)) * 86400'
                         : 'TIMESTAMPDIFF(SECOND, first_reply.assigned_at, first_reply.first_human_reply_at)') . ' AS response_seconds
@@ -1850,29 +1852,38 @@ class KpiDashboardService
 
         $rows = DB::select($sql, array_values($reply['params']));
 
+        $bhCalc = $this->businessHoursCalculator();
         $agents = [];
         foreach ($rows as $row) {
             $uid = (int) ($row->user_id ?? 0);
             if (!isset($agents[$uid])) {
                 $agents[$uid] = [
-                    'user_id' => $uid,
-                    'agent_name' => (string) ($row->agent_name ?? ''),
-                    'seconds' => [],
+                    'user_id'     => $uid,
+                    'agent_name'  => (string) ($row->agent_name ?? ''),
+                    'seconds'     => [],
+                    'biz_seconds' => [],
                 ];
             }
-            $secs = (float) ($row->response_seconds ?? 0);
-            if ($secs >= 0) {
-                $agents[$uid]['seconds'][] = $secs;
+            $assignedAt = isset($row->assigned_at) ? Carbon::parse((string) $row->assigned_at) : null;
+            $repliedAt  = isset($row->first_human_reply_at) ? Carbon::parse((string) $row->first_human_reply_at) : null;
+
+            if ($assignedAt !== null && $repliedAt !== null && $repliedAt->greaterThanOrEqualTo($assignedAt)) {
+                $clock = $assignedAt->diffInSeconds($repliedAt);
+                $biz   = $bhCalc->businessSecondsElapsed($assignedAt, $repliedAt);
+                $agents[$uid]['seconds'][]     = $clock;
+                $agents[$uid]['biz_seconds'][] = $biz;
             }
         }
 
         return array_values(array_map(function (array $agent): array {
-            $p75 = $this->percentile($agent['seconds'], 75);
+            $p75    = $this->percentile($agent['seconds'], 75);
+            $p75biz = $this->percentile($agent['biz_seconds'], 75);
             return [
-                'user_id' => $agent['user_id'],
-                'agent_name' => $agent['agent_name'],
-                'attended_conversations' => count($agent['seconds']),
-                'p75_first_response_minutes' => $p75 !== null ? round($p75 / 60, 1) : null,
+                'user_id'                        => $agent['user_id'],
+                'agent_name'                     => $agent['agent_name'],
+                'attended_conversations'          => count($agent['seconds']),
+                'p75_first_response_minutes'      => $p75 !== null ? round($p75 / 60, 1) : null,
+                'p75_business_response_minutes'   => $p75biz !== null ? round($p75biz / 60, 1) : null,
             ];
         }, $agents));
     }
@@ -1971,17 +1982,19 @@ class KpiDashboardService
             $params = array_merge($params, array_values($filter['params']));
         }
 
+        $bhCalc  = $this->businessHoursCalculator();
         $buckets = [];
         foreach (DB::select($sql, $params) as $row) {
             $queue = $this->operationalQueueFromHandoffRow($row);
             if (!isset($buckets[$queue])) {
                 $buckets[$queue] = [
-                    'queue' => $queue,
-                    'label' => $this->operationalQueueLabel($queue),
-                    'total_handoffs' => 0,
+                    'queue'            => $queue,
+                    'label'            => $this->operationalQueueLabel($queue),
+                    'total_handoffs'   => 0,
                     'attended_handoffs' => 0,
                     'pending_handoffs' => 0,
                     'response_seconds' => [],
+                    'biz_seconds'      => [],
                 ];
             }
 
@@ -1995,6 +2008,7 @@ class KpiDashboardService
                 $buckets[$queue]['attended_handoffs']++;
                 if ($responseStart !== null && $firstReply->greaterThanOrEqualTo($responseStart)) {
                     $buckets[$queue]['response_seconds'][] = $responseStart->diffInSeconds($firstReply);
+                    $buckets[$queue]['biz_seconds'][]      = $bhCalc->businessSecondsElapsed($responseStart, $firstReply);
                 }
             } else {
                 $buckets[$queue]['pending_handoffs']++;
@@ -2003,13 +2017,16 @@ class KpiDashboardService
 
         $order = ['critical_backlog' => 0, 'captacion' => 1, 'operacion' => 2, 'informacion' => 3];
         $rows = array_map(function (array $bucket): array {
-            $seconds = $bucket['response_seconds'];
-            $p75    = $this->percentile($seconds, 75);
-            $median = $this->median($seconds);
+            $seconds    = $bucket['response_seconds'];
+            $bizSeconds = $bucket['biz_seconds'] ?? [];
+            $p75        = $this->percentile($seconds, 75);
+            $median     = $this->median($seconds);
+            $p75biz     = $this->percentile($bizSeconds, 75);
 
-            unset($bucket['response_seconds']);
+            unset($bucket['response_seconds'], $bucket['biz_seconds']);
             $bucket['p75_first_response_minutes']    = $p75 !== null ? round($p75 / 60, 1) : null;
             $bucket['median_first_response_minutes'] = $median !== null ? round($median / 60, 1) : null;
+            $bucket['p75_business_response_minutes'] = $p75biz !== null ? round($p75biz / 60, 1) : null;
             $bucket['response_rate'] = $bucket['total_handoffs'] > 0
                 ? round(($bucket['attended_handoffs'] / $bucket['total_handoffs']) * 100, 1)
                 : 0.0;
