@@ -1671,26 +1671,45 @@ class KpiDashboardService
     {
         $scope = $this->inboundScopeSubquery($fromSql, $toSql, $roleId, $agentId, 'human_agent');
         $reply = $this->firstHumanReplyByAgentSubquery($scope, $roleId, $agentId, 'human_agent');
+
+        // Traer filas individuales para calcular P75 en PHP (evita distorsión por outliers)
         $sql = 'SELECT
                     first_reply.assigned_agent_id AS user_id,
                     ' . $this->agentNameSql('u', 'first_reply.assigned_agent_id', 'Usuario #') . ' AS agent_name,
-                    COUNT(*) AS attended_conversations,
                     ' . ($this->isSqlite()
-                        ? 'AVG((julianday(first_reply.first_human_reply_at) - julianday(first_reply.assigned_at)) * 86400)'
-                        : 'AVG(TIMESTAMPDIFF(SECOND, first_reply.assigned_at, first_reply.first_human_reply_at))') . ' AS avg_first_response_seconds
+                        ? '(julianday(first_reply.first_human_reply_at) - julianday(first_reply.assigned_at)) * 86400'
+                        : 'TIMESTAMPDIFF(SECOND, first_reply.assigned_at, first_reply.first_human_reply_at)') . ' AS response_seconds
                 FROM (' . $reply['sql'] . ') first_reply
                 LEFT JOIN users u ON u.id = first_reply.assigned_agent_id
-                GROUP BY first_reply.assigned_agent_id, agent_name
-                ORDER BY attended_conversations DESC, agent_name ASC';
+                ORDER BY first_reply.assigned_agent_id';
 
-        return array_map(fn ($row) => [
-            'user_id' => (int) ($row->user_id ?? 0),
-            'agent_name' => (string) ($row->agent_name ?? ''),
-            'attended_conversations' => (int) ($row->attended_conversations ?? 0),
-            'avg_first_response_minutes' => isset($row->avg_first_response_seconds)
-                ? round(((float) $row->avg_first_response_seconds) / 60, 2)
-                : null,
-        ], DB::select($sql, array_values($reply['params'])));
+        $rows = DB::select($sql, array_values($reply['params']));
+
+        $agents = [];
+        foreach ($rows as $row) {
+            $uid = (int) ($row->user_id ?? 0);
+            if (!isset($agents[$uid])) {
+                $agents[$uid] = [
+                    'user_id' => $uid,
+                    'agent_name' => (string) ($row->agent_name ?? ''),
+                    'seconds' => [],
+                ];
+            }
+            $secs = (float) ($row->response_seconds ?? 0);
+            if ($secs >= 0) {
+                $agents[$uid]['seconds'][] = $secs;
+            }
+        }
+
+        return array_values(array_map(function (array $agent): array {
+            $p75 = $this->percentile75($agent['seconds']);
+            return [
+                'user_id' => $agent['user_id'],
+                'agent_name' => $agent['agent_name'],
+                'attended_conversations' => count($agent['seconds']),
+                'p75_first_response_minutes' => $p75 !== null ? round($p75 / 60, 1) : null,
+            ];
+        }, $agents));
     }
 
     /**
@@ -1772,14 +1791,14 @@ class KpiDashboardService
         $order = ['critical_backlog' => 0, 'captacion' => 1, 'operacion' => 2, 'informacion' => 3];
         $rows = array_map(function (array $bucket): array {
             $seconds = $bucket['response_seconds'];
-            $avg = $seconds !== [] ? array_sum($seconds) / count($seconds) : null;
+            $p75    = $this->percentile75($seconds);
             $median = $this->median($seconds);
 
             unset($bucket['response_seconds']);
-            $bucket['avg_first_response_minutes'] = $avg !== null ? round($avg / 60, 2) : null;
-            $bucket['median_first_response_minutes'] = $median !== null ? round($median / 60, 2) : null;
+            $bucket['p75_first_response_minutes']    = $p75 !== null ? round($p75 / 60, 1) : null;
+            $bucket['median_first_response_minutes'] = $median !== null ? round($median / 60, 1) : null;
             $bucket['response_rate'] = $bucket['total_handoffs'] > 0
-                ? round(($bucket['attended_handoffs'] / $bucket['total_handoffs']) * 100, 2)
+                ? round(($bucket['attended_handoffs'] / $bucket['total_handoffs']) * 100, 1)
                 : 0.0;
 
             return $bucket;
@@ -2903,5 +2922,18 @@ class KpiDashboardService
         }
 
         return ((float) $values[$middle - 1] + (float) $values[$middle]) / 2;
+    }
+
+    /**
+     * @param array<int, int|float> $values
+     */
+    private function percentile75(array $values): ?float
+    {
+        if ($values === []) {
+            return null;
+        }
+        sort($values, SORT_NUMERIC);
+        $index = (int) ceil(0.75 * count($values)) - 1;
+        return (float) $values[max(0, $index)];
     }
 }
