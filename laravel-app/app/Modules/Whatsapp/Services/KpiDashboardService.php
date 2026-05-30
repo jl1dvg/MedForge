@@ -136,6 +136,12 @@ class KpiDashboardService
             ],
             'analytics' => $analytics,
             'reminders' => $reminders,
+            'marketing' => [
+                'funnel_by_source' => $this->conversationFunnelBySource(
+                    $this->conversationAnalyticsBaseSubquery($fromSql, $toSql, $roleId, $agentId, 'mktg_funnel')
+                ),
+                'lost_by_source' => $this->lostLeadsBySource($fromSql, $toSql, $roleId, $agentId),
+            ],
             'options' => [
                 'roles' => $this->roleOptions(),
                 'agents' => $this->agentOptions(),
@@ -478,6 +484,129 @@ class KpiDashboardService
                 'booking_rate' => $sourceTotal > 0 ? round(($bookings / $sourceTotal) * 100, 1) : 0.0,
             ];
         }, $rows);
+    }
+
+    /**
+     * Embudo de conversión agrupado por origen (ad, organic_direct, campaign_outbound).
+     *
+     * @param array{sql:string,params:array<int|string,mixed>} $base
+     * @return array<int, array<string, mixed>>
+     */
+    private function conversationFunnelBySource(array $base): array
+    {
+        $rows = DB::select(
+            'SELECT
+                source_category,
+                COUNT(*) AS total,
+                SUM(is_identified) AS identified,
+                SUM(has_handoff) AS handoffs,
+                SUM(has_booking) AS booked
+             FROM (' . $base['sql'] . ') analytics_base
+             GROUP BY source_category
+             ORDER BY total DESC',
+            $base['params']
+        );
+
+        $order = ['ad' => 0, 'organic_direct' => 1, 'campaign_outbound' => 2];
+
+        $result = array_map(function ($row): array {
+            $total      = (int) ($row->total ?? 0);
+            $identified = (int) ($row->identified ?? 0);
+            $handoffs   = (int) ($row->handoffs ?? 0);
+            $booked     = (int) ($row->booked ?? 0);
+            $source     = (string) ($row->source_category ?? 'unknown');
+
+            return [
+                'source_category'     => $source,
+                'source_label'        => $this->sourceCategoryLabel($source),
+                'total'               => $total,
+                'identified'          => $identified,
+                'identification_rate' => $total > 0 ? round(($identified / $total) * 100, 1) : 0.0,
+                'handoffs'            => $handoffs,
+                'handoff_rate'        => $total > 0 ? round(($handoffs / $total) * 100, 1) : 0.0,
+                'booked'              => $booked,
+                'booking_rate'        => $total > 0 ? round(($booked / $total) * 100, 1) : 0.0,
+            ];
+        }, $rows);
+
+        usort($result, fn ($a, $b) => ($order[$a['source_category']] ?? 99) <=> ($order[$b['source_category']] ?? 99));
+
+        return $result;
+    }
+
+    /**
+     * Leads de ads que no recibieron atención humana — separa responsabilidad marketing vs operaciones.
+     *
+     * @return array{ads_total:int,ads_lost_no_human:int,ads_lost_no_assignment:int,ads_abandoned_with_handoff:int}
+     */
+    private function lostLeadsBySource(string $fromSql, string $toSql, ?int $roleId, ?int $agentId): array
+    {
+        $scope        = $this->inboundScopeSubquery($fromSql, $toSql, $roleId, $agentId, 'lost_leads');
+        $reply        = $this->humanReplySubquery($roleId, $agentId, 'lost_leads');
+        $handoffStart = $this->handoffStartSubquery($roleId, $agentId, 'lost_leads');
+
+        $attributionJoin = Schema::hasTable('whatsapp_conversation_attributions')
+            ? 'LEFT JOIN whatsapp_conversation_attributions attr ON attr.conversation_id = inbound.conversation_id'
+            : 'LEFT JOIN (SELECT NULL AS conversation_id, NULL AS source_category) attr ON 1 = 0';
+
+        $sql = 'SELECT
+                    inbound.last_inbound_at,
+                    COALESCE(attr.source_category, "unknown") AS source_category,
+                    human.first_human_reply_at,
+                    handoff.first_handoff_at,
+                    inbound.handoff_requested_at,
+                    (SELECT MIN(h2.assigned_at) FROM whatsapp_handoffs h2
+                     WHERE h2.conversation_id = inbound.conversation_id
+                       AND h2.assigned_agent_id IS NOT NULL) AS first_assignment_at
+                FROM (' . $scope['sql'] . ') inbound
+                ' . $attributionJoin . '
+                LEFT JOIN (' . $reply['sql'] . ') human ON human.conversation_id = inbound.conversation_id
+                LEFT JOIN (' . $handoffStart['sql'] . ') handoff ON handoff.conversation_id = inbound.conversation_id';
+
+        $params = array_merge(
+            array_values($scope['params']),
+            array_values($reply['params']),
+            array_values($handoffStart['params'])
+        );
+
+        $rows         = DB::select($sql, $params);
+        $threshold24h = Carbon::now()->subHours(24);
+
+        $adsTotal            = 0;
+        $adsLostNoHuman      = 0;
+        $adsLostNoAssignment = 0;
+        $adsAbandonedHandoff = 0;
+
+        foreach ($rows as $row) {
+            $isAd = in_array((string) ($row->source_category ?? ''), ['ad', 'ads'], true);
+            if (!$isAd) {
+                continue;
+            }
+
+            $adsTotal++;
+            $hasHuman      = isset($row->first_human_reply_at);
+            $hasHandoff    = isset($row->first_handoff_at) || isset($row->handoff_requested_at);
+            $hasAssignment = isset($row->first_assignment_at);
+            $lastInbound   = isset($row->last_inbound_at) ? Carbon::parse((string) $row->last_inbound_at) : null;
+            $isOld         = $lastInbound !== null && $lastInbound->lessThanOrEqualTo($threshold24h);
+
+            if (!$hasHuman) {
+                $adsLostNoHuman++;
+            }
+            if ($hasHandoff && !$hasAssignment) {
+                $adsLostNoAssignment++;
+            }
+            if ($hasHandoff && !$hasHuman && $isOld) {
+                $adsAbandonedHandoff++;
+            }
+        }
+
+        return [
+            'ads_total'                  => $adsTotal,
+            'ads_lost_no_human'          => $adsLostNoHuman,
+            'ads_lost_no_assignment'     => $adsLostNoAssignment,
+            'ads_abandoned_with_handoff' => $adsAbandonedHandoff,
+        ];
     }
 
     /**
