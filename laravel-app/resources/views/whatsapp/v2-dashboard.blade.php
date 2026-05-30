@@ -986,40 +986,54 @@
                     $coverageColor = $coverageRate >= 80 ? 'success' : ($coverageRate >= 60 ? 'warning' : 'danger');
                     $slaRateBig    = (float) ($summary['sla_response_rate'] ?? 0);
                     $slaColorBig   = $slaRateBig >= 80 ? 'success' : ($slaRateBig >= 60 ? 'warning' : 'danger');
-                    $lostBig       = (int) ($summary['conversations_lost'] ?? 0);
+                    $lostReal      = (int) ($summary['conversations_lost_needs_human'] ?? ($summary['conversations_lost'] ?? 0));
+                    $resolvedBot   = (int) ($summary['conversations_resolved_by_bot'] ?? 0);
+                    $lostIcon      = $lostReal > 0 ? '🔴' : '🟢';
+                    $p75biz        = $summary['p75_business_first_human_response_minutes'] ?? null;
+                    $p75clock      = $summary['median_first_human_response_minutes'] ?? null;
                 @endphp
                 <div class="row g-3 mb-2">
                     <div class="col-6 col-md-3">
                         <div class="text-center p-3 rounded border border-{{ $coverageColor }}">
+                            <div style="font-size:1.4rem">{{ $coverageRate >= 80 ? '🟢' : ($coverageRate >= 60 ? '🟡' : '🔴') }}</div>
                             <div style="font-size:2rem;font-weight:700;color:var(--bs-{{ $coverageColor }})">{{ $coverageRate }}%</div>
-                            <div class="fw-semibold">Cobertura</div>
-                            <div class="text-muted" style="font-size:12px">Personas atendidas</div>
+                            <div class="fw-semibold">Cobertura humana del canal</div>
+                            <div class="text-muted" style="font-size:12px">{{ $coverageRate }} de cada 100 personas que escribieron recibieron respuesta de un agente</div>
                         </div>
                     </div>
                     <div class="col-6 col-md-3">
                         <div class="text-center p-3 rounded border border-{{ $slaColorBig }}">
+                            <div style="font-size:1.4rem">{{ $slaRateBig >= 80 ? '🟢' : ($slaRateBig >= 60 ? '🟡' : '🔴') }}</div>
                             <div style="font-size:2rem;font-weight:700;color:var(--bs-{{ $slaColorBig }})">{{ $slaRateBig }}%</div>
                             <div class="fw-semibold">SLA</div>
-                            <div class="text-muted" style="font-size:12px">Respondidos a tiempo</div>
+                            <div class="text-muted" style="font-size:12px">Solo {{ $slaRateBig }} de cada 100 respondidos dentro de los {{ $filters['sla_target_minutes'] ?? 15 }} min acordados</div>
                         </div>
                     </div>
                     <div class="col-6 col-md-3">
-                        <div class="text-center p-3 rounded border">
-                            <div style="font-size:2rem;font-weight:700">{{ $summary['conversations_attended_human'] ?? 0 }}</div>
-                            <div class="fw-semibold">Atendidas</div>
-                            <div class="text-muted" style="font-size:12px">Con respuesta humana</div>
+                        <div class="text-center p-3 rounded border {{ $lostReal > 0 ? 'border-danger' : 'border-secondary' }}">
+                            <div style="font-size:1.4rem">{{ $lostIcon }}</div>
+                            <div style="font-size:2rem;font-weight:700;{{ $lostReal > 0 ? 'color:var(--bs-danger)' : '' }}">{{ $lostReal }}</div>
+                            <div class="fw-semibold">Pidieron ayuda y no fueron atendidas</div>
+                            <div class="text-muted" style="font-size:12px">Conversaciones con solicitud de agente sin respuesta humana</div>
                         </div>
                     </div>
                     <div class="col-6 col-md-3">
-                        <div class="text-center p-3 rounded border {{ $lostBig > 0 ? 'border-danger' : '' }}">
-                            <div style="font-size:2rem;font-weight:700;{{ $lostBig > 0 ? 'color:var(--bs-danger)' : '' }}">{{ $lostBig }}</div>
-                            <div class="fw-semibold">Sin atender</div>
-                            @if(($summary['conversations_lost_with_handoff'] ?? 0) > 0)
-                                <div class="text-muted" style="font-size:12px">{{ $summary['conversations_lost_with_handoff'] }} solicitaron ayuda</div>
-                            @endif
+                        <div class="text-center p-3 rounded border border-secondary">
+                            <div style="font-size:1.4rem">✅</div>
+                            <div style="font-size:2rem;font-weight:700">{{ $resolvedBot }}</div>
+                            <div class="fw-semibold">Resueltas sin agente</div>
+                            <div class="text-muted" style="font-size:12px">Bot, baja de lead o cierre natural del paciente — no requieren acción</div>
                         </div>
                     </div>
                 </div>
+                @if($p75biz !== null || $p75clock !== null)
+                <div class="alert alert-light border mb-2 py-2 px-3" style="font-size:13px">
+                    ⏱️ Tiempo de primera respuesta:
+                    <strong>{{ $p75biz !== null ? $p75biz . ' min laborales' : '—' }}</strong>
+                    <span class="text-muted ms-1">/ {{ $p75clock !== null ? $p75clock . ' min en reloj' : '—' }}</span>
+                    <span class="text-muted ms-2">(P75 · horario L-S 08:00-18:00)</span>
+                </div>
+                @endif
             </div>
 
             <div class="col-12">
