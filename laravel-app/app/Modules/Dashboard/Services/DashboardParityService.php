@@ -613,7 +613,7 @@ class DashboardParityService
                    AND (
                        UPPER(TRIM(COALESCE(pp.estado_agenda, ''))) IN ($inList)
                        OR pr.form_id IS NOT NULL
-                   )
+                   )" . $this->sedeWhere('pp') . "
                  ORDER BY pp.hora ASC, pp.form_id ASC",
                 array_merge([$date], $presentStates)
             );
