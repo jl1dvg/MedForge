@@ -1794,7 +1794,8 @@
                                     <th>Handoffs</th>
                                     <th>Atendidos</th>
                                     <th>Pendientes</th>
-                                    <th>P75</th>
+                                    <th>P75 laboral</th>
+                                    <th>P75 reloj</th>
                                     <th style="min-width:120px">SLA</th>
                                 </tr>
                                 </thead>
@@ -1802,33 +1803,40 @@
                                 @php $slaMeta = (int)($filters['sla_target_minutes'] ?? 15); @endphp
                                 @forelse(($breakdowns['human_response_by_queue'] ?? []) as $row)
                                     @php
-                                        $p75   = $row['p75_first_response_minutes'];
-                                        $pct   = $p75 !== null ? min(100, (int)round(($p75 / ($slaMeta * 2)) * 100)) : 0;
-                                        $color = $p75 === null ? 'green' : ($p75 > $slaMeta * 2 ? 'red' : ($p75 > $slaMeta ? 'yellow' : 'green'));
+                                        $p75biz   = $row['p75_business_response_minutes'] ?? null;
+                                        $p75clock = $row['p75_first_response_minutes'] ?? null;
+                                        $p75      = $p75biz ?? $p75clock;
+                                        $pct      = $p75 !== null ? min(100, (int)round(($p75 / ($slaMeta * 2)) * 100)) : 0;
+                                        $color    = $p75 === null ? 'green' : ($p75 > $slaMeta * 2 ? 'red' : ($p75 > $slaMeta ? 'yellow' : 'green'));
                                     @endphp
                                     <tr>
                                         <td>{{ $row['label'] }}</td>
                                         <td>{{ $row['total_handoffs'] }}</td>
                                         <td>{{ $row['attended_handoffs'] }} · {{ $row['response_rate'] }}%</td>
                                         <td>{{ $row['pending_handoffs'] }}</td>
-                                        <td class="wa-prog-val--{{ $color }}">{{ $p75 !== null ? $p75 . ' min' : '—' }}</td>
+                                        <td class="wa-prog-val--{{ $color }}">{{ $p75biz !== null ? $p75biz . ' min' : '—' }}</td>
+                                        <td class="text-muted" style="font-size:12px">{{ $p75clock !== null ? $p75clock . ' min' : '—' }}</td>
                                         <td>
                                             <div class="wa-prog-wrap">
                                                 <div class="wa-prog-bg">
-                                                    <div class="wa-prog-fill wa-prog-fill--{{ $color }}"
-                                                         style="width:{{ $pct }}%"></div>
+                                                    <div class="wa-prog-fill wa-prog-fill--{{ $color }}" style="width:{{ $pct }}%"></div>
                                                 </div>
                                             </div>
                                         </td>
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="6" class="text-center text-muted py-20">Sin datos para el rango
+                                        <td colspan="7" class="text-center text-muted py-20">Sin datos para el rango
                                             actual.
                                         </td>
                                     </tr>
                                 @endforelse
                                 </tbody>
+                                <tfoot>
+                                <tr><td colspan="7" class="text-muted py-2 px-3" style="font-size:11px">
+                                    ⏱️ El tiempo laboral descuenta horas fuera del horario de atención (L-S 08:00-18:00, zona Guayaquil)
+                                </td></tr>
+                                </tfoot>
                             </table>
                         </div>
                     </div>
@@ -1930,35 +1938,38 @@
                                 <tr>
                                     <th>Agente</th>
                                     <th>Atendidas</th>
-                                    <th>1ra respuesta</th>
-                                    <th style="min-width:140px">Velocidad</th>
+                                    <th>P75 laboral</th>
+                                    <th>P75 reloj</th>
+                                    <th style="min-width:120px">Semáforo</th>
                                 </tr>
                                 </thead>
                                 <tbody>
                                 @php $slaMeta = (int)($filters['sla_target_minutes'] ?? 15); @endphp
                                 @forelse(($breakdowns['human_attention_by_agent'] ?? []) as $row)
                                     @php
-                                        $mins  = $row['p75_first_response_minutes'];
-                                        $pct   = $mins !== null ? min(100, (int)round(($mins / ($slaMeta * 2)) * 100)) : 0;
-                                        $color = $mins === null ? 'green' : ($mins > $slaMeta * 2 ? 'red' : ($mins > $slaMeta ? 'yellow' : 'green'));
+                                        $minsLab   = $row['p75_business_response_minutes'] ?? null;
+                                        $minsClock = $row['p75_first_response_minutes'] ?? null;
+                                        $slaM      = (int)($filters['sla_target_minutes'] ?? 15);
+                                        $mins      = $minsLab ?? $minsClock;
+                                        $color     = $mins === null ? 'green' : ($mins > $slaM * 2 ? 'red' : ($mins > $slaM ? 'yellow' : 'green'));
                                     @endphp
                                     <tr>
                                         <td>{{ $row['agent_name'] }}</td>
                                         <td>{{ $row['attended_conversations'] }}</td>
-                                        <td class="wa-prog-val--{{ $color }}">{{ $mins !== null ? $mins . ' min (P75)' : '—' }}</td>
+                                        <td class="wa-prog-val--{{ $color }}">{{ $minsLab !== null ? $minsLab . ' min' : '—' }}</td>
+                                        <td class="text-muted" style="font-size:12px">{{ $minsClock !== null ? $minsClock . ' min' : '—' }}</td>
                                         <td>
                                             <div class="wa-prog-wrap">
                                                 <div class="wa-prog-bg">
                                                     <div class="wa-prog-fill wa-prog-fill--{{ $color }}"
-                                                         style="width:{{ $pct }}%"></div>
+                                                         style="width:{{ $mins !== null ? min(100, (int)round(($mins / ($slaM * 2)) * 100)) : 0 }}%"></div>
                                                 </div>
-                                                <span class="wa-prog-val wa-prog-val--{{ $color }}">{{ $mins !== null ? $mins . ' min' : '—' }}</span>
                                             </div>
                                         </td>
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="4" class="text-center text-muted py-20">Sin datos para el rango
+                                        <td colspan="5" class="text-center text-muted py-20">Sin datos para el rango
                                             actual.
                                         </td>
                                     </tr>
