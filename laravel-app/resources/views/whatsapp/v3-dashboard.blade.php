@@ -29,7 +29,7 @@
     $median       = $n('median_first_human_response_minutes');
     $avg          = $n('avg_first_human_response_minutes');
     $p75          = (int) ($summary['p75_first_human_response_minutes'] ?? $avg);
-    $slaRate      = $n('sla_assignments_rate');
+    $slaRate      = (float) ($summary['sla_response_rate'] ?? $n('sla_assignments_rate'));
     $peopleIn     = $n('people_inbound');
     $peopleHandoff = $n('people_handoff');
     $attended     = $n('conversations_attended_human');

@@ -90,7 +90,7 @@
 @php
     $slaMeta         = (int) ($filters['sla_target_minutes'] ?? 15);
     $alertQueue      = ($summary['live_queue_queued'] ?? 0) > 10;
-    $alertSla        = ($summary['sla_assignments_rate'] ?? 100) < 70;
+    $alertSla        = ($summary['sla_response_rate'] ?? $summary['sla_assignments_rate'] ?? 100) < 70;
     $alertUnanswered = ($summary['unanswered_no_human'] ?? 0) >= 5;
     $hasAlerts       = $alertQueue || $alertSla || $alertUnanswered;
     $alertCount      = (int) $alertQueue + (int) $alertSla + (int) $alertUnanswered;
@@ -678,7 +678,7 @@
                                     Cola activa alta ({{ $summary['live_queue_queued'] }} en espera).
                                 @endif
                                 @if($alertSla)
-                                    SLA por debajo de meta ({{ $summary['sla_assignments_rate'] }}%).
+                                    Solo {{ $summary['sla_response_rate'] ?? $summary['sla_assignments_rate'] ?? 0 }}% de pacientes recibió respuesta dentro de la meta de {{ $slaMeta }} min.
                                 @endif
                                 @if($alertUnanswered)
                                     {{ $summary['unanswered_no_human'] }} conversaciones sin respuesta humana.
@@ -755,10 +755,10 @@
                         </button>
                     </div>
                     <div class="muted">Cobertura {{ $summary['attention_rate'] ?? 0 }}% · Sin
-                        respuesta {{ $summary['loss_rate'] ?? 0 }}%
+                        atender {{ $summary['conversations_abandoned_needs_human'] ?? $summary['loss_rate'] ?? 0 }}
                     </div>
                     <div class="mt-10 fw-600">Cola {{ $summary['live_queue_total'] ?? 0 }} ·
-                        SLA {{ $summary['sla_assignments_rate'] ?? 0 }}%
+                        SLA respuesta {{ $summary['sla_response_rate'] ?? $summary['sla_assignments_rate'] ?? 0 }}%
                     </div>
                 </div>
             </div>
@@ -809,20 +809,22 @@
             <div class="col-12">
                 {{-- ══ ZONA AHORA ══ --}}
                 @php
-                    $queueTotal   = (int)($summary['live_queue_total'] ?? 0);
-                    $sinRespuesta = (int)($summary['conversations_lost'] ?? 0);
-                    $cobertura    = (float)($summary['attention_rate'] ?? 0);
-                    $respondidos  = (float)($summary['sla_assignments_rate'] ?? 0);
+                    $queueTotal          = (int)($summary['live_queue_total'] ?? 0);
+                    $sinRespuesta        = (int)($summary['conversations_abandoned_needs_human'] ?? $summary['conversations_lost'] ?? 0);
+                    $cobertura           = (float)($summary['attention_rate'] ?? 0);
+                    $slaRespuesta        = (float)($summary['sla_response_rate'] ?? 0);
+                    $slaAsignacion       = (float)($summary['sla_assignments_rate'] ?? 0);
                     $cerradosSeguimiento = (int)($summary['conversations_closed_followup'] ?? 0);
-                    $resueltosReales = (int)($summary['conversations_closed_resolved'] ?? 0);
-                    $leadsSeguimiento = (int)($summary['whatsapp_followup_leads_created'] ?? 0);
-                    $firstHumanAvg = isset($summary['avg_first_human_response_minutes']) ? $summary['avg_first_human_response_minutes'] . ' min' : '—';
-                    $firstHumanMedian = isset($summary['median_first_human_response_minutes']) ? $summary['median_first_human_response_minutes'] . ' min' : '—';
+                    $resueltosReales     = (int)($summary['conversations_closed_resolved'] ?? 0);
+                    $leadsSeguimiento    = (int)($summary['whatsapp_followup_leads_created'] ?? 0);
+                    $p75Minutes          = isset($summary['p75_first_human_response_minutes']) ? $summary['p75_first_human_response_minutes'] . ' min' : '—';
+                    $firstHumanMedian    = isset($summary['median_first_human_response_minutes']) ? $summary['median_first_human_response_minutes'] . ' min' : '—';
+                    $slaMeta             = (int)($filters['sla_target_minutes'] ?? 15);
 
-                    $queueClass    = $queueTotal > 10 ? 'alert' : ($queueTotal > 5 ? 'warn' : 'ok');
-                    $sinRespClass  = $sinRespuesta > 5 ? 'alert' : ($sinRespuesta > 2 ? 'warn' : 'ok');
+                    $queueClass     = $queueTotal > 10 ? 'alert' : ($queueTotal > 5 ? 'warn' : 'ok');
+                    $sinRespClass   = $sinRespuesta > 5 ? 'alert' : ($sinRespuesta > 2 ? 'warn' : 'ok');
                     $coberturaClass = $cobertura < 70 ? 'alert' : ($cobertura < 85 ? 'warn' : 'ok');
-                    $slaClass      = $respondidos < 60 ? 'alert' : ($respondidos < 80 ? 'warn' : 'ok');
+                    $slaClass       = $slaRespuesta < 60 ? 'alert' : ($slaRespuesta < 80 ? 'warn' : 'ok');
                 @endphp
                 <div class="wa-group-label">⚡ En este momento</div>
                 <div class="wa-now-zone mb-20">
@@ -835,17 +837,15 @@
                     </div>
                     <div class="wa-now-card wa-now-card--{{ $sinRespClass }}">
                         <div class="wa-now-card__value">{{ $sinRespuesta }}</div>
-                        <div class="wa-now-card__label">Sin atender en el periodo</div>
+                        <div class="wa-now-card__label">Pacientes que pidieron agente y no fueron atendidos</div>
                     </div>
                     <div class="wa-now-card wa-now-card--{{ $coberturaClass }}">
                         <div class="wa-now-card__value">{{ $cobertura }}%</div>
-                        <div class="wa-now-card__label">De cada 10 que escriben, reciben respuesta</div>
+                        <div class="wa-now-card__label">De cada 10 que pidieron agente, recibieron respuesta</div>
                     </div>
                     <div class="wa-now-card wa-now-card--{{ $slaClass }}">
-                        <div class="wa-now-card__value">{{ $respondidos }}%</div>
-                        <div class="wa-now-card__label">Respondidos a tiempo ({{ $summary['sla_target_minutes'] ?? 15 }}
-                            min)
-                        </div>
+                        <div class="wa-now-card__value">{{ $slaRespuesta }}%</div>
+                        <div class="wa-now-card__label">Respondidos al paciente a tiempo (meta {{ $slaMeta }} min)</div>
                     </div>
                     <div class="wa-now-card wa-now-card--ok">
                         <div class="wa-now-card__value">{{ $resueltosReales }}</div>
@@ -862,9 +862,9 @@
                         <div class="wa-now-card__label">Personas que escribieron</div>
                     </div>
                     <div class="wa-now-card wa-now-card--ok">
-                        <div class="wa-now-card__value">{{ $firstHumanAvg }}</div>
-                        <div class="wa-now-card__label">Tiempo a primera respuesta humana</div>
-                        <div class="wa-now-card__label">Desde handoff · mediana {{ $firstHumanMedian }}</div>
+                        <div class="wa-now-card__value">{{ $p75Minutes }}</div>
+                        <div class="wa-now-card__label">Tiempo de respuesta al paciente (P75)</div>
+                        <div class="wa-now-card__label">Mediana {{ $firstHumanMedian }} · 75% respondidos antes de este tiempo</div>
                     </div>
                 </div>
                 <div class="wa-group-label">🧭 Bandejas operativas</div>
@@ -895,7 +895,7 @@
                     <div
                         class="wa-now-card wa-now-card--{{ ((int)($summary['limbo_unassigned'] ?? 0)) > 0 ? 'alert' : 'ok' }}">
                         <div class="wa-now-card__value">{{ $summary['limbo_unassigned'] ?? 0 }}</div>
-                        <div class="wa-now-card__label">Limbo sin agente</div>
+                        <div class="wa-now-card__label">Sin agente asignado</div>
                     </div>
                 </div>
                 {{-- ══ FIN ZONA AHORA ══ --}}
