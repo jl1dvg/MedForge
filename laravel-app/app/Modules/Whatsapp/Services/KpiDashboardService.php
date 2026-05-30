@@ -1327,6 +1327,10 @@ class KpiDashboardService
         $abandonedWithHandoff = 0;
         $resolved = 0;
         $responseSeconds = [];
+        $lostNeedsHuman  = 0;
+        $resolvedByBot   = 0;
+        $businessSeconds = [];
+        $bhCalc          = $this->businessHoursCalculator();
 
         foreach ($rows as $row) {
             $waNumber = (string) ($row->wa_number ?? '');
@@ -1350,13 +1354,24 @@ class KpiDashboardService
                     $peopleAttendedSet[$waNumber] = true;
                 }
                 if ($responseStart !== null && $firstReply->greaterThanOrEqualTo($responseStart)) {
-                    $responseSeconds[] = $responseStart->diffInSeconds($firstReply);
+                    $clockSecs = $responseStart->diffInSeconds($firstReply);
+                    $responseSeconds[] = $clockSecs;
+                    $bizSecs = $bhCalc->businessSecondsElapsed($responseStart, $firstReply);
+                    if ($bizSecs >= 0) {
+                        $businessSeconds[] = $bizSecs;
+                    }
                 }
                 if ($lastInbound !== null && $lastInbound->lessThanOrEqualTo($threshold24h)) {
                     $resolved++;
                 }
             } else {
                 $lost++;
+                $needsHuman = (bool) ($row->needs_human ?? false);
+                if ($needsHuman) {
+                    $lostNeedsHuman++;
+                } else {
+                    $resolvedByBot++;
+                }
                 if ($responseStart !== null) {
                     $lostWithHandoff++;
                 }
@@ -1407,6 +1422,12 @@ class KpiDashboardService
             'p75_first_human_response_minutes' => ($p75s = $this->percentile($responseSeconds, 75)) !== null ? (int) round($p75s / 60) : null,
             'peak_open_conversations' => $intervalPeak['count'],
             'peak_open_at' => $intervalPeak['at'],
+            'conversations_lost_needs_human'               => $lostNeedsHuman,
+            'conversations_resolved_by_bot'                => $resolvedByBot,
+            'p75_business_first_human_response_minutes'    => ($p75b = $this->percentile($businessSeconds, 75)) !== null
+                ? round($p75b / 60, 1) : null,
+            'median_business_first_human_response_minutes' => ($medb = $this->median($businessSeconds)) !== null
+                ? round($medb / 60, 1) : null,
         ];
     }
 
