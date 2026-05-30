@@ -1636,6 +1636,7 @@ class KpiDashboardService
      */
     private function handoffsByAgent(string $fromSql, string $toSql, ?int $roleId, ?int $agentId): array
     {
+        // Muestra carga ACTUAL sin filtro de fecha — el workload es estado presente, no volumen del día.
         $filter = $this->handoffFilterSql('h', $roleId, $agentId, 'agent');
         $sql = 'SELECT
                     h.assigned_agent_id AS user_id,
@@ -1645,13 +1646,12 @@ class KpiDashboardService
                     SUM(CASE WHEN h.status = "resolved" THEN 1 ELSE 0 END) AS resolved_count
                 FROM whatsapp_handoffs h
                 LEFT JOIN users u ON u.id = h.assigned_agent_id
-                WHERE h.queued_at >= ?
-                  AND h.queued_at < ?
-                  AND h.assigned_agent_id IS NOT NULL';
-        $params = [$fromSql, $toSql];
+                WHERE h.assigned_agent_id IS NOT NULL
+                  AND h.status IN ("assigned", "queued")';
+        $params = [];
         if ($filter['where'] !== '') {
             $sql .= ' AND ' . $filter['where'];
-            $params = array_merge($params, array_values($filter['params']));
+            $params = array_values($filter['params']);
         }
         $sql .= ' GROUP BY h.assigned_agent_id, agent_name ORDER BY assigned_count DESC, resolved_count DESC, agent_name ASC';
 
