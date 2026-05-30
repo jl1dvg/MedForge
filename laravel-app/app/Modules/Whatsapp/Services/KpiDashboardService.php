@@ -3,6 +3,7 @@
 namespace App\Modules\Whatsapp\Services;
 
 use App\Modules\Shared\Support\SettingsOptionResolver;
+use App\Modules\Whatsapp\Support\BusinessHoursCalculator;
 use DateInterval;
 use DatePeriod;
 use DateTimeImmutable;
@@ -3094,6 +3095,17 @@ class KpiDashboardService
         } catch (\Throwable) {
             return null;
         }
+    }
+
+    private function businessHoursCalculator(): BusinessHoursCalculator
+    {
+        $raw      = (string) $this->settingValue('whatsapp_handoff_business_schedule', '{}');
+        $schedule = json_decode($raw, true);
+        $schedule = is_array($schedule) ? $schedule : [];
+        $timezone = (string) $this->settingValue('whatsapp_handoff_business_timezone', 'America/Guayaquil');
+        $rawHols  = (string) $this->settingValue('whatsapp_handoff_business_holidays', '');
+        $holidays = array_filter(array_map('trim', explode("\n", $rawHols)));
+        return new BusinessHoursCalculator($schedule, $timezone, array_values($holidays));
     }
 
     /**
