@@ -50,6 +50,8 @@
         }
     };
     $options = is_array($dashboard['options'] ?? null) ? $dashboard['options'] : ['roles' => [], 'agents' => []];
+    $funnelBySource = is_array($dashboard['marketing']['funnel_by_source'] ?? null) ? $dashboard['marketing']['funnel_by_source'] : [];
+    $lostBySource   = is_array($dashboard['marketing']['lost_by_source'] ?? null) ? $dashboard['marketing']['lost_by_source'] : [];
     $filters = is_array($filters ?? null) ? $filters : [];
     $exportQuery = http_build_query(array_filter([
         'date_from' => $filters['date_from'] ?? null,
@@ -136,6 +138,7 @@
     $topAd       = collect($analyticsAds)->sortByDesc('bookings')->first();
     $totalConvs  = $analyticsSummary['total_conversations'] ?? 0;
     $frictionHighShare = isset($topFriction['share']) && (int) $topFriction['share'] > 30;
+
 @endphp
 
 @push('styles')
@@ -743,6 +746,19 @@
                 </div>
             </div>
 
+            {{-- ╔══════════════════════════════════════════════════════╗ --}}
+            {{-- ║  SECCIÓN 1 — OPERACIÓN DE HOY  (para el supervisor) ║ --}}
+            {{-- ╚══════════════════════════════════════════════════════╝ --}}
+            <div class="col-12">
+                <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:10px 18px;display:flex;align-items:center;gap:10px;">
+                    <span style="font-size:20px">🟢</span>
+                    <div>
+                        <strong style="font-size:15px">Operación de hoy</strong>
+                        <span class="text-muted ms-2" style="font-size:13px">Para el supervisor · Estado actual del equipo</span>
+                    </div>
+                </div>
+            </div>
+
             <div class="col-xl-4 col-md-6 col-12">
                 <div class="wa-kpi-band">
                     <div class="text-uppercase muted" style="letter-spacing:.08em;">Supervisor</div>
@@ -948,6 +964,62 @@
                     @endforeach
                 </div>
 --}}
+            </div>
+
+            {{-- ╔═════════════════════════════════════════════════════╗ --}}
+            {{-- ║  SECCIÓN 2 — RENDIMIENTO DEL CANAL  (para gerencia) ║ --}}
+            {{-- ╚═════════════════════════════════════════════════════╝ --}}
+            <div class="col-12">
+                <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:10px 18px;display:flex;align-items:center;gap:10px;">
+                    <span style="font-size:20px">📊</span>
+                    <div>
+                        <strong style="font-size:15px">Rendimiento del canal</strong>
+                        <span class="text-muted ms-2" style="font-size:13px">Para gerencia · Periodo: {{ $filters['date_from'] ?? '—' }} – {{ $filters['date_to'] ?? '—' }}</span>
+                    </div>
+                </div>
+            </div>
+
+            {{-- 4 números grandes --}}
+            <div class="col-12">
+                @php
+                    $coverageRate  = (float) ($summary['attention_rate'] ?? 0);
+                    $coverageColor = $coverageRate >= 80 ? 'success' : ($coverageRate >= 60 ? 'warning' : 'danger');
+                    $slaRateBig    = (float) ($summary['sla_response_rate'] ?? 0);
+                    $slaColorBig   = $slaRateBig >= 80 ? 'success' : ($slaRateBig >= 60 ? 'warning' : 'danger');
+                    $lostBig       = (int) ($summary['conversations_lost'] ?? 0);
+                @endphp
+                <div class="row g-3 mb-2">
+                    <div class="col-6 col-md-3">
+                        <div class="text-center p-3 rounded border border-{{ $coverageColor }}">
+                            <div style="font-size:2rem;font-weight:700;color:var(--bs-{{ $coverageColor }})">{{ $coverageRate }}%</div>
+                            <div class="fw-semibold">Cobertura</div>
+                            <div class="text-muted" style="font-size:12px">Personas atendidas</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="text-center p-3 rounded border border-{{ $slaColorBig }}">
+                            <div style="font-size:2rem;font-weight:700;color:var(--bs-{{ $slaColorBig }})">{{ $slaRateBig }}%</div>
+                            <div class="fw-semibold">SLA</div>
+                            <div class="text-muted" style="font-size:12px">Respondidos a tiempo</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="text-center p-3 rounded border">
+                            <div style="font-size:2rem;font-weight:700">{{ $summary['conversations_attended_human'] ?? 0 }}</div>
+                            <div class="fw-semibold">Atendidas</div>
+                            <div class="text-muted" style="font-size:12px">Con respuesta humana</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="text-center p-3 rounded border {{ $lostBig > 0 ? 'border-danger' : '' }}">
+                            <div style="font-size:2rem;font-weight:700;{{ $lostBig > 0 ? 'color:var(--bs-danger)' : '' }}">{{ $lostBig }}</div>
+                            <div class="fw-semibold">Sin atender</div>
+                            @if(($summary['conversations_lost_with_handoff'] ?? 0) > 0)
+                                <div class="text-muted" style="font-size:12px">{{ $summary['conversations_lost_with_handoff'] }} solicitaron ayuda</div>
+                            @endif
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <div class="col-12">
@@ -1668,8 +1740,7 @@
                                     <th>Handoffs</th>
                                     <th>Atendidos</th>
                                     <th>Pendientes</th>
-                                    <th>Mediana</th>
-                                    <th>Promedio</th>
+                                    <th>P75</th>
                                     <th style="min-width:120px">SLA</th>
                                 </tr>
                                 </thead>
@@ -1677,17 +1748,16 @@
                                 @php $slaMeta = (int)($filters['sla_target_minutes'] ?? 15); @endphp
                                 @forelse(($breakdowns['human_response_by_queue'] ?? []) as $row)
                                     @php
-                                        $avg   = $row['avg_first_response_minutes'];
-                                        $pct   = $avg !== null ? min(100, (int)round(($avg / ($slaMeta * 2)) * 100)) : 0;
-                                        $color = $avg === null ? 'green' : ($avg > $slaMeta * 2 ? 'red' : ($avg > $slaMeta ? 'yellow' : 'green'));
+                                        $p75   = $row['p75_first_response_minutes'];
+                                        $pct   = $p75 !== null ? min(100, (int)round(($p75 / ($slaMeta * 2)) * 100)) : 0;
+                                        $color = $p75 === null ? 'green' : ($p75 > $slaMeta * 2 ? 'red' : ($p75 > $slaMeta ? 'yellow' : 'green'));
                                     @endphp
                                     <tr>
                                         <td>{{ $row['label'] }}</td>
                                         <td>{{ $row['total_handoffs'] }}</td>
                                         <td>{{ $row['attended_handoffs'] }} · {{ $row['response_rate'] }}%</td>
                                         <td>{{ $row['pending_handoffs'] }}</td>
-                                        <td>{{ $row['median_first_response_minutes'] !== null ? $row['median_first_response_minutes'] . ' min' : '—' }}</td>
-                                        <td class="wa-prog-val--{{ $color }}">{{ $avg !== null ? $avg . ' min' : '—' }}</td>
+                                        <td class="wa-prog-val--{{ $color }}">{{ $p75 !== null ? $p75 . ' min' : '—' }}</td>
                                         <td>
                                             <div class="wa-prog-wrap">
                                                 <div class="wa-prog-bg">
@@ -1699,7 +1769,7 @@
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="7" class="text-center text-muted py-20">Sin datos para el rango
+                                        <td colspan="6" class="text-center text-muted py-20">Sin datos para el rango
                                             actual.
                                         </td>
                                     </tr>
@@ -1814,22 +1884,21 @@
                                 @php $slaMeta = (int)($filters['sla_target_minutes'] ?? 15); @endphp
                                 @forelse(($breakdowns['human_attention_by_agent'] ?? []) as $row)
                                     @php
-                                        $mins  = $row['avg_first_response_minutes'];
+                                        $mins  = $row['p75_first_response_minutes'];
                                         $pct   = $mins !== null ? min(100, (int)round(($mins / ($slaMeta * 2)) * 100)) : 0;
                                         $color = $mins === null ? 'green' : ($mins > $slaMeta * 2 ? 'red' : ($mins > $slaMeta ? 'yellow' : 'green'));
-                                        $badge = $mins === null ? '—' : ($mins > $slaMeta * 2 ? '✗ Alto' : ($mins > $slaMeta ? '~ OK' : '✓ OK'));
                                     @endphp
                                     <tr>
                                         <td>{{ $row['agent_name'] }}</td>
                                         <td>{{ $row['attended_conversations'] }}</td>
-                                        <td class="wa-prog-val--{{ $color }}">{{ $mins !== null ? $mins . ' min' : '—' }}</td>
+                                        <td class="wa-prog-val--{{ $color }}">{{ $mins !== null ? $mins . ' min (P75)' : '—' }}</td>
                                         <td>
                                             <div class="wa-prog-wrap">
                                                 <div class="wa-prog-bg">
                                                     <div class="wa-prog-fill wa-prog-fill--{{ $color }}"
                                                          style="width:{{ $pct }}%"></div>
                                                 </div>
-                                                <span class="wa-prog-val wa-prog-val--{{ $color }}">{{ $badge }}</span>
+                                                <span class="wa-prog-val wa-prog-val--{{ $color }}">{{ $mins !== null ? $mins . ' min' : '—' }}</span>
                                             </div>
                                         </td>
                                     </tr>
@@ -1911,6 +1980,86 @@
                     </div>
                 </div>
             </div>
+            {{-- ╔══════════════════════════════════════════════════════╗ --}}
+            {{-- ║  SECCIÓN 3 — CAPTACIÓN Y MARKETING  (para marketing) ║ --}}
+            {{-- ╚══════════════════════════════════════════════════════╝ --}}
+            <div class="col-12">
+                <div style="background:#fdf4ff;border:1px solid #e9d5ff;border-radius:12px;padding:10px 18px;display:flex;align-items:center;gap:10px;">
+                    <span style="font-size:20px">📣</span>
+                    <div>
+                        <strong style="font-size:15px">Captación y Marketing</strong>
+                        <span class="text-muted ms-2" style="font-size:13px">Para marketing · Ads, conversiones y leads del periodo</span>
+                    </div>
+                </div>
+            </div>
+
+            {{-- Bloque B: Embudo por origen --}}
+            <div class="col-12">
+                <div class="wa-kpi-panel">
+                    <div class="wa-kpi-panel__head">
+                        <div class="wa-kpi-title-row">
+                            <div class="wa-kpi-sideheading__title">¿Qué pasó con cada lead según su origen?</div>
+                        </div>
+                        <div class="wa-kpi-sideheading__meta">Embudo completo separado por origen — ads, orgánico y arranques del equipo.</div>
+                    </div>
+                    <div class="wa-kpi-panel__body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-striped wa-kpi-table mb-0">
+                                <thead>
+                                <tr>
+                                    <th>Origen</th>
+                                    <th>Llegaron</th>
+                                    <th>Identificados</th>
+                                    <th>Solicitaron atención</th>
+                                    <th>Cita agendada</th>
+                                    <th>Conversión</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                @forelse($funnelBySource as $row)
+                                    @php
+                                        $bookRate  = (float) $row['booking_rate'];
+                                        $rateColor = $bookRate >= 20 ? 'success' : ($bookRate >= 10 ? 'warning' : 'danger');
+                                    @endphp
+                                    <tr>
+                                        <td><strong>{{ $row['source_label'] }}</strong></td>
+                                        <td>{{ $row['total'] }}</td>
+                                        <td>{{ $row['identified'] }} <span class="text-muted">({{ $row['identification_rate'] }}%)</span></td>
+                                        <td>{{ $row['handoffs'] }} <span class="text-muted">({{ $row['handoff_rate'] }}%)</span></td>
+                                        <td>{{ $row['booked'] }} <span class="text-muted">({{ $row['booking_rate'] }}%)</span></td>
+                                        <td><span class="badge bg-{{ $rateColor }}">{{ $row['booking_rate'] }}%</span></td>
+                                    </tr>
+                                @empty
+                                    <tr><td colspan="6" class="text-center text-muted py-3">Sin datos analíticos para el periodo.</td></tr>
+                                @endforelse
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {{-- Bloque C: Leads perdidos por operación --}}
+            @if(($lostBySource['ads_total'] ?? 0) > 0)
+            <div class="col-12">
+                <div class="alert mb-0" style="background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;padding:16px 20px;">
+                    <h6 class="mb-3">🛡️ Leads de ads — separando lo que hizo marketing de lo que hizo operaciones</h6>
+                    <ul class="mb-0" style="line-height:2.2">
+                        <li><strong>{{ $lostBySource['ads_total'] }}</strong> personas llegaron desde ads en el periodo</li>
+                        @if(($lostBySource['ads_lost_no_human'] ?? 0) > 0)
+                            <li style="color:#dc2626"><strong>{{ $lostBySource['ads_lost_no_human'] }}</strong> no recibieron respuesta humana <span class="text-muted">(responsabilidad operativa, no de marketing)</span></li>
+                        @endif
+                        @if(($lostBySource['ads_lost_no_assignment'] ?? 0) > 0)
+                            <li style="color:#d97706"><strong>{{ $lostBySource['ads_lost_no_assignment'] }}</strong> solicitaron ayuda pero no fueron asignados a ningún agente</li>
+                        @endif
+                        @if(($lostBySource['ads_abandoned_with_handoff'] ?? 0) > 0)
+                            <li style="color:#dc2626"><strong>{{ $lostBySource['ads_abandoned_with_handoff'] }}</strong> tuvieron handoff pero llevan más de 24h sin respuesta</li>
+                        @endif
+                    </ul>
+                </div>
+            </div>
+            @endif
+
             {{-- ── ANÁLISIS GERENCIAL COMPLEMENTARIO ──────────────────────────── --}}
             <div class="col-12">
                 <div class="wa-group-label" style="cursor:pointer;user-select:none"
