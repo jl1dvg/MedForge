@@ -885,11 +885,20 @@
                 </div>
                 <div class="wa-group-label">🧭 Bandejas operativas</div>
                 <div class="wa-now-zone mb-20">
-                    <div
-                        class="wa-now-card wa-now-card--{{ ((int)($summary['operational_status_requires_attention'] ?? 0)) > 0 ? 'alert' : 'ok' }}">
-                        <div
-                            class="wa-now-card__value">{{ $summary['operational_status_requires_attention'] ?? 0 }}</div>
+                    <div class="wa-now-card wa-now-card--{{ ((int)($summary['operational_status_requires_attention'] ?? 0)) > 0 ? 'alert' : 'ok' }}">
+                        <div class="wa-now-card__value">{{ $summary['operational_status_requires_attention'] ?? 0 }}</div>
                         <div class="wa-now-card__label">Requieren atención</div>
+                        <div class="mt-1" style="font-size:11px;line-height:1.8">
+                            @if(($summary['operational_status_requires_attention_today'] ?? 0) > 0)
+                                <a href="/v2/whatsapp?needs_human=1&since=today" class="badge bg-danger text-decoration-none">🔴 {{ $summary['operational_status_requires_attention_today'] }} hoy</a>
+                            @endif
+                            @if(($summary['operational_status_requires_attention_week'] ?? 0) > 0)
+                                <a href="/v2/whatsapp?needs_human=1&since=week" class="badge bg-warning text-dark text-decoration-none ms-1">🟡 {{ $summary['operational_status_requires_attention_week'] }} esta semana</a>
+                            @endif
+                            @if(($summary['operational_status_requires_attention_older'] ?? 0) > 0)
+                                <span class="badge bg-secondary ms-1">⚪ {{ $summary['operational_status_requires_attention_older'] }} backlog</span>
+                            @endif
+                        </div>
                     </div>
                     <div class="wa-now-card wa-now-card--warn">
                         <div class="wa-now-card__value">{{ $summary['operational_status_in_progress'] ?? 0 }}</div>
@@ -903,10 +912,20 @@
                         <div class="wa-now-card__value">{{ $summary['operational_status_scheduled'] ?? 0 }}</div>
                         <div class="wa-now-card__label">Agendados</div>
                     </div>
-                    <div
-                        class="wa-now-card wa-now-card--{{ ((int)($summary['priority_critical'] ?? 0)) > 0 ? 'alert' : 'ok' }}">
+                    <div class="wa-now-card wa-now-card--{{ ($summary['priority_critical'] ?? 0) > 0 ? 'alert' : 'ok' }}">
                         <div class="wa-now-card__value">{{ $summary['priority_critical'] ?? 0 }}</div>
                         <div class="wa-now-card__label">Prioridad crítica</div>
+                        <div class="mt-1" style="font-size:11px;line-height:1.8">
+                            @if(($summary['priority_critical_today'] ?? 0) > 0)
+                                <a href="/v2/whatsapp?priority=critical&since=today" class="badge bg-danger text-decoration-none">🔴 {{ $summary['priority_critical_today'] }} hoy</a>
+                            @endif
+                            @if(($summary['priority_critical_week'] ?? 0) > 0)
+                                <span class="badge bg-warning text-dark ms-1">🟡 {{ $summary['priority_critical_week'] }} esta semana</span>
+                            @endif
+                            @if(($summary['priority_critical_older'] ?? 0) > 0)
+                                <span class="badge bg-secondary ms-1">⚪ {{ $summary['priority_critical_older'] }} backlog antiguo</span>
+                            @endif
+                        </div>
                     </div>
                     <div
                         class="wa-now-card wa-now-card--{{ ((int)($summary['limbo_unassigned'] ?? 0)) > 0 ? 'alert' : 'ok' }}">
