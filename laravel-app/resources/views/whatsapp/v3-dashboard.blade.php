@@ -49,6 +49,10 @@
     $abandonedReal    = $n('conversations_abandoned_needs_human');
     $handoffs     = $n('handoff_transfers');
 
+    // Cobertura real: de todos los que necesitaron humano, cuántos lo recibieron
+    $totalNeedHuman = $attended + $lost; // atendidos + perdidos_con_needs_human
+    $attention      = $totalNeedHuman > 0 ? (int) round($attended / $totalNeedHuman * 100) : 100;
+
     $bookingRate = $peopleIn > 0 ? (int) round(($bookings / $peopleIn) * 100) : 0;
     $resolRate   = $attended  > 0 ? (int) round(($resolved / $attended) * 100) : 0;
 
@@ -104,7 +108,7 @@
             'icon' => 'mdi-account-heart-outline', 'tone' => $sevCoverage,
             'label' => 'Cobertura humana', 'value' => $attention, 'unit' => '%',
             'badge' => ['sev' => $sevCoverage, 'text' => $sevCoverage === 'success' ? 'En meta' : ($sevCoverage === 'warning' ? 'Vigilar' : 'Crítico')],
-            'trend' => $attended . ' de ' . $peopleHandoff . ' que solicitaron humano',
+            'trend' => $attended . ' atendidas de ' . $totalNeedHuman . ' que necesitaron humano · ' . $resolvedBot . ' resueltas por bot',
             'breakdown' => [
                 ['dot' => 'success', 'n' => $attended,    'label' => 'Atendidas'],
                 ['dot' => 'danger',  'n' => $lost,        'label' => 'Pidieron ayuda sin respuesta'],
