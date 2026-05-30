@@ -112,9 +112,7 @@
         </div>
         <div class="dash3-head-right">
             <div class="dash3-period" role="tablist">
-                <a href="{{ $periodUrls['hoy'] }}" class="dash3-period-btn {{ $activePeriod === 'hoy' ? 'active' : '' }}">Hoy</a>
-                <a href="{{ $periodUrls['7d'] }}"  class="dash3-period-btn {{ $activePeriod === '7d'  ? 'active' : '' }}">7 días</a>
-                <a href="{{ $periodUrls['30d'] }}" class="dash3-period-btn {{ $activePeriod === '30d' ? 'active' : '' }}">30 días</a>
+                <a href="{{ $periodUrls['hoy'] }}" class="dash3-period-btn active">Hoy</a>
             </div>
             <div class="dash3-ctx">
                 <span class="dash3-ctx-chip"><i class="mdi mdi-domain"></i>{{ (string) ($currentUser['sede_name'] ?? 'Todas las sedes') }}</span>
