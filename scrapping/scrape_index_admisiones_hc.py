@@ -16,7 +16,7 @@ modo_quieto = "--quiet" in sys.argv
 
 USERNAME = os.getenv("SIGCENTER_SCRAPER_USERNAME", "calvarado")
 PASSWORD = os.getenv("SIGCENTER_SCRAPER_PASSWORD", "0923013940")
-BASE = os.getenv("SIGCENTER_SCRAPER_BASE_URL", "https://sigcenter.ddns.net:18093").rstrip("/")
+BASE = os.getenv("SIGCENTER_SCRAPER_BASE_URL", "https://cive.ddns.net:8085").rstrip("/")
 LOGIN_URL = f"{BASE}/site/login"
 
 headers = {"User-Agent": "Mozilla/5.0"}

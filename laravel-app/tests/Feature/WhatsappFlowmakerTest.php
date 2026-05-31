@@ -585,7 +585,7 @@ class WhatsappFlowmakerTest extends TestCase
     public function test_it_executes_sigcenter_agenda_lookup_through_protected_endpoint(): void
     {
         \Illuminate\Support\Facades\Http::fake([
-            'sigcenter.ddns.net:18093/restful/api-agenda/horarios-disponibles-dias-online' => \Illuminate\Support\Facades\Http::response([
+            'cive.ddns.net:8085/restful/api-agenda/horarios-disponibles-dias' => \Illuminate\Support\Facades\Http::response([
                 'fechas' => ['2026-05-06'],
             ], 200),
         ]);
@@ -615,7 +615,7 @@ class WhatsappFlowmakerTest extends TestCase
             ->assertJsonPath('data.fechas.0', '2026-05-06');
 
         \Illuminate\Support\Facades\Http::assertSent(fn (\Illuminate\Http\Client\Request $request): bool => $request->method() === 'GET'
-            && str_contains($request->url(), '/restful/api-agenda/horarios-disponibles-dias-online'));
+            && str_contains($request->url(), '/restful/api-agenda/horarios-disponibles-dias'));
     }
 
     public function test_it_lists_scheduling_specialties_from_users_catalog(): void
@@ -873,7 +873,7 @@ class WhatsappFlowmakerTest extends TestCase
     public function test_it_builds_dynamic_whatsapp_list_for_sigcenter_sedes_shape(): void
     {
         \Illuminate\Support\Facades\Http::fake([
-            'https://sigcenter.ddns.net:18093/restful/api-agenda/sede-departamento' => \Illuminate\Support\Facades\Http::response([
+            'https://cive.ddns.net:8085/restful/api-agenda/sede-departamento' => \Illuminate\Support\Facades\Http::response([
                 'msj' => 'DATOS',
                 'sede' => [
                     ['NOMBRE' => 'CEIBOS - CONSULTA EXTERNA CEIBOS', 'ID_SEDE' => '16'],
@@ -918,7 +918,7 @@ class WhatsappFlowmakerTest extends TestCase
     public function test_it_builds_dynamic_whatsapp_list_for_sigcenter_procedimientos_shape(): void
     {
         \Illuminate\Support\Facades\Http::fake([
-            'https://sigcenter.ddns.net:18093/restful/api-agenda/procedimiento-doctor-crm' => \Illuminate\Support\Facades\Http::response([
+            'https://cive.ddns.net:8085/restful/api-agenda/procedimiento-doctor-crm' => \Illuminate\Support\Facades\Http::response([
                 'msj' => 'DATOS',
                 'estado' => 200,
                 'tipoProcedimientos' => [

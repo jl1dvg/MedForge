@@ -9,7 +9,6 @@ class CronScheduleSeeder extends Seeder
 {
     /** @var string[] */
     private const OBSOLETE_SLUGS = [
-        'cive-index-admisiones-sync',      // SSH ya no disponible
         'crm-task-reminders-legacy',       // cubierto por artisan solicitudes:crm-task-reminders
         'whatsapp-handoff-requeue',        // cubierto por artisan whatsapp:handoff-requeue-expired
         'solicitudes-crm-sync-legacy',     // cubierto por artisan solicitudes:crm-sync
@@ -36,9 +35,9 @@ class CronScheduleSeeder extends Seeder
             ['slug' => 'appointment-reminders-2h', 'name' => 'Recordatorios cita 2h', 'command' => 'whatsapp:appointment-reminders 2h --limit=200', 'cron_expression' => '*/15 * * * *', 'run_in_background' => 1, 'without_overlapping' => 1, 'description' => 'Envía recordatorio WhatsApp 2h antes de la cita.'],
             ['slug' => 'nas-index-day', 'name' => 'Índice NAS — 2 días', 'command' => 'imagenes:nas-index --days=2', 'cron_expression' => '0 7-19/2 * * *', 'run_in_background' => 1, 'without_overlapping' => 1, 'description' => 'Indexa imágenes NAS de los últimos 2 días (cada 2h en horario hábil).'],
             ['slug' => 'nas-index-30days', 'name' => 'Índice NAS — 30 días', 'command' => 'imagenes:nas-index --days=30 --force', 'cron_expression' => '30 2 * * *', 'run_in_background' => 1, 'without_overlapping' => 1, 'description' => 'Re-indexación nocturna de 30 días.'],
-            ['slug' => 'index-admisiones-short', 'name' => 'Admisiones sync corto', 'command' => 'index-admisiones:sync --lookback=1 --lookahead=0 --extractor=scraper', 'cron_expression' => '*/15 * * * *', 'run_in_background' => 1, 'without_overlapping' => 1, 'description' => 'Sincroniza admisiones del día cada 15 minutos.'],
-            ['slug' => 'index-admisiones-wide', 'name' => 'Admisiones sync amplio', 'command' => 'index-admisiones:sync --lookback=14 --lookahead=14 --extractor=scraper', 'cron_expression' => '0 0,6,12,18 * * *', 'run_in_background' => 1, 'without_overlapping' => 1, 'description' => 'Sincroniza admisiones de 14 días pasados y futuros (4 veces al día).'],
-            ['slug' => 'billing-facturacion-real', 'name' => 'Facturación real sync', 'command' => 'billing:facturacion-real-sync --extractor=scraper', 'cron_expression' => '0 */4 * * *', 'run_in_background' => 1, 'without_overlapping' => 1, 'description' => 'Sincroniza facturación real del mes actual cada 4 horas.'],
+            ['slug' => 'index-admisiones-short', 'name' => 'Admisiones sync corto', 'command' => 'index-admisiones:sync --lookback=1 --lookahead=0 --extractor=auto', 'cron_expression' => '*/15 * * * *', 'run_in_background' => 1, 'without_overlapping' => 1, 'description' => 'Sincroniza admisiones del día cada 15 minutos usando DB/SSH con fallback scraper.'],
+            ['slug' => 'index-admisiones-wide', 'name' => 'Admisiones sync amplio', 'command' => 'index-admisiones:sync --lookback=14 --lookahead=14 --extractor=auto', 'cron_expression' => '0 0,6,12,18 * * *', 'run_in_background' => 1, 'without_overlapping' => 1, 'description' => 'Sincroniza admisiones de 14 días pasados y futuros usando DB/SSH con fallback scraper.'],
+            ['slug' => 'billing-facturacion-real', 'name' => 'Facturación real sync', 'command' => 'billing:facturacion-real-sync --extractor=auto', 'cron_expression' => '0 */4 * * *', 'run_in_background' => 1, 'without_overlapping' => 1, 'description' => 'Sincroniza facturación real del mes actual usando DB/SSH con fallback scraper.'],
             ['slug' => 'farmacia-conciliacion-short', 'name' => 'Conciliación recetas — corto', 'command' => 'farmacia:conciliar-recetas --lookback=14 --lookahead=0', 'cron_expression' => '*/15 * * * *', 'run_in_background' => 1, 'without_overlapping' => 1, 'description' => 'Concilia recetas de farmacia de los últimos 14 días.'],
             ['slug' => 'farmacia-conciliacion-wide', 'name' => 'Conciliación recetas — amplio', 'command' => 'farmacia:conciliar-recetas --lookback=45 --lookahead=0', 'cron_expression' => '30 2 * * *', 'run_in_background' => 1, 'without_overlapping' => 1, 'description' => 'Concilia recetas de farmacia de los últimos 45 días (nocturno).'],
         ];

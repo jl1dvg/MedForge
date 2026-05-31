@@ -3,8 +3,8 @@
 declare(strict_types=1);
 
 $allowedOrigins = [
-    'https://sigcenter.ddns.net:18093',
-    'http://sigcenter.ddns.net:18093',
+    'https://cive.ddns.net:8085',
+    'http://cive.ddns.net:8085',
     'http://cive.ddns.net',
     'https://cive.ddns.net',
     'http://cive.ddns.net:8085',

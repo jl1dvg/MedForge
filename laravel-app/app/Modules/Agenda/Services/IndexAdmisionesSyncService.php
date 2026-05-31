@@ -227,15 +227,15 @@ class IndexAdmisionesSyncService
         }
 
         if ($extractor === self::EXTRACTOR_AUTO) {
-            $rows = $this->fetchRowsViaScraper($fromDate, $toDate);
+            $rows = $this->fetchRowsViaDatabase($fromDate, $toDate);
             if ($rows !== [] || $this->lastError === null) {
                 return $rows;
             }
 
-            $scraperError = $this->lastError;
-            $rows = $this->fetchRowsViaDatabase($fromDate, $toDate);
-            if ($rows === [] && $this->lastError !== null && $scraperError !== null) {
-                $this->lastError = $scraperError . ' | fallback DB/SSH: ' . $this->lastError;
+            $databaseError = $this->lastError;
+            $rows = $this->fetchRowsViaScraper($fromDate, $toDate);
+            if ($rows === [] && $this->lastError !== null && $databaseError !== null) {
+                $this->lastError = $databaseError . ' | fallback scraper: ' . $this->lastError;
             }
 
             return $rows;

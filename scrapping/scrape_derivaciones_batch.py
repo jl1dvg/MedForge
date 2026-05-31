@@ -11,8 +11,8 @@ from bs4 import BeautifulSoup
 
 USERNAME = "calvarado"
 PASSWORD = "0923013940"
-LOGIN_URL = "https://sigcenter.ddns.net:18093/site/login"
-BASE_URL = "https://sigcenter.ddns.net:18093"
+LOGIN_URL = "https://cive.ddns.net:8085/site/login"
+BASE_URL = "https://cive.ddns.net:8085"
 
 headers = {"User-Agent": "Mozilla/5.0"}
 modo_quieto = "--quiet" in sys.argv

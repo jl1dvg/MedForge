@@ -1376,11 +1376,11 @@ class FlowSigcenterAgendaService
             'list_sedes_by_doctor' => 'local://users/sedes-por-doctor',
             'list_dates_by_specialty' => 'local://availability/fechas-por-especialidad',
             'list_doctors_by_date' => 'local://availability/doctores-por-fecha',
-            'list_procedimientos' => 'https://sigcenter.ddns.net:18093/restful/api-agenda/procedimiento-doctor-crm',
-            'list_days' => 'https://sigcenter.ddns.net:18093/restful/api-agenda/horarios-disponibles-dias',
-            'list_times' => 'https://sigcenter.ddns.net:18093/restful/api-agenda/horarios-disponibles-especifico',
-            'book_appointment' => 'https://sigcenter.ddns.net:18093/restful/api-eva/agendar-facturar',
-            'cancel_appointment' => 'https://sigcenter.ddns.net:18093/restful/api-agenda/cancelar-cita',
+            'list_procedimientos' => 'https://cive.ddns.net:8085/restful/api-agenda/procedimiento-doctor-crm',
+            'list_days' => 'https://cive.ddns.net:8085/restful/api-agenda/horarios-disponibles-dias',
+            'list_times' => 'https://cive.ddns.net:8085/restful/api-agenda/horarios-disponibles-especifico',
+            'book_appointment' => 'https://cive.ddns.net:8085/restful/api-eva/agendar-facturar',
+            'cancel_appointment' => 'https://cive.ddns.net:8085/restful/api-agenda/cancelar-cita',
             default => '',
         };
     }
