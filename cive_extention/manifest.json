@@ -18,8 +18,8 @@
     "https://localhost:8085/*",
     "http://127.0.0.1:8085/*",
     "https://127.0.0.1:8085/*",
-    "https://sigcenter.ddns.net:18093/*",
-    "http://sigcenter.ddns.net:18093/*"
+    "https://cive.ddns.net:8085/*",
+    "http://cive.ddns.net:8085/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -127,8 +127,8 @@
         "https://localhost:8085/*",
         "http://127.0.0.1:8085/*",
         "https://127.0.0.1:8085/*",
-        "https://sigcenter.ddns.net:18093/*",
-        "http://sigcenter.ddns.net:18093/*"
+        "https://cive.ddns.net:8085/*",
+        "http://cive.ddns.net:8085/*"
       ]
     }
   ],
@@ -148,8 +148,8 @@
         "https://127.0.0.1:8085/*",
         "http://192.168.1.13:8085/historia-automatica*",
         "http://cive.ddns.net:8085/historia-automatica*",
-        "https://sigcenter.ddns.net:18093/*",
-        "http://sigcenter.ddns.net:18093/*"
+        "https://cive.ddns.net:8085/*",
+        "http://cive.ddns.net:8085/*"
       ],
       "js": [
         "js/assets/sweetalert2.all.min.js",

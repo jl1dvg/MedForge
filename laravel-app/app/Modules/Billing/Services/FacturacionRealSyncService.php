@@ -162,15 +162,15 @@ class FacturacionRealSyncService
         }
 
         if ($extractor === self::EXTRACTOR_AUTO) {
-            $rows = $this->fetchRowsViaScraper($monthKey);
+            $rows = $this->fetchRowsViaDatabase($monthKey);
             if ($rows !== [] || $this->lastError === null) {
                 return $rows;
             }
 
-            $scraperError = $this->lastError;
-            $rows = $this->fetchRowsViaDatabase($monthKey);
-            if ($rows === [] && $this->lastError !== null && $scraperError !== null) {
-                $this->lastError = $scraperError . ' | fallback DB/SSH: ' . $this->lastError;
+            $databaseError = $this->lastError;
+            $rows = $this->fetchRowsViaScraper($monthKey);
+            if ($rows === [] && $this->lastError !== null && $databaseError !== null) {
+                $this->lastError = $databaseError . ' | fallback scraper: ' . $this->lastError;
             }
 
             return $rows;

@@ -6,6 +6,7 @@ $allowedOrigins = [
     'http://cive.ddns.net',
     'https://cive.ddns.net',
     'http://cive.ddns.net:8085',
+    'https://cive.ddns.net:8085',
     'http://192.168.1.13:8085',
     'http://localhost:8085',
     'http://127.0.0.1:8085',

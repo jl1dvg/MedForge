@@ -1691,7 +1691,7 @@ class WhatsappWebhookControllerTest extends TestCase
         config()->set('whatsapp.migration.automation.dry_run', true);
 
         Http::fake([
-            'sigcenter.ddns.net:18093/*' => Http::response([
+            'cive.ddns.net:8085/*' => Http::response([
                 'estado' => 200,
                 'msj' => 'OK',
                 'agenda_id' => 'AG-123',
@@ -1878,7 +1878,7 @@ class WhatsappWebhookControllerTest extends TestCase
         config()->set('whatsapp.migration.automation.dry_run', true);
 
         Http::fake([
-            'sigcenter.ddns.net:18093/*' => Http::response([
+            'cive.ddns.net:8085/*' => Http::response([
                 'code' => '200',
                 'msg' => 'CANCELACION CON EXITO',
                 'cancelado' => 'Su cita ha sido cancelada',
@@ -1978,7 +1978,7 @@ class WhatsappWebhookControllerTest extends TestCase
         config()->set('whatsapp.migration.automation.dry_run', true);
 
         Http::fake([
-            'sigcenter.ddns.net:18093/*' => function (\Illuminate\Http\Client\Request $request) {
+            'cive.ddns.net:8085/*' => function (\Illuminate\Http\Client\Request $request) {
                 if ($request->method() === 'POST') {
                     return Http::response([], 405);
                 }
@@ -2068,7 +2068,7 @@ class WhatsappWebhookControllerTest extends TestCase
         ]);
 
         Http::assertSent(function (\Illuminate\Http\Client\Request $request): bool {
-            return $request->url() === 'https://sigcenter.ddns.net:18093/restful/api-agenda/cancelar-cita'
+            return $request->url() === 'https://cive.ddns.net:8085/restful/api-agenda/cancelar-cita'
                 && $request->method() === 'GET'
                 && ($request['agenda_id'] ?? null) === 'AG-1000';
         });
