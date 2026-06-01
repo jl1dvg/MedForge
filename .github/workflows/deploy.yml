@@ -73,7 +73,7 @@ jobs:
 
             cd "$PROJECT/laravel-app"
 
-            # Instalar composer.phar si no existe aún (solo primera vez en staging)
+            # Instalar composer.phar si no existe (solo primera vez en staging)
             if [ ! -f composer.phar ]; then
               echo "Descargando composer.phar..."
               $PHP -r "copy('https://getcomposer.org/installer', 'composer-setup.php');"
@@ -150,12 +150,8 @@ jobs:
 
             cd "$PROJECT/laravel-app"
 
-            # Composer sin dev, optimizado para producción
-            if [ -f composer.phar ]; then
-              $PHP composer.phar install --no-dev --optimize-autoloader --no-interaction 2>&1
-            elif command -v composer >/dev/null 2>&1; then
-              composer install --no-dev --optimize-autoloader --no-interaction 2>&1
-            fi
+            # Composer (producción ya tiene composer.phar)
+            $PHP composer.phar install --no-dev --optimize-autoloader --no-interaction 2>&1
 
             # Cachear para producción
             $PHP artisan config:cache
