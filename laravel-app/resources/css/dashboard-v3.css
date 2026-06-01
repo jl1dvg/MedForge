@@ -161,6 +161,13 @@ body:has(.dash3) footer.main-footer { display: none; }
     70%  { transform: scale(2.6); opacity: 0;   }
     100% { transform: scale(2.6); opacity: 0;   }
 }
+.dash3-live--flash {
+    animation: dash3-live-flash .8s ease-out;
+}
+@keyframes dash3-live-flash {
+    0%   { background: #b8f2da; color: #05825f; }
+    100% { background: #dff5ee; color: var(--success); }
+}
 
 /* ============= Hero KPIs ============= */
 .dash3-kpis {

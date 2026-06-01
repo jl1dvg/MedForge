@@ -6,6 +6,7 @@ use App\Modules\Dashboard\Services\DashboardParityService;
 use App\Modules\Shared\Support\LegacyCurrentUser;
 use App\Modules\Shared\Support\LegacySessionAuth;
 use Illuminate\Contracts\View\View;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -81,5 +82,34 @@ class DashboardUiController
     public function indexV3(Request $request): View|RedirectResponse
     {
         return $this->index($request, 'dashboard.v3');
+    }
+
+    /**
+     * JSON endpoint for real-time polling from the V3 dashboard.
+     * Returns only the V3-specific payload so the JS can diff and redraw panels.
+     */
+    public function dataV3(Request $request): JsonResponse
+    {
+        if (!Auth::check()) {
+            return response()->json(['error' => 'unauthenticated'], 401);
+        }
+
+        $startDate = trim((string) $request->query('start_date', ''));
+        $endDate   = trim((string) $request->query('end_date', ''));
+        $sede      = trim((string) $request->query('sede', ''));
+
+        try {
+            $payload = $this->service->buildUiPayload($startDate, $endDate, $sede);
+            return response()->json([
+                'dashboard_v3' => $payload['dashboard_v3'] ?? [],
+                'ts' => now()->toIso8601String(),
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('dashboard.v3.data.error', [
+                'error' => $e->getMessage(),
+                'user_id' => Auth::id(),
+            ]);
+            return response()->json(['error' => 'server_error'], 500);
+        }
     }
 }
