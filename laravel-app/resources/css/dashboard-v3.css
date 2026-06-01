@@ -269,6 +269,7 @@ body:has(.dash3) footer.main-footer { display: none; }
 
 /* ============= Agenda ============= */
 .dash3-panel-body.dash3-agenda { max-height: 338px; }
+.dash3-row > article:has(.dash3-agenda) { align-self: start; }
 .dash3-agenda { display: flex; flex-direction: column; gap: 2px; }
 .dash3-ag-row {
     display: grid; grid-template-columns: 52px 4px 1fr auto;
