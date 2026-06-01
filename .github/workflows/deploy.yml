@@ -51,7 +51,7 @@ jobs:
         env:
           SSHPASS: ${{ secrets.STAGING_SSH_PASS }}
         run: |
-          sshpass -e rsync -az --delete \
+          sshpass -e rsync -az --checksum --delete \
             -e "ssh -o StrictHostKeyChecking=no -p 22" \
             --exclude='.git/' \
             --exclude='.env' \
@@ -149,7 +149,7 @@ jobs:
         env:
           SSHPASS: ${{ secrets.PROD_SSH_PASS }}
         run: |
-          sshpass -e rsync -az --delete \
+          sshpass -e rsync -az --checksum --delete \
             -e "ssh -o StrictHostKeyChecking=no -p 22" \
             --exclude='.git/' \
             --exclude='.env' \
