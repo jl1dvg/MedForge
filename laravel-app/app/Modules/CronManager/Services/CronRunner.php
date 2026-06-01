@@ -230,16 +230,32 @@ class CronRunner
     }
 
     /**
-     * @return array<int, array{slug:string,name:string,description:string,interval:int,callback:callable}>
+     * Returns SERVER_ROLE from environment: 'production', 'scraper', or null (run all).
+     *
+     * - production: only non-scraping business logic tasks
+     * - scraper:    only scraping/external-fetch tasks
+     * - unset:      all tasks (local dev, legacy behaviour)
+     */
+    private function serverRole(): ?string
+    {
+        $role = (string) (getenv('SERVER_ROLE') ?: '');
+        return $role !== '' ? strtolower($role) : null;
+    }
+
+    /**
+     * @return array<int, array{slug:string,name:string,description:string,interval:int,callback:callable,scraper_only:bool}>
      */
     private function definitions(): array
     {
-        return [
+        $role = $this->serverRole();
+
+        $all = [
             [
                 'slug' => 'cive-index-admisiones-sync',
                 'name' => 'Scraping index-admisiones',
                 'description' => 'Sincroniza pacientes y procedimientos desde el index-admisiones de CIVE.',
                 'interval' => 86400,
+                'scraper_only' => true,
                 'callback' => function (): array {
                     return $this->runIndexAdmisionesSyncTask();
                 },
@@ -249,6 +265,7 @@ class CronRunner
                 'name' => 'Actualizar solicitudes atrasadas',
                 'description' => 'Marca como atrasadas las solicitudes quirúrgicas cuyo agendamiento ya venció.',
                 'interval' => 300,
+                'scraper_only' => false,
                 'callback' => function (): array {
                     return $this->runOverdueSolicitudesTask();
                 },
@@ -258,6 +275,7 @@ class CronRunner
                 'name' => 'Recordatorios de cirugías',
                 'description' => 'Envía notificaciones automáticas para cirugías próximas.',
                 'interval' => 600,
+                'scraper_only' => false,
                 'callback' => function (): array {
                     return $this->runRemindersTask();
                 },
@@ -267,6 +285,7 @@ class CronRunner
                 'name' => 'Recordatorios de tareas CRM',
                 'description' => 'Dispara avisos internos y por correo cuando vence remind_at de una tarea CRM.',
                 'interval' => 60,
+                'scraper_only' => false,
                 'callback' => function (): array {
                     return $this->runCrmTaskRemindersTask();
                 },
@@ -276,6 +295,7 @@ class CronRunner
                 'name' => 'Escalamientos de tareas CRM',
                 'description' => 'Notifica a supervisores cuando una tarea CRM sigue sin trámite tras su vencimiento.',
                 'interval' => 300,
+                'scraper_only' => false,
                 'callback' => function (): array {
                     return $this->runCrmTaskSupervisorEscalationsTask();
                 },
@@ -285,6 +305,7 @@ class CronRunner
                 'name' => 'Reencolar handoffs de WhatsApp',
                 'description' => 'Reencola conversaciones cuyo tiempo de asignación expiró.',
                 'interval' => 300,
+                'scraper_only' => false,
                 'callback' => function (): array {
                     return $this->runWhatsappHandoffRequeueTask();
                 },
@@ -294,6 +315,7 @@ class CronRunner
                 'name' => 'Prefacturación automática',
                 'description' => 'Crea registros en billing_main para solicitudes listas para facturación.',
                 'interval' => 900,
+                'scraper_only' => false,
                 'callback' => function (): array {
                     return $this->runBillingTask();
                 },
@@ -303,6 +325,7 @@ class CronRunner
                 'name' => 'Actualización de estadísticas diarias',
                 'description' => 'Recalcula métricas operativas para paneles y reportes.',
                 'interval' => 3600,
+                'scraper_only' => false,
                 'callback' => function (): array {
                     return $this->runStatisticsTask();
                 },
@@ -312,6 +335,7 @@ class CronRunner
                 'name' => 'Snapshots de KPIs',
                 'description' => 'Recalcula los indicadores agregados para dashboards y reportes.',
                 'interval' => 3600,
+                'scraper_only' => false,
                 'callback' => function (): array {
                     $today = new DateTimeImmutable('today');
                     $yesterday = $today->sub(new DateInterval('P1D'));
@@ -335,6 +359,7 @@ class CronRunner
                 'name' => 'Sincronización de analítica IA',
                 'description' => 'Ejecuta procesos de análisis en Python y sincroniza resultados.',
                 'interval' => 1800,
+                'scraper_only' => true,
                 'callback' => function (): array {
                     return $this->runAiSyncTask();
                 },
@@ -344,6 +369,7 @@ class CronRunner
                 'name' => 'Supervisión API CIVE Extension',
                 'description' => 'Verifica periódicamente la disponibilidad de los endpoints críticos usados por la extensión.',
                 'interval' => 900,
+                'scraper_only' => false,
                 'callback' => function (): array {
                     return $this->runCiveHealthTask();
                 },
@@ -353,6 +379,7 @@ class CronRunner
                 'name' => 'Caducidad de certificaciones biométricas',
                 'description' => 'Marca certificaciones vencidas según la vigencia configurada y notifica al equipo.',
                 'interval' => 86400,
+                'scraper_only' => false,
                 'callback' => function (): array {
                     return $this->runIdentityVerificationExpirationTask();
                 },
@@ -362,6 +389,7 @@ class CronRunner
                 'name' => 'Sincronización de derivaciones IESS',
                 'description' => 'Obtiene códigos de derivación y vincula formID en el esquema normalizado.',
                 'interval' => 900,
+                'scraper_only' => false,
                 'callback' => function (): array {
                     return $this->runIessDerivacionesSyncTask();
                 },
@@ -371,6 +399,7 @@ class CronRunner
                 'name' => 'Scraping de derivaciones faltantes',
                 'description' => 'Ejecuta el scraper para formularios sin código de derivación en billing_main.',
                 'interval' => 900,
+                'scraper_only' => true,
                 'callback' => function (): array {
                     return $this->runIessDerivacionesScrapeMissingTask();
                 },
@@ -380,6 +409,7 @@ class CronRunner
                 'name' => 'Sincronización de facturas IESS',
                 'description' => 'Replica facturación asociada a derivaciones hacia la tabla derivaciones_invoices.',
                 'interval' => 900,
+                'scraper_only' => false,
                 'callback' => function (): array {
                     return $this->runIessBillingSyncTask();
                 },
@@ -389,6 +419,7 @@ class CronRunner
                 'name' => 'Sincronización CRM de solicitudes',
                 'description' => 'Reintenta vincular solicitudes sin lead CRM y refresca su checklist.',
                 'interval' => 1800,
+                'scraper_only' => false,
                 'callback' => function (): array {
                     return $this->runSolicitudesCrmSyncTask();
                 },
@@ -398,6 +429,7 @@ class CronRunner
                 'name' => 'Refresco de derivaciones en solicitudes',
                 'description' => 'Actualiza derivaciones y vigencias para solicitudes con afiliación estatal sin derivación.',
                 'interval' => 900,
+                'scraper_only' => true,
                 'callback' => function (): array {
                     return $this->runSolicitudesDerivacionesRefreshTask();
                 },
@@ -407,11 +439,22 @@ class CronRunner
                 'name' => 'Procesamiento asíncrono de reportes PDF',
                 'description' => 'Tarea descontinuada tras el cutover de reportes PDF a /v2/reports.',
                 'interval' => 60,
+                'scraper_only' => false,
                 'callback' => function (): array {
                     return $this->runReportingAsyncQueueTask();
                 },
             ],
         ];
+
+        if ($role === 'production') {
+            return array_values(array_filter($all, fn (array $d) => !($d['scraper_only'] ?? false)));
+        }
+
+        if ($role === 'scraper') {
+            return array_values(array_filter($all, fn (array $d) => (bool) ($d['scraper_only'] ?? false)));
+        }
+
+        return $all;
     }
 
     // -------------------------------------------------------------------------
