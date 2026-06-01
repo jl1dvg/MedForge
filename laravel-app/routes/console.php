@@ -2467,6 +2467,15 @@ Artisan::command('cron:legacy-task {slug : Slug de la tarea en cron_schedule}', 
             ->withoutOverlapping()
             ->runInBackground();
     }
+
+    // ── PRODUCCIÓN ────────────────────────────────────────────────────────────
+    if ($isProduction) {
+        // Escalaciones diarias de oportunidades CRM comerciales estancadas
+        Schedule::command('crm:escalate')->dailyAt('08:00');
+
+        // Cierre de handoffs WhatsApp zombies (sin actividad en 7+ días)
+        Schedule::command('whatsapp:close-zombie-handoffs --days=7')->dailyAt('02:00');
+    }
 })();
 
 // ── Scheduler DB-driven ──────────────────────────────────────────────────────
