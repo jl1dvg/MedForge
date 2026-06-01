@@ -73,12 +73,15 @@ jobs:
 
             cd "$PROJECT/laravel-app"
 
-            # Composer
-            if [ -f composer.phar ]; then
-              $PHP composer.phar install --no-interaction 2>&1
-            elif command -v composer >/dev/null 2>&1; then
-              composer install --no-interaction 2>&1
+            # Instalar composer.phar si no existe aún (solo primera vez en staging)
+            if [ ! -f composer.phar ]; then
+              echo "Descargando composer.phar..."
+              $PHP -r "copy('https://getcomposer.org/installer', 'composer-setup.php');"
+              $PHP composer-setup.php --quiet
+              rm -f composer-setup.php
+              echo "composer.phar instalado: $($PHP composer.phar --version 2>&1 | head -1)"
             fi
+            $PHP composer.phar install --no-interaction 2>&1
 
             # Limpiar caches (staging no las cachea para facilitar cambios)
             $PHP artisan config:clear
