@@ -60,6 +60,9 @@ jobs:
             --exclude='laravel-app/node_modules/' \
             --exclude='laravel-app/storage/' \
             --exclude='storage/' \
+            --exclude='public/uploads/' \
+            --exclude='public/assets/firmas/' \
+            --exclude='public/assets/seals/' \
             ./ ${{ secrets.STAGING_SSH_USER }}@${{ secrets.STAGING_SSH_HOST }}:~/medforge/
 
       - name: Post-deploy Staging
@@ -152,6 +155,9 @@ jobs:
             --exclude='laravel-app/node_modules/' \
             --exclude='laravel-app/storage/' \
             --exclude='storage/' \
+            --exclude='public/uploads/' \
+            --exclude='public/assets/firmas/' \
+            --exclude='public/assets/seals/' \
             ./ ${{ secrets.PROD_SSH_USER }}@${{ secrets.PROD_SSH_HOST }}:~/medforge/
 
       - name: Post-deploy Producción
