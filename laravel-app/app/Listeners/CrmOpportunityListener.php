@@ -207,6 +207,20 @@ class CrmOpportunityListener
             ->where('id', $solicitudId)
             ->value('afiliacion');
 
+        // Fallback: find via contact cedula → most recent solicitud
+        if ($afiliacion === null && $opp->contact_id !== null) {
+            $cedula = DB::table('crm_contacts')
+                ->where('id', $opp->contact_id)
+                ->value('cedula');
+
+            if ($cedula !== null) {
+                $afiliacion = DB::table('solicitud_procedimiento')
+                    ->where('hc_number', $cedula)
+                    ->orderByDesc('id')
+                    ->value('afiliacion');
+            }
+        }
+
         if ($afiliacion === null) {
             return;
         }
