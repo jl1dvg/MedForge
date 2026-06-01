@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Examenes\Services;
 
+use App\Events\Crm\ExamenEstadoCambiado;
 use App\Events\Crm\ExamenSolicitado;
 use App\Models\WhatsappConversation;
 use App\Modules\Shared\Support\AfiliacionDimensionService;
@@ -192,6 +193,14 @@ class ExamenesParityService
             ],
             self::PUSHER_CHANNEL,
             PusherConfigService::EVENT_STATUS_UPDATED
+        );
+
+        // Notify CRM pipeline about the exam state change
+        ExamenEstadoCambiado::dispatch(
+            examenId: $id,
+            nuevoEstado: (string) ($resultado['estado'] ?? $estado),
+            estadoAnterior: (string) ($resultado['estado_anterior'] ?? ''),
+            actorUserId: $userId,
         );
 
         return [

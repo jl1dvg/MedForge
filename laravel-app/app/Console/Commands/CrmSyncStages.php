@@ -13,7 +13,7 @@ class CrmSyncStages extends Command
                             {--dry-run : Solo reporta, no escribe}
                             {--limit=5000 : Oportunidades a procesar}';
 
-    protected $description = 'Sincroniza el stage del CRM con el kanban más avanzado de solicitudes quirúrgicas';
+    protected $description = 'Sincroniza el stage del CRM con el estado más avanzado de solicitudes quirúrgicas y exámenes';
 
     /**
      * Estado normalizado → CRM stage.
@@ -41,10 +41,15 @@ class CrmSyncStages extends Command
         'cerrada'           => CrmOpportunity::STAGE_GANADO,
         'facturado'         => CrmOpportunity::STAGE_GANADO,
         'facturada'         => CrmOpportunity::STAGE_GANADO,
-        'archivado'         => CrmOpportunity::STAGE_PERDIDO,
-        'archivada'         => CrmOpportunity::STAGE_PERDIDO,
-        'cancelado'         => CrmOpportunity::STAGE_PERDIDO,
-        'cancelada'         => CrmOpportunity::STAGE_PERDIDO,
+        // Exámenes extras
+        'revision de cobertura'  => CrmOpportunity::STAGE_EN_EVALUACION,
+        'revision-cobertura'     => CrmOpportunity::STAGE_EN_EVALUACION,
+        'listo para agenda'      => CrmOpportunity::STAGE_COMPROMETIDO,
+        // Archivado = exam result delivered → ganado
+        'archivado'              => CrmOpportunity::STAGE_GANADO,
+        'archivada'              => CrmOpportunity::STAGE_GANADO,
+        'cancelado'              => CrmOpportunity::STAGE_PERDIDO,
+        'cancelada'              => CrmOpportunity::STAGE_PERDIDO,
     ];
 
     /** Higher = more advanced. Cancelled/archived = -1 (don't use). */
@@ -61,8 +66,12 @@ class CrmSyncStages extends Command
         'programada' => 9, 'programado' => 9,
         'completado' => 10, 'completada' => 10, 'completa' => 10,
         'cerrado' => 10, 'cerrada' => 10, 'facturado' => 10, 'facturada' => 10,
+        'archivado' => 10, 'archivada' => 10,  // exam result delivered = ganado
+        // Examen-specific states
+        'revision de cobertura' => 4, 'revision-cobertura' => 4,
+        'listo para agenda' => 9,
+        // Terminal negative
         'cancelado' => -1, 'cancelada' => -1,
-        'archivado' => -1, 'archivada' => -1,
     ];
 
     public function __construct(
@@ -99,16 +108,23 @@ class CrmSyncStages extends Command
 
         $this->info("Oportunidades candidatas: {$opps->count()}");
 
-        // ── Step 2: batch-fetch ALL solicitudes for those cedulas ────────────
+        // ── Step 2: batch-fetch ALL estados (solicitudes + exámenes) for those cedulas ─
         $cedulas = $opps->pluck('cedula')->unique()->values()->all();
 
-        $allEstados = DB::table('solicitud_procedimiento')
+        $solicitudEstados = DB::table('solicitud_procedimiento')
             ->whereIn('hc_number', $cedulas)
             ->select('hc_number', 'estado')
-            ->get()
+            ->get();
+
+        $examenEstados = DB::table('consulta_examenes')
+            ->whereIn('hc_number', $cedulas)
+            ->select('hc_number', 'estado')
+            ->get();
+
+        $allEstados = $solicitudEstados->concat($examenEstados)
             ->groupBy('hc_number'); // Collection<cedula, Collection<{hc_number,estado}>>
 
-        $this->info("Solicitudes cargadas para {$allEstados->count()} cédulas.");
+        $this->info("Registros clínicos cargados para {$allEstados->count()} cédulas ({$solicitudEstados->count()} solicitudes + {$examenEstados->count()} exámenes).");
 
         // ── Step 3: for each opp, find the most advanced target stage ────────
         $stageOrder = array_flip(CrmOpportunity::STAGES);

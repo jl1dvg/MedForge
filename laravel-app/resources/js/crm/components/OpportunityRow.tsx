@@ -53,6 +53,9 @@ export function OpportunityRow({ opp, onClick }: Props) {
         <div style={{ fontWeight: 700, color: 'var(--fg-1)', fontSize: '.8125rem' }}>
           {opp.contact?.name ?? '—'}
         </div>
+        <div style={{ fontSize: '.7rem', color: 'var(--primary)', marginTop: '.15rem', fontWeight: 600 }}>
+          {opp.title.replace(/^(Examen:|Solicitud:|Lead WhatsApp:)\s*/i, '')}
+        </div>
         <div style={{ fontSize: '.6875rem', color: 'var(--fg-mute)', marginTop: '.1rem' }}>
           {opp.contact?.cedula ?? opp.contact?.phone ?? '—'}
         </div>

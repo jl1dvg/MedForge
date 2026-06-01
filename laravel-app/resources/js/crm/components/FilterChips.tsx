@@ -54,6 +54,25 @@ export function FilterChips({ filters, total, urgentCount, onChange }: Props) {
         >
           Comercial
         </button>
+        <span style={{ width: 1, background: 'var(--border)', margin: '0 .25rem', alignSelf: 'stretch' }} />
+        <button
+          className={`crm-chip${filters.source === 'solicitud' ? ' active' : ''}`}
+          onClick={() => onChange({ source: filters.source === 'solicitud' ? '' : 'solicitud' })}
+        >
+          🔬 Solicitudes
+        </button>
+        <button
+          className={`crm-chip${filters.source === 'examen' ? ' active' : ''}`}
+          onClick={() => onChange({ source: filters.source === 'examen' ? '' : 'examen' })}
+        >
+          🧪 Exámenes
+        </button>
+        <button
+          className={`crm-chip${filters.source === 'whatsapp' ? ' active' : ''}`}
+          onClick={() => onChange({ source: filters.source === 'whatsapp' ? '' : 'whatsapp' })}
+        >
+          💬 WhatsApp
+        </button>
         <input
           type="text"
           placeholder="Buscar paciente..."
