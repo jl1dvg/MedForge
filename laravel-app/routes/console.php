@@ -2435,6 +2435,7 @@ Artisan::command('cron:legacy-task {slug : Slug de la tarea en cron_schedule}', 
     $isProduction = $role === 'production' || $role === '';
 
     // ── STAGING / SCRAPER ─────────────────────────────────────────────────────
+    // Toda la extracción de fuentes externas corre aquí para no saturar producción.
     if ($isScraper) {
         // Ventana amplia ±14 días — mantiene histórico reciente y agenda futura completos
         Schedule::command('index-admisiones:sync --lookback=14 --lookahead=14')
@@ -2447,10 +2448,7 @@ Artisan::command('cron:legacy-task {slug : Slug de la tarea en cron_schedule}', 
             ->everyFifteenMinutes()
             ->withoutOverlapping()
             ->runInBackground();
-    }
 
-    // ── PRODUCCIÓN ────────────────────────────────────────────────────────────
-    if ($isProduction) {
         // Facturación real desde Sigcenter — mes en curso, idempotente por hash MD5
         Schedule::command('billing:facturacion-real-sync')
             ->everyThirtyMinutes()
