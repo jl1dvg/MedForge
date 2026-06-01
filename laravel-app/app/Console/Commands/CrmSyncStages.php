@@ -11,19 +11,17 @@ class CrmSyncStages extends Command
 {
     protected $signature = 'crm:sync-stages
                             {--dry-run : Solo reporta, no escribe}
-                            {--limit=500 : Oportunidades a procesar por lote}';
+                            {--limit=5000 : Oportunidades a procesar}';
 
     protected $description = 'Sincroniza el stage del CRM con el kanban más avanzado de solicitudes quirúrgicas';
 
     /**
-     * Estado (lowercase/normalized) → CRM stage.
-     * Includes legacy estados from pre-kanban era.
+     * Estado normalizado → CRM stage.
      */
     private const ESTADO_TO_CRM = [
-        // Active kanban stages
         'recibida'          => CrmOpportunity::STAGE_NUEVO,
         'recibido'          => CrmOpportunity::STAGE_NUEVO,
-        'atrasada'          => CrmOpportunity::STAGE_NUEVO,   // overdue but not yet contacted
+        'atrasada'          => CrmOpportunity::STAGE_NUEVO,
         'atrasado'          => CrmOpportunity::STAGE_NUEVO,
         'llamado'           => CrmOpportunity::STAGE_CONTACTADO,
         'en-atencion'       => CrmOpportunity::STAGE_EN_EVALUACION,
@@ -36,7 +34,6 @@ class CrmSyncStages extends Command
         'listo-para-agenda' => CrmOpportunity::STAGE_EN_EVALUACION,
         'programada'        => CrmOpportunity::STAGE_COMPROMETIDO,
         'programado'        => CrmOpportunity::STAGE_COMPROMETIDO,
-        // Terminal stages
         'completado'        => CrmOpportunity::STAGE_GANADO,
         'completada'        => CrmOpportunity::STAGE_GANADO,
         'completa'          => CrmOpportunity::STAGE_GANADO,
@@ -50,10 +47,7 @@ class CrmSyncStages extends Command
         'cancelada'         => CrmOpportunity::STAGE_PERDIDO,
     ];
 
-    /**
-     * Numeric rank for each kanban estado — used to pick the most advanced solicitud.
-     * Higher = more advanced in the pipeline.
-     */
+    /** Higher = more advanced. Cancelled/archived = -1 (don't use). */
     private const ESTADO_RANK = [
         'atrasada' => 0, 'atrasado' => 0,
         'recibida' => 1, 'recibido' => 1,
@@ -67,7 +61,8 @@ class CrmSyncStages extends Command
         'programada' => 9, 'programado' => 9,
         'completado' => 10, 'completada' => 10, 'completa' => 10,
         'cerrado' => 10, 'cerrada' => 10, 'facturado' => 10, 'facturada' => 10,
-        'cancelado' => -1, 'cancelada' => -1, 'archivado' => -1, 'archivada' => -1,
+        'cancelado' => -1, 'cancelada' => -1,
+        'archivado' => -1, 'archivada' => -1,
     ];
 
     public function __construct(
@@ -85,7 +80,7 @@ class CrmSyncStages extends Command
             $this->warn('Modo dry-run — no se escribirá nada.');
         }
 
-        // Get all active opportunities with at least one linked solicitud (via cedula = hc_number)
+        // ── Step 1: get all active opps with linked cedulas ─────────────────
         $opps = DB::table('crm_opportunities as opp')
             ->join('crm_contacts as cc', function ($join): void {
                 $join->on('cc.id', '=', 'opp.contact_id')
@@ -93,50 +88,63 @@ class CrmSyncStages extends Command
                      ->where('cc.cedula', '!=', '');
             })
             ->whereNotIn('opp.stage', [CrmOpportunity::STAGE_GANADO, CrmOpportunity::STAGE_PERDIDO])
-            ->whereExists(function ($sub): void {
-                $sub->from('solicitud_procedimiento as sp')
-                    ->whereColumn('sp.hc_number', 'cc.cedula');
-            })
             ->select('opp.id as opp_id', 'opp.stage as current_stage', 'cc.cedula')
             ->limit($limit)
             ->get();
 
-        $this->info("Oportunidades con solicitud linkeable: {$opps->count()}");
+        if ($opps->isEmpty()) {
+            $this->info('Oportunidades con solicitud linkeable: 0');
+            return 0;
+        }
 
-        $updated  = 0;
-        $skipped  = 0;
-        $unknown  = [];
+        $this->info("Oportunidades candidatas: {$opps->count()}");
+
+        // ── Step 2: batch-fetch ALL solicitudes for those cedulas ────────────
+        $cedulas = $opps->pluck('cedula')->unique()->values()->all();
+
+        $allEstados = DB::table('solicitud_procedimiento')
+            ->whereIn('hc_number', $cedulas)
+            ->select('hc_number', 'estado')
+            ->get()
+            ->groupBy('hc_number'); // Collection<cedula, Collection<{hc_number,estado}>>
+
+        $this->info("Solicitudes cargadas para {$allEstados->count()} cédulas.");
+
+        // ── Step 3: for each opp, find the most advanced target stage ────────
         $stageOrder = array_flip(CrmOpportunity::STAGES);
+        $updated    = 0;
+        $skipped    = 0;
+        $unknown    = [];
 
         foreach ($opps as $row) {
-            // Get all solicitudes for this patient and pick the most advanced
-            $solicitudes = DB::table('solicitud_procedimiento')
-                ->where('hc_number', $row->cedula)
-                ->pluck('estado');
+            $solicitudes = $allEstados->get($row->cedula);
 
-            $bestStage    = null;
-            $bestRank     = -2;
-            $bestEstado   = '';
+            if ($solicitudes === null || $solicitudes->isEmpty()) {
+                $skipped++;
+                continue;
+            }
 
-            foreach ($solicitudes as $estado) {
-                $normalized = $this->normalizeSlug((string) $estado);
-                $rank       = self::ESTADO_RANK[$normalized] ?? null;
+            $bestStage  = null;
+            $bestRank   = -2;
+            $bestEstado = '';
+
+            foreach ($solicitudes as $sp) {
+                $norm = $this->normalizeSlug((string) $sp->estado);
+                $rank = self::ESTADO_RANK[$norm] ?? null;
 
                 if ($rank === null) {
-                    $unknown[$normalized] = ($unknown[$normalized] ?? 0) + 1;
+                    $unknown[$norm] = ($unknown[$norm] ?? 0) + 1;
                     continue;
                 }
 
-                $crmStage = self::ESTADO_TO_CRM[$normalized] ?? null;
-                if ($crmStage === null) {
+                $crmStage = self::ESTADO_TO_CRM[$norm] ?? null;
+                if ($crmStage === null || $rank <= $bestRank) {
                     continue;
                 }
 
-                if ($rank > $bestRank) {
-                    $bestRank   = $rank;
-                    $bestStage  = $crmStage;
-                    $bestEstado = $estado;
-                }
+                $bestRank   = $rank;
+                $bestStage  = $crmStage;
+                $bestEstado = (string) $sp->estado;
             }
 
             if ($bestStage === null) {
@@ -149,7 +157,7 @@ class CrmSyncStages extends Command
 
             if ($newOrder <= $currentOrder) {
                 $skipped++;
-                continue; // Don't downgrade
+                continue;
             }
 
             if ($dryRun) {
@@ -164,7 +172,7 @@ class CrmSyncStages extends Command
             $updated++;
         }
 
-        $this->info("Actualizadas: {$updated} | Saltadas: {$skipped}");
+        $this->info("Actualizadas: {$updated} | Saltadas (ya al día o sin mapeo): {$skipped}");
 
         if (!empty($unknown)) {
             $this->warn('Estados no reconocidos (considera agregar al mapa):');
