@@ -30,6 +30,19 @@ jobs:
       (github.event_name == 'workflow_dispatch' && inputs.environment == 'staging')
     steps:
       - uses: actions/checkout@v4
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: laravel-app/package-lock.json
+
+      - name: Compilar assets Vite (Staging)
+        working-directory: laravel-app
+        run: npm ci && npm run build
 
       - name: Instalar sshpass + rsync
         run: sudo apt-get install -y sshpass rsync
@@ -50,6 +63,9 @@ jobs:
             --exclude='laravel-app/public/uploads/' \
             --exclude='laravel-app/public/assets/firmas/' \
             --exclude='laravel-app/public/assets/seals/' \
+            --exclude='public/uploads/' \
+            --exclude='public/assets/firmas/' \
+            --exclude='public/assets/seals/' \
             ./ ${{ secrets.STAGING_SSH_USER }}@${{ secrets.STAGING_SSH_HOST }}:~/medforge/
 
       - name: Post-deploy Staging
@@ -63,7 +79,7 @@ jobs:
           script: |
             set -e
             PROJECT="$HOME/medforge"
-            PHP=$(which php8.3-cli 2>/dev/null || which php8.3 2>/dev/null || which php 2>/dev/null || echo php)
+            PHP=/usr/bin/php8.3-cli
 
             # Permisos de storage
             mkdir -p "$PROJECT/laravel-app/storage/logs" \
@@ -78,17 +94,24 @@ jobs:
 
             cd "$PROJECT/laravel-app"
 
-            # Composer
-            if [ -f composer.phar ]; then
-              $PHP composer.phar install --no-interaction 2>&1
-            elif command -v composer >/dev/null 2>&1; then
-              composer install --no-interaction 2>&1
+            # Instalar composer.phar si no existe (solo primera vez en staging)
+            if [ ! -f composer.phar ]; then
+              echo "Descargando composer.phar..."
+              $PHP -r "copy('https://getcomposer.org/installer', 'composer-setup.php');"
+              $PHP composer-setup.php --quiet
+              rm -f composer-setup.php
+              echo "composer.phar instalado: $($PHP composer.phar --version 2>&1 | head -1)"
             fi
+            $PHP composer.phar install --no-interaction 2>&1
 
             # Limpiar caches (staging no las cachea para facilitar cambios)
             $PHP artisan config:clear
             $PHP artisan route:clear
             $PHP artisan view:clear
+
+            # Copiar assets Vite al public raíz (hasta migración completa a Laravel)
+            mkdir -p "$PROJECT/public/build"
+            rsync -a --delete "$PROJECT/laravel-app/public/build/" "$PROJECT/public/build/"
 
             # Dependencias Python para scrapers
             cd "$PROJECT"
@@ -105,6 +128,19 @@ jobs:
       (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')
     steps:
       - uses: actions/checkout@v4
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: laravel-app/package-lock.json
+
+      - name: Compilar assets Vite (Producción)
+        working-directory: laravel-app
+        run: npm ci && npm run build
 
       - name: Instalar sshpass + rsync
         run: sudo apt-get install -y sshpass rsync
@@ -125,6 +161,9 @@ jobs:
             --exclude='laravel-app/public/uploads/' \
             --exclude='laravel-app/public/assets/firmas/' \
             --exclude='laravel-app/public/assets/seals/' \
+            --exclude='public/uploads/' \
+            --exclude='public/assets/firmas/' \
+            --exclude='public/assets/seals/' \
             ./ ${{ secrets.PROD_SSH_USER }}@${{ secrets.PROD_SSH_HOST }}:~/medforge/
 
       - name: Post-deploy Producción
@@ -138,7 +177,7 @@ jobs:
           script: |
             set -e
             PROJECT="$HOME/medforge"
-            PHP=$(which php8.3-cli 2>/dev/null || which php8.3 2>/dev/null || which php 2>/dev/null || echo php)
+            PHP=/usr/bin/php8.3-cli
 
             # Permisos de storage
             mkdir -p "$PROJECT/laravel-app/storage/logs" \
@@ -153,16 +192,16 @@ jobs:
 
             cd "$PROJECT/laravel-app"
 
-            # Composer sin dev, optimizado para producción
-            if [ -f composer.phar ]; then
-              $PHP composer.phar install --no-dev --optimize-autoloader --no-interaction 2>&1
-            elif command -v composer >/dev/null 2>&1; then
-              composer install --no-dev --optimize-autoloader --no-interaction 2>&1
-            fi
+            # Composer (producción ya tiene composer.phar)
+            $PHP composer.phar install --no-dev --optimize-autoloader --no-interaction 2>&1
 
             # Cachear para producción
             $PHP artisan config:cache
             $PHP artisan route:cache
             $PHP artisan view:cache
+
+            # Copiar assets Vite al public raíz (hasta migración completa a Laravel)
+            mkdir -p "$PROJECT/public/build"
+            rsync -a --delete "$PROJECT/laravel-app/public/build/" "$PROJECT/public/build/"
 
             echo "Producción actualizada: $(date '+%Y-%m-%d %H:%M:%S')"

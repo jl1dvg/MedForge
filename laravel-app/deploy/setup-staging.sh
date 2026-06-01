@@ -6,7 +6,7 @@
 set -euo pipefail
 
 PROJECT_DIR="${PROJECT_DIR:-/var/www/medforge}"
-PHP_BIN="${PHP_BIN:-/usr/bin/php8.3}"
+PHP_BIN="${PHP_BIN:-/usr/bin/php8.3-cli}"
 PYTHON_BIN="${PYTHON_BIN:-/usr/bin/python3}"
 COMPOSER="${COMPOSER:-/usr/local/bin/composer}"
 WEB_USER="${WEB_USER:-www-data}"
