@@ -27,9 +27,10 @@ class AgendaReadController
         }
 
         $filters = $this->resolveFilters($request);
+        $applyUserDoctorDefault = !$request->has('doctor');
 
         try {
-            $payload = $this->buildAgendaPayload($filters);
+            $payload = $this->buildAgendaPayload($filters, $applyUserDoctorDefault);
         } catch (\Throwable $e) {
             if ($shouldReturnJson) {
                 return response()->json(['error' => 'No se pudo cargar agenda', 'detail' => $e->getMessage()], 500);
@@ -128,7 +129,11 @@ class AgendaReadController
         $start = trim((string) $request->query('fecha_inicio', ''));
         $end = trim((string) $request->query('fecha_fin', ''));
 
-        if ($start !== '' && $end === '') {
+        if (!$request->hasAny(['fecha_inicio', 'fecha_fin'])) {
+            // Initial load or "Limpiar" — default to today to avoid loading all records
+            $start = now()->toDateString();
+            $end = now()->toDateString();
+        } elseif ($start !== '' && $end === '') {
             $end = $start;
         } elseif ($end !== '' && $start === '') {
             $start = $end;
@@ -167,9 +172,13 @@ class AgendaReadController
      * } $filters
      * @return array{data:array<int,object>,meta:array<string,mixed>}
      */
-    private function buildAgendaPayload(array $filters): array
+    private function buildAgendaPayload(array $filters, bool $applyUserDoctorDefault = false): array
     {
         $doctorCatalog = $this->buildDoctorCatalog();
+
+        if ($applyUserDoctorDefault && $filters['doctor'] === '') {
+            $filters['doctor'] = $this->resolveUserDoctorKeyFromCatalog($doctorCatalog);
+        }
         $afiliacionDimensions = new AfiliacionDimensionService(DB::connection()->getPdo());
         $afiliacionContext = $afiliacionDimensions->buildContext("COALESCE(NULLIF(TRIM(pp.afiliacion), ''), '')", 'aca');
 
@@ -452,6 +461,44 @@ class AgendaReadController
             'variants_by_key' => $variantsByKey,
             'lookup_by_normalized_raw' => $lookupByNormalizedRaw,
         ];
+    }
+
+    /**
+     * @param array{
+     *     lookup_by_normalized_raw:array<string,array{key:string,label:string}>
+     * } $doctorCatalog
+     */
+    private function resolveUserDoctorKeyFromCatalog(array $doctorCatalog): string
+    {
+        $user = Auth::user();
+        if (!$user instanceof \App\Models\User) {
+            return '';
+        }
+
+        $nombre = trim((string) ($user->nombre ?? ''));
+        if ($nombre === '') {
+            return '';
+        }
+
+        $lookup = (array) ($doctorCatalog['lookup_by_normalized_raw'] ?? []);
+        if (empty($lookup)) {
+            return '';
+        }
+
+        $candidates = array_filter([
+            $nombre,
+            trim((string) ($user->nombre_norm ?? '')),
+            trim((string) ($user->nombre_norm_rev ?? '')),
+        ], static fn (string $v): bool => $v !== '');
+
+        foreach ($candidates as $candidate) {
+            $normalized = $this->normalizeDoctorReference($candidate);
+            if ($normalized !== '' && isset($lookup[$normalized])) {
+                return (string) ($lookup[$normalized]['key'] ?? '');
+            }
+        }
+
+        return '';
     }
 
     /**
