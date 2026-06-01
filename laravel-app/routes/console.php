@@ -2425,8 +2425,51 @@ Artisan::command('cron:legacy-task {slug : Slug de la tarea en cron_schedule}', 
     }
 })->purpose('Ejecuta una tarea del CronRunner legacy por slug desde el scheduler de Laravel');
 
-// CRM — escalate stale operational opportunities to commercial team
-Schedule::command('crm:escalate')->dailyAt('08:00');
+// ── Schedule por SERVER_ROLE ─────────────────────────────────────────────────
+// scraper (staging): tareas de extracción desde fuentes externas.
+// production:        tareas de lógica de negocio que leen desde la DB compartida.
+// sin SERVER_ROLE:   dev local — corren todas.
+(static function (): void {
+    $role         = strtolower((string) (getenv('SERVER_ROLE') ?: ''));
+    $isScraper    = $role === 'scraper'    || $role === '';
+    $isProduction = $role === 'production' || $role === '';
+
+    // ── STAGING / SCRAPER ─────────────────────────────────────────────────────
+    if ($isScraper) {
+        // Ventana amplia ±14 días — mantiene histórico reciente y agenda futura completos
+        Schedule::command('index-admisiones:sync --lookback=14 --lookahead=14')
+            ->hourly()
+            ->withoutOverlapping()
+            ->runInBackground();
+
+        // Ventana estrecha hoy + mañana — máxima frescura para cirugías inmediatas
+        Schedule::command('index-admisiones:sync --lookback=0 --lookahead=1')
+            ->everyFifteenMinutes()
+            ->withoutOverlapping()
+            ->runInBackground();
+    }
+
+    // ── PRODUCCIÓN ────────────────────────────────────────────────────────────
+    if ($isProduction) {
+        // Facturación real desde Sigcenter — mes en curso, idempotente por hash MD5
+        Schedule::command('billing:facturacion-real-sync')
+            ->everyThirtyMinutes()
+            ->withoutOverlapping()
+            ->runInBackground();
+
+        // Índice de imágenes NAS — ventana 7 días, no reescanea form_id con cache <2 h
+        Schedule::command('imagenes:nas-index --days=7 --stale-hours=2')
+            ->everyFifteenMinutes()
+            ->withoutOverlapping()
+            ->runInBackground();
+
+        // Índice de imágenes Sigcenter — ventana 7 días, no reescanea form_id con cache <2 h
+        Schedule::command('imagenes:sigcenter-index --days=7 --stale-hours=2')
+            ->everyFifteenMinutes()
+            ->withoutOverlapping()
+            ->runInBackground();
+    }
+})();
 
 // ── Scheduler DB-driven ──────────────────────────────────────────────────────
 // Las frecuencias viven en la tabla cron_schedule y son editables desde el UI.
