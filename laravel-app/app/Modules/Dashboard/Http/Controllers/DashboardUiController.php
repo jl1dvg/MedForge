@@ -102,7 +102,7 @@ class DashboardUiController
             $payload = $this->service->buildUiPayload($startDate, $endDate, $sede);
             return response()->json([
                 'dashboard_v3' => $payload['dashboard_v3'] ?? [],
-                'ts' => now()->toIso8601String(),
+                'ts' => now()->format('H:i:s'),
             ]);
         } catch (\Throwable $e) {
             Log::error('dashboard.v3.data.error', [
