@@ -1298,6 +1298,8 @@ class KpiDashboardService
         $sql = 'SELECT
                     inbound.conversation_id,
                     inbound.wa_number,
+                    inbound.needs_human,
+                    inbound.assigned_user_id,
                     inbound.first_inbound_at,
                     inbound.last_inbound_at,
                     inbound.handoff_requested_at,
@@ -1339,7 +1341,13 @@ class KpiDashboardService
             }
 
             $lastInbound = isset($row->last_inbound_at) ? Carbon::parse((string) $row->last_inbound_at) : null;
-            $firstReply = isset($row->first_human_reply_at) ? Carbon::parse((string) $row->first_human_reply_at) : null;
+            $firstInbound = isset($row->first_inbound_at) ? Carbon::parse((string) $row->first_inbound_at) : null;
+            $rawFirstReply = isset($row->first_human_reply_at) ? Carbon::parse((string) $row->first_human_reply_at) : null;
+            // Only count reply as "attended in this period" if it came AFTER the first inbound of this period.
+            // Replies from previous periods must not inflate cobertura.
+            $firstReply = ($rawFirstReply !== null && ($firstInbound === null || $rawFirstReply->greaterThanOrEqualTo($firstInbound)))
+                ? $rawFirstReply
+                : null;
             $handoffRequestedAt = isset($row->handoff_requested_at) ? Carbon::parse((string) $row->handoff_requested_at) : null;
             $firstHandoffAt = isset($row->first_handoff_at) ? Carbon::parse((string) $row->first_handoff_at) : null;
             $responseStart = $handoffRequestedAt ?? $firstHandoffAt;
@@ -1348,12 +1356,15 @@ class KpiDashboardService
                 $peopleHandoffSet[$waNumber] = true;
             }
 
-            if ($firstReply !== null) {
+            $isAssigned = !empty($row->assigned_user_id);
+            // "Attended" = human replied (in this period) OR conversation has been assigned to an agent.
+            // Assignment without reply still means a human took responsibility.
+            if ($firstReply !== null || $isAssigned) {
                 $attended++;
                 if ($waNumber !== '') {
                     $peopleAttendedSet[$waNumber] = true;
                 }
-                if ($responseStart !== null && $firstReply->greaterThanOrEqualTo($responseStart)) {
+                if ($responseStart !== null && $firstReply !== null && $firstReply->greaterThanOrEqualTo($responseStart)) {
                     $clockSecs = $responseStart->diffInSeconds($firstReply);
                     $responseSeconds[] = $clockSecs;
                     $bizSecs = $bhCalc->businessSecondsElapsed($responseStart, $firstReply);
@@ -1725,9 +1736,7 @@ class KpiDashboardService
                     GROUP BY m.conversation_id
                 ) inbound ON inbound.conversation_id = c.id
                 LEFT JOIN users u_assigned ON u_assigned.id = c.assigned_user_id
-                WHERE EXISTS (
-                    SELECT 1 FROM whatsapp_messages m_any WHERE m_any.conversation_id = c.id
-                )';
+                WHERE c.needs_human = 1';
         $params = [$threshold24h, $threshold24h, $threshold24h];
         if ($filter['where'] !== '') {
             $sql .= ' AND ' . $filter['where'];
@@ -2730,6 +2739,7 @@ class KpiDashboardService
                     c.id AS conversation_id,
                     c.wa_number,
                     c.needs_human,
+                    c.assigned_user_id,
                     ' . $handoffRequestedSelect . ',
                     MIN(m.message_timestamp) AS first_inbound_at,
                     MAX(m.message_timestamp) AS last_inbound_at
@@ -2744,7 +2754,7 @@ class KpiDashboardService
             $sql .= ' AND ' . $filter['where'];
             $params = array_merge($params, array_values($filter['params']));
         }
-        $sql .= ' GROUP BY c.id, c.wa_number, c.needs_human';
+        $sql .= ' GROUP BY c.id, c.wa_number, c.needs_human, c.assigned_user_id';
         if (Schema::hasColumn('whatsapp_conversations', 'handoff_requested_at')) {
             $sql .= ', c.handoff_requested_at';
         }

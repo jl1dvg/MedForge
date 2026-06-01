@@ -46,11 +46,73 @@
     $needsTpl     = $n('queue_needs_template');
     $awaitingTpl  = $n('queue_awaiting_template_reply');
     $abandoned        = $n('conversations_abandoned');
-    $abandonedReal    = $n('conversations_abandoned_needs_human');
     $handoffs     = $n('handoff_transfers');
 
-    // Cobertura real: de todos los que necesitaron humano, cuántos lo recibieron
-    $totalNeedHuman = $attended + $lost; // atendidos + perdidos_con_needs_human
+    // Definir rango de fechas aquí para usarlo en SLA y cobertura
+    $fromSql = ($filters['date_from'] ?? date('Y-m-d')) . ' 00:00:00';
+    $toSql   = ($filters['date_to']   ?? date('Y-m-d')) . ' 23:59:59';
+
+    // Abandonadas con handoff +24h: handoffs en cola sin respuesta hace >24h (cálculo directo en BD)
+    $abandonedRealRow = \Illuminate\Support\Facades\DB::selectOne(
+        'SELECT COUNT(*) AS cnt FROM whatsapp_handoffs WHERE status = ? AND COALESCE(queued_at, created_at) < NOW() - INTERVAL 24 HOUR',
+        ['queued']
+    );
+    $abandonedReal = (int) ($abandonedRealRow->cnt ?? 0);
+
+    // SLA real: % de handoffs asignados respondidos dentro del meta (en minutos reloj)
+    $slaRealRow = \Illuminate\Support\Facades\DB::selectOne('
+        SELECT
+            COUNT(*) AS respondidos,
+            SUM(CASE WHEN TIMESTAMPDIFF(MINUTE, h.assigned_at, fr.msg_ts) <= ? THEN 1 ELSE 0 END) AS en_sla
+        FROM whatsapp_handoffs h
+        INNER JOIN (
+            SELECT m.conversation_id, h2.id AS handoff_id, MIN(m.message_timestamp) AS msg_ts
+            FROM whatsapp_messages m
+            JOIN whatsapp_handoffs h2 ON h2.conversation_id = m.conversation_id
+                AND m.message_timestamp >= h2.assigned_at
+                AND m.direction = "outbound"
+                AND h2.assigned_at IS NOT NULL
+            GROUP BY m.conversation_id, h2.id
+        ) fr ON fr.handoff_id = h.id
+        WHERE h.assigned_at IS NOT NULL
+          AND h.created_at >= ?
+          AND h.created_at < ?
+    ', [$slaMeta, $fromSql, $toSql]);
+    $slaRate = ($slaRealRow && (int)$slaRealRow->respondidos > 0)
+        ? (int) round((int)$slaRealRow->en_sla / (int)$slaRealRow->respondidos * 100)
+        : 0;
+
+    // Cobertura real: recalculada directo en BD para evitar cache de servicio.
+    // Atendida = tuvo reply humano en el período O tiene agente asignado.
+    // Perdida  = needs_human=1 sin reply en período y sin agente asignado.
+    $covRows = \Illuminate\Support\Facades\DB::select('
+        SELECT
+            SUM(CASE WHEN (human.first_human_reply_at IS NOT NULL AND human.first_human_reply_at >= inbound.first_inbound_at)
+                          OR inbound.assigned_user_id IS NOT NULL THEN 1 ELSE 0 END) AS attended,
+            SUM(CASE WHEN (human.first_human_reply_at IS NULL OR human.first_human_reply_at < inbound.first_inbound_at)
+                          AND inbound.assigned_user_id IS NULL AND inbound.needs_human = 1 THEN 1 ELSE 0 END) AS lost_needs_human
+        FROM (
+            SELECT c.id AS conversation_id, c.needs_human, c.assigned_user_id,
+                   MIN(m.message_timestamp) AS first_inbound_at
+            FROM whatsapp_messages m
+            INNER JOIN whatsapp_conversations c ON c.id = m.conversation_id
+            WHERE m.direction = "inbound"
+              AND m.message_timestamp >= ?
+              AND m.message_timestamp < ?
+            GROUP BY c.id, c.needs_human, c.assigned_user_id
+        ) inbound
+        LEFT JOIN (
+            SELECT h.conversation_id, MIN(m.message_timestamp) AS first_human_reply_at
+            FROM whatsapp_handoffs h
+            INNER JOIN whatsapp_messages m ON m.conversation_id = h.conversation_id
+                AND m.direction = "outbound" AND h.assigned_at IS NOT NULL
+                AND m.message_timestamp >= h.assigned_at
+            GROUP BY h.conversation_id
+        ) human ON human.conversation_id = inbound.conversation_id
+    ', [$fromSql, $toSql]);
+    $attended       = (int) ($covRows[0]->attended ?? 0);
+    $lost           = (int) ($covRows[0]->lost_needs_human ?? 0);
+    $totalNeedHuman = $attended + $lost;
     $attention      = $totalNeedHuman > 0 ? (int) round($attended / $totalNeedHuman * 100) : 100;
 
     $bookingRate = $peopleIn > 0 ? (int) round(($bookings / $peopleIn) * 100) : 0;
@@ -107,8 +169,10 @@
         [
             'icon' => 'mdi-account-heart-outline', 'tone' => $sevCoverage,
             'label' => 'Cobertura humana', 'value' => $attention, 'unit' => '%',
+            'live_key' => 'cob-pct',
             'badge' => ['sev' => $sevCoverage, 'text' => $sevCoverage === 'success' ? 'En meta' : ($sevCoverage === 'warning' ? 'Vigilar' : 'Crítico')],
             'trend' => $attended . ' atendidas de ' . $totalNeedHuman . ' que necesitaron humano · ' . $resolvedBot . ' resueltas por bot',
+            'trend_key' => 'cob-trend',
             'breakdown' => [
                 ['dot' => 'success', 'n' => $attended,    'label' => 'Atendidas'],
                 ['dot' => 'danger',  'n' => $lost,        'label' => 'Pidieron ayuda sin respuesta'],
@@ -121,7 +185,7 @@
             'badge' => ['sev' => $sevResp, 'text' => 'Meta ' . $slaMeta . ' min'],
             'trend' => 'Mediana en reloj · P75 laboral ' . ($p75biz ?: $p75) . ' min · P75 reloj ' . $p75 . ' min',
             'breakdown' => [
-                ['dot' => 'success', 'n' => $slaRate . '%', 'label' => 'SLA (tiempo laboral L-S 08-18)'],
+                ['dot' => 'success', 'n' => $slaRate . '%', 'label' => 'SLA (tiempo laboral L-S 08-18)', 'live_key' => 'sla-pct'],
                 ['dot' => 'warning', 'n' => ($p75biz ?: $p75), 'label' => 'P75 laboral'],
                 ['dot' => 'info',    'n' => $handoffs,      'label' => 'Handoffs'],
             ],
@@ -575,7 +639,7 @@ body:has(.wad) { overflow: hidden; }
     <header class="wad-head">
         <div class="wad-head-left">
             <div class="wad-crumb"><i class="mdi mdi-whatsapp"></i><span>WhatsApp · Contact center</span></div>
-            <h1>Dashboard WhatsApp <span class="wad-live"><span class="wad-pulse"></span>en vivo</span></h1>
+            <h1>Dashboard WhatsApp <span class="wad-live"><span class="wad-pulse"></span>en vivo</span> <span data-live="ts" style="font:400 11px/1 var(--font-body);color:var(--fg-3);margin-left:8px;"></span></h1>
         </div>
         <div class="wad-head-right">
             <div class="wad-period">
@@ -607,15 +671,22 @@ body:has(.wad) { overflow: hidden; }
                     <div class="wad-kpi-main">
                         <p class="wad-kpi-label">{{ $k['label'] }}@if(!empty($k['live'])) &nbsp;<span class="wad-pulse wad-pulse--{{ $sevQueue === 'danger' ? 'danger' : ($sevQueue === 'warning' ? 'warning' : '') }}" style="width:6px;height:6px;vertical-align:middle;margin-bottom:1px;"></span>@endif</p>
                         <div class="wad-kpi-valrow">
-                            <p class="wad-kpi-value">{{ $k['value'] }}@if($k['unit'])<span class="wad-kpi-unit">{{ $k['unit'] }}</span>@endif</p>
+                            <p class="wad-kpi-value" @if(!empty($k['live'])) data-live="queue-total" @elseif(!empty($k['live_key'])) data-live="{{ $k['live_key'] }}" @endif>{{ $k['value'] }}@if(!empty($k['live_key']) && $k['live_key'] === 'cob-pct')%@elseif($k['unit'])<span class="wad-kpi-unit">{{ $k['unit'] }}</span>@endif</p>
                             @if(!empty($k['badge']))<span class="wad-kpi-badge wad-kpi-badge--{{ $k['badge']['sev'] }}">{{ $k['badge']['text'] }}</span>@endif
                         </div>
-                        <p class="wad-kpi-trend">{{ $k['trend'] }}</p>
+                        <p class="wad-kpi-trend" @if(!empty($k['live'])) data-live="queue-trend" @elseif(!empty($k['trend_key'])) data-live="{{ $k['trend_key'] }}" @endif>{{ $k['trend'] }}</p>
                     </div>
                 </div>
                 <div class="wad-kpi-break">
-                    @foreach($k['breakdown'] as $b)
-                        <span class="wad-kpi-stat"><span class="wad-dot wad-dot--{{ $b['dot'] }}"></span><strong>{{ $b['n'] }}</strong><span class="wad-kpi-stat-label">{{ $b['label'] }}</span></span>
+                    @foreach($k['breakdown'] as $bi => $b)
+                        @php
+                            $liveAttr = '';
+                            if (!empty($k['live'])) {
+                                $liveAttr = match($bi) { 0 => 'queue-queued', 1 => 'queue-window', 2 => 'queue-template', default => '' };
+                            }
+                        @endphp
+                        @php $bLive = $liveAttr ?: ($b['live_key'] ?? ''); @endphp
+                        <span class="wad-kpi-stat"><span class="wad-dot wad-dot--{{ $b['dot'] }}"></span><strong @if($bLive) data-live="{{ $bLive }}" @endif>{{ $b['n'] }}</strong><span class="wad-kpi-stat-label">{{ $b['label'] }}</span></span>
                     @endforeach
                 </div>
             </article>
@@ -840,4 +911,55 @@ body:has(.wad) { overflow: hidden; }
 
     </section>
 </div>
+
+@push('scripts')
+<script>
+(function () {
+    const INTERVAL = 30000; // 30 segundos
+    const endpoint = '/v2/whatsapp/dashboard-v3/live';
+    const params   = new URLSearchParams(window.location.search);
+
+    function q(sel) { return document.querySelector(sel); }
+    function text(sel, val) { const el = q(sel); if (el) el.textContent = val; }
+
+    function applyData(d) {
+        if (!d) return;
+        const queue   = d.queue   || {};
+        const cob     = d.cobertura || {};
+        const sla     = d.sla     || {};
+
+        // Cola activa (KPI card con data-live="queue")
+        text('[data-live="queue-total"]',    queue.total        ?? '—');
+        text('[data-live="queue-queued"]',   queue.queued       ?? '—');
+        text('[data-live="queue-abandoned"]',queue.abandoned    ?? '—');
+        text('[data-live="queue-window"]',   queue.window_open  ?? '—');
+        text('[data-live="queue-template"]', queue.needs_template ?? '—');
+        text('[data-live="queue-trend"]',    (queue.queued ?? '—') + ' sin asignar · ' + (queue.abandoned ?? '—') + ' abandonadas con handoff');
+
+        // Cobertura
+        text('[data-live="cob-pct"]',      (cob.pct ?? '—') + '%');
+        text('[data-live="cob-trend"]',    (cob.attended ?? '—') + ' atendidas de ' + ((cob.attended ?? 0) + (cob.lost ?? 0)) + ' que necesitaron humano');
+
+        // SLA
+        text('[data-live="sla-pct"]',      (sla.pct ?? '—') + '%');
+
+        // Timestamp
+        const ts = q('[data-live="ts"]');
+        if (ts) ts.textContent = 'Actualizado ' + (d.ts || '');
+    }
+
+    function fetchLive() {
+        const url = endpoint + (params.toString() ? '?' + params.toString() : '');
+        fetch(url, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+            .then(r => r.ok ? r.json() : null)
+            .then(applyData)
+            .catch(() => {});
+    }
+
+    // Primera actualización al cargar
+    fetchLive();
+    setInterval(fetchLive, INTERVAL);
+})();
+</script>
+@endpush
 @endsection
