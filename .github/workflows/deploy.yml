@@ -99,6 +99,10 @@ jobs:
             $PHP artisan route:clear
             $PHP artisan view:clear
 
+            # Copiar assets Vite al public raíz (hasta migración completa a Laravel)
+            mkdir -p "$PROJECT/public/build"
+            rsync -a --delete "$PROJECT/laravel-app/public/build/" "$PROJECT/public/build/"
+
             # Dependencias Python para scrapers
             cd "$PROJECT"
             python3 -m pip install -q -r scrapping/requirements.txt 2>/dev/null || true
@@ -179,5 +183,9 @@ jobs:
             $PHP artisan config:cache
             $PHP artisan route:cache
             $PHP artisan view:cache
+
+            # Copiar assets Vite al public raíz (hasta migración completa a Laravel)
+            mkdir -p "$PROJECT/public/build"
+            rsync -a --delete "$PROJECT/laravel-app/public/build/" "$PROJECT/public/build/"
 
             echo "Producción actualizada: $(date '+%Y-%m-%d %H:%M:%S')"
