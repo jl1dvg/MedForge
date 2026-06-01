@@ -110,14 +110,18 @@ body:has(.dash3) footer.main-footer { display: none; }
     display: inline-flex; padding: 3px; border-radius: 999px;
     background: #fff; border: 1px solid var(--border);
 }
-.dash3-period button {
-    appearance: none; border: 0; cursor: pointer;
+.dash3-period button,
+.dash3-period a {
+    appearance: none; border: 0; cursor: pointer; text-decoration: none;
     padding: 6px 14px; border-radius: 999px;
     font: 600 12px var(--font-body); color: var(--fg-3);
     background: transparent; transition: all .15s var(--ease-out);
+    display: inline-block;
 }
-.dash3-period button:hover { color: var(--primary); }
-.dash3-period button.active {
+.dash3-period button:hover,
+.dash3-period a:hover { color: var(--primary); }
+.dash3-period button.active,
+.dash3-period a.active {
     background: var(--primary); color: #fff;
     box-shadow: 0 4px 10px rgba(81,86,190,.25);
 }
@@ -245,6 +249,7 @@ body:has(.dash3) footer.main-footer { display: none; }
 .dash3-panel-link i { font-size: 15px; }
 .dash3-panel-body {
     flex: 1; min-height: 0; overflow-y: auto;
+    max-height: calc(100vh - 260px);
     padding: 10px 14px 12px;
 }
 .dash3-panel-body::-webkit-scrollbar { width: 6px; }
