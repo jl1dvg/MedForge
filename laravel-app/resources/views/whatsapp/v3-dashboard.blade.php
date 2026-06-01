@@ -46,11 +46,73 @@
     $needsTpl     = $n('queue_needs_template');
     $awaitingTpl  = $n('queue_awaiting_template_reply');
     $abandoned        = $n('conversations_abandoned');
-    $abandonedReal    = $n('conversations_abandoned_needs_human');
     $handoffs     = $n('handoff_transfers');
 
-    // Cobertura real: de todos los que necesitaron humano, cuántos lo recibieron
-    $totalNeedHuman = $attended + $lost; // atendidos + perdidos_con_needs_human
+    // Definir rango de fechas aquí para usarlo en SLA y cobertura
+    $fromSql = ($filters['date_from'] ?? date('Y-m-d')) . ' 00:00:00';
+    $toSql   = ($filters['date_to']   ?? date('Y-m-d')) . ' 23:59:59';
+
+    // Abandonadas con handoff +24h: handoffs en cola sin respuesta hace >24h (cálculo directo en BD)
+    $abandonedRealRow = \Illuminate\Support\Facades\DB::selectOne(
+        'SELECT COUNT(*) AS cnt FROM whatsapp_handoffs WHERE status = ? AND COALESCE(queued_at, created_at) < NOW() - INTERVAL 24 HOUR',
+        ['queued']
+    );
+    $abandonedReal = (int) ($abandonedRealRow->cnt ?? 0);
+
+    // SLA real: % de handoffs asignados respondidos dentro del meta (en minutos reloj)
+    $slaRealRow = \Illuminate\Support\Facades\DB::selectOne('
+        SELECT
+            COUNT(*) AS respondidos,
+            SUM(CASE WHEN TIMESTAMPDIFF(MINUTE, h.assigned_at, fr.msg_ts) <= ? THEN 1 ELSE 0 END) AS en_sla
+        FROM whatsapp_handoffs h
+        INNER JOIN (
+            SELECT m.conversation_id, h2.id AS handoff_id, MIN(m.message_timestamp) AS msg_ts
+            FROM whatsapp_messages m
+            JOIN whatsapp_handoffs h2 ON h2.conversation_id = m.conversation_id
+                AND m.message_timestamp >= h2.assigned_at
+                AND m.direction = "outbound"
+                AND h2.assigned_at IS NOT NULL
+            GROUP BY m.conversation_id, h2.id
+        ) fr ON fr.handoff_id = h.id
+        WHERE h.assigned_at IS NOT NULL
+          AND h.created_at >= ?
+          AND h.created_at < ?
+    ', [$slaMeta, $fromSql, $toSql]);
+    $slaRate = ($slaRealRow && (int)$slaRealRow->respondidos > 0)
+        ? (int) round((int)$slaRealRow->en_sla / (int)$slaRealRow->respondidos * 100)
+        : 0;
+
+    // Cobertura real: recalculada directo en BD para evitar cache de servicio.
+    // Atendida = tuvo reply humano en el período O tiene agente asignado.
+    // Perdida  = needs_human=1 sin reply en período y sin agente asignado.
+    $covRows = \Illuminate\Support\Facades\DB::select('
+        SELECT
+            SUM(CASE WHEN (human.first_human_reply_at IS NOT NULL AND human.first_human_reply_at >= inbound.first_inbound_at)
+                          OR inbound.assigned_user_id IS NOT NULL THEN 1 ELSE 0 END) AS attended,
+            SUM(CASE WHEN (human.first_human_reply_at IS NULL OR human.first_human_reply_at < inbound.first_inbound_at)
+                          AND inbound.assigned_user_id IS NULL AND inbound.needs_human = 1 THEN 1 ELSE 0 END) AS lost_needs_human
+        FROM (
+            SELECT c.id AS conversation_id, c.needs_human, c.assigned_user_id,
+                   MIN(m.message_timestamp) AS first_inbound_at
+            FROM whatsapp_messages m
+            INNER JOIN whatsapp_conversations c ON c.id = m.conversation_id
+            WHERE m.direction = "inbound"
+              AND m.message_timestamp >= ?
+              AND m.message_timestamp < ?
+            GROUP BY c.id, c.needs_human, c.assigned_user_id
+        ) inbound
+        LEFT JOIN (
+            SELECT h.conversation_id, MIN(m.message_timestamp) AS first_human_reply_at
+            FROM whatsapp_handoffs h
+            INNER JOIN whatsapp_messages m ON m.conversation_id = h.conversation_id
+                AND m.direction = "outbound" AND h.assigned_at IS NOT NULL
+                AND m.message_timestamp >= h.assigned_at
+            GROUP BY h.conversation_id
+        ) human ON human.conversation_id = inbound.conversation_id
+    ', [$fromSql, $toSql]);
+    $attended       = (int) ($covRows[0]->attended ?? 0);
+    $lost           = (int) ($covRows[0]->lost_needs_human ?? 0);
+    $totalNeedHuman = $attended + $lost;
     $attention      = $totalNeedHuman > 0 ? (int) round($attended / $totalNeedHuman * 100) : 100;
 
     $bookingRate = $peopleIn > 0 ? (int) round(($bookings / $peopleIn) * 100) : 0;

@@ -24,6 +24,7 @@ export default defineConfig({
                 'resources/js/v2/dashboard-home.js',
                 'resources/js/v2/patient-detail.js',
                 'resources/js/v2/imagenes-dashboard.js',
+                'resources/js/v2/whatsapp-dashboard-v3.js',
                 'resources/js/v2/imagenes-realizadas.js',
                 'resources/js/v2/pacientes-flujo.js',
                 'resources/js/v2/solicitudes-index.js',
