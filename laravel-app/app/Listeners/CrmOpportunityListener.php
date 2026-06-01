@@ -252,7 +252,7 @@ class CrmOpportunityListener
             return 'sin_dato';
         }
 
-        if (preg_match('/iess|issfa|isspol|msp|ministerio|salud.publica|red.publica/', $lower)) {
+        if (preg_match('/iess|issfa|isspol|msp|ministerio|salud.publica|red.publica|campesino|jubilado|seguro.general|seguro.voluntario/', $lower)) {
             return 'publico';
         }
 
