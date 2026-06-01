@@ -1,0 +1,158 @@
+name: Deploy MedForge
+
+on:
+  push:
+    branches:
+      - main      # → producción
+      - staging   # → staging/scraper
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Entorno a desplegar'
+        required: true
+        default: staging
+        type: choice
+        options:
+          - staging
+          - production
+
+jobs:
+  # ── Staging / Scraper ────────────────────────────────────────────────────
+  deploy-staging:
+    name: "Deploy → Staging"
+    runs-on: ubuntu-latest
+    if: |
+      github.ref == 'refs/heads/staging' ||
+      (github.event_name == 'workflow_dispatch' && inputs.environment == 'staging')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar sshpass + rsync
+        run: sudo apt-get install -y sshpass rsync
+
+      - name: Sincronizar archivos → Staging
+        env:
+          SSHPASS: ${{ secrets.STAGING_SSH_PASS }}
+        run: |
+          sshpass -e rsync -az --delete \
+            -e "ssh -o StrictHostKeyChecking=no -p 22" \
+            --exclude='.git/' \
+            --exclude='.env' \
+            --exclude='laravel-app/.env' \
+            --exclude='laravel-app/vendor/' \
+            --exclude='laravel-app/node_modules/' \
+            --exclude='laravel-app/storage/' \
+            --exclude='storage/' \
+            ./ ${{ secrets.STAGING_SSH_USER }}@${{ secrets.STAGING_SSH_HOST }}:${{ secrets.STAGING_PROJECT_DIR }}/
+
+      - name: Post-deploy Staging
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.STAGING_SSH_HOST }}
+          username: ${{ secrets.STAGING_SSH_USER }}
+          password: ${{ secrets.STAGING_SSH_PASS }}
+          port: 22
+          command_timeout: 15m
+          script: |
+            set -e
+            PROJECT="${{ secrets.STAGING_PROJECT_DIR }}"
+            PHP=$(which php8.3-cli 2>/dev/null || which php8.3 2>/dev/null || which php 2>/dev/null || echo php)
+
+            # Permisos de storage
+            mkdir -p "$PROJECT/laravel-app/storage/logs" \
+                     "$PROJECT/laravel-app/storage/framework/cache" \
+                     "$PROJECT/laravel-app/storage/framework/sessions" \
+                     "$PROJECT/laravel-app/storage/framework/views" \
+                     "$PROJECT/laravel-app/bootstrap/cache" \
+                     "$PROJECT/storage/logs"
+            chmod -R 775 "$PROJECT/laravel-app/storage" \
+                         "$PROJECT/laravel-app/bootstrap/cache" \
+                         "$PROJECT/storage" 2>/dev/null || true
+
+            cd "$PROJECT/laravel-app"
+
+            # Composer
+            if [ -f composer.phar ]; then
+              $PHP composer.phar install --no-interaction 2>&1
+            elif command -v composer >/dev/null 2>&1; then
+              composer install --no-interaction 2>&1
+            fi
+
+            # Limpiar caches (staging no las cachea para facilitar cambios)
+            $PHP artisan config:clear
+            $PHP artisan route:clear
+            $PHP artisan view:clear
+
+            # Dependencias Python para scrapers
+            cd "$PROJECT"
+            python3 -m pip install -q -r scrapping/requirements.txt 2>/dev/null || true
+
+            echo "Staging actualizado: $(date '+%Y-%m-%d %H:%M:%S')"
+
+  # ── Producción ────────────────────────────────────────────────────────────
+  deploy-production:
+    name: "Deploy → Producción"
+    runs-on: ubuntu-latest
+    if: |
+      github.ref == 'refs/heads/main' ||
+      (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar sshpass + rsync
+        run: sudo apt-get install -y sshpass rsync
+
+      - name: Sincronizar archivos → Producción
+        env:
+          SSHPASS: ${{ secrets.PROD_SSH_PASS }}
+        run: |
+          sshpass -e rsync -az --delete \
+            -e "ssh -o StrictHostKeyChecking=no -p 22" \
+            --exclude='.git/' \
+            --exclude='.env' \
+            --exclude='laravel-app/.env' \
+            --exclude='laravel-app/vendor/' \
+            --exclude='laravel-app/node_modules/' \
+            --exclude='laravel-app/storage/' \
+            --exclude='storage/' \
+            ./ ${{ secrets.PROD_SSH_USER }}@${{ secrets.PROD_SSH_HOST }}:${{ secrets.PROD_PROJECT_DIR }}/
+
+      - name: Post-deploy Producción
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.PROD_SSH_HOST }}
+          username: ${{ secrets.PROD_SSH_USER }}
+          password: ${{ secrets.PROD_SSH_PASS }}
+          port: 22
+          command_timeout: 15m
+          script: |
+            set -e
+            PROJECT="${{ secrets.PROD_PROJECT_DIR }}"
+            PHP=$(which php8.3-cli 2>/dev/null || which php8.3 2>/dev/null || which php 2>/dev/null || echo php)
+
+            # Permisos de storage
+            mkdir -p "$PROJECT/laravel-app/storage/logs" \
+                     "$PROJECT/laravel-app/storage/framework/cache" \
+                     "$PROJECT/laravel-app/storage/framework/sessions" \
+                     "$PROJECT/laravel-app/storage/framework/views" \
+                     "$PROJECT/laravel-app/bootstrap/cache" \
+                     "$PROJECT/storage/logs"
+            chmod -R 775 "$PROJECT/laravel-app/storage" \
+                         "$PROJECT/laravel-app/bootstrap/cache" \
+                         "$PROJECT/storage" 2>/dev/null || true
+
+            cd "$PROJECT/laravel-app"
+
+            # Composer sin dev, optimizado para producción
+            if [ -f composer.phar ]; then
+              $PHP composer.phar install --no-dev --optimize-autoloader --no-interaction 2>&1
+            elif command -v composer >/dev/null 2>&1; then
+              composer install --no-dev --optimize-autoloader --no-interaction 2>&1
+            fi
+
+            # Cachear para producción
+            $PHP artisan config:cache
+            $PHP artisan route:cache
+            $PHP artisan view:cache
+
+            echo "Producción actualizada: $(date '+%Y-%m-%d %H:%M:%S')"
