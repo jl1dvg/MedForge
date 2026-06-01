@@ -2456,13 +2456,8 @@ Artisan::command('cron:legacy-task {slug : Slug de la tarea en cron_schedule}', 
             ->runInBackground();
 
         // Índice de imágenes NAS — ventana 7 días, no reescanea form_id con cache <2 h
+        // NAS accesible desde staging vía SSH externo (190.110.204.74:2222)
         Schedule::command('imagenes:nas-index --days=7 --stale-hours=2')
-            ->everyFifteenMinutes()
-            ->withoutOverlapping()
-            ->runInBackground();
-
-        // Índice de imágenes Sigcenter — ventana 7 días, no reescanea form_id con cache <2 h
-        Schedule::command('imagenes:sigcenter-index --days=7 --stale-hours=2')
             ->everyFifteenMinutes()
             ->withoutOverlapping()
             ->runInBackground();
@@ -2470,6 +2465,12 @@ Artisan::command('cron:legacy-task {slug : Slug de la tarea en cron_schedule}', 
 
     // ── PRODUCCIÓN ────────────────────────────────────────────────────────────
     if ($isProduction) {
+        // Índice de imágenes Sigcenter — Sigcenter DB vive en localhost de producción (127.0.0.1)
+        Schedule::command('imagenes:sigcenter-index --days=7 --stale-hours=2')
+            ->everyFifteenMinutes()
+            ->withoutOverlapping()
+            ->runInBackground();
+
         // Escalaciones diarias de oportunidades CRM comerciales estancadas
         Schedule::command('crm:escalate')->dailyAt('08:00');
 
