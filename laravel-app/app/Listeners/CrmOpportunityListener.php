@@ -207,7 +207,8 @@ class CrmOpportunityListener
             ->where('id', $solicitudId)
             ->value('afiliacion');
 
-        // Fallback: find via contact cedula → most recent solicitud
+        // Fallback: contact cedula → most recent solicitud
+        $cedula = null;
         if ($afiliacion === null && $opp->contact_id !== null) {
             $cedula = DB::table('crm_contacts')
                 ->where('id', $opp->contact_id)
@@ -219,6 +220,13 @@ class CrmOpportunityListener
                     ->orderByDesc('id')
                     ->value('afiliacion');
             }
+        }
+
+        // Final fallback: patient_data direct lookup
+        if ($afiliacion === null && $cedula !== null) {
+            $afiliacion = DB::table('patient_data')
+                ->where('hc_number', $cedula)
+                ->value('afiliacion');
         }
 
         if ($afiliacion === null) {

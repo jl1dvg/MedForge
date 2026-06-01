@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\DB;
  *   2. Direct source on the opportunity
  *   3. Contact cedula → solicitud_procedimiento.hc_number  ← covers manual/whatsapp opps
  *   4. Examen source → consulta_examenes.hc_number → solicitud_procedimiento  ← covers examen opps
+ *   5. hc_number (examen or cedula) → patient_data.afiliacion  ← direct fallback for all opps
  *
  * Usage:
  *   php artisan crm:backfill-afiliacion            # process all
@@ -111,27 +112,43 @@ class CrmBackfillAfiliacionTipo extends Command
         }
 
         // 4. Examen source → consulta_examenes.hc_number → solicitud_procedimiento
-        if ($solicitudId === null && $opp->source_type === 'consulta_examenes' && $opp->source_id !== null) {
-            $hcNumber = DB::table('consulta_examenes')
+        $examenHc = null;
+        if ($opp->source_type === 'consulta_examenes' && $opp->source_id !== null) {
+            $examenHc = DB::table('consulta_examenes')
                 ->where('id', (int) $opp->source_id)
                 ->value('hc_number');
 
-            if ($hcNumber !== null) {
+            if ($solicitudId === null && $examenHc !== null) {
                 $solicitudId = DB::table('solicitud_procedimiento')
-                    ->where('hc_number', $hcNumber)
+                    ->where('hc_number', $examenHc)
                     ->orderByDesc('id')
                     ->value('id');
             }
         }
 
-        if ($solicitudId === null) {
-            return null;
+        // Try solicitud path first
+        if ($solicitudId !== null) {
+            $afiliacion = DB::table('solicitud_procedimiento')
+                ->where('id', (int) $solicitudId)
+                ->value('afiliacion');
+
+            if ($afiliacion !== null) {
+                return (string) $afiliacion;
+            }
         }
 
-        $afiliacion = DB::table('solicitud_procedimiento')
-            ->where('id', (int) $solicitudId)
-            ->value('afiliacion');
+        // 5. patient_data direct lookup via hc_number (examen hc or contact cedula)
+        $hcForPatient = $examenHc ?? ($contactCedulas[(int) ($opp->contact_id ?? 0)] ?? null);
+        if ($hcForPatient !== null) {
+            $afiliacion = DB::table('patient_data')
+                ->where('hc_number', $hcForPatient)
+                ->value('afiliacion');
 
-        return $afiliacion !== null ? (string) $afiliacion : null;
+            if ($afiliacion !== null) {
+                return (string) $afiliacion;
+            }
+        }
+
+        return null;
     }
 }
