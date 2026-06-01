@@ -46,6 +46,7 @@ Route::middleware(['app.auth', 'app.permission:administrativo,dashboard.view'])-
     Route::get('/v2/dashboard', [DashboardUiController::class, 'indexV3']);
     Route::get('/v2/dashboard-v3', [DashboardUiController::class, 'indexV3']);
     Route::get('/v3/dashboard', [DashboardUiController::class, 'indexV3']);
+    Route::get('/v3/dashboard/data', [DashboardUiController::class, 'dataV3']);
 });
 
 Route::middleware(['app.auth', 'app.permission:administrativo,derivaciones.view,pacientes.view,solicitudes.view'])->group(function (): void {
