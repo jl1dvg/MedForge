@@ -107,7 +107,7 @@ class CrmOpportunityListener
 
         $opp = $this->findOpportunityBySource('solicitud_procedimiento', $event->solicitudId);
 
-        if (!($ opp instanceof CrmOpportunity)) {
+        if (!($opp instanceof CrmOpportunity)) {
             return;
         }
 
