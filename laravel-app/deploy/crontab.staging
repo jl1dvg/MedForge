@@ -1,19 +1,12 @@
-# Crontab — Servidor STAGING + SCRAPER (webspace-data.io)
+# Crontab — Servidor STAGING + SCRAPER (webspace-data.io u108132987)
 #
-# Instalar (usuario u108132987):
+# Instalar:
 #   crontab ~/medforge/laravel-app/deploy/crontab.staging
 #
-# Solo corre scrapers externos. SERVER_ROLE=scraper en .env filtra las tareas.
-#
-# Ajusta PROJECT_DIR si el proyecto está en otra ubicación.
-PROJECT_DIR=/kunden/homepages/31/d908326449/htdocs/medforge
-PHP_BIN=/usr/bin/php8.3-cli
-PYTHON_BIN=/usr/bin/python3
-LOG_DIR=/kunden/homepages/31/d908326449/htdocs/medforge/storage/logs
+# SERVER_ROLE=scraper en .env filtra solo las tareas de scraping.
 
 # ── Cron legacy (scrapers) — cada 5 minutos ──────────────────────────────────
-*/5 * * * * /usr/bin/flock -n /tmp/medforge_cron_scraper.lock \
-    $PHP_BIN $PROJECT_DIR/cron.php >> $LOG_DIR/cron-scraper.log 2>&1
+*/5 * * * * /usr/bin/flock -n /tmp/medforge_cron_scraper.lock /usr/bin/php8.3-cli /kunden/homepages/31/d908326449/htdocs/medforge/cron.php >> /kunden/homepages/31/d908326449/htdocs/medforge/storage/logs/cron-scraper.log 2>&1
 
 # ── Laravel scheduler — cada minuto (scrapers Artisan) ───────────────────────
-* * * * * cd $PROJECT_DIR/laravel-app && $PHP_BIN artisan schedule:run >> $LOG_DIR/laravel-scheduler-scraper.log 2>&1
+* * * * * cd /kunden/homepages/31/d908326449/htdocs/medforge/laravel-app && /usr/bin/php8.3-cli artisan schedule:run >> /kunden/homepages/31/d908326449/htdocs/medforge/storage/logs/laravel-scheduler-scraper.log 2>&1
