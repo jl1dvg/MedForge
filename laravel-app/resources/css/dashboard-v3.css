@@ -6,9 +6,13 @@
    ========================================================================= */
 
 /* ---- Make the layout shell behave: no inner scroll for v3 ---------------- */
+html:has(.dash3),
+body:has(.dash3) { height: 100%; overflow: hidden; }
+
 body:has(.dash3) .content-wrapper,
 body:has(.dash3) .content-wrapper > .content {
-    height: calc(100vh - 60px);  /* assume ~60px top header — adjust if your shell is taller */
+    height: calc(100vh - 60px);
+    min-height: 0 !important;
     overflow: hidden;
     padding: 0;
 }
