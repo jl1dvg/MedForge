@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Solicitudes\Services;
 
+use App\Events\Crm\SolicitudKanbanEstadoCambiado;
 use App\Jobs\SendSolicitudReminderJob;
 use App\Models\SolicitudEstadoLog;
 use App\Modules\Solicitudes\Services\Traits\SolicitudesDbHelperTrait;
@@ -126,6 +127,14 @@ class SolicitudesKanbanService
         $nextStateLabel = (string) ($kanbanState['label'] ?? $this->kanbanLabel($nextState));
 
         $this->persistEstadoLog($id, $legacyState, $nextState, $userId, $nota);
+
+        // Notify CRM pipeline about the stage change
+        SolicitudKanbanEstadoCambiado::dispatch(
+            solicitudId: $id,
+            kanbanSlug: $nextState,
+            estadoAnterior: $legacyState,
+            actorUserId: $userId,
+        );
 
         if ($nextState === 'programada') {
             $this->scheduleReminders($id);
