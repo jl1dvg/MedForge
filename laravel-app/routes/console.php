@@ -2425,8 +2425,59 @@ Artisan::command('cron:legacy-task {slug : Slug de la tarea en cron_schedule}', 
     }
 })->purpose('Ejecuta una tarea del CronRunner legacy por slug desde el scheduler de Laravel');
 
-// CRM — escalate stale operational opportunities to commercial team
-Schedule::command('crm:escalate')->dailyAt('08:00');
+// ── Schedule por SERVER_ROLE ─────────────────────────────────────────────────
+// scraper (staging): tareas de extracción desde fuentes externas.
+// production:        tareas de lógica de negocio que leen desde la DB compartida.
+// sin SERVER_ROLE:   dev local — corren todas.
+(static function (): void {
+    $role         = strtolower((string) (getenv('SERVER_ROLE') ?: ''));
+    $isScraper    = $role === 'scraper'    || $role === '';
+    $isProduction = $role === 'production' || $role === '';
+
+    // ── STAGING / SCRAPER ─────────────────────────────────────────────────────
+    // Toda la extracción de fuentes externas corre aquí para no saturar producción.
+    if ($isScraper) {
+        // Ventana amplia ±14 días — mantiene histórico reciente y agenda futura completos
+        Schedule::command('index-admisiones:sync --lookback=14 --lookahead=14')
+            ->hourly()
+            ->withoutOverlapping()
+            ->runInBackground();
+
+        // Ventana estrecha hoy + mañana — máxima frescura para cirugías inmediatas
+        Schedule::command('index-admisiones:sync --lookback=0 --lookahead=1')
+            ->everyFifteenMinutes()
+            ->withoutOverlapping()
+            ->runInBackground();
+
+        // Facturación real desde Sigcenter — mes en curso, idempotente por hash MD5
+        Schedule::command('billing:facturacion-real-sync')
+            ->everyThirtyMinutes()
+            ->withoutOverlapping()
+            ->runInBackground();
+
+        // Índice de imágenes NAS — ventana 7 días, no reescanea form_id con cache <2 h
+        // NAS accesible desde staging vía SSH externo (190.110.204.74:2222)
+        Schedule::command('imagenes:nas-index --days=7 --stale-hours=2')
+            ->everyFifteenMinutes()
+            ->withoutOverlapping()
+            ->runInBackground();
+    }
+
+    // ── PRODUCCIÓN ────────────────────────────────────────────────────────────
+    if ($isProduction) {
+        // Índice de imágenes Sigcenter — Sigcenter DB vive en localhost de producción (127.0.0.1)
+        Schedule::command('imagenes:sigcenter-index --days=7 --stale-hours=2')
+            ->everyFifteenMinutes()
+            ->withoutOverlapping()
+            ->runInBackground();
+
+        // Escalaciones diarias de oportunidades CRM comerciales estancadas
+        Schedule::command('crm:escalate')->dailyAt('08:00');
+
+        // Cierre de handoffs WhatsApp zombies (sin actividad en 7+ días)
+        Schedule::command('whatsapp:close-zombie-handoffs --days=7')->dailyAt('02:00');
+    }
+})();
 
 // ── Scheduler DB-driven ──────────────────────────────────────────────────────
 // Las frecuencias viven en la tabla cron_schedule y son editables desde el UI.

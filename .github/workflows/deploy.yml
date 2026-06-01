@@ -4,7 +4,10 @@ on:
   push:
     branches:
       - main      # → producción
-      - staging   # → staging/scraper
+      - staging   # → staging (deploy directo sin PR)
+  pull_request:
+    branches:
+      - main      # PR hacia main → preview en staging antes de aprobar
   workflow_dispatch:
     inputs:
       environment:
@@ -23,6 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     if: |
       github.ref == 'refs/heads/staging' ||
+      github.event_name == 'pull_request' ||
       (github.event_name == 'workflow_dispatch' && inputs.environment == 'staging')
     steps:
       - uses: actions/checkout@v4
@@ -56,6 +60,9 @@ jobs:
             --exclude='laravel-app/node_modules/' \
             --exclude='laravel-app/storage/' \
             --exclude='storage/' \
+            --exclude='laravel-app/public/uploads/' \
+            --exclude='laravel-app/public/assets/firmas/' \
+            --exclude='laravel-app/public/assets/seals/' \
             --exclude='public/uploads/' \
             --exclude='public/assets/firmas/' \
             --exclude='public/assets/seals/' \
@@ -151,6 +158,9 @@ jobs:
             --exclude='laravel-app/node_modules/' \
             --exclude='laravel-app/storage/' \
             --exclude='storage/' \
+            --exclude='laravel-app/public/uploads/' \
+            --exclude='laravel-app/public/assets/firmas/' \
+            --exclude='laravel-app/public/assets/seals/' \
             --exclude='public/uploads/' \
             --exclude='public/assets/firmas/' \
             --exclude='public/assets/seals/' \
