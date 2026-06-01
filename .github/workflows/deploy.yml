@@ -43,7 +43,7 @@ jobs:
             --exclude='laravel-app/node_modules/' \
             --exclude='laravel-app/storage/' \
             --exclude='storage/' \
-            ./ ${{ secrets.STAGING_SSH_USER }}@${{ secrets.STAGING_SSH_HOST }}:${{ secrets.STAGING_PROJECT_DIR }}/
+            ./ ${{ secrets.STAGING_SSH_USER }}@${{ secrets.STAGING_SSH_HOST }}:~/medforge/
 
       - name: Post-deploy Staging
         uses: appleboy/ssh-action@v1.0.3
@@ -55,7 +55,7 @@ jobs:
           command_timeout: 15m
           script: |
             set -e
-            PROJECT="${{ secrets.STAGING_PROJECT_DIR }}"
+            PROJECT="$HOME/medforge"
             PHP=$(which php8.3-cli 2>/dev/null || which php8.3 2>/dev/null || which php 2>/dev/null || echo php)
 
             # Permisos de storage
@@ -115,7 +115,7 @@ jobs:
             --exclude='laravel-app/node_modules/' \
             --exclude='laravel-app/storage/' \
             --exclude='storage/' \
-            ./ ${{ secrets.PROD_SSH_USER }}@${{ secrets.PROD_SSH_HOST }}:${{ secrets.PROD_PROJECT_DIR }}/
+            ./ ${{ secrets.PROD_SSH_USER }}@${{ secrets.PROD_SSH_HOST }}:~/medforge/
 
       - name: Post-deploy Producción
         uses: appleboy/ssh-action@v1.0.3
@@ -127,7 +127,7 @@ jobs:
           command_timeout: 15m
           script: |
             set -e
-            PROJECT="${{ secrets.PROD_PROJECT_DIR }}"
+            PROJECT="$HOME/medforge"
             PHP=$(which php8.3-cli 2>/dev/null || which php8.3 2>/dev/null || which php 2>/dev/null || echo php)
 
             # Permisos de storage
