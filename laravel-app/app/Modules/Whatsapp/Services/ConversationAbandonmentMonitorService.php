@@ -103,6 +103,11 @@ class ConversationAbandonmentMonitorService
                 continue;
             }
 
+            if ($conversation->closed_at !== null) {
+                $skipped++;
+                continue;
+            }
+
             $monitorContext = is_array($context['abandonment_monitor'] ?? null) ? $context['abandonment_monitor'] : [];
             $escalatedAt = $this->parseNullableCarbon($monitorContext['escalated_at'] ?? null);
             $closedAt = $this->parseNullableCarbon($monitorContext['closed_at'] ?? null);
@@ -129,13 +134,12 @@ class ConversationAbandonmentMonitorService
 
             if (!$dryRun) {
                 if ($nudgedAt === null || !$this->sessionHasNoNewInboundSince($session->last_interaction_at, $nudgedAt)) {
-                    $this->dispatchService->sendSystemText(
-                        $conversation,
-                        (string) config(
-                            'whatsapp.migration.abandonment_monitor.nudge_message',
-                            '😔 Parece que se interrumpió tu proceso. Si aún deseas continuar con tu cita, responde este mensaje y con gusto te ayudo.'
-                        )
-                    );
+                    $nudgeMessage = $this->buildNudgeMessage($state, $context);
+                    if (is_array($nudgeMessage)) {
+                        $this->dispatchService->sendSystemMessage($conversation, $nudgeMessage);
+                    } else {
+                        $this->dispatchService->sendSystemText($conversation, $nudgeMessage);
+                    }
 
                     $context['abandonment_monitor'] = array_merge($monitorContext, [
                         'nudged_at' => now()->toISOString(),
@@ -462,4 +466,54 @@ class ConversationAbandonmentMonitorService
             return null;
         }
     }
+    /**
+     * @param array<string, mixed> $context
+     * @return array<string, mixed>|string
+     */
+    private function buildNudgeMessage(string $state, array $context): array|string
+    {
+        $agendaStates = [
+            'agenda_esperando_sede', 'agenda_esperando_subespecialidad', 'agenda_esperando_medico',
+            'esperando_nombre_doctor', 'agenda_esperando_doctor_directo', 'agenda_esperando_sede_directa',
+            'agenda_esperando_fecha_general', 'agenda_esperando_medico_general_por_fecha',
+            'agenda_esperando_horario_general_fecha', 'agenda_confirmar_cita_fecha_general',
+            'agenda_esperando_procedimiento', 'agenda_esperando_dia', 'agenda_esperando_horario',
+            'agenda_confirmar_cita', 'agenda_filtro_sector', 'agenda_esperando_sede_inicio',
+            'menu_agendar_modo',
+        ];
+
+        $isAgendaState = str_starts_with($state, 'agenda_') || in_array($state, $agendaStates, true);
+
+        if (!$isAgendaState) {
+            return (string) config(
+                'whatsapp.migration.abandonment_monitor.nudge_message',
+                '⏳ Parece que se interrumpió tu proceso. Si aún deseas continuar, responde este mensaje y con gusto te ayudo.'
+            );
+        }
+
+        $medico = trim((string)($context['trabajador_id_label'] ?? $context['medico_nombre'] ?? ''));
+        $sede   = trim((string)($context['sede_id_label'] ?? $context['sede_nombre'] ?? ''));
+
+        $parts = [];
+        if ($medico !== '') {
+            $parts[] = "el *{$medico}*";
+        }
+        if ($sede !== '') {
+            $parts[] = "en *{$sede}*";
+        }
+
+        $contextLine = $parts !== []
+            ? 'Estabas eligiendo un horario con ' . implode(' ', $parts) . '.'
+            : 'Estabas a punto de agendar una cita.';
+
+        return [
+            'type' => 'buttons',
+            'body' => "⏳ ¡Hola! {$contextLine}\n\n¿Continuamos?",
+            'buttons' => [
+                ['id' => 'agendar',        'title' => '✅ Sí, continuar'],
+                ['id' => 'menu_principal', 'title' => '🔄 Empezar de nuevo'],
+            ],
+        ];
+    }
+
 }
