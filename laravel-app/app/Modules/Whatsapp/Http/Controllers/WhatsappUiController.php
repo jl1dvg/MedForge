@@ -236,6 +236,114 @@ class WhatsappUiController
         return $this->dashboard($request, 'whatsapp.v3-dashboard');
     }
 
+    public function dashboardV3Live(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $slaMeta = (int) ($request->query('sla_target_minutes', 15));
+        $fromSql = ($request->query('date_from', date('Y-m-d'))) . ' 00:00:00';
+        $toSql   = ($request->query('date_to',   date('Y-m-d'))) . ' 23:59:59';
+
+        $db = \Illuminate\Support\Facades\DB::connection();
+
+        // Cola en vivo (desde handoffs)
+        $queue = $db->selectOne('
+            SELECT
+                SUM(CASE WHEN status = "queued" THEN 1 ELSE 0 END) AS queued,
+                SUM(CASE WHEN status IN ("queued","assigned","expired") THEN 1 ELSE 0 END) AS total
+            FROM whatsapp_handoffs
+            WHERE status IN ("queued","assigned","expired")
+        ');
+
+        // Abandonadas con handoff >24h
+        $abandoned = $db->selectOne(
+            'SELECT COUNT(*) AS cnt FROM whatsapp_handoffs WHERE status = ? AND COALESCE(queued_at, created_at) < NOW() - INTERVAL 24 HOUR',
+            ['queued']
+        );
+
+        // Ventana 24h y plantilla (solo needs_human=1)
+        $window = $db->selectOne('
+            SELECT
+                SUM(CASE WHEN inbound.last_inbound_at >= NOW() - INTERVAL 24 HOUR THEN 1 ELSE 0 END) AS window_open,
+                SUM(CASE WHEN inbound.last_inbound_at < NOW() - INTERVAL 24 HOUR THEN 1 ELSE 0 END) AS needs_template
+            FROM whatsapp_conversations c
+            LEFT JOIN (
+                SELECT conversation_id, MAX(message_timestamp) AS last_inbound_at
+                FROM whatsapp_messages WHERE direction = "inbound"
+                GROUP BY conversation_id
+            ) inbound ON inbound.conversation_id = c.id
+            WHERE c.needs_human = 1
+        ');
+
+        // Cobertura: atendidas vs perdidas en el período
+        $cov = $db->selectOne('
+            SELECT
+                SUM(CASE WHEN (human.first_human_reply_at IS NOT NULL AND human.first_human_reply_at >= inbound.first_inbound_at)
+                              OR inbound.assigned_user_id IS NOT NULL THEN 1 ELSE 0 END) AS attended,
+                SUM(CASE WHEN (human.first_human_reply_at IS NULL OR human.first_human_reply_at < inbound.first_inbound_at)
+                              AND inbound.assigned_user_id IS NULL AND inbound.needs_human = 1 THEN 1 ELSE 0 END) AS lost
+            FROM (
+                SELECT c.id AS conversation_id, c.needs_human, c.assigned_user_id,
+                       MIN(m.message_timestamp) AS first_inbound_at
+                FROM whatsapp_messages m
+                INNER JOIN whatsapp_conversations c ON c.id = m.conversation_id
+                WHERE m.direction = "inbound"
+                  AND m.message_timestamp >= ? AND m.message_timestamp < ?
+                GROUP BY c.id, c.needs_human, c.assigned_user_id
+            ) inbound
+            LEFT JOIN (
+                SELECT h.conversation_id, MIN(m.message_timestamp) AS first_human_reply_at
+                FROM whatsapp_handoffs h
+                INNER JOIN whatsapp_messages m ON m.conversation_id = h.conversation_id
+                    AND m.direction = "outbound" AND h.assigned_at IS NOT NULL
+                    AND m.message_timestamp >= h.assigned_at
+                GROUP BY h.conversation_id
+            ) human ON human.conversation_id = inbound.conversation_id
+        ', [$fromSql, $toSql]);
+
+        // SLA real
+        $sla = $db->selectOne('
+            SELECT
+                COUNT(*) AS respondidos,
+                SUM(CASE WHEN TIMESTAMPDIFF(MINUTE, h.assigned_at, fr.msg_ts) <= ? THEN 1 ELSE 0 END) AS en_sla
+            FROM whatsapp_handoffs h
+            INNER JOIN (
+                SELECT m.conversation_id, h2.id AS handoff_id, MIN(m.message_timestamp) AS msg_ts
+                FROM whatsapp_messages m
+                JOIN whatsapp_handoffs h2 ON h2.conversation_id = m.conversation_id
+                    AND m.message_timestamp >= h2.assigned_at
+                    AND m.direction = "outbound" AND h2.assigned_at IS NOT NULL
+                GROUP BY m.conversation_id, h2.id
+            ) fr ON fr.handoff_id = h.id
+            WHERE h.assigned_at IS NOT NULL AND h.created_at >= ? AND h.created_at < ?
+        ', [$slaMeta, $fromSql, $toSql]);
+
+        $attended  = (int) ($cov->attended ?? 0);
+        $lost      = (int) ($cov->lost ?? 0);
+        $total     = $attended + $lost;
+        $queued    = (int) ($queue->queued ?? 0);
+        $queueTotal = (int) ($queue->total ?? 0);
+        $respondidos = (int) ($sla->respondidos ?? 0);
+
+        return response()->json([
+            'queue' => [
+                'total'        => $queueTotal,
+                'queued'       => $queued,
+                'abandoned'    => (int) ($abandoned->cnt ?? 0),
+                'window_open'  => (int) ($window->window_open ?? 0),
+                'needs_template' => (int) ($window->needs_template ?? 0),
+            ],
+            'cobertura' => [
+                'attended'   => $attended,
+                'lost'       => $lost,
+                'pct'        => $total > 0 ? (int) round($attended / $total * 100) : 100,
+            ],
+            'sla' => [
+                'pct'          => $respondidos > 0 ? (int) round((int)($sla->en_sla ?? 0) / $respondidos * 100) : 0,
+                'respondidos'  => $respondidos,
+            ],
+            'ts' => now()->format('H:i:s'),
+        ]);
+    }
+
     public function flowmaker(Request $request): View
     {
         return view('whatsapp.v2-flowmaker', [
