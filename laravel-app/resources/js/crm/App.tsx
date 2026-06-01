@@ -8,7 +8,7 @@ import { FilterChips } from './components/FilterChips';
 import { OpportunityTable } from './components/OpportunityTable';
 import { DetailPanel } from './components/DetailPanel';
 
-const DEFAULT_FILTERS: ActiveFilters = { stage: '', source: '', phase: '', urgent: false, search: '' };
+const DEFAULT_FILTERS: ActiveFilters = { stage: '', source: '', phase: '', afiliacion: '', urgent: false, search: '' };
 const PAGE_SIZE = 25;
 
 export default function App() {
@@ -20,6 +20,7 @@ export default function App() {
     stage: filters.stage || undefined,
     source: filters.source || undefined,
     phase: (filters.phase || undefined) as Phase | undefined,
+    afiliacion: filters.afiliacion || undefined,
     urgent: filters.urgent || undefined,
     search: filters.search || undefined,
     limit: PAGE_SIZE,

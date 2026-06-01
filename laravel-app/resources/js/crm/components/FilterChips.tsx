@@ -5,6 +5,7 @@ export interface ActiveFilters {
   stage: Stage | '';
   source: string;
   phase: Phase | '';
+  afiliacion: string;   // particular | privado | fundacional | publico | ''
   urgent: boolean;
   search: string;
 }
@@ -73,6 +74,20 @@ export function FilterChips({ filters, total, urgentCount, onChange }: Props) {
         >
           💬 WhatsApp
         </button>
+        <span style={{ width: 1, background: 'var(--border)', margin: '0 .25rem', alignSelf: 'stretch' }} />
+        {[
+          { value: 'particular', label: '💳 Particular' },
+          { value: 'privado',    label: '🏥 Privado' },
+          { value: 'fundacional',label: '🤝 Fundacional' },
+        ].map(({ value, label }) => (
+          <button
+            key={value}
+            className={`crm-chip${filters.afiliacion === value ? ' active' : ''}`}
+            onClick={() => onChange({ afiliacion: filters.afiliacion === value ? '' : value })}
+          >
+            {label}
+          </button>
+        ))}
         <input
           type="text"
           placeholder="Buscar paciente..."

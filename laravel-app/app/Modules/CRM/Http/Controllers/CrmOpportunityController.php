@@ -23,40 +23,44 @@ class CrmOpportunityController
             return response()->json(['error' => 'Sesión expirada'], 401);
         }
 
-        $limit  = min(max((int) $request->query('limit', 25), 1), 100);
-        $offset = max((int) $request->query('offset', 0), 0);
-        $stage  = trim((string) $request->query('stage', ''));
-        $source = trim((string) $request->query('source', ''));
-        $phase  = trim((string) $request->query('phase', ''));
-        $search = trim((string) $request->query('search', ''));
+        $limit          = min(max((int) $request->query('limit', 25), 1), 100);
+        $offset         = max((int) $request->query('offset', 0), 0);
+        $stage          = trim((string) $request->query('stage', ''));
+        $source         = trim((string) $request->query('source', ''));
+        $phase          = trim((string) $request->query('phase', ''));
+        $search         = trim((string) $request->query('search', ''));
+        $afiliacion     = trim((string) $request->query('afiliacion', ''));  // particular|privado|fundacional|publico
         $urgent         = filter_var($request->query('urgent', false), FILTER_VALIDATE_BOOLEAN);
         $includePublico = filter_var($request->query('include_publico', false), FILTER_VALIDATE_BOOLEAN);
 
         $query = CrmOpportunity::query()->with('contact');
 
-        // Exclude public-affiliation opportunities by default
-        if (!$includePublico) {
-            $query->whereNotExists(function ($sub): void {
-                $sub->select(DB::raw(1))
-                    ->from('solicitud_procedimiento as sp_pub')
-                    ->join('afiliacion_categoria_map as acm_pub', function ($join): void {
-                        $join->on(
-                            DB::raw('LOWER(TRIM(acm_pub.afiliacion_norm))'),
-                            '=',
-                            DB::raw('LOWER(TRIM(sp_pub.afiliacion))')
-                        );
-                    })
-                    ->whereColumn('sp_pub.id', 'crm_opportunities.source_id')
-                    ->whereRaw('crm_opportunities.source_type = ?', ['solicitud_procedimiento'])
-                    ->where('acm_pub.categoria', 'publico');
-            });
+        // Affiliation filter — uses stored afiliacion_categoria on crm_contacts
+        if ($afiliacion !== '') {
+            $query->whereHas('contact', fn ($q) => $q->where('afiliacion_categoria', $afiliacion));
+        } elseif (!$includePublico) {
+            // Exclude public affiliation by default
+            $query->whereHas('contact', fn ($q) =>
+                $q->where(fn ($inner) =>
+                    $inner->where('afiliacion_categoria', '!=', 'publico')
+                          ->orWhereNull('afiliacion_categoria')
+                )
+            );
         }
 
         if ($stage !== '') {
             $query->where('stage', $stage);
         }
         if ($source !== '') {
-            $query->where('source', $source);
+            // WhatsApp filter: direct source OR any whatsapp activity (e.g. patient came via WA but has a clinical opp)
+            if ($source === 'whatsapp') {
+                $query->where(fn ($q) => $q
+                    ->where('source', 'whatsapp')
+                    ->orWhereHas('activities', fn ($a) => $a->where('type', 'whatsapp'))
+                );
+            } else {
+                $query->where('source', $source);
+            }
         }
         if ($phase !== '') {
             $query->where('phase', $phase);

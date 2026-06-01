@@ -7,6 +7,7 @@ export interface OpportunityFilters {
   stage?: string;
   source?: string;
   phase?: Phase;
+  afiliacion?: string;
   search?: string;
   urgent?: boolean;
   limit?: number;

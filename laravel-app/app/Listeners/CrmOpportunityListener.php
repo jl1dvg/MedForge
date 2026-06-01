@@ -51,6 +51,14 @@ class CrmOpportunityListener
             source: 'solicitud',
         );
 
+        // Update affiliation from the actual solicitud record
+        $afiliacion = DB::table('solicitud_procedimiento')->where('id', $event->solicitudId)->value('afiliacion');
+        $cat = \App\Console\Commands\CrmBackfillAfiliacion::classify($afiliacion);
+        if ($cat !== null && $contact->afiliacion_categoria !== $cat) {
+            $contact->afiliacion_categoria = $cat;
+            $contact->save();
+        }
+
         $this->opportunityService->upsertFromEvent(
             contact: $contact,
             title: 'Solicitud: ' . (string) ($data['servicio'] ?? 'Servicio médico'),
