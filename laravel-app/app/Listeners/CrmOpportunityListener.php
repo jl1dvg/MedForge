@@ -8,6 +8,7 @@ use App\Events\Crm\SolicitudCreada;
 use App\Events\Crm\SolicitudKanbanEstadoCambiado;
 use App\Events\Crm\WhatsappLeadQualified;
 use App\Models\CrmOpportunity;
+use App\Models\CrmStageMapping;
 use App\Modules\CRM\Services\CrmContactResolverService;
 use App\Modules\CRM\Services\CrmOpportunityService;
 use Illuminate\Support\Facades\DB;
@@ -51,13 +52,23 @@ class CrmOpportunityListener
             source: 'solicitud',
         );
 
-        $this->opportunityService->upsertFromEvent(
+        $opp = $this->opportunityService->upsertFromEvent(
             contact: $contact,
             title: 'Solicitud: ' . (string) ($data['servicio'] ?? 'Servicio médico'),
             source: 'solicitud',
             sourceId: $event->solicitudId,
             sourceType: 'solicitud_procedimiento',
         );
+
+        // Stamp affiliation type from solicitud data so the filter column is populated immediately
+        $afiliacion = (string) ($data['afiliacion'] ?? '');
+        if ($afiliacion !== '') {
+            $tipo = self::classifyAfiliacion($afiliacion);
+            if ($opp->afiliacion_tipo !== $tipo) {
+                $opp->afiliacion_tipo = $tipo;
+                $opp->saveQuietly();
+            }
+        }
     }
 
     public function handleExamenSolicitado(ExamenSolicitado $event): void
@@ -82,34 +93,24 @@ class CrmOpportunityListener
 
     /**
      * Maps solicitud kanban stages to CRM pipeline stages.
+     * Stage map is loaded from crm_stage_mappings (DB, cached 5 min).
      * Only advances — never downgrades a stage that's already ahead.
      */
     public function handleSolicitudKanbanEstadoCambiado(SolicitudKanbanEstadoCambiado $event): void
     {
-        $crmStage = self::SOLICITUD_KANBAN_TO_CRM_STAGE[$event->kanbanSlug] ?? null;
+        $map      = CrmStageMapping::forSourceType('solicitud_procedimiento');
+        $crmStage = $map[$event->kanbanSlug] ?? null;
+
         if ($crmStage === null) {
-            return; // Unrecognized slug — ignore
+            return;
         }
 
-        // Find the opportunity linked to this solicitud
-        // First try: activity log (works after consolidation — covers all solicitudes in the opp)
-        $opp = CrmOpportunity::query()
-            ->whereHas('activities', static fn ($q) => $q
-                ->where('source_type', 'solicitud_procedimiento')
-                ->where('source_id', $event->solicitudId)
-            )
-            ->first()
-            // Fallback: direct source on opportunity (original source solicitud)
-            ?? CrmOpportunity::query()
-                ->where('source_type', 'solicitud_procedimiento')
-                ->where('source_id', $event->solicitudId)
-                ->first();
+        $opp = $this->findOpportunityBySource('solicitud_procedimiento', $event->solicitudId);
 
         if (!($opp instanceof CrmOpportunity)) {
-            return; // No CRM opportunity linked to this solicitud
+            return;
         }
 
-        // Only advance the stage — never downgrade
         $stageOrder   = array_flip(CrmOpportunity::STAGES);
         $currentOrder = $stageOrder[$opp->stage] ?? 0;
         $newOrder     = $stageOrder[$crmStage] ?? 0;
@@ -123,33 +124,14 @@ class CrmOpportunityListener
             newStage: $crmStage,
             userId: $event->actorUserId,
         );
+
+        // Keep afiliacion_tipo fresh whenever a solicitud transitions
+        $this->refreshAfiliacionFromSolicitud($opp, $event->solicitudId);
     }
 
     /**
-     * Solicitud kanban slug → CRM pipeline stage.
-     *
-     * Solicitud workflow:  recibida → llamado → en-atencion → revision-codigos →
-     *                      espera-documentos → apto-oftalmologo → apto-anestesia →
-     *                      listo-para-agenda → programada → completado
-     *
-     * @var array<string, string>
-     */
-    private const SOLICITUD_KANBAN_TO_CRM_STAGE = [
-        'recibida'             => CrmOpportunity::STAGE_NUEVO,
-        'llamado'              => CrmOpportunity::STAGE_CONTACTADO,
-        'en-atencion'          => CrmOpportunity::STAGE_EN_EVALUACION,
-        'revision-codigos'     => CrmOpportunity::STAGE_EN_EVALUACION,
-        'espera-documentos'    => CrmOpportunity::STAGE_EN_EVALUACION,
-        'apto-oftalmologo'     => CrmOpportunity::STAGE_EN_EVALUACION,
-        'apto-anestesia'       => CrmOpportunity::STAGE_EN_EVALUACION,
-        'listo-para-agenda'    => CrmOpportunity::STAGE_EN_EVALUACION,
-        'programada'           => CrmOpportunity::STAGE_COMPROMETIDO,
-        'completado'           => CrmOpportunity::STAGE_GANADO,
-    ];
-
-
-    /**
      * Maps consulta_examenes.estado → CRM pipeline stage and advances the opportunity.
+     * Stage map is loaded from crm_stage_mappings (DB, cached 5 min).
      * Only moves forward — never downgrades.
      */
     public function handleExamenEstadoCambiado(ExamenEstadoCambiado $event): void
@@ -157,35 +139,15 @@ class CrmOpportunityListener
         $normalized = mb_strtolower(trim($event->nuevoEstado), 'UTF-8');
         $normalized = strtr($normalized, ['á'=>'a','é'=>'e','í'=>'i','ó'=>'o','ú'=>'u','ñ'=>'n']);
 
-        $crmStage = self::EXAMEN_ESTADO_TO_CRM_STAGE[$normalized] ?? null;
+        $map      = CrmStageMapping::forSourceType('consulta_examenes');
+        $crmStage = $map[$normalized] ?? null;
+
         if ($crmStage === null) {
             return;
         }
 
-        // Find the opportunity — by activity source link or direct source on the opp
-        $opp = CrmOpportunity::query()
-            ->whereHas('activities', static fn ($q) => $q
-                ->where('source_type', 'consulta_examenes')
-                ->where('source_id', $event->examenId)
-            )
-            ->first()
-            ?? CrmOpportunity::query()
-                ->where('source_type', 'consulta_examenes')
-                ->where('source_id', $event->examenId)
-                ->first();
-
-        // Fallback: find via hc_number → contact cedula (for legacy records without activity link)
-        if (!($opp instanceof CrmOpportunity)) {
-            $hcNumber = DB::table('consulta_examenes')
-                ->where('id', $event->examenId)
-                ->value('hc_number');
-
-            if ($hcNumber !== null) {
-                $opp = CrmOpportunity::query()
-                    ->whereHas('contact', static fn ($q) => $q->where('cedula', $hcNumber))
-                    ->first();
-            }
-        }
+        $opp = $this->findOpportunityBySource('consulta_examenes', $event->examenId)
+            ?? $this->findOpportunityByExamenHcFallback($event->examenId);
 
         if (!($opp instanceof CrmOpportunity)) {
             return;
@@ -206,21 +168,80 @@ class CrmOpportunityListener
         );
     }
 
+    // =========================================================================
+    // Helpers
+    // =========================================================================
+
+    private function findOpportunityBySource(string $sourceType, int $sourceId): ?CrmOpportunity
+    {
+        return CrmOpportunity::query()
+            ->whereHas('activities', static fn ($q) => $q
+                ->where('source_type', $sourceType)
+                ->where('source_id', $sourceId)
+            )
+            ->first()
+            ?? CrmOpportunity::query()
+                ->where('source_type', $sourceType)
+                ->where('source_id', $sourceId)
+                ->first();
+    }
+
+    private function findOpportunityByExamenHcFallback(int $examenId): ?CrmOpportunity
+    {
+        $hcNumber = DB::table('consulta_examenes')
+            ->where('id', $examenId)
+            ->value('hc_number');
+
+        if ($hcNumber === null) {
+            return null;
+        }
+
+        return CrmOpportunity::query()
+            ->whereHas('contact', static fn ($q) => $q->where('cedula', $hcNumber))
+            ->first();
+    }
+
+    private function refreshAfiliacionFromSolicitud(CrmOpportunity $opp, int $solicitudId): void
+    {
+        $afiliacion = DB::table('solicitud_procedimiento')
+            ->where('id', $solicitudId)
+            ->value('afiliacion');
+
+        if ($afiliacion === null) {
+            return;
+        }
+
+        $tipo = self::classifyAfiliacion((string) $afiliacion);
+        if ($opp->afiliacion_tipo !== $tipo) {
+            $opp->afiliacion_tipo = $tipo;
+            $opp->saveQuietly();
+        }
+    }
+
     /**
-     * Exam estado (normalized) → CRM pipeline stage.
-     *
-     * Exam workflow: recibido → revisión de cobertura → listo para agenda → completado/archivado
-     *
-     * @var array<string, string>
+     * Classifies an afiliacion string into one of the five canonical types.
+     * Centralizes the logic that was previously duplicated in SQL (CASE WHEN REGEXP).
      */
-    private const EXAMEN_ESTADO_TO_CRM_STAGE = [
-        'recibido'               => CrmOpportunity::STAGE_NUEVO,
-        'llamado'                => CrmOpportunity::STAGE_CONTACTADO,
-        'revision de cobertura'  => CrmOpportunity::STAGE_EN_EVALUACION,
-        'revision-cobertura'     => CrmOpportunity::STAGE_EN_EVALUACION,
-        'listo para agenda'      => CrmOpportunity::STAGE_COMPROMETIDO,
-        'listo-para-agenda'      => CrmOpportunity::STAGE_COMPROMETIDO,
-        'completado'             => CrmOpportunity::STAGE_GANADO,
-        'archivado'              => CrmOpportunity::STAGE_GANADO,  // result filed/delivered
-    ];
+    public static function classifyAfiliacion(string $afiliacion): string
+    {
+        $lower = mb_strtolower(trim($afiliacion), 'UTF-8');
+
+        if ($lower === '') {
+            return 'sin_dato';
+        }
+
+        if (preg_match('/iess|issfa|isspol|msp|ministerio|salud.publica|red.publica/', $lower)) {
+            return 'publico';
+        }
+
+        if (str_contains($lower, 'particular')) {
+            return 'particular';
+        }
+
+        if (str_contains($lower, 'fundaci')) {
+            return 'fundacional';
+        }
+
+        return 'privado';
+    }
 }

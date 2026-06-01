@@ -8,7 +8,6 @@ use App\Modules\CRM\Services\CrmOpportunityService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
 
 class CrmOpportunityController
 {
@@ -35,48 +34,14 @@ class CrmOpportunityController
 
         $query = CrmOpportunity::query()->with('contact');
 
-        // Affiliation filter — computed live from the most recent solicitud for this patient
-        // Classification SQL: IESS/ISSFA/ISSPOL/MSP → publico | particular → particular | else → privado
-        $afiliacionExpr = "CASE
-            WHEN LOWER(sp_afil.afiliacion) REGEXP 'iess|issfa|isspol|msp|ministerio|salud.publica|red.publica'
-                THEN 'publico'
-            WHEN LOWER(sp_afil.afiliacion) LIKE '%particular%'
-                THEN 'particular'
-            WHEN LOWER(sp_afil.afiliacion) LIKE '%fundaci%'
-                THEN 'fundacional'
-            WHEN sp_afil.afiliacion IS NULL OR TRIM(sp_afil.afiliacion) = ''
-                THEN 'sin_dato'
-            ELSE 'privado'
-        END";
-
+        // Affiliation filter — uses the indexed afiliacion_tipo column (populated by CrmOpportunityListener)
         if ($afiliacion !== '') {
-            // Filter by specific category — join to most recent solicitud per contact
-            $query->whereExists(function ($sub) use ($afiliacion, $afiliacionExpr): void {
-                $sub->selectRaw('1')
-                    ->from('crm_contacts as cc_afil')
-                    ->leftJoin(
-                        DB::raw('(SELECT hc_number, afiliacion FROM solicitud_procedimiento s1
-                                  WHERE s1.id = (SELECT MAX(id) FROM solicitud_procedimiento WHERE hc_number = s1.hc_number)
-                                 ) AS sp_afil'),
-                        'sp_afil.hc_number', '=', 'cc_afil.cedula'
-                    )
-                    ->whereColumn('cc_afil.id', 'crm_opportunities.contact_id')
-                    ->whereRaw("({$afiliacionExpr}) = ?", [$afiliacion]);
-            });
+            $query->where('afiliacion_tipo', $afiliacion);
         } elseif (!$includePublico) {
-            // Exclude public affiliation by default (using same live classification)
-            $query->whereNotExists(function ($sub) use ($afiliacionExpr): void {
-                $sub->selectRaw('1')
-                    ->from('crm_contacts as cc_afil')
-                    ->leftJoin(
-                        DB::raw('(SELECT hc_number, afiliacion FROM solicitud_procedimiento s1
-                                  WHERE s1.id = (SELECT MAX(id) FROM solicitud_procedimiento WHERE hc_number = s1.hc_number)
-                                 ) AS sp_afil'),
-                        'sp_afil.hc_number', '=', 'cc_afil.cedula'
-                    )
-                    ->whereColumn('cc_afil.id', 'crm_opportunities.contact_id')
-                    ->whereRaw("({$afiliacionExpr}) = 'publico'");
-            });
+            $query->where(fn ($q) => $q
+                ->where('afiliacion_tipo', '!=', 'publico')
+                ->orWhereNull('afiliacion_tipo')
+            );
         }
 
         if ($stage !== '') {
