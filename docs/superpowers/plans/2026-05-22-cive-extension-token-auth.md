@@ -379,9 +379,9 @@ Estado actual del array `allowedOrigins`:
         'https://cive.ddns.net',
         'http://sigcenter.ddns.net',
         'https://sigcenter.ddns.net',
-        'http://sigcenter.ddns.net:18093',
-        'http://sigcenter.ddns.net:18093',   // ← DUPLICADO
-        'https://sigcenter.ddns.net:18093',
+        'http://cive.ddns.net:8085',
+        'http://cive.ddns.net:8085',   // ← DUPLICADO
+        'https://cive.ddns.net:8085',
         'http://192.168.1.13:8085',
         'http://localhost:8085',
         'http://127.0.0.1:8085',
@@ -397,7 +397,7 @@ Estado actual del método `withCorsHeaders`:
 
 - [ ] **Step 2: Aplicar los dos cambios**
 
-**Cambio 1** — eliminar el `http://sigcenter.ddns.net:18093` duplicado (la segunda ocurrencia):
+**Cambio 1** — eliminar el `http://cive.ddns.net:8085` duplicado (la segunda ocurrencia):
 
 ```php
     private array $allowedOrigins = [
@@ -405,8 +405,8 @@ Estado actual del método `withCorsHeaders`:
         'https://cive.ddns.net',
         'http://sigcenter.ddns.net',
         'https://sigcenter.ddns.net',
-        'http://sigcenter.ddns.net:18093',
-        'https://sigcenter.ddns.net:18093',
+        'http://cive.ddns.net:8085',
+        'https://cive.ddns.net:8085',
         'http://192.168.1.13:8085',
         'http://localhost:8085',
         'http://127.0.0.1:8085',

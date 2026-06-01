@@ -121,7 +121,7 @@ class CiveExtensionAuthTest extends TestCase
     public function test_allows_request_from_trusted_web_origin_sigcenter(): void
     {
         $request = Request::create('/consultas/anterior', 'GET');
-        $request->headers->set('Origin', 'http://sigcenter.ddns.net:18093');
+        $request->headers->set('Origin', 'http://cive.ddns.net:8085');
 
         $response = $this->middleware->handle($request, $this->next);
 

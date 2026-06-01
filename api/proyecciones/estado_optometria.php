@@ -8,7 +8,7 @@ $allowedOrigins = [
     'http://cive.ddns.net:8085',
     'http://sigcenter.ddns.net',
     'https://sigcenter.ddns.net',
-    'http://sigcenter.ddns.net:18093',
+    'http://cive.ddns.net:8085',
     'http://192.168.1.13:8085',
     'http://localhost:8085',
     'http://127.0.0.1:8085',
