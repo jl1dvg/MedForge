@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\DB;
  *   1. Direct activity link (source_type=solicitud_procedimiento)
  *   2. Direct source on the opportunity
  *   3. Contact cedula → solicitud_procedimiento.hc_number  ← covers manual/whatsapp opps
+ *   4. Examen source → consulta_examenes.hc_number → solicitud_procedimiento  ← covers examen opps
  *
  * Usage:
  *   php artisan crm:backfill-afiliacion            # process all
@@ -104,6 +105,20 @@ class CrmBackfillAfiliacionTipo extends Command
             if ($cedula !== null) {
                 $solicitudId = DB::table('solicitud_procedimiento')
                     ->where('hc_number', $cedula)
+                    ->orderByDesc('id')
+                    ->value('id');
+            }
+        }
+
+        // 4. Examen source → consulta_examenes.hc_number → solicitud_procedimiento
+        if ($solicitudId === null && $opp->source_type === 'consulta_examenes' && $opp->source_id !== null) {
+            $hcNumber = DB::table('consulta_examenes')
+                ->where('id', (int) $opp->source_id)
+                ->value('hc_number');
+
+            if ($hcNumber !== null) {
+                $solicitudId = DB::table('solicitud_procedimiento')
+                    ->where('hc_number', $hcNumber)
                     ->orderByDesc('id')
                     ->value('id');
             }
