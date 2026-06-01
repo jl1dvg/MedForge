@@ -1,5 +1,3 @@
-AddHandler application/x-httpd-php83 .php
-
 <IfModule mod_rewrite.c>
     RewriteEngine On
     RewriteBase /
