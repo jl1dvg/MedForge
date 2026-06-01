@@ -58,7 +58,7 @@ jobs:
           script: |
             set -e
             PROJECT="$HOME/medforge"
-            PHP=$(which php8.3-cli 2>/dev/null || which php8.3 2>/dev/null || which php 2>/dev/null || echo php)
+            PHP=/usr/bin/php8.3-cli
 
             # Permisos de storage
             mkdir -p "$PROJECT/laravel-app/storage/logs" \
@@ -132,7 +132,7 @@ jobs:
           script: |
             set -e
             PROJECT="$HOME/medforge"
-            PHP=$(which php8.3-cli 2>/dev/null || which php8.3 2>/dev/null || which php 2>/dev/null || echo php)
+            PHP=/usr/bin/php8.3-cli
 
             # Permisos de storage
             mkdir -p "$PROJECT/laravel-app/storage/logs" \
