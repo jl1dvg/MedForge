@@ -6,7 +6,7 @@
 #
 # Variables — ajusta las rutas si el proyecto está en otra ubicación.
 PROJECT_DIR=/var/www/medforge
-PHP_BIN=/usr/bin/php8.3
+PHP_BIN=/usr/bin/php8.3-cli
 PYTHON_BIN=/usr/bin/python3
 LOG_DIR=/var/www/medforge/storage/logs
 
