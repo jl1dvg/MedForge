@@ -8,20 +8,21 @@ use App\Modules\Shared\Support\LegacySessionAuth;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 
 class LoginController
 {
-    public function show(Request $request): View|RedirectResponse
+    public function show(Request $request): View|RedirectResponse|Response
     {
         if (Auth::check()) {
             return redirect()->intended('/v2/dashboard');
         }
 
-        return view('auth.login', [
-            'pageTitle' => 'Iniciar sesión',
-        ]);
+        return response()
+            ->view('auth.login', ['pageTitle' => 'Iniciar sesión'])
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate');
     }
 
     public function login(Request $request): RedirectResponse
