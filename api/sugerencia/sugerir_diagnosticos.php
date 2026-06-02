@@ -8,12 +8,16 @@ require_once __DIR__ . '/../../models/PalabraClaveModel.php';
 require_once __DIR__ . '/../../models/DiagnosticoModel.php';
 
 // Habilitar errores para depuración
-header('Content-Type: application/json');
+use Helpers\CorsHelper;
 
-// Permitir solicitudes desde otros orígenes (para pruebas con la extensión)
-header("Access-Control-Allow-Origin: *");
-header("Access-Control-Allow-Methods: POST");
-header("Access-Control-Allow-Headers: Content-Type");
+header('Content-Type: application/json; charset=UTF-8');
+
+CorsHelper::prepare('EXTENSION_ALLOWED_ORIGINS', [
+    'https://cive.consulmed.me',
+    'https://asistentecive.consulmed.me',
+    'https://cive.ddns.net:8085',
+    'http://192.168.1.13:8085',
+]);
 
 use Controllers\SugerenciaController;
 use Controllers\DiagnosticoController;

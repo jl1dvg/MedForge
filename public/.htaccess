@@ -1,3 +1,13 @@
+<IfModule mod_headers.c>
+    # Pass CORS preflight OPTIONS through to PHP
+    Header always set Access-Control-Allow-Methods "GET, POST, OPTIONS" "expr=%{REQUEST_METHOD} == 'OPTIONS'"
+</IfModule>
+
+# Let PHP handle OPTIONS so CorsHelper can respond with correct origin
+RewriteEngine On
+RewriteCond %{REQUEST_METHOD} OPTIONS
+RewriteRule .* - [L]
+
 <IfModule mod_rewrite.c>
     RewriteEngine On
     RewriteBase /
