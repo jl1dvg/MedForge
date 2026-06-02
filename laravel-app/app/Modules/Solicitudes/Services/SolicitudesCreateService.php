@@ -106,7 +106,7 @@ class SolicitudesCreateService
                 continue;
             }
 
-            $procedimiento = $this->clean($sol['procedimiento'] ?? null);
+            $procedimiento = $this->limit($this->clean($sol['procedimiento'] ?? null));
             $secuencia = isset($sol['secuencia']) && is_numeric($sol['secuencia'])
                 ? (int) $sol['secuencia']
                 : ($idx + 1);
@@ -123,22 +123,22 @@ class SolicitudesCreateService
                 'hc_number'         => $hcNumber,
                 'form_id'           => $formId,
                 'secuencia'         => $secuencia,
-                'tipo'              => $this->clean($sol['tipo'] ?? null),
-                'afiliacion'        => $this->clean($sol['afiliacion'] ?? null),
+                'tipo'              => $this->limit($this->clean($sol['tipo'] ?? null)),
+                'afiliacion'        => $this->limit($this->clean($sol['afiliacion'] ?? null)),
                 'procedimiento'     => $procedimiento,
-                'doctor'            => $this->clean($sol['doctor'] ?? null),
+                'doctor'            => $this->limit($this->clean($sol['doctor'] ?? null)),
                 'fecha'             => $this->normFecha($sol['fecha'] ?? null),
                 'duracion'          => $this->normInt($sol['duracion'] ?? null),
-                'ojo'               => $ojo,
+                'ojo'               => $this->limit($ojo),
                 'prioridad'         => $this->normPrioridad($sol['prioridad'] ?? null),
-                'producto'          => $this->clean($sol['producto'] ?? null),
+                'producto'          => $this->limit($this->clean($sol['producto'] ?? null)),
                 'observacion'       => $this->clean($sol['observacion'] ?? null),
-                'sesiones'          => $this->clean($sol['sesiones'] ?? null),
-                'lente_id'          => $this->clean($sol['lente_id'] ?? null) ?? $lenteId,
-                'lente_nombre'      => $this->clean($sol['lente_nombre'] ?? null) ?? $lenteNombre,
-                'lente_poder'       => $this->clean($sol['lente_poder'] ?? null) ?? $lentePoder,
+                'sesiones'          => $this->limit($this->clean($sol['sesiones'] ?? null)),
+                'lente_id'          => $this->limit($this->clean($sol['lente_id'] ?? null) ?? $lenteId),
+                'lente_nombre'      => $this->limit($this->clean($sol['lente_nombre'] ?? null) ?? $lenteNombre),
+                'lente_poder'       => $this->limit($this->clean($sol['lente_poder'] ?? null) ?? $lentePoder),
                 'lente_observacion' => $this->clean($sol['lente_observacion'] ?? null) ?? $lenteObs,
-                'incision'          => $this->clean($sol['incision'] ?? null) ?? $incision,
+                'incision'          => $this->limit($this->clean($sol['incision'] ?? null) ?? $incision),
                 'estado'            => 'recibida',
                 'created_at'        => $now,
             ];
@@ -197,6 +197,15 @@ class SolicitudesCreateService
             return null;
         }
         return $v;
+    }
+
+    private function limit(?string $v, int $max = 255): ?string
+    {
+        if ($v === null) {
+            return null;
+        }
+
+        return mb_strlen($v) > $max ? mb_substr($v, 0, $max) : $v;
     }
 
     private function normPrioridad(mixed $v): string
