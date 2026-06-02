@@ -256,4 +256,39 @@ class CrmOpportunityControllerTest extends TestCase
             ->assertJsonPath('data.0.source', 'manual')
             ->assertJsonPath('data.0.effective_source', 'solicitud');
     }
+
+    public function test_index_effective_source_prefers_clinical_activity_over_historical_whatsapp_source(): void
+    {
+        $contact = CrmContact::query()->create([
+            'name' => 'Paciente Lead Con Solicitud',
+            'phone' => '+5938',
+            'cedula' => 'WA-SOL-1',
+            'source' => 'whatsapp',
+        ]);
+        \Illuminate\Support\Facades\DB::table('patient_data')->insert([
+            ['hc_number' => 'WA-SOL-1', 'afiliacion' => 'Seguro privado'],
+        ]);
+        $opp = CrmOpportunity::query()->create([
+            'contact_id' => $contact->id,
+            'title' => 'Lead migrado: Paciente Lead Con Solicitud',
+            'stage' => 'nuevo',
+            'source' => 'whatsapp',
+            'source_type' => 'legacy_crm_lead',
+        ]);
+        CrmActivity::query()->create([
+            'opportunity_id' => $opp->id,
+            'type' => 'solicitud',
+            'description' => 'Solicitud creada',
+            'source_id' => 100,
+            'source_type' => 'solicitud_procedimiento',
+        ]);
+
+        $this->actingAs($this->makeUser())
+            ->withoutMiddleware([LegacySessionBridge::class, RequireLegacySession::class, RequireLegacyPermission::class, RequireAppSession::class, RequireAppPermission::class])
+            ->getJson('/v2/crm/opportunities?afiliacion=privado')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.source', 'whatsapp')
+            ->assertJsonPath('data.0.effective_source', 'solicitud');
+    }
 }

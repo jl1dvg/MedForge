@@ -199,7 +199,20 @@ class CrmOpportunityController
 
     private function effectiveSourceFor(CrmOpportunity $opportunity, Collection $activitySources): string
     {
-        if (in_array($opportunity->source, ['whatsapp', 'solicitud', 'examen'], true)) {
+        foreach ($activitySources as $activity) {
+            $activitySource = self::SOURCE_TYPE_TO_SOURCE[$activity->source_type] ?? $activity->type;
+            if (in_array($activitySource, ['solicitud', 'examen'], true)) {
+                return $activitySource;
+            }
+        }
+
+        if (isset(self::SOURCE_TYPE_TO_SOURCE[$opportunity->source_type])
+            && in_array(self::SOURCE_TYPE_TO_SOURCE[$opportunity->source_type], ['solicitud', 'examen'], true)
+        ) {
+            return self::SOURCE_TYPE_TO_SOURCE[$opportunity->source_type];
+        }
+
+        if (in_array($opportunity->source, ['solicitud', 'examen'], true)) {
             return $opportunity->source;
         }
 
