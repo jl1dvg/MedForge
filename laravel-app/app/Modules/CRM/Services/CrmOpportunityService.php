@@ -2,6 +2,7 @@
 
 namespace App\Modules\CRM\Services;
 
+use App\Events\Crm\CrmStageChanged;
 use App\Models\CrmActivity;
 use App\Models\CrmContact;
 use App\Models\CrmOpportunity;
@@ -137,7 +138,11 @@ class CrmOpportunityService
             $this->activityService->logStageChange($opportunity->id, $fromStage, $newStage, $userId);
         });
 
-        return $opportunity->fresh();
+        $fresh = $opportunity->fresh();
+
+        CrmStageChanged::dispatch($fresh, $fromStage, $newStage, $userId);
+
+        return $fresh;
     }
 
     /**

@@ -22,13 +22,14 @@ class CrmActivity extends Model
         'created_at'     => 'datetime',
     ];
 
-    public const TYPE_NOTA         = 'nota';
-    public const TYPE_LLAMADA      = 'llamada';
-    public const TYPE_CAMBIO_ETAPA = 'cambio_etapa';
-    public const TYPE_EMAIL        = 'email';
-    public const TYPE_EXAMEN       = 'examen';
-    public const TYPE_SOLICITUD    = 'solicitud';
-    public const TYPE_WHATSAPP     = 'whatsapp';
+    public const TYPE_NOTA           = 'nota';
+    public const TYPE_LLAMADA        = 'llamada';
+    public const TYPE_CAMBIO_ETAPA   = 'cambio_etapa';
+    public const TYPE_EMAIL          = 'email';
+    public const TYPE_EXAMEN         = 'examen';
+    public const TYPE_SOLICITUD      = 'solicitud';
+    public const TYPE_WHATSAPP       = 'whatsapp';
+    public const TYPE_CONFLICTO_SYNC = 'conflicto_sync';
 
     public function opportunity(): BelongsTo
     {
