@@ -1,22 +1,23 @@
 <?php
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    header("Access-Control-Allow-Origin: *");
-    header("Access-Control-Allow-Methods: POST, GET, OPTIONS");
-    header("Access-Control-Allow-Headers: Content-Type, Authorization");
-    header("Access-Control-Max-Age: 86400");
-    http_response_code(200);
-    exit;
-}
-
 require_once __DIR__ . '/../../bootstrap.php';
-header("Access-Control-Allow-Origin: *");
-header("Access-Control-Allow-Methods: POST, GET, OPTIONS");
-header("Access-Control-Allow-Headers: Content-Type, Authorization");
+
+use Controllers\GuardarProyeccionController;
+use Helpers\CorsHelper;
 
 ini_set('display_errors', 0);
 error_reporting(0);
 
-use Controllers\GuardarProyeccionController;
+header('Content-Type: application/json; charset=UTF-8');
+
+if (!CorsHelper::prepare('PROYECCIONES_ALLOWED_ORIGINS', [
+    'https://cive.consulmed.me',
+    'https://asistentecive.consulmed.me',
+    'https://cive.ddns.net:8085',
+])) {
+    http_response_code(403);
+    echo json_encode(['success' => false, 'message' => 'Origen no permitido para este recurso.']);
+    exit;
+}
 
 try {
     $logDir = __DIR__ . '/../../storage/logs';
