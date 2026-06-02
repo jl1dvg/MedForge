@@ -88,7 +88,7 @@ Route::post('/api/solicitudes/{id}/conciliacion-cirugia/confirmar', [Solicitudes
 });
 
 // Extension endpoints — autenticación por extensión Chrome, no por sesión administrativa
-Route::middleware(['cive.extension.auth'])->group(function (): void {
+Route::middleware(['consultas.cors', 'cive.extension.auth'])->group(function (): void {
     foreach ([
         '/api/solicitudes/guardar.php',
         '/api/solicitudes/guardar',
@@ -99,12 +99,4 @@ Route::middleware(['cive.extension.auth'])->group(function (): void {
         Route::post($path, [SolicitudesWriteController::class, 'guardarSolicitud']);
     }
 
-    foreach ([
-        '/api/solicitudes/estado.php',
-        '/api/solicitudes/estado',
-    ] as $path) {
-        Route::options($path, static fn () => response('', 204));
-        Route::get($path, [SolicitudesWriteController::class, 'apiEstadoGet']);
-        Route::post($path, [SolicitudesWriteController::class, 'apiEstadoPost']);
-    }
 });
