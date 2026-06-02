@@ -362,4 +362,50 @@ class CrmOpportunityControllerTest extends TestCase
             ->assertJsonPath('meta.total', 1)
             ->assertJsonPath('data.0.effective_source', 'solicitud');
     }
+
+    public function test_index_effective_source_respects_selected_source_when_opportunity_has_solicitud_and_examen(): void
+    {
+        $contact = CrmContact::query()->create([
+            'name' => 'Paciente Con Ambas Fuentes',
+            'phone' => '+5939',
+            'cedula' => 'BOTH-1',
+            'source' => 'whatsapp',
+        ]);
+        \Illuminate\Support\Facades\DB::table('patient_data')->insert([
+            ['hc_number' => 'BOTH-1', 'afiliacion' => 'Particular'],
+        ]);
+        $opp = CrmOpportunity::query()->create([
+            'contact_id' => $contact->id,
+            'title' => 'Lead migrado: Paciente Con Ambas Fuentes',
+            'stage' => 'nuevo',
+            'source' => 'whatsapp',
+            'source_type' => 'legacy_crm_lead',
+        ]);
+        \Illuminate\Support\Facades\DB::table('solicitud_procedimiento')->insert([
+            'id' => 101,
+            'crm_opportunity_id' => $opp->id,
+        ]);
+        \Illuminate\Support\Facades\DB::table('consulta_examenes')->insert([
+            'id' => 201,
+            'crm_opportunity_id' => $opp->id,
+        ]);
+
+        $this->actingAs($this->makeUser())
+            ->withoutMiddleware([LegacySessionBridge::class, RequireLegacySession::class, RequireLegacyPermission::class, RequireAppSession::class, RequireAppPermission::class])
+            ->getJson('/v2/crm/opportunities?source=solicitud&afiliacion=particular')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.effective_source', 'solicitud')
+            ->assertJsonPath('data.0.effective_sources.0', 'solicitud')
+            ->assertJsonPath('data.0.effective_sources.1', 'examen');
+
+        $this->actingAs($this->makeUser())
+            ->withoutMiddleware([LegacySessionBridge::class, RequireLegacySession::class, RequireLegacyPermission::class, RequireAppSession::class, RequireAppPermission::class])
+            ->getJson('/v2/crm/opportunities?source=examen&afiliacion=particular')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.effective_source', 'examen')
+            ->assertJsonPath('data.0.effective_sources.0', 'examen')
+            ->assertJsonPath('data.0.effective_sources.1', 'solicitud');
+    }
 }

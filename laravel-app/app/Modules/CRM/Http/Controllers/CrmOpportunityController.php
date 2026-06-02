@@ -70,7 +70,7 @@ class CrmOpportunityController
         $total = $query->count();
         $rows  = $query->orderByRaw('COALESCE(last_activity_at, created_at) ASC')
             ->limit($limit)->offset($offset)->get();
-        $this->appendEffectiveSource($rows);
+        $this->appendEffectiveSource($rows, $source);
 
         return response()->json([
             'data' => $rows,
@@ -199,14 +199,14 @@ class CrmOpportunityController
      * activities. The central CRM list needs that operational signal for filters
      * and labels without overwriting the original stored source.
      */
-    private function appendEffectiveSource(Collection $rows): void
+    private function appendEffectiveSource(Collection $rows, string $selectedSource): void
     {
         $ids = $rows->pluck('id')->all();
         if ($ids === []) {
             return;
         }
 
-        $operationalSources = $this->operationalSourcesFor($ids);
+        $operationalSources = $this->operationalSourcesFor($ids, $selectedSource);
 
         $activitySources = DB::table('crm_activities')
             ->select('opportunity_id', 'type', 'source_type', 'created_at')
@@ -219,23 +219,29 @@ class CrmOpportunityController
             ->get()
             ->groupBy('opportunity_id');
 
-        $rows->each(function (CrmOpportunity $opportunity) use ($activitySources, $operationalSources): void {
+        $rows->each(function (CrmOpportunity $opportunity) use ($activitySources, $operationalSources, $selectedSource): void {
+            $effectiveSources = $this->effectiveSourcesFor(
+                $opportunity,
+                $activitySources->get($opportunity->id, collect()),
+                collect($operationalSources->get($opportunity->id, [])),
+            );
+
             $opportunity->setAttribute(
                 'effective_source',
-                $this->effectiveSourceFor(
-                    $opportunity,
-                    $activitySources->get($opportunity->id, collect()),
-                    $operationalSources->get($opportunity->id),
-                ),
+                $this->preferredEffectiveSource($effectiveSources, $selectedSource),
             );
+            $opportunity->setAttribute('effective_sources', $effectiveSources);
         });
     }
 
-    private function operationalSourcesFor(array $opportunityIds): Collection
+    private function operationalSourcesFor(array $opportunityIds, string $selectedSource): Collection
     {
         $sources = collect();
+        $sourceOrder = in_array($selectedSource, ['solicitud', 'examen'], true)
+            ? [$selectedSource, ...array_values(array_diff(['solicitud', 'examen'], [$selectedSource]))]
+            : ['solicitud', 'examen'];
 
-        foreach (['solicitud', 'examen'] as $source) {
+        foreach ($sourceOrder as $source) {
             foreach ($this->operationalSourceTables($source) as [$tableName, $columnName]) {
                 if (!Schema::hasTable($tableName) || !Schema::hasColumn($tableName, $columnName)) {
                     continue;
@@ -245,7 +251,13 @@ class CrmOpportunityController
                     ->whereIn($columnName, $opportunityIds)
                     ->pluck($columnName)
                     ->each(static function ($opportunityId) use ($sources, $source): void {
-                        $sources->put((int) $opportunityId, $source);
+                        $key = (int) $opportunityId;
+                        $current = $sources->get($key, []);
+
+                        if (!in_array($source, $current, true)) {
+                            $current[] = $source;
+                            $sources->put($key, $current);
+                        }
                     });
             }
         }
@@ -268,52 +280,71 @@ class CrmOpportunityController
         };
     }
 
-    private function effectiveSourceFor(
+    private function effectiveSourcesFor(
         CrmOpportunity $opportunity,
         Collection $activitySources,
-        ?string $operationalSource,
-    ): string
+        Collection $operationalSources,
+    ): array
     {
-        if (in_array($operationalSource, ['solicitud', 'examen'], true)) {
-            return $operationalSource;
+        $sources = [];
+
+        foreach ($operationalSources as $operationalSource) {
+            if (in_array($operationalSource, ['solicitud', 'examen'], true)) {
+                $sources[] = $operationalSource;
+            }
         }
 
         foreach ($activitySources as $activity) {
             $activitySource = self::SOURCE_TYPE_TO_SOURCE[$activity->source_type] ?? $activity->type;
             if (in_array($activitySource, ['solicitud', 'examen'], true)) {
-                return $activitySource;
+                $sources[] = $activitySource;
             }
         }
 
         if (isset(self::SOURCE_TYPE_TO_SOURCE[$opportunity->source_type])
             && in_array(self::SOURCE_TYPE_TO_SOURCE[$opportunity->source_type], ['solicitud', 'examen'], true)
         ) {
-            return self::SOURCE_TYPE_TO_SOURCE[$opportunity->source_type];
+            $sources[] = self::SOURCE_TYPE_TO_SOURCE[$opportunity->source_type];
         }
 
         if (in_array($opportunity->source, ['solicitud', 'examen'], true)) {
-            return $opportunity->source;
+            $sources[] = $opportunity->source;
+        }
+
+        $sources = array_values(array_unique($sources));
+
+        if ($sources !== []) {
+            return $sources;
         }
 
         if ($opportunity->source_type === self::LEGACY_SOURCE_TYPE) {
-            return 'legacy';
+            return ['legacy'];
         }
 
         if (isset(self::SOURCE_TYPE_TO_SOURCE[$opportunity->source_type])) {
-            return self::SOURCE_TYPE_TO_SOURCE[$opportunity->source_type];
+            return [self::SOURCE_TYPE_TO_SOURCE[$opportunity->source_type]];
         }
 
         foreach ($activitySources as $activity) {
             if (isset(self::SOURCE_TYPE_TO_SOURCE[$activity->source_type])) {
-                return self::SOURCE_TYPE_TO_SOURCE[$activity->source_type];
+                return [self::SOURCE_TYPE_TO_SOURCE[$activity->source_type]];
             }
 
             if (in_array($activity->type, ['whatsapp', 'solicitud', 'examen'], true)) {
-                return $activity->type;
+                return [$activity->type];
             }
         }
 
-        return $opportunity->source ?: 'manual';
+        return [$opportunity->source ?: 'manual'];
+    }
+
+    private function preferredEffectiveSource(array $effectiveSources, string $selectedSource): string
+    {
+        if (in_array($selectedSource, $effectiveSources, true)) {
+            return $selectedSource;
+        }
+
+        return $effectiveSources[0] ?? 'manual';
     }
 
     private function applyPatientAffiliationFilter(Builder $query, string $afiliacion): void
