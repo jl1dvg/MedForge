@@ -1,10 +1,13 @@
 <IfModule mod_headers.c>
-    # Respond to CORS preflight at Apache level — no PHP needed
-    SetEnvIf Origin "^(https://cive\.consulmed\.me|https://asistentecive\.consulmed\.me|https://cive\.ddns\.net:8085|http://192\.168\.1\.13:8085)$" CORS_ORIGIN=$0
-    Header always set Access-Control-Allow-Origin "%{CORS_ORIGIN}e" "expr=reqenv('CORS_ORIGIN') != ''"
-    Header always set Access-Control-Allow-Methods "GET, POST, OPTIONS"
-    Header always set Access-Control-Allow-Headers "Content-Type, Authorization"
-    Header always set Access-Control-Max-Age "86400"
+    SetEnvIf Origin "^https://cive\.consulmed\.me$" CORS_ORIGIN=https://cive.consulmed.me
+    SetEnvIf Origin "^https://asistentecive\.consulmed\.me$" CORS_ORIGIN=https://asistentecive.consulmed.me
+    SetEnvIf Origin "^https://cive\.ddns\.net:8085$" CORS_ORIGIN=https://cive.ddns.net:8085
+    SetEnvIf Origin "^http://192\.168\.1\.13:8085$" CORS_ORIGIN=http://192.168.1.13:8085
+
+    Header always set Access-Control-Allow-Origin "%{CORS_ORIGIN}e" env=CORS_ORIGIN
+    Header always set Access-Control-Allow-Methods "GET, POST, OPTIONS" env=CORS_ORIGIN
+    Header always set Access-Control-Allow-Headers "Content-Type, Authorization" env=CORS_ORIGIN
+    Header always set Access-Control-Max-Age "86400" env=CORS_ORIGIN
     Header always set Vary "Origin"
 </IfModule>
 
