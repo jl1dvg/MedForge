@@ -13,6 +13,7 @@ use App\Models\CrmStageMapping;
 use App\Modules\CRM\Services\CrmContactResolverService;
 use App\Modules\CRM\Services\CrmOpportunityService;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class CrmOpportunityListener
 {
@@ -53,12 +54,20 @@ class CrmOpportunityListener
             source: 'solicitud',
         );
 
-        $this->opportunityService->upsertFromEvent(
+        $opp = $this->opportunityService->upsertFromEvent(
             contact: $contact,
             title: 'Solicitud: ' . (string) ($data['servicio'] ?? 'Servicio médico'),
             source: 'solicitud',
             sourceId: $event->solicitudId,
             sourceType: 'solicitud_procedimiento',
+        );
+
+        $this->linkOperationalOpportunity(
+            sourceTable: 'solicitud_procedimiento',
+            sourceId: $event->solicitudId,
+            opportunityId: $opp->id,
+            detailsTable: 'solicitud_crm_detalles',
+            detailsSourceColumn: 'solicitud_id',
         );
     }
 
@@ -73,12 +82,20 @@ class CrmOpportunityListener
             source: 'examen',
         );
 
-        $this->opportunityService->upsertFromEvent(
+        $opp = $this->opportunityService->upsertFromEvent(
             contact: $contact,
             title: 'Examen: ' . (string) ($data['descripcion_examen'] ?? 'Examen solicitado'),
             source: 'examen',
             sourceId: $event->examenId,
             sourceType: 'consulta_examenes',
+        );
+
+        $this->linkOperationalOpportunity(
+            sourceTable: 'consulta_examenes',
+            sourceId: $event->examenId,
+            opportunityId: $opp->id,
+            detailsTable: 'examen_crm_detalles',
+            detailsSourceColumn: 'examen_id',
         );
     }
 
@@ -194,6 +211,29 @@ class CrmOpportunityListener
                 ->where('source_type', $sourceType)
                 ->where('source_id', $sourceId)
                 ->first();
+    }
+
+    private function linkOperationalOpportunity(
+        string $sourceTable,
+        int $sourceId,
+        int $opportunityId,
+        string $detailsTable,
+        string $detailsSourceColumn,
+    ): void {
+        if (Schema::hasTable($sourceTable) && Schema::hasColumn($sourceTable, 'crm_opportunity_id')) {
+            DB::table($sourceTable)
+                ->where('id', $sourceId)
+                ->update(['crm_opportunity_id' => $opportunityId]);
+        }
+
+        if (Schema::hasTable($detailsTable)
+            && Schema::hasColumn($detailsTable, 'crm_opportunity_id')
+            && Schema::hasColumn($detailsTable, $detailsSourceColumn)
+        ) {
+            DB::table($detailsTable)
+                ->where($detailsSourceColumn, $sourceId)
+                ->update(['crm_opportunity_id' => $opportunityId]);
+        }
     }
 
     private function findOpportunityByExamenHcFallback(int $examenId): ?CrmOpportunity

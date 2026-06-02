@@ -3,6 +3,8 @@
 namespace App\Modules\Whatsapp\Services;
 
 use App\Modules\Shared\Support\SettingsOptionResolver;
+use App\Modules\CRM\Services\CrmContactResolverService;
+use App\Modules\CRM\Services\CrmOpportunityService;
 use App\Models\WhatsappAutoresponderSession;
 use App\Models\WhatsappConversation;
 use App\Models\WhatsappConversationAttribution;
@@ -2353,6 +2355,27 @@ class FlowRuntimeExecutionService
             }
         }
 
+        $crmOpportunityId = $this->upsertCrmOpportunityLeadCapture(
+            conversation: $conversation,
+            context: $context,
+            identifier: $identifier,
+            leadSource: $leadSource,
+            leadSourceDetail: $leadSourceDetail,
+        );
+        if ($crmOpportunityId !== null) {
+            $context['crm_opportunity_id'] = (string)$crmOpportunityId;
+
+            if ($attribution !== null) {
+                $meta = is_array($attribution->meta ?? null) ? $attribution->meta : [];
+                $meta['lead_capture'] = array_merge(
+                    is_array($meta['lead_capture'] ?? null) ? $meta['lead_capture'] : [],
+                    ['crm_opportunity_id' => $crmOpportunityId]
+                );
+                $attribution->meta = $meta;
+                $attribution->save();
+            }
+        }
+
         if ($email !== '') {
             $context['lead_email'] = $email;
         }
@@ -2365,6 +2388,47 @@ class FlowRuntimeExecutionService
         $context['lead_capture_saved'] = true;
 
         return $context;
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     */
+    private function upsertCrmOpportunityLeadCapture(
+        WhatsappConversation $conversation,
+        array $context,
+        string $identifier,
+        string $leadSource,
+        string $leadSourceDetail,
+    ): ?int {
+        if (!Schema::hasTable('crm_contacts')
+            || !Schema::hasTable('crm_opportunities')
+            || !Schema::hasTable('crm_activities')
+        ) {
+            return null;
+        }
+
+        $name = trim((string)data_get($context, 'patient.full_name', ''));
+        if ($name === '') {
+            $name = trim((string)($conversation->patient_full_name ?? $conversation->display_name ?? $conversation->wa_number));
+        }
+
+        $contact = app(CrmContactResolverService::class)->resolve(
+            phone: trim((string)$conversation->wa_number),
+            name: $name !== '' ? $name : trim((string)$conversation->wa_number),
+            cedula: $identifier !== '' ? $identifier : null,
+            source: 'whatsapp',
+        );
+
+        $titleDetail = $leadSourceDetail !== '' ? $leadSourceDetail : ($leadSource !== '' ? $leadSource : 'captura automática');
+        $opportunity = app(CrmOpportunityService::class)->upsertFromEvent(
+            contact: $contact,
+            title: 'Lead WhatsApp: ' . $titleDetail,
+            source: 'whatsapp',
+            sourceId: (int)$conversation->id,
+            sourceType: 'whatsapp_flow_capture',
+        );
+
+        return (int)$opportunity->id;
     }
 
     private function conversationAttribution(WhatsappConversation $conversation): ?WhatsappConversationAttribution

@@ -23,6 +23,8 @@ class CrmOpportunityListenerTest extends TestCase
         parent::setUp();
         foreach ([
             'solicitud_estado_log',
+            'examen_crm_detalles',
+            'solicitud_crm_detalles',
             'consulta_examenes',
             'solicitud_procedimiento',
             'patient_data',
@@ -97,11 +99,23 @@ class CrmOpportunityListenerTest extends TestCase
             $table->string('hc_number')->nullable();
             $table->string('estado')->nullable();
             $table->string('afiliacion')->nullable();
+            $table->unsignedBigInteger('crm_opportunity_id')->nullable()->index();
         });
         Schema::create('consulta_examenes', function (Blueprint $table): void {
             $table->id();
             $table->string('hc_number')->nullable();
             $table->string('estado')->nullable();
+            $table->unsignedBigInteger('crm_opportunity_id')->nullable()->index();
+        });
+        Schema::create('solicitud_crm_detalles', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('solicitud_id')->nullable()->index();
+            $table->unsignedBigInteger('crm_opportunity_id')->nullable()->index();
+        });
+        Schema::create('examen_crm_detalles', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('examen_id')->nullable()->index();
+            $table->unsignedBigInteger('crm_opportunity_id')->nullable()->index();
         });
         Schema::create('patient_data', function (Blueprint $table): void {
             $table->id();
@@ -149,6 +163,14 @@ class CrmOpportunityListenerTest extends TestCase
 
     public function test_solicitud_creada_creates_nuevo_opportunity(): void
     {
+        \Illuminate\Support\Facades\DB::table('solicitud_procedimiento')->insert([
+            'id' => 42,
+            'hc_number' => '0912345678',
+        ]);
+        \Illuminate\Support\Facades\DB::table('solicitud_crm_detalles')->insert([
+            'solicitud_id' => 42,
+        ]);
+
         event(new SolicitudCreada(
             solicitudId: 42,
             solicitudData: [
@@ -162,10 +184,26 @@ class CrmOpportunityListenerTest extends TestCase
         $this->assertEquals(1, CrmOpportunity::query()->count());
         $this->assertEquals('nuevo', CrmOpportunity::query()->first()->stage);
         $this->assertEquals(42, CrmOpportunity::query()->first()->source_id);
+        $this->assertSame(
+            CrmOpportunity::query()->first()->id,
+            (int) \Illuminate\Support\Facades\DB::table('solicitud_procedimiento')->where('id', 42)->value('crm_opportunity_id'),
+        );
+        $this->assertSame(
+            CrmOpportunity::query()->first()->id,
+            (int) \Illuminate\Support\Facades\DB::table('solicitud_crm_detalles')->where('solicitud_id', 42)->value('crm_opportunity_id'),
+        );
     }
 
     public function test_examen_solicitado_creates_nuevo_opportunity(): void
     {
+        \Illuminate\Support\Facades\DB::table('consulta_examenes')->insert([
+            'id' => 77,
+            'hc_number' => '1712345678',
+        ]);
+        \Illuminate\Support\Facades\DB::table('examen_crm_detalles')->insert([
+            'examen_id' => 77,
+        ]);
+
         event(new ExamenSolicitado(
             examenId: 77,
             examenData: [
@@ -180,6 +218,14 @@ class CrmOpportunityListenerTest extends TestCase
         $this->assertEquals('nuevo', CrmOpportunity::query()->first()->stage);
         $this->assertEquals('examen', CrmOpportunity::query()->first()->source);
         $this->assertEquals(77, CrmOpportunity::query()->first()->source_id);
+        $this->assertSame(
+            CrmOpportunity::query()->first()->id,
+            (int) \Illuminate\Support\Facades\DB::table('consulta_examenes')->where('id', 77)->value('crm_opportunity_id'),
+        );
+        $this->assertSame(
+            CrmOpportunity::query()->first()->id,
+            (int) \Illuminate\Support\Facades\DB::table('examen_crm_detalles')->where('examen_id', 77)->value('crm_opportunity_id'),
+        );
     }
 
     public function test_duplicate_cedula_reuses_contact(): void
@@ -254,6 +300,49 @@ class CrmOpportunityListenerTest extends TestCase
         $this->assertEquals($before, \App\Models\CrmOpportunity::query()->where('contact_id', $contact->id)->count());
         // Activity created
         $this->assertDatabaseHas('crm_activities', ['source_id' => 100, 'type' => 'examen']);
+    }
+
+    public function test_solicitud_creada_links_existing_opportunity_to_operational_record(): void
+    {
+        $contact = CrmContact::query()->create([
+            'name' => 'Carlos',
+            'phone' => '+593987654321',
+            'cedula' => '0912345678',
+            'resolution' => 'identified',
+            'source' => 'whatsapp',
+        ]);
+        $opp = CrmOpportunity::query()->create([
+            'contact_id' => $contact->id,
+            'title' => 'Lead previo',
+            'stage' => CrmOpportunity::STAGE_NUEVO,
+            'source' => 'whatsapp',
+        ]);
+        \Illuminate\Support\Facades\DB::table('solicitud_procedimiento')->insert([
+            'id' => 43,
+            'hc_number' => '0912345678',
+        ]);
+
+        event(new SolicitudCreada(
+            solicitudId: 43,
+            solicitudData: [
+                'paciente_nombre' => 'Carlos Mendoza',
+                'paciente_cedula' => '0912345678',
+                'paciente_telefono' => '+593987654321',
+                'servicio' => 'Cirugía',
+            ],
+        ));
+
+        $this->assertSame(1, CrmOpportunity::query()->count());
+        $this->assertSame(
+            $opp->id,
+            (int) \Illuminate\Support\Facades\DB::table('solicitud_procedimiento')->where('id', 43)->value('crm_opportunity_id'),
+        );
+        $this->assertDatabaseHas('crm_activities', [
+            'opportunity_id' => $opp->id,
+            'type' => CrmActivity::TYPE_SOLICITUD,
+            'source_id' => 43,
+            'source_type' => 'solicitud_procedimiento',
+        ]);
     }
 
     public function test_log_clinical_creates_activity_with_source(): void
