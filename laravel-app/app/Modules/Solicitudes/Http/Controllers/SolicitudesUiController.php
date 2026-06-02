@@ -75,6 +75,35 @@ class SolicitudesUiController
         ]);
     }
 
+    public function indexV3(Request $request): View|RedirectResponse
+    {
+        $currentUser = LegacyCurrentUser::resolve($request);
+        $realtimeConfig = $this->buildRealtimeConfig();
+
+        $appConfig = [
+            'kanbanColumns'             => self::KANBAN_COLUMNS,
+            'kanbanEndpoint'            => '/v2/solicitudes/kanban-data',
+            'actualizarEstadoEndpoint'  => '/v2/solicitudes/actualizar-estado',
+            'estadoEndpoint'            => '/v2/solicitudes/api/estado',
+            'realtimeConfig'            => $realtimeConfig,
+            'initialFilters'            => [
+                'search'              => trim((string) $request->query('search', '')),
+                'afiliacion'          => trim((string) $request->query('afiliacion', '')),
+                'doctor'              => trim((string) $request->query('doctor', '')),
+                'prioridad'           => trim((string) $request->query('prioridad', '')),
+                'sede'                => trim((string) $request->query('sede', '')),
+                'date_from'           => trim((string) $request->query('date_from', '')),
+                'date_to'             => trim((string) $request->query('date_to', '')),
+            ],
+        ];
+
+        return view('solicitudes.v3-index', [
+            'pageTitle' => 'Solicitudes V3',
+            'currentUser' => $currentUser,
+            'appConfig'   => $appConfig,
+        ]);
+    }
+
     public function dashboard(Request $request): View|RedirectResponse
     {
         return view('solicitudes.v2-dashboard', [

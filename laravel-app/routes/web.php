@@ -54,6 +54,7 @@ Route::middleware(['app.auth', 'app.permission:administrativo,derivaciones.view,
 
 Route::middleware(['app.auth', 'app.permission:administrativo,solicitudes.view,solicitudes.update,solicitudes.manage'])->group(function (): void {
     Route::get('/v2/solicitudes', [SolicitudesUiController::class, 'index']);
+    Route::get('/v3/solicitudes', [SolicitudesUiController::class, 'indexV3']);
 });
 
 Route::middleware(['app.auth', 'app.permission:administrativo,solicitudes.dashboard.view,solicitudes.view,solicitudes.update,solicitudes.manage'])->group(function (): void {
