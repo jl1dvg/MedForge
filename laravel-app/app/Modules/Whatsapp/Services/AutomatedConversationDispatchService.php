@@ -101,7 +101,7 @@ class AutomatedConversationDispatchService
     }
 
     /**
-     * @param array<int, string> $templateVariables
+     * @param array<int|string, string> $templateVariables
      * @return array{conversation: array<string,mixed>, message: array<string,mixed>}
      */
     public function sendTemplate(

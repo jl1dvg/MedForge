@@ -3089,8 +3089,9 @@
                 const template = selectedStartTemplateMeta();
                 const variables = Array.isArray(template?.variables) ? template.variables : [];
                 const examples = Array.isArray(template?.variable_examples) ? template.variable_examples : [];
+                const isLocationHeader = (template?.header_type || '') === 'location';
 
-                if (variables.length === 0) {
+                if (variables.length === 0 && !isLocationHeader) {
                     startChatTemplateVariables.classList.add('d-none');
                     startChatTemplateVariablesFields.innerHTML = '';
                     renderStartTemplatePreview();
@@ -3098,7 +3099,20 @@
                 }
 
                 startChatTemplateVariables.classList.remove('d-none');
-                startChatTemplateVariablesFields.innerHTML = variables.map(function (variable, index) {
+                const sedeSelectHtml = isLocationHeader ? `
+                    <div class="col-12">
+                        <label class="form-label">Sede de la cita <span class="text-danger">*</span></label>
+                        <select class="form-control" id="wa-v2-start-location-sede">
+                            <option value="">— Selecciona la sede —</option>
+                            <option value="villa_club">Villa Club</option>
+                            <option value="ceibos">Ceibos</option>
+                            <option value="matriz">Matriz</option>
+                        </select>
+                        <small class="text-muted">Requerido para el header de ubicación GPS.</small>
+                    </div>
+                ` : '';
+
+                startChatTemplateVariablesFields.innerHTML = sedeSelectHtml + variables.map(function (variable, index) {
                     const example = (examples[index] || '').trim();
                     const placeholder = example || `Valor para ${variable}`;
                     return `
@@ -3292,6 +3306,7 @@
                                     return (input.value || '').trim();
                                 })
                                 : [],
+                            location_sede: (document.getElementById('wa-v2-start-location-sede')?.value || '').trim(),
                         })
                     });
                     const data = await response.json();

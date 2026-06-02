@@ -2,6 +2,7 @@
 
 namespace App\Modules\Whatsapp\Http\Controllers;
 
+use App\Modules\Shared\Support\SettingsOptionResolver;
 use App\Modules\Whatsapp\Services\ConversationStartService;
 use App\Modules\Whatsapp\Services\ConversationWriteService;
 use Illuminate\Http\JsonResponse;
@@ -86,6 +87,20 @@ class ConversationWriteController
         $actorUserId = $this->actorUserId();
 
         try {
+            $templateVariables = array_values(array_filter(
+                is_array($request->input('template_variables')) ? $request->input('template_variables') : [],
+                static fn ($value): bool => trim((string) $value) !== ''
+            ));
+
+            $locationSede = trim((string) $request->input('location_sede', ''));
+            if ($locationSede !== '') {
+                [$lat, $lng, $name, $address] = $this->resolveLocationBySede($locationSede);
+                $templateVariables['_location_lat'] = $lat;
+                $templateVariables['_location_lng'] = $lng;
+                $templateVariables['_location_name'] = $name;
+                $templateVariables['_location_address'] = $address;
+            }
+
             $result = $this->startService->startConversationWithTemplate(
                 (string) $request->input('wa_number', ''),
                 (int) $request->input('template_id', 0),
@@ -93,10 +108,7 @@ class ConversationWriteController
                 $request->filled('contact_name') ? (string) $request->input('contact_name') : null,
                 $request->filled('patient_hc_number') ? (string) $request->input('patient_hc_number') : null,
                 $request->filled('patient_full_name') ? (string) $request->input('patient_full_name') : null,
-                array_values(array_filter(
-                    is_array($request->input('template_variables')) ? $request->input('template_variables') : [],
-                    static fn ($value): bool => trim((string) $value) !== ''
-                )),
+                $templateVariables,
             );
 
             return response()->json([
@@ -115,6 +127,45 @@ class ConversationWriteController
                 'detail' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * @return array{0:string,1:string,2:string,3:string}
+     */
+    private function resolveLocationBySede(string $sede): array
+    {
+        $keys = match ($sede) {
+            'villa_club' => [
+                'whatsapp_reminder_site_lat_villa_club',
+                'whatsapp_reminder_site_lng_villa_club',
+                'whatsapp_reminder_site_address_villa_club',
+            ],
+            'ceibos' => [
+                'whatsapp_reminder_site_lat_ceibos',
+                'whatsapp_reminder_site_lng_ceibos',
+                'whatsapp_reminder_site_address_ceibos',
+            ],
+            'matriz' => [
+                'whatsapp_reminder_site_lat_matriz',
+                'whatsapp_reminder_site_lng_matriz',
+                'whatsapp_reminder_site_address_matriz',
+            ],
+            default => ['', '', ''],
+        };
+
+        if ($keys[0] === '') {
+            return ['', '', '', ''];
+        }
+
+        $names = ['villa_club' => 'Villa Club', 'ceibos' => 'Ceibos', 'matriz' => 'Matriz'];
+        $settings = (new SettingsOptionResolver())->getOptions($keys);
+
+        return [
+            (string) ($settings[$keys[0]] ?? ''),
+            (string) ($settings[$keys[1]] ?? ''),
+            $names[$sede] ?? $sede,
+            (string) ($settings[$keys[2]] ?? ''),
+        ];
     }
 
     private function actorUserId(): ?int

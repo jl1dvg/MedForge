@@ -1976,7 +1976,20 @@
         const tpl = templateById(startTemplate.value);
         const variables = Array.isArray(tpl?.variables) ? tpl.variables : [];
         const examples = Array.isArray(tpl?.variable_examples) ? tpl.variable_examples : [];
-        startVars.innerHTML = variables.map((variable, index) => `
+        const isLocationHeader = (tpl?.header_type || '') === 'location';
+        const sedeHtml = isLocationHeader ? `
+            <div class="wa3-field">
+                <label>Sede de la cita <span style="color:red">*</span></label>
+                <select id="wa3-start-location-sede">
+                    <option value="">— Selecciona la sede —</option>
+                    <option value="villa_club">Villa Club</option>
+                    <option value="ceibos">Ceibos</option>
+                    <option value="matriz">Matriz</option>
+                </select>
+                <small>Requerido para el header de ubicación GPS.</small>
+            </div>
+        ` : '';
+        startVars.innerHTML = sedeHtml + variables.map((variable, index) => `
             <div class="wa3-field">
                 <label>Variable ${index + 1} ${esc(variable)}</label>
                 <input type="text" data-wa-template-variable="${index}" placeholder="${esc(examples[index] || 'Valor')}">
@@ -2057,6 +2070,7 @@
                 patient_full_name: (document.getElementById('wa3-start-patient-name')?.value || '').trim(),
                 patient_hc_number: (document.getElementById('wa3-start-hc')?.value || '').trim(),
                 template_variables: startVars ? Array.from(startVars.querySelectorAll('[data-wa-template-variable]')).map((input) => input.value.trim()) : [],
+                location_sede: (document.getElementById('wa3-start-location-sede')?.value || '').trim(),
             });
             const conversationId = Number(json?.data?.conversation?.id || 0);
             window.location.href = conversationId > 0 ? `${previewRoute}?conversation=${conversationId}&filter={{ $selectedFilter }}` : previewRoute;
