@@ -92,6 +92,7 @@ Route::middleware(['cive.extension.auth'])->group(function (): void {
     foreach ([
         '/api/solicitudes/guardar.php',
         '/api/solicitudes/guardar',
+        '/solicitudes/guardar.php',
         '/solicitudes/guardar',
     ] as $path) {
         Route::options($path, static fn () => response('', 204));
