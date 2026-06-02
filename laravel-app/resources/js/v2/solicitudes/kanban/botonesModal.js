@@ -592,7 +592,7 @@ export function inicializarBotonesModal() {
             llamarTurnoSolicitud({id: tarjeta.dataset.id})
                 .then((data) => {
                     const turno = data?.turno ?? tarjeta.dataset.turno;
-                    const estado = data?.estado ?? 'Llamado';
+                    const estado = data?.estado ?? 'Turno llamado';
                     tarjeta.dataset.turno = turno || '';
                     tarjeta.dataset.estado = estado;
                     const store = getDataStore();

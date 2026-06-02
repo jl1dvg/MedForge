@@ -260,7 +260,7 @@ class ExamenesParityService
     {
         $id = isset($payload['id']) ? (int) $payload['id'] : null;
         $turno = isset($payload['turno']) ? (int) $payload['turno'] : null;
-        $estadoSolicitado = isset($payload['estado']) ? trim((string) $payload['estado']) : 'Llamado';
+        $estadoSolicitado = isset($payload['estado']) ? trim((string) $payload['estado']) : 'Turno llamado';
         $estadoNormalizado = $this->normalizarEstadoTurnero($estadoSolicitado);
 
         if ($estadoNormalizado === null) {
@@ -1964,7 +1964,10 @@ class ExamenesParityService
     {
         $mapa = [
             'recibido' => 'Recibido',
-            'llamado' => 'Llamado',
+            'llamado' => 'Turno llamado',
+            'turno llamado' => 'Turno llamado',
+            'turno_llamado' => 'Turno llamado',
+            'turno-llamado' => 'Turno llamado',
             'revision-cobertura' => 'Revisión de Cobertura',
             'revision-de-cobertura' => 'Revisión de Cobertura',
             'revision-codigos' => 'Revisión de Cobertura',

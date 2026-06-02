@@ -62,6 +62,11 @@ class CrmOpportunity extends Model
         return $this->hasMany(CrmActivity::class, 'opportunity_id')->orderBy('created_at', 'desc');
     }
 
+    public function proposals(): HasMany
+    {
+        return $this->hasMany(CrmProposal::class, 'crm_opportunity_id')->orderBy('created_at', 'desc');
+    }
+
     public function scopeActive($query)
     {
         return $query->whereNotIn('stage', [self::STAGE_GANADO, self::STAGE_PERDIDO]);

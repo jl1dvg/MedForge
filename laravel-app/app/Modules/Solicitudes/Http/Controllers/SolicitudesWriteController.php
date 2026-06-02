@@ -149,7 +149,7 @@ class SolicitudesWriteController
         $payload = $this->payload($request);
         $id = isset($payload['id']) ? (int) $payload['id'] : null;
         $turno = isset($payload['turno']) ? (int) $payload['turno'] : null;
-        $estado = trim((string) ($payload['estado'] ?? 'Llamado'));
+        $estado = trim((string) ($payload['estado'] ?? 'Turno llamado'));
 
         if (($id ?? 0) <= 0 && ($turno ?? 0) <= 0) {
             return response()->json(['success' => false, 'error' => 'Debe especificar un ID o número de turno'], 422)

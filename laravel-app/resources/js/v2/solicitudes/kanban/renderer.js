@@ -1161,7 +1161,7 @@ export function renderKanban(data, callbackEstadoActualizado) {
                         actualizarEstadoSolicitud(
                             solicitud.id,
                             solicitud.form_id,
-                            "Llamado",
+                            "Turno llamado",
                             getDataStore(),
                             window.aplicarFiltros,
                             {force: true}

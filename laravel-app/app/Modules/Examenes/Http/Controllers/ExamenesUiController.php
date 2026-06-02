@@ -20,7 +20,7 @@ class ExamenesUiController
      */
     private const KANBAN_COLUMNS = [
         'recibido' => ['label' => 'Recibido', 'color' => 'primary'],
-        'llamado' => ['label' => 'Llamado', 'color' => 'warning'],
+        'llamado' => ['label' => 'Turno llamado', 'color' => 'warning'],
         'revision-cobertura' => ['label' => '⚠️ Cobertura', 'color' => 'info'],
         'parcial' => ['label' => '🌓 Parcial', 'color' => 'warning'],
         'listo-para-agenda' => ['label' => '✅ Listo', 'color' => 'dark'],
@@ -32,7 +32,7 @@ class ExamenesUiController
      */
     private const KANBAN_STAGES = [
         ['slug' => 'recibido', 'label' => 'Recibido', 'order' => 10, 'column' => 'recibido', 'required' => true],
-        ['slug' => 'llamado', 'label' => 'Llamado', 'order' => 20, 'column' => 'llamado', 'required' => true],
+        ['slug' => 'llamado', 'label' => 'Turno llamado', 'order' => 20, 'column' => 'llamado', 'required' => true],
         ['slug' => 'revision-cobertura', 'label' => '⚠ Revisión de cobertura', 'order' => 30, 'column' => 'revision-cobertura', 'required' => true],
         ['slug' => 'parcial', 'label' => '🌓 Parcial', 'order' => 35, 'column' => 'parcial', 'required' => false],
         ['slug' => 'listo-para-agenda', 'label' => 'Listo para agenda', 'order' => 40, 'column' => 'listo-para-agenda', 'required' => true],

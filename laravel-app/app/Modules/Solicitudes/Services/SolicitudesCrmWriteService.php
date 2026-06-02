@@ -8,6 +8,7 @@ use App\Modules\Solicitudes\Services\Traits\SolicitudesDbHelperTrait;
 use DateInterval;
 use DateTimeImmutable;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use PDO;
 use RuntimeException;
 
@@ -52,6 +53,9 @@ class SolicitudesCrmWriteService
             'followers'         => $followers !== [] ? json_encode($followers, JSON_UNESCAPED_UNICODE) : null,
             'updated_at'        => $now,
         ];
+        if (Schema::hasColumn('solicitud_crm_detalles', 'crm_opportunity_id')) {
+            $data['crm_opportunity_id'] = $this->nullableInt($payload['crm_opportunity_id'] ?? ($existing['crm_opportunity_id'] ?? null));
+        }
 
         if ($existing === null) {
             DB::table('solicitud_crm_detalles')->insert(array_merge(
@@ -233,17 +237,21 @@ class SolicitudesCrmWriteService
     {
         $this->assertSolicitudExists($solicitudId);
 
+        $detalle = $this->fetchCrmDetalleRow($solicitudId);
+        $opportunityId = $this->nullableInt($payload['crm_opportunity_id'] ?? null)
+            ?? $this->nullableInt($detalle['crm_opportunity_id'] ?? null)
+            ?? $this->resolveSolicitudOpportunityId($solicitudId);
+
         $leadId = $this->nullableInt($payload['lead_id'] ?? null);
         if ($leadId === null) {
-            $detalle = $this->fetchCrmDetalleRow($solicitudId);
             $leadId  = $this->nullableInt($detalle['crm_lead_id'] ?? null);
         }
-        if ($leadId === null) {
-            throw new RuntimeException('Vincula o crea un lead CRM antes de crear la propuesta');
+        if ($leadId === null && $opportunityId === null) {
+            throw new RuntimeException('Vincula una oportunidad CRM antes de crear la propuesta');
         }
 
-        $lead = $this->fetchCrmLead($leadId);
-        if ($lead === null) {
+        $lead = $leadId !== null ? $this->fetchCrmLead($leadId) : null;
+        if ($leadId !== null && $lead === null) {
             throw new RuntimeException('El lead CRM vinculado no existe');
         }
 
@@ -263,8 +271,8 @@ class SolicitudesCrmWriteService
         $now      = date('Y-m-d H:i:s');
         $currency = strtoupper(substr(trim((string) ($payload['currency'] ?? 'USD')), 0, 3)) ?: 'USD';
 
-        $proposalId = DB::transaction(function () use ($solicitudId, $leadId, $lead, $title, $number, $taxRate, $totals, $currency, $items, $autorId, $now, $payload): int {
-            $id = DB::table('crm_proposals')->insertGetId([
+        $proposalId = DB::transaction(function () use ($leadId, $opportunityId, $lead, $title, $number, $taxRate, $totals, $currency, $items, $autorId, $now, $payload): int {
+            $proposalPayload = [
                 'proposal_number'   => $number['number'],
                 'proposal_year'     => $number['year'],
                 'sequence'          => $number['sequence'],
@@ -286,7 +294,12 @@ class SolicitudesCrmWriteService
                 'updated_by'        => $autorId,
                 'created_at'        => $now,
                 'updated_at'        => $now,
-            ]);
+            ];
+            if (Schema::hasColumn('crm_proposals', 'crm_opportunity_id')) {
+                $proposalPayload['crm_opportunity_id'] = $opportunityId;
+            }
+
+            $id = DB::table('crm_proposals')->insertGetId($proposalPayload);
 
             if ($id <= 0) {
                 throw new RuntimeException('No se pudo crear la propuesta CRM');
@@ -318,6 +331,7 @@ class SolicitudesCrmWriteService
             'id'              => $proposalId,
             'proposal_number' => $number['number'],
             'lead_id'         => $leadId,
+            'crm_opportunity_id' => $opportunityId,
             'total'           => $totals['total'],
             'currency'        => $currency,
             'pdf_url'         => '/v2/crm/proposals/' . $proposalId . '/pdf',
@@ -405,6 +419,19 @@ class SolicitudesCrmWriteService
         $row = DB::table('crm_leads')->where('id', $leadId)->first();
 
         return $row !== null ? (array) $row : null;
+    }
+
+    private function resolveSolicitudOpportunityId(int $solicitudId): ?int
+    {
+        if (!Schema::hasColumn('solicitud_procedimiento', 'crm_opportunity_id')) {
+            return null;
+        }
+
+        $value = DB::table('solicitud_procedimiento')
+            ->where('id', $solicitudId)
+            ->value('crm_opportunity_id');
+
+        return $this->nullableInt($value);
     }
 
     /**
