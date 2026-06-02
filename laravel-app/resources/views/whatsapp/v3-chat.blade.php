@@ -154,7 +154,13 @@
         .wa3-search input:focus { outline: 0; background: #fff; border-color: var(--wa3-accent); box-shadow: 0 0 0 3px rgba(81, 86, 190, .18); }
         .wa3-search i { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--wa3-text-mute); font-size: 18px; }
 
-        .wa3-chips { display: flex; gap: 6px; padding: 0 16px 10px; overflow-x: auto; scrollbar-width: none; }
+        .wa3-chips-wrap { position: relative; display: flex; align-items: center; }
+        .wa3-chips-arrow { flex-shrink: 0; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; background: var(--wa3-surface); border: 1px solid var(--wa3-border); border-radius: 50%; color: var(--wa3-text-mute); cursor: pointer; transition: opacity .15s, background .12s; z-index: 1; }
+        .wa3-chips-arrow:hover { background: var(--wa3-surface-2); color: var(--wa3-text); }
+        .wa3-chips-arrow.is-hidden { opacity: 0; pointer-events: none; }
+        .wa3-chips-arrow--left { margin-left: 8px; margin-right: 4px; }
+        .wa3-chips-arrow--right { margin-left: 4px; margin-right: 8px; }
+        .wa3-chips { display: flex; gap: 6px; padding: 0 4px 10px; overflow-x: auto; scrollbar-width: none; flex: 1; }
         .wa3-chips::-webkit-scrollbar { display: none; }
         .wa3-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; background: transparent; border: 1px solid var(--wa3-border); color: var(--wa3-text-mute); font: 500 12px var(--bs-body-font-family); white-space: nowrap; cursor: pointer; text-decoration: none; transition: background .12s, color .12s, border-color .12s; }
         .wa3-chip:hover { color: var(--wa3-text); border-color: var(--wa3-text-fade); text-decoration: none; }
@@ -554,17 +560,25 @@
             </form>
         </div>
 
-        <nav class="wa3-chips">
-            @foreach($tabs as $key => $t)
-                <a href="{{ $buildLink(['filter' => $key]) }}"
-                   class="wa3-chip {{ $selectedFilter === $key ? 'is-active' : '' }}">
-                    {{ $t['label'] }}
-                    @if(isset($tabCounts[$key]))
-                        <span class="wa3-chip__count">{{ $tabCounts[$key] }}</span>
-                    @endif
-                </a>
-            @endforeach
-        </nav>
+        <div class="wa3-chips-wrap">
+            <button type="button" class="wa3-chips-arrow wa3-chips-arrow--left is-hidden" id="wa3ChipsLeft" aria-label="Anterior">
+                <i class="mdi mdi-chevron-left" style="font-size:18px;"></i>
+            </button>
+            <nav class="wa3-chips" id="wa3ChipsNav">
+                @foreach($tabs as $key => $t)
+                    <a href="{{ $buildLink(['filter' => $key]) }}"
+                       class="wa3-chip {{ $selectedFilter === $key ? 'is-active' : '' }}">
+                        {{ $t['label'] }}
+                        @if(isset($tabCounts[$key]))
+                            <span class="wa3-chip__count">{{ $tabCounts[$key] }}</span>
+                        @endif
+                    </a>
+                @endforeach
+            </nav>
+            <button type="button" class="wa3-chips-arrow wa3-chips-arrow--right" id="wa3ChipsRight" aria-label="Siguiente">
+                <i class="mdi mdi-chevron-right" style="font-size:18px;"></i>
+            </button>
+        </div>
 
         <div class="wa3-list">
             @forelse($listData as $c)
@@ -2185,6 +2199,28 @@
         if (event.key === 'Escape' && tourModal && !tourModal.hasAttribute('hidden')) closeTour();
     });
     window.setTimeout(openTourIfNeeded, 350);
+})();
+
+// Filter chips scroll arrows
+(function () {
+    const nav = document.getElementById('wa3ChipsNav');
+    const btnL = document.getElementById('wa3ChipsLeft');
+    const btnR = document.getElementById('wa3ChipsRight');
+    if (!nav || !btnL || !btnR) return;
+
+    const STEP = 160;
+
+    function updateArrows() {
+        btnL.classList.toggle('is-hidden', nav.scrollLeft <= 0);
+        btnR.classList.toggle('is-hidden', nav.scrollLeft + nav.clientWidth >= nav.scrollWidth - 2);
+    }
+
+    btnL.addEventListener('click', () => { nav.scrollBy({ left: -STEP, behavior: 'smooth' }); });
+    btnR.addEventListener('click', () => { nav.scrollBy({ left: STEP, behavior: 'smooth' }); });
+    nav.addEventListener('scroll', updateArrows, { passive: true });
+
+    // Initial state after layout
+    window.requestAnimationFrame(updateArrows);
 })();
 </script>
 @endpush
