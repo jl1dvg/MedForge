@@ -46,7 +46,9 @@ return Application::configure(basePath: dirname(__DIR__))
                 return response()->json(['error' => 'Sesión expirada'], 419);
             }
 
-            return redirect('/auth/login?expired=1')
-                ->withInput($request->only('username'));
+            // Avoid ->withInput() here: the session may be in an inconsistent
+            // state when CSRF validation fails, causing a secondary exception
+            // that would render the raw 419 page instead of this redirect.
+            return redirect('/auth/login?expired=1');
         });
     })->create();
