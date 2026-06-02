@@ -23,7 +23,6 @@ class CrmSyncStages extends Command
         'recibido'          => CrmOpportunity::STAGE_NUEVO,
         'atrasada'          => CrmOpportunity::STAGE_NUEVO,
         'atrasado'          => CrmOpportunity::STAGE_NUEVO,
-        'llamado'           => CrmOpportunity::STAGE_CONTACTADO,
         'en-atencion'       => CrmOpportunity::STAGE_EN_EVALUACION,
         'en atencion'       => CrmOpportunity::STAGE_EN_EVALUACION,
         'en atención'       => CrmOpportunity::STAGE_EN_EVALUACION,
@@ -56,7 +55,7 @@ class CrmSyncStages extends Command
     private const ESTADO_RANK = [
         'atrasada' => 0, 'atrasado' => 0,
         'recibida' => 1, 'recibido' => 1,
-        'llamado' => 2,
+        'llamado' => 2, 'turno-llamado' => 2,
         'en-atencion' => 3, 'en atencion' => 3, 'en atención' => 3,
         'revision-codigos' => 4,
         'espera-documentos' => 5,

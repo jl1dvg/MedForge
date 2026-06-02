@@ -29,7 +29,6 @@ class CrmActivity extends Model
     public const TYPE_EXAMEN         = 'examen';
     public const TYPE_SOLICITUD      = 'solicitud';
     public const TYPE_WHATSAPP       = 'whatsapp';
-    public const TYPE_CONFLICTO_SYNC = 'conflicto_sync';
 
     public function opportunity(): BelongsTo
     {

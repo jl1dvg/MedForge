@@ -13,9 +13,10 @@ class SolicitudKanbanEstadoCambiado
      * Fired every time a solicitud moves to a new kanban stage.
      *
      * @param string $kanbanSlug  Normalized slug from SolicitudesStateMachineService:
-     *                            recibida | llamado | en-atencion | revision-codigos |
+     *                            recibida | turno_llamado | en-atencion | revision-codigos |
      *                            espera-documentos | apto-oftalmologo | apto-anestesia |
      *                            listo-para-agenda | programada | completado
+     *                            Legacy emitters may still send llamado.
      */
     public function __construct(
         public readonly int    $solicitudId,

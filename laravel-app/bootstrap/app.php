@@ -23,6 +23,7 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
         apiPrefix: '',
     )
+    ->withEvents(false)
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->encryptCookies(except: ['PHPSESSID', 'app_timezone']);
         // LegacySessionBridge runs after Laravel session; ApplyBrowserTimezone reads cookie.
