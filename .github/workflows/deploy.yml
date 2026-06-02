@@ -104,6 +104,9 @@ jobs:
             fi
             $PHP composer.phar install --no-interaction 2>&1
 
+            # Recrear symlink storage → public (se borra en cada rsync porque está en .gitignore)
+            $PHP artisan storage:link --force 2>/dev/null || true
+
             # Limpiar caches (staging no las cachea para facilitar cambios)
             $PHP artisan config:clear
             $PHP artisan route:clear
@@ -194,6 +197,9 @@ jobs:
 
             # Composer (producción ya tiene composer.phar)
             $PHP composer.phar install --no-dev --optimize-autoloader --no-interaction 2>&1
+
+            # Recrear symlink storage → public (se borra en cada rsync porque está en .gitignore)
+            $PHP artisan storage:link --force 2>/dev/null || true
 
             # Cachear para producción
             $PHP artisan config:cache
