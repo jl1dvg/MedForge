@@ -726,15 +726,22 @@ class SolicitudesWriteController
 
         if (($result['success'] ?? false) && !empty($result['ids'])) {
             $solicitudes = $data['solicitudes'] ?? [];
-            SolicitudCreada::dispatch(
-                solicitudId: (int) $result['ids'][0],
-                solicitudData: [
-                    'paciente_nombre'   => '',
-                    'paciente_cedula'   => (string) ($data['hcNumber'] ?? ''),
-                    'paciente_telefono' => '',
-                    'servicio'          => (string) ($solicitudes[0]['procedimiento'] ?? 'Solicitud médica'),
-                ],
-            );
+            try {
+                SolicitudCreada::dispatch(
+                    (int) $result['ids'][0],
+                    [
+                        'paciente_nombre'   => '',
+                        'paciente_cedula'   => (string) ($data['hcNumber'] ?? ''),
+                        'paciente_telefono' => '',
+                        'servicio'          => (string) ($solicitudes[0]['procedimiento'] ?? 'Solicitud médica'),
+                    ],
+                );
+            } catch (Throwable $e) {
+                Log::warning('No fue posible despachar SolicitudCreada desde guardarSolicitud', [
+                    'solicitud_id' => (int) $result['ids'][0],
+                    'message' => $e->getMessage(),
+                ]);
+            }
         }
 
         return new JsonResponse($result, $status);
