@@ -93,6 +93,18 @@ Route::middleware(['consultas.cors', 'cive.extension.auth'])->group(function ():
     }
 
     foreach ([
+        '/api/solicitudes/guardar',
+        '/api/solicitudes/guardar.php',
+        '/solicitudes/guardar',
+        '/solicitudes/guardar.php',
+    ] as $path) {
+        Route::options($path, static fn () => response('', 204));
+        Route::post($path, static function (Request $request, SolicitudesWriteController $controller) {
+            return $controller->guardarSolicitud($request);
+        });
+    }
+
+    foreach ([
         '/api/proyecciones/consulta.php' => [
             'CONSULTA' => 'en_proceso',
             'CONSULTA_TERMINADO' => 'terminado_sin_dilatar',
