@@ -707,7 +707,9 @@ class TemplateCatalogService
         $footerText = trim((string) ($preview['footer_text'] ?? ''));
         $buttons = $preview['buttons'] ?? [];
 
-        if ($headerType !== 'none' && $headerText !== '') {
+        if ($headerType === 'location') {
+            $components[] = ['type' => 'HEADER', 'format' => 'LOCATION'];
+        } elseif ($headerType !== 'none' && $headerText !== '') {
             if ($headerType === 'text') {
                 $components[] = ['type' => 'HEADER', 'format' => 'TEXT', 'text' => $headerText];
             } else {
@@ -739,7 +741,9 @@ class TemplateCatalogService
         $normalizedHeader = $this->normalizeHeaderForPublish((string) ($revision->header_text ?? ''));
         $normalizedBody = $this->normalizeBodyForPublish((string) $revision->body_text);
 
-        if ($revision->header_type !== 'none' && $revision->header_text !== null && $revision->header_text !== '') {
+        if ($revision->header_type === 'location') {
+            $components[] = ['type' => 'HEADER', 'format' => 'LOCATION'];
+        } elseif ($revision->header_type !== 'none' && $revision->header_text !== null && $revision->header_text !== '') {
             $header = [
                 'type' => 'HEADER',
                 'format' => strtoupper($revision->header_type === 'text' ? 'TEXT' : $revision->header_type),

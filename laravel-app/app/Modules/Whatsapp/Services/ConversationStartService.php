@@ -283,6 +283,28 @@ class ConversationStartService
             ];
         }
 
+        if ($revision->header_type === 'location') {
+            $lat = (string) ($templateVariables['_location_lat'] ?? '');
+            $lng = (string) ($templateVariables['_location_lng'] ?? '');
+            if ($lat !== '' && $lng !== '') {
+                $locationParam = ['latitude' => $lat, 'longitude' => $lng];
+                $locationName = (string) ($templateVariables['_location_name'] ?? '');
+                $locationAddress = (string) ($templateVariables['_location_address'] ?? '');
+                if ($locationName !== '') {
+                    $locationParam['name'] = $locationName;
+                }
+                if ($locationAddress !== '') {
+                    $locationParam['address'] = $locationAddress;
+                }
+                $components[] = [
+                    'type' => 'header',
+                    'parameters' => [
+                        ['type' => 'location', 'location' => $locationParam],
+                    ],
+                ];
+            }
+        }
+
         $bodyParameters = $this->buildTextParameterValues(
             (string) $revision->body_text,
             $contactName,
