@@ -17,7 +17,7 @@ class SolicitudesUiController
      */
     private const KANBAN_COLUMNS = [
         ['slug' => 'recibida', 'label' => 'Recibida'],
-        ['slug' => 'llamado', 'label' => 'Llamado'],
+        ['slug' => 'llamado', 'label' => 'Turno llamado'],
         ['slug' => 'revision-codigos', 'label' => 'Revisión códigos'],
         ['slug' => 'espera-documentos', 'label' => 'Documentación'],
         ['slug' => 'apto-oftalmologo', 'label' => 'Apto oftalmólogo'],

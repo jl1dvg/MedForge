@@ -213,7 +213,7 @@ class CrmOpportunityListener
 
     private function isTurnoLlamadoState(string $state): bool
     {
-        return in_array($state, ['turno_llamado', 'turno-llamado', 'llamado'], true);
+        return in_array($state, ['turno_llamado', 'turno-llamado', 'turno llamado', 'llamado'], true);
     }
 
     private function recordTurnoLlamadoActivity(

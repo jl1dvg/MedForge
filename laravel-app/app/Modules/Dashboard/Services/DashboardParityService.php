@@ -705,7 +705,7 @@ class DashboardParityService
                 'value' => (int) ($crmBacklog['pendientes'] ?? 0),
                 'label' => 'pendientes',
                 'sub' => ((int) ($crmBacklog['vencidas'] ?? 0)) . ' vencidas · ' . ((int) ($crmBacklog['vencen_hoy'] ?? 0)) . ' vencen hoy',
-                'href' => '/v2/crm/leads',
+                'href' => '/v2/crm/opportunities',
             ],
         ];
     }
