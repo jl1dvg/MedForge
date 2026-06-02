@@ -7,7 +7,7 @@ const STAGE_LABEL: Record<Stage, string> = {
 };
 
 const SOURCE_LABEL: Record<Source, string> = {
-  whatsapp: 'WhatsApp', solicitud: 'Solicitud', examen: 'Examen', manual: 'Manual',
+  whatsapp: 'WhatsApp', solicitud: 'Solicitud', examen: 'Examen', manual: 'Manual', legacy: 'Migrado',
 };
 
 const PHASE_LABEL: Record<Phase, string> = {

@@ -1,5 +1,5 @@
 export type Resolution = 'provisional' | 'identified' | 'linked';
-export type Source = 'whatsapp' | 'solicitud' | 'examen' | 'manual';
+export type Source = 'whatsapp' | 'solicitud' | 'examen' | 'manual' | 'legacy';
 export type Phase = 'operational' | 'commercial';
 export type Stage =
   | 'nuevo'

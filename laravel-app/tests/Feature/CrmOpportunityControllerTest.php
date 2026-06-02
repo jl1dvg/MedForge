@@ -20,7 +20,18 @@ class CrmOpportunityControllerTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        foreach (['patient_data', 'crm_activities', 'crm_opportunities', 'crm_contacts', 'users', 'roles'] as $t) {
+        foreach ([
+            'patient_data',
+            'examen_crm_detalles',
+            'solicitud_crm_detalles',
+            'consulta_examenes',
+            'solicitud_procedimiento',
+            'crm_activities',
+            'crm_opportunities',
+            'crm_contacts',
+            'users',
+            'roles',
+        ] as $t) {
             Schema::dropIfExists($t);
         }
         Schema::create('roles', fn (Blueprint $t) => $t->id());
@@ -70,6 +81,24 @@ class CrmOpportunityControllerTest extends TestCase
             $table->id();
             $table->string('hc_number', 30)->nullable()->index();
             $table->string('afiliacion', 255)->nullable();
+        });
+        Schema::create('solicitud_procedimiento', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('crm_opportunity_id')->nullable()->index();
+        });
+        Schema::create('consulta_examenes', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('crm_opportunity_id')->nullable()->index();
+        });
+        Schema::create('solicitud_crm_detalles', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('solicitud_id')->nullable()->index();
+            $table->unsignedBigInteger('crm_opportunity_id')->nullable()->index();
+        });
+        Schema::create('examen_crm_detalles', function (Blueprint $table): void {
+            $table->id();
+            $table->unsignedBigInteger('examen_id')->nullable()->index();
+            $table->unsignedBigInteger('crm_opportunity_id')->nullable()->index();
         });
     }
 
@@ -257,7 +286,41 @@ class CrmOpportunityControllerTest extends TestCase
             ->assertJsonPath('data.0.effective_source', 'solicitud');
     }
 
-    public function test_index_effective_source_prefers_clinical_activity_over_historical_whatsapp_source(): void
+    public function test_index_legacy_migrated_lead_is_not_labeled_as_whatsapp(): void
+    {
+        $contact = CrmContact::query()->create([
+            'name' => 'Paciente Lead Migrado',
+            'phone' => '+5938',
+            'cedula' => 'LEGACY-1',
+            'source' => 'whatsapp',
+        ]);
+        \Illuminate\Support\Facades\DB::table('patient_data')->insert([
+            ['hc_number' => 'LEGACY-1', 'afiliacion' => 'Seguro privado'],
+        ]);
+        CrmOpportunity::query()->create([
+            'contact_id' => $contact->id,
+            'title' => 'Lead migrado: Paciente Lead Migrado',
+            'stage' => 'nuevo',
+            'source' => 'whatsapp',
+            'source_type' => 'legacy_crm_lead',
+        ]);
+
+        $this->actingAs($this->makeUser())
+            ->withoutMiddleware([LegacySessionBridge::class, RequireLegacySession::class, RequireLegacyPermission::class, RequireAppSession::class, RequireAppPermission::class])
+            ->getJson('/v2/crm/opportunities?afiliacion=privado')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.source', 'whatsapp')
+            ->assertJsonPath('data.0.effective_source', 'legacy');
+
+        $this->actingAs($this->makeUser())
+            ->withoutMiddleware([LegacySessionBridge::class, RequireLegacySession::class, RequireLegacyPermission::class, RequireAppSession::class, RequireAppPermission::class])
+            ->getJson('/v2/crm/opportunities?source=whatsapp&afiliacion=privado')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 0);
+    }
+
+    public function test_index_effective_source_prefers_operational_table_link_over_historical_whatsapp_source(): void
     {
         $contact = CrmContact::query()->create([
             'name' => 'Paciente Lead Con Solicitud',
@@ -275,12 +338,13 @@ class CrmOpportunityControllerTest extends TestCase
             'source' => 'whatsapp',
             'source_type' => 'legacy_crm_lead',
         ]);
-        CrmActivity::query()->create([
-            'opportunity_id' => $opp->id,
-            'type' => 'solicitud',
-            'description' => 'Solicitud creada',
-            'source_id' => 100,
-            'source_type' => 'solicitud_procedimiento',
+        \Illuminate\Support\Facades\DB::table('solicitud_procedimiento')->insert([
+            'id' => 100,
+            'crm_opportunity_id' => $opp->id,
+        ]);
+        \Illuminate\Support\Facades\DB::table('solicitud_crm_detalles')->insert([
+            'solicitud_id' => 100,
+            'crm_opportunity_id' => $opp->id,
         ]);
 
         $this->actingAs($this->makeUser())
@@ -289,6 +353,13 @@ class CrmOpportunityControllerTest extends TestCase
             ->assertOk()
             ->assertJsonPath('meta.total', 1)
             ->assertJsonPath('data.0.source', 'whatsapp')
+            ->assertJsonPath('data.0.effective_source', 'solicitud');
+
+        $this->actingAs($this->makeUser())
+            ->withoutMiddleware([LegacySessionBridge::class, RequireLegacySession::class, RequireLegacyPermission::class, RequireAppSession::class, RequireAppPermission::class])
+            ->getJson('/v2/crm/opportunities?source=solicitud&afiliacion=privado')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
             ->assertJsonPath('data.0.effective_source', 'solicitud');
     }
 }

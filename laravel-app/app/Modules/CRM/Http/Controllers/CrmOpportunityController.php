@@ -11,6 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class CrmOpportunityController
 {
@@ -18,8 +19,9 @@ class CrmOpportunityController
         'solicitud_procedimiento' => 'solicitud',
         'consulta_examenes'       => 'examen',
         'whatsapp_lead'           => 'whatsapp',
-        'legacy_crm_lead'         => 'whatsapp',
     ];
+
+    private const LEGACY_SOURCE_TYPE = 'legacy_crm_lead';
 
     public function __construct(
         private readonly CrmOpportunityService $opportunityService,
@@ -150,11 +152,22 @@ class CrmOpportunityController
         ));
 
         $query->where(function (Builder $q) use ($source, $sourceTypes): void {
-            $q->where('source', $source);
+            $q->where(function (Builder $direct) use ($source): void {
+                $direct->where('source', $source);
+
+                if ($source === 'whatsapp') {
+                    $direct->where(function (Builder $legacy) {
+                        $legacy->whereNull('source_type')
+                            ->orWhere('source_type', '<>', self::LEGACY_SOURCE_TYPE);
+                    });
+                }
+            });
 
             if ($sourceTypes !== []) {
                 $q->orWhereIn('source_type', $sourceTypes);
             }
+
+            $this->orWhereOperationalSource($q, $source);
 
             $q->orWhereHas('activities', function (Builder $activity) use ($source, $sourceTypes): void {
                 $activity->where('type', $source);
@@ -164,6 +177,21 @@ class CrmOpportunityController
                 }
             });
         });
+    }
+
+    private function orWhereOperationalSource(Builder $query, string $source): void
+    {
+        foreach ($this->operationalSourceTables($source) as [$tableName, $columnName]) {
+            if (!Schema::hasTable($tableName) || !Schema::hasColumn($tableName, $columnName)) {
+                continue;
+            }
+
+            $query->orWhereExists(function ($sub) use ($tableName, $columnName): void {
+                $sub->selectRaw('1')
+                    ->from($tableName)
+                    ->whereColumn("{$tableName}.{$columnName}", 'crm_opportunities.id');
+            });
+        }
     }
 
     /**
@@ -178,6 +206,8 @@ class CrmOpportunityController
             return;
         }
 
+        $operationalSources = $this->operationalSourcesFor($ids);
+
         $activitySources = DB::table('crm_activities')
             ->select('opportunity_id', 'type', 'source_type', 'created_at')
             ->whereIn('opportunity_id', $ids)
@@ -189,16 +219,65 @@ class CrmOpportunityController
             ->get()
             ->groupBy('opportunity_id');
 
-        $rows->each(function (CrmOpportunity $opportunity) use ($activitySources): void {
+        $rows->each(function (CrmOpportunity $opportunity) use ($activitySources, $operationalSources): void {
             $opportunity->setAttribute(
                 'effective_source',
-                $this->effectiveSourceFor($opportunity, $activitySources->get($opportunity->id, collect())),
+                $this->effectiveSourceFor(
+                    $opportunity,
+                    $activitySources->get($opportunity->id, collect()),
+                    $operationalSources->get($opportunity->id),
+                ),
             );
         });
     }
 
-    private function effectiveSourceFor(CrmOpportunity $opportunity, Collection $activitySources): string
+    private function operationalSourcesFor(array $opportunityIds): Collection
     {
+        $sources = collect();
+
+        foreach (['solicitud', 'examen'] as $source) {
+            foreach ($this->operationalSourceTables($source) as [$tableName, $columnName]) {
+                if (!Schema::hasTable($tableName) || !Schema::hasColumn($tableName, $columnName)) {
+                    continue;
+                }
+
+                DB::table($tableName)
+                    ->whereIn($columnName, $opportunityIds)
+                    ->pluck($columnName)
+                    ->each(static function ($opportunityId) use ($sources, $source): void {
+                        $sources->put((int) $opportunityId, $source);
+                    });
+            }
+        }
+
+        return $sources;
+    }
+
+    private function operationalSourceTables(string $source): array
+    {
+        return match ($source) {
+            'solicitud' => [
+                ['solicitud_procedimiento', 'crm_opportunity_id'],
+                ['solicitud_crm_detalles', 'crm_opportunity_id'],
+            ],
+            'examen' => [
+                ['consulta_examenes', 'crm_opportunity_id'],
+                ['examen_crm_detalles', 'crm_opportunity_id'],
+            ],
+            default => [],
+        };
+    }
+
+    private function effectiveSourceFor(
+        CrmOpportunity $opportunity,
+        Collection $activitySources,
+        ?string $operationalSource,
+    ): string
+    {
+        if (in_array($operationalSource, ['solicitud', 'examen'], true)) {
+            return $operationalSource;
+        }
+
         foreach ($activitySources as $activity) {
             $activitySource = self::SOURCE_TYPE_TO_SOURCE[$activity->source_type] ?? $activity->type;
             if (in_array($activitySource, ['solicitud', 'examen'], true)) {
@@ -214,6 +293,10 @@ class CrmOpportunityController
 
         if (in_array($opportunity->source, ['solicitud', 'examen'], true)) {
             return $opportunity->source;
+        }
+
+        if ($opportunity->source_type === self::LEGACY_SOURCE_TYPE) {
+            return 'legacy';
         }
 
         if (isset(self::SOURCE_TYPE_TO_SOURCE[$opportunity->source_type])) {
