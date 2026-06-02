@@ -46,6 +46,7 @@ export function OpportunityRow({ opp, onClick }: Props) {
   const { label: timeLabel, urgentDays } = timeAgo(opp.last_activity_at);
   const daysLeft = daysUntilEscalation(opp.escalation_at);
   const isEscalating = daysLeft !== null && daysLeft <= 2 && opp.phase === 'operational';
+  const displaySource = opp.effective_source ?? opp.source;
 
   return (
     <tr className={isEscalating ? 'escalating' : ''} onClick={() => onClick(opp)}>
@@ -71,7 +72,7 @@ export function OpportunityRow({ opp, onClick }: Props) {
           </div>
         )}
       </td>
-      <td style={{ color: 'var(--fg-mute)', fontSize: '.75rem' }}>{SOURCE_LABEL[opp.source]}</td>
+      <td style={{ color: 'var(--fg-mute)', fontSize: '.75rem' }}>{SOURCE_LABEL[displaySource]}</td>
       <td style={{
         fontSize: '.75rem',
         color: urgentDays >= STALE_DANGER_DAYS

@@ -7,6 +7,7 @@ use App\Http\Middleware\RequireAppPermission;
 use App\Http\Middleware\RequireAppSession;
 use App\Http\Middleware\RequireLegacyPermission;
 use App\Http\Middleware\RequireLegacySession;
+use App\Models\CrmActivity;
 use App\Models\CrmContact;
 use App\Models\CrmOpportunity;
 use App\Models\User;
@@ -179,5 +180,80 @@ class CrmOpportunityControllerTest extends TestCase
             ->getJson('/v2/crm/opportunities?afiliacion=publico')
             ->assertOk()
             ->assertJsonPath('meta.total', 0);
+    }
+
+    public function test_index_combines_source_and_patient_affiliation_filters_when_source_is_direct(): void
+    {
+        $privateSolicitudContact = CrmContact::query()->create([
+            'name' => 'Paciente Solicitud Privado',
+            'phone' => '+5934',
+            'cedula' => 'PRIV-SOL-1',
+            'source' => 'solicitud',
+        ]);
+        $privateExamenContact = CrmContact::query()->create([
+            'name' => 'Paciente Examen Privado',
+            'phone' => '+5935',
+            'cedula' => 'PRIV-EX-1',
+            'source' => 'examen',
+        ]);
+        $particularSolicitudContact = CrmContact::query()->create([
+            'name' => 'Paciente Solicitud Particular',
+            'phone' => '+5936',
+            'cedula' => 'PART-SOL-1',
+            'source' => 'solicitud',
+        ]);
+
+        \Illuminate\Support\Facades\DB::table('patient_data')->insert([
+            ['hc_number' => 'PRIV-SOL-1', 'afiliacion' => 'Seguro privado'],
+            ['hc_number' => 'PRIV-EX-1', 'afiliacion' => 'Seguro privado'],
+            ['hc_number' => 'PART-SOL-1', 'afiliacion' => 'Particular'],
+        ]);
+
+        CrmOpportunity::query()->create(['contact_id' => $privateSolicitudContact->id, 'title' => 'Solicitud privada', 'stage' => 'nuevo', 'source' => 'solicitud']);
+        CrmOpportunity::query()->create(['contact_id' => $privateExamenContact->id, 'title' => 'Examen privado', 'stage' => 'nuevo', 'source' => 'examen']);
+        CrmOpportunity::query()->create(['contact_id' => $particularSolicitudContact->id, 'title' => 'Solicitud particular', 'stage' => 'nuevo', 'source' => 'solicitud']);
+
+        $this->actingAs($this->makeUser())
+            ->withoutMiddleware([LegacySessionBridge::class, RequireLegacySession::class, RequireLegacyPermission::class, RequireAppSession::class, RequireAppPermission::class])
+            ->getJson('/v2/crm/opportunities?source=solicitud&afiliacion=privado')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.title', 'Solicitud privada')
+            ->assertJsonPath('data.0.effective_source', 'solicitud');
+    }
+
+    public function test_index_source_filter_uses_clinical_activity_when_opportunity_source_is_manual(): void
+    {
+        $contact = CrmContact::query()->create([
+            'name' => 'Paciente Manual Con Solicitud',
+            'phone' => '+5937',
+            'cedula' => 'MANUAL-SOL-1',
+            'source' => 'manual',
+        ]);
+        \Illuminate\Support\Facades\DB::table('patient_data')->insert([
+            ['hc_number' => 'MANUAL-SOL-1', 'afiliacion' => 'Seguro privado'],
+        ]);
+        $opp = CrmOpportunity::query()->create([
+            'contact_id' => $contact->id,
+            'title' => 'Oportunidad manual',
+            'stage' => 'nuevo',
+            'source' => 'manual',
+        ]);
+        CrmActivity::query()->create([
+            'opportunity_id' => $opp->id,
+            'type' => 'solicitud',
+            'description' => 'Solicitud creada',
+            'source_id' => 99,
+            'source_type' => 'solicitud_procedimiento',
+        ]);
+
+        $this->actingAs($this->makeUser())
+            ->withoutMiddleware([LegacySessionBridge::class, RequireLegacySession::class, RequireLegacyPermission::class, RequireAppSession::class, RequireAppPermission::class])
+            ->getJson('/v2/crm/opportunities?source=solicitud&afiliacion=privado')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.title', 'Oportunidad manual')
+            ->assertJsonPath('data.0.source', 'manual')
+            ->assertJsonPath('data.0.effective_source', 'solicitud');
     }
 }

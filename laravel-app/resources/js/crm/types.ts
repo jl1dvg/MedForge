@@ -45,6 +45,7 @@ export interface CrmOpportunity {
   stage: Stage;
   phase: Phase;
   source: Source;
+  effective_source?: Source;
   source_id: number | null;
   source_type: string | null;
   assigned_to: number | null;

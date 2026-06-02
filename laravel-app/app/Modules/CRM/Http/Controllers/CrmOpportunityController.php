@@ -8,10 +8,19 @@ use App\Modules\CRM\Services\CrmOpportunityService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 class CrmOpportunityController
 {
+    private const SOURCE_TYPE_TO_SOURCE = [
+        'solicitud_procedimiento' => 'solicitud',
+        'consulta_examenes'       => 'examen',
+        'whatsapp_lead'           => 'whatsapp',
+        'legacy_crm_lead'         => 'whatsapp',
+    ];
+
     public function __construct(
         private readonly CrmOpportunityService $opportunityService,
         private readonly CrmActivityService $activityService,
@@ -40,15 +49,7 @@ class CrmOpportunityController
             $query->where('stage', $stage);
         }
         if ($source !== '') {
-            // WhatsApp filter: direct source OR any whatsapp activity (e.g. patient came via WA but has a clinical opp)
-            if ($source === 'whatsapp') {
-                $query->where(fn ($q) => $q
-                    ->where('source', 'whatsapp')
-                    ->orWhereHas('activities', fn ($a) => $a->where('type', 'whatsapp'))
-                );
-            } else {
-                $query->where('source', $source);
-            }
+            $this->applyEffectiveSourceFilter($query, $source);
         }
         if ($phase !== '') {
             $query->where('phase', $phase);
@@ -67,6 +68,7 @@ class CrmOpportunityController
         $total = $query->count();
         $rows  = $query->orderByRaw('COALESCE(last_activity_at, created_at) ASC')
             ->limit($limit)->offset($offset)->get();
+        $this->appendEffectiveSource($rows);
 
         return response()->json([
             'data' => $rows,
@@ -138,6 +140,84 @@ class CrmOpportunityController
         }
 
         return response()->json(['data' => $opp->fresh(['contact', 'activities'])]);
+    }
+
+    private function applyEffectiveSourceFilter(Builder $query, string $source): void
+    {
+        $sourceTypes = array_keys(array_filter(
+            self::SOURCE_TYPE_TO_SOURCE,
+            static fn (string $mappedSource): bool => $mappedSource === $source,
+        ));
+
+        $query->where(function (Builder $q) use ($source, $sourceTypes): void {
+            $q->where('source', $source);
+
+            if ($sourceTypes !== []) {
+                $q->orWhereIn('source_type', $sourceTypes);
+            }
+
+            $q->orWhereHas('activities', function (Builder $activity) use ($source, $sourceTypes): void {
+                $activity->where('type', $source);
+
+                if ($sourceTypes !== []) {
+                    $activity->orWhereIn('source_type', $sourceTypes);
+                }
+            });
+        });
+    }
+
+    /**
+     * Existing manual opportunities can later receive Solicitud/Examen/WhatsApp
+     * activities. The central CRM list needs that operational signal for filters
+     * and labels without overwriting the original stored source.
+     */
+    private function appendEffectiveSource(Collection $rows): void
+    {
+        $ids = $rows->pluck('id')->all();
+        if ($ids === []) {
+            return;
+        }
+
+        $activitySources = DB::table('crm_activities')
+            ->select('opportunity_id', 'type', 'source_type', 'created_at')
+            ->whereIn('opportunity_id', $ids)
+            ->where(function ($q): void {
+                $q->whereIn('type', ['whatsapp', 'solicitud', 'examen'])
+                    ->orWhereIn('source_type', array_keys(self::SOURCE_TYPE_TO_SOURCE));
+            })
+            ->orderByDesc('created_at')
+            ->get()
+            ->groupBy('opportunity_id');
+
+        $rows->each(function (CrmOpportunity $opportunity) use ($activitySources): void {
+            $opportunity->setAttribute(
+                'effective_source',
+                $this->effectiveSourceFor($opportunity, $activitySources->get($opportunity->id, collect())),
+            );
+        });
+    }
+
+    private function effectiveSourceFor(CrmOpportunity $opportunity, Collection $activitySources): string
+    {
+        if (in_array($opportunity->source, ['whatsapp', 'solicitud', 'examen'], true)) {
+            return $opportunity->source;
+        }
+
+        if (isset(self::SOURCE_TYPE_TO_SOURCE[$opportunity->source_type])) {
+            return self::SOURCE_TYPE_TO_SOURCE[$opportunity->source_type];
+        }
+
+        foreach ($activitySources as $activity) {
+            if (isset(self::SOURCE_TYPE_TO_SOURCE[$activity->source_type])) {
+                return self::SOURCE_TYPE_TO_SOURCE[$activity->source_type];
+            }
+
+            if (in_array($activity->type, ['whatsapp', 'solicitud', 'examen'], true)) {
+                return $activity->type;
+            }
+        }
+
+        return $opportunity->source ?: 'manual';
     }
 
     private function applyPatientAffiliationFilter(Builder $query, string $afiliacion): void
