@@ -71,7 +71,7 @@ class SolicitudesExtensionRoutesTest extends TestCase
                     'procedimiento' => 'FACOEMULSIFICACION + LIO',
                     'doctor' => 'DR TEST',
                     'fecha' => '2026-06-02 09:00:00',
-                    'duracion' => '60',
+                    'duracion' => '15',
                     'ojo' => ['DERECHO'],
                     'prioridad' => 'NO',
                     'producto' => null,
@@ -101,7 +101,7 @@ class SolicitudesExtensionRoutesTest extends TestCase
             'form_id' => '283416',
             'secuencia' => 1,
             'procedimiento' => 'FACOEMULSIFICACION + LIO',
-            'duracion' => 60,
+            'duracion' => 15,
             'ojo' => 'DERECHO',
             'prioridad' => 'NO',
             'lente_id' => 'LIO-1',
@@ -112,6 +112,7 @@ class SolicitudesExtensionRoutesTest extends TestCase
         ]);
 
         $payload['solicitudes'][0]['doctor'] = 'DR ACTUALIZADO';
+        $payload['solicitudes'][0]['procedimiento'] = str_repeat('PROCEDIMIENTO LARGO ', 20);
         $secondResponse = $this->postJson('/api/solicitudes/guardar.php', $payload, [
             'Origin' => 'https://cive.ddns.net:8085',
         ]);
@@ -123,6 +124,13 @@ class SolicitudesExtensionRoutesTest extends TestCase
             'form_id' => '283416',
             'secuencia' => 1,
             'doctor' => 'DR ACTUALIZADO',
+            'prioridad' => 'NO',
         ]);
+        $storedProcedimiento = DB::table('solicitud_procedimiento')
+            ->where('hc_number', '24488')
+            ->where('form_id', '283416')
+            ->where('secuencia', 1)
+            ->value('procedimiento');
+        $this->assertSame(255, strlen((string) $storedProcedimiento));
     }
 }
