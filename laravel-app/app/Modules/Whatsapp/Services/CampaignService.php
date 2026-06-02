@@ -196,6 +196,7 @@ class CampaignService
                     'code' => (string) $template->template_code,
                     'status' => (string) ($template->status ?? ''),
                     'language' => (string) ($template->language ?? ''),
+                    'header_type' => strtolower((string) ($revision?->header_type ?? 'none')),
                     'body_text' => $bodyText,
                     'variables' => $this->extractTemplateVariables($bodyText, $revision?->variables),
                     'variable_examples' => $this->extractInlineExamples($bodyText),
