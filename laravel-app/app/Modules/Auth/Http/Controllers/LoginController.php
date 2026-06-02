@@ -16,6 +16,15 @@ class LoginController
 {
     public function show(Request $request): View|RedirectResponse|Response
     {
+        if ($request->query('expired') && Auth::check()) {
+            // A 419 redirected an authenticated user here. Log out so they
+            // see the "session expired" message and re-authenticate with a
+            // fresh session (including a new CSRF token).
+            Auth::logout();
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+        }
+
         if (Auth::check()) {
             return redirect()->intended('/v2/dashboard');
         }

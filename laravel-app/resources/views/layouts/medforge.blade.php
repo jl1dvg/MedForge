@@ -102,6 +102,20 @@
             }
         } catch (e) {}
     })();
+    (function () {
+        // When a fetch call returns 419 (stale CSRF token after session expiry),
+        // reload the page to pick up the new session's CSRF token.
+        var _origFetch = window.fetch;
+        window.fetch = function () {
+            return _origFetch.apply(this, arguments).then(function (response) {
+                if (response.status === 419) {
+                    window.location.reload();
+                    return new Promise(function () {});
+                }
+                return response;
+            });
+        };
+    })();
 </script>
 </body>
 </html>
