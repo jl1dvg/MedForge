@@ -11,7 +11,9 @@ $laravelBridgeExact = [
     '/auth/logout',
     '/whatsapp/webhook',
     '/solicitudes/guardar.php',
+    '/solicitudes/guardar',
     '/api/solicitudes/guardar.php',
+    '/api/solicitudes/guardar',
     '/api/solicitudes/estado',
     '/api/solicitudes/estado.php',
 ];

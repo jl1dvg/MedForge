@@ -145,7 +145,14 @@
     if (window.location.href.includes('/doc-solicitud-procedimientos/historia-automatica')) {
         const datos = localStorage.getItem('datosPacienteSeleccionado');
         if (datos) {
-            const paciente = JSON.parse(datos);
+            let paciente = null;
+            try {
+                paciente = JSON.parse(datos);
+            } catch (error) {
+                console.warn('CIVE Extension: datosPacienteSeleccionado inválido en localStorage.', error);
+                localStorage.removeItem('datosPacienteSeleccionado');
+                return;
+            }
             console.log("🧾 Datos del paciente cargados en la vista destino:", paciente);
 
             // ✅ Claves de control: prompt por pestaña (session) y estado persistente (local)
