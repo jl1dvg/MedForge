@@ -1,12 +1,17 @@
 <IfModule mod_headers.c>
-    # Pass CORS preflight OPTIONS through to PHP
-    Header always set Access-Control-Allow-Methods "GET, POST, OPTIONS" "expr=%{REQUEST_METHOD} == 'OPTIONS'"
+    # Respond to CORS preflight at Apache level — no PHP needed
+    SetEnvIf Origin "^(https://cive\.consulmed\.me|https://asistentecive\.consulmed\.me|https://cive\.ddns\.net:8085|http://192\.168\.1\.13:8085)$" CORS_ORIGIN=$0
+    Header always set Access-Control-Allow-Origin "%{CORS_ORIGIN}e" "expr=reqenv('CORS_ORIGIN') != ''"
+    Header always set Access-Control-Allow-Methods "GET, POST, OPTIONS"
+    Header always set Access-Control-Allow-Headers "Content-Type, Authorization"
+    Header always set Access-Control-Max-Age "86400"
+    Header always set Vary "Origin"
 </IfModule>
 
-# Let PHP handle OPTIONS so CorsHelper can respond with correct origin
+# Short-circuit OPTIONS preflight — Apache responds directly, no PHP
 RewriteEngine On
 RewriteCond %{REQUEST_METHOD} OPTIONS
-RewriteRule .* - [L]
+RewriteRule .* - [R=204,L]
 
 <IfModule mod_rewrite.c>
     RewriteEngine On
