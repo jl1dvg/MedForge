@@ -351,7 +351,7 @@ body:has(.dash3) footer.main-footer { display: none; }
     text-transform: uppercase; letter-spacing: .06em;
     white-space: nowrap;
 }
-.dash3-fl-list { display: flex; flex-direction: column; gap: 3px; }
+.dash3-fl-list { display: flex; flex-direction: column; gap: 3px; max-height: 140px; overflow-y: auto; }
 .dash3-fl-list li {
     font: 500 11.5px var(--font-body); color: var(--fg-2);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
