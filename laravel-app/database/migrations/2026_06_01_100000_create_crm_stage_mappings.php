@@ -31,7 +31,6 @@ return new class extends Migration
         // Solicitudes kanban slugs → CRM stages
         $solicitudMappings = [
             'recibida'          => CrmOpportunity::STAGE_NUEVO,
-            'llamado'           => CrmOpportunity::STAGE_CONTACTADO,
             'en-atencion'       => CrmOpportunity::STAGE_EN_EVALUACION,
             'revision-codigos'  => CrmOpportunity::STAGE_EN_EVALUACION,
             'espera-documentos' => CrmOpportunity::STAGE_EN_EVALUACION,
@@ -56,7 +55,6 @@ return new class extends Migration
         // Examen estados (normalized, accent-free) → CRM stages
         $examenMappings = [
             'recibido'              => CrmOpportunity::STAGE_NUEVO,
-            'llamado'               => CrmOpportunity::STAGE_CONTACTADO,
             'revision de cobertura' => CrmOpportunity::STAGE_EN_EVALUACION,
             'revision-cobertura'    => CrmOpportunity::STAGE_EN_EVALUACION,
             'listo para agenda'     => CrmOpportunity::STAGE_COMPROMETIDO,

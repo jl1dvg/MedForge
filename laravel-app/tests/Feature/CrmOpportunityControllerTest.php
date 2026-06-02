@@ -19,7 +19,7 @@ class CrmOpportunityControllerTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        foreach (['crm_activities', 'crm_opportunities', 'crm_contacts', 'users', 'roles'] as $t) {
+        foreach (['patient_data', 'crm_activities', 'crm_opportunities', 'crm_contacts', 'users', 'roles'] as $t) {
             Schema::dropIfExists($t);
         }
         Schema::create('roles', fn (Blueprint $t) => $t->id());
@@ -46,17 +46,29 @@ class CrmOpportunityControllerTest extends TestCase
         Schema::create('crm_opportunities', function (Blueprint $table): void {
             $table->id(); $table->unsignedBigInteger('contact_id')->index();
             $table->string('title'); $table->string('stage', 30)->default('nuevo');
+            $table->string('phase', 20)->default('operational');
             $table->string('source', 30)->default('manual');
             $table->unsignedBigInteger('source_id')->nullable();
             $table->string('source_type', 255)->nullable();
+            $table->string('afiliacion_tipo', 20)->nullable();
             $table->unsignedBigInteger('assigned_to')->nullable();
-            $table->string('lost_reason', 500)->nullable(); $table->timestamps();
+            $table->string('lost_reason', 500)->nullable();
+            $table->timestamp('last_activity_at')->nullable();
+            $table->timestamp('escalation_at')->nullable();
+            $table->timestamps();
         });
         Schema::create('crm_activities', function (Blueprint $table): void {
             $table->id(); $table->unsignedBigInteger('opportunity_id')->index();
             $table->string('type', 30)->default('nota'); $table->text('description');
             $table->unsignedBigInteger('user_id')->nullable();
+            $table->unsignedBigInteger('source_id')->nullable();
+            $table->string('source_type', 100)->nullable();
             $table->timestamp('created_at')->useCurrent();
+        });
+        Schema::create('patient_data', function (Blueprint $table): void {
+            $table->id();
+            $table->string('hc_number', 30)->nullable()->index();
+            $table->string('afiliacion', 255)->nullable();
         });
     }
 
@@ -74,7 +86,7 @@ class CrmOpportunityControllerTest extends TestCase
     {
         $contact = $this->makeContact();
         CrmOpportunity::query()->create(['contact_id' => $contact->id, 'title' => 'Op 1', 'stage' => 'nuevo', 'source' => 'whatsapp']);
-        CrmOpportunity::query()->create(['contact_id' => $contact->id, 'title' => 'Op 2', 'stage' => 'interesado', 'source' => 'solicitud']);
+        CrmOpportunity::query()->create(['contact_id' => $contact->id, 'title' => 'Op 2', 'stage' => 'contactado', 'source' => 'solicitud']);
 
         $this->actingAs($this->makeUser())
             ->withoutMiddleware([LegacySessionBridge::class, RequireLegacySession::class, RequireLegacyPermission::class, RequireAppSession::class, RequireAppPermission::class])
@@ -87,7 +99,7 @@ class CrmOpportunityControllerTest extends TestCase
     {
         $contact = $this->makeContact();
         CrmOpportunity::query()->create(['contact_id' => $contact->id, 'title' => 'Nuevo', 'stage' => 'nuevo', 'source' => 'whatsapp']);
-        CrmOpportunity::query()->create(['contact_id' => $contact->id, 'title' => 'Interesado', 'stage' => 'interesado', 'source' => 'solicitud']);
+        CrmOpportunity::query()->create(['contact_id' => $contact->id, 'title' => 'Contactado', 'stage' => 'contactado', 'source' => 'solicitud']);
 
         $this->actingAs($this->makeUser())
             ->withoutMiddleware([LegacySessionBridge::class, RequireLegacySession::class, RequireLegacyPermission::class, RequireAppSession::class, RequireAppPermission::class])
@@ -104,9 +116,9 @@ class CrmOpportunityControllerTest extends TestCase
 
         $this->actingAs($this->makeUser())
             ->withoutMiddleware([LegacySessionBridge::class, RequireLegacySession::class, RequireLegacyPermission::class, RequireAppSession::class, RequireAppPermission::class])
-            ->patchJson("/v2/crm/opportunities/{$opp->id}", ['stage' => 'en_contacto'])
+            ->patchJson("/v2/crm/opportunities/{$opp->id}", ['stage' => 'contactado'])
             ->assertOk()
-            ->assertJsonPath('data.stage', 'en_contacto');
+            ->assertJsonPath('data.stage', 'contactado');
     }
 
     public function test_update_rejects_invalid_stage(): void
@@ -118,5 +130,54 @@ class CrmOpportunityControllerTest extends TestCase
             ->withoutMiddleware([LegacySessionBridge::class, RequireLegacySession::class, RequireLegacyPermission::class, RequireAppSession::class, RequireAppPermission::class])
             ->patchJson("/v2/crm/opportunities/{$opp->id}", ['stage' => 'etapa_falsa'])
             ->assertStatus(422);
+    }
+
+    public function test_index_excludes_public_affiliation_from_patient_data_even_when_cached_column_is_private(): void
+    {
+        $publicContact = CrmContact::query()->create([
+            'name' => 'Paciente Público',
+            'phone' => '+5932',
+            'cedula' => 'PUBLICO-1',
+            'source' => 'solicitud',
+        ]);
+        $privateContact = CrmContact::query()->create([
+            'name' => 'Paciente Privado',
+            'phone' => '+5933',
+            'cedula' => 'PRIVADO-1',
+            'source' => 'solicitud',
+        ]);
+        \Illuminate\Support\Facades\DB::table('patient_data')->insert([
+            ['hc_number' => 'PUBLICO-1', 'afiliacion' => 'IESS'],
+            ['hc_number' => 'PRIVADO-1', 'afiliacion' => 'Seguro privado'],
+        ]);
+        CrmOpportunity::query()->create(['contact_id' => $publicContact->id, 'title' => 'Publica', 'stage' => 'nuevo', 'source' => 'solicitud', 'afiliacion_tipo' => 'privado']);
+        CrmOpportunity::query()->create(['contact_id' => $privateContact->id, 'title' => 'Privada', 'stage' => 'nuevo', 'source' => 'solicitud', 'afiliacion_tipo' => 'publico']);
+
+        $this->actingAs($this->makeUser())
+            ->withoutMiddleware([LegacySessionBridge::class, RequireLegacySession::class, RequireLegacyPermission::class, RequireAppSession::class, RequireAppPermission::class])
+            ->getJson('/v2/crm/opportunities?include_publico=1')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.title', 'Privada');
+    }
+
+    public function test_index_public_affiliation_filter_returns_no_public_opportunities_in_central_crm(): void
+    {
+        $publicContact = CrmContact::query()->create([
+            'name' => 'Paciente Público',
+            'phone' => '+5932',
+            'cedula' => 'PUBLICO-1',
+            'source' => 'solicitud',
+        ]);
+        \Illuminate\Support\Facades\DB::table('patient_data')->insert([
+            ['hc_number' => 'PUBLICO-1', 'afiliacion' => 'IESS'],
+        ]);
+        CrmOpportunity::query()->create(['contact_id' => $publicContact->id, 'title' => 'Publica', 'stage' => 'nuevo', 'source' => 'solicitud']);
+
+        $this->actingAs($this->makeUser())
+            ->withoutMiddleware([LegacySessionBridge::class, RequireLegacySession::class, RequireLegacyPermission::class, RequireAppSession::class, RequireAppPermission::class])
+            ->getJson('/v2/crm/opportunities?afiliacion=publico')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 0);
     }
 }

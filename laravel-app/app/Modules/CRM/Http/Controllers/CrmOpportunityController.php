@@ -5,6 +5,7 @@ namespace App\Modules\CRM\Http\Controllers;
 use App\Models\CrmOpportunity;
 use App\Modules\CRM\Services\CrmActivityService;
 use App\Modules\CRM\Services\CrmOpportunityService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -30,19 +31,10 @@ class CrmOpportunityController
         $search         = trim((string) $request->query('search', ''));
         $afiliacion     = trim((string) $request->query('afiliacion', ''));  // particular|privado|fundacional|publico
         $urgent         = filter_var($request->query('urgent', false), FILTER_VALIDATE_BOOLEAN);
-        $includePublico = filter_var($request->query('include_publico', false), FILTER_VALIDATE_BOOLEAN);
 
         $query = CrmOpportunity::query()->with('contact');
 
-        // Affiliation filter — uses the indexed afiliacion_tipo column (populated by CrmOpportunityListener)
-        if ($afiliacion !== '') {
-            $query->where('afiliacion_tipo', $afiliacion);
-        } elseif (!$includePublico) {
-            $query->where(fn ($q) => $q
-                ->where('afiliacion_tipo', '!=', 'publico')
-                ->orWhereNull('afiliacion_tipo')
-            );
-        }
+        $this->applyPatientAffiliationFilter($query, $afiliacion);
 
         if ($stage !== '') {
             $query->where('stage', $stage);
@@ -146,5 +138,53 @@ class CrmOpportunityController
         }
 
         return response()->json(['data' => $opp->fresh(['contact', 'activities'])]);
+    }
+
+    private function applyPatientAffiliationFilter(Builder $query, string $afiliacion): void
+    {
+        if ($afiliacion === 'publico') {
+            $query->whereRaw('1 = 0');
+            return;
+        }
+
+        $query->whereNotExists(fn ($sub) => $this->patientAffiliationSubquery($sub, 'publico'));
+
+        if ($afiliacion !== '') {
+            $query->whereExists(fn ($sub) => $this->patientAffiliationSubquery($sub, $afiliacion));
+        }
+    }
+
+    private function patientAffiliationSubquery($sub, string $tipo): void
+    {
+        $sub->selectRaw('1')
+            ->from('crm_contacts as cc_afil')
+            ->leftJoin('patient_data as pd_afil', 'pd_afil.hc_number', '=', 'cc_afil.cedula')
+            ->whereColumn('cc_afil.id', 'crm_opportunities.contact_id')
+            ->whereRaw($this->patientAffiliationCaseSql() . ' = ?', [$tipo]);
+    }
+
+    private function patientAffiliationCaseSql(): string
+    {
+        return "CASE
+            WHEN LOWER(COALESCE(pd_afil.afiliacion, '')) LIKE '%iess%'
+                OR LOWER(COALESCE(pd_afil.afiliacion, '')) LIKE '%issfa%'
+                OR LOWER(COALESCE(pd_afil.afiliacion, '')) LIKE '%isspol%'
+                OR LOWER(COALESCE(pd_afil.afiliacion, '')) LIKE '%msp%'
+                OR LOWER(COALESCE(pd_afil.afiliacion, '')) LIKE '%ministerio%'
+                OR LOWER(COALESCE(pd_afil.afiliacion, '')) LIKE '%salud%publica%'
+                OR LOWER(COALESCE(pd_afil.afiliacion, '')) LIKE '%red%publica%'
+                OR LOWER(COALESCE(pd_afil.afiliacion, '')) LIKE '%campesino%'
+                OR LOWER(COALESCE(pd_afil.afiliacion, '')) LIKE '%jubilado%'
+                OR LOWER(COALESCE(pd_afil.afiliacion, '')) LIKE '%seguro%general%'
+                OR LOWER(COALESCE(pd_afil.afiliacion, '')) LIKE '%seguro%voluntario%'
+                THEN 'publico'
+            WHEN LOWER(COALESCE(pd_afil.afiliacion, '')) LIKE '%particular%'
+                THEN 'particular'
+            WHEN LOWER(COALESCE(pd_afil.afiliacion, '')) LIKE '%fundaci%'
+                THEN 'fundacional'
+            WHEN pd_afil.afiliacion IS NULL OR TRIM(pd_afil.afiliacion) = ''
+                THEN 'sin_dato'
+            ELSE 'privado'
+        END";
     }
 }

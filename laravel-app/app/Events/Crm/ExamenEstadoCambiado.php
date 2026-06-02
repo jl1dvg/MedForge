@@ -13,7 +13,8 @@ class ExamenEstadoCambiado
      * Fired when a consulta_examenes record changes estado via the kanban.
      *
      * Known estados: recibido | revisión de cobertura | listo para agenda |
-     *                llamado | completado | archivado
+     *                turno_llamado | completado | archivado
+     *                Legacy emitters may still send llamado.
      */
     public function __construct(
         public readonly int    $examenId,
