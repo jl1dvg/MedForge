@@ -29,6 +29,12 @@ export function useConversations({ filter, search, agentId }) {
 
   useEffect(() => { reload(); }, [reload]);
 
+  // Polling fallback (30s) in case Pusher events don't arrive
+  useEffect(() => {
+    const id = setInterval(reload, 30000);
+    return () => clearInterval(id);
+  }, [reload]);
+
   // Patch a single conversation in the list without full refetch
   const patchConvo = useCallback((id, patch) => {
     setConvos(prev => prev.map(c => c.id === id ? { ...c, ...patch } : c));
