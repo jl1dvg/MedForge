@@ -66,7 +66,7 @@ export function WaApp() {
   }, []);
 
   // ── Conversation list ────────────────────────────────────────────────────────
-  const { convos, tabCounts, loading: convosLoading, reload: reloadConvos } = useConversations({
+  const { convos, tabCounts, loading: convosLoading, loadingMore, hasMore, reload: reloadConvos, loadMore } = useConversations({
     filter,
     search,
     agentId: agentFilter?.id,
@@ -200,7 +200,7 @@ export function WaApp() {
         canSupervise={canSupervise} tabCounts={tabCounts}
         dateFrom={dateFrom} dateTo={dateTo}
         agentFilter={agentFilter} agents={agents}
-        visible={convos} loading={convosLoading}
+        visible={convos} loading={convosLoading} hasMore={hasMore} loadMore={loadMore} loadingMore={loadingMore}
         onPickConvo={pickConvo} onFilter={setFilter} onSearch={setSearch}
         onView={setView}
         onDate={(f, to) => {
