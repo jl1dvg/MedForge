@@ -3,6 +3,7 @@
 namespace App\Modules\Billing\Services;
 
 use App\Modules\Shared\Support\AfiliacionDimensionService;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use PDO;
@@ -33,8 +34,27 @@ class HonorariosDashboardDataService
      */
     public function buildSummary(string $start, string $end, array $filters, array $rules): array
     {
-        $rows = $this->fetchProcedimientos($start, $end, $filters);
         $normalizedRules = $this->settingsService->rules();
+        $cacheKey = $this->summaryCacheKey($start, $end, $filters, $normalizedRules);
+        $ttl = max(0, (int) config('medforge.billing.honorarios_dashboard_cache_ttl', 300));
+
+        if ($ttl === 0) {
+            return $this->buildSummaryFresh($start, $end, $filters, $normalizedRules);
+        }
+
+        return Cache::remember($cacheKey, $ttl, function () use ($start, $end, $filters, $normalizedRules): array {
+            return $this->buildSummaryFresh($start, $end, $filters, $normalizedRules);
+        });
+    }
+
+    /**
+     * @param array<string, mixed> $filters
+     * @param array<string, mixed> $normalizedRules
+     * @return array<string, mixed>
+     */
+    private function buildSummaryFresh(string $start, string $end, array $filters, array $normalizedRules): array
+    {
+        $rows = $this->fetchProcedimientos($start, $end, $filters);
 
         $kpis = $this->buildKpis($rows, $normalizedRules);
 
@@ -51,6 +71,41 @@ class HonorariosDashboardDataService
                 ? $this->buildAttentionTable($rows, $normalizedRules)
                 : $this->buildSurgeonTable($rows, $normalizedRules),
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $filters
+     * @param array<string, mixed> $normalizedRules
+     */
+    private function summaryCacheKey(string $start, string $end, array $filters, array $normalizedRules): string
+    {
+        $payload = [
+            'start' => $start,
+            'end' => $end,
+            'filters' => $this->normalizeCachePayload($filters),
+            'rules' => $this->normalizeCachePayload($normalizedRules),
+        ];
+
+        return 'billing:honorarios:summary:' . hash('sha256', json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '');
+    }
+
+    /**
+     * @param mixed $value
+     * @return mixed
+     */
+    private function normalizeCachePayload(mixed $value): mixed
+    {
+        if (!is_array($value)) {
+            return is_string($value) ? trim($value) : $value;
+        }
+
+        ksort($value);
+
+        foreach ($value as $key => $item) {
+            $value[$key] = $this->normalizeCachePayload($item);
+        }
+
+        return $value;
     }
 
     /**
