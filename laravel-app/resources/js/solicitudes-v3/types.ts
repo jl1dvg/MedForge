@@ -218,22 +218,36 @@ export interface ApiSolicitud {
   sla_label?: string;
   turno?: string | null;
   crm_responsable?: string;
+  crm_responsable_nombre?: string;
+  crm_responsable_email?: string;
+  crm_responsable_telefono?: string;
+  crm_responsable_avatar?: string;
   crm_telefono?: string;
   crm_email?: string;
   crm_fuente?: string;
   crm_notas?: number;
+  crm_total_notas?: number;
   crm_adjuntos?: number;
+  crm_total_adjuntos?: number;
   crm_tareas_pendientes?: number;
   crm_tareas_total?: number;
   crm_proximo_vencimiento?: string | null;
+  sla_hours_remaining?: number | null;
+  kanban_estado?: string;
+  kanban_estado_label?: string;
   alert_docs?: boolean;
   alert_auth?: boolean;
   alert_exam?: boolean;
+  alert_documentos_faltantes?: boolean;
+  alert_autorizacion_pendiente?: boolean;
+  alert_derivacion_vencida?: boolean;
+  alert_derivacion_por_vencer?: boolean;
   [key: string]: unknown;
 }
 
 export interface ApiKanbanResponse {
-  data: Record<string, ApiSolicitud[]>;
+  // API returns a flat array; each item has kanban_estado with the column slug
+  data: ApiSolicitud[] | Record<string, ApiSolicitud[]>;
   options?: {
     afiliaciones?: string[];
     doctores?: string[];

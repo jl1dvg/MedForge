@@ -119,11 +119,16 @@ function resolveProcedimiento(raw: string | undefined): { procedimiento: string;
 
 function buildAlerts(raw: ApiSolicitud, estadoSlug: string): Alert[] {
   const alerts: Alert[] = [];
-  if (raw.alert_docs || estadoSlug === 'espera-documentos') {
+  // API uses alert_documentos_faltantes / alert_docs (legacy)
+  if (raw.alert_documentos_faltantes || raw.alert_docs || estadoSlug === 'espera-documentos') {
     alerts.push({ key: 'docs', label: 'Documentos faltantes', icon: 'mdi-file-alert-outline', tone: 'warning' });
   }
-  if (raw.alert_auth) {
+  // API uses alert_autorizacion_pendiente / alert_auth (legacy)
+  if (raw.alert_autorizacion_pendiente || raw.alert_auth) {
     alerts.push({ key: 'auth', label: 'Autorización pendiente', icon: 'mdi-shield-clock-outline', tone: 'danger' });
+  }
+  if (raw.alert_derivacion_vencida || raw.alert_derivacion_por_vencer) {
+    alerts.push({ key: 'derivacion', label: 'Derivación por vencer', icon: 'mdi-alert-circle-outline', tone: 'danger' });
   }
   if (raw.alert_exam) {
     alerts.push({ key: 'exam', label: 'Exámenes por vencer', icon: 'mdi-flask-empty-outline', tone: 'warning' });
@@ -184,19 +189,20 @@ export function buildSolicitudFromApi(raw: ApiSolicitud, estadoSlug: KanbanSlug)
     sede: (raw.sede as string | undefined) ?? '—',
     observacion: (raw.observacion as string | undefined) ?? '',
     sla_status,
-    sla_hours_remaining: null,
+    sla_hours_remaining: (raw.sla_hours_remaining as number | null | undefined) ?? null,
     sla_label: raw.sla_label ?? (sla_status === 'ok' ? 'En tiempo' : sla_status === 'critico' ? 'Vence pronto' : 'SLA vencido'),
     checklist,
     checklist_progress,
     protocolo_confirmado: null,
     protocolo_posterior_compatible: null,
     crm: {
-      responsable: raw.crm_responsable ?? 'Coordinación',
-      telefono: raw.crm_telefono ?? '—',
-      email: raw.crm_email ?? '—',
+      // API sends crm_responsable_nombre; crm_responsable is legacy fallback
+      responsable: (raw.crm_responsable_nombre as string | undefined) ?? (raw.crm_responsable as string | undefined) ?? 'Coordinación',
+      telefono: (raw.crm_responsable_telefono as string | undefined) ?? (raw.crm_telefono as string | undefined) ?? '—',
+      email: (raw.crm_responsable_email as string | undefined) ?? (raw.crm_email as string | undefined) ?? '—',
       fuente: raw.crm_fuente ?? '—',
-      notas: raw.crm_notas ?? 0,
-      adjuntos: raw.crm_adjuntos ?? 0,
+      notas: (raw.crm_total_notas as number | undefined) ?? (raw.crm_notas as number | undefined) ?? 0,
+      adjuntos: (raw.crm_total_adjuntos as number | undefined) ?? (raw.crm_adjuntos as number | undefined) ?? 0,
       tareas_pendientes: raw.crm_tareas_pendientes ?? 0,
       tareas_total: raw.crm_tareas_total ?? 0,
       proximo_vencimiento: raw.crm_proximo_vencimiento ?? null,
@@ -242,9 +248,20 @@ export async function fetchKanbanData(filters?: Partial<Filters>): Promise<{
   const byColumn: Record<KanbanSlug, Solicitud[]> = {} as Record<KanbanSlug, Solicitud[]>;
   COLUMNS.forEach((col) => { byColumn[col.slug] = []; });
 
-  for (const col of COLUMNS) {
-    const items: ApiSolicitud[] = raw.data?.[col.slug] ?? [];
-    byColumn[col.slug] = items.map((item) => buildSolicitudFromApi(item, col.slug));
+  // API returns a flat array with kanban_estado per item; legacy may return keyed object
+  const rawData = raw.data;
+  if (Array.isArray(rawData)) {
+    for (const item of rawData) {
+      const slug = (item.kanban_estado ?? item.estado ?? 'recibida') as KanbanSlug;
+      const col = COLUMNS.find((c) => c.slug === slug) ?? COLUMNS[0];
+      if (!byColumn[col.slug]) byColumn[col.slug] = [];
+      byColumn[col.slug].push(buildSolicitudFromApi(item, col.slug));
+    }
+  } else {
+    for (const col of COLUMNS) {
+      const items: ApiSolicitud[] = (rawData as Record<string, ApiSolicitud[]>)?.[col.slug] ?? [];
+      byColumn[col.slug] = items.map((item) => buildSolicitudFromApi(item, col.slug));
+    }
   }
 
   const allSolicitudes = Object.values(byColumn).flat();
