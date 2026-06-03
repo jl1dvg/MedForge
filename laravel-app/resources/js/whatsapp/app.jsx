@@ -83,7 +83,7 @@ export function WaApp() {
   // ── Pusher real-time ─────────────────────────────────────────────────────────
   usePusher(pusherConfig, useCallback((event, payload) => {
     reloadConvos();
-    const payloadConvId = payload?.conversation_id ?? payload?.id;
+    const payloadConvId = payload?.conversation?.id ?? payload?.conversation_id ?? payload?.id;
     if (payloadConvId === activeId && payload?.message) {
       appendInbound(payload.message);
     } else if (payloadConvId === activeId) {

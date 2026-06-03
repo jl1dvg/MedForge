@@ -49,8 +49,9 @@ export function useMessages(conversationId) {
     try {
       const result = await apiSend(conversationId, text);
       if (result.ok && result.data) {
-        const sent = adaptMessage(result.data);
-        setThread(prev => prev.map(m => m.id === tempId ? { ...sent, status: 'sent' } : m));
+        const msgData = result.data.message || result.data;
+        const sent = adaptMessage(msgData);
+        setThread(prev => prev.map(m => m.id === tempId ? { ...sent, body: sent.body || text, status: 'sent' } : m));
       }
     } catch {
       setThread(prev => prev.map(m => m.id === tempId ? { ...m, status: 'failed' } : m));
