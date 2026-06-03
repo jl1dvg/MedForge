@@ -483,11 +483,17 @@ class SolicitudesReadController
             }
         }
 
+        $diagnosticos = $prefacturaData['diagnostico'] ?? [];
+        if ($formId !== '' && (!is_array($diagnosticos) || $diagnosticos === [])) {
+            $diagnosticos = $this->diagnosticosAsignados($formId);
+        }
+
         return response()->json([
             'success' => true,
             'data' => array_merge($crm, [
                 'paciente'    => $prefacturaData['paciente'] ?? [],
-                'diagnostico' => $prefacturaData['diagnostico'] ?? [],
+                'diagnostico' => $diagnosticos,
+                'diagnosticos' => $diagnosticos,
                 'consulta'    => $prefacturaData['consulta'] ?? [],
                 'derivacion'  => $prefacturaData['derivacion'] ?? ($crm['detalle']['derivacion'] ?? []),
                 'prefactura'  => $prefacturaData['solicitud'] ?? [],
@@ -499,6 +505,29 @@ class SolicitudesReadController
                 ],
             ]),
         ])->header('X-Request-Id', $requestId);
+    }
+
+    /**
+     * @return array<int,array<string,mixed>>
+     */
+    private function diagnosticosAsignados(string $formId): array
+    {
+        try {
+            return DB::table('diagnosticos_asignados')
+                ->select('id', 'form_id', 'fuente', 'dx_code', 'descripcion', 'definitivo', 'lateralidad', 'selector')
+                ->where('form_id', $formId)
+                ->orderBy('id')
+                ->get()
+                ->map(static fn(object $row): array => (array) $row)
+                ->all();
+        } catch (\Throwable $e) {
+            Log::warning('solicitudes.read.detalle_completo.diagnosticos.error', [
+                'form_id' => $formId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [];
+        }
     }
 
     private function actorId(): ?int

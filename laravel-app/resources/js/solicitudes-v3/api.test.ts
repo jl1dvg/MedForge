@@ -66,6 +66,24 @@ test('maps prefactura detail using V2 field names', () => {
   assert.equal(detalle.preop[0].label, 'Apto oftalmologo');
 });
 
+test('maps assigned diagnoses list from detalle completo', () => {
+  const detalle = mapDetalleResponse({
+    diagnosticos: [{
+      id: 70030,
+      form_id: 275872,
+      fuente: 'consulta',
+      dx_code: 'H00',
+      descripcion: 'ORZUELO Y CALACIO',
+      definitivo: 1,
+      lateralidad: 'DERECHO',
+    }],
+  });
+
+  assert.equal(detalle.diagnosticos.length, 1);
+  assert.equal(detalle.diagnosticos[0].cie, 'H00');
+  assert.equal(detalle.diagnosticos[0].desc, 'ORZUELO Y CALACIO · DERECHO');
+});
+
 test('normalizes card and filter insurer labels to company only', () => {
   const salud = buildSolicitudFromApi({
     id: 1,

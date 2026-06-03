@@ -390,7 +390,8 @@ type DetallePayload = {
   propuestas?: Array<Record<string, unknown>>;
   adjuntos?: Array<{ nombre?: string; name?: string; mime_type?: string; size?: string; created_at?: string }>;
   paciente?: Record<string, unknown>;
-  diagnostico?: Array<{ dx_code?: string; codigo_cie?: string; cie?: string; descripcion?: string; desc?: string; diagnostico?: string }> | { dx_code?: string; codigo_cie?: string; cie?: string; descripcion?: string; desc?: string; diagnostico?: string };
+  diagnostico?: Array<{ dx_code?: string; codigo_cie?: string; cie?: string; descripcion?: string; desc?: string; diagnostico?: string; lateralidad?: string }> | { dx_code?: string; codigo_cie?: string; cie?: string; descripcion?: string; desc?: string; diagnostico?: string; lateralidad?: string };
+  diagnosticos?: Array<{ dx_code?: string; codigo_cie?: string; cie?: string; descripcion?: string; desc?: string; diagnostico?: string; lateralidad?: string }>;
   consulta?: Record<string, unknown>;
   derivacion?: Record<string, unknown>;
   derivacion_tab?: Record<string, unknown>;
@@ -431,15 +432,24 @@ export function mapDetalleResponse(d: DetallePayload): Detalle {
     };
   });
 
-  const rawDiagnosticos = Array.isArray(d.diagnostico)
-    ? d.diagnostico
-    : d.diagnostico
-      ? [d.diagnostico]
-      : [];
-  const diagnosticos = rawDiagnosticos.map((dx) => ({
-    cie: (dx.dx_code ?? dx.codigo_cie ?? dx.cie ?? '—') as string,
-    desc: (dx.descripcion ?? dx.desc ?? dx.diagnostico ?? '—') as string,
-  }));
+  const rawDiagnosticos = d.diagnosticos?.length
+    ? d.diagnosticos
+    : Array.isArray(d.diagnostico)
+      ? d.diagnostico
+      : d.diagnostico
+        ? [d.diagnostico]
+        : [];
+  const diagnosticos = rawDiagnosticos
+    .map((dx) => {
+      const cie = cleanString(dx.dx_code) ?? cleanString(dx.codigo_cie) ?? cleanString(dx.cie) ?? '—';
+      const desc = cleanString(dx.descripcion) ?? cleanString(dx.desc) ?? cleanString(dx.diagnostico) ?? '—';
+      const lateralidad = cleanString(dx.lateralidad);
+      return {
+        cie,
+        desc: lateralidad ? `${desc} · ${lateralidad}` : desc,
+      };
+    })
+    .filter((dx) => dx.cie !== '—' || dx.desc !== '—');
 
   const propuestas = (d.propuestas ?? []).map((p) => {
     const items = (p.items as Array<Record<string, unknown>> ?? []).map((i) => ({
