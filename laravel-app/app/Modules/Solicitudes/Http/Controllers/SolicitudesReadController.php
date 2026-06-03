@@ -6,6 +6,7 @@ namespace App\Modules\Solicitudes\Http\Controllers;
 
 use App\Modules\Codes\Services\CodesCatalogService;
 use App\Modules\Codes\Services\CodesPackageService;
+use App\Modules\Solicitudes\Services\SolicitudesPrefacturaService;
 use App\Modules\Solicitudes\Services\SolicitudesReadParityService;
 use App\Modules\Solicitudes\Services\SolicitudesReportService;
 use DateTimeImmutable;
@@ -447,6 +448,50 @@ class SolicitudesReadController
         }
 
         return 'v2-' . bin2hex(random_bytes(8));
+    }
+
+    public function detalleCompleto(Request $request, int $id): JsonResponse
+    {
+        $requestId = $this->requestId($request);
+
+        try {
+            $crm = $this->service->crmResumen($id);
+        } catch (RuntimeException $e) {
+            $status = strcasecmp(trim($e->getMessage()), 'Solicitud no encontrada') === 0 ? 404 : 422;
+            return response()->json(['success' => false, 'error' => $e->getMessage()], $status)
+                ->header('X-Request-Id', $requestId);
+        } catch (\Throwable $e) {
+            Log::error('solicitudes.read.detalle_completo.crm.error', [
+                'request_id' => $requestId, 'solicitud_id' => $id, 'error' => $e->getMessage(),
+            ]);
+            return response()->json(['success' => false, 'error' => 'No se pudo cargar el detalle'], 500)
+                ->header('X-Request-Id', $requestId);
+        }
+
+        $hcNumber = trim((string) ($crm['detalle']['hc_number'] ?? ''));
+        $formId = trim((string) ($crm['detalle']['form_id'] ?? ''));
+
+        $prefacturaData = [];
+        if ($hcNumber !== '' && $formId !== '') {
+            try {
+                $prefacturaData = (new SolicitudesPrefacturaService())->buildPrefacturaViewData($hcNumber, $formId);
+            } catch (\Throwable $e) {
+                Log::warning('solicitudes.read.detalle_completo.prefactura.error', [
+                    'request_id' => $requestId, 'solicitud_id' => $id,
+                    'hc_number' => $hcNumber, 'form_id' => $formId, 'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => array_merge($crm, [
+                'paciente'    => $prefacturaData['paciente'] ?? [],
+                'diagnostico' => $prefacturaData['diagnostico'] ?? [],
+                'consulta'    => $prefacturaData['consulta'] ?? [],
+                'derivacion'  => $prefacturaData['derivacion'] ?? ($crm['detalle']['derivacion'] ?? []),
+            ]),
+        ])->header('X-Request-Id', $requestId);
     }
 
     private function actorId(): ?int

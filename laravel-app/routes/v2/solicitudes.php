@@ -17,6 +17,7 @@ Route::get('/solicitudes/crm/options', [SolicitudesReadController::class, 'crmOp
 Route::get('/solicitudes/crm/catalog/codes', [SolicitudesReadController::class, 'crmBuscarCodigos']);
 Route::get('/solicitudes/crm/catalog/packages', [SolicitudesReadController::class, 'crmBuscarPaquetes']);
 Route::get('/solicitudes/{id}/crm', [SolicitudesReadController::class, 'crmResumen'])->whereNumber('id');
+Route::get('/solicitudes/{id}/detalle', [SolicitudesReadController::class, 'detalleCompleto'])->whereNumber('id');
 Route::get('/solicitudes/conciliacion-cirugias', [SolicitudesReadController::class, 'conciliacionCirugias']);
 Route::get('/solicitudes/prefactura', [SolicitudesPrefacturaController::class, 'prefactura']);
 Route::get('/solicitudes/derivacion', [SolicitudesPrefacturaController::class, 'derivacion']);
@@ -68,6 +69,7 @@ Route::get('/api/solicitudes/crm/options', [SolicitudesReadController::class, 'c
 Route::get('/api/solicitudes/crm/catalog/codes', [SolicitudesReadController::class, 'crmBuscarCodigos']);
 Route::get('/api/solicitudes/crm/catalog/packages', [SolicitudesReadController::class, 'crmBuscarPaquetes']);
 Route::get('/api/solicitudes/{id}/crm', [SolicitudesReadController::class, 'crmResumen'])->whereNumber('id');
+Route::get('/api/solicitudes/{id}/detalle', [SolicitudesReadController::class, 'detalleCompleto'])->whereNumber('id');
 Route::get('/api/solicitudes/conciliacion-cirugias', [SolicitudesReadController::class, 'conciliacionCirugias']);
 Route::get('/api/solicitudes/doctores', [SolicitudesReadController::class, 'doctores']);
 Route::get('/api/solicitudes/estado', [SolicitudesWriteController::class, 'apiEstadoGet']);

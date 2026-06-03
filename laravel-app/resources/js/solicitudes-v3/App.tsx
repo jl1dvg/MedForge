@@ -3,7 +3,7 @@
 // ============================================================
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import type { Solicitud, Filters, Tarea, TweakValues, Alert, ChecklistStep } from './types';
-import { COLUMNS, PHASES, fetchKanbanData, rebuildState, updateEstado } from './api';
+import { COLUMNS, PHASES, fetchKanbanData, fetchDetalle, rebuildState, updateEstado } from './api';
 import { Kpi } from './components';
 import { Toolbar, Board, TableView } from './Board';
 import { DetailPanel } from './DetailPanel';
@@ -220,6 +220,22 @@ export function App() {
   }), [draggingId, dropTarget, moveTo]);
 
   const selected = useMemo(() => solicitudes.find((s: Solicitud) => s.id === selectedId) ?? null, [solicitudes, selectedId]);
+
+  // Lazy-load full detalle when a card is opened and detalle hasn't been fetched yet
+  useEffect(() => {
+    if (!selectedId) return;
+    const sol = solicitudes.find((s: Solicitud) => s.id === selectedId);
+    if (!sol) return;
+    // Check if detalle is still empty (default emptyDetalle has paciente.cedula === '—')
+    const alreadyLoaded = sol.detalle.paciente.cedula !== '—' || sol.detalle.notas.length > 0;
+    if (alreadyLoaded) return;
+    fetchDetalle(selectedId).then((detalle) => {
+      setSolicitudes((list: Solicitud[]) => list.map((s: Solicitud) => s.id === selectedId ? { ...s, detalle } : s));
+    }).catch(() => {
+      // non-critical — prefactura just shows empty sections
+    });
+  }, [selectedId]);
+
   const toggleKpi = (k: string) => setKpiFilter((cur: string) => cur === k ? '' : k);
 
   const shellClass = [

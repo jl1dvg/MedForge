@@ -282,6 +282,121 @@ export async function updateEstado(id: number, nuevoEstado: KanbanSlug): Promise
   });
 }
 
+// ---- Detalle completo (lazy-loaded when opening a card) -------
+
+export async function fetchDetalle(id: number): Promise<Detalle> {
+  type DetalleResponse = {
+    success: boolean;
+    data: {
+      detalle: Record<string, unknown>;
+      notas: Array<{ nota?: string; texto?: string; autor?: string; created_at?: string }>;
+      tareas: Array<{ titulo?: string; asignado?: string; fecha_vencimiento?: string; fecha?: string; prioridad?: string; estado?: string; done?: boolean }>;
+      propuestas: Array<Record<string, unknown>>;
+      adjuntos: Array<{ nombre?: string; name?: string; mime_type?: string; size?: string; created_at?: string }>;
+      paciente: Record<string, unknown>;
+      diagnostico: Array<{ codigo_cie?: string; cie?: string; descripcion?: string; desc?: string }>;
+      consulta: Record<string, unknown>;
+      derivacion: Record<string, unknown>;
+    };
+  };
+
+  const res = await jsonFetch<DetalleResponse>(`/v2/solicitudes/${id}/detalle`);
+  if (!res.success) throw new Error('Error loading detalle');
+
+  const d = res.data;
+  const pac = d.paciente ?? {};
+  const sol = d.detalle ?? {};
+  const cons = d.consulta ?? {};
+  const deriv = d.derivacion ?? {};
+
+  const notas = (d.notas ?? []).map((n) => ({
+    txt: (n.nota ?? n.texto ?? '') as string,
+    by: (n.autor ?? 'Sistema') as string,
+    at: (n.created_at ?? '') as string,
+  }));
+
+  const tareas = (d.tareas ?? []).map((t) => ({
+    titulo: (t.titulo ?? '') as string,
+    asignado: (t.asignado ?? '—') as string,
+    fecha: (t.fecha_vencimiento ?? t.fecha ?? '') as string,
+    prioridad: (t.prioridad ?? 'normal') as string,
+    done: t.done === true || t.estado === 'completada',
+  }));
+
+  const adjuntos = (d.adjuntos ?? []).map((a) => {
+    const mime = (a.mime_type ?? '') as string;
+    const icon = mime.includes('pdf') ? 'mdi-file-pdf-box' : mime.includes('image') ? 'mdi-image' : 'mdi-paperclip';
+    return {
+      nombre: (a.nombre ?? a.name ?? 'Archivo') as string,
+      icon,
+      peso: (a.size ?? '—') as string,
+      at: (a.created_at ?? '') as string,
+    };
+  });
+
+  const diagnosticos = (d.diagnostico ?? []).map((dx) => ({
+    cie: (dx.codigo_cie ?? dx.cie ?? '—') as string,
+    desc: (dx.descripcion ?? dx.desc ?? '—') as string,
+  }));
+
+  const propuestas = (d.propuestas ?? []).map((p) => {
+    const items = (p.items as Array<Record<string, unknown>> ?? []).map((i) => ({
+      cod: String(i.cod ?? i.codigo ?? ''),
+      desc: String(i.desc ?? i.descripcion ?? ''),
+      cant: Number(i.cant ?? i.cantidad ?? 1),
+      valor: Number(i.valor ?? i.precio ?? 0),
+    }));
+    const subtotal = items.reduce((s, i) => s + i.cant * i.valor, 0);
+    return {
+      titulo: String(p.titulo ?? p.nombre ?? 'Propuesta'),
+      estado: String(p.estado ?? 'borrador'),
+      vigencia: String(p.vigencia ?? p.fecha_vencimiento ?? '—'),
+      items,
+      subtotal,
+      iva: subtotal * 0.15,
+      total: subtotal * 1.15,
+    };
+  });
+
+  return {
+    paciente: {
+      edad: Number(pac.edad ?? pac.age ?? 0),
+      sexo: String(pac.sexo ?? pac.gender ?? '—'),
+      cedula: String(pac.cedula ?? pac.identification ?? '—'),
+      direccion: String(pac.direccion ?? pac.address ?? '—'),
+    },
+    diagnosticos,
+    derivacion: {
+      tiene: !!(deriv.codigo_derivacion ?? deriv.cod),
+      cod: String(deriv.codigo_derivacion ?? deriv.cod ?? '') || null,
+      aseguradora: String(deriv.aseguradora ?? deriv.empresa ?? '—'),
+      plan: String(deriv.plan ?? '—'),
+      dias_vigencia: deriv.dias_vigencia != null ? Number(deriv.dias_vigencia) : null,
+      vencida: !!(deriv.vencida ?? (deriv.estado === 'vencida')),
+      archivo: !!(deriv.archivo_path ?? deriv.archivo),
+      autorizacion_pendiente: !!(deriv.autorizacion_pendiente),
+    },
+    preop: [],
+    notas,
+    tareas,
+    propuestas,
+    adjuntos,
+    examen: {
+      av_od: String(cons.av_od ?? sol.av_od ?? '—'),
+      av_oi: String(cons.av_oi ?? sol.av_oi ?? '—'),
+      pio_od: Number(cons.pio_od ?? sol.pio_od ?? 0),
+      pio_oi: Number(cons.pio_oi ?? sol.pio_oi ?? 0),
+      plan: String(cons.plan ?? cons.diagnostico ?? '—'),
+    },
+    agenda: {
+      sala: String(sol.sala ?? sol.quirofano ?? '—'),
+      fecha: (sol.fecha_cirugia ?? sol.fecha_programada ?? null) as string | null,
+      duracion: Number(sol.duracion_cirugia ?? sol.duracion ?? 30),
+      anestesia: String(sol.tipo_anestesia ?? sol.anestesia ?? '—'),
+    },
+  };
+}
+
 // ---- State rebuild (for optimistic updates) -------------------
 
 export function rebuildState(sol: Solicitud, newSlug: KanbanSlug): Solicitud {
