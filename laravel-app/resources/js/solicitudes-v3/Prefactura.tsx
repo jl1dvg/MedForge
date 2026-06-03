@@ -25,11 +25,47 @@ const COL_TONE: Record<string, string> = {
 const money = (n: number | null | undefined) =>
   '$' + Number(n || 0).toLocaleString('es-EC', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+const APTITUD_ORDER = [
+  'recibida',
+  'llamado',
+  'revision-codigos',
+  'espera-documentos',
+  'apto-oftalmologo',
+  'apto-anestesia',
+  'listo-para-agenda',
+  'programada',
+  'completado',
+];
+
+function isAtOrAfter(estado: string, target: string): boolean {
+  const currentIdx = APTITUD_ORDER.indexOf(estado);
+  const targetIdx = APTITUD_ORDER.indexOf(target);
+  return currentIdx >= 0 && targetIdx >= 0 && currentIdx >= targetIdx;
+}
+
+function approvalStatus(sol: Solicitud, slug: 'apto-oftalmologo' | 'apto-anestesia') {
+  const realStep = sol.detalle.preop.find((step) => step.slug === slug);
+  const done = realStep?.done === true
+    || (slug === 'apto-oftalmologo' && isAtOrAfter(sol.estado, 'apto-anestesia'))
+    || (slug === 'apto-anestesia' && isAtOrAfter(sol.estado, 'listo-para-agenda'));
+  const isCurrentStation = sol.estado === slug && !done;
+
+  return {
+    done,
+    isCurrentStation,
+    badge: done ? 'Apto' : 'Pendiente',
+    tone: done ? 'ok' : isCurrentStation ? 'warn' : 'pending',
+    current: realStep?.label ?? (slug === 'apto-anestesia' ? 'Preanestesia' : 'Evaluación oftalmológica'),
+  };
+}
+
 // ---- PfResumen -----------------------------------------------
 
 function PfResumen({ sol, go }: { sol: Solicitud; go: (tab: string) => void }) {
   const det = sol.detalle;
-  const preopDone = det.preop.filter((p) => p.done).length;
+  const aptoOftalmo = approvalStatus(sol, 'apto-oftalmologo');
+  const aptoAnestesia = approvalStatus(sol, 'apto-anestesia');
+  const aptitudDone = [aptoOftalmo, aptoAnestesia].filter((item) => item.done).length;
   const meta = SLA_META[sol.sla_status] ?? SLA_META.ok;
   const prop = det.propuestas[0];
   return (
@@ -45,7 +81,7 @@ function PfResumen({ sol, go }: { sol: Solicitud; go: (tab: string) => void }) {
         </div>
         <div className="pf-kpi">
           <div className="pf-kpi-ic info"><i className="mdi mdi-medical-bag"></i></div>
-          <div><div className="pf-kpi-v">{preopDone}/{det.preop.length}</div><div className="pf-kpi-l">Checklist registrado</div></div>
+          <div><div className="pf-kpi-v">{aptitudDone}/2</div><div className="pf-kpi-l">Aptitud clínica</div></div>
         </div>
         <div className="pf-kpi">
           <div className="pf-kpi-ic money"><i className="mdi mdi-cash-multiple"></i></div>
@@ -177,24 +213,79 @@ function PfCobertura({ sol }: { sol: Solicitud }) {
 
 // ---- PfCirugia ----------------------------------------------
 
-function PfCirugia({ sol, onTogglePreop }: { sol: Solicitud; onTogglePreop: (id: number, idx: number) => void }) {
-  const preop = sol.detalle.preop;
-  const done = preop.filter((p) => p.done).length;
-  const pct = preop.length > 0 ? Math.round((done / preop.length) * 100) : 0;
+function PfCirugia({ sol }: { sol: Solicitud }) {
+  const aptoOftalmo = approvalStatus(sol, 'apto-oftalmologo');
+  const aptoAnestesia = approvalStatus(sol, 'apto-anestesia');
+  const approvals = [
+    {
+      title: 'Oftalmólogo',
+      icon: 'mdi-eye-check-outline',
+      status: aptoOftalmo,
+      detail: aptoOftalmo.done
+        ? 'Plan quirúrgico validado para continuar flujo.'
+        : 'Marcar “Apto oftalmólogo” antes de enviar a anestesia.',
+    },
+    {
+      title: 'Anestesia',
+      icon: 'mdi-clipboard-pulse-outline',
+      status: aptoAnestesia,
+      detail: aptoAnestesia.done
+        ? 'Paciente habilitado por anestesia para agenda.'
+        : 'Confirmar preanestesia antes de liberar agenda quirúrgica.',
+    },
+  ];
+  const done = approvals.filter((item) => item.status.done).length;
+  const pct = Math.round((done / approvals.length) * 100);
+
   return (
-    <div className="pf-section">
-      <h4 className="pf-h">Checklist operativo <span className="psec-meta">{done}/{preop.length} · {pct}%</span></h4>
-      <div className="pf-progress"><div className="pf-progress-bar" style={{ width: pct + '%' }}></div></div>
-      <div className="chk-list" style={{ marginTop: 14 }}>
-        {preop.length === 0 && <div style={{ color: 'var(--fg-mute)', fontSize: 12.5, padding: 8 }}>Sin checklist preoperatorio registrado</div>}
-        {preop.map((p, i) => (
-          <div key={i} className={`chk-item ${p.done ? 'done' : ''}`} onClick={() => onTogglePreop(sol.id, i)}>
-            <span className="chk-box">{p.done && <i className="mdi mdi-check"></i>}</span>
-            <span className="chk-label">{p.label}</span>
-          </div>
-        ))}
+    <>
+      <div className="pf-section">
+        <h4 className="pf-h">Aptitud clínica <span className="psec-meta">{done}/2 · {pct}%</span></h4>
+        <div className="pf-progress"><div className="pf-progress-bar" style={{ width: pct + '%' }}></div></div>
+        <div className="pf-approval-grid">
+          {approvals.map((item) => (
+            <div key={item.title} className={`pf-approval tone-${item.status.tone}`}>
+              <div className="pf-approval-head">
+                <span className="pf-approval-ic"><i className={`mdi ${item.icon}`}></i></span>
+                <div>
+                  <div className="pf-approval-title">{item.title}</div>
+                  <div className="pf-approval-sub">{item.status.current}</div>
+                </div>
+                <span className="pf-approval-badge">{item.status.badge}</span>
+              </div>
+              <div className="pf-approval-body">{item.detail}</div>
+              {item.status.isCurrentStation && (
+                <div className="pf-approval-callout">
+                  <i className="mdi mdi-timer-sand"></i>
+                  Estación actual pendiente de aprobación.
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
       </div>
-    </div>
+
+      <div className="pf-section">
+        <h4 className="pf-h">Datos quirúrgicos operativos</h4>
+        <div className="pf-grid">
+          <div className="pf-f"><div className="k">Procedimiento</div><div className="v">{sol.procedimiento_short}</div></div>
+          <div className="pf-f"><div className="k">Ojo</div><div className="v">{sol.ojo}</div></div>
+          <div className="pf-f"><div className="k">Anestesia prevista</div><div className="v">{sol.detalle.agenda.anestesia}</div></div>
+          <div className="pf-f"><div className="k">Sede</div><div className="v">{sol.sede}</div></div>
+          <div className="pf-f"><div className="k">Estado actual</div><div className="v">{sol.estado_label}</div></div>
+          <div className="pf-f"><div className="k">Siguiente paso</div><div className="v">{sol.checklist_progress.next_label}</div></div>
+        </div>
+      </div>
+
+      <div className="pf-section">
+        <h4 className="pf-h">Requisitos para agenda</h4>
+        <div className="pf-readiness">
+          <div className={aptoOftalmo.done ? 'is-done' : ''}><i className="mdi mdi-check-circle-outline"></i>Apto oftalmólogo</div>
+          <div className={aptoAnestesia.done ? 'is-done' : ''}><i className="mdi mdi-check-circle-outline"></i>Apto anestesia</div>
+          <div className={sol.detalle.agenda.fecha ? 'is-done' : ''}><i className="mdi mdi-calendar-check-outline"></i>Agenda quirúrgica</div>
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -277,7 +368,7 @@ export interface PrefacturaModalProps {
   showToast: (msg: string, icon?: string) => void;
 }
 
-export function PrefacturaModal({ sol, open, onClose, onTogglePreop, showToast }: PrefacturaModalProps) {
+export function PrefacturaModal({ sol, open, onClose, showToast }: PrefacturaModalProps) {
   const [tab, setTab] = useState('resumen');
 
   useEffect(() => { if (open) setTab('resumen'); }, [sol?.id, open]);
@@ -316,7 +407,7 @@ export function PrefacturaModal({ sol, open, onClose, onTogglePreop, showToast }
             {tab === 'resumen'   && <PfResumen sol={sol} go={setTab} />}
             {tab === 'caso'      && <PfCaso sol={sol} />}
             {tab === 'cobertura' && <PfCobertura sol={sol} />}
-            {tab === 'cirugia'   && <PfCirugia sol={sol} onTogglePreop={onTogglePreop} />}
+            {tab === 'cirugia'   && <PfCirugia sol={sol} />}
             {tab === 'agenda'    && <PfAgenda sol={sol} />}
             {tab === 'nota'      && <PfNota sol={sol} showToast={showToast} />}
           </div>
