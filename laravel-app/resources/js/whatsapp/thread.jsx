@@ -396,10 +396,8 @@ function WaComposer({ value, onChange, onSend, onSendMedia, convo, quickReplies,
                   placeholder={recording ? `Grabando ${fmtTime(recordingTime)}…` : canReply ? 'Escribe un mensaje…' : 'Ventana cerrada — usa una plantilla aprobada'}
                   disabled={!canReply || recording} />
         <div className="wa3-composer__tools">
-          <button className={`wa3-iconbtn${recording ? ' is-recording' : ''}`}
-                  title={recording ? `Detener grabación (${fmtTime(recordingTime)})` : 'Grabar nota de voz'}
-                  onClick={toggleVoice} disabled={!!pendingMedia}>
-            <i className={`mdi ${recording ? 'mdi-stop-circle' : 'mdi-microphone-outline'}`}></i>
+          <button className="wa3-iconbtn" title="Notas de voz no disponibles en este formato" disabled style={{ opacity: 0.35, cursor: 'not-allowed' }}>
+            <i className="mdi mdi-microphone-outline"></i>
           </button>
           <div className="wa3-emoji-wrap" ref={emojiRef}>
             <button className="wa3-iconbtn" title="Emoji" onClick={() => setEmojiOpen(v => !v)} disabled={recording}>
