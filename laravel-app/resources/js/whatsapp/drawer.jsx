@@ -3,6 +3,12 @@
 
 import React, { useState } from 'react';
 
+const TRAIL_EMOJI = {
+  origin: '📣', intent_detected: '🤖', conversation_created: '🟢',
+  template_sent: '📨', assigned: '👤', transferred: '🔄',
+  queued: '📥', requeued: '📥', expired: '⏰', resolved: '✅', requested: '📞',
+};
+
 function WaNoteForm({ onAdd }) {
   const [body, setBody] = useState('');
   const [fb, setFb] = useState({ tone: '', text: '' });
@@ -106,12 +112,16 @@ export function WaDrawer({ convo, notes, trail, canOperate, onAddNote, onCreateQ
         <h6>Trazabilidad</h6>
         {trail.length === 0 && <div style={{ font: '400 12px var(--font-body)', color: 'var(--wa3-text-mute)' }}>Sin eventos registrados.</div>}
         <div className="wa3-trail-flat">
-          {trail.map((e, i) => (
-            <div key={i} className="wa3-trail-flat__item">
-              <strong>{e.event_label || e.event_type}</strong>
-              <div className="wa3-trail-flat__meta">{e.actor_name || ''}{e.created_at_label ? ` · ${e.created_at_label}` : ''}</div>
-            </div>
-          ))}
+          {trail.map((e, i) => {
+            const emoji = TRAIL_EMOJI[e.event_type] || '•';
+            return (
+              <div key={i} className="wa3-trail-flat__item">
+                <strong>{emoji} {e.event_label || e.event_type}</strong>
+                {e.notes && <div style={{ color: 'var(--wa3-text-mute)', fontSize: 11, marginTop: 2, whiteSpace: 'pre-wrap' }}>{e.notes}</div>}
+                <div className="wa3-trail-flat__meta">{e.actor_name || ''}{e.created_at_label ? ` · ${e.created_at_label}` : ''}</div>
+              </div>
+            );
+          })}
         </div>
       </div>
 

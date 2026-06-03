@@ -13,7 +13,7 @@ import { adaptAgent, rolesFromAgents } from './adapt.js';
 import {
   fetchAgentSummary, fetchQuickReplies, fetchTemplates,
   assignConversation, transferConversation, queueByRole, closeConversation,
-  requeueExpired,
+  requeueExpired, startWithTemplate,
 } from './api.js';
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -167,13 +167,20 @@ export function WaApp() {
       } catch { notify('Error al cerrar', 'mdi-alert'); }
     },
 
-    onApplyTemplate: (tpl) => {
-      const filled = (tpl.body || '').replace(
-        /\{\{\s*(\d+)\s*\}\}/g,
-        (mm, i) => (tpl.examples || [])[Number(i) - 1] || mm,
-      );
-      setDraft(filled);
-      notify(`Plantilla "${tpl.name || tpl.display_name}" cargada`, 'mdi-file-document');
+    onSendTemplate: async (tpl, vars) => {
+      if (!activeConvo) return;
+      try {
+        await startWithTemplate({
+          waNumber: activeConvo.wa,
+          templateId: tpl.id,
+          variables: vars || [],
+          contactName: activeConvo.name,
+          patientHcNumber: activeConvo.hc || undefined,
+          patientFullName: activeConvo.patient?.name || undefined,
+        });
+        notify(`Plantilla "${tpl.name || tpl.display_name}" enviada`, 'mdi-file-send');
+        await reloadConvos();
+      } catch { notify('Error al enviar la plantilla', 'mdi-alert'); }
     },
 
     onCopy: (value, label) => {
@@ -242,7 +249,13 @@ export function WaApp() {
       )}
 
       {modal === 'new' && (
-        <WaNewConvoModal onClose={() => setModal(null)} toast={notify} templates={templates} />
+        <WaNewConvoModal
+          onClose={async (convId) => {
+            setModal(null);
+            if (convId) { await reloadConvos(); setActiveId(convId); }
+          }}
+          toast={notify} templates={templates}
+        />
       )}
       {modal === 'followup' && (
         <WaFollowupModal
