@@ -82,7 +82,7 @@ function WaAgentRow({ a, isActive, onClick }) {
         <div className="wa3-agent__role">{a.role}</div>
         <div className="wa3-agent__stats">
           <span><i className="mdi mdi-chat-processing-outline"></i>{a.active} activos</span>
-          <span><i className="mdi mdi-check-circle-outline"></i>{a.resolved} hoy</span>
+          <span><i className="mdi mdi-message-alert-outline"></i>{a.resolved} sin leer</span>
           <span><i className="mdi mdi-timer-outline"></i>{a.avgResp}</span>
         </div>
       </div>
@@ -101,7 +101,7 @@ function WaSupervisorSummary({ agents }) {
     <div className="wa3-supervisor">
       <div className="wa3-supervisor__metric"><span className="k">Agentes online</span><span className="v">{online}<span className="of">/ {agents.length}</span></span></div>
       <div className="wa3-supervisor__metric"><span className="k">Chats activos</span><span className="v">{totalActive}</span></div>
-      <div className="wa3-supervisor__metric"><span className="k">Resueltos hoy</span><span className="v">{totalResolved}</span></div>
+      <div className="wa3-supervisor__metric"><span className="k">Sin leer</span><span className="v">{totalResolved}</span></div>
     </div>
   );
 }

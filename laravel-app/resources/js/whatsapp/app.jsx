@@ -11,7 +11,7 @@ import { useMessages } from './hooks/useMessages.js';
 import { usePusher } from './hooks/usePusher.js';
 import { adaptAgent, rolesFromAgents } from './adapt.js';
 import {
-  fetchAgents, fetchQuickReplies, fetchTemplates,
+  fetchAgentSummary, fetchQuickReplies, fetchTemplates,
   assignConversation, transferConversation, queueByRole, closeConversation,
   requeueExpired,
 } from './api.js';
@@ -53,7 +53,7 @@ export function WaApp() {
   const [templates, setTemplates] = useState([]);
 
   useEffect(() => {
-    fetchAgents().then(r => setAgents((r.data || []).map(adaptAgent))).catch(() => {});
+    fetchAgentSummary().then(r => setAgents((r.data?.agents || []).map(adaptAgent))).catch(() => {});
     fetchQuickReplies().then(r => setQuickReplies(r.data || [])).catch(() => {});
     fetchTemplates().then(r => setTemplates(r.data || [])).catch(() => {});
   }, []);
