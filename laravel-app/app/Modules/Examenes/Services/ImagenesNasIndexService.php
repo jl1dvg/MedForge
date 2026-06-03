@@ -7,6 +7,7 @@ use App\Models\ImagenSigcenterIndex;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class ImagenesNasIndexService
 {
@@ -390,9 +391,6 @@ class ImagenesNasIndexService
 
     private function tableExists(string $table): bool
     {
-        return DB::table('information_schema.TABLES')
-            ->whereRaw('TABLE_SCHEMA = DATABASE()')
-            ->where('TABLE_NAME', $table)
-            ->exists();
+        return Schema::hasTable($table);
     }
 }

@@ -503,64 +503,80 @@ class ExamenesParityController
             ], 422);
         }
 
-        $nasContext = $this->resolveNasContext($hcNumber, $formId);
-        $resolvedHcNumber = $nasContext['hc_number'];
-        $resolvedFormId = $nasContext['form_id'];
+        try {
+            $nasContext = $this->resolveNasContext($hcNumber, $formId);
+            $resolvedHcNumber = $nasContext['hc_number'];
+            $resolvedFormId = $nasContext['form_id'];
 
-        if (!$nasContext['has_image_context']) {
-            $probeError = null;
-            $probeFiles = $this->getSigcenterFiles($formId, $hcNumber, false, $probeError);
-            if ($probeFiles !== []) {
-                $files = array_map(function (array $file) use ($hcNumber, $formId): array {
-                    $name = trim((string) ($file['name'] ?? ''));
-                    $file['url'] = $name === ''
-                        ? ''
-                        : '/v2/imagenes/examenes-realizados/nas/file?hc_number=' . rawurlencode($hcNumber)
-                            . '&form_id=' . rawurlencode($formId)
-                            . '&file=' . rawurlencode($name);
+            if (!$nasContext['has_image_context']) {
+                $probeError = null;
+                $probeFiles = $this->getSigcenterFiles($formId, $hcNumber, false, $probeError);
+                if ($probeFiles !== []) {
+                    $files = array_map(function (array $file) use ($hcNumber, $formId): array {
+                        $name = trim((string) ($file['name'] ?? ''));
+                        $file['url'] = $name === ''
+                            ? ''
+                            : '/v2/imagenes/examenes-realizados/nas/file?hc_number=' . rawurlencode($hcNumber)
+                                . '&form_id=' . rawurlencode($formId)
+                                . '&file=' . rawurlencode($name);
 
-                    return $file;
-                }, $probeFiles);
+                        return $file;
+                    }, $probeFiles);
+
+                    return response()->json([
+                        'success' => true,
+                        'files' => $files,
+                        'error' => null,
+                        'resolved_form_id' => $formId,
+                        'resolved_hc_number' => $hcNumber,
+                    ]);
+                }
 
                 return response()->json([
                     'success' => true,
-                    'files' => $files,
+                    'files' => [],
                     'error' => null,
+                    'message' => 'No existe un procedimiento de imagenes asociado a este examen.',
                     'resolved_form_id' => $formId,
                     'resolved_hc_number' => $hcNumber,
                 ]);
             }
 
+            $error = null;
+            $files = $this->getPreferredFilesWithCache($resolvedHcNumber, $resolvedFormId, false, $error);
+            $files = array_map(function (array $file) use ($resolvedHcNumber, $resolvedFormId): array {
+                $name = trim((string) ($file['name'] ?? ''));
+                $file['url'] = $name === ''
+                    ? ''
+                    : '/v2/imagenes/examenes-realizados/nas/file?hc_number=' . rawurlencode($resolvedHcNumber)
+                        . '&form_id=' . rawurlencode($resolvedFormId)
+                        . '&file=' . rawurlencode($name);
+
+                return $file;
+            }, $files);
+
             return response()->json([
-                'success' => true,
-                'files' => [],
-                'error' => null,
-                'message' => 'No existe un procedimiento de imagenes asociado a este examen.',
+                'success' => $error === null,
+                'files' => $files,
+                'error' => $error,
                 'resolved_form_id' => $resolvedFormId,
                 'resolved_hc_number' => $resolvedHcNumber,
             ]);
+        } catch (Throwable $e) {
+            Log::error('imagenes.v2.nas_list.error', [
+                'form_id' => $formId,
+                'hc_number' => $hcNumber,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'files' => [],
+                'error' => 'No se pudo consultar los archivos del examen.',
+                'resolved_form_id' => $formId,
+                'resolved_hc_number' => $hcNumber,
+            ], 200);
         }
-
-        $error = null;
-        $files = $this->getPreferredFilesWithCache($resolvedHcNumber, $resolvedFormId, false, $error);
-        $files = array_map(function (array $file) use ($resolvedHcNumber, $resolvedFormId): array {
-            $name = trim((string) ($file['name'] ?? ''));
-            $file['url'] = $name === ''
-                ? ''
-                : '/v2/imagenes/examenes-realizados/nas/file?hc_number=' . rawurlencode($resolvedHcNumber)
-                    . '&form_id=' . rawurlencode($resolvedFormId)
-                    . '&file=' . rawurlencode($name);
-
-            return $file;
-        }, $files);
-
-        return response()->json([
-            'success' => $error === null,
-            'files' => $files,
-            'error' => $error,
-            'resolved_form_id' => $resolvedFormId,
-            'resolved_hc_number' => $resolvedHcNumber,
-        ]);
     }
 
     public function imagenesNasWarm(Request $request): Response
@@ -736,7 +752,29 @@ class ExamenesParityController
             return response()->json(['success' => false, 'error' => 'Parámetros incompletos'], 400);
         }
 
-        $informe = $this->legacyExamenModel()->obtenerInformeImagen($formId);
+        try {
+            $informe = $this->legacyExamenModel()->obtenerInformeImagen($formId);
+        } catch (Throwable $e) {
+            Log::error('imagenes.v2.informe_datos.error', [
+                'form_id' => $formId,
+                'tipo_examen' => $tipoExamen,
+                'error' => $e->getMessage(),
+            ]);
+
+            $plantilla = (string) ($this->mapearPlantillaInforme($tipoExamen) ?? '');
+            if ($plantilla === '') {
+                return response()->json(['success' => false, 'error' => 'No hay plantilla para este examen'], 404);
+            }
+
+            return response()->json([
+                'success' => true,
+                'plantilla' => $plantilla,
+                'payload' => null,
+                'exists' => false,
+                'updated_at' => null,
+                'warning' => 'No se pudo leer un informe guardado previamente.',
+            ]);
+        }
         $plantilla = is_array($informe) ? trim((string) ($informe['plantilla'] ?? '')) : '';
         if ($plantilla === '') {
             $plantilla = (string) ($this->mapearPlantillaInforme($tipoExamen) ?? '');
