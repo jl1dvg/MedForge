@@ -249,40 +249,6 @@ export function App() {
 
   return (
     <div className={shellClass}>
-      {/* ---- Topbar ---- */}
-      <header className="app-topbar">
-        <div className="app-brand">
-          <span className="app-brand-mark"><i className="mdi mdi-flash"></i></span>
-          <div className="app-title">
-            <h1>Solicitudes quirúrgicas</h1>
-            <span className="crumb">MedForge · Coordinación · /v3/solicitudes</span>
-          </div>
-        </div>
-        <div className="topbar-spacer"></div>
-        <div className="dir-switch" role="group" aria-label="Dirección visual">
-          <span className="ds-label">Dirección</span>
-          {(['a', 'b', 'c'] as const).map((v, i) => (
-            <button
-              key={v}
-              className={tweaks.direction === v ? 'is-active' : ''}
-              onClick={() => setTweak('direction', v)}
-            >{['Clínico', 'Aireado', 'Denso'][i]}</button>
-          ))}
-        </div>
-        <div className="topbar-actions">
-          <button className="icon-btn" title="Notificaciones" onClick={() => showToast('No hay notificaciones nuevas', 'mdi-bell-check-outline')}>
-            <i className="mdi mdi-bell-outline"></i><span className="dot"></span>
-          </button>
-          <button className="icon-btn" title="Actualizar" onClick={() => void load(filters)}>
-            <i className={`mdi mdi-refresh${loading ? ' mdi-spin' : ''}`}></i>
-          </button>
-          <div className="user-chip">
-            <span className="av">{CURRENT_USER.name.split(' ').map((w) => w[0]).join('')}</span>
-            <span className="meta"><b>{CURRENT_USER.name}</b><span>{CURRENT_USER.role}</span></span>
-          </div>
-        </div>
-      </header>
-
       {/* ---- KPI row ---- */}
       <div className="kpi-row">
         <Kpi tone="total"   icon="mdi-clipboard-text-multiple-outline" value={metrics.total}   label="Solicitudes totales"    active={kpiFilter === ''}        onClick={() => setKpiFilter('')} />
@@ -302,6 +268,8 @@ export function App() {
         setView={setView}
         doctores={doctores}
         afiliaciones={afiliaciones}
+        direction={tweaks.direction}
+        setDirection={(v) => setTweak('direction', v)}
       />
 
       {/* ---- Error banner ---- */}

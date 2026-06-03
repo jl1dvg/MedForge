@@ -118,6 +118,7 @@ body {
   display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
   padding: 14px 22px; flex: none;
 }
+.toolbar-dir { margin-right: 0; }
 .search-box {
   display: flex; align-items: center; gap: 8px; background: #fff;
   border: 1px solid var(--border); border-radius: var(--radius); padding: 0 12px;
@@ -246,8 +247,14 @@ body {
 .chip {
   display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; font-weight: 600;
   padding: 3px 8px; border-radius: var(--radius-pill); line-height: 1.4; white-space: nowrap;
+  max-width: 100%;
 }
 .chip i { font-size: 12px; }
+.chip-afil {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .chip-afil.tone-consulta   { background: var(--cat-consulta-bg);   color: var(--cat-consulta-fg); }
 .chip-afil.tone-optometria { background: var(--cat-optometria-bg); color: var(--cat-optometria-fg); }
 .chip-afil.tone-examen     { background: var(--cat-examen-bg);     color: var(--cat-examen-fg); }

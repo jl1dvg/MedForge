@@ -1,7 +1,7 @@
 // @ts-nocheck
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mapDetalleResponse } from './api.ts';
+import { buildSolicitudFromApi, mapDetalleResponse } from './api.ts';
 
 test('maps prefactura detail using V2 field names', () => {
   const detalle = mapDetalleResponse({
@@ -62,4 +62,22 @@ test('maps prefactura detail using V2 field names', () => {
   assert.equal(detalle.agenda.doctor, 'Dra. Ruiz');
   assert.equal(detalle.preop.length, 2);
   assert.equal(detalle.preop[0].label, 'Apto oftalmologo');
+});
+
+test('normalizes card and filter insurer labels to company only', () => {
+  const salud = buildSolicitudFromApi({
+    id: 1,
+    afiliacion: 'SN4 - SALUD S.A. - SALUD (REEMBOLSO) NIVEL 4',
+    empresa_seguro: 'SN4 - SALUD S.A. - SALUD (REEMBOLSO) NIVEL 4',
+    procedimiento: 'Chalazion',
+  }, 'revision-codigos');
+  const particular = buildSolicitudFromApi({
+    id: 2,
+    afiliacion: 'PAR - PARTICULAR',
+    empresa_seguro: 'PAR - PARTICULAR',
+    procedimiento: 'Capsulotomia',
+  }, 'recibida');
+
+  assert.equal(salud.empresa_seguro, 'SALUD S.A.');
+  assert.equal(particular.empresa_seguro, 'PARTICULAR');
 });

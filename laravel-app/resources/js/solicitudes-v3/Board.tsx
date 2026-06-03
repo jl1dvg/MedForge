@@ -16,9 +16,11 @@ interface ToolbarProps {
   setView: (v: string) => void;
   doctores: string[];
   afiliaciones: string[];
+  direction: 'a' | 'b' | 'c';
+  setDirection: (v: 'a' | 'b' | 'c') => void;
 }
 
-export function Toolbar({ filters, setFilters, preset, setPreset, view, setView, doctores, afiliaciones }: ToolbarProps) {
+export function Toolbar({ filters, setFilters, preset, setPreset, view, setView, doctores, afiliaciones, direction, setDirection }: ToolbarProps) {
   return (
     <div className="toolbar">
       <div className="search-box">
@@ -64,6 +66,17 @@ export function Toolbar({ filters, setFilters, preset, setPreset, view, setView,
       </div>
 
       <div className="toolbar-spacer"></div>
+
+      <div className="dir-switch toolbar-dir" role="group" aria-label="Dirección visual">
+        <span className="ds-label">Dirección</span>
+        {(['a', 'b', 'c'] as const).map((v, i) => (
+          <button
+            key={v}
+            className={direction === v ? 'is-active' : ''}
+            onClick={() => setDirection(v)}
+          >{['Clínico', 'Aireado', 'Denso'][i]}</button>
+        ))}
+      </div>
 
       <div className="view-toggle">
         <button className={view === 'kanban' ? 'is-active' : ''} onClick={() => setView('kanban')}>

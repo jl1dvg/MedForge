@@ -109,10 +109,31 @@ function resolveAfiliacion(raw: string | undefined): { afiliacion: string; afili
   return { afiliacion: raw, afiliacion_label: raw, afiliacion_tone: 'neutral' };
 }
 
+function sortEs(a: string, b: string): number {
+  return a.localeCompare(b, 'es', { sensitivity: 'base' });
+}
+
 function cleanString(value: unknown): string | null {
   if (value == null) return null;
   const text = String(value).trim();
   return text === '' ? null : text;
+}
+
+function normalizeAseguradoraLabel(...values: Array<unknown>): string {
+  const raw = values.map(cleanString).find(Boolean) ?? 'Particular';
+  const text = raw.replace(/\s+/g, ' ').trim();
+  const parts = text.split(/\s+-\s+/).map((part) => part.trim()).filter(Boolean);
+
+  if (parts.length >= 2) {
+    const firstLooksLikeCode = /^[A-Z]{2,}\d{0,4}$/i.test(parts[0]) || /^(PAR|IESS|ISSFA|ISSPOL|MSP)$/i.test(parts[0]);
+    if (firstLooksLikeCode) return parts[1];
+  }
+
+  return text
+    .replace(/\s+\([^)]*\)\s*/g, ' ')
+    .replace(/\s+NIVEL\s+\w+$/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function cleanHtml(value: unknown): string {
@@ -218,7 +239,7 @@ export function buildSolicitudFromApi(raw: ApiSolicitud, estadoSlug: KanbanSlug)
   const col = COLUMNS.find((c) => c.slug === estadoSlug) ?? COLUMNS[0];
   const name = raw.full_name ?? raw.paciente ?? 'Paciente';
   const { afiliacion, afiliacion_label, afiliacion_tone } = resolveAfiliacion(raw.afiliacion);
-  const empresa_seguro = cleanString(raw.empresa_seguro) ?? afiliacion_label;
+  const empresa_seguro = normalizeAseguradoraLabel(raw.empresa_seguro, raw.afiliacion, afiliacion_label);
   const plan_seguro = cleanString(raw.plan_seguro) ?? '—';
   const { procedimiento, procedimiento_short } = resolveProcedimiento(raw.procedimiento);
   const { checklist, checklist_progress } = buildChecklist(estadoSlug);
@@ -327,8 +348,8 @@ export async function fetchKanbanData(filters?: Partial<Filters>): Promise<{
   }
 
   const allSolicitudes = Object.values(byColumn).flat();
-  const afiliaciones = [...new Set(allSolicitudes.map((s) => s.empresa_seguro).filter(Boolean))];
-  const doctores = [...new Set(allSolicitudes.map((s) => s.doctor).filter((d) => d !== '—'))];
+  const afiliaciones = [...new Set(allSolicitudes.map((s) => s.empresa_seguro).filter(Boolean))].sort(sortEs);
+  const doctores = [...new Set(allSolicitudes.map((s) => s.doctor).filter((d) => d !== '—'))].sort(sortEs);
 
   return { byColumn, afiliaciones, doctores };
 }
