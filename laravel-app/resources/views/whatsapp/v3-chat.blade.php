@@ -139,7 +139,7 @@
         .wa3:not(.has-drawer) .wa3-drawer { display: none; }
 
         /* INBOX */
-        .wa3-inbox { background: var(--wa3-surface); border-right: 1px solid var(--wa3-border); display: flex; flex-direction: column; overflow: hidden; }
+        .wa3-inbox { background: var(--wa3-surface); border-right: 1px solid var(--wa3-border); display: flex; flex-direction: column; overflow: visible; position: relative; z-index: 10; }
         .wa3-inbox__head { padding: 18px 20px 12px; display: flex; flex-direction: column; gap: 12px; }
         .wa3-inbox__title-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
         .wa3-inbox__title { font: 600 18px/1.2 var(--font-display, "Rubik", system-ui, sans-serif); margin: 0; color: var(--wa3-text); }
@@ -487,8 +487,8 @@
         .wa3-note { font: 400 12.5px var(--bs-body-font-family); color: var(--wa3-text); padding: 7px 0; border-bottom: 1px solid var(--wa3-border-soft); }
         .wa3-note__who { font-weight: 600; color: var(--wa3-accent); font-size: 11px; margin-bottom: 2px; }
 
-        /* Manager menu: opens to the right so it doesn't cover the nav sidebar */
-        .wa3-manager-menu { left: 0; right: auto; }
+        /* Manager menu: opens to the right, high z-index to float above the thread pane */
+        .wa3-manager-menu { left: 0; right: auto; z-index: 200; }
 
         /* Load more button at the bottom of the conversation list */
         .wa3-load-more { display: block; width: 100%; padding: 12px; border: 0; background: transparent; color: var(--wa3-accent); font: 600 12.5px var(--bs-body-font-family); cursor: pointer; border-top: 1px solid var(--wa3-border-soft); }
