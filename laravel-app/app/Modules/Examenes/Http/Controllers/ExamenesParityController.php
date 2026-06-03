@@ -13,9 +13,11 @@ use App\Modules\Examenes\Services\ExamenesReportingService;
 use App\Modules\Examenes\Services\ImagenesUiService;
 use App\Modules\Examenes\Services\LegacyExamenesBridge;
 use App\Modules\Examenes\Services\LegacyExamenesRuntime;
+use App\Modules\Examenes\Services\ImagenesNasListCacheService;
 use App\Modules\Examenes\Services\NasImagenesService;
 use App\Modules\Examenes\Services\ImagenesSigcenterIndexService;
 use App\Modules\Examenes\Services\SigcenterImagenesService;
+use App\Modules\Reporting\Services\ImagenesPdfCacheService;
 use App\Modules\Reporting\Services\PdfRenderer;
 use App\Modules\Shared\Support\LegacyPermissionResolver;
 use Illuminate\Support\Facades\Auth;
@@ -47,6 +49,8 @@ class ExamenesParityController
     private ExamenesReportingService $reporting;
     private ImagenesUiService $imagenesUi;
     private SigcenterImagenesService $sigcenterImagenesService;
+    private ?ImagenesNasListCacheService $imagenesNasListCacheService = null;
+    private ?ImagenesPdfCacheService $imagenesPdfCacheService = null;
     private ?NasImagenesService $nasImagenesService = null;
     private ?ImagenesSigcenterIndexService $imagenesSigcenterIndexService = null;
     private ?ExamenModel $legacyExamenModel = null;
@@ -80,6 +84,28 @@ class ExamenesParityController
         $this->prefactura = new ExamenesPrefacturaService(DB::connection()->getPdo());
 
         return $this->prefactura;
+    }
+
+    private function imagenesNasListCache(): ImagenesNasListCacheService
+    {
+        if ($this->imagenesNasListCacheService instanceof ImagenesNasListCacheService) {
+            return $this->imagenesNasListCacheService;
+        }
+
+        $this->imagenesNasListCacheService = new ImagenesNasListCacheService();
+
+        return $this->imagenesNasListCacheService;
+    }
+
+    private function imagenesPdfCache(): ImagenesPdfCacheService
+    {
+        if ($this->imagenesPdfCacheService instanceof ImagenesPdfCacheService) {
+            return $this->imagenesPdfCacheService;
+        }
+
+        $this->imagenesPdfCacheService = new ImagenesPdfCacheService();
+
+        return $this->imagenesPdfCacheService;
     }
 
     public function kanbanData(Request $request): Response
@@ -522,7 +548,8 @@ class ExamenesParityController
             ], 422);
         }
 
-        try {
+        return response()->json($this->imagenesNasListCache()->remember($hcNumber, $formId, function () use ($hcNumber, $formId): array {
+            try {
             $nasContext = $this->resolveNasContext($hcNumber, $formId);
             $resolvedHcNumber = $nasContext['hc_number'];
             $resolvedFormId = $nasContext['form_id'];
@@ -542,23 +569,23 @@ class ExamenesParityController
                         return $file;
                     }, $probeFiles);
 
-                    return response()->json([
+                    return [
                         'success' => true,
                         'files' => $files,
                         'error' => null,
                         'resolved_form_id' => $formId,
                         'resolved_hc_number' => $hcNumber,
-                    ]);
+                    ];
                 }
 
-                return response()->json([
+                return [
                     'success' => true,
                     'files' => [],
                     'error' => null,
                     'message' => 'No existe un procedimiento de imagenes asociado a este examen.',
                     'resolved_form_id' => $formId,
                     'resolved_hc_number' => $hcNumber,
-                ]);
+                ];
             }
 
             $error = null;
@@ -574,13 +601,13 @@ class ExamenesParityController
                 return $file;
             }, $files);
 
-            return response()->json([
+            return [
                 'success' => $error === null,
                 'files' => $files,
                 'error' => $error,
                 'resolved_form_id' => $resolvedFormId,
                 'resolved_hc_number' => $resolvedHcNumber,
-            ]);
+            ];
         } catch (Throwable $e) {
             Log::error('imagenes.v2.nas_list.error', [
                 'form_id' => $formId,
@@ -588,14 +615,15 @@ class ExamenesParityController
                 'error' => $e->getMessage(),
             ]);
 
-            return response()->json([
+            return [
                 'success' => false,
                 'files' => [],
                 'error' => 'No se pudo consultar los archivos del examen.',
                 'resolved_form_id' => $formId,
                 'resolved_hc_number' => $hcNumber,
-            ], 200);
+            ];
         }
+        }));
     }
 
     public function imagenesNasWarm(Request $request): Response
@@ -932,6 +960,7 @@ class ExamenesParityController
             );
 
             if ($ok) {
+                $this->imagenesPdfCache()->forgetForm($formId);
                 $this->autoFacturarInformeImagen($formId, $hcNumber !== '' ? $hcNumber : null, $userId);
             }
 
