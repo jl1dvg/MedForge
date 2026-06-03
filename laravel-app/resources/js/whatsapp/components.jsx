@@ -82,8 +82,10 @@ function WaAgentRow({ a, isActive, onClick }) {
         <div className="wa3-agent__role">{a.role}</div>
         <div className="wa3-agent__stats">
           <span><i className="mdi mdi-chat-processing-outline"></i>{a.active} activos</span>
-          <span><i className="mdi mdi-message-alert-outline"></i>{a.resolved} sin leer</span>
-          <span><i className="mdi mdi-timer-outline"></i>{a.avgResp}</span>
+          <span style={a.resolved > 0 ? { color: 'var(--wa3-danger)', fontWeight: 700 } : {}}>
+            <i className="mdi mdi-message-alert-outline"></i>{a.resolved} sin leer
+          </span>
+          {a.avgResp && a.avgResp !== '—' && <span><i className="mdi mdi-timer-outline"></i>{a.avgResp}</span>}
         </div>
       </div>
       <div className="wa3-agent__workload" title={`${a.active} chats activos`}>
@@ -218,7 +220,7 @@ function WaChips({ filter, tabCounts, onPick }) {
 
 export function WaInbox({
   activeId, filter, search, view, canSupervise, tabCounts, dateFrom, dateTo,
-  agentFilter, agents, visible, loading,
+  agentFilter, agents, visible, loading, hasMore, loadMore, loadingMore,
   onPickConvo, onFilter, onSearch, onView, onDate, onAgentFilter, onNewConvo, onRequeue,
 }) {
   return (
@@ -278,6 +280,11 @@ export function WaInbox({
               <div style={{ padding: 28, textAlign: 'center', color: 'var(--wa3-text-mute)', font: '400 13px var(--font-body)' }}>
                 Sin conversaciones en esta bandeja{search ? ` para "${search}"` : ''}.
               </div>
+            )}
+            {hasMore && (
+              <button className="wa3-load-more" onClick={loadMore} disabled={loadingMore}>
+                {loadingMore ? 'Cargando…' : 'Cargar más'}
+              </button>
             )}
           </div>
         </>

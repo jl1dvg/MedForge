@@ -487,6 +487,14 @@
         .wa3-note { font: 400 12.5px var(--bs-body-font-family); color: var(--wa3-text); padding: 7px 0; border-bottom: 1px solid var(--wa3-border-soft); }
         .wa3-note__who { font-weight: 600; color: var(--wa3-accent); font-size: 11px; margin-bottom: 2px; }
 
+        /* Manager menu: opens to the right so it doesn't cover the nav sidebar */
+        .wa3-manager-menu { left: 0; right: auto; }
+
+        /* Load more button at the bottom of the conversation list */
+        .wa3-load-more { display: block; width: 100%; padding: 12px; border: 0; background: transparent; color: var(--wa3-accent); font: 600 12.5px var(--bs-body-font-family); cursor: pointer; border-top: 1px solid var(--wa3-border-soft); }
+        .wa3-load-more:hover { background: var(--wa3-accent-soft); }
+        .wa3-load-more:disabled { color: var(--wa3-text-mute); cursor: default; }
+
         /* Toast notifications */
         .wa3-toast-wrap { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 250; }
         .wa3-toast { display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; border-radius: 999px; background: var(--wa3-text); color: #fff; font: 600 13px var(--bs-body-font-family); box-shadow: 0 12px 32px rgba(16,24,40,.24); animation: wa3-toast-in .2s ease-out; }
