@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { fetchConversation, fetchNotes, fetchTrail, sendMessage as apiSend, addNote as apiAddNote } from '../api.js';
 import { adaptMessage, buildThread } from '../adapt.js';
 
+const POLL_MS = 15000;
+
 export function useMessages(conversationId) {
   const [thread, setThread] = useState([]);
   const [notes, setNotes] = useState([]);
@@ -39,6 +41,23 @@ export function useMessages(conversationId) {
     });
 
     return () => ctrl.abort();
+  }, [conversationId]);
+
+  // Polling fallback (15s): refresh messages if Pusher doesn't deliver
+  useEffect(() => {
+    if (!conversationId) return;
+    const id = setInterval(async () => {
+      try {
+        const result = await fetchConversation(conversationId);
+        const rawMessages = result.data?.messages || [];
+        setThread(prev => {
+          const pending = prev.filter(m => String(m.id).startsWith('temp-'));
+          const fresh = buildThread(rawMessages);
+          return pending.length > 0 ? [...fresh, ...pending] : fresh;
+        });
+      } catch {}
+    }, POLL_MS);
+    return () => clearInterval(id);
   }, [conversationId]);
 
   const sendMessage = useCallback(async (text) => {
