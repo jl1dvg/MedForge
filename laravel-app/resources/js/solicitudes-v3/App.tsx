@@ -219,8 +219,8 @@ export function App() {
     onDrop: (e: React.DragEvent, slug: string) => { e.preventDefault(); if (draggingId != null) moveTo(draggingId, slug); setDraggingId(null); setDropTarget(null); },
   }), [draggingId, dropTarget, moveTo]);
 
-  const selected = useMemo(() => solicitudes.find((s) => s.id === selectedId) ?? null, [solicitudes, selectedId]);
-  const toggleKpi = (k: string) => setKpiFilter((cur) => cur === k ? '' : k);
+  const selected = useMemo(() => solicitudes.find((s: Solicitud) => s.id === selectedId) ?? null, [solicitudes, selectedId]);
+  const toggleKpi = (k: string) => setKpiFilter((cur: string) => cur === k ? '' : k);
 
   const shellClass = [
     'app-shell',
@@ -336,7 +336,7 @@ export function App() {
 
       {/* ---- Prefactura modal ---- */}
       <PrefacturaModal
-        sol={solicitudes.find((s) => s.id === prefacturaId) ?? null}
+        sol={solicitudes.find((s: Solicitud) => s.id === prefacturaId) ?? null}
         open={prefacturaId != null}
         onClose={() => setPrefacturaId(null)}
         onTogglePreop={togglePreop}
