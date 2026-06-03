@@ -261,7 +261,7 @@ function PfNota({ sol, showToast }: { sol: Solicitud; showToast: (msg: string, i
       </div>
       <div className="pf-section">
         <h4 className="pf-h">Plan</h4>
-        <textarea className="fld" rows={5} value={plan} onChange={(e) => setPlan(e.target.value)}></textarea>
+        <textarea className="fld" rows={5} value={plan} onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setPlan(e.target.value)}></textarea>
         <button className="btn-add self-end" style={{ marginTop: 10 }} onClick={() => showToast('Nota clínica guardada', 'mdi-content-save-outline')}>
           <i className="mdi mdi-content-save-outline"></i>Guardar nota
         </button>
@@ -298,7 +298,7 @@ export function PrefacturaModal({ sol, open, onClose, onTogglePreop, showToast }
 
   return (
     <div className={`pf-backdrop ${open ? 'open' : ''}`} onClick={onClose}>
-      <div className="pf-modal" onClick={(e) => e.stopPropagation()}>
+      <div className="pf-modal" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
         <header className="pf-head">
           <span className="pf-head-ic"><i className="mdi mdi-file-document-multiple-outline"></i></span>
           <div className="pf-head-info">

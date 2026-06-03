@@ -137,7 +137,7 @@ export function Card({ sol, onOpen, onAdvance, isLast, dnd }: CardProps) {
     <article
       className={`card sla-${sol.sla_status} ${dnd.draggingId === sol.id ? 'is-dragging' : ''}`}
       draggable
-      onDragStart={(e) => dnd.onDragStart(e, sol)}
+      onDragStart={(e: React.DragEvent<HTMLElement>) => dnd.onDragStart(e, sol)}
       onDragEnd={dnd.onDragEnd}
       onClick={() => onOpen(sol.id)}
     >
@@ -184,7 +184,7 @@ export function Card({ sol, onOpen, onAdvance, isLast, dnd }: CardProps) {
       </div>
 
       {!isLast && (
-        <div className="card-cta" onClick={(e) => e.stopPropagation()}>
+        <div className="card-cta" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
           <button className="cta-advance" onClick={() => onAdvance(sol.id)} title="Avanzar a la siguiente etapa">
             <i className="mdi mdi-check-circle-outline"></i>{sol.checklist_progress.next_label}
           </button>

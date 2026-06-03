@@ -26,14 +26,14 @@ export function Toolbar({ filters, setFilters, preset, setPreset, view, setView,
         <input
           placeholder="Buscar paciente, HC o procedimiento…"
           value={filters.search}
-          onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFilters((f: Filters) => ({ ...f, search: e.target.value }))}
         />
       </div>
 
       <select
         className="filter-select"
         value={filters.afiliacion}
-        onChange={(e) => setFilters((f) => ({ ...f, afiliacion: e.target.value }))}
+        onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFilters((f: Filters) => ({ ...f, afiliacion: e.target.value }))}
       >
         <option value="">Todas las afiliaciones</option>
         {afiliaciones.map((a) => <option key={a} value={a}>{a}</option>)}
@@ -42,7 +42,7 @@ export function Toolbar({ filters, setFilters, preset, setPreset, view, setView,
       <select
         className="filter-select"
         value={filters.doctor}
-        onChange={(e) => setFilters((f) => ({ ...f, doctor: e.target.value }))}
+        onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFilters((f: Filters) => ({ ...f, doctor: e.target.value }))}
       >
         <option value="">Todos los doctores</option>
         {doctores.map((d) => <option key={d} value={d}>{d}</option>)}
@@ -100,9 +100,9 @@ export function Column({ col, items, onOpen, onAdvance, dnd, lastSlug }: ColumnP
   return (
     <div
       className={`col ${dnd.dropTarget === col.slug ? 'is-droptarget' : ''}`}
-      onDragOver={(e) => dnd.onDragOver(e, col.slug)}
+      onDragOver={(e: React.DragEvent<HTMLDivElement>) => dnd.onDragOver(e, col.slug)}
       onDragLeave={dnd.onDragLeave}
-      onDrop={(e) => dnd.onDrop(e, col.slug)}
+      onDrop={(e: React.DragEvent<HTMLDivElement>) => dnd.onDrop(e, col.slug)}
     >
       <div className="col-head">
         <span className="col-dot" style={{ background: PHASE_COL_DOT[col.phase] }}></span>

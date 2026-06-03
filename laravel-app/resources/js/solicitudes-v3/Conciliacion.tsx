@@ -119,7 +119,7 @@ export function ConciliacionView({ rows, onConfirm }: ConciliacionViewProps) {
               </tr>
             </thead>
             <tbody>
-              {visible.map((sol) => {
+              {visible.map((sol: Solicitud) => {
                 const st = concStatus(sol);
                 const meta = CONC_STATUS_META[st];
                 const canConfirm = st === 'pendiente';

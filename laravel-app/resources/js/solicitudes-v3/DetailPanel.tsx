@@ -130,8 +130,8 @@ function TabTareas({ sol, onToggleTask, onAddTask }: { sol: Solicitud; onToggleT
         ))}
       </div>
       <form className="add-form" onSubmit={submit}>
-        <input className="fld" placeholder="Nueva tarea…" value={titulo} onChange={(e) => setTitulo(e.target.value)} />
-        <select className="fld fld-sm" value={prio} onChange={(e) => setPrio(e.target.value)}>
+        <input className="fld" placeholder="Nueva tarea…" value={titulo} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTitulo(e.target.value)} />
+        <select className="fld fld-sm" value={prio} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setPrio(e.target.value)}>
           <option>Normal</option><option>Media</option><option>Alta</option><option>Baja</option>
         </select>
         <button className="btn-add" type="submit"><i className="mdi mdi-plus"></i>Añadir</button>
@@ -159,7 +159,7 @@ function TabNotas({ sol, onAddNote }: { sol: Solicitud; onAddNote: (id: number, 
         ))}
       </div>
       <form className="add-form col" onSubmit={submit}>
-        <textarea className="fld" rows={3} placeholder="Registrar avance del caso…" value={txt} onChange={(e) => setTxt(e.target.value)}></textarea>
+        <textarea className="fld" rows={3} placeholder="Registrar avance del caso…" value={txt} onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setTxt(e.target.value)}></textarea>
         <button className="btn-add self-end" type="submit"><i className="mdi mdi-comment-plus-outline"></i>Guardar nota</button>
       </form>
     </section>
@@ -183,7 +183,7 @@ function TabComunicacion({ sol, showToast }: { sol: Solicitud; showToast: (msg: 
               <button type="button" key={q} className="qr" onClick={() => setWa(q + ' — Estimado/a ' + sol.full_name.split(' ')[0] + ', ')}>{q}</button>
             ))}
           </div>
-          <textarea className="fld" rows={3} placeholder="Escribe un mensaje para el paciente…" value={wa} onChange={(e) => setWa(e.target.value)}></textarea>
+          <textarea className="fld" rows={3} placeholder="Escribe un mensaje para el paciente…" value={wa} onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setWa(e.target.value)}></textarea>
           <button className="btn-add self-end btn-wa" type="submit"><i className="mdi mdi-send"></i>Enviar WhatsApp</button>
         </form>
       </section>
@@ -191,7 +191,7 @@ function TabComunicacion({ sol, showToast }: { sol: Solicitud; showToast: (msg: 
         <h3 className="psec-title"><i className="mdi mdi-email-outline"></i>Correo <span className="psec-meta">{sol.crm.email}</span></h3>
         <form className="add-form col" onSubmit={sendEmail}>
           <input className="fld" placeholder="Asunto: Seguimiento de solicitud" />
-          <textarea className="fld" rows={4} placeholder="Escribe el correo…" value={emailBody} onChange={(e) => setEmailBody(e.target.value)}></textarea>
+          <textarea className="fld" rows={4} placeholder="Escribe el correo…" value={emailBody} onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setEmailBody(e.target.value)}></textarea>
           <button className="btn-add self-end" type="submit"><i className="mdi mdi-email-send-outline"></i>Enviar correo</button>
         </form>
       </section>
