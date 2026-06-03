@@ -32,6 +32,17 @@ function WaBubble({ m, query }) {
     <div className={`wa3-msg is-${m.dir}${matches ? ' is-search-match' : ''}${m._current ? ' is-search-current' : ''}`}>
       <div className="wa3-bubble">
         {m.quote && <div className="wa3-quote"><span className="who">{m.quote.who}</span>{m.quote.text}</div>}
+        {m.media && m.media.type === 'image' && (
+          <div className="wa3-media-img">
+            <img
+              src={m.media.imageUrl || m.media.downloadUrl}
+              alt={m.media.name || 'Imagen'}
+              style={{ maxWidth: '100%', borderRadius: 8, display: 'block', cursor: 'pointer' }}
+              onClick={() => window.open(m.media.imageUrl || m.media.downloadUrl, '_blank')}
+              onError={e => { e.currentTarget.style.display = 'none'; }}
+            />
+          </div>
+        )}
         {m.media && m.media.type === 'file' && (
           <div className="wa3-media">
             <i className={`mdi ${m.media.icon || 'mdi-file-document-outline'}`}></i>

@@ -85,14 +85,16 @@ export function useMessages(conversationId) {
                     : type === 'image' ? 'mdi-image-outline'
                     : type === 'video' ? 'mdi-video-outline'
                     : 'mdi-file-document-outline';
+    const previewUrl = uploadedData.url || uploadedData.media_url || null;
     setThread(prev => [...prev, {
       kind: 'msg', id: tempId, dir: 'out', body: caption || null, time, status: 'pending',
       media: {
-        type: type === 'audio' ? 'audio' : 'file',
+        type: type === 'image' ? 'image' : type === 'audio' ? 'audio' : 'file',
         name: uploadedData.filename || (type === 'audio' ? 'Nota de voz' : 'Archivo adjunto'),
         size: uploadedData.mime_type || '',
         icon: mediaIcon,
-        downloadUrl: null,
+        downloadUrl: previewUrl,
+        imageUrl: type === 'image' ? previewUrl : null,
       },
     }]);
     try {
