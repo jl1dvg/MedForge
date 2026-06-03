@@ -136,6 +136,21 @@ function normalizeAseguradoraLabel(...values: Array<unknown>): string {
     .trim();
 }
 
+function normalizePlanSeguroLabel(plan: unknown, afiliacion: unknown, empresa: string): string {
+  const rawPlan = cleanString(plan);
+  if (rawPlan && rawPlan !== empresa) {
+    const planParts = rawPlan.split(/\s+-\s+/).map((part) => part.trim()).filter(Boolean);
+    return planParts.length >= 3 ? planParts.slice(2).join(' - ') : rawPlan;
+  }
+
+  const text = cleanString(afiliacion);
+  if (!text) return '—';
+  const parts = text.split(/\s+-\s+/).map((part) => part.trim()).filter(Boolean);
+  if (parts.length >= 3) return parts.slice(2).join(' - ');
+  if (parts.length === 2) return parts[1];
+  return text;
+}
+
 function cleanHtml(value: unknown): string {
   return cleanString(value)?.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim() ?? '';
 }
@@ -240,7 +255,7 @@ export function buildSolicitudFromApi(raw: ApiSolicitud, estadoSlug: KanbanSlug)
   const name = raw.full_name ?? raw.paciente ?? 'Paciente';
   const { afiliacion, afiliacion_label, afiliacion_tone } = resolveAfiliacion(raw.afiliacion);
   const empresa_seguro = normalizeAseguradoraLabel(raw.empresa_seguro, raw.afiliacion, afiliacion_label);
-  const plan_seguro = cleanString(raw.plan_seguro) ?? '—';
+  const plan_seguro = normalizePlanSeguroLabel(raw.plan_seguro, raw.afiliacion, empresa_seguro);
   const { procedimiento, procedimiento_short } = resolveProcedimiento(raw.procedimiento);
   const { checklist, checklist_progress } = buildChecklist(estadoSlug);
   const alerts = buildAlerts(raw, estadoSlug);
@@ -375,7 +390,7 @@ type DetallePayload = {
   propuestas?: Array<Record<string, unknown>>;
   adjuntos?: Array<{ nombre?: string; name?: string; mime_type?: string; size?: string; created_at?: string }>;
   paciente?: Record<string, unknown>;
-  diagnostico?: Array<{ dx_code?: string; codigo_cie?: string; cie?: string; descripcion?: string; desc?: string }>;
+  diagnostico?: Array<{ dx_code?: string; codigo_cie?: string; cie?: string; descripcion?: string; desc?: string; diagnostico?: string }> | { dx_code?: string; codigo_cie?: string; cie?: string; descripcion?: string; desc?: string; diagnostico?: string };
   consulta?: Record<string, unknown>;
   derivacion?: Record<string, unknown>;
   derivacion_tab?: Record<string, unknown>;
@@ -416,9 +431,14 @@ export function mapDetalleResponse(d: DetallePayload): Detalle {
     };
   });
 
-  const diagnosticos = (d.diagnostico ?? []).map((dx) => ({
+  const rawDiagnosticos = Array.isArray(d.diagnostico)
+    ? d.diagnostico
+    : d.diagnostico
+      ? [d.diagnostico]
+      : [];
+  const diagnosticos = rawDiagnosticos.map((dx) => ({
     cie: (dx.dx_code ?? dx.codigo_cie ?? dx.cie ?? '—') as string,
-    desc: (dx.descripcion ?? dx.desc ?? '—') as string,
+    desc: (dx.descripcion ?? dx.desc ?? dx.diagnostico ?? '—') as string,
   }));
 
   const propuestas = (d.propuestas ?? []).map((p) => {
@@ -486,8 +506,8 @@ export function mapDetalleResponse(d: DetallePayload): Detalle {
       edad,
       sexo: String(pac.sexo ?? '—'),
       cedula: String(detalle.hc_number ?? sol.hc_number ?? pac.hc_number ?? '—'),
-      direccion: String(pac.direccion ?? '—'),
-      telefono: String(detalle.crm_contacto_telefono ?? pac.celular ?? '—'),
+      direccion: cleanString(pac.direccion) ?? cleanString(pac.direccion_domicilio) ?? cleanString(pac.domicilio) ?? cleanString(pac.address) ?? '—',
+      telefono: cleanString(detalle.crm_contacto_telefono) ?? cleanString(pac.celular) ?? '—',
       fecha_nacimiento: fechaNac ?? null,
     },
     diagnosticos,

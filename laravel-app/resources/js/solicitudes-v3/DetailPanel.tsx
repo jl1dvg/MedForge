@@ -40,6 +40,8 @@ function buildTimeline(sol: Solicitud) {
 
 function TabSeguimiento({ sol, onToggleStep }: { sol: Solicitud; onToggleStep: (id: number, slug: string) => void }) {
   const timeline = buildTimeline(sol);
+  const telefono = sol.detalle.paciente.telefono !== '—' ? sol.detalle.paciente.telefono : sol.crm.telefono;
+  const planAfiliacion = sol.plan_seguro !== '—' ? sol.plan_seguro : sol.afiliacion_label;
   return (
     <>
       <div className="panel-procbar">
@@ -55,9 +57,9 @@ function TabSeguimiento({ sol, onToggleStep }: { sol: Solicitud; onToggleStep: (
         <div className="info-grid">
           <div className="info-item"><div className="k">Etapa CRM</div><div className="v">{sol.estado_label}</div></div>
           <div className="info-item"><div className="k">Responsable</div><div className="v">{sol.crm.responsable}</div></div>
-          <div className="info-item"><div className="k">Afiliación</div><div className="v">{sol.afiliacion_label}</div></div>
+          <div className="info-item"><div className="k">Plan afiliación</div><div className="v">{planAfiliacion}</div></div>
           <div className="info-item"><div className="k">Fuente / convenio</div><div className="v">{sol.crm.fuente}</div></div>
-          <div className="info-item"><div className="k">Teléfono</div><div className="v">{sol.crm.telefono}</div></div>
+          <div className="info-item"><div className="k">Teléfono</div><div className="v">{telefono}</div></div>
           <div className="info-item"><div className="k">Sede</div><div className="v">{sol.sede}</div></div>
         </div>
       </section>

@@ -118,7 +118,6 @@ body {
   display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
   padding: 14px 22px; flex: none;
 }
-.toolbar-dir { margin-right: 0; }
 .search-box {
   display: flex; align-items: center; gap: 8px; background: #fff;
   border: 1px solid var(--border); border-radius: var(--radius); padding: 0 12px;
@@ -139,6 +138,28 @@ body {
 }
 .filter-select:hover { border-color: var(--border-strong); }
 .filter-select:focus { outline: 0; border-color: var(--accent); box-shadow: var(--shadow-focus); }
+
+.date-range-filter {
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0 10px;
+  color: var(--fg-mute);
+}
+.date-range-filter i { font-size: 17px; color: var(--accent); }
+.date-range-filter input {
+  width: 122px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--fg-2);
+  font: 13px var(--font-body);
+}
+.date-range-filter:focus-within { border-color: var(--accent); box-shadow: var(--shadow-focus); }
 
 .preset-group { display: flex; gap: 8px; }
 .preset {
@@ -378,10 +399,10 @@ table.sol-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .conc-confirm-btn:hover { background: var(--success); color: #fff; border-color: var(--success); box-shadow: 0 4px 12px rgba(5,130,95,.25); }
 
 /* ---- Detail panel (offcanvas) ---------------------------------- */
-.panel-backdrop { position: fixed; inset: 0; background: rgba(12,26,50,.34); z-index: 60; opacity: 0; pointer-events: none; transition: opacity var(--dur-base) var(--ease-out); }
+.panel-backdrop { position: fixed; inset: 60px 0 0 0; background: rgba(12,26,50,.34); z-index: 60; opacity: 0; pointer-events: none; transition: opacity var(--dur-base) var(--ease-out); }
 .panel-backdrop.open { opacity: 1; pointer-events: auto; }
 .panel {
-  position: fixed; top: 0; right: 0; bottom: 0; width: 460px; max-width: 92vw; background: #fff; z-index: 61;
+  position: fixed; top: 60px; right: 0; bottom: 0; width: 460px; max-width: 92vw; background: #fff; z-index: 61;
   box-shadow: -18px 0 48px rgba(5,24,54,.18); transform: translateX(100%);
   display: flex; flex-direction: column; transition: transform var(--dur-base) var(--ease-out);
 }
@@ -540,23 +561,23 @@ table.sol-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .doc-dl { color: var(--fg-fade); font-size: 18px; }
 
 /* ---- Prefactura modal ------------------------------------------ */
-.pf-backdrop { position: fixed; inset: 0; background: rgba(12,26,50,.4); z-index: 70; display: grid; place-items: center; opacity: 0; pointer-events: none; padding: 28px; transition: opacity var(--dur-base) var(--ease-out); }
+.pf-backdrop { position: fixed; inset: 60px 0 0 0; background: rgba(12,26,50,.4); z-index: 70; display: grid; place-items: center; opacity: 0; pointer-events: none; padding: 18px; transition: opacity var(--dur-base) var(--ease-out); }
 .pf-backdrop.open { opacity: 1; pointer-events: auto; }
-.pf-modal { width: 1080px; max-width: 100%; height: 90vh; max-height: 860px; background: #fff; border-radius: var(--radius-lg); box-shadow: 0 32px 80px rgba(5,24,54,.32); display: flex; flex-direction: column; overflow: hidden; }
-.pf-head { display: flex; align-items: center; gap: 14px; padding: 18px 22px; border-bottom: 1px solid var(--border); flex: none; }
-.pf-head-ic { width: 44px; height: 44px; border-radius: 11px; background: var(--grad-primary); color: #fff; display: grid; place-items: center; font-size: 22px; flex: none; }
+.pf-modal { width: 980px; max-width: 100%; height: min(760px, calc(100vh - 96px)); background: #fff; border-radius: var(--radius-lg); box-shadow: 0 32px 80px rgba(5,24,54,.32); display: flex; flex-direction: column; overflow: hidden; }
+.pf-head { display: flex; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--border); flex: none; }
+.pf-head-ic { width: 38px; height: 38px; border-radius: 10px; background: var(--grad-primary); color: #fff; display: grid; place-items: center; font-size: 20px; flex: none; }
 .pf-head-info { flex: 1; min-width: 0; }
 .pf-head-info h2 { font-family: var(--font-display); font-size: 18px; font-weight: 600; margin: 0 0 2px; letter-spacing: -.01em; }
 .pf-head-meta { font-size: 12.5px; color: var(--fg-mute); }
 .pf-shell { flex: 1; display: flex; min-height: 0; }
-.pf-rail { width: 210px; flex: none; border-right: 1px solid var(--border); padding: 14px 12px; display: flex; flex-direction: column; gap: 3px; background: var(--bg-soft); }
-.pf-rail button { display: flex; align-items: center; gap: 11px; padding: 11px 13px; border: 0; background: transparent; border-radius: var(--radius-sm); font-family: inherit; font-size: 13.5px; font-weight: 500; color: var(--fg-2); cursor: pointer; text-align: left; transition: all var(--dur-fast) var(--ease-out); }
+.pf-rail { width: 184px; flex: none; border-right: 1px solid var(--border); padding: 12px 10px; display: flex; flex-direction: column; gap: 3px; background: var(--bg-soft); }
+.pf-rail button { display: flex; align-items: center; gap: 9px; padding: 10px 11px; border: 0; background: transparent; border-radius: var(--radius-sm); font-family: inherit; font-size: 13px; font-weight: 500; color: var(--fg-2); cursor: pointer; text-align: left; transition: all var(--dur-fast) var(--ease-out); }
 .pf-rail button i { font-size: 19px; color: var(--fg-mute); }
 .pf-rail button:hover { background: var(--bg-softer); }
 .pf-rail button.is-active { background: #fff; color: var(--accent); font-weight: 600; box-shadow: var(--shadow-xs); }
 .pf-rail button.is-active i { color: var(--accent); }
-.pf-content { flex: 1; overflow-y: auto; padding: 24px 28px; }
-.pf-section { margin-bottom: 24px; }
+.pf-content { flex: 1; overflow-y: auto; padding: 20px 24px; }
+.pf-section { margin-bottom: 20px; }
 .pf-section:last-child { margin-bottom: 0; }
 .pf-h { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--fg-mute); margin: 0 0 12px; display: flex; align-items: center; }
 .pf-h .psec-meta { margin-left: auto; font-size: 11px; font-weight: 700; color: var(--fg-3); background: var(--bg-softer); border-radius: var(--radius-pill); padding: 2px 9px; text-transform: none; letter-spacing: 0; }

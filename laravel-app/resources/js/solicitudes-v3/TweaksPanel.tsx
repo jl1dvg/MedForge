@@ -17,7 +17,7 @@ export function useTweaks(defaults: TweakValues): [TweakValues, (key: keyof Twea
 // ---- Styles -------------------------------------------------
 
 const PANEL_STYLE = `
-  .twk-panel{position:fixed;right:16px;bottom:16px;z-index:2147483646;width:280px;
+  .twk-panel{position:fixed;left:16px;bottom:16px;z-index:2147483646;width:280px;
     max-height:calc(100vh - 32px);display:flex;flex-direction:column;
     background:rgba(250,249,247,.88);color:#29261b;
     -webkit-backdrop-filter:blur(24px) saturate(160%);backdrop-filter:blur(24px) saturate(160%);
@@ -144,7 +144,7 @@ export function TweaksPanel({ tweaks, setTweak }: TweaksPanelProps) {
       x: Math.min(Math.max(16, window.innerWidth - w - 16), offsetRef.current.x),
       y: Math.min(Math.max(16, window.innerHeight - h - 16), offsetRef.current.y),
     };
-    panel.style.right = offsetRef.current.x + 'px';
+    panel.style.left = offsetRef.current.x + 'px';
     panel.style.bottom = offsetRef.current.y + 'px';
   }, []);
 
@@ -155,9 +155,9 @@ export function TweaksPanel({ tweaks, setTweak }: TweaksPanelProps) {
     if (!panel) return;
     const r = panel.getBoundingClientRect();
     const sx = e.clientX, sy = e.clientY;
-    const sr = window.innerWidth - r.right, sb = window.innerHeight - r.bottom;
+    const sl = r.left, sb = window.innerHeight - r.bottom;
     const move = (ev: MouseEvent) => {
-      offsetRef.current = { x: sr - (ev.clientX - sx), y: sb - (ev.clientY - sy) };
+      offsetRef.current = { x: sl + (ev.clientX - sx), y: sb - (ev.clientY - sy) };
       clamp();
     };
     const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
@@ -168,7 +168,7 @@ export function TweaksPanel({ tweaks, setTweak }: TweaksPanelProps) {
   if (!open) {
     return (
       <button
-        style={{ position: 'fixed', right: 16, bottom: 16, zIndex: 9000, width: 40, height: 40, border: '1px solid var(--border)', borderRadius: 12, background: '#fff', cursor: 'pointer', display: 'grid', placeItems: 'center', fontSize: 20, boxShadow: 'var(--shadow)' }}
+        style={{ position: 'fixed', left: 16, bottom: 16, zIndex: 9000, width: 40, height: 40, border: '1px solid var(--border)', borderRadius: 12, background: '#fff', cursor: 'pointer', display: 'grid', placeItems: 'center', fontSize: 20, boxShadow: 'var(--shadow)' }}
         title="Tweaks"
         onClick={() => setOpen(true)}
       >
@@ -180,7 +180,7 @@ export function TweaksPanel({ tweaks, setTweak }: TweaksPanelProps) {
   return (
     <>
       <style>{PANEL_STYLE}</style>
-      <div ref={dragRef} className="twk-panel" style={{ right: offsetRef.current.x, bottom: offsetRef.current.y }}>
+      <div ref={dragRef} className="twk-panel" style={{ left: offsetRef.current.x, bottom: offsetRef.current.y }}>
         <div className="twk-hd" onMouseDown={onDragStart}>
           <b>Tweaks</b>
           <button className="twk-x" onClick={() => setOpen(false)}>✕</button>

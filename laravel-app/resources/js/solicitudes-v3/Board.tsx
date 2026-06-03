@@ -16,11 +16,9 @@ interface ToolbarProps {
   setView: (v: string) => void;
   doctores: string[];
   afiliaciones: string[];
-  direction: 'a' | 'b' | 'c';
-  setDirection: (v: 'a' | 'b' | 'c') => void;
 }
 
-export function Toolbar({ filters, setFilters, preset, setPreset, view, setView, doctores, afiliaciones, direction, setDirection }: ToolbarProps) {
+export function Toolbar({ filters, setFilters, preset, setPreset, view, setView, doctores, afiliaciones }: ToolbarProps) {
   return (
     <div className="toolbar">
       <div className="search-box">
@@ -50,6 +48,21 @@ export function Toolbar({ filters, setFilters, preset, setPreset, view, setView,
         {doctores.map((d) => <option key={d} value={d}>{d}</option>)}
       </select>
 
+      <div className="date-range-filter" aria-label="Rango de fechas">
+        <i className="mdi mdi-calendar-range-outline"></i>
+        <input
+          type="date"
+          value={filters.date_from}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFilters((f: Filters) => ({ ...f, date_from: e.target.value }))}
+        />
+        <span>—</span>
+        <input
+          type="date"
+          value={filters.date_to}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFilters((f: Filters) => ({ ...f, date_to: e.target.value }))}
+        />
+      </div>
+
       <div className="preset-group">
         <button
           className={`preset ${preset === 'mis-casos' ? 'is-active' : ''}`}
@@ -66,18 +79,6 @@ export function Toolbar({ filters, setFilters, preset, setPreset, view, setView,
       </div>
 
       <div className="toolbar-spacer"></div>
-
-      <div className="dir-switch toolbar-dir" role="group" aria-label="Dirección visual">
-        <span className="ds-label">Dirección</span>
-        {(['a', 'b', 'c'] as const).map((v, i) => (
-          <button
-            key={v}
-            className={direction === v ? 'is-active' : ''}
-            onClick={() => setDirection(v)}
-          >{['Clínico', 'Aireado', 'Denso'][i]}</button>
-        ))}
-      </div>
-
       <div className="view-toggle">
         <button className={view === 'kanban' ? 'is-active' : ''} onClick={() => setView('kanban')}>
           <i className="mdi mdi-view-column-outline"></i>Kanban

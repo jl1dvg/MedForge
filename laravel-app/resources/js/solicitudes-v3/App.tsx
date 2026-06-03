@@ -30,7 +30,7 @@ export function App() {
   const [afiliaciones, setAfiliaciones] = useState<string[]>([]);
   const [doctores, setDoctores] = useState<string[]>([]);
 
-  const [filters, setFilters] = useState<Filters>({ search: '', afiliacion: '', doctor: '' });
+  const [filters, setFilters] = useState<Filters>({ search: '', afiliacion: '', doctor: '', date_from: '', date_to: '' });
   const [preset, setPreset] = useState('');
   const [kpiFilter, setKpiFilter] = useState('');
   const [view, setView] = useState('kanban');
@@ -80,6 +80,8 @@ export function App() {
       if (q && !`${s.full_name} ${s.hc_number} ${s.procedimiento} ${s.procedimiento_short} ${s.form_id}`.toLowerCase().includes(q)) return false;
       if (filters.afiliacion && s.empresa_seguro !== filters.afiliacion) return false;
       if (filters.doctor && s.doctor !== filters.doctor) return false;
+      if (filters.date_from && new Date(s.fecha) < new Date(`${filters.date_from}T00:00:00`)) return false;
+      if (filters.date_to && new Date(s.fecha) > new Date(`${filters.date_to}T23:59:59`)) return false;
       if (preset === 'mis-casos' && s.crm.responsable !== CURRENT_USER.responsable) return false;
       if (preset === 'urgentes' && !(s.prioridad === 'urgente' || s.sla_status === 'vencido' || s.sla_status === 'critico')) return false;
       if (kpiFilter === 'vencido' && s.sla_status !== 'vencido') return false;
@@ -268,8 +270,6 @@ export function App() {
         setView={setView}
         doctores={doctores}
         afiliaciones={afiliaciones}
-        direction={tweaks.direction}
-        setDirection={(v) => setTweak('direction', v)}
       />
 
       {/* ---- Error banner ---- */}

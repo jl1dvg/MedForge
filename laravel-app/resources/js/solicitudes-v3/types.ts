@@ -277,6 +277,8 @@ export interface Filters {
   search: string;
   afiliacion: string;
   doctor: string;
+  date_from: string;
+  date_to: string;
 }
 
 export interface TweakValues {

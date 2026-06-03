@@ -90,6 +90,7 @@ function PfResumen({ sol, go }: { sol: Solicitud; go: (tab: string) => void }) {
 
 function PfCaso({ sol }: { sol: Solicitud }) {
   const det = sol.detalle;
+  const planAfiliacion = sol.plan_seguro !== '—' ? sol.plan_seguro : sol.afiliacion_label;
   return (
     <>
       <div className="pf-section">
@@ -113,7 +114,7 @@ function PfCaso({ sol }: { sol: Solicitud }) {
           <div className="pf-f"><div className="k">Edad / sexo</div><div className="v">{det.paciente.edad > 0 ? `${det.paciente.edad} años` : '—'} · {det.paciente.sexo}</div></div>
           <div className="pf-f"><div className="k">Teléfono</div><div className="v">{det.paciente.telefono !== '—' ? det.paciente.telefono : (sol.crm.telefono !== '—' ? sol.crm.telefono : '—')}</div></div>
           <div className="pf-f"><div className="k">Dirección</div><div className="v">{det.paciente.direccion}</div></div>
-          <div className="pf-f"><div className="k">Afiliación</div><div className="v">{sol.afiliacion_label}</div></div>
+          <div className="pf-f"><div className="k">Plan afiliación</div><div className="v">{planAfiliacion}</div></div>
         </div>
       </div>
       {sol.observacion && (

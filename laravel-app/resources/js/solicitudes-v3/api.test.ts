@@ -23,9 +23,9 @@ test('maps prefactura detail using V2 field names', () => {
       hc_number: 'HC-1',
       fecha_nacimiento: '1980-01-01',
       sexo: 'F',
-      direccion: 'Quito',
+      domicilio: 'Quito',
     },
-    diagnostico: [{ dx_code: 'H25.1', descripcion: 'Catarata senil' }],
+    diagnostico: { dx_code: 'H25.1', diagnostico: 'Catarata senil' },
     consulta: { examen_fisico: 'Examen real', plan: 'Plan real' },
     derivacion: {
       cod_derivacion: 'DER-123',
@@ -56,6 +56,8 @@ test('maps prefactura detail using V2 field names', () => {
   assert.equal(detalle.derivacion.fecha_vigencia, '2026-07-01');
   assert.equal(detalle.derivacion.archivo_href, '/derivaciones/archivo/55');
   assert.equal(detalle.derivacion.vigencia_label, 'Por vencer');
+  assert.equal(detalle.paciente.direccion, 'Quito');
+  assert.equal(detalle.diagnosticos[0].desc, 'Catarata senil');
   assert.equal(detalle.agenda.sala, 'QX 2');
   assert.equal(detalle.agenda.fecha, '2026-06-10 08:00:00');
   assert.equal(detalle.agenda.duracion, 45);
@@ -79,5 +81,7 @@ test('normalizes card and filter insurer labels to company only', () => {
   }, 'recibida');
 
   assert.equal(salud.empresa_seguro, 'SALUD S.A.');
+  assert.equal(salud.plan_seguro, 'SALUD (REEMBOLSO) NIVEL 4');
   assert.equal(particular.empresa_seguro, 'PARTICULAR');
+  assert.equal(particular.plan_seguro, 'PARTICULAR');
 });
