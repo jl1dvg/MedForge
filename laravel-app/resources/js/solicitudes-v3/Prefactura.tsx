@@ -45,7 +45,7 @@ function PfResumen({ sol, go }: { sol: Solicitud; go: (tab: string) => void }) {
         </div>
         <div className="pf-kpi">
           <div className="pf-kpi-ic info"><i className="mdi mdi-medical-bag"></i></div>
-          <div><div className="pf-kpi-v">{preopDone}/{det.preop.length}</div><div className="pf-kpi-l">Preoperatorio</div></div>
+          <div><div className="pf-kpi-v">{preopDone}/{det.preop.length}</div><div className="pf-kpi-l">Checklist registrado</div></div>
         </div>
         <div className="pf-kpi">
           <div className="pf-kpi-ic money"><i className="mdi mdi-cash-multiple"></i></div>
@@ -128,30 +128,38 @@ function PfCaso({ sol }: { sol: Solicitud }) {
 
 // ---- PfCobertura --------------------------------------------
 
-function PfCobertura({ sol, showToast }: { sol: Solicitud; showToast: (msg: string, icon?: string) => void }) {
+function PfCobertura({ sol }: { sol: Solicitud }) {
   const der = sol.detalle.derivacion;
   if (!der.tiene) {
     return (
       <div className="pf-section">
-        <div className="mini-empty">Paciente particular — no requiere derivación ni autorización de seguro.</div>
-        <div className="pf-quick" style={{ marginTop: 14 }}>
-          <button onClick={() => showToast('Generando proforma particular', 'mdi-cash')}><i className="mdi mdi-cash"></i>Generar proforma particular</button>
-        </div>
+        <div className="mini-empty">Sin derivación registrada para esta solicitud.</div>
       </div>
     );
   }
+  const vigenciaStatus = der.vigencia_label || (der.vencida ? 'Vencida' : 'Vigente');
   return (
     <>
       <div className="pf-section">
         <div className="pf-cover-banner">
           <div>
             <div className="pf-cover-title">{der.aseguradora}</div>
-            <div className="pf-cover-sub">{der.plan} · Derivación #{der.cod}</div>
+            <div className="pf-cover-sub">{der.plan} · Derivación #{der.cod ?? '—'}</div>
           </div>
           <span className={`conc-status ${der.vencida ? 'conc-warn' : 'conc-ok'}`}>
             <i className={`mdi ${der.vencida ? 'mdi-calendar-alert' : 'mdi-calendar-check'}`}></i>
-            {der.vencida ? `Vencida hace ${Math.abs(der.dias_vigencia ?? 0)} días` : `Vigente · ${der.dias_vigencia} días`}
+            {vigenciaStatus}
           </span>
+        </div>
+      </div>
+      <div className="pf-section">
+        <h4 className="pf-h">Datos de derivación</h4>
+        <div className="pf-grid">
+          <div className="pf-f"><div className="k">Código</div><div className="v">{der.cod ?? '—'}</div></div>
+          <div className="pf-f"><div className="k">Fecha registro</div><div className="v">{der.fecha_registro ? fmtDate(der.fecha_registro) : '—'}</div></div>
+          <div className="pf-f"><div className="k">Fecha vigencia</div><div className="v">{der.fecha_vigencia ? fmtDate(der.fecha_vigencia) : '—'}</div></div>
+          <div className="pf-f"><div className="k">Archivo</div><div className="v">{der.archivo_href ? <a href={der.archivo_href} target="_blank" rel="noreferrer">Ver derivación</a> : 'Sin archivo'}</div></div>
+          <div className="pf-f" style={{ gridColumn: '1 / -1' }}><div className="k">Estado de vigencia</div><div className="v">{der.vigencia_text}</div></div>
         </div>
       </div>
       {der.autorizacion_pendiente && (
@@ -162,19 +170,6 @@ function PfCobertura({ sol, showToast }: { sol: Solicitud; showToast: (msg: stri
           </div>
         </div>
       )}
-      <div className="pf-section">
-        <h4 className="pf-h">Acciones de cobertura</h4>
-        <div className="pf-quick">
-          <button onClick={() => showToast('Descargando derivación (PDF)', 'mdi-file-download-outline')}><i className="mdi mdi-file-download-outline"></i>Descargar derivación</button>
-          <button onClick={() => showToast('Re-scrapeando datos de cobertura…', 'mdi-sync')}><i className="mdi mdi-sync"></i>Re-scrapear</button>
-          <button onClick={() => showToast('Correo de cobertura enviado', 'mdi-email-check-outline')}><i className="mdi mdi-email-fast-outline"></i>Correo de cobertura</button>
-          {der.autorizacion_pendiente && (
-            <button className="pf-q-primary" onClick={() => showToast('Solicitud de autorización enviada', 'mdi-shield-check')}>
-              <i className="mdi mdi-shield-check"></i>Solicitar autorización
-            </button>
-          )}
-        </div>
-      </div>
     </>
   );
 }
@@ -187,10 +182,10 @@ function PfCirugia({ sol, onTogglePreop }: { sol: Solicitud; onTogglePreop: (id:
   const pct = preop.length > 0 ? Math.round((done / preop.length) * 100) : 0;
   return (
     <div className="pf-section">
-      <h4 className="pf-h">Checklist preoperatorio <span className="psec-meta">{done}/{preop.length} · {pct}%</span></h4>
+      <h4 className="pf-h">Checklist operativo <span className="psec-meta">{done}/{preop.length} · {pct}%</span></h4>
       <div className="pf-progress"><div className="pf-progress-bar" style={{ width: pct + '%' }}></div></div>
       <div className="chk-list" style={{ marginTop: 14 }}>
-        {preop.length === 0 && <div style={{ color: 'var(--fg-mute)', fontSize: 12.5, padding: 8 }}>Sin pasos preoperatorios registrados</div>}
+        {preop.length === 0 && <div style={{ color: 'var(--fg-mute)', fontSize: 12.5, padding: 8 }}>Sin checklist preoperatorio registrado</div>}
         {preop.map((p, i) => (
           <div key={i} className={`chk-item ${p.done ? 'done' : ''}`} onClick={() => onTogglePreop(sol.id, i)}>
             <span className="chk-box">{p.done && <i className="mdi mdi-check"></i>}</span>
@@ -204,15 +199,15 @@ function PfCirugia({ sol, onTogglePreop }: { sol: Solicitud; onTogglePreop: (id:
 
 // ---- PfAgenda -----------------------------------------------
 
-function PfAgenda({ sol, showToast }: { sol: Solicitud; showToast: (msg: string, icon?: string) => void }) {
+function PfAgenda({ sol }: { sol: Solicitud }) {
   const ag = sol.detalle.agenda;
-  const programada = ['programada', 'completado'].includes(sol.estado);
+  const programada = !!ag.fecha || ['programada', 'completado'].includes(sol.estado);
   return (
     <>
       <div className="pf-section">
         <div className="pf-sigcenter-head">
           <span className="pf-sig-badge"><i className="mdi mdi-sync"></i>SIGCENTER</span>
-          <span className={`conc-status ${programada ? 'conc-ok' : 'conc-none'}`}>{programada ? 'Programada' : 'Sin programar'}</span>
+          <span className={`conc-status ${programada ? 'conc-ok' : 'conc-none'}`}>{ag.origen}</span>
         </div>
       </div>
       <div className="pf-section">
@@ -223,17 +218,11 @@ function PfAgenda({ sol, showToast }: { sol: Solicitud; showToast: (msg: string,
           <div className="pf-f"><div className="k">Sala</div><div className="v">{ag.sala}</div></div>
           <div className="pf-f"><div className="k">Duración estimada</div><div className="v">{ag.duracion} min</div></div>
           <div className="pf-f"><div className="k">Anestesia</div><div className="v">{ag.anestesia}</div></div>
-          <div className="pf-f"><div className="k">Cirujano</div><div className="v">{sol.doctor}</div></div>
+          <div className="pf-f"><div className="k">Cirujano</div><div className="v">{ag.doctor !== '—' ? ag.doctor : sol.doctor}</div></div>
           <div className="pf-f"><div className="k">Fecha programada</div><div className="v">{ag.fecha ? fmtDateTime(ag.fecha) : 'Por definir'}</div></div>
+          <div className="pf-f"><div className="k">Fin bloqueo</div><div className="v">{ag.fecha_fin ? fmtDateTime(ag.fecha_fin) : '—'}</div></div>
           <div className="pf-f"><div className="k">Sede</div><div className="v">{sol.sede}</div></div>
-        </div>
-      </div>
-      <div className="pf-section">
-        <div className="pf-quick">
-          <button className="pf-q-primary" onClick={() => showToast(programada ? 'Reprogramación enviada a SIGCENTER' : 'Cirugía programada en SIGCENTER', 'mdi-calendar-check')}>
-            <i className="mdi mdi-calendar-check"></i>{programada ? 'Reprogramar' : 'Programar cirugía'}
-          </button>
-          <button onClick={() => showToast('Sincronizando con SIGCENTER…', 'mdi-sync')}><i className="mdi mdi-sync"></i>Sincronizar</button>
+          <div className="pf-f"><div className="k">Agenda SIGCENTER</div><div className="v">{ag.sigcenter_agenda_id ?? '—'}</div></div>
         </div>
       </div>
     </>
@@ -325,9 +314,9 @@ export function PrefacturaModal({ sol, open, onClose, onTogglePreop, showToast }
           <div className="pf-content">
             {tab === 'resumen'   && <PfResumen sol={sol} go={setTab} />}
             {tab === 'caso'      && <PfCaso sol={sol} />}
-            {tab === 'cobertura' && <PfCobertura sol={sol} showToast={showToast} />}
+            {tab === 'cobertura' && <PfCobertura sol={sol} />}
             {tab === 'cirugia'   && <PfCirugia sol={sol} onTogglePreop={onTogglePreop} />}
-            {tab === 'agenda'    && <PfAgenda sol={sol} showToast={showToast} />}
+            {tab === 'agenda'    && <PfAgenda sol={sol} />}
             {tab === 'nota'      && <PfNota sol={sol} showToast={showToast} />}
           </div>
         </div>

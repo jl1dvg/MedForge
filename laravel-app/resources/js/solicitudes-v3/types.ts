@@ -92,13 +92,19 @@ export interface Derivacion {
   cod: string | null;
   aseguradora: string;
   plan: string;
+  fecha_registro: string | null;
+  fecha_vigencia: string | null;
+  vigencia_text: string;
+  vigencia_label: string;
   dias_vigencia: number | null;
   vencida: boolean;
   archivo: boolean;
+  archivo_href: string | null;
   autorizacion_pendiente: boolean;
 }
 
 export interface PreopStep {
+  slug?: string;
   label: string;
   done: boolean;
 }
@@ -132,8 +138,12 @@ export interface Examen {
 export interface Agenda {
   sala: string;
   fecha: string | null;
+  fecha_fin: string | null;
   duracion: number;
   anestesia: string;
+  doctor: string;
+  origen: string;
+  sigcenter_agenda_id: string | null;
 }
 
 export interface PacienteDetalle {
@@ -177,6 +187,8 @@ export interface Solicitud {
   afiliacion: string;
   afiliacion_label: string;
   afiliacion_tone: string;
+  empresa_seguro: string;
+  plan_seguro: string;
   procedimiento: string;
   procedimiento_short: string;
   ojo: string;
@@ -209,6 +221,10 @@ export interface ApiSolicitud {
   full_name?: string;
   doctor?: string;
   afiliacion?: string;
+  empresa_seguro?: string;
+  empresa_seguro_key?: string;
+  plan_seguro?: string;
+  plan_seguro_key?: string;
   procedimiento?: string;
   ojo?: string;
   prioridad?: string;

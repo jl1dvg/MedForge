@@ -78,7 +78,7 @@ export function App() {
     const q = filters.search.trim().toLowerCase();
     return solicitudes.filter((s: Solicitud) => {
       if (q && !`${s.full_name} ${s.hc_number} ${s.procedimiento} ${s.procedimiento_short} ${s.form_id}`.toLowerCase().includes(q)) return false;
-      if (filters.afiliacion && s.afiliacion !== filters.afiliacion) return false;
+      if (filters.afiliacion && s.empresa_seguro !== filters.afiliacion) return false;
       if (filters.doctor && s.doctor !== filters.doctor) return false;
       if (preset === 'mis-casos' && s.crm.responsable !== CURRENT_USER.responsable) return false;
       if (preset === 'urgentes' && !(s.prioridad === 'urgente' || s.sla_status === 'vencido' || s.sla_status === 'critico')) return false;

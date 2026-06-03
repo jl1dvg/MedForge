@@ -109,6 +109,63 @@ function resolveAfiliacion(raw: string | undefined): { afiliacion: string; afili
   return { afiliacion: raw, afiliacion_label: raw, afiliacion_tone: 'neutral' };
 }
 
+function cleanString(value: unknown): string | null {
+  if (value == null) return null;
+  const text = String(value).trim();
+  return text === '' ? null : text;
+}
+
+function cleanHtml(value: unknown): string {
+  return cleanString(value)?.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim() ?? '';
+}
+
+function daysUntil(dateValue: unknown): number | null {
+  const raw = cleanString(dateValue);
+  if (!raw) return null;
+  const target = new Date(raw);
+  if (Number.isNaN(target.getTime())) return null;
+  const today = new Date();
+  target.setHours(0, 0, 0, 0);
+  today.setHours(0, 0, 0, 0);
+  return Math.ceil((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+function minutesBetween(start: unknown, end: unknown): number | null {
+  const s = cleanString(start);
+  const e = cleanString(end);
+  if (!s || !e) return null;
+  const startDate = new Date(s);
+  const endDate = new Date(e);
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return null;
+  const diff = Math.round((endDate.getTime() - startDate.getTime()) / (1000 * 60));
+  return diff > 0 ? diff : null;
+}
+
+function labelFromSlug(value: unknown): string {
+  const raw = cleanString(value);
+  if (!raw) return 'Checklist operativo';
+  return raw
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function deriveArchivoHref(deriv: Record<string, unknown>, derivacionTab: Record<string, unknown>): string | null {
+  const actions = (derivacionTab.actions ?? {}) as Record<string, unknown>;
+  const download = (actions.download_pdf ?? {}) as Record<string, unknown>;
+  const href = cleanString(download.href);
+  if (href) return href;
+
+  const id = cleanString(deriv.id) ?? cleanString(deriv.derivacion_id);
+  if (id) return `/derivaciones/archivo/${id}`;
+
+  const path = cleanString(deriv.archivo_derivacion_path) ?? cleanString(deriv.archivo_path) ?? cleanString(deriv.archivo);
+  if (!path) return null;
+  if (/^https?:\/\//i.test(path) || path.startsWith('/')) return path;
+  return `/${path.replace(/^\/+/, '')}`;
+}
+
 function resolveProcedimiento(raw: string | undefined): { procedimiento: string; procedimiento_short: string } {
   if (!raw) return { procedimiento: '—', procedimiento_short: '—' };
   const up = raw.toUpperCase().trim();
@@ -142,7 +199,8 @@ function emptyDetalle(): Detalle {
     diagnosticos: [],
     derivacion: {
       tiene: false, cod: null, aseguradora: '—', plan: '—',
-      dias_vigencia: null, vencida: false, archivo: false, autorizacion_pendiente: false,
+      fecha_registro: null, fecha_vigencia: null, vigencia_text: 'Sin derivación registrada', vigencia_label: 'Sin derivación',
+      dias_vigencia: null, vencida: false, archivo: false, archivo_href: null, autorizacion_pendiente: false,
     },
     preop: [],
     notas: [],
@@ -150,7 +208,7 @@ function emptyDetalle(): Detalle {
     propuestas: [],
     adjuntos: [],
     examen: { av_od: '—', av_oi: '—', pio_od: 0, pio_oi: 0, plan: '—', examen_fisico: '' },
-    agenda: { sala: '—', fecha: null, duracion: 30, anestesia: '—' },
+    agenda: { sala: '—', fecha: null, fecha_fin: null, duracion: 30, anestesia: '—', doctor: '—', origen: 'Sin agenda', sigcenter_agenda_id: null },
   };
 }
 
@@ -160,6 +218,8 @@ export function buildSolicitudFromApi(raw: ApiSolicitud, estadoSlug: KanbanSlug)
   const col = COLUMNS.find((c) => c.slug === estadoSlug) ?? COLUMNS[0];
   const name = raw.full_name ?? raw.paciente ?? 'Paciente';
   const { afiliacion, afiliacion_label, afiliacion_tone } = resolveAfiliacion(raw.afiliacion);
+  const empresa_seguro = cleanString(raw.empresa_seguro) ?? afiliacion_label;
+  const plan_seguro = cleanString(raw.plan_seguro) ?? '—';
   const { procedimiento, procedimiento_short } = resolveProcedimiento(raw.procedimiento);
   const { checklist, checklist_progress } = buildChecklist(estadoSlug);
   const alerts = buildAlerts(raw, estadoSlug);
@@ -179,6 +239,8 @@ export function buildSolicitudFromApi(raw: ApiSolicitud, estadoSlug: KanbanSlug)
     afiliacion,
     afiliacion_label,
     afiliacion_tone,
+    empresa_seguro,
+    plan_seguro,
     procedimiento,
     procedimiento_short,
     ojo: (raw.ojo as string | undefined) ?? 'OD',
@@ -265,7 +327,7 @@ export async function fetchKanbanData(filters?: Partial<Filters>): Promise<{
   }
 
   const allSolicitudes = Object.values(byColumn).flat();
-  const afiliaciones = [...new Set(allSolicitudes.map((s) => s.afiliacion).filter(Boolean))];
+  const afiliaciones = [...new Set(allSolicitudes.map((s) => s.empresa_seguro).filter(Boolean))];
   const doctores = [...new Set(allSolicitudes.map((s) => s.doctor).filter((d) => d !== '—'))];
 
   return { byColumn, afiliaciones, doctores };
@@ -284,30 +346,29 @@ export async function updateEstado(id: number, nuevoEstado: KanbanSlug): Promise
 
 // ---- Detalle completo (lazy-loaded when opening a card) -------
 
-export async function fetchDetalle(id: number): Promise<Detalle> {
-  type DetalleResponse = {
-    success: boolean;
-    data: {
-      detalle: Record<string, unknown>;
-      notas: Array<{ nota?: string; texto?: string; autor?: string; created_at?: string }>;
-      tareas: Array<{ titulo?: string; asignado?: string; fecha_vencimiento?: string; fecha?: string; prioridad?: string; estado?: string; done?: boolean }>;
-      propuestas: Array<Record<string, unknown>>;
-      adjuntos: Array<{ nombre?: string; name?: string; mime_type?: string; size?: string; created_at?: string }>;
-      paciente: Record<string, unknown>;
-      diagnostico: Array<{ dx_code?: string; codigo_cie?: string; cie?: string; descripcion?: string; desc?: string }>;
-      consulta: Record<string, unknown>;
-      derivacion: Record<string, unknown>;
-    };
-  };
+type DetallePayload = {
+  detalle?: Record<string, unknown>;
+  notas?: Array<{ nota?: string; texto?: string; autor?: string; created_at?: string }>;
+  tareas?: Array<{ titulo?: string; descripcion?: string; asignado?: string; responsable_nombre?: string; fecha_vencimiento?: string; fecha?: string; prioridad?: string; estado?: string; completed_at?: string | null; done?: boolean; slug?: string }>;
+  checklist?: Array<{ slug?: string; label?: string; titulo?: string; estado?: string; completed?: boolean; done?: boolean; completed_at?: string | null }>;
+  propuestas?: Array<Record<string, unknown>>;
+  adjuntos?: Array<{ nombre?: string; name?: string; mime_type?: string; size?: string; created_at?: string }>;
+  paciente?: Record<string, unknown>;
+  diagnostico?: Array<{ dx_code?: string; codigo_cie?: string; cie?: string; descripcion?: string; desc?: string }>;
+  consulta?: Record<string, unknown>;
+  derivacion?: Record<string, unknown>;
+  derivacion_tab?: Record<string, unknown>;
+  prefactura?: Record<string, unknown>;
+  bloqueos_agenda?: Array<Record<string, unknown>>;
+};
 
-  const res = await jsonFetch<DetalleResponse>(`/v2/solicitudes/${id}/detalle`);
-  if (!res.success) throw new Error('Error loading detalle');
-
-  const d = res.data;
+export function mapDetalleResponse(d: DetallePayload): Detalle {
   const pac = d.paciente ?? {};
-  const sol = d.detalle ?? {};
+  const sol = d.prefactura ?? d.detalle ?? {};
+  const detalle = d.detalle ?? {};
   const cons = d.consulta ?? {};
   const deriv = d.derivacion ?? {};
+  const derivacionTab = d.derivacion_tab ?? {};
 
   const notas = (d.notas ?? []).map((n) => ({
     txt: (n.nota ?? n.texto ?? '') as string,
@@ -316,11 +377,11 @@ export async function fetchDetalle(id: number): Promise<Detalle> {
   }));
 
   const tareas = (d.tareas ?? []).map((t) => ({
-    titulo: (t.titulo ?? '') as string,
-    asignado: (t.asignado ?? '—') as string,
+    titulo: (t.titulo ?? t.descripcion ?? '') as string,
+    asignado: (t.asignado ?? t.responsable_nombre ?? '—') as string,
     fecha: (t.fecha_vencimiento ?? t.fecha ?? '') as string,
     prioridad: (t.prioridad ?? 'normal') as string,
-    done: t.done === true || t.estado === 'completada',
+    done: t.done === true || t.estado === 'completada' || t.completed_at != null,
   }));
 
   const adjuntos = (d.adjuntos ?? []).map((a) => {
@@ -334,7 +395,6 @@ export async function fetchDetalle(id: number): Promise<Detalle> {
     };
   });
 
-  // diagnosticos_asignados uses dx_code + descripcion fields
   const diagnosticos = (d.diagnostico ?? []).map((dx) => ({
     cie: (dx.dx_code ?? dx.codigo_cie ?? dx.cie ?? '—') as string,
     desc: (dx.descripcion ?? dx.desc ?? '—') as string,
@@ -359,7 +419,6 @@ export async function fetchDetalle(id: number): Promise<Detalle> {
     };
   });
 
-  // Compute age from fecha_nacimiento
   const fechaNac = pac.fecha_nacimiento as string | null | undefined;
   let edad = 0;
   if (fechaNac) {
@@ -367,36 +426,71 @@ export async function fetchDetalle(id: number): Promise<Detalle> {
     edad = Math.floor(diff / (1000 * 60 * 60 * 24 * 365.25));
   }
 
-  // Lookup cedula from detalle (sol) since patient_data.hc_number is the identifier
-  const cedulaVal = String(sol.hc_number ?? pac.hc_number ?? '—');
+  const codDerivacion = cleanString(deriv.cod_derivacion)
+    ?? cleanString(deriv.codigo_derivacion)
+    ?? cleanString(deriv.cod);
+  const fechaVigencia = cleanString(deriv.fecha_vigencia);
+  const fechaRegistro = cleanString(deriv.fecha_registro) ?? cleanString(deriv.created_at);
+  const archivoHref = deriveArchivoHref(deriv, derivacionTab);
+  const diasVigencia = deriv.dias_vigencia != null ? Number(deriv.dias_vigencia) : daysUntil(fechaVigencia);
+  const actions = (derivacionTab.actions ?? {}) as Record<string, unknown>;
+  const authorization = (actions.authorization ?? {}) as Record<string, unknown>;
+  const vigencia = (derivacionTab.vigencia ?? {}) as Record<string, unknown>;
+  const vigenciaBadge = (vigencia.badge ?? {}) as Record<string, unknown>;
+  const vencida = deriv.vencida != null
+    ? !!deriv.vencida
+    : deriv.estado === 'vencida' || (diasVigencia != null && diasVigencia < 0);
+  const vigenciaText = cleanHtml(vigencia.text)
+    || (fechaVigencia ? (vencida ? `Vencida: ${fechaVigencia}` : `Vigente hasta ${fechaVigencia}`) : 'Sin fecha de vigencia registrada');
+
+  const checklistRows = d.checklist ?? [];
+  const preop = checklistRows.map((row) => ({
+    slug: cleanString(row.slug) ?? undefined,
+    label: cleanString(row.label) ?? cleanString(row.titulo) ?? labelFromSlug(row.slug),
+    done: row.done === true || row.completed === true || row.estado === 'completada' || row.completed_at != null,
+  }));
+
+  const bloqueo = d.bloqueos_agenda?.[0] ?? null;
+  const sigcenterId = cleanString(sol.sigcenter_agenda_id) ?? cleanString(detalle.sigcenter_agenda_id);
+  const fechaAgenda = cleanString(bloqueo?.fecha_inicio)
+    ?? cleanString(sol.sigcenter_fecha_inicio)
+    ?? cleanString(sol.fecha_programada)
+    ?? cleanString(detalle.fecha_programada);
+  const fechaFinAgenda = cleanString(bloqueo?.fecha_fin) ?? cleanString(sol.sigcenter_fecha_fin);
+  const duracionAgenda = minutesBetween(fechaAgenda, fechaFinAgenda)
+    ?? Number(sol.duracion ?? detalle.duracion ?? 30);
 
   return {
     paciente: {
       edad,
       sexo: String(pac.sexo ?? '—'),
-      cedula: cedulaVal,
+      cedula: String(detalle.hc_number ?? sol.hc_number ?? pac.hc_number ?? '—'),
       direccion: String(pac.direccion ?? '—'),
-      telefono: String(d.detalle?.crm_contacto_telefono ?? pac.celular ?? '—'),
+      telefono: String(detalle.crm_contacto_telefono ?? pac.celular ?? '—'),
       fecha_nacimiento: fechaNac ?? null,
     },
     diagnosticos,
     derivacion: {
-      tiene: !!(deriv.codigo_derivacion ?? deriv.cod),
-      cod: String(deriv.codigo_derivacion ?? deriv.cod ?? '') || null,
-      aseguradora: String(deriv.aseguradora ?? deriv.empresa ?? '—'),
-      plan: String(deriv.plan ?? '—'),
-      dias_vigencia: deriv.dias_vigencia != null ? Number(deriv.dias_vigencia) : null,
-      vencida: !!(deriv.vencida ?? (deriv.estado === 'vencida')),
-      archivo: !!(deriv.archivo_path ?? deriv.archivo),
-      autorizacion_pendiente: !!(deriv.autorizacion_pendiente),
+      tiene: !!(codDerivacion ?? cleanString(deriv.id) ?? cleanString(deriv.derivacion_id) ?? archivoHref),
+      cod: codDerivacion,
+      aseguradora: String(sol.afiliacion ?? detalle.afiliacion ?? deriv.aseguradora ?? deriv.empresa ?? '—'),
+      plan: String(cons.plan ?? deriv.plan ?? '—'),
+      fecha_registro: fechaRegistro,
+      fecha_vigencia: fechaVigencia,
+      vigencia_text: vigenciaText,
+      vigencia_label: cleanString(vigenciaBadge.texto) ?? (vencida ? 'Vencida' : fechaVigencia ? 'Vigente' : 'Sin vigencia'),
+      dias_vigencia: Number.isFinite(diasVigencia) ? diasVigencia : null,
+      vencida,
+      archivo: !!archivoHref,
+      archivo_href: archivoHref,
+      autorizacion_pendiente: authorization.visible === true || !!deriv.autorizacion_pendiente,
     },
-    preop: [],
+    preop,
     notas,
     tareas,
     propuestas,
     adjuntos,
     examen: {
-      // consulta_data stores av/pio as text fields; show as-is or '—'
       av_od: String(cons.av_od ?? '—'),
       av_oi: String(cons.av_oi ?? '—'),
       pio_od: cons.pio_od != null ? Number(cons.pio_od) : 0,
@@ -405,12 +499,27 @@ export async function fetchDetalle(id: number): Promise<Detalle> {
       examen_fisico: String(cons.examen_fisico ?? ''),
     },
     agenda: {
-      sala: String(sol.sala ?? sol.quirofano ?? '—'),
-      fecha: (sol.fecha_cirugia ?? sol.fecha_programada ?? null) as string | null,
-      duracion: Number(sol.duracion_cirugia ?? sol.duracion ?? 30),
+      sala: String(bloqueo?.sala ?? sol.sala ?? '—'),
+      fecha: fechaAgenda,
+      fecha_fin: fechaFinAgenda,
+      duracion: Number.isFinite(duracionAgenda) ? duracionAgenda : 30,
       anestesia: String(sol.tipo_anestesia ?? sol.anestesia ?? '—'),
+      doctor: String(bloqueo?.doctor ?? sol.doctor ?? detalle.doctor ?? '—'),
+      origen: bloqueo ? 'Bloqueo agenda' : sigcenterId ? 'SIGCENTER' : fechaAgenda ? 'Fecha programada' : 'Sin agenda',
+      sigcenter_agenda_id: sigcenterId,
     },
   };
+}
+
+export async function fetchDetalle(id: number): Promise<Detalle> {
+  type DetalleResponse = {
+    success: boolean;
+    data: DetallePayload;
+  };
+
+  const res = await jsonFetch<DetalleResponse>(`/v2/solicitudes/${id}/detalle`);
+  if (!res.success) throw new Error('Error loading detalle');
+  return mapDetalleResponse(res.data);
 }
 
 // ---- State rebuild (for optimistic updates) -------------------

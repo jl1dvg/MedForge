@@ -35,7 +35,7 @@ export function Toolbar({ filters, setFilters, preset, setPreset, view, setView,
         value={filters.afiliacion}
         onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFilters((f: Filters) => ({ ...f, afiliacion: e.target.value }))}
       >
-        <option value="">Todas las afiliaciones</option>
+        <option value="">Todas las aseguradoras</option>
         {afiliaciones.map((a) => <option key={a} value={a}>{a}</option>)}
       </select>
 

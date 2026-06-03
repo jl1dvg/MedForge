@@ -490,6 +490,13 @@ class SolicitudesReadController
                 'diagnostico' => $prefacturaData['diagnostico'] ?? [],
                 'consulta'    => $prefacturaData['consulta'] ?? [],
                 'derivacion'  => $prefacturaData['derivacion'] ?? ($crm['detalle']['derivacion'] ?? []),
+                'prefactura'  => $prefacturaData['solicitud'] ?? [],
+                'derivacion_tab' => $prefacturaData['derivacionTab'] ?? [],
+                'prefactura_meta' => [
+                    'cobertura_template_key' => $prefacturaData['coberturaTemplateKey'] ?? null,
+                    'cobertura_template_available' => (bool) ($prefacturaData['coberturaTemplateAvailable'] ?? false),
+                    'cobertura_mail_log' => $prefacturaData['coberturaMailLog'] ?? null,
+                ],
             ]),
         ])->header('X-Request-Id', $requestId);
     }

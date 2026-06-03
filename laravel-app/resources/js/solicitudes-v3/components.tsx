@@ -60,12 +60,12 @@ export function DocAvatar({ name, cls = 'doc-av' }: DocAvatarProps) {
 
 // ---- AfilChip -----------------------------------------------
 
-interface AfilChipProps { sol: Pick<Solicitud, 'afiliacion_tone' | 'afiliacion_label'>; }
+interface AfilChipProps { sol: Pick<Solicitud, 'afiliacion_tone' | 'empresa_seguro'>; }
 
 export function AfilChip({ sol }: AfilChipProps) {
   return (
     <span className={`chip chip-afil tone-${sol.afiliacion_tone}`}>
-      <i className="mdi mdi-shield-account-outline"></i>{sol.afiliacion_label}
+      <i className="mdi mdi-shield-account-outline"></i>{sol.empresa_seguro}
     </span>
   );
 }
