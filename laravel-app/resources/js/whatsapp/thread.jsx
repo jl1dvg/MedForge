@@ -3,6 +3,7 @@
 
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useWaMenu } from './components.jsx';
+import { uploadMedia } from './api.js';
 
 // ── WhatsApp markdown → HTML ──────────────────────────────────────────────────
 
@@ -246,12 +247,17 @@ function WaChatSearch({ open, query, onQuery, count, idx, onPrev, onNext, onClos
 
 export const EMOJIS = ['👁️','👀','🙂','😊','🙏','✅','📅','🕒','📍','🏥','👨‍⚕️','👩‍⚕️','🤓','💬','📄','🔎','⚠️','😔','👍','✨','🟢','🔴','🟡','📞'];
 
-function WaComposer({ value, onChange, onSend, onUpload, convo, quickReplies, toast }) {
+function WaComposer({ value, onChange, onSend, onSendMedia, convo, quickReplies, toast }) {
   const ta = useRef(null);
   const [emojiOpen, setEmojiOpen, emojiRef] = useWaMenu();
   const [recording, setRecording] = useState(false);
-  const [upload, setUpload] = useState(null);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const [pendingMedia, setPendingMedia] = useState(null); // null | { name, type, uploading, uploaded }
   const fileRef = useRef(null);
+  const mrRef = useRef(null);
+  const chunksRef = useRef([]);
+  const timerRef = useRef(null);
+  const recTimeRef = useRef(0);
 
   useEffect(() => {
     const el = ta.current; if (!el) return;
@@ -259,35 +265,103 @@ function WaComposer({ value, onChange, onSend, onUpload, convo, quickReplies, to
     el.style.height = Math.min(el.scrollHeight, 140) + 'px';
   }, [value]);
 
+  // Cleanup on unmount
+  useEffect(() => () => {
+    clearInterval(timerRef.current);
+    mrRef.current?.stream?.getTracks().forEach(t => t.stop());
+  }, []);
+
   const insertEmoji = (emoji) => {
     const el = ta.current;
     if (!el) { onChange(value + emoji); return; }
     const s = el.selectionStart ?? value.length, e2 = el.selectionEnd ?? value.length;
-    const next = value.slice(0, s) + emoji + value.slice(e2);
-    onChange(next);
+    onChange(value.slice(0, s) + emoji + value.slice(e2));
     requestAnimationFrame(() => { el.focus(); const p = s + emoji.length; el.setSelectionRange(p, p); });
   };
 
-  const toggleVoice = () => {
+  const fmtTime = (s) => `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
+
+  const doUpload = useCallback(async (file, type, name) => {
+    setPendingMedia({ name, type, uploading: true, uploaded: null });
+    try {
+      const result = await uploadMedia(file);
+      if (result.ok) {
+        setPendingMedia(prev => ({ ...prev, uploading: false, uploaded: result.data }));
+      } else {
+        throw new Error(result.error || 'Upload failed');
+      }
+    } catch {
+      toast('Error al subir el archivo', 'mdi-alert');
+      setPendingMedia(null);
+    }
+  }, [toast]);
+
+  const toggleVoice = async () => {
     if (recording) {
+      mrRef.current?.stop();
       setRecording(false);
-      setUpload({ name: 'Audio listo para enviar · 0:06', icon: 'mdi-microphone' });
-      toast('Audio grabado', 'mdi-microphone');
+      clearInterval(timerRef.current);
     } else {
-      setRecording(true);
-      toast('Grabando… pulsa otra vez para detener', 'mdi-record-circle');
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+          ? 'audio/webm;codecs=opus' : 'audio/webm';
+        const mr = new MediaRecorder(stream, { mimeType });
+        chunksRef.current = [];
+        mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+        mr.onstop = () => {
+          stream.getTracks().forEach(t => t.stop());
+          const blob = new Blob(chunksRef.current, { type: mimeType });
+          const ext = mimeType.includes('ogg') ? 'ogg' : 'webm';
+          const file = new File([blob], `nota-de-voz.${ext}`, { type: mimeType });
+          doUpload(file, 'audio', `Nota de voz · ${fmtTime(recTimeRef.current)}`);
+          recTimeRef.current = 0;
+        };
+        mr.start();
+        mrRef.current = mr;
+        setRecording(true);
+        setRecordingTime(0);
+        recTimeRef.current = 0;
+        timerRef.current = setInterval(() => {
+          recTimeRef.current += 1;
+          setRecordingTime(t => t + 1);
+        }, 1000);
+        toast('Grabando… pulsa otra vez para detener', 'mdi-record-circle');
+      } catch {
+        toast('No se pudo acceder al micrófono', 'mdi-alert');
+      }
     }
   };
 
-  const onPickFile = async (e) => {
-    const f = e.target.files && e.target.files[0];
+  const onPickFile = (e) => {
+    const f = e.target.files?.[0];
     if (!f) return;
-    setUpload({ name: `Adjunto listo: ${f.name}`, icon: 'mdi-paperclip' });
-    toast('Adjunto cargado', 'mdi-check-circle');
-    if (onUpload) onUpload(f);
+    e.target.value = '';
+    const type = f.type.startsWith('image/') ? 'image'
+               : f.type.startsWith('audio/') ? 'audio'
+               : f.type.startsWith('video/') ? 'video'
+               : 'document';
+    doUpload(f, type, f.name);
+  };
+
+  const handleSend = () => {
+    if (pendingMedia) {
+      if (pendingMedia.uploading) {
+        toast('Espera, aún se está subiendo el archivo…', 'mdi-upload');
+        return;
+      }
+      if (pendingMedia.uploaded && onSendMedia) {
+        onSendMedia(pendingMedia.type, pendingMedia.uploaded, value.trim());
+        setPendingMedia(null);
+        onChange('');
+      }
+      return;
+    }
+    onSend();
   };
 
   const canReply = convo.canSend ?? (convo.window === 'open');
+  const canSend = canReply && (!!value.trim() || !!pendingMedia);
 
   return (
     <div className="wa3-composer">
@@ -301,16 +375,25 @@ function WaComposer({ value, onChange, onSend, onUpload, convo, quickReplies, to
         </div>
       )}
       <div className="wa3-composer__row">
-        <button className="wa3-iconbtn" title="Adjuntar" onClick={() => fileRef.current?.click()}><i className="mdi mdi-paperclip"></i></button>
-        <input ref={fileRef} type="file" style={{ display: 'none' }} onChange={onPickFile} />
+        <button className="wa3-iconbtn" title="Adjuntar archivo" onClick={() => fileRef.current?.click()} disabled={recording}>
+          <i className="mdi mdi-paperclip"></i>
+        </button>
+        <input ref={fileRef} type="file" style={{ display: 'none' }} onChange={onPickFile}
+               accept="image/*,audio/*,video/*,application/pdf,.doc,.docx,.xls,.xlsx" />
         <textarea ref={ta} rows={1} value={value} onChange={e => onChange(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSend(); } }}
-                  placeholder={canReply ? 'Escribe un mensaje…' : 'Ventana cerrada — usa una plantilla aprobada'}
-                  disabled={!canReply} />
+                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+                  placeholder={recording ? `Grabando ${fmtTime(recordingTime)}…` : canReply ? 'Escribe un mensaje…' : 'Ventana cerrada — usa una plantilla aprobada'}
+                  disabled={!canReply || recording} />
         <div className="wa3-composer__tools">
-          <button className={`wa3-iconbtn${recording ? ' is-recording' : ''}`} title="Grabar audio" onClick={toggleVoice}><i className="mdi mdi-microphone-outline"></i></button>
+          <button className={`wa3-iconbtn${recording ? ' is-recording' : ''}`}
+                  title={recording ? `Detener grabación (${fmtTime(recordingTime)})` : 'Grabar nota de voz'}
+                  onClick={toggleVoice} disabled={!!pendingMedia}>
+            <i className={`mdi ${recording ? 'mdi-stop-circle' : 'mdi-microphone-outline'}`}></i>
+          </button>
           <div className="wa3-emoji-wrap" ref={emojiRef}>
-            <button className="wa3-iconbtn" title="Emoji" onClick={() => setEmojiOpen(v => !v)}><i className="mdi mdi-emoticon-outline"></i></button>
+            <button className="wa3-iconbtn" title="Emoji" onClick={() => setEmojiOpen(v => !v)} disabled={recording}>
+              <i className="mdi mdi-emoticon-outline"></i>
+            </button>
             {emojiOpen && (
               <div className="wa3-emoji-popover">
                 <h6>Emojis rápidos</h6>
@@ -323,12 +406,27 @@ function WaComposer({ value, onChange, onSend, onUpload, convo, quickReplies, to
             )}
           </div>
         </div>
-        <button className="wa3-send" disabled={!canReply || (!value.trim() && !upload)} onClick={onSend} title="Enviar"><i className="mdi mdi-send"></i></button>
+        <button className="wa3-send" disabled={!canSend} onClick={handleSend} title="Enviar">
+          <i className="mdi mdi-send"></i>
+        </button>
       </div>
-      {upload && (
+      {recording && (
         <div className="wa3-upload is-visible">
-          <span>{upload.name}</span>
-          <button onClick={() => setUpload(null)} title="Quitar adjunto"><i className="mdi mdi-close"></i></button>
+          <span><i className="mdi mdi-record-circle" style={{ color: 'var(--wa3-danger)', marginRight: 6 }}></i>Grabando… {fmtTime(recordingTime)}</span>
+          <button onClick={toggleVoice} title="Detener y enviar"><i className="mdi mdi-stop-circle"></i></button>
+        </div>
+      )}
+      {pendingMedia && !recording && (
+        <div className="wa3-upload is-visible">
+          <span>
+            {pendingMedia.uploading
+              ? <><i className="mdi mdi-loading mdi-spin" style={{ marginRight: 6 }}></i>Subiendo {pendingMedia.name}…</>
+              : <><i className={`mdi ${pendingMedia.type === 'audio' ? 'mdi-microphone-outline' : 'mdi-paperclip'}`} style={{ marginRight: 6 }}></i>{pendingMedia.name}</>
+            }
+          </span>
+          <button onClick={() => setPendingMedia(null)} title="Quitar adjunto" disabled={pendingMedia.uploading}>
+            <i className="mdi mdi-close"></i>
+          </button>
         </div>
       )}
       <div className="wa3-composer__hint">
@@ -421,7 +519,9 @@ export function WaThreadPane({
       <WaThread items={thread} typing={typing} query={searchOpen ? query : ''} currentIdx={matchIdx} />
 
       {canOperate && (
-        <WaComposer value={draft} onChange={setDraft} onSend={() => handlers.onSend(draft)}
+        <WaComposer value={draft} onChange={setDraft}
+                    onSend={() => handlers.onSend(draft)}
+                    onSendMedia={handlers.onSendMedia}
                     convo={convo} quickReplies={quickReplies} toast={toast} />
       )}
     </section>

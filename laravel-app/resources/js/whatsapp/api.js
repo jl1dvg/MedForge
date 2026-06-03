@@ -134,6 +134,19 @@ export async function searchContacts(q, limit = 15) {
 
 // ── Media ────────────────────────────────────────────────────────────────────
 
+export async function sendMediaMessage(conversationId, type, mediaData, caption = '') {
+  const { data } = await wa.post(`/conversations/${conversationId}/messages`, {
+    message: caption,
+    message_type: type,
+    media_url: mediaData.media_url,
+    filename: mediaData.filename || undefined,
+    mime_type: mediaData.mime_type || undefined,
+    media_disk: mediaData.media_disk || undefined,
+    media_path: mediaData.media_path || undefined,
+  });
+  return data;
+}
+
 export async function uploadMedia(file) {
   const form = new FormData();
   form.append('file', file);
