@@ -63,8 +63,18 @@ export function WaDrawer({ convo, notes, trail, canOperate, onAddNote, onCreateQ
         <h3>{p.name || convo.name}</h3>
         <p>{convo.hc ? `HC ${convo.hc}${p.age ? ` · ${p.age} años` : ''}` : 'Sin paciente vinculado'}</p>
         <div className="wa3-drawer__quickactions">
-          <button className="wa3-quickaction"><i className="mdi mdi-calendar-plus-outline"></i>Agendar</button>
-          <button className="wa3-quickaction"><i className="mdi mdi-file-eye-outline"></i>Ficha</button>
+          <button className="wa3-quickaction" aria-disabled="true" title="Próximamente">
+            <i className="mdi mdi-calendar-plus-outline"></i>Agendar
+          </button>
+          {convo.hc ? (
+            <a className="wa3-quickaction" href={`/v2/pacientes/detalles?hc_number=${encodeURIComponent(convo.hc)}`} target="_blank" rel="noreferrer">
+              <i className="mdi mdi-file-eye-outline"></i>Ficha
+            </a>
+          ) : (
+            <button className="wa3-quickaction" aria-disabled="true" title="Sin paciente vinculado">
+              <i className="mdi mdi-file-eye-outline"></i>Ficha
+            </button>
+          )}
         </div>
       </div>
 
