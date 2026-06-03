@@ -77,7 +77,7 @@ export function WaApp() {
   // ── Messages for active conversation ────────────────────────────────────────
   const {
     thread, notes, trail, loading: messagesLoading,
-    sendMessage, appendInbound, addNote,
+    sendMessage, sendMedia, appendInbound, addNote,
   } = useMessages(activeId);
 
   // ── Pusher real-time ─────────────────────────────────────────────────────────
@@ -121,6 +121,11 @@ export function WaApp() {
       if (!text.trim()) return;
       setDraft('');
       await sendMessage(text);
+    },
+
+    onSendMedia: async (type, uploadedData, caption) => {
+      setDraft('');
+      await sendMedia(type, uploadedData, caption);
     },
     onToggleDrawer: () => setShowDrawer(v => !v),
 
@@ -189,7 +194,7 @@ export function WaApp() {
       await reloadConvos();
       notify('Conversación actualizada', 'mdi-refresh');
     },
-  }), [activeConvo, me.id, showDrawer, sendMessage, notify, reloadConvos]);
+  }), [activeConvo, me.id, showDrawer, sendMessage, sendMedia, notify, reloadConvos]);
 
   const shellClass = ['wa3', showDrawer ? 'has-drawer' : ''].filter(Boolean).join(' ');
 

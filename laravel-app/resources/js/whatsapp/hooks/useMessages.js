@@ -1,7 +1,7 @@
 /* MedForge — WhatsApp Chat v3 · Messages + notes + trail hook */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { fetchConversation, fetchNotes, fetchTrail, sendMessage as apiSend, addNote as apiAddNote } from '../api.js';
+import { fetchConversation, fetchNotes, fetchTrail, sendMessage as apiSend, sendMediaMessage as apiSendMedia, addNote as apiAddNote } from '../api.js';
 import { adaptMessage, buildThread } from '../adapt.js';
 
 const POLL_MS = 15000;
@@ -77,6 +77,36 @@ export function useMessages(conversationId) {
     }
   }, [conversationId]);
 
+  const sendMedia = useCallback(async (type, uploadedData, caption = '') => {
+    if (!conversationId) return;
+    const tempId = `temp-${Date.now()}`;
+    const time = new Date().toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
+    const mediaIcon = type === 'audio' ? 'mdi-microphone-outline'
+                    : type === 'image' ? 'mdi-image-outline'
+                    : type === 'video' ? 'mdi-video-outline'
+                    : 'mdi-file-document-outline';
+    setThread(prev => [...prev, {
+      kind: 'msg', id: tempId, dir: 'out', body: caption || null, time, status: 'pending',
+      media: {
+        type: type === 'audio' ? 'audio' : 'file',
+        name: uploadedData.filename || (type === 'audio' ? 'Nota de voz' : 'Archivo adjunto'),
+        size: uploadedData.mime_type || '',
+        icon: mediaIcon,
+        downloadUrl: null,
+      },
+    }]);
+    try {
+      const result = await apiSendMedia(conversationId, type, uploadedData, caption);
+      if (result.ok && result.data) {
+        const msgData = result.data.message || result.data;
+        const sent = adaptMessage(msgData);
+        setThread(prev => prev.map(m => m.id === tempId ? { ...sent, status: 'sent' } : m));
+      }
+    } catch {
+      setThread(prev => prev.map(m => m.id === tempId ? { ...m, status: 'failed' } : m));
+    }
+  }, [conversationId]);
+
   // Optimistic status progression: sent → delivered → read
   const markDelivered = useCallback((waMessageId) => {
     setThread(prev => prev.map(m =>
@@ -113,5 +143,5 @@ export function useMessages(conversationId) {
     }
   }, [conversationId]);
 
-  return { thread, notes, trail, loading, sendMessage, appendInbound, markDelivered, markRead, addNote };
+  return { thread, notes, trail, loading, sendMessage, sendMedia, appendInbound, markDelivered, markRead, addNote };
 }
