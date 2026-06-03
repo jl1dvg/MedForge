@@ -1,0 +1,400 @@
+/* ============================================================
+   MedForge · WhatsApp Chat v3 — Thread pane
+   header menus · context bar · chat search · messages · composer
+   ============================================================ */
+
+/* ---- Bubble ---- */
+function WaBubble({ m, query }) {
+  const highlight = (html) => {
+    if (!query) return html;
+    try {
+      const re = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "gi");
+      return html.replace(re, '<mark class="wa3-search-hl">$1</mark>');
+    } catch (_) { return html; }
+  };
+  const matches = query && m.body && m.body.toLowerCase().includes(query.toLowerCase());
+  return (
+    <div className={`wa3-msg is-${m.dir}${matches ? " is-search-match" : ""}${m._current ? " is-search-current" : ""}`}>
+      <div className="wa3-bubble">
+        {m.quote && (
+          <div className="wa3-quote"><span className="who">{m.quote.who}</span>{m.quote.text}</div>
+        )}
+        {m.media && m.media.type === "file" && (
+          <div className="wa3-media">
+            <i className={`mdi ${m.media.icon || "mdi-file-document-outline"}`}></i>
+            <div className="wa3-media__body"><strong>{m.media.name}</strong><small>{m.media.size}</small></div>
+          </div>
+        )}
+        {m.media && m.media.type === "audio" && (
+          <div className="wa3-media">
+            <i className="mdi mdi-play-circle-outline"></i>
+            <div className="wa3-media__body"><strong>{m.media.name}</strong>
+              <div style={{ height: 4, borderRadius: 999, background: "rgba(0,0,0,.12)", marginTop: 6 }}>
+                <div style={{ width: "40%", height: "100%", borderRadius: 999, background: "var(--wa3-accent)" }}></div>
+              </div>
+            </div>
+          </div>
+        )}
+        {m.body && <div dangerouslySetInnerHTML={{ __html: highlight(waFormat(m.body)) }} />}
+        <div className="wa3-bubble__meta">
+          <span>{m.time}</span>
+          {m.dir === "out" && m.status === "read" &&      <i className="mdi mdi-check-all read"></i>}
+          {m.dir === "out" && m.status === "delivered" && <i className="mdi mdi-check-all"></i>}
+          {m.dir === "out" && m.status === "sent" &&      <i className="mdi mdi-check"></i>}
+          {m.dir === "out" && m.status === "pending" &&   <i className="mdi mdi-clock-outline"></i>}
+          {m.dir === "out" && m.status === "failed" &&    <i className="mdi mdi-alert-circle-outline" style={{ color: "var(--wa3-danger)" }}></i>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WaThread({ items, typing, query, currentIdx }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (ref.current && !query) ref.current.scrollTop = ref.current.scrollHeight;
+  }, [items.length, typing, query]);
+  // assign a running index to matching messages for prev/next highlight
+  let matchCounter = -1;
+  return (
+    <div className="wa3-messages" ref={ref}>
+      {items.map((it, i) => {
+        if (it.kind === "date")  return <div key={i} className="wa3-date">{it.text}</div>;
+        if (it.kind === "event") return <div key={i} className="wa3-event"><i className={`mdi ${it.icon}`}></i>{it.text}</div>;
+        let isCurrent = false;
+        if (query && it.body && it.body.toLowerCase().includes(query.toLowerCase())) {
+          matchCounter += 1;
+          isCurrent = matchCounter === currentIdx;
+        }
+        return <WaBubble key={i} m={{ ...it, _current: isCurrent }} query={query} />;
+      })}
+      {typing && <div className="wa3-typing"><span></span><span></span><span></span></div>}
+    </div>
+  );
+}
+
+/* ---- Header dropdown shell ---- */
+function WaHeaderMenu({ icon, label, children, success }) {
+  const [open, setOpen, ref] = useWaMenu();
+  return (
+    <div className="wa3-hbtn-wrap" ref={ref}>
+      <button className={`wa3-hbtn${open ? " is-open" : ""}${success ? " is-success" : ""}`} type="button" onClick={() => setOpen((v) => !v)}>
+        <i className={`mdi ${icon}`}></i><span>{label}</span>
+      </button>
+      {open && <div className="wa3-hbtn__menu">{typeof children === "function" ? children(() => setOpen(false)) : children}</div>}
+    </div>
+  );
+}
+
+/* ---- Transfer + Derivar por equipo ---- */
+function WaTransferMenu({ convo, onTransfer, onQueueRole, toast }) {
+  const [note, setNote] = useState("");
+  return (
+    <WaHeaderMenu icon="mdi-account-arrow-right-outline" label="Transferir">
+      {(close) => (
+        <>
+          <h6>Transferir a un agente</h6>
+          {WAD.AGENTS.filter((a) => a.role !== "Automático").map((a) => (
+            <button key={a.id} className="wa3-menu-item" onClick={() => { onTransfer(a, note); close(); }}>
+              <i className="mdi mdi-account-outline lead"></i>
+              <span>{a.name}<span className="meta">{a.role} · {a.active} chats abiertos</span></span>
+              <span className="dot" data-state={a.status === "online" ? "online" : a.status === "busy" ? "busy" : "away"}></span>
+            </button>
+          ))}
+          <h6>Derivar por equipo</h6>
+          {WAD.ROLES.map((r) => (
+            <button key={r.id} className="wa3-menu-item" onClick={() => { onQueueRole(r, note); close(); }}>
+              <i className={`mdi ${r.icon} lead`}></i>
+              <span>{r.name}<span className="meta">{r.open} en cola</span></span>
+            </button>
+          ))}
+          <div className="wa3-menu-footer">
+            <input placeholder="Nota de transferencia (opcional)" value={note} onChange={(e) => setNote(e.target.value)} />
+          </div>
+        </>
+      )}
+    </WaHeaderMenu>
+  );
+}
+
+/* ---- Templates ---- */
+function WaTemplatesMenu({ onApply }) {
+  return (
+    <WaHeaderMenu icon="mdi-file-document-outline" label="Plantillas">
+      {(close) => (
+        <>
+          <h6>Plantillas aprobadas</h6>
+          {WAD.TEMPLATES.map((t) => (
+            <button key={t.id} className="wa3-menu-item" onClick={() => { onApply(t); close(); }}>
+              <i className="mdi mdi-clipboard-text-outline lead"></i>
+              <span>{t.name}<span className="meta">{t.category.toUpperCase()} · Aprobada · {t.language}</span></span>
+            </button>
+          ))}
+        </>
+      )}
+    </WaHeaderMenu>
+  );
+}
+
+/* ---- More options ---- */
+function WaMoreMenu({ convo, onCopy, onOpenTrail, onFollowup, canOperate }) {
+  const [open, setOpen, ref] = useWaMenu();
+  return (
+    <div className="wa3-hbtn-wrap" ref={ref}>
+      <button className="wa3-iconbtn" title="Más opciones" onClick={() => setOpen((v) => !v)}><i className="mdi mdi-dots-vertical"></i></button>
+      {open && (
+        <div className="wa3-hbtn__menu">
+          <h6>Más opciones</h6>
+          <button className="wa3-menu-item" onClick={() => { onCopy(convo.wa, "WhatsApp"); setOpen(false); }}>
+            <i className="mdi mdi-content-copy lead"></i><span>Copiar WhatsApp<span className="meta">{convo.wa}</span></span>
+          </button>
+          {convo.hc && (
+            <button className="wa3-menu-item" onClick={() => { onCopy(convo.hc, "HC"); setOpen(false); }}>
+              <i className="mdi mdi-card-account-details-outline lead"></i><span>Copiar HC<span className="meta">{convo.hc}</span></span>
+            </button>
+          )}
+          <button className="wa3-menu-item" onClick={() => { onOpenTrail(); setOpen(false); }}>
+            <i className="mdi mdi-timeline-text-outline lead"></i><span>Ver trazabilidad<span className="meta">Abrir panel lateral</span></span>
+          </button>
+          {canOperate && (
+            <button className="wa3-menu-item" onClick={() => { onFollowup(); setOpen(false); }}>
+              <i className="mdi mdi-archive-arrow-down-outline lead"></i><span>Cerrar seguimiento<span className="meta">Genera lead WhatsApp</span></span>
+            </button>
+          )}
+          <button className="wa3-menu-item" onClick={() => { onCopy(`/v3/whatsapp/chat?conversation=${convo.id}`, "Link"); setOpen(false); }}>
+            <i className="mdi mdi-link-variant lead"></i><span>Copiar link<span className="meta">Abrir esta conversación</span></span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---- Context bar ---- */
+function WaContextBar({ convo }) {
+  return (
+    <div className="wa3-context">
+      <span className="wa3-context__item"><i className="mdi mdi-map-marker-path"></i>{convo.opStatus}</span>
+      <span className="sep">·</span>
+      <span className="wa3-context__item"><i className="mdi mdi-speedometer"></i>Prioridad <strong>{convo.priority}</strong></span>
+      <span className="sep">·</span>
+      <span className="wa3-context__item"><i className="mdi mdi-account-voice"></i>Último: {convo.lastActor}</span>
+      {convo.isMine ? (
+        <><span className="sep">·</span><span className="wa3-context__item wa3-context__item--mine"><i className="mdi mdi-account-check-outline"></i><strong>Asignada a ti</strong></span></>
+      ) : convo.assignedTo ? (
+        <><span className="sep">·</span><span className="wa3-context__item"><i className="mdi mdi-account-outline"></i>{convo.assignedTo}</span></>
+      ) : null}
+      <span className="sep">·</span>
+      {convo.window === "open"
+        ? <span className="wa3-context__item wa3-context__item--open"><i className="mdi mdi-timer-sand"></i>Ventana 24h <strong>abierta</strong></span>
+        : <span className="wa3-context__item"><i className="mdi mdi-file-document-edit-outline"></i>Sólo plantilla</span>}
+      {convo.queue && <><span className="sep">·</span><span className="wa3-context__item"><i className="mdi mdi-tag-outline"></i>{convo.queue}</span></>}
+      {convo.attribution && <><span className="sep">·</span><span className="wa3-context__item"><i className="mdi mdi-bullseye-arrow"></i>{convo.attribution}</span></>}
+    </div>
+  );
+}
+
+/* ---- Chat search ---- */
+function WaChatSearch({ open, query, onQuery, count, idx, onPrev, onNext, onClose }) {
+  const inputRef = useRef(null);
+  useEffect(() => { if (open) inputRef.current?.focus(); }, [open]);
+  if (!open) return null;
+  return (
+    <div className="wa3-chat-search is-open">
+      <i className="mdi mdi-magnify" style={{ color: "var(--wa3-text-mute)", fontSize: 18 }}></i>
+      <input ref={inputRef} type="search" value={query} placeholder="Buscar dentro de esta conversación…"
+             onChange={(e) => onQuery(e.target.value)}
+             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.shiftKey ? onPrev() : onNext(); } if (e.key === "Escape") onClose(); }} />
+      <span className="wa3-chat-search__count">{count > 0 ? `${idx + 1}/${count}` : "0/0"}</span>
+      <button className="wa3-iconbtn" onClick={onPrev} title="Anterior"><i className="mdi mdi-chevron-up"></i></button>
+      <button className="wa3-iconbtn" onClick={onNext} title="Siguiente"><i className="mdi mdi-chevron-down"></i></button>
+      <button className="wa3-iconbtn" onClick={onClose} title="Cerrar"><i className="mdi mdi-close"></i></button>
+    </div>
+  );
+}
+
+/* ---- Composer ---- */
+function WaComposer({ value, onChange, onSend, convo, quickReplies, toast }) {
+  const ta = useRef(null);
+  const [emojiOpen, setEmojiOpen, emojiRef] = useWaMenu();
+  const [recording, setRecording] = useState(false);
+  const [upload, setUpload] = useState(null);
+  const fileRef = useRef(null);
+
+  useEffect(() => {
+    const el = ta.current; if (!el) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 140) + "px";
+  }, [value]);
+
+  const insertEmoji = (emoji) => {
+    const el = ta.current;
+    if (!el) { onChange(value + emoji); return; }
+    const s = el.selectionStart ?? value.length, e = el.selectionEnd ?? value.length;
+    const next = value.slice(0, s) + emoji + value.slice(e);
+    onChange(next);
+    requestAnimationFrame(() => { el.focus(); const p = s + emoji.length; el.setSelectionRange(p, p); });
+  };
+
+  const toggleVoice = () => {
+    if (recording) {
+      setRecording(false);
+      setUpload({ name: "Audio listo para enviar · 0:06", icon: "mdi-microphone" });
+      toast("Audio grabado", "mdi-microphone");
+    } else {
+      setRecording(true);
+      toast("Grabando… pulsa otra vez para detener", "mdi-record-circle");
+    }
+  };
+
+  const onPickFile = (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    setUpload({ name: `Adjunto listo: ${f.name}`, icon: "mdi-paperclip" });
+    toast("Adjunto cargado", "mdi-check-circle");
+  };
+
+  const canReply = convo.window === "open";
+
+  return (
+    <div className="wa3-composer">
+      {quickReplies.length > 0 && (
+        <div className="wa3-composer__quickreplies">
+          {quickReplies.map((q) => (
+            <button key={q.id} className="wa3-quickreply" onClick={() => { onChange(q.body); ta.current?.focus(); }}>
+              <i className="mdi mdi-lightning-bolt-outline"></i>{q.title}
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="wa3-composer__row">
+        <button className="wa3-iconbtn" title="Adjuntar" onClick={() => fileRef.current?.click()}><i className="mdi mdi-paperclip"></i></button>
+        <input ref={fileRef} type="file" style={{ display: "none" }} onChange={onPickFile} />
+        <textarea ref={ta} rows={1} value={value} onChange={(e) => onChange(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); onSend(); } }}
+                  placeholder={canReply ? "Escribe un mensaje…" : "Ventana cerrada — usa una plantilla aprobada"}
+                  disabled={!canReply} />
+        <div className="wa3-composer__tools">
+          <button className={`wa3-iconbtn${recording ? " is-recording" : ""}`} title="Grabar audio" onClick={toggleVoice}><i className="mdi mdi-microphone-outline"></i></button>
+          <div className="wa3-emoji-wrap" ref={emojiRef}>
+            <button className="wa3-iconbtn" title="Emoji" onClick={() => setEmojiOpen((v) => !v)}><i className="mdi mdi-emoticon-outline"></i></button>
+            {emojiOpen && (
+              <div className="wa3-emoji-popover">
+                <h6>Emojis rápidos</h6>
+                <div className="wa3-emoji-grid">
+                  {WAD.EMOJIS.map((em, i) => (
+                    <button key={i} className="wa3-emoji" onClick={() => { insertEmoji(em); setEmojiOpen(false); }}>{em}</button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+        <button className="wa3-send" disabled={!canReply || (!value.trim() && !upload)} onClick={onSend} title="Enviar"><i className="mdi mdi-send"></i></button>
+      </div>
+      {upload && (
+        <div className="wa3-upload is-visible">
+          <span>{upload.name}</span>
+          <button onClick={() => setUpload(null)} title="Quitar adjunto"><i className="mdi mdi-close"></i></button>
+        </div>
+      )}
+      <div className="wa3-composer__hint">
+        <span>{canReply ? "Ventana de 24h abierta — puedes responder libremente." : "Ventana cerrada — inicia con una plantilla aprobada."}</span>
+        <span><kbd>Enter</kbd> enviar · <kbd>Shift+Enter</kbd> nueva línea</span>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   THREAD PANE (composed)
+   ============================================================ */
+function WaThreadPane({
+  convo, thread, typing, draft, setDraft, showDrawer, canSupervise, canOperate,
+  realtime, handlers, toast,
+}) {
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [matchIdx, setMatchIdx] = useState(0);
+
+  const matchCount = useMemo(() => {
+    if (!query) return 0;
+    return thread.filter((m) => m.body && m.body.toLowerCase().includes(query.toLowerCase())).length;
+  }, [thread, query]);
+
+  useEffect(() => { setMatchIdx(0); }, [query]);
+  const step = (d) => { if (matchCount > 0) setMatchIdx((i) => (i + d + matchCount) % matchCount); };
+
+  if (!convo) {
+    return (
+      <section className="wa3-thread">
+        <div className="wa3-empty">
+          <div className="wa3-empty__card">
+            <div className="wa3-empty__icon"><i className="mdi mdi-message-text-outline"></i></div>
+            <h3>Selecciona una conversación</h3>
+            <p>Elige un chat del panel izquierdo para comenzar a atender al paciente.</p>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="wa3-thread">
+      <header className="wa3-thread__head">
+        <div className="wa3-thread__main">
+          <div className="wa3-avatar" data-tone={convo.tone}>
+            {convo.initials}
+            {convo.status && <span className="wa3-avatar__status" data-state={convo.status}></span>}
+          </div>
+          <div className="wa3-thread__id">
+            <h3 className="wa3-thread__name">{convo.name}</h3>
+            <div className="wa3-thread__meta">
+              <span>{convo.wa}</span><span className="sep">·</span>
+              <span>{convo.status === "open" ? "En línea" : "Visto hace 1 h"}</span>
+            </div>
+          </div>
+        </div>
+        <div className="wa3-thread__actions">
+          <button className="wa3-iconbtn" title="Buscar en chat" onClick={() => setSearchOpen((v) => !v)}><i className="mdi mdi-magnify"></i></button>
+          <span className="wa3-iconbtn--sep"></span>
+          {canOperate && !convo.isMine && (
+            <button className="wa3-hbtn" onClick={handlers.onAssignSelf}>
+              <i className="mdi mdi-hand-back-right-outline"></i><span>Tomar</span>
+            </button>
+          )}
+          <WaTransferMenu convo={convo} onTransfer={handlers.onTransfer} onQueueRole={handlers.onQueueRole} toast={toast} />
+          <WaTemplatesMenu onApply={handlers.onApplyTemplate} />
+          <span className="wa3-iconbtn--sep"></span>
+          {canOperate && (
+            <button className="wa3-hbtn is-success" onClick={handlers.onResolve}>
+              <i className="mdi mdi-check-circle-outline"></i><span>Resolver</span>
+            </button>
+          )}
+          <button className={`wa3-iconbtn${showDrawer ? " is-primary" : ""}`} onClick={handlers.onToggleDrawer}
+                  title={showDrawer ? "Ocultar ficha" : "Ver ficha del paciente"}><i className="mdi mdi-account-details-outline"></i></button>
+          <WaMoreMenu convo={convo} onCopy={handlers.onCopy} onOpenTrail={handlers.onOpenTrail} onFollowup={handlers.onFollowup} canOperate={canOperate} />
+        </div>
+      </header>
+
+      <WaContextBar convo={convo} />
+
+      <WaChatSearch open={searchOpen} query={query} onQuery={setQuery} count={matchCount} idx={matchIdx}
+                    onPrev={() => step(-1)} onNext={() => step(1)} onClose={() => { setSearchOpen(false); setQuery(""); }} />
+
+      {realtime && (
+        <div className="wa3-realtime is-visible">
+          <span>Hay mensajes nuevos en esta conversación.</span>
+          <button onClick={handlers.onRealtimeReload}>Actualizar</button>
+        </div>
+      )}
+
+      <WaThread items={thread} typing={typing} query={searchOpen ? query : ""} currentIdx={matchIdx} />
+
+      {canOperate && (
+        <WaComposer value={draft} onChange={setDraft} onSend={handlers.onSend} convo={convo}
+                    quickReplies={WAD.QUICK_REPLIES} toast={toast} />
+      )}
+    </section>
+  );
+}
