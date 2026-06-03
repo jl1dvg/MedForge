@@ -490,6 +490,14 @@
         /* Manager menu: opens to the right, high z-index to float above the thread pane */
         .wa3-manager-menu { left: 0; right: auto; z-index: 200; }
 
+        /* Recording mic button pulse */
+        .wa3-iconbtn.is-recording { color: var(--wa3-danger); }
+        @keyframes wa3-pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+        .wa3-iconbtn.is-recording i { animation: wa3-pulse 1s ease-in-out infinite; }
+        /* MDI spin for upload indicator */
+        @keyframes mdi-spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+        .mdi-spin { animation: mdi-spin 1s linear infinite; display:inline-block; }
+
         /* Load more button at the bottom of the conversation list */
         .wa3-load-more { display: block; width: 100%; padding: 12px; border: 0; background: transparent; color: var(--wa3-accent); font: 600 12.5px var(--bs-body-font-family); cursor: pointer; border-top: 1px solid var(--wa3-border-soft); }
         .wa3-load-more:hover { background: var(--wa3-accent-soft); }
