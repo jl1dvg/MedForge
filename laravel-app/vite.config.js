@@ -40,6 +40,7 @@ export default defineConfig({
                 'resources/js/v2/settings-index.js',
                 'resources/js/crm/main.tsx',
                 'resources/js/agenda/main.tsx',
+                'resources/js/whatsapp/main.jsx',
             ],
             refresh: true,
         }),
