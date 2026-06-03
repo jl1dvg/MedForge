@@ -35,7 +35,6 @@ use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Models\ExamenModel;
-use Modules\CRM\Services\LeadConfigurationService;
 use Symfony\Component\HttpFoundation\Response;
 use Services\PreviewService;
 use Throwable;
@@ -43,8 +42,8 @@ use Throwable;
 class ExamenesParityController
 {
     private LegacyExamenesBridge $bridge;
-    private ExamenesParityService $native;
-    private ExamenesPrefacturaService $prefactura;
+    private ?ExamenesParityService $native = null;
+    private ?ExamenesPrefacturaService $prefactura = null;
     private ExamenesReportingService $reporting;
     private ImagenesUiService $imagenesUi;
     private SigcenterImagenesService $sigcenterImagenesService;
@@ -56,11 +55,31 @@ class ExamenesParityController
     {
         $pdo = DB::connection()->getPdo();
         $this->bridge = new LegacyExamenesBridge();
-        $this->native = new ExamenesParityService($pdo);
-        $this->prefactura = new ExamenesPrefacturaService($pdo);
         $this->reporting = new ExamenesReportingService($pdo);
         $this->imagenesUi = new ImagenesUiService($pdo);
         $this->sigcenterImagenesService = new SigcenterImagenesService();
+    }
+
+    private function native(): ExamenesParityService
+    {
+        if ($this->native instanceof ExamenesParityService) {
+            return $this->native;
+        }
+
+        $this->native = new ExamenesParityService(DB::connection()->getPdo());
+
+        return $this->native;
+    }
+
+    private function prefacturaService(): ExamenesPrefacturaService
+    {
+        if ($this->prefactura instanceof ExamenesPrefacturaService) {
+            return $this->prefactura;
+        }
+
+        $this->prefactura = new ExamenesPrefacturaService(DB::connection()->getPdo());
+
+        return $this->prefactura;
     }
 
     public function kanbanData(Request $request): Response
@@ -68,7 +87,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'kanbanData',
-            fn(): array => $this->native->kanbanData($request->all())
+            fn(): array => $this->native()->kanbanData($request->all())
         );
     }
 
@@ -77,7 +96,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'enviarCoberturaMail',
-            fn(): array => $this->prefactura->sendCoberturaMail(
+            fn(): array => $this->prefacturaService()->sendCoberturaMail(
                 $this->payload($request),
                 $request->file('attachment'),
                 (is_numeric(Auth::id()) ? (int) Auth::id() : null)
@@ -130,7 +149,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'actualizarEstado',
-            fn(): array => $this->native->actualizarEstado($request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null))
+            fn(): array => $this->native()->actualizarEstado($request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null))
         );
     }
 
@@ -148,7 +167,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'derivacionPreseleccion',
-            fn(): array => $this->native->derivacionPreseleccion($request->all())
+            fn(): array => $this->native()->derivacionPreseleccion($request->all())
         );
     }
 
@@ -157,7 +176,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'guardarDerivacionPreseleccion',
-            fn(): array => $this->native->guardarDerivacionPreseleccion($request->all())
+            fn(): array => $this->native()->guardarDerivacionPreseleccion($request->all())
         );
     }
 
@@ -168,7 +187,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'apiEstadoGet',
-            fn(): array => $this->native->apiEstadoGet(is_scalar($hcNumber) ? (string) $hcNumber : null)
+            fn(): array => $this->native()->apiEstadoGet(is_scalar($hcNumber) ? (string) $hcNumber : null)
         );
     }
 
@@ -177,7 +196,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'apiEstadoPost',
-            fn(): array => $this->native->apiEstadoPost($request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null))
+            fn(): array => $this->native()->apiEstadoPost($request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null))
         );
     }
 
@@ -186,7 +205,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'turneroData',
-            fn(): array => $this->native->turneroData($request->query())
+            fn(): array => $this->native()->turneroData($request->query())
         );
     }
 
@@ -199,7 +218,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'derivacionDetalle',
-            fn(): array => $this->native->derivacionDetalle(
+            fn(): array => $this->native()->derivacionDetalle(
                 is_scalar($hcNumber) ? (string) $hcNumber : null,
                 is_scalar($formId) ? (string) $formId : null,
                 is_scalar($examenId) ? (int) $examenId : null,
@@ -213,7 +232,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'turneroLlamar',
-            fn(): array => $this->native->turneroLlamar($request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null))
+            fn(): array => $this->native()->turneroLlamar($request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null))
         );
     }
 
@@ -222,7 +241,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'crmResumen',
-            fn(): array => $this->native->crmResumen($id),
+            fn(): array => $this->native()->crmResumen($id),
             [$id]
         );
     }
@@ -232,7 +251,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'crmOptions',
-            fn(): array => $this->native->crmOptions()
+            fn(): array => $this->native()->crmOptions()
         );
     }
 
@@ -311,7 +330,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'crmGuardarDetalles',
-            fn(): array => $this->native->crmGuardarDetalles($id, $request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null)),
+            fn(): array => $this->native()->crmGuardarDetalles($id, $request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null)),
             [$id]
         );
     }
@@ -321,7 +340,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'crmBootstrap',
-            fn(): array => $this->native->crmBootstrap(
+            fn(): array => $this->native()->crmBootstrap(
                 $id,
                 $request->all(),
                 (is_numeric(Auth::id()) ? (int) Auth::id() : null),
@@ -336,7 +355,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'crmChecklistState',
-            fn(): array => $this->native->crmChecklistState($id, $this->sessionPermissions($request)),
+            fn(): array => $this->native()->crmChecklistState($id, $this->sessionPermissions($request)),
             [$id]
         );
     }
@@ -346,7 +365,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'crmActualizarChecklist',
-            fn(): array => $this->native->crmActualizarChecklist(
+            fn(): array => $this->native()->crmActualizarChecklist(
                 $id,
                 $request->all(),
                 (is_numeric(Auth::id()) ? (int) Auth::id() : null),
@@ -361,7 +380,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'crmAgregarNota',
-            fn(): array => $this->native->crmAgregarNota($id, $request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null)),
+            fn(): array => $this->native()->crmAgregarNota($id, $request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null)),
             [$id]
         );
     }
@@ -371,7 +390,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'crmEnviarWhatsapp',
-            fn(): array => $this->native->crmEnviarWhatsapp($id, $request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null)),
+            fn(): array => $this->native()->crmEnviarWhatsapp($id, $request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null)),
             [$id]
         );
     }
@@ -381,7 +400,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'crmEnviarEmail',
-            fn(): array => $this->native->crmEnviarEmail($id, $request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null)),
+            fn(): array => $this->native()->crmEnviarEmail($id, $request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null)),
             [$id]
         );
     }
@@ -391,7 +410,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'crmCrearPropuesta',
-            fn(): array => $this->native->crmCrearPropuesta($id, $request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null)),
+            fn(): array => $this->native()->crmCrearPropuesta($id, $request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null)),
             [$id]
         );
     }
@@ -401,7 +420,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'crmRegistrarBloqueo',
-            fn(): array => $this->native->crmRegistrarBloqueo($id, $request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null)),
+            fn(): array => $this->native()->crmRegistrarBloqueo($id, $request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null)),
             [$id]
         );
     }
@@ -411,7 +430,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'crmGuardarTarea',
-            fn(): array => $this->native->crmGuardarTarea($id, $request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null)),
+            fn(): array => $this->native()->crmGuardarTarea($id, $request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null)),
             [$id]
         );
     }
@@ -421,7 +440,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'crmActualizarTarea',
-            fn(): array => $this->native->crmActualizarTarea($id, $request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null)),
+            fn(): array => $this->native()->crmActualizarTarea($id, $request->all(), (is_numeric(Auth::id()) ? (int) Auth::id() : null)),
             [$id]
         );
     }
@@ -431,7 +450,7 @@ class ExamenesParityController
         return $this->relayNativeJson(
             $request,
             'crmSubirAdjunto',
-            fn(): array => $this->native->crmSubirAdjunto(
+            fn(): array => $this->native()->crmSubirAdjunto(
                 $id,
                 $request->file('archivo'),
                 is_scalar($request->input('descripcion')) ? (string) $request->input('descripcion') : null,
@@ -460,7 +479,7 @@ class ExamenesParityController
         }
 
         try {
-            $viewData = $this->prefactura->buildPrefacturaViewData(
+            $viewData = $this->prefacturaService()->buildPrefacturaViewData(
                 $hcNumber,
                 $formId,
                 $resolvedExamenId,
@@ -503,64 +522,80 @@ class ExamenesParityController
             ], 422);
         }
 
-        $nasContext = $this->resolveNasContext($hcNumber, $formId);
-        $resolvedHcNumber = $nasContext['hc_number'];
-        $resolvedFormId = $nasContext['form_id'];
+        try {
+            $nasContext = $this->resolveNasContext($hcNumber, $formId);
+            $resolvedHcNumber = $nasContext['hc_number'];
+            $resolvedFormId = $nasContext['form_id'];
 
-        if (!$nasContext['has_image_context']) {
-            $probeError = null;
-            $probeFiles = $this->getSigcenterFiles($formId, $hcNumber, false, $probeError);
-            if ($probeFiles !== []) {
-                $files = array_map(function (array $file) use ($hcNumber, $formId): array {
-                    $name = trim((string) ($file['name'] ?? ''));
-                    $file['url'] = $name === ''
-                        ? ''
-                        : '/v2/imagenes/examenes-realizados/nas/file?hc_number=' . rawurlencode($hcNumber)
-                            . '&form_id=' . rawurlencode($formId)
-                            . '&file=' . rawurlencode($name);
+            if (!$nasContext['has_image_context']) {
+                $probeError = null;
+                $probeFiles = $this->getSigcenterFiles($formId, $hcNumber, false, $probeError);
+                if ($probeFiles !== []) {
+                    $files = array_map(function (array $file) use ($hcNumber, $formId): array {
+                        $name = trim((string) ($file['name'] ?? ''));
+                        $file['url'] = $name === ''
+                            ? ''
+                            : '/v2/imagenes/examenes-realizados/nas/file?hc_number=' . rawurlencode($hcNumber)
+                                . '&form_id=' . rawurlencode($formId)
+                                . '&file=' . rawurlencode($name);
 
-                    return $file;
-                }, $probeFiles);
+                        return $file;
+                    }, $probeFiles);
+
+                    return response()->json([
+                        'success' => true,
+                        'files' => $files,
+                        'error' => null,
+                        'resolved_form_id' => $formId,
+                        'resolved_hc_number' => $hcNumber,
+                    ]);
+                }
 
                 return response()->json([
                     'success' => true,
-                    'files' => $files,
+                    'files' => [],
                     'error' => null,
+                    'message' => 'No existe un procedimiento de imagenes asociado a este examen.',
                     'resolved_form_id' => $formId,
                     'resolved_hc_number' => $hcNumber,
                 ]);
             }
 
+            $error = null;
+            $files = $this->getPreferredFilesWithCache($resolvedHcNumber, $resolvedFormId, false, $error);
+            $files = array_map(function (array $file) use ($resolvedHcNumber, $resolvedFormId): array {
+                $name = trim((string) ($file['name'] ?? ''));
+                $file['url'] = $name === ''
+                    ? ''
+                    : '/v2/imagenes/examenes-realizados/nas/file?hc_number=' . rawurlencode($resolvedHcNumber)
+                        . '&form_id=' . rawurlencode($resolvedFormId)
+                        . '&file=' . rawurlencode($name);
+
+                return $file;
+            }, $files);
+
             return response()->json([
-                'success' => true,
-                'files' => [],
-                'error' => null,
-                'message' => 'No existe un procedimiento de imagenes asociado a este examen.',
+                'success' => $error === null,
+                'files' => $files,
+                'error' => $error,
                 'resolved_form_id' => $resolvedFormId,
                 'resolved_hc_number' => $resolvedHcNumber,
             ]);
+        } catch (Throwable $e) {
+            Log::error('imagenes.v2.nas_list.error', [
+                'form_id' => $formId,
+                'hc_number' => $hcNumber,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'files' => [],
+                'error' => 'No se pudo consultar los archivos del examen.',
+                'resolved_form_id' => $formId,
+                'resolved_hc_number' => $hcNumber,
+            ], 200);
         }
-
-        $error = null;
-        $files = $this->getPreferredFilesWithCache($resolvedHcNumber, $resolvedFormId, false, $error);
-        $files = array_map(function (array $file) use ($resolvedHcNumber, $resolvedFormId): array {
-            $name = trim((string) ($file['name'] ?? ''));
-            $file['url'] = $name === ''
-                ? ''
-                : '/v2/imagenes/examenes-realizados/nas/file?hc_number=' . rawurlencode($resolvedHcNumber)
-                    . '&form_id=' . rawurlencode($resolvedFormId)
-                    . '&file=' . rawurlencode($name);
-
-            return $file;
-        }, $files);
-
-        return response()->json([
-            'success' => $error === null,
-            'files' => $files,
-            'error' => $error,
-            'resolved_form_id' => $resolvedFormId,
-            'resolved_hc_number' => $resolvedHcNumber,
-        ]);
     }
 
     public function imagenesNasWarm(Request $request): Response
@@ -736,7 +771,29 @@ class ExamenesParityController
             return response()->json(['success' => false, 'error' => 'Parámetros incompletos'], 400);
         }
 
-        $informe = $this->legacyExamenModel()->obtenerInformeImagen($formId);
+        try {
+            $informe = $this->legacyExamenModel()->obtenerInformeImagen($formId);
+        } catch (Throwable $e) {
+            Log::error('imagenes.v2.informe_datos.error', [
+                'form_id' => $formId,
+                'tipo_examen' => $tipoExamen,
+                'error' => $e->getMessage(),
+            ]);
+
+            $plantilla = (string) ($this->mapearPlantillaInforme($tipoExamen) ?? '');
+            if ($plantilla === '') {
+                return response()->json(['success' => false, 'error' => 'No hay plantilla para este examen'], 404);
+            }
+
+            return response()->json([
+                'success' => true,
+                'plantilla' => $plantilla,
+                'payload' => null,
+                'exists' => false,
+                'updated_at' => null,
+                'warning' => 'No se pudo leer un informe guardado previamente.',
+            ]);
+        }
         $plantilla = is_array($informe) ? trim((string) ($informe['plantilla'] ?? '')) : '';
         if ($plantilla === '') {
             $plantilla = (string) ($this->mapearPlantillaInforme($tipoExamen) ?? '');
@@ -1335,14 +1392,27 @@ class ExamenesParityController
      */
     private function listarUsuariosFirmantes(): array
     {
-        $service = new LeadConfigurationService(DB::connection()->getPdo());
-        $usuarios = $service->getAssignableUsers();
+        return DB::table('users')
+            ->select(['id', 'nombre', 'email', 'profile_photo', 'especialidad'])
+            ->where('especialidad', 'Cirujano Oftalmólogo')
+            ->orderBy('nombre')
+            ->get()
+            ->map(static function (object $usuario): array {
+                $profilePhoto = trim((string) ($usuario->profile_photo ?? ''));
 
-        $filtrados = array_filter($usuarios, static function (array $usuario): bool {
-            return trim((string) ($usuario['especialidad'] ?? '')) === 'Cirujano Oftalmólogo';
-        });
-
-        return array_values($filtrados);
+                return [
+                    'id' => (int) $usuario->id,
+                    'nombre' => (string) ($usuario->nombre ?? ''),
+                    'email' => (string) ($usuario->email ?? ''),
+                    'profile_photo' => $profilePhoto !== '' ? $profilePhoto : null,
+                    'especialidad' => (string) ($usuario->especialidad ?? ''),
+                    'avatar' => $profilePhoto !== ''
+                        ? (preg_match('~^https?://~i', $profilePhoto) ? $profilePhoto : asset($profilePhoto))
+                        : null,
+                ];
+            })
+            ->values()
+            ->all();
     }
 
     public function imagenesDashboardExportPdf(Request $request): Response|RedirectResponse
