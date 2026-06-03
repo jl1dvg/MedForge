@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../../bootstrap.php';
+require_once __DIR__ . '/../../laravel-app/vendor/autoload.php';
 
 use Helpers\CorsHelper;
 
@@ -16,7 +17,7 @@ ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 
-use Modules\Cirugias\Services\CirugiaService;
+use App\Modules\Cirugias\Services\CirugiaService;
 
 try {
     $data = json_decode(file_get_contents('php://input'), true);
