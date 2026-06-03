@@ -13,6 +13,7 @@
         "phpmailer/phpmailer": "^7.1",
         "phpoffice/phpspreadsheet": "^2.1",
         "phpseclib/phpseclib": "^3.0",
+        "predis/predis": "^3.5",
         "setasign/fpdi-tcpdf": "^2.3",
         "tecnickcom/tcpdf": "^6.11"
     },
