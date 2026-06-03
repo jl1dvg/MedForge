@@ -125,7 +125,8 @@ export interface Examen {
   av_oi: string;
   pio_od: number;
   pio_oi: number;
-  plan: string;
+  plan: string;         // consulta_data.plan
+  examen_fisico: string; // consulta_data.examen_fisico (read-only)
 }
 
 export interface Agenda {
@@ -138,8 +139,10 @@ export interface Agenda {
 export interface PacienteDetalle {
   edad: number;
   sexo: string;
-  cedula: string;
+  cedula: string;   // maps to hc_number (patient identifier)
   direccion: string;
+  telefono: string;
+  fecha_nacimiento: string | null;
 }
 
 export interface Detalle {

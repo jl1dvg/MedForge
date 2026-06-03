@@ -109,9 +109,9 @@ function PfCaso({ sol }: { sol: Solicitud }) {
         <h4 className="pf-h">Datos del paciente</h4>
         <div className="pf-grid">
           <div className="pf-f"><div className="k">Nombre</div><div className="v">{sol.full_name}</div></div>
-          <div className="pf-f"><div className="k">Cédula</div><div className="v">{det.paciente.cedula}</div></div>
-          <div className="pf-f"><div className="k">Edad / sexo</div><div className="v">{det.paciente.edad} años · {det.paciente.sexo}</div></div>
-          <div className="pf-f"><div className="k">Teléfono</div><div className="v">{sol.crm.telefono}</div></div>
+          <div className="pf-f"><div className="k">HC / Cédula</div><div className="v">{det.paciente.cedula}</div></div>
+          <div className="pf-f"><div className="k">Edad / sexo</div><div className="v">{det.paciente.edad > 0 ? `${det.paciente.edad} años` : '—'} · {det.paciente.sexo}</div></div>
+          <div className="pf-f"><div className="k">Teléfono</div><div className="v">{det.paciente.telefono !== '—' ? det.paciente.telefono : (sol.crm.telefono !== '—' ? sol.crm.telefono : '—')}</div></div>
           <div className="pf-f"><div className="k">Dirección</div><div className="v">{det.paciente.direccion}</div></div>
           <div className="pf-f"><div className="k">Afiliación</div><div className="v">{sol.afiliacion_label}</div></div>
         </div>
@@ -242,9 +242,9 @@ function PfAgenda({ sol, showToast }: { sol: Solicitud; showToast: (msg: string,
 
 // ---- PfNota -------------------------------------------------
 
-function PfNota({ sol, showToast }: { sol: Solicitud; showToast: (msg: string, icon?: string) => void }) {
+function PfNota({ sol }: { sol: Solicitud; showToast: (msg: string, icon?: string) => void }) {
   const ex = sol.detalle.examen;
-  const [plan, setPlan] = useState(ex.plan);
+  const hasExamValues = ex.av_od !== '—' || ex.av_oi !== '—' || ex.pio_od !== 0 || ex.pio_oi !== 0;
   return (
     <>
       <div className="pf-section">
@@ -254,18 +254,25 @@ function PfNota({ sol, showToast }: { sol: Solicitud; showToast: (msg: string, i
             <thead><tr><th></th><th>OD</th><th>OI</th></tr></thead>
             <tbody>
               <tr><td>Agudeza visual</td><td>{ex.av_od}</td><td>{ex.av_oi}</td></tr>
-              <tr><td>PIO (mmHg)</td><td>{ex.pio_od}</td><td>{ex.pio_oi}</td></tr>
+              <tr><td>PIO (mmHg)</td><td>{hasExamValues ? ex.pio_od : '—'}</td><td>{hasExamValues ? ex.pio_oi : '—'}</td></tr>
             </tbody>
           </table>
         </div>
+        {ex.examen_fisico && (
+          <div style={{ marginTop: 12 }}>
+            <div className="pf-h" style={{ marginBottom: 6, fontSize: '0.72rem' }}>NOTA DEL EXAMEN</div>
+            <textarea className="fld" rows={6} readOnly value={ex.examen_fisico}
+              style={{ resize: 'vertical', cursor: 'default', background: 'var(--bg-2, #f8f9fb)' }} />
+          </div>
+        )}
       </div>
-      <div className="pf-section">
-        <h4 className="pf-h">Plan</h4>
-        <textarea className="fld" rows={5} value={plan} onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setPlan(e.target.value)}></textarea>
-        <button className="btn-add self-end" style={{ marginTop: 10 }} onClick={() => showToast('Nota clínica guardada', 'mdi-content-save-outline')}>
-          <i className="mdi mdi-content-save-outline"></i>Guardar nota
-        </button>
-      </div>
+      {ex.plan && ex.plan !== '—' && (
+        <div className="pf-section">
+          <h4 className="pf-h">Plan</h4>
+          <textarea className="fld" rows={6} readOnly value={ex.plan}
+            style={{ resize: 'vertical', cursor: 'default', background: 'var(--bg-2, #f8f9fb)' }} />
+        </div>
+      )}
     </>
   );
 }

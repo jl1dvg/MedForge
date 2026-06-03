@@ -138,7 +138,7 @@ function buildAlerts(raw: ApiSolicitud, estadoSlug: string): Alert[] {
 
 function emptyDetalle(): Detalle {
   return {
-    paciente: { edad: 0, sexo: '—', cedula: '—', direccion: '—' },
+    paciente: { edad: 0, sexo: '—', cedula: '—', direccion: '—', telefono: '—', fecha_nacimiento: null },
     diagnosticos: [],
     derivacion: {
       tiene: false, cod: null, aseguradora: '—', plan: '—',
@@ -149,7 +149,7 @@ function emptyDetalle(): Detalle {
     tareas: [],
     propuestas: [],
     adjuntos: [],
-    examen: { av_od: '—', av_oi: '—', pio_od: 0, pio_oi: 0, plan: '—' },
+    examen: { av_od: '—', av_oi: '—', pio_od: 0, pio_oi: 0, plan: '—', examen_fisico: '' },
     agenda: { sala: '—', fecha: null, duracion: 30, anestesia: '—' },
   };
 }
@@ -294,7 +294,7 @@ export async function fetchDetalle(id: number): Promise<Detalle> {
       propuestas: Array<Record<string, unknown>>;
       adjuntos: Array<{ nombre?: string; name?: string; mime_type?: string; size?: string; created_at?: string }>;
       paciente: Record<string, unknown>;
-      diagnostico: Array<{ codigo_cie?: string; cie?: string; descripcion?: string; desc?: string }>;
+      diagnostico: Array<{ dx_code?: string; codigo_cie?: string; cie?: string; descripcion?: string; desc?: string }>;
       consulta: Record<string, unknown>;
       derivacion: Record<string, unknown>;
     };
@@ -334,8 +334,9 @@ export async function fetchDetalle(id: number): Promise<Detalle> {
     };
   });
 
+  // diagnosticos_asignados uses dx_code + descripcion fields
   const diagnosticos = (d.diagnostico ?? []).map((dx) => ({
-    cie: (dx.codigo_cie ?? dx.cie ?? '—') as string,
+    cie: (dx.dx_code ?? dx.codigo_cie ?? dx.cie ?? '—') as string,
     desc: (dx.descripcion ?? dx.desc ?? '—') as string,
   }));
 
@@ -358,12 +359,25 @@ export async function fetchDetalle(id: number): Promise<Detalle> {
     };
   });
 
+  // Compute age from fecha_nacimiento
+  const fechaNac = pac.fecha_nacimiento as string | null | undefined;
+  let edad = 0;
+  if (fechaNac) {
+    const diff = Date.now() - new Date(fechaNac).getTime();
+    edad = Math.floor(diff / (1000 * 60 * 60 * 24 * 365.25));
+  }
+
+  // Lookup cedula from detalle (sol) since patient_data.hc_number is the identifier
+  const cedulaVal = String(sol.hc_number ?? pac.hc_number ?? '—');
+
   return {
     paciente: {
-      edad: Number(pac.edad ?? pac.age ?? 0),
-      sexo: String(pac.sexo ?? pac.gender ?? '—'),
-      cedula: String(pac.cedula ?? pac.identification ?? '—'),
-      direccion: String(pac.direccion ?? pac.address ?? '—'),
+      edad,
+      sexo: String(pac.sexo ?? '—'),
+      cedula: cedulaVal,
+      direccion: String(pac.direccion ?? '—'),
+      telefono: String(d.detalle?.crm_contacto_telefono ?? pac.celular ?? '—'),
+      fecha_nacimiento: fechaNac ?? null,
     },
     diagnosticos,
     derivacion: {
@@ -382,11 +396,13 @@ export async function fetchDetalle(id: number): Promise<Detalle> {
     propuestas,
     adjuntos,
     examen: {
-      av_od: String(cons.av_od ?? sol.av_od ?? '—'),
-      av_oi: String(cons.av_oi ?? sol.av_oi ?? '—'),
-      pio_od: Number(cons.pio_od ?? sol.pio_od ?? 0),
-      pio_oi: Number(cons.pio_oi ?? sol.pio_oi ?? 0),
-      plan: String(cons.plan ?? cons.diagnostico ?? '—'),
+      // consulta_data stores av/pio as text fields; show as-is or '—'
+      av_od: String(cons.av_od ?? '—'),
+      av_oi: String(cons.av_oi ?? '—'),
+      pio_od: cons.pio_od != null ? Number(cons.pio_od) : 0,
+      pio_oi: cons.pio_oi != null ? Number(cons.pio_oi) : 0,
+      plan: String(cons.plan ?? '—'),
+      examen_fisico: String(cons.examen_fisico ?? ''),
     },
     agenda: {
       sala: String(sol.sala ?? sol.quirofano ?? '—'),
