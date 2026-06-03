@@ -94,12 +94,14 @@ export function adaptMessage(m) {
   if (m.media) {
     const isAudio = m.message_type === 'audio' || m.media.voice;
     const isImage = m.message_type === 'image';
+    const mediaUrl = m.media.download_url || m.media.url || null;
     media = {
-      type: isAudio ? 'audio' : 'file',
+      type: isImage ? 'image' : isAudio ? 'audio' : 'file',
       name: m.media.filename || (isAudio ? 'Nota de voz' : 'Archivo adjunto'),
       size: m.media.mime_type || '',
-      icon: isImage ? 'mdi-image-outline' : 'mdi-file-document-outline',
-      downloadUrl: m.media.download_url || null,
+      icon: isImage ? 'mdi-image-outline' : isAudio ? 'mdi-microphone-outline' : 'mdi-file-document-outline',
+      downloadUrl: mediaUrl,
+      imageUrl: isImage ? mediaUrl : null,
     };
   }
 
