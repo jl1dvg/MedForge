@@ -16,7 +16,7 @@ export const formatTurno = valor => {
     return String(numero).padStart(2, '0');
 };
 
-export async function llamarTurnoSolicitud({ id = null, turno = null, estado = 'Llamado' } = {}) {
+export async function llamarTurnoSolicitud({ id = null, turno = null, estado = 'Turno llamado' } = {}) {
     const payload = {};
 
     const idNormalizado = parseEntero(id);

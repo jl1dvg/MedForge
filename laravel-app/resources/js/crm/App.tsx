@@ -8,25 +8,32 @@ import { FilterChips } from './components/FilterChips';
 import { OpportunityTable } from './components/OpportunityTable';
 import { DetailPanel } from './components/DetailPanel';
 
-const DEFAULT_FILTERS: ActiveFilters = { stage: '', source: '', phase: '', urgent: false, search: '' };
+const DEFAULT_FILTERS: ActiveFilters = { stage: '', source: '', phase: '', afiliacion: '', urgent: false, search: '' };
+const PAGE_SIZE = 25;
 
 export default function App() {
   const [filters, setFilters] = useState<ActiveFilters>(DEFAULT_FILTERS);
   const [selected, setSelected] = useState<CrmOpportunity | null>(null);
+  const [page, setPage] = useState(1);
 
   const apiFilters = {
     stage: filters.stage || undefined,
     source: filters.source || undefined,
     phase: (filters.phase || undefined) as Phase | undefined,
+    afiliacion: filters.afiliacion || undefined,
     urgent: filters.urgent || undefined,
     search: filters.search || undefined,
+    limit: PAGE_SIZE,
+    offset: (page - 1) * PAGE_SIZE,
   };
 
   const { data, meta, loading, error, refresh } = useOpportunities(apiFilters);
   const { stats } = useStats();
+  const totalPages = Math.max(1, Math.ceil(meta.total / PAGE_SIZE));
 
   const handleFilterChange = useCallback((partial: Partial<ActiveFilters>) => {
     setFilters(f => ({ ...f, ...partial }));
+    setPage(1); // reset to first page on filter change
   }, []);
 
   const handleUpdated = useCallback((updated: CrmOpportunity) => {
@@ -70,6 +77,36 @@ export default function App() {
         <StatsBar stats={stats} />
         <FilterChips filters={filters} total={meta.total} urgentCount={stats?.urgent ?? 0} onChange={handleFilterChange} />
         <OpportunityTable opportunities={data} loading={loading} onSelect={setSelected} />
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            gap: '.75rem', padding: '1rem 0', fontSize: '.8125rem', color: 'var(--fg-2)',
+          }}>
+            <button
+              className="btn btn-sm"
+              disabled={page <= 1 || loading}
+              onClick={() => setPage(p => p - 1)}
+              style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
+            >
+              ← Anterior
+            </button>
+            <span style={{ fontWeight: 600 }}>
+              Página {page} de {totalPages}
+              <span style={{ fontWeight: 400, color: 'var(--fg-mute)', marginLeft: '.375rem' }}>
+                ({meta.total} total)
+              </span>
+            </span>
+            <button
+              className="btn btn-sm"
+              disabled={page >= totalPages || loading}
+              onClick={() => setPage(p => p + 1)}
+              style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
+            >
+              Siguiente →
+            </button>
+          </div>
+        )}
       </div>
 
       {selected && (

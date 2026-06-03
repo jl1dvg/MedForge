@@ -1,0 +1,355 @@
+name: Deploy MedForge
+
+on:
+  push:
+    branches:
+      - main      # → producción
+      - staging   # → staging (deploy directo sin PR)
+  pull_request:
+    branches:
+      - main      # PR hacia main → preview en staging antes de aprobar
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Entorno a desplegar'
+        required: true
+        default: staging
+        type: choice
+        options:
+          - staging
+          - production
+
+jobs:
+  # ── Staging / Scraper ────────────────────────────────────────────────────
+  deploy-staging:
+    name: "Deploy → Staging"
+    runs-on: ubuntu-latest
+    if: |
+      github.ref == 'refs/heads/staging' ||
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'workflow_dispatch' && inputs.environment == 'staging')
+    steps:
+      - uses: actions/checkout@v4
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: laravel-app/package-lock.json
+
+      - name: Compilar assets Vite (Staging)
+        working-directory: laravel-app
+        run: npm ci && npm run build
+
+      - name: Instalar sshpass + rsync
+        run: sudo apt-get install -y sshpass rsync
+
+      - name: Sincronizar archivos → Staging
+        env:
+          SSHPASS: ${{ secrets.STAGING_SSH_PASS }}
+        run: |
+          sshpass -e rsync -az --checksum --delete \
+            -e "ssh -o StrictHostKeyChecking=no -p 22" \
+            --exclude='.git/' \
+            --exclude='.env' \
+            --exclude='laravel-app/.env' \
+            --exclude='laravel-app/vendor/' \
+            --exclude='laravel-app/node_modules/' \
+            --exclude='laravel-app/storage/' \
+            --exclude='storage/' \
+            --exclude='laravel-app/public/uploads/' \
+            --exclude='laravel-app/public/assets/firmas/' \
+            --exclude='laravel-app/public/assets/seals/' \
+            --exclude='public/uploads/' \
+            --exclude='public/assets/firmas/' \
+            --exclude='public/assets/seals/' \
+            ./ ${{ secrets.STAGING_SSH_USER }}@${{ secrets.STAGING_SSH_HOST }}:~/medforge/
+
+      - name: Post-deploy Staging
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.STAGING_SSH_HOST }}
+          username: ${{ secrets.STAGING_SSH_USER }}
+          password: ${{ secrets.STAGING_SSH_PASS }}
+          port: 22
+          command_timeout: 15m
+          script: |
+            set -e
+            PROJECT="$HOME/medforge"
+            PHP=/usr/bin/php8.3-cli
+
+            # Permisos de storage
+            mkdir -p "$PROJECT/laravel-app/storage/logs" \
+                     "$PROJECT/laravel-app/storage/framework/cache" \
+                     "$PROJECT/laravel-app/storage/framework/sessions" \
+                     "$PROJECT/laravel-app/storage/framework/views" \
+                     "$PROJECT/laravel-app/bootstrap/cache" \
+                     "$PROJECT/storage/logs"
+            chmod -R 775 "$PROJECT/laravel-app/storage" \
+                         "$PROJECT/laravel-app/bootstrap/cache" \
+                         "$PROJECT/storage" 2>/dev/null || true
+
+            cd "$PROJECT/laravel-app"
+
+            # Instalar composer.phar si no existe (solo primera vez en staging)
+            if [ ! -f composer.phar ]; then
+              echo "Descargando composer.phar..."
+              $PHP -r "copy('https://getcomposer.org/installer', 'composer-setup.php');"
+              $PHP composer-setup.php --quiet
+              rm -f composer-setup.php
+              echo "composer.phar instalado: $($PHP composer.phar --version 2>&1 | head -1)"
+            fi
+            $PHP composer.phar install --no-interaction 2>&1
+
+            # Limpiar caches (staging no las cachea para facilitar cambios)
+            $PHP artisan config:clear
+            $PHP artisan route:clear
+            $PHP artisan view:clear
+
+            # Copiar assets Vite al public raíz (hasta migración completa a Laravel)
+            mkdir -p "$PROJECT/public/build"
+            rsync -a --delete "$PROJECT/laravel-app/public/build/" "$PROJECT/public/build/"
+
+            # Dependencias Python para scrapers
+            cd "$PROJECT"
+            python3 -m pip install -q -r scrapping/requirements.txt 2>/dev/null || true
+
+            echo "Staging actualizado: $(date '+%Y-%m-%d %H:%M:%S')"
+
+      - name: Preparar ruta worker VPS → Staging
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.WORKER_SSH_HOST }}
+          username: ${{ secrets.WORKER_SSH_USER }}
+          password: ${{ secrets.WORKER_SSH_PASS }}
+          port: 22
+          command_timeout: 5m
+          script: |
+            set -e
+            WORKER_PATH="${{ secrets.WORKER_STAGING_PATH }}"
+            mkdir -p "$WORKER_PATH"
+
+      - name: Sincronizar worker VPS → Staging
+        env:
+          SSHPASS: ${{ secrets.WORKER_SSH_PASS }}
+        run: |
+          sshpass -e rsync -az --checksum --delete \
+            -e "ssh -o StrictHostKeyChecking=no -p 22" \
+            --exclude='.git/' \
+            --exclude='.env' \
+            --exclude='laravel-app/.env' \
+            --exclude='laravel-app/vendor/' \
+            --exclude='laravel-app/node_modules/' \
+            --exclude='laravel-app/storage/' \
+            --exclude='storage/' \
+            --exclude='laravel-app/public/uploads/' \
+            --exclude='laravel-app/public/assets/firmas/' \
+            --exclude='laravel-app/public/assets/seals/' \
+            --exclude='public/uploads/' \
+            --exclude='public/assets/firmas/' \
+            --exclude='public/assets/seals/' \
+            ./ ${{ secrets.WORKER_SSH_USER }}@${{ secrets.WORKER_SSH_HOST }}:${{ secrets.WORKER_STAGING_PATH }}/
+
+      - name: Post-deploy worker VPS → Staging
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.WORKER_SSH_HOST }}
+          username: ${{ secrets.WORKER_SSH_USER }}
+          password: ${{ secrets.WORKER_SSH_PASS }}
+          port: 22
+          command_timeout: 15m
+          script: |
+            set -e
+            PROJECT="${{ secrets.WORKER_STAGING_PATH }}"
+            PHP=php
+
+            mkdir -p "$PROJECT/laravel-app/storage/logs" \
+                     "$PROJECT/laravel-app/storage/framework/cache" \
+                     "$PROJECT/laravel-app/storage/framework/sessions" \
+                     "$PROJECT/laravel-app/storage/framework/views" \
+                     "$PROJECT/laravel-app/bootstrap/cache" \
+                     "$PROJECT/storage/logs"
+
+            cd "$PROJECT/laravel-app"
+
+            if [ ! -f composer.phar ]; then
+              echo "Descargando composer.phar..."
+              $PHP -r "copy('https://getcomposer.org/installer', 'composer-setup.php');"
+              $PHP composer-setup.php --quiet
+              rm -f composer-setup.php
+            fi
+
+            $PHP composer.phar install --no-interaction 2>&1
+            $PHP artisan config:clear
+            $PHP artisan route:clear
+            $PHP artisan view:clear
+
+            if command -v supervisorctl >/dev/null 2>&1 && supervisorctl status medforge-staging-worker:* >/dev/null 2>&1; then
+              supervisorctl restart medforge-staging-worker:*
+            else
+              echo "Supervisor worker staging no configurado todavia; deploy de archivos completado."
+            fi
+
+  # ── Producción ────────────────────────────────────────────────────────────
+  deploy-production:
+    name: "Deploy → Producción"
+    runs-on: ubuntu-latest
+    if: |
+      github.ref == 'refs/heads/main' ||
+      (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')
+    steps:
+      - uses: actions/checkout@v4
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: laravel-app/package-lock.json
+
+      - name: Compilar assets Vite (Producción)
+        working-directory: laravel-app
+        run: npm ci && npm run build
+
+      - name: Instalar sshpass + rsync
+        run: sudo apt-get install -y sshpass rsync
+
+      - name: Sincronizar archivos → Producción
+        env:
+          SSHPASS: ${{ secrets.PROD_SSH_PASS }}
+        run: |
+          sshpass -e rsync -az --delete \
+            -e "ssh -o StrictHostKeyChecking=no -p 22" \
+            --exclude='.git/' \
+            --exclude='.env' \
+            --exclude='laravel-app/.env' \
+            --exclude='laravel-app/vendor/' \
+            --exclude='laravel-app/node_modules/' \
+            --exclude='laravel-app/storage/' \
+            --exclude='storage/' \
+            --exclude='laravel-app/public/uploads/' \
+            --exclude='laravel-app/public/assets/firmas/' \
+            --exclude='laravel-app/public/assets/seals/' \
+            --exclude='public/uploads/' \
+            --exclude='public/assets/firmas/' \
+            --exclude='public/assets/seals/' \
+            ./ ${{ secrets.PROD_SSH_USER }}@${{ secrets.PROD_SSH_HOST }}:~/medforge/
+
+      - name: Post-deploy Producción
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.PROD_SSH_HOST }}
+          username: ${{ secrets.PROD_SSH_USER }}
+          password: ${{ secrets.PROD_SSH_PASS }}
+          port: 22
+          command_timeout: 15m
+          script: |
+            set -e
+            PROJECT="$HOME/medforge"
+            PHP=/usr/bin/php8.3-cli
+
+            # Permisos de storage
+            mkdir -p "$PROJECT/laravel-app/storage/logs" \
+                     "$PROJECT/laravel-app/storage/framework/cache" \
+                     "$PROJECT/laravel-app/storage/framework/sessions" \
+                     "$PROJECT/laravel-app/storage/framework/views" \
+                     "$PROJECT/laravel-app/bootstrap/cache" \
+                     "$PROJECT/storage/logs"
+            chmod -R 775 "$PROJECT/laravel-app/storage" \
+                         "$PROJECT/laravel-app/bootstrap/cache" \
+                         "$PROJECT/storage" 2>/dev/null || true
+
+            cd "$PROJECT/laravel-app"
+
+            # Composer (producción ya tiene composer.phar)
+            $PHP composer.phar install --no-dev --optimize-autoloader --no-interaction 2>&1
+
+            # Cachear para producción
+            $PHP artisan config:cache
+            $PHP artisan route:cache
+            $PHP artisan view:cache
+
+            # Copiar assets Vite al public raíz (hasta migración completa a Laravel)
+            mkdir -p "$PROJECT/public/build"
+            rsync -a --delete "$PROJECT/laravel-app/public/build/" "$PROJECT/public/build/"
+
+            echo "Producción actualizada: $(date '+%Y-%m-%d %H:%M:%S')"
+
+      - name: Preparar ruta worker VPS → Producción
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.WORKER_SSH_HOST }}
+          username: ${{ secrets.WORKER_SSH_USER }}
+          password: ${{ secrets.WORKER_SSH_PASS }}
+          port: 22
+          command_timeout: 5m
+          script: |
+            set -e
+            WORKER_PATH="${{ secrets.WORKER_PRODUCTION_PATH }}"
+            mkdir -p "$WORKER_PATH"
+
+      - name: Sincronizar worker VPS → Producción
+        env:
+          SSHPASS: ${{ secrets.WORKER_SSH_PASS }}
+        run: |
+          sshpass -e rsync -az --delete \
+            -e "ssh -o StrictHostKeyChecking=no -p 22" \
+            --exclude='.git/' \
+            --exclude='.env' \
+            --exclude='laravel-app/.env' \
+            --exclude='laravel-app/vendor/' \
+            --exclude='laravel-app/node_modules/' \
+            --exclude='laravel-app/storage/' \
+            --exclude='storage/' \
+            --exclude='laravel-app/public/uploads/' \
+            --exclude='laravel-app/public/assets/firmas/' \
+            --exclude='laravel-app/public/assets/seals/' \
+            --exclude='public/uploads/' \
+            --exclude='public/assets/firmas/' \
+            --exclude='public/assets/seals/' \
+            ./ ${{ secrets.WORKER_SSH_USER }}@${{ secrets.WORKER_SSH_HOST }}:${{ secrets.WORKER_PRODUCTION_PATH }}/
+
+      - name: Post-deploy worker VPS → Producción
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.WORKER_SSH_HOST }}
+          username: ${{ secrets.WORKER_SSH_USER }}
+          password: ${{ secrets.WORKER_SSH_PASS }}
+          port: 22
+          command_timeout: 15m
+          script: |
+            set -e
+            PROJECT="${{ secrets.WORKER_PRODUCTION_PATH }}"
+            PHP=php
+
+            mkdir -p "$PROJECT/laravel-app/storage/logs" \
+                     "$PROJECT/laravel-app/storage/framework/cache" \
+                     "$PROJECT/laravel-app/storage/framework/sessions" \
+                     "$PROJECT/laravel-app/storage/framework/views" \
+                     "$PROJECT/laravel-app/bootstrap/cache" \
+                     "$PROJECT/storage/logs"
+
+            cd "$PROJECT/laravel-app"
+
+            if [ ! -f composer.phar ]; then
+              echo "Descargando composer.phar..."
+              $PHP -r "copy('https://getcomposer.org/installer', 'composer-setup.php');"
+              $PHP composer-setup.php --quiet
+              rm -f composer-setup.php
+            fi
+
+            $PHP composer.phar install --no-dev --optimize-autoloader --no-interaction 2>&1
+            $PHP artisan config:cache
+            $PHP artisan route:cache
+            $PHP artisan view:cache
+
+            if command -v supervisorctl >/dev/null 2>&1 && supervisorctl status medforge-production-worker:* >/dev/null 2>&1; then
+              supervisorctl restart medforge-production-worker:*
+            else
+              echo "Supervisor worker production no configurado todavia; deploy de archivos completado."
+            fi

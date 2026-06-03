@@ -678,17 +678,37 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       }
 
       const fallbacks = [];
-      if (pageOrigin && /^https?:\/\//i.test(pageOrigin)) {
+      for (const fallbackPath of [
+        "/v2/api/solicitudes/estado.php",
+        "/v2/api/solicitudes/estado",
+      ]) {
         try {
-          const alt = new URL("/api/solicitudes/estado.php", pageOrigin);
-          alt.searchParams.set("hcNumber", hcNumber);
-          // Solo agregar como fallback si es diferente a la URL primaria.
-          const altStr = alt.toString();
-          if (altStr !== primaryUrl) {
-            fallbacks.push(altStr);
+          const fallbackUrl = await buildApiUrl(fallbackPath, { hcNumber });
+          if (fallbackUrl !== primaryUrl && !fallbacks.includes(fallbackUrl)) {
+            fallbacks.push(fallbackUrl);
           }
         } catch (e) {
-          // ignore malformed origin
+          // ignore malformed configured API base
+        }
+      }
+
+      if (pageOrigin && /^https?:\/\//i.test(pageOrigin)) {
+        for (const fallbackPath of [
+          "/api/solicitudes/estado.php",
+          "/api/solicitudes/estado",
+          "/v2/api/solicitudes/estado.php",
+          "/v2/api/solicitudes/estado",
+        ]) {
+          try {
+            const alt = new URL(fallbackPath, pageOrigin);
+            alt.searchParams.set("hcNumber", hcNumber);
+            const altStr = alt.toString();
+            if (altStr !== primaryUrl && !fallbacks.includes(altStr)) {
+              fallbacks.push(altStr);
+            }
+          } catch (e) {
+            // ignore malformed origin
+          }
         }
       }
 

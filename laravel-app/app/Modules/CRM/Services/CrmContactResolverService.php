@@ -39,9 +39,10 @@ class CrmContactResolverService
         string $source,
         ?int $patientId = null,
     ): CrmContact {
+        $rawPhone = $phone;
         $phone = self::normalizePhone($phone);
 
-        return DB::transaction(function () use ($phone, $name, $cedula, $source, $patientId): CrmContact {
+        return DB::transaction(function () use ($rawPhone, $phone, $name, $cedula, $source, $patientId): CrmContact {
             // 0. Match más fuerte por patient_id (único por paciente clínico)
             if ($patientId !== null) {
                 $existing = CrmContact::query()->where('patient_id', $patientId)->first();
@@ -70,7 +71,10 @@ class CrmContactResolverService
                 }
 
                 // ¿Existe contacto provisional con ese teléfono? Upgrade.
-                $provisional = CrmContact::query()->byPhone($phone)->provisional()->first();
+                $provisional = CrmContact::query()
+                    ->whereIn('phone', array_values(array_unique([$phone, $rawPhone])))
+                    ->provisional()
+                    ->first();
                 if ($provisional instanceof CrmContact) {
                     $provisional->fill([
                         'name'       => $name,
@@ -106,7 +110,9 @@ class CrmContactResolverService
             }
 
             // 2. Match débil por teléfono (provisional)
-            $byPhone = CrmContact::query()->byPhone($phone)->first();
+            $byPhone = CrmContact::query()
+                ->whereIn('phone', array_values(array_unique([$phone, $rawPhone])))
+                ->first();
             if ($byPhone instanceof CrmContact) {
                 return $byPhone;
             }

@@ -13,6 +13,7 @@ class CrmOpportunity extends Model
     protected $fillable = [
         'contact_id', 'title', 'stage', 'phase',
         'source', 'source_id', 'source_type',
+        'afiliacion_tipo',
         'assigned_to', 'lost_reason',
         'last_activity_at', 'escalation_at',
     ];
@@ -59,6 +60,11 @@ class CrmOpportunity extends Model
     public function activities(): HasMany
     {
         return $this->hasMany(CrmActivity::class, 'opportunity_id')->orderBy('created_at', 'desc');
+    }
+
+    public function proposals(): HasMany
+    {
+        return $this->hasMany(CrmProposal::class, 'crm_opportunity_id')->orderBy('created_at', 'desc');
     }
 
     public function scopeActive($query)

@@ -18,7 +18,6 @@
         </include>
     </source>
     <php>
-        <env name="APP_BASE_PATH" value="/Users/jorgeluisdevera/PhpstormProjects/MedForge/.claude/worktrees/funny-engelbart-d69983/laravel-app"/>
         <env name="APP_ENV" value="testing"/>
         <env name="APP_KEY" value="base64:gIBzVH+/GvJ2oNMxf46jI3ta1fdjvkQX3rrliNey5d4="/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>

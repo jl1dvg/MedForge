@@ -32,4 +32,8 @@ return [
         16 => 'Ceibos',
     ],
 
+    'billing' => [
+        'honorarios_dashboard_cache_ttl' => (int) env('HONORARIOS_DASHBOARD_CACHE_TTL', 300),
+    ],
+
 ];

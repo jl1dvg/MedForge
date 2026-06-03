@@ -1247,6 +1247,42 @@ class SettingsHelper
                                 false,
                                 'Dirección textual que se enviará si la plantilla usa dirección.'
                             ),
+                            self::textField(
+                                'whatsapp_reminder_site_lat_matriz',
+                                'Latitud - Matriz',
+                                false,
+                                'Latitud para header de ubicación en WhatsApp (ej: -2.1894).'
+                            ),
+                            self::textField(
+                                'whatsapp_reminder_site_lng_matriz',
+                                'Longitud - Matriz',
+                                false,
+                                'Longitud para header de ubicación en WhatsApp (ej: -79.8891).'
+                            ),
+                            self::textField(
+                                'whatsapp_reminder_site_lat_villa_club',
+                                'Latitud - Villa Club',
+                                false,
+                                'Latitud para header de ubicación en WhatsApp (ej: -1.9254).'
+                            ),
+                            self::textField(
+                                'whatsapp_reminder_site_lng_villa_club',
+                                'Longitud - Villa Club',
+                                false,
+                                'Longitud para header de ubicación en WhatsApp (ej: -80.0011).'
+                            ),
+                            self::textField(
+                                'whatsapp_reminder_site_lat_ceibos',
+                                'Latitud - Ceibos',
+                                false,
+                                'Latitud para header de ubicación en WhatsApp.'
+                            ),
+                            self::textField(
+                                'whatsapp_reminder_site_lng_ceibos',
+                                'Longitud - Ceibos',
+                                false,
+                                'Longitud para header de ubicación en WhatsApp.'
+                            ),
                             self::textareaField(
                                 'whatsapp_reminder_service_keywords',
                                 'Keywords de servicios oftalmológicos generales',

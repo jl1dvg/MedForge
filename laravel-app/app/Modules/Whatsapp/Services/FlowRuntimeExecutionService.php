@@ -3,6 +3,8 @@
 namespace App\Modules\Whatsapp\Services;
 
 use App\Modules\Shared\Support\SettingsOptionResolver;
+use App\Modules\CRM\Services\CrmContactResolverService;
+use App\Modules\CRM\Services\CrmOpportunityService;
 use App\Models\WhatsappAutoresponderSession;
 use App\Models\WhatsappConversation;
 use App\Models\WhatsappConversationAttribution;
@@ -189,6 +191,19 @@ class FlowRuntimeExecutionService
             }
         }
 
+        // Botón "Cambiar horario" desde pantalla de pre-confirmación
+        if ($this->normalizeText($text) === 'cambiar horario' || trim($text) === 'cambiar_horario') {
+            $context['state'] = 'agenda_esperando_horario';
+            unset($context['awaiting_field'], $context['horario_texto'], $context['fecha_inicio_raw']);
+            $this->sendFlowMessage($conversation, [
+                'type' => 'text',
+                'body' => '🔄 Sin problema. ¿Qué horario prefieres? Escribe la fecha o elige de las opciones disponibles.',
+            ], $context);
+            $this->saveSession($conversation, (string)$conversation->wa_number, 'cambiar_horario',
+                null, null, $context, $messagePayload);
+            return $this->result(true, true, 'cambiar_horario', 1, false, null);
+        }
+
         if ($this->isBookingChangeRequest($text)) {
             $activeBooking = $this->activeSigcenterBooking($conversation, $context);
             if ($activeBooking !== null) {
@@ -288,6 +303,41 @@ class FlowRuntimeExecutionService
             return $this->result(true, true, (string)($scenario['id'] ?? 'fallback'), $run['messages_sent'], !empty($context['handoff_requested']), null);
         }
 
+        if (empty($context['awaiting_field']) && $this->isCourtesyMessage($text)) {
+            $this->sendFlowMessage($conversation, [
+                'type' => 'text',
+                'body' => '¡Con gusto! 😊 Si necesitas algo más, escribe *MENU* y te ayudo.',
+            ], $context);
+            return $this->result(true, true, 'courtesy_reply', 1, false, null);
+        }
+
+        $frustrationLevel = $this->isFrustrationSignal($text);
+        if ($frustrationLevel === 2) {
+            $context['handoff_requested'] = true;
+            $context['handoff_topic'] = 'frustracion_explicita';
+            $context['handoff_note'] = 'Paciente expresó frustración explícita: "' . mb_substr($text, 0, 80) . '"';
+            $this->sendFlowMessage($conversation, [
+                'type' => 'text',
+                'body' => 'Lamentamos tu experiencia. Un asesor te atenderá de inmediato. 🙏',
+            ], $context);
+            $this->saveSession($conversation, (string)$conversation->wa_number, 'frustration_handoff',
+                null, null, $context, $messagePayload);
+            $this->markConversationForHandoff($conversation, [], $context);
+            return $this->result(true, true, 'frustration_handoff', 1, true, null);
+        }
+        if ($frustrationLevel === 1) {
+            $this->sendFlowMessage($conversation, [
+                'type' => 'buttons',
+                'body' => 'Disculpa la confusión 🙏 ¿Cómo te podemos ayudar?',
+                'buttons' => [
+                    ['id' => 'agendar', 'title' => '📅 Agendar cita'],
+                    ['id' => 'consultar_cita', 'title' => '🔍 Ver mi cita'],
+                    ['id' => 'ayuda', 'title' => '🙋 Hablar con asesor'],
+                ],
+            ], $context);
+            return $this->result(true, true, 'frustration_mild', 1, false, null);
+        }
+
         $fallbackBody = trim((string) ($flow['settings']['no_match_fallback_message'] ?? ''));
         if ($fallbackBody === '') {
             $fallbackBody = "No entendí tu mensaje.\nEscribe *MENU* para ver las opciones.";
@@ -345,6 +395,20 @@ class FlowRuntimeExecutionService
         }
 
         if ($this->shouldRetryCedula($facts)) {
+            $retryCount = $this->incrementInputRetry($context, 'cedula');
+            if ($retryCount >= 3) {
+                $this->resetInputRetry($context, 'cedula');
+                $this->sendFlowMessage($conversation, [
+                    'type' => 'text',
+                    'body' => 'No pudimos verificar tu información. Un asesor te contactará para ayudarte. 🙏',
+                ], $context);
+                $context['handoff_requested'] = true;
+                $context['handoff_topic'] = 'cedula_no_reconocida';
+                $context['handoff_note'] = 'Paciente no pudo ingresar cédula válida tras 3 intentos.';
+                $context['state'] = 'handoff_cedula';
+                unset($context['awaiting_field']);
+                return $this->result(true, true, 'cedula_max_retries', 1, true, null);
+            }
             $this->sendFlowMessage($conversation, $this->cedulaRetryMessage(), $context);
             $context['state'] = 'esperando_cedula';
             $context['awaiting_field'] = 'cedula';
@@ -650,6 +714,7 @@ class FlowRuntimeExecutionService
             $context['cedula'] = $this->normalizeIdentifier($value);
             $context['identifier'] = $context['cedula'];
             $context['current_identifier'] = $context['cedula'];
+            $this->resetInputRetry($context, 'cedula');
         }
         if ($field === 'trabajador_id') {
             $context = $this->enrichDoctorSelectionContext($context, $value);
@@ -777,6 +842,22 @@ class FlowRuntimeExecutionService
                     continue;
                 }
 
+                $slowOperations = ['list_times', 'list_days', 'book_appointment', 'cancel_appointment', 'list_doctors_by_name'];
+                $currentOperation = $this->normalizeSigcenterOperation((string)($action['operation'] ?? ''));
+                if (in_array($currentOperation, $slowOperations, true)) {
+                    $waitingMessages = [
+                        'book_appointment'    => '📋 Confirmando tu cita...',
+                        'cancel_appointment'  => '⚙️ Procesando la cancelación...',
+                        'list_times'          => '🔍 Buscando horarios disponibles...',
+                        'list_days'           => '🔍 Consultando fechas disponibles...',
+                        'list_doctors_by_name' => '🔍 Buscando al médico...',
+                    ];
+                    $this->sendFlowMessage($conversation, [
+                        'type' => 'text',
+                        'body' => $waitingMessages[$currentOperation] ?? '🔍 Consultando disponibilidad...',
+                    ], $context);
+                }
+
                 $preview = $this->sigcenterAgendaService->execute($action, $context, [
                     'wa_number' => $conversation->wa_number,
                     'text' => $text,
@@ -823,20 +904,23 @@ class FlowRuntimeExecutionService
                 }
 
                 if (($preview['operation'] ?? null) === 'book_appointment') {
-                    $context = $this->recordSigcenterBooking($preview, $context, $conversation, $inboundMessage);
-                    $message = !empty($preview['ok'])
-                        ? $this->bookingSuccessMessage()
-                        : $this->bookingFailureMessage((string)($preview['error'] ?? ''));
-                    $this->sendFlowMessage($conversation, $message, $context);
-                    $messagesSent++;
-
-                    // Auto-resolve: booking successful → close the conversation (bot completed the task)
                     if (!empty($preview['ok'])) {
+                        $context = $this->recordSigcenterBooking($preview, $context, $conversation, $inboundMessage);
+                        $this->sendFlowMessage($conversation, $this->bookingSuccessMessage($context), $context);
+                        $messagesSent++;
+                        // Auto-resolve: booking successful → close the conversation
                         $conversation->fill([
                             'needs_human' => false,
                             'assigned_user_id' => null,
                             'assigned_at' => null,
                         ])->save();
+                    } elseif (str_contains((string)($preview['error'] ?? ''), 'Confirmación requerida')) {
+                        $this->sendFlowMessage($conversation, $this->bookingPreConfirmationMessage($context), $context);
+                        $messagesSent++;
+                        $context['state'] = 'agenda_confirmar_cita';
+                    } else {
+                        $this->sendFlowMessage($conversation, $this->bookingFailureMessage((string)($preview['error'] ?? '')), $context);
+                        $messagesSent++;
                     }
                 }
 
@@ -1014,11 +1098,58 @@ class FlowRuntimeExecutionService
     /**
      * @return array{type:string,body:string}
      */
-    private function bookingSuccessMessage(): array
+    private function bookingPreConfirmationMessage(array $context): array
     {
+        $parts = [];
+        foreach ([
+            'sede_id_label'         => '🏥 Sede',
+            'trabajador_id_label'   => '👨‍⚕️ Médico',
+            'fecha_inicio'          => '🗓️ Fecha',
+            'horario_texto'         => '🕙 Hora',
+            'subespecialidad_label' => '🔬 Especialidad',
+        ] as $key => $label) {
+            $value = trim((string)($context[$key] ?? ''));
+            if ($value !== '') {
+                $parts[] = "{$label}: {$value}";
+            }
+        }
+        $summary = $parts !== [] ? "\n\n" . implode("\n", $parts) : '';
+
         return [
-            'type' => 'text',
-            'body' => "✅ *Tu cita ha sido agendada exitosamente.*\n\n📅 *Fecha:* {{fecha}}\n🕒 *Horario:* {{fecha_inicio}}\n📍 *Sede:* {{sede_id}}\n🩺 *Procedimiento:* {{procedimiento_id}}\n\n*Recomendaciones:*\n▪️ Uso obligatorio de mascarilla\n▪️ Estar 10 minutos antes de la hora de su cita\n▪️ Traer documento de identidad del paciente (cédula o pasaporte)\n▪️ Venir solo con un acompañante\n▪️ Es probable que dilaten su pupila, por lo que se recomienda no conducir\n\n🙌 *Te esperamos.*",
+            'type' => 'buttons',
+            'body' => "📋 *Resumen de tu cita*{$summary}\n\n¿Confirmamos el agendamiento?",
+            'buttons' => [
+                ['id' => 'confirmar_cita',  'title' => '✅ Confirmar'],
+                ['id' => 'cambiar_horario', 'title' => '🔄 Cambiar horario'],
+                ['id' => 'cancelar_agenda', 'title' => '❌ Cancelar'],
+            ],
+        ];
+    }
+
+    private function bookingSuccessMessage(array $context = []): array
+    {
+        $parts = [];
+        foreach ([
+            'sede_id_label'         => '🏥 Sede',
+            'trabajador_id_label'   => '👨‍⚕️ Médico',
+            'fecha_inicio'          => '🗓️ Fecha',
+            'horario_texto'         => '🕙 Hora',
+            'subespecialidad_label' => '🔬 Especialidad',
+        ] as $key => $label) {
+            $value = trim((string)($context[$key] ?? ''));
+            if ($value !== '') {
+                $parts[] = "{$label}: {$value}";
+            }
+        }
+        $summary = $parts !== [] ? "\n" . implode("\n", $parts) : '';
+
+        return [
+            'type' => 'buttons',
+            'body' => "✅ *¡Cita agendada exitosamente!*{$summary}\n\n*Recomendaciones:*\n▪️ Estar 10 min antes\n▪️ Traer cédula o pasaporte\n▪️ Mascarilla obligatoria\n▪️ Máximo un acompañante\n\n🙌 *¡Te esperamos!*\n\n_Te enviaremos un recordatorio 24h antes._",
+            'buttons' => [
+                ['id' => 'agendar',        'title' => '📅 Agendar otra cita'],
+                ['id' => 'menu_principal', 'title' => '🏠 Menú principal'],
+            ],
         ];
     }
 
@@ -1283,6 +1414,52 @@ class FlowRuntimeExecutionService
         }
 
         return $parts === [] ? '' : ":\n" . implode("\n", $parts);
+    }
+
+    private function isFrustrationSignal(string $text): int
+    {
+        $normalized = mb_strtolower(trim($text));
+
+        $explicitFrustration = ['no funciona', 'esto no sirve', 'que malo', 'qué malo', 'pesimo', 'pésimo',
+            'terrible', 'no me ayuda', 'no sirve', 'inutil', 'inútil', 'horrible'];
+        foreach ($explicitFrustration as $p) {
+            if (str_contains($normalized, $p)) {
+                return 2;
+            }
+        }
+
+        if (preg_match('/^\?{1,3}$/', $normalized)) {
+            return 1;
+        }
+        $mildFrustration = ['no entiendo', 'no comprendo', 'ayuda urgente',
+            'no puedo', 'como funciona', 'no sé', 'no se', 'que hago', 'qué hago'];
+        foreach ($mildFrustration as $p) {
+            if (str_contains($normalized, $p)) {
+                return 1;
+            }
+        }
+
+        return 0;
+    }
+
+    private function isCourtesyMessage(string $text): bool
+    {
+        $normalized = mb_strtolower(trim($text));
+        $patterns = [
+            'gracias', 'muchas gracias', 'ok gracias', 'si gracias', 'sí gracias',
+            'ty', 'thx', 'thanks', 'thank you',
+            'de nada', 'con gusto', 'perfecto gracias', 'listo gracias',
+            'ya gracias', 'ya, gracias', 'ok, gracias', 'listo', 'entendido gracias',
+        ];
+        foreach ($patterns as $p) {
+            if ($normalized === $p) {
+                return true;
+            }
+        }
+        if (mb_strlen($normalized) <= 30 && str_contains($normalized, 'gracias')) {
+            return true;
+        }
+        return false;
     }
 
     private function isBookingChangeRequest(string $text): bool
@@ -1565,6 +1742,18 @@ class FlowRuntimeExecutionService
     /**
      * @param array<string, mixed> $facts
      */
+    private function incrementInputRetry(array &$context, string $field): int
+    {
+        $key = 'input_retry_' . $field;
+        $context[$key] = (int) ($context[$key] ?? 0) + 1;
+        return $context[$key];
+    }
+
+    private function resetInputRetry(array &$context, string $field): void
+    {
+        unset($context['input_retry_' . $field]);
+    }
+
     private function shouldRetryCedula(array $facts): bool
     {
         if (($facts['state'] ?? null) !== 'esperando_cedula') {
@@ -2070,11 +2259,13 @@ class FlowRuntimeExecutionService
         ]);
 
         $catalog = [
-            ['id' => 'agendar', 'title' => '📅 Agendar cita', 'description' => 'Programa una nueva cita médica', 'enabled' => $this->settingFlag($options, 'whatsapp_menu_agendar_enabled', true)],
-            ['id' => 'consultar_cita', 'title' => '📄 Consultar cita', 'description' => 'Revisa tu cita vigente', 'enabled' => $this->settingFlag($options, 'whatsapp_menu_consultar_cita_enabled', true)],
-            ['id' => 'servicios_y_sedes', 'title' => '📍 Servicios y sedes', 'description' => 'Sedes, horarios y especialidades', 'enabled' => $this->settingFlag($options, 'whatsapp_menu_servicios_sedes_enabled', true)],
-            ['id' => 'promociones', 'title' => '🎁 Promociones', 'description' => 'Consulta campañas vigentes', 'enabled' => $this->settingFlag($options, 'whatsapp_menu_promociones_enabled', true)],
-            ['id' => 'ayuda', 'title' => '🆘 Ayuda', 'description' => 'Hablar con un asesor', 'enabled' => $this->settingFlag($options, 'whatsapp_menu_ayuda_enabled', true)],
+            ['id' => 'agendar', 'title' => '📅 Agendar cita', 'description' => 'Consultas, cirugías y especialistas', 'enabled' => $this->settingFlag($options, 'whatsapp_menu_agendar_enabled', true)],
+            ['id' => 'consultar_cita', 'title' => '🔍 Ver mi cita', 'description' => 'Consultar o cancelar cita vigente', 'enabled' => $this->settingFlag($options, 'whatsapp_menu_consultar_cita_enabled', true)],
+            ['id' => 'servicios_y_sedes', 'title' => '📍 Sedes y horarios', 'description' => 'Dónde atendemos y en qué horario', 'enabled' => $this->settingFlag($options, 'whatsapp_menu_servicios_sedes_enabled', true)],
+            ['id' => 'especialidades', 'title' => '🩺 Especialidades', 'description' => 'Qué tratamos en CIVE', 'enabled' => true],
+            ['id' => 'precios_convenios', 'title' => '💰 Precios y convenios', 'description' => 'Tarifas, seguros y convenios', 'enabled' => true],
+            ['id' => 'promociones', 'title' => '🎁 Promociones', 'description' => 'Campañas y descuentos vigentes', 'enabled' => $this->settingFlag($options, 'whatsapp_menu_promociones_enabled', true)],
+            ['id' => 'ayuda', 'title' => '🙋 Hablar con asesor', 'description' => 'Atención personalizada', 'enabled' => $this->settingFlag($options, 'whatsapp_menu_ayuda_enabled', true)],
         ];
 
         return array_values(array_map(
@@ -2164,6 +2355,27 @@ class FlowRuntimeExecutionService
             }
         }
 
+        $crmOpportunityId = $this->upsertCrmOpportunityLeadCapture(
+            conversation: $conversation,
+            context: $context,
+            identifier: $identifier,
+            leadSource: $leadSource,
+            leadSourceDetail: $leadSourceDetail,
+        );
+        if ($crmOpportunityId !== null) {
+            $context['crm_opportunity_id'] = (string)$crmOpportunityId;
+
+            if ($attribution !== null) {
+                $meta = is_array($attribution->meta ?? null) ? $attribution->meta : [];
+                $meta['lead_capture'] = array_merge(
+                    is_array($meta['lead_capture'] ?? null) ? $meta['lead_capture'] : [],
+                    ['crm_opportunity_id' => $crmOpportunityId]
+                );
+                $attribution->meta = $meta;
+                $attribution->save();
+            }
+        }
+
         if ($email !== '') {
             $context['lead_email'] = $email;
         }
@@ -2176,6 +2388,47 @@ class FlowRuntimeExecutionService
         $context['lead_capture_saved'] = true;
 
         return $context;
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     */
+    private function upsertCrmOpportunityLeadCapture(
+        WhatsappConversation $conversation,
+        array $context,
+        string $identifier,
+        string $leadSource,
+        string $leadSourceDetail,
+    ): ?int {
+        if (!Schema::hasTable('crm_contacts')
+            || !Schema::hasTable('crm_opportunities')
+            || !Schema::hasTable('crm_activities')
+        ) {
+            return null;
+        }
+
+        $name = trim((string)data_get($context, 'patient.full_name', ''));
+        if ($name === '') {
+            $name = trim((string)($conversation->patient_full_name ?? $conversation->display_name ?? $conversation->wa_number));
+        }
+
+        $contact = app(CrmContactResolverService::class)->resolve(
+            phone: trim((string)$conversation->wa_number),
+            name: $name !== '' ? $name : trim((string)$conversation->wa_number),
+            cedula: $identifier !== '' ? $identifier : null,
+            source: 'whatsapp',
+        );
+
+        $titleDetail = $leadSourceDetail !== '' ? $leadSourceDetail : ($leadSource !== '' ? $leadSource : 'captura automática');
+        $opportunity = app(CrmOpportunityService::class)->upsertFromEvent(
+            contact: $contact,
+            title: 'Lead WhatsApp: ' . $titleDetail,
+            source: 'whatsapp',
+            sourceId: (int)$conversation->id,
+            sourceType: 'whatsapp_flow_capture',
+        );
+
+        return (int)$opportunity->id;
     }
 
     private function conversationAttribution(WhatsappConversation $conversation): ?WhatsappConversationAttribution

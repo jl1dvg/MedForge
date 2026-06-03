@@ -149,7 +149,7 @@ class SolicitudesWriteController
         $payload = $this->payload($request);
         $id = isset($payload['id']) ? (int) $payload['id'] : null;
         $turno = isset($payload['turno']) ? (int) $payload['turno'] : null;
-        $estado = trim((string) ($payload['estado'] ?? 'Llamado'));
+        $estado = trim((string) ($payload['estado'] ?? 'Turno llamado'));
 
         if (($id ?? 0) <= 0 && ($turno ?? 0) <= 0) {
             return response()->json(['success' => false, 'error' => 'Debe especificar un ID o número de turno'], 422)
@@ -726,15 +726,22 @@ class SolicitudesWriteController
 
         if (($result['success'] ?? false) && !empty($result['ids'])) {
             $solicitudes = $data['solicitudes'] ?? [];
-            SolicitudCreada::dispatch(
-                solicitudId: (int) $result['ids'][0],
-                solicitudData: [
-                    'paciente_nombre'   => '',
-                    'paciente_cedula'   => (string) ($data['hcNumber'] ?? ''),
-                    'paciente_telefono' => '',
-                    'servicio'          => (string) ($solicitudes[0]['procedimiento'] ?? 'Solicitud médica'),
-                ],
-            );
+            try {
+                SolicitudCreada::dispatch(
+                    (int) $result['ids'][0],
+                    [
+                        'paciente_nombre'   => '',
+                        'paciente_cedula'   => (string) ($data['hcNumber'] ?? ''),
+                        'paciente_telefono' => '',
+                        'servicio'          => (string) ($solicitudes[0]['procedimiento'] ?? 'Solicitud médica'),
+                    ],
+                );
+            } catch (Throwable $e) {
+                Log::warning('No fue posible despachar SolicitudCreada desde guardarSolicitud', [
+                    'solicitud_id' => (int) $result['ids'][0],
+                    'message' => $e->getMessage(),
+                ]);
+            }
         }
 
         return new JsonResponse($result, $status);

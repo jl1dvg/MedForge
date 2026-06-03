@@ -213,7 +213,7 @@ class SolicitudesReadParityService
         }
 
         if ($normalizedStates === []) {
-            $normalizedStates = ['Llamado', 'En atencion'];
+            $normalizedStates = ['Turno llamado', 'Llamado', 'En atencion'];
         }
 
         $placeholders = implode(', ', array_fill(0, count($normalizedStates), '?'));
@@ -2066,7 +2066,7 @@ class SolicitudesReadParityService
         $options = $this->settingsOptions(['solicitudes_turnero_allowed_states']);
         $raw = trim((string) ($options['solicitudes_turnero_allowed_states'] ?? ''));
         if ($raw === '') {
-            return ['Llamado', 'En atencion'];
+            return ['Turno llamado', 'Llamado', 'En atencion'];
         }
 
         $decoded = json_decode($raw, true);
@@ -2079,7 +2079,7 @@ class SolicitudesReadParityService
 
         $states = array_values(array_filter(array_map('trim', preg_split('/[,\n\r;]+/', $raw) ?: []), static fn(string $value): bool => $value !== ''));
 
-        return $states !== [] ? $states : ['Llamado', 'En atencion'];
+        return $states !== [] ? $states : ['Turno llamado', 'Llamado', 'En atencion'];
     }
 
     /**
@@ -2487,6 +2487,7 @@ class SolicitudesReadParityService
                 pd.celular AS paciente_celular,
                 TRIM(CONCAT_WS(" ", NULLIF(TRIM(pd.fname), ""), NULLIF(TRIM(pd.mname), ""), NULLIF(TRIM(pd.lname), ""), NULLIF(TRIM(pd.lname2), ""))) AS paciente_nombre,
                 detalles.crm_lead_id,
+                COALESCE(detalles.crm_opportunity_id, sp.crm_opportunity_id) AS crm_opportunity_id,
                 detalles.crm_project_id,
                 detalles.pipeline_stage AS crm_pipeline_stage,
                 detalles.fuente AS crm_fuente,
@@ -2610,6 +2611,7 @@ class SolicitudesReadParityService
         return array_merge($row, [
             '_crm_detail_source' => 'fallback',
             'crm_lead_id' => null,
+            'crm_opportunity_id' => null,
             'crm_project_id' => null,
             'crm_pipeline_stage' => null,
             'crm_fuente' => null,
@@ -3223,7 +3225,23 @@ class SolicitudesReadParityService
     private function queryCrmPropuestas(array $detalle): array
     {
         $leadId = (int) ($detalle['crm_lead_id'] ?? 0);
-        if ($leadId <= 0 || !$this->tableExists('crm_proposals')) {
+        $opportunityId = (int) ($detalle['crm_opportunity_id'] ?? 0);
+        if (($leadId <= 0 && $opportunityId <= 0) || !$this->tableExists('crm_proposals')) {
+            return [];
+        }
+
+        $hasOpportunityColumn = $this->tableHasColumn('crm_proposals', 'crm_opportunity_id');
+        $where = [];
+        $bindings = [];
+        if ($hasOpportunityColumn && $opportunityId > 0) {
+            $where[] = 'p.crm_opportunity_id = ?';
+            $bindings[] = $opportunityId;
+        }
+        if ($leadId > 0) {
+            $where[] = 'p.lead_id = ?';
+            $bindings[] = $leadId;
+        }
+        if ($where === []) {
             return [];
         }
 
@@ -3242,6 +3260,7 @@ class SolicitudesReadParityService
                     " . ($this->tableHasColumn('crm_proposals', 'public_hash') ? 'p.public_hash,' : "NULL AS public_hash,") . "
                     p.proposal_number,
                     p.lead_id,
+                    " . ($hasOpportunityColumn ? 'p.crm_opportunity_id,' : "NULL AS crm_opportunity_id,") . "
                     p.customer_id,
                     p.title,
                     p.status,
@@ -3260,10 +3279,10 @@ class SolicitudesReadParityService
                     COALESCE(items.items_count, 0) AS items_count
                  FROM crm_proposals p
                  {$itemsJoin}
-                 WHERE p.lead_id = ?
+                 WHERE (" . implode(' OR ', $where) . ")
                  ORDER BY COALESCE(p.updated_at, p.created_at) DESC, p.id DESC
                  LIMIT 10",
-                [$leadId]
+                $bindings
             );
         } catch (Throwable) {
             return [];

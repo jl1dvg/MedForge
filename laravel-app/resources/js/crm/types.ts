@@ -1,5 +1,5 @@
 export type Resolution = 'provisional' | 'identified' | 'linked';
-export type Source = 'whatsapp' | 'solicitud' | 'examen' | 'manual';
+export type Source = 'whatsapp' | 'solicitud' | 'examen' | 'manual' | 'legacy';
 export type Phase = 'operational' | 'commercial';
 export type Stage =
   | 'nuevo'
@@ -45,6 +45,8 @@ export interface CrmOpportunity {
   stage: Stage;
   phase: Phase;
   source: Source;
+  effective_source?: Source;
+  effective_sources?: Source[];
   source_id: number | null;
   source_type: string | null;
   assigned_to: number | null;

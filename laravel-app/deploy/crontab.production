@@ -1,0 +1,17 @@
+# Crontab — Servidor PRODUCCIÓN
+# Instalar con: crontab -u www-data laravel-app/deploy/crontab.production
+#
+# Solo corre tareas de lógica de negocio (recordatorios, billing, KPIs, etc.)
+# El scraping está en el servidor staging.
+#
+# Variables — ajusta las rutas si el proyecto está en otra ubicación.
+PROJECT_DIR=/var/www/medforge
+PHP_BIN=/usr/bin/php8.3-cli
+LOG_DIR=/var/www/medforge/storage/logs
+
+# ── Cron legacy (lógica de negocio) — cada 5 minutos ────────────────────────
+*/5 * * * * www-data /usr/bin/flock -n /tmp/medforge_cron_prod.lock \
+    $PHP_BIN $PROJECT_DIR/cron.php >> $LOG_DIR/cron.log 2>&1
+
+# ── Laravel scheduler — cada minuto ─────────────────────────────────────────
+* * * * * www-data cd $PROJECT_DIR/laravel-app && $PHP_BIN artisan schedule:run >> $LOG_DIR/laravel-scheduler.log 2>&1

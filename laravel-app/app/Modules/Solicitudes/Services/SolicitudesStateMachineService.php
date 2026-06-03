@@ -14,7 +14,7 @@ class SolicitudesStateMachineService
      */
     private const STAGES = [
         ['slug' => 'recibida', 'label' => 'Recibida', 'order' => 10, 'column' => 'recibida', 'required' => true],
-        ['slug' => 'llamado', 'label' => 'Llamado', 'order' => 20, 'column' => 'llamado', 'required' => true],
+        ['slug' => 'llamado', 'label' => 'Turno llamado', 'order' => 20, 'column' => 'llamado', 'required' => true],
         ['slug' => 'en-atencion', 'label' => 'En atencion', 'order' => 30, 'column' => 'revision-codigos', 'required' => true],
         ['slug' => 'revision-codigos', 'label' => 'Cobertura', 'order' => 40, 'column' => 'revision-codigos', 'required' => true],
         ['slug' => 'espera-documentos', 'label' => 'Documentacion', 'order' => 50, 'column' => 'espera-documentos', 'required' => true],
@@ -218,6 +218,9 @@ class SolicitudesStateMachineService
 
         $aliases = [
             'recibido' => 'recibida',
+            'turno-llamado' => 'llamado',
+            'llamado-counter' => 'llamado',
+            'llamado-a-counter' => 'llamado',
             'en-atencion' => 'en-atencion',
             'en-atenci-n' => 'en-atencion',
             'revision-de-codigos' => 'revision-codigos',

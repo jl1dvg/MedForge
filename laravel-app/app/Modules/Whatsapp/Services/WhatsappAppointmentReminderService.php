@@ -693,7 +693,7 @@ class WhatsappAppointmentReminderService
     }
 
     /**
-     * @return array<int, string>
+     * @return array<int|string, string>
      */
     private function templateVariables(
         string $templateCode,
@@ -734,29 +734,36 @@ class WhatsappAppointmentReminderService
             $context
         );
 
-        if ($mappedVariables !== []) {
-            return $mappedVariables;
-        }
-
         $patientName = (string) ($recipient['patient_name'] ?? '');
-        if ($templateCode === self::META_CONFIRMATION_TEMPLATE_CODE) {
-            return [
+
+        if ($mappedVariables !== []) {
+            $result = $mappedVariables;
+        } elseif ($templateCode === self::META_CONFIRMATION_TEMPLATE_CODE) {
+            $result = [
                 $patientName !== '' ? $patientName : 'Paciente',
                 $eventAt->locale('es')->translatedFormat('d/m/Y'),
                 $eventAt->format('H:i'),
                 trim($doctor) !== '' ? trim($doctor) : 'Por confirmar',
             ];
+        } else {
+            $result = [
+                $patientName !== '' ? $patientName : 'Paciente',
+                $sede !== '' ? $sede : 'Sede por confirmar',
+                $eventAt->locale('es')->translatedFormat('d/m/Y'),
+                $eventAt->format('H:i'),
+                trim($doctor) !== '' ? trim($doctor) : 'Por confirmar',
+                $this->sedeAddress($sede),
+                $this->cleanProcedure($procedimiento),
+            ];
         }
 
-        return [
-            $patientName !== '' ? $patientName : 'Paciente',
-            $sede !== '' ? $sede : 'Sede por confirmar',
-            $eventAt->locale('es')->translatedFormat('d/m/Y'),
-            $eventAt->format('H:i'),
-            trim($doctor) !== '' ? trim($doctor) : 'Por confirmar',
-            $this->sedeAddress($sede),
-            $this->cleanProcedure($procedimiento),
-        ];
+        $site = $context['site'] ?? [];
+        $result['_location_lat'] = (string) ($site['latitude'] ?? '');
+        $result['_location_lng'] = (string) ($site['longitude'] ?? '');
+        $result['_location_name'] = (string) ($site['name'] ?? '');
+        $result['_location_address'] = (string) ($site['address'] ?? '');
+
+        return $result;
     }
 
     /**
@@ -827,7 +834,7 @@ class WhatsappAppointmentReminderService
     }
 
     /**
-     * @return array{name:string,address:string,maps_url:string,phone:string,contact_center:string}
+     * @return array{name:string,address:string,maps_url:string,phone:string,contact_center:string,latitude:string,longitude:string}
      */
     private function siteContext(string $sede): array
     {
@@ -845,6 +852,8 @@ class WhatsappAppointmentReminderService
                     'whatsapp_reminder_site_maps_villa_club',
                     'https://maps.app.goo.gl/i1ryHLC6JUzkefHa6'
                 ),
+                'latitude' => $this->settingString('whatsapp_reminder_site_lat_villa_club', ''),
+                'longitude' => $this->settingString('whatsapp_reminder_site_lng_villa_club', ''),
                 'phone' => $contactCenter,
                 'contact_center' => $contactCenter,
             ];
@@ -861,6 +870,8 @@ class WhatsappAppointmentReminderService
                     'whatsapp_reminder_site_maps_ceibos',
                     'Comunícate con nuestro equipo para confirmar la ubicación.'
                 ),
+                'latitude' => $this->settingString('whatsapp_reminder_site_lat_ceibos', ''),
+                'longitude' => $this->settingString('whatsapp_reminder_site_lng_ceibos', ''),
                 'phone' => $contactCenter,
                 'contact_center' => $contactCenter,
             ];
@@ -877,6 +888,8 @@ class WhatsappAppointmentReminderService
                     'whatsapp_reminder_site_maps_matriz',
                     'Comunícate con nuestro equipo para confirmar la ubicación.'
                 ),
+                'latitude' => $this->settingString('whatsapp_reminder_site_lat_matriz', ''),
+                'longitude' => $this->settingString('whatsapp_reminder_site_lng_matriz', ''),
                 'phone' => $contactCenter,
                 'contact_center' => $contactCenter,
             ];
@@ -886,6 +899,8 @@ class WhatsappAppointmentReminderService
             'name' => trim($sede) !== '' ? trim($sede) : 'Sede por confirmar',
             'address' => 'Comunícate con nuestro equipo para confirmar la ubicación.',
             'maps_url' => 'Comunícate con nuestro equipo para confirmar la ubicación.',
+            'latitude' => '',
+            'longitude' => '',
             'phone' => $contactCenter,
             'contact_center' => $contactCenter,
         ];
@@ -1291,6 +1306,12 @@ class WhatsappAppointmentReminderService
             'whatsapp_reminder_site_address_villa_club',
             'whatsapp_reminder_site_address_ceibos',
             'whatsapp_reminder_site_address_matriz',
+            'whatsapp_reminder_site_lat_villa_club',
+            'whatsapp_reminder_site_lng_villa_club',
+            'whatsapp_reminder_site_lat_ceibos',
+            'whatsapp_reminder_site_lng_ceibos',
+            'whatsapp_reminder_site_lat_matriz',
+            'whatsapp_reminder_site_lng_matriz',
             'whatsapp_reminder_timezone',
             'companyname',
             'companywebsite',

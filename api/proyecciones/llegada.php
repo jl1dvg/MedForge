@@ -10,6 +10,8 @@ if (!CorsHelper::prepare('PROYECCIONES_ALLOWED_ORIGINS', [
     'https://cive.consulmed.me',
     'https://asistentecive.consulmed.me',
     'https://cive.consulmed.me/*',
+    'https://cive.ddns.net:8085',
+    'http://192.168.1.13:8085',
 ])) {
     http_response_code(403);
     echo json_encode([

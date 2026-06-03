@@ -6,9 +6,13 @@
    ========================================================================= */
 
 /* ---- Make the layout shell behave: no inner scroll for v3 ---------------- */
+html:has(.dash3),
+body:has(.dash3) { height: 100%; overflow: hidden; }
+
 body:has(.dash3) .content-wrapper,
 body:has(.dash3) .content-wrapper > .content {
-    height: calc(100vh - 60px);  /* assume ~60px top header — adjust if your shell is taller */
+    height: calc(100vh - 60px);
+    min-height: 0 !important;
     overflow: hidden;
     padding: 0;
 }
@@ -106,14 +110,18 @@ body:has(.dash3) footer.main-footer { display: none; }
     display: inline-flex; padding: 3px; border-radius: 999px;
     background: #fff; border: 1px solid var(--border);
 }
-.dash3-period button {
-    appearance: none; border: 0; cursor: pointer;
+.dash3-period button,
+.dash3-period a {
+    appearance: none; border: 0; cursor: pointer; text-decoration: none;
     padding: 6px 14px; border-radius: 999px;
     font: 600 12px var(--font-body); color: var(--fg-3);
     background: transparent; transition: all .15s var(--ease-out);
+    display: inline-block;
 }
-.dash3-period button:hover { color: var(--primary); }
-.dash3-period button.active {
+.dash3-period button:hover,
+.dash3-period a:hover { color: var(--primary); }
+.dash3-period button.active,
+.dash3-period a.active {
     background: var(--primary); color: #fff;
     box-shadow: 0 4px 10px rgba(81,86,190,.25);
 }
@@ -152,6 +160,13 @@ body:has(.dash3) footer.main-footer { display: none; }
     0%   { transform: scale(1);   opacity: .55; }
     70%  { transform: scale(2.6); opacity: 0;   }
     100% { transform: scale(2.6); opacity: 0;   }
+}
+.dash3-live--flash {
+    animation: dash3-live-flash .8s ease-out;
+}
+@keyframes dash3-live-flash {
+    0%   { background: #b8f2da; color: #05825f; }
+    100% { background: #dff5ee; color: var(--success); }
 }
 
 /* ============= Hero KPIs ============= */
@@ -241,6 +256,7 @@ body:has(.dash3) footer.main-footer { display: none; }
 .dash3-panel-link i { font-size: 15px; }
 .dash3-panel-body {
     flex: 1; min-height: 0; overflow-y: auto;
+    max-height: calc(100vh - 260px);
     padding: 10px 14px 12px;
 }
 .dash3-panel-body::-webkit-scrollbar { width: 6px; }
@@ -268,6 +284,8 @@ body:has(.dash3) footer.main-footer { display: none; }
 }
 
 /* ============= Agenda ============= */
+.dash3-row > article { height: 375px; }
+.dash3-panel-body.dash3-agenda { max-height: 338px; }
 .dash3-agenda { display: flex; flex-direction: column; gap: 2px; }
 .dash3-ag-row {
     display: grid; grid-template-columns: 52px 4px 1fr auto;

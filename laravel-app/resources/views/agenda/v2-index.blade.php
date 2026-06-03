@@ -109,6 +109,19 @@
 
         return $variants[$colorIndexFor($value, count($variants))];
     };
+
+    $agendaReactBootstrap = [
+        'defaults' => [
+            'fecha' => now()->toDateString(),
+            'hora' => now()->copy()->addHour()->format('H:00'),
+        ],
+        'options' => [
+            'tiposAtencion' => $tiposAtencion,
+            'doctores' => $doctores,
+            'sedes' => $sedes,
+            'afiliaciones' => array_values(array_filter($afiliaciones, static fn ($option) => trim((string) ($option['value'] ?? '')) !== '')),
+        ],
+    ];
 @endphp
 
 @push('styles')
@@ -424,6 +437,15 @@
             <div class="col-12">
                 <div class="box">
                     <div class="box-body">
+                        <div class="d-flex flex-wrap gap-10 align-items-center justify-content-between mb-20">
+                            <div>
+                                <h4 class="mb-0">Agenda operativa</h4>
+                                <small class="text-muted">Consulta, filtra y crea citas manuales</small>
+                            </div>
+                            <div id="agenda-react-root"></div>
+                            <script type="application/json" id="agenda-react-bootstrap">@json($agendaReactBootstrap)</script>
+                        </div>
+
                         <form method="get" action="/v2/agenda" class="row g-3 align-items-end">
                             <div class="col-xl-2 col-md-4">
                                 <label for="fecha_inicio" class="form-label">Desde</label>
@@ -728,4 +750,5 @@
     <script src="/assets/vendor_components/datatable/datatables.min.js"></script>
     <script src="/js/pages/shared/datatables-language-es.js"></script>
     <script src="/js/pages/agenda-v2.js"></script>
+    @vite('resources/js/agenda/main.tsx')
 @endpush

@@ -107,6 +107,9 @@
         if (fix) {
             parsed.hostname = fix;
         }
+        if (!parsed.pathname || parsed.pathname === '/') {
+            parsed.pathname = '/api';
+        }
 
         normalized = parsed.toString();
         return normalized.replace(/\/+$/, '');

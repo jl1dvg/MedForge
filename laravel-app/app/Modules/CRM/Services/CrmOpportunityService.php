@@ -46,6 +46,8 @@ class CrmOpportunityService
         ?string $sourceType = null,
         ?int $assignedTo = null,
     ): CrmOpportunity {
+        $title = $this->limitTitle($title);
+
         return DB::transaction(function () use ($contact, $title, $source, $sourceId, $sourceType, $assignedTo): CrmOpportunity {
             $existing = CrmOpportunity::query()->where('contact_id', $contact->id)->first();
 
@@ -177,6 +179,11 @@ class CrmOpportunityService
             $opportunity->escalation_at = $this->computeEscalationAt($opportunity->stage);
         }
         $opportunity->save();
+    }
+
+    private function limitTitle(string $title): string
+    {
+        return mb_strlen($title) > 255 ? mb_substr($title, 0, 255) : $title;
     }
 
     private function computeEscalationAt(string $stage): ?\Carbon\Carbon

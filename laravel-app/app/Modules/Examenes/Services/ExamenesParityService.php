@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Examenes\Services;
 
+use App\Events\Crm\ExamenEstadoCambiado;
 use App\Events\Crm\ExamenSolicitado;
 use App\Models\WhatsappConversation;
 use App\Modules\Shared\Support\AfiliacionDimensionService;
@@ -194,6 +195,14 @@ class ExamenesParityService
             PusherConfigService::EVENT_STATUS_UPDATED
         );
 
+        // Notify CRM pipeline about the exam state change
+        ExamenEstadoCambiado::dispatch(
+            examenId: $id,
+            nuevoEstado: (string) ($resultado['estado'] ?? $estado),
+            estadoAnterior: (string) ($resultado['estado_anterior'] ?? ''),
+            actorUserId: $userId,
+        );
+
         return [
             'status' => 200,
             'payload' => [
@@ -251,7 +260,7 @@ class ExamenesParityService
     {
         $id = isset($payload['id']) ? (int) $payload['id'] : null;
         $turno = isset($payload['turno']) ? (int) $payload['turno'] : null;
-        $estadoSolicitado = isset($payload['estado']) ? trim((string) $payload['estado']) : 'Llamado';
+        $estadoSolicitado = isset($payload['estado']) ? trim((string) $payload['estado']) : 'Turno llamado';
         $estadoNormalizado = $this->normalizarEstadoTurnero($estadoSolicitado);
 
         if ($estadoNormalizado === null) {
@@ -1955,7 +1964,10 @@ class ExamenesParityService
     {
         $mapa = [
             'recibido' => 'Recibido',
-            'llamado' => 'Llamado',
+            'llamado' => 'Turno llamado',
+            'turno llamado' => 'Turno llamado',
+            'turno_llamado' => 'Turno llamado',
+            'turno-llamado' => 'Turno llamado',
             'revision-cobertura' => 'Revisión de Cobertura',
             'revision-de-cobertura' => 'Revisión de Cobertura',
             'revision-codigos' => 'Revisión de Cobertura',

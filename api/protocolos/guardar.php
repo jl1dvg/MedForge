@@ -1,18 +1,16 @@
 <?php
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    header("Access-Control-Allow-Origin: *");
-    header("Access-Control-Allow-Methods: POST, GET, OPTIONS");
-    header("Access-Control-Allow-Headers: Content-Type, Authorization");
-    header("Access-Control-Max-Age: 86400");
-    http_response_code(204); // No Content
-    exit;
-}
-
 require_once __DIR__ . '/../../bootstrap.php';
-header("Access-Control-Allow-Origin: *");
-header("Access-Control-Allow-Methods: POST, GET, OPTIONS");
-header("Access-Control-Allow-Headers: Content-Type, Authorization");
-header("Content-Type: application/json");
+
+use Helpers\CorsHelper;
+
+header('Content-Type: application/json; charset=UTF-8');
+
+CorsHelper::prepare('EXTENSION_ALLOWED_ORIGINS', [
+    'https://cive.consulmed.me',
+    'https://asistentecive.consulmed.me',
+    'https://cive.ddns.net:8085',
+    'http://192.168.1.13:8085',
+]);
 
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);

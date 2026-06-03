@@ -19,7 +19,17 @@ class AutomatedConversationDispatchService
     /**
      * @return array{conversation: array<string,mixed>, message: array<string,mixed>}
      */
-    public function sendSystemText(WhatsappConversation $conversation, string $message, bool $previewUrl = false): array
+    /**
+     * Sends a structured interactive message (buttons/list) as a system nudge.
+     *
+     * @param array<string, mixed> $message
+     */
+    public function sendSystemMessage(WhatsappConversation $conversation, array $message): void
+    {
+        $this->sendFlowMessage($conversation, $message, []);
+    }
+
+        public function sendSystemText(WhatsappConversation $conversation, string $message, bool $previewUrl = false): array
     {
         $message = trim($message);
         if ($message === '') {
@@ -91,7 +101,7 @@ class AutomatedConversationDispatchService
     }
 
     /**
-     * @param array<int, string> $templateVariables
+     * @param array<int|string, string> $templateVariables
      * @return array{conversation: array<string,mixed>, message: array<string,mixed>}
      */
     public function sendTemplate(

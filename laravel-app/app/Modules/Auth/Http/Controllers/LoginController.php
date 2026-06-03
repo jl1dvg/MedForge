@@ -8,20 +8,30 @@ use App\Modules\Shared\Support\LegacySessionAuth;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 
 class LoginController
 {
-    public function show(Request $request): View|RedirectResponse
+    public function show(Request $request): View|RedirectResponse|Response
     {
+        if ($request->query('expired') && Auth::check()) {
+            // A 419 redirected an authenticated user here. Log out so they
+            // see the "session expired" message and re-authenticate with a
+            // fresh session (including a new CSRF token).
+            Auth::logout();
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+        }
+
         if (Auth::check()) {
             return redirect()->intended('/v2/dashboard');
         }
 
-        return view('auth.login', [
-            'pageTitle' => 'Iniciar sesión',
-        ]);
+        return response()
+            ->view('auth.login', ['pageTitle' => 'Iniciar sesión'])
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate');
     }
 
     public function login(Request $request): RedirectResponse

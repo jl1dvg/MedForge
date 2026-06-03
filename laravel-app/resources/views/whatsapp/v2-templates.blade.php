@@ -569,6 +569,7 @@
                             <option value="image">Imagen</option>
                             <option value="video">Video</option>
                             <option value="document">Documento</option>
+                            <option value="location">Ubicación</option>
                         </select>
                     </div>
                     <div class="col-md-8">
@@ -703,9 +704,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         previewNodes.currentVersion.textContent = `v${template.current_revision_version || 0}`;
         previewNodes.headerType.textContent = String(preview.header_type || 'none').toUpperCase();
-        previewNodes.header.textContent = ['image', 'video', 'document'].includes(String(preview.header_type || '').toLowerCase())
-            ? (preview.header_text || `[${String(preview.header_type || '').toUpperCase()}]`)
-            : (preview.header_text || '');
+        const previewHeaderTypeLower = String(preview.header_type || '').toLowerCase();
+        if (previewHeaderTypeLower === 'location') {
+            previewNodes.header.textContent = '[Ubicacion desde settings de sede]';
+        } else if (['image', 'video', 'document'].includes(previewHeaderTypeLower)) {
+            previewNodes.header.textContent = preview.header_text || `[${String(preview.header_type || '').toUpperCase()}]`;
+        } else {
+            previewNodes.header.textContent = preview.header_text || '';
+        }
         previewNodes.body.textContent = preview.body_text || '';
         previewNodes.footer.textContent = preview.footer_text || '';
 
@@ -786,7 +792,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const footerText = fieldFooter?.value?.trim() || '';
         const buttons = collectButtonPayload();
 
-        if (headerType !== 'none' && headerText) {
+        if (headerType === 'location') {
+            components.push({ type: 'HEADER', format: 'LOCATION' });
+        } else if (headerType !== 'none' && headerText) {
             if (headerType === 'text') {
                 components.push({ type: 'HEADER', format: 'TEXT', text: headerText });
             } else {
@@ -817,7 +825,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const buttons = components.find((item) => item.type === 'BUTTONS');
 
         builderPreview.headerType.textContent = String(fieldHeaderType?.value || 'none').toUpperCase();
-        if (header?.format && header.format !== 'TEXT') {
+        if (header?.format === 'LOCATION') {
+            builderPreview.header.textContent = '[Ubicacion: lat/lng desde settings de sede]';
+        } else if (header?.format && header.format !== 'TEXT') {
             builderPreview.header.textContent = header.example || `[${header.format}]`;
         } else {
             builderPreview.header.textContent = header?.text || '';
@@ -911,14 +921,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const syncHeaderFieldState = () => {
         const headerType = fieldHeaderType?.value || 'none';
-        if (headerType === 'text' || headerType === 'none') {
-            fieldHeaderLabel.textContent = 'Texto del header';
-            fieldHeaderText.placeholder = 'Ej: Confirmación de cita';
-            fieldHeaderHelp.textContent = 'Usa texto directo para headers textuales.';
+        const headerTextWrapper = fieldHeaderText?.closest('.col-md-8');
+        if (headerType === 'location') {
+            if (headerTextWrapper) headerTextWrapper.style.display = 'none';
+            fieldHeaderText.value = '';
         } else {
-            fieldHeaderLabel.textContent = 'Referencia del header';
-            fieldHeaderText.placeholder = 'Ej: https://.../imagen.png o media-handle de Meta';
-            fieldHeaderHelp.textContent = 'Para headers multimedia guarda un ejemplo o media handle compatible con Meta. Laravel ya enviará ese payload al publicar.';
+            if (headerTextWrapper) headerTextWrapper.style.display = '';
+            if (headerType === 'text' || headerType === 'none') {
+                fieldHeaderLabel.textContent = 'Texto del header';
+                fieldHeaderText.placeholder = 'Ej: Confirmación de cita';
+                fieldHeaderHelp.textContent = 'Usa texto directo para headers textuales.';
+            } else {
+                fieldHeaderLabel.textContent = 'Referencia del header';
+                fieldHeaderText.placeholder = 'Ej: https://.../imagen.png o media-handle de Meta';
+                fieldHeaderHelp.textContent = 'Para headers multimedia guarda un ejemplo o media handle compatible con Meta. Laravel ya enviará ese payload al publicar.';
+            }
         }
     };
 
