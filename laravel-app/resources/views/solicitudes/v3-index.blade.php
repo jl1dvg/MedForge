@@ -1,9 +1,5 @@
 @extends('layouts.medforge')
 
-@push('styles')
-    @vite(['resources/css/solicitudes-v3.css'])
-@endpush
-
 @section('content')
 <div
     id="solicitudes-v3-root"
