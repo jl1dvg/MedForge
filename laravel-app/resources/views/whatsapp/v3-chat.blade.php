@@ -139,7 +139,7 @@
         .wa3:not(.has-drawer) .wa3-drawer { display: none; }
 
         /* INBOX */
-        .wa3-inbox { background: var(--wa3-surface); border-right: 1px solid var(--wa3-border); display: flex; flex-direction: column; overflow: visible; position: relative; z-index: 10; }
+        .wa3-inbox { background: var(--wa3-surface); border-right: 1px solid var(--wa3-border); display: flex; flex-direction: column; overflow: hidden; position: relative; z-index: 10; }
         .wa3-inbox__head { padding: 18px 20px 12px; display: flex; flex-direction: column; gap: 12px; }
         .wa3-inbox__title-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
         .wa3-inbox__title { font: 600 18px/1.2 var(--font-display, "Rubik", system-ui, sans-serif); margin: 0; color: var(--wa3-text); }
