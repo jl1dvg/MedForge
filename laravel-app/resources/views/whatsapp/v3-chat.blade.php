@@ -172,7 +172,7 @@
         .wa3-filter-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 4px 6px 8px; }
         .wa3-filter-grid .wa3-field { margin-bottom: 0; }
         .wa3-filter-list { display: grid; gap: 4px; padding: 4px; }
-        .wa3-filter-link { display: grid; grid-template-columns: 24px 1fr auto; gap: 8px; align-items: center; padding: 8px; border-radius: 10px; text-decoration: none; color: var(--wa3-text); }
+        .wa3-filter-link { display: grid; grid-template-columns: 24px 1fr auto; gap: 8px; align-items: center; padding: 8px; border-radius: 10px; text-decoration: none; color: var(--wa3-text); border: 0; background: transparent; width: 100%; text-align: left; cursor: pointer; }
         .wa3-filter-link:hover { background: var(--wa3-surface-2); color: var(--wa3-text); text-decoration: none; }
         .wa3-filter-link.is-active { background: var(--wa3-accent-soft); color: var(--wa3-accent); }
         .wa3-filter-link i { font-size: 17px; color: var(--wa3-text-mute); }
