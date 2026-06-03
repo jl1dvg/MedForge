@@ -1,8 +1,8 @@
 /* MedForge · WhatsApp Chat v3 — Modals (ES module)
    nueva conversación (plantilla) · cerrar seguimiento · tour */
 
-import React, { useState, useMemo, useEffect } from 'react';
-import { searchContacts } from './api.js';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { searchContacts, startWithTemplate } from './api.js';
 
 // ── New conversation modal ────────────────────────────────────────────────────
 
@@ -17,24 +17,29 @@ export function WaNewConvoModal({ onClose, toast, templates = [] }) {
   const [hc, setHc] = useState('');
   const [tplId, setTplId] = useState('');
   const [vars, setVars] = useState([]);
-  const [fb, setFb] = useState({ tone: '', text: 'Selecciona un contacto o escribe el número manualmente.' });
+  const [submitting, setSubmitting] = useState(false);
+  const [fb, setFb] = useState({ tone: '', text: 'Escribe para buscar o ingresa el número manualmente.' });
+  const debounceRef = useRef(null);
 
   const tpl = templates.find(t => String(t.id) === String(tplId));
 
-  const doSearch = async () => {
-    if (!q.trim()) { setFb({ tone: 'danger', text: 'Escribe celular, HC o nombre.' }); return; }
-    setSearching(true);
-    try {
-      const result = await searchContacts(q);
-      const found = result.data || [];
-      setResults(found);
-      setFb({ tone: found.length > 0 ? 'success' : '', text: found.length > 0 ? 'Selecciona un resultado o ajusta el número.' : 'Sin resultados. Ingresa el número manualmente.' });
-    } catch {
-      setFb({ tone: 'danger', text: 'Error al buscar contactos.' });
-    } finally {
-      setSearching(false);
-    }
-  };
+  // Real-time search with debounce
+  useEffect(() => {
+    if (!q.trim()) { setResults([]); return; }
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const result = await searchContacts(q);
+        const found = result.data || [];
+        setResults(found);
+        if (found.length === 0) setFb({ tone: '', text: 'Sin resultados. Ingresa el número manualmente.' });
+      } catch {
+        setFb({ tone: 'danger', text: 'Error al buscar contactos.' });
+      } finally { setSearching(false); }
+    }, 350);
+    return () => clearTimeout(debounceRef.current);
+  }, [q]);
 
   const pick = (c) => {
     setPicked(c.wa_number || c.wa);
@@ -54,10 +59,25 @@ export function WaNewConvoModal({ onClose, toast, templates = [] }) {
     ? (tpl.body || '').replace(/\{\{\s*(\d+)\s*\}\}/g, (mm, i) => vars[Number(i) - 1] || (tpl.examples || [])[Number(i) - 1] || mm)
     : 'Selecciona una plantilla para revisar el mensaje final.';
 
-  const submit = () => {
+  const submit = async () => {
     if (!number.trim() || !tplId) { setFb({ tone: 'danger', text: 'Número y plantilla son obligatorios.' }); return; }
-    toast(`Conversación iniciada con ${contact || number}`, 'mdi-message-plus');
-    onClose();
+    setSubmitting(true);
+    setFb({ tone: '', text: 'Iniciando conversación…' });
+    try {
+      const result = await startWithTemplate({
+        waNumber: number,
+        templateId: tplId,
+        variables: vars,
+        contactName: contact || undefined,
+        patientHcNumber: hc || undefined,
+        patientFullName: patient || undefined,
+      });
+      toast(`Conversación iniciada con ${contact || number}`, 'mdi-message-plus');
+      const convId = result?.data?.conversation?.id || null;
+      onClose(convId);
+    } catch (err) {
+      setFb({ tone: 'danger', text: err?.response?.data?.error || err.message || 'Error al iniciar la conversación.' });
+    } finally { setSubmitting(false); }
   };
 
   return (
@@ -75,16 +95,19 @@ export function WaNewConvoModal({ onClose, toast, templates = [] }) {
             <div>
               <div className="wa3-field">
                 <label>Buscar paciente o número</label>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <input value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') doSearch(); }} placeholder="Celular, HC, nombres o apellidos" />
-                  <button className="wa3-secondary-btn" onClick={doSearch} disabled={searching}>{searching ? '…' : 'Buscar'}</button>
+                <div style={{ position: 'relative' }}>
+                  <input value={q} onChange={e => setQ(e.target.value)} placeholder="Celular, HC, nombres o apellidos" style={{ paddingRight: 32 }} />
+                  {searching && <i className="mdi mdi-loading mdi-spin" style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--wa3-text-mute)' }}></i>}
                 </div>
               </div>
               <div className="wa3-picker-results">
                 {results.map((c, i) => (
-                  <div key={i} className={`wa3-picker-card${picked === (c.wa_number || c.wa) ? ' is-active' : ''}`} onClick={() => pick(c)}>
-                    <div><strong>{c.name || c.display_name}</strong><small>{c.wa_number || c.wa}{c.patient_hc_number || c.hc ? ` · HC ${c.patient_hc_number || c.hc}` : ''}</small></div>
-                    <button className="wa3-secondary-btn" onClick={e2 => { e2.stopPropagation(); pick(c); }}>Usar</button>
+                  <div key={i} className={`wa3-picker-card${picked === (c.wa_number || c.wa) ? ' is-active' : ''}`} style={{ cursor: 'pointer' }} onClick={() => pick(c)}>
+                    <div>
+                      <strong>{c.name || c.display_name}</strong>
+                      <small>{c.wa_number || c.wa}{c.patient_hc_number || c.hc ? ` · HC ${c.patient_hc_number || c.hc}` : ''}</small>
+                    </div>
+                    <i className="mdi mdi-chevron-right" style={{ color: 'var(--wa3-text-mute)', fontSize: 18 }}></i>
                   </div>
                 ))}
               </div>
@@ -118,7 +141,9 @@ export function WaNewConvoModal({ onClose, toast, templates = [] }) {
         </div>
         <div className="wa3-modal__foot">
           <div className="wa3-modal__sub">Esto crea o reutiliza la conversación y la deja abierta en tu inbox.</div>
-          <button className="wa3-primary-btn" onClick={submit}>Iniciar con plantilla</button>
+          <button className="wa3-primary-btn" onClick={submit} disabled={submitting}>
+            {submitting ? <><i className="mdi mdi-loading mdi-spin" style={{ marginRight: 6 }}></i>Iniciando…</> : 'Iniciar con plantilla'}
+          </button>
         </div>
       </div>
     </div>
