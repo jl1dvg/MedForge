@@ -99,8 +99,8 @@ export function WaDrawer({ convo, notes, trail, canOperate, onAddNote, onCreateQ
         <div className="wa3-trail-flat">
           {trail.map((e, i) => (
             <div key={i} className="wa3-trail-flat__item">
-              <strong>{e.label || e.event_type}</strong>
-              <div className="wa3-trail-flat__meta">{e.actor || e.actor_label}{e.at ? ` · ${e.at}` : ''}</div>
+              <strong>{e.event_label || e.event_type}</strong>
+              <div className="wa3-trail-flat__meta">{e.actor_name || ''}{e.created_at_label ? ` · ${e.created_at_label}` : ''}</div>
             </div>
           ))}
         </div>
@@ -110,12 +110,17 @@ export function WaDrawer({ convo, notes, trail, canOperate, onAddNote, onCreateQ
         <h6>Notas internas</h6>
         <div id="wa3-notes-list">
           {notes.length === 0 && <div style={{ font: '400 12px var(--font-body)', color: 'var(--wa3-text-mute)' }}>Sin notas internas.</div>}
-          {notes.map((n, i) => (
-            <div key={i} className="wa3-note">
-              <div className="wa3-note__who">{n.author || n.author_name} · {n.at || n.created_at_label}</div>
-              {n.body}
-            </div>
-          ))}
+          {notes.map((n, i) => {
+            const when = n.created_at
+              ? new Date(n.created_at).toLocaleString('es', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+              : (n.at || '');
+            return (
+              <div key={i} className="wa3-note">
+                <div className="wa3-note__who">{n.author_name || n.author || 'Equipo'}{when ? ` · ${when}` : ''}</div>
+                {n.body}
+              </div>
+            );
+          })}
         </div>
         <WaNoteForm onAdd={onAddNote} />
       </div>
