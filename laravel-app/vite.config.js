@@ -40,6 +40,7 @@ export default defineConfig({
                 'resources/js/v2/settings-index.js',
                 'resources/js/pacientes/main.tsx',
                 'resources/js/crm/main.tsx',
+                'resources/js/agenda/main.tsx',
             ],
             refresh: true,
         }),
