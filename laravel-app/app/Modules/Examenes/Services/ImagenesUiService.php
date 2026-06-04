@@ -54,7 +54,7 @@ class ImagenesUiService
 
     /**
      * @param array<string,mixed> $query
-     * @return array{filters:array<string,string>,rows:array<int,array<string,mixed>>,afiliacionOptions:array<int,array{value:string,label:string}>,seguroOptions:array<int,array{value:string,label:string}>}
+     * @return array{filters:array<string,string>,rows:array<int,array<string,mixed>>,afiliacionOptions:array<int,array{value:string,label:string}>,afiliacionCategoriaOptions:array<int,array{value:string,label:string}>,seguroOptions:array<int,array{value:string,label:string}>}
      */
     public function imagenesRealizadas(array $query): array
     {
@@ -67,6 +67,7 @@ class ImagenesUiService
             'filters' => $filters,
             'rows' => $rows,
             'afiliacionOptions' => $this->getImagenesAfiliacionOptions(),
+            'afiliacionCategoriaOptions' => $this->getImagenesAfiliacionCategoriaOptions(),
             'seguroOptions' => $this->getImagenesSeguroOptions((string)($filters['afiliacion'] ?? '')),
         ];
     }
