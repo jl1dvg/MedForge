@@ -74,6 +74,7 @@ if ($consultasV2WritesEnabled) {
 }
 
 require_once __DIR__ . '/../../bootstrap.php';
+require_once __DIR__ . '/../../laravel-app/vendor/autoload.php';
 
 $data = json_decode((string) file_get_contents('php://input'), true);
 if ($data === null) {

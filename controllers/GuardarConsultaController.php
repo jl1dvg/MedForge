@@ -2,7 +2,9 @@
 
 namespace Controllers;
 
-use Modules\Examenes\Services\ConsultaExamenSyncService;
+require_once __DIR__ . '/../laravel-app/app/Modules/Examenes/Services/ConsultaExamenSyncService.php';
+
+use App\Modules\Examenes\Services\ConsultaExamenSyncService;
 use PDO;
 use Throwable;
 
