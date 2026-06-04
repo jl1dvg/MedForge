@@ -299,54 +299,90 @@ export function WaFollowupModal({ onClose, onConfirm }) {
 // ── Welcome tour modal ────────────────────────────────────────────────────────
 
 const WA_TOUR_STEPS = [
-  { selector: '.wa3-inbox',           title: 'Lista de conversaciones', copy: 'Aquí eliges el chat a revisar. Usa las pestañas para ver pendientes, tuyas, agendadas o cerradas.' },
-  { selector: '.wa3-thread__actions', title: 'Acciones principales',    copy: 'Desde arriba puedes tomar, transferir, usar plantillas, buscar, resolver o abrir más opciones.' },
-  { selector: '.wa3-messages',        title: 'Mensajes del paciente',   copy: 'En el centro ves el historial completo. Los mensajes nuevos aparecen en tiempo real.' },
-  { selector: '.wa3-composer',        title: 'Campo para escribir',     copy: 'Escribe la respuesta abajo. También puedes adjuntar, usar respuestas rápidas, emojis o audio.' },
-  { selector: '.wa3-drawer',          title: 'Ficha del paciente',      copy: 'A la derecha están los datos, notas internas, trazabilidad y acciones administrativas.' },
+  {
+    selector: null,
+    icon: 'mdi-whatsapp',
+    title: 'Bienvenido al chat WhatsApp',
+    copy: 'Este es el centro de operaciones renovado. Tienes tres zonas: la bandeja de conversaciones a la izquierda, el hilo de mensajes en el centro y la ficha del paciente a la derecha. En móvil cambias entre zonas con un toque.',
+  },
+  {
+    selector: '.wa3-inbox',
+    icon: 'mdi-inbox-multiple-outline',
+    title: 'Bandeja de conversaciones',
+    copy: 'Aquí ves todos los chats activos. Usa las pestañas para filtrar: Mis chats, Todos, Pendientes de handoff o Sin plantilla. El buscador y el filtro de fechas te permiten encontrar cualquier conversación al instante.',
+  },
+  {
+    selector: '.wa3-thread__actions',
+    icon: 'mdi-tools',
+    title: 'Herramientas del chat',
+    copy: 'Desde esta barra puedes tomar la conversación, transferirla a otro agente o equipo, enviar una plantilla oficial, buscar en el historial o cerrar el caso. El botón ⋮ agrupa las acciones menos frecuentes.',
+  },
+  {
+    selector: '.wa3-messages',
+    icon: 'mdi-message-text-outline',
+    title: 'Historial de mensajes',
+    copy: 'Aquí ves todo el intercambio con el paciente en orden cronológico. Los mensajes nuevos aparecen automáticamente sin recargar la página. Imágenes, audios y documentos se pueden abrir directamente.',
+  },
+  {
+    selector: '.wa3-composer',
+    icon: 'mdi-pencil-outline',
+    title: 'Escribe tu respuesta',
+    copy: 'Escribe en el cuadro de texto y pulsa Enter o el botón enviar. También puedes adjuntar imágenes y documentos, usar respuestas rápidas guardadas, insertar emojis o grabar un audio de voz.',
+  },
+  {
+    selector: '.wa3-drawer',
+    icon: 'mdi-card-account-details-outline',
+    title: 'Panel del paciente',
+    copy: 'Aquí están los datos del contacto, las notas internas del equipo (solo visibles para los agentes), el historial de cambios de la conversación y las respuestas rápidas. Puedes crear notas y respuestas rápidas nuevas en el momento.',
+  },
 ];
 
 export function WaTourModal({ onClose }) {
   const [idx, setIdx] = useState(0);
-  const steps = useMemo(() => WA_TOUR_STEPS.filter(s => document.querySelector(s.selector)), []);
+  const steps = useMemo(
+    () => WA_TOUR_STEPS.filter(s => !s.selector || document.querySelector(s.selector)),
+    [],
+  );
   const step = steps[idx];
 
   useEffect(() => {
-    if (!step) return;
+    if (!step?.selector) return;
     const el = document.querySelector(step.selector);
     if (el) {
       el.classList.add('wa3-tour-focus');
-      el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+      el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
     }
     return () => { if (el) el.classList.remove('wa3-tour-focus'); };
   }, [step]);
 
   if (!step) return null;
   const last = idx === steps.length - 1;
+
   return (
     <div className="wa3-modal wa3-tour-modal" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="wa3-modal__card">
         <div className="wa3-modal__head">
           <div>
-            <h3>Nuevo Chat de WhatsApp</h3>
-            <div className="wa3-modal__sub">Una vista más clara para atender conversaciones.</div>
+            <h3>Recorrido del chat</h3>
+            <div className="wa3-modal__sub">Conoce las zonas principales en {steps.length} pasos.</div>
           </div>
           <button className="wa3-iconbtn" onClick={onClose}><i className="mdi mdi-close"></i></button>
         </div>
         <div className="wa3-modal__body">
-          <p>Ahora las conversaciones, los mensajes y la ficha del paciente están separados para que encuentres cada cosa más rápido.</p>
-          <div className="wa3-tour-step">
-            <span>Paso {idx + 1} de {steps.length}</span>
-            <span className="wa3-tour-step__bar"><span style={{ width: `${((idx + 1) / steps.length) * 100}%` }}></span></span>
-          </div>
+          {step.icon && <div className="wa3-tour-icon"><i className={`mdi ${step.icon}`}></i></div>}
           <h4 className="wa3-tour-step__title">{step.title}</h4>
           <p>{step.copy}</p>
+          <div className="wa3-tour-step">
+            <span>{idx + 1} / {steps.length}</span>
+            <span className="wa3-tour-step__bar"><span style={{ width: `${((idx + 1) / steps.length) * 100}%` }}></span></span>
+          </div>
         </div>
         <div className="wa3-modal__foot">
-          <button className="wa3-secondary-btn" disabled={idx === 0} onClick={() => setIdx(i => Math.max(0, i - 1))}>Anterior</button>
+          <button className="wa3-secondary-btn" disabled={idx === 0} onClick={() => setIdx(i => Math.max(0, i - 1))}>← Anterior</button>
           <div style={{ display: 'flex', gap: 8 }}>
-            {!last && <button className="wa3-secondary-btn" onClick={() => setIdx(i => Math.min(steps.length - 1, i + 1))}>Siguiente</button>}
-            {last && <button className="wa3-primary-btn" onClick={onClose}>Entendido, explorar</button>}
+            <button className="wa3-secondary-btn" onClick={onClose}>Saltar</button>
+            {!last && <button className="wa3-primary-btn" onClick={() => setIdx(i => Math.min(steps.length - 1, i + 1))}>Siguiente →</button>}
+            {last  && <button className="wa3-primary-btn" onClick={onClose}>¡Listo, explorar!</button>}
           </div>
         </div>
       </div>

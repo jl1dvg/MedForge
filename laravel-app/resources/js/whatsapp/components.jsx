@@ -225,7 +225,7 @@ const ACCENT_PALETTES = [
   { label: 'Rojo',   value: '#dc2626' },
 ];
 
-function WaTweaksMenu({ compact, accent, onCompact, onAccent }) {
+function WaTweaksMenu({ compact, accent, onCompact, onAccent, onTour }) {
   const [open, setOpen, ref] = useWaMenu();
   return (
     <div className="wa3-hbtn-wrap" ref={ref}>
@@ -251,6 +251,16 @@ function WaTweaksMenu({ compact, accent, onCompact, onAccent }) {
             <button type="button" className={`wa3-density-btn${compact ? ' is-active' : ''}`}
                     onClick={() => onCompact(true)}>Compacto</button>
           </div>
+          {onTour && (
+            <>
+              <hr style={{ border: 0, borderTop: '1px solid var(--wa3-border)', margin: '8px 0' }} />
+              <button type="button" className="wa3-density-btn"
+                      style={{ width: '100%', justifyContent: 'flex-start', gap: 6 }}
+                      onClick={() => { setOpen(false); onTour(); }}>
+                <i className="mdi mdi-map-marker-path"></i>Ver recorrido
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -263,7 +273,7 @@ export function WaInbox({
   activeId, filter, search, view, canSupervise, tabCounts, dateFrom, dateTo,
   agentFilter, agents, visible, loading, hasMore, loadMore, loadingMore,
   onPickConvo, onFilter, onSearch, onView, onDate, onAgentFilter, onNewConvo, onRequeue,
-  compact, accent, onTweakCompact, onTweakAccent,
+  compact, accent, onTweakCompact, onTweakAccent, onTour,
 }) {
   return (
     <aside className="wa3-inbox">
@@ -290,7 +300,7 @@ export function WaInbox({
             )}
             <button className="wa3-iconbtn" title="Nueva conversación" onClick={onNewConvo}><i className="mdi mdi-plus"></i></button>
             <WaFilterMenu filter={filter} tabCounts={tabCounts} dateFrom={dateFrom} dateTo={dateTo} onDate={onDate} onPickFilter={onFilter} />
-            <WaTweaksMenu compact={compact} accent={accent} onCompact={onTweakCompact} onAccent={onTweakAccent} />
+            <WaTweaksMenu compact={compact} accent={accent} onCompact={onTweakCompact} onAccent={onTweakAccent} onTour={onTour} />
           </div>
         </div>
         <div className="wa3-search">
