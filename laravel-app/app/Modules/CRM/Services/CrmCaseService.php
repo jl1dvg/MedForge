@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\CRM\Services;
 
+use App\Modules\Solicitudes\Services\SolicitudesCommunicationService;
+use App\Modules\Solicitudes\Services\SolicitudesReadParityService;
+use App\Modules\Solicitudes\Services\SolicitudesWriteParityService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use RuntimeException;
@@ -288,6 +291,124 @@ class CrmCaseService
         return $this->show($normalizedSourceType, $sourceId);
     }
 
+    /**
+     * @param array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
+    public function sendWhatsapp(string $sourceType, int $sourceId, array $payload, ?int $actorUserId): array
+    {
+        $normalizedSourceType = $this->normalizeSourceType($sourceType);
+        if ($normalizedSourceType !== 'solicitud') {
+            throw new RuntimeException('Tipo de caso CRM no soportado');
+        }
+
+        $recipients = $this->cleanStringList($payload['recipients'] ?? null);
+        $message = trim((string) ($payload['message'] ?? ''));
+        if ($recipients === [] || $message === '') {
+            throw new RuntimeException('Indica destinatarios y mensaje de WhatsApp');
+        }
+
+        $this->assertSolicitudCaseExists($sourceId);
+        $service = $this->solicitudesCommunicationService();
+
+        foreach ($recipients as $phone) {
+            $service->sendWhatsapp($sourceId, [
+                'phone' => $phone,
+                'message' => $message,
+            ], $actorUserId);
+        }
+
+        return $this->show($normalizedSourceType, $sourceId);
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
+    public function sendEmail(string $sourceType, int $sourceId, array $payload, ?int $actorUserId): array
+    {
+        $normalizedSourceType = $this->normalizeSourceType($sourceType);
+        if ($normalizedSourceType !== 'solicitud') {
+            throw new RuntimeException('Tipo de caso CRM no soportado');
+        }
+
+        $to = $this->cleanStringList($payload['to'] ?? null);
+        $subject = trim((string) ($payload['subject'] ?? ''));
+        $body = trim((string) ($payload['body'] ?? ''));
+        if ($to === [] || $subject === '' || $body === '') {
+            throw new RuntimeException('Indica destinatarios, asunto y cuerpo del correo');
+        }
+
+        $this->assertSolicitudCaseExists($sourceId);
+        $service = $this->solicitudesCommunicationService();
+
+        foreach ($to as $email) {
+            $service->sendEmail($sourceId, [
+                'to' => $email,
+                'subject' => $subject,
+                'body' => $body,
+            ], $actorUserId);
+        }
+
+        return $this->show($normalizedSourceType, $sourceId);
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
+    public function storeProposal(string $sourceType, int $sourceId, array $payload, ?int $actorUserId): array
+    {
+        $normalizedSourceType = $this->normalizeSourceType($sourceType);
+        if ($normalizedSourceType !== 'solicitud') {
+            throw new RuntimeException('Tipo de caso CRM no soportado');
+        }
+
+        $items = $payload['items'] ?? null;
+        if (!is_array($items) || $items === []) {
+            throw new RuntimeException('La propuesta debe incluir items de catalogo');
+        }
+
+        $legacyItems = [];
+        foreach ($items as $item) {
+            if (!is_array($item)) {
+                throw new RuntimeException('La propuesta debe incluir items de catalogo');
+            }
+
+            $catalogType = trim((string) ($item['catalog_type'] ?? ''));
+            $catalogId = $item['catalog_id'] ?? null;
+            if ($catalogType === '' || $catalogId === null || $catalogId === '') {
+                throw new RuntimeException('La propuesta solo acepta items de catalogo');
+            }
+
+            $legacyItem = $item;
+            $legacyItem['catalog_type'] = $catalogType;
+            $legacyItem['catalog_id'] = (int) $catalogId;
+            $legacyItem['quantity'] = $item['quantity'] ?? 1;
+
+            if ($catalogType === 'code' || $catalogType === 'codigo') {
+                $legacyItem['code_id'] = (int) $catalogId;
+                $legacyItem['package_id'] = null;
+            } elseif ($catalogType === 'package' || $catalogType === 'paquete') {
+                $legacyItem['package_id'] = (int) $catalogId;
+                $legacyItem['code_id'] = null;
+            } else {
+                throw new RuntimeException('Tipo de item de catalogo no soportado');
+            }
+
+            $legacyItems[] = $legacyItem;
+        }
+
+        $this->assertSolicitudCaseExists($sourceId);
+
+        $legacyPayload = $payload;
+        $legacyPayload['items'] = $legacyItems;
+
+        $this->solicitudesWriteService()->crmCrearPropuesta($sourceId, $legacyPayload, $actorUserId);
+
+        return $this->show($normalizedSourceType, $sourceId);
+    }
+
     private function normalizeSourceType(string $sourceType): string
     {
         return match (strtolower(trim($sourceType))) {
@@ -305,6 +426,41 @@ class CrmCaseService
         if (!DB::table('solicitud_procedimiento')->where('id', $sourceId)->exists()) {
             throw new RuntimeException('Caso no encontrado');
         }
+    }
+
+    private function solicitudesReadService(): SolicitudesReadParityService
+    {
+        return new SolicitudesReadParityService();
+    }
+
+    private function solicitudesCommunicationService(): SolicitudesCommunicationService
+    {
+        return new SolicitudesCommunicationService($this->solicitudesReadService());
+    }
+
+    private function solicitudesWriteService(): SolicitudesWriteParityService
+    {
+        return new SolicitudesWriteParityService(DB::connection()->getPdo(), $this->solicitudesReadService());
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function cleanStringList(mixed $raw): array
+    {
+        if (!is_array($raw)) {
+            return [];
+        }
+
+        $values = [];
+        foreach ($raw as $value) {
+            $value = trim((string) $value);
+            if ($value !== '') {
+                $values[] = $value;
+            }
+        }
+
+        return array_values($values);
     }
 
     /**

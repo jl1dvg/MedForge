@@ -389,6 +389,75 @@ class CrmV3CaseControllerTest extends TestCase
         ]);
     }
 
+    public function test_whatsapp_rejects_empty_recipients_and_message(): void
+    {
+        $user = $this->createUser();
+        $this->seedSolicitudCaseTables();
+
+        $this->actingAs($user)
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+                RequireAppSession::class,
+                RequireAppPermission::class,
+            ])
+            ->postJson('/v3/crm/cases/solicitud/275872/whatsapp', [
+                'recipients' => [],
+                'message' => '',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+    }
+
+    public function test_proposal_requires_catalog_items(): void
+    {
+        $user = $this->createUser();
+        $this->seedSolicitudCaseTables();
+
+        $this->actingAs($user)
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+                RequireAppSession::class,
+                RequireAppPermission::class,
+            ])
+            ->postJson('/v3/crm/cases/solicitud/275872/proposals', [
+                'title' => 'Propuesta inicial',
+                'items' => [
+                    [
+                        'description' => 'Item manual no permitido',
+                        'quantity' => 1,
+                    ],
+                ],
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+    }
+
+    public function test_whatsapp_does_not_fake_success_without_real_conversation(): void
+    {
+        $user = $this->createUser();
+        $this->seedSolicitudCaseTables();
+        $this->ensureWhatsappConversationTable();
+
+        $this->actingAs($user)
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+                RequireAppSession::class,
+                RequireAppPermission::class,
+            ])
+            ->postJson('/v3/crm/cases/solicitud/275872/whatsapp', [
+                'recipients' => ['0987107769'],
+                'message' => 'Mensaje real',
+            ])
+            ->assertStatus(404)
+            ->assertJsonPath('success', false);
+    }
+
     private function ensureCrmCaseTestSchema(): void
     {
         if (!Schema::hasTable('users')) {
@@ -480,6 +549,21 @@ class CrmV3CaseControllerTest extends TestCase
                 $table->unsignedBigInteger('created_by')->nullable();
                 $table->timestamp('due_at')->nullable();
                 $table->timestamp('completed_at')->nullable();
+                $table->timestamps();
+            });
+        }
+    }
+
+    private function ensureWhatsappConversationTable(): void
+    {
+        if (!Schema::hasTable('whatsapp_conversations')) {
+            Schema::create('whatsapp_conversations', function (Blueprint $table): void {
+                $table->id();
+                $table->string('wa_number', 32)->unique();
+                $table->string('display_name')->nullable();
+                $table->unsignedBigInteger('assigned_user_id')->nullable();
+                $table->timestamp('assigned_at')->nullable();
+                $table->boolean('needs_human')->default(false);
                 $table->timestamps();
             });
         }

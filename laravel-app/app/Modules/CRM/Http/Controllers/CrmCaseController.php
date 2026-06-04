@@ -68,14 +68,18 @@ class CrmCaseController
         });
     }
 
-    public function sendWhatsapp(string $sourceType, int $sourceId): JsonResponse
+    public function sendWhatsapp(Request $request, string $sourceType, int $sourceId): JsonResponse
     {
-        return $this->unavailableJson();
+        return $this->jsonAction(function () use ($request, $sourceType, $sourceId): array {
+            return $this->caseService->sendWhatsapp($sourceType, $sourceId, $request->all(), $request->user()?->id);
+        });
     }
 
-    public function sendEmail(string $sourceType, int $sourceId): JsonResponse
+    public function sendEmail(Request $request, string $sourceType, int $sourceId): JsonResponse
     {
-        return $this->unavailableJson();
+        return $this->jsonAction(function () use ($request, $sourceType, $sourceId): array {
+            return $this->caseService->sendEmail($sourceType, $sourceId, $request->all(), $request->user()?->id);
+        });
     }
 
     public function catalogCodes(): JsonResponse
@@ -88,9 +92,11 @@ class CrmCaseController
         return $this->unavailableJson();
     }
 
-    public function storeProposal(string $sourceType, int $sourceId): JsonResponse
+    public function storeProposal(Request $request, string $sourceType, int $sourceId): JsonResponse
     {
-        return $this->unavailableJson();
+        return $this->jsonAction(function () use ($request, $sourceType, $sourceId): array {
+            return $this->caseService->storeProposal($sourceType, $sourceId, $request->all(), $request->user()?->id);
+        });
     }
 
     public function proposalPdf(int $proposalId): Response
