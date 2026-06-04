@@ -67,19 +67,19 @@ export function WaApp() {
     if (!seen) { const id = setTimeout(() => setModal('tour'), 600); return () => clearTimeout(id); }
   }, []);
 
-  // Auto-select first conversation when tour opens so all panels are visible for the highlights
-  useEffect(() => {
-    if (modal === 'tour' && !activeId && convos.length > 0) {
-      setActiveId(convos[0].id);
-    }
-  }, [modal, convos, activeId]);
-
   // ── Conversation list ────────────────────────────────────────────────────────
   const { convos, tabCounts, loading: convosLoading, loadingMore, hasMore, reload: reloadConvos, loadMore } = useConversations({
     filter,
     search,
     agentId: agentFilter?.id,
   });
+
+  // Auto-select first conversation when tour opens so all panels are visible for the highlights
+  useEffect(() => {
+    if (modal === 'tour' && !activeId && convos.length > 0) {
+      setActiveId(convos[0].id);
+    }
+  }, [modal, convos, activeId]);
 
   const activeConvo = useMemo(() => convos.find(c => c.id === activeId) || null, [convos, activeId]);
 
