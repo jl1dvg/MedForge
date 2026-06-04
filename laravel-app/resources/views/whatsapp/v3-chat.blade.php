@@ -112,6 +112,12 @@
         .content-wrapper { overflow: visible !important; }
         .container-full { padding: 0 !important; margin: 0 !important; }
 
+        /* Allow dropdowns (tweaks, filter, transfer) to escape the inbox panel */
+        .wa3-inbox { overflow: visible !important; }
+        /* Raise all header dropdown menus above the thread/drawer panels */
+        .wa3-hbtn__menu,
+        .wa3-tweaks-menu { z-index: 200 !important; }
+
         .wa3 {
             --wa3-accent:      #5156be;
             --wa3-accent-soft: #edf2ff;
