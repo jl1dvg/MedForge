@@ -21,6 +21,9 @@ class FlowRuntimeExecutionService
     private ?SettingsOptionResolver $settingsResolver = null;
     private int $sessionVersion = 0;
 
+    /** @var array<string, mixed> */
+    private array $currentFlowSettings = [];
+
     public function __construct(
         private readonly FlowmakerService           $flowmakerService = new FlowmakerService(),
         private readonly FlowmakerSandboxService    $sandboxService = new FlowmakerSandboxService(),
@@ -51,9 +54,25 @@ class FlowRuntimeExecutionService
             return $this->result(false, false, null, 0, false, 'empty_text');
         }
 
+        $waNumber = (string)($conversation->wa_number ?? '');
+        $flow = $this->sandboxService->getFlowPayload($waNumber)
+            ?? $this->flowmakerService->getActiveFlowPayload();
+        $this->currentFlowSettings = is_array($flow['settings'] ?? null) ? $flow['settings'] : [];
+
         if ((bool)($conversation->assigned_user_id ?? false)) {
             if (!$this->humanQueueIsOpen()) {
                 $this->releaseConversationToBot($conversation);
+                $offHoursMsg = trim((string) ($this->currentFlowSettings['off_hours_agent_release_message'] ?? ''));
+                if ($offHoursMsg === '') {
+                    $offHoursMsg = 'Nuestros agentes ya terminaron por hoy 🌙 Pero puedo ayudarte ahora mismo.';
+                }
+                $this->sendFlowMessage($conversation, [
+                    'type'    => 'buttons',
+                    'body'    => $offHoursMsg,
+                    'buttons' => [
+                        ['id' => 'menu', 'title' => '📋 Ver opciones'],
+                    ],
+                ], []);
             } else {
                 return $this->result(false, false, null, 0, false, 'conversation_assigned');
             }
@@ -90,10 +109,6 @@ class FlowRuntimeExecutionService
             ], []);
             return $this->result(true, false, 'non_text_reply', 1, false, 'non_text_message');
         }
-
-        $waNumber = (string)($conversation->wa_number ?? '');
-        $flow = $this->sandboxService->getFlowPayload($waNumber)
-            ?? $this->flowmakerService->getActiveFlowPayload();
 
         $session = WhatsappAutoresponderSession::query()
             ->where('conversation_id', $conversation->id)
@@ -266,6 +281,9 @@ class FlowRuntimeExecutionService
                 $messagePayload,
             );
 
+            if (!empty($context['off_hours_handoff_pending'])) {
+                $this->deferHandoffToBusinessHours($conversation, $context);
+            }
             if (!empty($context['handoff_requested'])) {
                 $this->markConversationForHandoff($conversation, $scenario, $context);
             }
@@ -296,6 +314,9 @@ class FlowRuntimeExecutionService
                 $messagePayload,
             );
 
+            if (!empty($context['off_hours_handoff_pending'])) {
+                $this->deferHandoffToBusinessHours($conversation, $context);
+            }
             if (!empty($context['handoff_requested'])) {
                 $this->markConversationForHandoff($conversation, $scenario, $context);
             }
@@ -993,6 +1014,25 @@ class FlowRuntimeExecutionService
             }
 
             if ($type === 'handoff_agent') {
+                if (!$this->humanQueueIsOpen()) {
+                    $offHoursMsg = trim((string) ($action['off_hours_message']
+                        ?? $this->currentFlowSettings['off_hours_handoff_message']
+                        ?? ''));
+                    if ($offHoursMsg === '') {
+                        $offHoursMsg = 'En este momento nuestros agentes no están disponibles 🕐 En el próximo horario de atención un agente te ayudará.';
+                    }
+                    $this->sendFlowMessage($conversation, ['type' => 'text', 'body' => $offHoursMsg], $context);
+                    $messagesSent++;
+                    $context['off_hours_handoff_pending'] = true;
+                    if (isset($action['role_id']) && is_numeric($action['role_id'])) {
+                        $context['handoff_role_id'] = (int)$action['role_id'];
+                    }
+                    if (isset($action['note']) && is_string($action['note'])) {
+                        $context['handoff_note'] = $this->renderPlaceholders($action['note'], $context);
+                    }
+                    continue;
+                }
+
                 $context['handoff_requested'] = true;
                 if (isset($action['role_id']) && is_numeric($action['role_id'])) {
                     $context['handoff_role_id'] = (int)$action['role_id'];
@@ -2966,6 +3006,27 @@ class FlowRuntimeExecutionService
      * @param array<string, mixed> $scenario
      * @param array<string, mixed> $context
      */
+    /**
+     * @param array<string, mixed> $context
+     */
+    private function deferHandoffToBusinessHours(WhatsappConversation $conversation, array $context): void
+    {
+        $note = 'Handoff solicitado fuera de horario laboral. Se activará en el próximo turno.';
+        if (!empty($context['handoff_note']) && is_string($context['handoff_note'])) {
+            $note .= ' · ' . trim($context['handoff_note']);
+        }
+
+        $conversation->fill([
+            'needs_human'          => true,
+            'handoff_notes'        => $note,
+            'handoff_role_id'      => isset($context['handoff_role_id']) && is_numeric($context['handoff_role_id'])
+                ? (int) $context['handoff_role_id']
+                : null,
+            'handoff_requested_at' => now(),
+        ])->save();
+        // No se llama syncActiveHandoffRecord() — sin notificaciones a agentes
+    }
+
     private function markConversationForHandoff(WhatsappConversation $conversation, array $scenario, array $context): void
     {
         $note = 'Escalado desde Flowmaker';
