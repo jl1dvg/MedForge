@@ -154,7 +154,6 @@ export function WaDrawer({ convo, notes, trail, canOperate, onAddNote, quickRepl
                 <i className="mdi mdi-lightning-bolt-outline"></i>
                 <div className="wa3-drawer__qr-text">
                   <strong>{q.title}</strong>
-                  <span>{q.body}</span>
                 </div>
               </button>
             ))}

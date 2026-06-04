@@ -560,9 +560,8 @@
         .wa3-drawer__qr-btn { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border: 1px solid var(--wa3-border); border-radius: 10px; background: var(--wa3-surface-2); color: var(--wa3-text); cursor: pointer; text-align: left; transition: border-color .12s, background .12s; }
         .wa3-drawer__qr-btn:hover { border-color: var(--wa3-accent); background: var(--wa3-accent-soft); }
         .wa3-drawer__qr-btn i { font-size: 16px; color: var(--wa3-accent); flex-shrink: 0; }
-        .wa3-drawer__qr-text { min-width: 0; overflow: hidden; }
+        .wa3-drawer__qr-text { flex: 1; min-width: 0; overflow: hidden; }
         .wa3-drawer__qr-text strong { display: block; font: 600 12.5px var(--bs-body-font-family); color: var(--wa3-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .wa3-drawer__qr-text span { display: block; font: 400 11.5px var(--bs-body-font-family); color: var(--wa3-text-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     </style>
 @endpush
 
