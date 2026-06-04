@@ -2,7 +2,7 @@
 // MedForge · Solicitudes v3 — Panel CRM (workspace por pestañas)
 // ============================================================
 import React, { useState, useEffect } from 'react';
-import type { Solicitud, Tarea, Nota } from './types';
+import type { Solicitud, Tarea, CrmCaseState } from './types';
 import { DocAvatar, fmtDate, fmtDateTime, fmtSla, SLA_META } from './components';
 
 const COL_TONE: Record<string, string> = {
@@ -26,7 +26,17 @@ const PRIO_TONE: Record<string, string> = { Alta: 'danger', Media: 'warning', No
 const money = (n: number | null | undefined) =>
   '$' + Number(n || 0).toLocaleString('es-EC', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-function buildTimeline(sol: Solicitud) {
+function buildTimeline(sol: Solicitud, crmCase: CrmCaseState | null) {
+  if (crmCase?.activity.length) {
+    return crmCase.activity.map((activity) => ({
+      act: activity.description,
+      time: fmtDateTime(activity.occurredAt),
+      by: activity.author,
+      note: activity.type === 'note_created',
+      done: activity.type !== 'note_created',
+    })).slice(0, 8);
+  }
+
   const ev: Array<{ act: string; time: string; by: string; note?: boolean; done?: boolean }> = [];
   const base = new Date(sol.fecha).getTime();
   sol.checklist.filter((s) => s.completed).forEach((s, i) => {
@@ -38,10 +48,12 @@ function buildTimeline(sol: Solicitud) {
 
 // ---- Tab: Seguimiento ----------------------------------------
 
-function TabSeguimiento({ sol, onToggleStep }: { sol: Solicitud; onToggleStep: (id: number, slug: string) => void }) {
-  const timeline = buildTimeline(sol);
-  const telefono = sol.detalle.paciente.telefono !== '—' ? sol.detalle.paciente.telefono : sol.crm.telefono;
-  const planAfiliacion = sol.plan_seguro !== '—' ? sol.plan_seguro : sol.afiliacion_label;
+function TabSeguimiento({ sol, crmCase }: { sol: Solicitud; crmCase: CrmCaseState | null }) {
+  const timeline = buildTimeline(sol, crmCase);
+  const telefono = crmCase?.contacts.primaryPhone || (sol.detalle.paciente.telefono !== '—' ? sol.detalle.paciente.telefono : sol.crm.telefono);
+  const planAfiliacion = crmCase?.insurancePlan || (sol.plan_seguro !== '—' ? sol.plan_seguro : sol.afiliacion_label);
+  const responsable = crmCase?.responsibleName || sol.crm.responsable;
+  const fuente = crmCase?.source || sol.crm.fuente;
   return (
     <>
       <div className="panel-procbar">
@@ -56,32 +68,18 @@ function TabSeguimiento({ sol, onToggleStep }: { sol: Solicitud; onToggleStep: (
         <h3 className="psec-title"><i className="mdi mdi-tune-variant"></i>Detalles CRM</h3>
         <div className="info-grid">
           <div className="info-item"><div className="k">Etapa CRM</div><div className="v">{sol.estado_label}</div></div>
-          <div className="info-item"><div className="k">Responsable</div><div className="v">{sol.crm.responsable}</div></div>
+          <div className="info-item"><div className="k">Responsable</div><div className="v">{responsable}</div></div>
           <div className="info-item"><div className="k">Plan afiliación</div><div className="v">{planAfiliacion}</div></div>
-          <div className="info-item"><div className="k">Fuente / convenio</div><div className="v">{sol.crm.fuente}</div></div>
+          <div className="info-item"><div className="k">Fuente / convenio</div><div className="v">{fuente}</div></div>
           <div className="info-item"><div className="k">Teléfono</div><div className="v">{telefono}</div></div>
           <div className="info-item"><div className="k">Sede</div><div className="v">{sol.sede}</div></div>
         </div>
       </section>
 
       <section>
-        <h3 className="psec-title">
-          <i className="mdi mdi-format-list-checks"></i>Checklist operativo
-          <span className="psec-meta">{sol.checklist_progress.completed}/{sol.checklist_progress.total} · {sol.checklist_progress.percent}%</span>
-        </h3>
-        <div className="chk-list">
-          {sol.checklist.map((step) => (
-            <div key={step.slug} className={`chk-item ${step.completed ? 'done' : ''}`} onClick={() => onToggleStep(sol.id, step.slug)}>
-              <span className="chk-box">{step.completed && <i className="mdi mdi-check"></i>}</span>
-              <span className="chk-label">{step.label}</span>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section>
         <h3 className="psec-title"><i className="mdi mdi-timeline-clock-outline"></i>Actividad reciente</h3>
         <div className="timeline">
+          {timeline.length === 0 && <div className="mini-empty">Sin actividad reciente</div>}
           {timeline.map((e, i) => (
             <div className="tl-item" key={i}>
               <span className="tl-dot" style={{ background: e.note ? 'var(--info)' : 'var(--success)' }}>
@@ -144,25 +142,82 @@ function TabTareas({ sol, onToggleTask, onAddTask }: { sol: Solicitud; onToggleT
 
 // ---- Tab: Notas --------------------------------------------
 
-function TabNotas({ sol, onAddNote }: { sol: Solicitud; onAddNote: (id: number, txt: string) => void }) {
+function TabNotas({
+  sol,
+  crmCase,
+  onAddNote,
+  onDeleteNote,
+}: {
+  sol: Solicitud;
+  crmCase: CrmCaseState | null;
+  onAddNote: (txt: string) => Promise<void>;
+  onDeleteNote: (noteId: number) => Promise<void>;
+}) {
   const [txt, setTxt] = useState('');
-  const notas = sol.detalle.notas;
-  const submit = (e: React.FormEvent) => { e.preventDefault(); if (!txt.trim()) return; onAddNote(sol.id, txt.trim()); setTxt(''); };
+  const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const crmNotes = crmCase?.notes ?? null;
+  const notas = crmNotes ?? sol.detalle.notas;
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const body = txt.trim();
+    if (!body || saving) return;
+    setSaving(true);
+    setFormError(null);
+    try {
+      await onAddNote(body);
+      setTxt('');
+    } catch {
+      setFormError('No se pudo guardar la nota.');
+    } finally {
+      setSaving(false);
+    }
+  };
+  const remove = async (noteId: number) => {
+    if (deletingId != null) return;
+    setDeletingId(noteId);
+    setFormError(null);
+    try {
+      await onDeleteNote(noteId);
+    } catch {
+      setFormError('No se pudo eliminar la nota.');
+    } finally {
+      setDeletingId(null);
+    }
+  };
   return (
     <section>
       <h3 className="psec-title"><i className="mdi mdi-note-text-outline"></i>Notas internas <span className="psec-meta">{notas.length}</span></h3>
       <div className="notes-list">
         {notas.length === 0 && <div className="mini-empty">Aún no hay notas</div>}
-        {notas.map((n, i) => (
-          <div className="note-row" key={i}>
-            <span className="note-av"><DocAvatar name={n.by} cls="" /></span>
-            <div className="note-body"><div className="nb-txt">{n.txt}</div><div className="nb-meta">{n.by} · {fmtDateTime(n.at)}</div></div>
-          </div>
-        ))}
+        {crmNotes ? (
+          crmNotes.map((n) => (
+            <div className="note-row" key={n.id}>
+              <span className="note-av"><DocAvatar name={n.authorName} cls="" /></span>
+              <div className="note-body"><div className="nb-txt">{n.body}</div><div className="nb-meta">{n.authorName} · {fmtDateTime(n.createdAt)}</div></div>
+              {n.canDelete && (
+                <button className="icon-btn" type="button" aria-label="Eliminar nota" disabled={deletingId === n.id} onClick={() => void remove(n.id)}>
+                  <i className={`mdi ${deletingId === n.id ? 'mdi-loading mdi-spin' : 'mdi-delete-outline'}`}></i>
+                </button>
+              )}
+            </div>
+          ))
+        ) : (
+          sol.detalle.notas.map((n, i) => (
+            <div className="note-row" key={i}>
+              <span className="note-av"><DocAvatar name={n.by} cls="" /></span>
+              <div className="note-body"><div className="nb-txt">{n.txt}</div><div className="nb-meta">{n.by} · {fmtDateTime(n.at)}</div></div>
+            </div>
+          ))
+        )}
       </div>
-      <form className="add-form col" onSubmit={submit}>
+      <form className="add-form col crm-note-form" onSubmit={(e) => void submit(e)}>
         <textarea className="fld" rows={3} placeholder="Registrar avance del caso…" value={txt} onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setTxt(e.target.value)}></textarea>
-        <button className="btn-add self-end" type="submit"><i className="mdi mdi-comment-plus-outline"></i>Guardar nota</button>
+        {formError && <div className="form-error" role="alert">{formError}</div>}
+        <button className="btn-add self-end" type="submit" disabled={saving || !txt.trim()}>
+          <i className={`mdi ${saving ? 'mdi-loading mdi-spin' : 'mdi-comment-plus-outline'}`}></i>Guardar nota
+        </button>
       </form>
     </section>
   );
@@ -295,18 +350,22 @@ function TabDocumentos({ sol, showToast }: { sol: Solicitud; showToast: (msg: st
 export interface DetailPanelProps {
   sol: Solicitud | null;
   open: boolean;
+  crmCase: CrmCaseState | null;
+  crmLoading: boolean;
+  crmError: string | null;
   onClose: () => void;
   onToggleStep: (id: number, slug: string) => void;
   onAdvance: (id: number) => void;
   onToggleTask: (id: number, idx: number) => void;
   onAddTask: (id: number, t: Tarea) => void;
-  onAddNote: (id: number, txt: string) => void;
+  onAddNote: (txt: string) => Promise<void>;
+  onDeleteNote: (noteId: number) => Promise<void>;
   onAddProposal: (id: number) => void;
   onOpenPrefactura: (id: number) => void;
   showToast: (msg: string, icon?: string) => void;
 }
 
-export function DetailPanel({ sol, open, onClose, onToggleStep, onAdvance, onToggleTask, onAddTask, onAddNote, onAddProposal, onOpenPrefactura, showToast }: DetailPanelProps) {
+export function DetailPanel({ sol, open, onClose, onToggleStep, onAdvance, onToggleTask, onAddTask, crmCase, crmLoading, crmError, onAddNote, onDeleteNote, onAddProposal, onOpenPrefactura, showToast }: DetailPanelProps) {
   const [tab, setTab] = useState('seguimiento');
 
   useEffect(() => { if (open) setTab('seguimiento'); }, [sol?.id, open]);
@@ -344,9 +403,11 @@ export function DetailPanel({ sol, open, onClose, onToggleStep, onAdvance, onTog
             </nav>
 
             <div className="panel-body">
-              {tab === 'seguimiento' && <TabSeguimiento sol={sol} onToggleStep={onToggleStep} />}
+              {crmLoading && <div className="mini-empty"><i className="mdi mdi-loading mdi-spin"></i> Cargando seguimiento CRM…</div>}
+              {crmError && <div className="form-error" role="alert">{crmError}</div>}
+              {tab === 'seguimiento' && <TabSeguimiento sol={sol} crmCase={crmCase} />}
               {tab === 'tareas' && <TabTareas sol={sol} onToggleTask={onToggleTask} onAddTask={onAddTask} />}
-              {tab === 'notas' && <TabNotas sol={sol} onAddNote={onAddNote} />}
+              {tab === 'notas' && <TabNotas sol={sol} crmCase={crmCase} onAddNote={onAddNote} onDeleteNote={onDeleteNote} />}
               {tab === 'comunicacion' && <TabComunicacion sol={sol} showToast={showToast} />}
               {tab === 'propuestas' && <TabPropuestas sol={sol} onAddProposal={onAddProposal} showToast={showToast} />}
               {tab === 'documentos' && <TabDocumentos sol={sol} showToast={showToast} />}

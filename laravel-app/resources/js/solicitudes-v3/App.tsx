@@ -2,8 +2,8 @@
 // MedForge · Solicitudes v3 — App root
 // ============================================================
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import type { Solicitud, Filters, Tarea, TweakValues, Alert, ChecklistStep } from './types';
-import { COLUMNS, PHASES, fetchKanbanData, fetchDetalle, rebuildState, updateEstado } from './api';
+import type { Solicitud, Filters, Tarea, TweakValues, Alert, ChecklistStep, CrmCaseState } from './types';
+import { COLUMNS, PHASES, fetchKanbanData, fetchDetalle, rebuildState, updateEstado, fetchCrmCase, createCrmNote, deleteCrmNote } from './api';
 import { Kpi } from './components';
 import { Toolbar, Board, TableView } from './Board';
 import { DetailPanel } from './DetailPanel';
@@ -36,6 +36,9 @@ export function App() {
   const [view, setView] = useState('kanban');
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [crmCase, setCrmCase] = useState<CrmCaseState | null>(null);
+  const [crmLoading, setCrmLoading] = useState(false);
+  const [crmError, setCrmError] = useState<string | null>(null);
   const [prefacturaId, setPrefacturaId] = useState<number | null>(null);
   const [draggingId, setDraggingId] = useState<number | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
@@ -156,11 +159,21 @@ export function App() {
     setSolicitudes((list: Solicitud[]) => list.map((s: Solicitud) => s.id === id ? { ...s, detalle: { ...s.detalle, ...fn(s) } } : s));
   }, []);
 
-  const addNote = useCallback((id: number, txt: string) => {
-    patchDetalle(id, (s: Solicitud) => ({ notas: [{ txt, by: CURRENT_USER.responsable, at: new Date().toISOString() }, ...s.detalle.notas] }));
-    setSolicitudes((list: Solicitud[]) => list.map((s: Solicitud) => s.id === id ? { ...s, crm: { ...s.crm, notas: s.crm.notas + 1 } } : s));
+  const addCrmNote = useCallback(async (txt: string) => {
+    if (selectedId == null) return;
+    const updated = await createCrmNote('solicitud', selectedId, txt);
+    setCrmCase(updated);
+    setSolicitudes((list: Solicitud[]) => list.map((s: Solicitud) => s.id === selectedId ? { ...s, crm: { ...s.crm, notas: updated.notes.length } } : s));
     showToast('Nota guardada', 'mdi-comment-check-outline');
-  }, [patchDetalle, showToast]);
+  }, [selectedId, showToast]);
+
+  const removeCrmNote = useCallback(async (noteId: number) => {
+    if (selectedId == null) return;
+    const updated = await deleteCrmNote('solicitud', selectedId, noteId);
+    setCrmCase(updated);
+    setSolicitudes((list: Solicitud[]) => list.map((s: Solicitud) => s.id === selectedId ? { ...s, crm: { ...s.crm, notas: updated.notes.length } } : s));
+    showToast('Nota eliminada', 'mdi-delete-outline');
+  }, [selectedId, showToast]);
 
   const addTask = useCallback((id: number, task: Tarea) => {
     patchDetalle(id, (s: Solicitud) => ({ tareas: [...s.detalle.tareas, task] }));
@@ -222,6 +235,34 @@ export function App() {
   }), [draggingId, dropTarget, moveTo]);
 
   const selected = useMemo(() => solicitudes.find((s: Solicitud) => s.id === selectedId) ?? null, [solicitudes, selectedId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!selectedId || !selected) {
+      setCrmCase(null);
+      setCrmLoading(false);
+      setCrmError(null);
+      return () => { cancelled = true; };
+    }
+
+    setCrmLoading(true);
+    setCrmError(null);
+    fetchCrmCase('solicitud', selectedId)
+      .then((crm) => {
+        if (!cancelled) setCrmCase(crm);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setCrmCase(null);
+          setCrmError('No se pudo cargar el seguimiento CRM.');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setCrmLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [selectedId, selected?.id]);
 
   // Lazy-load full detalle when a card is opened and detalle hasn't been fetched yet
   useEffect(() => {
@@ -312,7 +353,11 @@ export function App() {
         onAdvance={advance}
         onToggleTask={toggleTask}
         onAddTask={addTask}
-        onAddNote={addNote}
+        crmCase={crmCase}
+        crmLoading={crmLoading}
+        crmError={crmError}
+        onAddNote={addCrmNote}
+        onDeleteNote={removeCrmNote}
         onAddProposal={addProposal}
         onOpenPrefactura={(id) => setPrefacturaId(id)}
         showToast={showToast}
