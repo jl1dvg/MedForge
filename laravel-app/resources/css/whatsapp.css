@@ -891,6 +891,27 @@ html, body { margin: 0; height: 100%; background: var(--wa3-bg, #f7f8fb); }
 .wa3-metric[data-tone="accent"] strong { color: var(--wa3-accent); }
 .wa3-manager-menu .wa3-menu-footer { flex-wrap: wrap; }
 
+/* Tweaks menu (color palette + density) */
+.wa3-tweaks-menu { min-width: 200px; }
+.wa3-tweaks-swatches { display: flex; gap: 8px; padding: 6px 10px 10px; }
+.wa3-swatch {
+  width: 26px; height: 26px; border-radius: 50%;
+  border: none; outline: 2px solid transparent; outline-offset: 2px;
+  cursor: pointer; transition: transform .1s, outline-color .12s;
+}
+.wa3-swatch:hover { transform: scale(1.1); }
+.wa3-swatch.is-active { outline-color: var(--wa3-text); }
+.wa3-density-seg { display: flex; padding: 6px 10px 10px; }
+.wa3-density-btn {
+  flex: 1; padding: 6px 0; border: 1px solid var(--wa3-border);
+  background: var(--wa3-surface-2); color: var(--wa3-text-mute);
+  font: 500 12px var(--font-body); cursor: pointer;
+  transition: background .1s, color .1s, border-color .1s;
+}
+.wa3-density-btn:first-child { border-radius: 7px 0 0 7px; border-right: none; }
+.wa3-density-btn:last-child  { border-radius: 0 7px 7px 0; }
+.wa3-density-btn.is-active   { background: var(--wa3-accent); color: #fff; border-color: var(--wa3-accent); }
+
 /* Advanced filters menu */
 .wa3-filter-menu { min-width: 340px; max-width: 380px; }
 .wa3-filter-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 4px 6px 8px; }

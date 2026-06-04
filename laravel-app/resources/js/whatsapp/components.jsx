@@ -216,12 +216,54 @@ function WaChips({ filter, tabCounts, onPick }) {
   );
 }
 
+// ── WaTweaksMenu ─────────────────────────────────────────────────────────────
+
+const ACCENT_PALETTES = [
+  { label: 'Índigo', value: '#5156be' },
+  { label: 'Teal',   value: '#0891b2' },
+  { label: 'Verde',  value: '#16a34a' },
+  { label: 'Rojo',   value: '#dc2626' },
+];
+
+function WaTweaksMenu({ compact, accent, onCompact, onAccent }) {
+  const [open, setOpen, ref] = useWaMenu();
+  return (
+    <div className="wa3-hbtn-wrap" ref={ref}>
+      <button className="wa3-iconbtn" type="button" title="Apariencia"
+              onClick={() => setOpen(v => !v)}>
+        <i className="mdi mdi-palette-outline"></i>
+      </button>
+      {open && (
+        <div className="wa3-hbtn__menu wa3-tweaks-menu">
+          <h6>Color de acento</h6>
+          <div className="wa3-tweaks-swatches">
+            {ACCENT_PALETTES.map(p => (
+              <button key={p.value} type="button" title={p.label}
+                      className={`wa3-swatch${accent === p.value ? ' is-active' : ''}`}
+                      style={{ background: p.value }}
+                      onClick={() => onAccent(p.value)} />
+            ))}
+          </div>
+          <h6>Densidad</h6>
+          <div className="wa3-density-seg">
+            <button type="button" className={`wa3-density-btn${!compact ? ' is-active' : ''}`}
+                    onClick={() => onCompact(false)}>Normal</button>
+            <button type="button" className={`wa3-density-btn${compact ? ' is-active' : ''}`}
+                    onClick={() => onCompact(true)}>Compacto</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── WaInbox ───────────────────────────────────────────────────────────────────
 
 export function WaInbox({
   activeId, filter, search, view, canSupervise, tabCounts, dateFrom, dateTo,
   agentFilter, agents, visible, loading, hasMore, loadMore, loadingMore,
   onPickConvo, onFilter, onSearch, onView, onDate, onAgentFilter, onNewConvo, onRequeue,
+  compact, accent, onTweakCompact, onTweakAccent,
 }) {
   return (
     <aside className="wa3-inbox">
@@ -248,6 +290,7 @@ export function WaInbox({
             )}
             <button className="wa3-iconbtn" title="Nueva conversación" onClick={onNewConvo}><i className="mdi mdi-plus"></i></button>
             <WaFilterMenu filter={filter} tabCounts={tabCounts} dateFrom={dateFrom} dateTo={dateTo} onDate={onDate} onPickFilter={onFilter} />
+            <WaTweaksMenu compact={compact} accent={accent} onCompact={onTweakCompact} onAccent={onTweakAccent} />
           </div>
         </div>
         <div className="wa3-search">
