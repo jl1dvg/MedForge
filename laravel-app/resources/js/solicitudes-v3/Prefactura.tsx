@@ -265,6 +265,12 @@ function PfCirugia({ sol }: { sol: Solicitud }) {
         </div>
       </div>
 
+      {sol.detalle.preop.length === 0 && (
+        <div className="pf-section">
+          <div className="mini-empty">Sin checklist preoperatorio registrado</div>
+        </div>
+      )}
+
       <div className="pf-section">
         <h4 className="pf-h">Datos quirúrgicos operativos</h4>
         <div className="pf-grid">

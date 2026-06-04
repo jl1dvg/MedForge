@@ -72,7 +72,7 @@ test('maps assigned diagnoses list from detalle completo', () => {
       id: 70030,
       form_id: 275872,
       fuente: 'consulta',
-      dx_code: 'H00',
+      codigo: 'H00',
       descripcion: 'ORZUELO Y CALACIO',
       definitivo: 1,
       lateralidad: 'DERECHO',
