@@ -240,7 +240,12 @@
         .wa3-row__tag[data-tone="closed"] { background: #eef0f4; color: #667085; }
 
         /* THREAD */
-        .wa3-thread { display: flex; flex-direction: column; background: var(--wa3-bg); min-width: 0; overflow: hidden; }
+        /* min-height:0 es crítico: sin él el grid item puede crecer más allá de su celda
+           y el composer queda fuera del viewport (bug visible en pantallas 900×540). */
+        .wa3-thread { display: flex; flex-direction: column; background: var(--wa3-bg); min-width: 0; min-height: 0; overflow: hidden; }
+        /* Los items flex también necesitan min-height:0 para que .wa3-messages pueda encoger */
+        .wa3-inbox  { min-height: 0; }
+        .wa3-messages { flex: 1 1 0; min-height: 0; overflow-y: auto; padding: 18px 22px 8px; display: flex; flex-direction: column; gap: 6px; background: radial-gradient(circle at 20% 10%, rgba(81,86,190,.05), transparent 50%), radial-gradient(circle at 90% 90%, rgba(81,86,190,.03), transparent 60%), var(--wa3-bg); }
         .wa3-thread__head { background: var(--wa3-surface); border-bottom: 1px solid var(--wa3-border); padding: 12px 22px; display: flex; align-items: center; gap: 14px; }
         .wa3-thread__main { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1; }
         .wa3-thread__id { min-width: 0; }
@@ -298,7 +303,6 @@
         .wa3-msg.is-search-current .wa3-bubble { border-color: var(--wa3-accent); box-shadow: 0 0 0 4px rgba(81,86,190,.22); }
 
         /* Messages */
-        .wa3-messages { flex: 1; overflow-y: auto; padding: 18px 22px 8px; display: flex; flex-direction: column; gap: 6px; background: radial-gradient(circle at 20% 10%, rgba(81,86,190,.05), transparent 50%), radial-gradient(circle at 90% 90%, rgba(81,86,190,.03), transparent 60%), var(--wa3-bg); }
         .wa3-date { align-self: center; font: 600 11px var(--bs-body-font-family); color: var(--wa3-text-mute); background: var(--wa3-surface); border: 1px solid var(--wa3-border); padding: 4px 12px; border-radius: 999px; margin: 12px 0 8px; }
         .wa3-msg { display: flex; max-width: 640px; }
         .wa3-msg.is-out { align-self: flex-end; justify-content: flex-end; }
