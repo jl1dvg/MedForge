@@ -281,7 +281,7 @@ export function WaInbox({
           ) : (
             <h2 className="wa3-inbox__title">Conversaciones</h2>
           )}
-          <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 0, alignItems: 'center' }}>
             {canSupervise && <WaManagerMenu tabCounts={tabCounts} onPickFilter={onFilter} />}
             {canSupervise && (
               <button className="wa3-iconbtn" title="Reencolar handoffs vencidos" onClick={onRequeue}>
