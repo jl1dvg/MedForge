@@ -155,22 +155,32 @@ function WaTransferMenu({ convo, agents, roles, onTransfer, onQueueRole, toast }
 
 // ── Templates ─────────────────────────────────────────────────────────────────
 
+const HEADER_ICON = { location: '📍', image: '🖼️', video: '🎥', document: '📄' };
+
 function WaTemplatesMenu({ templates, onSelectTemplate }) {
+  const approved = templates.filter(t => t.status === 'approved' || t.status === 'active' || !t.status);
   return (
     <WaHeaderMenu icon="mdi-file-document-outline" label="Plantillas">
       {(close) => (
         <>
           <h6>Plantillas aprobadas</h6>
-          {templates.length === 0 && (
+          {approved.length === 0 && (
             <div style={{ padding: '8px 12px', color: 'var(--wa3-text-mute)', fontSize: 13 }}>Sin plantillas disponibles.</div>
           )}
           <div style={{ maxHeight: '55vh', overflowY: 'auto' }}>
-            {templates.map(t => (
-              <button key={t.id} className="wa3-menu-item" onClick={() => { onSelectTemplate(t); close(); }}>
-                <i className="mdi mdi-clipboard-text-outline lead"></i>
-                <span>{t.name || t.display_name}<span className="meta">{(t.category || 'utility').toUpperCase()} · {t.language || 'es'}</span></span>
-              </button>
-            ))}
+            {approved.map(t => {
+              const hIcon = HEADER_ICON[t.preview?.header_type] || '';
+              return (
+                <button key={t.id} className="wa3-menu-item" onClick={() => { onSelectTemplate(t); close(); }}>
+                  <i className="mdi mdi-clipboard-text-outline lead"></i>
+                  <span>
+                    {hIcon && <span style={{ marginRight: 4 }}>{hIcon}</span>}
+                    {t.name || t.display_name}
+                    <span className="meta">{(t.category || 'utility').toUpperCase()} · {t.language || 'es'}</span>
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </>
       )}

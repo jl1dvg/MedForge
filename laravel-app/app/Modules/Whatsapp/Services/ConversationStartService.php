@@ -305,6 +305,18 @@ class ConversationStartService
             }
         }
 
+        if (in_array($revision->header_type, ['image', 'video', 'document'], true)) {
+            $mediaUrl = (string) ($templateVariables['_header_media_url'] ?? '');
+            if ($mediaUrl !== '') {
+                $components[] = [
+                    'type' => 'header',
+                    'parameters' => [
+                        ['type' => $revision->header_type, $revision->header_type => ['link' => $mediaUrl]],
+                    ],
+                ];
+            }
+        }
+
         $bodyParameters = $this->buildTextParameterValues(
             (string) $revision->body_text,
             $contactName,

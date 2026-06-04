@@ -2,11 +2,23 @@
    nueva conversación (plantilla) · cerrar seguimiento · tour */
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { searchContacts, startWithTemplate } from './api.js';
+import { searchContacts, startWithTemplate, uploadMedia } from './api.js';
+
+const HEADER_ICON = { location: '📍', image: '🖼️', video: '🎥', document: '📄' };
+const SEDE_OPTIONS = [
+  { value: 'matriz',     label: 'Matriz' },
+  { value: 'ceibos',    label: 'Ceibos' },
+  { value: 'villa_club', label: 'Villa Club' },
+];
 
 // ── New conversation modal ────────────────────────────────────────────────────
 
 export function WaNewConvoModal({ onClose, toast, templates = [], convos = [], prefill = null }) {
+  const approvedTpls = useMemo(
+    () => templates.filter(t => t.status === 'approved' || t.status === 'active' || !t.status),
+    [templates]
+  );
+
   const [q, setQ] = useState('');
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
@@ -18,18 +30,22 @@ export function WaNewConvoModal({ onClose, toast, templates = [], convos = [], p
   const [tplId, setTplId] = useState(prefill?.tplId ? String(prefill.tplId) : '');
   const [vars, setVars] = useState(() => {
     if (prefill?.tplId) {
-      const t = templates.find(x => String(x.id) === String(prefill.tplId));
+      const t = approvedTpls.find(x => String(x.id) === String(prefill.tplId));
       return (t?.preview?.variables || []).map(() => '');
     }
     return [];
   });
+  const [locationSede, setLocationSede] = useState('');
+  const [headerMediaUrl, setHeaderMediaUrl] = useState('');
+  const [headerUploading, setHeaderUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [fb, setFb] = useState({ tone: '', text: prefill ? '' : 'Escribe para buscar o ingresa el número manualmente.' });
   const debounceRef = useRef(null);
 
-  const tpl = templates.find(t => String(t.id) === String(tplId));
+  const tpl = approvedTpls.find(t => String(t.id) === String(tplId));
   const tplVars = tpl?.preview?.variables || [];
   const tplBody = tpl?.preview?.body_text || '';
+  const tplHeaderType = tpl?.preview?.header_type || 'none';
 
   // Real-time search with debounce
   useEffect(() => {
@@ -61,8 +77,22 @@ export function WaNewConvoModal({ onClose, toast, templates = [], convos = [], p
 
   const onTpl = (id) => {
     setTplId(id);
-    const t = templates.find(x => String(x.id) === String(id));
+    const t = approvedTpls.find(x => String(x.id) === String(id));
     setVars(t ? (t.preview?.variables || []).map(() => '') : []);
+    setLocationSede('');
+    setHeaderMediaUrl('');
+  };
+
+  const onHeaderFile = async (file) => {
+    if (!file) return;
+    setHeaderUploading(true);
+    try {
+      const res = await uploadMedia(file);
+      const url = res?.data?.url || res?.data?.media_url || '';
+      setHeaderMediaUrl(url);
+    } catch {
+      setFb({ tone: 'danger', text: 'Error al subir el archivo de cabecera.' });
+    } finally { setHeaderUploading(false); }
   };
 
   const preview = tpl
@@ -71,6 +101,10 @@ export function WaNewConvoModal({ onClose, toast, templates = [], convos = [], p
 
   const submit = async () => {
     if (!number.trim() || !tplId) { setFb({ tone: 'danger', text: 'Número y plantilla son obligatorios.' }); return; }
+    if (tplHeaderType === 'location' && !locationSede) { setFb({ tone: 'danger', text: 'Selecciona la sede para la ubicación.' }); return; }
+    if ((tplHeaderType === 'image' || tplHeaderType === 'video' || tplHeaderType === 'document') && !headerMediaUrl) {
+      setFb({ tone: 'danger', text: 'Sube el archivo requerido por la cabecera.' }); return;
+    }
     setSubmitting(true);
     setFb({ tone: '', text: 'Iniciando conversación…' });
     try {
@@ -81,6 +115,8 @@ export function WaNewConvoModal({ onClose, toast, templates = [], convos = [], p
         contactName: contact || undefined,
         patientHcNumber: hc || undefined,
         patientFullName: patient || undefined,
+        locationSede: locationSede || undefined,
+        headerMediaUrl: headerMediaUrl || undefined,
       });
       toast(`Conversación iniciada con ${contact || number}`, 'mdi-message-plus');
       const convId = result?.data?.conversation?.id || null;
@@ -163,9 +199,46 @@ export function WaNewConvoModal({ onClose, toast, templates = [], convos = [], p
                 <label>Plantilla aprobada</label>
                 <select value={tplId} onChange={e => onTpl(e.target.value)}>
                   <option value="">Selecciona una plantilla</option>
-                  {templates.map(t => <option key={t.id} value={t.id}>{t.name || t.display_name} · {t.language || 'es'}</option>)}
+                  {approvedTpls.map(t => {
+                    const hIcon = HEADER_ICON[t.preview?.header_type] || '';
+                    return (
+                      <option key={t.id} value={t.id}>
+                        {hIcon ? `${hIcon} ` : ''}{t.name || t.display_name} · {t.language || 'es'}
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
+              {tpl && tplHeaderType === 'location' && (
+                <div className="wa3-field">
+                  <label>📍 Sede (ubicación)</label>
+                  <select value={locationSede} onChange={e => setLocationSede(e.target.value)}>
+                    <option value="">Selecciona la sede</option>
+                    {SEDE_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                  </select>
+                </div>
+              )}
+              {tpl && (tplHeaderType === 'image' || tplHeaderType === 'video' || tplHeaderType === 'document') && (
+                <div className="wa3-field">
+                  <label>{HEADER_ICON[tplHeaderType]} Archivo de cabecera ({tplHeaderType})</label>
+                  {headerMediaUrl ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <i className="mdi mdi-check-circle" style={{ color: 'var(--wa3-accent)' }}></i>
+                      <span style={{ fontSize: 12, color: 'var(--wa3-text-mute)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{headerMediaUrl.split('/').pop()}</span>
+                      <button className="wa3-secondary-btn" style={{ fontSize: 11, padding: '2px 8px' }} onClick={() => setHeaderMediaUrl('')}>Cambiar</button>
+                    </div>
+                  ) : (
+                    <label className="wa3-upload-label" style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                      <input type="file" style={{ display: 'none' }}
+                        accept={tplHeaderType === 'image' ? 'image/*' : tplHeaderType === 'video' ? 'video/*' : '*/*'}
+                        onChange={e => onHeaderFile(e.target.files?.[0])} />
+                      {headerUploading
+                        ? <><i className="mdi mdi-loading mdi-spin"></i> Subiendo…</>
+                        : <><i className="mdi mdi-upload"></i> Subir archivo</>}
+                    </label>
+                  )}
+                </div>
+              )}
               {tpl && tplVars.map((v, i) => (
                 <div key={i} className="wa3-field">
                   <label>Variable {i + 1}</label>
