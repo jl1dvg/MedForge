@@ -134,7 +134,7 @@ export function WaNewConvoModal({ onClose, toast, templates = [], convos = [], p
             <h3>{prefill ? 'Enviar plantilla' : 'Nueva conversación con plantilla'}</h3>
             <div className="wa3-modal__sub">{prefill ? 'Completa las variables y envía la plantilla al paciente.' : 'Usa una plantilla aprobada para iniciar o continuar fuera de ventana.'}</div>
           </div>
-          <button className="wa3-iconbtn" onClick={onClose}><i className="mdi mdi-close"></i></button>
+          <button className="wa3-iconbtn" onClick={() => onClose()}><i className="mdi mdi-close"></i></button>
         </div>
         <div className="wa3-modal__body">
           <div className="wa3-modal__grid">
@@ -278,7 +278,7 @@ export function WaFollowupModal({ onClose, onConfirm }) {
             <h3>Cerrar seguimiento</h3>
             <div className="wa3-modal__sub">No elimina al paciente ni el historial. Cierra la conversación y genera un lead de seguimiento.</div>
           </div>
-          <button className="wa3-iconbtn" onClick={onClose}><i className="mdi mdi-close"></i></button>
+          <button className="wa3-iconbtn" onClick={() => onClose()}><i className="mdi mdi-close"></i></button>
         </div>
         <div className="wa3-modal__body">
           <div className="wa3-field">
@@ -288,7 +288,7 @@ export function WaFollowupModal({ onClose, onConfirm }) {
           <div className="wa3-feedback" data-tone={fb.tone}>{fb.text}</div>
         </div>
         <div className="wa3-modal__foot">
-          <button className="wa3-secondary-btn" onClick={onClose}>Cancelar</button>
+          <button className="wa3-secondary-btn" onClick={() => onClose()}>Cancelar</button>
           <button className="wa3-primary-btn" onClick={submit}>Cerrar seguimiento</button>
         </div>
       </div>
@@ -363,7 +363,7 @@ export function WaTourModal({ onClose }) {
             <h3>Recorrido del chat</h3>
             <div className="wa3-modal__sub">Conoce las zonas principales en {steps.length} pasos.</div>
           </div>
-          <button className="wa3-iconbtn" onClick={onClose}><i className="mdi mdi-close"></i></button>
+          <button className="wa3-iconbtn" onClick={() => onClose()}><i className="mdi mdi-close"></i></button>
         </div>
         <div className="wa3-modal__body">
           {step.icon && <div className="wa3-tour-icon"><i className={`mdi ${step.icon}`}></i></div>}
@@ -377,9 +377,9 @@ export function WaTourModal({ onClose }) {
         <div className="wa3-modal__foot">
           <button className="wa3-secondary-btn" disabled={idx === 0} onClick={() => setIdx(i => Math.max(0, i - 1))}>← Anterior</button>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button className="wa3-secondary-btn" onClick={onClose}>Saltar</button>
+            <button className="wa3-secondary-btn" onClick={() => onClose()}>Saltar</button>
             {!last && <button className="wa3-primary-btn" onClick={() => setIdx(i => Math.min(steps.length - 1, i + 1))}>Siguiente →</button>}
-            {last  && <button className="wa3-primary-btn" onClick={onClose}>¡Listo, explorar!</button>}
+            {last  && <button className="wa3-primary-btn" onClick={() => onClose()}>¡Listo, explorar!</button>}
           </div>
         </div>
       </div>
