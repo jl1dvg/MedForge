@@ -1285,6 +1285,30 @@
                                         Se envía automáticamente cuando el usuario escribe algo que ningún escenario reconoce.
                                     </div>
                                 </div>
+                                <div>
+                                    <label class="form-label">Mensaje cuando el agente no está disponible (fuera de horario)</label>
+                                    <textarea
+                                        id="wa-flow-setting-off-hours-release"
+                                        class="form-control"
+                                        rows="2"
+                                        placeholder="Nuestros agentes ya terminaron por hoy 🌙 Pero puedo ayudarte ahora mismo."
+                                    ></textarea>
+                                    <div class="wa-flow-inline-note mt-6">
+                                        Se envía cuando el usuario escribe y tenía un agente asignado que ya terminó su turno. Aparece con un botón "Ver opciones".
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="form-label">Mensaje fuera de horario al pedir agente (fallback global)</label>
+                                    <textarea
+                                        id="wa-flow-setting-off-hours-handoff"
+                                        class="form-control"
+                                        rows="2"
+                                        placeholder="En este momento nuestros agentes no están disponibles 🕐 En el próximo horario de atención un agente te ayudará."
+                                    ></textarea>
+                                    <div class="wa-flow-inline-note mt-6">
+                                        Se usa cuando una acción "Derivar a agente" no tiene mensaje propio y el horario está cerrado.
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -2279,6 +2303,14 @@ document.addEventListener('DOMContentLoaded', function () {
     if (fallbackTextarea) {
         fallbackTextarea.value = editorSchema.settings?.no_match_fallback_message ?? '';
     }
+    const offHoursReleaseTextarea = document.getElementById('wa-flow-setting-off-hours-release');
+    if (offHoursReleaseTextarea) {
+        offHoursReleaseTextarea.value = editorSchema.settings?.off_hours_agent_release_message ?? '';
+    }
+    const offHoursHandoffTextarea = document.getElementById('wa-flow-setting-off-hours-handoff');
+    if (offHoursHandoffTextarea) {
+        offHoursHandoffTextarea.value = editorSchema.settings?.off_hours_handoff_message ?? '';
+    }
 
     const activeVersionScenarioIds = () => {
         const flow = extractVersionFlow(activeVersion);
@@ -3167,6 +3199,11 @@ document.addEventListener('DOMContentLoaded', function () {
                             <label>Nota operativa</label>
                             <textarea data-action-config="${index}" data-field="note">${escapeHtml(action?.note || '')}</textarea>
                         </div>
+                        <div class="wa-flow-editor-field" style="grid-column: 1 / -1;">
+                            <label>Mensaje fuera de horario (opcional — sobreescribe el global)</label>
+                            <textarea data-action-config="${index}" data-field="off_hours_message">${escapeHtml(action?.off_hours_message || '')}</textarea>
+                            <div class="wa-flow-inline-note mt-4">Si está vacío, usa el mensaje global del panel de configuración.</div>
+                        </div>
                     </div>
                 ` : '';
                 const stateEditor = type === 'set_state' ? `
@@ -3893,6 +3930,10 @@ document.addEventListener('DOMContentLoaded', function () {
             payload.settings = {};
         }
         payload.settings.no_match_fallback_message = fallbackVal;
+        payload.settings.off_hours_agent_release_message =
+            document.getElementById('wa-flow-setting-off-hours-release')?.value?.trim() ?? '';
+        payload.settings.off_hours_handoff_message =
+            document.getElementById('wa-flow-setting-off-hours-handoff')?.value?.trim() ?? '';
 
         try {
             const response = await fetch('/v2/whatsapp/api/flowmaker/publish', {
@@ -4075,6 +4116,14 @@ document.addEventListener('DOMContentLoaded', function () {
             const fallbackTextareaSync = document.getElementById('wa-flow-setting-fallback');
             if (fallbackTextareaSync) {
                 fallbackTextareaSync.value = editorSchema.settings?.no_match_fallback_message ?? '';
+            }
+            const releaseSync = document.getElementById('wa-flow-setting-off-hours-release');
+            if (releaseSync) {
+                releaseSync.value = editorSchema.settings?.off_hours_agent_release_message ?? '';
+            }
+            const handoffSync = document.getElementById('wa-flow-setting-off-hours-handoff');
+            if (handoffSync) {
+                handoffSync.value = editorSchema.settings?.off_hours_handoff_message ?? '';
             }
             renderScenarioList();
             renderScenarioCanvas();
