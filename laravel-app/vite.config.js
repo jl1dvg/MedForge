@@ -40,6 +40,7 @@ export default defineConfig({
                 'resources/js/v2/usuarios-index.js',
                 'resources/js/v2/settings-index.js',
                 'resources/js/crm/main.tsx',
+                'resources/js/pharmacy/main.tsx',
             ],
             refresh: true,
         }),
