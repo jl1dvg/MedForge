@@ -11,6 +11,9 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 
+// Pharmacy API routes (token-less, internal use)
+Route::post('/api/pharmacy/prescriptions', [\App\Modules\Pharmacy\Http\Controllers\PharmacyApiController::class, 'storePrescription']);
+
 Route::prefix('v2')->group(function (): void {
     require __DIR__ . '/v2/health.php';
     require __DIR__ . '/v2/dashboard.php';
@@ -93,51 +96,20 @@ Route::middleware(['consultas.cors', 'cive.extension.auth'])->group(function ():
     }
 
     foreach ([
-        '/api/solicitudes/guardar',
-        '/api/solicitudes/guardar.php',
-        '/solicitudes/guardar',
-        '/solicitudes/guardar.php',
-    ] as $path) {
-        Route::options($path, static fn () => response('', 204));
-        Route::post($path, static function (Request $request, SolicitudesWriteController $controller) {
-            return $controller->guardarSolicitud($request);
-        });
-    }
-
-    foreach ([
         '/api/proyecciones/consulta.php' => [
-            'bdToFront' => [
-                'CONSULTA'          => 'en_proceso',
-                'CONSULTA_TERMINADO' => 'terminado_sin_dilatar',
-                'DILATAR'           => 'terminado_dilatar',
-            ],
-            'frontToDb' => [
-                'iniciar_atencion'      => 'CONSULTA',
-                'en_proceso'            => 'CONSULTA',
-                'terminado_sin_dilatar' => 'CONSULTA_TERMINADO',
-                'terminado_dilatar'     => 'DILATAR',
-            ],
+            'CONSULTA' => 'en_proceso',
+            'CONSULTA_TERMINADO' => 'terminado_sin_dilatar',
+            'DILATAR' => 'terminado_dilatar',
         ],
         '/api/proyecciones/optometria.php' => [
-            'bdToFront' => [
-                'OPTOMETRIA'          => 'en_proceso',
-                'OPTOMETRIA_TERMINADO' => 'terminado_sin_dilatar',
-                'DILATAR'             => 'terminado_dilatar',
-            ],
-            'frontToDb' => [
-                'iniciar_atencion'      => 'OPTOMETRIA',
-                'en_proceso'            => 'OPTOMETRIA',
-                'terminado_sin_dilatar' => 'OPTOMETRIA_TERMINADO',
-                'terminado_dilatar'     => 'DILATAR',
-            ],
+            'OPTOMETRIA' => 'en_proceso',
+            'OPTOMETRIA_TERMINADO' => 'terminado_sin_dilatar',
+            'DILATAR' => 'terminado_dilatar',
         ],
-    ] as $path => $maps) {
-        $bdToFront = $maps['bdToFront'];
-        $frontToDb = $maps['frontToDb'];
-
+    ] as $path => $stateMap) {
         Route::options($path, static fn () => response('', 204));
 
-        Route::get($path, static function (Request $request) use ($bdToFront) {
+        Route::get($path, static function (Request $request) use ($stateMap) {
             if ($request->query('action') !== 'estado') {
                 return response()->json(['success' => false, 'message' => 'Acción no soportada'], 422);
             }
@@ -154,14 +126,15 @@ Route::middleware(['consultas.cors', 'cive.extension.auth'])->group(function ():
 
             return response()->json([
                 'success' => true,
-                'estado' => $bdToFront[(string) $estadoBd] ?? 'pendiente',
+                'estado' => $stateMap[(string) $estadoBd] ?? 'pendiente',
                 'estado_bd' => $estadoBd,
             ]);
         });
 
-        Route::post($path, static function (Request $request) use ($frontToDb) {
+        Route::post($path, static function (Request $request) use ($stateMap) {
             $formId = trim((string) $request->input('form_id', ''));
             $estado = trim((string) $request->input('estado', ''));
+            $frontToDb = array_flip($stateMap);
             $targetState = $frontToDb[$estado] ?? null;
 
             if ($targetState === null) {
