@@ -375,7 +375,7 @@ class CrmCaseService
                 throw new RuntimeException('La propuesta debe incluir items de catalogo');
             }
 
-            $catalogType = trim((string) ($item['catalog_type'] ?? ''));
+            $catalogType = strtolower(trim((string) ($item['catalog_type'] ?? '')));
             $catalogId = $item['catalog_id'] ?? null;
             if ($catalogType === '' || $catalogId === null || $catalogId === '') {
                 throw new RuntimeException('La propuesta solo acepta items de catalogo');
@@ -400,11 +400,17 @@ class CrmCaseService
         }
 
         $this->assertSolicitudCaseExists($sourceId);
+        $sendBy = $this->normalizeProposalSendBy($payload['send_by'] ?? null);
+        $detailRow = $this->solicitudDetail($sourceId);
+        $sendRecipient = $this->proposalSendRecipient($sendBy, $payload, $detailRow);
 
         $legacyPayload = $payload;
         $legacyPayload['items'] = $legacyItems;
 
-        $this->solicitudesWriteService()->crmCrearPropuesta($sourceId, $legacyPayload, $actorUserId);
+        $result = $this->solicitudesWriteService()->crmCrearPropuesta($sourceId, $legacyPayload, $actorUserId);
+        if ($sendBy !== 'none') {
+            $this->sendCreatedProposal($sourceId, $result, $sendBy, $sendRecipient, $actorUserId);
+        }
 
         return $this->show($normalizedSourceType, $sourceId);
     }
@@ -461,6 +467,88 @@ class CrmCaseService
         }
 
         return array_values($values);
+    }
+
+    private function normalizeProposalSendBy(mixed $sendBy): string
+    {
+        $sendBy = strtolower(trim((string) ($sendBy ?? '')));
+        if ($sendBy === '' || $sendBy === 'none') {
+            return 'none';
+        }
+
+        if ($sendBy === 'email' || $sendBy === 'whatsapp') {
+            return $sendBy;
+        }
+
+        throw new RuntimeException('Canal de envio de propuesta no soportado');
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     * @param array<string, mixed> $detailRow
+     */
+    private function proposalSendRecipient(string $sendBy, array $payload, array $detailRow): ?string
+    {
+        if ($sendBy === 'none') {
+            return null;
+        }
+
+        if ($sendBy === 'email') {
+            $email = trim((string) ($payload['email_to'] ?? $detailRow['contacto_email'] ?? $detailRow['email'] ?? ''));
+            if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                throw new RuntimeException('Indica un correo de destino válido para enviar la propuesta');
+            }
+
+            return $email;
+        }
+
+        $phone = trim((string) ($payload['phone'] ?? $detailRow['contacto_telefono'] ?? $detailRow['telefono'] ?? ''));
+        if ($phone === '') {
+            throw new RuntimeException('Indica un teléfono para enviar la propuesta por WhatsApp');
+        }
+
+        return $phone;
+    }
+
+    /**
+     * @param array<string, mixed> $result
+     */
+    private function sendCreatedProposal(int $sourceId, array $result, string $sendBy, ?string $recipient, ?int $actorUserId): void
+    {
+        $ultima = $result['ultima_propuesta'] ?? [];
+        if (!is_array($ultima)) {
+            $ultima = [];
+        }
+
+        $proposalId = (int) ($ultima['id'] ?? 0);
+        if ($proposalId <= 0) {
+            throw new RuntimeException('No se pudo identificar la propuesta creada para enviarla');
+        }
+
+        $proposalNumber = trim((string) ($ultima['proposal_number'] ?? ''));
+        if ($proposalNumber === '') {
+            $proposalNumber = (string) $proposalId;
+        }
+
+        $proposalService = new CrmProposalService();
+        $proposal = $proposalService->find($proposalId);
+        $publicUrl = $proposal['public_url'] ?? ('/v2/crm/proposals/' . $proposalId);
+        $communicationService = $this->solicitudesCommunicationService();
+
+        if ($sendBy === 'email') {
+            $communicationService->sendEmail($sourceId, [
+                'to' => $recipient,
+                'subject' => 'Propuesta ' . $proposalNumber,
+                'body' => 'Le enviamos la propuesta ' . $proposalNumber . ".\n\nPuede revisarla en línea: " . $publicUrl,
+            ], $actorUserId);
+        } else {
+            $communicationService->sendWhatsapp($sourceId, [
+                'phone' => $recipient,
+                'mensaje' => 'Propuesta ' . $proposalNumber . ': ' . $publicUrl,
+            ], $actorUserId);
+        }
+
+        $proposalService->markSent($proposalId, $sendBy, $actorUserId);
     }
 
     /**

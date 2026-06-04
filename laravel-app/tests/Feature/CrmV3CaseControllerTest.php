@@ -436,6 +436,80 @@ class CrmV3CaseControllerTest extends TestCase
             ->assertJsonPath('success', false);
     }
 
+    public function test_proposal_send_by_email_requires_valid_recipient_before_draft_success(): void
+    {
+        $user = $this->createUser();
+        $this->seedSolicitudCaseTables([
+            'contacto_email' => '',
+            'email' => '',
+        ]);
+
+        $this->actingAs($user)
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+                RequireAppSession::class,
+                RequireAppPermission::class,
+            ])
+            ->postJson('/v3/crm/cases/solicitud/275872/proposals', [
+                'title' => 'Propuesta inicial',
+                'send_by' => 'email',
+                'email_to' => 'no-es-email',
+                'items' => [
+                    [
+                        'catalog_type' => 'code',
+                        'catalog_id' => 101,
+                        'description' => 'Consulta catalogada',
+                        'quantity' => 1,
+                        'unit_price' => 25,
+                    ],
+                ],
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false)
+            ->assertJsonFragment([
+                'error' => 'Indica un correo de destino válido para enviar la propuesta',
+            ]);
+    }
+
+    public function test_proposal_send_by_whatsapp_requires_phone_before_draft_success(): void
+    {
+        $user = $this->createUser();
+        $this->seedSolicitudCaseTables([
+            'contacto_telefono' => '',
+            'telefono' => '',
+        ]);
+
+        $this->actingAs($user)
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+                RequireAppSession::class,
+                RequireAppPermission::class,
+            ])
+            ->postJson('/v3/crm/cases/solicitud/275872/proposals', [
+                'title' => 'Propuesta inicial',
+                'send_by' => 'whatsapp',
+                'phone' => '',
+                'items' => [
+                    [
+                        'catalog_type' => 'code',
+                        'catalog_id' => 101,
+                        'description' => 'Consulta catalogada',
+                        'quantity' => 1,
+                        'unit_price' => 25,
+                    ],
+                ],
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false)
+            ->assertJsonFragment([
+                'error' => 'Indica un teléfono para enviar la propuesta por WhatsApp',
+            ]);
+    }
+
     public function test_whatsapp_does_not_fake_success_without_real_conversation(): void
     {
         $user = $this->createUser();
@@ -587,7 +661,10 @@ class CrmV3CaseControllerTest extends TestCase
         return User::query()->findOrFail(1);
     }
 
-    private function seedSolicitudCaseTables(): void
+    /**
+     * @param array<string, mixed> $detailOverrides
+     */
+    private function seedSolicitudCaseTables(array $detailOverrides = []): void
     {
         $this->insertRow('patient_data', [
             'hc_number' => '0932000904',
@@ -608,7 +685,7 @@ class CrmV3CaseControllerTest extends TestCase
             'created_at' => '2026-06-03 08:00:00',
         ]);
 
-        $this->insertRow('solicitud_crm_detalles', [
+        $this->insertRow('solicitud_crm_detalles', array_merge([
             'solicitud_id' => 275872,
             'responsable_id' => 1,
             'responsable_nombre' => 'CRM User',
@@ -622,7 +699,7 @@ class CrmV3CaseControllerTest extends TestCase
             'insurance_code' => 'HUM-001',
             'created_at' => '2026-06-03 08:01:00',
             'updated_at' => '2026-06-03 08:01:00',
-        ]);
+        ], $detailOverrides));
     }
 
     /**
