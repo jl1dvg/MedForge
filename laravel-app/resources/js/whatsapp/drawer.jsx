@@ -59,7 +59,7 @@ function WaQuickReplyForm({ onCreate }) {
   );
 }
 
-export function WaDrawer({ convo, notes, trail, canOperate, onAddNote, onCreateQuickReply, onFollowup }) {
+export function WaDrawer({ convo, notes, trail, canOperate, onAddNote, quickReplies, onApplyQuickReply, onCreateQuickReply, onFollowup }) {
   if (!convo) return null;
   const p = convo.patient || {};
   return (
@@ -143,6 +143,24 @@ export function WaDrawer({ convo, notes, trail, canOperate, onAddNote, onCreateQ
         </div>
         <WaNoteForm onAdd={onAddNote} />
       </div>
+
+      {quickReplies && quickReplies.length > 0 && (
+        <div className="wa3-drawer__section">
+          <h6>Respuestas rápidas</h6>
+          <div className="wa3-drawer__qr-list">
+            {quickReplies.map(q => (
+              <button key={q.id} type="button" className="wa3-drawer__qr-btn"
+                      onClick={() => onApplyQuickReply?.(q.body)}>
+                <i className="mdi mdi-lightning-bolt-outline"></i>
+                <div className="wa3-drawer__qr-text">
+                  <strong>{q.title}</strong>
+                  <span>{q.body}</span>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="wa3-drawer__section">
         <h6>Productividad</h6>
