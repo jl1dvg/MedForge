@@ -108,6 +108,10 @@
 
 @push('styles')
     <style>
+        /* WhatsApp Chat v3 — override template constraints for full-screen layout */
+        .content-wrapper { overflow: visible !important; }
+        .container-full { padding: 0 !important; margin: 0 !important; }
+
         .wa3 {
             --wa3-accent:      #5156be;
             --wa3-accent-soft: #edf2ff;
@@ -129,7 +133,7 @@
             --wa3-radius-sm:   10px;
             display: grid;
             grid-template-columns: 360px 1fr;
-            height: calc(100vh - 64px);
+            height: calc(100svh - 60px);
             background: var(--wa3-bg);
             color: var(--wa3-text);
             font-family: var(--bs-body-font-family, "IBM Plex Sans", system-ui, sans-serif);
@@ -427,17 +431,40 @@
 
         @media (max-width: 1280px) { .wa3.has-drawer { grid-template-columns: 320px 1fr 0; } .wa3.has-drawer .wa3-drawer { display: none; } }
         @media (max-width: 1000px) { .wa3 { grid-template-columns: 280px 1fr; } }
+        /* Back button: hidden on desktop, shown on mobile */
+        .wa3-back-btn { display: none !important; }
+
         @media (max-width: 760px) {
-            .wa3, .wa3.has-drawer { grid-template-columns: 1fr; grid-template-rows: minmax(220px, 40vh) minmax(0, 1fr); height: auto; min-height: calc(100vh - 64px); }
-            .wa3-inbox { border-right: 0; border-bottom: 1px solid var(--wa3-border); min-width: 0; }
+            /* Single-panel layout: only one panel visible at a time */
+            .wa3, .wa3.has-drawer, .wa3.has-active, .wa3.has-active.has-drawer {
+                grid-template-columns: 1fr;
+                grid-template-rows: 1fr;
+                height: calc(100svh - 60px);
+                min-height: unset;
+            }
+            /* Default: show inbox, hide thread */
+            .wa3 .wa3-thread { display: none !important; }
+            .wa3 .wa3-inbox  { display: flex !important; flex-direction: column; }
+            /* Conversation selected: show thread, hide inbox */
+            .wa3.has-active .wa3-inbox  { display: none !important; }
+            .wa3.has-active .wa3-thread { display: flex !important; flex-direction: column; height: 100%; overflow: hidden; }
+            /* Drawer: slide in as overlay when active */
+            .wa3.has-active.has-drawer .wa3-drawer {
+                position: fixed; inset: 0; z-index: 120;
+                overflow-y: auto; background: var(--wa3-surface);
+            }
+            /* Show back button on mobile */
+            .wa3-back-btn { display: inline-flex !important; }
+            /* Compact adjustments */
+            .wa3-inbox { border-right: 0; border-bottom: 1px solid var(--wa3-border); }
             .wa3-thread__head { align-items: flex-start; flex-wrap: wrap; padding: 12px 14px; }
             .wa3-thread__actions { width: 100%; overflow-x: auto; padding-bottom: 2px; }
             .wa3-context, .wa3-chat-search, .wa3-realtime { padding-left: 14px; padding-right: 14px; }
-            .wa3-messages { min-height: 48vh; padding-left: 14px; padding-right: 14px; }
+            .wa3-messages { padding-left: 14px; padding-right: 14px; }
             .wa3-composer { padding: 10px 12px; }
             .wa3-composer__tools { display: none; }
             .wa3-modal { padding: 12px; align-items: flex-end; }
-            .wa3-modal__card { max-height: calc(100vh - 24px); border-radius: 16px 16px 0 0; }
+            .wa3-modal__card { max-height: calc(100svh - 24px); border-radius: 16px 16px 0 0; }
         }
 
         /* Conversations / Agents view tabs */
@@ -508,6 +535,25 @@
         .wa3-toast { display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; border-radius: 999px; background: var(--wa3-text); color: #fff; font: 600 13px var(--bs-body-font-family); box-shadow: 0 12px 32px rgba(16,24,40,.24); animation: wa3-toast-in .2s ease-out; }
         .wa3-toast i { font-size: 18px; color: #fff; }
         @keyframes wa3-toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Tweaks panel — accent swatches + density buttons */
+        .wa3-tweaks-menu { min-width: 200px; padding: 6px 8px; }
+        .wa3-tweaks-swatches { display: flex; gap: 8px; padding: 6px 4px 10px; }
+        .wa3-swatch { width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; background: var(--wa3-swatch-color, #ccc) !important; transition: transform .12s, border-color .12s; flex-shrink: 0; }
+        .wa3-swatch:hover { transform: scale(1.15); }
+        .wa3-swatch.is-active { border-color: var(--wa3-text); }
+        .wa3-density-seg { display: flex; gap: 4px; padding: 4px; background: var(--wa3-surface-2); border-radius: 8px; }
+        .wa3-density-btn { flex: 1; border: 1px solid transparent; border-radius: 6px; padding: 6px 10px; font: 600 12px var(--bs-body-font-family); cursor: pointer; background: var(--wa3-surface-2) !important; color: var(--wa3-text-mute) !important; transition: background .12s, color .12s; }
+        .wa3-density-btn.is-active { background: var(--wa3-accent) !important; color: #fff !important; border-color: var(--wa3-accent) !important; }
+
+        /* Quick replies in drawer */
+        .wa3-drawer__qr-list { display: grid; gap: 6px; }
+        .wa3-drawer__qr-btn { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border: 1px solid var(--wa3-border); border-radius: 10px; background: var(--wa3-surface-2); color: var(--wa3-text); cursor: pointer; text-align: left; transition: border-color .12s, background .12s; }
+        .wa3-drawer__qr-btn:hover { border-color: var(--wa3-accent); background: var(--wa3-accent-soft); }
+        .wa3-drawer__qr-btn i { font-size: 16px; color: var(--wa3-accent); flex-shrink: 0; }
+        .wa3-drawer__qr-text { min-width: 0; overflow: hidden; }
+        .wa3-drawer__qr-text strong { display: block; font: 600 12.5px var(--bs-body-font-family); color: var(--wa3-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .wa3-drawer__qr-text span { display: block; font: 400 11.5px var(--bs-body-font-family); color: var(--wa3-text-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     </style>
 @endpush
 
@@ -523,7 +569,7 @@
     'canOperate'    => $canOperateConversation,
     'pusher'        => $realtimeConfig ?? [],
 ], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) !!}</script>
-<div id="wa3-react-root" style="height:calc(100vh - 64px)"></div>
+<div id="wa3-react-root" style="height:calc(100svh - 60px);min-height:400px"></div>
 @endsection
 
 @push('scripts')
