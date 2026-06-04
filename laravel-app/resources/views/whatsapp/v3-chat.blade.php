@@ -441,9 +441,9 @@
 
         @media (max-width: 1280px) { .wa3.has-drawer { grid-template-columns: 320px 1fr 0; } .wa3.has-drawer .wa3-drawer { display: none; } }
         @media (max-width: 1000px) { .wa3 { grid-template-columns: 260px 1fr; } }
-        @media (max-width: 900px)  { .wa3 { grid-template-columns: 240px 1fr; } .wa3-inbox__head { padding: 12px 14px 8px; } }
+        @media (max-width: 960px)  { .wa3 { grid-template-columns: 220px 1fr; } .wa3-inbox__head { padding: 10px 12px 8px; } }
 
-        /* Pantallas con poco alto (ej. 1280×720, laptops HD) */
+        /* Pantallas con poco alto */
         @media (max-height: 720px) {
             .wa3-inbox__head { padding-top: 10px; padding-bottom: 8px; gap: 8px; }
             .wa3-inbox__title { font-size: 16px; }
@@ -463,10 +463,27 @@
             .wa3-row { grid-template-columns: 38px 1fr auto; }
             .wa3-composer { padding: 6px 14px; }
         }
+        /* 900×540 y similares: modo ultra-compacto */
+        @media (max-height: 560px) {
+            .wa3-inbox__head { padding: 6px 12px; gap: 5px; }
+            .wa3-inbox__title { font-size: 14px; }
+            .wa3-chips-wrap { display: none; }
+            .wa3-row { padding: 6px 12px; gap: 8px; }
+            .wa3-avatar { width: 32px; height: 32px; font-size: 12px; }
+            .wa3-row { grid-template-columns: 32px 1fr auto; }
+            .wa3-row__preview { display: none; }
+            .wa3-thread__head { padding: 7px 14px; }
+            .wa3-context { display: none; }
+            .wa3-composer { padding: 5px 12px; }
+            .wa3-composer textarea { max-height: 80px; }
+            .wa3-composer__hint { display: none; }
+            .wa3-messages { padding: 8px 14px 4px; gap: 4px; }
+        }
+
         /* Back button: hidden on desktop, shown on mobile */
         .wa3-back-btn { display: none !important; }
 
-        @media (max-width: 760px) {
+        @media (max-width: 900px) {
             /* Single-panel layout: only one panel visible at a time */
             .wa3, .wa3.has-drawer, .wa3.has-active, .wa3.has-active.has-drawer {
                 grid-template-columns: 1fr;
