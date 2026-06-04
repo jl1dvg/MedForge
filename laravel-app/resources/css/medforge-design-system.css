@@ -575,6 +575,9 @@ label {
   border-top: 1px solid var(--border-soft);
   background: var(--bg-surface);
   color: var(--fg-mute);
+  padding: 6px 15px;
+  font-size: 11px;
+  line-height: 1.4;
 }
 
 .dropdown-menu {

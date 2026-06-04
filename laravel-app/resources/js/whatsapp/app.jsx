@@ -126,11 +126,20 @@ export function WaApp() {
   }, []);
 
   // ── Accent CSS vars (dynamic) ─────────────────────────────────────────────────
+  // color-mix() requiere Chrome 111+; calculamos en JS para compatibilidad con browsers viejos.
+  const blendWithWhite = useCallback((hex, pct) => {
+    try {
+      const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+      const t = pct / 100, mix = (c) => Math.round(c * t + 255 * (1 - t));
+      return `rgb(${mix(r)},${mix(g)},${mix(b)})`;
+    } catch { return '#edf2ff'; }
+  }, []);
+
   const rootStyle = useMemo(() => ({
     '--wa3-accent': accent,
-    '--wa3-accent-soft': `color-mix(in srgb, ${accent} 12%, white)`,
-    '--wa3-bubble-out': `color-mix(in srgb, ${accent} 14%, white)`,
-  }), [accent]);
+    '--wa3-accent-soft': blendWithWhite(accent, 12),
+    '--wa3-bubble-out': blendWithWhite(accent, 14),
+  }), [accent, blendWithWhite]);
 
   // ── Pick conversation ────────────────────────────────────────────────────────
   const pickConvo = useCallback((id) => {

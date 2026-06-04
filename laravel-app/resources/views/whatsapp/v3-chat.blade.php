@@ -111,6 +111,8 @@
         /* WhatsApp Chat v3 — override template constraints for full-screen layout */
         .content-wrapper { overflow: visible !important; }
         .container-full { padding: 0 !important; margin: 0 !important; }
+        /* Ocultar el footer de página en esta vista — el chat ocupa toda la pantalla */
+        footer.main-footer { display: none !important; }
 
         /* Allow dropdowns (tweaks, filter, transfer) to escape the inbox panel */
         .wa3-inbox { overflow: visible !important; }
@@ -139,6 +141,7 @@
             --wa3-radius-sm:   10px;
             display: grid;
             grid-template-columns: 360px 1fr;
+            height: calc(100vh - 60px);
             height: calc(100svh - 60px);
             background: var(--wa3-bg);
             color: var(--wa3-text);
@@ -296,8 +299,13 @@
         .wa3-msg.is-search-match .wa3-bubble { border-color: rgba(81,86,190,.45); box-shadow: 0 0 0 3px rgba(81,86,190,.12); }
         .wa3-msg.is-search-current .wa3-bubble { border-color: var(--wa3-accent); box-shadow: 0 0 0 4px rgba(81,86,190,.22); }
 
+        /* THREAD — min-height:0 es obligatorio en items de grid/flex para que el
+           composer no se salga del viewport cuando hay muchos mensajes */
+        .wa3-thread { min-height: 0; }
+        .wa3-inbox  { min-height: 0; }
+
         /* Messages */
-        .wa3-messages { flex: 1; overflow-y: auto; padding: 18px 22px 8px; display: flex; flex-direction: column; gap: 6px; background: radial-gradient(circle at 20% 10%, rgba(81,86,190,.05), transparent 50%), radial-gradient(circle at 90% 90%, rgba(81,86,190,.03), transparent 60%), var(--wa3-bg); }
+        .wa3-messages { flex: 1 1 0; min-height: 0; overflow-y: auto; padding: 18px 22px 8px; display: flex; flex-direction: column; gap: 6px; background: radial-gradient(circle at 20% 10%, rgba(81,86,190,.05), transparent 50%), radial-gradient(circle at 90% 90%, rgba(81,86,190,.03), transparent 60%), var(--wa3-bg); }
         .wa3-date { align-self: center; font: 600 11px var(--bs-body-font-family); color: var(--wa3-text-mute); background: var(--wa3-surface); border: 1px solid var(--wa3-border); padding: 4px 12px; border-radius: 999px; margin: 12px 0 8px; }
         .wa3-msg { display: flex; max-width: 640px; }
         .wa3-msg.is-out { align-self: flex-end; justify-content: flex-end; }
@@ -448,6 +456,7 @@
             .wa3, .wa3.has-drawer, .wa3.has-active, .wa3.has-active.has-drawer {
                 grid-template-columns: 1fr;
                 grid-template-rows: 1fr;
+                height: calc(100vh - 60px);
                 height: calc(100svh - 60px);
                 min-height: unset;
             }
@@ -473,7 +482,7 @@
             .wa3-composer { padding: 10px 12px; }
             .wa3-composer__tools { display: none; }
             .wa3-modal { padding: 12px; align-items: flex-end; }
-            .wa3-modal__card { max-height: calc(100svh - 24px); border-radius: 16px 16px 0 0; }
+            .wa3-modal__card { max-height: calc(100vh - 24px); max-height: calc(100svh - 24px); border-radius: 16px 16px 0 0; }
         }
 
         /* Conversations / Agents view tabs */
@@ -577,7 +586,7 @@
     'canOperate'    => $canOperateConversation,
     'pusher'        => $realtimeConfig ?? [],
 ], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) !!}</script>
-<div id="wa3-react-root" style="height:calc(100svh - 60px);min-height:400px"></div>
+<div id="wa3-react-root" style="height:calc(100vh - 60px);height:calc(100svh - 60px);min-height:400px"></div>
 @endsection
 
 @push('scripts')
