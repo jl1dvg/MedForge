@@ -18,7 +18,6 @@ use App\Modules\Examenes\Services\NasImagenesService;
 use App\Modules\Examenes\Services\ImagenesSigcenterIndexService;
 use App\Modules\Examenes\Services\SigcenterImagenesService;
 use App\Modules\Reporting\Services\ImagenesPdfCacheService;
-use App\Modules\Reporting\Services\ImagenesPdfWarmDispatchService;
 use App\Modules\Reporting\Services\PdfRenderer;
 use App\Modules\Shared\Support\LegacyPermissionResolver;
 use Illuminate\Support\Facades\Auth;
@@ -52,7 +51,6 @@ class ExamenesParityController
     private SigcenterImagenesService $sigcenterImagenesService;
     private ?ImagenesNasListCacheService $imagenesNasListCacheService = null;
     private ?ImagenesPdfCacheService $imagenesPdfCacheService = null;
-    private ?ImagenesPdfWarmDispatchService $imagenesPdfWarmDispatchService = null;
     private ?NasImagenesService $nasImagenesService = null;
     private ?ImagenesSigcenterIndexService $imagenesSigcenterIndexService = null;
     private ?ExamenModel $legacyExamenModel = null;
@@ -108,17 +106,6 @@ class ExamenesParityController
         $this->imagenesPdfCacheService = new ImagenesPdfCacheService();
 
         return $this->imagenesPdfCacheService;
-    }
-
-    private function imagenesPdfWarmDispatch(): ImagenesPdfWarmDispatchService
-    {
-        if ($this->imagenesPdfWarmDispatchService instanceof ImagenesPdfWarmDispatchService) {
-            return $this->imagenesPdfWarmDispatchService;
-        }
-
-        $this->imagenesPdfWarmDispatchService = new ImagenesPdfWarmDispatchService();
-
-        return $this->imagenesPdfWarmDispatchService;
     }
 
     public function kanbanData(Request $request): Response
@@ -660,7 +647,6 @@ class ExamenesParityController
 
         $checked = 0;
         $warmed = 0;
-        $queuedPdfs = 0;
         foreach (array_slice($items, 0, 8) as $item) {
             if (!is_array($item)) {
                 continue;
@@ -686,8 +672,6 @@ class ExamenesParityController
             }
 
             $checked++;
-            $queuedPdfs += $this->imagenesPdfWarmDispatch()->dispatchForExamCase($resolvedFormId, $resolvedHcNumber);
-
             $error = null;
             $files = $this->getPreferredFilesWithCache($resolvedHcNumber, $resolvedFormId, false, $error);
             if ($error !== null || $files === []) {
@@ -709,7 +693,6 @@ class ExamenesParityController
             'success' => true,
             'checked' => $checked,
             'warmed' => $warmed,
-            'queued_pdfs' => $queuedPdfs,
         ]);
     }
 
