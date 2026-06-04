@@ -6,7 +6,7 @@
     $statusCards = is_array($statusCards ?? null) ? $statusCards : [];
     $phases = is_array($phases ?? null) ? $phases : [];
     $links = [
-        'chat' => '/v2/whatsapp/chat',
+        'chat' => '/v3/whatsapp/chat',
         'campaigns' => '/v2/whatsapp/campaigns',
         'templates' => '/v2/whatsapp/templates',
         'dashboard' => '/v2/whatsapp/dashboard-v3',

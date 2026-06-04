@@ -1207,7 +1207,7 @@ SQL;
             ],
             'meta' => $meta,
             'links' => [
-                'chat' => '/whatsapp/chat?number=' . urlencode((string) ($row['wa_number'] ?? '')),
+                'chat' => '/v3/whatsapp/chat?number=' . urlencode((string) ($row['wa_number'] ?? '')),
             ],
             'channels' => $channels,
             'author' => [

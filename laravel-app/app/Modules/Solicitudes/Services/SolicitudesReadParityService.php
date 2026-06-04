@@ -2644,7 +2644,7 @@ class SolicitudesReadParityService
         $hcNumber = trim((string) ($detalle['hc_number'] ?? ''));
         $normalized = $this->normalizeWhatsappPhone($telefono);
         $search = $normalized !== '' ? $normalized : preg_replace('/\D+/', '', $telefono);
-        $searchUrl = $search !== '' ? '/v2/whatsapp/chat?search=' . urlencode($search) : null;
+        $searchUrl = $search !== '' ? '/v3/whatsapp/chat?search=' . urlencode($search) : null;
 
         $context = [
             'available' => false,
@@ -2702,7 +2702,7 @@ class SolicitudesReadParityService
             'search' => $search !== '' ? $search : null,
             'search_url' => $searchUrl,
             'conversation_id' => $conversationId > 0 ? $conversationId : null,
-            'conversation_url' => $conversationId > 0 ? '/v2/whatsapp/chat?conversation=' . $conversationId : $searchUrl,
+            'conversation_url' => $conversationId > 0 ? '/v3/whatsapp/chat?conversation=' . $conversationId : $searchUrl,
             'wa_number' => $waNumber !== '' ? $waNumber : null,
             'display_name' => trim((string) (($row->display_name ?? '') ?: ($row->patient_full_name ?? ''))) ?: null,
             'last_message_at' => $row->last_message_at ?? null,

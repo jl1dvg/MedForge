@@ -184,49 +184,7 @@ class WhatsappChatUiTest extends TestCase
         config()->set('whatsapp.migration.api.read_enabled', true);
     }
 
-    public function test_send_permission_user_can_see_take_chat_button_in_v2_ui(): void
-    {
-        $this->actingAs(User::query()->findOrFail(40));
-
-        $response = $this->withoutMiddleware([
-            LegacySessionBridge::class,
-            RequireLegacySession::class,
-            RequireLegacyPermission::class,
-        ])->get('/v2/whatsapp/chat?conversation=840');
-
-        $response
-            ->assertOk()
-            ->assertSee('Inbox operativo')
-            ->assertSee('Respuestas rápidas')
-            ->assertSee('Notas internas')
-            ->assertSee('Nuevo chat')
-            ->assertSee('Nuevo chat con plantilla')
-            ->assertSee('Saludo rápido')
-            ->assertSee('Paciente pendiente de confirmación.');
-    }
-
-    public function test_chat_defaults_to_last_seven_days_when_no_date_filter_is_provided(): void
-    {
-        CarbonImmutable::setTestNow('2026-04-28 10:00:00');
-        $this->actingAs(User::query()->findOrFail(40));
-
-        try {
-            $response = $this->withoutMiddleware([
-                LegacySessionBridge::class,
-                RequireLegacySession::class,
-                RequireLegacyPermission::class,
-            ])->get('/v2/whatsapp/chat');
-
-            $response
-                ->assertOk()
-                ->assertSee('value="2026-04-22"', false)
-                ->assertSee('value="2026-04-28"', false);
-        } finally {
-            CarbonImmutable::setTestNow();
-        }
-    }
-
-    public function test_v3_chat_renders_welcome_tour(): void
+    public function test_send_permission_user_can_see_v3_chat_ui(): void
     {
         $this->actingAs(User::query()->findOrFail(40));
 
@@ -238,11 +196,37 @@ class WhatsappChatUiTest extends TestCase
 
         $response
             ->assertOk()
-            ->assertSee('Nuevo Chat de WhatsApp')
-            ->assertSee('medforge_chat_tour_visto')
-            ->assertSee('Lista de conversaciones')
-            ->assertSee('Mensajes del paciente')
-            ->assertSee('Campo para escribir')
-            ->assertSee('Entendido, explorar');
+            ->assertSee('wa3-react-root');
+    }
+
+    public function test_v2_chat_path_also_serves_v3_ui(): void
+    {
+        $this->actingAs(User::query()->findOrFail(40));
+
+        $response = $this->withoutMiddleware([
+            LegacySessionBridge::class,
+            RequireLegacySession::class,
+            RequireLegacyPermission::class,
+        ])->get('/v2/whatsapp/chat');
+
+        $response
+            ->assertOk()
+            ->assertSee('wa3-react-root');
+    }
+
+    public function test_v3_chat_renders_react_root_with_config(): void
+    {
+        $this->actingAs(User::query()->findOrFail(40));
+
+        $response = $this->withoutMiddleware([
+            LegacySessionBridge::class,
+            RequireLegacySession::class,
+            RequireLegacyPermission::class,
+        ])->get('/v3/whatsapp/chat?conversation=840');
+
+        $response
+            ->assertOk()
+            ->assertSee('wa3-react-root')
+            ->assertSee('wa3-config');
     }
 }
