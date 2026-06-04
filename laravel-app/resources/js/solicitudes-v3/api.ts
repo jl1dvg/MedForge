@@ -4,6 +4,7 @@
 import type {
   ApiKanbanResponse, ApiSolicitud, Filters, KanbanSlug,
   Solicitud, ChecklistStep, ChecklistProgress, Alert, Detalle,
+  CrmCaseState,
 } from './types';
 
 // ---- Constants shared with the prototype ----------------------
@@ -117,6 +118,27 @@ function cleanString(value: unknown): string | null {
   if (value == null) return null;
   const text = String(value).trim();
   return text === '' ? null : text;
+}
+
+function stringValue(value: unknown, fallback = ''): string {
+  return cleanString(value) ?? fallback;
+}
+
+function stringOrNull(value: unknown): string | null {
+  return cleanString(value);
+}
+
+function numberValue(value: unknown, fallback = 0): number {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function arrayValue<T = unknown>(value: unknown): T[] {
+  return Array.isArray(value) ? value as T[] : [];
+}
+
+function objectValue(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
 function normalizeAseguradoraLabel(...values: Array<unknown>): string {
@@ -325,6 +347,146 @@ async function jsonFetch<T>(url: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json() as Promise<T>;
+}
+
+// ---- CRM V3 case contract -------------------------------------
+
+export function mapCrmCasePayload(raw: any): CrmCaseState {
+  return {
+    caseId: stringValue(raw?.case?.case_id),
+    sourceType: stringValue(raw?.case?.source_type),
+    sourceId: numberValue(raw?.case?.source_id),
+    responsibleName: stringValue(raw?.crm?.responsible_name, 'Coordinación'),
+    source: stringValue(raw?.crm?.source, '—'),
+    insurancePlan: stringValue(raw?.crm?.insurance_plan, '—'),
+    contacts: {
+      primaryPhone: stringValue(raw?.contacts?.primary_phone, '—'),
+      alternatePhones: arrayValue<unknown>(raw?.contacts?.alternate_phones).map((phone) => stringValue(phone)).filter(Boolean),
+      primaryEmail: stringValue(raw?.contacts?.primary_email, '—'),
+      alternateEmails: arrayValue<unknown>(raw?.contacts?.alternate_emails).map((email) => stringValue(email)).filter(Boolean),
+    },
+    notes: arrayValue<any>(raw?.notes).map((note) => ({
+      id: numberValue(note?.id),
+      body: stringValue(note?.body),
+      authorName: stringValue(note?.author_name, 'Usuario'),
+      createdAt: stringValue(note?.created_at),
+      canDelete: note?.can_delete === true,
+    })),
+    tasks: arrayValue<any>(raw?.tasks).map((task) => ({
+      id: numberValue(task?.id),
+      title: stringValue(task?.title),
+      status: stringValue(task?.status, 'pending'),
+      priority: stringValue(task?.priority, 'normal'),
+      assignedTo: task?.assigned_to == null ? null : numberValue(task.assigned_to),
+      dueAt: stringOrNull(task?.due_at),
+    })),
+    activity: arrayValue<any>(raw?.activity).map((activity) => ({
+      id: stringValue(activity?.id),
+      type: stringValue(activity?.type),
+      occurredAt: stringValue(activity?.occurred_at),
+      author: stringValue(activity?.author, 'Sistema'),
+      description: stringValue(activity?.description),
+      reference: objectValue(activity?.reference),
+    })),
+    proposals: arrayValue(raw?.proposals),
+    documents: arrayValue(raw?.documents),
+  };
+}
+
+async function crmJson(url: string, init: RequestInit = {}): Promise<CrmCaseState> {
+  const response = await fetch(url, {
+    ...init,
+    credentials: 'same-origin',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      'X-Requested-With': 'XMLHttpRequest',
+      'X-CSRF-TOKEN': csrfToken(),
+      ...(init.headers ?? {}),
+    },
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || body.success === false) {
+    throw new Error(body.error || body.message || 'No se pudo completar la acción');
+  }
+  return mapCrmCasePayload(body.data);
+}
+
+function crmCaseUrl(sourceType: string, sourceId: number): string {
+  return `/v3/crm/cases/${encodeURIComponent(sourceType)}/${sourceId}`;
+}
+
+export async function fetchCrmCase(sourceType: string, sourceId: number): Promise<CrmCaseState> {
+  return crmJson(crmCaseUrl(sourceType, sourceId));
+}
+
+export async function createCrmNote(sourceType: string, sourceId: number, body: string): Promise<CrmCaseState> {
+  return crmJson(`${crmCaseUrl(sourceType, sourceId)}/notes`, {
+    method: 'POST',
+    body: JSON.stringify({ body }),
+  });
+}
+
+export async function deleteCrmNote(sourceType: string, sourceId: number, noteId: number): Promise<CrmCaseState> {
+  return crmJson(`${crmCaseUrl(sourceType, sourceId)}/notes/${noteId}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function createCrmTask(
+  sourceType: string,
+  sourceId: number,
+  payload: { title: string; priority: string; due_at?: string | null },
+): Promise<CrmCaseState> {
+  return crmJson(`${crmCaseUrl(sourceType, sourceId)}/tasks`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateCrmTask(
+  sourceType: string,
+  sourceId: number,
+  taskId: number,
+  payload: { status?: string; title?: string; priority?: string; due_at?: string | null },
+): Promise<CrmCaseState> {
+  return crmJson(`${crmCaseUrl(sourceType, sourceId)}/tasks/${taskId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function sendCrmWhatsapp(
+  sourceType: string,
+  sourceId: number,
+  payload: { recipients: string[]; message: string },
+): Promise<CrmCaseState> {
+  return crmJson(`${crmCaseUrl(sourceType, sourceId)}/whatsapp`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function sendCrmEmail(
+  sourceType: string,
+  sourceId: number,
+  payload: { to: string[]; cc?: string[]; subject: string; body: string },
+): Promise<CrmCaseState> {
+  return crmJson(`${crmCaseUrl(sourceType, sourceId)}/email`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function storeCrmProposal(
+  sourceType: string,
+  sourceId: number,
+  payload: Record<string, unknown>,
+): Promise<CrmCaseState> {
+  return crmJson(`${crmCaseUrl(sourceType, sourceId)}/proposals`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
 }
 
 // ---- Public API calls -----------------------------------------

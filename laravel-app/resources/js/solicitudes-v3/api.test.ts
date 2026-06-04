@@ -1,7 +1,7 @@
 // @ts-nocheck
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildSolicitudFromApi, mapDetalleResponse } from './api.ts';
+import { buildSolicitudFromApi, mapCrmCasePayload, mapDetalleResponse } from './api.ts';
 
 test('maps prefactura detail using V2 field names', () => {
   const detalle = mapDetalleResponse({
@@ -102,4 +102,22 @@ test('normalizes card and filter insurer labels to company only', () => {
   assert.equal(salud.plan_seguro, 'SALUD (REEMBOLSO) NIVEL 4');
   assert.equal(particular.empresa_seguro, 'PARTICULAR');
   assert.equal(particular.plan_seguro, 'PARTICULAR');
+});
+
+test('mapCrmCasePayload normalizes contacts notes tasks and activity', () => {
+  const mapped = mapCrmCasePayload({
+    case: { case_id: 'solicitud-275872', source_type: 'solicitud', source_id: 275872, form_id: 275872, patient_name: 'DANIELA', stage: 'revision-codigos', site: 'MATRIZ' },
+    crm: { responsible_name: 'Coordinación', source: 'Convenio', insurance_plan: 'SALUD NIVEL 4' },
+    contacts: { primary_phone: '0987107769', alternate_phones: ['0999999999'], primary_email: 'p@example.com', alternate_emails: [] },
+    notes: [{ id: 1, body: 'Nota real', author_name: 'Jorge', created_at: '2026-06-03T10:00:00Z', can_delete: true }],
+    tasks: [{ id: 2, title: 'Validar cobertura', status: 'pending', priority: 'alta', due_at: null }],
+    activity: [{ id: 'note-1', type: 'note_created', occurred_at: '2026-06-03T10:00:00Z', author: 'Jorge', description: 'Nota creada', reference: { note_id: 1 } }],
+    proposals: [],
+    documents: [],
+  });
+
+  assert.equal(mapped.contacts.primaryPhone, '0987107769');
+  assert.equal(mapped.notes[0].body, 'Nota real');
+  assert.equal(mapped.tasks[0].title, 'Validar cobertura');
+  assert.equal(mapped.activity[0].type, 'note_created');
 });

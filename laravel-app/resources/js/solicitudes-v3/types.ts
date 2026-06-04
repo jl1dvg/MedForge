@@ -289,3 +289,51 @@ export interface TweakValues {
   showDoctorAvatar: boolean;
   accent: string;
 }
+
+export interface CrmCaseContactState {
+  primaryPhone: string;
+  alternatePhones: string[];
+  primaryEmail: string;
+  alternateEmails: string[];
+}
+
+export interface CrmCaseNote {
+  id: number;
+  body: string;
+  authorName: string;
+  createdAt: string;
+  canDelete: boolean;
+}
+
+export interface CrmCaseTask {
+  id: number;
+  title: string;
+  status: 'pending' | 'done' | 'cancelled' | string;
+  priority: string;
+  assignedTo?: number | null;
+  dueAt?: string | null;
+}
+
+export interface CrmCaseActivity {
+  id: string;
+  type: string;
+  occurredAt: string;
+  author: string;
+  description: string;
+  reference: Record<string, unknown>;
+}
+
+export interface CrmCaseState {
+  caseId: string;
+  sourceType: string;
+  sourceId: number;
+  responsibleName: string;
+  source: string;
+  insurancePlan: string;
+  contacts: CrmCaseContactState;
+  notes: CrmCaseNote[];
+  tasks: CrmCaseTask[];
+  activity: CrmCaseActivity[];
+  proposals: unknown[];
+  documents: unknown[];
+}
