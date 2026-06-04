@@ -92,7 +92,33 @@ class CrmV3CaseControllerTest extends TestCase
             'updated_at' => '2026-06-03 08:01:00',
         ]);
 
-        $this->actingAs($user)
+        $this->insertRow('solicitud_crm_notas', [
+            'id' => 11,
+            'solicitud_id' => 275872,
+            'autor_id' => 1,
+            'nota' => 'Paciente contactada por convenio',
+            'created_at' => '2026-06-03 08:05:00',
+        ]);
+
+        $this->insertRow('crm_tasks', [
+            'id' => 21,
+            'entity_type' => 'solicitud',
+            'entity_id' => '275872',
+            'form_id' => 275872,
+            'source_module' => 'solicitud',
+            'source_ref_id' => '275872',
+            'title' => 'Validar cobertura',
+            'description' => 'Confirmar cobertura del convenio',
+            'status' => 'completada',
+            'priority' => 'normal',
+            'assigned_to' => 1,
+            'created_by' => 1,
+            'completed_at' => '2026-06-03 08:09:00',
+            'created_at' => '2026-06-03 08:06:00',
+            'updated_at' => '2026-06-03 08:10:00',
+        ]);
+
+        $response = $this->actingAs($user)
             ->withoutMiddleware([
                 LegacySessionBridge::class,
                 RequireLegacySession::class,
@@ -149,6 +175,16 @@ class CrmV3CaseControllerTest extends TestCase
                     'documents',
                 ],
             ]);
+
+        $activity = $response->json('data.activity');
+        $this->assertIsArray($activity);
+        $this->assertCount(2, $activity);
+        $this->assertSame('task_completed', $activity[0]['type']);
+        $this->assertSame('note_created', $activity[1]['type']);
+        $this->assertSame(['id', 'type', 'occurred_at', 'author', 'description', 'reference'], array_keys($activity[0]));
+        $this->assertSame(['id', 'type', 'occurred_at', 'author', 'description', 'reference'], array_keys($activity[1]));
+        $this->assertSame(['task_id' => 21], $activity[0]['reference']);
+        $this->assertSame(['note_id' => 11], $activity[1]['reference']);
     }
 
     private function ensureCrmCaseTestSchema(): void

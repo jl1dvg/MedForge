@@ -136,14 +136,17 @@ class CrmCaseActivityService
     private function noteEvents(int $sourceId): array
     {
         return array_map(static function (array $note): array {
+            $noteId = isset($note['id']) ? (int) $note['id'] : null;
+
             return [
-                'id' => 'note:' . ($note['id'] ?? ''),
-                'type' => 'note',
-                'label' => 'Nota',
-                'description' => $note['body'] ?? null,
-                'user_name' => $note['author_name'] ?? 'Sistema',
+                'id' => 'note:' . ($noteId ?? ''),
+                'type' => 'note_created',
                 'occurred_at' => $note['created_at'] ?? null,
-                'source' => $note,
+                'author' => $note['author_name'] ?? 'Sistema',
+                'description' => $note['body'] ?? null,
+                'reference' => [
+                    'note_id' => $noteId,
+                ],
             ];
         }, $this->notesForCase('solicitud', $sourceId));
     }
@@ -154,14 +157,19 @@ class CrmCaseActivityService
     private function taskEvents(int $sourceId): array
     {
         return array_map(static function (array $task): array {
+            $taskId = isset($task['id']) ? (int) $task['id'] : null;
+            $isCompleted = trim((string) ($task['completed_at'] ?? '')) !== ''
+                || in_array(strtolower(trim((string) ($task['status'] ?? ''))), ['completada', 'completed', 'done'], true);
+
             return [
-                'id' => 'task:' . ($task['id'] ?? ''),
-                'type' => 'task',
-                'label' => 'Tarea',
-                'description' => $task['title'] ?? null,
-                'user_name' => $task['created_by_name'] ?? 'Sistema',
+                'id' => 'task:' . ($taskId ?? ''),
+                'type' => $isCompleted ? 'task_completed' : 'task_updated',
                 'occurred_at' => $task['updated_at'] ?? $task['created_at'] ?? null,
-                'source' => $task,
+                'author' => $task['created_by_name'] ?? 'Sistema',
+                'description' => $task['title'] ?? null,
+                'reference' => [
+                    'task_id' => $taskId,
+                ],
             ];
         }, $this->tasksForCase('solicitud', $sourceId));
     }
