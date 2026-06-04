@@ -422,6 +422,7 @@
         .wa3-modal__body { padding: 18px; }
         .wa3-modal__grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(280px, .65fr); gap: 16px; }
         @media (max-width: 820px) { .wa3-modal__grid { grid-template-columns: 1fr; } }
+        .wa3-tour-modal { backdrop-filter: none; background: rgba(16,24,40,.4); }
         .wa3-tour-modal .wa3-modal__card { width: min(480px, 100%); }
         .wa3-tour-modal .wa3-modal__body p { margin: 0 0 10px; font: 400 13px/1.5 var(--bs-body-font-family); color: var(--wa3-text-mute); }
         .wa3-tour-step { display: flex; align-items: center; gap: 8px; margin-top: 16px; color: var(--wa3-text-mute); font: 700 11px var(--bs-body-font-family); text-transform: uppercase; letter-spacing: .06em; }
