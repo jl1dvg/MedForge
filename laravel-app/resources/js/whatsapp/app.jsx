@@ -233,6 +233,7 @@ export function WaApp() {
         }}
         compact={compact} accent={accent}
         onTweakCompact={applyCompact} onTweakAccent={applyAccent}
+        onTour={() => setModal('tour')}
       />
 
       <WaThreadPane

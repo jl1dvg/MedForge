@@ -422,12 +422,14 @@
         .wa3-modal__body { padding: 18px; }
         .wa3-modal__grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(280px, .65fr); gap: 16px; }
         @media (max-width: 820px) { .wa3-modal__grid { grid-template-columns: 1fr; } }
-        .wa3-tour-modal .wa3-modal__card { width: min(560px, 100%); }
+        .wa3-tour-modal .wa3-modal__card { width: min(480px, 100%); }
         .wa3-tour-modal .wa3-modal__body p { margin: 0 0 10px; font: 400 13px/1.5 var(--bs-body-font-family); color: var(--wa3-text-mute); }
-        .wa3-tour-step { display: flex; align-items: center; gap: 8px; margin-top: 12px; color: var(--wa3-text-mute); font: 700 11px var(--bs-body-font-family); text-transform: uppercase; letter-spacing: .06em; }
+        .wa3-tour-step { display: flex; align-items: center; gap: 8px; margin-top: 16px; color: var(--wa3-text-mute); font: 700 11px var(--bs-body-font-family); text-transform: uppercase; letter-spacing: .06em; }
         .wa3-tour-step__bar { flex: 1; height: 4px; border-radius: 999px; background: var(--wa3-surface-2); overflow: hidden; }
-        .wa3-tour-step__bar span { display: block; height: 100%; width: 0; border-radius: inherit; background: var(--wa3-accent); transition: width .18s ease-out; }
+        .wa3-tour-step__bar span { display: block; height: 100%; width: 0; border-radius: inherit; background: var(--wa3-accent); transition: width .3s ease-out; }
         .wa3-tour-focus { position: relative; z-index: 2147482999; outline: 3px solid rgba(81, 86, 190, .75); outline-offset: 4px; box-shadow: 0 0 0 8px rgba(81, 86, 190, .14); border-radius: 12px; }
+        .wa3-tour-icon { width: 52px; height: 52px; border-radius: 14px; background: var(--wa3-accent-soft); color: var(--wa3-accent); display: grid; place-items: center; font-size: 26px; margin-bottom: 14px; }
+        .wa3-tour-step__title { font: 700 15px var(--font-display, "Rubik", system-ui, sans-serif); color: var(--wa3-text); margin: 0 0 6px; }
 
         .wa3-empty { display: flex; align-items: center; justify-content: center; height: 100%; padding: 40px; }
         .wa3-empty__card { text-align: center; max-width: 360px; }
