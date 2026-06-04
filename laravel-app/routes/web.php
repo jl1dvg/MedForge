@@ -46,7 +46,6 @@ Route::middleware(['app.auth', 'app.permission:administrativo,dashboard.view'])-
     Route::get('/v2/dashboard', [DashboardUiController::class, 'indexV3']);
     Route::get('/v2/dashboard-v3', [DashboardUiController::class, 'indexV3']);
     Route::get('/v3/dashboard', [DashboardUiController::class, 'indexV3']);
-    Route::get('/v3/dashboard/data', [DashboardUiController::class, 'dataV3']);
 });
 
 Route::middleware(['app.auth', 'app.permission:administrativo,derivaciones.view,pacientes.view,solicitudes.view'])->group(function (): void {
@@ -118,6 +117,10 @@ Route::middleware(['app.auth', 'app.permission:administrativo,farmacia.view,insu
     Route::get('/v2/farmacia', [FarmaciaUiController::class, 'dashboard']);
     Route::get('/v2/farmacia/export/pdf', [FarmaciaUiController::class, 'exportPdf']);
     Route::get('/v2/farmacia/export/excel', [FarmaciaUiController::class, 'exportExcel']);
+});
+
+Route::middleware(['app.auth', 'app.permission:administrativo,farmacia.view,insumos.view,insumos.manage'])->group(function (): void {
+    require __DIR__ . '/v2/pharmacy.php';
 });
 
 $registerUsuariosReadRoutes = static function (string $basePath): void {
@@ -229,9 +232,6 @@ Route::middleware(['app.auth'])->group(function (): void {
         ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.view,whatsapp.chat.supervise,settings.manage')
         ->middleware('whatsapp.feature:ui,/whatsapp/dashboard');
     Route::get('/v2/whatsapp/dashboard-v3', [WhatsappUiController::class, 'dashboardV3'])
-        ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.view,whatsapp.chat.supervise,settings.manage')
-        ->middleware('whatsapp.feature:ui,/whatsapp/dashboard');
-    Route::get('/v2/whatsapp/dashboard-v3/live', [WhatsappUiController::class, 'dashboardV3Live'])
         ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.view,whatsapp.chat.supervise,settings.manage')
         ->middleware('whatsapp.feature:ui,/whatsapp/dashboard');
     Route::get('/v2/whatsapp/flowmaker', [WhatsappUiController::class, 'flowmaker'])
