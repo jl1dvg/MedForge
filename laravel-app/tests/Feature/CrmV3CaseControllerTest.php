@@ -187,6 +187,92 @@ class CrmV3CaseControllerTest extends TestCase
         $this->assertSame(['note_id' => 11], $activity[1]['reference']);
     }
 
+    public function test_store_note_persists_and_returns_refreshed_case(): void
+    {
+        $user = $this->createUser();
+        $this->seedSolicitudCaseTables();
+
+        $body = 'Paciente confirma disponibilidad';
+
+        $this->actingAs($user)
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+                RequireAppSession::class,
+                RequireAppPermission::class,
+            ])
+            ->postJson('/v3/crm/cases/solicitud/275872/notes', [
+                'body' => $body,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonFragment([
+                'body' => $body,
+            ]);
+
+        $this->assertDatabaseHas('solicitud_crm_notas', [
+            'solicitud_id' => 275872,
+            'nota' => $body,
+        ]);
+    }
+
+    public function test_store_task_and_update_task_status_are_persisted(): void
+    {
+        $user = $this->createUser();
+        $this->seedSolicitudCaseTables();
+
+        $storeResponse = $this->actingAs($user)
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+                RequireAppSession::class,
+                RequireAppPermission::class,
+            ])
+            ->postJson('/v3/crm/cases/solicitud/275872/tasks', [
+                'title' => 'Validar cobertura',
+                'priority' => 'alta',
+                'due_at' => '2026-06-04 09:00:00',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonFragment([
+                'title' => 'Validar cobertura',
+                'priority' => 'alta',
+            ]);
+
+        $tasks = $storeResponse->json('data.tasks');
+        $this->assertIsArray($tasks);
+        $task = collect($tasks)->firstWhere('title', 'Validar cobertura');
+        $this->assertIsArray($task);
+        $taskId = (int) $task['id'];
+        $this->assertGreaterThan(0, $taskId);
+
+        $this->actingAs($user)
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+                RequireAppSession::class,
+                RequireAppPermission::class,
+            ])
+            ->patchJson("/v3/crm/cases/solicitud/275872/tasks/{$taskId}", [
+                'status' => 'done',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonFragment([
+                'id' => $taskId,
+                'status' => 'done',
+            ]);
+
+        $this->assertDatabaseHas('crm_tasks', [
+            'id' => $taskId,
+            'status' => 'done',
+        ]);
+    }
+
     private function ensureCrmCaseTestSchema(): void
     {
         if (!Schema::hasTable('users')) {
@@ -263,6 +349,8 @@ class CrmV3CaseControllerTest extends TestCase
         if (!Schema::hasTable('crm_tasks')) {
             Schema::create('crm_tasks', function (Blueprint $table): void {
                 $table->id();
+                $table->string('source_type')->nullable();
+                $table->unsignedBigInteger('source_id')->nullable();
                 $table->string('entity_type')->nullable();
                 $table->string('entity_id')->nullable();
                 $table->unsignedBigInteger('form_id')->nullable();
@@ -297,6 +385,44 @@ class CrmV3CaseControllerTest extends TestCase
         ]);
 
         return User::query()->findOrFail(1);
+    }
+
+    private function seedSolicitudCaseTables(): void
+    {
+        $this->insertRow('patient_data', [
+            'hc_number' => '0932000904',
+            'fname' => 'DANIELA',
+            'mname' => 'VALENTINA',
+            'lname' => 'MORALES',
+            'lname2' => 'MURILLO',
+        ]);
+
+        $this->insertRow('solicitud_procedimiento', [
+            'id' => 275872,
+            'paciente_id' => 9901,
+            'hc_number' => '0932000904',
+            'form_id' => 275872,
+            'estado' => 'revision-codigos',
+            'sede' => 'MATRIZ',
+            'sede_departamento' => 'MATRIZ',
+            'created_at' => '2026-06-03 08:00:00',
+        ]);
+
+        $this->insertRow('solicitud_crm_detalles', [
+            'solicitud_id' => 275872,
+            'responsable_id' => 1,
+            'responsable_nombre' => 'CRM User',
+            'contacto_telefono' => '0987107769',
+            'telefono' => '0987107769',
+            'contacto_email' => 'paciente@example.com',
+            'email' => 'paciente@example.com',
+            'fuente' => 'Convenio',
+            'insurance_company' => 'Humana',
+            'insurance_plan' => 'Plan Azul',
+            'insurance_code' => 'HUM-001',
+            'created_at' => '2026-06-03 08:01:00',
+            'updated_at' => '2026-06-03 08:01:00',
+        ]);
     }
 
     /**

@@ -39,8 +39,8 @@ class CrmCaseService
         $caseRow = (array) $case;
         $detailRow = $this->solicitudDetail($sourceId);
         $contacts = $this->contacts($caseRow, $detailRow);
-        $notes = $this->activityService->notesForCase($normalizedSourceType, $sourceId);
-        $tasks = $this->activityService->tasksForCase($normalizedSourceType, $sourceId);
+        $notes = $this->notes($normalizedSourceType, $sourceId);
+        $tasks = $this->tasks($normalizedSourceType, $sourceId);
 
         return [
             'case' => [
@@ -87,12 +87,320 @@ class CrmCaseService
         ];
     }
 
+    /**
+     * @return array<string, mixed>
+     */
+    public function storeNote(string $sourceType, int $sourceId, string $body, ?int $userId): array
+    {
+        $normalizedSourceType = $this->normalizeSourceType($sourceType);
+        if ($normalizedSourceType !== 'solicitud') {
+            throw new RuntimeException('Tipo de caso CRM no soportado');
+        }
+
+        $body = trim($body);
+        if ($body === '') {
+            throw new RuntimeException('La nota es obligatoria');
+        }
+
+        if (!Schema::hasTable('solicitud_crm_notas') || !Schema::hasColumn('solicitud_crm_notas', 'solicitud_id')) {
+            throw new RuntimeException('Notas CRM no disponibles');
+        }
+
+        $payload = ['solicitud_id' => $sourceId];
+        if (Schema::hasColumn('solicitud_crm_notas', 'nota')) {
+            $payload['nota'] = $body;
+        } elseif (Schema::hasColumn('solicitud_crm_notas', 'body')) {
+            $payload['body'] = $body;
+        } else {
+            throw new RuntimeException('Notas CRM no disponibles');
+        }
+
+        if ($userId !== null) {
+            if (Schema::hasColumn('solicitud_crm_notas', 'user_id')) {
+                $payload['user_id'] = $userId;
+            }
+            if (Schema::hasColumn('solicitud_crm_notas', 'autor_id')) {
+                $payload['autor_id'] = $userId;
+            }
+        }
+
+        $now = now();
+        if (Schema::hasColumn('solicitud_crm_notas', 'created_at')) {
+            $payload['created_at'] = $now;
+        }
+        if (Schema::hasColumn('solicitud_crm_notas', 'updated_at')) {
+            $payload['updated_at'] = $now;
+        }
+
+        DB::table('solicitud_crm_notas')->insert($payload);
+
+        return $this->show($normalizedSourceType, $sourceId);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function deleteNote(string $sourceType, int $sourceId, int $noteId, ?int $userId, bool $isAdmin): array
+    {
+        $normalizedSourceType = $this->normalizeSourceType($sourceType);
+        if ($normalizedSourceType !== 'solicitud') {
+            throw new RuntimeException('Tipo de caso CRM no soportado');
+        }
+
+        if (!Schema::hasTable('solicitud_crm_notas') || !Schema::hasColumn('solicitud_crm_notas', 'solicitud_id')) {
+            throw new RuntimeException('Notas CRM no disponibles');
+        }
+
+        $query = DB::table('solicitud_crm_notas')->where('id', $noteId)->where('solicitud_id', $sourceId);
+        if (Schema::hasColumn('solicitud_crm_notas', 'deleted_at')) {
+            $query->whereNull('deleted_at');
+        }
+
+        $note = $query->first();
+        if ($note === null) {
+            throw new RuntimeException('Nota no encontrada');
+        }
+
+        $noteRow = (array) $note;
+        $ownerId = null;
+        foreach (['user_id', 'autor_id'] as $ownerColumn) {
+            if (Schema::hasColumn('solicitud_crm_notas', $ownerColumn) && isset($noteRow[$ownerColumn])) {
+                $ownerId = (int) $noteRow[$ownerColumn];
+                break;
+            }
+        }
+
+        if ($ownerId !== null && !$isAdmin && $ownerId !== $userId) {
+            throw new RuntimeException('No autorizado para eliminar la nota');
+        }
+
+        $deleteQuery = DB::table('solicitud_crm_notas')->where('id', $noteId)->where('solicitud_id', $sourceId);
+        if (Schema::hasColumn('solicitud_crm_notas', 'deleted_at')) {
+            $payload = ['deleted_at' => now()];
+            if (Schema::hasColumn('solicitud_crm_notas', 'updated_at')) {
+                $payload['updated_at'] = now();
+            }
+            $deleteQuery->update($payload);
+        } else {
+            $deleteQuery->delete();
+        }
+
+        return $this->show($normalizedSourceType, $sourceId);
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
+    public function storeTask(string $sourceType, int $sourceId, array $payload, ?int $userId): array
+    {
+        $normalizedSourceType = $this->normalizeSourceType($sourceType);
+        if ($normalizedSourceType !== 'solicitud') {
+            throw new RuntimeException('Tipo de caso CRM no soportado');
+        }
+
+        if (!Schema::hasTable('crm_tasks')) {
+            throw new RuntimeException('Tareas CRM no disponibles');
+        }
+
+        $title = trim((string) ($payload['title'] ?? $payload['titulo'] ?? ''));
+        if ($title === '') {
+            throw new RuntimeException('El titulo de la tarea es obligatorio');
+        }
+
+        $insert = [];
+        $this->putIfColumn($insert, 'crm_tasks', 'source_type', $normalizedSourceType);
+        $this->putIfColumn($insert, 'crm_tasks', 'source_id', $sourceId);
+        $this->putIfColumn($insert, 'crm_tasks', 'entity_type', $normalizedSourceType);
+        $this->putIfColumn($insert, 'crm_tasks', 'entity_id', (string) $sourceId);
+        $this->putIfColumn($insert, 'crm_tasks', 'form_id', $sourceId);
+        $this->putIfColumn($insert, 'crm_tasks', 'source_module', $normalizedSourceType);
+        $this->putIfColumn($insert, 'crm_tasks', 'source_ref_id', (string) $sourceId);
+        $this->putFirstColumn($insert, 'crm_tasks', ['title', 'titulo'], $title);
+        $this->putIfColumn($insert, 'crm_tasks', 'priority', $payload['priority'] ?? 'normal');
+        $this->putIfColumn($insert, 'crm_tasks', 'status', $payload['status'] ?? 'pending');
+        $this->putIfColumn($insert, 'crm_tasks', 'assigned_to', $payload['assigned_to'] ?? null);
+        $this->putIfColumn($insert, 'crm_tasks', 'due_at', $payload['due_at'] ?? null);
+        $this->putIfColumn($insert, 'crm_tasks', 'due_date', $payload['due_at'] ?? $payload['due_date'] ?? null);
+
+        if ($userId !== null) {
+            $this->putIfColumn($insert, 'crm_tasks', 'created_by', $userId);
+            $this->putIfColumn($insert, 'crm_tasks', 'user_id', $userId);
+        }
+
+        $now = now();
+        $this->putIfColumn($insert, 'crm_tasks', 'created_at', $now);
+        $this->putIfColumn($insert, 'crm_tasks', 'updated_at', $now);
+
+        DB::table('crm_tasks')->insert($insert);
+
+        return $this->show($normalizedSourceType, $sourceId);
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
+    public function updateTask(string $sourceType, int $sourceId, int $taskId, array $payload): array
+    {
+        $normalizedSourceType = $this->normalizeSourceType($sourceType);
+        if ($normalizedSourceType !== 'solicitud') {
+            throw new RuntimeException('Tipo de caso CRM no soportado');
+        }
+
+        if (!Schema::hasTable('crm_tasks')) {
+            throw new RuntimeException('Tareas CRM no disponibles');
+        }
+
+        $query = DB::table('crm_tasks')->where('id', $taskId);
+        $this->scopeTaskToCase($query, $sourceId);
+
+        if (!$query->exists()) {
+            throw new RuntimeException('Tarea no encontrada');
+        }
+
+        $update = [];
+        foreach (['title', 'titulo', 'priority', 'status', 'assigned_to', 'due_at'] as $column) {
+            if (array_key_exists($column, $payload) && Schema::hasColumn('crm_tasks', $column)) {
+                $update[$column] = $payload[$column];
+            }
+        }
+        if (array_key_exists('due_at', $payload) && Schema::hasColumn('crm_tasks', 'due_date')) {
+            $update['due_date'] = $payload['due_at'];
+        }
+        if (array_key_exists('due_date', $payload) && Schema::hasColumn('crm_tasks', 'due_date')) {
+            $update['due_date'] = $payload['due_date'];
+        }
+        if (Schema::hasColumn('crm_tasks', 'updated_at')) {
+            $update['updated_at'] = now();
+        }
+
+        if ($update !== []) {
+            $updateQuery = DB::table('crm_tasks')->where('id', $taskId);
+            $this->scopeTaskToCase($updateQuery, $sourceId);
+            $updateQuery->update($update);
+        }
+
+        return $this->show($normalizedSourceType, $sourceId);
+    }
+
     private function normalizeSourceType(string $sourceType): string
     {
         return match (strtolower(trim($sourceType))) {
             'solicitud', 'solicitud_procedimiento', 'solicitudes' => 'solicitud',
             default => strtolower(trim($sourceType)),
         };
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function notes(string $sourceType, int $sourceId): array
+    {
+        if ($sourceType !== 'solicitud' || !$this->hasColumns('solicitud_crm_notas', ['solicitud_id'])) {
+            return [];
+        }
+
+        $query = DB::table('solicitud_crm_notas')->where('solicitud_id', $sourceId);
+        if (Schema::hasColumn('solicitud_crm_notas', 'deleted_at')) {
+            $query->whereNull('deleted_at');
+        }
+
+        return $query->orderBy($this->orderColumn('solicitud_crm_notas'), 'desc')
+            ->get()
+            ->map(function (object $row) use ($sourceId): array {
+                $item = (array) $row;
+                $authorId = $this->nullableInt($item['user_id'] ?? $item['autor_id'] ?? null);
+
+                return [
+                    'id' => $this->nullableInt($item['id'] ?? null),
+                    'source_type' => 'solicitud',
+                    'source_id' => $sourceId,
+                    'body' => $item['nota'] ?? $item['body'] ?? null,
+                    'author_id' => $authorId,
+                    'author_name' => $this->userName($authorId),
+                    'created_at' => $item['created_at'] ?? null,
+                ];
+            })
+            ->all();
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function tasks(string $sourceType, int $sourceId): array
+    {
+        if ($sourceType !== 'solicitud' || !Schema::hasTable('crm_tasks')) {
+            return [];
+        }
+
+        $query = DB::table('crm_tasks');
+        $this->scopeTaskToCase($query, $sourceId);
+
+        return $query->orderBy($this->orderColumn('crm_tasks'), 'desc')
+            ->get()
+            ->map(function (object $row): array {
+                $item = (array) $row;
+                $assignedTo = $this->nullableInt($item['assigned_to'] ?? null);
+                $createdBy = $this->nullableInt($item['created_by'] ?? $item['user_id'] ?? null);
+
+                return [
+                    'id' => $this->nullableInt($item['id'] ?? null),
+                    'title' => $item['title'] ?? $item['titulo'] ?? null,
+                    'description' => $item['description'] ?? $item['descripcion'] ?? null,
+                    'status' => $item['status'] ?? null,
+                    'priority' => $item['priority'] ?? null,
+                    'assigned_to' => $assignedTo,
+                    'assigned_name' => $this->userName($assignedTo),
+                    'created_by' => $createdBy,
+                    'created_by_name' => $this->userName($createdBy),
+                    'due_at' => $item['due_at'] ?? $item['due_date'] ?? null,
+                    'completed_at' => $item['completed_at'] ?? null,
+                    'created_at' => $item['created_at'] ?? null,
+                    'updated_at' => $item['updated_at'] ?? null,
+                ];
+            })
+            ->all();
+    }
+
+    private function scopeTaskToCase(mixed $query, int $sourceId): void
+    {
+        $hasCondition = false;
+
+        $query->where(function ($linked) use ($sourceId, &$hasCondition): void {
+            if ($this->hasColumns('crm_tasks', ['source_type', 'source_id'])) {
+                $hasCondition = true;
+                $linked->orWhere(function ($source) use ($sourceId): void {
+                    $source->whereIn('source_type', ['solicitud', 'solicitud_procedimiento', 'solicitudes'])
+                        ->where('source_id', $sourceId);
+                });
+            }
+
+            if ($this->hasColumns('crm_tasks', ['source_module', 'source_ref_id'])) {
+                $hasCondition = true;
+                $linked->orWhere(function ($source) use ($sourceId): void {
+                    $source->whereIn('source_module', ['solicitud', 'solicitud_procedimiento', 'solicitudes'])
+                        ->where('source_ref_id', (string) $sourceId);
+                });
+            }
+
+            if ($this->hasColumns('crm_tasks', ['entity_type', 'entity_id'])) {
+                $hasCondition = true;
+                $linked->orWhere(function ($entity) use ($sourceId): void {
+                    $entity->whereIn('entity_type', ['solicitud', 'solicitud_procedimiento', 'solicitudes'])
+                        ->where('entity_id', (string) $sourceId);
+                });
+            }
+
+            if (Schema::hasColumn('crm_tasks', 'form_id')) {
+                $hasCondition = true;
+                $linked->orWhere('form_id', $sourceId);
+            }
+        });
+
+        if (!$hasCondition) {
+            $query->whereRaw('1 = 0');
+        }
     }
 
     /**
@@ -307,6 +615,54 @@ class CrmCaseService
         return (int) $value;
     }
 
+    private function userName(?int $userId): string
+    {
+        if ($userId === null || $userId <= 0 || !Schema::hasTable('users')) {
+            return 'Sistema';
+        }
+
+        $select = ['id'];
+        foreach (['name', 'username', 'nombre'] as $column) {
+            if (Schema::hasColumn('users', $column)) {
+                $select[] = $column;
+            }
+        }
+
+        $user = DB::table('users')->select($select)->where('id', $userId)->first();
+        if ($user === null) {
+            return 'Usuario';
+        }
+
+        return $this->firstFilled((array) $user, ['name', 'username', 'nombre']) ?? 'Usuario';
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     */
+    private function putIfColumn(array &$payload, string $table, string $column, mixed $value): void
+    {
+        if (Schema::hasColumn($table, $column)) {
+            $payload[$column] = $value;
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     * @param array<int, string> $columns
+     */
+    private function putFirstColumn(array &$payload, string $table, array $columns, mixed $value): void
+    {
+        foreach ($columns as $column) {
+            if (Schema::hasColumn($table, $column)) {
+                $payload[$column] = $value;
+
+                return;
+            }
+        }
+
+        throw new RuntimeException('Tareas CRM no disponibles');
+    }
+
     /**
      * @param array<int, string> $columns
      */
@@ -323,5 +679,16 @@ class CrmCaseService
         }
 
         return true;
+    }
+
+    private function orderColumn(string $table): string
+    {
+        foreach (['updated_at', 'created_at', 'id'] as $column) {
+            if (Schema::hasColumn($table, $column)) {
+                return $column;
+            }
+        }
+
+        return 'rowid';
     }
 }
