@@ -47,7 +47,7 @@ export async function sendMessage(conversationId, message, messageType = 'text')
   return data; // { ok, data: serializedMessage }
 }
 
-export async function startWithTemplate({ waNumber, templateId, variables, contactName, patientHcNumber, patientFullName }) {
+export async function startWithTemplate({ waNumber, templateId, variables, contactName, patientHcNumber, patientFullName, locationSede, headerMediaUrl }) {
   const { data } = await wa.post('/conversations/start-template', {
     wa_number: waNumber,
     template_id: templateId,
@@ -55,6 +55,8 @@ export async function startWithTemplate({ waNumber, templateId, variables, conta
     contact_name: contactName,
     patient_hc_number: patientHcNumber,
     patient_full_name: patientFullName,
+    ...(locationSede ? { location_sede: locationSede } : {}),
+    ...(headerMediaUrl ? { header_media_url: headerMediaUrl } : {}),
   });
   return data;
 }

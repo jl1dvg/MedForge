@@ -101,6 +101,11 @@ class ConversationWriteController
                 $templateVariables['_location_address'] = $address;
             }
 
+            $headerMediaUrl = trim((string) $request->input('header_media_url', ''));
+            if ($headerMediaUrl !== '') {
+                $templateVariables['_header_media_url'] = $headerMediaUrl;
+            }
+
             $result = $this->startService->startConversationWithTemplate(
                 (string) $request->input('wa_number', ''),
                 (int) $request->input('template_id', 0),
