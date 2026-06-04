@@ -43,6 +43,8 @@ export function App() {
   const [draggingId, setDraggingId] = useState<number | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [toast, setToast] = useState<{ msg: string; icon: string } | null>(null);
+  const selectedIdRef = React.useRef<number | null>(selectedId);
+  selectedIdRef.current = selectedId;
 
   // Apply accent CSS variable
   useEffect(() => {
@@ -160,18 +162,22 @@ export function App() {
   }, []);
 
   const addCrmNote = useCallback(async (txt: string) => {
-    if (selectedId == null) return;
-    const updated = await createCrmNote('solicitud', selectedId, txt);
+    const caseId = selectedId;
+    if (caseId == null) return;
+    const updated = await createCrmNote('solicitud', caseId, txt);
+    setSolicitudes((list: Solicitud[]) => list.map((s: Solicitud) => s.id === caseId ? { ...s, crm: { ...s.crm, notas: updated.notes.length } } : s));
+    if (selectedIdRef.current !== caseId || updated.sourceId !== caseId) return;
     setCrmCase(updated);
-    setSolicitudes((list: Solicitud[]) => list.map((s: Solicitud) => s.id === selectedId ? { ...s, crm: { ...s.crm, notas: updated.notes.length } } : s));
     showToast('Nota guardada', 'mdi-comment-check-outline');
   }, [selectedId, showToast]);
 
   const removeCrmNote = useCallback(async (noteId: number) => {
-    if (selectedId == null) return;
-    const updated = await deleteCrmNote('solicitud', selectedId, noteId);
+    const caseId = selectedId;
+    if (caseId == null) return;
+    const updated = await deleteCrmNote('solicitud', caseId, noteId);
+    setSolicitudes((list: Solicitud[]) => list.map((s: Solicitud) => s.id === caseId ? { ...s, crm: { ...s.crm, notas: updated.notes.length } } : s));
+    if (selectedIdRef.current !== caseId || updated.sourceId !== caseId) return;
     setCrmCase(updated);
-    setSolicitudes((list: Solicitud[]) => list.map((s: Solicitud) => s.id === selectedId ? { ...s, crm: { ...s.crm, notas: updated.notes.length } } : s));
     showToast('Nota eliminada', 'mdi-delete-outline');
   }, [selectedId, showToast]);
 
@@ -235,6 +241,7 @@ export function App() {
   }), [draggingId, dropTarget, moveTo]);
 
   const selected = useMemo(() => solicitudes.find((s: Solicitud) => s.id === selectedId) ?? null, [solicitudes, selectedId]);
+  const selectedCrmCase = crmCase?.sourceId === selectedId ? crmCase : null;
 
   useEffect(() => {
     let cancelled = false;
@@ -245,11 +252,12 @@ export function App() {
       return () => { cancelled = true; };
     }
 
+    setCrmCase(null);
     setCrmLoading(true);
     setCrmError(null);
     fetchCrmCase('solicitud', selectedId)
       .then((crm) => {
-        if (!cancelled) setCrmCase(crm);
+        if (!cancelled && selectedIdRef.current === selectedId && crm.sourceId === selectedId) setCrmCase(crm);
       })
       .catch(() => {
         if (!cancelled) {
@@ -353,7 +361,7 @@ export function App() {
         onAdvance={advance}
         onToggleTask={toggleTask}
         onAddTask={addTask}
-        crmCase={crmCase}
+        crmCase={selectedCrmCase}
         crmLoading={crmLoading}
         crmError={crmError}
         onAddNote={addCrmNote}
