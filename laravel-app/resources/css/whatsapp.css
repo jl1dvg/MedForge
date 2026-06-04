@@ -50,7 +50,7 @@
   display: flex; flex-direction: column; gap: 12px;
 }
 .wa3-inbox__title-row {
-  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  display: flex; align-items: center; justify-content: space-between; gap: 0px;
 }
 .wa3-inbox__title {
   font: 600 18px/1.2 var(--font-display);
@@ -227,7 +227,7 @@
 .wa3-inbox__tabs {
   display: inline-flex; gap: 0;
   background: var(--wa3-surface-2);
-  padding: 3px; border-radius: 10px;
+  padding: 2px; border-radius: 10px;
 }
 .wa3-inbox__tab {
   display: inline-flex; align-items: center; gap: 6px;
