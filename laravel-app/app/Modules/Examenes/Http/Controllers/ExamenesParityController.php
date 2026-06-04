@@ -716,12 +716,20 @@ class ExamenesParityController
 
         $opened = $this->openPreferredFile($resolvedHcNumber, $resolvedFormId, $filename);
         if (!$opened || empty($opened['stream'])) {
-            return response(
-                $this->sigcenterImagenesService->getLastError()
-                    ?? ($this->nasImagenesService?->getLastError())
-                    ?? 'Archivo no encontrado.',
-                404
-            );
+            $sigcenterError = $this->sigcenterImagenesService->getLastError();
+            $nasError = $this->nasImagenesService?->getLastError();
+            $message = $this->resolveImagenesFileOpenError($sigcenterError, $nasError);
+
+            Log::warning('imagenes.v2.nas_file.open_failed', [
+                'form_id' => $resolvedFormId,
+                'hc_number' => $resolvedHcNumber,
+                'filename' => $filename,
+                'sigcenter_error' => $sigcenterError,
+                'nas_error' => $nasError,
+                'message' => $message,
+            ]);
+
+            return response($message, 404);
         }
 
         $type = (string) ($opened['type'] ?? 'application/octet-stream');
@@ -1252,6 +1260,26 @@ class ExamenesParityController
         }
 
         return $this->nasImagenesService()->openFile($hcNumber, $formId, $filename);
+    }
+
+    private function resolveImagenesFileOpenError(?string $sigcenterError, ?string $nasError): string
+    {
+        $sigcenterError = trim((string) $sigcenterError);
+        $nasError = trim((string) $nasError);
+
+        if ($sigcenterError !== '') {
+            return $sigcenterError;
+        }
+
+        if ($nasError === 'NAS no disponible.' || $nasError === 'NAS no configurado.') {
+            return 'Repositorio de imágenes no disponible. Configure NAS_IMAGES_MOUNT o NAS_IMAGES_SSH_* para abrir este archivo.';
+        }
+
+        if ($nasError !== '') {
+            return $nasError;
+        }
+
+        return 'Archivo no encontrado.';
     }
 
     private function imagenesUseNasFallback(): bool

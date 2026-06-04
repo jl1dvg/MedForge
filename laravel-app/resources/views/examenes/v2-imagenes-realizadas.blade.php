@@ -1044,7 +1044,11 @@
                     const isPdfFile = isPdf(file);
                     file._preloadPromise = fetch(file.url, {credentials: 'same-origin'})
                         .then(function (r) {
-                            if (!r.ok) throw new Error('status');
+                            if (!r.ok) {
+                                return r.text().then(function (text) {
+                                    throw new Error(String(text || '').trim() || 'No se pudo abrir el archivo.');
+                                });
+                            }
                             return r.blob();
                         })
                         .then(function (blob) {
@@ -1085,7 +1089,11 @@
                             file._cachedUrl = objectUrl;
                         })
                         .catch(function () {
+                            const error = arguments.length ? arguments[0] : null;
                             file._preloadFailed = true;
+                            file._preloadError = error && error.message
+                                ? String(error.message)
+                                : 'No se pudo abrir el archivo.';
                         })
                         .finally(function () {
                             file._preloadPromise = null;
@@ -1131,7 +1139,19 @@
                         : '<span class="badge bg-info text-dark">Imagen</span>';
                     wrapper.appendChild(typeBadge);
 
-                    if (isImage(current)) {
+                    if (current._preloadFailed) {
+                        const fallback = document.createElement('div');
+                        fallback.className = 'w-100 h-100 d-flex flex-column align-items-center justify-content-center text-center text-muted p-4';
+                        const detail = current._preloadError ? String(current._preloadError) : 'No se pudo abrir el archivo.';
+                        fallback.innerHTML = '<i class="mdi mdi-alert-circle-outline fs-1 mb-2 text-warning"></i>'
+                            + '<div class="fw-semibold text-dark mb-1">Imagen no disponible</div>'
+                            + '<div class="small"></div>';
+                        const detailNode = fallback.querySelector('.small');
+                        if (detailNode) {
+                            detailNode.textContent = detail;
+                        }
+                        wrapper.appendChild(fallback);
+                    } else if (isImage(current)) {
                         const img = document.createElement('img');
                         img.src = url;
                         img.alt = name;
@@ -1233,7 +1253,7 @@
                     }
 
                     const current = nasFiles[nasCurrentIndex];
-                    if (isPdf(current) && !current._cachedUrl && !current._preloadPromise && !current._preloadFailed) {
+                    if ((isPdf(current) || isImage(current)) && !current._cachedUrl && !current._preloadPromise && !current._preloadFailed) {
                         const renderToken = nasLoadToken;
                         preloadNasFile(current, renderToken).finally(function () {
                             if (renderToken !== nasLoadToken) {
