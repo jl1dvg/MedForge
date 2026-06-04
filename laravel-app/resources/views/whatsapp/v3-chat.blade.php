@@ -422,6 +422,7 @@
         .wa3-modal__body { padding: 18px; }
         .wa3-modal__grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(280px, .65fr); gap: 16px; }
         @media (max-width: 820px) { .wa3-modal__grid { grid-template-columns: 1fr; } }
+        .wa3-tour-modal { backdrop-filter: none; background: rgba(16,24,40,.42); }
         .wa3-tour-modal .wa3-modal__card { width: min(480px, 100%); }
         .wa3-tour-modal .wa3-modal__body p { margin: 0 0 10px; font: 400 13px/1.5 var(--bs-body-font-family); color: var(--wa3-text-mute); }
         .wa3-tour-step { display: flex; align-items: center; gap: 8px; margin-top: 16px; color: var(--wa3-text-mute); font: 700 11px var(--bs-body-font-family); text-transform: uppercase; letter-spacing: .06em; }
@@ -559,9 +560,8 @@
         .wa3-drawer__qr-btn { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border: 1px solid var(--wa3-border); border-radius: 10px; background: var(--wa3-surface-2); color: var(--wa3-text); cursor: pointer; text-align: left; transition: border-color .12s, background .12s; }
         .wa3-drawer__qr-btn:hover { border-color: var(--wa3-accent); background: var(--wa3-accent-soft); }
         .wa3-drawer__qr-btn i { font-size: 16px; color: var(--wa3-accent); flex-shrink: 0; }
-        .wa3-drawer__qr-text { min-width: 0; overflow: hidden; }
+        .wa3-drawer__qr-text { flex: 1; min-width: 0; overflow: hidden; }
         .wa3-drawer__qr-text strong { display: block; font: 600 12.5px var(--bs-body-font-family); color: var(--wa3-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .wa3-drawer__qr-text span { display: block; font: 400 11.5px var(--bs-body-font-family); color: var(--wa3-text-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     </style>
 @endpush
 

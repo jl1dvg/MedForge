@@ -339,10 +339,7 @@ const WA_TOUR_STEPS = [
 
 export function WaTourModal({ onClose }) {
   const [idx, setIdx] = useState(0);
-  const steps = useMemo(
-    () => WA_TOUR_STEPS.filter(s => !s.selector || document.querySelector(s.selector)),
-    [],
-  );
+  const steps = WA_TOUR_STEPS;
   const step = steps[idx];
 
   useEffect(() => {
