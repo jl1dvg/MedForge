@@ -240,7 +240,7 @@ function WaTweaksMenu({ compact, accent, onCompact, onAccent }) {
             {ACCENT_PALETTES.map(p => (
               <button key={p.value} type="button" title={p.label}
                       className={`wa3-swatch${accent === p.value ? ' is-active' : ''}`}
-                      style={{ background: p.value }}
+                      style={{ '--wa3-swatch-color': p.value }}
                       onClick={() => onAccent(p.value)} />
             ))}
           </div>

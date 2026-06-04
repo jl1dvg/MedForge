@@ -272,7 +272,7 @@ function WaChatSearch({ open, query, onQuery, count, idx, onPrev, onNext, onClos
 
 export const EMOJIS = ['👁️','👀','🙂','😊','🙏','✅','📅','🕒','📍','🏥','👨‍⚕️','👩‍⚕️','🤓','💬','📄','🔎','⚠️','😔','👍','✨','🟢','🔴','🟡','📞'];
 
-function WaComposer({ value, onChange, onSend, onSendMedia, convo, quickReplies, toast }) {
+function WaComposer({ value, onChange, onSend, onSendMedia, convo, toast }) {
   const ta = useRef(null);
   const [emojiOpen, setEmojiOpen, emojiRef] = useWaMenu();
   const [recording, setRecording] = useState(false);
@@ -390,15 +390,6 @@ function WaComposer({ value, onChange, onSend, onSendMedia, convo, quickReplies,
 
   return (
     <div className="wa3-composer">
-      {quickReplies.length > 0 && (
-        <div className="wa3-composer__quickreplies">
-          {quickReplies.map(q => (
-            <button key={q.id} className="wa3-quickreply" onClick={() => { onChange(q.body); ta.current?.focus(); }}>
-              <i className="mdi mdi-lightning-bolt-outline"></i>{q.title}
-            </button>
-          ))}
-        </div>
-      )}
       <div className="wa3-composer__row">
         <button className="wa3-iconbtn" title="Adjuntar archivo" onClick={() => fileRef.current?.click()} disabled={recording}>
           <i className="mdi mdi-paperclip"></i>
@@ -464,7 +455,7 @@ function WaComposer({ value, onChange, onSend, onSendMedia, convo, quickReplies,
 
 export function WaThreadPane({
   convo, thread, typing, draft, setDraft, showDrawer, canSupervise, canOperate,
-  realtime, handlers, toast, quickReplies, templates, agents, roles,
+  realtime, handlers, toast, templates, agents, roles,
 }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -495,6 +486,10 @@ export function WaThreadPane({
   return (
     <section className="wa3-thread">
       <header className="wa3-thread__head">
+        <button className="wa3-iconbtn wa3-back-btn" title="Volver a conversaciones"
+                onClick={handlers.onBackMobile}>
+          <i className="mdi mdi-arrow-left"></i>
+        </button>
         <div className="wa3-thread__main">
           <div className="wa3-avatar" data-tone={convo.tone}>
             {convo.initials}
@@ -545,7 +540,7 @@ export function WaThreadPane({
         <WaComposer value={draft} onChange={setDraft}
                     onSend={() => handlers.onSend(draft)}
                     onSendMedia={handlers.onSendMedia}
-                    convo={convo} quickReplies={quickReplies} toast={toast} />
+                    convo={convo} toast={toast} />
       )}
     </section>
   );

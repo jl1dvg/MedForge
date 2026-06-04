@@ -895,22 +895,24 @@ html, body { margin: 0; height: 100%; background: var(--wa3-bg, #f7f8fb); }
 .wa3-tweaks-menu { min-width: 200px; }
 .wa3-tweaks-swatches { display: flex; gap: 8px; padding: 6px 10px 10px; }
 .wa3-swatch {
-  width: 26px; height: 26px; border-radius: 50%;
-  border: none; outline: 2px solid transparent; outline-offset: 2px;
+  width: 28px; height: 28px; border-radius: 50%;
+  border: 2px solid rgba(0,0,0,.08); outline: 2px solid transparent; outline-offset: 2px;
   cursor: pointer; transition: transform .1s, outline-color .12s;
+  background: var(--wa3-swatch-color, #ccc) !important;
+  flex-shrink: 0;
 }
-.wa3-swatch:hover { transform: scale(1.1); }
+.wa3-swatch:hover { transform: scale(1.12); }
 .wa3-swatch.is-active { outline-color: var(--wa3-text); }
 .wa3-density-seg { display: flex; padding: 6px 10px 10px; }
 .wa3-density-btn {
-  flex: 1; padding: 6px 0; border: 1px solid var(--wa3-border);
-  background: var(--wa3-surface-2); color: var(--wa3-text-mute);
+  flex: 1; padding: 7px 0; border: 1.5px solid var(--wa3-border);
+  background: var(--wa3-surface-2) !important; color: var(--wa3-text-mute) !important;
   font: 500 12px var(--font-body); cursor: pointer;
   transition: background .1s, color .1s, border-color .1s;
 }
 .wa3-density-btn:first-child { border-radius: 7px 0 0 7px; border-right: none; }
 .wa3-density-btn:last-child  { border-radius: 0 7px 7px 0; }
-.wa3-density-btn.is-active   { background: var(--wa3-accent); color: #fff; border-color: var(--wa3-accent); }
+.wa3-density-btn.is-active   { background: var(--wa3-accent) !important; color: #fff !important; border-color: var(--wa3-accent) !important; }
 
 /* Advanced filters menu */
 .wa3-filter-menu { min-width: 340px; max-width: 380px; }
@@ -1008,6 +1010,20 @@ html, body { margin: 0; height: 100%; background: var(--wa3-bg, #f7f8fb); }
 .wa3-admin-btn:hover { background: var(--wa3-accent-soft); border-color: var(--wa3-accent); color: var(--wa3-accent); }
 .wa3-admin-btn i { font-size: 17px; }
 
+/* Drawer quick replies */
+.wa3-drawer__qr-list { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+.wa3-drawer__qr-btn {
+  display: flex; align-items: flex-start; gap: 9px; width: 100%; text-align: left;
+  padding: 8px 10px; border-radius: 9px; border: 1px solid var(--wa3-border);
+  background: var(--wa3-surface-2); cursor: pointer;
+  transition: background .1s, border-color .1s;
+}
+.wa3-drawer__qr-btn:hover { background: var(--wa3-accent-soft); border-color: var(--wa3-accent); }
+.wa3-drawer__qr-btn i { font-size: 16px; color: var(--wa3-accent); margin-top: 1px; flex-shrink: 0; }
+.wa3-drawer__qr-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.wa3-drawer__qr-text strong { font: 600 12.5px var(--font-body); color: var(--wa3-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wa3-drawer__qr-text span { font: 400 11.5px var(--font-body); color: var(--wa3-text-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
 /* Modals */
 .wa3-modal { position: fixed; inset: 0; z-index: 200; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(16,24,40,.62); backdrop-filter: blur(2px); }
 .wa3-modal__card { position: relative; width: min(920px, 100%); max-height: calc(100vh - 48px); overflow: auto; border-radius: 20px; background: #fff; color: var(--wa3-text); box-shadow: 0 24px 70px rgba(16,24,40,.28); }
@@ -1034,9 +1050,41 @@ html, body { margin: 0; height: 100%; background: var(--wa3-bg, #f7f8fb); }
 .wa3-tour-step__title { font: 700 16px var(--font-display); color: var(--wa3-text); margin: 14px 0 6px; }
 .wa3-tour-focus { position: relative; z-index: 150; outline: 3px solid color-mix(in srgb, var(--wa3-accent) 75%, transparent); outline-offset: 4px; box-shadow: 0 0 0 8px color-mix(in srgb, var(--wa3-accent) 14%, transparent); border-radius: 12px; }
 
+/* Mobile back button — hidden on desktop */
+.wa3-back-btn { display: none !important; }
+
 @media (max-width: 760px) {
-  .wa3, .wa3.has-drawer { grid-template-columns: 1fr; grid-template-rows: minmax(220px, 40vh) minmax(0, 1fr); height: auto; min-height: calc(100vh - 64px); }
-  .wa3-thread__actions { width: 100%; overflow-x: auto; }
-  .wa3-modal { padding: 12px; align-items: flex-end; }
-  .wa3-modal__card { border-radius: 16px 16px 0 0; }
+  /* Single-column: one panel at a time */
+  .wa3, .wa3.has-drawer, .wa3.has-active, .wa3.has-active.has-drawer {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr;
+    height: calc(100vh - 64px);
+  }
+
+  /* Default: show inbox, hide thread */
+  .wa3 .wa3-thread { display: none !important; }
+  .wa3 .wa3-inbox  { display: flex !important; }
+
+  /* has-active: show thread full-screen, hide inbox */
+  .wa3.has-active .wa3-inbox  { display: none !important; }
+  .wa3.has-active .wa3-thread { display: flex !important; flex-direction: column; height: 100%; }
+
+  /* Drawer on mobile: full-screen overlay */
+  .wa3.has-active.has-drawer .wa3-drawer {
+    position: fixed; inset: 0; z-index: 120;
+    overflow-y: auto; background: var(--wa3-surface);
+  }
+
+  /* Back button visible on mobile */
+  .wa3-back-btn { display: inline-flex !important; }
+
+  /* Thread action row scrolls horizontally on mobile */
+  .wa3-thread__actions { width: 100%; overflow-x: auto; flex-shrink: 0; }
+
+  /* Composer full width */
+  .wa3-composer { padding: 10px 12px; }
+
+  /* Modals as bottom sheets */
+  .wa3-modal { padding: 0; align-items: flex-end; }
+  .wa3-modal__card { border-radius: 16px 16px 0 0; max-height: 92vh; overflow-y: auto; }
 }

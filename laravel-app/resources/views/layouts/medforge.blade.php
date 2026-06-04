@@ -26,7 +26,7 @@
         <link rel="stylesheet" href="/css/skin_color.css">
         <link rel="stylesheet" href="/css/pages/medforge-datatables.css">
     @endif
-    <link rel="stylesheet" href="/css/feedback-widget.css">
+    {{-- <link rel="stylesheet" href="/css/feedback-widget.css"> --}}
 
     @stack('styles')
 </head>
@@ -47,7 +47,7 @@
         </div>
     </div>
 
-    @include('layouts.partials.feedback_widget')
+    {{-- @include('layouts.partials.feedback_widget') --}}
     @include('layouts.partials.welcome_tour')
 
     <footer class="main-footer">
@@ -73,7 +73,7 @@
     @endif
     <script src="/js/pages/global-search.js"></script>
 @endif
-<script src="/js/pages/feedback-widget.js"></script>
+{{-- <script src="/js/pages/feedback-widget.js"></script> --}}
 
 {{-- El tour de bienvenida al nuevo menú se gestiona desde welcome_tour.blade.php via localStorage --}}
 

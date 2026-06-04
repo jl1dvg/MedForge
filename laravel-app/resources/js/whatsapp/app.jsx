@@ -205,9 +205,11 @@ export function WaApp() {
       await reloadConvos();
       notify('Conversación actualizada', 'mdi-refresh');
     },
+
+    onBackMobile: () => setActiveId(null),
   }), [activeConvo, me.id, showDrawer, sendMessage, sendMedia, notify, reloadConvos]);
 
-  const shellClass = ['wa3', showDrawer ? 'has-drawer' : '', compact ? 'is-compact' : ''].filter(Boolean).join(' ');
+  const shellClass = ['wa3', showDrawer ? 'has-drawer' : '', compact ? 'is-compact' : '', activeId ? 'has-active' : ''].filter(Boolean).join(' ');
 
   return (
     <div className={shellClass} id="wa3-root" style={rootStyle}>
@@ -238,14 +240,15 @@ export function WaApp() {
         draft={draft} setDraft={setDraft}
         showDrawer={showDrawer} canSupervise={canSupervise} canOperate={true}
         realtime={realtimePending} handlers={handlers} toast={notify}
-        quickReplies={quickReplies} templates={templates}
-        agents={agents} roles={roles}
+        templates={templates} agents={agents} roles={roles}
       />
 
       {showDrawer && (
         <WaDrawer
           convo={activeConvo} notes={notes} trail={trail} canOperate={true}
           onAddNote={addNote}
+          quickReplies={quickReplies}
+          onApplyQuickReply={setDraft}
           onCreateQuickReply={(title, body) => {
             setQuickReplies(prev => [...prev, { id: Date.now(), title, body }]);
             notify('Respuesta rápida creada', 'mdi-lightning-bolt');
