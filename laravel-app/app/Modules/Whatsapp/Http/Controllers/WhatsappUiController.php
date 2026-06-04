@@ -423,9 +423,9 @@ class WhatsappUiController
                 'title' => 'Chat',
                 'goal' => 'Operar inbox, conversación, handoff y presencia directamente desde Laravel WhatsApp V2.',
                 'scope' => [
-                    'Inbox y conversación operan en /v2/whatsapp/chat',
+                    'Inbox y conversación operan en /v3/whatsapp/chat (React SPA)',
                     'Se mantienen handoff, presencia, notas, filtros y colas operativas',
-                    'El chat V2 pasa a ser el acceso principal para operación diaria',
+                    'El chat V3 es el acceso principal para operación diaria',
                     'Dashboard, templates, campañas y flowmaker siguen en V2 dentro del mismo stack',
                 ],
             ],
@@ -473,10 +473,10 @@ class WhatsappUiController
 
         $statusCards = [
             [
-                'label' => 'Chat V2',
+                'label' => 'Chat V3',
                 'state' => 'Operativo',
                 'tone' => 'success',
-                'detail' => 'El inbox principal de operación diaria ya corre en /v2/whatsapp/chat.',
+                'detail' => 'El inbox principal de operación diaria corre en /v3/whatsapp/chat (React SPA).',
             ],
             [
                 'label' => 'WhatsApp V2',

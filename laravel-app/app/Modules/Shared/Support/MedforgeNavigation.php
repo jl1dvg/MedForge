@@ -326,8 +326,8 @@ class MedforgeNavigation
         // ── Comunicaciones ───────────────────────────────────────────────────────
         $comunicaciones = $group('Comunicaciones', 'mdi mdi-message-outline', array_filter([
             $canAccessWhatsAppChat
-                ? $link('Chat', '/v2/whatsapp/chat', 'mdi mdi-message-text-outline', [
-                'prefix' => ['/v2/whatsapp/chat'],
+                ? $link('Chat', '/v3/whatsapp/chat', 'mdi mdi-message-text-outline', [
+                'prefix' => ['/v3/whatsapp/chat'],
             ])
                 : null,
             $canAccessWhatsAppCampaigns
