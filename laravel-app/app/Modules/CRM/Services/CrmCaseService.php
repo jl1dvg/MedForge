@@ -47,6 +47,8 @@ class CrmCaseService
                 'case_id' => $normalizedSourceType . ':' . $sourceId,
                 'source_type' => $normalizedSourceType,
                 'source_id' => $sourceId,
+                'solicitud_id' => $sourceId,
+                'paciente_id' => $this->pacienteId($caseRow),
                 'form_id' => $this->nullableInt($caseRow['form_id'] ?? null),
                 'hc_number' => $caseRow['hc_number'] ?? null,
                 'patient_name' => $this->patientName($caseRow),
@@ -58,6 +60,23 @@ class CrmCaseService
                 'responsible_name' => $this->responsibleName($detailRow),
                 'source' => $this->valueOrNull($detailRow['fuente'] ?? null),
                 'pipeline_stage' => $this->valueOrNull($detailRow['pipeline_stage'] ?? null),
+                'insurance_company' => $this->firstFilled($detailRow, [
+                    'insurance_company',
+                    'empresa_seguro',
+                    'aseguradora',
+                    'seguro_empresa',
+                ]) ?? '',
+                'insurance_plan' => $this->firstFilled($detailRow, [
+                    'insurance_plan',
+                    'plan_seguro',
+                    'seguro_plan',
+                ]) ?? '',
+                'insurance_code' => $this->firstFilled($detailRow, [
+                    'insurance_code',
+                    'codigo_seguro',
+                    'insurance_codigo',
+                    'seguro_codigo',
+                ]) ?? '',
             ],
             'contacts' => $contacts,
             'notes' => $notes,
@@ -91,6 +110,20 @@ class CrmCaseService
             ->first();
 
         return $row === null ? [] : (array) $row;
+    }
+
+    /**
+     * @param array<string, mixed> $caseRow
+     */
+    private function pacienteId(array $caseRow): ?int
+    {
+        foreach (['paciente_id', 'patient_id'] as $column) {
+            if (Schema::hasColumn('solicitud_procedimiento', $column) && array_key_exists($column, $caseRow)) {
+                return $this->nullableInt($caseRow[$column]);
+            }
+        }
+
+        return null;
     }
 
     /**

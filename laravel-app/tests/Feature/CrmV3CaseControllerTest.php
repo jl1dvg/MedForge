@@ -67,6 +67,7 @@ class CrmV3CaseControllerTest extends TestCase
 
         $this->insertRow('solicitud_procedimiento', [
             'id' => 275872,
+            'paciente_id' => 9901,
             'hc_number' => '0932000904',
             'form_id' => 275872,
             'estado' => 'revision-codigos',
@@ -77,12 +78,16 @@ class CrmV3CaseControllerTest extends TestCase
 
         $this->insertRow('solicitud_crm_detalles', [
             'solicitud_id' => 275872,
+            'responsable_id' => 7,
             'responsable_nombre' => 'Coordinación',
             'contacto_telefono' => '0987107769',
             'telefono' => '0987107769',
             'contacto_email' => 'paciente@example.com',
             'email' => 'paciente@example.com',
             'fuente' => 'Convenio',
+            'insurance_company' => 'Humana',
+            'insurance_plan' => 'Plan Azul',
+            'insurance_code' => 'HUM-001',
             'created_at' => '2026-06-03 08:01:00',
             'updated_at' => '2026-06-03 08:01:00',
         ]);
@@ -100,6 +105,13 @@ class CrmV3CaseControllerTest extends TestCase
             ->assertJsonPath('success', true)
             ->assertJsonPath('data.case.source_type', 'solicitud')
             ->assertJsonPath('data.case.source_id', 275872)
+            ->assertJsonPath('data.case.solicitud_id', 275872)
+            ->assertJsonPath('data.case.paciente_id', 9901)
+            ->assertJsonPath('data.case.hc_number', '0932000904')
+            ->assertJsonPath('data.crm.responsible_id', 7)
+            ->assertJsonPath('data.crm.insurance_company', 'Humana')
+            ->assertJsonPath('data.crm.insurance_plan', 'Plan Azul')
+            ->assertJsonPath('data.crm.insurance_code', 'HUM-001')
             ->assertJsonPath('data.contacts.primary_phone', '0987107769')
             ->assertJsonPath('data.contacts.primary_email', 'paciente@example.com')
             ->assertJsonStructure([
@@ -108,14 +120,21 @@ class CrmV3CaseControllerTest extends TestCase
                         'case_id',
                         'source_type',
                         'source_id',
+                        'solicitud_id',
+                        'paciente_id',
                         'form_id',
+                        'hc_number',
                         'patient_name',
                         'stage',
                         'site',
                     ],
                     'crm' => [
+                        'responsible_id',
                         'responsible_name',
                         'source',
+                        'insurance_company',
+                        'insurance_plan',
+                        'insurance_code',
                     ],
                     'contacts' => [
                         'primary_phone',
@@ -164,6 +183,7 @@ class CrmV3CaseControllerTest extends TestCase
         if (!Schema::hasTable('solicitud_procedimiento')) {
             Schema::create('solicitud_procedimiento', function (Blueprint $table): void {
                 $table->id();
+                $table->unsignedBigInteger('paciente_id')->nullable();
                 $table->string('hc_number', 30)->nullable()->index();
                 $table->unsignedBigInteger('form_id')->nullable()->index();
                 $table->string('estado')->nullable();
@@ -186,6 +206,9 @@ class CrmV3CaseControllerTest extends TestCase
                 $table->string('email')->nullable();
                 $table->string('fuente')->nullable();
                 $table->string('pipeline_stage')->nullable();
+                $table->string('insurance_company')->nullable();
+                $table->string('insurance_plan')->nullable();
+                $table->string('insurance_code')->nullable();
                 $table->timestamps();
             });
         }
