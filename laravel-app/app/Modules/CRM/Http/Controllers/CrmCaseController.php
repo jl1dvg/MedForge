@@ -4,14 +4,41 @@ declare(strict_types=1);
 
 namespace App\Modules\CRM\Http\Controllers;
 
+use App\Modules\CRM\Services\CrmCaseService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
+use RuntimeException;
+use Throwable;
 
 class CrmCaseController
 {
+    public function __construct(
+        private readonly CrmCaseService $caseService,
+    ) {}
+
     public function show(string $sourceType, int $sourceId): JsonResponse
     {
-        return $this->unavailableJson();
+        try {
+            return response()->json([
+                'success' => true,
+                'data' => $this->caseService->show($sourceType, $sourceId),
+            ]);
+        } catch (RuntimeException $e) {
+            $message = $e->getMessage();
+            $status = str_contains(mb_strtolower($message), 'no encontrado') ? 404 : 422;
+
+            return response()->json([
+                'success' => false,
+                'error' => $message,
+            ], $status);
+        } catch (Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Error interno CRM V3',
+            ], 500);
+        }
     }
 
     public function update(string $sourceType, int $sourceId): JsonResponse
