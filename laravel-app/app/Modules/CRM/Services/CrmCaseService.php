@@ -97,6 +97,8 @@ class CrmCaseService
             throw new RuntimeException('Tipo de caso CRM no soportado');
         }
 
+        $this->assertSolicitudCaseExists($sourceId);
+
         $body = trim($body);
         if ($body === '') {
             throw new RuntimeException('La nota es obligatoria');
@@ -170,7 +172,7 @@ class CrmCaseService
             }
         }
 
-        if ($ownerId !== null && !$isAdmin && $ownerId !== $userId) {
+        if (!$isAdmin && ($ownerId === null || $ownerId !== $userId)) {
             throw new RuntimeException('No autorizado para eliminar la nota');
         }
 
@@ -198,6 +200,8 @@ class CrmCaseService
         if ($normalizedSourceType !== 'solicitud') {
             throw new RuntimeException('Tipo de caso CRM no soportado');
         }
+
+        $this->assertSolicitudCaseExists($sourceId);
 
         if (!Schema::hasTable('crm_tasks')) {
             throw new RuntimeException('Tareas CRM no disponibles');
@@ -253,7 +257,7 @@ class CrmCaseService
         }
 
         $query = DB::table('crm_tasks')->where('id', $taskId);
-        $this->scopeTaskToCase($query, $sourceId);
+        $this->scopeTaskToCaseForWrite($query, $normalizedSourceType, $sourceId);
 
         if (!$query->exists()) {
             throw new RuntimeException('Tarea no encontrada');
@@ -277,7 +281,7 @@ class CrmCaseService
 
         if ($update !== []) {
             $updateQuery = DB::table('crm_tasks')->where('id', $taskId);
-            $this->scopeTaskToCase($updateQuery, $sourceId);
+            $this->scopeTaskToCaseForWrite($updateQuery, $normalizedSourceType, $sourceId);
             $updateQuery->update($update);
         }
 
@@ -290,6 +294,17 @@ class CrmCaseService
             'solicitud', 'solicitud_procedimiento', 'solicitudes' => 'solicitud',
             default => strtolower(trim($sourceType)),
         };
+    }
+
+    private function assertSolicitudCaseExists(int $sourceId): void
+    {
+        if (!Schema::hasTable('solicitud_procedimiento')) {
+            throw new RuntimeException('Caso no encontrado');
+        }
+
+        if (!DB::table('solicitud_procedimiento')->where('id', $sourceId)->exists()) {
+            throw new RuntimeException('Caso no encontrado');
+        }
     }
 
     /**
@@ -335,7 +350,7 @@ class CrmCaseService
         }
 
         $query = DB::table('crm_tasks');
-        $this->scopeTaskToCase($query, $sourceId);
+        $this->scopeTaskToCaseForRead($query, $sourceId);
 
         return $query->orderBy($this->orderColumn('crm_tasks'), 'desc')
             ->get()
@@ -363,7 +378,7 @@ class CrmCaseService
             ->all();
     }
 
-    private function scopeTaskToCase(mixed $query, int $sourceId): void
+    private function scopeTaskToCaseForRead(mixed $query, int $sourceId): void
     {
         $hasCondition = false;
 
@@ -401,6 +416,35 @@ class CrmCaseService
         if (!$hasCondition) {
             $query->whereRaw('1 = 0');
         }
+    }
+
+    private function scopeTaskToCaseForWrite(mixed $query, string $sourceType, int $sourceId): void
+    {
+        if ($this->hasColumns('crm_tasks', ['source_type', 'source_id'])) {
+            $query->where('source_type', $sourceType)->where('source_id', $sourceId);
+
+            return;
+        }
+
+        if ($this->hasColumns('crm_tasks', ['source_module', 'source_ref_id'])) {
+            $query->where('source_module', $sourceType)->where('source_ref_id', (string) $sourceId);
+
+            return;
+        }
+
+        if (Schema::hasColumn('crm_tasks', 'solicitud_id')) {
+            $query->where('solicitud_id', $sourceId);
+
+            return;
+        }
+
+        if (Schema::hasColumn('crm_tasks', 'form_id')) {
+            $query->where('form_id', $sourceId);
+
+            return;
+        }
+
+        $query->whereRaw('1 = 0');
     }
 
     /**

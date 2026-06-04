@@ -128,7 +128,8 @@ class CrmCaseController
             ]);
         } catch (RuntimeException $e) {
             $message = $e->getMessage();
-            $status = str_contains(mb_strtolower($message), 'no encontrado') ? 404 : 422;
+            $lowerMessage = mb_strtolower($message);
+            $status = str_contains($lowerMessage, 'no encontrado') || str_contains($lowerMessage, 'no encontrada') ? 404 : 422;
 
             return response()->json([
                 'success' => false,

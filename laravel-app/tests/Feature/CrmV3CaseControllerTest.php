@@ -273,6 +273,122 @@ class CrmV3CaseControllerTest extends TestCase
         ]);
     }
 
+    public function test_delete_ownerless_note_is_denied_for_non_admin_user(): void
+    {
+        $user = $this->createUser();
+        $this->seedSolicitudCaseTables();
+
+        $this->insertRow('solicitud_crm_notas', [
+            'id' => 31,
+            'solicitud_id' => 275872,
+            'autor_id' => null,
+            'nota' => 'Nota sin propietario',
+            'created_at' => '2026-06-03 09:00:00',
+        ]);
+
+        $this->actingAs($user)
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+                RequireAppSession::class,
+                RequireAppPermission::class,
+            ])
+            ->deleteJson('/v3/crm/cases/solicitud/275872/notes/31')
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+
+        $this->assertDatabaseHas('solicitud_crm_notas', [
+            'id' => 31,
+            'solicitud_id' => 275872,
+            'autor_id' => null,
+            'deleted_at' => null,
+        ]);
+    }
+
+    public function test_update_task_uses_strong_source_scope_before_form_id_fallback(): void
+    {
+        $user = $this->createUser();
+        $this->seedSolicitudCaseTables();
+
+        $this->insertRow('crm_tasks', [
+            'id' => 41,
+            'source_type' => 'consulta',
+            'source_id' => 999,
+            'entity_type' => 'solicitud',
+            'entity_id' => '275872',
+            'form_id' => 275872,
+            'source_module' => 'solicitud',
+            'source_ref_id' => '275872',
+            'title' => 'No debe actualizarse',
+            'status' => 'pending',
+            'priority' => 'normal',
+            'created_at' => '2026-06-03 09:00:00',
+            'updated_at' => '2026-06-03 09:00:00',
+        ]);
+
+        $this->actingAs($user)
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+                RequireAppSession::class,
+                RequireAppPermission::class,
+            ])
+            ->patchJson('/v3/crm/cases/solicitud/275872/tasks/41', [
+                'status' => 'done',
+            ])
+            ->assertNotFound()
+            ->assertJsonPath('success', false);
+
+        $this->assertDatabaseHas('crm_tasks', [
+            'id' => 41,
+            'status' => 'pending',
+        ]);
+    }
+
+    public function test_store_note_and_task_for_missing_solicitud_do_not_persist(): void
+    {
+        $user = $this->createUser();
+
+        $this->actingAs($user)
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+                RequireAppSession::class,
+                RequireAppPermission::class,
+            ])
+            ->postJson('/v3/crm/cases/solicitud/999999/notes', [
+                'body' => 'No debe persistir',
+            ])
+            ->assertNotFound()
+            ->assertJsonPath('success', false);
+
+        $this->actingAs($user)
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+                RequireAppSession::class,
+                RequireAppPermission::class,
+            ])
+            ->postJson('/v3/crm/cases/solicitud/999999/tasks', [
+                'title' => 'No debe persistir',
+            ])
+            ->assertNotFound()
+            ->assertJsonPath('success', false);
+
+        $this->assertDatabaseMissing('solicitud_crm_notas', [
+            'solicitud_id' => 999999,
+            'nota' => 'No debe persistir',
+        ]);
+        $this->assertDatabaseMissing('crm_tasks', [
+            'source_id' => 999999,
+            'title' => 'No debe persistir',
+        ]);
+    }
+
     private function ensureCrmCaseTestSchema(): void
     {
         if (!Schema::hasTable('users')) {
