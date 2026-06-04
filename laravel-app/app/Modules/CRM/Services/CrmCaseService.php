@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\CRM\Services;
 
+use App\Modules\Codes\Services\CodesCatalogService;
+use App\Modules\Codes\Services\CodesPackageService;
 use App\Modules\Solicitudes\Services\SolicitudesCommunicationService;
 use App\Modules\Solicitudes\Services\SolicitudesReadParityService;
 use App\Modules\Solicitudes\Services\SolicitudesWriteParityService;
@@ -191,6 +193,38 @@ class CrmCaseService
         }
 
         return $this->show($normalizedSourceType, $sourceId);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function catalogCodes(string $query, string $affiliation, int $limit): array
+    {
+        if ($query === '') {
+            return [];
+        }
+
+        return (new CodesCatalogService())->quickSearch($query, $limit, $affiliation);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function catalogPackages(string $query, string $affiliation, int $limit): array
+    {
+        if ($query === '') {
+            return [];
+        }
+
+        $packages = new CodesPackageService(DB::connection()->getPdo());
+
+        return $packages->list([
+            'active' => 1,
+            'search' => $query,
+            'afiliacion' => $affiliation,
+            'limit' => $limit,
+            'offset' => 0,
+        ]);
     }
 
     /**

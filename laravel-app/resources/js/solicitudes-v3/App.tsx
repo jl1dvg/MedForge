@@ -17,6 +17,7 @@ import {
   updateCrmTask,
   sendCrmWhatsapp,
   sendCrmEmail,
+  storeCrmProposal,
 } from './api';
 import { Kpi } from './components';
 import { Toolbar, Board, TableView } from './Board';
@@ -244,6 +245,16 @@ export function App() {
     showToast('Correo enviado', 'mdi-email-check-outline');
   }, [selectedId, showToast, syncCrmCounts]);
 
+  const createProposal = useCallback(async (payload: Record<string, unknown>) => {
+    const caseId = selectedId;
+    if (caseId == null) return;
+    const updated = await storeCrmProposal('solicitud', caseId, payload);
+    syncCrmCounts(caseId, updated);
+    if (selectedIdRef.current !== caseId || updated.sourceId !== caseId) return;
+    setCrmCase(updated);
+    showToast('Borrador de propuesta creado', 'mdi-file-document-check-outline');
+  }, [selectedId, showToast, syncCrmCounts]);
+
   const togglePreop = useCallback((id: number, idx: number) => {
     setSolicitudes((list: Solicitud[]) => list.map((s: Solicitud) => {
       if (s.id !== id) return s;
@@ -395,6 +406,7 @@ export function App() {
         onDeleteNote={removeCrmNote}
         onSendWhatsapp={sendWhatsapp}
         onSendEmail={sendEmail}
+        onCreateProposal={createProposal}
         onOpenPrefactura={(id) => setPrefacturaId(id)}
       />
 

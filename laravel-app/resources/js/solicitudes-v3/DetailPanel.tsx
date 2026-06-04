@@ -4,6 +4,7 @@
 import React, { useState, useEffect } from 'react';
 import type { Solicitud, CrmCaseState } from './types';
 import { DocAvatar, fmtDate, fmtDateTime, fmtSla, SLA_META } from './components';
+import { searchCrmCatalogCodes, searchCrmCatalogPackages } from './api';
 
 const COL_TONE: Record<string, string> = {
   'recibida': '#3d7ac7', 'llamado': '#3d7ac7',
@@ -368,9 +369,115 @@ function TabComunicacion({
 
 // ---- Tab: Propuestas ----------------------------------------
 
-function TabPropuestas({ sol }: { sol: Solicitud }) {
+type ProposalCatalogKind = 'code' | 'package';
+
+type ProposalCatalogItem = {
+  key: string;
+  kind: ProposalCatalogKind;
+  id: number;
+  code: string;
+  title: string;
+  description: string;
+  unitPrice: number;
+};
+
+function proposalCatalogItem(row: Record<string, unknown>, kind: ProposalCatalogKind): ProposalCatalogItem {
+  const id = Number(row.id ?? row.catalog_id ?? 0);
+  const code = String(row.codigo ?? row.code ?? row.slug ?? (kind === 'package' ? 'PAQ' : 'COD'));
+  const title = String(row.name ?? row.nombre ?? row.descripcion ?? row.description ?? code);
+  const description = String(row.descripcion ?? row.description ?? row.short_description ?? title);
+  const unitPrice = Number(row.unit_price ?? row.price ?? row.total_amount ?? row.computed_total ?? row.default_price ?? 0);
+
+  return {
+    key: `${kind}:${id}`,
+    kind,
+    id,
+    code,
+    title,
+    description,
+    unitPrice: Number.isFinite(unitPrice) ? unitPrice : 0,
+  };
+}
+
+function TabPropuestas({
+  sol,
+  crmCase,
+  onCreateProposal,
+}: {
+  sol: Solicitud;
+  crmCase: CrmCaseState | null;
+  onCreateProposal: (payload: Record<string, unknown>) => Promise<void>;
+}) {
   const props_ = sol.detalle.propuestas;
   const PROP_STATE_TONE: Record<string, string> = { Borrador: 'none', Enviada: 'warn', Aceptada: 'ok' };
+  const currentAffiliation = crmCase?.insurancePlan !== '—' ? crmCase?.insurancePlan : sol.plan_seguro;
+  const [mode, setMode] = useState<ProposalCatalogKind>('code');
+  const [query, setQuery] = useState('');
+  const [affiliation, setAffiliation] = useState(currentAffiliation && currentAffiliation !== '—' ? currentAffiliation : 'Particular');
+  const [results, setResults] = useState<ProposalCatalogItem[]>([]);
+  const [selectedItems, setSelectedItems] = useState<ProposalCatalogItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const nextAffiliation = currentAffiliation && currentAffiliation !== '—' ? currentAffiliation : 'Particular';
+    setAffiliation((current) => current || nextAffiliation);
+  }, [currentAffiliation]);
+
+  const runSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const q = query.trim();
+    if (!q || loading) return;
+    setLoading(true);
+    setFormError(null);
+    try {
+      const rows = mode === 'code'
+        ? await searchCrmCatalogCodes(q, affiliation)
+        : await searchCrmCatalogPackages(q, affiliation);
+      setResults(rows.map((row) => proposalCatalogItem(row, mode)).filter((item) => item.id > 0));
+    } catch (err) {
+      setResults([]);
+      setFormError(err instanceof Error ? err.message : 'No se pudo buscar en catálogo.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const addSelectedItem = (item: ProposalCatalogItem) => {
+    setSelectedItems((items) => items.some((current) => current.key === item.key) ? items : [...items, item]);
+  };
+
+  const removeSelectedItem = (item: ProposalCatalogItem) => {
+    setSelectedItems((items) => items.filter((current) => current.key !== item.key));
+  };
+
+  const createProposal = async () => {
+    if (selectedItems.length === 0 || saving) return;
+    setSaving(true);
+    setFormError(null);
+    try {
+      await onCreateProposal({
+        title: `Propuesta quirúrgica — ${sol.procedimiento_short}`,
+        send_by: 'none',
+        items: selectedItems.map((item) => ({
+          catalog_type: item.kind,
+          catalog_id: item.id,
+          quantity: 1,
+          description: item.description,
+          unit_price: item.unitPrice,
+        })),
+      });
+      setSelectedItems([]);
+      setResults([]);
+      setQuery('');
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'No se pudo crear la propuesta.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <section>
       <h3 className="psec-title"><i className="mdi mdi-file-document-edit-outline"></i>Propuestas CRM <span className="psec-meta">{props_.length}</span></h3>
@@ -407,8 +514,44 @@ function TabPropuestas({ sol }: { sol: Solicitud }) {
           </div>
         ))}
       </div>
-      <button className="btn-add full" disabled title="Conecta primero el buscador de catálogo">
-        <i className="mdi mdi-file-document-plus-outline"></i>Nuevo borrador de propuesta
+      <form className="add-form col" onSubmit={(e) => void runSearch(e)}>
+        <div className="segmented mini">
+          <button type="button" className={mode === 'code' ? 'is-active' : ''} onClick={() => { setMode('code'); setResults([]); }}>Códigos</button>
+          <button type="button" className={mode === 'package' ? 'is-active' : ''} onClick={() => { setMode('package'); setResults([]); }}>Paquetes</button>
+        </div>
+        <select className="fld" value={affiliation} onChange={(e) => setAffiliation(e.target.value)}>
+          {currentAffiliation && currentAffiliation !== '—' && <option value={currentAffiliation}>{currentAffiliation}</option>}
+          <option value="Particular">Particular</option>
+        </select>
+        <div className="add-form">
+          <input className="fld" placeholder={mode === 'code' ? 'Buscar código o descripción…' : 'Buscar paquete…'} value={query} onChange={(e) => setQuery(e.target.value)} />
+          <button className="btn-add" type="submit" disabled={loading || !query.trim()}>
+            <i className={`mdi ${loading ? 'mdi-loading mdi-spin' : 'mdi-magnify'}`}></i>Buscar
+          </button>
+        </div>
+      </form>
+      <div className="prop-search-list">
+        {results.map((item) => (
+          <button className="prop-search-row" type="button" key={item.key} onClick={() => addSelectedItem(item)}>
+            <span className="pi-cod">{item.code}</span>
+            <span className="pi-desc">{item.title}</span>
+            <span className="pi-val">{money(item.unitPrice)}</span>
+          </button>
+        ))}
+      </div>
+      {selectedItems.length > 0 && (
+        <div className="prop-selected">
+          {selectedItems.map((item) => (
+            <button className="prop-selected-chip" type="button" key={item.key} onClick={() => removeSelectedItem(item)}>
+              <span>{item.code}</span>
+              <i className="mdi mdi-close"></i>
+            </button>
+          ))}
+        </div>
+      )}
+      {formError && <div className="form-error" role="alert">{formError}</div>}
+      <button className="btn-add full" type="button" disabled={saving || selectedItems.length === 0} onClick={() => void createProposal()}>
+        <i className={`mdi ${saving ? 'mdi-loading mdi-spin' : 'mdi-file-document-plus-outline'}`}></i>Nuevo borrador de propuesta
       </button>
     </section>
   );
@@ -474,10 +617,11 @@ export interface DetailPanelProps {
   onDeleteNote: (noteId: number) => Promise<void>;
   onSendWhatsapp: (payload: { recipients: string[]; message: string }) => Promise<void>;
   onSendEmail: (payload: { to: string[]; cc?: string[]; subject: string; body: string }) => Promise<void>;
+  onCreateProposal: (payload: Record<string, unknown>) => Promise<void>;
   onOpenPrefactura: (id: number) => void;
 }
 
-export function DetailPanel({ sol, open, onClose, onToggleStep, onAdvance, onToggleTask, onAddTask, crmCase, crmLoading, crmError, onAddNote, onDeleteNote, onSendWhatsapp, onSendEmail, onOpenPrefactura }: DetailPanelProps) {
+export function DetailPanel({ sol, open, onClose, onToggleStep, onAdvance, onToggleTask, onAddTask, crmCase, crmLoading, crmError, onAddNote, onDeleteNote, onSendWhatsapp, onSendEmail, onCreateProposal, onOpenPrefactura }: DetailPanelProps) {
   const [tab, setTab] = useState('seguimiento');
 
   useEffect(() => { if (open) setTab('seguimiento'); }, [sol?.id, open]);
@@ -521,7 +665,7 @@ export function DetailPanel({ sol, open, onClose, onToggleStep, onAdvance, onTog
               {tab === 'tareas' && <TabTareas sol={sol} crmCase={crmCase} onToggleTask={onToggleTask} onAddTask={onAddTask} />}
               {tab === 'notas' && <TabNotas sol={sol} crmCase={crmCase} onAddNote={onAddNote} onDeleteNote={onDeleteNote} />}
               {tab === 'comunicacion' && <TabComunicacion sol={sol} crmCase={crmCase} onSendWhatsapp={onSendWhatsapp} onSendEmail={onSendEmail} />}
-              {tab === 'propuestas' && <TabPropuestas sol={sol} />}
+              {tab === 'propuestas' && <TabPropuestas sol={sol} crmCase={crmCase} onCreateProposal={onCreateProposal} />}
               {tab === 'documentos' && <TabDocumentos sol={sol} />}
             </div>
 

@@ -436,6 +436,37 @@ class CrmV3CaseControllerTest extends TestCase
             ->assertJsonPath('success', false);
     }
 
+    public function test_catalog_search_requires_query(): void
+    {
+        $user = $this->createUser();
+
+        $this->actingAs($user)
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+                RequireAppSession::class,
+                RequireAppPermission::class,
+            ])
+            ->getJson('/v3/crm/catalog/codes?q=')
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data', []);
+
+        $this->actingAs($user)
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+                RequireAppSession::class,
+                RequireAppPermission::class,
+            ])
+            ->getJson('/v3/crm/catalog/packages?q=')
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data', []);
+    }
+
     public function test_proposal_send_by_email_requires_valid_recipient_before_draft_success(): void
     {
         $user = $this->createUser();

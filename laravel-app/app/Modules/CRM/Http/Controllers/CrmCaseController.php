@@ -82,14 +82,22 @@ class CrmCaseController
         });
     }
 
-    public function catalogCodes(): JsonResponse
+    public function catalogCodes(Request $request): JsonResponse
     {
-        return $this->unavailableJson();
+        return $this->jsonAction(fn (): array => $this->caseService->catalogCodes(
+            trim((string) $request->query('q', '')),
+            trim((string) $request->query('affiliation', $request->query('afiliacion', ''))),
+            max(1, min(50, (int) $request->query('limit', 20))),
+        ));
     }
 
-    public function catalogPackages(): JsonResponse
+    public function catalogPackages(Request $request): JsonResponse
     {
-        return $this->unavailableJson();
+        return $this->jsonAction(fn (): array => $this->caseService->catalogPackages(
+            trim((string) $request->query('q', '')),
+            trim((string) $request->query('affiliation', $request->query('afiliacion', ''))),
+            max(1, min(50, (int) $request->query('limit', 20))),
+        ));
     }
 
     public function storeProposal(Request $request, string $sourceType, int $sourceId): JsonResponse

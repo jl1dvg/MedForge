@@ -412,6 +412,26 @@ async function crmJson(url: string, init: RequestInit = {}): Promise<CrmCaseStat
   return mapCrmCasePayload(body.data);
 }
 
+async function crmDataJson<T>(url: string, init: RequestInit = {}): Promise<T> {
+  const response = await fetch(url, {
+    ...init,
+    credentials: 'same-origin',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      'X-Requested-With': 'XMLHttpRequest',
+      'X-CSRF-TOKEN': csrfToken(),
+      ...(init.headers ?? {}),
+    },
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || body.success === false) {
+    throw new Error(body.error || body.message || 'No se pudo completar la acción');
+  }
+
+  return body.data as T;
+}
+
 function crmCaseUrl(sourceType: string, sourceId: number): string {
   return `/v3/crm/cases/${encodeURIComponent(sourceType)}/${sourceId}`;
 }
@@ -487,6 +507,24 @@ export async function storeCrmProposal(
     method: 'POST',
     body: JSON.stringify(payload),
   });
+}
+
+export async function searchCrmCatalogCodes(query: string, affiliation: string): Promise<Array<Record<string, unknown>>> {
+  const params = new URLSearchParams({
+    q: query,
+    affiliation,
+  });
+
+  return crmDataJson<Array<Record<string, unknown>>>(`/v3/crm/catalog/codes?${params.toString()}`);
+}
+
+export async function searchCrmCatalogPackages(query: string, affiliation: string): Promise<Array<Record<string, unknown>>> {
+  const params = new URLSearchParams({
+    q: query,
+    affiliation,
+  });
+
+  return crmDataJson<Array<Record<string, unknown>>>(`/v3/crm/catalog/packages?${params.toString()}`);
 }
 
 // ---- Public API calls -----------------------------------------
