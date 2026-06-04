@@ -167,21 +167,7 @@ export function WaApp() {
       } catch { notify('Error al cerrar', 'mdi-alert'); }
     },
 
-    onSendTemplate: async (tpl, vars) => {
-      if (!activeConvo) return;
-      try {
-        await startWithTemplate({
-          waNumber: activeConvo.wa,
-          templateId: tpl.id,
-          variables: vars || [],
-          contactName: activeConvo.name,
-          patientHcNumber: activeConvo.hc || undefined,
-          patientFullName: activeConvo.patient?.name || undefined,
-        });
-        notify(`Plantilla "${tpl.name || tpl.display_name}" enviada`, 'mdi-file-send');
-        await reloadConvos();
-      } catch { notify('Error al enviar la plantilla', 'mdi-alert'); }
-    },
+    onOpenSendTemplate: (tpl) => setModal({ type: 'sendTemplate', tpl }),
 
     onCopy: (value, label) => {
       const text = value.startsWith('/') ? `${window.location.origin}${value}` : value;
@@ -248,13 +234,20 @@ export function WaApp() {
         />
       )}
 
-      {modal === 'new' && (
+      {(modal === 'new' || modal?.type === 'sendTemplate') && (
         <WaNewConvoModal
           onClose={async (convId) => {
             setModal(null);
             if (convId) { await reloadConvos(); setActiveId(convId); }
           }}
-          toast={notify} templates={templates}
+          toast={notify} templates={templates} convos={convos}
+          prefill={modal?.type === 'sendTemplate' && activeConvo ? {
+            number: activeConvo.wa,
+            contact: activeConvo.name,
+            patient: activeConvo.patient?.name || activeConvo.name,
+            hc: activeConvo.hc || '',
+            tplId: modal.tpl.id,
+          } : null}
         />
       )}
       {modal === 'followup' && (

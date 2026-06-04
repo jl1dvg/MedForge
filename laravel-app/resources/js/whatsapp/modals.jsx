@@ -6,25 +6,34 @@ import { searchContacts, startWithTemplate } from './api.js';
 
 // ── New conversation modal ────────────────────────────────────────────────────
 
-export function WaNewConvoModal({ onClose, toast, templates = [] }) {
+export function WaNewConvoModal({ onClose, toast, templates = [], convos = [], prefill = null }) {
   const [q, setQ] = useState('');
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
-  const [picked, setPicked] = useState(null);
-  const [number, setNumber] = useState('');
-  const [contact, setContact] = useState('');
-  const [patient, setPatient] = useState('');
-  const [hc, setHc] = useState('');
-  const [tplId, setTplId] = useState('');
-  const [vars, setVars] = useState([]);
+  const [picked, setPicked] = useState(prefill?.number || null);
+  const [number, setNumber] = useState(prefill?.number || '');
+  const [contact, setContact] = useState(prefill?.contact || '');
+  const [patient, setPatient] = useState(prefill?.patient || '');
+  const [hc, setHc] = useState(prefill?.hc || '');
+  const [tplId, setTplId] = useState(prefill?.tplId ? String(prefill.tplId) : '');
+  const [vars, setVars] = useState(() => {
+    if (prefill?.tplId) {
+      const t = templates.find(x => String(x.id) === String(prefill.tplId));
+      return (t?.preview?.variables || []).map(() => '');
+    }
+    return [];
+  });
   const [submitting, setSubmitting] = useState(false);
-  const [fb, setFb] = useState({ tone: '', text: 'Escribe para buscar o ingresa el número manualmente.' });
+  const [fb, setFb] = useState({ tone: '', text: prefill ? '' : 'Escribe para buscar o ingresa el número manualmente.' });
   const debounceRef = useRef(null);
 
   const tpl = templates.find(t => String(t.id) === String(tplId));
+  const tplVars = tpl?.preview?.variables || [];
+  const tplBody = tpl?.preview?.body_text || '';
 
   // Real-time search with debounce
   useEffect(() => {
+    if (prefill) return; // skip search when patient is pre-selected
     if (!q.trim()) { setResults([]); return; }
     clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
@@ -39,11 +48,12 @@ export function WaNewConvoModal({ onClose, toast, templates = [] }) {
       } finally { setSearching(false); }
     }, 350);
     return () => clearTimeout(debounceRef.current);
-  }, [q]);
+  }, [q, prefill]);
 
   const pick = (c) => {
-    setPicked(c.wa_number || c.wa);
-    setNumber(c.wa_number || c.wa || '');
+    const wa = c.wa_number || c.wa || '';
+    setPicked(wa);
+    setNumber(wa);
     setContact(c.name || c.display_name || '');
     setPatient(c.patient_full_name || c.name || '');
     setHc(c.patient_hc_number || c.hc || '');
@@ -52,11 +62,11 @@ export function WaNewConvoModal({ onClose, toast, templates = [] }) {
   const onTpl = (id) => {
     setTplId(id);
     const t = templates.find(x => String(x.id) === String(id));
-    setVars(t ? (t.variables || []).map(() => '') : []);
+    setVars(t ? (t.preview?.variables || []).map(() => '') : []);
   };
 
   const preview = tpl
-    ? (tpl.body || '').replace(/\{\{\s*(\d+)\s*\}\}/g, (mm, i) => vars[Number(i) - 1] || (tpl.examples || [])[Number(i) - 1] || mm)
+    ? tplBody.replace(/\{\{(\d+)\}\}/g, (mm, i) => vars[Number(i) - 1] || mm)
     : 'Selecciona una plantilla para revisar el mensaje final.';
 
   const submit = async () => {
@@ -85,53 +95,81 @@ export function WaNewConvoModal({ onClose, toast, templates = [] }) {
       <div className="wa3-modal__card">
         <div className="wa3-modal__head">
           <div>
-            <h3>Nueva conversación con plantilla</h3>
-            <div className="wa3-modal__sub">Usa una plantilla aprobada para iniciar o continuar fuera de ventana.</div>
+            <h3>{prefill ? 'Enviar plantilla' : 'Nueva conversación con plantilla'}</h3>
+            <div className="wa3-modal__sub">{prefill ? 'Completa las variables y envía la plantilla al paciente.' : 'Usa una plantilla aprobada para iniciar o continuar fuera de ventana.'}</div>
           </div>
           <button className="wa3-iconbtn" onClick={onClose}><i className="mdi mdi-close"></i></button>
         </div>
         <div className="wa3-modal__body">
           <div className="wa3-modal__grid">
+            {/* Left column: search (or locked patient card) + preview */}
             <div>
-              <div className="wa3-field">
-                <label>Buscar paciente o número</label>
-                <div style={{ position: 'relative' }}>
-                  <input value={q} onChange={e => setQ(e.target.value)} placeholder="Celular, HC, nombres o apellidos" style={{ paddingRight: 32 }} />
-                  {searching && <i className="mdi mdi-loading mdi-spin" style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--wa3-text-mute)' }}></i>}
-                </div>
-              </div>
-              <div className="wa3-picker-results">
-                {results.map((c, i) => (
-                  <div key={i} className={`wa3-picker-card${picked === (c.wa_number || c.wa) ? ' is-active' : ''}`} style={{ cursor: 'pointer' }} onClick={() => pick(c)}>
-                    <div>
-                      <strong>{c.name || c.display_name}</strong>
-                      <small>{c.wa_number || c.wa}{c.patient_hc_number || c.hc ? ` · HC ${c.patient_hc_number || c.hc}` : ''}</small>
-                    </div>
-                    <i className="mdi mdi-chevron-right" style={{ color: 'var(--wa3-text-mute)', fontSize: 18 }}></i>
+              {prefill ? (
+                <div className="wa3-picker-card is-active" style={{ marginBottom: 12 }}>
+                  <div>
+                    <strong>{contact || number}</strong>
+                    <small>{number}{hc ? ` · HC ${hc}` : ''}</small>
                   </div>
-                ))}
-              </div>
+                  <i className="mdi mdi-account-check" style={{ color: 'var(--wa3-accent)', fontSize: 18 }}></i>
+                </div>
+              ) : (
+                <>
+                  <div className="wa3-field">
+                    <label>Buscar paciente o número</label>
+                    <div style={{ position: 'relative' }}>
+                      <input value={q} onChange={e => setQ(e.target.value)} placeholder="Celular, HC, nombres o apellidos" style={{ paddingRight: 32 }} />
+                      {searching && <i className="mdi mdi-loading mdi-spin" style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--wa3-text-mute)' }}></i>}
+                    </div>
+                  </div>
+                  <div className="wa3-picker-results">
+                    {results.map((c, i) => {
+                      const wa = c.wa_number || c.wa || '';
+                      const existing = convos.find(cv => cv.wa === wa);
+                      return (
+                        <div key={i} className={`wa3-picker-card${picked === wa ? ' is-active' : ''}`} style={{ cursor: 'pointer' }} onClick={() => pick(c)}>
+                          <div>
+                            <strong>{c.name || c.display_name}</strong>
+                            <small>{wa}{c.patient_hc_number || c.hc ? ` · HC ${c.patient_hc_number || c.hc}` : ''}</small>
+                            {existing && <small style={{ color: 'var(--wa3-accent)', marginTop: 2, display: 'block' }}>💬 Conversación activa</small>}
+                          </div>
+                          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                            {existing && (
+                              <a href={`/v3/whatsapp/chat?conversation=${existing.id}`} className="wa3-secondary-btn" style={{ fontSize: 11, padding: '3px 8px', whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
+                                Abrir chat
+                              </a>
+                            )}
+                            <i className="mdi mdi-chevron-right" style={{ color: 'var(--wa3-text-mute)', fontSize: 18 }}></i>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
               <div className="wa3-field" style={{ marginTop: 12 }}>
                 <label>Preview del mensaje</label>
                 <div className="wa3-template-preview">{preview}</div>
               </div>
             </div>
+            {/* Right column: patient fields + template selector + variables */}
             <div>
-              <div className="wa3-field"><label>Número WhatsApp</label><input value={number} onChange={e => setNumber(e.target.value)} placeholder="593999111222" /></div>
-              <div className="wa3-field"><label>Nombre visible</label><input value={contact} onChange={e => setContact(e.target.value)} placeholder="Nombre del contacto" /></div>
-              <div className="wa3-field"><label>Paciente</label><input value={patient} onChange={e => setPatient(e.target.value)} placeholder="Nombres y apellidos" /></div>
-              <div className="wa3-field"><label>HC</label><input value={hc} onChange={e => setHc(e.target.value)} placeholder="Historia clínica" /></div>
+              {!prefill && <>
+                <div className="wa3-field"><label>Número WhatsApp</label><input value={number} onChange={e => setNumber(e.target.value)} placeholder="593999111222" /></div>
+                <div className="wa3-field"><label>Nombre visible</label><input value={contact} onChange={e => setContact(e.target.value)} placeholder="Nombre del contacto" /></div>
+                <div className="wa3-field"><label>Paciente</label><input value={patient} onChange={e => setPatient(e.target.value)} placeholder="Nombres y apellidos" /></div>
+                <div className="wa3-field"><label>HC</label><input value={hc} onChange={e => setHc(e.target.value)} placeholder="Historia clínica" /></div>
+              </>}
               <div className="wa3-field">
                 <label>Plantilla aprobada</label>
                 <select value={tplId} onChange={e => onTpl(e.target.value)}>
                   <option value="">Selecciona una plantilla</option>
-                  {templates.map(t => <option key={t.id} value={t.id}>{t.name || t.display_name} · {t.language || 'ES'}</option>)}
+                  {templates.map(t => <option key={t.id} value={t.id}>{t.name || t.display_name} · {t.language || 'es'}</option>)}
                 </select>
               </div>
-              {tpl && (tpl.variables || []).map((v, i) => (
+              {tpl && tplVars.map((v, i) => (
                 <div key={i} className="wa3-field">
-                  <label>Variable {i + 1} · {v}</label>
-                  <input value={vars[i] || ''} placeholder={(tpl.examples || [])[i] || 'Valor'}
+                  <label>Variable {i + 1}</label>
+                  <input value={vars[i] || ''} placeholder={`{{${i + 1}}}`}
                          onChange={e => setVars(arr => { const n = [...arr]; n[i] = e.target.value; return n; })} />
                 </div>
               ))}
