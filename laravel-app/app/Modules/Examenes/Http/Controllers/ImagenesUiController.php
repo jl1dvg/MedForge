@@ -28,6 +28,7 @@ class ImagenesUiController
             'imagenesRealizadas' => $payload['rows'],
             'filters' => $payload['filters'],
             'afiliacionOptions' => $payload['afiliacionOptions'],
+            'afiliacionCategoriaOptions' => $payload['afiliacionCategoriaOptions'],
             'seguroOptions' => $payload['seguroOptions'],
         ]);
     }

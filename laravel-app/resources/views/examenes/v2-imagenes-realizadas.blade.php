@@ -14,12 +14,14 @@
     /** @var array<int, array<string,mixed>> $imagenesRealizadas */
     /** @var array<string, string> $filters */
     /** @var array<int, array{value:string,label:string}> $afiliacionOptions */
+    /** @var array<int, array{value:string,label:string}> $afiliacionCategoriaOptions */
     /** @var array<int, array{value:string,label:string}> $seguroOptions */
 
     if (!isset($filters) || !is_array($filters)) {
         $filters = [
             'fecha_inicio' => '',
             'fecha_fin' => '',
+            'afiliacion_categoria' => '',
             'afiliacion' => '',
             'seguro' => '',
             'sede' => '',
@@ -32,6 +34,16 @@
     }
 
     $afiliacionOptions = isset($afiliacionOptions) && is_array($afiliacionOptions) ? $afiliacionOptions : [['value' => '', 'label' => 'Todas las empresas']];
+    $afiliacionCategoriaOptions = isset($afiliacionCategoriaOptions) && is_array($afiliacionCategoriaOptions)
+        ? $afiliacionCategoriaOptions
+        : [
+            ['value' => '', 'label' => 'Todos los tipos'],
+            ['value' => 'publico', 'label' => 'Pública'],
+            ['value' => 'privado', 'label' => 'Privada'],
+            ['value' => 'particular', 'label' => 'Particular'],
+            ['value' => 'fundacional', 'label' => 'Fundacional'],
+            ['value' => 'otros', 'label' => 'Otros'],
+        ];
     $seguroOptions = isset($seguroOptions) && is_array($seguroOptions) ? $seguroOptions : [['value' => '', 'label' => 'Todos los seguros']];
 
     $sedeOptions = [
@@ -189,6 +201,17 @@
                                value="<?= htmlspecialchars($filters['fecha_fin'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
                     </div>
                     <div class="col-sm-6 col-md-2">
+                        <label class="form-label">Tipo de afiliación</label>
+                        <select class="form-select" name="afiliacion_categoria" id="filtroTipoAfiliacion">
+                            <?php foreach ($afiliacionCategoriaOptions as $option): ?>
+                                <?php $optionValue = trim((string)($option['value'] ?? '')); ?>
+                                <option value="<?= htmlspecialchars($optionValue, ENT_QUOTES, 'UTF-8') ?>" <?= ($optionValue === (string)($filters['afiliacion_categoria'] ?? '')) ? 'selected' : '' ?>>
+                                    <?= htmlspecialchars((string)($option['label'] ?? $optionValue), ENT_QUOTES, 'UTF-8') ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="col-sm-6 col-md-2">
                         <label class="form-label">Empresa de seguro</label>
                         <select class="form-select" name="afiliacion" id="filtroAfiliacion">
                             <?php foreach ($afiliacionOptions as $option): ?>
@@ -223,18 +246,6 @@
                         </select>
                     </div>
                     <div class="col-sm-6 col-md-2">
-                        <label class="form-label">Tipo examen</label>
-                        <select class="form-select" name="tipo_examen" id="filtroTipoExamen"
-                                data-current="<?= htmlspecialchars($filters['tipo_examen'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
-                            <option value="">Todos</option>
-                        </select>
-                    </div>
-                    <div class="col-sm-6 col-md-2">
-                        <label class="form-label">Paciente/Cédula</label>
-                        <input type="text" class="form-control" name="paciente" placeholder="Nombre o ID"
-                               value="<?= htmlspecialchars($filters['paciente'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
-                    </div>
-                    <div class="col-sm-6 col-md-2">
                         <label class="form-label">Estado</label>
                         <select class="form-select" name="estado_agenda">
                             <option value="">Todos</option>
@@ -245,6 +256,18 @@
                             </option>
                             <?php endforeach; ?>
                         </select>
+                    </div>
+                    <div class="col-sm-6 col-md-2">
+                        <label class="form-label">Tipo examen</label>
+                        <select class="form-select" name="tipo_examen" id="filtroTipoExamen"
+                                data-current="<?= htmlspecialchars($filters['tipo_examen'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
+                            <option value="">Todos</option>
+                        </select>
+                    </div>
+                    <div class="col-sm-6 col-md-2">
+                        <label class="form-label">Paciente/Cédula</label>
+                        <input type="text" class="form-control" name="paciente" placeholder="Nombre o ID"
+                               value="<?= htmlspecialchars($filters['paciente'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
                     </div>
                     <div class="col-12 d-flex gap-2">
                         <button type="submit" class="btn btn-primary btn-sm">
