@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import laravel from 'laravel-vite-plugin';
+import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
     plugins: [
@@ -39,11 +40,11 @@ export default defineConfig({
                 'resources/js/v2/usuarios-index.js',
                 'resources/js/v2/settings-index.js',
                 'resources/js/crm/main.tsx',
-                'resources/js/agenda/main.tsx',
-                'resources/js/whatsapp/main.jsx',
+                'resources/js/pharmacy/main.tsx',
             ],
             refresh: true,
         }),
+        tailwindcss(),
     ],
     server: {
         watch: {
