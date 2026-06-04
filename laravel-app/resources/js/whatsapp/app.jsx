@@ -98,12 +98,30 @@ export function WaApp() {
     notify._t = setTimeout(() => setToastState(null), 2800);
   }, []);
 
-  // ── Accent CSS vars ──────────────────────────────────────────────────────────
+  // ── Visual tweaks — compact mode + accent color, persisted in localStorage ───
+  const [compact, setCompact] = useState(() => {
+    try { return localStorage.getItem('wa3_compact') === '1'; } catch { return false; }
+  });
+  const [accent, setAccent] = useState(() => {
+    try { return localStorage.getItem('wa3_accent') || '#5156be'; } catch { return '#5156be'; }
+  });
+
+  const applyCompact = useCallback((v) => {
+    setCompact(v);
+    try { localStorage.setItem('wa3_compact', v ? '1' : '0'); } catch {}
+  }, []);
+
+  const applyAccent = useCallback((v) => {
+    setAccent(v);
+    try { localStorage.setItem('wa3_accent', v); } catch {}
+  }, []);
+
+  // ── Accent CSS vars (dynamic) ─────────────────────────────────────────────────
   const rootStyle = useMemo(() => ({
-    '--wa3-accent': '#5156be',
-    '--wa3-accent-soft': 'color-mix(in srgb, #5156be 12%, white)',
-    '--wa3-bubble-out': 'color-mix(in srgb, #5156be 14%, white)',
-  }), []);
+    '--wa3-accent': accent,
+    '--wa3-accent-soft': `color-mix(in srgb, ${accent} 12%, white)`,
+    '--wa3-bubble-out': `color-mix(in srgb, ${accent} 14%, white)`,
+  }), [accent]);
 
   // ── Pick conversation ────────────────────────────────────────────────────────
   const pickConvo = useCallback((id) => {
@@ -189,7 +207,7 @@ export function WaApp() {
     },
   }), [activeConvo, me.id, showDrawer, sendMessage, sendMedia, notify, reloadConvos]);
 
-  const shellClass = ['wa3', showDrawer ? 'has-drawer' : ''].filter(Boolean).join(' ');
+  const shellClass = ['wa3', showDrawer ? 'has-drawer' : '', compact ? 'is-compact' : ''].filter(Boolean).join(' ');
 
   return (
     <div className={shellClass} id="wa3-root" style={rootStyle}>
@@ -211,6 +229,8 @@ export function WaApp() {
           try { await requeueExpired(); notify('Handoffs vencidos reencolados', 'mdi-restore-alert'); }
           catch { notify('Error al reencolar', 'mdi-alert'); }
         }}
+        compact={compact} accent={accent}
+        onTweakCompact={applyCompact} onTweakAccent={applyAccent}
       />
 
       <WaThreadPane
