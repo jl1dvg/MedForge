@@ -58,8 +58,10 @@ export function WaApp() {
     fetchTemplates().then(r => setTemplates(r.data || [])).catch(() => {});
   }, []);
 
-  // First-visit tour
+  // First-visit tour — also activates with ?tour=1 in the URL
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('tour') === '1') { setModal('tour'); return; }
     let seen = false;
     try { seen = localStorage.getItem('medforge_chat_tour_visto') === '1'; } catch {}
     if (!seen) { const id = setTimeout(() => setModal('tour'), 600); return () => clearTimeout(id); }
