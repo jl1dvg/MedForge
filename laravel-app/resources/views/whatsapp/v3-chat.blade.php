@@ -139,7 +139,6 @@
             --wa3-radius-sm:   10px;
             display: grid;
             grid-template-columns: 360px 1fr;
-            height: calc(100vh - 60px);
             height: calc(100svh - 60px);
             background: var(--wa3-bg);
             color: var(--wa3-text);
@@ -440,55 +439,15 @@
         .wa3-empty p { font: 400 13px var(--bs-body-font-family); color: var(--wa3-text-mute); margin: 0; }
 
         @media (max-width: 1280px) { .wa3.has-drawer { grid-template-columns: 320px 1fr 0; } .wa3.has-drawer .wa3-drawer { display: none; } }
-        @media (max-width: 1000px) { .wa3 { grid-template-columns: 260px 1fr; } }
-        @media (max-width: 960px)  { .wa3 { grid-template-columns: 220px 1fr; } .wa3-inbox__head { padding: 10px 12px 8px; } }
-
-        /* Pantallas con poco alto */
-        @media (max-height: 720px) {
-            .wa3-inbox__head { padding-top: 10px; padding-bottom: 8px; gap: 8px; }
-            .wa3-inbox__title { font-size: 16px; }
-            .wa3-row { padding: 9px 16px; }
-            .wa3-thread__head { padding: 9px 18px; }
-            .wa3-context { padding-top: 5px; padding-bottom: 5px; }
-            .wa3-composer { padding: 8px 16px; }
-            .wa3-messages { padding-top: 12px; }
-            .wa3-drawer__profile { padding: 18px 18px 12px; }
-            .wa3-drawer__profile .wa3-avatar { width: 60px; height: 60px; font-size: 22px; }
-        }
-        @media (max-height: 620px) {
-            .wa3-inbox__head { padding-top: 8px; padding-bottom: 6px; gap: 6px; }
-            .wa3-chips { padding-bottom: 6px; }
-            .wa3-row { padding: 7px 14px; }
-            .wa3-avatar { width: 38px; height: 38px; font-size: 13px; }
-            .wa3-row { grid-template-columns: 38px 1fr auto; }
-            .wa3-composer { padding: 6px 14px; }
-        }
-        /* 900×540 y similares: modo ultra-compacto */
-        @media (max-height: 560px) {
-            .wa3-inbox__head { padding: 6px 12px; gap: 5px; }
-            .wa3-inbox__title { font-size: 14px; }
-            .wa3-chips-wrap { display: none; }
-            .wa3-row { padding: 6px 12px; gap: 8px; }
-            .wa3-avatar { width: 32px; height: 32px; font-size: 12px; }
-            .wa3-row { grid-template-columns: 32px 1fr auto; }
-            .wa3-row__preview { display: none; }
-            .wa3-thread__head { padding: 7px 14px; }
-            .wa3-context { display: none; }
-            .wa3-composer { padding: 5px 12px; }
-            .wa3-composer textarea { max-height: 80px; }
-            .wa3-composer__hint { display: none; }
-            .wa3-messages { padding: 8px 14px 4px; gap: 4px; }
-        }
-
+        @media (max-width: 1000px) { .wa3 { grid-template-columns: 280px 1fr; } }
         /* Back button: hidden on desktop, shown on mobile */
         .wa3-back-btn { display: none !important; }
 
-        @media (max-width: 900px) {
+        @media (max-width: 760px) {
             /* Single-panel layout: only one panel visible at a time */
             .wa3, .wa3.has-drawer, .wa3.has-active, .wa3.has-active.has-drawer {
                 grid-template-columns: 1fr;
                 grid-template-rows: 1fr;
-                height: calc(100vh - 60px);
                 height: calc(100svh - 60px);
                 min-height: unset;
             }
@@ -514,7 +473,7 @@
             .wa3-composer { padding: 10px 12px; }
             .wa3-composer__tools { display: none; }
             .wa3-modal { padding: 12px; align-items: flex-end; }
-            .wa3-modal__card { max-height: calc(100vh - 24px); max-height: calc(100svh - 24px); border-radius: 16px 16px 0 0; }
+            .wa3-modal__card { max-height: calc(100svh - 24px); border-radius: 16px 16px 0 0; }
         }
 
         /* Conversations / Agents view tabs */
@@ -618,7 +577,7 @@
     'canOperate'    => $canOperateConversation,
     'pusher'        => $realtimeConfig ?? [],
 ], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) !!}</script>
-<div id="wa3-react-root" style="height:calc(100vh - 60px);height:calc(100svh - 60px);min-height:400px"></div>
+<div id="wa3-react-root" style="height:calc(100svh - 60px);min-height:400px"></div>
 @endsection
 
 @push('scripts')
