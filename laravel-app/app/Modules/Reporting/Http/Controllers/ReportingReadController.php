@@ -8,7 +8,6 @@ use App\Modules\Reporting\Services\ProtocolReportDataService;
 use App\Modules\Reporting\Services\CoberturaReportDataService;
 use App\Modules\Reporting\Services\ConsultaReportDataService;
 use App\Modules\Reporting\Services\ReportPdfService;
-use App\Modules\Reporting\Services\ImagenesPdfCacheService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -24,7 +23,6 @@ class ReportingReadController
     private ConsultaReportDataService $consultaService;
     private PostSurgeryRestReportDataService $postSurgeryRestService;
     private ?ReportPdfService $reportPdfService = null;
-    private ?ImagenesPdfCacheService $imagenesPdfCacheService = null;
 
     public function __construct()
     {
@@ -791,12 +789,7 @@ class ReportingReadController
         }
 
         try {
-            $pdf = $this->imagenesPdfCache()->remember(
-                'imagenes-012b',
-                ['form_id' => $formId, 'hc_number' => $hcNumber],
-                $formId,
-                fn(): ?array => $this->reportPdfService()->generateInforme012BPdf($formId, $hcNumber)
-            );
+            $pdf = $this->reportPdfService()->generateInforme012BPdf($formId, $hcNumber);
         } catch (\Throwable $e) {
             Log::error('reporting.read.imagenes_012b_pdf.error', [
                 'request_id' => $requestId,
@@ -851,15 +844,10 @@ class ReportingReadController
         }
 
         try {
-            $pdf = $this->imagenesPdfCache()->remember(
-                'imagenes-012b-package-single',
-                ['form_id' => $formId, 'hc_number' => $hcNumber],
-                $formId,
-                fn(): ?array => $this->reportPdfService()->generateInforme012BPackagePdf([[
-                    'form_id' => $formId,
-                    'hc_number' => $hcNumber,
-                ]])
-            );
+            $pdf = $this->reportPdfService()->generateInforme012BPackagePdf([[
+                'form_id' => $formId,
+                'hc_number' => $hcNumber,
+            ]]);
         } catch (\Throwable $e) {
             Log::error('reporting.read.imagenes_012b_package_pdf.error', [
                 'request_id' => $requestId,
@@ -918,12 +906,7 @@ class ReportingReadController
         }
 
         try {
-            $pdf = $this->imagenesPdfCache()->remember(
-                'imagenes-012b-package-selection',
-                ['items' => $items, 'fecha_documento' => $fechaDocumento],
-                $this->firstSelectedFormId($items),
-                fn(): ?array => $this->reportPdfService()->generateInforme012BPackagePdf($items, $fechaDocumento)
-            );
+            $pdf = $this->reportPdfService()->generateInforme012BPackagePdf($items, $fechaDocumento);
         } catch (\Throwable $e) {
             Log::error('reporting.read.imagenes_012b_package_selection_pdf.error', [
                 'request_id' => $requestId,
@@ -981,17 +964,7 @@ class ReportingReadController
         }
 
         try {
-            $pdf = $this->imagenesPdfCache()->remember(
-                'imagenes-012a-cobertura',
-                [
-                    'form_id' => $formId,
-                    'hc_number' => $hcNumber,
-                    'examen_id' => $examenId,
-                    'selected_items' => $selectedItems,
-                ],
-                $formId,
-                fn(): ?array => $this->reportPdfService()->generateCobertura012APdf($formId, $hcNumber, $examenId, $selectedItems)
-            );
+            $pdf = $this->reportPdfService()->generateCobertura012APdf($formId, $hcNumber, $examenId, $selectedItems);
         } catch (\Throwable $e) {
             Log::error('reporting.read.imagenes_012a_pdf.error', [
                 'request_id' => $requestId,
@@ -1146,29 +1119,5 @@ class ReportingReadController
         }
 
         return $this->reportPdfService;
-    }
-
-    private function imagenesPdfCache(): ImagenesPdfCacheService
-    {
-        if ($this->imagenesPdfCacheService === null) {
-            $this->imagenesPdfCacheService = new ImagenesPdfCacheService();
-        }
-
-        return $this->imagenesPdfCacheService;
-    }
-
-    /**
-     * @param array<int, array<string, mixed>> $items
-     */
-    private function firstSelectedFormId(array $items): ?string
-    {
-        foreach ($items as $item) {
-            $formId = trim((string) ($item['form_id'] ?? ''));
-            if ($formId !== '') {
-                return $formId;
-            }
-        }
-
-        return null;
     }
 }
