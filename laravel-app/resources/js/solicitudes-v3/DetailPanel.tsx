@@ -2,7 +2,7 @@
 // MedForge · Solicitudes v3 — Panel CRM (workspace por pestañas)
 // ============================================================
 import React, { useState, useEffect } from 'react';
-import type { Solicitud, Tarea, CrmCaseState } from './types';
+import type { Solicitud, CrmCaseState } from './types';
 import { DocAvatar, fmtDate, fmtDateTime, fmtSla, SLA_META } from './components';
 
 const COL_TONE: Record<string, string> = {
@@ -21,7 +21,7 @@ const CRM_TABS = [
   { key: 'documentos',   label: 'Documentos',    icon: 'mdi-paperclip'                  },
 ];
 
-const PRIO_TONE: Record<string, string> = { Alta: 'danger', Media: 'warning', Normal: 'ok', Baja: 'ok' };
+const PRIO_TONE: Record<string, string> = { Alta: 'danger', Media: 'warning', Normal: 'ok', Baja: 'ok', alta: 'danger', media: 'warning', normal: 'ok', baja: 'ok' };
 
 const money = (n: number | null | undefined) =>
   '$' + Number(n || 0).toLocaleString('es-EC', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -100,42 +100,93 @@ function TabSeguimiento({ sol, crmCase }: { sol: Solicitud; crmCase: CrmCaseStat
 
 // ---- Tab: Tareas --------------------------------------------
 
-function TabTareas({ sol, onToggleTask, onAddTask }: { sol: Solicitud; onToggleTask: (id: number, idx: number) => void; onAddTask: (id: number, t: Tarea) => void }) {
+function TabTareas({
+  sol,
+  crmCase,
+  onToggleTask,
+  onAddTask,
+}: {
+  sol: Solicitud;
+  crmCase: CrmCaseState | null;
+  onToggleTask: (taskId: number, currentStatus: string) => Promise<void>;
+  onAddTask: (title: string, priority: string) => Promise<void>;
+}) {
   const [titulo, setTitulo] = useState('');
   const [prio, setPrio] = useState('Normal');
-  const tareas = sol.detalle.tareas;
-  const submit = (e: React.FormEvent) => {
+  const [saving, setSaving] = useState(false);
+  const [busyTaskId, setBusyTaskId] = useState<number | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const crmTasks = crmCase?.tasks ?? null;
+  const tareas = crmTasks ?? sol.detalle.tareas;
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!titulo.trim()) return;
-    onAddTask(sol.id, { titulo: titulo.trim(), prioridad: prio, asignado: sol.crm.responsable, fecha: new Date(Date.now() + 2 * 86400000).toISOString(), done: false });
-    setTitulo(''); setPrio('Normal');
+    const title = titulo.trim();
+    if (!title || saving) return;
+    setSaving(true);
+    setFormError(null);
+    try {
+      await onAddTask(title, prio.toLowerCase());
+      setTitulo('');
+      setPrio('Normal');
+    } catch {
+      setFormError('No se pudo guardar la tarea.');
+    } finally {
+      setSaving(false);
+    }
+  };
+  const toggle = async (taskId: number, status: string) => {
+    if (busyTaskId != null) return;
+    setBusyTaskId(taskId);
+    setFormError(null);
+    try {
+      await onToggleTask(taskId, status);
+    } catch {
+      setFormError('No se pudo actualizar la tarea.');
+    } finally {
+      setBusyTaskId(null);
+    }
   };
   return (
     <section>
       <h3 className="psec-title">
         <i className="mdi mdi-format-list-checks"></i>Tareas y recordatorios
-        <span className="psec-meta">{tareas.filter((t) => !t.done).length} pendientes</span>
+        <span className="psec-meta">{crmTasks ? crmTasks.filter((t) => t.status !== 'done' && t.status !== 'completed').length : sol.detalle.tareas.filter((t) => !t.done).length} pendientes</span>
       </h3>
       <div className="task-list">
         {tareas.length === 0 && <div className="mini-empty">Sin tareas registradas</div>}
-        {tareas.map((tk, i) => (
-          <div key={i} className={`task-row ${tk.done ? 'done' : ''}`} onClick={() => onToggleTask(sol.id, i)}>
-            <span className="chk-box">{tk.done && <i className="mdi mdi-check"></i>}</span>
-            <div className="task-body">
-              <div className="task-title">{tk.titulo}</div>
-              <div className="task-meta"><i className="mdi mdi-account-outline"></i>{tk.asignado} · <i className="mdi mdi-calendar-blank-outline"></i>{fmtDate(tk.fecha)}</div>
+        {crmTasks ? (
+          crmTasks.map((tk) => (
+            <div key={tk.id} className={`task-row ${tk.status === 'done' || tk.status === 'completed' ? 'done' : ''}`} onClick={() => void toggle(tk.id, tk.status)}>
+              <span className="chk-box">{(tk.status === 'done' || tk.status === 'completed') && <i className="mdi mdi-check"></i>}</span>
+              <div className="task-body">
+                <div className="task-title">{tk.title}</div>
+                <div className="task-meta"><i className="mdi mdi-account-outline"></i>{tk.assignedTo ?? '—'} · <i className="mdi mdi-calendar-blank-outline"></i>{tk.dueAt ? fmtDate(tk.dueAt) : '—'}</div>
+              </div>
+              <span className={`prio-tag prio-${PRIO_TONE[tk.priority] || 'ok'}`}>{tk.priority}</span>
+              {busyTaskId === tk.id && <i className="mdi mdi-loading mdi-spin"></i>}
             </div>
-            <span className={`prio-tag prio-${PRIO_TONE[tk.prioridad] || 'ok'}`}>{tk.prioridad}</span>
-          </div>
-        ))}
+          ))
+        ) : (
+          sol.detalle.tareas.map((tk, i) => (
+            <div key={i} className={`task-row ${tk.done ? 'done' : ''}`}>
+              <span className="chk-box">{tk.done && <i className="mdi mdi-check"></i>}</span>
+              <div className="task-body">
+                <div className="task-title">{tk.titulo}</div>
+                <div className="task-meta"><i className="mdi mdi-account-outline"></i>{tk.asignado} · <i className="mdi mdi-calendar-blank-outline"></i>{fmtDate(tk.fecha)}</div>
+              </div>
+              <span className={`prio-tag prio-${PRIO_TONE[tk.prioridad] || 'ok'}`}>{tk.prioridad}</span>
+            </div>
+          ))
+        )}
       </div>
-      <form className="add-form" onSubmit={submit}>
+      <form className="add-form" onSubmit={(e) => void submit(e)}>
         <input className="fld" placeholder="Nueva tarea…" value={titulo} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTitulo(e.target.value)} />
         <select className="fld fld-sm" value={prio} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setPrio(e.target.value)}>
           <option>Normal</option><option>Media</option><option>Alta</option><option>Baja</option>
         </select>
-        <button className="btn-add" type="submit"><i className="mdi mdi-plus"></i>Añadir</button>
+        <button className="btn-add" type="submit" disabled={saving || !titulo.trim()}><i className={`mdi ${saving ? 'mdi-loading mdi-spin' : 'mdi-plus'}`}></i>Añadir</button>
       </form>
+      {formError && <div className="form-error" role="alert">{formError}</div>}
     </section>
   );
 }
@@ -225,40 +276,99 @@ function TabNotas({
 
 // ---- Tab: Comunicación ------------------------------------
 
-function TabComunicacion({ sol, showToast }: { sol: Solicitud; showToast: (msg: string, icon?: string) => void }) {
+function TabComunicacion({
+  sol,
+  crmCase,
+  onSendWhatsapp,
+  onSendEmail,
+}: {
+  sol: Solicitud;
+  crmCase: CrmCaseState | null;
+  onSendWhatsapp: (payload: { recipients: string[]; message: string }) => Promise<void>;
+  onSendEmail: (payload: { to: string[]; cc?: string[]; subject: string; body: string }) => Promise<void>;
+}) {
   const [wa, setWa] = useState('');
+  const [waRecipient, setWaRecipient] = useState('');
+  const [waSending, setWaSending] = useState(false);
   const [emailBody, setEmailBody] = useState('');
-  const sendWa = (e: React.FormEvent) => { e.preventDefault(); if (!wa.trim()) return; showToast('WhatsApp enviado a ' + sol.full_name.split(' ')[0], 'mdi-whatsapp'); setWa(''); };
-  const sendEmail = (e: React.FormEvent) => { e.preventDefault(); if (!emailBody.trim()) return; showToast('Correo enviado a ' + sol.crm.email, 'mdi-email-check-outline'); setEmailBody(''); };
+  const [emailSubject, setEmailSubject] = useState('Seguimiento de solicitud');
+  const [emailRecipient, setEmailRecipient] = useState('');
+  const [emailSending, setEmailSending] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const phoneOptions = Array.from(new Set([crmCase?.contacts.primaryPhone, ...(crmCase?.contacts.alternatePhones ?? []), sol.crm.telefono].filter((v): v is string => Boolean(v && v !== '—'))));
+  const emailOptions = Array.from(new Set([crmCase?.contacts.primaryEmail, ...(crmCase?.contacts.alternateEmails ?? []), sol.crm.email].filter((v): v is string => Boolean(v && v !== '—'))));
+  useEffect(() => {
+    setWaRecipient((cur) => phoneOptions.includes(cur) ? cur : phoneOptions[0] || '');
+  }, [phoneOptions.join('|')]);
+  useEffect(() => {
+    setEmailRecipient((cur) => emailOptions.includes(cur) ? cur : emailOptions[0] || '');
+  }, [emailOptions.join('|')]);
+  const sendWa = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!wa.trim() || !waRecipient || waSending) return;
+    setWaSending(true);
+    setFormError(null);
+    try {
+      await onSendWhatsapp({ recipients: [waRecipient], message: wa.trim() });
+      setWa('');
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'No se pudo enviar WhatsApp.');
+    } finally {
+      setWaSending(false);
+    }
+  };
+  const sendEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!emailBody.trim() || !emailSubject.trim() || !emailRecipient || emailSending) return;
+    setEmailSending(true);
+    setFormError(null);
+    try {
+      await onSendEmail({ to: [emailRecipient], subject: emailSubject.trim(), body: emailBody.trim() });
+      setEmailBody('');
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'No se pudo enviar el correo.');
+    } finally {
+      setEmailSending(false);
+    }
+  };
   return (
     <>
       <section>
-        <h3 className="psec-title"><i className="mdi mdi-whatsapp" style={{ color: '#1f9d7a' }}></i>WhatsApp <span className="psec-meta">{sol.crm.telefono}</span></h3>
-        <form className="add-form col" onSubmit={sendWa}>
+        <h3 className="psec-title"><i className="mdi mdi-whatsapp" style={{ color: '#1f9d7a' }}></i>WhatsApp <span className="psec-meta">{waRecipient || '—'}</span></h3>
+        <form className="add-form col" onSubmit={(e) => void sendWa(e)}>
+          <select className="fld" value={waRecipient} onChange={(e) => setWaRecipient(e.target.value)}>
+            {phoneOptions.length === 0 && <option value="">Sin teléfonos registrados</option>}
+            {phoneOptions.map((phone) => <option key={phone} value={phone}>{phone}</option>)}
+          </select>
           <div className="quick-replies">
             {['Confirmar fecha de cirugía', 'Recordatorio de ayuno', 'Solicitar documentos'].map((q) => (
               <button type="button" key={q} className="qr" onClick={() => setWa(q + ' — Estimado/a ' + sol.full_name.split(' ')[0] + ', ')}>{q}</button>
             ))}
           </div>
           <textarea className="fld" rows={3} placeholder="Escribe un mensaje para el paciente…" value={wa} onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setWa(e.target.value)}></textarea>
-          <button className="btn-add self-end btn-wa" type="submit"><i className="mdi mdi-send"></i>Enviar WhatsApp</button>
+          <button className="btn-add self-end btn-wa" type="submit" disabled={waSending || !wa.trim() || !waRecipient}><i className={`mdi ${waSending ? 'mdi-loading mdi-spin' : 'mdi-send'}`}></i>Enviar WhatsApp</button>
         </form>
       </section>
       <section>
-        <h3 className="psec-title"><i className="mdi mdi-email-outline"></i>Correo <span className="psec-meta">{sol.crm.email}</span></h3>
-        <form className="add-form col" onSubmit={sendEmail}>
-          <input className="fld" placeholder="Asunto: Seguimiento de solicitud" />
+        <h3 className="psec-title"><i className="mdi mdi-email-outline"></i>Correo <span className="psec-meta">{emailRecipient || '—'}</span></h3>
+        <form className="add-form col" onSubmit={(e) => void sendEmail(e)}>
+          <select className="fld" value={emailRecipient} onChange={(e) => setEmailRecipient(e.target.value)}>
+            {emailOptions.length === 0 && <option value="">Sin correos registrados</option>}
+            {emailOptions.map((email) => <option key={email} value={email}>{email}</option>)}
+          </select>
+          <input className="fld" placeholder="Asunto: Seguimiento de solicitud" value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} />
           <textarea className="fld" rows={4} placeholder="Escribe el correo…" value={emailBody} onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setEmailBody(e.target.value)}></textarea>
-          <button className="btn-add self-end" type="submit"><i className="mdi mdi-email-send-outline"></i>Enviar correo</button>
+          <button className="btn-add self-end" type="submit" disabled={emailSending || !emailBody.trim() || !emailSubject.trim() || !emailRecipient}><i className={`mdi ${emailSending ? 'mdi-loading mdi-spin' : 'mdi-email-send-outline'}`}></i>Enviar correo</button>
         </form>
       </section>
+      {formError && <div className="form-error" role="alert">{formError}</div>}
     </>
   );
 }
 
 // ---- Tab: Propuestas ----------------------------------------
 
-function TabPropuestas({ sol, onAddProposal, showToast }: { sol: Solicitud; onAddProposal: (id: number) => void; showToast: (msg: string, icon?: string) => void }) {
+function TabPropuestas({ sol }: { sol: Solicitud }) {
   const props_ = sol.detalle.propuestas;
   const PROP_STATE_TONE: Record<string, string> = { Borrador: 'none', Enviada: 'warn', Aceptada: 'ok' };
   return (
@@ -290,21 +400,23 @@ function TabPropuestas({ sol, onAddProposal, showToast }: { sol: Solicitud; onAd
             <div className="prop-foot">
               <span className="prop-vig"><i className="mdi mdi-calendar-clock-outline"></i>Vigente hasta {fmtDate(p.vigencia)}</span>
               <div className="prop-actions">
-                <button onClick={() => showToast('Propuesta enviada al paciente', 'mdi-send')}><i className="mdi mdi-send-outline"></i>Enviar</button>
-                <button onClick={() => showToast('PDF de propuesta generado', 'mdi-file-pdf-box')}><i className="mdi mdi-file-pdf-box"></i>PDF</button>
+                <button disabled title="Envio disponible al conectar propuesta real"><i className="mdi mdi-send-outline"></i>Enviar</button>
+                <button disabled title="PDF disponible al conectar propuesta real"><i className="mdi mdi-file-pdf-box"></i>PDF</button>
               </div>
             </div>
           </div>
         ))}
       </div>
-      <button className="btn-add full" onClick={() => onAddProposal(sol.id)}><i className="mdi mdi-file-document-plus-outline"></i>Nuevo borrador de propuesta</button>
+      <button className="btn-add full" disabled title="Conecta primero el buscador de catálogo">
+        <i className="mdi mdi-file-document-plus-outline"></i>Nuevo borrador de propuesta
+      </button>
     </section>
   );
 }
 
 // ---- Tab: Documentos ----------------------------------------
 
-function TabDocumentos({ sol, showToast }: { sol: Solicitud; showToast: (msg: string, icon?: string) => void }) {
+function TabDocumentos({ sol }: { sol: Solicitud }) {
   const adj = sol.detalle.adjuntos;
   const der = sol.detalle.derivacion;
   return (
@@ -332,14 +444,14 @@ function TabDocumentos({ sol, showToast }: { sol: Solicitud; showToast: (msg: st
         <div className="doc-list">
           {adj.length === 0 && <div className="mini-empty">Sin documentos adjuntos</div>}
           {adj.map((a, i) => (
-            <div className="doc-row" key={i} onClick={() => showToast('Abriendo ' + a.nombre, 'mdi-file-eye-outline')}>
+            <div className="doc-row is-disabled" key={i} title="Apertura de documentos pendiente de conectar al repositorio real">
               <span className="doc-ic"><i className={`mdi ${a.icon}`}></i></span>
               <div className="doc-info"><div className="doc-name2">{a.nombre}</div><div className="doc-meta">{a.peso} · {fmtDate(a.at)}</div></div>
               <i className="mdi mdi-download doc-dl"></i>
             </div>
           ))}
         </div>
-        <button className="btn-add full" onClick={() => showToast('Selector de archivo (demo)', 'mdi-upload')}><i className="mdi mdi-upload"></i>Subir documento</button>
+        <button className="btn-add full" disabled title="Subida de documentos pendiente de conectar al repositorio real"><i className="mdi mdi-upload"></i>Subir documento</button>
       </section>
     </>
   );
@@ -356,16 +468,16 @@ export interface DetailPanelProps {
   onClose: () => void;
   onToggleStep: (id: number, slug: string) => void;
   onAdvance: (id: number) => void;
-  onToggleTask: (id: number, idx: number) => void;
-  onAddTask: (id: number, t: Tarea) => void;
+  onToggleTask: (taskId: number, currentStatus: string) => Promise<void>;
+  onAddTask: (title: string, priority: string) => Promise<void>;
   onAddNote: (txt: string) => Promise<void>;
   onDeleteNote: (noteId: number) => Promise<void>;
-  onAddProposal: (id: number) => void;
+  onSendWhatsapp: (payload: { recipients: string[]; message: string }) => Promise<void>;
+  onSendEmail: (payload: { to: string[]; cc?: string[]; subject: string; body: string }) => Promise<void>;
   onOpenPrefactura: (id: number) => void;
-  showToast: (msg: string, icon?: string) => void;
 }
 
-export function DetailPanel({ sol, open, onClose, onToggleStep, onAdvance, onToggleTask, onAddTask, crmCase, crmLoading, crmError, onAddNote, onDeleteNote, onAddProposal, onOpenPrefactura, showToast }: DetailPanelProps) {
+export function DetailPanel({ sol, open, onClose, onToggleStep, onAdvance, onToggleTask, onAddTask, crmCase, crmLoading, crmError, onAddNote, onDeleteNote, onSendWhatsapp, onSendEmail, onOpenPrefactura }: DetailPanelProps) {
   const [tab, setTab] = useState('seguimiento');
 
   useEffect(() => { if (open) setTab('seguimiento'); }, [sol?.id, open]);
@@ -406,11 +518,11 @@ export function DetailPanel({ sol, open, onClose, onToggleStep, onAdvance, onTog
               {crmLoading && <div className="mini-empty"><i className="mdi mdi-loading mdi-spin"></i> Cargando seguimiento CRM…</div>}
               {crmError && <div className="form-error" role="alert">{crmError}</div>}
               {tab === 'seguimiento' && <TabSeguimiento sol={sol} crmCase={crmCase} />}
-              {tab === 'tareas' && <TabTareas sol={sol} onToggleTask={onToggleTask} onAddTask={onAddTask} />}
+              {tab === 'tareas' && <TabTareas sol={sol} crmCase={crmCase} onToggleTask={onToggleTask} onAddTask={onAddTask} />}
               {tab === 'notas' && <TabNotas sol={sol} crmCase={crmCase} onAddNote={onAddNote} onDeleteNote={onDeleteNote} />}
-              {tab === 'comunicacion' && <TabComunicacion sol={sol} showToast={showToast} />}
-              {tab === 'propuestas' && <TabPropuestas sol={sol} onAddProposal={onAddProposal} showToast={showToast} />}
-              {tab === 'documentos' && <TabDocumentos sol={sol} showToast={showToast} />}
+              {tab === 'comunicacion' && <TabComunicacion sol={sol} crmCase={crmCase} onSendWhatsapp={onSendWhatsapp} onSendEmail={onSendEmail} />}
+              {tab === 'propuestas' && <TabPropuestas sol={sol} />}
+              {tab === 'documentos' && <TabDocumentos sol={sol} />}
             </div>
 
             <footer className="panel-foot">

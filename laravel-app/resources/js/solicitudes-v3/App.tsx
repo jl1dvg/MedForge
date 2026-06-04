@@ -2,8 +2,22 @@
 // MedForge · Solicitudes v3 — App root
 // ============================================================
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import type { Solicitud, Filters, Tarea, TweakValues, Alert, ChecklistStep, CrmCaseState } from './types';
-import { COLUMNS, PHASES, fetchKanbanData, fetchDetalle, rebuildState, updateEstado, fetchCrmCase, createCrmNote, deleteCrmNote } from './api';
+import type { Solicitud, Filters, TweakValues, Alert, ChecklistStep, CrmCaseState } from './types';
+import {
+  COLUMNS,
+  PHASES,
+  fetchKanbanData,
+  fetchDetalle,
+  rebuildState,
+  updateEstado,
+  fetchCrmCase,
+  createCrmNote,
+  deleteCrmNote,
+  createCrmTask,
+  updateCrmTask,
+  sendCrmWhatsapp,
+  sendCrmEmail,
+} from './api';
 import { Kpi } from './components';
 import { Toolbar, Board, TableView } from './Board';
 import { DetailPanel } from './DetailPanel';
@@ -157,10 +171,6 @@ export function App() {
     }));
   }, [showToast]);
 
-  const patchDetalle = useCallback((id: number, fn: (s: Solicitud) => Partial<Solicitud['detalle']>) => {
-    setSolicitudes((list: Solicitud[]) => list.map((s: Solicitud) => s.id === id ? { ...s, detalle: { ...s.detalle, ...fn(s) } } : s));
-  }, []);
-
   const addCrmNote = useCallback(async (txt: string) => {
     const caseId = selectedId;
     if (caseId == null) return;
@@ -181,20 +191,58 @@ export function App() {
     showToast('Nota eliminada', 'mdi-delete-outline');
   }, [selectedId, showToast]);
 
-  const addTask = useCallback((id: number, task: Tarea) => {
-    patchDetalle(id, (s: Solicitud) => ({ tareas: [...s.detalle.tareas, task] }));
-    setSolicitudes((list: Solicitud[]) => list.map((s: Solicitud) => s.id === id ? { ...s, crm: { ...s.crm, tareas_total: s.crm.tareas_total + 1, tareas_pendientes: s.crm.tareas_pendientes + 1 } } : s));
-    showToast('Tarea añadida', 'mdi-playlist-check');
-  }, [patchDetalle, showToast]);
-
-  const toggleTask = useCallback((id: number, idx: number) => {
-    setSolicitudes((list: Solicitud[]) => list.map((s: Solicitud) => {
-      if (s.id !== id) return s;
-      const tareas = s.detalle.tareas.map((t: Tarea, i: number) => i === idx ? { ...t, done: !t.done } : t);
-      const pend = tareas.filter((t: Tarea) => !t.done).length;
-      return { ...s, detalle: { ...s.detalle, tareas }, crm: { ...s.crm, tareas_pendientes: pend } };
-    }));
+  const syncCrmCounts = useCallback((caseId: number, updated: CrmCaseState) => {
+    const pendientes = updated.tasks.filter((task) => task.status !== 'done' && task.status !== 'completed').length;
+    setSolicitudes((list: Solicitud[]) => list.map((s: Solicitud) => s.id === caseId ? {
+      ...s,
+      crm: {
+        ...s.crm,
+        notas: updated.notes.length,
+        tareas_total: updated.tasks.length,
+        tareas_pendientes: pendientes,
+      },
+    } : s));
   }, []);
+
+  const addTask = useCallback(async (title: string, priority: string) => {
+    const caseId = selectedId;
+    if (caseId == null) return;
+    const updated = await createCrmTask('solicitud', caseId, { title, priority });
+    syncCrmCounts(caseId, updated);
+    if (selectedIdRef.current !== caseId || updated.sourceId !== caseId) return;
+    setCrmCase(updated);
+    showToast('Tarea añadida', 'mdi-playlist-check');
+  }, [selectedId, showToast, syncCrmCounts]);
+
+  const toggleTask = useCallback(async (taskId: number, currentStatus: string) => {
+    const caseId = selectedId;
+    if (caseId == null) return;
+    const completed = currentStatus === 'done' || currentStatus === 'completed';
+    const updated = await updateCrmTask('solicitud', caseId, taskId, { status: completed ? 'pending' : 'done' });
+    syncCrmCounts(caseId, updated);
+    if (selectedIdRef.current !== caseId || updated.sourceId !== caseId) return;
+    setCrmCase(updated);
+  }, [selectedId, syncCrmCounts]);
+
+  const sendWhatsapp = useCallback(async (payload: { recipients: string[]; message: string }) => {
+    const caseId = selectedId;
+    if (caseId == null) return;
+    const updated = await sendCrmWhatsapp('solicitud', caseId, payload);
+    syncCrmCounts(caseId, updated);
+    if (selectedIdRef.current !== caseId || updated.sourceId !== caseId) return;
+    setCrmCase(updated);
+    showToast('WhatsApp enviado', 'mdi-whatsapp');
+  }, [selectedId, showToast, syncCrmCounts]);
+
+  const sendEmail = useCallback(async (payload: { to: string[]; cc?: string[]; subject: string; body: string }) => {
+    const caseId = selectedId;
+    if (caseId == null) return;
+    const updated = await sendCrmEmail('solicitud', caseId, payload);
+    syncCrmCounts(caseId, updated);
+    if (selectedIdRef.current !== caseId || updated.sourceId !== caseId) return;
+    setCrmCase(updated);
+    showToast('Correo enviado', 'mdi-email-check-outline');
+  }, [selectedId, showToast, syncCrmCounts]);
 
   const togglePreop = useCallback((id: number, idx: number) => {
     setSolicitudes((list: Solicitud[]) => list.map((s: Solicitud) => {
@@ -203,27 +251,6 @@ export function App() {
       return { ...s, detalle: { ...s.detalle, preop } };
     }));
   }, []);
-
-  const addProposal = useCallback((id: number) => {
-    setSolicitudes((list: Solicitud[]) => list.map((s: Solicitud) => {
-      if (s.id !== id) return s;
-      const items = [
-        { cod: 'DQX-001', desc: 'Derecho de quirófano', cant: 1, valor: 320 },
-        { cod: 'HON-014', desc: 'Honorarios cirujano oftalmólogo', cant: 1, valor: 480 },
-        { cod: 'ANE-007', desc: 'Anestesia y honorarios', cant: 1, valor: 180 },
-      ];
-      const subtotal = items.reduce((a: number, it: { cod: string; desc: string; cant: number; valor: number }) => a + it.cant * it.valor, 0);
-      const iva = Math.round(subtotal * 0.15 * 100) / 100;
-      const prop = {
-        titulo: 'Paquete quirúrgico — ' + s.procedimiento_short,
-        estado: 'Borrador',
-        vigencia: new Date(Date.now() + 20 * 86400000).toISOString(),
-        items, subtotal, iva, total: subtotal + iva,
-      };
-      return { ...s, detalle: { ...s.detalle, propuestas: [...s.detalle.propuestas, prop] } };
-    }));
-    showToast('Borrador de propuesta creado', 'mdi-file-document-plus-outline');
-  }, [showToast]);
 
   // ---- DnD ----
   const dnd = useMemo(() => ({
@@ -366,9 +393,9 @@ export function App() {
         crmError={crmError}
         onAddNote={addCrmNote}
         onDeleteNote={removeCrmNote}
-        onAddProposal={addProposal}
+        onSendWhatsapp={sendWhatsapp}
+        onSendEmail={sendEmail}
         onOpenPrefactura={(id) => setPrefacturaId(id)}
-        showToast={showToast}
       />
 
       {/* ---- Prefactura modal ---- */}
