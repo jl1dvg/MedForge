@@ -151,7 +151,7 @@
         /* INBOX */
         .wa3-inbox { background: var(--wa3-surface); border-right: 1px solid var(--wa3-border); display: flex; flex-direction: column; overflow: hidden; position: relative; z-index: 10; }
         .wa3-inbox__head { padding: 18px 20px 12px; display: flex; flex-direction: column; gap: 12px; }
-        .wa3-inbox__title-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+        .wa3-inbox__title-row { display: flex; align-items: center; justify-content: space-between; gap: 0px; }
         .wa3-inbox__title { font: 600 18px/1.2 var(--font-display, "Rubik", system-ui, sans-serif); margin: 0; color: var(--wa3-text); }
         .wa3-iconbtn { width: 32px; height: 32px; display: inline-grid; place-items: center; background: transparent; border: 0; border-radius: 8px; color: var(--wa3-text-mute); cursor: pointer; font-size: 18px; transition: background .12s, color .12s; }
         .wa3-iconbtn:hover { background: var(--wa3-surface-2); color: var(--wa3-text); }
@@ -474,7 +474,7 @@
         }
 
         /* Conversations / Agents view tabs */
-        .wa3-inbox__tabs { display: inline-flex; gap: 0; background: var(--wa3-surface-2); padding: 3px; border-radius: 10px; }
+        .wa3-inbox__tabs { display: inline-flex; gap: 0; background: var(--wa3-surface-2); padding: 2px; border-radius: 10px; }
         .wa3-inbox__tab { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: 0; background: transparent; border-radius: 7px; color: var(--wa3-text-mute); font: 600 12.5px var(--bs-body-font-family); cursor: pointer; line-height: 1; transition: background .12s, color .12s; }
         .wa3-inbox__tab i { font-size: 15px; }
         .wa3-inbox__tab:hover { color: var(--wa3-text); }
