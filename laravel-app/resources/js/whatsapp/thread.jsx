@@ -127,21 +127,23 @@ function WaTransferMenu({ convo, agents, roles, onTransfer, onQueueRole, toast }
     <WaHeaderMenu icon="mdi-account-arrow-right-outline" label="Transferir">
       {(close) => (
         <>
-          <h6>Transferir a un agente</h6>
-          {agents.filter(a => a.role !== 'Automático').map(a => (
-            <button key={a.id} className="wa3-menu-item" onClick={() => { onTransfer(a, note); close(); }}>
-              <i className="mdi mdi-account-outline lead"></i>
-              <span>{a.name}<span className="meta">{a.role} · {a.active} chats abiertos</span></span>
-              <span className="dot" data-state={a.status === 'online' ? 'online' : a.status === 'busy' ? 'busy' : 'away'}></span>
-            </button>
-          ))}
-          <h6>Derivar por equipo</h6>
-          {roles.map(r => (
-            <button key={r.id} className="wa3-menu-item" onClick={() => { onQueueRole(r, note); close(); }}>
-              <i className={`mdi ${r.icon} lead`}></i>
-              <span>{r.name}<span className="meta">{r.open} en cola</span></span>
-            </button>
-          ))}
+          <div style={{ maxHeight: '55vh', overflowY: 'auto' }}>
+            <h6>Transferir a un agente</h6>
+            {agents.filter(a => a.role !== 'Automático').map(a => (
+              <button key={a.id} className="wa3-menu-item" onClick={() => { onTransfer(a, note); close(); }}>
+                <i className="mdi mdi-account-outline lead"></i>
+                <span>{a.name}<span className="meta">{a.role} · {a.active} chats abiertos</span></span>
+                <span className="dot" data-state={a.status === 'online' ? 'online' : a.status === 'busy' ? 'busy' : 'away'}></span>
+              </button>
+            ))}
+            <h6>Derivar por equipo</h6>
+            {roles.map(r => (
+              <button key={r.id} className="wa3-menu-item" onClick={() => { onQueueRole(r, note); close(); }}>
+                <i className={`mdi ${r.icon} lead`}></i>
+                <span>{r.name}<span className="meta">{r.open} en cola</span></span>
+              </button>
+            ))}
+          </div>
           <div className="wa3-menu-footer">
             <input placeholder="Nota de transferencia (opcional)" value={note} onChange={e => setNote(e.target.value)} />
           </div>
@@ -153,83 +155,26 @@ function WaTransferMenu({ convo, agents, roles, onTransfer, onQueueRole, toast }
 
 // ── Templates ─────────────────────────────────────────────────────────────────
 
-function WaTemplatesMenu({ templates, onSendTemplate }) {
-  const [open, setOpen, ref] = useWaMenu();
-  const [picked, setPicked] = useState(null);
-  const [vars, setVars] = useState([]);
-
-  useEffect(() => { if (!open) setPicked(null); }, [open]);
-
-  const preview = picked
-    ? (picked.body || '').replace(/\{\{(\d+)\}\}/g, (_, i) => vars[Number(i) - 1] || `{{${i}}}`)
-    : '';
-
+function WaTemplatesMenu({ templates, onSelectTemplate }) {
   return (
-    <div className="wa3-hbtn-wrap" ref={ref}>
-      <button className={`wa3-hbtn${open ? ' is-open' : ''}`} type="button" onClick={() => setOpen(v => !v)}>
-        <i className="mdi mdi-file-document-outline"></i><span>Plantillas</span>
-      </button>
-      {open && (
-        <div className="wa3-hbtn__menu" style={{ minWidth: 300, maxWidth: 380 }}>
-          {picked ? (
-            <>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px 6px', borderBottom: '1px solid var(--wa3-border-soft)' }}>
-                <button className="wa3-iconbtn" style={{ fontSize: 16 }} onClick={() => setPicked(null)}><i className="mdi mdi-arrow-left"></i></button>
-                <span style={{ font: '600 12.5px var(--bs-body-font-family)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {picked.name || picked.display_name}
-                </span>
-                <span style={{ font: '400 11px var(--bs-body-font-family)', color: 'var(--wa3-text-mute)' }}>
-                  {(picked.category || 'utility').toUpperCase()} · {picked.language || 'es'}
-                </span>
-              </div>
-              <div style={{ maxHeight: '55vh', overflowY: 'auto', padding: '10px 10px 0' }}>
-                {(picked.variables || []).map((v, i) => (
-                  <div key={i} style={{ marginBottom: 8 }}>
-                    <label style={{ font: '600 10px var(--bs-body-font-family)', color: 'var(--wa3-text-mute)', display: 'block', marginBottom: 3 }}>
-                      VARIABLE {i + 1}{v ? ` · ${v}` : ''}
-                    </label>
-                    <input
-                      style={{ width: '100%', border: '1px solid var(--wa3-border)', borderRadius: 8, padding: '5px 8px', font: '400 12px var(--bs-body-font-family)', outline: 'none', boxSizing: 'border-box' }}
-                      value={vars[i] || ''}
-                      placeholder={(picked.examples || [])[i] || `{{${i + 1}}}`}
-                      onChange={e => setVars(arr => { const n = [...arr]; n[i] = e.target.value; return n; })}
-                    />
-                  </div>
-                ))}
-                <div style={{ marginBottom: 10 }}>
-                  <div style={{ font: '600 10px var(--bs-body-font-family)', color: 'var(--wa3-text-mute)', marginBottom: 4 }}>PREVIEW</div>
-                  <div className="wa3-template-preview" style={{ maxHeight: 160, overflowY: 'auto', fontSize: 12 }}>{preview || picked.body || '—'}</div>
-                </div>
-              </div>
-              <div style={{ padding: '8px 10px', display: 'flex', gap: 8, justifyContent: 'flex-end', borderTop: '1px solid var(--wa3-border-soft)' }}>
-                <button className="wa3-secondary-btn" style={{ fontSize: 12 }} onClick={() => setOpen(false)}>Cancelar</button>
-                <button className="wa3-primary-btn" style={{ fontSize: 12 }} onClick={() => { onSendTemplate(picked, vars); setOpen(false); }}>
-                  <i className="mdi mdi-send" style={{ marginRight: 4 }}></i>Enviar plantilla
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              <h6>Plantillas aprobadas</h6>
-              {templates.length === 0 && (
-                <div style={{ padding: '8px 12px', color: 'var(--wa3-text-mute)', fontSize: 13 }}>Sin plantillas disponibles.</div>
-              )}
-              <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
-                {templates.map(t => (
-                  <button key={t.id} className="wa3-menu-item" onClick={() => {
-                    setPicked(t);
-                    setVars((t.variables || []).map((_, i) => (t.examples || [])[i] || ''));
-                  }}>
-                    <i className="mdi mdi-clipboard-text-outline lead"></i>
-                    <span>{t.name || t.display_name}<span className="meta">{(t.category || 'utility').toUpperCase()} · {t.language || 'es'}</span></span>
-                  </button>
-                ))}
-              </div>
-            </>
+    <WaHeaderMenu icon="mdi-file-document-outline" label="Plantillas">
+      {(close) => (
+        <>
+          <h6>Plantillas aprobadas</h6>
+          {templates.length === 0 && (
+            <div style={{ padding: '8px 12px', color: 'var(--wa3-text-mute)', fontSize: 13 }}>Sin plantillas disponibles.</div>
           )}
-        </div>
+          <div style={{ maxHeight: '55vh', overflowY: 'auto' }}>
+            {templates.map(t => (
+              <button key={t.id} className="wa3-menu-item" onClick={() => { onSelectTemplate(t); close(); }}>
+                <i className="mdi mdi-clipboard-text-outline lead"></i>
+                <span>{t.name || t.display_name}<span className="meta">{(t.category || 'utility').toUpperCase()} · {t.language || 'es'}</span></span>
+              </button>
+            ))}
+          </div>
+        </>
       )}
-    </div>
+    </WaHeaderMenu>
   );
 }
 
@@ -559,7 +504,7 @@ export function WaThreadPane({
             </button>
           )}
           <WaTransferMenu convo={convo} agents={agents} roles={roles} onTransfer={handlers.onTransfer} onQueueRole={handlers.onQueueRole} toast={toast} />
-          <WaTemplatesMenu templates={templates} onSendTemplate={handlers.onSendTemplate} />
+          <WaTemplatesMenu templates={templates} onSelectTemplate={handlers.onOpenSendTemplate} />
           <span className="wa3-iconbtn--sep"></span>
           {canOperate && (
             <button className="wa3-hbtn is-success" onClick={handlers.onResolve}>
