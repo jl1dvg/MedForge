@@ -210,6 +210,7 @@ export function FlowmakerV3App() {
                     {selectedNode && (
                         <NodeInspector
                             node={selectedNode}
+                            catalogs={graph?.catalogs || {}}
                             onUpdate={updateNode}
                             onDelete={deleteNode}
                         />

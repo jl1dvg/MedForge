@@ -2,16 +2,16 @@ import React from 'react';
 import { ACTION_TYPE_OPTIONS, STAGE_OPTIONS, STATUS_OPTIONS } from '../actionCatalog';
 import { NODE_TYPES } from '../domain';
 
-const SIGCENTER_OPERATIONS = [
-    { value: 'list_specialties', label: 'Listar especialidades' },
-    { value: 'list_doctors', label: 'Listar doctores' },
-    { value: 'list_times', label: 'Listar horarios' },
-    { value: 'book_appointment', label: 'Agendar cita' },
-    { value: 'cancel_appointment', label: 'Cancelar cita' },
-    { value: 'reschedule_appointment', label: 'Reagendar cita' },
+const CONDITION_TYPES = [
+    { value: 'always', label: 'Siempre' },
+    { value: 'message_contains', label: 'Mensaje contiene' },
+    { value: 'message_equals', label: 'Mensaje exacto' },
+    { value: 'state_equals', label: 'Estado es' },
+    { value: 'context_equals', label: 'Variable es igual a' },
+    { value: 'context_contains', label: 'Variable contiene' },
 ];
 
-export function NodeInspector({ node, onUpdate, onDelete }) {
+export function NodeInspector({ node, catalogs = {}, onUpdate, onDelete }) {
     if (!node) {
         return (
             <aside className="fm-inspector">
@@ -46,9 +46,9 @@ export function NodeInspector({ node, onUpdate, onDelete }) {
             </div>
             <div className="fm-insp-body">
                 {meta.isTrigger ? (
-                    <TriggerEditor node={node} patchData={patchData} />
+                    <TriggerEditor node={node} catalogs={catalogs} patchData={patchData} />
                 ) : (
-                    <ActionEditor node={node} patchData={patchData} patchSettings={patchSettings} />
+                    <ActionEditor node={node} catalogs={catalogs} patchData={patchData} patchSettings={patchSettings} />
                 )}
 
                 <div className="fm-danger-zone">
@@ -61,8 +61,9 @@ export function NodeInspector({ node, onUpdate, onDelete }) {
     );
 }
 
-function TriggerEditor({ node, patchData }) {
+function TriggerEditor({ node, catalogs, patchData }) {
     const keywords = Array.isArray(node.data?.keywords) ? node.data.keywords : [];
+    const conditions = Array.isArray(node.data?.conditions) ? node.data.conditions : [];
 
     function updateKeyword(index, patch) {
         patchData({
@@ -128,17 +129,16 @@ function TriggerEditor({ node, patchData }) {
             >
                 <span className="mdi mdi-plus" /> Agregar palabra clave
             </button>
-            <JsonField
-                label="Condiciones avanzadas JSON"
-                value={node.data?.conditions || []}
-                onValid={(conditions) => patchData({ conditions, conditionsEditedFromKeywords: false })}
-                hint="Úsalo para condiciones V2 que todavía no tengan formulario visual."
+            <ConditionEditor
+                conditions={conditions}
+                variables={catalogs.variables || []}
+                onChange={(nextConditions) => patchData({ conditions: nextConditions, conditionsEditedFromKeywords: false })}
             />
         </>
     );
 }
 
-function ActionEditor({ node, patchData, patchSettings }) {
+function ActionEditor({ node, catalogs, patchData, patchSettings }) {
     const actionType = node.data?.actionType || node.data?.action?.type || 'send_message';
     const settings = node.data?.settings || {};
 
@@ -150,31 +150,29 @@ function ActionEditor({ node, patchData, patchSettings }) {
                 </select>
             </Field>
 
-            {actionType === 'send_message' && <MessageEditor settings={settings} patchSettings={patchSettings} />}
-            {(actionType === 'send_buttons' || actionType === 'send_list') && <ButtonsEditor settings={settings} patchSettings={patchSettings} />}
-            {actionType === 'send_template' && <TemplateEditor settings={settings} patchSettings={patchSettings} />}
+            {actionType === 'send_message' && <MessageEditor settings={settings} variables={catalogs.variables || []} patchSettings={patchSettings} />}
+            {(actionType === 'send_buttons' || actionType === 'send_list') && <ButtonsEditor settings={settings} variables={catalogs.variables || []} patchSettings={patchSettings} />}
+            {actionType === 'send_template' && <TemplateEditor settings={settings} variables={catalogs.variables || []} patchSettings={patchSettings} />}
             {actionType === 'set_state' && <StateEditor settings={settings} patchSettings={patchSettings} />}
             {actionType === 'store_consent' && <ConsentEditor settings={settings} patchSettings={patchSettings} />}
-            {actionType === 'sigcenter_agenda' && <SigcenterEditor settings={settings} patchSettings={patchSettings} />}
-            {actionType === 'handoff_agent' && <HandoffEditor settings={settings} patchSettings={patchSettings} />}
-            {actionType === 'ai_agent' && <AiEditor settings={settings} patchSettings={patchSettings} />}
+            {actionType === 'sigcenter_agenda' && <SigcenterEditor settings={settings} operations={catalogs.sigcenter_operations || []} patchSettings={patchSettings} />}
+            {actionType === 'handoff_agent' && <HandoffEditor settings={settings} variables={catalogs.variables || []} patchSettings={patchSettings} />}
+            {actionType === 'ai_agent' && <AiEditor settings={settings} variables={catalogs.variables || []} patchSettings={patchSettings} />}
             {!ACTION_TYPE_OPTIONS.some((option) => option.value === actionType) && (
-                <JsonField
-                    label="Acción JSON"
-                    value={node.data?.action || {}}
-                    onValid={(action) => patchData({ action, actionType: action.type || actionType, settings: {} })}
-                    hint="Fallback para acciones V2 aún no cubiertas por formulario."
-                />
+                <UnsupportedActionNotice actionType={actionType} />
             )}
         </>
     );
 }
 
-function MessageEditor({ settings, patchSettings }) {
+function MessageEditor({ settings, variables, patchSettings }) {
+    const bodyRef = React.useRef(null);
+
     return (
         <>
             <Field label="Texto del mensaje" hint="Soporta variables como {{nombre}} y formato WhatsApp.">
-                <textarea className="fm-textarea" value={settings.body || ''} onChange={(event) => patchSettings({ body: event.target.value })} />
+                <textarea ref={bodyRef} className="fm-textarea" value={settings.body || ''} onChange={(event) => patchSettings({ body: event.target.value })} />
+                <VariableChips variables={variables} onInsert={(token) => insertText(bodyRef.current, settings.body || '', token, (body) => patchSettings({ body }))} />
             </Field>
             <div className="fm-row2">
                 <Field label="Tipo media">
@@ -193,8 +191,9 @@ function MessageEditor({ settings, patchSettings }) {
     );
 }
 
-function ButtonsEditor({ settings, patchSettings }) {
+function ButtonsEditor({ settings, variables, patchSettings }) {
     const buttons = normalizeButtonsForEditor(settings.buttons);
+    const bodyRef = React.useRef(null);
 
     function updateButton(index, value) {
         patchSettings({
@@ -210,7 +209,8 @@ function ButtonsEditor({ settings, patchSettings }) {
                 <input className="fm-input" value={settings.header || ''} onChange={(event) => patchSettings({ header: event.target.value })} />
             </Field>
             <Field label="Texto principal">
-                <textarea className="fm-textarea" value={settings.body || ''} onChange={(event) => patchSettings({ body: event.target.value })} />
+                <textarea ref={bodyRef} className="fm-textarea" value={settings.body || ''} onChange={(event) => patchSettings({ body: event.target.value })} />
+                <VariableChips variables={variables} onInsert={(token) => insertText(bodyRef.current, settings.body || '', token, (body) => patchSettings({ body }))} />
             </Field>
             <Field label="Pie de página">
                 <input className="fm-input" value={settings.footer || ''} onChange={(event) => patchSettings({ footer: event.target.value })} />
@@ -225,7 +225,8 @@ function ButtonsEditor({ settings, patchSettings }) {
     );
 }
 
-function TemplateEditor({ settings, patchSettings }) {
+function TemplateEditor({ settings, variables, patchSettings }) {
+    const parameters = settings.parameters || {};
     return (
         <>
             <div className="fm-row2">
@@ -236,7 +237,14 @@ function TemplateEditor({ settings, patchSettings }) {
                     <input className="fm-input" value={settings.language || 'es'} onChange={(event) => patchSettings({ language: event.target.value })} />
                 </Field>
             </div>
-            <JsonField label="Parámetros JSON" valueText={settings.parametersJson || '{}'} onText={(value) => patchSettings({ parametersJson: value })} />
+            <KeyValueEditor
+                title="Parámetros"
+                rows={objectToRows(parameters)}
+                variables={variables}
+                keyPlaceholder="body_1"
+                valuePlaceholder="Valor o variable"
+                onChange={(rows) => patchSettings({ parameters: rowsToObject(rows) })}
+            />
         </>
     );
 }
@@ -279,12 +287,23 @@ function ConsentEditor({ settings, patchSettings }) {
     );
 }
 
-function SigcenterEditor({ settings, patchSettings }) {
+function SigcenterEditor({ settings, operations, patchSettings }) {
+    const availableOperations = operations.length > 0
+        ? operations.map((operation) => ({ value: operation.id || operation.value, label: operation.label }))
+        : [
+            { value: 'list_specialties', label: 'Listar especialidades' },
+            { value: 'list_doctors', label: 'Listar médicos' },
+            { value: 'list_times', label: 'Listar horarios' },
+            { value: 'book_appointment', label: 'Agendar cita' },
+            { value: 'cancel_appointment', label: 'Cancelar cita' },
+            { value: 'reschedule_appointment', label: 'Reagendar cita' },
+        ];
+
     return (
         <>
             <Field label="Operación">
                 <select className="fm-select" value={settings.operation || 'list_specialties'} onChange={(event) => patchSettings({ operation: event.target.value })}>
-                    {SIGCENTER_OPERATIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                    {availableOperations.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </select>
             </Field>
             <CheckboxField label="Enviar resultado al paciente" checked={Boolean(settings.send_result ?? true)} onChange={(checked) => patchSettings({ send_result: checked })} />
@@ -307,11 +326,20 @@ function SigcenterEditor({ settings, patchSettings }) {
             <Field label="Siguiente estado">
                 <input className="fm-input" value={settings.next_state || ''} onChange={(event) => patchSettings({ next_state: event.target.value })} />
             </Field>
+            <div className="fm-insp-section-title">Salidas esperadas</div>
+            <div className="fm-help-list">
+                <span>Éxito</span>
+                <span>Dato faltante</span>
+                <span>Sin disponibilidad</span>
+                <span>Error / derivar</span>
+            </div>
         </>
     );
 }
 
-function HandoffEditor({ settings, patchSettings }) {
+function HandoffEditor({ settings, variables, patchSettings }) {
+    const messageRef = React.useRef(null);
+
     return (
         <>
             <Field label="Motivo">
@@ -321,45 +349,141 @@ function HandoffEditor({ settings, patchSettings }) {
                 <input className="fm-input" value={settings.queue || ''} onChange={(event) => patchSettings({ queue: event.target.value })} />
             </Field>
             <Field label="Mensaje al paciente">
-                <textarea className="fm-textarea" value={settings.message || ''} onChange={(event) => patchSettings({ message: event.target.value })} />
+                <textarea ref={messageRef} className="fm-textarea" value={settings.message || ''} onChange={(event) => patchSettings({ message: event.target.value })} />
+                <VariableChips variables={variables} onInsert={(token) => insertText(messageRef.current, settings.message || '', token, (message) => patchSettings({ message }))} />
             </Field>
         </>
     );
 }
 
-function AiEditor({ settings, patchSettings }) {
+function AiEditor({ settings, variables, patchSettings }) {
+    const instructionsRef = React.useRef(null);
+
     return (
         <>
             <Field label="Instrucciones">
-                <textarea className="fm-textarea" value={settings.instructions || ''} onChange={(event) => patchSettings({ instructions: event.target.value })} />
+                <textarea ref={instructionsRef} className="fm-textarea" value={settings.instructions || ''} onChange={(event) => patchSettings({ instructions: event.target.value })} />
+                <VariableChips variables={variables} onInsert={(token) => insertText(instructionsRef.current, settings.instructions || '', token, (instructions) => patchSettings({ instructions }))} />
             </Field>
             <CheckboxField label="Derivar si no hay confianza suficiente" checked={Boolean(settings.handoff ?? true)} onChange={(checked) => patchSettings({ handoff: checked })} />
-            <JsonField label="Filtros KB JSON" valueText={settings.kbFiltersJson || '{}'} onText={(value) => patchSettings({ kbFiltersJson: value })} />
+            <KeyValueEditor
+                title="Filtros de conocimiento"
+                rows={objectToRows(settings.kb_filters || {})}
+                keyPlaceholder="tipo_contenido"
+                valuePlaceholder="consentimiento"
+                onChange={(rows) => patchSettings({ kb_filters: rowsToObject(rows) })}
+            />
         </>
     );
 }
 
-function JsonField({ label, value, valueText, onValid, onText, hint }) {
-    const text = valueText ?? JSON.stringify(value, null, 2);
-    return (
-        <Field label={label} hint={hint}>
-            <textarea
-                className="fm-textarea fm-codearea"
-                value={text}
-                onChange={(event) => {
-                    if (onText) {
-                        onText(event.target.value);
-                        return;
-                    }
+function ConditionEditor({ conditions, variables, onChange }) {
+    const rows = conditions.length > 0 ? conditions : [{ type: 'always' }];
 
-                    try {
-                        onValid(JSON.parse(event.target.value || '{}'));
-                    } catch {
-                        // Keep invalid draft text local to the textarea until valid JSON is entered.
-                    }
-                }}
-            />
-        </Field>
+    return (
+        <div>
+            <div className="fm-insp-section-title">Condiciones</div>
+            {rows.map((condition, index) => (
+                <div className="fm-subcard" key={index}>
+                    <div className="fm-subcard-head">
+                        <b>Condición {index + 1}</b>
+                        <button className="fm-mini-del" type="button" onClick={() => onChange(rows.filter((_, rowIndex) => rowIndex !== index))}>
+                            <span className="mdi mdi-delete-outline" />
+                        </button>
+                    </div>
+                    <Field label="Tipo">
+                        <select className="fm-select" value={condition.type || 'always'} onChange={(event) => updateCondition(rows, index, { type: event.target.value }, onChange)}>
+                            {CONDITION_TYPES.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                        </select>
+                    </Field>
+                    {condition.type !== 'always' && (
+                        <>
+                            {(condition.type || '').startsWith('context_') && (
+                                <Field label="Variable">
+                                    <select className="fm-select" value={condition.field || condition.variable || ''} onChange={(event) => updateCondition(rows, index, { field: event.target.value }, onChange)}>
+                                        <option value="">Selecciona variable</option>
+                                        {variables.map((variable) => <option key={variable.id} value={variable.id}>{variable.label}</option>)}
+                                    </select>
+                                </Field>
+                            )}
+                            <Field label="Valor">
+                                <input
+                                    className="fm-input"
+                                    value={condition.value || (Array.isArray(condition.keywords) ? condition.keywords.join(', ') : '')}
+                                    onChange={(event) => {
+                                        const value = event.target.value;
+                                        updateCondition(rows, index, condition.type === 'message_contains'
+                                            ? { keywords: value.split(',').map((item) => item.trim()).filter(Boolean), value }
+                                            : { value }, onChange);
+                                    }}
+                                />
+                            </Field>
+                        </>
+                    )}
+                </div>
+            ))}
+            <button type="button" className="fm-add-btn" onClick={() => onChange([...rows, { type: 'always' }])}>
+                <span className="mdi mdi-plus" /> Agregar condición
+            </button>
+        </div>
+    );
+}
+
+function KeyValueEditor({ title, rows, variables = [], keyPlaceholder, valuePlaceholder, onChange }) {
+    return (
+        <div>
+            <div className="fm-insp-section-title">{title}</div>
+            {rows.map((row, index) => (
+                <div className="fm-subcard" key={row.id || index}>
+                    <div className="fm-subcard-head">
+                        <b>Campo {index + 1}</b>
+                        <button type="button" className="fm-mini-del" onClick={() => onChange(rows.filter((_, rowIndex) => rowIndex !== index))}>
+                            <span className="mdi mdi-delete-outline" />
+                        </button>
+                    </div>
+                    <Field label="Clave">
+                        <input className="fm-input" value={row.key} placeholder={keyPlaceholder} onChange={(event) => updateRow(rows, index, { key: event.target.value }, onChange)} />
+                    </Field>
+                    <Field label="Valor">
+                        <input className="fm-input" value={row.value} placeholder={valuePlaceholder} onChange={(event) => updateRow(rows, index, { value: event.target.value }, onChange)} />
+                        {variables.length > 0 && (
+                            <VariableChips variables={variables} onInsert={(token) => updateRow(rows, index, { value: `${row.value || ''}${token}` }, onChange)} />
+                        )}
+                    </Field>
+                </div>
+            ))}
+            <button type="button" className="fm-add-btn" onClick={() => onChange([...rows, { id: `row_${Date.now()}`, key: '', value: '' }])}>
+                <span className="mdi mdi-plus" /> Agregar campo
+            </button>
+        </div>
+    );
+}
+
+function UnsupportedActionNotice({ actionType }) {
+    return (
+        <div className="fm-unsupported-action">
+            <span className="mdi mdi-lock-alert-outline" />
+            <div>
+                <b>Acción avanzada no-code pendiente</b>
+                <p>Este nodo usa <code>{actionType}</code>. V3 preserva el payload al publicar, pero aún no permite editarlo visualmente.</p>
+            </div>
+        </div>
+    );
+}
+
+function VariableChips({ variables, onInsert }) {
+    if (!Array.isArray(variables) || variables.length === 0) {
+        return null;
+    }
+
+    return (
+        <div className="fm-var-bar">
+            {variables.map((variable) => (
+                <button key={variable.id} type="button" className="fm-var-chip" title={variable.label} onClick={() => onInsert(variable.token || `{{${variable.id}}}`)}>
+                    {variable.token || `{{${variable.id}}}`}
+                </button>
+            ))}
+        </div>
     );
 }
 
@@ -391,4 +515,55 @@ function normalizeButtonsForEditor(buttons) {
         }
         return button || { id: `opcion_${index + 1}`, title: '' };
     });
+}
+
+function insertText(element, currentValue, token, onChange) {
+    if (!element) {
+        onChange(`${currentValue}${token}`);
+        return;
+    }
+
+    const start = element.selectionStart ?? currentValue.length;
+    const end = element.selectionEnd ?? currentValue.length;
+    const next = `${currentValue.slice(0, start)}${token}${currentValue.slice(end)}`;
+    onChange(next);
+
+    window.requestAnimationFrame(() => {
+        element.focus();
+        element.setSelectionRange(start + token.length, start + token.length);
+    });
+}
+
+function updateCondition(rows, index, patch, onChange) {
+    onChange(rows.map((row, rowIndex) => (rowIndex === index ? { ...row, ...patch } : row)));
+}
+
+function updateRow(rows, index, patch, onChange) {
+    onChange(rows.map((row, rowIndex) => (rowIndex === index ? { ...row, ...patch } : row)));
+}
+
+function objectToRows(value) {
+    const entries = value && typeof value === 'object' && !Array.isArray(value)
+        ? Object.entries(value)
+        : [];
+
+    if (entries.length === 0) {
+        return [{ id: 'row_1', key: '', value: '' }];
+    }
+
+    return entries.map(([key, entryValue], index) => ({
+        id: `row_${index + 1}`,
+        key,
+        value: String(entryValue ?? ''),
+    }));
+}
+
+function rowsToObject(rows) {
+    return rows.reduce((carry, row) => {
+        const key = String(row.key || '').trim();
+        if (key !== '') {
+            carry[key] = row.value || '';
+        }
+        return carry;
+    }, {});
 }

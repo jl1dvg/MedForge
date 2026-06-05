@@ -28,6 +28,48 @@ class FlowmakerService
         'post',
         'custom',
     ];
+    private const FLOW_VARIABLES = [
+        ['id' => 'nombre', 'label' => 'Nombre del contacto', 'group' => 'Contacto'],
+        ['id' => 'telefono', 'label' => 'Teléfono WhatsApp', 'group' => 'Contacto'],
+        ['id' => 'wa_number', 'label' => 'Número WhatsApp', 'group' => 'Contacto'],
+        ['id' => 'cedula', 'label' => 'Cédula / identificación', 'group' => 'Paciente'],
+        ['id' => 'identifier', 'label' => 'Identificador normalizado', 'group' => 'Paciente'],
+        ['id' => 'current_identifier', 'label' => 'Identificador actual', 'group' => 'Paciente'],
+        ['id' => 'patient_hc_number', 'label' => 'Historia clínica', 'group' => 'Paciente'],
+        ['id' => 'es_paciente', 'label' => 'Es paciente registrado', 'group' => 'Paciente'],
+        ['id' => 'correo', 'label' => 'Correo electrónico', 'group' => 'Paciente'],
+        ['id' => 'email', 'label' => 'Email', 'group' => 'Paciente'],
+        ['id' => 'ultima_cita', 'label' => 'Última cita', 'group' => 'Agenda'],
+        ['id' => 'sucursal', 'label' => 'Sucursal preferida', 'group' => 'Agenda'],
+        ['id' => 'sede_id', 'label' => 'ID de sede', 'group' => 'Agenda Sigcenter'],
+        ['id' => 'ID_SEDE', 'label' => 'ID de sede Sigcenter', 'group' => 'Agenda Sigcenter'],
+        ['id' => 'sede_nombre', 'label' => 'Nombre de sede', 'group' => 'Agenda Sigcenter'],
+        ['id' => 'trabajador_id', 'label' => 'ID de médico', 'group' => 'Agenda Sigcenter'],
+        ['id' => 'medico_nombre', 'label' => 'Nombre de médico', 'group' => 'Agenda Sigcenter'],
+        ['id' => 'subespecialidad', 'label' => 'Subespecialidad', 'group' => 'Agenda Sigcenter'],
+        ['id' => 'subespecialidad_nombre', 'label' => 'Nombre de subespecialidad', 'group' => 'Agenda Sigcenter'],
+        ['id' => 'procedimiento_id', 'label' => 'ID de procedimiento', 'group' => 'Agenda Sigcenter'],
+        ['id' => 'procedimiento_nombre', 'label' => 'Nombre de procedimiento', 'group' => 'Agenda Sigcenter'],
+        ['id' => 'FECHA', 'label' => 'Fecha seleccionada', 'group' => 'Agenda Sigcenter'],
+        ['id' => 'hora', 'label' => 'Hora seleccionada', 'group' => 'Agenda Sigcenter'],
+        ['id' => 'horarios_disponibles', 'label' => 'Horarios disponibles', 'group' => 'Agenda Sigcenter'],
+        ['id' => 'state', 'label' => 'Estado de conversación', 'group' => 'Sesión'],
+        ['id' => 'awaiting_field', 'label' => 'Campo esperado', 'group' => 'Sesión'],
+        ['id' => 'handoff_topic', 'label' => 'Motivo de derivación', 'group' => 'Sesión'],
+        ['id' => 'input_text', 'label' => 'Texto entrante', 'group' => 'Entrada'],
+        ['id' => 'last_message', 'label' => 'Último mensaje', 'group' => 'Entrada'],
+    ];
+    private const SIGCENTER_OPERATIONS = [
+        ['id' => 'list_specialties', 'label' => 'Listar especialidades'],
+        ['id' => 'list_doctors', 'label' => 'Listar médicos'],
+        ['id' => 'list_doctors_by_name', 'label' => 'Buscar médicos por nombre'],
+        ['id' => 'list_locations', 'label' => 'Listar sedes'],
+        ['id' => 'list_procedures', 'label' => 'Listar procedimientos'],
+        ['id' => 'list_times', 'label' => 'Listar horarios'],
+        ['id' => 'book_appointment', 'label' => 'Agendar cita'],
+        ['id' => 'cancel_appointment', 'label' => 'Cancelar cita'],
+        ['id' => 'reschedule_appointment', 'label' => 'Reagendar cita'],
+    ];
 
     /**
      * @return array<string, mixed>
@@ -115,8 +157,26 @@ class FlowmakerService
                 'flow_key' => self::DEFAULT_FLOW_KEY,
                 'active_version_id' => $overview['flow']['active_version_id'] ?? null,
             ],
+            'catalogs' => [
+                'variables' => $this->flowVariables(),
+                'sigcenter_operations' => self::SIGCENTER_OPERATIONS,
+            ],
             'overview' => $overview,
         ];
+    }
+
+    /**
+     * @return array<int, array{id:string,label:string,group:string,token:string}>
+     */
+    private function flowVariables(): array
+    {
+        return array_map(
+            static fn (array $variable): array => [
+                ...$variable,
+                'token' => '{{' . $variable['id'] . '}}',
+            ],
+            self::FLOW_VARIABLES
+        );
     }
 
     /**

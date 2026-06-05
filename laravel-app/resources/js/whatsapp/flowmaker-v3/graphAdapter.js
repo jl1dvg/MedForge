@@ -68,6 +68,7 @@ export function contractToGraph(contract) {
         flowName: flow.name || 'Flujo principal de WhatsApp',
         flowDescription: flow.description || '',
         settings: flow.settings || { timezone: 'America/Guayaquil' },
+        catalogs: contract?.catalogs || {},
         nodes,
         edges,
     };

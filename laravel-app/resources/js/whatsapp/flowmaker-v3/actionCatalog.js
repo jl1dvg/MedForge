@@ -87,7 +87,7 @@ export function editableDataToAction(node) {
                     ...(existing.template || {}),
                     name: settings.name ?? existing.template?.name ?? '',
                     language: settings.language ?? existing.template?.language ?? 'es',
-                    parameters: parseJsonObject(settings.parametersJson, existing.template?.parameters || settings.parameters || {}),
+                    parameters: settings.parameters || existing.template?.parameters || {},
                 },
             };
         case 'set_state':
@@ -137,7 +137,7 @@ export function editableDataToAction(node) {
                 ...existing,
                 type: 'ai_agent',
                 instructions: settings.instructions ?? existing.instructions ?? '',
-                kb_filters: parseJsonObject(settings.kbFiltersJson, existing.kb_filters || settings.kb_filters || {}),
+                kb_filters: settings.kb_filters || existing.kb_filters || {},
                 handoff: Boolean(settings.handoff ?? existing.handoff ?? true),
             };
         case 'send_message':
@@ -173,7 +173,7 @@ function actionToSettings(action) {
             return {
                 name: action.template?.name || '',
                 language: action.template?.language || 'es',
-                parametersJson: JSON.stringify(action.template?.parameters || {}, null, 2),
+                parameters: action.template?.parameters || {},
             };
         case 'set_state':
             return pick(action, ['state', 'next_state', 'save_response_as', 'awaiting_field']);
@@ -198,7 +198,7 @@ function actionToSettings(action) {
         case 'ai_agent':
             return {
                 instructions: action.instructions || '',
-                kbFiltersJson: JSON.stringify(action.kb_filters || {}, null, 2),
+                kb_filters: action.kb_filters || {},
                 handoff: Boolean(action.handoff ?? true),
             };
         default:
@@ -257,18 +257,6 @@ function compactObject(source) {
         }
         return carry;
     }, {});
-}
-
-function parseJsonObject(raw, fallback = {}) {
-    if (isObject(raw)) return raw;
-    if (typeof raw !== 'string' || raw.trim() === '') return fallback;
-
-    try {
-        const parsed = JSON.parse(raw);
-        return isObject(parsed) ? parsed : fallback;
-    } catch {
-        return fallback;
-    }
 }
 
 function isObject(value) {
