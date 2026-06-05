@@ -1,0 +1,44 @@
+.fm-app {
+    min-height: calc(100vh - 64px);
+    background: #f6f8fb;
+    color: #172033;
+    font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.fm-topbar {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-height: 64px;
+    padding: 0 20px;
+    border-bottom: 1px solid #dfe5ee;
+    background: #ffffff;
+}
+
+.fm-brand {
+    font-weight: 800;
+}
+
+.fm-flowname {
+    color: #526173;
+}
+
+.fm-btn {
+    margin-left: auto;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 8px 12px;
+    color: #172033;
+    background: #ffffff;
+    text-decoration: none;
+    font-weight: 700;
+}
+
+.fm-loading,
+.fm-error {
+    padding: 24px;
+}
+
+.fm-error {
+    color: #b42318;
+}
