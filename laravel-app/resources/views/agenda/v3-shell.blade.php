@@ -3,12 +3,14 @@
 @php
     $pageTitle = 'Agenda V3';
     $skipDefaultVendorScripts = false;
+    $disableWelcomeTour = true;
+    $agendaV3AssetVersion = '20260605-98bbd9dc';
 @endphp
 
 @push('styles')
-<link rel="stylesheet" href="/agenda-v3/colors_and_type.css">
-<link rel="stylesheet" href="/agenda-v3/shell.css">
-<link rel="stylesheet" href="/agenda-v3/module.css">
+<link rel="stylesheet" href="/agenda-v3/colors_and_type.css?v={{ $agendaV3AssetVersion }}">
+<link rel="stylesheet" href="/agenda-v3/shell.css?v={{ $agendaV3AssetVersion }}">
+<link rel="stylesheet" href="/agenda-v3/module.css?v={{ $agendaV3AssetVersion }}">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/css/materialdesignicons.min.css" crossorigin="anonymous">
 <style>
   /* Integración con el wrapper de MedForge */
@@ -40,18 +42,18 @@ window.__MF__ = {
         integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
 <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"
         integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
-<script src="/agenda-v3/data.js"></script>
-<script src="/agenda-v3/api.js"></script>
-<script src="/agenda-v3/clinical-data.js"></script>
-<script type="text/babel" data-presets="react" src="/agenda-v3/components.jsx"></script>
-<script type="text/babel" data-presets="react" src="/agenda-v3/calendar.jsx"></script>
-<script type="text/babel" data-presets="react" src="/agenda-v3/modals.jsx"></script>
-<script type="text/babel" data-presets="react" src="/agenda-v3/flowboard.jsx"></script>
-<script type="text/babel" data-presets="react" src="/agenda-v3/clinical.jsx"></script>
-<script type="text/babel" data-presets="react" src="/agenda-v3/assistant.jsx"></script>
-<script type="text/babel" data-presets="react" src="/agenda-v3/consulta.jsx"></script>
-<script type="text/babel" data-presets="react" src="/agenda-v3/config.jsx"></script>
-<script type="text/babel" data-presets="react" src="/agenda-v3/spec.jsx"></script>
-<script type="text/babel" data-presets="react" src="/agenda-v3/tweaks-panel.jsx"></script>
-<script type="text/babel" data-presets="react" src="/agenda-v3/app.jsx"></script>
+<script src="/agenda-v3/data.js?v={{ $agendaV3AssetVersion }}"></script>
+<script src="/agenda-v3/api.js?v={{ $agendaV3AssetVersion }}"></script>
+<script src="/agenda-v3/clinical-data.js?v={{ $agendaV3AssetVersion }}"></script>
+<script type="text/babel" data-presets="react" src="/agenda-v3/components.jsx?v={{ $agendaV3AssetVersion }}"></script>
+<script type="text/babel" data-presets="react" src="/agenda-v3/calendar.jsx?v={{ $agendaV3AssetVersion }}"></script>
+<script type="text/babel" data-presets="react" src="/agenda-v3/modals.jsx?v={{ $agendaV3AssetVersion }}"></script>
+<script type="text/babel" data-presets="react" src="/agenda-v3/flowboard.jsx?v={{ $agendaV3AssetVersion }}"></script>
+<script type="text/babel" data-presets="react" src="/agenda-v3/clinical.jsx?v={{ $agendaV3AssetVersion }}"></script>
+<script type="text/babel" data-presets="react" src="/agenda-v3/assistant.jsx?v={{ $agendaV3AssetVersion }}"></script>
+<script type="text/babel" data-presets="react" src="/agenda-v3/consulta.jsx?v={{ $agendaV3AssetVersion }}"></script>
+<script type="text/babel" data-presets="react" src="/agenda-v3/config.jsx?v={{ $agendaV3AssetVersion }}"></script>
+<script type="text/babel" data-presets="react" src="/agenda-v3/spec.jsx?v={{ $agendaV3AssetVersion }}"></script>
+<script type="text/babel" data-presets="react" src="/agenda-v3/tweaks-panel.jsx?v={{ $agendaV3AssetVersion }}"></script>
+<script type="text/babel" data-presets="react" src="/agenda-v3/app.jsx?v={{ $agendaV3AssetVersion }}"></script>
 @endpush
