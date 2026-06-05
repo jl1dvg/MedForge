@@ -18,6 +18,7 @@ export function PhonePreview({ nodes, edges, selectedNodeId, flowName, simulatio
             <div className="fm-phone-head">
                 <b><span className="mdi mdi-whatsapp" /> Vista previa</b>
             </div>
+            {simulationResult && <SimulationTrace simulationResult={simulationResult} />}
             <div className="fm-phone">
                 <div className="fm-wa-top">
                     <div className="fm-wa-av"><span className="mdi mdi-robot-happy" /></div>
@@ -57,6 +58,44 @@ export function PhonePreview({ nodes, edges, selectedNodeId, flowName, simulatio
             </div>
         </aside>
     );
+}
+
+function SimulationTrace({ simulationResult }) {
+    const actions = Array.isArray(simulationResult?.actions) ? simulationResult.actions : [];
+    const scenarioName = simulationResult?.scenario?.name || simulationResult?.scenario?.id || 'Sin escenario';
+
+    return (
+        <div className="fm-sim-trace">
+            <div className="fm-sim-head">
+                <b><span className="mdi mdi-routes" /> Trace</b>
+                <span className={simulationResult?.matched ? 'ok' : 'warn'}>
+                    {simulationResult?.matched ? 'match' : 'sin match'}
+                </span>
+            </div>
+            <div className="fm-sim-scenario">{scenarioName}</div>
+            <div className="fm-sim-actions">
+                {actions.length === 0 && <span>No se ejecutaron acciones.</span>}
+                {actions.slice(0, 8).map((action, index) => (
+                    <div className="fm-sim-action" key={`${action.type || 'action'}-${index}`}>
+                        <span>{index + 1}</span>
+                        <b>{action.type || action.action_type || 'acción'}</b>
+                        <small>{traceLabel(action)}</small>
+                    </div>
+                ))}
+                {actions.length > 8 && <span>+{actions.length - 8} acciones más</span>}
+            </div>
+        </div>
+    );
+}
+
+function traceLabel(action) {
+    if (action.route_handle) return `ruta ${action.route_handle}`;
+    if (action.branch) return `rama ${action.branch}`;
+    if (action.operation) return action.operation;
+    if (action.outbound_message?.body) return action.outbound_message.body.slice(0, 52);
+    if (action.message?.body) return action.message.body.slice(0, 52);
+    if (action.state) return `estado ${action.state}`;
+    return 'ejecutada';
 }
 
 function selectPreviewNodes(nodes, edges, selectedNodeId) {

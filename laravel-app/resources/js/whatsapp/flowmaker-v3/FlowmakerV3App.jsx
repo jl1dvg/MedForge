@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { flowmakerApi } from './flowmakerApi';
 import { contractToGraph } from './graphAdapter';
 import { graphToFlow } from './graphCompiler';
+import { validateGraph } from './flowValidator';
 import { createNode } from './domain';
 import { FlowCanvas } from './components/FlowCanvas';
 import { NodeInspector } from './components/NodeInspector';
@@ -44,6 +45,7 @@ export function FlowmakerV3App() {
 
     const nodes = graph?.nodes || [];
     const edges = graph?.edges || [];
+    const validation = useMemo(() => graph ? validateGraph(graph) : { errors: [], warnings: [], issues: [] }, [graph]);
     const selectedNode = nodes.find((node) => node.id === selectedNodeId) || null;
     const selectedScenarioId = selectedNode?.data?.scenarioId || selectedNode?.data?.name || '';
 
@@ -74,6 +76,14 @@ export function FlowmakerV3App() {
 
     async function publishFlow() {
         if (!graph || isBusy) return;
+
+        if (validation.errors.length > 0) {
+            const first = validation.errors[0];
+            setSelectedNodeId(first.nodeId || null);
+            setSelectedEdgeId(first.edgeId || null);
+            setActionStatus(`Corrige ${validation.errors.length} error(es) antes de publicar.`);
+            return;
+        }
 
         setIsBusy(true);
         setActionStatus('Publicando versión...');
@@ -130,15 +140,16 @@ export function FlowmakerV3App() {
         }
     }
 
-    function addEdge(source, target) {
+    function addEdge(source, target, sourceHandle = 'source') {
         if (!source || !target || source === target) return;
         updateGraph((current) => ({
             ...current,
             edges: [
-                ...current.edges.filter((edge) => !(edge.source === source && edge.target === target)),
-                { id: uid('edge'), source, sourceHandle: 'source', target, targetHandle: 'in' },
+                ...current.edges.filter((edge) => !(edge.source === source && (edge.sourceHandle || 'source') === sourceHandle)),
+                { id: uid('edge'), source, sourceHandle, target, targetHandle: 'in' },
             ],
         }));
+        setSelectedEdgeId(null);
     }
 
     function updateEdges(nextEdges) {
@@ -146,6 +157,16 @@ export function FlowmakerV3App() {
             ...current,
             edges: nextEdges,
         }));
+    }
+
+    function deleteEdge(id) {
+        updateGraph((current) => ({
+            ...current,
+            edges: current.edges.filter((edge) => edge.id !== id),
+        }));
+        if (selectedEdgeId === id) {
+            setSelectedEdgeId(null);
+        }
     }
 
     return (
@@ -208,12 +229,27 @@ export function FlowmakerV3App() {
                         }}
                         onMoveNode={moveNode}
                         onAddEdge={addEdge}
-                        onDeleteEdge={() => {}}
+                        onDeleteEdge={deleteEdge}
                         onDeleteNode={deleteNode}
                         onDropNode={addNode}
                         edgeStyle="bezier"
                         showMinimap
                     />
+                    {(validation.errors.length > 0 || validation.warnings.length > 0) && (
+                        <ValidationPanel
+                            validation={validation}
+                            onSelect={(issue) => {
+                                if (issue.nodeId) {
+                                    setSelectedNodeId(issue.nodeId);
+                                    setSelectedEdgeId(null);
+                                }
+                                if (issue.edgeId) {
+                                    setSelectedEdgeId(issue.edgeId);
+                                    setSelectedNodeId(null);
+                                }
+                            }}
+                        />
+                    )}
                     {selectedNode && (
                         <NodeInspector
                             node={selectedNode}
@@ -235,6 +271,35 @@ export function FlowmakerV3App() {
                 </div>
             )}
         </main>
+    );
+}
+
+function ValidationPanel({ validation, onSelect }) {
+    const issues = validation.issues.slice(0, 8);
+
+    return (
+        <aside className="fm-validation-panel" aria-label="Validación del flujo">
+            <div className="fm-validation-head">
+                <b><span className="mdi mdi-shield-check-outline" /> Validación</b>
+                <span>{validation.errors.length} errores · {validation.warnings.length} avisos</span>
+            </div>
+            <div className="fm-validation-list">
+                {issues.map((issue, index) => (
+                    <button
+                        key={`${issue.level}-${issue.nodeId || issue.edgeId || index}-${issue.message}`}
+                        type="button"
+                        className={`fm-validation-item ${issue.level}`}
+                        onClick={() => onSelect(issue)}
+                    >
+                        <span className={`mdi ${issue.level === 'error' ? 'mdi-alert-circle-outline' : 'mdi-alert-outline'}`} />
+                        <span>{issue.message}</span>
+                    </button>
+                ))}
+                {validation.issues.length > issues.length && (
+                    <div className="fm-validation-more">+{validation.issues.length - issues.length} pendientes más</div>
+                )}
+            </div>
+        </aside>
     );
 }
 

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { graphToFlow } from '../../resources/js/whatsapp/flowmaker-v3/graphCompiler.js';
+import { validateGraph } from '../../resources/js/whatsapp/flowmaker-v3/flowValidator.js';
 
 const flow = graphToFlow({
     flowName: 'Flow V3 smoke',
@@ -292,3 +293,133 @@ assert.deepEqual(routedButtons.routes, [
         ],
     },
 ]);
+
+const listFlowGraph = {
+    catalogs: { variables: [{ id: 'nombre', token: '{{nombre}}', label: 'Nombre' }] },
+    nodes: [
+        {
+            id: 'trigger_list',
+            type: 'keyword_trigger',
+            data: {
+                scenarioId: 'lista_whatsapp',
+                name: 'Lista WhatsApp',
+                status: 'published',
+                stage: 'arrival',
+                keywords: [{ value: 'menu' }],
+            },
+        },
+        {
+            id: 'list_1',
+            type: 'quick_replies',
+            data: {
+                actionType: 'send_list',
+                settings: {
+                    body: 'Hola {{nombre}}, elige una opción',
+                    button_text: 'Ver menú',
+                    sections: [
+                        {
+                            title: 'Agenda',
+                            rows: [
+                                { id: 'agendar', title: 'Agendar cita', description: 'Buscar horarios' },
+                                { id: 'mis_citas', title: 'Mis citas', description: 'Consultar cita vigente' },
+                            ],
+                        },
+                    ],
+                },
+            },
+        },
+        {
+            id: 'agenda_node',
+            type: 'sigcenter_agenda',
+            data: { actionType: 'sigcenter_agenda', settings: { operation: 'list_specialties' } },
+        },
+        {
+            id: 'citas_node',
+            type: 'message',
+            data: { settings: { body: 'Voy a revisar tus citas.' } },
+        },
+    ],
+    edges: [
+        { id: 'edge_list_1', source: 'trigger_list', target: 'list_1' },
+        { id: 'edge_list_agenda', source: 'list_1', sourceHandle: 'list:agendar', target: 'agenda_node' },
+        { id: 'edge_list_citas', source: 'list_1', sourceHandle: 'list:mis_citas', target: 'citas_node' },
+    ],
+};
+
+const listFlow = graphToFlow(listFlowGraph);
+const listAction = listFlow.scenarios[0].actions[0];
+assert.equal(listAction.type, 'send_list');
+assert.equal(listAction.message.button_text, 'Ver menú');
+assert.equal(listAction.message.sections[0].rows.length, 2);
+assert.equal(listAction.routes[0].handle, 'list:agendar');
+assert.equal(validateGraph(listFlowGraph).errors.length, 4);
+
+const orConditionsFlow = graphToFlow({
+    nodes: [
+        {
+            id: 'trigger_or',
+            type: 'keyword_trigger',
+            data: {
+                scenarioId: 'or_conditions',
+                name: 'OR conditions',
+                status: 'published',
+                stage: 'custom',
+                conditionsEditedFromKeywords: false,
+                conditions_match: 'any',
+                conditions: [
+                    { type: 'message_contains', keywords: ['agenda'] },
+                    { type: 'state_equals', value: 'agenda_esperando_cedula' },
+                ],
+            },
+        },
+        {
+            id: 'message_or',
+            type: 'message',
+            data: { settings: { body: 'OR match' } },
+        },
+    ],
+    edges: [{ id: 'edge_or', source: 'trigger_or', target: 'message_or' }],
+});
+
+assert.deepEqual(orConditionsFlow.scenarios[0].conditions, [
+    {
+        type: 'any',
+        conditions: [
+            { type: 'message_contains', keywords: ['agenda'] },
+            { type: 'state_equals', value: 'agenda_esperando_cedula' },
+        ],
+    },
+]);
+
+const invalidGraph = {
+    catalogs: { variables: [{ id: 'nombre', token: '{{nombre}}', label: 'Nombre' }] },
+    nodes: [
+        {
+            id: 'trigger_invalid',
+            type: 'keyword_trigger',
+            data: { name: 'Inválido', status: 'published', keywords: [{ value: 'hola' }] },
+        },
+        {
+            id: 'buttons_invalid',
+            type: 'quick_replies',
+            data: {
+                actionType: 'send_buttons',
+                settings: { body: 'Hola {{variable_inexistente}}', buttons: [{ id: 'ok', title: 'OK' }] },
+            },
+        },
+        {
+            id: 'branch_invalid',
+            type: 'branch',
+            data: { actionType: 'conditional', settings: { condition: { type: 'context_equals', field: 'variable_inexistente', value: 'si' } } },
+        },
+    ],
+    edges: [
+        { id: 'edge_invalid_1', source: 'trigger_invalid', target: 'buttons_invalid' },
+        { id: 'edge_invalid_2', source: 'buttons_invalid', sourceHandle: 'button:ok', target: 'branch_invalid' },
+        { id: 'edge_invalid_yes', source: 'branch_invalid', sourceHandle: 'yes', target: 'buttons_invalid' },
+    ],
+};
+
+const invalidValidation = validateGraph(invalidGraph);
+assert.ok(invalidValidation.errors.some((issue) => issue.message.includes('{{variable_inexistente}}')));
+assert.ok(invalidValidation.errors.some((issue) => issue.message.includes('rama no')));

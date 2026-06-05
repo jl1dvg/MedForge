@@ -1875,10 +1875,58 @@ class FlowRuntimeExecutionService
 
         return match ($type) {
             'always' => true,
+            'all' => $this->actionConditionsAllMatch($condition, $context),
+            'any' => $this->actionConditionsAnyMatch($condition, $context),
             'patient_found' => (bool)($condition['value'] ?? true) === (bool)($context['patient_found'] ?? isset($context['patient'])),
             'context_flag' => $this->contextActionFlagMatches($condition, $context),
+            'context_equals' => $this->contextActionValueMatches($condition, $context, false),
+            'context_contains' => $this->contextActionValueMatches($condition, $context, true),
+            'state_equals' => ($context['state'] ?? null) === ($condition['value'] ?? null),
             default => false,
         };
+    }
+
+    private function actionConditionsAllMatch(array $condition, array $context): bool
+    {
+        $conditions = is_array($condition['conditions'] ?? null) ? $condition['conditions'] : [];
+        if ($conditions === []) {
+            return true;
+        }
+
+        foreach ($conditions as $child) {
+            if (!is_array($child) || !$this->actionConditionMatches($child, $context)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function actionConditionsAnyMatch(array $condition, array $context): bool
+    {
+        $conditions = is_array($condition['conditions'] ?? null) ? $condition['conditions'] : [];
+        foreach ($conditions as $child) {
+            if (is_array($child) && $this->actionConditionMatches($child, $context)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function contextActionValueMatches(array $condition, array $context, bool $contains): bool
+    {
+        $key = (string)($condition['field'] ?? $condition['variable'] ?? $condition['key'] ?? '');
+        if ($key === '') {
+            return false;
+        }
+
+        $actual = $this->normalizeText((string)($context[$key] ?? ''));
+        $expected = $this->normalizeText((string)($condition['value'] ?? ''));
+
+        return $contains
+            ? $expected !== '' && str_contains($actual, $expected)
+            : $actual === $expected;
     }
 
     /**
@@ -3293,18 +3341,67 @@ class FlowRuntimeExecutionService
 
         return match ($type) {
             'always' => true,
+            'all' => $this->conditionsAllMatch($condition, $facts),
+            'any' => $this->conditionsAnyMatch($condition, $facts),
             'is_first_time' => (bool)($condition['value'] ?? false) === (bool)($facts['is_first_time'] ?? false),
             'has_consent' => (bool)($condition['value'] ?? false) === (bool)($facts['has_consent'] ?? false),
             'state_is' => ($facts['state'] ?? null) === ($condition['value'] ?? null),
+            'state_equals' => ($facts['state'] ?? null) === ($condition['value'] ?? null),
             'awaiting_is' => ($facts['awaiting_field'] ?? null) === ($condition['value'] ?? null),
             'message_in' => $this->messageIn($condition, $facts),
             'message_contains' => $this->messageContains($condition, $facts),
+            'message_equals' => $this->messageIn(['values' => [$condition['value'] ?? '']], $facts),
             'message_matches' => $this->messageMatches($condition, $facts),
             'last_interaction_gt' => (int)($facts['minutes_since_last'] ?? 0) >= max(0, (int)($condition['minutes'] ?? 0)),
             'patient_found' => (bool)($facts['patient_found'] ?? false),
             'context_flag' => $this->contextFlagMatches($condition, $facts),
+            'context_equals' => $this->contextValueMatches($condition, $facts, false),
+            'context_contains' => $this->contextValueMatches($condition, $facts, true),
             default => false,
         };
+    }
+
+    private function conditionsAllMatch(array $condition, array $facts): bool
+    {
+        $conditions = is_array($condition['conditions'] ?? null) ? $condition['conditions'] : [];
+        if ($conditions === []) {
+            return true;
+        }
+
+        foreach ($conditions as $child) {
+            if (!is_array($child) || !$this->evaluateCondition($child, $facts)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function conditionsAnyMatch(array $condition, array $facts): bool
+    {
+        $conditions = is_array($condition['conditions'] ?? null) ? $condition['conditions'] : [];
+        foreach ($conditions as $child) {
+            if (is_array($child) && $this->evaluateCondition($child, $facts)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function contextValueMatches(array $condition, array $facts, bool $contains): bool
+    {
+        $field = (string)($condition['field'] ?? $condition['variable'] ?? $condition['key'] ?? '');
+        if ($field === '') {
+            return false;
+        }
+
+        $actual = $this->normalizeText((string)($facts[$field] ?? ''));
+        $expected = $this->normalizeText((string)($condition['value'] ?? ''));
+
+        return $contains
+            ? $expected !== '' && str_contains($actual, $expected)
+            : $actual === $expected;
     }
 
     /**

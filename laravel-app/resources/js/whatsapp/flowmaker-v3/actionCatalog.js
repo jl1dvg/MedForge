@@ -78,8 +78,9 @@ export function editableDataToAction(node) {
                     header: settings.header ?? existing.message?.header ?? '',
                     body: settings.body ?? existing.message?.body ?? 'Elige una opción',
                     footer: settings.footer ?? existing.message?.footer ?? '',
+                    button_text: settings.button_text ?? existing.message?.button_text ?? 'Ver opciones',
                     buttons: normalizeButtons(settings.buttons ?? existing.message?.buttons ?? []),
-                    sections: settings.sections ?? existing.message?.sections,
+                    sections: normalizeSections(settings.sections ?? existing.message?.sections ?? []),
                 },
             };
         case 'send_template':
@@ -178,10 +179,19 @@ export function nodeOutputHandles(node) {
             : [{ id: 'source', label: 'Continuar' }];
     }
 
-    if (actionType === 'send_buttons' || actionType === 'send_list') {
+    if (actionType === 'send_buttons') {
         const buttons = normalizeButtons(settings.buttons || node?.data?.action?.message?.buttons || []);
         return [
             ...buttons.map((button) => ({ id: `button:${button.id}`, label: button.title })),
+            { id: 'fallback', label: 'Sin coincidencia' },
+        ];
+    }
+
+    if (actionType === 'send_list') {
+        const sections = normalizeSections(settings.sections || node?.data?.action?.message?.sections || []);
+        const rows = sections.flatMap((section) => section.rows || []);
+        return [
+            ...rows.map((row) => ({ id: `list:${row.id}`, label: row.title })),
             { id: 'fallback', label: 'Sin coincidencia' },
         ];
     }
@@ -226,8 +236,9 @@ function actionToSettings(action) {
                 header: message.header || '',
                 body: message.body || '',
                 footer: message.footer || '',
+                button_text: message.button_text || 'Ver opciones',
                 buttons: normalizeButtons(message.buttons || []),
-                sections: message.sections || [],
+                sections: normalizeSections(message.sections || []),
             };
         case 'send_template':
             return {
@@ -304,6 +315,30 @@ function normalizeButtons(buttons) {
         .filter((button) => button.title);
 
     return normalized.slice(0, 3);
+}
+
+function normalizeSections(sections) {
+    const list = Array.isArray(sections) ? sections : [];
+    return list
+        .map((section, sectionIndex) => ({
+            id: section?.id || `section_${sectionIndex + 1}`,
+            title: section?.title || `Sección ${sectionIndex + 1}`,
+            rows: normalizeListRows(section?.rows || [], sectionIndex),
+        }))
+        .filter((section) => section.rows.length > 0 || section.title)
+        .slice(0, 10);
+}
+
+function normalizeListRows(rows, sectionIndex = 0) {
+    const list = Array.isArray(rows) ? rows : [];
+    return list
+        .map((row, rowIndex) => ({
+            id: row?.id || `opcion_${sectionIndex + 1}_${rowIndex + 1}`,
+            title: row?.title || row?.label || row?.text || `Opción ${rowIndex + 1}`,
+            description: row?.description || '',
+        }))
+        .filter((row) => row.title)
+        .slice(0, 10);
 }
 
 function pick(source, keys) {

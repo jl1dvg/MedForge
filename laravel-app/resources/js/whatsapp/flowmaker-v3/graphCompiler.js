@@ -52,6 +52,10 @@ function triggerToConditions(trigger) {
     }
 
     if (!trigger.data?.conditionsEditedFromKeywords && Array.isArray(trigger.data?.conditions) && trigger.data.conditions.length > 0) {
+        if (trigger.data?.conditions_match === 'any') {
+            return [{ type: 'any', conditions: trigger.data.conditions }];
+        }
+
         return trigger.data.conditions;
     }
 

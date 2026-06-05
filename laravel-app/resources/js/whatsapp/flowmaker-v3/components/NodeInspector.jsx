@@ -140,7 +140,9 @@ function TriggerEditor({ node, catalogs, patchData }) {
             </button>
             <ConditionEditor
                 conditions={conditions}
+                mode={node.data?.conditions_match || 'all'}
                 variables={catalogs.variables || []}
+                onModeChange={(conditions_match) => patchData({ conditions_match, conditionsEditedFromKeywords: false })}
                 onChange={(nextConditions) => patchData({ conditions: nextConditions, conditionsEditedFromKeywords: false })}
             />
         </>
@@ -160,7 +162,8 @@ function ActionEditor({ node, nodes, edges, catalogs, patchData, patchSettings, 
             </Field>
 
             {actionType === 'send_message' && <MessageEditor settings={settings} variables={catalogs.variables || []} patchSettings={patchSettings} />}
-            {(actionType === 'send_buttons' || actionType === 'send_list') && <ButtonsEditor settings={settings} variables={catalogs.variables || []} patchSettings={patchSettings} />}
+            {actionType === 'send_buttons' && <ButtonsEditor settings={settings} variables={catalogs.variables || []} patchSettings={patchSettings} />}
+            {actionType === 'send_list' && <ListEditor settings={settings} variables={catalogs.variables || []} patchSettings={patchSettings} />}
             {actionType === 'send_template' && <TemplateEditor settings={settings} variables={catalogs.variables || []} patchSettings={patchSettings} />}
             {actionType === 'conditional' && <BranchEditor settings={settings} variables={catalogs.variables || []} patchSettings={patchSettings} />}
             {actionType === 'set_state' && <StateEditor settings={settings} patchSettings={patchSettings} />}
@@ -178,16 +181,33 @@ function ActionEditor({ node, nodes, edges, catalogs, patchData, patchSettings, 
 
 function BranchEditor({ settings, variables, patchSettings }) {
     const condition = settings.condition || { type: 'always' };
+    const isGroup = condition.type === 'all' || condition.type === 'any';
 
     return (
         <>
             <div className="fm-insp-section-title">Regla de decisión</div>
             <div className="fm-subcard">
-                <ConditionFields
-                    condition={condition}
-                    variables={variables}
-                    onChange={(nextCondition) => patchSettings({ condition: nextCondition })}
-                />
+                {isGroup ? (
+                    <ConditionEditor
+                        conditions={condition.conditions || [{ type: 'always' }]}
+                        mode={condition.type}
+                        variables={variables}
+                        onModeChange={(mode) => patchSettings({ condition: { ...condition, type: mode } })}
+                        onChange={(conditions) => patchSettings({ condition: { ...condition, conditions } })}
+                    />
+                ) : (
+                    <>
+                        <div className="fm-seg fm-seg-wide">
+                            <button type="button" className="on">Simple</button>
+                            <button type="button" onClick={() => patchSettings({ condition: { type: 'all', conditions: [condition] } })}>AND/OR</button>
+                        </div>
+                        <ConditionFields
+                            condition={condition}
+                            variables={variables}
+                            onChange={(nextCondition) => patchSettings({ condition: nextCondition })}
+                        />
+                    </>
+                )}
             </div>
             <div className="fm-help-list">
                 <span>Sí cumple</span>
@@ -253,6 +273,114 @@ function ButtonsEditor({ settings, variables, patchSettings }) {
                     <input className="fm-input" value={buttons[index]?.title || ''} onChange={(event) => updateButton(index, event.target.value)} />
                 </Field>
             ))}
+        </>
+    );
+}
+
+function ListEditor({ settings, variables, patchSettings }) {
+    const bodyRef = React.useRef(null);
+    const sections = normalizeSectionsForEditor(settings.sections);
+
+    function updateSection(sectionIndex, patch) {
+        patchSettings({
+            sections: sections.map((section, index) => (
+                index === sectionIndex ? { ...section, ...patch } : section
+            )),
+        });
+    }
+
+    function updateRow(sectionIndex, rowIndex, patch) {
+        patchSettings({
+            sections: sections.map((section, index) => {
+                if (index !== sectionIndex) return section;
+                return {
+                    ...section,
+                    rows: section.rows.map((row, currentRowIndex) => (
+                        currentRowIndex === rowIndex ? { ...row, ...patch } : row
+                    )),
+                };
+            }),
+        });
+    }
+
+    function addRow(sectionIndex) {
+        patchSettings({
+            sections: sections.map((section, index) => {
+                if (index !== sectionIndex) return section;
+                return {
+                    ...section,
+                    rows: [
+                        ...section.rows,
+                        { id: `opcion_${sectionIndex + 1}_${section.rows.length + 1}`, title: 'Nueva opción', description: '' },
+                    ],
+                };
+            }),
+        });
+    }
+
+    return (
+        <>
+            <Field label="Encabezado">
+                <input className="fm-input" value={settings.header || ''} onChange={(event) => patchSettings({ header: event.target.value })} />
+            </Field>
+            <Field label="Texto principal">
+                <textarea ref={bodyRef} className="fm-textarea" value={settings.body || ''} onChange={(event) => patchSettings({ body: event.target.value })} />
+                <VariableChips variables={variables} onInsert={(token) => insertText(bodyRef.current, settings.body || '', token, (body) => patchSettings({ body }))} />
+            </Field>
+            <div className="fm-row2">
+                <Field label="Texto del botón">
+                    <input className="fm-input" value={settings.button_text || 'Ver opciones'} onChange={(event) => patchSettings({ button_text: event.target.value })} />
+                </Field>
+                <Field label="Pie de página">
+                    <input className="fm-input" value={settings.footer || ''} onChange={(event) => patchSettings({ footer: event.target.value })} />
+                </Field>
+            </div>
+            <div className="fm-insp-section-title">Secciones y opciones</div>
+            {sections.map((section, sectionIndex) => (
+                <div className="fm-subcard" key={section.id || sectionIndex}>
+                    <div className="fm-subcard-head">
+                        <b>Sección {sectionIndex + 1}</b>
+                        <button className="fm-mini-del" type="button" onClick={() => patchSettings({ sections: sections.filter((_, index) => index !== sectionIndex) })}>
+                            <span className="mdi mdi-delete-outline" />
+                        </button>
+                    </div>
+                    <Field label="Título de sección">
+                        <input className="fm-input" value={section.title || ''} onChange={(event) => updateSection(sectionIndex, { title: event.target.value })} />
+                    </Field>
+                    {section.rows.map((row, rowIndex) => (
+                        <div className="fm-list-row-editor" key={row.id || rowIndex}>
+                            <div className="fm-list-row-grid">
+                                <Field label={`ID ${rowIndex + 1}`}>
+                                    <input className="fm-input" value={row.id || ''} onChange={(event) => updateRow(sectionIndex, rowIndex, { id: event.target.value })} />
+                                </Field>
+                                <Field label="Texto">
+                                    <input className="fm-input" value={row.title || ''} onChange={(event) => updateRow(sectionIndex, rowIndex, { title: event.target.value })} />
+                                </Field>
+                            </div>
+                            <Field label="Descripción">
+                                <input className="fm-input" value={row.description || ''} onChange={(event) => updateRow(sectionIndex, rowIndex, { description: event.target.value })} />
+                            </Field>
+                            <button
+                                className="fm-mini-link"
+                                type="button"
+                                onClick={() => updateSection(sectionIndex, { rows: section.rows.filter((_, index) => index !== rowIndex) })}
+                            >
+                                <span className="mdi mdi-delete-outline" /> Quitar opción
+                            </button>
+                        </div>
+                    ))}
+                    <button type="button" className="fm-add-btn" onClick={() => addRow(sectionIndex)}>
+                        <span className="mdi mdi-plus" /> Agregar opción
+                    </button>
+                </div>
+            ))}
+            <button
+                type="button"
+                className="fm-add-btn"
+                onClick={() => patchSettings({ sections: [...sections, { id: `section_${sections.length + 1}`, title: 'Nueva sección', rows: [] }] })}
+            >
+                <span className="mdi mdi-plus" /> Agregar sección
+            </button>
         </>
     );
 }
@@ -409,12 +537,18 @@ function AiEditor({ settings, variables, patchSettings }) {
     );
 }
 
-function ConditionEditor({ conditions, variables, onChange }) {
+function ConditionEditor({ conditions, mode = 'all', variables, onChange, onModeChange }) {
     const rows = conditions.length > 0 ? conditions : [{ type: 'always' }];
 
     return (
         <div>
             <div className="fm-insp-section-title">Condiciones</div>
+            {onModeChange && (
+                <div className="fm-seg fm-seg-wide">
+                    <button type="button" className={mode !== 'any' ? 'on' : ''} onClick={() => onModeChange('all')}>Todas (AND)</button>
+                    <button type="button" className={mode === 'any' ? 'on' : ''} onClick={() => onModeChange('any')}>Cualquiera (OR)</button>
+                </div>
+            )}
             {rows.map((condition, index) => (
                 <div className="fm-subcard" key={index}>
                     <div className="fm-subcard-head">
@@ -675,6 +809,24 @@ function updateCondition(rows, index, patch, onChange) {
 
 function updateRow(rows, index, patch, onChange) {
     onChange(rows.map((row, rowIndex) => (rowIndex === index ? { ...row, ...patch } : row)));
+}
+
+function normalizeSectionsForEditor(sections) {
+    const list = Array.isArray(sections) && sections.length > 0
+        ? sections
+        : [{ id: 'section_1', title: 'Opciones', rows: [{ id: 'opcion_1_1', title: 'Opción 1', description: '' }] }];
+
+    return list.map((section, sectionIndex) => ({
+        id: section?.id || `section_${sectionIndex + 1}`,
+        title: section?.title || `Sección ${sectionIndex + 1}`,
+        rows: Array.isArray(section?.rows) && section.rows.length > 0
+            ? section.rows.map((row, rowIndex) => ({
+                id: row?.id || `opcion_${sectionIndex + 1}_${rowIndex + 1}`,
+                title: row?.title || row?.label || row?.text || `Opción ${rowIndex + 1}`,
+                description: row?.description || '',
+            }))
+            : [],
+    }));
 }
 
 function objectToRows(value) {
