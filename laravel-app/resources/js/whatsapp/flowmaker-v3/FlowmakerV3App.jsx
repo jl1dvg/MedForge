@@ -141,6 +141,13 @@ export function FlowmakerV3App() {
         }));
     }
 
+    function updateEdges(nextEdges) {
+        updateGraph((current) => ({
+            ...current,
+            edges: nextEdges,
+        }));
+    }
+
     return (
         <main className="fm-app">
             <header className="fm-topbar">
@@ -210,9 +217,12 @@ export function FlowmakerV3App() {
                     {selectedNode && (
                         <NodeInspector
                             node={selectedNode}
+                            nodes={nodes}
+                            edges={edges}
                             catalogs={graph?.catalogs || {}}
                             onUpdate={updateNode}
                             onDelete={deleteNode}
+                            onEdgesChange={updateEdges}
                         />
                     )}
                     <PhonePreview
@@ -244,11 +254,35 @@ function defaultDataForType(type) {
     }
 
     if (type === 'quick_replies') {
-        return { settings: { body: 'Elige una opción', buttons: ['Opción 1', 'Opción 2'] } };
+        return { actionType: 'send_buttons', settings: { body: 'Elige una opción', buttons: ['Opción 1', 'Opción 2'] } };
+    }
+
+    if (type === 'branch') {
+        return { actionType: 'conditional', settings: { condition: { type: 'always' } } };
+    }
+
+    if (type === 'state') {
+        return { actionType: 'set_state', settings: { state: '' } };
+    }
+
+    if (type === 'consent') {
+        return { actionType: 'store_consent', settings: { consent_type: 'datos_protegidos', granted: true } };
+    }
+
+    if (type === 'sigcenter_agenda') {
+        return { actionType: 'sigcenter_agenda', settings: { operation: 'list_specialties', send_result: true } };
+    }
+
+    if (type === 'handoff') {
+        return { actionType: 'handoff_agent', settings: { reason: '' } };
+    }
+
+    if (type === 'ai_agent') {
+        return { actionType: 'ai_agent', settings: { instructions: '', handoff: true } };
     }
 
     if (type === 'end') {
-        return { settings: { action: 'end' } };
+        return { actionType: 'handoff_agent', settings: { action: 'end' } };
     }
 
     return { settings: {} };

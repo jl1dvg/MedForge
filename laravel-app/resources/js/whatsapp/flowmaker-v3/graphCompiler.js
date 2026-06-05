@@ -1,12 +1,14 @@
-import { editableDataToAction } from './actionCatalog.js';
+import { editableDataToAction, nodeOutputHandles } from './actionCatalog.js';
 
 export function graphToFlow(graph) {
     const nodes = Array.isArray(graph?.nodes) ? graph.nodes : [];
     const edges = Array.isArray(graph?.edges) ? graph.edges : [];
     const triggerNodes = nodes.filter((node) => isTrigger(node));
 
+    const context = createGraphContext(nodes, edges);
+
     const scenarios = triggerNodes.map((trigger, index) => {
-        const actions = collectActionNodes(trigger, nodes, edges).map((node) => nodeToAction(node));
+        const actions = compileLinearActions(startTargets(trigger, context), context, new Set([trigger.id]));
 
         return {
             id: scenarioId(trigger, index),
@@ -64,37 +66,120 @@ function triggerToConditions(trigger) {
     return [{ type: 'message_contains', keywords }];
 }
 
-function collectActionNodes(trigger, nodes, edges) {
+function createGraphContext(nodes, edges) {
     const byId = new Map(nodes.map((node) => [node.id, node]));
     const outgoing = new Map();
 
     edges.forEach((edge) => {
         if (!edge?.source || !edge?.target) return;
         if (!outgoing.has(edge.source)) outgoing.set(edge.source, []);
-        outgoing.get(edge.source).push(edge.target);
+        outgoing.get(edge.source).push(edge);
     });
 
-    const ordered = [];
-    const seen = new Set([trigger.id]);
-    const queue = [...(outgoing.get(trigger.id) || [])];
+    return { byId, outgoing };
+}
+
+function startTargets(trigger, context) {
+    return (context.outgoing.get(trigger.id) || [])
+        .map((edge) => edge.target)
+        .filter(Boolean);
+}
+
+function compileLinearActions(targetIds, context, seen) {
+    const actions = [];
+    const queue = [...targetIds];
 
     while (queue.length > 0) {
         const id = queue.shift();
         if (seen.has(id)) continue;
         seen.add(id);
 
-        const node = byId.get(id);
+        const node = context.byId.get(id);
         if (!node || isTrigger(node)) continue;
 
-        ordered.push(node);
-        queue.push(...(outgoing.get(id) || []));
+        actions.push(nodeToAction(node, context, seen));
+        queue.push(...linearTargets(node, context));
     }
 
-    return ordered;
+    return actions;
 }
 
-function nodeToAction(node) {
-    return editableDataToAction(node);
+function linearTargets(node, context) {
+    return (context.outgoing.get(node.id) || [])
+        .filter((edge) => isLinearEdge(node, edge))
+        .map((edge) => edge.target)
+        .filter(Boolean);
+}
+
+function routeEdges(node, context) {
+    if (isConditionalNode(node)) {
+        return [];
+    }
+
+    return (context.outgoing.get(node.id) || [])
+        .filter((edge) => !isLinearEdge(node, edge) && edge.sourceHandle);
+}
+
+function branchTargets(node, context, handle) {
+    return (context.outgoing.get(node.id) || [])
+        .filter((edge) => edge.sourceHandle === handle)
+        .map((edge) => edge.target)
+        .filter(Boolean);
+}
+
+function isLinearEdge(node, edge) {
+    if (isTrigger(node)) {
+        return true;
+    }
+
+    const handle = edge?.sourceHandle || 'source';
+    return handle === 'source' || handle === 'default' || handle === 'continue';
+}
+
+function isConditionalNode(node) {
+    const actionType = node?.data?.actionType || node?.data?.action?.type;
+    return node?.type === 'branch' || actionType === 'conditional';
+}
+
+function nodeToAction(node, context, seen) {
+    const action = editableDataToAction(node);
+
+    if (isConditionalNode(node)) {
+        return {
+            ...action,
+            type: 'conditional',
+            condition: action.condition || node.data?.settings?.condition || { type: 'always' },
+            then: compileLinearActions(branchTargets(node, context, 'yes'), context, new Set(seen)),
+            else: compileLinearActions(branchTargets(node, context, 'no'), context, new Set(seen)),
+        };
+    }
+
+    const routes = compileRoutes(node, context);
+    if (routes.length === 0) {
+        return action;
+    }
+
+    return {
+        ...action,
+        routes,
+    };
+}
+
+function compileRoutes(node, context) {
+    const handles = nodeOutputHandles(node);
+    const labels = new Map(handles.map((handle) => [handle.id, handle.label]));
+
+    return routeEdges(node, context).map((edge) => {
+        const target = context.byId.get(edge.target);
+        const targetAction = target ? editableDataToAction(target) : null;
+
+        return {
+            handle: edge.sourceHandle,
+            label: labels.get(edge.sourceHandle) || edge.sourceHandle,
+            target_node_id: edge.target,
+            target_action_type: targetAction?.type || null,
+        };
+    });
 }
 
 function fallbackAction() {

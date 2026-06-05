@@ -1,6 +1,7 @@
 import React from 'react';
-import { ACTION_TYPE_OPTIONS, STAGE_OPTIONS, STATUS_OPTIONS } from '../actionCatalog';
+import { ACTION_TYPE_OPTIONS, STAGE_OPTIONS, STATUS_OPTIONS, nodeOutputHandles } from '../actionCatalog';
 import { NODE_TYPES } from '../domain';
+import { uid } from '../util';
 
 const CONDITION_TYPES = [
     { value: 'always', label: 'Siempre' },
@@ -11,7 +12,7 @@ const CONDITION_TYPES = [
     { value: 'context_contains', label: 'Variable contiene' },
 ];
 
-export function NodeInspector({ node, catalogs = {}, onUpdate, onDelete }) {
+export function NodeInspector({ node, catalogs = {}, nodes = [], edges = [], onUpdate, onDelete, onEdgesChange }) {
     if (!node) {
         return (
             <aside className="fm-inspector">
@@ -48,7 +49,15 @@ export function NodeInspector({ node, catalogs = {}, onUpdate, onDelete }) {
                 {meta.isTrigger ? (
                     <TriggerEditor node={node} catalogs={catalogs} patchData={patchData} />
                 ) : (
-                    <ActionEditor node={node} catalogs={catalogs} patchData={patchData} patchSettings={patchSettings} />
+                    <ActionEditor
+                        node={node}
+                        nodes={nodes}
+                        edges={edges}
+                        catalogs={catalogs}
+                        patchData={patchData}
+                        patchSettings={patchSettings}
+                        onEdgesChange={onEdgesChange}
+                    />
                 )}
 
                 <div className="fm-danger-zone">
@@ -138,8 +147,8 @@ function TriggerEditor({ node, catalogs, patchData }) {
     );
 }
 
-function ActionEditor({ node, catalogs, patchData, patchSettings }) {
-    const actionType = node.data?.actionType || node.data?.action?.type || 'send_message';
+function ActionEditor({ node, nodes, edges, catalogs, patchData, patchSettings, onEdgesChange }) {
+    const actionType = node.data?.actionType || node.data?.action?.type || defaultActionTypeForNode(node.type);
     const settings = node.data?.settings || {};
 
     return (
@@ -153,14 +162,37 @@ function ActionEditor({ node, catalogs, patchData, patchSettings }) {
             {actionType === 'send_message' && <MessageEditor settings={settings} variables={catalogs.variables || []} patchSettings={patchSettings} />}
             {(actionType === 'send_buttons' || actionType === 'send_list') && <ButtonsEditor settings={settings} variables={catalogs.variables || []} patchSettings={patchSettings} />}
             {actionType === 'send_template' && <TemplateEditor settings={settings} variables={catalogs.variables || []} patchSettings={patchSettings} />}
+            {actionType === 'conditional' && <BranchEditor settings={settings} variables={catalogs.variables || []} patchSettings={patchSettings} />}
             {actionType === 'set_state' && <StateEditor settings={settings} patchSettings={patchSettings} />}
             {actionType === 'store_consent' && <ConsentEditor settings={settings} patchSettings={patchSettings} />}
             {actionType === 'sigcenter_agenda' && <SigcenterEditor settings={settings} operations={catalogs.sigcenter_operations || []} patchSettings={patchSettings} />}
             {actionType === 'handoff_agent' && <HandoffEditor settings={settings} variables={catalogs.variables || []} patchSettings={patchSettings} />}
             {actionType === 'ai_agent' && <AiEditor settings={settings} variables={catalogs.variables || []} patchSettings={patchSettings} />}
+            <RouteEditor node={node} nodes={nodes} edges={edges} onEdgesChange={onEdgesChange} />
             {!ACTION_TYPE_OPTIONS.some((option) => option.value === actionType) && (
                 <UnsupportedActionNotice actionType={actionType} />
             )}
+        </>
+    );
+}
+
+function BranchEditor({ settings, variables, patchSettings }) {
+    const condition = settings.condition || { type: 'always' };
+
+    return (
+        <>
+            <div className="fm-insp-section-title">Regla de decisión</div>
+            <div className="fm-subcard">
+                <ConditionFields
+                    condition={condition}
+                    variables={variables}
+                    onChange={(nextCondition) => patchSettings({ condition: nextCondition })}
+                />
+            </div>
+            <div className="fm-help-list">
+                <span>Sí cumple</span>
+                <span>No cumple</span>
+            </div>
         </>
     );
 }
@@ -396,35 +428,115 @@ function ConditionEditor({ conditions, variables, onChange }) {
                             {CONDITION_TYPES.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                         </select>
                     </Field>
-                    {condition.type !== 'always' && (
-                        <>
-                            {(condition.type || '').startsWith('context_') && (
-                                <Field label="Variable">
-                                    <select className="fm-select" value={condition.field || condition.variable || ''} onChange={(event) => updateCondition(rows, index, { field: event.target.value }, onChange)}>
-                                        <option value="">Selecciona variable</option>
-                                        {variables.map((variable) => <option key={variable.id} value={variable.id}>{variable.label}</option>)}
-                                    </select>
-                                </Field>
-                            )}
-                            <Field label="Valor">
-                                <input
-                                    className="fm-input"
-                                    value={condition.value || (Array.isArray(condition.keywords) ? condition.keywords.join(', ') : '')}
-                                    onChange={(event) => {
-                                        const value = event.target.value;
-                                        updateCondition(rows, index, condition.type === 'message_contains'
-                                            ? { keywords: value.split(',').map((item) => item.trim()).filter(Boolean), value }
-                                            : { value }, onChange);
-                                    }}
-                                />
-                            </Field>
-                        </>
-                    )}
+                    <ConditionFields
+                        condition={condition}
+                        variables={variables}
+                        skipType
+                        onChange={(patch) => updateCondition(rows, index, patch, onChange)}
+                    />
                 </div>
             ))}
             <button type="button" className="fm-add-btn" onClick={() => onChange([...rows, { type: 'always' }])}>
                 <span className="mdi mdi-plus" /> Agregar condición
             </button>
+        </div>
+    );
+}
+
+function ConditionFields({ condition, variables, onChange, skipType = false }) {
+    const type = condition.type || 'always';
+
+    function patch(patchValue) {
+        onChange({ ...condition, ...patchValue });
+    }
+
+    return (
+        <>
+            {!skipType && (
+                <Field label="Tipo">
+                    <select className="fm-select" value={type} onChange={(event) => patch({ type: event.target.value })}>
+                        {CONDITION_TYPES.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                    </select>
+                </Field>
+            )}
+            {type !== 'always' && (
+                <>
+                    {type.startsWith('context_') && (
+                        <Field label="Variable">
+                            <select className="fm-select" value={condition.field || condition.variable || ''} onChange={(event) => patch({ field: event.target.value })}>
+                                <option value="">Selecciona variable</option>
+                                {variables.map((variable) => <option key={variable.id} value={variable.id}>{variable.label}</option>)}
+                            </select>
+                        </Field>
+                    )}
+                    <Field label={type === 'message_contains' ? 'Palabras o valor' : 'Valor'}>
+                        <input
+                            className="fm-input"
+                            value={condition.value || (Array.isArray(condition.keywords) ? condition.keywords.join(', ') : '')}
+                            onChange={(event) => {
+                                const value = event.target.value;
+                                patch(type === 'message_contains'
+                                    ? { keywords: value.split(',').map((item) => item.trim()).filter(Boolean), value }
+                                    : { value });
+                            }}
+                        />
+                    </Field>
+                </>
+            )}
+        </>
+    );
+}
+
+function RouteEditor({ node, nodes, edges, onEdgesChange }) {
+    if (!onEdgesChange) return null;
+
+    const handles = nodeOutputHandles(node);
+    if (handles.length === 0) return null;
+
+    const targetNodes = nodes.filter((candidate) => candidate.id !== node.id);
+
+    function currentTarget(handleId) {
+        return edges.find((edge) => edge.source === node.id && (edge.sourceHandle || 'source') === handleId)?.target || '';
+    }
+
+    function updateRoute(handleId, targetId) {
+        const existing = edges.find((edge) => edge.source === node.id && (edge.sourceHandle || 'source') === handleId);
+        const nextEdges = edges.filter((edge) => !(edge.source === node.id && (edge.sourceHandle || 'source') === handleId));
+
+        if (!targetId) {
+            onEdgesChange(nextEdges);
+            return;
+        }
+
+        onEdgesChange([
+            ...nextEdges,
+            {
+                id: existing?.id || uid('edge'),
+                source: node.id,
+                sourceHandle: handleId,
+                target: targetId,
+                targetHandle: 'in',
+            },
+        ]);
+    }
+
+    return (
+        <div>
+            <div className="fm-insp-section-title">Rutas de salida</div>
+            <div className="fm-route-list">
+                {handles.map((handle) => (
+                    <Field key={handle.id} label={handle.label}>
+                        <select className="fm-select" value={currentTarget(handle.id)} onChange={(event) => updateRoute(handle.id, event.target.value)}>
+                            <option value="">Sin conectar</option>
+                            {targetNodes.map((target) => (
+                                <option key={target.id} value={target.id}>
+                                    {routeNodeLabel(target)}
+                                </option>
+                            ))}
+                        </select>
+                    </Field>
+                ))}
+            </div>
         </div>
     );
 }
@@ -515,6 +627,29 @@ function normalizeButtonsForEditor(buttons) {
         }
         return button || { id: `opcion_${index + 1}`, title: '' };
     });
+}
+
+function routeNodeLabel(node) {
+    const meta = NODE_TYPES[node.type] || NODE_TYPES.message;
+    const title = node.data?.name
+        || node.data?.settings?.body
+        || node.data?.action?.message?.body
+        || node.data?.actionType
+        || meta.label;
+
+    return `${meta.label} - ${String(title).slice(0, 44)}`;
+}
+
+function defaultActionTypeForNode(type) {
+    if (type === 'quick_replies') return 'send_buttons';
+    if (type === 'template') return 'send_template';
+    if (type === 'branch') return 'conditional';
+    if (type === 'state') return 'set_state';
+    if (type === 'consent') return 'store_consent';
+    if (type === 'sigcenter_agenda') return 'sigcenter_agenda';
+    if (type === 'handoff' || type === 'end') return 'handoff_agent';
+    if (type === 'ai_agent') return 'ai_agent';
+    return 'send_message';
 }
 
 function insertText(element, currentValue, token, onChange) {

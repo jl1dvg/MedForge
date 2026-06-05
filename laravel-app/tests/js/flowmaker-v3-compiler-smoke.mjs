@@ -171,3 +171,112 @@ assert.equal(specialized.scenarios[0].actions[3].reason, 'agenda_compleja');
 assert.equal(specialized.scenarios[0].actions[4].instructions, 'Responder solo con conocimiento autorizado.');
 assert.equal(specialized.scenarios[0].actions[4].handoff, false);
 assert.equal(specialized.scenarios[0].actions[5].template.name, 'confirmacion_cita');
+
+const conditionalFlow = graphToFlow({
+    nodes: [
+        {
+            id: 'trigger_branch',
+            type: 'keyword_trigger',
+            data: {
+                scenarioId: 'ramificacion',
+                name: 'Ramificación',
+                status: 'published',
+                stage: 'validation',
+                keywords: [{ value: 'validar' }],
+            },
+        },
+        {
+            id: 'branch_1',
+            type: 'branch',
+            data: {
+                actionType: 'conditional',
+                settings: {
+                    condition: { type: 'context_equals', field: 'es_paciente', value: 'si' },
+                },
+            },
+        },
+        {
+            id: 'yes_message',
+            type: 'message',
+            data: { settings: { body: 'Sí es paciente' } },
+        },
+        {
+            id: 'no_message',
+            type: 'message',
+            data: { settings: { body: 'Debe registrarse primero' } },
+        },
+    ],
+    edges: [
+        { id: 'edge_branch_1', source: 'trigger_branch', target: 'branch_1' },
+        { id: 'edge_branch_yes', source: 'branch_1', sourceHandle: 'yes', target: 'yes_message' },
+        { id: 'edge_branch_no', source: 'branch_1', sourceHandle: 'no', target: 'no_message' },
+    ],
+});
+
+assert.equal(conditionalFlow.scenarios[0].actions.length, 1);
+assert.equal(conditionalFlow.scenarios[0].actions[0].type, 'conditional');
+assert.deepEqual(conditionalFlow.scenarios[0].actions[0].condition, { type: 'context_equals', field: 'es_paciente', value: 'si' });
+assert.equal(conditionalFlow.scenarios[0].actions[0].then.length, 1);
+assert.equal(conditionalFlow.scenarios[0].actions[0].else.length, 1);
+assert.equal(conditionalFlow.scenarios[0].actions[0].then[0].message.body, 'Sí es paciente');
+assert.equal(conditionalFlow.scenarios[0].actions[0].else[0].message.body, 'Debe registrarse primero');
+
+const routedButtonsFlow = graphToFlow({
+    nodes: [
+        {
+            id: 'trigger_buttons',
+            type: 'keyword_trigger',
+            data: {
+                scenarioId: 'botones_ruteados',
+                name: 'Botones ruteados',
+                status: 'published',
+                stage: 'arrival',
+                keywords: [{ value: 'hola' }],
+            },
+        },
+        {
+            id: 'buttons_routed',
+            type: 'quick_replies',
+            data: {
+                actionType: 'send_buttons',
+                settings: {
+                    body: '¿Autorizas el uso de datos protegidos?',
+                    buttons: [{ id: 'acepto', title: 'Acepto' }, { id: 'no_autorizo', title: 'No autorizo' }],
+                },
+            },
+        },
+        {
+            id: 'accepted_node',
+            type: 'state',
+            data: { actionType: 'set_state', settings: { state: 'agenda_esperando_cedula' } },
+        },
+        {
+            id: 'rejected_node',
+            type: 'handoff',
+            data: { actionType: 'handoff_agent', settings: { reason: 'sin_consentimiento' } },
+        },
+    ],
+    edges: [
+        { id: 'edge_buttons_1', source: 'trigger_buttons', target: 'buttons_routed' },
+        { id: 'edge_buttons_yes', source: 'buttons_routed', sourceHandle: 'button:acepto', target: 'accepted_node' },
+        { id: 'edge_buttons_no', source: 'buttons_routed', sourceHandle: 'button:no_autorizo', target: 'rejected_node' },
+    ],
+});
+
+const routedButtons = routedButtonsFlow.scenarios[0].actions[0];
+assert.equal(routedButtons.type, 'send_buttons');
+assert.equal(routedButtons.message.buttons.length, 2);
+assert.deepEqual(routedButtons.routes, [
+    {
+        handle: 'button:acepto',
+        label: 'Acepto',
+        target_node_id: 'accepted_node',
+        target_action_type: 'set_state',
+    },
+    {
+        handle: 'button:no_autorizo',
+        label: 'No autorizo',
+        target_node_id: 'rejected_node',
+        target_action_type: 'handoff_agent',
+    },
+]);

@@ -17,6 +17,7 @@ export const ACTION_TYPE_OPTIONS = [
     { value: 'send_buttons', label: 'Botones' },
     { value: 'send_list', label: 'Lista' },
     { value: 'send_template', label: 'Plantilla' },
+    { value: 'conditional', label: 'Condición' },
     { value: 'set_state', label: 'Estado/captura' },
     { value: 'store_consent', label: 'Consentimiento' },
     { value: 'sigcenter_agenda', label: 'Agenda Sigcenter' },
@@ -28,6 +29,8 @@ export function actionToNodeType(action) {
     switch (action?.type) {
         case 'send_template':
             return 'template';
+        case 'conditional':
+            return 'branch';
         case 'send_buttons':
         case 'send_list':
             return 'quick_replies';
@@ -89,6 +92,14 @@ export function editableDataToAction(node) {
                     language: settings.language ?? existing.template?.language ?? 'es',
                     parameters: settings.parameters || existing.template?.parameters || {},
                 },
+            };
+        case 'conditional':
+            return {
+                ...existing,
+                type: 'conditional',
+                condition: settings.condition || existing.condition || { type: 'always' },
+                then: Array.isArray(existing.then) ? existing.then : [],
+                else: Array.isArray(existing.else) ? existing.else : [],
             };
         case 'set_state':
             return compactObject({
@@ -224,6 +235,10 @@ function actionToSettings(action) {
                 language: action.template?.language || 'es',
                 parameters: action.template?.parameters || {},
             };
+        case 'conditional':
+            return {
+                condition: action.condition || { type: 'always' },
+            };
         case 'set_state':
             return pick(action, ['state', 'next_state', 'save_response_as', 'awaiting_field']);
         case 'store_consent':
@@ -264,6 +279,7 @@ function actionToSettings(action) {
 function nodeTypeToActionType(type) {
     if (type === 'quick_replies') return 'send_buttons';
     if (type === 'template') return 'send_template';
+    if (type === 'branch') return 'conditional';
     if (type === 'state') return 'set_state';
     if (type === 'consent') return 'store_consent';
     if (type === 'sigcenter_agenda') return 'sigcenter_agenda';
