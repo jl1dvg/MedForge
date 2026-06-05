@@ -5,13 +5,20 @@ const AG = window.AG;
 const { toMin, toHHMM } = AG.util;
 
 /* ---------- lookups ---------- */
-const byId = (arr, id) => arr.find((x) => x.id === id) || null;
-const medico = (id) => byId(AG.MEDICOS, id);
-const sala   = (id) => byId(AG.SALAS, id);
-const tipo   = (id) => byId(AG.TIPOS, id);
-const area   = (id) => byId(AG.AREAS, id);
-const sede   = (id) => byId(AG.SEDES, id);
-const estado = (id) => byId(AG.ESTADOS, id);
+const byId = (arr, id) => (arr || []).find((x) => x && x.id === id) || null;
+const fallbackArea = { id: "consulta", label: "Consulta", icon: "mdi-stethoscope", color: "#1f9d7a", bg: "#dff5ee", fg: "#17654f" };
+const fallbackMedico = { id: "", nombre: "Sin médico asignado", esp: "SigCenter", areas: ["consulta"], sede: "", color: "#7e8299", iniciales: "SC" };
+const fallbackSala = { id: "", sede: "", label: "Sin sala asignada", tipo: "consultorio", area: "consulta", cap: 1 };
+const fallbackTipo = { id: "", label: "Atención SigCenter", area: "consulta", dur: 20, requiereTipoSala: ["consultorio"] };
+const fallbackSede = { id: "", label: "Sede", abrev: "", apertura: "08:00", cierre: "18:00" };
+const fallbackEstado = { id: "agendado", label: "Agendado", icon: "mdi-calendar-blank-outline", tone: "info", desc: "" };
+
+const medico = (id) => byId(AG.MEDICOS, id) || { ...fallbackMedico, id: id || "" };
+const sala   = (id) => byId(AG.SALAS, id) || { ...fallbackSala, id: id || "" };
+const tipo   = (id) => byId(AG.TIPOS, id) || { ...fallbackTipo, id: id || "" };
+const area   = (id) => byId(AG.AREAS, id) || { ...fallbackArea, id: id || "consulta" };
+const sede   = (id) => byId(AG.SEDES, id) || { ...fallbackSede, id: id || "" };
+const estado = (id) => byId(AG.ESTADOS, id) || { ...fallbackEstado, id: id || "agendado" };
 
 /* ---------- reglas de negocio: detección de conflictos ---------- */
 // Devuelve overlap (bool) entre [aIni,aFin) y [bIni,bFin) en minutos.
