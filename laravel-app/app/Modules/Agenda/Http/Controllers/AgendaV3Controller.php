@@ -120,7 +120,8 @@ class AgendaV3Controller
             }
 
             $v3Citas  = $query->orderBy('c.hora_ini')->get()->map(fn ($c) => $this->normalizeCita($c))->toArray();
-            $ppCitas  = $this->fetchPPCitas($fecha, $sedeId);
+            $medDir   = $this->buildMedicosDirectory();
+            $ppCitas  = $this->fetchPPCitas($fecha, $sedeId, $medDir);
 
             // Merge: V3 citas take precedence; deduplicate by hc_number+hora_ini if same patient appears in both
             $v3Keys = [];
@@ -445,37 +446,73 @@ class AgendaV3Controller
         }
 
         try {
-            $rawDoctors = DB::select(
-                "SELECT DISTINCT TRIM(doctor) AS doctor
-                 FROM procedimiento_proyectado
-                 WHERE COALESCE(sigcenter_present, 1) = 1
-                   AND doctor IS NOT NULL AND TRIM(doctor) != ''
-                 LIMIT 60"
+            // Directorio canónico desde users (igual que agenda vieja)
+            $usersRaw = DB::select(
+                "SELECT id, TRIM(COALESCE(nombre,'')) AS nombre,
+                        TRIM(COALESCE(nombre_norm,'')) AS nombre_norm,
+                        TRIM(COALESCE(nombre_norm_rev,'')) AS nombre_norm_rev,
+                        TRIM(COALESCE(especialidad,'')) AS especialidad,
+                        TRIM(COALESCE(subespecialidad,'')) AS subespecialidad,
+                        TRIM(COALESCE(sede,'')) AS sede,
+                        TRIM(COALESCE(iniciales,'')) AS iniciales
+                 FROM users
+                 WHERE nombre IS NOT NULL AND TRIM(nombre) != ''"
             );
 
-            $defaultSede = (string) (DB::table('agenda_sedes')->where('activo', true)->value('id') ?? 'ceibos');
+            // Indexar por nombre normalizado para hacer match con PP
+            $directory = [];
+            foreach ($usersRaw as $u) {
+                $label = $this->formatDoctorLabel((string) $u->nombre);
+                if ($label === '') { continue; }
+                $key = 'usr_' . $u->id;
+                foreach ([(string)$u->nombre, (string)$u->nombre_norm, (string)$u->nombre_norm_rev] as $candidate) {
+                    $norm = $this->normalizeDoctorName($candidate);
+                    if ($norm !== '') { $directory[$norm] = ['key' => $key, 'user' => $u, 'label' => $label]; }
+                }
+            }
+
+            // Médicos que realmente tienen citas en PP (fuente de verdad de actividad)
+            $ppDoctors = DB::select(
+                "SELECT DISTINCT TRIM(doctor) AS doctor FROM procedimiento_proyectado
+                 WHERE COALESCE(sigcenter_present,1)=1 AND doctor IS NOT NULL AND TRIM(doctor)!=''"
+            );
+
+            $sedesMap    = DB::table('agenda_sedes')->where('activo', true)->pluck('id', 'id')->toArray();
+            $defaultSede = array_key_first($sedesMap) ?? 'ceibos';
             $colors      = ['#5156be', '#2ca361', '#d34b5b', '#d59623', '#3d7ac7', '#7c5fc2', '#4a9a9e', '#b55c32'];
             $idx         = 0;
             $syncedIds   = [];
 
-            foreach ($rawDoctors as $row) {
-                $name = trim((string) ($row->doctor ?? ''));
-                if ($name === '' || !$this->isDoctorLikeName($name)) {
-                    continue;
+            foreach ($ppDoctors as $row) {
+                $raw  = $this->normalizeWhitespace((string) ($row->doctor ?? ''));
+                $norm = $this->normalizeDoctorName($raw);
+                $entry = $directory[$norm] ?? null;
+
+                // Sólo incluir médicos que existen en users (no basura de PP)
+                if ($entry === null) { continue; }
+
+                $u       = $entry['user'];
+                $id      = $entry['key'];
+                $label   = $entry['label'];
+
+                $userSede = mb_strtolower(trim((string) ($u->sede ?? '')), 'UTF-8');
+                $sedeId   = $defaultSede;
+                foreach (array_keys($sedesMap) as $sid) {
+                    if (str_contains($userSede, mb_strtolower($sid, 'UTF-8'))) { $sedeId = $sid; break; }
                 }
 
-                $id    = $this->doctorSlug($name);
-                $label = $this->formatDoctorName($name);
+                $espLabel  = trim((string) ($u->subespecialidad ?: $u->especialidad)) ?: 'Oftalmología';
+                $iniciales = trim((string) $u->iniciales) ?: $this->getIniciales($label);
 
                 DB::table('agenda_medicos')->updateOrInsert(
                     ['id' => $id],
                     [
                         'nombre'       => $label,
-                        'especialidad' => 'Oftalmología',
+                        'especialidad' => $espLabel,
                         'areas'        => '["consulta","quirurgico","imagenes"]',
-                        'sede_id'      => $defaultSede,
+                        'sede_id'      => $sedeId,
                         'color'        => $colors[$idx % count($colors)],
-                        'iniciales'    => $this->getIniciales($label),
+                        'iniciales'    => substr($iniciales, 0, 3),
                         'activo'       => true,
                     ]
                 );
@@ -484,21 +521,52 @@ class AgendaV3Controller
                 $idx++;
             }
 
-            // Desactivar médicos que ya no aparecen en PP (en vez de borrar)
             if (!empty($syncedIds)) {
-                DB::table('agenda_medicos')
-                    ->whereNotIn('id', $syncedIds)
-                    ->update(['activo' => false]);
+                DB::table('agenda_medicos')->whereNotIn('id', $syncedIds)->update(['activo' => false]);
             }
 
-            Cache::put('agenda_v3.medicos_synced', true, 1800); // 30 minutos
+            Cache::put('agenda_v3.medicos_synced', true, 1800);
         } catch (\Throwable) {
-            // Non-fatal — app still works with existing data
+            // Non-fatal
         }
     }
 
+    /** @return array<string,string>  normalized-name → agenda_medicos.id */
+    private function buildMedicosDirectory(): array
+    {
+        $dir = [];
+        $medicos = DB::table('agenda_medicos')->where('activo', true)->get(['id', 'nombre']);
+        foreach ($medicos as $m) {
+            $norm = $this->normalizeDoctorName((string) $m->nombre);
+            if ($norm !== '') { $dir[$norm] = (string) $m->id; }
+        }
+        return $dir;
+    }
+
+    private function normalizeDoctorName(string $name): string
+    {
+        if (trim($name) === '') { return ''; }
+        $v = mb_strtolower($name, 'UTF-8');
+        $ascii = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $v);
+        $v = is_string($ascii) && $ascii !== '' ? $ascii : $v;
+        $v = preg_replace('/[^a-z0-9]+/', ' ', $v) ?? $v;
+        return trim((string) $v);
+    }
+
+    private function normalizeWhitespace(string $s): string
+    {
+        return trim((string) preg_replace('/\s+/', ' ', $s));
+    }
+
+    private function formatDoctorLabel(string $name): string
+    {
+        $lower = mb_strtolower(trim($name), 'UTF-8');
+        return $lower !== '' ? mb_convert_case($lower, MB_CASE_TITLE, 'UTF-8') : '';
+    }
+
     /** Fetch procedimiento_proyectado rows for a date as read-only V3-shaped citas. */
-    private function fetchPPCitas(string $fecha, string $sedeId): array
+    /** @param array<string,string> $medDir  normalized-name → agenda_medicos.id */
+    private function fetchPPCitas(string $fecha, string $sedeId, array $medDir = []): array
     {
         // Build sede label → slug map for filtering
         $sedesMap = [];
@@ -559,8 +627,8 @@ class AgendaV3Controller
                      ?? $sedesMap[$sedeRawSlug]
                      ?? array_values($sedesMap)[0]
                      ?? 'ceibos';
-            $doctor   = trim((string) ($pp->doctor ?? ''));
-            $medSlug  = $doctor !== '' ? $this->doctorSlug($doctor) : '';
+            $doctor  = trim((string) ($pp->doctor ?? ''));
+            $medSlug = $doctor !== '' ? ($medDir[$this->normalizeDoctorName($doctor)] ?? '') : '';
 
             $procedimiento = (string) ($pp->procedimiento ?? '');
             $tipoParts     = explode(' - ', $procedimiento, 2);
