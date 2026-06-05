@@ -31,4 +31,5 @@ Route::middleware([
     Route::get('/api/agenda/v3/bloqueos',             [AgendaV3Controller::class, 'listBloqueos']);
     Route::post('/api/agenda/v3/bloqueos',            [AgendaV3Controller::class, 'createBloqueo']);
     Route::delete('/api/agenda/v3/bloqueos/{id}',     [AgendaV3Controller::class, 'deleteBloqueo'])->whereNumber('id');
+    Route::post('/api/agenda/v3/sync',                [AgendaV3Controller::class, 'forceSync']);
 });
