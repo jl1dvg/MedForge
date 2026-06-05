@@ -446,35 +446,17 @@ class AgendaV3Controller
         }
 
         try {
-            // Directorio canónico desde users (igual que agenda vieja)
+            // Fuente de verdad: users con especialidad médica registrados en el sistema
             $usersRaw = DB::select(
                 "SELECT id, TRIM(COALESCE(nombre,'')) AS nombre,
-                        TRIM(COALESCE(nombre_norm,'')) AS nombre_norm,
-                        TRIM(COALESCE(nombre_norm_rev,'')) AS nombre_norm_rev,
                         TRIM(COALESCE(especialidad,'')) AS especialidad,
                         TRIM(COALESCE(subespecialidad,'')) AS subespecialidad,
                         TRIM(COALESCE(sede,'')) AS sede,
                         TRIM(COALESCE(iniciales,'')) AS iniciales
                  FROM users
-                 WHERE nombre IS NOT NULL AND TRIM(nombre) != ''"
-            );
-
-            // Indexar por nombre normalizado para hacer match con PP
-            $directory = [];
-            foreach ($usersRaw as $u) {
-                $label = $this->formatDoctorLabel((string) $u->nombre);
-                if ($label === '') { continue; }
-                $key = 'usr_' . $u->id;
-                foreach ([(string)$u->nombre, (string)$u->nombre_norm, (string)$u->nombre_norm_rev] as $candidate) {
-                    $norm = $this->normalizeDoctorName($candidate);
-                    if ($norm !== '') { $directory[$norm] = ['key' => $key, 'user' => $u, 'label' => $label]; }
-                }
-            }
-
-            // Médicos que realmente tienen citas en PP (fuente de verdad de actividad)
-            $ppDoctors = DB::select(
-                "SELECT DISTINCT TRIM(doctor) AS doctor FROM procedimiento_proyectado
-                 WHERE COALESCE(sigcenter_present,1)=1 AND doctor IS NOT NULL AND TRIM(doctor)!=''"
+                 WHERE especialidad IS NOT NULL AND TRIM(especialidad) != ''
+                   AND nombre IS NOT NULL AND TRIM(nombre) != ''
+                 ORDER BY nombre ASC"
             );
 
             $sedesMap    = DB::table('agenda_sedes')->where('activo', true)->pluck('id', 'id')->toArray();
@@ -483,22 +465,18 @@ class AgendaV3Controller
             $idx         = 0;
             $syncedIds   = [];
 
-            foreach ($ppDoctors as $row) {
-                $raw  = $this->normalizeWhitespace((string) ($row->doctor ?? ''));
-                $norm = $this->normalizeDoctorName($raw);
-                $entry = $directory[$norm] ?? null;
+            foreach ($usersRaw as $u) {
+                $label = $this->formatDoctorLabel((string) $u->nombre);
+                if ($label === '') { continue; }
 
-                // Sólo incluir médicos que existen en users (no basura de PP)
-                if ($entry === null) { continue; }
-
-                $u       = $entry['user'];
-                $id      = $entry['key'];
-                $label   = $entry['label'];
+                $id = 'usr_' . $u->id;
 
                 $userSede = mb_strtolower(trim((string) ($u->sede ?? '')), 'UTF-8');
                 $sedeId   = $defaultSede;
                 foreach (array_keys($sedesMap) as $sid) {
-                    if (str_contains($userSede, mb_strtolower($sid, 'UTF-8'))) { $sedeId = $sid; break; }
+                    if ($userSede !== '' && str_contains($userSede, mb_strtolower($sid, 'UTF-8'))) {
+                        $sedeId = $sid; break;
+                    }
                 }
 
                 $espLabel  = trim((string) ($u->subespecialidad ?: $u->especialidad)) ?: 'Oftalmología';

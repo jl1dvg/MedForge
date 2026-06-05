@@ -23,7 +23,7 @@
 <script>
 window.__MF__ = {
   csrf:    "{{ csrf_token() }}",
-  apiBase: "/v2/api/agenda/v3",
+  apiBase: "/v3/api/agenda",
   user: {
     id:     {{ (int) auth()->id() }},
     nombre: "{{ addslashes(auth()->user()->nombre ?? auth()->user()->name ?? '') }}",
