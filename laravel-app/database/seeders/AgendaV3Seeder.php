@@ -54,14 +54,6 @@ class AgendaV3Seeder extends Seeder
             ['id' => 't_cotiza',  'label' => 'Cotización / afiliación',   'area' => 'comercial',  'dur_minutos' => 20, 'requiere_tipo_sala' => '["comercial"]',                'activo' => 1],
             ['id' => 't_preqx',   'label' => 'Valoración pre-quirúrgica', 'area' => 'comercial',  'dur_minutos' => 15, 'requiere_tipo_sala' => '["comercial"]',                'activo' => 1],
         ], ['id'], ['label', 'area', 'dur_minutos', 'requiere_tipo_sala', 'activo']);
-
-        $horarios = [
-            ['medico_id' => 'md_dra_carolina_ramirez', 'dia_semana' => 1, 'hora_ini' => '08:00:00', 'hora_fin' => '13:00:00', 'sede_id' => 'ceibos', 'activo' => 1],
-            ['medico_id' => 'md_dra_carolina_ramirez', 'dia_semana' => 4, 'hora_ini' => '08:00:00', 'hora_fin' => '14:00:00', 'sede_id' => 'ceibos', 'activo' => 1],
-        ];
-
-        if (DB::table('agenda_horarios')->count() === 0) {
-            DB::table('agenda_horarios')->insert($horarios);
-        }
+        // agenda_horarios se configura manualmente una vez que los médicos reales estén sincronizados
     }
 }
