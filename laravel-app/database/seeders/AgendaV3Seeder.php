@@ -9,8 +9,9 @@ class AgendaV3Seeder extends Seeder
 {
     public function run(): void
     {
-        // Limpiar médicos falsos de corridas anteriores
-        DB::table('agenda_medicos')->truncate();
+        // Limpiar médicos falsos (delete en vez de truncate por FK con agenda_horarios)
+        DB::table('agenda_horarios')->delete();
+        DB::table('agenda_medicos')->delete();
 
         DB::table('agenda_sedes')->upsert([
             ['id' => 'ceibos',    'label' => 'Ceibos',     'abrev' => 'CB', 'apertura' => '08:00:00', 'cierre' => '18:00:00', 'activo' => 1],
