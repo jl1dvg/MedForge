@@ -17,6 +17,7 @@ use App\Modules\Examenes\Services\NasImagenesService;
 use App\Modules\Examenes\Services\ImagenesSigcenterIndexService;
 use App\Modules\Examenes\Services\SigcenterImagenesService;
 use App\Modules\Reporting\Services\PdfRenderer;
+use App\Modules\Reporting\Support\ImagenesDefaultFirmante;
 use App\Modules\Shared\Support\LegacyPermissionResolver;
 use Illuminate\Support\Facades\Auth;
 use DateTimeImmutable;
@@ -852,7 +853,7 @@ class ExamenesParityController
 
         $checkboxes = $this->obtenerChecklistInforme($plantilla);
         $usuariosFirmantes = $this->listarUsuariosFirmantes();
-        $firmanteDefaultId = (is_numeric(Auth::id()) ? (int) Auth::id() : null);
+        $firmanteDefaultId = ImagenesDefaultFirmante::defaultUserId() ?? (is_numeric(Auth::id()) ? (int) Auth::id() : null);
 
         ob_start();
         include $view;
@@ -928,7 +929,7 @@ class ExamenesParityController
 
         try {
             $userId = (is_numeric(Auth::id()) ? (int) Auth::id() : null);
-            $firmante = $firmanteId > 0 ? $firmanteId : $userId;
+            $firmante = $firmanteId > 0 ? $firmanteId : (ImagenesDefaultFirmante::defaultUserId() ?? $userId);
             $ok = $this->legacyExamenModel()->guardarInformeImagen(
                 $formId,
                 $hcNumber !== '' ? $hcNumber : null,
@@ -1420,7 +1421,7 @@ class ExamenesParityController
      */
     private function listarUsuariosFirmantes(): array
     {
-        return DB::table('users')
+        $usuarios = DB::table('users')
             ->select(['id', 'nombre', 'email', 'profile_photo', 'especialidad'])
             ->where('especialidad', 'Cirujano Oftalmólogo')
             ->orderBy('nombre')
@@ -1441,6 +1442,30 @@ class ExamenesParityController
             })
             ->values()
             ->all();
+
+        $defaultUserId = ImagenesDefaultFirmante::defaultUserId();
+        if ($defaultUserId !== null && !in_array($defaultUserId, array_column($usuarios, 'id'), true)) {
+            $usuario = DB::table('users')
+                ->select(['id', 'nombre', 'email', 'profile_photo', 'especialidad'])
+                ->where('id', $defaultUserId)
+                ->first();
+
+            if (is_object($usuario)) {
+                $profilePhoto = trim((string) ($usuario->profile_photo ?? ''));
+                array_unshift($usuarios, [
+                    'id' => (int) $usuario->id,
+                    'nombre' => (string) ($usuario->nombre ?? ''),
+                    'email' => (string) ($usuario->email ?? ''),
+                    'profile_photo' => $profilePhoto !== '' ? $profilePhoto : null,
+                    'especialidad' => (string) ($usuario->especialidad ?? ''),
+                    'avatar' => $profilePhoto !== ''
+                        ? (preg_match('~^https?://~i', $profilePhoto) ? $profilePhoto : asset($profilePhoto))
+                        : null,
+                ]);
+            }
+        }
+
+        return $usuarios;
     }
 
     public function imagenesDashboardExportPdf(Request $request): Response|RedirectResponse
