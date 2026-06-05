@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { nodeOutputHandles } from '../actionCatalog';
 import { edgePath } from '../util';
 import { NodeCard } from './NodeCard';
 
@@ -143,13 +144,24 @@ export function FlowCanvas({
         onClearSelection();
     }
 
-    function edgeMidpoint(edge) {
+    function edgeAnchors(edge) {
         const source = nodeMap.get(edge.source);
         const target = nodeMap.get(edge.target);
         if (!source || !target) return null;
+        const sourceHandles = sourceOutputHandles(source);
+        const sourceHandle = edge.sourceHandle || 'source';
+        const sourceIndex = Math.max(0, sourceHandles.findIndex((handle) => handle.id === sourceHandle));
+        const sourceY = sourceHandles.length > 1
+            ? source.position.y + 92 + sourceIndex * 26
+            : source.position.y + NODE_HEIGHT / 2;
+
         return {
-            x: (source.position.x + NODE_WIDTH + target.position.x) / 2,
-            y: (source.position.y + target.position.y + NODE_HEIGHT) / 2,
+            x1: source.position.x + NODE_WIDTH,
+            y1: sourceY,
+            x2: target.position.x,
+            y2: target.position.y + NODE_HEIGHT / 2,
+            midX: (source.position.x + NODE_WIDTH + target.position.x) / 2,
+            midY: (sourceY + target.position.y + NODE_HEIGHT / 2) / 2,
         };
     }
 
@@ -174,11 +186,8 @@ export function FlowCanvas({
                         const source = nodeMap.get(edge.source);
                         const target = nodeMap.get(edge.target);
                         if (!source || !target) return null;
-                        const x1 = source.position.x + NODE_WIDTH;
-                        const y1 = source.position.y + NODE_HEIGHT / 2;
-                        const x2 = target.position.x;
-                        const y2 = target.position.y + NODE_HEIGHT / 2;
-                        const mid = edgeMidpoint(edge);
+                        const anchors = edgeAnchors(edge);
+                        if (!anchors) return null;
                         return (
                             <g
                                 key={edge.id}
@@ -189,13 +198,13 @@ export function FlowCanvas({
                                     onSelectEdge(edge.id);
                                 }}
                             >
-                                <path className="fm-edge-path hit" d={edgePath(x1, y1, x2, y2)} />
-                                <path className="fm-edge-path visible" d={edgePath(x1, y1, x2, y2)} />
-                                <circle className="fm-edge-dot" cx={x2} cy={y2} r="4" />
-                                {edge.id === selectedEdgeId && mid && (
+                                <path className="fm-edge-path hit" d={edgePath(anchors.x1, anchors.y1, anchors.x2, anchors.y2)} />
+                                <path className="fm-edge-path visible" d={edgePath(anchors.x1, anchors.y1, anchors.x2, anchors.y2)} />
+                                <circle className="fm-edge-dot" cx={anchors.x2} cy={anchors.y2} r="4" />
+                                {edge.id === selectedEdgeId && (
                                     <g
                                         className="fm-edge-del"
-                                        transform={`translate(${mid.x}, ${mid.y})`}
+                                        transform={`translate(${anchors.midX}, ${anchors.midY})`}
                                         onClick={(event) => {
                                             event.stopPropagation();
                                             onDeleteEdge(edge.id);
@@ -243,6 +252,8 @@ export function FlowCanvas({
                         }}
                         onConnectStart={(event, nodeId, handleId) => {
                             const point = canvasPoint(event);
+                            const handles = sourceOutputHandles(node);
+                            const handleIndex = Math.max(0, handles.findIndex((handle) => handle.id === handleId));
                             setPointer(point);
                             setDrag({
                                 type: 'connect',
@@ -250,7 +261,7 @@ export function FlowCanvas({
                                 handleId,
                                 sourcePosition: {
                                     x: node.position.x + NODE_WIDTH,
-                                    y: node.position.y + NODE_HEIGHT / 2,
+                                    y: handles.length > 1 ? node.position.y + 92 + handleIndex * 26 : node.position.y + NODE_HEIGHT / 2,
                                 },
                             });
                             onSelectNode(nodeId);
@@ -312,6 +323,10 @@ function MiniMap({ nodes, bounds, view }) {
             </svg>
         </div>
     );
+}
+
+function sourceOutputHandles(node) {
+    return nodeOutputHandles(node);
 }
 
 function graphBounds(nodes) {

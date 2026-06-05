@@ -9,10 +9,14 @@ body {
   background: var(--bg-soft);
   color: var(--fg-1);
   font-family: var(--font-body);
-  overflow: hidden;
   -webkit-font-smoothing: antialiased;
 }
-#root { height: 100vh; }
+#flowmaker-v3-root {
+  height: calc(100dvh - 118px);
+  min-height: 560px;
+  overflow: hidden;
+}
+#root { height: 100%; }
 
 /* ---------- Acentos por tipo de nodo (tweakables) ---------- */
 :root {
@@ -35,20 +39,22 @@ body {
    Layout general
    ========================================================================= */
 .fm-app {
-  height: 100vh;
+  height: 100%;
   display: grid;
-  grid-template-rows: 56px 1fr;
+  grid-template-rows: 44px 1fr;
   grid-template-columns: 1fr;
   background: var(--bg-soft);
+  overflow: hidden;
 }
 .fm-main {
   display: grid;
-  grid-template-columns: var(--palette-w, 240px) 1fr var(--inspect-w, 316px);
+  grid-template-columns: var(--palette-w, 204px) 1fr var(--inspect-w, 300px);
   min-height: 0;
   position: relative;
+  overflow: hidden;
 }
 .fm-main.preview-open {
-  grid-template-columns: var(--palette-w, 240px) 1fr var(--inspect-w, 316px) 332px;
+  grid-template-columns: var(--palette-w, 204px) 1fr var(--inspect-w, 300px) var(--phone-w, 300px);
 }
 
 /* =========================================================================
@@ -57,8 +63,8 @@ body {
 .fm-topbar {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 0 16px;
+  gap: 8px;
+  padding: 0 10px;
   background: var(--bg-surface);
   border-bottom: 1px solid var(--border);
   z-index: 30;
@@ -69,11 +75,11 @@ body {
   gap: 10px;
   font-family: var(--font-display);
   font-weight: 600;
-  font-size: 15px;
+  font-size: 13px;
   color: var(--fg-1);
-  padding-right: 14px;
+  padding-right: 8px;
   border-right: 1px solid var(--border);
-  height: 34px;
+  height: 28px;
 }
 .fm-brand-mark {
   width: 28px; height: 28px;
@@ -90,12 +96,12 @@ body {
 .fm-runtime-tools {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
 }
 .fm-runtime-input {
-  height: 34px;
-  width: 180px;
+  height: 30px;
+  width: 130px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   background: var(--bg-surface);
@@ -104,7 +110,7 @@ body {
   font: inherit;
   font-size: var(--fs-12);
 }
-.fm-runtime-phone { width: 132px; }
+.fm-runtime-phone { width: 112px; }
 .fm-runtime-input:focus {
   outline: none;
   border-color: var(--primary);
@@ -164,24 +170,24 @@ body {
   background: var(--bg-surface);
   border-right: 1px solid var(--border);
   overflow-y: auto;
-  padding: 14px 12px 24px;
+  padding: 9px 8px 18px;
   z-index: 20;
 }
 .fm-palette h6 {
   font-size: var(--fs-10); letter-spacing: .08em; text-transform: uppercase;
-  color: var(--fg-fade); margin: 16px 6px 8px; font-weight: 700;
+  color: var(--fg-fade); margin: 11px 5px 6px; font-weight: 700;
 }
 .fm-palette h6:first-child { margin-top: 2px; }
 .fm-palette-hint {
-  font-size: var(--fs-12); color: var(--fg-mute); line-height: 1.4;
-  padding: 0 6px 8px;
+  font-size: 11px; color: var(--fg-mute); line-height: 1.35;
+  padding: 0 5px 6px;
 }
 .fm-pal-item {
-  display: flex; align-items: center; gap: 11px;
-  padding: 9px 10px; border-radius: var(--radius);
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 7px; border-radius: var(--radius-sm);
   border: 1px solid var(--border-soft);
   background: var(--bg-surface);
-  cursor: grab; margin-bottom: 7px;
+  cursor: grab; margin-bottom: 5px;
   transition: all var(--dur-fast) var(--ease-out);
   user-select: none;
 }
@@ -192,13 +198,13 @@ body {
 }
 .fm-pal-item:active { cursor: grabbing; }
 .fm-pal-ic {
-  width: 32px; height: 32px; flex: none;
-  border-radius: 9px; display: grid; place-items: center;
-  color: #fff; font-size: 17px;
+  width: 26px; height: 26px; flex: none;
+  border-radius: 7px; display: grid; place-items: center;
+  color: #fff; font-size: 14px;
 }
 .fm-pal-tx { min-width: 0; }
 .fm-pal-tx b { display: block; font-size: var(--fs-12); font-weight: 600; color: var(--fg-1); }
-.fm-pal-tx span { display: block; font-size: 11px; color: var(--fg-mute); line-height: 1.3; margin-top: 1px;
+.fm-pal-tx span { display: block; font-size: 10px; color: var(--fg-mute); line-height: 1.25; margin-top: 1px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* =========================================================================
@@ -226,11 +232,11 @@ body {
   pointer-events: none;
 }
 .fm-edge-path {
-  fill: none; stroke: var(--gray-400); stroke-width: 2.5;
+  fill: none; stroke: var(--gray-400); stroke-width: 2;
   transition: stroke var(--dur-fast);
 }
 .fm-edge { pointer-events: stroke; }
-.fm-edge-path.hit { stroke: transparent; stroke-width: 18; pointer-events: stroke; cursor: pointer; }
+.fm-edge-path.hit { stroke: transparent; stroke-width: 24; pointer-events: stroke; cursor: pointer; }
 .fm-edge.sel .fm-edge-path.visible { stroke: var(--primary); stroke-width: 3; }
 .fm-edge:hover .fm-edge-path.visible { stroke: var(--primary-light); }
 .fm-edge-dot { fill: var(--gray-400); }
@@ -424,7 +430,7 @@ body {
    Controles flotantes del canvas
    ========================================================================= */
 .fm-canvas-controls {
-  position: absolute; left: 16px; bottom: 16px;
+  position: absolute; left: 12px; bottom: 12px;
   display: flex; flex-direction: column; gap: 6px; z-index: 15;
 }
 .fm-zoom-group {
@@ -448,8 +454,8 @@ body {
 
 /* minimapa */
 .fm-minimap {
-  position: absolute; right: 16px; bottom: 16px;
-  width: 188px; height: 124px;
+  position: absolute; right: 12px; bottom: 12px;
+  width: 160px; height: 104px;
   background: rgba(255,255,255,0.85); backdrop-filter: blur(6px);
   border: 1px solid var(--border); border-radius: var(--radius);
   box-shadow: var(--shadow); overflow: hidden; z-index: 15;
@@ -673,10 +679,10 @@ body {
 
 .fm-validation-panel {
   position: absolute;
-  left: calc(var(--palette-w, 240px) + 18px);
-  bottom: 18px;
-  width: min(420px, calc(100vw - 620px));
-  max-height: 250px;
+  left: calc(var(--palette-w, 204px) + 12px);
+  top: 12px;
+  width: min(360px, calc(100vw - 640px));
+  max-height: 184px;
   background: rgba(255,255,255,0.96);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -689,7 +695,7 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 10px 12px;
+  padding: 8px 10px;
   border-bottom: 1px solid var(--border-soft);
 }
 .fm-validation-head b {
@@ -704,7 +710,7 @@ body {
   font-weight: 600;
 }
 .fm-validation-list {
-  max-height: 202px;
+  max-height: 142px;
   overflow-y: auto;
   padding: 6px;
 }
@@ -722,7 +728,7 @@ body {
   font-weight: 600;
   line-height: 1.35;
   text-align: left;
-  padding: 7px 8px;
+  padding: 6px 7px;
   cursor: pointer;
 }
 .fm-validation-item:hover { background: var(--bg-soft); }
@@ -742,7 +748,7 @@ body {
   background: linear-gradient(160deg, #0b1f3a, #122a4d);
   border-left: 1px solid var(--border);
   display: flex; flex-direction: column; align-items: center;
-  padding: 18px 16px; gap: 12px; z-index: 20; overflow: hidden;
+  padding: 10px 10px; gap: 8px; z-index: 20; overflow: hidden;
 }
 .fm-phone-head {
   width: 100%; display: flex; align-items: center; justify-content: space-between;
@@ -752,20 +758,20 @@ body {
 .fm-phone-head .fm-btn { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.18); color: #fff; }
 .fm-phone-head .fm-btn:hover { background: rgba(255,255,255,0.2); color: #fff; }
 .fm-phone {
-  width: 296px; flex: 1; min-height: 0;
-  background: #0b141a; border-radius: 30px; padding: 10px;
-  border: 7px solid #05080a; box-shadow: 0 20px 50px rgba(0,0,0,0.45);
+  width: 276px; flex: 1; min-height: 0;
+  background: #0b141a; border-radius: 24px; padding: 8px;
+  border: 6px solid #05080a; box-shadow: 0 16px 34px rgba(0,0,0,0.42);
   display: flex; flex-direction: column; overflow: hidden;
 }
 .fm-sim-trace {
   width: 100%;
-  max-height: 180px;
+  max-height: 118px;
   overflow-y: auto;
   background: rgba(255,255,255,0.08);
   border: 1px solid rgba(255,255,255,0.14);
   border-radius: var(--radius);
   color: #e9edef;
-  padding: 10px;
+  padding: 8px;
 }
 .fm-sim-head {
   display: flex;
@@ -831,18 +837,18 @@ body {
 .fm-sim-action b { color: #fff; font-size: 10px; }
 .fm-sim-action small { color: #b9c7d6; font-size: 10px; }
 .fm-wa-top {
-  background: #1f2c34; color: #e9edef; border-radius: 20px 20px 0 0;
-  padding: 10px 12px; display: flex; align-items: center; gap: 10px; margin: -10px -10px 0;
+  background: #1f2c34; color: #e9edef; border-radius: 18px 18px 0 0;
+  padding: 8px 10px; display: flex; align-items: center; gap: 8px; margin: -8px -8px 0;
 }
-.fm-wa-av { width: 34px; height: 34px; border-radius: 50%; background: var(--grad-brand-mark); display: grid; place-items: center; color: #fff; font-size: 15px; flex: none; }
+.fm-wa-av { width: 30px; height: 30px; border-radius: 50%; background: var(--grad-brand-mark); display: grid; place-items: center; color: #fff; font-size: 14px; flex: none; }
 .fm-wa-top .who { flex: 1; min-width: 0; display: block; }
 .fm-wa-top .who b { display: block; font-size: 13px; font-weight: 600; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fm-wa-top .who small { display: block; font-size: 10px; color: #8696a0; line-height: 1.2; }
 .fm-wa-body {
-  flex: 1; overflow-y: auto; padding: 12px 10px;
+  flex: 1; overflow-y: auto; padding: 10px 8px;
   background: #0b141a url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'%3E%3Ccircle cx='4' cy='4' r='1' fill='%23223138'/%3E%3C/svg%3E");
   display: flex; flex-direction: column; gap: 7px;
-  margin: 0 -10px;
+  margin: 0 -8px;
 }
 .fm-wa-msg {
   max-width: 82%; padding: 7px 9px 6px; border-radius: 9px;
@@ -873,8 +879,9 @@ body {
 .fm-wa-typing span:nth-child(2) { animation-delay: .2s; }
 .fm-wa-typing span:nth-child(3) { animation-delay: .4s; }
 .fm-wa-input {
-  display: flex; align-items: center; gap: 7px; padding: 9px 10px; margin: 0 -10px -10px;
-  background: #1f2c34; border-radius: 0 0 20px 20px;
+  display: flex; align-items: center; gap: 7px; padding: 7px 8px; margin: 0 -8px -8px;
+  background: #1f2c34; border-radius: 0 0 18px 18px;
+  flex: none;
 }
 .fm-wa-input input {
   flex: 1; border: none; background: #2a3942; color: #e9edef; border-radius: 18px;

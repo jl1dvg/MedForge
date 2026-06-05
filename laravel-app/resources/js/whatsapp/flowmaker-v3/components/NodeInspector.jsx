@@ -167,8 +167,8 @@ function ActionEditor({ node, nodes, edges, catalogs, patchData, patchSettings, 
             {actionType === 'send_template' && <TemplateEditor settings={settings} variables={catalogs.variables || []} patchSettings={patchSettings} />}
             {actionType === 'conditional' && <BranchEditor settings={settings} variables={catalogs.variables || []} patchSettings={patchSettings} />}
             {actionType === 'set_state' && <StateEditor settings={settings} patchSettings={patchSettings} />}
-            {actionType === 'store_consent' && <ConsentEditor settings={settings} patchSettings={patchSettings} />}
-            {actionType === 'sigcenter_agenda' && <SigcenterEditor settings={settings} operations={catalogs.sigcenter_operations || []} patchSettings={patchSettings} />}
+            {actionType === 'store_consent' && <ConsentEditor settings={settings} variables={catalogs.variables || []} patchSettings={patchSettings} />}
+            {actionType === 'sigcenter_agenda' && <SigcenterEditor settings={settings} variables={catalogs.variables || []} operations={catalogs.sigcenter_operations || []} patchSettings={patchSettings} />}
             {actionType === 'handoff_agent' && <HandoffEditor settings={settings} variables={catalogs.variables || []} patchSettings={patchSettings} />}
             {actionType === 'ai_agent' && <AiEditor settings={settings} variables={catalogs.variables || []} patchSettings={patchSettings} />}
             <RouteEditor node={node} nodes={nodes} edges={edges} onEdgesChange={onEdgesChange} />
@@ -430,7 +430,9 @@ function StateEditor({ settings, patchSettings }) {
     );
 }
 
-function ConsentEditor({ settings, patchSettings }) {
+function ConsentEditor({ settings, variables, patchSettings }) {
+    const bodyRef = React.useRef(null);
+
     return (
         <>
             <Field label="Tipo de consentimiento">
@@ -438,7 +440,8 @@ function ConsentEditor({ settings, patchSettings }) {
             </Field>
             <CheckboxField label="Consentimiento otorgado" checked={Boolean(settings.granted ?? true)} onChange={(checked) => patchSettings({ granted: checked })} />
             <Field label="Mensaje opcional">
-                <textarea className="fm-textarea" value={settings.body || ''} onChange={(event) => patchSettings({ body: event.target.value })} />
+                <textarea ref={bodyRef} className="fm-textarea" value={settings.body || ''} onChange={(event) => patchSettings({ body: event.target.value })} />
+                <VariableChips variables={variables} onInsert={(token) => insertText(bodyRef.current, settings.body || '', token, (body) => patchSettings({ body }))} />
             </Field>
             <Field label="Siguiente estado">
                 <input className="fm-input" value={settings.next_state || ''} onChange={(event) => patchSettings({ next_state: event.target.value })} />
@@ -447,7 +450,7 @@ function ConsentEditor({ settings, patchSettings }) {
     );
 }
 
-function SigcenterEditor({ settings, operations, patchSettings }) {
+function SigcenterEditor({ settings, variables, operations, patchSettings }) {
     const availableOperations = operations.length > 0
         ? operations.map((operation) => ({ value: operation.id || operation.value, label: operation.label }))
         : [
@@ -458,6 +461,10 @@ function SigcenterEditor({ settings, operations, patchSettings }) {
             { value: 'cancel_appointment', label: 'Cancelar cita' },
             { value: 'reschedule_appointment', label: 'Reagendar cita' },
         ];
+
+    const trabajadorRef = React.useRef(null);
+    const sedeRef = React.useRef(null);
+    const fechaRef = React.useRef(null);
 
     return (
         <>
@@ -477,12 +484,18 @@ function SigcenterEditor({ settings, operations, patchSettings }) {
             </div>
             <div className="fm-row2">
                 <Field label="Trabajador ID">
-                    <input className="fm-input" value={settings.trabajador_id || ''} onChange={(event) => patchSettings({ trabajador_id: event.target.value })} />
+                    <input ref={trabajadorRef} className="fm-input" value={settings.trabajador_id || ''} onChange={(event) => patchSettings({ trabajador_id: event.target.value })} />
+                    <VariableChips variables={variables} onInsert={(token) => insertText(trabajadorRef.current, settings.trabajador_id || '', token, (trabajador_id) => patchSettings({ trabajador_id }))} />
                 </Field>
                 <Field label="Sede">
-                    <input className="fm-input" value={settings.ID_SEDE || ''} onChange={(event) => patchSettings({ ID_SEDE: event.target.value })} />
+                    <input ref={sedeRef} className="fm-input" value={settings.ID_SEDE || ''} onChange={(event) => patchSettings({ ID_SEDE: event.target.value })} />
+                    <VariableChips variables={variables} onInsert={(token) => insertText(sedeRef.current, settings.ID_SEDE || '', token, (ID_SEDE) => patchSettings({ ID_SEDE }))} />
                 </Field>
             </div>
+            <Field label="Fecha">
+                <input ref={fechaRef} className="fm-input" value={settings.FECHA || ''} placeholder="{{FECHA}}" onChange={(event) => patchSettings({ FECHA: event.target.value })} />
+                <VariableChips variables={variables} onInsert={(token) => insertText(fechaRef.current, settings.FECHA || '', token, (FECHA) => patchSettings({ FECHA }))} />
+            </Field>
             <Field label="Siguiente estado">
                 <input className="fm-input" value={settings.next_state || ''} onChange={(event) => patchSettings({ next_state: event.target.value })} />
             </Field>

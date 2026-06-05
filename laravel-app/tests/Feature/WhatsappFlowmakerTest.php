@@ -456,7 +456,12 @@ class WhatsappFlowmakerTest extends TestCase
             ->assertJsonFragment(['id' => 'telefono', 'token' => '{{telefono}}'])
             ->assertJsonFragment(['id' => 'cedula', 'token' => '{{cedula}}'])
             ->assertJsonFragment(['id' => 'medico_nombre', 'token' => '{{medico_nombre}}'])
-            ->assertJsonFragment(['id' => 'procedimiento_nombre', 'token' => '{{procedimiento_nombre}}']);
+            ->assertJsonFragment(['id' => 'procedimiento_nombre', 'token' => '{{procedimiento_nombre}}'])
+            ->assertJsonFragment(['id' => 'patient_new', 'token' => '{{patient_new}}'])
+            ->assertJsonFragment(['id' => 'patient_found', 'token' => '{{patient_found}}'])
+            ->assertJsonFragment(['id' => 'agenda_branch', 'token' => '{{agenda_branch}}'])
+            ->assertJsonFragment(['id' => 'lead_email', 'token' => '{{lead_email}}'])
+            ->assertJsonFragment(['id' => 'crm_lead_id', 'token' => '{{crm_lead_id}}']);
     }
 
     public function test_it_publishes_flowmaker_version_in_laravel_tables(): void

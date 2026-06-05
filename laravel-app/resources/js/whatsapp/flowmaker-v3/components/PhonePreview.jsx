@@ -3,9 +3,8 @@ import { fillVars, waFormat } from '../util';
 
 export function PhonePreview({ nodes, edges, selectedNodeId, flowName, simulationResult }) {
     const scopedNodes = selectPreviewNodes(nodes, edges, selectedNodeId);
-    const messages = scopedNodes
-        .filter((node) => node.type === 'message')
-        .map((node) => node.data?.settings?.body || node.data?.action?.message?.body || '')
+    const previewItems = scopedNodes
+        .map(nodeToPreviewItem)
         .filter(Boolean);
     const simulatedMessages = Array.isArray(simulationResult?.actions)
         ? simulationResult.actions
@@ -40,16 +39,10 @@ export function PhonePreview({ nodes, edges, selectedNodeId, flowName, simulatio
                             dangerouslySetInnerHTML={{ __html: waFormat(fillVars(message)) }}
                         />
                     ))}
-                    {messages.length === 0 && (
+                    {previewItems.length === 0 && (
                         <div className="fm-wa-restart">Agrega un mensaje para ver la conversación aquí.</div>
                     )}
-                    {messages.map((message, index) => (
-                        <div
-                            key={`${message}-${index}`}
-                            className="fm-wa-msg bot fm-md"
-                            dangerouslySetInnerHTML={{ __html: waFormat(fillVars(message)) }}
-                        />
-                    ))}
+                    {previewItems.map((item, index) => <PreviewBubble item={item} key={`${item.type}-${index}-${item.body}`} />)}
                 </div>
                 <div className="fm-wa-input">
                     <input placeholder="Escribe un mensaje" readOnly />
@@ -58,6 +51,67 @@ export function PhonePreview({ nodes, edges, selectedNodeId, flowName, simulatio
             </div>
         </aside>
     );
+}
+
+function PreviewBubble({ item }) {
+    return (
+        <div className="fm-wa-msg bot fm-md">
+            {item.header && <div className="hdr">{item.header}</div>}
+            <div dangerouslySetInnerHTML={{ __html: waFormat(fillVars(item.body)) }} />
+            {item.footer && <div className="ftr">{item.footer}</div>}
+            {item.buttons.length > 0 && (
+                <div className="fm-wa-qr-btns">
+                    {item.buttons.slice(0, 10).map((button) => (
+                        <button type="button" key={button.id || button.title}>{button.title}</button>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
+function nodeToPreviewItem(node) {
+    const actionType = node.data?.actionType || node.data?.action?.type || '';
+    const settings = node.data?.settings || {};
+    const actionMessage = node.data?.action?.message || {};
+
+    if (node.type === 'message' || actionType === 'send_message') {
+        const body = settings.body || actionMessage.body || '';
+        return body ? { type: 'message', body, header: '', footer: '', buttons: [] } : null;
+    }
+
+    if (actionType === 'send_buttons') {
+        const buttons = Array.isArray(settings.buttons) ? settings.buttons : actionMessage.buttons || [];
+        const body = settings.body || actionMessage.body || '';
+        return {
+            type: 'buttons',
+            body,
+            header: settings.header || actionMessage.header || '',
+            footer: settings.footer || actionMessage.footer || '',
+            buttons: buttons.map((button, index) => ({
+                id: button?.id || `button_${index + 1}`,
+                title: button?.title || button?.label || button?.text || String(button),
+            })).filter((button) => button.title),
+        };
+    }
+
+    if (actionType === 'send_list') {
+        const sections = Array.isArray(settings.sections) ? settings.sections : actionMessage.sections || [];
+        const rows = sections.flatMap((section) => Array.isArray(section.rows) ? section.rows : []);
+        const body = settings.body || actionMessage.body || '';
+        return {
+            type: 'list',
+            body,
+            header: settings.header || actionMessage.header || '',
+            footer: settings.footer || actionMessage.footer || '',
+            buttons: rows.map((row, index) => ({
+                id: row?.id || `row_${index + 1}`,
+                title: row?.title || row?.label || row?.text || `Opción ${index + 1}`,
+            })),
+        };
+    }
+
+    return null;
 }
 
 function SimulationTrace({ simulationResult }) {

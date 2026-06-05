@@ -21,7 +21,7 @@ export function validateGraph(graph) {
         if (targets.length === 0) {
             issues.push(error('El disparador no continúa hacia ninguna acción.', node.id));
         }
-        validateConditions(node.data?.conditions || [], variables, issues, node.id);
+        validateConditions(node.data?.conditions || [], variables, issues, node.id, isImportedNode(node));
     });
 
     nodes.filter((node) => !isTrigger(node)).forEach((node) => {
@@ -34,7 +34,7 @@ export function validateGraph(graph) {
             issues.push(warning('Este nodo no es alcanzable desde otro nodo.', node.id));
         }
 
-        validateAction(action, actionType, node, variables, issues);
+        validateAction(action, actionType, node, variables, issues, isImportedNode(node));
         validateRoutableHandles(node, handles, nodeEdges, issues);
     });
 
@@ -53,7 +53,7 @@ export function validateGraph(graph) {
     };
 }
 
-function validateAction(action, actionType, node, variables, issues) {
+function validateAction(action, actionType, node, variables, issues, imported = false) {
     switch (actionType) {
         case 'send_message':
             if (!text(action.message?.body) && !text(action.message?.link)) {
@@ -82,7 +82,7 @@ function validateAction(action, actionType, node, variables, issues) {
             }
             break;
         case 'conditional':
-            validateConditionObject(action.condition || {}, variables, issues, node.id);
+            validateConditionObject(action.condition || {}, variables, issues, node.id, imported);
             break;
         case 'set_state':
             if (!text(action.state) && !text(action.next_state) && !text(action.save_response_as)) {
@@ -108,7 +108,7 @@ function validateAction(action, actionType, node, variables, issues) {
             issues.push(warning(`Acción ${actionType || 'desconocida'} se preserva como fallback técnico.`, node.id));
     }
 
-    collectTextValues(action).forEach((value) => validateVariables(value, variables, issues, node.id));
+    collectTextValues(action).forEach((value) => validateVariables(value, variables, issues, node.id, imported));
 }
 
 function validateRoutableHandles(node, handles, nodeEdges, issues) {
@@ -130,7 +130,7 @@ function validateRoutableHandles(node, handles, nodeEdges, issues) {
             .filter((handle) => handle.id !== 'fallback')
             .forEach((handle) => {
                 if (!connected.has(handle.id)) {
-                    issues.push(error(`La salida "${handle.label}" no tiene ruta conectada.`, node.id));
+                    issues.push(routeIssue(node, `La salida "${handle.label}" no tiene ruta conectada.`));
                 }
             });
         return;
@@ -139,7 +139,7 @@ function validateRoutableHandles(node, handles, nodeEdges, issues) {
     if (actionType === 'sigcenter_agenda') {
         ['success', 'missing_data', 'empty', 'error'].forEach((handle) => {
             if (!connected.has(handle)) {
-                issues.push(error(`Sigcenter necesita ruta "${labelForHandle(handle)}".`, node.id));
+                issues.push(routeIssue(node, `Sigcenter necesita ruta "${labelForHandle(handle)}".`));
             }
         });
         return;
@@ -154,12 +154,12 @@ function validateRoutableHandles(node, handles, nodeEdges, issues) {
     }
 }
 
-function validateConditions(conditions, variables, issues, nodeId) {
+function validateConditions(conditions, variables, issues, nodeId, imported = false) {
     if (!Array.isArray(conditions)) return;
-    conditions.forEach((condition) => validateConditionObject(condition, variables, issues, nodeId));
+    conditions.forEach((condition) => validateConditionObject(condition, variables, issues, nodeId, imported));
 }
 
-function validateConditionObject(condition, variables, issues, nodeId) {
+function validateConditionObject(condition, variables, issues, nodeId, imported = false) {
     if (!condition || typeof condition !== 'object') return;
     const type = condition.type || 'always';
 
@@ -168,24 +168,24 @@ function validateConditionObject(condition, variables, issues, nodeId) {
         if (children.length === 0) {
             issues.push(error('El grupo de condiciones no tiene reglas.', nodeId));
         }
-        children.forEach((child) => validateConditionObject(child, variables, issues, nodeId));
+        children.forEach((child) => validateConditionObject(child, variables, issues, nodeId, imported));
         return;
     }
 
     if (type.startsWith('context_') && variables.size > 0) {
         const field = condition.field || condition.variable || condition.key || '';
         if (field && !variables.has(field)) {
-            issues.push(error(`Variable de condición inválida: {{${field}}}.`, nodeId));
+            issues.push(variableIssue(`Variable de condición inválida: {{${field}}}.`, nodeId, imported));
         }
     }
 }
 
-function validateVariables(value, variables, issues, nodeId) {
+function validateVariables(value, variables, issues, nodeId, imported = false) {
     if (variables.size === 0 || typeof value !== 'string') return;
 
     for (const match of value.matchAll(/\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g)) {
         if (!variables.has(match[1])) {
-            issues.push(error(`Variable no disponible por backend: {{${match[1]}}}.`, nodeId));
+            issues.push(variableIssue(`Variable no disponible por backend: {{${match[1]}}}.`, nodeId, imported));
         }
     }
 }
@@ -294,4 +294,18 @@ function error(message, nodeId = null, edgeId = null) {
 
 function warning(message, nodeId = null, edgeId = null) {
     return { level: 'warning', message, nodeId, edgeId };
+}
+
+function routeIssue(node, message) {
+    return isImportedNode(node)
+        ? warning(`${message} Se conserva como aviso legacy importado.`, node.id)
+        : error(message, node.id);
+}
+
+function variableIssue(message, nodeId = null, imported = false) {
+    return imported ? warning(message, nodeId) : error(message, nodeId);
+}
+
+function isImportedNode(node) {
+    return node?.data?.importedFrom === 'contract';
 }

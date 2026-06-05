@@ -208,7 +208,17 @@ export function FlowmakerV3App() {
             {status === 'loading' && <section className="fm-loading">Cargando contrato real...</section>}
             {status === 'error' && <section className="fm-error">{error}</section>}
             {status === 'ready' && (
-                <div className="fm-main" style={{ gridTemplateColumns: selectedNode ? '240px 1fr 316px 332px' : '240px 1fr 332px' }}>
+                <div
+                    className="fm-main"
+                    style={{
+                        '--palette-w': '204px',
+                        '--inspect-w': '300px',
+                        '--phone-w': '300px',
+                        gridTemplateColumns: selectedNode
+                            ? 'var(--palette-w) 1fr var(--inspect-w) var(--phone-w)'
+                            : 'var(--palette-w) 1fr var(--phone-w)',
+                    }}
+                >
                     <NodePalette onAdd={addNode} />
                     <FlowCanvas
                         nodes={nodes}
@@ -275,7 +285,8 @@ export function FlowmakerV3App() {
 }
 
 function ValidationPanel({ validation, onSelect }) {
-    const issues = validation.issues.slice(0, 8);
+    const groupedIssues = groupValidationIssues(validation.issues);
+    const issues = groupedIssues.slice(0, 6);
 
     return (
         <aside className="fm-validation-panel" aria-label="Validación del flujo">
@@ -292,15 +303,31 @@ function ValidationPanel({ validation, onSelect }) {
                         onClick={() => onSelect(issue)}
                     >
                         <span className={`mdi ${issue.level === 'error' ? 'mdi-alert-circle-outline' : 'mdi-alert-outline'}`} />
-                        <span>{issue.message}</span>
+                        <span>{issue.message}{issue.count > 1 ? ` (${issue.count})` : ''}</span>
                     </button>
                 ))}
-                {validation.issues.length > issues.length && (
-                    <div className="fm-validation-more">+{validation.issues.length - issues.length} pendientes más</div>
+                {groupedIssues.length > issues.length && (
+                    <div className="fm-validation-more">+{groupedIssues.length - issues.length} grupos pendientes más</div>
                 )}
             </div>
         </aside>
     );
+}
+
+function groupValidationIssues(issues) {
+    const groups = new Map();
+
+    issues.forEach((issue) => {
+        const key = `${issue.level}:${issue.nodeId || ''}:${issue.edgeId || ''}:${issue.message}`;
+        const current = groups.get(key);
+        if (current) {
+            current.count += 1;
+            return;
+        }
+        groups.set(key, { ...issue, count: 1 });
+    });
+
+    return Array.from(groups.values());
 }
 
 function defaultDataForType(type) {

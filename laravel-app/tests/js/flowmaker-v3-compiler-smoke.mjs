@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { contractToGraph } from '../../resources/js/whatsapp/flowmaker-v3/graphAdapter.js';
 import { graphToFlow } from '../../resources/js/whatsapp/flowmaker-v3/graphCompiler.js';
 import { validateGraph } from '../../resources/js/whatsapp/flowmaker-v3/flowValidator.js';
 
@@ -423,3 +424,112 @@ const invalidGraph = {
 const invalidValidation = validateGraph(invalidGraph);
 assert.ok(invalidValidation.errors.some((issue) => issue.message.includes('{{variable_inexistente}}')));
 assert.ok(invalidValidation.errors.some((issue) => issue.message.includes('rama no')));
+
+const importedGraph = contractToGraph({
+    schema: {
+        name: 'Importado real',
+        scenarios: [
+            {
+                id: 'arrival',
+                name: 'Llegada',
+                status: 'published',
+                stage: 'arrival',
+                conditions: [{ type: 'message_contains', keywords: ['hola'] }],
+                actions: [
+                    {
+                        type: 'send_buttons',
+                        message: {
+                            type: 'buttons',
+                            body: '¿Autorizas?',
+                            buttons: [
+                                { id: 'acepto', title: 'Acepto' },
+                                { id: 'rechazo', title: 'No autorizo' },
+                            ],
+                        },
+                        routes: [
+                            {
+                                handle: 'button:acepto',
+                                label: 'Acepto',
+                                actions: [
+                                    { type: 'set_state', state: 'agenda_esperando_cedula', save_response_as: 'cedula' },
+                                    {
+                                        type: 'conditional',
+                                        condition: { type: 'context_equals', field: 'patient_new', value: true },
+                                        then: [{ type: 'send_message', message: { type: 'text', body: 'Paciente nuevo' } }],
+                                        else: [{ type: 'send_message', message: { type: 'text', body: 'Paciente existente' } }],
+                                    },
+                                ],
+                            },
+                            {
+                                handle: 'button:rechazo',
+                                label: 'No autorizo',
+                                actions: [{ type: 'handoff_agent', reason: 'sin_consentimiento' }],
+                            },
+                        ],
+                    },
+                    {
+                        type: 'sigcenter_agenda',
+                        operation: 'list_times',
+                        routes: [
+                            {
+                                handle: 'success',
+                                label: 'Éxito',
+                                actions: [
+                                    {
+                                        type: 'send_list',
+                                        message: {
+                                            type: 'list',
+                                            body: 'Horarios',
+                                            button_text: 'Ver horarios',
+                                            sections: [{ title: 'Mañana', rows: [{ id: '08_00', title: '08:00' }] }],
+                                        },
+                                        routes: [
+                                            {
+                                                handle: 'list:08_00',
+                                                label: '08:00',
+                                                actions: [{ type: 'send_message', message: { type: 'text', body: 'Confirmado' } }],
+                                            },
+                                        ],
+                                    },
+                                ],
+                            },
+                            {
+                                handle: 'empty',
+                                label: 'Sin disponibilidad',
+                                actions: [{ type: 'send_message', message: { type: 'text', body: 'Sin horarios' } }],
+                            },
+                        ],
+                    },
+                ],
+            },
+        ],
+    },
+    catalogs: {
+        variables: [
+            { id: 'patient_new', token: '{{patient_new}}', label: 'Paciente nuevo' },
+            { id: 'agenda_branch', token: '{{agenda_branch}}', label: 'Rama de agenda' },
+        ],
+    },
+});
+
+assert.equal(importedGraph.flowName, 'Importado real');
+assert.ok(importedGraph.nodes.length >= 10);
+assert.ok(importedGraph.edges.some((edge) => edge.sourceHandle === 'button:acepto'));
+assert.ok(importedGraph.edges.some((edge) => edge.sourceHandle === 'button:rechazo'));
+assert.ok(importedGraph.edges.some((edge) => edge.sourceHandle === 'yes'));
+assert.ok(importedGraph.edges.some((edge) => edge.sourceHandle === 'no'));
+assert.ok(importedGraph.edges.some((edge) => edge.sourceHandle === 'success'));
+assert.ok(importedGraph.edges.some((edge) => edge.sourceHandle === 'empty'));
+assert.ok(importedGraph.edges.some((edge) => edge.sourceHandle === 'list:08_00'));
+assert.ok(importedGraph.nodes.every((node) => node.data?.importedFrom || node.type === 'keyword_trigger'));
+
+const importedValidation = validateGraph(importedGraph);
+assert.equal(importedValidation.errors.length, 0);
+assert.ok(importedValidation.warnings.length >= 1);
+
+const roundTrip = graphToFlow(importedGraph);
+const importedButtons = roundTrip.scenarios[0].actions[0];
+assert.equal(importedButtons.routes[0].handle, 'button:acepto');
+assert.equal(importedButtons.routes[0].actions[1].type, 'conditional');
+assert.equal(importedButtons.routes[0].actions[1].then[0].message.body, 'Paciente nuevo');
+assert.equal(roundTrip.scenarios[0].actions[1].routes[0].actions[0].routes[0].handle, 'list:08_00');
