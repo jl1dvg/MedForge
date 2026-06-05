@@ -9,8 +9,7 @@
 <link rel="stylesheet" href="/agenda-v3/colors_and_type.css">
 <link rel="stylesheet" href="/agenda-v3/shell.css">
 <link rel="stylesheet" href="/agenda-v3/module.css">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/css/materialdesignicons.min.css"
-      integrity="sha384-FBKCfJPNvqVZJF/vHNEjFpHqBmCk67kB4jnWBDpQT3c/lZnT+wKJlqXlhKuqBgf" crossorigin="anonymous">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/css/materialdesignicons.min.css" crossorigin="anonymous">
 <script src="https://unpkg.com/react@18.3.1/umd/react.development.js"
         integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
 <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"
