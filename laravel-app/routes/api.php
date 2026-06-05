@@ -17,6 +17,7 @@ Route::middleware([
     'app.auth',
     'app.permission:administrativo,agenda.view,pacientes.view,solicitudes.view,examenes.view',
 ])->group(function (): void {
+    Route::get('/v3/agenda', [AgendaV3Controller::class, 'shell']);
     Route::get('/v3/api/agenda/config',                [AgendaV3Controller::class, 'config']);
     Route::get('/v3/api/agenda/citas',                 [AgendaV3Controller::class, 'listCitas']);
     Route::post('/v3/api/agenda/citas',                [AgendaV3Controller::class, 'createCita']);

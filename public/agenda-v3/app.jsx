@@ -32,8 +32,13 @@ function App() {
       Object.assign(window.AG, config, { HOY: today, CITAS: citasData, BLOQUEOS: bData });
       setCitas(citasData);
       setBloqueos(bData);
-      // update docId to first medico if available
-      if (config.MEDICOS && config.MEDICOS.length) setDocId(config.MEDICOS[0].id);
+      // Resolver médico del usuario logueado; fallback al primero de la lista
+      if (config.MEDICOS && config.MEDICOS.length) {
+        const uid = window.__MF__ && window.__MF__.user && window.__MF__.user.id;
+        const selfId = uid ? ('usr_' + uid) : null;
+        const match = selfId && config.MEDICOS.find((m) => m.id === selfId);
+        setDocId(match ? match.id : config.MEDICOS[0].id);
+      }
       setLoading(false);
     }).catch((err) => {
       setLoadError(err.message || 'Error al cargar agenda');
