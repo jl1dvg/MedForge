@@ -452,7 +452,6 @@ class AgendaV3Controller
                         TRIM(COALESCE(especialidad,'')) AS especialidad,
                         TRIM(COALESCE(subespecialidad,'')) AS subespecialidad,
                         TRIM(COALESCE(sede,'')) AS sede,
-                        TRIM(COALESCE(iniciales,'')) AS iniciales
                  FROM users
                  WHERE especialidad IS NOT NULL AND TRIM(especialidad) != ''
                    AND nombre IS NOT NULL AND TRIM(nombre) != ''
@@ -480,7 +479,7 @@ class AgendaV3Controller
                 }
 
                 $espLabel  = trim((string) ($u->subespecialidad ?: $u->especialidad)) ?: 'Oftalmología';
-                $iniciales = trim((string) $u->iniciales) ?: $this->getIniciales($label);
+                $iniciales = $this->getIniciales($label);
 
                 DB::table('agenda_medicos')->updateOrInsert(
                     ['id' => $id],
