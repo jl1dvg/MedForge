@@ -112,6 +112,23 @@ class TemplateWriteController
         }
     }
 
+    public function destroy(int $templateId, Request $request): JsonResponse
+    {
+        try {
+            $this->templateCatalogService->deleteTemplate($templateId);
+
+            return response()->json([
+                'ok' => true,
+                'data' => ['deleted_id' => $templateId],
+            ]);
+        } catch (RuntimeException $exception) {
+            return response()->json([
+                'ok' => false,
+                'error' => $exception->getMessage(),
+            ], 422);
+        }
+    }
+
     public function publish(int $templateId, Request $request): JsonResponse
     {
         try {

@@ -145,6 +145,9 @@ Route::middleware([
     Route::post('/templates/{templateId}/publish', [TemplateWriteController::class, 'publish'])
         ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.templates.manage,settings.manage')
         ->whereNumber('templateId');
+    Route::delete('/templates/{templateId}', [TemplateWriteController::class, 'destroy'])
+        ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.templates.manage,settings.manage')
+        ->whereNumber('templateId');
     Route::post('/templates/sync', [TemplateWriteController::class, 'sync'])
         ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.templates.manage,settings.manage');
     // Sandbox (draft testing) endpoints

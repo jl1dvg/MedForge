@@ -260,6 +260,35 @@ class TemplateCatalogService
         ];
     }
 
+    public function deleteTemplate(int $templateId): void
+    {
+        if (!$this->hasTemplateTables()) {
+            throw new RuntimeException('Las tablas locales de plantillas no están disponibles en Laravel.');
+        }
+
+        /** @var WhatsappMessageTemplate|null $template */
+        $template = WhatsappMessageTemplate::query()->find($templateId);
+        if ($template === null) {
+            throw new RuntimeException('Plantilla no encontrada.');
+        }
+
+        $revision = $template->whatsapp_template_revision;
+        $editorialState = $this->resolveEditorialState($template, $revision);
+
+        $deletable = ['stale_local', 'draft'];
+        if (!in_array($editorialState, $deletable, true)) {
+            throw new RuntimeException(
+                'Solo se pueden eliminar borradores locales y plantillas desfasadas. ' .
+                'Las plantillas activas en Meta deben eliminarse desde el Business Manager.'
+            );
+        }
+
+        DB::transaction(function () use ($template): void {
+            WhatsappTemplateRevision::query()->where('template_id', $template->id)->delete();
+            $template->delete();
+        });
+    }
+
     /**
      * @return array<string, mixed>
      */
