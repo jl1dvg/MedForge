@@ -1048,7 +1048,7 @@ class TemplateCatalogService
             $type = strtoupper((string) ($component['type'] ?? ''));
             if ($type === 'HEADER') {
                 $format = strtolower((string) ($component['format'] ?? 'text'));
-                if (!in_array($format, ['text', 'image', 'video', 'document'], true)) {
+                if (!in_array($format, ['text', 'image', 'video', 'document', 'location'], true)) {
                     $format = 'text';
                 }
                 $preview['header_type'] = $format;
