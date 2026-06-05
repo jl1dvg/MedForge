@@ -2,6 +2,7 @@
 
 namespace App\Modules\Reporting\Services;
 
+use App\Modules\Reporting\Support\ImagenesDefaultFirmante;
 use DateTimeImmutable;
 use Illuminate\Support\Facades\DB;
 
@@ -127,7 +128,7 @@ class ImagenesReportDataService
         if ($firmanteId <= 0 && isset($informe['firmado_por']) && is_numeric($informe['firmado_por'])) {
             $firmanteId = (int) $informe['firmado_por'];
         }
-        $firmante = $this->obtenerDatosFirmante($firmanteId > 0 ? $firmanteId : null);
+        $firmante = ImagenesDefaultFirmante::resolve($firmanteId > 0 ? $firmanteId : null);
 
         return [
             'report' => [
@@ -2016,43 +2017,6 @@ class ImagenesReportDataService
         );
 
         return is_object($row) ? (array) $row : null;
-    }
-
-    /**
-     * @return array{nombres:string,apellido1:string,apellido2:string,documento:string,registro:string,firma:string,signature_path:string}
-     */
-    private function obtenerDatosFirmante(?int $firmanteId): array
-    {
-        if (!$firmanteId) {
-            return [
-                'nombres' => '',
-                'apellido1' => '',
-                'apellido2' => '',
-                'documento' => '',
-                'registro' => '',
-                'firma' => '',
-                'signature_path' => '',
-            ];
-        }
-
-        $row = DB::selectOne('SELECT * FROM users WHERE id = ? LIMIT 1', [$firmanteId]);
-        $user = is_object($row) ? (array) $row : [];
-
-        $nombres = trim((string) ($user['first_name'] ?? ''));
-        $segundoNombre = trim((string) ($user['middle_name'] ?? ''));
-        if ($segundoNombre !== '') {
-            $nombres = trim($nombres . ' ' . $segundoNombre);
-        }
-
-        return [
-            'nombres' => $nombres,
-            'apellido1' => trim((string) ($user['last_name'] ?? '')),
-            'apellido2' => trim((string) ($user['second_last_name'] ?? '')),
-            'documento' => trim((string) ($user['cedula'] ?? '')),
-            'registro' => trim((string) ($user['registro'] ?? '')),
-            'firma' => (string) ($user['firma'] ?? ''),
-            'signature_path' => (string) ($user['signature_path'] ?? ''),
-        ];
     }
 
     /**
