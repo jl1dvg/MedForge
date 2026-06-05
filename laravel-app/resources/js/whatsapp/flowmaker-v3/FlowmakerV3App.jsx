@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { flowmakerApi } from './flowmakerApi';
 import { contractToGraph } from './graphAdapter';
+import { graphToFlow } from './graphCompiler';
 import { createNode } from './domain';
 import { FlowCanvas } from './components/FlowCanvas';
 import { NodeInspector } from './components/NodeInspector';
@@ -15,7 +16,11 @@ export function FlowmakerV3App() {
     const [error, setError] = useState('');
     const [selectedNodeId, setSelectedNodeId] = useState(null);
     const [selectedEdgeId, setSelectedEdgeId] = useState(null);
-    const [simulationResult] = useState(null);
+    const [simulationResult, setSimulationResult] = useState(null);
+    const [simulationText, setSimulationText] = useState('hola');
+    const [simulationNumber, setSimulationNumber] = useState('593999111222');
+    const [actionStatus, setActionStatus] = useState('');
+    const [isBusy, setIsBusy] = useState(false);
 
     useEffect(() => {
         let alive = true;
@@ -40,6 +45,48 @@ export function FlowmakerV3App() {
     const nodes = graph?.nodes || [];
     const edges = graph?.edges || [];
     const selectedNode = nodes.find((node) => node.id === selectedNodeId) || null;
+    const selectedScenarioId = selectedNode?.data?.scenarioId || selectedNode?.data?.name || '';
+
+    async function simulateFlow() {
+        if (!graph || isBusy) return;
+
+        setIsBusy(true);
+        setActionStatus('Simulando con backend...');
+        setSimulationResult(null);
+
+        try {
+            const flow = graphToFlow(graph);
+            const payload = await api.simulate({
+                flow,
+                scenario_id: selectedScenarioId,
+                wa_number: simulationNumber,
+                text: simulationText,
+                context: '{}',
+            });
+            setSimulationResult(payload);
+            setActionStatus(payload?.matched ? 'Simulación lista: escenario encontrado.' : 'Simulación lista: sin match.');
+        } catch (err) {
+            setActionStatus(err?.message || 'No se pudo simular el flujo.');
+        } finally {
+            setIsBusy(false);
+        }
+    }
+
+    async function publishFlow() {
+        if (!graph || isBusy) return;
+
+        setIsBusy(true);
+        setActionStatus('Publicando versión...');
+
+        try {
+            const payload = await api.publish(graphToFlow(graph));
+            setActionStatus(payload?.message || 'Flujo publicado.');
+        } catch (err) {
+            setActionStatus(err?.message || 'No se pudo publicar el flujo.');
+        } finally {
+            setIsBusy(false);
+        }
+    }
 
     function updateGraph(updater) {
         setGraph((current) => {
@@ -99,6 +146,34 @@ export function FlowmakerV3App() {
             <header className="fm-topbar">
                 <div className="fm-brand">Flowmaker V3</div>
                 <div className="fm-flowname">{graph?.flowName || 'Flowmaker'}</div>
+                {status === 'ready' && (
+                    <div className="fm-runtime-tools">
+                        <input
+                            className="fm-runtime-input fm-runtime-phone"
+                            value={simulationNumber}
+                            aria-label="Número de prueba"
+                            onChange={(event) => setSimulationNumber(event.target.value)}
+                        />
+                        <input
+                            className="fm-runtime-input"
+                            value={simulationText}
+                            aria-label="Texto de simulación"
+                            onChange={(event) => setSimulationText(event.target.value)}
+                        />
+                        <button className="fm-btn" type="button" onClick={simulateFlow} disabled={isBusy}>
+                            <span className="mdi mdi-play-circle-outline" /> Simular
+                        </button>
+                        <button className="fm-btn fm-btn-primary" type="button" onClick={publishFlow} disabled={isBusy}>
+                            <span className="mdi mdi-cloud-upload-outline" /> Publicar
+                        </button>
+                    </div>
+                )}
+                {actionStatus && (
+                    <span className={`fm-flow-status ${actionStatus.includes('lista') || actionStatus.includes('public') ? 'saved' : ''}`}>
+                        <span className="dot" /> {actionStatus}
+                    </span>
+                )}
+                <div className="fm-spacer" />
                 <a className="fm-btn" href={api.fallbackV2}>Volver a V2</a>
             </header>
 

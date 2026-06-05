@@ -6,6 +6,11 @@ export function PhonePreview({ nodes, flowName, simulationResult }) {
         .filter((node) => node.type === 'message')
         .map((node) => node.data?.settings?.body || node.data?.action?.message?.body || '')
         .filter(Boolean);
+    const simulatedMessages = Array.isArray(simulationResult?.actions)
+        ? simulationResult.actions
+            .map((action) => action?.outbound_message?.body || action?.outbound_message?.text || action?.message?.body || '')
+            .filter(Boolean)
+        : [];
 
     return (
         <aside className="fm-phone-pane">
@@ -23,9 +28,16 @@ export function PhonePreview({ nodes, flowName, simulationResult }) {
                 <div className="fm-wa-body">
                     {simulationResult && (
                         <div className="fm-wa-restart">
-                            Simulación backend: {simulationResult.matched ? 'escenario encontrado' : 'sin match'}
+                            Simulación backend: {simulationResult.matched ? simulationResult.scenario?.name || 'escenario encontrado' : 'sin match'}
                         </div>
                     )}
+                    {simulatedMessages.map((message, index) => (
+                        <div
+                            key={`simulation-${index}-${message}`}
+                            className="fm-wa-msg bot fm-md"
+                            dangerouslySetInnerHTML={{ __html: waFormat(fillVars(message)) }}
+                        />
+                    ))}
                     {messages.length === 0 && (
                         <div className="fm-wa-restart">Agrega un mensaje para ver la conversación aquí.</div>
                     )}
