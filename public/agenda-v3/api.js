@@ -4,7 +4,7 @@
 (function () {
   'use strict';
 
-  const BASE  = (window.__MF__ && window.__MF__.apiBase) || '/api/v3/agenda';
+  const BASE  = (window.__MF__ && window.__MF__.apiBase) || '/api/agenda/v3';
   const CSRF  = (window.__MF__ && window.__MF__.csrf)
     || (document.querySelector('meta[name=csrf-token]') || {}).content
     || '';
