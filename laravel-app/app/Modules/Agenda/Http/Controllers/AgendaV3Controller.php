@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 
 class AgendaV3Controller
@@ -102,6 +103,8 @@ class AgendaV3Controller
         $sedeId = (string) $request->query('sede', '');
 
         try {
+            $this->syncMedicosFromPP();
+
             $query = DB::table('agenda_citas_v3 as c')
                 ->leftJoin('agenda_tipos_cita as tp', 'tp.id', '=', 'c.tipo_id')
                 ->select([
@@ -451,7 +454,7 @@ class AgendaV3Controller
                 "SELECT id, TRIM(COALESCE(nombre,'')) AS nombre,
                         TRIM(COALESCE(especialidad,'')) AS especialidad,
                         TRIM(COALESCE(subespecialidad,'')) AS subespecialidad,
-                        TRIM(COALESCE(sede,'')) AS sede,
+                        TRIM(COALESCE(sede,'')) AS sede
                  FROM users
                  WHERE especialidad IS NOT NULL AND TRIM(especialidad) != ''
                    AND nombre IS NOT NULL AND TRIM(nombre) != ''
@@ -490,6 +493,7 @@ class AgendaV3Controller
                         'sede_id'      => $sedeId,
                         'color'        => $colors[$idx % count($colors)],
                         'iniciales'    => substr($iniciales, 0, 3),
+                        'user_id'      => (int) $u->id,
                         'activo'       => true,
                     ]
                 );
@@ -503,8 +507,10 @@ class AgendaV3Controller
             }
 
             Cache::put('agenda_v3.medicos_synced', true, 1800);
-        } catch (\Throwable) {
-            // Non-fatal
+        } catch (\Throwable $e) {
+            Log::warning('Agenda V3 doctor sync failed', [
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 
@@ -541,6 +547,99 @@ class AgendaV3Controller
         return $lower !== '' ? mb_convert_case($lower, MB_CASE_TITLE, 'UTF-8') : '';
     }
 
+    private function fallbackMedicoId(string $sedeId): string
+    {
+        $id = DB::table('agenda_medicos')
+            ->where('activo', true)
+            ->where('sede_id', $sedeId)
+            ->orderBy('nombre')
+            ->value('id');
+
+        if (is_string($id) && $id !== '') {
+            return $id;
+        }
+
+        $any = DB::table('agenda_medicos')
+            ->where('activo', true)
+            ->orderBy('nombre')
+            ->value('id');
+
+        return is_string($any) && $any !== '' ? $any : '';
+    }
+
+    private function fallbackTipoId(string $area): string
+    {
+        $id = DB::table('agenda_tipos_cita')
+            ->where('activo', true)
+            ->where('area', $area)
+            ->orderBy('id')
+            ->value('id');
+
+        if (is_string($id) && $id !== '') {
+            return $id;
+        }
+
+        $any = DB::table('agenda_tipos_cita')
+            ->where('activo', true)
+            ->orderBy('id')
+            ->value('id');
+
+        return is_string($any) && $any !== '' ? $any : '';
+    }
+
+    private function fallbackSalaId(string $sedeId, string $area): string
+    {
+        $id = DB::table('agenda_salas')
+            ->where('activo', true)
+            ->where('sede_id', $sedeId)
+            ->where('area', $area)
+            ->orderBy('id')
+            ->value('id');
+
+        if (is_string($id) && $id !== '') {
+            return $id;
+        }
+
+        $any = DB::table('agenda_salas')
+            ->where('activo', true)
+            ->where('sede_id', $sedeId)
+            ->orderBy('id')
+            ->value('id');
+
+        return is_string($any) && $any !== '' ? $any : '';
+    }
+
+    private function hhmmFromValue(mixed $value, string $default = '08:00'): string
+    {
+        $raw = trim((string) $value);
+        if ($raw === '') {
+            return $default;
+        }
+
+        if (preg_match('/(\d{2}):(\d{2})/', $raw, $m)) {
+            return $m[1] . ':' . $m[2];
+        }
+
+        return $default;
+    }
+
+    private function legacyPatientName(object $pp): string
+    {
+        $parts = [
+            $pp->fname ?? null,
+            $pp->mname ?? null,
+            $pp->lname ?? null,
+            $pp->lname2 ?? null,
+        ];
+
+        $name = $this->normalizeWhitespace(implode(' ', array_filter(array_map(
+            static fn ($part) => trim((string) $part),
+            $parts
+        ))));
+
+        return $name !== '' ? $name : trim((string) ($pp->hc_number ?? 'Paciente'));
+    }
+
     /** Fetch procedimiento_proyectado rows for a date as read-only V3-shaped citas. */
     /** @param array<string,string> $medDir  normalized-name → agenda_medicos.id */
     private function fetchPPCitas(string $fecha, string $sedeId, array $medDir = []): array
@@ -556,44 +655,53 @@ class AgendaV3Controller
             $sedesMap[$slug]   = $s->id;
         });
 
-        $sql  = "SELECT pp.id, pp.hc_number,
-                    NULLIF(TRIM(CONCAT_WS(' ', pd.fname, pd.mname, pd.lname, pd.lname2)), '') AS paciente,
-                    pp.procedimiento_proyectado AS procedimiento,
-                    TRIM(pp.doctor) AS doctor,
-                    DATE_FORMAT(COALESCE(pp.hora, pp.fecha), '%H:%i') AS hora_ini,
-                    COALESCE(NULLIF(TRIM(pp.sede_departamento), ''), '') AS sede_raw,
-                    COALESCE(pp.estado_agenda, '') AS estado_agenda,
-                    COALESCE(pp.afiliacion, '') AS afiliacion,
-                    pp.visita_id,
-                    DATE_FORMAT(v.hora_llegada, '%H:%i') AS hora_llegada
-                FROM procedimiento_proyectado pp
-                LEFT JOIN patient_data pd ON pd.hc_number = pp.hc_number
-                LEFT JOIN visitas v ON v.id = pp.visita_id
-                WHERE COALESCE(pp.sigcenter_present, 1) = 1
-                  AND COALESCE(DATE(pp.fecha), v.fecha_visita) = ?";
-        $bind = [$fecha];
+        $query = DB::table('procedimiento_proyectado as pp')
+            ->leftJoin('patient_data as pd', 'pd.hc_number', '=', 'pp.hc_number')
+            ->leftJoin('visitas as v', 'v.id', '=', 'pp.visita_id')
+            ->select([
+                'pp.id',
+                'pp.hc_number',
+                'pd.fname',
+                'pd.mname',
+                'pd.lname',
+                'pd.lname2',
+                'pp.procedimiento_proyectado as procedimiento',
+                'pp.doctor',
+                'pp.hora',
+                'pp.fecha',
+                'pp.sede_departamento as sede_raw',
+                'pp.estado_agenda',
+                'pp.afiliacion',
+                'pp.visita_id',
+                'v.fecha_visita',
+                'v.hora_llegada',
+            ])
+            ->whereRaw('COALESCE(pp.sigcenter_present, 1) = 1')
+            ->where(function ($q) use ($fecha): void {
+                $q->whereDate('pp.fecha', $fecha)
+                    ->orWhere('v.fecha_visita', $fecha);
+            });
 
         if ($sedeId !== '') {
             $sedeLabel = DB::table('agenda_sedes')->where('id', $sedeId)->value('label');
             if ($sedeLabel) {
-                $sql  .= " AND UPPER(TRIM(pp.sede_departamento)) LIKE UPPER(?)";
-                $bind[] = '%' . trim((string) $sedeLabel) . '%';
+                $query->whereRaw('UPPER(TRIM(pp.sede_departamento)) LIKE UPPER(?)', ['%' . trim((string) $sedeLabel) . '%']);
             }
         }
 
-        $sql .= " ORDER BY pp.hora ASC, pp.id ASC LIMIT 500";
-
         try {
-            $rows = DB::select($sql, $bind);
-        } catch (\Throwable) {
+            $rows = $query->orderBy('pp.hora')->orderBy('pp.id')->limit(500)->get();
+        } catch (\Throwable $e) {
+            Log::warning('Agenda V3 legacy citas fetch failed', [
+                'fecha' => $fecha,
+                'sede' => $sedeId,
+                'error' => $e->getMessage(),
+            ]);
             return [];
         }
 
-        return array_map(function (object $pp) use ($sedesMap, $fecha): array {
-            $horaIni = $pp->hora_ini ?? '00:00';
-            if ($horaIni === '00:00' || $horaIni === null) {
-                $horaIni = '08:00';
-            }
+        return $rows->map(function (object $pp) use ($sedesMap, $fecha, $medDir): array {
+            $horaIni = $this->hhmmFromValue($pp->hora ?? null);
 
             $sedeRawOrig  = trim((string) ($pp->sede_raw ?? ''));
             $sedeRawLower = mb_strtolower($sedeRawOrig, 'UTF-8');
@@ -606,41 +714,47 @@ class AgendaV3Controller
                      ?? 'ceibos';
             $doctor  = trim((string) ($pp->doctor ?? ''));
             $medSlug = $doctor !== '' ? ($medDir[$this->normalizeDoctorName($doctor)] ?? '') : '';
+            if ($medSlug === '') {
+                $medSlug = $this->fallbackMedicoId($sedeSlug);
+            }
 
             $procedimiento = (string) ($pp->procedimiento ?? '');
             $tipoParts     = explode(' - ', $procedimiento, 2);
             $tipoLabel     = trim($tipoParts[0] ?? $procedimiento);
+            $area           = 'consulta';
+            $tipoId         = $this->fallbackTipoId($area);
+            $salaId         = $this->fallbackSalaId($sedeSlug, $area);
 
             return [
                 'id'                => $pp->id,
                 'fecha'             => $fecha,
                 'sede_id'           => $sedeSlug,
                 'medico_id'         => $medSlug,
-                'sala_id'           => '',
-                'tipo_id'           => '',
-                'paciente'          => trim((string) ($pp->paciente ?? $pp->hc_number ?? 'Paciente')),
+                'sala_id'           => $salaId,
+                'tipo_id'           => $tipoId,
+                'paciente'          => $this->legacyPatientName($pp),
                 'hc_number'         => (string) ($pp->hc_number ?? ''),
                 'edad'              => null,
                 'afiliacion'        => (string) ($pp->afiliacion ?? ''),
                 'tel'               => '',
                 'hora_ini'          => $horaIni,
                 'hora_fin'          => $this->calcFin($horaIni, 20),
-                'area'              => 'consulta',
+                'area'              => $area,
                 'dur_minutos'       => 20,
                 'estado'            => $this->mapEstadoAgenda((string) ($pp->estado_agenda ?? '')),
                 'whatsapp_estado'   => 'na',
-                'hora_llegada'      => $pp->hora_llegada ?: null,
+                'hora_llegada'      => $pp->hora_llegada ? $this->hhmmFromValue($pp->hora_llegada, '') : null,
                 'hora_sala'         => null,
                 'hora_consulta'     => null,
                 'hora_fin_atencion' => null,
-                'notas'             => $tipoLabel,
+                'notas'             => trim($tipoLabel . ($doctor !== '' ? ' · SigCenter doctor: ' . $doctor : '')),
                 'sobreturno'        => false,
                 'hc_llena'          => false,
                 'hc_data'           => null,
                 '_source'           => 'pp',
                 '_readonly'         => true,
             ];
-        }, $rows);
+        })->toArray();
     }
 
     private function mapEstadoAgenda(string $estado): string
