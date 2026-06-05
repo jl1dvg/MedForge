@@ -215,7 +215,7 @@ class MedforgeNavigation
         // ── Consulta ────────────────────────────────────────────────────────────
         $consulta = $group('Consulta', 'mdi mdi-stethoscope', array_filter([
             $canAccessAgenda
-                ? $link('Agenda', '/v2/agenda', 'mdi mdi-calendar-clock-outline', [
+                ? $link('Agenda', '/v2/agenda/v3', 'mdi mdi-calendar-month-outline', [
                 'prefix' => ['/v2/agenda'],
             ])
                 : null,
@@ -236,8 +236,8 @@ class MedforgeNavigation
             ])
                 : null,
             $canAccessPacientesFlujo
-                ? $link('Flujo de Pacientes', '/v2/pacientes/flujo', 'mdi mdi-transit-connection-variant', [
-                'prefix' => ['/v2/pacientes/flujo'],
+                ? $link('Flujo de Pacientes', '/v2/agenda/v3?view=flowboard', 'mdi mdi-monitor-dashboard', [
+                'prefix' => ['/v2/agenda'],
             ])
                 : null,
             $canAccessPatientVerification
@@ -490,8 +490,8 @@ class MedforgeNavigation
             ] : null,
             $canAccessAgenda ? [
                 'label' => 'Agenda',
-                'href' => '/v2/agenda',
-                'icon' => 'mdi mdi-calendar-clock-outline',
+                'href' => '/v2/agenda/v3',
+                'icon' => 'mdi mdi-calendar-month-outline',
             ] : null,
             $canAccessSolicitudes ? [
                 'label' => 'Solicitudes',
