@@ -214,7 +214,13 @@ export function FlowmakerV3App() {
                             onDelete={deleteNode}
                         />
                     )}
-                    <PhonePreview nodes={nodes} edges={edges} flowName={graph?.flowName} simulationResult={simulationResult} />
+                    <PhonePreview
+                        nodes={nodes}
+                        edges={edges}
+                        selectedNodeId={selectedNodeId}
+                        flowName={graph?.flowName}
+                        simulationResult={simulationResult}
+                    />
                 </div>
             )}
         </main>

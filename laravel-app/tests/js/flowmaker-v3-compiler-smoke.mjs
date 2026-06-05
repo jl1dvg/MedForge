@@ -51,6 +51,35 @@ assert.equal(fallback.scenarios.length, 1);
 assert.equal(fallback.scenarios[0].actions.length, 1);
 assert.equal(fallback.scenarios[0].status, 'published');
 
+const preservedConditions = graphToFlow({
+    nodes: [
+        {
+            id: 'trigger_conditions',
+            type: 'keyword_trigger',
+            data: {
+                scenarioId: 'condiciones_avanzadas',
+                name: 'Condiciones avanzadas',
+                status: 'published',
+                stage: 'custom',
+                keywords: [{ value: 'fallback' }],
+                conditions: [{ type: 'always' }, { type: 'state_equals', value: 'agenda_esperando_correo' }],
+                conditionsEditedFromKeywords: false,
+            },
+        },
+        {
+            id: 'message_conditions',
+            type: 'message',
+            data: { settings: { body: 'Condición preservada' } },
+        },
+    ],
+    edges: [{ id: 'edge_conditions', source: 'trigger_conditions', target: 'message_conditions' }],
+});
+
+assert.deepEqual(preservedConditions.scenarios[0].conditions, [
+    { type: 'always' },
+    { type: 'state_equals', value: 'agenda_esperando_correo' },
+]);
+
 const specialized = graphToFlow({
     nodes: [
         {

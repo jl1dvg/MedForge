@@ -13,6 +13,9 @@ export function contractToGraph(contract) {
             name: scenario.name || `Escenario ${scenarioIndex + 1}`,
             status: scenario.status || 'published',
             stage: scenario.stage || 'custom',
+            intercept_menu: Boolean(scenario.intercept_menu),
+            conditions: Array.isArray(scenario.conditions) ? scenario.conditions : [],
+            conditionsEditedFromKeywords: false,
             keywords: extractKeywords(scenario),
         });
         nodes.push(trigger);

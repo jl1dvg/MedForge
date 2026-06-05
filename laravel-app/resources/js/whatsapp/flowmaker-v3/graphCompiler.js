@@ -49,6 +49,10 @@ function triggerToConditions(trigger) {
         return [{ type: 'always' }];
     }
 
+    if (!trigger.data?.conditionsEditedFromKeywords && Array.isArray(trigger.data?.conditions) && trigger.data.conditions.length > 0) {
+        return trigger.data.conditions;
+    }
+
     const keywords = (Array.isArray(trigger.data?.keywords) ? trigger.data.keywords : [])
         .map((keyword) => String(keyword?.value || keyword || '').trim())
         .filter(Boolean);
