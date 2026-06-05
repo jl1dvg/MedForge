@@ -18,7 +18,7 @@ function App() {
   const [bloqueos,   setBloqueos]   = React.useState([]);
   const [modal,      setModal]      = React.useState(null);
   const [toast,      setToast]      = React.useState(null);
-  const [docId,      setDocId]      = React.useState("m_ramirez");
+  const [docId,      setDocId]      = React.useState("");
   const [consultaId, setConsultaId] = React.useState(null);
 
   /* ---------- carga inicial ---------- */

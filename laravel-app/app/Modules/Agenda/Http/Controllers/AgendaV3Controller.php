@@ -7,6 +7,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 
@@ -30,6 +31,8 @@ class AgendaV3Controller
         }
 
         try {
+            $this->syncMedicosFromPP();
+
             $sedes   = DB::table('agenda_sedes')->where('activo', true)->get()->map(fn ($s) => [
                 'id'       => $s->id,
                 'label'    => $s->label,
@@ -38,11 +41,11 @@ class AgendaV3Controller
                 'cierre'   => substr($s->cierre, 0, 5),
             ]);
 
-            $medicos = DB::table('agenda_medicos')->where('activo', true)->get()->map(fn ($m) => [
+            $medicos = DB::table('agenda_medicos')->where('activo', true)->orderBy('nombre')->get()->map(fn ($m) => [
                 'id'         => $m->id,
                 'nombre'     => $m->nombre,
                 'esp'        => $m->especialidad,
-                'areas'      => json_decode($m->areas, true),
+                'areas'      => json_decode($m->areas ?? '[]', true) ?: [],
                 'sede'       => $m->sede_id,
                 'color'      => $m->color,
                 'iniciales'  => $m->iniciales,
@@ -116,8 +119,25 @@ class AgendaV3Controller
                 $query->where('c.sede_id', $sedeId);
             }
 
-            $rows = $query->orderBy('c.hora_ini')->get();
-            return response()->json(['data' => $rows->map(fn ($c) => $this->normalizeCita($c))]);
+            $v3Citas  = $query->orderBy('c.hora_ini')->get()->map(fn ($c) => $this->normalizeCita($c))->toArray();
+            $ppCitas  = $this->fetchPPCitas($fecha, $sedeId);
+
+            // Merge: V3 citas take precedence; deduplicate by hc_number+hora_ini if same patient appears in both
+            $v3Keys = [];
+            foreach ($v3Citas as $c) {
+                if ($c['hc_number'] !== '') {
+                    $v3Keys[$c['hc_number'] . '|' . $c['hora_ini']] = true;
+                }
+            }
+            $filteredPP = array_filter($ppCitas, function (array $pp) use ($v3Keys): bool {
+                if ($pp['hc_number'] === '') return true;
+                return !isset($v3Keys[$pp['hc_number'] . '|' . $pp['hora_ini']]);
+            });
+
+            $all = array_merge($v3Citas, array_values($filteredPP));
+            usort($all, fn ($a, $b) => strcmp($a['hora_ini'], $b['hora_ini']));
+
+            return response()->json(['data' => $all]);
         } catch (\Throwable $e) {
             return response()->json(['error' => 'No se pudieron cargar las citas', 'detail' => $e->getMessage()], 500);
         }
@@ -399,6 +419,204 @@ class AgendaV3Controller
     }
 
     // -------------------------------------------------------------------------
+
+    /** Sync real doctors from procedimiento_proyectado into agenda_medicos (cached 6h). */
+    private function syncMedicosFromPP(): void
+    {
+        if (Cache::has('agenda_v3.medicos_synced')) {
+            return;
+        }
+
+        try {
+            $rawDoctors = DB::select(
+                "SELECT DISTINCT TRIM(doctor) AS doctor
+                 FROM procedimiento_proyectado
+                 WHERE COALESCE(sigcenter_present, 1) = 1
+                   AND doctor IS NOT NULL AND TRIM(doctor) != ''
+                 LIMIT 60"
+            );
+
+            // Remove seeder/fake entries (IDs that do NOT start with 'md_')
+            DB::table('agenda_medicos')->where('id', 'not like', 'md_%')->delete();
+
+            $defaultSede = (string) (DB::table('agenda_sedes')->where('activo', true)->value('id') ?? 'ceibos');
+            $colors      = ['#5156be', '#2ca361', '#d34b5b', '#d59623', '#3d7ac7', '#7c5fc2', '#4a9a9e', '#b55c32'];
+            $idx         = 0;
+
+            foreach ($rawDoctors as $row) {
+                $name = trim((string) ($row->doctor ?? ''));
+                if ($name === '' || !$this->isDoctorLikeName($name)) {
+                    continue;
+                }
+
+                $id    = $this->doctorSlug($name);
+                $label = $this->formatDoctorName($name);
+
+                DB::table('agenda_medicos')->updateOrInsert(
+                    ['id' => $id],
+                    [
+                        'nombre'       => $label,
+                        'especialidad' => 'Oftalmología',
+                        'areas'        => '["consulta","quirurgico","imagenes"]',
+                        'sede_id'      => $defaultSede,
+                        'color'        => $colors[$idx % count($colors)],
+                        'iniciales'    => $this->getIniciales($label),
+                        'activo'       => true,
+                    ]
+                );
+                $idx++;
+            }
+
+            Cache::put('agenda_v3.medicos_synced', true, 21600); // 6 hours
+        } catch (\Throwable) {
+            // Non-fatal — app still works with cached/existing data
+        }
+    }
+
+    /** Fetch procedimiento_proyectado rows for a date as read-only V3-shaped citas. */
+    private function fetchPPCitas(string $fecha, string $sedeId): array
+    {
+        // Build sede label → slug map for filtering
+        $sedesMap = [];
+        DB::table('agenda_sedes')->get(['id', 'label'])->each(function ($s) use (&$sedesMap) {
+            $sedesMap[mb_strtolower(trim($s->label), 'UTF-8')] = $s->id;
+        });
+
+        $sql  = "SELECT pp.id, pp.hc_number,
+                    NULLIF(TRIM(CONCAT_WS(' ', pd.fname, pd.mname, pd.lname, pd.lname2)), '') AS paciente,
+                    pp.procedimiento_proyectado AS procedimiento,
+                    TRIM(pp.doctor) AS doctor,
+                    DATE_FORMAT(COALESCE(pp.hora, pp.fecha), '%H:%i') AS hora_ini,
+                    COALESCE(NULLIF(TRIM(pp.sede_departamento), ''), '') AS sede_raw,
+                    COALESCE(pp.estado_agenda, '') AS estado_agenda,
+                    COALESCE(pp.afiliacion, '') AS afiliacion,
+                    pp.visita_id,
+                    DATE_FORMAT(v.hora_llegada, '%H:%i') AS hora_llegada
+                FROM procedimiento_proyectado pp
+                LEFT JOIN patient_data pd ON pd.hc_number = pp.hc_number
+                LEFT JOIN visitas v ON v.id = pp.visita_id
+                WHERE COALESCE(pp.sigcenter_present, 1) = 1
+                  AND COALESCE(DATE(pp.fecha), v.fecha_visita) = ?";
+        $bind = [$fecha];
+
+        if ($sedeId !== '') {
+            // Find the label for this sede to match against sede_departamento
+            $sedeLabel = DB::table('agenda_sedes')->where('id', $sedeId)->value('label');
+            if ($sedeLabel) {
+                $sql  .= " AND TRIM(pp.sede_departamento) = ?";
+                $bind[] = $sedeLabel;
+            }
+        }
+
+        $sql .= " ORDER BY pp.hora ASC, pp.id ASC LIMIT 500";
+
+        try {
+            $rows = DB::select($sql, $bind);
+        } catch (\Throwable) {
+            return [];
+        }
+
+        return array_map(function (object $pp) use ($sedesMap, $fecha): array {
+            $horaIni = $pp->hora_ini ?? '00:00';
+            if ($horaIni === '00:00' || $horaIni === null) {
+                $horaIni = '08:00';
+            }
+
+            $sedeRaw  = mb_strtolower(trim((string) ($pp->sede_raw ?? '')), 'UTF-8');
+            $sedeSlug = $sedesMap[$sedeRaw] ?? array_values($sedesMap)[0] ?? 'ceibos';
+            $doctor   = trim((string) ($pp->doctor ?? ''));
+            $medSlug  = $doctor !== '' ? $this->doctorSlug($doctor) : '';
+
+            $procedimiento = (string) ($pp->procedimiento ?? '');
+            $tipoParts     = explode(' - ', $procedimiento, 2);
+            $tipoLabel     = trim($tipoParts[0] ?? $procedimiento);
+
+            return [
+                'id'                => $pp->id,
+                'fecha'             => $fecha,
+                'sede_id'           => $sedeSlug,
+                'medico_id'         => $medSlug,
+                'sala_id'           => '',
+                'tipo_id'           => '',
+                'paciente'          => trim((string) ($pp->paciente ?? $pp->hc_number ?? 'Paciente')),
+                'hc_number'         => (string) ($pp->hc_number ?? ''),
+                'edad'              => null,
+                'afiliacion'        => (string) ($pp->afiliacion ?? ''),
+                'tel'               => '',
+                'hora_ini'          => $horaIni,
+                'hora_fin'          => $this->calcFin($horaIni, 20),
+                'area'              => 'consulta',
+                'dur_minutos'       => 20,
+                'estado'            => $this->mapEstadoAgenda((string) ($pp->estado_agenda ?? '')),
+                'whatsapp_estado'   => 'na',
+                'hora_llegada'      => $pp->hora_llegada ?: null,
+                'hora_sala'         => null,
+                'hora_consulta'     => null,
+                'hora_fin_atencion' => null,
+                'notas'             => $tipoLabel,
+                'sobreturno'        => false,
+                'hc_llena'          => false,
+                'hc_data'           => null,
+                '_source'           => 'pp',
+                '_readonly'         => true,
+            ];
+        }, $rows);
+    }
+
+    private function mapEstadoAgenda(string $estado): string
+    {
+        return match (strtolower(trim($estado))) {
+            'atendido', 'completado'                                    => 'completado',
+            'no presente', 'no_presente', 'no show', 'noshow', 'ausente' => 'ausente',
+            'cancelado', 'anulado', 'cancelada'                         => 'cancelado',
+            'en consulta', 'en_consulta'                                => 'en_consulta',
+            'en sala', 'en_sala'                                        => 'en_sala',
+            'confirmado', 'confirmada'                                  => 'confirmado',
+            default                                                     => 'agendado',
+        };
+    }
+
+    private function doctorSlug(string $name): string
+    {
+        $v = mb_strtolower($name, 'UTF-8');
+        $ascii = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $v);
+        $v = is_string($ascii) && $ascii !== '' ? $ascii : $v;
+        $v = preg_replace('/[^a-z0-9]+/', '_', $v) ?? $v;
+        $v = trim($v, '_');
+        return 'md_' . substr($v, 0, 27);
+    }
+
+    private function isDoctorLikeName(string $name): bool
+    {
+        if (preg_match('/\d{1,2}:\d{2}/', $name)) return false;
+        if (preg_match('/^\d/', $name))            return false;
+        $blocked = ['/\bRETINOGRAFIA\b/ui', '/\bNERVIO OPTICO\b/ui', '/\bCONSULTA\b/ui', '/\bPROCEDIMIENTO\b/ui', '/\bOPTOMETRIA\b/ui'];
+        foreach ($blocked as $p) {
+            if (preg_match($p, $name)) return false;
+        }
+        $tokens = array_filter(preg_split('/\s+/', trim($name)) ?: [], fn ($t) => strlen($t) > 1);
+        return count($tokens) >= 2;
+    }
+
+    private function formatDoctorName(string $name): string
+    {
+        $lower = mb_strtolower($name, 'UTF-8');
+        return mb_convert_case($lower, MB_CASE_TITLE, 'UTF-8');
+    }
+
+    private function getIniciales(string $name): string
+    {
+        $skip = ['de', 'del', 'la', 'los', 'las', 'y'];
+        $tokens = preg_split('/\s+/', $name) ?: [];
+        $ini = '';
+        foreach ($tokens as $t) {
+            if (strlen($t) > 1 && !in_array(strtolower($t), $skip, true)) {
+                $ini .= mb_strtoupper(mb_substr($t, 0, 1, 'UTF-8'), 'UTF-8');
+            }
+            if (strlen($ini) >= 3) break;
+        }
+        return substr($ini, 0, 3);
+    }
 
     private function fetchCitaById(int $id): array
     {

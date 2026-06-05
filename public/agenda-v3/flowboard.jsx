@@ -110,15 +110,20 @@ function FlowCard({ c, nowMin, onOpen, onAdvance, onResend }) {
         {delay != null && <span className="delay"><i className="mdi mdi-clock-alert-outline"></i>{delay}′ tarde</span>}
         {wait != null && <span className="wait">hace {wait}′</span>}
       </div>
-      {c.estado === "agendado" && c.whatsapp !== "confirmado" && (
+      {!c._readonly && c.estado === "agendado" && c.whatsapp !== "confirmado" && (
         <div className="adv">
           <button className="btn sm btn-outline-success" onClick={() => onResend(c.id)}><i className="mdi mdi-whatsapp"></i>Reenviar confirmación</button>
         </div>
       )}
-      {next && (
+      {!c._readonly && next && (
         <div className="adv" style={{ display: "flex", gap: 6 }}>
           <button className="btn sm btn-primary" style={{ flex: 1 }} onClick={() => onAdvance(c.id)}><i className={`mdi ${nextIcon}`}></i>{nextLabel}</button>
           {c.estado === "agendado" && <button className="btn sm btn-outline-secondary" title="Marcar ausente" onClick={() => onAdvance(c.id, "ausente")}><i className="mdi mdi-account-cancel-outline"></i></button>}
+        </div>
+      )}
+      {c._readonly && (
+        <div style={{ marginTop: 6, fontSize: 10, color: "var(--fg-mute)", display: "flex", alignItems: "center", gap: 4 }}>
+          <i className="mdi mdi-sync" style={{ fontSize: 11 }}></i>SigCenter
         </div>
       )}
     </div>

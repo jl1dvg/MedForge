@@ -20,8 +20,9 @@
 
   /* ---------- shape helpers ---------- */
   function normalizeCita(c) {
+    const isPP = c._source === 'pp';
     return {
-      id            : 'C' + c.id,
+      id            : (isPP ? 'P' : 'C') + c.id,
       _dbId         : c.id,
       fecha         : c.fecha,
       sede          : c.sede_id,
@@ -47,6 +48,8 @@
       notas         : c.notas || '',
       hcLlena       : !!c.hc_llena,
       hcData        : c.hc_data || null,
+      _source       : c._source || 'v3',
+      _readonly     : !!c._readonly,
     };
   }
 
@@ -102,6 +105,7 @@
     },
 
     async updateCita(dbId, payload) {
+      if (dbId === null || dbId === undefined) throw new Error('Cita de SigCenter — no editable en Agenda V3');
       const r = await fetch(BASE + '/citas/' + dbId, {
         method : 'PUT',
         headers: headers(),
