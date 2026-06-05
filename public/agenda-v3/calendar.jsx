@@ -195,7 +195,8 @@ function ApptBlock({ c, pxPerMin, onOpen }) {
 
 /* ---------- VISTA SEMANA: disponibilidad por día + citas reales (jueves) ---------- */
 function SemanaView({ state, sedeId, fMed, pxPerMin, onOpen }) {
-  const medId = fMed || AG.MEDICOS.find((m) => m.sede === sedeId).id;
+  const defaultMed = AG.MEDICOS.find((m) => m.sede === sedeId) || AG.MEDICOS[0] || null;
+  const medId = fMed || (defaultMed ? defaultMed.id : "");
   const m = medico(medId);
   const totalPx = (DAY_END - DAY_START) * pxPerMin;
   const hourPx = 60 * pxPerMin;
@@ -203,6 +204,16 @@ function SemanaView({ state, sedeId, fMed, pxPerMin, onOpen }) {
   const fechasSem = { 1: "2 jun", 2: "3 jun", 3: "4 jun", 4: "5 jun", 5: "6 jun", 6: "7 jun" };
   // ojo: HOY (4 jun) es jueves => dia 4
   const citasMed = state.citas.filter((c) => c.medico === medId && c.estado !== "cancelado");
+
+  if (!medId) {
+    return (
+      <Box title="Semana" icon="mdi-calendar-week">
+        <div className="muted" style={{ font: "500 12.5px var(--font-body)" }}>
+          No hay médicos sincronizados para mostrar la vista semanal.
+        </div>
+      </Box>
+    );
+  }
 
   return (
     <div>

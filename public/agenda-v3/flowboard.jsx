@@ -102,9 +102,9 @@ function FlowCard({ c, nowMin, onOpen, onAdvance, onResend }) {
         <span className="tm">{c.ini}</span>
       </div>
       <div className="meta" onClick={() => onOpen(c.id)} style={{ cursor: "pointer" }}>{c.hc} · {c.edad} a · {m.nombre.replace("Dra. ", "").replace("Dr. ", "").replace("Lic. ", "")}</div>
-      <div className="proc" style={{ color: a.fg }} onClick={() => onOpen(c.id)}>{tipo(c.tipo).label}</div>
+      <div className="proc" style={{ color: a.fg }} onClick={() => onOpen(c.id)}>{tipo(c.tipo).label || c.notas || "Atención SigCenter"}</div>
       <div className="row2">
-        <span className="chip-tag" style={{ background: a.bg, color: a.fg, fontSize: 9.5, padding: "2px 7px" }}>{s.label}</span>
+        <span className="chip-tag" style={{ background: a.bg, color: a.fg, fontSize: 9.5, padding: "2px 7px" }}>{s.label || "Sin sala"}</span>
         <WaIcon status={c.whatsapp} />
         {c.sobreturno && <i className="mdi mdi-flash" style={{ color: "var(--warning)", fontSize: 13 }} title="Sobreturno"></i>}
         {delay != null && <span className="delay"><i className="mdi mdi-clock-alert-outline"></i>{delay}′ tarde</span>}

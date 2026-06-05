@@ -219,6 +219,12 @@ function ApptDetail({ cita: c, onClose, onEdit, onAdvance, onCancel, onResend, o
                 <div className="det"><div className="l">Horario</div><div className="v">{c.ini} – {c.fin} <span className="muted" style={{ fontWeight: 400 }}>({c.dur}′)</span></div></div>
               </div>
               {c.notas && <div className="det"><div className="l">Notas</div><div className="v" style={{ fontWeight: 400, fontSize: 12.5 }}>{c.notas}</div></div>}
+              {c._readonly && (
+                <div className="validate warn">
+                  <i className="mdi mdi-sync"></i>
+                  <div><b>SigCenter</b>: esta cita es de solo lectura en Agenda V3.</div>
+                </div>
+              )}
 
               <div>
                 <div className="l" style={{ font: "700 9.5px var(--font-body)", textTransform: "uppercase", letterSpacing: ".04em", color: "var(--fg-mute)", marginBottom: 9 }}>Línea de tiempo del flujo</div>
@@ -253,26 +259,40 @@ function ApptDetail({ cita: c, onClose, onEdit, onAdvance, onCancel, onResend, o
                     <div key={i} className={`wa-msg ${msg.d}`}>{msg.x}<span className="t">{msg.t}</span></div>
                   ))}
               </div>
-              <div style={{ padding: 10, borderTop: "1px solid var(--border-soft)", display: "flex", gap: 8 }}>
-                <button className="btn sm btn-outline-success block" onClick={onResend}>
-                  <i className="mdi mdi-send-outline"></i>{c.whatsapp === "na" ? "Enviar confirmación" : "Reenviar confirmación"}
-                </button>
-              </div>
+              {!c._readonly && (
+                <div style={{ padding: 10, borderTop: "1px solid var(--border-soft)", display: "flex", gap: 8 }}>
+                  <button className="btn sm btn-outline-success block" onClick={onResend}>
+                    <i className="mdi mdi-send-outline"></i>{c.whatsapp === "na" ? "Enviar confirmación" : "Reenviar confirmación"}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
 
         <div className="modal-f">
-          <button className="btn btn-outline-danger" onClick={onCancel} disabled={finalState}><i className="mdi mdi-close-circle-outline"></i>Cancelar cita</button>
-          <button className="btn btn-outline-secondary" onClick={() => onEdit(c)}><i className="mdi mdi-pencil-outline"></i>Editar / reagendar</button>
-          {onConsulta && c.estado !== "cancelado" && c.estado !== "ausente" && (
-            <button className="btn btn-outline-success" onClick={() => onConsulta(c.id)}><i className="mdi mdi-file-document-edit-outline"></i>{c.estado === "completado" || c.hcLlena ? "Ver historia clínica" : "Abrir consulta"}</button>
+          {!c._readonly && (
+            <React.Fragment>
+              <button className="btn btn-outline-danger" onClick={onCancel} disabled={finalState}><i className="mdi mdi-close-circle-outline"></i>Cancelar cita</button>
+              <button className="btn btn-outline-secondary" onClick={() => onEdit(c)}><i className="mdi mdi-pencil-outline"></i>Editar / reagendar</button>
+              {onConsulta && c.estado !== "cancelado" && c.estado !== "ausente" && (
+                <button className="btn btn-outline-success" onClick={() => onConsulta(c.id)}><i className="mdi mdi-file-document-edit-outline"></i>{c.estado === "completado" || c.hcLlena ? "Ver historia clínica" : "Abrir consulta"}</button>
+              )}
+              <div className="spacer"></div>
+              {!finalState && idx < 4 && (
+                <button className="btn btn-primary" onClick={() => onAdvance(c.id)}>
+                  <i className="mdi mdi-arrow-right-circle-outline"></i>Avanzar a «{estado(order[idx + 1]).label}»
+                </button>
+              )}
+            </React.Fragment>
           )}
-          <div className="spacer"></div>
-          {!finalState && idx < 4 && (
-            <button className="btn btn-primary" onClick={() => onAdvance(c.id)}>
-              <i className="mdi mdi-arrow-right-circle-outline"></i>Avanzar a «{estado(order[idx + 1]).label}»
-            </button>
+          {c._readonly && (
+            <React.Fragment>
+              <span className="muted" style={{ font: "600 12px var(--font-body)", marginRight: "auto" }}>
+                <i className="mdi mdi-sync"></i> Registro SigCenter de solo lectura
+              </span>
+              <button className="btn btn-light" onClick={onClose}>Cerrar</button>
+            </React.Fragment>
           )}
         </div>
       </div>
