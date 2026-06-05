@@ -272,11 +272,23 @@ assert.deepEqual(routedButtons.routes, [
         label: 'Acepto',
         target_node_id: 'accepted_node',
         target_action_type: 'set_state',
+        actions: [
+            {
+                type: 'set_state',
+                state: 'agenda_esperando_cedula',
+            },
+        ],
     },
     {
         handle: 'button:no_autorizo',
         label: 'No autorizo',
         target_node_id: 'rejected_node',
         target_action_type: 'handoff_agent',
+        actions: [
+            {
+                type: 'handoff_agent',
+                reason: 'sin_consentimiento',
+            },
+        ],
     },
 ]);

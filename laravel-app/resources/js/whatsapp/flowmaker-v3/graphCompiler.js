@@ -154,7 +154,7 @@ function nodeToAction(node, context, seen) {
         };
     }
 
-    const routes = compileRoutes(node, context);
+    const routes = compileRoutes(node, context, seen);
     if (routes.length === 0) {
         return action;
     }
@@ -165,7 +165,7 @@ function nodeToAction(node, context, seen) {
     };
 }
 
-function compileRoutes(node, context) {
+function compileRoutes(node, context, seen) {
     const handles = nodeOutputHandles(node);
     const labels = new Map(handles.map((handle) => [handle.id, handle.label]));
 
@@ -178,6 +178,7 @@ function compileRoutes(node, context) {
             label: labels.get(edge.sourceHandle) || edge.sourceHandle,
             target_node_id: edge.target,
             target_action_type: targetAction?.type || null,
+            actions: compileLinearActions([edge.target], context, new Set(seen)),
         };
     });
 }

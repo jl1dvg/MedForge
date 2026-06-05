@@ -32,6 +32,7 @@ class WhatsappFlowmakerTest extends TestCase
             'whatsapp_autoresponder_flow_versions',
             'whatsapp_autoresponder_flows',
             'whatsapp_flow_shadow_runs',
+            'app_settings',
             'roles',
             'users',
         ] as $table) {
@@ -157,6 +158,7 @@ class WhatsappFlowmakerTest extends TestCase
             $table->string('awaiting')->nullable();
             $table->json('context')->nullable();
             $table->json('last_payload')->nullable();
+            $table->unsignedInteger('session_version')->default(0);
             $table->timestamp('last_interaction_at')->nullable();
             $table->timestamps();
         });
@@ -1178,6 +1180,187 @@ class WhatsappFlowmakerTest extends TestCase
             ->assertJsonPath('actions.0.type', 'send_message');
     }
 
+    public function test_runtime_executes_button_route_actions_without_resending_source_prompt(): void
+    {
+        $this->ensureAppSettingsTable();
+
+        $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->postJson('/v2/whatsapp/api/flowmaker/publish', [
+                'flow' => [
+                    'name' => 'Flow rutas',
+                    'description' => 'Prueba de rutas no-code',
+                    'settings' => ['timezone' => 'America/Guayaquil'],
+                    'scenarios' => [
+                        [
+                            'id' => 'consentimiento',
+                            'name' => 'Consentimiento',
+                            'status' => 'published',
+                            'stage' => 'arrival',
+                            'conditions' => [['type' => 'always']],
+                            'actions' => [
+                                [
+                                    'type' => 'send_buttons',
+                                    'message' => [
+                                        'type' => 'buttons',
+                                        'body' => '¿Autorizas el uso de tus datos?',
+                                        'buttons' => [
+                                            ['id' => 'acepto', 'title' => 'Acepto'],
+                                            ['id' => 'no_autorizo', 'title' => 'No autorizo'],
+                                        ],
+                                    ],
+                                    'routes' => [
+                                        [
+                                            'handle' => 'button:acepto',
+                                            'label' => 'Acepto',
+                                            'target_node_id' => 'accepted_node',
+                                            'target_action_type' => 'send_message',
+                                            'actions' => [
+                                                [
+                                                    'type' => 'send_message',
+                                                    'message' => [
+                                                        'type' => 'text',
+                                                        'body' => 'Autorización registrada.',
+                                                    ],
+                                                ],
+                                            ],
+                                        ],
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ])
+            ->assertOk();
+
+        \DB::table('whatsapp_conversations')->where('id', 1)->update([
+            'needs_human' => false,
+            'assigned_user_id' => null,
+            'assigned_at' => null,
+        ]);
+
+        $conversation = \App\Models\WhatsappConversation::query()->findOrFail(1);
+        $message = \App\Models\WhatsappMessage::query()->create([
+            'conversation_id' => $conversation->id,
+            'wa_message_id' => 'wamid.route.button',
+            'direction' => 'inbound',
+            'message_type' => 'interactive',
+            'body' => 'Acepto',
+            'raw_payload' => [
+                'interactive' => [
+                    'button_reply' => [
+                        'id' => 'acepto',
+                        'title' => 'Acepto',
+                    ],
+                ],
+            ],
+            'message_timestamp' => now(),
+        ]);
+
+        $result = app(\App\Modules\Whatsapp\Services\FlowRuntimeExecutionService::class)
+            ->executeInbound($conversation, $message, $message->raw_payload ?? []);
+
+        $this->assertTrue($result['executed']);
+        $this->assertTrue($result['matched']);
+        $this->assertSame(1, $result['messages_sent']);
+        $this->assertDatabaseHas('whatsapp_messages', [
+            'conversation_id' => 1,
+            'direction' => 'outbound',
+            'body' => 'Autorización registrada.',
+        ]);
+        $this->assertDatabaseMissing('whatsapp_messages', [
+            'conversation_id' => 1,
+            'direction' => 'outbound',
+            'body' => '¿Autorizas el uso de tus datos?',
+        ]);
+    }
+
+    public function test_runtime_executes_sigcenter_result_route_actions(): void
+    {
+        $this->ensureAppSettingsTable();
+
+        $this
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+            ])
+            ->postJson('/v2/whatsapp/api/flowmaker/publish', [
+                'flow' => [
+                    'name' => 'Flow agenda rutas',
+                    'description' => 'Prueba de rutas por resultado Sigcenter',
+                    'settings' => ['timezone' => 'America/Guayaquil'],
+                    'scenarios' => [
+                        [
+                            'id' => 'agenda_horarios',
+                            'name' => 'Agenda horarios',
+                            'status' => 'published',
+                            'stage' => 'scheduling',
+                            'conditions' => [['type' => 'message_contains', 'keywords' => ['horarios']]],
+                            'actions' => [
+                                [
+                                    'type' => 'sigcenter_agenda',
+                                    'operation' => 'list_times',
+                                    'send_result' => true,
+                                    'routes' => [
+                                        [
+                                            'handle' => 'missing_data',
+                                            'label' => 'Dato faltante',
+                                            'target_node_id' => 'missing_data_message',
+                                            'target_action_type' => 'send_message',
+                                            'actions' => [
+                                                [
+                                                    'type' => 'send_message',
+                                                    'message' => [
+                                                        'type' => 'text',
+                                                        'body' => 'Primero elige médico y fecha para buscar horarios.',
+                                                    ],
+                                                ],
+                                            ],
+                                        ],
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ])
+            ->assertOk();
+
+        \DB::table('whatsapp_conversations')->where('id', 1)->update([
+            'needs_human' => false,
+            'assigned_user_id' => null,
+            'assigned_at' => null,
+        ]);
+
+        $conversation = \App\Models\WhatsappConversation::query()->findOrFail(1);
+        $message = \App\Models\WhatsappMessage::query()->create([
+            'conversation_id' => $conversation->id,
+            'wa_message_id' => 'wamid.route.sigcenter',
+            'direction' => 'inbound',
+            'message_type' => 'text',
+            'body' => 'horarios',
+            'raw_payload' => ['text' => ['body' => 'horarios']],
+            'message_timestamp' => now(),
+        ]);
+
+        $result = app(\App\Modules\Whatsapp\Services\FlowRuntimeExecutionService::class)
+            ->executeInbound($conversation, $message, $message->raw_payload ?? []);
+
+        $this->assertTrue($result['executed']);
+        $this->assertTrue($result['matched']);
+        $this->assertDatabaseHas('whatsapp_messages', [
+            'conversation_id' => 1,
+            'direction' => 'outbound',
+            'body' => 'Primero elige médico y fecha para buscar horarios.',
+        ]);
+    }
+
     public function test_it_compares_laravel_flow_against_legacy_source(): void
     {
         $this->publishDefaultFlow();
@@ -1649,5 +1832,22 @@ class WhatsappFlowmakerTest extends TestCase
             ])
             ->postJson('/v2/whatsapp/api/flowmaker/publish', $this->defaultFlowPayload())
             ->assertOk();
+    }
+
+    private function ensureAppSettingsTable(): void
+    {
+        if (Schema::hasTable('app_settings')) {
+            return;
+        }
+
+        Schema::create('app_settings', function (Blueprint $table): void {
+            $table->id();
+            $table->string('category')->nullable();
+            $table->string('name')->unique();
+            $table->text('value')->nullable();
+            $table->string('type')->nullable();
+            $table->boolean('autoload')->default(true);
+            $table->timestamps();
+        });
     }
 }

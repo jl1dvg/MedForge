@@ -800,6 +800,14 @@ class FlowRuntimeExecutionService
                 continue;
             }
 
+            $inboundRoute = $this->matchingInboundRoute($action, $inboundMessage, $text);
+            if ($inboundRoute !== null) {
+                $run = $this->executeRouteActions($inboundRoute, $context, $conversation, $inboundMessage, $text, $scenarioId);
+                $context = $run['context'];
+                $messagesSent += $run['messages_sent'];
+                continue;
+            }
+
             if ($type === 'lookup_patient') {
                 $context = $this->lookupPatient($action, $context, $conversation, $text);
                 continue;
@@ -922,6 +930,14 @@ class FlowRuntimeExecutionService
                         $context['procedimiento_id_label'] = $autoProcedure['label'];
                         $context['procedimiento_nombre'] = $autoProcedure['label'];
                     }
+                }
+
+                $resultRoute = $this->matchingResultRoute($action, $this->sigcenterRouteHandles($preview));
+                if ($resultRoute !== null) {
+                    $run = $this->executeRouteActions($resultRoute, $context, $conversation, $inboundMessage, $text, $scenarioId);
+                    $context = $run['context'];
+                    $messagesSent += $run['messages_sent'];
+                    continue;
                 }
 
                 if (($preview['operation'] ?? null) === 'book_appointment') {
@@ -1083,10 +1099,171 @@ class FlowRuntimeExecutionService
                         ? 'high'
                         : 'normal';
                 }
+
+                $resultRoute = $this->matchingResultRoute($action, $this->aiRouteHandles($preview));
+                if ($resultRoute !== null) {
+                    $run = $this->executeRouteActions($resultRoute, $context, $conversation, $inboundMessage, $text, $scenarioId);
+                    $context = $run['context'];
+                    $messagesSent += $run['messages_sent'];
+                }
             }
         }
 
         return ['context' => $context, 'messages_sent' => $messagesSent];
+    }
+
+    /**
+     * @param array<string, mixed> $action
+     * @return array<string, mixed>|null
+     */
+    private function matchingInboundRoute(array $action, WhatsappMessage $inboundMessage, string $text): ?array
+    {
+        $routes = array_values(array_filter($action['routes'] ?? [], static fn(mixed $route): bool => is_array($route)));
+        if ($routes === []) {
+            return null;
+        }
+
+        $candidates = $this->inboundRouteHandles($inboundMessage, $text);
+        foreach ($routes as $route) {
+            $handle = $this->normalizeRouteHandle((string)($route['handle'] ?? ''));
+            if ($handle !== '' && in_array($handle, $candidates, true)) {
+                return $route;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function inboundRouteHandles(WhatsappMessage $inboundMessage, string $text): array
+    {
+        [$replyId, $replyTitle] = $this->resolveCapturedInputValue($text, $inboundMessage);
+        $values = array_values(array_filter([
+            $replyId,
+            $replyTitle,
+            $text,
+            $this->normalizeText($replyId),
+            $this->normalizeText($replyTitle),
+            $this->normalizeText($text),
+        ], static fn(string $value): bool => trim($value) !== ''));
+
+        $handles = [];
+        foreach ($values as $value) {
+            $normalized = $this->normalizeRouteHandle($value);
+            if ($normalized === '') {
+                continue;
+            }
+            $handles[] = $normalized;
+            $handles[] = 'button:' . $normalized;
+            $handles[] = 'list:' . $normalized;
+            $handles[] = 'reply:' . $normalized;
+        }
+
+        return array_values(array_unique($handles));
+    }
+
+    private function normalizeRouteHandle(string $handle): string
+    {
+        $handle = trim($handle);
+        if ($handle === '') {
+            return '';
+        }
+
+        if (str_contains($handle, ':')) {
+            [$prefix, $value] = explode(':', $handle, 2);
+            $value = $this->normalizeRouteHandle($value);
+            return trim(strtolower($prefix)) . ':' . $value;
+        }
+
+        $handle = mb_strtolower($handle, 'UTF-8');
+        $handle = strtr($handle, [
+            'á' => 'a',
+            'é' => 'e',
+            'í' => 'i',
+            'ó' => 'o',
+            'ú' => 'u',
+            'ü' => 'u',
+            'ñ' => 'n',
+        ]);
+        $handle = preg_replace('/[^a-z0-9_ ]+/u', '', $handle) ?? $handle;
+        $handle = preg_replace('/\s+/u', '_', $handle) ?? $handle;
+
+        return trim($handle, '_');
+    }
+
+    /**
+     * @param array<string, mixed> $route
+     * @param array<string, mixed> $context
+     * @return array{context:array<string,mixed>,messages_sent:int}
+     */
+    private function executeRouteActions(array $route, array $context, WhatsappConversation $conversation, WhatsappMessage $inboundMessage, string $text, string $scenarioId): array
+    {
+        $actions = array_values(array_filter($route['actions'] ?? [], static fn(mixed $action): bool => is_array($action)));
+        if ($actions === []) {
+            return ['context' => $context, 'messages_sent' => 0];
+        }
+
+        return $this->executeActions($actions, $context, $conversation, $inboundMessage, $text, $scenarioId, false);
+    }
+
+    /**
+     * @param array<string, mixed> $action
+     * @param array<int, string> $handles
+     * @return array<string, mixed>|null
+     */
+    private function matchingResultRoute(array $action, array $handles): ?array
+    {
+        $routes = array_values(array_filter($action['routes'] ?? [], static fn(mixed $route): bool => is_array($route)));
+        if ($routes === [] || $handles === []) {
+            return null;
+        }
+
+        $normalizedHandles = array_values(array_unique(array_map(fn(string $handle): string => $this->normalizeRouteHandle($handle), $handles)));
+        foreach ($routes as $route) {
+            $handle = $this->normalizeRouteHandle((string)($route['handle'] ?? ''));
+            if ($handle !== '' && in_array($handle, $normalizedHandles, true)) {
+                return $route;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<string, mixed> $preview
+     * @return array<int, string>
+     */
+    private function sigcenterRouteHandles(array $preview): array
+    {
+        if (!empty($preview['missing_fields'])) {
+            return ['missing_data'];
+        }
+
+        if (!empty($preview['handoff_requested']) || (!empty($preview['error']) && empty($preview['ok']))) {
+            return ['error'];
+        }
+
+        $data = $preview['data'] ?? null;
+        if (!empty($preview['ok']) && is_array($data) && $data === []) {
+            return ['empty'];
+        }
+
+        if (!empty($preview['ok']) || !empty($preview['ready'])) {
+            return ['success'];
+        }
+
+        return ['error'];
+    }
+
+    /**
+     * @param array<string, mixed> $preview
+     * @return array<int, string>
+     */
+    private function aiRouteHandles(array $preview): array
+    {
+        return !empty($preview['suggested_handoff']) ? ['handoff'] : ['resolved'];
     }
 
     /**
