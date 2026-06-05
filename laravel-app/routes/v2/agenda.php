@@ -19,4 +19,6 @@ Route::middleware([
     Route::post('/api/agenda/citas', [AgendaWriteController::class, 'crearCita']);
     Route::post('/api/agenda/estado', [AgendaWriteController::class, 'actualizarEstado']);
 
+    // Agenda V3 shell — accesible como /v2/agenda/v3
+    Route::get('/agenda/v3', [AgendaV3Controller::class, 'shell']);
 });
