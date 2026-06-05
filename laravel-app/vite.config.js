@@ -41,6 +41,7 @@ export default defineConfig({
                 'resources/js/crm/main.tsx',
                 'resources/js/agenda/main.tsx',
                 'resources/js/whatsapp/main.jsx',
+                'resources/js/whatsapp/flowmaker-v3/main.jsx',
             ],
             refresh: true,
         }),
