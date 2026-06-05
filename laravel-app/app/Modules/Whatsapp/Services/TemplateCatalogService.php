@@ -404,6 +404,13 @@ class TemplateCatalogService
             }
         }
 
+        $source = trim((string) ($filters['source'] ?? ''));
+        if ($source === 'meta') {
+            $query->whereNull('created_by');
+        } elseif ($source === 'local') {
+            $query->whereNotNull('created_by');
+        }
+
         $limit = max(1, min(200, (int) ($filters['limit'] ?? 100)));
 
         return $query->limit($limit)->get()->map(

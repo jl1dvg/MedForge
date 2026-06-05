@@ -5,7 +5,7 @@
     $availableCategories = is_array($availableCategories ?? null) ? $availableCategories : [];
     $availableLanguages = is_array($availableLanguages ?? null) ? $availableLanguages : [];
     $integration = is_array($integration ?? null) ? $integration : ['ready' => false, 'errors' => []];
-    $filters = is_array($filters ?? null) ? $filters : ['search' => '', 'status' => '', 'category' => '', 'language' => ''];
+    $filters = is_array($filters ?? null) ? $filters : ['search' => '', 'status' => 'APPROVED', 'category' => '', 'language' => '', 'source' => 'meta'];
     $selectedTemplate = $templates[0] ?? null;
 @endphp
 
@@ -342,11 +342,19 @@
                             <input type="text" name="search" value="{{ $filters['search'] }}" class="form-control" placeholder="Nombre, idioma, categoría">
                         </div>
                         <div class="col-xl-2 col-md-6">
+                            <label class="form-label">Origen</label>
+                            <select name="source" class="form-select">
+                                <option value="meta" {{ ($filters['source'] ?? '') === 'meta' ? 'selected' : '' }}>Solo Meta</option>
+                                <option value="" {{ ($filters['source'] ?? '') === '' ? 'selected' : '' }}>Todos</option>
+                                <option value="local" {{ ($filters['source'] ?? '') === 'local' ? 'selected' : '' }}>Solo locales</option>
+                            </select>
+                        </div>
+                        <div class="col-xl-2 col-md-6">
                             <label class="form-label">Estado</label>
                             <select name="status" class="form-select">
                                 <option value="">Todos</option>
                                 @foreach(['APPROVED', 'PENDING', 'REJECTED', 'PAUSED', 'DISABLED'] as $status)
-                                    <option value="{{ $status }}" {{ $filters['status'] === $status ? 'selected' : '' }}>{{ $status }}</option>
+                                    <option value="{{ $status }}" {{ ($filters['status'] ?? '') === $status ? 'selected' : '' }}>{{ $status }}</option>
                                 @endforeach
                             </select>
                         </div>
