@@ -156,6 +156,55 @@ export function editableDataToAction(node) {
     }
 }
 
+export function nodeOutputHandles(node) {
+    const settings = node?.data?.settings || {};
+    const actionType = node?.data?.actionType || node?.data?.action?.type || nodeTypeToActionType(node?.type);
+
+    if (node?.type === 'keyword_trigger') {
+        const keywords = Array.isArray(node.data?.keywords) ? node.data.keywords : [];
+        return keywords.length > 0
+            ? keywords.map((keyword, index) => ({ id: `keyword:${keyword.value || index}`, label: keyword.value || `Palabra ${index + 1}` }))
+            : [{ id: 'source', label: 'Continuar' }];
+    }
+
+    if (actionType === 'send_buttons' || actionType === 'send_list') {
+        const buttons = normalizeButtons(settings.buttons || node?.data?.action?.message?.buttons || []);
+        return [
+            ...buttons.map((button) => ({ id: `button:${button.id}`, label: button.title })),
+            { id: 'fallback', label: 'Sin coincidencia' },
+        ];
+    }
+
+    if (actionType === 'sigcenter_agenda') {
+        return [
+            { id: 'success', label: 'Éxito' },
+            { id: 'missing_data', label: 'Dato faltante' },
+            { id: 'empty', label: 'Sin disponibilidad' },
+            { id: 'error', label: 'Error / derivar' },
+        ];
+    }
+
+    if (actionType === 'ai_agent') {
+        return [
+            { id: 'resolved', label: 'Resuelto' },
+            { id: 'handoff', label: 'Derivar' },
+        ];
+    }
+
+    if (node?.type === 'branch' || actionType === 'conditional') {
+        return [
+            { id: 'yes', label: 'Sí cumple' },
+            { id: 'no', label: 'No cumple' },
+        ];
+    }
+
+    if (node?.type === 'end' || node?.type === 'handoff') {
+        return [];
+    }
+
+    return [{ id: 'source', label: 'Continuar' }];
+}
+
 function actionToSettings(action) {
     const message = isObject(action.message) ? action.message : {};
 

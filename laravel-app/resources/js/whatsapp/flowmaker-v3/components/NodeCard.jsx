@@ -1,4 +1,5 @@
 import React from 'react';
+import { nodeOutputHandles } from '../actionCatalog';
 import { NODE_TYPES } from '../domain';
 
 export function NodeCard({ node, selected, onSelect, onDelete, onDragStart }) {
@@ -10,6 +11,7 @@ export function NodeCard({ node, selected, onSelect, onDelete, onDragStart }) {
     const detail = node.data?.keywords?.map((keyword) => keyword.value).filter(Boolean).join(', ')
         || node.data?.action?.type
         || meta.desc;
+    const handles = nodeOutputHandles(node);
 
     return (
         <div
@@ -50,6 +52,14 @@ export function NodeCard({ node, selected, onSelect, onDelete, onDragStart }) {
                 <div className="fm-node-title">{String(title).slice(0, 80)}</div>
                 <div className="fm-node-text">{String(detail || '').slice(0, 120)}</div>
             </div>
+            {handles.length > 0 && (
+                <div className="fm-node-handles">
+                    {handles.slice(0, 4).map((handle) => (
+                        <span key={handle.id}>{handle.label}</span>
+                    ))}
+                    {handles.length > 4 && <span>+{handles.length - 4}</span>}
+                </div>
+            )}
         </div>
     );
 }
