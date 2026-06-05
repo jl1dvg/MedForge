@@ -5,7 +5,7 @@
     $availableCategories = is_array($availableCategories ?? null) ? $availableCategories : [];
     $availableLanguages = is_array($availableLanguages ?? null) ? $availableLanguages : [];
     $integration = is_array($integration ?? null) ? $integration : ['ready' => false, 'errors' => []];
-    $filters = is_array($filters ?? null) ? $filters : ['search' => '', 'status' => '', 'category' => '', 'language' => ''];
+    $filters = is_array($filters ?? null) ? $filters : ['search' => '', 'status' => 'APPROVED', 'category' => '', 'language' => '', 'source' => 'meta'];
     $selectedTemplate = $templates[0] ?? null;
 @endphp
 
@@ -342,11 +342,19 @@
                             <input type="text" name="search" value="{{ $filters['search'] }}" class="form-control" placeholder="Nombre, idioma, categoría">
                         </div>
                         <div class="col-xl-2 col-md-6">
+                            <label class="form-label">Origen</label>
+                            <select name="source" class="form-select">
+                                <option value="meta" {{ ($filters['source'] ?? '') === 'meta' ? 'selected' : '' }}>Solo Meta</option>
+                                <option value="" {{ ($filters['source'] ?? '') === '' ? 'selected' : '' }}>Todos</option>
+                                <option value="local" {{ ($filters['source'] ?? '') === 'local' ? 'selected' : '' }}>Solo locales</option>
+                            </select>
+                        </div>
+                        <div class="col-xl-2 col-md-6">
                             <label class="form-label">Estado</label>
                             <select name="status" class="form-select">
                                 <option value="">Todos</option>
                                 @foreach(['APPROVED', 'PENDING', 'REJECTED', 'PAUSED', 'DISABLED'] as $status)
-                                    <option value="{{ $status }}" {{ $filters['status'] === $status ? 'selected' : '' }}>{{ $status }}</option>
+                                    <option value="{{ $status }}" {{ ($filters['status'] ?? '') === $status ? 'selected' : '' }}>{{ $status }}</option>
                                 @endforeach
                             </select>
                         </div>
@@ -427,6 +435,11 @@
                                             <button type="button" class="btn btn-outline-primary btn-sm" data-wa-template-publish='{{ $template['id'] }}' data-wa-template-header-type='{{ $template["preview"]["header_type"] ?? "none" }}' {{ empty($template['can_publish']) ? 'disabled' : '' }}>
                                                 Publicar
                                             </button>
+                                            @if(in_array($template['editorial_state'] ?? '', ['stale_local', 'draft', 'published_local']))
+                                            <button type="button" class="btn btn-outline-danger btn-sm" data-wa-template-delete='{{ $template['id'] }}' data-wa-template-name='{{ $template['name'] }}'>
+                                                Eliminar
+                                            </button>
+                                            @endif
                                         </div>
                                     </div>
                                 @endforeach
@@ -644,6 +657,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const editButtons = Array.from(document.querySelectorAll('[data-wa-template-edit]'));
     const cloneButtons = Array.from(document.querySelectorAll('[data-wa-template-clone]'));
     const publishButtons = Array.from(document.querySelectorAll('[data-wa-template-publish]'));
+    const deleteButtons = Array.from(document.querySelectorAll('[data-wa-template-delete]'));
 
     const previewNodes = {
         name: document.getElementById('wa-v2-preview-name'),
@@ -1134,6 +1148,40 @@ document.addEventListener('DOMContentLoaded', () => {
             showFormError(error.message || 'No fue posible guardar el borrador.');
             saveButton.disabled = false;
         }
+    });
+
+    deleteButtons.forEach((button) => {
+        button.addEventListener('click', async () => {
+            const templateId = button.dataset.waTemplateDelete;
+            const templateName = button.dataset.waTemplateName || templateId;
+            if (!window.confirm(`¿Eliminar la plantilla "${templateName}"? Esta acción no se puede deshacer.`)) {
+                return;
+            }
+
+            button.disabled = true;
+            const previous = button.textContent;
+            button.textContent = 'Eliminando...';
+
+            try {
+                const response = await fetch(`/v2/whatsapp/api/templates/${templateId}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                    },
+                });
+                const payload = await response.json();
+                if (!response.ok || payload.ok !== true) {
+                    throw new Error(payload.error || 'No fue posible eliminar la plantilla.');
+                }
+                window.location.reload();
+            } catch (error) {
+                window.alert(error.message || 'No fue posible eliminar la plantilla.');
+                button.disabled = false;
+                button.textContent = previous;
+            }
+        });
     });
 
     syncButton?.addEventListener('click', async () => {

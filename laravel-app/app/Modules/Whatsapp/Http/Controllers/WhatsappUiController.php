@@ -165,26 +165,31 @@ class WhatsappUiController
 
     public function templates(Request $request): View
     {
+        $statusFilter  = trim((string) $request->query('status',   $request->has('status')   ? '' : 'APPROVED'));
+        $sourceFilter  = trim((string) $request->query('source',   $request->has('source')   ? '' : 'meta'));
+
         $catalog = $this->templateCatalogService->getTemplateCatalog([
-            'search' => trim((string) $request->query('search', '')),
-            'status' => trim((string) $request->query('status', '')),
+            'search'   => trim((string) $request->query('search', '')),
+            'status'   => $statusFilter,
             'category' => trim((string) $request->query('category', '')),
             'language' => trim((string) $request->query('language', '')),
-            'limit' => (int) $request->query('limit', 100),
+            'source'   => $sourceFilter,
+            'limit'    => (int) $request->query('limit', 100),
         ]);
 
         return view('whatsapp.v2-templates', [
-            'pageTitle' => 'WhatsApp V2 - Templates',
-            'templates' => $catalog['templates'],
+            'pageTitle'          => 'WhatsApp V2 - Templates',
+            'templates'          => $catalog['templates'],
             'availableCategories' => $catalog['available_categories'],
             'availableLanguages' => $catalog['available_languages'],
-            'integration' => $catalog['integration'],
-            'source' => $catalog['source'],
+            'integration'        => $catalog['integration'],
+            'source'             => $catalog['source'],
             'filters' => [
-                'search' => trim((string) $request->query('search', '')),
-                'status' => trim((string) $request->query('status', '')),
+                'search'   => trim((string) $request->query('search', '')),
+                'status'   => $statusFilter,
                 'category' => trim((string) $request->query('category', '')),
                 'language' => trim((string) $request->query('language', '')),
+                'source'   => $sourceFilter,
             ],
         ] + $this->buildWhatsappNotificationViewData($request, [
             'scope' => 'templates',
