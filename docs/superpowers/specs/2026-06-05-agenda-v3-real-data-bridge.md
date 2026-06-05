@@ -48,10 +48,12 @@ a un **upsert con deactivación de ausentes**:
 
 - Reducir cache de `agenda_v3.medicos_synced` de 6h a **30 minutos**
 - Agregar endpoint admin `POST /v2/api/agenda/v3/sync` que:
-  - Limpia la cache key `agenda_v3.medicos_synced`
+  - Llama `Cache::forget('agenda_v3.medicos_synced')` (solo esa key, nunca flush global)
   - Llama `syncMedicosFromPP()` inmediatamente
   - Retorna conteo de médicos sincronizados
 - Solo accesible con permiso `administrativo`
+
+> **Nota sobre Redis:** Redis está instalado en el servidor de DB, no en staging ni producción. El `.env.example` usa `CACHE_STORE=file` por defecto. Mientras staging/producción no tengan `CACHE_STORE=redis` en su `.env`, el cache funciona con archivos sin cambios de código. Si en el futuro se configura `CACHE_STORE=redis` apuntando al servidor de DB, el `Cache::` de Laravel lo toma automáticamente.
 
 ### 4. Corregir filtro de sede en `fetchPPCitas`
 
