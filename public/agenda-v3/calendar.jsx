@@ -185,9 +185,9 @@ function ApptBlock({ c, pxPerMin, onOpen }) {
         <WaIcon status={c.whatsapp} size={12} />
       </div>
       <div className="a-name">{c.paciente}</div>
-      <div className="a-proc" style={{ color: a.fg }}>{tipo(c.tipo).label}</div>
+      <div className="a-proc" style={{ color: a.fg }}>{tipo(c.tipo)?.label || c.notas || '—'}</div>
       <div className="a-foot">
-        <span className="a-room" style={{ color: a.fg }}>{sala(c.sala).label}</span>
+        <span className="a-room" style={{ color: a.fg }}>{sala(c.sala)?.label || '—'}</span>
       </div>
     </div>
   );
