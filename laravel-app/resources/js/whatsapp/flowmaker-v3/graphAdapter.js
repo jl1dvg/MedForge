@@ -1,4 +1,5 @@
-import { createNode } from './domain';
+import { createNode } from './domain.js';
+import { actionToEditableData, actionToNodeType } from './actionCatalog.js';
 
 export function contractToGraph(contract) {
     const flow = contract?.schema || contract?.flow || contract || {};
@@ -23,9 +24,7 @@ export function contractToGraph(contract) {
             const node = createNode(actionToNodeType(action), {
                 x: 380 + actionIndex * 320,
                 y: 120 + scenarioIndex * 260,
-            }, {
-                action,
-            });
+            }, actionToEditableData(action));
 
             nodes.push(node);
             edges.push({
@@ -81,23 +80,4 @@ function extractKeywords(scenario) {
         value: String(keyword),
         matchType: 'contains',
     }));
-}
-
-function actionToNodeType(action) {
-    switch (action?.type) {
-        case 'send_template':
-            return 'template';
-        case 'send_buttons':
-        case 'send_list':
-            return 'quick_replies';
-        case 'ai_agent':
-            return 'ai_agent';
-        case 'handoff_agent':
-            return 'end';
-        default:
-            if (action?.message?.type && action.message.type !== 'text') {
-                return 'media';
-            }
-            return 'message';
-    }
 }
