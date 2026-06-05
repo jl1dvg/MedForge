@@ -338,4 +338,4 @@ function App() {
 /* spinner keyframe */
 (function(){ var s=document.createElement('style'); s.textContent='@keyframes spin{to{transform:rotate(360deg)}}@keyframes pop{from{opacity:0;transform:translateX(-50%) scale(.9)}to{opacity:1;transform:translateX(-50%) scale(1)}}'; document.head.appendChild(s); })();
 
-ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+ReactDOM.createRoot(document.getElementById("agenda-v3-root") || document.getElementById("root")).render(<App />);
