@@ -427,7 +427,7 @@
                                             <button type="button" class="btn btn-outline-primary btn-sm" data-wa-template-publish='{{ $template['id'] }}' data-wa-template-header-type='{{ $template["preview"]["header_type"] ?? "none" }}' {{ empty($template['can_publish']) ? 'disabled' : '' }}>
                                                 Publicar
                                             </button>
-                                            @if(in_array($template['editorial_state'] ?? '', ['stale_local', 'draft']))
+                                            @if(in_array($template['editorial_state'] ?? '', ['stale_local', 'draft', 'published_local']))
                                             <button type="button" class="btn btn-outline-danger btn-sm" data-wa-template-delete='{{ $template['id'] }}' data-wa-template-name='{{ $template['name'] }}'>
                                                 Eliminar
                                             </button>

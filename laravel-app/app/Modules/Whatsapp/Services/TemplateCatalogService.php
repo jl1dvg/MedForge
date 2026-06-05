@@ -275,10 +275,10 @@ class TemplateCatalogService
         $revision = $template->whatsapp_template_revision;
         $editorialState = $this->resolveEditorialState($template, $revision);
 
-        $deletable = ['stale_local', 'draft'];
+        $deletable = ['stale_local', 'draft', 'published_local'];
         if (!in_array($editorialState, $deletable, true)) {
             throw new RuntimeException(
-                'Solo se pueden eliminar borradores locales y plantillas desfasadas. ' .
+                'Solo se pueden eliminar plantillas locales y desfasadas. ' .
                 'Las plantillas activas en Meta deben eliminarse desde el Business Manager.'
             );
         }
