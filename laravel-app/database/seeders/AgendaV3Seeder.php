@@ -9,20 +9,16 @@ class AgendaV3Seeder extends Seeder
 {
     public function run(): void
     {
+        // Limpiar médicos falsos de corridas anteriores
+        DB::table('agenda_medicos')->truncate();
+
         DB::table('agenda_sedes')->upsert([
             ['id' => 'ceibos',    'label' => 'Ceibos',     'abrev' => 'CB', 'apertura' => '08:00:00', 'cierre' => '18:00:00', 'activo' => 1],
             ['id' => 'villaclub', 'label' => 'Villa Club', 'abrev' => 'VC', 'apertura' => '08:00:00', 'cierre' => '17:00:00', 'activo' => 1],
         ], ['id'], ['label', 'abrev', 'apertura', 'cierre', 'activo']);
 
-        DB::table('agenda_medicos')->upsert([
-            ['id' => 'm_ramirez',  'nombre' => 'Dra. Carolina Ramírez',       'especialidad' => 'Retina y catarata',         'areas' => '["consulta","quirurgico"]', 'sede_id' => 'ceibos',    'color' => '#5156be', 'iniciales' => 'CR', 'activo' => 1],
-            ['id' => 'm_salazar',  'nombre' => 'Dr. Marco Salazar',           'especialidad' => 'Vítreo-retina',             'areas' => '["quirurgico","consulta"]', 'sede_id' => 'ceibos',    'color' => '#d34b5b', 'iniciales' => 'MS', 'activo' => 1],
-            ['id' => 'm_veintim',  'nombre' => 'Dra. Valeria Veintimilla',    'especialidad' => 'Glaucoma',                  'areas' => '["consulta","quirurgico"]', 'sede_id' => 'ceibos',    'color' => '#0863be', 'iniciales' => 'VV', 'activo' => 1],
-            ['id' => 'm_vargas',   'nombre' => 'Dr. Andrés Vargas',           'especialidad' => 'Córnea y segmento ant.',    'areas' => '["consulta","imagenes"]',   'sede_id' => 'ceibos',    'color' => '#7c4dff', 'iniciales' => 'AV', 'activo' => 1],
-            ['id' => 'm_encalada', 'nombre' => 'Lic. Daniela Encalada',       'especialidad' => 'Optometría',                'areas' => '["consulta"]',             'sede_id' => 'ceibos',    'color' => '#1f9d7a', 'iniciales' => 'DE', 'activo' => 1],
-            ['id' => 'm_andrade',  'nombre' => 'Dr. Jorge Andrade',           'especialidad' => 'Oculoplástica',             'areas' => '["consulta","quirurgico"]', 'sede_id' => 'villaclub', 'color' => '#ffa800', 'iniciales' => 'JA', 'activo' => 1],
-            ['id' => 'm_mendoza',  'nombre' => 'Dra. Paula Mendoza',          'especialidad' => 'Oftalmología pediátrica',   'areas' => '["consulta"]',             'sede_id' => 'villaclub', 'color' => '#3d7ac7', 'iniciales' => 'PM', 'activo' => 1],
-        ], ['id'], ['nombre', 'especialidad', 'areas', 'sede_id', 'color', 'iniciales', 'activo']);
+        // agenda_medicos se puebla automáticamente desde procedimiento_proyectado
+        // vía syncMedicosFromPP() en el primer hit a GET /api/agenda/v3/config
 
         DB::table('agenda_salas')->upsert([
             ['id' => 's_cons1', 'sede_id' => 'ceibos',    'label' => 'Consultorio 1',      'tipo' => 'consultorio',  'area' => 'consulta',   'cap' => 1, 'activo' => 1],
@@ -58,20 +54,11 @@ class AgendaV3Seeder extends Seeder
             ['id' => 't_preqx',   'label' => 'Valoración pre-quirúrgica', 'area' => 'comercial',  'dur_minutos' => 15, 'requiere_tipo_sala' => '["comercial"]',                'activo' => 1],
         ], ['id'], ['label', 'area', 'dur_minutos', 'requiere_tipo_sala', 'activo']);
 
-        // Horarios base — jueves (dia=4) como ejemplo completo; lunes (dia=1) para Ramírez
         $horarios = [
-            ['medico_id' => 'm_ramirez',  'dia_semana' => 1, 'hora_ini' => '08:00:00', 'hora_fin' => '13:00:00', 'sede_id' => 'ceibos',    'activo' => 1],
-            ['medico_id' => 'm_ramirez',  'dia_semana' => 4, 'hora_ini' => '08:00:00', 'hora_fin' => '14:00:00', 'sede_id' => 'ceibos',    'activo' => 1],
-            ['medico_id' => 'm_ramirez',  'dia_semana' => 4, 'hora_ini' => '15:00:00', 'hora_fin' => '18:00:00', 'sede_id' => 'ceibos',    'activo' => 1],
-            ['medico_id' => 'm_salazar',  'dia_semana' => 4, 'hora_ini' => '08:00:00', 'hora_fin' => '13:00:00', 'sede_id' => 'ceibos',    'activo' => 1],
-            ['medico_id' => 'm_veintim',  'dia_semana' => 4, 'hora_ini' => '09:00:00', 'hora_fin' => '17:00:00', 'sede_id' => 'ceibos',    'activo' => 1],
-            ['medico_id' => 'm_vargas',   'dia_semana' => 4, 'hora_ini' => '08:00:00', 'hora_fin' => '16:00:00', 'sede_id' => 'ceibos',    'activo' => 1],
-            ['medico_id' => 'm_encalada', 'dia_semana' => 4, 'hora_ini' => '08:00:00', 'hora_fin' => '18:00:00', 'sede_id' => 'ceibos',    'activo' => 1],
-            ['medico_id' => 'm_andrade',  'dia_semana' => 4, 'hora_ini' => '08:00:00', 'hora_fin' => '13:00:00', 'sede_id' => 'villaclub', 'activo' => 1],
-            ['medico_id' => 'm_mendoza',  'dia_semana' => 4, 'hora_ini' => '13:00:00', 'hora_fin' => '17:00:00', 'sede_id' => 'villaclub', 'activo' => 1],
+            ['medico_id' => 'md_dra_carolina_ramirez', 'dia_semana' => 1, 'hora_ini' => '08:00:00', 'hora_fin' => '13:00:00', 'sede_id' => 'ceibos', 'activo' => 1],
+            ['medico_id' => 'md_dra_carolina_ramirez', 'dia_semana' => 4, 'hora_ini' => '08:00:00', 'hora_fin' => '14:00:00', 'sede_id' => 'ceibos', 'activo' => 1],
         ];
 
-        // Insert only if table is empty to allow re-running without duplicates
         if (DB::table('agenda_horarios')->count() === 0) {
             DB::table('agenda_horarios')->insert($horarios);
         }
