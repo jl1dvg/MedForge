@@ -2,7 +2,7 @@
 
 /* ============ MI AGENDA (worklist del médico) ============ */
 function MiAgenda({ state, docId, setDocId, nowMin, onConsulta, onOpen }) {
-  const m = medico(docId);
+  const m = medico(docId) ?? { nombre: '—', esp: '', sede: null, color: '#999', iniciales: '?' };
   const mis = state.citas
     .filter((c) => c.medico === docId && c.estado !== "cancelado" && c.estado !== "reagendado")
     .sort((a, b) => toMin(a.ini) - toMin(b.ini));
@@ -25,7 +25,7 @@ function MiAgenda({ state, docId, setDocId, nowMin, onConsulta, onOpen }) {
       <div className="doc-bar">
         <div className="who">
           <div className="av" style={{ background: m.color }}>{m.iniciales}</div>
-          <div><div className="nm">{m.nombre}</div><div className="es">{m.esp} · {sede(m.sede).label}</div></div>
+          <div><div className="nm">{m.nombre}</div><div className="es">{m.esp} · {sede(m.sede)?.label || '—'}</div></div>
         </div>
         <select value={docId} onChange={(e) => setDocId(e.target.value)}>
           {AG.MEDICOS.map((d) => <option key={d.id} value={d.id}>Ver como: {d.nombre}</option>)}
@@ -42,7 +42,7 @@ function MiAgenda({ state, docId, setDocId, nowMin, onConsulta, onOpen }) {
           <div style={{ flex: 1 }}>
             <div className="lab">{actual.estado === "en_consulta" ? "En consulta ahora" : actual.estado === "en_sala" ? "En sala — listo para atender" : "Siguiente paciente"}</div>
             <div className="nm">{actual.paciente}</div>
-            <div className="meta">{actual.hc} · {actual.edad} años · {tipo(actual.tipo).label} · {sala(actual.sala).label}</div>
+            <div className="meta">{actual.hc} · {actual.edad} años · {tipo(actual.tipo)?.label || actual.notas || '—'} · {sala(actual.sala)?.label || '—'}</div>
           </div>
           <div style={{ textAlign: "right" }}>
             <div className="tm">{actual.ini}</div>
@@ -67,8 +67,8 @@ function MiAgenda({ state, docId, setDocId, nowMin, onConsulta, onOpen }) {
                     <div className="pname">{c.paciente}</div>
                     <div className="psub">{c.hc} · {c.edad} años · {c.afil}</div>
                   </td>
-                  <td><AreaChip id={c.area} /> <span style={{ marginLeft: 4 }}>{tipo(c.tipo).label}</span></td>
-                  <td>{sala(c.sala).label}</td>
+                  <td><AreaChip id={c.area} /> <span style={{ marginLeft: 4 }}>{tipo(c.tipo)?.label || c.notas || '—'}</span></td>
+                  <td>{sala(c.sala)?.label || '—'}</td>
                   <td><EstadoBadge id={c.estado} /></td>
                   <td><WaIcon status={c.whatsapp} size={16} /></td>
                   <td style={{ textAlign: "right" }}>{accion(c)}</td>
@@ -106,7 +106,9 @@ const CIE10 = [
 
 /* ============ PANTALLA DE CONSULTA / HISTORIA CLÍNICA ============ */
 function ConsultaScreen({ cita: c, onClose, onFinish, notify }) {
-  const m = medico(c.medico), s = sala(c.sala), t = tipo(c.tipo);
+  const m = medico(c.medico) ?? { nombre: '—', sede: null };
+  const s = sala(c.sala)   ?? { label: '—' };
+  const t = tipo(c.tipo)   ?? { label: c.notas || '—' };
   const ya = c.estado === "completado" || c.hcLlena;
   const pre = c.hcData || {};
   const [f, setF] = React.useState(() => ({
