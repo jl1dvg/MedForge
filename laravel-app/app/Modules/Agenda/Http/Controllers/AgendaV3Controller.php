@@ -420,7 +420,24 @@ class AgendaV3Controller
 
     // -------------------------------------------------------------------------
 
-    /** Sync real doctors from procedimiento_proyectado into agenda_medicos (cached 6h). */
+    public function forceSync(Request $request): JsonResponse
+    {
+        if (!Auth::check()) {
+            return response()->json(['error' => 'Sesión expirada'], 401);
+        }
+
+        Cache::forget('agenda_v3.medicos_synced');
+        $this->syncMedicosFromPP();
+
+        $count = DB::table('agenda_medicos')->where('activo', true)->count();
+
+        return response()->json([
+            'ok'      => true,
+            'medicos' => $count,
+            'mensaje' => "Sync completado: {$count} médicos activos.",
+        ]);
+    }
+
     private function syncMedicosFromPP(): void
     {
         if (Cache::has('agenda_v3.medicos_synced')) {
@@ -436,12 +453,10 @@ class AgendaV3Controller
                  LIMIT 60"
             );
 
-            // Remove seeder/fake entries (IDs that do NOT start with 'md_')
-            DB::table('agenda_medicos')->where('id', 'not like', 'md_%')->delete();
-
             $defaultSede = (string) (DB::table('agenda_sedes')->where('activo', true)->value('id') ?? 'ceibos');
             $colors      = ['#5156be', '#2ca361', '#d34b5b', '#d59623', '#3d7ac7', '#7c5fc2', '#4a9a9e', '#b55c32'];
             $idx         = 0;
+            $syncedIds   = [];
 
             foreach ($rawDoctors as $row) {
                 $name = trim((string) ($row->doctor ?? ''));
@@ -464,12 +479,21 @@ class AgendaV3Controller
                         'activo'       => true,
                     ]
                 );
+
+                $syncedIds[] = $id;
                 $idx++;
             }
 
-            Cache::put('agenda_v3.medicos_synced', true, 21600); // 6 hours
+            // Desactivar médicos que ya no aparecen en PP (en vez de borrar)
+            if (!empty($syncedIds)) {
+                DB::table('agenda_medicos')
+                    ->whereNotIn('id', $syncedIds)
+                    ->update(['activo' => false]);
+            }
+
+            Cache::put('agenda_v3.medicos_synced', true, 1800); // 30 minutos
         } catch (\Throwable) {
-            // Non-fatal — app still works with cached/existing data
+            // Non-fatal — app still works with existing data
         }
     }
 
@@ -479,7 +503,12 @@ class AgendaV3Controller
         // Build sede label → slug map for filtering
         $sedesMap = [];
         DB::table('agenda_sedes')->get(['id', 'label'])->each(function ($s) use (&$sedesMap) {
-            $sedesMap[mb_strtolower(trim($s->label), 'UTF-8')] = $s->id;
+            $lower = mb_strtolower(trim($s->label), 'UTF-8');
+            $upper = mb_strtoupper(trim($s->label), 'UTF-8');
+            $sedesMap[$lower]  = $s->id;
+            $sedesMap[$upper]  = $s->id;
+            $slug = preg_replace('/\s+/', '', $lower);
+            $sedesMap[$slug]   = $s->id;
         });
 
         $sql  = "SELECT pp.id, pp.hc_number,
@@ -500,11 +529,10 @@ class AgendaV3Controller
         $bind = [$fecha];
 
         if ($sedeId !== '') {
-            // Find the label for this sede to match against sede_departamento
             $sedeLabel = DB::table('agenda_sedes')->where('id', $sedeId)->value('label');
             if ($sedeLabel) {
-                $sql  .= " AND TRIM(pp.sede_departamento) = ?";
-                $bind[] = $sedeLabel;
+                $sql  .= " AND UPPER(TRIM(pp.sede_departamento)) LIKE UPPER(?)";
+                $bind[] = '%' . trim((string) $sedeLabel) . '%';
             }
         }
 
@@ -522,8 +550,15 @@ class AgendaV3Controller
                 $horaIni = '08:00';
             }
 
-            $sedeRaw  = mb_strtolower(trim((string) ($pp->sede_raw ?? '')), 'UTF-8');
-            $sedeSlug = $sedesMap[$sedeRaw] ?? array_values($sedesMap)[0] ?? 'ceibos';
+            $sedeRawOrig  = trim((string) ($pp->sede_raw ?? ''));
+            $sedeRawLower = mb_strtolower($sedeRawOrig, 'UTF-8');
+            $sedeRawUpper = mb_strtoupper($sedeRawOrig, 'UTF-8');
+            $sedeRawSlug  = preg_replace('/\s+/', '', $sedeRawLower) ?? $sedeRawLower;
+            $sedeSlug = $sedesMap[$sedeRawLower]
+                     ?? $sedesMap[$sedeRawUpper]
+                     ?? $sedesMap[$sedeRawSlug]
+                     ?? array_values($sedesMap)[0]
+                     ?? 'ceibos';
             $doctor   = trim((string) ($pp->doctor ?? ''));
             $medSlug  = $doctor !== '' ? $this->doctorSlug($doctor) : '';
 
