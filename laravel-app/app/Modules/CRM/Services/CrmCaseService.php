@@ -1021,6 +1021,11 @@ class CrmCaseService
                 $hasCondition = true;
                 $where->orWhere('crm_opportunity_id', $detailRow['crm_opportunity_id']);
             }
+
+            if (Schema::hasColumn('crm_proposals', 'lead_id') && isset($detailRow['crm_lead_id'])) {
+                $hasCondition = true;
+                $where->orWhere('lead_id', $detailRow['crm_lead_id']);
+            }
         });
 
         if (!$hasCondition) {

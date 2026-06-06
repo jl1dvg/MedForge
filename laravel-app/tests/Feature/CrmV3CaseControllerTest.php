@@ -300,6 +300,68 @@ class CrmV3CaseControllerTest extends TestCase
             ->assertJsonPath('data.proposals.0.items.0.unit_price', 320);
     }
 
+    public function test_show_solicitud_case_returns_proposals_linked_by_lead_when_opportunity_is_missing(): void
+    {
+        $user = $this->createUser();
+
+        $leadId = DB::table('crm_leads')->insertGetId([
+            'name' => 'CRISTOBAL EDMUNDO PAUCAR RAMOS',
+            'phone' => '0904882859',
+            'hc_number' => '0904882859',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->seedSolicitudCaseTables([
+            'crm_lead_id' => $leadId,
+            'crm_opportunity_id' => null,
+        ]);
+
+        $proposalId = DB::table('crm_proposals')->insertGetId([
+            'proposal_number' => 'DQX-136534',
+            'proposal_year' => 2026,
+            'sequence' => 136534,
+            'lead_id' => $leadId,
+            'crm_opportunity_id' => 1949,
+            'title' => 'Propuesta quirúrgica — Faco + LIO',
+            'status' => 'draft',
+            'currency' => 'USD',
+            'subtotal' => 0,
+            'tax_rate' => 0,
+            'tax_total' => 0,
+            'total' => 0,
+            'valid_until' => '2026-06-30',
+            'created_at' => '2026-06-06 17:42:35',
+            'updated_at' => '2026-06-06 17:42:36',
+        ]);
+
+        DB::table('crm_proposal_items')->insert([
+            'proposal_id' => $proposalId,
+            'description' => 'FACOEMULSIFICACION + LIO MONOFOCAL',
+            'quantity' => 1,
+            'unit_price' => 0,
+            'discount_percent' => 0,
+            'sort_order' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->actingAs($user)
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+                RequireAppSession::class,
+                RequireAppPermission::class,
+            ])
+            ->getJson('/v3/crm/cases/solicitud/275872')
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.proposals.0.id', $proposalId)
+            ->assertJsonPath('data.proposals.0.lead_id', $leadId)
+            ->assertJsonPath('data.proposals.0.title', 'Propuesta quirúrgica — Faco + LIO');
+    }
+
     public function test_store_note_persists_and_returns_refreshed_case(): void
     {
         $user = $this->createUser();
