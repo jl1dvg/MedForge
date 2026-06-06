@@ -107,19 +107,19 @@ class CrmCaseController
         });
     }
 
-    public function proposalPdf(int $proposalId): Response
+    public function proposalPdf(Request $request, int $proposalId): Response|JsonResponse
     {
-        return response('Accion V3 no disponible', 501);
+        return app(CrmProposalController::class)->pdf($request, $proposalId);
     }
 
-    public function sendProposalEmail(int $proposalId): JsonResponse
+    public function sendProposalEmail(Request $request, int $proposalId): JsonResponse
     {
-        return $this->unavailableJson();
+        return app(CrmProposalController::class)->sendEmail($request, $proposalId);
     }
 
-    public function sendProposalWhatsapp(int $proposalId): JsonResponse
+    public function sendProposalWhatsapp(Request $request, int $proposalId): JsonResponse
     {
-        return $this->unavailableJson();
+        return app(CrmProposalController::class)->sendWhatsapp($request, $proposalId);
     }
 
     private function unavailableJson(): JsonResponse

@@ -2,9 +2,9 @@
 // MedForge · Solicitudes v3 — Panel CRM (workspace por pestañas)
 // ============================================================
 import React, { useState, useEffect } from 'react';
-import type { Solicitud, CrmCaseState } from './types';
+import type { Solicitud, CrmCaseState, CrmCaseProposal } from './types';
 import { DocAvatar, fmtDate, fmtDateTime, fmtSla, SLA_META } from './components';
-import { searchCrmCatalogCodes, searchCrmCatalogPackages } from './api';
+import { crmProposalPdfUrl, searchCrmCatalogCodes, searchCrmCatalogPackages } from './api';
 
 const COL_TONE: Record<string, string> = {
   'recibida': '#3d7ac7', 'llamado': '#3d7ac7',
@@ -39,10 +39,6 @@ function buildTimeline(sol: Solicitud, crmCase: CrmCaseState | null) {
   }
 
   const ev: Array<{ act: string; time: string; by: string; note?: boolean; done?: boolean }> = [];
-  const base = new Date(sol.fecha).getTime();
-  sol.checklist.filter((s) => s.completed).forEach((s, i) => {
-    ev.push({ act: s.label, time: fmtDateTime(new Date(base + i * 5400000).toISOString()), by: i === 0 ? 'Recepción' : sol.crm.responsable, done: true });
-  });
   (sol.detalle?.notas || []).forEach((n) => ev.push({ act: 'Nota: ' + n.txt, time: fmtDateTime(n.at), by: n.by, note: true }));
   return ev.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime()).slice(0, 8);
 }
@@ -403,13 +399,17 @@ function TabPropuestas({
   sol,
   crmCase,
   onCreateProposal,
+  onSendProposalEmail,
+  onSendProposalWhatsapp,
 }: {
   sol: Solicitud;
   crmCase: CrmCaseState | null;
   onCreateProposal: (payload: Record<string, unknown>) => Promise<void>;
+  onSendProposalEmail: (proposalId: number, to: string) => Promise<void>;
+  onSendProposalWhatsapp: (proposalId: number) => Promise<void>;
 }) {
-  const props_ = sol.detalle.propuestas;
-  const PROP_STATE_TONE: Record<string, string> = { Borrador: 'none', Enviada: 'warn', Aceptada: 'ok' };
+  const proposals = crmCase?.proposals ?? [];
+  const PROP_STATE_TONE: Record<string, string> = { Borrador: 'none', Enviada: 'warn', Aceptada: 'ok', Rechazada: 'warn' };
   const currentAffiliation = crmCase?.insurancePlan !== '—' ? crmCase?.insurancePlan : sol.plan_seguro;
   const [mode, setMode] = useState<ProposalCatalogKind>('code');
   const [query, setQuery] = useState('');
@@ -418,6 +418,7 @@ function TabPropuestas({
   const [selectedItems, setSelectedItems] = useState<ProposalCatalogItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [sendingId, setSendingId] = useState<number | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -460,6 +461,7 @@ function TabPropuestas({
       await onCreateProposal({
         title: `Propuesta quirúrgica — ${sol.procedimiento_short}`,
         send_by: 'none',
+        pricing_affiliation: affiliation,
         items: selectedItems.map((item) => ({
           catalog_type: item.kind,
           catalog_id: item.id,
@@ -478,37 +480,80 @@ function TabPropuestas({
     }
   };
 
+  const openPdf = (proposal: CrmCaseProposal) => {
+    const url = proposal.pdfUrl || crmProposalPdfUrl(proposal.id);
+    window.open(url, '_blank', 'noopener');
+  };
+
+  const sendWhatsapp = async (proposal: CrmCaseProposal) => {
+    if (sendingId != null) return;
+    const ok = window.confirm('Se enviará la propuesta por WhatsApp usando el link público. ¿Continuar?');
+    if (!ok) return;
+    setSendingId(proposal.id);
+    setFormError(null);
+    try {
+      await onSendProposalWhatsapp(proposal.id);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'No se pudo enviar la propuesta por WhatsApp.');
+    } finally {
+      setSendingId(null);
+    }
+  };
+
+  const sendEmail = async (proposal: CrmCaseProposal) => {
+    if (sendingId != null) return;
+    const defaultEmail = crmCase?.contacts.primaryEmail && crmCase.contacts.primaryEmail !== '—' ? crmCase.contacts.primaryEmail : '';
+    const value = window.prompt('Correo de destino', defaultEmail);
+    if (value == null) return;
+    const email = value.trim();
+    if (!email) {
+      setFormError('Indica un correo para enviar la propuesta.');
+      return;
+    }
+    setSendingId(proposal.id);
+    setFormError(null);
+    try {
+      await onSendProposalEmail(proposal.id, email);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'No se pudo enviar la propuesta por correo.');
+    } finally {
+      setSendingId(null);
+    }
+  };
+
   return (
     <section>
-      <h3 className="psec-title"><i className="mdi mdi-file-document-edit-outline"></i>Propuestas CRM <span className="psec-meta">{props_.length}</span></h3>
+      <h3 className="psec-title"><i className="mdi mdi-file-document-edit-outline"></i>Propuestas CRM <span className="psec-meta">{proposals.length}</span></h3>
       <div className="prop-list">
-        {props_.length === 0 && <div className="mini-empty">Sin propuestas. Crea un borrador vinculado al lead.</div>}
-        {props_.map((p, i) => (
-          <div className="prop-card" key={i}>
+        {proposals.length === 0 && <div className="mini-empty">Sin propuestas. Crea un borrador vinculado al lead.</div>}
+        {proposals.map((p) => (
+          <div className="prop-card" key={p.id}>
             <div className="prop-head">
-              <div className="prop-title">{p.titulo}</div>
-              <span className={`conc-status conc-${PROP_STATE_TONE[p.estado] || 'none'}`}>{p.estado}</span>
+              <div className="prop-title">{p.title} <span className="prop-number">{p.number}</span></div>
+              <span className={`conc-status conc-${PROP_STATE_TONE[p.statusLabel] || 'none'}`}>{p.statusLabel}</span>
             </div>
             <div className="prop-items">
-              {p.items.map((it, j) => (
-                <div className="prop-item" key={j}>
-                  <span className="pi-cod">{it.cod}</span>
-                  <span className="pi-desc">{it.desc}</span>
-                  <span className="pi-qty">×{it.cant}</span>
-                  <span className="pi-val">{money(it.cant * it.valor)}</span>
+              {p.items.length === 0 && <div className="mini-empty">Sin ítems registrados</div>}
+              {p.items.map((it) => (
+                <div className="prop-item" key={it.id || `${it.code}-${it.description}`}>
+                  <span className="pi-cod">{it.code || '—'}</span>
+                  <span className="pi-desc">{it.description}</span>
+                  <span className="pi-qty">×{it.quantity}</span>
+                  <span className="pi-val">{money(it.total)}</span>
                 </div>
               ))}
             </div>
             <div className="prop-tot">
               <span>Subtotal <b>{money(p.subtotal)}</b></span>
-              <span>IVA 15% <b>{money(p.iva)}</b></span>
+              <span>IVA <b>{money(p.taxTotal)}</b></span>
               <span className="pt-total">Total <b>{money(p.total)}</b></span>
             </div>
             <div className="prop-foot">
-              <span className="prop-vig"><i className="mdi mdi-calendar-clock-outline"></i>Vigente hasta {fmtDate(p.vigencia)}</span>
+              <span className="prop-vig"><i className="mdi mdi-calendar-clock-outline"></i>{p.validUntil ? `Vigente hasta ${fmtDate(p.validUntil)}` : 'Sin vigencia'}</span>
               <div className="prop-actions">
-                <button disabled title="Envio disponible al conectar propuesta real"><i className="mdi mdi-send-outline"></i>Enviar</button>
-                <button disabled title="PDF disponible al conectar propuesta real"><i className="mdi mdi-file-pdf-box"></i>PDF</button>
+                <button type="button" disabled={sendingId === p.id} onClick={() => void sendWhatsapp(p)}><i className={`mdi ${sendingId === p.id ? 'mdi-loading mdi-spin' : 'mdi-send-outline'}`}></i>WhatsApp</button>
+                <button type="button" disabled={sendingId === p.id} onClick={() => void sendEmail(p)}><i className={`mdi ${sendingId === p.id ? 'mdi-loading mdi-spin' : 'mdi-email-outline'}`}></i>Email</button>
+                <button type="button" onClick={() => openPdf(p)}><i className="mdi mdi-file-pdf-box"></i>PDF</button>
               </div>
             </div>
           </div>
@@ -618,10 +663,12 @@ export interface DetailPanelProps {
   onSendWhatsapp: (payload: { recipients: string[]; message: string }) => Promise<void>;
   onSendEmail: (payload: { to: string[]; cc?: string[]; subject: string; body: string }) => Promise<void>;
   onCreateProposal: (payload: Record<string, unknown>) => Promise<void>;
+  onSendProposalEmail: (proposalId: number, to: string) => Promise<void>;
+  onSendProposalWhatsapp: (proposalId: number) => Promise<void>;
   onOpenPrefactura: (id: number) => void;
 }
 
-export function DetailPanel({ sol, open, onClose, onToggleStep, onAdvance, onToggleTask, onAddTask, crmCase, crmLoading, crmError, onAddNote, onDeleteNote, onSendWhatsapp, onSendEmail, onCreateProposal, onOpenPrefactura }: DetailPanelProps) {
+export function DetailPanel({ sol, open, onClose, onToggleStep, onAdvance, onToggleTask, onAddTask, crmCase, crmLoading, crmError, onAddNote, onDeleteNote, onSendWhatsapp, onSendEmail, onCreateProposal, onSendProposalEmail, onSendProposalWhatsapp, onOpenPrefactura }: DetailPanelProps) {
   const [tab, setTab] = useState('seguimiento');
 
   useEffect(() => { if (open) setTab('seguimiento'); }, [sol?.id, open]);
@@ -665,7 +712,7 @@ export function DetailPanel({ sol, open, onClose, onToggleStep, onAdvance, onTog
               {tab === 'tareas' && <TabTareas sol={sol} crmCase={crmCase} onToggleTask={onToggleTask} onAddTask={onAddTask} />}
               {tab === 'notas' && <TabNotas sol={sol} crmCase={crmCase} onAddNote={onAddNote} onDeleteNote={onDeleteNote} />}
               {tab === 'comunicacion' && <TabComunicacion sol={sol} crmCase={crmCase} onSendWhatsapp={onSendWhatsapp} onSendEmail={onSendEmail} />}
-              {tab === 'propuestas' && <TabPropuestas sol={sol} crmCase={crmCase} onCreateProposal={onCreateProposal} />}
+              {tab === 'propuestas' && <TabPropuestas sol={sol} crmCase={crmCase} onCreateProposal={onCreateProposal} onSendProposalEmail={onSendProposalEmail} onSendProposalWhatsapp={onSendProposalWhatsapp} />}
               {tab === 'documentos' && <TabDocumentos sol={sol} />}
             </div>
 

@@ -24,6 +24,13 @@ class CrmV3CaseControllerTest extends TestCase
         $this->ensureCrmCaseTestSchema();
 
         foreach ([
+            'crm_proposal_activity',
+            'crm_proposal_items',
+            'crm_proposals',
+            'crm_opportunities',
+            'crm_contacts',
+            'crm_customers',
+            'crm_leads',
             'crm_tasks',
             'solicitud_crm_notas',
             'solicitud_crm_detalles',
@@ -46,6 +53,9 @@ class CrmV3CaseControllerTest extends TestCase
             'v3.crm.cases.whatsapp.store',
             'v3.crm.cases.email.store',
             'v3.crm.cases.proposals.store',
+            'v3.crm.proposals.pdf',
+            'v3.crm.proposals.email',
+            'v3.crm.proposals.whatsapp',
         ];
 
         foreach ($routeNames as $routeName) {
@@ -185,6 +195,74 @@ class CrmV3CaseControllerTest extends TestCase
         $this->assertSame(['id', 'type', 'occurred_at', 'author', 'description', 'reference'], array_keys($activity[1]));
         $this->assertSame(['task_id' => 21], $activity[0]['reference']);
         $this->assertSame(['note_id' => 11], $activity[1]['reference']);
+    }
+
+    public function test_show_solicitud_case_returns_real_proposals_with_items_and_links(): void
+    {
+        $user = $this->createUser();
+        $this->seedSolicitudCaseTables();
+
+        $leadId = DB::table('crm_leads')->insertGetId([
+            'name' => 'DANIELA VALENTINA MORALES MURILLO',
+            'email' => 'paciente@example.com',
+            'phone' => '0987107769',
+            'hc_number' => '0932000904',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $proposalId = DB::table('crm_proposals')->insertGetId([
+            'public_hash' => 'hash-275872',
+            'proposal_number' => 'DQX-077',
+            'proposal_year' => 2026,
+            'sequence' => 77,
+            'lead_id' => $leadId,
+            'source_type' => 'solicitud',
+            'source_id' => 275872,
+            'form_id' => 275872,
+            'title' => 'Paquete quirúrgico',
+            'status' => 'draft',
+            'currency' => 'USD',
+            'subtotal' => 320,
+            'tax_rate' => 15,
+            'tax_total' => 48,
+            'total' => 368,
+            'valid_until' => '2026-06-23',
+            'created_at' => '2026-06-03 09:00:00',
+            'updated_at' => '2026-06-03 09:00:00',
+        ]);
+
+        DB::table('crm_proposal_items')->insert([
+            'proposal_id' => $proposalId,
+            'code_id' => 101,
+            'description' => 'Derecho de quirófano',
+            'quantity' => 1,
+            'unit_price' => 320,
+            'discount_percent' => 0,
+            'sort_order' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->actingAs($user)
+            ->withoutMiddleware([
+                LegacySessionBridge::class,
+                RequireLegacySession::class,
+                RequireLegacyPermission::class,
+                RequireAppSession::class,
+                RequireAppPermission::class,
+            ])
+            ->getJson('/v3/crm/cases/solicitud/275872')
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.proposals.0.id', $proposalId)
+            ->assertJsonPath('data.proposals.0.proposal_number', 'DQX-077')
+            ->assertJsonPath('data.proposals.0.public_hash', 'hash-275872')
+            ->assertJsonPath('data.proposals.0.pdf_url', '/v2/crm/proposals/' . $proposalId . '/pdf')
+            ->assertJsonPath('data.proposals.0.source_type', 'solicitud')
+            ->assertJsonPath('data.proposals.0.source_id', 275872)
+            ->assertJsonPath('data.proposals.0.items.0.description', 'Derecho de quirófano')
+            ->assertJsonPath('data.proposals.0.items.0.unit_price', 320);
     }
 
     public function test_store_note_persists_and_returns_refreshed_case(): void
@@ -655,6 +733,106 @@ class CrmV3CaseControllerTest extends TestCase
                 $table->timestamp('due_at')->nullable();
                 $table->timestamp('completed_at')->nullable();
                 $table->timestamps();
+            });
+        }
+
+        if (!Schema::hasTable('crm_leads')) {
+            Schema::create('crm_leads', function (Blueprint $table): void {
+                $table->id();
+                $table->string('name')->nullable();
+                $table->string('email')->nullable();
+                $table->string('phone')->nullable();
+                $table->string('hc_number')->nullable();
+                $table->timestamps();
+            });
+        }
+
+        if (!Schema::hasTable('crm_contacts')) {
+            Schema::create('crm_contacts', function (Blueprint $table): void {
+                $table->id();
+                $table->string('name')->nullable();
+                $table->string('email')->nullable();
+                $table->string('phone')->nullable();
+                $table->string('cedula')->nullable();
+                $table->timestamps();
+            });
+        }
+
+        if (!Schema::hasTable('crm_customers')) {
+            Schema::create('crm_customers', function (Blueprint $table): void {
+                $table->id();
+                $table->string('name')->nullable();
+                $table->timestamps();
+            });
+        }
+
+        if (!Schema::hasTable('crm_opportunities')) {
+            Schema::create('crm_opportunities', function (Blueprint $table): void {
+                $table->id();
+                $table->unsignedBigInteger('contact_id')->nullable();
+                $table->string('title')->nullable();
+                $table->string('stage')->nullable();
+                $table->string('source')->nullable();
+                $table->string('source_type')->nullable();
+                $table->unsignedBigInteger('source_id')->nullable();
+                $table->timestamps();
+            });
+        }
+
+        if (!Schema::hasTable('crm_proposals')) {
+            Schema::create('crm_proposals', function (Blueprint $table): void {
+                $table->id();
+                $table->string('public_hash', 64)->nullable()->unique();
+                $table->string('proposal_number')->nullable();
+                $table->integer('proposal_year')->nullable();
+                $table->integer('sequence')->nullable();
+                $table->unsignedBigInteger('lead_id')->nullable()->index();
+                $table->unsignedBigInteger('crm_opportunity_id')->nullable()->index();
+                $table->unsignedBigInteger('customer_id')->nullable();
+                $table->string('source_type')->nullable();
+                $table->unsignedBigInteger('source_id')->nullable();
+                $table->unsignedBigInteger('form_id')->nullable();
+                $table->string('title')->nullable();
+                $table->string('status')->default('draft');
+                $table->string('currency', 3)->default('USD');
+                $table->decimal('subtotal', 12, 2)->default(0);
+                $table->decimal('discount_total', 12, 2)->default(0);
+                $table->decimal('tax_rate', 5, 2)->default(0);
+                $table->decimal('tax_total', 12, 2)->default(0);
+                $table->decimal('total', 12, 2)->default(0);
+                $table->date('valid_until')->nullable();
+                $table->text('notes')->nullable();
+                $table->unsignedBigInteger('created_by')->nullable();
+                $table->unsignedBigInteger('updated_by')->nullable();
+                $table->timestamp('sent_at')->nullable();
+                $table->timestamps();
+            });
+        }
+
+        if (!Schema::hasTable('crm_proposal_items')) {
+            Schema::create('crm_proposal_items', function (Blueprint $table): void {
+                $table->id();
+                $table->unsignedBigInteger('proposal_id')->index();
+                $table->unsignedBigInteger('code_id')->nullable();
+                $table->unsignedBigInteger('package_id')->nullable();
+                $table->string('description')->nullable();
+                $table->decimal('quantity', 10, 2)->default(1);
+                $table->decimal('unit_price', 12, 2)->default(0);
+                $table->decimal('discount_percent', 5, 2)->default(0);
+                $table->integer('sort_order')->default(0);
+                $table->json('metadata')->nullable();
+                $table->timestamps();
+            });
+        }
+
+        if (!Schema::hasTable('crm_proposal_activity')) {
+            Schema::create('crm_proposal_activity', function (Blueprint $table): void {
+                $table->id();
+                $table->unsignedBigInteger('proposal_id')->index();
+                $table->string('event', 64);
+                $table->unsignedBigInteger('actor_id')->nullable();
+                $table->json('metadata')->nullable();
+                $table->timestamp('created_at')->nullable();
             });
         }
     }

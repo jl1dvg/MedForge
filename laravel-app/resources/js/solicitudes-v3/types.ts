@@ -323,6 +323,33 @@ export interface CrmCaseActivity {
   reference: Record<string, unknown>;
 }
 
+export interface CrmCaseProposalItem {
+  id: number;
+  code: string;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  discountPercent: number;
+  total: number;
+}
+
+export interface CrmCaseProposal {
+  id: number;
+  number: string;
+  title: string;
+  status: string;
+  statusLabel: string;
+  validUntil: string | null;
+  subtotal: number;
+  taxTotal: number;
+  total: number;
+  currency: string;
+  itemsCount: number;
+  pdfUrl: string;
+  publicUrl: string | null;
+  items: CrmCaseProposalItem[];
+}
+
 export interface CrmCaseState {
   caseId: string;
   sourceType: string;
@@ -334,6 +361,6 @@ export interface CrmCaseState {
   notes: CrmCaseNote[];
   tasks: CrmCaseTask[];
   activity: CrmCaseActivity[];
-  proposals: unknown[];
+  proposals: CrmCaseProposal[];
   documents: unknown[];
 }

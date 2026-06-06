@@ -18,6 +18,8 @@ import {
   sendCrmWhatsapp,
   sendCrmEmail,
   storeCrmProposal,
+  sendCrmProposalEmail,
+  sendCrmProposalWhatsapp,
 } from './api';
 import { Kpi } from './components';
 import { Toolbar, Board, TableView } from './Board';
@@ -255,6 +257,32 @@ export function App() {
     showToast('Borrador de propuesta creado', 'mdi-file-document-check-outline');
   }, [selectedId, showToast, syncCrmCounts]);
 
+  const sendProposalEmail = useCallback(async (proposalId: number, to: string) => {
+    const caseId = selectedId;
+    if (caseId == null) return;
+    await sendCrmProposalEmail(proposalId, {
+      to,
+      subject: `Propuesta #${proposalId}`,
+      attach_pdf: true,
+    });
+    const updated = await fetchCrmCase('solicitud', caseId);
+    syncCrmCounts(caseId, updated);
+    if (selectedIdRef.current !== caseId || updated.sourceId !== caseId) return;
+    setCrmCase(updated);
+    showToast('Propuesta enviada por correo', 'mdi-email-check-outline');
+  }, [selectedId, showToast, syncCrmCounts]);
+
+  const sendProposalWhatsapp = useCallback(async (proposalId: number) => {
+    const caseId = selectedId;
+    if (caseId == null) return;
+    await sendCrmProposalWhatsapp(proposalId, { solicitud_id: caseId });
+    const updated = await fetchCrmCase('solicitud', caseId);
+    syncCrmCounts(caseId, updated);
+    if (selectedIdRef.current !== caseId || updated.sourceId !== caseId) return;
+    setCrmCase(updated);
+    showToast('Propuesta enviada por WhatsApp', 'mdi-whatsapp');
+  }, [selectedId, showToast, syncCrmCounts]);
+
   const togglePreop = useCallback((id: number, idx: number) => {
     setSolicitudes((list: Solicitud[]) => list.map((s: Solicitud) => {
       if (s.id !== id) return s;
@@ -407,6 +435,8 @@ export function App() {
         onSendWhatsapp={sendWhatsapp}
         onSendEmail={sendEmail}
         onCreateProposal={createProposal}
+        onSendProposalEmail={sendProposalEmail}
+        onSendProposalWhatsapp={sendProposalWhatsapp}
         onOpenPrefactura={(id) => setPrefacturaId(id)}
       />
 

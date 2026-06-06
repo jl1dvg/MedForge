@@ -121,3 +121,44 @@ test('mapCrmCasePayload normalizes contacts notes tasks and activity', () => {
   assert.equal(mapped.tasks[0].title, 'Validar cobertura');
   assert.equal(mapped.activity[0].type, 'note_created');
 });
+
+test('mapCrmCasePayload normalizes real CRM proposals for React actions', () => {
+  const mapped = mapCrmCasePayload({
+    case: { case_id: 'solicitud-275872', source_type: 'solicitud', source_id: 275872 },
+    crm: {},
+    contacts: {},
+    proposals: [{
+      id: 77,
+      proposal_number: 'DQX-077',
+      title: 'Paquete quirúrgico',
+      status: 'sent',
+      valid_until: '2026-06-23',
+      subtotal: '980.00',
+      tax_total: '147.00',
+      total: '1127.00',
+      currency: 'USD',
+      pdf_url: '/v3/crm/proposals/77/pdf',
+      public_url: 'https://example.test/proposal/77/hash',
+      items_count: 1,
+      items: [{
+        id: 701,
+        code: 'DQX-001',
+        description: 'Derecho de quirófano',
+        quantity: '1',
+        unit_price: '320.00',
+        total: '320.00',
+      }],
+    }],
+    documents: [],
+  });
+
+  assert.equal(mapped.proposals.length, 1);
+  assert.equal(mapped.proposals[0].id, 77);
+  assert.equal(mapped.proposals[0].number, 'DQX-077');
+  assert.equal(mapped.proposals[0].statusLabel, 'Enviada');
+  assert.equal(mapped.proposals[0].pdfUrl, '/v3/crm/proposals/77/pdf');
+  assert.equal(mapped.proposals[0].publicUrl, 'https://example.test/proposal/77/hash');
+  assert.equal(mapped.proposals[0].total, 1127);
+  assert.equal(mapped.proposals[0].items[0].code, 'DQX-001');
+  assert.equal(mapped.proposals[0].items[0].total, 320);
+});

@@ -4,7 +4,7 @@
 import type {
   ApiKanbanResponse, ApiSolicitud, Filters, KanbanSlug,
   Solicitud, ChecklistStep, ChecklistProgress, Alert, Detalle,
-  CrmCaseState,
+  CrmCaseState, CrmCaseProposal, CrmCaseProposalItem,
 } from './types';
 
 // ---- Constants shared with the prototype ----------------------
@@ -139,6 +139,59 @@ function arrayValue<T = unknown>(value: unknown): T[] {
 
 function objectValue(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function proposalStatusLabel(status: unknown): string {
+  const value = stringValue(status, 'draft').toLowerCase();
+  if (['sent', 'enviada', 'enviado'].includes(value)) return 'Enviada';
+  if (['accepted', 'aceptada', 'aceptado'].includes(value)) return 'Aceptada';
+  if (['rejected', 'rechazada', 'cancelled', 'cancelada', 'anulada'].includes(value)) return 'Rechazada';
+  return 'Borrador';
+}
+
+function mapProposalItem(raw: any): CrmCaseProposalItem {
+  const quantity = numberValue(raw?.quantity ?? raw?.cantidad, 1);
+  const unitPrice = numberValue(raw?.unit_price ?? raw?.unitPrice ?? raw?.precio ?? raw?.valor, 0);
+  const discountPercent = numberValue(raw?.discount_percent ?? raw?.discountPercent ?? raw?.descuento, 0);
+  const rawTotal = raw?.total ?? raw?.line_total ?? raw?.subtotal;
+  const computedTotal = quantity * unitPrice * (1 - discountPercent / 100);
+
+  return {
+    id: numberValue(raw?.id),
+    code: stringValue(raw?.code ?? raw?.codigo ?? raw?.cod ?? raw?.catalog_code),
+    description: stringValue(raw?.description ?? raw?.descripcion ?? raw?.desc, 'Item de propuesta'),
+    quantity,
+    unitPrice,
+    discountPercent,
+    total: rawTotal == null ? computedTotal : numberValue(rawTotal, computedTotal),
+  };
+}
+
+function mapProposal(raw: any): CrmCaseProposal {
+  const id = numberValue(raw?.id);
+  const items = arrayValue<any>(raw?.items).map(mapProposalItem);
+  const subtotal = raw?.subtotal == null
+    ? items.reduce((sum, item) => sum + item.total, 0)
+    : numberValue(raw?.subtotal);
+  const taxTotal = numberValue(raw?.tax_total ?? raw?.taxTotal ?? raw?.iva);
+  const total = raw?.total == null ? subtotal + taxTotal : numberValue(raw?.total);
+
+  return {
+    id,
+    number: stringValue(raw?.proposal_number ?? raw?.number ?? raw?.numero, id > 0 ? `#${id}` : 'Propuesta'),
+    title: stringValue(raw?.title ?? raw?.titulo ?? raw?.name ?? raw?.nombre, 'Propuesta sin título'),
+    status: stringValue(raw?.status ?? raw?.estado, 'draft'),
+    statusLabel: proposalStatusLabel(raw?.status ?? raw?.estado),
+    validUntil: stringOrNull(raw?.valid_until ?? raw?.validUntil ?? raw?.vigencia),
+    subtotal,
+    taxTotal,
+    total,
+    currency: stringValue(raw?.currency, 'USD'),
+    itemsCount: numberValue(raw?.items_count ?? raw?.itemsCount, items.length),
+    pdfUrl: id > 0 ? `/v3/crm/proposals/${id}/pdf` : stringValue(raw?.pdf_url ?? raw?.pdfUrl),
+    publicUrl: stringOrNull(raw?.public_url ?? raw?.publicUrl),
+    items,
+  };
 }
 
 function normalizeAseguradoraLabel(...values: Array<unknown>): string {
@@ -388,7 +441,7 @@ export function mapCrmCasePayload(raw: any): CrmCaseState {
       description: stringValue(activity?.description),
       reference: objectValue(activity?.reference),
     })),
-    proposals: arrayValue(raw?.proposals),
+    proposals: arrayValue<any>(raw?.proposals).map(mapProposal).filter((proposal) => proposal.id > 0),
     documents: arrayValue(raw?.documents),
   };
 }
@@ -504,6 +557,30 @@ export async function storeCrmProposal(
   payload: Record<string, unknown>,
 ): Promise<CrmCaseState> {
   return crmJson(`${crmCaseUrl(sourceType, sourceId)}/proposals`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function crmProposalPdfUrl(proposalId: number): string {
+  return `/v3/crm/proposals/${encodeURIComponent(String(proposalId))}/pdf`;
+}
+
+export async function sendCrmProposalEmail(
+  proposalId: number,
+  payload: { to: string; subject?: string; body?: string; attach_pdf?: boolean },
+): Promise<Record<string, unknown>> {
+  return crmDataJson<Record<string, unknown>>(`/v3/crm/proposals/${encodeURIComponent(String(proposalId))}/send-email`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function sendCrmProposalWhatsapp(
+  proposalId: number,
+  payload: { solicitud_id: number; message?: string },
+): Promise<Record<string, unknown>> {
+  return crmDataJson<Record<string, unknown>>(`/v3/crm/proposals/${encodeURIComponent(String(proposalId))}/send-whatsapp`, {
     method: 'POST',
     body: JSON.stringify(payload),
   });

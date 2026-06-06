@@ -879,9 +879,23 @@ class CrmCaseService
             return [];
         }
 
+        $proposalService = new CrmProposalService();
+
         return $query->orderBy(Schema::hasColumn('crm_proposals', 'created_at') ? 'created_at' : 'id', 'desc')
             ->get()
-            ->map(static fn (object $row): array => (array) $row)
+            ->map(function (object $row) use ($proposalService): array {
+                $proposal = (array) $row;
+                $proposalId = (int) ($proposal['id'] ?? 0);
+                if ($proposalId <= 0) {
+                    return $proposal;
+                }
+
+                try {
+                    return $proposalService->find($proposalId);
+                } catch (RuntimeException) {
+                    return $proposal;
+                }
+            })
             ->all();
     }
 
