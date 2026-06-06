@@ -108,7 +108,20 @@ test('mapCrmCasePayload normalizes contacts notes tasks and activity', () => {
   const mapped = mapCrmCasePayload({
     case: { case_id: 'solicitud-275872', source_type: 'solicitud', source_id: 275872, form_id: 275872, patient_name: 'DANIELA', stage: 'revision-codigos', site: 'MATRIZ' },
     crm: { responsible_name: 'Coordinación', source: 'Convenio', insurance_plan: 'SALUD NIVEL 4' },
-    contacts: { primary_phone: '0987107769', alternate_phones: ['0999999999'], primary_email: 'p@example.com', alternate_emails: [] },
+    contacts: {
+      primary_phone: '0987107769',
+      alternate_phones: ['0999999999'],
+      primary_email: 'p@example.com',
+      alternate_emails: [],
+      whatsapp_context: {
+        available: true,
+        matched: true,
+        conversation_id: 5708,
+        conversation_url: '/v3/whatsapp/chat?conversation=5708',
+        last_message_at: '2026-05-31 16:49:00',
+        unread_count: 1,
+      },
+    },
     notes: [{ id: 1, body: 'Nota real', author_name: 'Jorge', created_at: '2026-06-03T10:00:00Z', can_delete: true }],
     tasks: [
       { id: 2, title: 'Validar cobertura', status: 'pending', priority: 'alta', due_at: null },
@@ -120,6 +133,8 @@ test('mapCrmCasePayload normalizes contacts notes tasks and activity', () => {
   });
 
   assert.equal(mapped.contacts.primaryPhone, '0987107769');
+  assert.equal(mapped.contacts.whatsapp.conversationId, 5708);
+  assert.equal(mapped.contacts.whatsapp.unreadCount, 1);
   assert.equal(mapped.notes[0].body, 'Nota real');
   assert.equal(mapped.tasks[0].title, 'Validar cobertura');
   assert.equal(mapped.tasks[0].status, 'pending');

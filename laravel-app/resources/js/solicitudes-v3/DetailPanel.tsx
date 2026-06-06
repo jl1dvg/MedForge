@@ -53,6 +53,13 @@ function TabSeguimiento({ sol, crmCase }: { sol: Solicitud; crmCase: CrmCaseStat
   const planAfiliacion = crmCase?.insurancePlan || (sol.plan_seguro !== '—' ? sol.plan_seguro : sol.afiliacion_label);
   const responsable = crmCase?.responsibleName || sol.crm.responsable;
   const fuente = crmCase?.source || sol.crm.fuente;
+  const whatsapp = crmCase?.contacts.whatsapp;
+  const whatsappUrl = whatsapp?.conversationUrl || whatsapp?.searchUrl || null;
+  const whatsappLabel = whatsapp?.matched && whatsapp?.conversationId
+    ? `Conversación #${whatsapp.conversationId} · ${whatsapp.unreadCount} sin leer · Último mensaje ${fmtDateTime(whatsapp.lastMessageAt)}`
+    : whatsappUrl
+      ? `Buscar conversación ${whatsapp?.search || telefono}`
+      : '—';
   return (
     <>
       <div className="panel-procbar">
@@ -72,6 +79,14 @@ function TabSeguimiento({ sol, crmCase }: { sol: Solicitud; crmCase: CrmCaseStat
           <div className="info-item"><div className="k">Fuente / convenio</div><div className="v">{fuente}</div></div>
           <div className="info-item"><div className="k">Teléfono</div><div className="v">{telefono}</div></div>
           <div className="info-item"><div className="k">Sede</div><div className="v">{sol.sede}</div></div>
+          <div className="info-item info-item-wide">
+            <div className="k">WhatsApp</div>
+            <div className="v">
+              {whatsappUrl ? (
+                <a className="crm-link" href={whatsappUrl} target="_blank" rel="noreferrer">{whatsappLabel}</a>
+              ) : whatsappLabel}
+            </div>
+          </div>
         </div>
       </section>
 

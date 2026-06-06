@@ -43,7 +43,7 @@ class CrmCaseService
 
         $caseRow = (array) $case;
         $detailRow = $this->solicitudDetail($sourceId);
-        $contacts = $this->contacts($caseRow, $detailRow);
+        $contacts = $this->contacts($sourceId, $caseRow, $detailRow);
         $notes = $this->notes($normalizedSourceType, $sourceId);
         $tasks = $this->tasks($normalizedSourceType, $sourceId);
 
@@ -443,6 +443,7 @@ class CrmCaseService
         }
 
         $this->assertSolicitudCaseExists($sourceId);
+        $formId = $this->nullableInt(DB::table('solicitud_procedimiento')->where('id', $sourceId)->value('form_id'));
         $sendBy = $this->normalizeProposalSendBy($payload['send_by'] ?? null);
         $detailRow = $this->solicitudDetail($sourceId);
         $sendRecipient = $this->proposalSendRecipient($sendBy, $payload, $detailRow);
@@ -451,6 +452,7 @@ class CrmCaseService
         $legacyPayload['items'] = $legacyItems;
 
         $result = $this->solicitudesWriteService()->crmCrearPropuesta($sourceId, $legacyPayload, $actorUserId);
+        $this->linkCreatedProposalToCase($result, $normalizedSourceType, $sourceId, $formId);
         if ($sendBy !== 'none') {
             $this->sendCreatedProposal($sourceId, $result, $sendBy, $sendRecipient, $actorUserId);
         }
@@ -592,6 +594,34 @@ class CrmCaseService
         }
 
         $proposalService->markSent($proposalId, $sendBy, $actorUserId);
+    }
+
+    /**
+     * @param array<string, mixed> $result
+     */
+    private function linkCreatedProposalToCase(array $result, string $sourceType, int $sourceId, ?int $formId): void
+    {
+        $ultima = $result['ultima_propuesta'] ?? [];
+        if (!is_array($ultima) || !Schema::hasTable('crm_proposals')) {
+            return;
+        }
+
+        $proposalId = $this->nullableInt($ultima['id'] ?? null);
+        if ($proposalId === null || $proposalId <= 0) {
+            return;
+        }
+
+        $updates = [];
+        $this->putIfColumn($updates, 'crm_proposals', 'source_type', $sourceType);
+        $this->putIfColumn($updates, 'crm_proposals', 'source_id', $sourceId);
+        if ($formId !== null) {
+            $this->putIfColumn($updates, 'crm_proposals', 'form_id', $formId);
+        }
+        $this->putIfColumn($updates, 'crm_proposals', 'updated_at', now()->toDateTimeString());
+
+        if ($updates !== []) {
+            DB::table('crm_proposals')->where('id', $proposalId)->update($updates);
+        }
     }
 
     /**
@@ -807,7 +837,7 @@ class CrmCaseService
      * @param array<string, mixed> $detailRow
      * @return array<string, mixed>
      */
-    private function contacts(array $caseRow, array $detailRow): array
+    private function contacts(int $sourceId, array $caseRow, array $detailRow): array
     {
         $primaryPhone = $this->firstFilled($detailRow, ['contacto_telefono', 'telefono', 'primary_phone']);
         $primaryEmail = $this->firstFilled($detailRow, ['contacto_email', 'email', 'primary_email']);
@@ -817,7 +847,116 @@ class CrmCaseService
             'alternate_phones' => [],
             'primary_email' => $primaryEmail ?? $this->firstFilled($caseRow, ['email', 'paciente_email']),
             'alternate_emails' => [],
+            'whatsapp_context' => $this->whatsappContext($sourceId, $caseRow, $detailRow),
         ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function whatsappContext(int $sourceId, array $caseRow, array $detailRow): array
+    {
+        try {
+            $summary = $this->solicitudesReadService()->crmResumen($sourceId);
+            $context = $summary['whatsapp_context'] ?? [];
+            if (!is_array($context)) {
+                return $this->directWhatsappContext($caseRow, $detailRow);
+            }
+
+            foreach (['conversation_url', 'search_url'] as $key) {
+                if (isset($context[$key]) && is_string($context[$key])) {
+                    $context[$key] = str_replace('/v2/whatsapp/chat', '/v3/whatsapp/chat', $context[$key]);
+                }
+            }
+
+            return ($context['matched'] ?? false) === true ? $context : $this->directWhatsappContext($caseRow, $detailRow);
+        } catch (\Throwable) {
+            return $this->directWhatsappContext($caseRow, $detailRow);
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $caseRow
+     * @param array<string, mixed> $detailRow
+     * @return array<string, mixed>
+     */
+    private function directWhatsappContext(array $caseRow, array $detailRow): array
+    {
+        $phone = $this->firstFilled($detailRow, ['contacto_telefono', 'telefono', 'primary_phone'])
+            ?? $this->firstFilled($caseRow, ['telefono', 'paciente_telefono'])
+            ?? '';
+        $hcNumber = trim((string) ($caseRow['hc_number'] ?? ''));
+        $normalized = $this->normalizeWhatsappNumber($phone);
+        $search = $normalized !== '' ? $normalized : preg_replace('/\D+/', '', $phone);
+        $searchUrl = $search !== '' ? '/v3/whatsapp/chat?search=' . urlencode($search) : null;
+        $context = [
+            'available' => Schema::hasTable('whatsapp_conversations'),
+            'matched' => false,
+            'search' => $search !== '' ? $search : null,
+            'search_url' => $searchUrl,
+            'conversation_id' => null,
+            'conversation_url' => null,
+            'wa_number' => null,
+            'display_name' => null,
+            'last_message_at' => null,
+            'unread_count' => 0,
+        ];
+
+        if (!Schema::hasTable('whatsapp_conversations')) {
+            return $context;
+        }
+
+        $query = DB::table('whatsapp_conversations');
+        if (Schema::hasColumn('whatsapp_conversations', 'patient_hc_number') && $hcNumber !== '') {
+            $query->where('patient_hc_number', $hcNumber);
+        } elseif (Schema::hasColumn('whatsapp_conversations', 'wa_number') && $normalized !== '') {
+            $query->where(function ($where) use ($normalized): void {
+                $where->where('wa_number', $normalized)
+                    ->orWhere('wa_number', '+' . $normalized);
+            });
+        } else {
+            return $context;
+        }
+
+        $row = $query
+            ->orderByDesc(Schema::hasColumn('whatsapp_conversations', 'last_message_at') ? 'last_message_at' : 'id')
+            ->first();
+        if ($row === null) {
+            return $context;
+        }
+
+        $item = (array) $row;
+        $conversationId = $this->nullableInt($item['id'] ?? null);
+        if ($conversationId === null) {
+            return $context;
+        }
+
+        return [
+            'available' => true,
+            'matched' => true,
+            'search' => $context['search'],
+            'search_url' => $searchUrl,
+            'conversation_id' => $conversationId,
+            'conversation_url' => '/v3/whatsapp/chat?conversation=' . $conversationId,
+            'wa_number' => $this->valueOrNull($item['wa_number'] ?? null),
+            'display_name' => $this->firstFilled($item, ['display_name', 'patient_full_name']),
+            'last_message_at' => $item['last_message_at'] ?? null,
+            'unread_count' => (int) ($item['unread_count'] ?? 0),
+        ];
+    }
+
+    private function normalizeWhatsappNumber(string $value): string
+    {
+        $number = preg_replace('/\D+/', '', $value) ?? '';
+        if ($number === '') {
+            return '';
+        }
+
+        if (str_starts_with($number, '0')) {
+            return '593' . substr($number, 1);
+        }
+
+        return $number;
     }
 
     /**

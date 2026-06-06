@@ -295,6 +295,18 @@ export interface CrmCaseContactState {
   alternatePhones: string[];
   primaryEmail: string;
   alternateEmails: string[];
+  whatsapp: {
+    available: boolean;
+    matched: boolean;
+    search: string | null;
+    searchUrl: string | null;
+    conversationId: number | null;
+    conversationUrl: string | null;
+    waNumber: string | null;
+    displayName: string | null;
+    lastMessageAt: string | null;
+    unreadCount: number;
+  };
 }
 
 export interface CrmCaseNote {

@@ -146,6 +146,19 @@ class CrmV3CaseControllerTest extends TestCase
             'updated_at' => '2026-06-03 08:11:00',
         ]);
 
+        $this->ensureWhatsappConversationTable();
+        $this->insertRow('whatsapp_conversations', [
+            'id' => 5708,
+            'wa_number' => '+593987107769',
+            'display_name' => 'Daniela Morales',
+            'patient_hc_number' => '0932000904',
+            'patient_full_name' => 'DANIELA VALENTINA MORALES MURILLO',
+            'last_message_at' => '2026-05-31 16:49:00',
+            'unread_count' => 1,
+            'created_at' => '2026-05-31 16:40:00',
+            'updated_at' => '2026-05-31 16:49:00',
+        ]);
+
         $response = $this->actingAs($user)
             ->withoutMiddleware([
                 LegacySessionBridge::class,
@@ -168,6 +181,9 @@ class CrmV3CaseControllerTest extends TestCase
             ->assertJsonPath('data.crm.insurance_code', 'HUM-001')
             ->assertJsonPath('data.contacts.primary_phone', '0987107769')
             ->assertJsonPath('data.contacts.primary_email', 'paciente@example.com')
+            ->assertJsonPath('data.contacts.whatsapp_context.conversation_id', 5708)
+            ->assertJsonPath('data.contacts.whatsapp_context.conversation_url', '/v3/whatsapp/chat?conversation=5708')
+            ->assertJsonPath('data.contacts.whatsapp_context.unread_count', 1)
             ->assertJsonStructure([
                 'data' => [
                     'case' => [
@@ -866,6 +882,10 @@ class CrmV3CaseControllerTest extends TestCase
                 $table->id();
                 $table->string('wa_number', 32)->unique();
                 $table->string('display_name')->nullable();
+                $table->string('patient_hc_number')->nullable();
+                $table->string('patient_full_name')->nullable();
+                $table->timestamp('last_message_at')->nullable();
+                $table->unsignedInteger('unread_count')->default(0);
                 $table->unsignedBigInteger('assigned_user_id')->nullable();
                 $table->timestamp('assigned_at')->nullable();
                 $table->boolean('needs_human')->default(false);

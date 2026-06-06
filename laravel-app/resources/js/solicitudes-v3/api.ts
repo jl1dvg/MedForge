@@ -436,6 +436,18 @@ export function mapCrmCasePayload(raw: any): CrmCaseState {
       alternatePhones: arrayValue<unknown>(raw?.contacts?.alternate_phones).map((phone) => stringValue(phone)).filter(Boolean),
       primaryEmail: stringValue(raw?.contacts?.primary_email, '—'),
       alternateEmails: arrayValue<unknown>(raw?.contacts?.alternate_emails).map((email) => stringValue(email)).filter(Boolean),
+      whatsapp: {
+        available: raw?.contacts?.whatsapp_context?.available === true,
+        matched: raw?.contacts?.whatsapp_context?.matched === true,
+        search: stringOrNull(raw?.contacts?.whatsapp_context?.search),
+        searchUrl: stringOrNull(raw?.contacts?.whatsapp_context?.search_url),
+        conversationId: raw?.contacts?.whatsapp_context?.conversation_id == null ? null : numberValue(raw.contacts.whatsapp_context.conversation_id),
+        conversationUrl: stringOrNull(raw?.contacts?.whatsapp_context?.conversation_url),
+        waNumber: stringOrNull(raw?.contacts?.whatsapp_context?.wa_number),
+        displayName: stringOrNull(raw?.contacts?.whatsapp_context?.display_name),
+        lastMessageAt: stringOrNull(raw?.contacts?.whatsapp_context?.last_message_at),
+        unreadCount: numberValue(raw?.contacts?.whatsapp_context?.unread_count, 0),
+      },
     },
     notes: arrayValue<any>(raw?.notes).map((note) => ({
       id: numberValue(note?.id),
