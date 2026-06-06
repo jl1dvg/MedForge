@@ -128,6 +128,24 @@ class CrmV3CaseControllerTest extends TestCase
             'updated_at' => '2026-06-03 08:10:00',
         ]);
 
+        $this->insertRow('crm_tasks', [
+            'id' => 22,
+            'entity_type' => 'solicitud',
+            'entity_id' => '275872',
+            'form_id' => 275872,
+            'source_module' => 'solicitud',
+            'source_ref_id' => '275872',
+            'title' => 'Pendiente operativo',
+            'description' => 'No debe salir como actividad completada',
+            'status' => 'pendiente',
+            'priority' => 'normal',
+            'assigned_to' => 1,
+            'created_by' => 1,
+            'completed_at' => null,
+            'created_at' => '2026-06-03 08:07:00',
+            'updated_at' => '2026-06-03 08:11:00',
+        ]);
+
         $response = $this->actingAs($user)
             ->withoutMiddleware([
                 LegacySessionBridge::class,
@@ -195,6 +213,7 @@ class CrmV3CaseControllerTest extends TestCase
         $this->assertSame(['id', 'type', 'occurred_at', 'author', 'description', 'reference'], array_keys($activity[1]));
         $this->assertSame(['task_id' => 21], $activity[0]['reference']);
         $this->assertSame(['note_id' => 11], $activity[1]['reference']);
+        $this->assertFalse(collect($activity)->contains(fn (array $event): bool => ($event['reference']['task_id'] ?? null) === 22));
     }
 
     public function test_show_solicitud_case_returns_real_proposals_with_items_and_links(): void
@@ -488,7 +507,7 @@ class CrmV3CaseControllerTest extends TestCase
             ->assertJsonPath('success', false);
     }
 
-    public function test_proposal_requires_catalog_items(): void
+    public function test_proposal_rejects_items_without_description(): void
     {
         $user = $this->createUser();
         $this->seedSolicitudCaseTables();
@@ -505,7 +524,6 @@ class CrmV3CaseControllerTest extends TestCase
                 'title' => 'Propuesta inicial',
                 'items' => [
                     [
-                        'description' => 'Item manual no permitido',
                         'quantity' => 1,
                     ],
                 ],
@@ -688,6 +706,8 @@ class CrmV3CaseControllerTest extends TestCase
             Schema::create('solicitud_crm_detalles', function (Blueprint $table): void {
                 $table->id();
                 $table->unsignedBigInteger('solicitud_id')->nullable()->index();
+                $table->unsignedBigInteger('crm_lead_id')->nullable();
+                $table->unsignedBigInteger('crm_opportunity_id')->nullable();
                 $table->unsignedBigInteger('responsable_id')->nullable();
                 $table->string('responsable_nombre')->nullable();
                 $table->string('contacto_telefono')->nullable();
@@ -802,6 +822,8 @@ class CrmV3CaseControllerTest extends TestCase
                 $table->decimal('total', 12, 2)->default(0);
                 $table->date('valid_until')->nullable();
                 $table->text('notes')->nullable();
+                $table->text('terms')->nullable();
+                $table->json('packages_snapshot')->nullable();
                 $table->unsignedBigInteger('created_by')->nullable();
                 $table->unsignedBigInteger('updated_by')->nullable();
                 $table->timestamp('sent_at')->nullable();

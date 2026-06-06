@@ -27,6 +27,8 @@ const PRIO_TONE: Record<string, string> = { Alta: 'danger', Media: 'warning', No
 const money = (n: number | null | undefined) =>
   '$' + Number(n || 0).toLocaleString('es-EC', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+const isTaskDone = (status: string) => ['done', 'completed', 'completada', 'completado'].includes(status.toLowerCase());
+
 function buildTimeline(sol: Solicitud, crmCase: CrmCaseState | null) {
   if (crmCase?.activity.length) {
     return crmCase.activity.map((activity) => ({
@@ -147,14 +149,14 @@ function TabTareas({
     <section>
       <h3 className="psec-title">
         <i className="mdi mdi-format-list-checks"></i>Tareas y recordatorios
-        <span className="psec-meta">{crmTasks ? crmTasks.filter((t) => t.status !== 'done' && t.status !== 'completed').length : sol.detalle.tareas.filter((t) => !t.done).length} pendientes</span>
+        <span className="psec-meta">{crmTasks ? crmTasks.filter((t) => !isTaskDone(t.status)).length : sol.detalle.tareas.filter((t) => !t.done).length} pendientes</span>
       </h3>
       <div className="task-list">
         {tareas.length === 0 && <div className="mini-empty">Sin tareas registradas</div>}
         {crmTasks ? (
           crmTasks.map((tk) => (
-            <div key={tk.id} className={`task-row ${tk.status === 'done' || tk.status === 'completed' ? 'done' : ''}`} onClick={() => void toggle(tk.id, tk.status)}>
-              <span className="chk-box">{(tk.status === 'done' || tk.status === 'completed') && <i className="mdi mdi-check"></i>}</span>
+            <div key={tk.id} className={`task-row ${isTaskDone(tk.status) ? 'done' : ''}`} onClick={() => void toggle(tk.id, tk.status)}>
+              <span className="chk-box">{isTaskDone(tk.status) && <i className="mdi mdi-check"></i>}</span>
               <div className="task-body">
                 <div className="task-title">{tk.title}</div>
                 <div className="task-meta"><i className="mdi mdi-account-outline"></i>{tk.assignedTo ?? '—'} · <i className="mdi mdi-calendar-blank-outline"></i>{tk.dueAt ? fmtDate(tk.dueAt) : '—'}</div>
@@ -377,6 +379,17 @@ type ProposalCatalogItem = {
   unitPrice: number;
 };
 
+type ProposalDraftItem = {
+  key: string;
+  catalogType?: ProposalCatalogKind;
+  catalogId?: number;
+  code: string;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  discountPercent: number;
+};
+
 function proposalCatalogItem(row: Record<string, unknown>, kind: ProposalCatalogKind): ProposalCatalogItem {
   const id = Number(row.id ?? row.catalog_id ?? 0);
   const code = String(row.codigo ?? row.code ?? row.slug ?? (kind === 'package' ? 'PAQ' : 'COD'));
@@ -414,8 +427,21 @@ function TabPropuestas({
   const [mode, setMode] = useState<ProposalCatalogKind>('code');
   const [query, setQuery] = useState('');
   const [affiliation, setAffiliation] = useState(currentAffiliation && currentAffiliation !== '—' ? currentAffiliation : 'Particular');
+  const [proposalTitle, setProposalTitle] = useState(`Propuesta quirúrgica — ${sol.procedimiento_short}`);
+  const [validUntil, setValidUntil] = useState('');
+  const [taxRate, setTaxRate] = useState(0);
+  const [notes, setNotes] = useState('');
   const [results, setResults] = useState<ProposalCatalogItem[]>([]);
-  const [selectedItems, setSelectedItems] = useState<ProposalCatalogItem[]>([]);
+  const [draftItems, setDraftItems] = useState<ProposalDraftItem[]>([
+    {
+      key: 'manual:initial',
+      code: '',
+      description: sol.procedimiento,
+      quantity: 1,
+      unitPrice: 0,
+      discountPercent: 0,
+    },
+  ]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [sendingId, setSendingId] = useState<number | null>(null);
@@ -425,6 +451,23 @@ function TabPropuestas({
     const nextAffiliation = currentAffiliation && currentAffiliation !== '—' ? currentAffiliation : 'Particular';
     setAffiliation((current) => current || nextAffiliation);
   }, [currentAffiliation]);
+
+  useEffect(() => {
+    setProposalTitle(`Propuesta quirúrgica — ${sol.procedimiento_short}`);
+    setDraftItems([{
+      key: `manual:${sol.id}`,
+      code: '',
+      description: sol.procedimiento,
+      quantity: 1,
+      unitPrice: 0,
+      discountPercent: 0,
+    }]);
+    setQuery('');
+    setResults([]);
+    setNotes('');
+    setValidUntil('');
+    setTaxRate(0);
+  }, [sol.id, sol.procedimiento, sol.procedimiento_short]);
 
   const runSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -445,34 +488,81 @@ function TabPropuestas({
     }
   };
 
-  const addSelectedItem = (item: ProposalCatalogItem) => {
-    setSelectedItems((items) => items.some((current) => current.key === item.key) ? items : [...items, item]);
+  const addCatalogItem = (item: ProposalCatalogItem) => {
+    setDraftItems((items) => [
+      ...items,
+      {
+        key: `${item.key}:${Date.now()}`,
+        catalogType: item.kind,
+        catalogId: item.id,
+        code: item.code,
+        description: item.description,
+        quantity: 1,
+        unitPrice: item.unitPrice,
+        discountPercent: 0,
+      },
+    ]);
+    setResults([]);
+    setQuery('');
   };
 
-  const removeSelectedItem = (item: ProposalCatalogItem) => {
-    setSelectedItems((items) => items.filter((current) => current.key !== item.key));
+  const addManualLine = () => {
+    setDraftItems((items) => [
+      ...items,
+      {
+        key: `manual:${Date.now()}:${items.length}`,
+        code: '',
+        description: '',
+        quantity: 1,
+        unitPrice: 0,
+        discountPercent: 0,
+      },
+    ]);
+  };
+
+  const updateDraftItem = (key: string, patch: Partial<ProposalDraftItem>) => {
+    setDraftItems((items) => items.map((item) => item.key === key ? { ...item, ...patch } : item));
+  };
+
+  const removeDraftItem = (key: string) => {
+    setDraftItems((items) => items.length <= 1 ? items : items.filter((item) => item.key !== key));
   };
 
   const createProposal = async () => {
-    if (selectedItems.length === 0 || saving) return;
+    const items = draftItems
+      .map((item) => ({
+        catalog_type: item.catalogType,
+        catalog_id: item.catalogId,
+        quantity: item.quantity,
+        description: item.description.trim(),
+        unit_price: item.unitPrice,
+        discount_percent: item.discountPercent,
+      }))
+      .filter((item) => item.description);
+    if (items.length === 0 || saving) return;
     setSaving(true);
     setFormError(null);
     try {
       await onCreateProposal({
-        title: `Propuesta quirúrgica — ${sol.procedimiento_short}`,
+        title: proposalTitle.trim() || `Propuesta quirúrgica — ${sol.procedimiento_short}`,
+        valid_until: validUntil || null,
+        tax_rate: Number(taxRate) || 0,
+        notes,
         send_by: 'none',
         pricing_affiliation: affiliation,
-        items: selectedItems.map((item) => ({
-          catalog_type: item.kind,
-          catalog_id: item.id,
-          quantity: 1,
-          description: item.description,
-          unit_price: item.unitPrice,
-        })),
+        items,
       });
-      setSelectedItems([]);
+      setDraftItems([{
+        key: `manual:${Date.now()}`,
+        code: '',
+        description: sol.procedimiento,
+        quantity: 1,
+        unitPrice: 0,
+        discountPercent: 0,
+      }]);
       setResults([]);
       setQuery('');
+      setNotes('');
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'No se pudo crear la propuesta.');
     } finally {
@@ -559,45 +649,78 @@ function TabPropuestas({
           </div>
         ))}
       </div>
-      <form className="add-form col" onSubmit={(e) => void runSearch(e)}>
-        <div className="segmented mini">
-          <button type="button" className={mode === 'code' ? 'is-active' : ''} onClick={() => { setMode('code'); setResults([]); }}>Códigos</button>
-          <button type="button" className={mode === 'package' ? 'is-active' : ''} onClick={() => { setMode('package'); setResults([]); }}>Paquetes</button>
+      <div className="prop-builder">
+        <div className="prop-form-grid">
+          <label className="prop-field prop-field-title">
+            <span>Título</span>
+            <input className="fld" value={proposalTitle} onChange={(e) => setProposalTitle(e.target.value)} placeholder="Propuesta quirúrgica / paquete" />
+          </label>
+          <label className="prop-field">
+            <span>Vigencia</span>
+            <input className="fld" type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} />
+          </label>
+          <label className="prop-field">
+            <span>IVA %</span>
+            <input className="fld" type="number" min="0" max="100" step="0.01" value={taxRate} onChange={(e) => setTaxRate(Number(e.target.value))} />
+          </label>
+          <label className="prop-field prop-field-rate">
+            <span>Tarifa a aplicar</span>
+            <select className="fld" value={affiliation} onChange={(e) => setAffiliation(e.target.value)}>
+              {currentAffiliation && currentAffiliation !== '—' && <option value={currentAffiliation}>Afiliación del paciente: {currentAffiliation}</option>}
+              <option value="Particular">Particular</option>
+            </select>
+          </label>
         </div>
-        <select className="fld" value={affiliation} onChange={(e) => setAffiliation(e.target.value)}>
-          {currentAffiliation && currentAffiliation !== '—' && <option value={currentAffiliation}>{currentAffiliation}</option>}
-          <option value="Particular">Particular</option>
-        </select>
-        <div className="add-form">
+
+        <div className="prop-builder-head">
+          <span>Ítems de la propuesta</span>
+          <div className="prop-builder-actions">
+            <button type="button" className="prop-outline-btn" onClick={addManualLine}><i className="mdi mdi-plus"></i>Línea manual</button>
+            <button type="button" className={`prop-outline-btn ${mode === 'code' ? 'is-active' : ''}`} onClick={() => { setMode('code'); setResults([]); }}><i className="mdi mdi-barcode-scan"></i>Buscar código</button>
+            <button type="button" className={`prop-outline-btn ${mode === 'package' ? 'is-active' : ''}`} onClick={() => { setMode('package'); setResults([]); }}><i className="mdi mdi-package-variant"></i>Agregar paquete</button>
+          </div>
+        </div>
+
+        <form className="prop-search-form" onSubmit={(e) => void runSearch(e)}>
           <input className="fld" placeholder={mode === 'code' ? 'Buscar código o descripción…' : 'Buscar paquete…'} value={query} onChange={(e) => setQuery(e.target.value)} />
           <button className="btn-add" type="submit" disabled={loading || !query.trim()}>
             <i className={`mdi ${loading ? 'mdi-loading mdi-spin' : 'mdi-magnify'}`}></i>Buscar
           </button>
-        </div>
-      </form>
-      <div className="prop-search-list">
-        {results.map((item) => (
-          <button className="prop-search-row" type="button" key={item.key} onClick={() => addSelectedItem(item)}>
-            <span className="pi-cod">{item.code}</span>
-            <span className="pi-desc">{item.title}</span>
-            <span className="pi-val">{money(item.unitPrice)}</span>
-          </button>
-        ))}
-      </div>
-      {selectedItems.length > 0 && (
-        <div className="prop-selected">
-          {selectedItems.map((item) => (
-            <button className="prop-selected-chip" type="button" key={item.key} onClick={() => removeSelectedItem(item)}>
-              <span>{item.code}</span>
-              <i className="mdi mdi-close"></i>
+        </form>
+        <div className="prop-search-list">
+          {results.map((item) => (
+            <button className="prop-search-row" type="button" key={item.key} onClick={() => addCatalogItem(item)}>
+              <span className="pi-cod">{item.code}</span>
+              <span className="pi-desc">{item.title}</span>
+              <span className="pi-val">{money(item.unitPrice)}</span>
             </button>
           ))}
         </div>
-      )}
-      {formError && <div className="form-error" role="alert">{formError}</div>}
-      <button className="btn-add full" type="button" disabled={saving || selectedItems.length === 0} onClick={() => void createProposal()}>
-        <i className={`mdi ${saving ? 'mdi-loading mdi-spin' : 'mdi-file-document-plus-outline'}`}></i>Nuevo borrador de propuesta
-      </button>
+
+        <div className="prop-draft-list">
+          {draftItems.map((item) => (
+            <div className="prop-draft-row" key={item.key}>
+              <input className="fld" value={item.description} onChange={(e) => updateDraftItem(item.key, { description: e.target.value })} placeholder="Descripción del ítem" />
+              <input className="fld" type="number" min="0.01" step="0.01" value={item.quantity} aria-label="Cantidad" onChange={(e) => updateDraftItem(item.key, { quantity: Number(e.target.value) || 1 })} />
+              <input className="fld" type="number" min="0" step="0.01" value={item.unitPrice} aria-label="Precio unitario" onChange={(e) => updateDraftItem(item.key, { unitPrice: Number(e.target.value) || 0 })} />
+              <input className="fld" type="number" min="0" max="100" step="0.01" value={item.discountPercent} aria-label="Descuento" onChange={(e) => updateDraftItem(item.key, { discountPercent: Number(e.target.value) || 0 })} />
+              <button type="button" className="prop-remove-line" aria-label="Eliminar línea" onClick={() => removeDraftItem(item.key)}><i className="mdi mdi-close"></i></button>
+            </div>
+          ))}
+        </div>
+
+        <label className="prop-field">
+          <span>Notas</span>
+          <textarea className="fld" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Condiciones, observaciones o alcance" />
+        </label>
+        {formError && <div className="form-error" role="alert">{formError}</div>}
+        <div className="prop-builder-foot">
+          <span>Se creará como borrador vinculado al caso. Precio: {affiliation}.</span>
+          <button className="btn-add" type="button" disabled={saving || draftItems.every((item) => !item.description.trim())} onClick={() => void createProposal()}>
+            <i className={`mdi ${saving ? 'mdi-loading mdi-spin' : 'mdi-file-document-plus-outline'}`}></i>Crear propuesta
+          </button>
+        </div>
+      </div>
     </section>
   );
 }

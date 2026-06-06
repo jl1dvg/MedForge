@@ -400,30 +400,39 @@ class CrmCaseService
 
         $items = $payload['items'] ?? null;
         if (!is_array($items) || $items === []) {
-            throw new RuntimeException('La propuesta debe incluir items de catalogo');
+            throw new RuntimeException('La propuesta debe incluir items');
         }
 
         $legacyItems = [];
         foreach ($items as $item) {
             if (!is_array($item)) {
-                throw new RuntimeException('La propuesta debe incluir items de catalogo');
+                throw new RuntimeException('La propuesta debe incluir items');
+            }
+
+            $description = trim((string) ($item['description'] ?? ''));
+            if ($description === '') {
+                throw new RuntimeException('Cada item de la propuesta debe incluir una descripción');
             }
 
             $catalogType = strtolower(trim((string) ($item['catalog_type'] ?? '')));
             $catalogId = $item['catalog_id'] ?? null;
-            if ($catalogType === '' || $catalogId === null || $catalogId === '') {
-                throw new RuntimeException('La propuesta solo acepta items de catalogo');
-            }
-
             $legacyItem = $item;
-            $legacyItem['catalog_type'] = $catalogType;
-            $legacyItem['catalog_id'] = (int) $catalogId;
+            $legacyItem['description'] = $description;
             $legacyItem['quantity'] = $item['quantity'] ?? 1;
 
-            if ($catalogType === 'code' || $catalogType === 'codigo') {
+            if ($catalogType === '' || $catalogId === null || $catalogId === '') {
+                $legacyItem['catalog_type'] = 'manual';
+                $legacyItem['catalog_id'] = null;
+                $legacyItem['code_id'] = null;
+                $legacyItem['package_id'] = null;
+            } elseif ($catalogType === 'code' || $catalogType === 'codigo') {
+                $legacyItem['catalog_type'] = 'code';
+                $legacyItem['catalog_id'] = (int) $catalogId;
                 $legacyItem['code_id'] = (int) $catalogId;
                 $legacyItem['package_id'] = null;
             } elseif ($catalogType === 'package' || $catalogType === 'paquete') {
+                $legacyItem['catalog_type'] = 'package';
+                $legacyItem['catalog_id'] = (int) $catalogId;
                 $legacyItem['package_id'] = (int) $catalogId;
                 $legacyItem['code_id'] = null;
             } else {

@@ -110,7 +110,10 @@ test('mapCrmCasePayload normalizes contacts notes tasks and activity', () => {
     crm: { responsible_name: 'Coordinación', source: 'Convenio', insurance_plan: 'SALUD NIVEL 4' },
     contacts: { primary_phone: '0987107769', alternate_phones: ['0999999999'], primary_email: 'p@example.com', alternate_emails: [] },
     notes: [{ id: 1, body: 'Nota real', author_name: 'Jorge', created_at: '2026-06-03T10:00:00Z', can_delete: true }],
-    tasks: [{ id: 2, title: 'Validar cobertura', status: 'pending', priority: 'alta', due_at: null }],
+    tasks: [
+      { id: 2, title: 'Validar cobertura', status: 'pending', priority: 'alta', due_at: null },
+      { id: 3, title: 'Documentos completos', status: 'completada', priority: 'normal', completed_at: '2026-06-03 10:00:00' },
+    ],
     activity: [{ id: 'note-1', type: 'note_created', occurred_at: '2026-06-03T10:00:00Z', author: 'Jorge', description: 'Nota creada', reference: { note_id: 1 } }],
     proposals: [],
     documents: [],
@@ -119,6 +122,8 @@ test('mapCrmCasePayload normalizes contacts notes tasks and activity', () => {
   assert.equal(mapped.contacts.primaryPhone, '0987107769');
   assert.equal(mapped.notes[0].body, 'Nota real');
   assert.equal(mapped.tasks[0].title, 'Validar cobertura');
+  assert.equal(mapped.tasks[0].status, 'pending');
+  assert.equal(mapped.tasks[1].status, 'done');
   assert.equal(mapped.activity[0].type, 'note_created');
 });
 

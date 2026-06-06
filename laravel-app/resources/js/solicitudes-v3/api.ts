@@ -141,6 +141,25 @@ function objectValue(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
+function normalizeTaskStatus(status: unknown, completedAt: unknown): string {
+  const completedAtText = stringOrNull(completedAt);
+  const value = stringValue(status, 'pending').toLowerCase().trim();
+
+  if (completedAtText || ['done', 'completed', 'completada', 'completado', 'finalizada', 'finalizado', 'cerrada', 'cerrado'].includes(value)) {
+    return 'done';
+  }
+
+  if (['cancelled', 'canceled', 'cancelada', 'cancelado', 'anulada', 'anulado'].includes(value)) {
+    return 'cancelled';
+  }
+
+  if (['in_progress', 'en_progreso', 'en_proceso'].includes(value)) {
+    return 'in_progress';
+  }
+
+  return 'pending';
+}
+
 function proposalStatusLabel(status: unknown): string {
   const value = stringValue(status, 'draft').toLowerCase();
   if (['sent', 'enviada', 'enviado'].includes(value)) return 'Enviada';
@@ -428,7 +447,7 @@ export function mapCrmCasePayload(raw: any): CrmCaseState {
     tasks: arrayValue<any>(raw?.tasks).map((task) => ({
       id: numberValue(task?.id),
       title: stringValue(task?.title),
-      status: stringValue(task?.status, 'pending'),
+      status: normalizeTaskStatus(task?.status, task?.completed_at ?? task?.completedAt),
       priority: stringValue(task?.priority, 'normal'),
       assignedTo: task?.assigned_to == null ? null : numberValue(task.assigned_to),
       dueAt: stringOrNull(task?.due_at),

@@ -77,6 +77,14 @@ class CrmCaseActivityService
         $hasAnyLink = false;
 
         $query->where(function ($linked) use ($sourceId, &$hasAnyLink): void {
+            if ($this->hasColumns('crm_tasks', ['source_type', 'source_id'])) {
+                $hasAnyLink = true;
+                $linked->orWhere(function ($source) use ($sourceId): void {
+                    $source->whereIn('source_type', ['solicitud', 'solicitud_procedimiento', 'solicitudes'])
+                        ->where('source_id', $sourceId);
+                });
+            }
+
             if ($this->hasColumns('crm_tasks', ['source_module', 'source_ref_id'])) {
                 $hasAnyLink = true;
                 $linked->orWhere(function ($source) use ($sourceId): void {
@@ -156,14 +164,17 @@ class CrmCaseActivityService
      */
     private function taskEvents(int $sourceId): array
     {
+        $completedTasks = array_filter($this->tasksForCase('solicitud', $sourceId), static function (array $task): bool {
+            return trim((string) ($task['completed_at'] ?? '')) !== ''
+                || in_array(strtolower(trim((string) ($task['status'] ?? ''))), ['completada', 'completado', 'completed', 'done', 'finalizada', 'finalizado'], true);
+        });
+
         return array_map(static function (array $task): array {
             $taskId = isset($task['id']) ? (int) $task['id'] : null;
-            $isCompleted = trim((string) ($task['completed_at'] ?? '')) !== ''
-                || in_array(strtolower(trim((string) ($task['status'] ?? ''))), ['completada', 'completed', 'done'], true);
 
             return [
                 'id' => 'task:' . ($taskId ?? ''),
-                'type' => $isCompleted ? 'task_completed' : 'task_updated',
+                'type' => 'task_completed',
                 'occurred_at' => $task['updated_at'] ?? $task['created_at'] ?? null,
                 'author' => $task['created_by_name'] ?? 'Sistema',
                 'description' => $task['title'] ?? null,
@@ -171,7 +182,7 @@ class CrmCaseActivityService
                     'task_id' => $taskId,
                 ],
             ];
-        }, $this->tasksForCase('solicitud', $sourceId));
+        }, array_values($completedTasks));
     }
 
     private function userName(?int $userId): string
