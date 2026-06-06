@@ -135,7 +135,7 @@ interface CardProps {
 export function Card({ sol, onOpen, onAdvance, isLast, dnd }: CardProps) {
   return (
     <article
-      className={`card sla-${sol.sla_status} ${dnd.draggingId === sol.id ? 'is-dragging' : ''}`}
+      className={`card sla-${sol.sla_status} afil-${sol.afiliacion_tone} ${dnd.draggingId === sol.id ? 'is-dragging' : ''}`}
       draggable
       onDragStart={(e: React.DragEvent<HTMLElement>) => dnd.onDragStart(e, sol)}
       onDragEnd={dnd.onDragEnd}

@@ -101,6 +101,21 @@ class SolicitudesUiController
             'pageTitle' => 'Solicitudes V3',
             'currentUser' => $currentUser,
             'appConfig'   => $appConfig,
+            'whatsappNotificationPanelEnabled' => true,
+            'whatsappNotificationCurrentUser' => [
+                'id' => (int) ($currentUser['id'] ?? 0),
+                'name' => (string) ($currentUser['display_name'] ?? $currentUser['nombre'] ?? $currentUser['username'] ?? 'Usuario'),
+            ],
+            'whatsappRealtimeRuntime' => [
+                'currentConversationId' => 0,
+                'canSupervise' => false,
+                'scope' => 'solicitudes',
+            ],
+            'whatsappAssetVersion' => (string) max(
+                @filemtime(public_path('js/pages/whatsapp/v2-notifications.js')) ?: 0,
+                @filemtime(resource_path('views/layouts/partials/notification_panel.blade.php')) ?: 0,
+                @filemtime(resource_path('views/layouts/medforge.blade.php')) ?: 0,
+            ),
         ]);
     }
 

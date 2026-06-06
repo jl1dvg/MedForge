@@ -110,6 +110,7 @@ export function App() {
       if (kpiFilter === 'critico' && s.sla_status !== 'critico') return false;
       if (kpiFilter === 'docs' && !s.alerts.some((a: Alert) => a.key === 'docs')) return false;
       if (kpiFilter === 'auth' && !s.alerts.some((a: Alert) => a.key === 'auth')) return false;
+      if (kpiFilter === 'propuestas' && s.crm.propuestas <= 0) return false;
       return true;
     });
   }, [solicitudes, filters, preset, kpiFilter]);
@@ -128,6 +129,7 @@ export function App() {
     critico: solicitudes.filter((s: Solicitud) => s.sla_status === 'critico').length,
     docs: solicitudes.filter((s: Solicitud) => s.alerts.some((a: Alert) => a.key === 'docs')).length,
     auth: solicitudes.filter((s: Solicitud) => s.alerts.some((a: Alert) => a.key === 'auth')).length,
+    propuestas: solicitudes.filter((s: Solicitud) => s.crm.propuestas > 0).length,
   }), [solicitudes]);
 
   // ---- Actions ----
@@ -201,6 +203,7 @@ export function App() {
       crm: {
         ...s.crm,
         notas: updated.notes.length,
+        propuestas: updated.proposals.length,
         tareas_total: updated.tasks.length,
         tareas_pendientes: pendientes,
       },
@@ -373,6 +376,7 @@ export function App() {
         <Kpi tone="critico" icon="mdi-clock-alert-outline"             value={metrics.critico} label="SLA crítico"            active={kpiFilter === 'critico'} onClick={() => toggleKpi('critico')} />
         <Kpi tone="docs"    icon="mdi-file-alert-outline"              value={metrics.docs}    label="Docs faltantes"         active={kpiFilter === 'docs'}    onClick={() => toggleKpi('docs')} />
         <Kpi tone="auth"    icon="mdi-shield-clock-outline"            value={metrics.auth}    label="Autorización pendiente" active={kpiFilter === 'auth'}    onClick={() => toggleKpi('auth')} />
+        <Kpi tone="proposal" icon="mdi-file-document-edit-outline"     value={metrics.propuestas} label="Con propuesta"       active={kpiFilter === 'propuestas'} onClick={() => toggleKpi('propuestas')} />
       </div>
 
       {/* ---- Toolbar ---- */}

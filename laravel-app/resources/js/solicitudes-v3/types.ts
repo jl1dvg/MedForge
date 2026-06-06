@@ -55,6 +55,7 @@ export interface CrmInfo {
   fuente: string;
   notas: number;
   adjuntos: number;
+  propuestas: number;
   tareas_pendientes: number;
   tareas_total: number;
   proximo_vencimiento: string | null;
@@ -248,6 +249,8 @@ export interface ApiSolicitud {
   crm_total_notas?: number;
   crm_adjuntos?: number;
   crm_total_adjuntos?: number;
+  crm_propuestas?: number;
+  crm_total_propuestas?: number;
   crm_tareas_pendientes?: number;
   crm_tareas_total?: number;
   crm_proximo_vencimiento?: string | null;

@@ -44,6 +44,9 @@ const AFILIACIONES: Record<string, { label: string; tone: string }> = {
   'ISSFA':      { label: 'ISSFA',             tone: 'consulta'    },
   'ISSPOL':     { label: 'ISSPOL',            tone: 'optometria'  },
   'MSP':        { label: 'MSP — Red Pública', tone: 'examen'      },
+  'ALQUILER':   { label: 'Alquiler',          tone: 'optometria'  },
+  'SALUD':      { label: 'Salud S.A.',        tone: 'cirugia'     },
+  'PLAN VITAL': { label: 'Plan Vital',        tone: 'visita'      },
   'Particular': { label: 'Particular',        tone: 'neutral'     },
   'Seguro':     { label: 'Seguro privado',    tone: 'cirugia'     },
 };
@@ -395,6 +398,7 @@ export function buildSolicitudFromApi(raw: ApiSolicitud, estadoSlug: KanbanSlug)
       fuente: raw.crm_fuente ?? '—',
       notas: (raw.crm_total_notas as number | undefined) ?? (raw.crm_notas as number | undefined) ?? 0,
       adjuntos: (raw.crm_total_adjuntos as number | undefined) ?? (raw.crm_adjuntos as number | undefined) ?? 0,
+      propuestas: (raw.crm_total_propuestas as number | undefined) ?? (raw.crm_propuestas as number | undefined) ?? 0,
       tareas_pendientes: raw.crm_tareas_pendientes ?? 0,
       tareas_total: raw.crm_tareas_total ?? 0,
       proximo_vencimiento: raw.crm_proximo_vencimiento ?? null,

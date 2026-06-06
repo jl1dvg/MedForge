@@ -1215,6 +1215,33 @@ class SolicitudesReadParityService
                 GROUP BY source_ref_id
             ) tareas ON tareas.source_ref_id = sp.id';
         }
+
+        $proposalJoin = 'LEFT JOIN (
+                SELECT NULL AS lead_id, 0 AS total_propuestas
+            ) propuestas_lead ON 1 = 0
+            LEFT JOIN (
+                SELECT NULL AS crm_opportunity_id, 0 AS total_propuestas
+            ) propuestas_oportunidad ON 1 = 0';
+        if ($this->tableExists('crm_proposals')) {
+            $proposalLeadJoin = $this->tableHasColumn('crm_proposals', 'lead_id')
+                ? 'LEFT JOIN (
+                    SELECT lead_id, COUNT(*) AS total_propuestas
+                    FROM crm_proposals
+                    WHERE lead_id IS NOT NULL
+                    GROUP BY lead_id
+                ) propuestas_lead ON propuestas_lead.lead_id = detalles.crm_lead_id'
+                : 'LEFT JOIN (SELECT NULL AS lead_id, 0 AS total_propuestas) propuestas_lead ON 1 = 0';
+            $proposalOpportunityJoin = $this->tableHasColumn('crm_proposals', 'crm_opportunity_id')
+                ? 'LEFT JOIN (
+                    SELECT crm_opportunity_id, COUNT(*) AS total_propuestas
+                    FROM crm_proposals
+                    WHERE crm_opportunity_id IS NOT NULL
+                    GROUP BY crm_opportunity_id
+                ) propuestas_oportunidad ON propuestas_oportunidad.crm_opportunity_id = detalles.crm_opportunity_id'
+                : 'LEFT JOIN (SELECT NULL AS crm_opportunity_id, 0 AS total_propuestas) propuestas_oportunidad ON 1 = 0';
+            $proposalJoin = $proposalLeadJoin . "\n            " . $proposalOpportunityJoin;
+        }
+
         $sql = 'SELECT
                 sp.id,
                 sp.hc_number,
@@ -1247,6 +1274,8 @@ class SolicitudesReadParityService
                 detalles.fuente AS crm_fuente,
                 detalles.contacto_email AS crm_contacto_email,
                 detalles.contacto_telefono AS crm_contacto_telefono,
+                detalles.crm_lead_id AS crm_lead_id,
+                detalles.crm_opportunity_id AS crm_opportunity_id,
                 detalles.responsable_id AS crm_responsable_id,
                 responsable.nombre AS crm_responsable_nombre,
                 responsable.profile_photo AS crm_responsable_avatar,
@@ -1263,6 +1292,7 @@ class SolicitudesReadParityService
                 COALESCE(adjuntos.total_adjuntos, 0) AS crm_total_adjuntos,
                 COALESCE(tareas.tareas_pendientes, 0) AS crm_tareas_pendientes,
                 COALESCE(tareas.tareas_total, 0) AS crm_tareas_total,
+                GREATEST(COALESCE(propuestas_lead.total_propuestas, 0), COALESCE(propuestas_oportunidad.total_propuestas, 0)) AS crm_total_propuestas,
                 tareas.proximo_vencimiento AS crm_proximo_vencimiento
             FROM solicitud_procedimiento sp
             INNER JOIN patient_data pd ON sp.hc_number = pd.hc_number
@@ -1285,6 +1315,7 @@ class SolicitudesReadParityService
                 FROM solicitud_crm_adjuntos
                 GROUP BY solicitud_id
             ) adjuntos ON adjuntos.solicitud_id = sp.id
+            ' . $proposalJoin . '
             ' . $taskJoin . '
             WHERE sp.procedimiento IS NOT NULL
               AND TRIM(sp.procedimiento) <> ""
@@ -2416,6 +2447,12 @@ class SolicitudesReadParityService
                        0 AS tareas_pendientes,
                        NULL AS proximo_vencimiento
             ) tareas ON 1 = 0';
+        $proposalJoin = 'LEFT JOIN (
+                SELECT NULL AS lead_id, 0 AS total_propuestas
+            ) propuestas_lead ON 1 = 0
+            LEFT JOIN (
+                SELECT NULL AS crm_opportunity_id, 0 AS total_propuestas
+            ) propuestas_oportunidad ON 1 = 0';
         $bindings = [];
 
         $taskColumns = $this->tableColumns('crm_tasks');
@@ -2470,6 +2507,26 @@ class SolicitudesReadParityService
             ) tareas ON tareas.source_ref_id = sp.id';
         }
 
+        if ($this->tableExists('crm_proposals')) {
+            $proposalLeadJoin = $this->tableHasColumn('crm_proposals', 'lead_id')
+                ? 'LEFT JOIN (
+                    SELECT lead_id, COUNT(*) AS total_propuestas
+                    FROM crm_proposals
+                    WHERE lead_id IS NOT NULL
+                    GROUP BY lead_id
+                ) propuestas_lead ON propuestas_lead.lead_id = detalles.crm_lead_id'
+                : 'LEFT JOIN (SELECT NULL AS lead_id, 0 AS total_propuestas) propuestas_lead ON 1 = 0';
+            $proposalOpportunityJoin = $this->tableHasColumn('crm_proposals', 'crm_opportunity_id')
+                ? 'LEFT JOIN (
+                    SELECT crm_opportunity_id, COUNT(*) AS total_propuestas
+                    FROM crm_proposals
+                    WHERE crm_opportunity_id IS NOT NULL
+                    GROUP BY crm_opportunity_id
+                ) propuestas_oportunidad ON propuestas_oportunidad.crm_opportunity_id = COALESCE(detalles.crm_opportunity_id, sp.crm_opportunity_id)'
+                : 'LEFT JOIN (SELECT NULL AS crm_opportunity_id, 0 AS total_propuestas) propuestas_oportunidad ON 1 = 0';
+            $proposalJoin = $proposalLeadJoin . "\n            " . $proposalOpportunityJoin;
+        }
+
         $sql = 'SELECT
                 sp.id,
                 sp.hc_number,
@@ -2514,6 +2571,7 @@ class SolicitudesReadParityService
                 COALESCE(adjuntos.total_adjuntos, 0) AS crm_total_adjuntos,
                 COALESCE(tareas.tareas_pendientes, 0) AS crm_tareas_pendientes,
                 COALESCE(tareas.tareas_total, 0) AS crm_tareas_total,
+                GREATEST(COALESCE(propuestas_lead.total_propuestas, 0), COALESCE(propuestas_oportunidad.total_propuestas, 0)) AS crm_total_propuestas,
                 tareas.proximo_vencimiento AS crm_proximo_vencimiento
             FROM solicitud_procedimiento sp
             LEFT JOIN patient_data pd ON sp.hc_number = pd.hc_number
@@ -2536,6 +2594,7 @@ class SolicitudesReadParityService
                 GROUP BY solicitud_id
             ) adjuntos ON adjuntos.solicitud_id = sp.id
             ' . $taskJoin . '
+            ' . $proposalJoin . '
             WHERE sp.id = ?
             LIMIT 1';
 
@@ -2627,6 +2686,7 @@ class SolicitudesReadParityService
             'crm_lead_updated_at' => null,
             'crm_total_notas' => 0,
             'crm_total_adjuntos' => 0,
+            'crm_total_propuestas' => 0,
             'crm_tareas_pendientes' => 0,
             'crm_tareas_total' => 0,
             'crm_proximo_vencimiento' => null,
