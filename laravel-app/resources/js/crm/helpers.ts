@@ -176,7 +176,7 @@ export function adaptOpportunity(raw: CrmOpportunity): OpportunityView {
     tipo,
     proc_icon,
     temperatura,
-    valor: null,
+    valor: raw.source_data?.valor ?? null,
     probabilidad: stageConf?.prob ?? 0,
     proxima_accion,
     cierre,

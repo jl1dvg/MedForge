@@ -74,12 +74,14 @@ class CrmOpportunityController
         $total = $query->count();
         $rows  = $query->orderByRaw('COALESCE(last_activity_at, created_at) ASC')
             ->limit($limit)->offset($offset)
-            ->with('contact', 'sourceable')
+            ->with('contact')
             ->get();
         $this->appendEffectiveSource($rows, $source);
 
+        $sourceMap = $this->bulkLoadSourceData($rows);
+
         $data = $rows->map(fn ($opp) => array_merge($opp->toArray(), [
-            'source_data' => self::extractSourceData($opp),
+            'source_data' => $sourceMap[$opp->id] ?? null,
         ]));
 
         return response()->json([
@@ -119,24 +121,88 @@ class CrmOpportunityController
         return response()->json(['data' => $opp], 201);
     }
 
-    private static function extractSourceData(CrmOpportunity $opp): ?array
+    /**
+     * Bulk-loads source data for known source_types using at most 2 queries.
+     * Unknown types (e.g. legacy_crm_lead, null, manual) yield null — no crash.
+     *
+     * Also computes valor_oportunidad via JOIN tarifario+prices for solicitud_procedimiento rows:
+     *   COALESCE(prices.price, tarifario_2014.valor_facturar_nivel1, 0)
+     * where prices.level_key is resolved from afiliacion_categoria_map.afiliacion_norm.
+     *
+     * @param  Collection<int, CrmOpportunity>  $rows
+     * @return array<int, array{procedimiento:string|null,ojo:string|null,doctor:string|null,valor:float|null}|null>
+     */
+    private function bulkLoadSourceData(Collection $rows): array
     {
-        $src = $opp->sourceable;
-        if ($src === null) return null;
+        $map    = [];
+        $byType = $rows->groupBy('source_type');
 
-        return match ($opp->source_type) {
-            'solicitud_procedimiento' => [
-                'procedimiento' => $src->procedimiento ?? null,
-                'ojo'           => $src->ojo ?? null,
-                'doctor'        => $src->doctor ?? null,
-            ],
-            'consulta_examenes' => [
-                'procedimiento' => $src->examen_nombre ?? null,
-                'ojo'           => $src->lateralidad ?? null,
-                'doctor'        => null,
-            ],
-            default => null,
-        };
+        // ── solicitud_procedimiento ──────────────────────────────────────────
+        if ($byType->has('solicitud_procedimiento')) {
+            $idsByOpp = $byType['solicitud_procedimiento']->pluck('source_id', 'id');
+            $sourceIds = $idsByOpp->values()->filter()->unique()->values();
+
+            if ($sourceIds->isNotEmpty()) {
+                $procs = DB::table('solicitud_procedimiento as sp')
+                    ->leftJoin('tarifario_2014 as t', 't.codigo', '=', 'sp.derivacion_codigo')
+                    ->leftJoin('afiliacion_categoria_map as acm',
+                        DB::raw('LOWER(TRIM(COALESCE(sp.afiliacion,\'\')))'),
+                        '=',
+                        DB::raw('LOWER(TRIM(COALESCE(acm.afiliacion_raw,\'\')))'))
+                    ->leftJoin('prices as pr', function ($j): void {
+                        $j->on('pr.code_id', '=', 't.id')
+                          ->on('pr.level_key', '=', 'acm.afiliacion_norm');
+                    })
+                    ->whereIn('sp.id', $sourceIds)
+                    ->select([
+                        'sp.id',
+                        'sp.procedimiento',
+                        'sp.ojo',
+                        'sp.doctor',
+                        DB::raw('COALESCE(pr.price, t.valor_facturar_nivel1, 0) AS valor_calculado'),
+                    ])
+                    ->get()
+                    ->keyBy('id');
+
+                foreach ($idsByOpp as $oppId => $procId) {
+                    $proc = $procId ? ($procs[(int) $procId] ?? null) : null;
+                    $map[(int) $oppId] = $proc ? [
+                        'procedimiento' => $proc->procedimiento,
+                        'ojo'           => $proc->ojo,
+                        'doctor'        => $proc->doctor,
+                        'valor'         => (float) ($proc->valor_calculado ?? 0),
+                    ] : null;
+                }
+            }
+        }
+
+        // ── consulta_examenes ────────────────────────────────────────────────
+        if ($byType->has('consulta_examenes')) {
+            $idsByOpp = $byType['consulta_examenes']->pluck('source_id', 'id');
+            $sourceIds = $idsByOpp->values()->filter()->unique()->values();
+
+            if ($sourceIds->isNotEmpty()) {
+                $exams = DB::table('consulta_examenes')
+                    ->whereIn('id', $sourceIds)
+                    ->select(['id', 'examen_nombre', 'lateralidad'])
+                    ->get()
+                    ->keyBy('id');
+
+                foreach ($idsByOpp as $oppId => $examId) {
+                    $exam = $examId ? ($exams[(int) $examId] ?? null) : null;
+                    $map[(int) $oppId] = $exam ? [
+                        'procedimiento' => $exam->examen_nombre,
+                        'ojo'           => $exam->lateralidad,
+                        'doctor'        => null,
+                        'valor'         => null,
+                    ] : null;
+                }
+            }
+        }
+
+        // legacy_crm_lead, whatsapp_lead, manual, null → source_data = null (sin crash)
+
+        return $map;
     }
 
     public function update(Request $request, int $id): JsonResponse

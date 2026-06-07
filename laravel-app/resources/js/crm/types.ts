@@ -62,6 +62,7 @@ export interface CrmOpportunity {
     procedimiento: string | null;
     ojo: string | null;
     doctor: string | null;
+    valor: number | null;
   } | null;
 }
 
