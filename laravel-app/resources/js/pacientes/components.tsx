@@ -134,14 +134,17 @@ export function Toast({ toast }: { toast: { msg: string; icon: string; kind: str
 }
 
 /* ---- Collapsible section ---- */
-export function Section({ id, icon, title, count, badge, open, onToggle, children }: {
+export function Section({ id, icon, title, count, badge, open, onToggle, children, sectionColor, sectionBg }: {
   id: string; icon: string; title: string; count?: number; badge?: React.ReactNode;
   open: boolean; onToggle: (id: string) => void; children: React.ReactNode;
+  sectionColor?: string; sectionBg?: string;
 }) {
   return (
     <section className={`fsec ${open ? 'is-open' : ''}`} id={`sec-${id}`}>
       <button className="fsec-head" onClick={() => onToggle(id)} type="button">
-        <span className="fsec-ic"><i className={`mdi ${icon}`} /></span>
+        <span className="fsec-ic" style={sectionColor ? { background: sectionBg || '#f1f5f9', color: sectionColor } : {}}>
+          <i className={`mdi ${icon}`} />
+        </span>
         <span className="fsec-title">{title}</span>
         {count != null && <span className="fsec-count">{count}</span>}
         {badge}

@@ -31,16 +31,17 @@ const SECTION_TO_API: Record<string, string> = {
 };
 
 const SECTIONS = [
-  { id: 'personales',   icon: 'mdi-card-account-details-outline', title: 'Datos personales' },
-  { id: 'agenda',       icon: 'mdi-calendar-clock-outline',       title: 'Agenda de citas' },
-  { id: 'solicitudes',  icon: 'mdi-clipboard-text-clock-outline', title: 'Solicitudes' },
-  { id: 'examenes',     icon: 'mdi-image-multiple-outline',       title: 'Exámenes' },
-  { id: 'consultas',    icon: 'mdi-stethoscope',                  title: 'Consultas clínicas' },
-  { id: 'protocolos',   icon: 'mdi-hospital-box-outline',         title: 'Protocolos quirúrgicos' },
-  { id: 'prefacturas',  icon: 'mdi-receipt-text-outline',         title: 'Prefacturas' },
-  { id: 'derivaciones', icon: 'mdi-transit-transfer',             title: 'Derivaciones IESS' },
-  { id: 'recetas',      icon: 'mdi-pill',                         title: 'Recetas médicas' },
-  { id: 'actividad',    icon: 'mdi-timeline-clock-outline',       title: 'Actividad reciente' },
+  { id: 'personales',    icon: 'mdi-card-account-details-outline', title: 'Datos personales',       color: '#5156be', bg: '#eeeefc' },
+  { id: 'agenda',        icon: 'mdi-calendar-clock-outline',       title: 'Historial de citas',      color: '#0c6fb0', bg: '#e0f2fe' },
+  { id: 'solicitudes',   icon: 'mdi-clipboard-text-clock-outline', title: 'Solicitudes activas',     color: '#ea580c', bg: '#fff1ea' },
+  { id: 'examenes',      icon: 'mdi-image-multiple-outline',       title: 'Resultados y exámenes',   color: '#0d9488', bg: '#e0f7f5' },
+  { id: 'consultas',     icon: 'mdi-stethoscope',                  title: 'Historial clínico',       color: '#7c3aed', bg: '#f3eeff' },
+  { id: 'protocolos',    icon: 'mdi-hospital-box-outline',         title: 'Protocolos quirúrgicos',  color: '#e11d48', bg: '#fff0f3' },
+  { id: 'prefacturas',   icon: 'mdi-receipt-text-outline',         title: 'Facturación',             color: '#475569', bg: '#f1f5f9' },
+  { id: 'derivaciones',  icon: 'mdi-transit-transfer',             title: 'Derivaciones IESS',       color: '#d97706', bg: '#fffbeb' },
+  { id: 'recetas',       icon: 'mdi-pill',                         title: 'Recetas médicas',         color: '#059669', bg: '#e6faf4' },
+  { id: 'comunicaciones',icon: 'mdi-chat-outline',                 title: 'Comunicaciones',          color: '#1f9d7a', bg: '#e7f8f1' },
+  { id: 'actividad',     icon: 'mdi-timeline-clock-outline',       title: 'Actividad reciente',      color: '#64748b', bg: '#f1f5f9' },
 ];
 
 function emptyState(): SectionState {
@@ -74,42 +75,104 @@ function SectionSkeleton() {
   );
 }
 
+/* ---- Lightbox ---- */
+function Lightbox({ items, index, onClose }: { items: { url: string; nombre: string; tipo: string }[]; index: number; onClose: () => void }) {
+  const [cur, setCur] = useState(index);
+  const item = items[cur];
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+      if (e.key === 'ArrowLeft') setCur(c => Math.max(0, c - 1));
+      if (e.key === 'ArrowRight') setCur(c => Math.min(items.length - 1, c + 1));
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [items.length, onClose]);
+
+  if (!item) return null;
+  const isPdf = item.tipo === 'pdf' || item.url?.toLowerCase().endsWith('.pdf');
+
+  return (
+    <div className="lightbox-backdrop" onClick={onClose}>
+      <div className="lightbox-shell" onClick={e => e.stopPropagation()}>
+        <div className="lb-top">
+          <span className="lb-name"><i className={`mdi ${isPdf ? 'mdi-file-pdf-box' : 'mdi-image-outline'}`} />{item.nombre}</span>
+          <div className="lb-actions">
+            <a href={item.url} target="_blank" rel="noreferrer" className="lb-btn" title="Abrir en nueva pestaña"><i className="mdi mdi-open-in-new" /></a>
+            <button className="lb-btn" onClick={onClose} title="Cerrar"><i className="mdi mdi-close" /></button>
+          </div>
+        </div>
+        <div className="lb-body">
+          {isPdf
+            ? <iframe src={item.url} className="lb-pdf" title={item.nombre} />
+            : <img src={item.url} className="lb-img" alt={item.nombre} />
+          }
+        </div>
+        {items.length > 1 && (
+          <div className="lb-nav">
+            <button className="lb-nav-btn" disabled={cur === 0} onClick={() => setCur(c => c - 1)}><i className="mdi mdi-chevron-left" /></button>
+            <span className="lb-counter">{cur + 1} / {items.length}</span>
+            <button className="lb-nav-btn" disabled={cur === items.length - 1} onClick={() => setCur(c => c + 1)}><i className="mdi mdi-chevron-right" /></button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ---- Agenda ---- */
 function SecAgenda({ rows, onAgendar, p }: { rows: any[]; onAgendar: (p: Patient) => void; p: Patient }) {
   if (!rows.length) return <EmptyMini icon="mdi-calendar-blank-outline">Sin citas registradas en la agenda.</EmptyMini>;
   return (
     <div className="agenda-list">
-      {rows.map((row, i) => (
-        <div className="agenda-row card-row" key={row.form_id || i}>
-          <span className="agenda-ic"><i className="mdi mdi-calendar-clock" /></span>
-          <div className="agenda-main">
-            <div className="proc">{row.procedimiento || '—'}</div>
-            <div className="doc">
-              {row.doctor_avatar && <img src={row.doctor_avatar} className="doctor-avatar" alt="" />}
-              {row.doctor || '—'}{row.sede ? ` · ${row.sede}` : ''}
-            </div>
-            {(row.historial_estados || []).length > 0 && (
-              <div className="historial-estados">
-                {(row.historial_estados as any[]).slice(0, 4).map((h: any, hi: number) => (
-                  <span key={hi} className="hs-item">{h.estado} · {fmtDateShort(h.fecha_hora_cambio)}</span>
-                ))}
+      {rows.map((row, i) => {
+        const statusClass = statusBadgeClass(row.estado);
+        return (
+          <div className="agenda-card" key={row.form_id || i}>
+            <span className="ag-card-ic"><i className="mdi mdi-account-tie" /></span>
+            <div className="ag-card-main">
+              <div className="ag-proc">{row.procedimiento || '—'}</div>
+              <div className="ag-doc">
+                {row.doctor_avatar && <img src={row.doctor_avatar} className="doctor-avatar" alt="" />}
+                <span>{row.doctor || '—'}</span>
+                {row.sede && <span className="ag-sede">{row.sede}</span>}
               </div>
-            )}
+              {(row.historial_estados || []).length > 0 && (
+                <div className="historial-estados">
+                  {(row.historial_estados as any[]).slice(0, 3).map((h: any, hi: number) => (
+                    <span key={hi} className="hs-item">{h.estado} · {fmtDateShort(h.fecha_hora_cambio)}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+            <span className={`badge ${statusClass}`}>{row.estado || '—'}</span>
+            <div className="ag-card-when">
+              <div className="ag-fecha">{fmtDateShort(row.fecha)}</div>
+              {row.hora && <div className="ag-hora">{fmtTime(row.hora)}</div>}
+              <div className="ag-rel">{relDays(row.fecha)}</div>
+            </div>
+            <div className="ag-card-acts">
+              <button className="icon-btn" title="Ver detalle"><i className="mdi mdi-eye-outline" /></button>
+              <button className="icon-btn" title="Reagendar" onClick={() => onAgendar(p)}><i className="mdi mdi-calendar-edit" /></button>
+            </div>
           </div>
-          <span className={`badge ${statusBadgeClass(row.estado)}`}>{row.estado || '—'}</span>
-          <div className="agenda-when">
-            <div className="fecha">{fmtDateShort(row.fecha)}</div>
-            <div className="hora">{row.hora ? fmtTime(row.hora) : ''}</div>
-            <div style={{ fontSize: 11, color: 'var(--fg-mute)' }}>{relDays(row.fecha)}</div>
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
 
 /* ---- Solicitudes ---- */
-function SecSolicitudes({ rows, onNueva }: { rows: any[]; onNueva: () => void }) {
+function SecSolicitudes({ rows, onNueva, onOpenCRM }: { rows: any[]; onNueva: () => void; onOpenCRM: (s: any) => void }) {
+  const tipoIcon = (tipo: string) => {
+    const t = (tipo || '').toLowerCase();
+    if (t.includes('quirurg')) return { icon: 'mdi-hospital-box-outline', color: '#e11d48', bg: '#fff0f3' };
+    if (t.includes('lab') || t.includes('examen')) return { icon: 'mdi-flask-outline', color: '#0d9488', bg: '#e0f7f5' };
+    if (t.includes('imagen')) return { icon: 'mdi-image-outline', color: '#0c6fb0', bg: '#e0f2fe' };
+    return { icon: 'mdi-clipboard-text-outline', color: '#ea580c', bg: '#fff1ea' };
+  };
+
   if (!rows.length) return (
     <>
       <EmptyMini icon="mdi-clipboard-text-outline">Sin solicitudes de procedimientos.</EmptyMini>
@@ -118,18 +181,33 @@ function SecSolicitudes({ rows, onNueva }: { rows: any[]; onNueva: () => void })
   );
   return (
     <>
-      <div>
-        {rows.map((row, i) => (
-          <div className="sol-row" key={row.id || i}>
-            <span className="agenda-ic"><i className="mdi mdi-clipboard-text-clock-outline" /></span>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div className="sr-proc">{row.procedimiento || '—'}</div>
-              <div className="sr-meta">{row.doctor || '—'} · {fmtDate(row.fecha)}{row.prioridad ? ` · ${row.prioridad}` : ''}</div>
+      <div className="sol-list">
+        {rows.map((row, i) => {
+          const t = tipoIcon(row.tipo_solicitud || row.tipo || '');
+          return (
+            <div className="sol-card" key={row.id || i}>
+              <span className="sol-card-ic" style={{ background: t.bg, color: t.color }}><i className={`mdi ${t.icon}`} /></span>
+              <div className="sol-card-body">
+                <div className="sc-id-row">
+                  <span className="sc-id">SOL-{row.id || '—'}</span>
+                  {row.tipo_solicitud && <span className="sc-tipo">{row.tipo_solicitud}</span>}
+                </div>
+                <div className="sc-proc">{row.procedimiento || '—'}</div>
+                <div className="sc-meta">
+                  <span>{row.doctor || '—'}</span>
+                  <span>·</span>
+                  <span>{fmtDate(row.fecha)}</span>
+                  {row.prioridad && <><span>·</span><span>{row.prioridad}</span></>}
+                </div>
+              </div>
+              {row.ojo && <span className="sr-ojo">{row.ojo}</span>}
+              <span className={`badge ${statusBadgeClass(row.estado)}`}>{row.estado || '—'}</span>
+              <button className="sc-crm-btn" onClick={() => onOpenCRM(row)} title="Ver en CRM">
+                Ver en CRM <i className="mdi mdi-arrow-top-right" />
+              </button>
             </div>
-            {row.ojo && <span className="sr-ojo">{row.ojo}</span>}
-            <span className={`badge ${statusBadgeClass(row.estado)}`}>{row.estado || '—'}</span>
-          </div>
-        ))}
+          );
+        })}
       </div>
       <button className="wbtn" style={{ marginTop: 14, width: '100%', height: 42 }} onClick={onNueva}><i className="mdi mdi-plus" />Crear nueva solicitud</button>
     </>
@@ -138,21 +216,52 @@ function SecSolicitudes({ rows, onNueva }: { rows: any[]; onNueva: () => void })
 
 /* ---- Exámenes ---- */
 function SecExamenes({ rows }: { rows: any[] }) {
+  const [lightbox, setLightbox] = useState<{ items: any[]; index: number } | null>(null);
+
   if (!rows.length) return <EmptyMini icon="mdi-image-off-outline">Sin exámenes solicitados.</EmptyMini>;
+
+  const withUrls = rows.filter(r => r.url || r.archivo);
+  const lbItems = withUrls.map(r => ({
+    url: r.url || r.archivo || '',
+    nombre: r.examen || r.nombre || 'Archivo',
+    tipo: r.tipo_archivo || (r.url?.toLowerCase().endsWith('.pdf') ? 'pdf' : 'img'),
+  }));
+
   return (
-    <div>
-      {rows.map((row, i) => (
-        <div className="exam-row" key={row.id || i}>
-          <span className="agenda-ic"><i className="mdi mdi-flask-outline" /></span>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="er-name">{row.examen || '—'}</div>
-            <div className="er-meta">{row.doctor || '—'} · {fmtDate(row.fecha)}{row.turno ? ` · Turno ${row.turno}` : ''}</div>
-          </div>
-          {row.prioridad && <span className="sr-ojo">{row.prioridad}</span>}
-          <span className={`badge ${statusBadgeClass(row.estado)}`}>{row.estado || '—'}</span>
-        </div>
-      ))}
-    </div>
+    <>
+      <div className="exam-grid">
+        {rows.map((row, i) => {
+          const isPdf = (row.tipo_archivo || '').toLowerCase() === 'pdf' || (row.url || '').toLowerCase().endsWith('.pdf');
+          const hasFile = !!(row.url || row.archivo);
+          const lbIdx = withUrls.indexOf(row);
+
+          return (
+            <div
+              className={`exam-card ${hasFile ? 'has-file' : ''}`}
+              key={row.id || i}
+              onClick={() => hasFile && lbIdx >= 0 && setLightbox({ items: lbItems, index: lbIdx })}
+            >
+              <div className="ec-thumb">
+                <span className={`ec-type-badge ${isPdf ? 'pdf' : 'img'}`}>{isPdf ? 'PDF' : 'IMG'}</span>
+                {hasFile && row.url && !isPdf
+                  ? <img src={row.url} alt={row.examen} className="ec-img" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                  : <i className={`mdi ${isPdf ? 'mdi-file-pdf-box' : 'mdi-image-outline'} ec-placeholder-ic`} />
+                }
+                {hasFile && <span className="ec-overlay"><i className="mdi mdi-magnify-plus-outline" /></span>}
+              </div>
+              <div className="ec-info">
+                <div className="ec-name">{row.examen || row.nombre || '—'}</div>
+                <div className="ec-meta">{fmtDateShort(row.fecha)}{row.doctor ? ` · ${row.doctor}` : ''}</div>
+              </div>
+              {row.estado && <span className={`badge ${statusBadgeClass(row.estado)}`} style={{ position: 'absolute', top: 6, right: 6, fontSize: 10 }}>{row.estado}</span>}
+            </div>
+          );
+        })}
+      </div>
+      {lightbox && (
+        <Lightbox items={lightbox.items} index={lightbox.index} onClose={() => setLightbox(null)} />
+      )}
+    </>
   );
 }
 
@@ -172,9 +281,12 @@ function SecConsultas({ rows, onAddNote, patientId }: { rows: any[]; onAddNote: 
               return (
                 <div className="consulta-card" key={key}>
                   <div className="consulta-head" onClick={() => setExpanded(isOpen ? null : key)}>
-                    <span className="consulta-fecha">{fmtDateShort(row.fecha)}</span>
-                    <span className="consulta-motivo">{row.motivo_consulta || 'Sin motivo registrado'}</span>
-                    <i className={`mdi ${isOpen ? 'mdi-chevron-up' : 'mdi-chevron-down'}`} />
+                    <span className="consulta-ic"><i className="mdi mdi-stethoscope" /></span>
+                    <div className="consulta-head-txt">
+                      <div className="consulta-motivo">{row.motivo_consulta || 'Sin motivo registrado'}</div>
+                      <div className="consulta-fecha-doc">{row.doctor || ''}{row.doctor ? ' · ' : ''}{fmtDateShort(row.fecha)}</div>
+                    </div>
+                    <i className={`mdi ${isOpen ? 'mdi-chevron-up' : 'mdi-chevron-down'} consulta-chev`} />
                   </div>
                   {isOpen && (
                     <div className="consulta-body">
@@ -196,14 +308,14 @@ function SecConsultas({ rows, onAddNote, patientId }: { rows: any[]; onAddNote: 
           </div>
         )
       }
-      <form style={{ display: 'flex', gap: 8, marginTop: 16 }} onSubmit={e => { e.preventDefault(); if (val.trim()) { onAddNote(patientId, val.trim()); setVal(''); } }}>
+      <form className="note-form" onSubmit={e => { e.preventDefault(); if (val.trim()) { onAddNote(patientId, val.trim()); setVal(''); } }}>
         <input
-          style={{ flex: 1, height: 44, border: '1px solid var(--border)', borderRadius: 10, padding: '0 14px', fontFamily: 'inherit', fontSize: 13.5, outline: 0 }}
+          className="note-input"
           placeholder="Añadir nota clínica…"
           value={val}
           onChange={e => setVal(e.target.value)}
         />
-        <button className="wbtn primary" style={{ height: 44 }} type="submit"><i className="mdi mdi-plus" />Añadir</button>
+        <button className="wbtn primary" style={{ height: 44, flexShrink: 0 }} type="submit"><i className="mdi mdi-plus" />Añadir nota</button>
       </form>
     </>
   );
@@ -321,19 +433,31 @@ function SecRecetas({ rows }: { rows: any[] }) {
   );
 }
 
-/* ---- CRM ---- */
-function SecCrm({ rows }: { rows: any[] }) {
-  if (!rows.length) return <EmptyMini icon="mdi-account-cog-outline">Sin registros CRM vinculados.</EmptyMini>;
+/* ---- Comunicaciones ---- */
+function SecComunicaciones({ p }: { p: Patient }) {
+  const coms = p.comunicaciones || [];
+  if (!coms.length) return <EmptyMini icon="mdi-chat-outline">Sin comunicaciones registradas.</EmptyMini>;
+
+  const canalIcon = (canal: string) => {
+    if (canal === 'whatsapp') return 'mdi-whatsapp';
+    if (canal === 'llamada') return 'mdi-phone';
+    return 'mdi-email-outline';
+  };
+
   return (
-    <div>
-      {rows.map((row, i) => (
-        <div className="crm-row" key={row.id || i}>
-          <span className="agenda-ic"><i className="mdi mdi-account-cog-outline" /></span>
-          <div style={{ flex: 1 }}>
-            <div className="cr-title">{row.titulo || '—'} <small style={{ color: 'var(--fg-mute)', fontWeight: 400 }}>({row.tipo})</small></div>
-            <div className="cr-meta">{row.responsable || '—'} · {fmtDate(row.fecha)}{row.detalle ? ` · ${row.detalle}` : ''}</div>
+    <div className="coms-list">
+      {coms.map((c: any, i: number) => (
+        <div className={`com-row canal-${c.canal || 'correo'} dir-${c.dir || 'out'}`} key={i}>
+          <span className="com-ic"><i className={`mdi ${canalIcon(c.canal)}`} /></span>
+          <div className="com-body">
+            <div className="com-txt">{c.txt}</div>
+            <div className="com-meta">
+              <span className="badge-dir">{c.dir === 'out' ? 'ENVIADO' : 'RECIBIDO'}</span>
+              <span>{c.dir === 'out' ? c.by : 'Paciente'}</span>
+              <span>·</span>
+              <span>{fmtDateTime(c.at)}</span>
+            </div>
           </div>
-          <span className={`badge ${statusBadgeClass(row.estado)}`}>{row.estado || '—'}</span>
         </div>
       ))}
     </div>
@@ -411,7 +535,6 @@ export default function DetailView({ p, onBack, onAgendar, onWhats, onNuevaSolic
     }
   }, [p.hc_number]);
 
-  // Load initially-open sections on mount
   useEffect(() => {
     setSectionData(curr => {
       open.forEach(id => { if (SECTION_TO_API[id] && !curr[id]?.loaded && !curr[id]?.loading) doLoad(id, curr); });
@@ -464,6 +587,8 @@ export default function DetailView({ p, onBack, onAgendar, onWhats, onNuevaSolic
   };
 
   const countFor = (id: string): number | undefined => {
+    if (id === 'comunicaciones') return p.comunicaciones?.length || undefined;
+    if (id === 'actividad') return p.timeline?.length || undefined;
     const sd = sectionData[id];
     if (!sd?.loaded) return undefined;
     if (sd.summary?.total_rows != null) return Number(sd.summary.total_rows);
@@ -473,20 +598,20 @@ export default function DetailView({ p, onBack, onAgendar, onWhats, onNuevaSolic
   const m = MEDICO_MAP[p.medico];
 
   function renderBody(id: string): React.ReactNode {
-    if (id === 'personales') return <SecPersonales p={p} />;
-    if (id === 'actividad') return <SecActividad p={p} />;
+    if (id === 'personales')     return <SecPersonales p={p} />;
+    if (id === 'actividad')      return <SecActividad p={p} />;
+    if (id === 'comunicaciones') return <SecComunicaciones p={p} />;
     const sd = sectionData[id];
     if (!sd || sd.loading || !sd.loaded) return <SectionSkeleton />;
     if (sd.error) return <EmptyMini icon="mdi-alert-circle-outline">Error: {sd.error}</EmptyMini>;
     if (id === 'agenda')       return <SecAgenda rows={sd.rows} onAgendar={onAgendar} p={p} />;
-    if (id === 'solicitudes')  return <SecSolicitudes rows={sd.rows} onNueva={() => onNuevaSolicitud(p)} />;
+    if (id === 'solicitudes')  return <SecSolicitudes rows={sd.rows} onNueva={() => onNuevaSolicitud(p)} onOpenCRM={onOpenCRM} />;
     if (id === 'examenes')     return <SecExamenes rows={sd.rows} />;
     if (id === 'consultas')    return <SecConsultas rows={sd.rows} onAddNote={onAddNote} patientId={p.id} />;
     if (id === 'protocolos')   return <SecProtocolos rows={sd.rows} />;
     if (id === 'prefacturas')  return <SecPrefacturas rows={sd.rows} />;
     if (id === 'derivaciones') return <SecDerivaciones rows={sd.rows} />;
     if (id === 'recetas')      return <SecRecetas rows={sd.rows} />;
-    if (id === 'crm')          return <SecCrm rows={sd.rows} />;
     return null;
   }
 
@@ -498,13 +623,13 @@ export default function DetailView({ p, onBack, onAgendar, onWhats, onNuevaSolic
         {/* Patient header */}
         <div className={`pt-header ${p.alerta ? 'has-alert' : ''}`}>
           <div className="pt-id">
-            <Avatar initials={p.initials} sede={p.sede} size={68} />
+            <Avatar initials={p.initials} sede={p.sede} size={72} />
             <div className="pt-id-txt">
               <h1>{p.display_name}</h1>
               <div className="pt-tags">
                 <span className="hc-pill">HC {p.hc_number}</span>
                 <span className="dot-sep">·</span>
-                <span className="age">{p.edad > 0 ? `${p.edad} años` : ''} · {p.sexo === 'F' ? 'Femenino' : 'Masculino'}</span>
+                <span className="age">{p.edad > 0 ? `${p.edad} años` : ''}{p.edad > 0 ? ' · ' : ''}{p.sexo === 'F' ? 'Femenino' : 'Masculino'}</span>
               </div>
               <div className="pt-contact">
                 <span className="pc"><i className="mdi mdi-phone-outline" /><a href={phoneHref(p.telefono)}>{p.telefono || '—'}</a></span>
@@ -569,7 +694,10 @@ export default function DetailView({ p, onBack, onAgendar, onWhats, onNuevaSolic
               const sd = sectionData[s.id];
               return (
                 <button key={s.id} className={active === s.id ? 'is-active' : ''} onClick={() => goTo(s.id)}>
-                  <i className={`mdi ${s.icon}`} />{s.title}
+                  <span className="sn-ic" style={{ background: s.bg, color: s.color }}>
+                    <i className={`mdi ${s.icon}`} />
+                  </span>
+                  <span className="sn-label">{s.title}</span>
                   {sd?.loading && <i className="mdi mdi-loading sec-loading" />}
                   {!sd?.loading && cnt != null && <span className="sn-n">{cnt}</span>}
                 </button>
@@ -591,6 +719,8 @@ export default function DetailView({ p, onBack, onAgendar, onWhats, onNuevaSolic
                 count={countFor(s.id)}
                 open={open.has(s.id)}
                 onToggle={toggle}
+                sectionColor={s.color}
+                sectionBg={s.bg}
                 badge={
                   s.id === 'solicitudes' && p.sol_activa > 0
                     ? <span className="fsec-flag warn">{p.sol_activa} activa{p.sol_activa > 1 ? 's' : ''}</span>
