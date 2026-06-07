@@ -39,6 +39,7 @@ export default defineConfig({
                 'resources/css/usuarios.css',
                 'resources/js/v2/usuarios-index.js',
                 'resources/js/v2/settings-index.js',
+                'resources/css/crm.css',
                 'resources/js/crm/main.tsx',
                 'resources/js/solicitudes-v3/main.tsx',
                 'resources/js/agenda/main.tsx',
