@@ -16,9 +16,12 @@ interface ToolbarProps {
   setView: (v: string) => void;
   doctores: string[];
   afiliaciones: string[];
+  onExportExcel: () => void;
+  onExportPdf: () => void;
+  lastRefreshedLabel: string | null;
 }
 
-export function Toolbar({ filters, setFilters, preset, setPreset, view, setView, doctores, afiliaciones }: ToolbarProps) {
+export function Toolbar({ filters, setFilters, preset, setPreset, view, setView, doctores, afiliaciones, onExportExcel, onExportPdf, lastRefreshedLabel }: ToolbarProps) {
   return (
     <div className="toolbar">
       <div className="search-box">
@@ -73,6 +76,32 @@ export function Toolbar({ filters, setFilters, preset, setPreset, view, setView,
       </div>
 
       <div className="toolbar-spacer"></div>
+
+      {lastRefreshedLabel && (
+        <span style={{ fontSize: 11, color: 'var(--fg-mute)', whiteSpace: 'nowrap', paddingRight: 4 }}>
+          {lastRefreshedLabel}
+        </span>
+      )}
+
+      <div className="preset-group">
+        <a
+          href="/v2/solicitudes/turnero"
+          target="_blank"
+          rel="noreferrer"
+          className="preset"
+          style={{ textDecoration: 'none' }}
+          title="Abrir pantalla de turnero"
+        >
+          <i className="mdi mdi-television-play"></i>Turnero
+        </a>
+        <button className="preset" onClick={onExportExcel} title="Exportar a Excel">
+          <i className="mdi mdi-microsoft-excel"></i>Excel
+        </button>
+        <button className="preset" onClick={onExportPdf} title="Exportar a PDF">
+          <i className="mdi mdi-file-pdf-box"></i>PDF
+        </button>
+      </div>
+
       <div className="view-toggle">
         <button className={view === 'kanban' ? 'is-active' : ''} onClick={() => setView('kanban')}>
           <i className="mdi mdi-view-column-outline"></i>Kanban

@@ -79,9 +79,15 @@ export function App() {
   const [draggingId, setDraggingId] = useState<number | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [toast, setToast] = useState<{ msg: string; icon: string } | null>(null);
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [tick, setTick] = useState(0);
   const selectedIdRef = React.useRef<number | null>(selectedId);
   selectedIdRef.current = selectedId;
   const firstLoadRef = React.useRef(true);
+  const filtersRef = React.useRef(filters);
+  filtersRef.current = filters;
+  const refreshingRef = React.useRef(false);
 
   // Apply accent CSS variable
   useEffect(() => {
@@ -98,12 +104,47 @@ export function App() {
       setSolicitudes(all);
       setAfiliaciones(result.afiliaciones);
       setDoctores(result.doctores);
+      setLastRefreshed(new Date());
     } catch {
       setError('No se pudo cargar las solicitudes. Intente de nuevo.');
     } finally {
       setLoading(false);
     }
   }, []);
+
+  // Silent background refresh (polling)
+  const silentLoad = useCallback(async () => {
+    if (refreshingRef.current) return;
+    refreshingRef.current = true;
+    setRefreshing(true);
+    try {
+      const result = await fetchKanbanData(filtersRef.current);
+      setSolicitudes(Object.values(result.byColumn).flat());
+      setAfiliaciones(result.afiliaciones);
+      setDoctores(result.doctores);
+      setLastRefreshed(new Date());
+    } catch {
+      // silent — don't surface transient network errors during polling
+    } finally {
+      refreshingRef.current = false;
+      setRefreshing(false);
+    }
+  }, []);
+
+  // Tick every 10s to update the "Actualizado hace Xs" label
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 10_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Auto-refresh every 60s — skip if user is mid-drag or has a panel/modal open
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (draggingId !== null || selectedId !== null || prefacturaId !== null) return;
+      void silentLoad();
+    }, 60_000);
+    return () => clearInterval(id);
+  }, [draggingId, selectedId, prefacturaId, silentLoad]);
 
   useEffect(() => {
     const delay = firstLoadRef.current ? 0 : 250;
@@ -468,6 +509,52 @@ export function App() {
     });
   }, [prefacturaId, solicitudes]);
 
+  // Export (reuses V2 backend routes)
+  const doExport = useCallback(async (format: 'excel' | 'pdf') => {
+    const f = filtersRef.current;
+    const body: Record<string, string> = {};
+    if (f.date_from) body.date_from = f.date_from;
+    if (f.date_to) body.date_to = f.date_to;
+    if (f.afiliacion) body.afiliacion = f.afiliacion;
+    if (f.doctor) body.doctor = f.doctor;
+    if (f.search) body.search = f.search;
+    const token = (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content ?? '';
+    try {
+      const res = await fetch(
+        format === 'excel' ? '/v2/solicitudes/reportes/excel' : '/v2/solicitudes/reportes/pdf',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': token, 'X-Requested-With': 'XMLHttpRequest' },
+          body: JSON.stringify(body),
+        },
+      );
+      if (!res.ok) { showToast('No se pudo generar el reporte', 'mdi-alert-circle-outline'); return; }
+      const blob = await res.blob();
+      const cd = res.headers.get('Content-Disposition') ?? '';
+      const m = cd.match(/filename="([^"]+)"/);
+      const filename = m ? m[1] : `solicitudes.${format === 'excel' ? 'xlsx' : 'pdf'}`;
+      const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: filename });
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(a.href);
+    } catch {
+      showToast('No se pudo generar el reporte', 'mdi-alert-circle-outline');
+    }
+  }, [showToast]);
+
+  // "Actualizado hace Xs" label — recomputed every 10s via tick
+  const lastRefreshedLabel = useMemo(() => {
+    void tick;
+    if (refreshing) return 'Actualizando…';
+    if (!lastRefreshed) return null;
+    const secs = Math.round((Date.now() - lastRefreshed.getTime()) / 1000);
+    if (secs < 5) return 'Actualizado ahora';
+    if (secs < 60) return `Actualizado hace ${secs}s`;
+    return `Actualizado hace ${Math.floor(secs / 60)}m`;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastRefreshed, refreshing, tick]);
+
   const toggleKpi = (k: string) => setKpiFilter((cur: string) => cur === k ? '' : k);
 
   const shellClass = [
@@ -501,6 +588,9 @@ export function App() {
         setView={setView}
         doctores={doctores}
         afiliaciones={afiliaciones}
+        onExportExcel={() => void doExport('excel')}
+        onExportPdf={() => void doExport('pdf')}
+        lastRefreshedLabel={lastRefreshedLabel}
       />
 
       {/* ---- Error banner ---- */}
