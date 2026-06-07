@@ -502,7 +502,15 @@ export function App() {
         />
       )}
       {view === 'tabla' && !loading && <TableView rows={filtered} onOpen={setSelectedId} />}
-      {view === 'conciliacion' && !loading && <ConciliacionView rows={filtered} onConfirm={confirmConcil} />}
+      {view === 'conciliacion' && !loading && (
+        <ConciliacionView
+          rows={filtered}
+          filters={filters}
+          preset={preset}
+          kpiFilter={kpiFilter}
+          onConfirm={confirmConcil}
+        />
+      )}
 
       {/* ---- Detail panel ---- */}
       <DetailPanel

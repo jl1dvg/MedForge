@@ -372,6 +372,7 @@ table.sol-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .conc-sub b { color: var(--fg-1); font-weight: 700; }
 .conc-period { display: inline-flex; align-items: center; gap: 5px; background: #fff; border: 1px solid var(--border); border-radius: var(--radius-pill); padding: 3px 11px; font-size: 12px; font-weight: 600; color: var(--fg-2); margin-right: 4px; }
 .conc-period i { font-size: 15px; color: var(--accent); }
+.conc-filter-summary { margin: 6px 0 0; color: var(--fg-3); font-size: 12px; font-weight: 600; }
 .conc-filters { display: flex; gap: 8px; flex-wrap: wrap; }
 .conc-pill {
   height: 38px; display: inline-flex; align-items: center; gap: 7px; padding: 0 13px;

@@ -2,7 +2,7 @@
 // MedForge · Solicitudes v3 — Conciliación de cirugías
 // ============================================================
 import React, { useState, useMemo } from 'react';
-import type { Solicitud } from './types';
+import type { Filters, Solicitud } from './types';
 import { fmtDate } from './components';
 
 function concStatus(sol: Solicitud): 'confirmada' | 'pendiente' | 'sin-match' {
@@ -48,11 +48,35 @@ function ProtocolCell({ sol }: { sol: Solicitud }) {
 
 interface ConciliacionViewProps {
   rows: Solicitud[];
+  filters: Filters;
+  preset: string;
+  kpiFilter: string;
   onConfirm: (id: number) => void;
 }
 
-export function ConciliacionView({ rows, onConfirm }: ConciliacionViewProps) {
+function formatFilterDate(value: string): string {
+  if (!value) return '—';
+  return fmtDate(`${value}T00:00:00`);
+}
+
+function activeFilterSummary(filters: Filters, preset: string, kpiFilter: string): string {
+  const parts: string[] = [];
+  if (filters.search.trim()) parts.push(`Búsqueda: ${filters.search.trim()}`);
+  if (filters.afiliacion) parts.push(`Aseguradora: ${filters.afiliacion}`);
+  if (filters.doctor) parts.push(`Doctor: ${filters.doctor}`);
+  if (preset === 'urgentes') parts.push('Urgentes');
+  if (kpiFilter === 'vencido') parts.push('SLA vencido');
+  if (kpiFilter === 'critico') parts.push('SLA crítico');
+  if (kpiFilter === 'docs') parts.push('Docs faltantes');
+  if (kpiFilter === 'auth') parts.push('Autorización pendiente');
+  if (kpiFilter === 'propuestas') parts.push('Con propuesta');
+  return parts.length ? parts.join(' · ') : 'Sin filtros adicionales';
+}
+
+export function ConciliacionView({ rows, filters, preset, kpiFilter, onConfirm }: ConciliacionViewProps) {
   const [mode, setMode] = useState('all');
+  const periodLabel = `${formatFilterDate(filters.date_from)} – ${formatFilterDate(filters.date_to)}`;
+  const filterSummary = activeFilterSummary(filters, preset, kpiFilter);
 
   const stats = useMemo(() => {
     let conMatch = 0, confirmadas = 0;
@@ -89,9 +113,10 @@ export function ConciliacionView({ rows, onConfirm }: ConciliacionViewProps) {
         <div className="conc-intro">
           <h2 className="conc-title"><i className="mdi mdi-sync-circle"></i>Conciliación de cirugías</h2>
           <p className="conc-sub">
-            <span className="conc-period"><i className="mdi mdi-calendar-range"></i>02 may – 02 jun 2026</span>
+            <span className="conc-period"><i className="mdi mdi-calendar-range"></i>{periodLabel}</span>
             <b>{stats.total}</b> solicitudes · <b>{stats.conMatch}</b> con protocolo compatible · <b style={{ color: 'var(--success)' }}>{stats.confirmadas}</b> confirmadas
           </p>
+          <p className="conc-filter-summary">{filterSummary}</p>
         </div>
         <div className="conc-filters">
           {CONC_FILTERS.map((f) => (
