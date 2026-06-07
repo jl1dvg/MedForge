@@ -913,6 +913,24 @@ class SolicitudesPrefacturaService
         ];
     }
 
+    /** @return array<string,mixed> */
+    public function coberturaMailSender(): array
+    {
+        $config = $this->resolveMailConfigForContext('solicitudes');
+        $fromAddress = trim((string) ($config['from_address'] ?? ''));
+        $fromName = trim((string) ($config['from_name'] ?? ''));
+        $replyToAddress = trim((string) ($config['reply_to_address'] ?? ''));
+        $replyToName = trim((string) ($config['reply_to_name'] ?? ''));
+
+        return [
+            'configured' => $this->isMailConfigValid($config),
+            'from_address' => $fromAddress,
+            'from_name' => $fromName !== '' ? $fromName : $fromAddress,
+            'reply_to_address' => $replyToAddress,
+            'reply_to_name' => $replyToName,
+        ];
+    }
+
     /**
      * @return string[]
      */

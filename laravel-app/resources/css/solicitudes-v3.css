@@ -625,6 +625,24 @@ table.sol-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .file-picker input { display: none; }
 .file-picker i { color: var(--accent); font-size: 17px; }
 .file-picker span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.coverage-modal-backdrop { position: fixed; inset: 60px 0 0 0; z-index: 95; display: grid; place-items: center; padding: 18px; background: rgba(12,26,50,.42); }
+.coverage-modal { width: min(760px, calc(100vw - 36px)); max-height: min(780px, calc(100vh - 96px)); display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-lg); background: #fff; box-shadow: 0 28px 70px rgba(5,24,54,.28); }
+.coverage-modal-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+.coverage-modal-head h3 { margin: 0 0 2px; font-family: var(--font-display); font-size: 18px; font-weight: 700; color: var(--fg-1); letter-spacing: 0; }
+.coverage-modal-head p { margin: 0; font-size: 12px; color: var(--fg-mute); }
+.coverage-modal-body { display: flex; flex-direction: column; gap: 11px; min-height: 0; overflow: auto; padding: 14px 16px; }
+.coverage-modal-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--border); background: #fff; }
+.coverage-sender-box { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-soft); font-size: 12px; color: var(--fg-mute); }
+.coverage-sender-box b { color: var(--fg-1); font-weight: 700; }
+.coverage-sender-box small.danger { color: #b12e41; font-weight: 700; }
+.coverage-pdf-link { display: inline-flex; align-items: center; gap: 7px; width: fit-content; color: var(--accent); font-size: 12.5px; font-weight: 700; text-decoration: none; }
+.coverage-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.coverage-editor { min-height: 210px; max-height: 320px; overflow: auto; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: #fff; color: var(--fg-1); font-size: 13px; line-height: 1.45; text-transform: none; font-weight: 400; outline: none; }
+.coverage-editor:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--primary-fade); }
+.coverage-editor p { margin: 0 0 10px; }
+@media (max-width: 720px) {
+  .coverage-grid { grid-template-columns: 1fr; }
+}
 
 /* ---- Prefactura modal ------------------------------------------ */
 .pf-backdrop { position: fixed; inset: 60px 0 0 0; background: rgba(12,26,50,.4); z-index: 70; display: grid; place-items: center; opacity: 0; pointer-events: none; padding: 18px; transition: opacity var(--dur-base) var(--ease-out); }

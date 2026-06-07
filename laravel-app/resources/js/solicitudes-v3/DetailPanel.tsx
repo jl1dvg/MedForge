@@ -1,10 +1,11 @@
 // ============================================================
 // MedForge · Solicitudes v3 — Panel CRM (workspace por pestañas)
 // ============================================================
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import type { Solicitud, CrmCaseState, CrmCaseProposal } from './types';
 import { DocAvatar, fmtDate, fmtDateTime, fmtSla, SLA_META } from './components';
-import { crmProposalPdfUrl, searchCrmCatalogCodes, searchCrmCatalogPackages } from './api';
+import { crmProposalPdfUrl, resolveCoverageMailDraft, searchCrmCatalogCodes, searchCrmCatalogPackages } from './api';
+import type { CoverageMailDraft } from './api';
 
 const COL_TONE: Record<string, string> = {
   'recibida': '#3d7ac7', 'llamado': '#3d7ac7',
@@ -28,6 +29,10 @@ const money = (n: number | null | undefined) =>
   '$' + Number(n || 0).toLocaleString('es-EC', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const isTaskDone = (status: string) => ['done', 'completed', 'completada', 'completado'].includes(status.toLowerCase());
+const textToHtml = (text: string) => text
+  .split(/\n{2,}/)
+  .map((part) => `<p>${part.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch] ?? ch)).replace(/\n/g, '<br>')}</p>`)
+  .join('');
 
 function buildTimeline(sol: Solicitud, crmCase: CrmCaseState | null) {
   if (crmCase?.activity.length) {
@@ -796,37 +801,42 @@ function TabDocumentos({
   crmCase: CrmCaseState | null;
   onRescrapeDerivacion: (id: number) => Promise<void>;
   onUploadDocument: (file: File, descripcion: string) => Promise<void>;
-  onSendCoverageMail: (payload: { to: string; cc: string; subject: string; body: string; attachment?: File | null }) => Promise<void>;
+  onSendCoverageMail: (payload: { to: string; cc: string; subject: string; body: string; attachment?: File | null; isHtml?: boolean; templateKey?: string | null; derivacionPdf?: string | null }) => Promise<void>;
 }) {
   const adj = sol.detalle.adjuntos;
   const der = sol.detalle.derivacion;
   const coverageMails = sol.detalle.cobertura_mails;
-  const defaultEmail = crmCase?.contacts.primaryEmail !== '—' ? (crmCase?.contacts.primaryEmail ?? '') : '';
   const [scraping, setScraping] = useState(false);
   const [scrapeError, setScrapeError] = useState<string | null>(null);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadDesc, setUploadDesc] = useState('');
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [mailTo, setMailTo] = useState(defaultEmail);
+  const [mailModalOpen, setMailModalOpen] = useState(false);
+  const [mailDraft, setMailDraft] = useState<CoverageMailDraft | null>(null);
+  const [mailLoading, setMailLoading] = useState(false);
+  const [mailTo, setMailTo] = useState('');
   const [mailCc, setMailCc] = useState('');
   const [mailSubject, setMailSubject] = useState(`Cobertura solicitud ${sol.form_id}`);
-  const [mailBody, setMailBody] = useState(`Estimados,\n\nSolicitamos por favor revisar la cobertura de la solicitud ${sol.form_id} del paciente ${sol.full_name}.\n\nProcedimiento: ${sol.procedimiento}.\n\nQuedamos atentos.`);
+  const [mailBodyHtml, setMailBodyHtml] = useState(textToHtml(`Estimados,\n\nSolicitamos por favor revisar la cobertura de la solicitud ${sol.form_id} del paciente ${sol.full_name}.\n\nProcedimiento: ${sol.procedimiento}.\n\nQuedamos atentos.`));
   const [mailAttachment, setMailAttachment] = useState<File | null>(null);
   const [sendingMail, setSendingMail] = useState(false);
   const [mailError, setMailError] = useState<string | null>(null);
+  const mailBodyRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    setMailTo(defaultEmail);
+    setMailModalOpen(false);
+    setMailDraft(null);
+    setMailTo('');
     setMailSubject(`Cobertura solicitud ${sol.form_id}`);
-    setMailBody(`Estimados,\n\nSolicitamos por favor revisar la cobertura de la solicitud ${sol.form_id} del paciente ${sol.full_name}.\n\nProcedimiento: ${sol.procedimiento}.\n\nQuedamos atentos.`);
+    setMailBodyHtml(textToHtml(`Estimados,\n\nSolicitamos por favor revisar la cobertura de la solicitud ${sol.form_id} del paciente ${sol.full_name}.\n\nProcedimiento: ${sol.procedimiento}.\n\nQuedamos atentos.`));
     setMailCc('');
     setMailAttachment(null);
     setUploadFile(null);
     setUploadDesc('');
     setUploadError(null);
     setMailError(null);
-  }, [defaultEmail, sol.form_id, sol.full_name, sol.procedimiento]);
+  }, [sol.id, sol.form_id, sol.full_name, sol.procedimiento]);
 
   const runScrape = async () => {
     if (scraping) return;
@@ -854,8 +864,29 @@ function TabDocumentos({
       setUploading(false);
     }
   };
+  const openCoverageModal = async () => {
+    if (mailLoading) return;
+    setMailLoading(true);
+    setMailError(null);
+    try {
+      const draft = await resolveCoverageMailDraft(sol);
+      const template = draft.template;
+      setMailDraft(draft);
+      setMailTo(template?.to ?? '');
+      setMailCc(template?.cc ?? '');
+      setMailSubject(template?.subject || `Solicitud de cobertura ${sol.form_id}`);
+      setMailBodyHtml(template?.bodyHtml || textToHtml(template?.bodyText || `Estimados,\n\nSolicitamos por favor revisar la cobertura de la solicitud ${sol.form_id} del paciente ${sol.full_name}.\n\nProcedimiento: ${sol.procedimiento}.\n\nQuedamos atentos.`));
+      setMailAttachment(null);
+      setMailModalOpen(true);
+    } catch (err) {
+      setMailError(err instanceof Error ? err.message : 'No se pudo preparar el correo de cobertura.');
+    } finally {
+      setMailLoading(false);
+    }
+  };
   const submitCoverageMail = async () => {
     if (sendingMail) return;
+    const html = mailBodyRef.current?.innerHTML?.trim() || mailBodyHtml;
     setSendingMail(true);
     setMailError(null);
     try {
@@ -863,10 +894,14 @@ function TabDocumentos({
         to: mailTo,
         cc: mailCc,
         subject: mailSubject,
-        body: mailBody,
+        body: html,
         attachment: mailAttachment,
+        isHtml: true,
+        templateKey: mailDraft?.template?.key ?? null,
+        derivacionPdf: sol.detalle.derivacion.archivo_href,
       });
       setMailAttachment(null);
+      setMailModalOpen(false);
     } catch (err) {
       setMailError(err instanceof Error ? err.message : 'No se pudo enviar el correo de cobertura.');
     } finally {
@@ -903,6 +938,10 @@ function TabDocumentos({
       </section>
       <section>
         <h3 className="psec-title"><i className="mdi mdi-email-check-outline"></i>Correos de cobertura <span className="psec-meta">{coverageMails.length}</span></h3>
+        <button className="btn-add full" type="button" disabled={mailLoading} onClick={() => void openCoverageModal()}>
+          <i className={`mdi ${mailLoading ? 'mdi-loading mdi-spin' : 'mdi-email-fast-outline'}`}></i>Solicitar cobertura
+        </button>
+        {mailError && !mailModalOpen && <div className="form-error" role="alert">{mailError}</div>}
         <div className="coverage-mail-list">
           {coverageMails.length === 0 && <div className="mini-empty">Sin correos de cobertura registrados</div>}
           {coverageMails.map((mail) => (
@@ -917,21 +956,6 @@ function TabDocumentos({
               <span className={`status-pill ${mail.status === 'failed' ? 'danger' : 'ok'}`}>{mail.status === 'failed' ? 'fallido' : 'enviado'}</span>
             </div>
           ))}
-        </div>
-        <div className="coverage-mail-form">
-          <input className="fld" value={mailTo} onChange={(e) => setMailTo(e.target.value)} placeholder="Para: correo de cobertura configurado por defecto" />
-          <input className="fld" value={mailCc} onChange={(e) => setMailCc(e.target.value)} placeholder="CC opcional" />
-          <input className="fld" value={mailSubject} onChange={(e) => setMailSubject(e.target.value)} placeholder="Asunto" />
-          <textarea className="fld" rows={4} value={mailBody} onChange={(e) => setMailBody(e.target.value)} placeholder="Mensaje de cobertura" />
-          <label className="file-picker">
-            <input type="file" onChange={(e) => setMailAttachment(e.target.files?.[0] ?? null)} />
-            <i className="mdi mdi-paperclip"></i>
-            <span>{mailAttachment ? mailAttachment.name : 'Adjuntar archivo opcional'}</span>
-          </label>
-          {mailError && <div className="form-error" role="alert">{mailError}</div>}
-          <button className="btn-add full" type="button" disabled={sendingMail || !mailSubject.trim() || !mailBody.trim()} onClick={() => void submitCoverageMail()}>
-            <i className={`mdi ${sendingMail ? 'mdi-loading mdi-spin' : 'mdi-send-outline'}`}></i>Enviar correo de cobertura
-          </button>
         </div>
       </section>
       <section>
@@ -959,6 +983,57 @@ function TabDocumentos({
           </button>
         </div>
       </section>
+      {mailModalOpen && (
+        <div className="coverage-modal-backdrop" role="presentation">
+          <div className="coverage-modal" role="dialog" aria-modal="true" aria-label="Solicitar cobertura por correo">
+            <header className="coverage-modal-head">
+              <div>
+                <h3>Solicitar cobertura por correo</h3>
+                <p>{sol.full_name} · HC {sol.hc_number} · {sol.form_id}</p>
+              </div>
+              <button type="button" className="panel-close" onClick={() => setMailModalOpen(false)} aria-label="Cerrar"><i className="mdi mdi-close"></i></button>
+            </header>
+            <div className="coverage-modal-body">
+              <div className="coverage-sender-box">
+                <span>Desde</span>
+                <b>{mailDraft?.sender.fromName || 'SMTP no configurado'} {mailDraft?.sender.fromAddress ? `<${mailDraft.sender.fromAddress}>` : ''}</b>
+                {mailDraft?.sender.replyToAddress && <small>Responder a: {mailDraft.sender.replyToName || mailDraft.sender.replyToAddress} &lt;{mailDraft.sender.replyToAddress}&gt;</small>}
+                {mailDraft && !mailDraft.sender.configured && <small className="danger">No hay perfil SMTP válido para solicitudes.</small>}
+              </div>
+              {!mailDraft?.template && <div className="cover-alert"><i className="mdi mdi-email-alert-outline"></i>No hay plantilla configurada para esta afiliación; puedes completar el correo manualmente.</div>}
+              {der.archivo_href && <a className="coverage-pdf-link" href={der.archivo_href} target="_blank" rel="noreferrer"><i className="mdi mdi-file-pdf-box"></i>Ver PDF de respaldo de derivación</a>}
+              <div className="coverage-grid">
+                <label className="prop-field"><span>Para</span><input className="fld" value={mailTo} onChange={(e) => setMailTo(e.target.value)} placeholder="Vacío usa destino interno configurado" /></label>
+                <label className="prop-field"><span>CC</span><input className="fld" value={mailCc} onChange={(e) => setMailCc(e.target.value)} placeholder="CC opcional" /></label>
+              </div>
+              <label className="prop-field"><span>Asunto</span><input className="fld" value={mailSubject} onChange={(e) => setMailSubject(e.target.value)} placeholder="Asunto" /></label>
+              <label className="prop-field">
+                <span>Template del correo</span>
+                <div
+                  key={`${sol.id}-${mailDraft?.template?.key ?? 'manual'}-${mailBodyHtml.length}`}
+                  ref={mailBodyRef}
+                  className="coverage-editor"
+                  contentEditable
+                  suppressContentEditableWarning
+                  dangerouslySetInnerHTML={{ __html: mailBodyHtml }}
+                />
+              </label>
+              <label className="file-picker">
+                <input type="file" onChange={(e) => setMailAttachment(e.target.files?.[0] ?? null)} />
+                <i className="mdi mdi-paperclip"></i>
+                <span>{mailAttachment ? mailAttachment.name : 'Adjuntar archivo opcional'}</span>
+              </label>
+              {mailError && <div className="form-error" role="alert">{mailError}</div>}
+            </div>
+            <footer className="coverage-modal-foot">
+              <button className="btn" type="button" onClick={() => setMailModalOpen(false)}>Cancelar</button>
+              <button className="btn btn-primary" type="button" disabled={sendingMail || !mailSubject.trim() || !mailDraft?.sender.configured} onClick={() => void submitCoverageMail()}>
+                <i className={`mdi ${sendingMail ? 'mdi-loading mdi-spin' : 'mdi-send-outline'}`}></i>Enviar cobertura
+              </button>
+            </footer>
+          </div>
+        </div>
+      )}
     </>
   );
 }
@@ -980,7 +1055,7 @@ export interface DetailPanelProps {
   onAddContact: (type: 'phone' | 'email', value: string) => Promise<void>;
   onRescrapeDerivacion: (id: number) => Promise<void>;
   onUploadDocument: (file: File, descripcion: string) => Promise<void>;
-  onSendCoverageMail: (payload: { to: string; cc: string; subject: string; body: string; attachment?: File | null }) => Promise<void>;
+  onSendCoverageMail: (payload: { to: string; cc: string; subject: string; body: string; attachment?: File | null; isHtml?: boolean; templateKey?: string | null; derivacionPdf?: string | null }) => Promise<void>;
   onAddNote: (txt: string) => Promise<void>;
   onDeleteNote: (noteId: number) => Promise<void>;
   onSendWhatsapp: (payload: { recipients: string[]; message: string }) => Promise<void>;

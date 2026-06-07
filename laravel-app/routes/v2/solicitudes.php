@@ -25,6 +25,7 @@ Route::post('/solicitudes/reportes/pdf', [SolicitudesReadController::class, 'rep
 Route::post('/solicitudes/reportes/excel', [SolicitudesReadController::class, 'reporteExcel']);
 Route::post('/solicitudes/derivacion-preseleccion', [SolicitudesPrefacturaController::class, 'derivacionPreseleccion']);
 Route::post('/solicitudes/re-scrape-derivacion', [SolicitudesPrefacturaController::class, 'rescrapeDerivacion']);
+Route::get('/solicitudes/cobertura-mail/sender', [SolicitudesPrefacturaController::class, 'coberturaMailSender']);
 Route::post('/solicitudes/cobertura-mail', [SolicitudesPrefacturaController::class, 'coberturaMail']);
 
 // Canonical Solicitudes v2 paths (writes)

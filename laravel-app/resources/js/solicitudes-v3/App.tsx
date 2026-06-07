@@ -315,7 +315,7 @@ export function App() {
     showToast('Documento subido', 'mdi-paperclip-check');
   }, [selectedId, showToast, syncCrmCounts]);
 
-  const sendCoverage = useCallback(async (payload: { to: string; cc: string; subject: string; body: string; attachment?: File | null }) => {
+  const sendCoverage = useCallback(async (payload: { to: string; cc: string; subject: string; body: string; attachment?: File | null; isHtml?: boolean; templateKey?: string | null; derivacionPdf?: string | null }) => {
     const caseId = selectedId;
     if (caseId == null) return;
     const sol = solicitudes.find((s: Solicitud) => s.id === caseId);

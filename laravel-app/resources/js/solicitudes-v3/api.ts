@@ -994,7 +994,7 @@ export async function uploadCrmDocument(sol: Pick<Solicitud, 'id'>, file: File, 
 
 export async function sendCoverageMail(
   sol: Pick<Solicitud, 'id' | 'form_id' | 'hc_number' | 'afiliacion_label'>,
-  payload: { to: string; cc: string; subject: string; body: string; attachment?: File | null },
+  payload: { to: string; cc: string; subject: string; body: string; attachment?: File | null; isHtml?: boolean; templateKey?: string | null; derivacionPdf?: string | null },
 ): Promise<Detalle> {
   const form = new FormData();
   form.append('solicitud_id', String(sol.id));
@@ -1005,8 +1005,10 @@ export async function sendCoverageMail(
   form.append('cc', payload.cc.trim());
   form.append('subject', payload.subject.trim());
   form.append('body', payload.body.trim());
-  form.append('is_html', 'false');
+  form.append('is_html', payload.isHtml ? '1' : 'false');
   form.append('send_by', 'coverage');
+  if (payload.templateKey) form.append('template_key', payload.templateKey);
+  if (payload.derivacionPdf) form.append('derivacion_pdf', payload.derivacionPdf);
   if (payload.attachment) form.append('attachment', payload.attachment);
 
   const response = await fetch('/v2/solicitudes/cobertura-mail', {
@@ -1025,6 +1027,71 @@ export async function sendCoverageMail(
   }
 
   return fetchDetalle(sol.id);
+}
+
+export type CoverageMailDraft = {
+  sender: {
+    configured: boolean;
+    fromAddress: string;
+    fromName: string;
+    replyToAddress: string;
+    replyToName: string;
+  };
+  template: {
+    key: string | null;
+    subject: string;
+    bodyHtml: string;
+    bodyText: string;
+    to: string;
+    cc: string;
+  } | null;
+};
+
+export async function resolveCoverageMailDraft(sol: Solicitud): Promise<CoverageMailDraft> {
+  const templatePayload = {
+    afiliacion: sol.afiliacion_label,
+    nombre: sol.full_name,
+    hc_number: sol.hc_number,
+    procedimiento: sol.procedimiento,
+    plan: sol.plan_seguro,
+    form_id: sol.form_id,
+    pdf_url: sol.detalle.derivacion.archivo_href ?? '',
+  };
+
+  type TemplateResolveResponse = { success: boolean; template?: Record<string, unknown>; message?: string };
+
+  const [senderResponse, templateResponse] = await Promise.all([
+    jsonFetch<{ success: boolean; sender?: Record<string, unknown> }>('/v2/solicitudes/cobertura-mail/sender'),
+    jsonFetch<TemplateResolveResponse>('/mail-templates/cobertura/resolve', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-TOKEN': csrfToken(),
+      },
+      body: JSON.stringify(templatePayload),
+    }).catch((): TemplateResolveResponse => ({ success: false })),
+  ]);
+
+  const sender = senderResponse.sender ?? {};
+  const template = templateResponse.success ? (templateResponse.template ?? null) : null;
+
+  return {
+    sender: {
+      configured: sender.configured === true,
+      fromAddress: stringValue(sender.from_address),
+      fromName: stringValue(sender.from_name),
+      replyToAddress: stringValue(sender.reply_to_address),
+      replyToName: stringValue(sender.reply_to_name),
+    },
+    template: template ? {
+      key: stringOrNull(template.template_key),
+      subject: stringValue(template.subject ?? template.subject_template, `Solicitud de cobertura ${sol.form_id}`),
+      bodyHtml: stringValue(template.body_html ?? template.body_template_html),
+      bodyText: stringValue(template.body_text ?? template.body_template_text),
+      to: stringValue(template.recipients_to),
+      cc: stringValue(template.recipients_cc),
+    } : null,
+  };
 }
 
 // ---- State rebuild (for optimistic updates) -------------------
