@@ -603,16 +603,28 @@ table.sol-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .cover-row:last-child { border-bottom: 0; }
 .cover-row b { color: var(--fg-1); font-weight: 600; }
 .cover-alert { margin: 4px 0 10px; padding: 9px 12px; background: #fde2e7; border-radius: var(--radius-sm); font-size: 12px; color: #9f2d3e; display: flex; align-items: center; gap: 7px; }
+.coverage-mail-list,
 .doc-list { display: flex; flex-direction: column; gap: 6px; }
+.coverage-mail-row,
 .doc-row { display: flex; align-items: center; gap: 11px; padding: 9px 11px; border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; transition: all var(--dur-fast) var(--ease-out); }
+.doc-row { color: inherit; text-decoration: none; }
+.coverage-mail-row { cursor: default; }
 .doc-row:hover { background: var(--bg-soft); border-color: var(--border-strong); }
 .doc-row.is-disabled { cursor: not-allowed; opacity: .7; }
 .doc-row.is-disabled:hover { background: #fff; border-color: var(--border); }
+.coverage-mail-row.is-failed { border-color: rgba(192,67,84,.24); background: #fff8fa; }
 .doc-ic { width: 34px; height: 34px; border-radius: 9px; background: var(--primary-fade); color: var(--primary); display: grid; place-items: center; font-size: 18px; flex: none; }
 .doc-info { flex: 1; min-width: 0; }
 .doc-name2 { font-size: 12.5px; font-weight: 500; color: var(--fg-1); }
 .doc-meta { font-size: 11px; color: var(--fg-mute); margin-top: 1px; }
+.doc-meta.danger { color: #b12e41; }
 .doc-dl { color: var(--fg-fade); font-size: 18px; }
+.coverage-mail-form,
+.doc-upload-box { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; padding: 10px; border: 1.5px dashed var(--border-strong); border-radius: var(--radius); background: #fff; }
+.file-picker { min-height: 38px; display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-soft); color: var(--fg-2); font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.file-picker input { display: none; }
+.file-picker i { color: var(--accent); font-size: 17px; }
+.file-picker span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ---- Prefactura modal ------------------------------------------ */
 .pf-backdrop { position: fixed; inset: 60px 0 0 0; background: rgba(12,26,50,.4); z-index: 70; display: grid; place-items: center; opacity: 0; pointer-events: none; padding: 18px; transition: opacity var(--dur-base) var(--ease-out); }

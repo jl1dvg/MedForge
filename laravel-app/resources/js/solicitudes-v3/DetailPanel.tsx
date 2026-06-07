@@ -787,15 +787,47 @@ function TabPropuestas({
 
 function TabDocumentos({
   sol,
+  crmCase,
   onRescrapeDerivacion,
+  onUploadDocument,
+  onSendCoverageMail,
 }: {
   sol: Solicitud;
+  crmCase: CrmCaseState | null;
   onRescrapeDerivacion: (id: number) => Promise<void>;
+  onUploadDocument: (file: File, descripcion: string) => Promise<void>;
+  onSendCoverageMail: (payload: { to: string; cc: string; subject: string; body: string; attachment?: File | null }) => Promise<void>;
 }) {
   const adj = sol.detalle.adjuntos;
   const der = sol.detalle.derivacion;
+  const coverageMails = sol.detalle.cobertura_mails;
+  const defaultEmail = crmCase?.contacts.primaryEmail !== '—' ? (crmCase?.contacts.primaryEmail ?? '') : '';
   const [scraping, setScraping] = useState(false);
   const [scrapeError, setScrapeError] = useState<string | null>(null);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadDesc, setUploadDesc] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [mailTo, setMailTo] = useState(defaultEmail);
+  const [mailCc, setMailCc] = useState('');
+  const [mailSubject, setMailSubject] = useState(`Cobertura solicitud ${sol.form_id}`);
+  const [mailBody, setMailBody] = useState(`Estimados,\n\nSolicitamos por favor revisar la cobertura de la solicitud ${sol.form_id} del paciente ${sol.full_name}.\n\nProcedimiento: ${sol.procedimiento}.\n\nQuedamos atentos.`);
+  const [mailAttachment, setMailAttachment] = useState<File | null>(null);
+  const [sendingMail, setSendingMail] = useState(false);
+  const [mailError, setMailError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setMailTo(defaultEmail);
+    setMailSubject(`Cobertura solicitud ${sol.form_id}`);
+    setMailBody(`Estimados,\n\nSolicitamos por favor revisar la cobertura de la solicitud ${sol.form_id} del paciente ${sol.full_name}.\n\nProcedimiento: ${sol.procedimiento}.\n\nQuedamos atentos.`);
+    setMailCc('');
+    setMailAttachment(null);
+    setUploadFile(null);
+    setUploadDesc('');
+    setUploadError(null);
+    setMailError(null);
+  }, [defaultEmail, sol.form_id, sol.full_name, sol.procedimiento]);
+
   const runScrape = async () => {
     if (scraping) return;
     setScraping(true);
@@ -806,6 +838,39 @@ function TabDocumentos({
       setScrapeError(err instanceof Error ? err.message : 'No se pudo re-scrapear la derivación.');
     } finally {
       setScraping(false);
+    }
+  };
+  const submitUpload = async () => {
+    if (!uploadFile || uploading) return;
+    setUploading(true);
+    setUploadError(null);
+    try {
+      await onUploadDocument(uploadFile, uploadDesc);
+      setUploadFile(null);
+      setUploadDesc('');
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : 'No se pudo subir el documento.');
+    } finally {
+      setUploading(false);
+    }
+  };
+  const submitCoverageMail = async () => {
+    if (sendingMail) return;
+    setSendingMail(true);
+    setMailError(null);
+    try {
+      await onSendCoverageMail({
+        to: mailTo,
+        cc: mailCc,
+        subject: mailSubject,
+        body: mailBody,
+        attachment: mailAttachment,
+      });
+      setMailAttachment(null);
+    } catch (err) {
+      setMailError(err instanceof Error ? err.message : 'No se pudo enviar el correo de cobertura.');
+    } finally {
+      setSendingMail(false);
     }
   };
   return (
@@ -837,18 +902,62 @@ function TabDocumentos({
         )}
       </section>
       <section>
+        <h3 className="psec-title"><i className="mdi mdi-email-check-outline"></i>Correos de cobertura <span className="psec-meta">{coverageMails.length}</span></h3>
+        <div className="coverage-mail-list">
+          {coverageMails.length === 0 && <div className="mini-empty">Sin correos de cobertura registrados</div>}
+          {coverageMails.map((mail) => (
+            <div className={`coverage-mail-row ${mail.status === 'failed' ? 'is-failed' : ''}`} key={mail.id ?? `${mail.subject}-${mail.sentAt}`}>
+              <span className="doc-ic"><i className={`mdi ${mail.status === 'failed' ? 'mdi-email-alert-outline' : 'mdi-email-check-outline'}`}></i></span>
+              <div className="doc-info">
+                <div className="doc-name2">{mail.subject}</div>
+                <div className="doc-meta">{mail.to || 'Destinatario por defecto'} · {fmtDateTime(mail.sentAt || mail.createdAt || '')}</div>
+                {mail.attachmentName && <div className="doc-meta">Adjunto: {mail.attachmentName}</div>}
+                {mail.errorMessage && <div className="doc-meta danger">{mail.errorMessage}</div>}
+              </div>
+              <span className={`status-pill ${mail.status === 'failed' ? 'danger' : 'ok'}`}>{mail.status === 'failed' ? 'fallido' : 'enviado'}</span>
+            </div>
+          ))}
+        </div>
+        <div className="coverage-mail-form">
+          <input className="fld" value={mailTo} onChange={(e) => setMailTo(e.target.value)} placeholder="Para: correo de cobertura configurado por defecto" />
+          <input className="fld" value={mailCc} onChange={(e) => setMailCc(e.target.value)} placeholder="CC opcional" />
+          <input className="fld" value={mailSubject} onChange={(e) => setMailSubject(e.target.value)} placeholder="Asunto" />
+          <textarea className="fld" rows={4} value={mailBody} onChange={(e) => setMailBody(e.target.value)} placeholder="Mensaje de cobertura" />
+          <label className="file-picker">
+            <input type="file" onChange={(e) => setMailAttachment(e.target.files?.[0] ?? null)} />
+            <i className="mdi mdi-paperclip"></i>
+            <span>{mailAttachment ? mailAttachment.name : 'Adjuntar archivo opcional'}</span>
+          </label>
+          {mailError && <div className="form-error" role="alert">{mailError}</div>}
+          <button className="btn-add full" type="button" disabled={sendingMail || !mailSubject.trim() || !mailBody.trim()} onClick={() => void submitCoverageMail()}>
+            <i className={`mdi ${sendingMail ? 'mdi-loading mdi-spin' : 'mdi-send-outline'}`}></i>Enviar correo de cobertura
+          </button>
+        </div>
+      </section>
+      <section>
         <h3 className="psec-title"><i className="mdi mdi-paperclip"></i>Documentos adjuntos <span className="psec-meta">{adj.length}</span></h3>
         <div className="doc-list">
           {adj.length === 0 && <div className="mini-empty">Sin documentos adjuntos</div>}
           {adj.map((a, i) => (
-            <div className="doc-row is-disabled" key={i} title="Apertura de documentos pendiente de conectar al repositorio real">
+            <a className={`doc-row ${a.href ? '' : 'is-disabled'}`} key={a.id ?? i} href={a.href ?? undefined} target="_blank" rel="noreferrer" title={a.href ? 'Abrir documento' : 'Documento sin ruta registrada'}>
               <span className="doc-ic"><i className={`mdi ${a.icon}`}></i></span>
-              <div className="doc-info"><div className="doc-name2">{a.nombre}</div><div className="doc-meta">{a.peso} · {fmtDate(a.at)}</div></div>
-              <i className="mdi mdi-download doc-dl"></i>
-            </div>
+              <div className="doc-info"><div className="doc-name2">{a.nombre}</div><div className="doc-meta">{a.peso} · {fmtDate(a.at)}</div>{a.descripcion && <div className="doc-meta">{a.descripcion}</div>}</div>
+              <i className={`mdi ${a.href ? 'mdi-open-in-new' : 'mdi-alert-circle-outline'} doc-dl`}></i>
+            </a>
           ))}
         </div>
-        <button className="btn-add full" disabled title="Subida de documentos pendiente de conectar al repositorio real"><i className="mdi mdi-upload"></i>Subir documento</button>
+        <div className="doc-upload-box">
+          <label className="file-picker">
+            <input type="file" onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)} />
+            <i className="mdi mdi-upload"></i>
+            <span>{uploadFile ? uploadFile.name : 'Seleccionar documento'}</span>
+          </label>
+          <input className="fld" value={uploadDesc} onChange={(e) => setUploadDesc(e.target.value)} placeholder="Descripción del documento" />
+          {uploadError && <div className="form-error" role="alert">{uploadError}</div>}
+          <button className="btn-add full" type="button" disabled={!uploadFile || uploading} onClick={() => void submitUpload()}>
+            <i className={`mdi ${uploading ? 'mdi-loading mdi-spin' : 'mdi-upload'}`}></i>Subir documento
+          </button>
+        </div>
       </section>
     </>
   );
@@ -870,6 +979,8 @@ export interface DetailPanelProps {
   onAssignResponsible: (responsibleId: number | null) => Promise<void>;
   onAddContact: (type: 'phone' | 'email', value: string) => Promise<void>;
   onRescrapeDerivacion: (id: number) => Promise<void>;
+  onUploadDocument: (file: File, descripcion: string) => Promise<void>;
+  onSendCoverageMail: (payload: { to: string; cc: string; subject: string; body: string; attachment?: File | null }) => Promise<void>;
   onAddNote: (txt: string) => Promise<void>;
   onDeleteNote: (noteId: number) => Promise<void>;
   onSendWhatsapp: (payload: { recipients: string[]; message: string }) => Promise<void>;
@@ -880,7 +991,7 @@ export interface DetailPanelProps {
   onOpenPrefactura: (id: number) => void;
 }
 
-export function DetailPanel({ sol, open, onClose, onToggleStep, onAdvance, onToggleTask, onAddTask, onAssignResponsible, onAddContact, onRescrapeDerivacion, crmCase, crmLoading, crmError, onAddNote, onDeleteNote, onSendWhatsapp, onSendEmail, onCreateProposal, onSendProposalEmail, onSendProposalWhatsapp, onOpenPrefactura }: DetailPanelProps) {
+export function DetailPanel({ sol, open, onClose, onToggleStep, onAdvance, onToggleTask, onAddTask, onAssignResponsible, onAddContact, onRescrapeDerivacion, onUploadDocument, onSendCoverageMail, crmCase, crmLoading, crmError, onAddNote, onDeleteNote, onSendWhatsapp, onSendEmail, onCreateProposal, onSendProposalEmail, onSendProposalWhatsapp, onOpenPrefactura }: DetailPanelProps) {
   const [tab, setTab] = useState('seguimiento');
 
   useEffect(() => { if (open) setTab('seguimiento'); }, [sol?.id, open]);
@@ -925,7 +1036,7 @@ export function DetailPanel({ sol, open, onClose, onToggleStep, onAdvance, onTog
               {tab === 'notas' && <TabNotas sol={sol} crmCase={crmCase} onAddNote={onAddNote} onDeleteNote={onDeleteNote} />}
               {tab === 'comunicacion' && <TabComunicacion sol={sol} crmCase={crmCase} onSendWhatsapp={onSendWhatsapp} onSendEmail={onSendEmail} onAddContact={onAddContact} />}
               {tab === 'propuestas' && <TabPropuestas sol={sol} crmCase={crmCase} onCreateProposal={onCreateProposal} onSendProposalEmail={onSendProposalEmail} onSendProposalWhatsapp={onSendProposalWhatsapp} />}
-              {tab === 'documentos' && <TabDocumentos sol={sol} onRescrapeDerivacion={onRescrapeDerivacion} />}
+              {tab === 'documentos' && <TabDocumentos sol={sol} crmCase={crmCase} onRescrapeDerivacion={onRescrapeDerivacion} onUploadDocument={onUploadDocument} onSendCoverageMail={onSendCoverageMail} />}
             </div>
 
             <footer className="panel-foot">

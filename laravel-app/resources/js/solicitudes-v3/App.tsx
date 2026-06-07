@@ -23,6 +23,8 @@ import {
   sendCrmProposalEmail,
   sendCrmProposalWhatsapp,
   rescrapeDerivacion,
+  uploadCrmDocument,
+  sendCoverageMail,
 } from './api';
 import { Kpi } from './components';
 import { Toolbar, Board, TableView } from './Board';
@@ -298,6 +300,34 @@ export function App() {
     showToast(detalle.derivacion.tiene ? 'Derivación actualizada' : 'No se encontró derivación', detalle.derivacion.tiene ? 'mdi-shield-check-outline' : 'mdi-shield-alert-outline');
   }, [solicitudes, showToast]);
 
+  const uploadDocument = useCallback(async (file: File, descripcion: string) => {
+    const caseId = selectedId;
+    if (caseId == null) return;
+    const detalle = await uploadCrmDocument({ id: caseId }, file, descripcion);
+    setSolicitudes((list: Solicitud[]) => list.map((s: Solicitud) => s.id === caseId ? {
+      ...s,
+      detalle,
+      crm: { ...s.crm, adjuntos: detalle.adjuntos.length },
+    } : s));
+    const updated = await fetchCrmCase('solicitud', caseId);
+    syncCrmCounts(caseId, updated);
+    if (selectedIdRef.current === caseId && updated.sourceId === caseId) setCrmCase(updated);
+    showToast('Documento subido', 'mdi-paperclip-check');
+  }, [selectedId, showToast, syncCrmCounts]);
+
+  const sendCoverage = useCallback(async (payload: { to: string; cc: string; subject: string; body: string; attachment?: File | null }) => {
+    const caseId = selectedId;
+    if (caseId == null) return;
+    const sol = solicitudes.find((s: Solicitud) => s.id === caseId);
+    if (!sol) return;
+    const detalle = await sendCoverageMail(sol, payload);
+    setSolicitudes((list: Solicitud[]) => list.map((s: Solicitud) => s.id === caseId ? { ...s, detalle } : s));
+    const updated = await fetchCrmCase('solicitud', caseId);
+    syncCrmCounts(caseId, updated);
+    if (selectedIdRef.current === caseId && updated.sourceId === caseId) setCrmCase(updated);
+    showToast('Correo de cobertura enviado', 'mdi-email-check-outline');
+  }, [selectedId, solicitudes, showToast, syncCrmCounts]);
+
   const sendWhatsapp = useCallback(async (payload: { recipients: string[]; message: string }) => {
     const caseId = selectedId;
     if (caseId == null) return;
@@ -524,6 +554,8 @@ export function App() {
         onAssignResponsible={assignResponsible}
         onAddContact={addContact}
         onRescrapeDerivacion={refreshDerivacion}
+        onUploadDocument={uploadDocument}
+        onSendCoverageMail={sendCoverage}
         crmCase={selectedCrmCase}
         crmLoading={crmLoading}
         crmError={crmError}

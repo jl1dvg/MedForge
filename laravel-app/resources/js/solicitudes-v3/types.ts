@@ -77,10 +77,27 @@ export interface Tarea {
 }
 
 export interface Adjunto {
+  id: number | null;
   nombre: string;
   icon: string;
   peso: string;
   at: string;
+  descripcion: string | null;
+  href: string | null;
+  mime: string | null;
+}
+
+export interface CoberturaMail {
+  id: number | null;
+  status: string;
+  subject: string;
+  to: string;
+  cc: string;
+  templateKey: string | null;
+  attachmentName: string | null;
+  sentAt: string | null;
+  createdAt: string | null;
+  errorMessage: string | null;
 }
 
 export interface DiagnosticoCIE {
@@ -165,6 +182,7 @@ export interface Detalle {
   tareas: Tarea[];
   propuestas: Propuesta[];
   adjuntos: Adjunto[];
+  cobertura_mails: CoberturaMail[];
   examen: Examen;
   agenda: Agenda;
 }

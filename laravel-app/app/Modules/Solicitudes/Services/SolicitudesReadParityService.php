@@ -3429,7 +3429,7 @@ class SolicitudesReadParityService
     {
         try {
             $rows = DB::select(
-                'SELECT id, solicitud_id, template_key, status, error_message, sent_at, created_at, sent_by_user_id
+                'SELECT id, solicitud_id, template_key, status, error_message, to_emails, cc_emails, subject, attachment_name, sent_at, created_at, sent_by_user_id
                  FROM solicitud_mail_log
                  WHERE solicitud_id = ?
                  ORDER BY COALESCE(sent_at, created_at) DESC

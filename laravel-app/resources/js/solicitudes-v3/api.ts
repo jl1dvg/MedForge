@@ -340,6 +340,7 @@ function emptyDetalle(): Detalle {
     tareas: [],
     propuestas: [],
     adjuntos: [],
+    cobertura_mails: [],
     examen: { av_od: '—', av_oi: '—', pio_od: 0, pio_oi: 0, plan: '—', examen_fisico: '' },
     agenda: { sala: '—', fecha: null, fecha_fin: null, duracion: 30, anestesia: '—', doctor: '—', origen: 'Sin agenda', sigcenter_agenda_id: null },
   };
@@ -735,7 +736,8 @@ type DetallePayload = {
   tareas?: Array<{ titulo?: string; descripcion?: string; asignado?: string; responsable_nombre?: string; fecha_vencimiento?: string; fecha?: string; prioridad?: string; estado?: string; completed_at?: string | null; done?: boolean; slug?: string }>;
   checklist?: Array<{ slug?: string; label?: string; titulo?: string; estado?: string; completed?: boolean; done?: boolean; completed_at?: string | null }>;
   propuestas?: Array<Record<string, unknown>>;
-  adjuntos?: Array<{ nombre?: string; name?: string; mime_type?: string; size?: string; created_at?: string }>;
+  adjuntos?: Array<{ id?: number; nombre?: string; nombre_original?: string; name?: string; mime_type?: string; tamano_bytes?: number; size?: string; created_at?: string; descripcion?: string; url?: string; href?: string; ruta_relativa?: string }>;
+  cobertura_mails?: Array<{ id?: number; status?: string; subject?: string; to_emails?: string; cc_emails?: string; template_key?: string; attachment_name?: string; sent_at?: string; created_at?: string; error_message?: string }>;
   paciente?: Record<string, unknown>;
   diagnostico?: Array<{ dx_code?: string; codigo?: string; codigo_cie?: string; cie?: string; descripcion?: string; desc?: string; diagnostico?: string; lateralidad?: string }> | { dx_code?: string; codigo?: string; codigo_cie?: string; cie?: string; descripcion?: string; desc?: string; diagnostico?: string; lateralidad?: string };
   diagnosticos?: Array<{ dx_code?: string; codigo?: string; codigo_cie?: string; cie?: string; descripcion?: string; desc?: string; diagnostico?: string; lateralidad?: string }>;
@@ -771,13 +773,38 @@ export function mapDetalleResponse(d: DetallePayload): Detalle {
   const adjuntos = (d.adjuntos ?? []).map((a) => {
     const mime = (a.mime_type ?? '') as string;
     const icon = mime.includes('pdf') ? 'mdi-file-pdf-box' : mime.includes('image') ? 'mdi-image' : 'mdi-paperclip';
+    const sizeBytes = Number(a.tamano_bytes);
+    const peso = a.size
+      ?? (Number.isFinite(sizeBytes) && sizeBytes > 0
+        ? `${Math.max(1, Math.round(sizeBytes / 1024))} KB`
+        : '—');
+    const href = cleanString(a.url)
+      ?? cleanString(a.href)
+      ?? (cleanString(a.ruta_relativa) ? `/${String(a.ruta_relativa).replace(/^\/+/, '')}` : null);
     return {
-      nombre: (a.nombre ?? a.name ?? 'Archivo') as string,
+      id: a.id == null ? null : Number(a.id),
+      nombre: (a.nombre ?? a.nombre_original ?? a.name ?? 'Archivo') as string,
       icon,
-      peso: (a.size ?? '—') as string,
+      peso,
       at: (a.created_at ?? '') as string,
+      descripcion: cleanString(a.descripcion),
+      href,
+      mime: cleanString(mime),
     };
   });
+
+  const coberturaMails = (d.cobertura_mails ?? []).map((mail) => ({
+    id: mail.id == null ? null : Number(mail.id),
+    status: String(mail.status ?? 'sent'),
+    subject: String(mail.subject ?? 'Correo de cobertura'),
+    to: String(mail.to_emails ?? ''),
+    cc: String(mail.cc_emails ?? ''),
+    templateKey: cleanString(mail.template_key),
+    attachmentName: cleanString(mail.attachment_name),
+    sentAt: cleanString(mail.sent_at),
+    createdAt: cleanString(mail.created_at),
+    errorMessage: cleanString(mail.error_message),
+  }));
 
   const rawDiagnosticos = d.diagnosticos?.length
     ? d.diagnosticos
@@ -888,6 +915,7 @@ export function mapDetalleResponse(d: DetallePayload): Detalle {
     tareas,
     propuestas,
     adjuntos,
+    cobertura_mails: coberturaMails,
     examen: {
       av_od: String(cons.av_od ?? '—'),
       av_oi: String(cons.av_oi ?? '—'),
@@ -936,6 +964,64 @@ export async function rescrapeDerivacion(sol: Pick<Solicitud, 'id' | 'form_id' |
 
   if (!response.success) {
     throw new Error(response.message || 'No se pudo re-scrapear la derivación.');
+  }
+
+  return fetchDetalle(sol.id);
+}
+
+export async function uploadCrmDocument(sol: Pick<Solicitud, 'id'>, file: File, descripcion: string): Promise<Detalle> {
+  const form = new FormData();
+  form.append('archivo', file);
+  if (descripcion.trim()) form.append('descripcion', descripcion.trim());
+
+  const response = await fetch(`/v2/solicitudes/${sol.id}/crm/adjuntos`, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'X-Requested-With': 'XMLHttpRequest',
+      'X-CSRF-TOKEN': csrfToken(),
+    },
+    body: form,
+  });
+
+  const data = await response.json().catch(() => null) as { success?: boolean; error?: string } | null;
+  if (!response.ok || data?.success === false) {
+    throw new Error(data?.error || `HTTP ${response.status}`);
+  }
+
+  return fetchDetalle(sol.id);
+}
+
+export async function sendCoverageMail(
+  sol: Pick<Solicitud, 'id' | 'form_id' | 'hc_number' | 'afiliacion_label'>,
+  payload: { to: string; cc: string; subject: string; body: string; attachment?: File | null },
+): Promise<Detalle> {
+  const form = new FormData();
+  form.append('solicitud_id', String(sol.id));
+  form.append('form_id', sol.form_id);
+  form.append('hc_number', sol.hc_number);
+  form.append('afiliacion', sol.afiliacion_label);
+  form.append('to', payload.to.trim());
+  form.append('cc', payload.cc.trim());
+  form.append('subject', payload.subject.trim());
+  form.append('body', payload.body.trim());
+  form.append('is_html', 'false');
+  form.append('send_by', 'coverage');
+  if (payload.attachment) form.append('attachment', payload.attachment);
+
+  const response = await fetch('/v2/solicitudes/cobertura-mail', {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'X-Requested-With': 'XMLHttpRequest',
+      'X-CSRF-TOKEN': csrfToken(),
+    },
+    body: form,
+  });
+
+  const data = await response.json().catch(() => null) as { success?: boolean; error?: string; message?: string } | null;
+  if (!response.ok || data?.success === false) {
+    throw new Error(data?.error || data?.message || `HTTP ${response.status}`);
   }
 
   return fetchDetalle(sol.id);
