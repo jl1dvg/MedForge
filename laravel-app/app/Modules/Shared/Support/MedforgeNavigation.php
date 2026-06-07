@@ -251,9 +251,8 @@ class MedforgeNavigation
         $quirurgico = $group('Quirurgico', 'mdi mdi-hospital-box-outline', array_filter([
             $label('Quirúrgicos'),
             $canAccessSolicitudes
-                ? $link('Solicitudes', '/v2/solicitudes', 'mdi mdi-file-document-outline', [
-                'prefix' => ['/v2/solicitudes'],
-                'exclude_prefix' => ['/v2/solicitudes/dashboard', '/v2/solicitudes/turnero'],
+                ? $link('Solicitudes', '/v3/solicitudes', 'mdi mdi-file-document-outline', [
+                'prefix' => ['/v3/solicitudes'],
             ])
                 : null,
             $canAccessSolicitudesTurnero
@@ -495,7 +494,7 @@ class MedforgeNavigation
             ] : null,
             $canAccessSolicitudes ? [
                 'label' => 'Solicitudes',
-                'href' => '/v2/solicitudes',
+                'href' => '/v3/solicitudes',
                 'icon' => 'mdi mdi-file-document-outline',
             ] : null,
             $canAccessExamenes ? [

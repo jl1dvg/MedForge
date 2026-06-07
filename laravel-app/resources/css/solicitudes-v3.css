@@ -116,9 +116,8 @@ body {
 
 /* ---- Toolbar / filters ----------------------------------------- */
 .toolbar {
-  display: flex; align-items: center; gap: 10px; flex-wrap: nowrap;
-  padding: 14px 22px; flex: none; overflow-x: auto;
-  scrollbar-width: thin;
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 14px 22px; flex: none;
 }
 .search-box {
   display: flex; align-items: center; gap: 8px; background: #fff;
@@ -177,7 +176,7 @@ body {
 .preset.is-active { background: var(--accent); border-color: var(--accent); color: #fff; box-shadow: 0 4px 12px rgba(81,86,190,.28); }
 .preset.is-danger.is-active { background: var(--danger); border-color: var(--danger); box-shadow: 0 4px 12px rgba(238,49,88,.3); }
 
-.toolbar-spacer { display: none; }
+.toolbar-spacer { flex: 1 1 auto; }
 .view-toggle { display: inline-flex; background: var(--bg-softer); border-radius: var(--radius); padding: 3px; gap: 2px; flex: 0 0 auto; }
 .view-toggle button {
   height: 34px; padding: 0 14px; border: 0; background: transparent; border-radius: 6px;
