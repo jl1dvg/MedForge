@@ -55,6 +55,7 @@ Route::middleware(['app.auth', 'app.permission:administrativo,derivaciones.view,
 
 Route::middleware(['app.auth', 'app.permission:administrativo,solicitudes.view,solicitudes.update,solicitudes.manage'])->group(function (): void {
     Route::get('/v2/solicitudes', [SolicitudesUiController::class, 'index']);
+    Route::get('/v3/solicitudes', [SolicitudesUiController::class, 'indexV3']);
 });
 
 Route::middleware(['app.auth', 'app.permission:administrativo,solicitudes.dashboard.view,solicitudes.view,solicitudes.update,solicitudes.manage'])->group(function (): void {
@@ -210,7 +211,7 @@ Route::middleware(['app.auth', 'app.permission:administrativo,codes.manage'])->g
 Route::middleware(['app.auth'])->group(function (): void {
     Route::get('/v2/whatsapp', [WhatsappUiController::class, 'hub'])
         ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.view,whatsapp.chat.send,whatsapp.chat.assign,whatsapp.chat.supervise,whatsapp.templates.manage,whatsapp.autoresponder.manage,settings.manage');
-    Route::get('/v2/whatsapp/chat', [WhatsappUiController::class, 'chatV3'])
+    Route::get('/v2/whatsapp/chat', [WhatsappUiController::class, 'chat'])
         ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.chat.view,whatsapp.chat.send,whatsapp.chat.assign,whatsapp.chat.supervise,settings.manage')
         ->middleware('whatsapp.feature:ui,/whatsapp/chat');
     Route::get('/v2/whatsapp/chat-v3', [WhatsappUiController::class, 'chatV3'])

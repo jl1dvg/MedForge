@@ -17,6 +17,7 @@ Route::get('/solicitudes/crm/options', [SolicitudesReadController::class, 'crmOp
 Route::get('/solicitudes/crm/catalog/codes', [SolicitudesReadController::class, 'crmBuscarCodigos']);
 Route::get('/solicitudes/crm/catalog/packages', [SolicitudesReadController::class, 'crmBuscarPaquetes']);
 Route::get('/solicitudes/{id}/crm', [SolicitudesReadController::class, 'crmResumen'])->whereNumber('id');
+Route::get('/solicitudes/{id}/detalle', [SolicitudesReadController::class, 'detalleCompleto'])->whereNumber('id');
 Route::get('/solicitudes/conciliacion-cirugias', [SolicitudesReadController::class, 'conciliacionCirugias']);
 Route::get('/solicitudes/prefactura', [SolicitudesPrefacturaController::class, 'prefactura']);
 Route::get('/solicitudes/derivacion', [SolicitudesPrefacturaController::class, 'derivacion']);
@@ -24,6 +25,7 @@ Route::post('/solicitudes/reportes/pdf', [SolicitudesReadController::class, 'rep
 Route::post('/solicitudes/reportes/excel', [SolicitudesReadController::class, 'reporteExcel']);
 Route::post('/solicitudes/derivacion-preseleccion', [SolicitudesPrefacturaController::class, 'derivacionPreseleccion']);
 Route::post('/solicitudes/re-scrape-derivacion', [SolicitudesPrefacturaController::class, 'rescrapeDerivacion']);
+Route::get('/solicitudes/cobertura-mail/sender', [SolicitudesPrefacturaController::class, 'coberturaMailSender']);
 Route::post('/solicitudes/cobertura-mail', [SolicitudesPrefacturaController::class, 'coberturaMail']);
 
 // Canonical Solicitudes v2 paths (writes)
@@ -65,6 +67,7 @@ Route::get('/api/solicitudes/crm/options', [SolicitudesReadController::class, 'c
 Route::get('/api/solicitudes/crm/catalog/codes', [SolicitudesReadController::class, 'crmBuscarCodigos']);
 Route::get('/api/solicitudes/crm/catalog/packages', [SolicitudesReadController::class, 'crmBuscarPaquetes']);
 Route::get('/api/solicitudes/{id}/crm', [SolicitudesReadController::class, 'crmResumen'])->whereNumber('id');
+Route::get('/api/solicitudes/{id}/detalle', [SolicitudesReadController::class, 'detalleCompleto'])->whereNumber('id');
 Route::get('/api/solicitudes/conciliacion-cirugias', [SolicitudesReadController::class, 'conciliacionCirugias']);
 Route::get('/api/solicitudes/doctores', [SolicitudesReadController::class, 'doctores']);
 Route::post('/api/solicitudes/estado/actualizar', [SolicitudesWriteController::class, 'actualizarEstado']);
