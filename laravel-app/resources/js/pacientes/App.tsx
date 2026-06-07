@@ -156,43 +156,27 @@ export default function App() {
 
   return (
     <div className="pac-root">
-      {/* Module topbar */}
-      <div className="mod-topbar">
-        <div className="mod-topbar-left">
-          {route !== 'list' && (
-            <button className="back-btn" onClick={goList}>
-              <i className="mdi mdi-arrow-left" />
-              <span>Pacientes</span>
-            </button>
-          )}
-          <h1 className="mod-title">
-            <i className="mdi mdi-account-group-outline" />
-            {route === 'list' && 'Pacientes'}
-            {route === 'detail' && (detailPatient?.display_name || 'Cargando…')}
-            {route === 'create' && 'Nuevo paciente'}
-          </h1>
-        </div>
-        {route === 'list' && (
-          <div className="mod-topbar-right">
-            <div className="search-wrap">
-              <i className="mdi mdi-magnify" />
-              <input
-                type="search"
-                placeholder="Buscar por nombre, cédula, HC…"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-              />
-              {search && (
-                <button onClick={() => setSearch('')}><i className="mdi mdi-close" /></button>
-              )}
-            </div>
-            <button className="wbtn primary" onClick={goCreate}>
-              <i className="mdi mdi-account-plus" />
-              Nuevo paciente
-            </button>
+      {/* Search + action bar — list view only */}
+      {route === 'list' && (
+        <div className="pac-searchbar">
+          <div className="psb-search">
+            <i className="mdi mdi-magnify" />
+            <input
+              type="search"
+              placeholder="Buscar por nombre, cédula, HC, teléfono…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+            {search && (
+              <button className="psb-clear" onClick={() => setSearch('')}><i className="mdi mdi-close" /></button>
+            )}
           </div>
-        )}
-      </div>
+          <button className="wbtn primary" onClick={goCreate}>
+            <i className="mdi mdi-account-plus" />
+            Nuevo paciente
+          </button>
+        </div>
+      )}
 
       {/* Views */}
       {route === 'list' && (

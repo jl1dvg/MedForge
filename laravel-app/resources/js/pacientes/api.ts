@@ -103,7 +103,7 @@ function normalizePatient(raw: any, id: number): Patient {
 }
 
 export async function fetchPatientList(): Promise<Patient[]> {
-  const res = await fetch('/v2/pacientes?limit=5000&offset=0', {
+  const res = await fetch('/v2/pacientes', {
     headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
   });
   if (!res.ok) throw new Error('Error cargando lista de pacientes');

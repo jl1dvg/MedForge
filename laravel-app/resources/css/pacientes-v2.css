@@ -876,3 +876,55 @@ table.pac-table {
 
 /* ---- card-row helper ---- */
 .card-row { background: var(--bg-card); border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.06); margin-bottom: 8px; }
+
+/* ---- pac-searchbar: search + new patient button ---- */
+.pac-searchbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 20px 0;
+  max-width: 900px;
+}
+.psb-search {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  background: var(--bg-card);
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  padding: 0 12px;
+  height: 42px;
+  transition: border-color .15s, box-shadow .15s;
+}
+.psb-search:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(81,86,190,.12);
+}
+.psb-search > .mdi {
+  color: var(--fg-mute);
+  font-size: 17px;
+  flex-shrink: 0;
+  margin-right: 8px;
+}
+.psb-search input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 14px;
+  color: var(--fg-1);
+  font-family: inherit;
+}
+.psb-search input::placeholder { color: var(--fg-mute); }
+.psb-search input::-webkit-search-cancel-button { display: none; }
+.psb-clear {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--fg-mute);
+  font-size: 16px;
+  padding: 0 0 0 6px;
+  line-height: 1;
+}
+.psb-clear:hover { color: var(--fg-1); }

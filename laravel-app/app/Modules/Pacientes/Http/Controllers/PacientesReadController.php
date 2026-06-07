@@ -47,88 +47,32 @@ class PacientesReadController
             ]);
         }
 
-        $limit  = min(max((int) $request->query('limit', 50), 1), 10000);
-        $offset = max((int) $request->query('offset', 0), 0);
-
         /** @var PDO $pdo */
         $pdo = DB::connection()->getPdo();
 
         $total = (int) $pdo->query('SELECT COUNT(*) FROM patient_data')->fetchColumn();
 
+        // Simple query: no JOINs — fast even on 10k+ rows.
+        // Richer data (sede, médico, próxima cita) is loaded per-patient via /detalles/section.
         $sql = <<<'SQL'
             SELECT
                 p.hc_number,
                 p.fname,
                 p.lname,
-                p.lname2,
+                COALESCE(p.lname2, '')       AS lname2,
                 p.afiliacion,
                 p.fecha_nacimiento,
                 p.sexo,
-                COALESCE(p.celular, '') AS telefono,
-                COALESCE(p.email, '')   AS email,
-                COALESCE(p.direccion, '') AS direccion,
+                COALESCE(p.celular, '')       AS telefono,
+                COALESCE(p.email, '')         AS email,
+                COALESCE(p.direccion, '')     AS direccion,
                 COALESCE(p.ciudad, 'Guayaquil') AS ciudad,
-                p.created_at,
-                COALESCE(ultima.ultima_fecha, p.created_at) AS ultima_visita,
-                medico_rec.doctor      AS medico_nombre,
-                medico_rec.id_sede     AS sede,
-                prox.fecha             AS proxima_fecha,
-                prox.hora              AS proxima_hora,
-                prox.procedimiento_proyectado AS proxima_tipo,
-                prox.doctor            AS proxima_doctor,
-                COALESCE(sol.sol_activa, 0) AS sol_activa
+                p.created_at
             FROM patient_data p
-
-            /* Última fecha de consulta */
-            LEFT JOIN (
-                SELECT hc_number, MAX(fecha) AS ultima_fecha
-                FROM consulta_data
-                GROUP BY hc_number
-            ) ultima ON ultima.hc_number = p.hc_number
-
-            /* Médico y sede más reciente */
-            LEFT JOIN (
-                SELECT pp.hc_number, pp.doctor, pp.id_sede,
-                       MAX(pp.id) AS max_id
-                FROM procedimiento_proyectado pp
-                WHERE COALESCE(pp.sigcenter_present, 1) = 1
-                GROUP BY pp.hc_number
-            ) medico_rec ON medico_rec.hc_number = p.hc_number
-
-            /* Próxima cita futura */
-            LEFT JOIN (
-                SELECT pp.hc_number,
-                       pp.fecha, pp.hora,
-                       pp.procedimiento_proyectado,
-                       pp.doctor
-                FROM procedimiento_proyectado pp
-                INNER JOIN (
-                    SELECT hc_number, MIN(fecha) AS min_fecha
-                    FROM procedimiento_proyectado
-                    WHERE fecha >= CURDATE()
-                      AND COALESCE(sigcenter_present, 1) = 1
-                    GROUP BY hc_number
-                ) fut ON fut.hc_number = pp.hc_number AND fut.min_fecha = pp.fecha
-                WHERE pp.fecha >= CURDATE()
-                  AND COALESCE(pp.sigcenter_present, 1) = 1
-            ) prox ON prox.hc_number = p.hc_number
-
-            /* Solicitudes activas */
-            LEFT JOIN (
-                SELECT hc_number,
-                       SUM(CASE WHEN estado IN ('pendiente','aprobada','en proceso','agendada','por aprobar') THEN 1 ELSE 0 END) AS sol_activa
-                FROM solicitud_procedimiento
-                WHERE procedimiento IS NOT NULL AND TRIM(procedimiento) <> ''
-                GROUP BY hc_number
-            ) sol ON sol.hc_number = p.hc_number
-
             ORDER BY p.hc_number DESC
-            LIMIT :limit OFFSET :offset
         SQL;
 
         $stmt = $pdo->prepare($sql);
-        $stmt->bindValue(':limit',  $limit,  PDO::PARAM_INT);
-        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
         $stmt->execute();
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
@@ -136,8 +80,6 @@ class PacientesReadController
             'data' => $rows,
             'meta' => [
                 'total'  => $total,
-                'limit'  => $limit,
-                'offset' => $offset,
                 'count'  => count($rows),
             ],
         ]);
