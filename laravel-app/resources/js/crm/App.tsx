@@ -9,8 +9,9 @@ import { MiDia } from './components/MiDia';
 import { TableView } from './components/TableView';
 import { DetailPanel } from './components/DetailPanel';
 import { CloseModal } from './components/CloseModal';
+import { MetricsView } from './components/MetricsView';
 
-type View = 'embudo' | 'midia' | 'tabla';
+type View = 'embudo' | 'midia' | 'tabla' | 'metricas';
 
 interface Toast { msg: string; icon: string; kind: string; }
 
@@ -249,6 +250,9 @@ export default function App() {
           <button className={view === 'tabla' ? 'is-active' : ''} onClick={() => setView('tabla')}>
             <i className="mdi mdi-table"></i><span className="seg-lbl">Tabla</span>
           </button>
+          <button className={view === 'metricas' ? 'is-active' : ''} onClick={() => setView('metricas')}>
+            <i className="mdi mdi-chart-box-outline"></i><span className="seg-lbl">Métricas</span>
+          </button>
         </div>
 
         <button className={`chip-toggle t-urgent${preset === 'urgentes' ? ' is-active' : ''}`} onClick={() => setPreset(p => p === 'urgentes' ? '' : 'urgentes')}>
@@ -293,6 +297,7 @@ export default function App() {
           {view === 'embudo' && <Board byStage={byStage} onOpen={setSelectedId} onQuick={onQuick} dnd={dnd} groupPhases={groupPhases} />}
           {view === 'tabla' && <TableView rows={sorted} onOpen={setSelectedId} sort={sort} setSort={setSort} />}
           {view === 'midia' && <MiDia ops={filtered} onOpen={setSelectedId} onQuick={onQuick} onAdvance={advance} />}
+          {view === 'metricas' && <MetricsView ops={filtered} />}
         </>
       )}
 
