@@ -89,7 +89,70 @@ class CrmCaseService
             'activity' => $this->activityService->forCase($normalizedSourceType, $sourceId),
             'proposals' => $this->proposals($sourceId, $caseRow, $detailRow),
             'documents' => $this->documents($sourceId),
+            'options' => $this->options(),
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
+    public function update(string $sourceType, int $sourceId, array $payload, ?int $userId): array
+    {
+        $normalizedSourceType = $this->normalizeSourceType($sourceType);
+        if ($normalizedSourceType !== 'solicitud') {
+            throw new RuntimeException('Tipo de caso CRM no soportado');
+        }
+
+        $this->assertSolicitudCaseExists($sourceId);
+
+        $patch = [];
+        foreach (['responsable_id', 'pipeline_stage', 'fuente', 'contacto_email', 'contacto_telefono'] as $field) {
+            if (array_key_exists($field, $payload)) {
+                $patch[$field] = $payload[$field];
+            }
+        }
+
+        if ($patch === []) {
+            throw new RuntimeException('No hay cambios CRM para guardar');
+        }
+
+        $this->upsertSolicitudCrmDetails($sourceId, $patch);
+
+        return $this->show($normalizedSourceType, $sourceId);
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
+    public function storeContact(string $sourceType, int $sourceId, array $payload, ?int $userId): array
+    {
+        $normalizedSourceType = $this->normalizeSourceType($sourceType);
+        if ($normalizedSourceType !== 'solicitud') {
+            throw new RuntimeException('Tipo de caso CRM no soportado');
+        }
+
+        $this->assertSolicitudCaseExists($sourceId);
+
+        $type = strtolower(trim((string) ($payload['type'] ?? $payload['kind'] ?? '')));
+        $value = trim((string) ($payload['value'] ?? ''));
+        if ($value === '') {
+            throw new RuntimeException('El contacto es obligatorio');
+        }
+
+        if (in_array($type, ['phone', 'telefono', 'whatsapp'], true)) {
+            $this->upsertSolicitudCrmDetails($sourceId, ['contacto_telefono' => $value]);
+        } elseif (in_array($type, ['email', 'correo'], true)) {
+            if (!filter_var($value, FILTER_VALIDATE_EMAIL)) {
+                throw new RuntimeException('Correo no válido');
+            }
+            $this->upsertSolicitudCrmDetails($sourceId, ['contacto_email' => $value]);
+        } else {
+            throw new RuntimeException('Tipo de contacto no soportado');
+        }
+
+        return $this->show($normalizedSourceType, $sourceId);
     }
 
     /**
@@ -301,9 +364,16 @@ class CrmCaseService
         }
 
         $update = [];
-        foreach (['title', 'titulo', 'priority', 'status', 'assigned_to', 'due_at'] as $column) {
+        foreach (['title', 'titulo', 'priority', 'assigned_to', 'due_at'] as $column) {
             if (array_key_exists($column, $payload) && Schema::hasColumn('crm_tasks', $column)) {
                 $update[$column] = $payload[$column];
+            }
+        }
+        if (array_key_exists('status', $payload) && Schema::hasColumn('crm_tasks', 'status')) {
+            $status = $this->normalizeTaskWriteStatus($payload['status']);
+            $update['status'] = $status;
+            if (Schema::hasColumn('crm_tasks', 'completed_at')) {
+                $update['completed_at'] = $status === 'completada' ? now() : null;
             }
         }
         if (array_key_exists('due_at', $payload) && Schema::hasColumn('crm_tasks', 'due_date')) {
@@ -738,13 +808,13 @@ class CrmCaseService
     private function scopeTaskToCaseForWrite(mixed $query, string $sourceType, int $sourceId): void
     {
         if ($this->hasColumns('crm_tasks', ['source_type', 'source_id'])) {
-            $query->where('source_type', $sourceType)->where('source_id', $sourceId);
+            $query->whereIn('source_type', [$sourceType, 'solicitud_procedimiento', 'solicitudes'])->where('source_id', $sourceId);
 
             return;
         }
 
         if ($this->hasColumns('crm_tasks', ['source_module', 'source_ref_id'])) {
-            $query->where('source_module', $sourceType)->where('source_ref_id', (string) $sourceId);
+            $query->whereIn('source_module', [$sourceType, 'solicitud_procedimiento', 'solicitudes'])->where('source_ref_id', (string) $sourceId);
 
             return;
         }
@@ -841,13 +911,15 @@ class CrmCaseService
     {
         $primaryPhone = $this->firstFilled($detailRow, ['contacto_telefono', 'telefono', 'primary_phone']);
         $primaryEmail = $this->firstFilled($detailRow, ['contacto_email', 'email', 'primary_email']);
+        $whatsapp = $this->whatsappContext($sourceId, $caseRow, $detailRow);
+        $whatsappNumber = $this->valueOrNull($whatsapp['wa_number'] ?? null);
 
         return [
-            'primary_phone' => $primaryPhone ?? $this->firstFilled($caseRow, ['telefono', 'paciente_telefono']),
+            'primary_phone' => $primaryPhone ?? $this->firstFilled($caseRow, ['telefono', 'paciente_telefono']) ?? $whatsappNumber,
             'alternate_phones' => [],
             'primary_email' => $primaryEmail ?? $this->firstFilled($caseRow, ['email', 'paciente_email']),
             'alternate_emails' => [],
-            'whatsapp_context' => $this->whatsappContext($sourceId, $caseRow, $detailRow),
+            'whatsapp_context' => $whatsapp,
         ];
     }
 
@@ -957,6 +1029,126 @@ class CrmCaseService
         }
 
         return $number;
+    }
+
+    private function normalizeTaskWriteStatus(mixed $status): string
+    {
+        $value = strtolower(trim((string) $status));
+
+        if (in_array($value, ['done', 'completed', 'completada', 'completado', 'finalizada', 'finalizado'], true)) {
+            return 'completada';
+        }
+
+        if (in_array($value, ['cancelled', 'canceled', 'cancelada', 'cancelado', 'anulada', 'anulado'], true)) {
+            return 'cancelada';
+        }
+
+        if (in_array($value, ['in_progress', 'en_progreso', 'en_proceso'], true)) {
+            return 'en_progreso';
+        }
+
+        return 'pendiente';
+    }
+
+    /**
+     * @param array<string, mixed> $patch
+     */
+    private function upsertSolicitudCrmDetails(int $sourceId, array $patch): void
+    {
+        if (!Schema::hasTable('solicitud_crm_detalles') || !Schema::hasColumn('solicitud_crm_detalles', 'solicitud_id')) {
+            throw new RuntimeException('Detalles CRM no disponibles');
+        }
+
+        $allowed = [];
+        foreach (['responsable_id', 'pipeline_stage', 'fuente', 'contacto_email', 'contacto_telefono'] as $column) {
+            if (array_key_exists($column, $patch) && Schema::hasColumn('solicitud_crm_detalles', $column)) {
+                $allowed[$column] = $this->normalizeDetailValue($patch[$column]);
+            }
+        }
+
+        if ($allowed === []) {
+            throw new RuntimeException('Detalles CRM no disponibles');
+        }
+
+        if (isset($allowed['responsable_id']) && $allowed['responsable_id'] !== null) {
+            $allowed['responsable_id'] = (int) $allowed['responsable_id'];
+        }
+
+        if (Schema::hasColumn('solicitud_crm_detalles', 'updated_at')) {
+            $allowed['updated_at'] = now();
+        }
+
+        $exists = DB::table('solicitud_crm_detalles')->where('solicitud_id', $sourceId)->exists();
+        if ($exists) {
+            DB::table('solicitud_crm_detalles')->where('solicitud_id', $sourceId)->update($allowed);
+
+            return;
+        }
+
+        $insert = ['solicitud_id' => $sourceId] + $allowed;
+        if (Schema::hasColumn('solicitud_crm_detalles', 'created_at')) {
+            $insert['created_at'] = now();
+        }
+
+        DB::table('solicitud_crm_detalles')->insert($insert);
+    }
+
+    private function normalizeDetailValue(mixed $value): mixed
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $text = trim((string) $value);
+
+        return $text === '' ? null : $text;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function options(): array
+    {
+        return [
+            'responsables' => $this->assignableUsers(),
+        ];
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function assignableUsers(): array
+    {
+        if (!Schema::hasTable('users')) {
+            return [];
+        }
+
+        $select = ['id'];
+        foreach (['nombre', 'name', 'email', 'profile_photo', 'especialidad'] as $column) {
+            if (Schema::hasColumn('users', $column)) {
+                $select[] = $column;
+            }
+        }
+
+        return DB::table('users')
+            ->select(array_values(array_unique($select)))
+            ->orderBy(Schema::hasColumn('users', 'nombre') ? 'nombre' : 'id')
+            ->get()
+            ->map(function (object $row): array {
+                $item = (array) $row;
+                $name = $this->firstFilled($item, ['nombre', 'name']) ?? ('Usuario #' . (string) ($item['id'] ?? ''));
+
+                return [
+                    'id' => $this->nullableInt($item['id'] ?? null),
+                    'nombre' => $name,
+                    'email' => $this->valueOrNull($item['email'] ?? null),
+                    'especialidad' => $this->valueOrNull($item['especialidad'] ?? null),
+                    'profile_photo' => $this->valueOrNull($item['profile_photo'] ?? null),
+                ];
+            })
+            ->filter(static fn (array $row): bool => (int) ($row['id'] ?? 0) > 0)
+            ->values()
+            ->all();
     }
 
     /**

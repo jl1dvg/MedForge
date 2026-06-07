@@ -15,11 +15,14 @@ import {
   deleteCrmNote,
   createCrmTask,
   updateCrmTask,
+  updateCrmCase,
+  storeCrmContact,
   sendCrmWhatsapp,
   sendCrmEmail,
   storeCrmProposal,
   sendCrmProposalEmail,
   sendCrmProposalWhatsapp,
+  rescrapeDerivacion,
 } from './api';
 import { Kpi } from './components';
 import { Toolbar, Board, TableView } from './Board';
@@ -252,6 +255,49 @@ export function App() {
     setCrmCase(updated);
   }, [selectedId, syncCrmCounts]);
 
+  const assignResponsible = useCallback(async (responsibleId: number | null) => {
+    const caseId = selectedId;
+    if (caseId == null) return;
+    const updated = await updateCrmCase('solicitud', caseId, { responsable_id: responsibleId });
+    syncCrmCounts(caseId, updated);
+    setSolicitudes((list: Solicitud[]) => list.map((s: Solicitud) => s.id === caseId ? {
+      ...s,
+      crm: {
+        ...s.crm,
+        responsable: updated.responsibleName || 'Coordinación',
+      },
+    } : s));
+    if (selectedIdRef.current !== caseId || updated.sourceId !== caseId) return;
+    setCrmCase(updated);
+    showToast('Responsable actualizado', 'mdi-account-check-outline');
+  }, [selectedId, showToast, syncCrmCounts]);
+
+  const addContact = useCallback(async (type: 'phone' | 'email', value: string) => {
+    const caseId = selectedId;
+    if (caseId == null) return;
+    const updated = await storeCrmContact('solicitud', caseId, { type, value });
+    syncCrmCounts(caseId, updated);
+    setSolicitudes((list: Solicitud[]) => list.map((s: Solicitud) => s.id === caseId ? {
+      ...s,
+      crm: {
+        ...s.crm,
+        telefono: updated.contacts.primaryPhone || s.crm.telefono,
+        email: updated.contacts.primaryEmail || s.crm.email,
+      },
+    } : s));
+    if (selectedIdRef.current !== caseId || updated.sourceId !== caseId) return;
+    setCrmCase(updated);
+    showToast(type === 'phone' ? 'Teléfono guardado' : 'Correo guardado', type === 'phone' ? 'mdi-phone-check-outline' : 'mdi-email-check-outline');
+  }, [selectedId, showToast, syncCrmCounts]);
+
+  const refreshDerivacion = useCallback(async (id: number) => {
+    const sol = solicitudes.find((s: Solicitud) => s.id === id);
+    if (!sol) return;
+    const detalle = await rescrapeDerivacion(sol);
+    setSolicitudes((list: Solicitud[]) => list.map((s: Solicitud) => s.id === id ? { ...s, detalle } : s));
+    showToast(detalle.derivacion.tiene ? 'Derivación actualizada' : 'No se encontró derivación', detalle.derivacion.tiene ? 'mdi-shield-check-outline' : 'mdi-shield-alert-outline');
+  }, [solicitudes, showToast]);
+
   const sendWhatsapp = useCallback(async (payload: { recipients: string[]; message: string }) => {
     const caseId = selectedId;
     if (caseId == null) return;
@@ -467,6 +513,9 @@ export function App() {
         onAdvance={advance}
         onToggleTask={toggleTask}
         onAddTask={addTask}
+        onAssignResponsible={assignResponsible}
+        onAddContact={addContact}
+        onRescrapeDerivacion={refreshDerivacion}
         crmCase={selectedCrmCase}
         crmLoading={crmLoading}
         crmError={crmError}
@@ -487,6 +536,7 @@ export function App() {
         onClose={() => setPrefacturaId(null)}
         onTogglePreop={togglePreop}
         showToast={showToast}
+        onRescrapeDerivacion={refreshDerivacion}
       />
 
       {/* ---- Toast ---- */}

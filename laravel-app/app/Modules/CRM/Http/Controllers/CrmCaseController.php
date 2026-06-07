@@ -24,12 +24,16 @@ class CrmCaseController
 
     public function update(string $sourceType, int $sourceId): JsonResponse
     {
-        return $this->unavailableJson();
+        return $this->jsonAction(function () use ($sourceType, $sourceId): array {
+            return $this->caseService->update($sourceType, $sourceId, request()->all(), request()->user()?->id);
+        });
     }
 
     public function storeContact(string $sourceType, int $sourceId): JsonResponse
     {
-        return $this->unavailableJson();
+        return $this->jsonAction(function () use ($sourceType, $sourceId): array {
+            return $this->caseService->storeContact($sourceType, $sourceId, request()->all(), request()->user()?->id);
+        });
     }
 
     public function storeNote(Request $request, string $sourceType, int $sourceId): JsonResponse

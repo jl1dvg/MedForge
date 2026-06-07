@@ -369,6 +369,7 @@ export interface CrmCaseState {
   caseId: string;
   sourceType: string;
   sourceId: number;
+  responsibleId: number | null;
   responsibleName: string;
   source: string;
   insurancePlan: string;
@@ -378,4 +379,13 @@ export interface CrmCaseState {
   activity: CrmCaseActivity[];
   proposals: CrmCaseProposal[];
   documents: unknown[];
+  options: {
+    responsables: Array<{
+      id: number;
+      nombre: string;
+      email?: string | null;
+      especialidad?: string | null;
+      profile_photo?: string | null;
+    }>;
+  };
 }

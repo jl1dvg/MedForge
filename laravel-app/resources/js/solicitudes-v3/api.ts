@@ -428,30 +428,34 @@ async function jsonFetch<T>(url: string, init?: RequestInit): Promise<T> {
 // ---- CRM V3 case contract -------------------------------------
 
 export function mapCrmCasePayload(raw: any): CrmCaseState {
+  const whatsappContext = {
+    available: raw?.contacts?.whatsapp_context?.available === true,
+    matched: raw?.contacts?.whatsapp_context?.matched === true,
+    search: stringOrNull(raw?.contacts?.whatsapp_context?.search),
+    searchUrl: stringOrNull(raw?.contacts?.whatsapp_context?.search_url),
+    conversationId: raw?.contacts?.whatsapp_context?.conversation_id == null ? null : numberValue(raw.contacts.whatsapp_context.conversation_id),
+    conversationUrl: stringOrNull(raw?.contacts?.whatsapp_context?.conversation_url),
+    waNumber: stringOrNull(raw?.contacts?.whatsapp_context?.wa_number),
+    displayName: stringOrNull(raw?.contacts?.whatsapp_context?.display_name),
+    lastMessageAt: stringOrNull(raw?.contacts?.whatsapp_context?.last_message_at),
+    unreadCount: numberValue(raw?.contacts?.whatsapp_context?.unread_count, 0),
+  };
+  const primaryPhone = stringValue(raw?.contacts?.primary_phone, whatsappContext.waNumber ?? '—');
+
   return {
     caseId: stringValue(raw?.case?.case_id),
     sourceType: stringValue(raw?.case?.source_type),
     sourceId: numberValue(raw?.case?.source_id),
+    responsibleId: raw?.crm?.responsible_id == null ? null : numberValue(raw.crm.responsible_id),
     responsibleName: stringValue(raw?.crm?.responsible_name, 'Coordinación'),
     source: stringValue(raw?.crm?.source, '—'),
     insurancePlan: stringValue(raw?.crm?.insurance_plan, '—'),
     contacts: {
-      primaryPhone: stringValue(raw?.contacts?.primary_phone, '—'),
+      primaryPhone,
       alternatePhones: arrayValue<unknown>(raw?.contacts?.alternate_phones).map((phone) => stringValue(phone)).filter(Boolean),
       primaryEmail: stringValue(raw?.contacts?.primary_email, '—'),
       alternateEmails: arrayValue<unknown>(raw?.contacts?.alternate_emails).map((email) => stringValue(email)).filter(Boolean),
-      whatsapp: {
-        available: raw?.contacts?.whatsapp_context?.available === true,
-        matched: raw?.contacts?.whatsapp_context?.matched === true,
-        search: stringOrNull(raw?.contacts?.whatsapp_context?.search),
-        searchUrl: stringOrNull(raw?.contacts?.whatsapp_context?.search_url),
-        conversationId: raw?.contacts?.whatsapp_context?.conversation_id == null ? null : numberValue(raw.contacts.whatsapp_context.conversation_id),
-        conversationUrl: stringOrNull(raw?.contacts?.whatsapp_context?.conversation_url),
-        waNumber: stringOrNull(raw?.contacts?.whatsapp_context?.wa_number),
-        displayName: stringOrNull(raw?.contacts?.whatsapp_context?.display_name),
-        lastMessageAt: stringOrNull(raw?.contacts?.whatsapp_context?.last_message_at),
-        unreadCount: numberValue(raw?.contacts?.whatsapp_context?.unread_count, 0),
-      },
+      whatsapp: whatsappContext,
     },
     notes: arrayValue<any>(raw?.notes).map((note) => ({
       id: numberValue(note?.id),
@@ -478,6 +482,15 @@ export function mapCrmCasePayload(raw: any): CrmCaseState {
     })),
     proposals: arrayValue<any>(raw?.proposals).map(mapProposal).filter((proposal) => proposal.id > 0),
     documents: arrayValue(raw?.documents),
+    options: {
+      responsables: arrayValue<any>(raw?.options?.responsables).map((user) => ({
+        id: numberValue(user?.id),
+        nombre: stringValue(user?.nombre ?? user?.name, 'Usuario'),
+        email: stringOrNull(user?.email),
+        especialidad: stringOrNull(user?.especialidad),
+        profile_photo: stringOrNull(user?.profile_photo),
+      })).filter((user) => user.id > 0),
+    },
   };
 }
 
@@ -526,6 +539,28 @@ function crmCaseUrl(sourceType: string, sourceId: number): string {
 
 export async function fetchCrmCase(sourceType: string, sourceId: number): Promise<CrmCaseState> {
   return crmJson(crmCaseUrl(sourceType, sourceId));
+}
+
+export async function updateCrmCase(
+  sourceType: string,
+  sourceId: number,
+  payload: { responsable_id?: number | null; contacto_telefono?: string | null; contacto_email?: string | null; fuente?: string | null; pipeline_stage?: string | null },
+): Promise<CrmCaseState> {
+  return crmJson(crmCaseUrl(sourceType, sourceId), {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function storeCrmContact(
+  sourceType: string,
+  sourceId: number,
+  payload: { type: 'phone' | 'email'; value: string },
+): Promise<CrmCaseState> {
+  return crmJson(`${crmCaseUrl(sourceType, sourceId)}/contacts`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function createCrmNote(sourceType: string, sourceId: number, body: string): Promise<CrmCaseState> {
@@ -883,6 +918,27 @@ export async function fetchDetalle(id: number): Promise<Detalle> {
   const res = await jsonFetch<DetalleResponse>(`/v2/solicitudes/${id}/detalle`);
   if (!res.success) throw new Error('Error loading detalle');
   return mapDetalleResponse(res.data);
+}
+
+export async function rescrapeDerivacion(sol: Pick<Solicitud, 'id' | 'form_id' | 'hc_number'>): Promise<Detalle> {
+  const response = await jsonFetch<{ success: boolean; message?: string }>('/v2/solicitudes/re-scrape-derivacion', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRF-TOKEN': csrfToken(),
+    },
+    body: JSON.stringify({
+      solicitud_id: sol.id,
+      form_id: sol.form_id,
+      hc_number: sol.hc_number,
+    }),
+  });
+
+  if (!response.success) {
+    throw new Error(response.message || 'No se pudo re-scrapear la derivación.');
+  }
+
+  return fetchDetalle(sol.id);
 }
 
 // ---- State rebuild (for optimistic updates) -------------------

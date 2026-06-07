@@ -47,7 +47,15 @@ function buildTimeline(sol: Solicitud, crmCase: CrmCaseState | null) {
 
 // ---- Tab: Seguimiento ----------------------------------------
 
-function TabSeguimiento({ sol, crmCase }: { sol: Solicitud; crmCase: CrmCaseState | null }) {
+function TabSeguimiento({
+  sol,
+  crmCase,
+  onAssignResponsible,
+}: {
+  sol: Solicitud;
+  crmCase: CrmCaseState | null;
+  onAssignResponsible: (responsibleId: number | null) => Promise<void>;
+}) {
   const timeline = buildTimeline(sol, crmCase);
   const telefono = crmCase?.contacts.primaryPhone || (sol.detalle.paciente.telefono !== '—' ? sol.detalle.paciente.telefono : sol.crm.telefono);
   const planAfiliacion = crmCase?.insurancePlan || (sol.plan_seguro !== '—' ? sol.plan_seguro : sol.afiliacion_label);
@@ -74,7 +82,17 @@ function TabSeguimiento({ sol, crmCase }: { sol: Solicitud; crmCase: CrmCaseStat
         <h3 className="psec-title"><i className="mdi mdi-tune-variant"></i>Detalles CRM</h3>
         <div className="info-grid">
           <div className="info-item"><div className="k">Etapa CRM</div><div className="v">{sol.estado_label}</div></div>
-          <div className="info-item"><div className="k">Responsable</div><div className="v">{responsable}</div></div>
+          <div className="info-item">
+            <div className="k">Responsable</div>
+            <div className="v">
+              {crmCase?.options.responsables.length ? (
+                <select className="fld crm-inline-select" value={crmCase.responsibleId ?? ''} onChange={(e) => void onAssignResponsible(e.target.value ? Number(e.target.value) : null)}>
+                  <option value="">Sin responsable</option>
+                  {crmCase.options.responsables.map((user) => <option key={user.id} value={user.id}>{user.nombre}</option>)}
+                </select>
+              ) : responsable}
+            </div>
+          </div>
           <div className="info-item"><div className="k">Plan afiliación</div><div className="v">{planAfiliacion}</div></div>
           <div className="info-item"><div className="k">Fuente / convenio</div><div className="v">{fuente}</div></div>
           <div className="info-item"><div className="k">Teléfono</div><div className="v">{telefono}</div></div>
@@ -295,11 +313,13 @@ function TabComunicacion({
   crmCase,
   onSendWhatsapp,
   onSendEmail,
+  onAddContact,
 }: {
   sol: Solicitud;
   crmCase: CrmCaseState | null;
   onSendWhatsapp: (payload: { recipients: string[]; message: string }) => Promise<void>;
   onSendEmail: (payload: { to: string[]; cc?: string[]; subject: string; body: string }) => Promise<void>;
+  onAddContact: (type: 'phone' | 'email', value: string) => Promise<void>;
 }) {
   const [wa, setWa] = useState('');
   const [waRecipient, setWaRecipient] = useState('');
@@ -308,8 +328,9 @@ function TabComunicacion({
   const [emailSubject, setEmailSubject] = useState('Seguimiento de solicitud');
   const [emailRecipient, setEmailRecipient] = useState('');
   const [emailSending, setEmailSending] = useState(false);
+  const [savingContact, setSavingContact] = useState<'phone' | 'email' | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
-  const phoneOptions = Array.from(new Set([crmCase?.contacts.primaryPhone, ...(crmCase?.contacts.alternatePhones ?? []), sol.crm.telefono].filter((v): v is string => Boolean(v && v !== '—'))));
+  const phoneOptions = Array.from(new Set([crmCase?.contacts.primaryPhone, crmCase?.contacts.whatsapp.waNumber, ...(crmCase?.contacts.alternatePhones ?? []), sol.crm.telefono].filter((v): v is string => Boolean(v && v !== '—'))));
   const emailOptions = Array.from(new Set([crmCase?.contacts.primaryEmail, ...(crmCase?.contacts.alternateEmails ?? []), sol.crm.email].filter((v): v is string => Boolean(v && v !== '—'))));
   useEffect(() => {
     setWaRecipient((cur) => phoneOptions.includes(cur) ? cur : phoneOptions[0] || '');
@@ -345,6 +366,22 @@ function TabComunicacion({
       setEmailSending(false);
     }
   };
+  const addContact = async (type: 'phone' | 'email') => {
+    const label = type === 'phone' ? 'teléfono' : 'correo';
+    const value = window.prompt(`Agregar ${label}`);
+    if (value == null) return;
+    const clean = value.trim();
+    if (!clean || savingContact) return;
+    setSavingContact(type);
+    setFormError(null);
+    try {
+      await onAddContact(type, clean);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : `No se pudo guardar el ${label}.`);
+    } finally {
+      setSavingContact(null);
+    }
+  };
   return (
     <>
       <section>
@@ -354,6 +391,9 @@ function TabComunicacion({
             {phoneOptions.length === 0 && <option value="">Sin teléfonos registrados</option>}
             {phoneOptions.map((phone) => <option key={phone} value={phone}>{phone}</option>)}
           </select>
+          <button className="prop-outline-btn crm-contact-add" type="button" disabled={savingContact === 'phone'} onClick={() => void addContact('phone')}>
+            <i className={`mdi ${savingContact === 'phone' ? 'mdi-loading mdi-spin' : 'mdi-phone-plus-outline'}`}></i>Agregar teléfono
+          </button>
           <div className="quick-replies">
             {['Confirmar fecha de cirugía', 'Recordatorio de ayuno', 'Solicitar documentos'].map((q) => (
               <button type="button" key={q} className="qr" onClick={() => setWa(q + ' — Estimado/a ' + sol.full_name.split(' ')[0] + ', ')}>{q}</button>
@@ -370,6 +410,9 @@ function TabComunicacion({
             {emailOptions.length === 0 && <option value="">Sin correos registrados</option>}
             {emailOptions.map((email) => <option key={email} value={email}>{email}</option>)}
           </select>
+          <button className="prop-outline-btn crm-contact-add" type="button" disabled={savingContact === 'email'} onClick={() => void addContact('email')}>
+            <i className={`mdi ${savingContact === 'email' ? 'mdi-loading mdi-spin' : 'mdi-email-plus-outline'}`}></i>Agregar correo
+          </button>
           <input className="fld" placeholder="Asunto: Seguimiento de solicitud" value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} />
           <textarea className="fld" rows={4} placeholder="Escribe el correo…" value={emailBody} onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setEmailBody(e.target.value)}></textarea>
           <button className="btn-add self-end" type="submit" disabled={emailSending || !emailBody.trim() || !emailSubject.trim() || !emailRecipient}><i className={`mdi ${emailSending ? 'mdi-loading mdi-spin' : 'mdi-email-send-outline'}`}></i>Enviar correo</button>
@@ -742,9 +785,29 @@ function TabPropuestas({
 
 // ---- Tab: Documentos ----------------------------------------
 
-function TabDocumentos({ sol }: { sol: Solicitud }) {
+function TabDocumentos({
+  sol,
+  onRescrapeDerivacion,
+}: {
+  sol: Solicitud;
+  onRescrapeDerivacion: (id: number) => Promise<void>;
+}) {
   const adj = sol.detalle.adjuntos;
   const der = sol.detalle.derivacion;
+  const [scraping, setScraping] = useState(false);
+  const [scrapeError, setScrapeError] = useState<string | null>(null);
+  const runScrape = async () => {
+    if (scraping) return;
+    setScraping(true);
+    setScrapeError(null);
+    try {
+      await onRescrapeDerivacion(sol.id);
+    } catch (err) {
+      setScrapeError(err instanceof Error ? err.message : 'No se pudo re-scrapear la derivación.');
+    } finally {
+      setScraping(false);
+    }
+  };
   return (
     <>
       <section>
@@ -763,7 +826,15 @@ function TabDocumentos({ sol }: { sol: Solicitud }) {
             </div>
             {der.autorizacion_pendiente && <div className="cover-alert"><i className="mdi mdi-shield-clock-outline"></i>Autorización pendiente del seguro</div>}
           </div>
-        ) : <div className="mini-empty">Paciente particular — sin derivación.</div>}
+        ) : (
+          <div className="cover-card cover-empty-action">
+            <div className="mini-empty">Sin derivación registrada para esta solicitud.</div>
+            <button className="btn-add full" type="button" disabled={scraping} onClick={() => void runScrape()}>
+              <i className={`mdi ${scraping ? 'mdi-loading mdi-spin' : 'mdi-refresh'}`}></i>Re-scrapear derivación
+            </button>
+            {scrapeError && <div className="form-error" role="alert">{scrapeError}</div>}
+          </div>
+        )}
       </section>
       <section>
         <h3 className="psec-title"><i className="mdi mdi-paperclip"></i>Documentos adjuntos <span className="psec-meta">{adj.length}</span></h3>
@@ -796,6 +867,9 @@ export interface DetailPanelProps {
   onAdvance: (id: number) => void;
   onToggleTask: (taskId: number, currentStatus: string) => Promise<void>;
   onAddTask: (title: string, priority: string) => Promise<void>;
+  onAssignResponsible: (responsibleId: number | null) => Promise<void>;
+  onAddContact: (type: 'phone' | 'email', value: string) => Promise<void>;
+  onRescrapeDerivacion: (id: number) => Promise<void>;
   onAddNote: (txt: string) => Promise<void>;
   onDeleteNote: (noteId: number) => Promise<void>;
   onSendWhatsapp: (payload: { recipients: string[]; message: string }) => Promise<void>;
@@ -806,7 +880,7 @@ export interface DetailPanelProps {
   onOpenPrefactura: (id: number) => void;
 }
 
-export function DetailPanel({ sol, open, onClose, onToggleStep, onAdvance, onToggleTask, onAddTask, crmCase, crmLoading, crmError, onAddNote, onDeleteNote, onSendWhatsapp, onSendEmail, onCreateProposal, onSendProposalEmail, onSendProposalWhatsapp, onOpenPrefactura }: DetailPanelProps) {
+export function DetailPanel({ sol, open, onClose, onToggleStep, onAdvance, onToggleTask, onAddTask, onAssignResponsible, onAddContact, onRescrapeDerivacion, crmCase, crmLoading, crmError, onAddNote, onDeleteNote, onSendWhatsapp, onSendEmail, onCreateProposal, onSendProposalEmail, onSendProposalWhatsapp, onOpenPrefactura }: DetailPanelProps) {
   const [tab, setTab] = useState('seguimiento');
 
   useEffect(() => { if (open) setTab('seguimiento'); }, [sol?.id, open]);
@@ -846,12 +920,12 @@ export function DetailPanel({ sol, open, onClose, onToggleStep, onAdvance, onTog
             <div className="panel-body">
               {crmLoading && <div className="mini-empty"><i className="mdi mdi-loading mdi-spin"></i> Cargando seguimiento CRM…</div>}
               {crmError && <div className="form-error" role="alert">{crmError}</div>}
-              {tab === 'seguimiento' && <TabSeguimiento sol={sol} crmCase={crmCase} />}
+              {tab === 'seguimiento' && <TabSeguimiento sol={sol} crmCase={crmCase} onAssignResponsible={onAssignResponsible} />}
               {tab === 'tareas' && <TabTareas sol={sol} crmCase={crmCase} onToggleTask={onToggleTask} onAddTask={onAddTask} />}
               {tab === 'notas' && <TabNotas sol={sol} crmCase={crmCase} onAddNote={onAddNote} onDeleteNote={onDeleteNote} />}
-              {tab === 'comunicacion' && <TabComunicacion sol={sol} crmCase={crmCase} onSendWhatsapp={onSendWhatsapp} onSendEmail={onSendEmail} />}
+              {tab === 'comunicacion' && <TabComunicacion sol={sol} crmCase={crmCase} onSendWhatsapp={onSendWhatsapp} onSendEmail={onSendEmail} onAddContact={onAddContact} />}
               {tab === 'propuestas' && <TabPropuestas sol={sol} crmCase={crmCase} onCreateProposal={onCreateProposal} onSendProposalEmail={onSendProposalEmail} onSendProposalWhatsapp={onSendProposalWhatsapp} />}
-              {tab === 'documentos' && <TabDocumentos sol={sol} />}
+              {tab === 'documentos' && <TabDocumentos sol={sol} onRescrapeDerivacion={onRescrapeDerivacion} />}
             </div>
 
             <footer className="panel-foot">

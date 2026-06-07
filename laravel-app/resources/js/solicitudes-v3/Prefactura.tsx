@@ -165,12 +165,36 @@ function PfCaso({ sol }: { sol: Solicitud }) {
 
 // ---- PfCobertura --------------------------------------------
 
-function PfCobertura({ sol }: { sol: Solicitud }) {
+function PfCobertura({
+  sol,
+  onRescrapeDerivacion,
+}: {
+  sol: Solicitud;
+  onRescrapeDerivacion: (id: number) => Promise<void>;
+}) {
   const der = sol.detalle.derivacion;
+  const [scraping, setScraping] = useState(false);
+  const [scrapeError, setScrapeError] = useState<string | null>(null);
+  const runScrape = async () => {
+    if (scraping) return;
+    setScraping(true);
+    setScrapeError(null);
+    try {
+      await onRescrapeDerivacion(sol.id);
+    } catch (err) {
+      setScrapeError(err instanceof Error ? err.message : 'No se pudo re-scrapear la derivación.');
+    } finally {
+      setScraping(false);
+    }
+  };
   if (!der.tiene) {
     return (
       <div className="pf-section">
         <div className="mini-empty">Sin derivación registrada para esta solicitud.</div>
+        <button className="btn-add full pf-rescrape-btn" type="button" disabled={scraping} onClick={() => void runScrape()}>
+          <i className={`mdi ${scraping ? 'mdi-loading mdi-spin' : 'mdi-refresh'}`}></i>Re-scrapear derivación
+        </button>
+        {scrapeError && <div className="form-error" role="alert">{scrapeError}</div>}
       </div>
     );
   }
@@ -372,9 +396,10 @@ export interface PrefacturaModalProps {
   onClose: () => void;
   onTogglePreop: (id: number, idx: number) => void;
   showToast: (msg: string, icon?: string) => void;
+  onRescrapeDerivacion: (id: number) => Promise<void>;
 }
 
-export function PrefacturaModal({ sol, open, onClose, showToast }: PrefacturaModalProps) {
+export function PrefacturaModal({ sol, open, onClose, showToast, onRescrapeDerivacion }: PrefacturaModalProps) {
   const [tab, setTab] = useState('resumen');
 
   useEffect(() => { if (open) setTab('resumen'); }, [sol?.id, open]);
@@ -412,7 +437,7 @@ export function PrefacturaModal({ sol, open, onClose, showToast }: PrefacturaMod
           <div className="pf-content">
             {tab === 'resumen'   && <PfResumen sol={sol} go={setTab} />}
             {tab === 'caso'      && <PfCaso sol={sol} />}
-            {tab === 'cobertura' && <PfCobertura sol={sol} />}
+            {tab === 'cobertura' && <PfCobertura sol={sol} onRescrapeDerivacion={onRescrapeDerivacion} />}
             {tab === 'cirugia'   && <PfCirugia sol={sol} />}
             {tab === 'agenda'    && <PfAgenda sol={sol} />}
             {tab === 'nota'      && <PfNota sol={sol} showToast={showToast} />}
