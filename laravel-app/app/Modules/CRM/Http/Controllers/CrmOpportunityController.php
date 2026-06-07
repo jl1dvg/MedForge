@@ -34,7 +34,7 @@ class CrmOpportunityController
             return response()->json(['error' => 'Sesión expirada'], 401);
         }
 
-        $limit          = min(max((int) $request->query('limit', 25), 1), 100);
+        $limit          = min(max((int) $request->query('limit', 25), 1), 500);
         $offset         = max((int) $request->query('offset', 0), 0);
         $stage          = trim((string) $request->query('stage', ''));
         $source         = trim((string) $request->query('source', ''));

@@ -32,10 +32,10 @@ export default function App() {
   const [toast, setToast] = useState<Toast | null>(null);
   const [groupPhases, setGroupPhases] = useState(true);
 
-  // Load opportunities
+  // Load opportunities (exclude publico/IESS — handled via separate workflow)
   useEffect(() => {
-    api.opportunities.list({ limit: 200 })
-      .then(r => setOps(r.data.map(adaptOpportunity)))
+    api.opportunities.list({ limit: 500 })
+      .then(r => setOps(r.data.map(adaptOpportunity).filter(o => o.afiliacion !== 'publico')))
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
@@ -207,29 +207,6 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <header className="app-topbar">
-        <div className="app-brand">
-          <span className="app-brand-mark"><i className="mdi mdi-flash"></i></span>
-          <div className="app-title">
-            <h1>CRM de oportunidades</h1>
-            <span className="crumb">MedForge · Comercial clínico</span>
-          </div>
-        </div>
-        <div className="topbar-search">
-          <i className="mdi mdi-magnify"></i>
-          <input
-            placeholder="Buscar paciente, HC, teléfono o procedimiento…"
-            value={filters.search}
-            onChange={e => setFilters(f => ({ ...f, search: e.target.value }))}
-          />
-        </div>
-        <div className="topbar-spacer"></div>
-        <div className="topbar-actions">
-          <button className="btn-new"><i className="mdi mdi-plus"></i>Nueva oportunidad</button>
-          <button className="icon-btn" title="Avisos"><i className="mdi mdi-bell-outline"></i></button>
-        </div>
-      </header>
-
       <div className="kpi-row">
         <Kpi tone="pipeline" icon="mdi-chart-timeline-variant" value={metrics.pipelineCount} label="Oportunidades abiertas" active={kpiFilter === ''} onClick={() => setKpiFilter('')} />
         <Kpi tone="money" icon="mdi-cash-multiple" value={fmtMoney(metrics.pipelineVal)} label="Valor del embudo" active={false} onClick={() => {}} />
@@ -239,6 +216,14 @@ export default function App() {
       </div>
 
       <div className="toolbar">
+        <div className="topbar-search">
+          <i className="mdi mdi-magnify"></i>
+          <input
+            placeholder="Buscar paciente, HC, teléfono…"
+            value={filters.search}
+            onChange={e => setFilters(f => ({ ...f, search: e.target.value }))}
+          />
+        </div>
         <div className="seg">
           <button className={view === 'embudo' ? 'is-active' : ''} onClick={() => setView('embudo')}>
             <i className="mdi mdi-view-column-outline"></i><span className="seg-lbl">Embudo</span>
@@ -267,7 +252,6 @@ export default function App() {
         <select className="filter-select" value={filters.afiliacion} onChange={e => setFilters(f => ({ ...f, afiliacion: e.target.value }))}>
           <option value="">Toda afiliación</option>
           <option value="particular">Particular</option>
-          <option value="publico">IESS</option>
           <option value="privado">Privado</option>
           <option value="fundacional">Fundacional</option>
         </select>
@@ -285,6 +269,7 @@ export default function App() {
             <i className="mdi mdi-close-circle-outline"></i>Limpiar
           </button>
         )}
+        <button className="btn-new"><i className="mdi mdi-plus"></i>Nueva</button>
       </div>
 
       {loading ? (
