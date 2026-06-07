@@ -58,6 +58,11 @@ export interface CrmOpportunity {
   updated_at: string;
   contact?: CrmContact;
   activities?: CrmActivity[];
+  source_data?: {
+    procedimiento: string | null;
+    ojo: string | null;
+    doctor: string | null;
+  } | null;
 }
 
 export interface PanelStats {

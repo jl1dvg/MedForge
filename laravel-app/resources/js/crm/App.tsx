@@ -32,10 +32,10 @@ export default function App() {
   const [toast, setToast] = useState<Toast | null>(null);
   const [groupPhases, setGroupPhases] = useState(true);
 
-  // Load opportunities (exclude publico/IESS — handled via separate workflow)
+  // Load active pipeline (closed and sector público excluded server-side)
   useEffect(() => {
-    api.opportunities.list({ limit: 500 })
-      .then(r => setOps(r.data.map(adaptOpportunity).filter(o => o.afiliacion !== 'publico')))
+    api.opportunities.list({ limit: 2000 })
+      .then(r => setOps(r.data.map(adaptOpportunity)))
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);

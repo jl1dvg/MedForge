@@ -34,21 +34,25 @@ class CrmOpportunityController
             return response()->json(['error' => 'Sesión expirada'], 401);
         }
 
-        $limit          = min(max((int) $request->query('limit', 25), 1), 500);
+        $limit          = min(max((int) $request->query('limit', 25), 1), 2000);
         $offset         = max((int) $request->query('offset', 0), 0);
         $stage          = trim((string) $request->query('stage', ''));
         $source         = trim((string) $request->query('source', ''));
         $phase          = trim((string) $request->query('phase', ''));
         $search         = trim((string) $request->query('search', ''));
-        $afiliacion     = trim((string) $request->query('afiliacion', ''));  // particular|privado|fundacional|publico
+        $afiliacion     = trim((string) $request->query('afiliacion', ''));
         $urgent         = filter_var($request->query('urgent', false), FILTER_VALIDATE_BOOLEAN);
+        $includeClosed  = filter_var($request->query('include_closed', false), FILTER_VALIDATE_BOOLEAN);
 
-        $query = CrmOpportunity::query()->with('contact');
+        $query = CrmOpportunity::query();
 
         $this->applyPatientAffiliationFilter($query, $afiliacion);
 
+        // Default: active pipeline only (ganado/perdido are historical)
         if ($stage !== '') {
             $query->where('stage', $stage);
+        } elseif (!$includeClosed) {
+            $query->whereNotIn('stage', ['ganado', 'perdido']);
         }
         if ($source !== '') {
             $this->applyEffectiveSourceFilter($query, $source);
@@ -69,11 +73,17 @@ class CrmOpportunityController
 
         $total = $query->count();
         $rows  = $query->orderByRaw('COALESCE(last_activity_at, created_at) ASC')
-            ->limit($limit)->offset($offset)->get();
+            ->limit($limit)->offset($offset)
+            ->with('contact', 'sourceable')
+            ->get();
         $this->appendEffectiveSource($rows, $source);
 
+        $data = $rows->map(fn ($opp) => array_merge($opp->toArray(), [
+            'source_data' => self::extractSourceData($opp),
+        ]));
+
         return response()->json([
-            'data' => $rows,
+            'data' => $data,
             'meta' => ['total' => $total, 'limit' => $limit, 'offset' => $offset],
         ]);
     }
@@ -345,6 +355,26 @@ class CrmOpportunityController
         }
 
         return $effectiveSources[0] ?? 'manual';
+    }
+
+    private static function extractSourceData(CrmOpportunity $opp): ?array
+    {
+        $src = $opp->sourceable;
+        if ($src === null) return null;
+
+        return match ($opp->source_type) {
+            'solicitud_procedimiento' => [
+                'procedimiento' => $src->procedimiento ?? null,
+                'ojo'           => $src->ojo ?? null,
+                'doctor'        => $src->doctor ?? null,
+            ],
+            'consulta_examenes' => [
+                'procedimiento' => $src->examen_nombre ?? null,
+                'ojo'           => $src->lateralidad ?? null,
+                'doctor'        => null,
+            ],
+            default => null,
+        };
     }
 
     private function applyPatientAffiliationFilter(Builder $query, string $afiliacion): void

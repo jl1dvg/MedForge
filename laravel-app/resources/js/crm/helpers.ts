@@ -71,9 +71,14 @@ export function adaptOpportunity(raw: CrmOpportunity): OpportunityView {
   const full_name = raw.contact?.name || raw.title;
   const inits = initials(full_name);
 
-  const procedimiento_short = raw.title
-    .replace(/^Solicitud:\s*/i, '')
-    .replace(/^Examen:\s*/i, '');
+  const procedimiento_short = (
+    raw.source_data?.procedimiento ||
+    raw.title
+      .replace(/^Solicitud:\s*/i, '')
+      .replace(/^Examen:\s*/i, '')
+      .replace(/^Lead migrado:\s*/i, '')
+      .replace(/^Lead WhatsApp:\s*/i, '')
+  ).trim() || '—';
 
   const afiliacion = raw.afiliacion_tipo || 'sin_dato';
   const afiliacion_label_map: Record<string, string> = {
@@ -180,10 +185,10 @@ export function adaptOpportunity(raw: CrmOpportunity): OpportunityView {
     prioridad,
     // optional empty defaults
     edad: '—',
-    ojo: '',
+    ojo: raw.source_data?.ojo || '',
     diagnostico: '',
     sede: '—',
-    doctor: '—',
+    doctor: raw.source_data?.doctor || '—',
     tareas: [],
     notas: [],
     comunicaciones: [],
