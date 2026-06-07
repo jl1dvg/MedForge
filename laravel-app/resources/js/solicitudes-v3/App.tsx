@@ -76,6 +76,7 @@ export function App() {
   const [toast, setToast] = useState<{ msg: string; icon: string } | null>(null);
   const selectedIdRef = React.useRef<number | null>(selectedId);
   selectedIdRef.current = selectedId;
+  const firstLoadRef = React.useRef(true);
 
   // Apply accent CSS variable
   useEffect(() => {
@@ -99,7 +100,15 @@ export function App() {
     }
   }, []);
 
-  useEffect(() => { void load(DEFAULT_DATE_FILTERS); }, []);
+  useEffect(() => {
+    const delay = firstLoadRef.current ? 0 : 250;
+    firstLoadRef.current = false;
+    const timer = setTimeout(() => {
+      void load(filters);
+    }, delay);
+
+    return () => clearTimeout(timer);
+  }, [filters, load]);
 
   // Toast helper
   const toastTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -368,6 +377,20 @@ export function App() {
       // non-critical — prefactura just shows empty sections
     });
   }, [selectedId]);
+
+  useEffect(() => {
+    if (prefacturaId == null) return;
+    const sol = solicitudes.find((s: Solicitud) => s.id === prefacturaId);
+    if (!sol) return;
+    const hasFreshCoverage = sol.detalle.derivacion.tiene || sol.detalle.paciente.cedula !== '—';
+    if (hasFreshCoverage) return;
+
+    fetchDetalle(prefacturaId).then((detalle) => {
+      setSolicitudes((list: Solicitud[]) => list.map((s: Solicitud) => s.id === prefacturaId ? { ...s, detalle } : s));
+    }).catch(() => {
+      // non-critical; prefactura keeps its empty state if the scraper/backend fails
+    });
+  }, [prefacturaId, solicitudes]);
 
   const toggleKpi = (k: string) => setKpiFilter((cur: string) => cur === k ? '' : k);
 

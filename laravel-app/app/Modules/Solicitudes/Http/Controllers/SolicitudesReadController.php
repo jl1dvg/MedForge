@@ -472,9 +472,16 @@ class SolicitudesReadController
         $formId = trim((string) ($crm['detalle']['form_id'] ?? ''));
 
         $prefacturaData = [];
+        $derivacionData = null;
+        $derivacionTabData = null;
         if ($hcNumber !== '' && $formId !== '') {
             try {
-                $prefacturaData = (new SolicitudesPrefacturaService())->buildPrefacturaViewData($hcNumber, $formId);
+                $prefacturaService = new SolicitudesPrefacturaService();
+                $prefacturaData = $prefacturaService->buildPrefacturaViewData($hcNumber, $formId);
+                $derivacionTabData = $prefacturaService->buildDerivacionTabData($hcNumber, $formId, $id);
+                $derivacionData = is_array($derivacionTabData['derivacion'] ?? null)
+                    ? $derivacionTabData['derivacion']
+                    : null;
             } catch (\Throwable $e) {
                 Log::warning('solicitudes.read.detalle_completo.prefactura.error', [
                     'request_id' => $requestId, 'solicitud_id' => $id,
@@ -495,9 +502,9 @@ class SolicitudesReadController
                 'diagnostico' => $diagnosticos,
                 'diagnosticos' => $diagnosticos,
                 'consulta'    => $prefacturaData['consulta'] ?? [],
-                'derivacion'  => $prefacturaData['derivacion'] ?? ($crm['detalle']['derivacion'] ?? []),
+                'derivacion'  => $derivacionData ?? ($prefacturaData['derivacion'] ?? ($crm['detalle']['derivacion'] ?? [])),
                 'prefactura'  => $prefacturaData['solicitud'] ?? [],
-                'derivacion_tab' => $prefacturaData['derivacionTab'] ?? [],
+                'derivacion_tab' => $derivacionTabData['ui'] ?? ($prefacturaData['derivacionTab'] ?? []),
                 'prefactura_meta' => [
                     'cobertura_template_key' => $prefacturaData['coberturaTemplateKey'] ?? null,
                     'cobertura_template_available' => (bool) ($prefacturaData['coberturaTemplateAvailable'] ?? false),

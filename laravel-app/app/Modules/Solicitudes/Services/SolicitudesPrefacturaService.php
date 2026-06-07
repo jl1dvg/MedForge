@@ -2624,7 +2624,13 @@ class SolicitudesPrefacturaService
         }
 
         try {
-            $stmt = $this->db->prepare('SHOW TABLES LIKE :table_name');
+            $stmt = $this->db->prepare(
+                'SELECT 1
+                 FROM information_schema.tables
+                 WHERE table_schema = DATABASE()
+                   AND table_name = :table_name
+                 LIMIT 1'
+            );
             $stmt->execute([':table_name' => $table]);
             $exists = $stmt->fetchColumn() !== false;
         } catch (Throwable) {
