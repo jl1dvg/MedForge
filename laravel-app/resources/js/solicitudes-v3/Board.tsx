@@ -65,12 +65,6 @@ export function Toolbar({ filters, setFilters, preset, setPreset, view, setView,
 
       <div className="preset-group">
         <button
-          className={`preset ${preset === 'mis-casos' ? 'is-active' : ''}`}
-          onClick={() => setPreset(preset === 'mis-casos' ? '' : 'mis-casos')}
-        >
-          <i className="mdi mdi-account-check-outline"></i>Mis casos
-        </button>
-        <button
           className={`preset is-danger ${preset === 'urgentes' ? 'is-active' : ''}`}
           onClick={() => setPreset(preset === 'urgentes' ? '' : 'urgentes')}
         >

@@ -30,6 +30,20 @@ import { TweaksPanel, useTweaks } from './TweaksPanel';
 
 const CURRENT_USER = { name: 'M. Quishpe', role: 'Coordinación quirúrgica', responsable: 'Coord. M. Quishpe' };
 
+function isoDateOffset(daysOffset: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() + daysOffset);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+const DEFAULT_DATE_FILTERS: Pick<Filters, 'date_from' | 'date_to'> = {
+  date_from: isoDateOffset(-15),
+  date_to: isoDateOffset(0),
+};
+
 const TWEAK_DEFAULTS: TweakValues = {
   direction: 'a',
   density: 'comodo',
@@ -47,7 +61,7 @@ export function App() {
   const [afiliaciones, setAfiliaciones] = useState<string[]>([]);
   const [doctores, setDoctores] = useState<string[]>([]);
 
-  const [filters, setFilters] = useState<Filters>({ search: '', afiliacion: '', doctor: '', date_from: '', date_to: '' });
+  const [filters, setFilters] = useState<Filters>({ search: '', afiliacion: '', doctor: '', ...DEFAULT_DATE_FILTERS });
   const [preset, setPreset] = useState('');
   const [kpiFilter, setKpiFilter] = useState('');
   const [view, setView] = useState('kanban');
@@ -85,7 +99,7 @@ export function App() {
     }
   }, []);
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => { void load(DEFAULT_DATE_FILTERS); }, []);
 
   // Toast helper
   const toastTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -104,7 +118,6 @@ export function App() {
       if (filters.doctor && s.doctor !== filters.doctor) return false;
       if (filters.date_from && new Date(s.fecha) < new Date(`${filters.date_from}T00:00:00`)) return false;
       if (filters.date_to && new Date(s.fecha) > new Date(`${filters.date_to}T23:59:59`)) return false;
-      if (preset === 'mis-casos' && s.crm.responsable !== CURRENT_USER.responsable) return false;
       if (preset === 'urgentes' && !(s.prioridad === 'urgente' || s.sla_status === 'vencido' || s.sla_status === 'critico')) return false;
       if (kpiFilter === 'vencido' && s.sla_status !== 'vencido') return false;
       if (kpiFilter === 'critico' && s.sla_status !== 'critico') return false;

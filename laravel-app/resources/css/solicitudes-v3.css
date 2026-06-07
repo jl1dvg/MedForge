@@ -487,7 +487,7 @@ table.sol-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .empty-state p { font-size: 13px; margin: 0; }
 
 /* ---- CRM panel: tabs + content --------------------------------- */
-.panel-crm { width: 540px; }
+.panel-crm { width: 640px; max-width: 96vw; }
 .panel-tabs {
   display: flex; gap: 2px; padding: 0 14px; border-bottom: 1px solid var(--border);
   overflow-x: auto; flex: none; background: var(--bg-soft);
