@@ -2,6 +2,7 @@
 // MedForge · Solicitudes v3 — Panel CRM (workspace por pestañas)
 // ============================================================
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import type { Solicitud, CrmCaseState, CrmCaseProposal } from './types';
 import { DocAvatar, fmtDate, fmtDateTime, fmtSla, SLA_META } from './components';
 import { crmProposalPdfUrl, resolveCoverageMailDraft, searchCrmCatalogCodes, searchCrmCatalogPackages } from './api';
@@ -983,7 +984,7 @@ function TabDocumentos({
           </button>
         </div>
       </section>
-      {mailModalOpen && (
+      {mailModalOpen && typeof document !== 'undefined' && createPortal((
         <div className="coverage-modal-backdrop" role="presentation">
           <div className="coverage-modal" role="dialog" aria-modal="true" aria-label="Solicitar cobertura por correo">
             <header className="coverage-modal-head">
@@ -1033,7 +1034,7 @@ function TabDocumentos({
             </footer>
           </div>
         </div>
-      )}
+      ), document.body)}
     </>
   );
 }
