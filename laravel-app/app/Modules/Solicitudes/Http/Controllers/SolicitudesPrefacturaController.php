@@ -236,6 +236,14 @@ class SolicitudesPrefacturaController
         return response()->json($result)->header('X-Request-Id', $requestId);
     }
 
+    public function coberturaMailSender(Request $request): JsonResponse
+    {
+        return response()->json([
+            'success' => true,
+            'sender' => $this->service->coberturaMailSender(),
+        ])->header('X-Request-Id', $this->requestId($request));
+    }
+
     /**
      * @return array<string,mixed>
      */
