@@ -913,6 +913,24 @@ class SolicitudesPrefacturaService
         ];
     }
 
+    /** @return array<string,mixed> */
+    public function coberturaMailSender(): array
+    {
+        $config = $this->resolveMailConfigForContext('solicitudes');
+        $fromAddress = trim((string) ($config['from_address'] ?? ''));
+        $fromName = trim((string) ($config['from_name'] ?? ''));
+        $replyToAddress = trim((string) ($config['reply_to_address'] ?? ''));
+        $replyToName = trim((string) ($config['reply_to_name'] ?? ''));
+
+        return [
+            'configured' => $this->isMailConfigValid($config),
+            'from_address' => $fromAddress,
+            'from_name' => $fromName !== '' ? $fromName : $fromAddress,
+            'reply_to_address' => $replyToAddress,
+            'reply_to_name' => $replyToName,
+        ];
+    }
+
     /**
      * @return string[]
      */
@@ -2624,7 +2642,13 @@ class SolicitudesPrefacturaService
         }
 
         try {
-            $stmt = $this->db->prepare('SHOW TABLES LIKE :table_name');
+            $stmt = $this->db->prepare(
+                'SELECT 1
+                 FROM information_schema.tables
+                 WHERE table_schema = DATABASE()
+                   AND table_name = :table_name
+                 LIMIT 1'
+            );
             $stmt->execute([':table_name' => $table]);
             $exists = $stmt->fetchColumn() !== false;
         } catch (Throwable) {
