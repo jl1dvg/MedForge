@@ -1,8 +1,8 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import type { Patient, AppRoute, Toast as ToastType } from './types';
 import { TIPO_CITA, MEDICO_MAP } from './data';
-import { fetchPatientList, fetchPatientDetail, createPatient } from './api';
-import { Toast, AgendarModal } from './components';
+import { fetchPatientList, fetchPatientDetail, createPatient, updatePatient } from './api';
+import { Toast, AgendarModal, EditPatientModal } from './components';
 import ListView from './views/ListView';
 import DetailView from './views/DetailView';
 import WizardView from './views/WizardView';
@@ -17,6 +17,7 @@ export default function App() {
   const [search, setSearch] = useState('');
   const [toast, setToast] = useState<ToastType | null>(null);
   const [agendar, setAgendar] = useState<{ patient: Patient | null; open: boolean }>({ patient: null, open: false });
+  const [editar, setEditar] = useState<{ patient: Patient | null; open: boolean }>({ patient: null, open: false });
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -120,6 +121,31 @@ export default function App() {
     showToast('Nota clínica guardada', 'mdi-note-check-outline');
   }, [detailPatient, showToast]);
 
+  const onEditar = useCallback((p: Patient) => {
+    setEditar({ patient: p, open: true });
+  }, []);
+
+  const onSaveEdit = useCallback(async (hcNumber: string, data: Record<string, any>) => {
+    await updatePatient(hcNumber, data);
+    const nombres = [data.fname, data.mname].filter(Boolean).join(' ');
+    const apellidos = [data.lname, data.lname2].filter(Boolean).join(' ');
+    const patch = {
+      nombres,
+      apellidos,
+      full_name: `${apellidos} ${nombres}`.trim(),
+      display_name: `${nombres} ${apellidos}`.trim(),
+      sexo: data.sexo,
+      telefono: data.celular || '',
+      fecha_nac: data.fecha_nacimiento || '',
+      afiliacion: data.afiliacion,
+    };
+    setPatients(list => list.map(p => p.hc_number === hcNumber ? { ...p, ...patch } : p));
+    if (detailPatient?.hc_number === hcNumber) {
+      setDetailPatient(prev => prev ? { ...prev, ...patch } : prev);
+    }
+    showToast('Paciente actualizado correctamente', 'mdi-account-check');
+  }, [detailPatient, showToast]);
+
   const onPatientCreated = useCallback(async (localPatient: Patient) => {
     try {
       await createPatient({
@@ -199,7 +225,7 @@ export default function App() {
           onWhats={onWhats}
           onAddNote={onAddNote}
           onOpenCRM={(s) => showToast(`Abriendo solicitud ${s.id}…`, 'mdi-arrow-top-right')}
-          onEditar={(p) => showToast('Modo edición próximamente', 'mdi-pencil-outline')}
+          onEditar={onEditar}
           onNuevaSolicitud={(p) => showToast(`Nueva solicitud para ${p.nombres}…`, 'mdi-clipboard-plus-outline')}
         />
       )}
@@ -217,6 +243,13 @@ export default function App() {
           onOpenExisting={openPatient}
         />
       )}
+
+      <EditPatientModal
+        patient={editar.patient}
+        open={editar.open}
+        onClose={() => setEditar({ patient: null, open: false })}
+        onSave={onSaveEdit}
+      />
 
       <AgendarModal
         patient={agendar.patient}

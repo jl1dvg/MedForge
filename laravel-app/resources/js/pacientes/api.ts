@@ -132,6 +132,23 @@ export async function fetchPatientSection(hcNumber: string, section: string): Pr
   return { rows: json.data || [], summary: json.meta?.summary || {} };
 }
 
+export async function updatePatient(hcNumber: string, data: Record<string, any>): Promise<void> {
+  const res = await fetch('/v2/pacientes/editar', {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'X-CSRF-TOKEN': csrfToken(),
+      'X-Requested-With': 'XMLHttpRequest',
+    },
+    body: JSON.stringify({ hc_number: hcNumber, ...data }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Error al actualizar paciente');
+  }
+}
+
 export async function createPatient(data: Record<string, any>): Promise<{ hc_number: string }> {
   const res = await fetch('/v2/pacientes/crear', {
     method: 'POST',

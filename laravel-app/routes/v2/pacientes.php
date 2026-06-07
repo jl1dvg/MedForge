@@ -5,6 +5,13 @@ use Illuminate\Support\Facades\Route;
 
 Route::middleware([
     'app.auth',
+    'app.permission:administrativo,pacientes.manage',
+])->group(function (): void {
+    Route::put('/pacientes/editar', [PacientesReadController::class, 'editar']);
+});
+
+Route::middleware([
+    'app.auth',
     'app.permission:administrativo,pacientes.view,pacientes.manage',
 ])->group(function (): void {
     Route::get('/pacientes', [PacientesReadController::class, 'index']);

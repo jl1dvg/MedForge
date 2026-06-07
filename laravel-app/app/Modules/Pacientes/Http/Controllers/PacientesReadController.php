@@ -177,6 +177,29 @@ class PacientesReadController
         ]);
     }
 
+    public function editar(Request $request): JsonResponse
+    {
+        if (!$this->isLegacyAuthenticated($request)) {
+            return response()->json(['error' => 'Sesión expirada'], 401);
+        }
+
+        $hcNumber = trim((string) $request->input('hc_number', ''));
+        if ($hcNumber === '') {
+            return response()->json(['error' => 'hc_number es requerido'], 422);
+        }
+
+        try {
+            $this->service->actualizarPaciente($hcNumber, $request->all(), $this->legacyUserId($request));
+            return response()->json(['success' => true]);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('Error actualizando paciente', [
+                'hc_number' => $hcNumber,
+                'error' => $e->getMessage(),
+            ]);
+            return response()->json(['error' => 'Error al actualizar el paciente'], 500);
+        }
+    }
+
     public function flujo(Request $request): JsonResponse|RedirectResponse|View
     {
         if (!$this->isLegacyAuthenticated($request)) {
