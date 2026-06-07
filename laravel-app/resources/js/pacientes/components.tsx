@@ -153,8 +153,8 @@ export function Section({ id, icon, title, count, badge, open, onToggle, childre
 }
 
 /* ---- Empty mini state ---- */
-export function EmptyMini({ icon, children }: { icon: string; children: React.ReactNode }) {
-  return <div className="mini-empty"><i className={`mdi ${icon}`} />{children}</div>;
+export function EmptyMini({ icon, msg, children }: { icon?: string; msg?: string; children?: React.ReactNode }) {
+  return <div className="mini-empty"><i className={`mdi ${icon || 'mdi-information-outline'}`} />{children ?? msg}</div>;
 }
 
 /* ---- Agendar modal ---- */

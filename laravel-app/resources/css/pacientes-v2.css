@@ -756,3 +756,123 @@ table.pac-table {
   .dp-grid { grid-template-columns: 1fr; }
   .pt-meta-strip .ms { flex-basis: 100%; border-right: 0; border-bottom: 1px solid var(--border-soft, #f1f5f9); }
 }
+
+/* Pagination */
+.pac-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.pg-info { font-size: 12.5px; color: var(--fg-mute); }
+.pg-controls { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.pg-btn {
+  min-width: 34px; height: 34px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--bg-card);
+  color: var(--fg-1); font-size: 13px; cursor: pointer; padding: 0 8px;
+  display: flex; align-items: center; justify-content: center; gap: 0;
+  transition: all .15s;
+}
+.pg-btn:hover:not(:disabled) { background: var(--bg-hover); border-color: var(--accent); color: var(--accent); }
+.pg-btn.is-active { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
+.pg-btn:disabled { opacity: .35; cursor: default; }
+.pg-ellipsis { font-size: 13px; color: var(--fg-mute); padding: 0 2px; }
+
+/* ---- Section badges / estado ---- */
+.badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 10px; border-radius: 20px; font-size: 11.5px; font-weight: 600; white-space: nowrap;
+}
+.badge-green  { background: #d1fae5; color: #065f46; }
+.badge-warn   { background: #fef3c7; color: #92400e; }
+.badge-red    { background: #fee2e2; color: #991b1b; }
+.badge-blue   { background: #dbeafe; color: #1e40af; }
+.badge-neutral{ background: #f1f5f9; color: #475569; }
+
+/* ---- Agenda rows ---- */
+.agenda-row { display: grid; grid-template-columns: auto 1fr auto auto; align-items: start; gap: 12px 16px; padding: 14px 0; border-bottom: 1px solid var(--border); }
+.agenda-row:last-child { border-bottom: none; }
+.agenda-ic { width: 36px; height: 36px; border-radius: 10px; background: var(--bg-hover); display: flex; align-items: center; justify-content: center; font-size: 17px; color: var(--accent); flex-shrink: 0; }
+.agenda-main .proc { font-size: 13.5px; font-weight: 600; color: var(--fg-1); }
+.agenda-main .doc  { font-size: 12px; color: var(--fg-mute); margin-top: 2px; }
+.agenda-main .sede { font-size: 11.5px; color: var(--fg-fade); }
+.agenda-when { text-align: right; }
+.agenda-when .fecha { font-size: 12.5px; font-weight: 600; color: var(--fg-1); }
+.agenda-when .hora  { font-size: 11.5px; color: var(--fg-mute); }
+.doctor-avatar { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; vertical-align: middle; margin-right: 4px; }
+.historial-estados { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 4px; }
+.hs-item { font-size: 10.5px; background: var(--bg-hover); border-radius: 6px; padding: 2px 7px; color: var(--fg-mute); }
+
+/* ---- Solicitudes rows (detail) ---- */
+.sol-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+.sol-row:last-child { border-bottom: none; }
+.sol-row .sr-proc { font-size: 13.5px; font-weight: 600; color: var(--fg-1); flex: 1; min-width: 0; }
+.sol-row .sr-meta { font-size: 11.5px; color: var(--fg-mute); margin-top: 2px; }
+.sr-ojo { font-size: 11px; padding: 1px 7px; border-radius: 6px; background: #e0f2fe; color: #0369a1; font-weight: 600; flex-shrink: 0; }
+
+/* ---- Examenes rows ---- */
+.exam-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+.exam-row:last-child { border-bottom: none; }
+.exam-row .er-name { font-size: 13.5px; font-weight: 600; flex: 1; }
+.exam-row .er-meta { font-size: 11.5px; color: var(--fg-mute); }
+
+/* ---- Consultas cards ---- */
+.consulta-card { border: 1px solid var(--border); border-radius: 12px; margin-bottom: 10px; overflow: hidden; }
+.consulta-head { display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: var(--bg-hover); cursor: pointer; }
+.consulta-head:hover { background: #f0f4ff; }
+.consulta-fecha { font-size: 12px; color: var(--fg-mute); flex-shrink: 0; }
+.consulta-motivo { font-size: 13.5px; font-weight: 600; flex: 1; color: var(--fg-1); }
+.consulta-body { padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+.consulta-field .cf-label { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--fg-mute); font-weight: 600; margin-bottom: 3px; }
+.consulta-field .cf-val { font-size: 13px; color: var(--fg-1); line-height: 1.5; }
+
+/* ---- Protocolos ---- */
+.proto-card { border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; margin-bottom: 10px; display: flex; align-items: center; gap: 14px; }
+.proto-ic { font-size: 20px; color: var(--accent); }
+.proto-main { flex: 1; }
+.proto-main .pm-title { font-size: 13.5px; font-weight: 600; color: var(--fg-1); }
+.proto-main .pm-date  { font-size: 12px; color: var(--fg-mute); margin-top: 2px; }
+
+/* ---- Prefacturas table ---- */
+.pref-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.pref-table th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--fg-mute); font-weight: 600; padding: 6px 10px; border-bottom: 2px solid var(--border); }
+.pref-table td { padding: 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.pref-table tr:last-child td { border-bottom: none; }
+.pref-table .mono-sm { font-family: monospace; font-size: 12px; }
+.vigencia-ok   { color: #065f46; font-weight: 600; }
+.vigencia-warn { color: #92400e; font-weight: 600; }
+.vigencia-exp  { color: #991b1b; font-weight: 600; }
+
+/* ---- Derivaciones table ---- */
+.deriv-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.deriv-table th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--fg-mute); font-weight: 600; padding: 6px 10px; border-bottom: 2px solid var(--border); }
+.deriv-table td { padding: 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.deriv-table tr:last-child td { border-bottom: none; }
+
+/* ---- Recetas ---- */
+.receta-group { border: 1px solid var(--border); border-radius: 12px; margin-bottom: 10px; overflow: hidden; }
+.receta-group-head { background: var(--bg-hover); padding: 10px 14px; font-size: 12px; color: var(--fg-mute); display: flex; gap: 12px; align-items: center; }
+.receta-group-head strong { color: var(--fg-1); font-size: 13px; }
+.receta-items { padding: 8px 14px; display: flex; flex-direction: column; gap: 8px; }
+.receta-item { display: flex; align-items: baseline; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.receta-item:last-child { border-bottom: none; }
+.ri-producto { font-size: 13.5px; font-weight: 600; flex: 1; color: var(--fg-1); }
+.ri-meta { font-size: 12px; color: var(--fg-mute); flex-shrink: 0; }
+
+/* ---- CRM rows ---- */
+.crm-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+.crm-row:last-child { border-bottom: none; }
+.crm-row .cr-title { font-size: 13.5px; font-weight: 600; flex: 1; }
+.crm-row .cr-meta  { font-size: 12px; color: var(--fg-mute); margin-top: 2px; }
+
+/* ---- Section skeleton ---- */
+.sec-skeleton { display: flex; flex-direction: column; gap: 10px; }
+.sec-skeleton .skel-row { border-radius: 8px; overflow: hidden; }
+.sec-loading { margin-left: 4px; color: var(--fg-mute); animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---- card-row helper ---- */
+.card-row { background: var(--bg-card); border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.06); margin-bottom: 8px; }

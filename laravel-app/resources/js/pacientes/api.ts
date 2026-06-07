@@ -28,6 +28,38 @@ function normalizePatient(raw: any, id: number): Patient {
   const solicitudes = raw.solicitudes || [];
   const activeSols = solicitudes.filter((s: any) => SOL_ACTIVA.has(s.estado));
 
+  // Compute age from fecha_nacimiento if edad not provided
+  const fechaNac = String(raw.fecha_nac || raw.fecha_nacimiento || '');
+  let edad = raw.edad || 0;
+  if (!edad && fechaNac) {
+    const diff = Date.now() - new Date(fechaNac).getTime();
+    edad = Math.floor(diff / (365.25 * 24 * 3600 * 1000));
+  }
+
+  // Resolve sede from list endpoint (id_sede field) or detail
+  const sedeRaw = String(raw.sede || raw.sede_id || raw.id_sede || '').toLowerCase().trim();
+  const sede = sedeRaw || 'ceibos';
+
+  // Resolve medico: list endpoint returns medico_nombre (raw doctor name), detail has medico_id
+  const medico = String(raw.medico || raw.medico_id || raw.doctor_id || raw.medico_nombre || '');
+
+  // Próxima cita: list endpoint returns proxima_fecha/hora/tipo, detail has proxima_cita object
+  let proximaCita = raw.proxima_cita || null;
+  if (!proximaCita && raw.proxima_fecha) {
+    const fechaStr = raw.proxima_hora
+      ? `${raw.proxima_fecha}T${raw.proxima_hora}`
+      : raw.proxima_fecha;
+    proximaCita = {
+      fecha: fechaStr,
+      medico: raw.proxima_doctor || medicoRaw,
+      tipo: raw.proxima_tipo || 'consulta',
+    };
+  }
+
+  const solActiva = raw.sol_activa != null
+    ? Number(raw.sol_activa)
+    : activeSols.length;
+
   const p: Patient = {
     id: raw.id || id,
     hc_number: String(raw.hc_number || raw.hc || ''),
@@ -37,23 +69,23 @@ function normalizePatient(raw: any, id: number): Patient {
     display_name: displayName,
     initials: ini,
     cedula: String(raw.cedula || raw.identificacion || ''),
-    fecha_nac: String(raw.fecha_nac || raw.fecha_nacimiento || ''),
-    edad: raw.edad || 0,
+    fecha_nac: fechaNac,
+    edad,
     sexo: String(raw.sexo || raw.genero || 'M'),
-    telefono: String(raw.telefono || raw.tel || raw.telefono_movil || ''),
+    telefono: String(raw.telefono || raw.tel || raw.celular || raw.telefono_movil || ''),
     telefono_alt: raw.telefono_alt || raw.tel2 || null,
     email: raw.email || null,
     direccion: String(raw.direccion || raw.dir || ''),
     ciudad: String(raw.ciudad || 'Guayaquil'),
-    sede: String(raw.sede || raw.sede_id || 'ceibos'),
-    medico: String(raw.medico || raw.medico_id || raw.doctor_id || ''),
+    sede,
+    medico,
     afiliacion: String(raw.afiliacion || 'privado'),
     aseguradora: raw.aseguradora || null,
     poliza: raw.poliza || raw.num_poliza || null,
     titular: raw.titular || null,
     emergencia: raw.emergencia || { nombre: '—', rel: '—', tel: '—' },
     ultima_visita: String(raw.ultima_visita || raw.ultima_fecha || raw.ultima || new Date().toISOString()),
-    proxima_cita: raw.proxima_cita || null,
+    proxima_cita: proximaCita,
     alerta: raw.alerta || null,
     deuda: Number(raw.deuda || 0),
     citas: raw.citas || [],
@@ -62,7 +94,7 @@ function normalizePatient(raw: any, id: number): Patient {
     notas: raw.notas || [],
     facturas: raw.facturas || [],
     comunicaciones: raw.comunicaciones || [],
-    sol_activa: activeSols.length,
+    sol_activa: solActiva,
     created_at: String(raw.created_at || new Date().toISOString()),
     timeline: [],
   };
@@ -71,7 +103,7 @@ function normalizePatient(raw: any, id: number): Patient {
 }
 
 export async function fetchPatientList(): Promise<Patient[]> {
-  const res = await fetch('/v2/pacientes?limit=100&offset=0', {
+  const res = await fetch('/v2/pacientes?limit=5000&offset=0', {
     headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
   });
   if (!res.ok) throw new Error('Error cargando lista de pacientes');

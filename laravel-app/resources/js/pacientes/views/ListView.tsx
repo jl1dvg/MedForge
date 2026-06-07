@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import type { Patient } from '../types';
 import { SEDES, MEDICOS, AFILIACIONES, MEDICO_MAP } from '../data';
 import { fmtDateShort, relDays, isFuture, isToday } from '../utils';
@@ -19,6 +19,8 @@ export default function ListView({ patients, loading, search, setSearch, onOpen,
   const [filters, setFilters] = useState({ sede: '', medico: '', afiliacion: '', registro: '' });
   const [flags, setFlags] = useState({ citas: false, solicitudes: false, hoy: false });
   const [sort, setSort] = useState({ key: 'ultima_visita', dir: 'desc' });
+  const [page, setPage] = useState(1);
+  const [perPage] = useState(50);
 
   const kpis = useMemo(() => {
     const hoy = new Date();
@@ -70,6 +72,11 @@ export default function ListView({ patients, loading, search, setSearch, onOpen,
     });
     return arr;
   }, [filtered, sort]);
+
+  useEffect(() => setPage(1), [filtered]);
+
+  const pageCount = Math.ceil(sorted.length / perPage);
+  const paged = sorted.slice((page - 1) * perPage, page * perPage);
 
   const hasFilters = filters.sede || filters.medico || filters.afiliacion || filters.registro || flags.citas || flags.solicitudes || flags.hoy || search;
   const clearAll = () => { setFilters({ sede: '', medico: '', afiliacion: '', registro: '' }); setFlags({ citas: false, solicitudes: false, hoy: false }); setSearch(''); };
@@ -183,7 +190,7 @@ export default function ListView({ patients, loading, search, setSearch, onOpen,
                 </tr>
               </thead>
               <tbody>
-                {sorted.map(p => (
+                {paged.map(p => (
                   <tr key={p.id} className={p.alerta ? 'has-alert' : ''} onClick={() => onOpen(p.id)}>
                     <td>
                       <div className="tc-pac">
@@ -214,12 +221,34 @@ export default function ListView({ patients, loading, search, setSearch, onOpen,
                 ))}
               </tbody>
             </table>
+            {pageCount > 1 && (
+              <div className="pac-pagination">
+                <span className="pg-info">
+                  Mostrando {(page-1)*perPage + 1}–{Math.min(page*perPage, sorted.length)} de {sorted.length}
+                </span>
+                <div className="pg-controls">
+                  <button disabled={page === 1} onClick={() => setPage(1)} className="pg-btn"><i className="mdi mdi-page-first" /></button>
+                  <button disabled={page === 1} onClick={() => setPage(p => p-1)} className="pg-btn"><i className="mdi mdi-chevron-left" /></button>
+                  {Array.from({length: pageCount}, (_, i) => i+1)
+                    .filter(n => n === 1 || n === pageCount || Math.abs(n - page) <= 2)
+                    .map((n, idx, arr) => (
+                      <React.Fragment key={n}>
+                        {idx > 0 && arr[idx-1] !== n-1 && <span className="pg-ellipsis">…</span>}
+                        <button className={`pg-btn ${n === page ? 'is-active' : ''}`} onClick={() => setPage(n)}>{n}</button>
+                      </React.Fragment>
+                    ))
+                  }
+                  <button disabled={page === pageCount} onClick={() => setPage(p => p+1)} className="pg-btn"><i className="mdi mdi-chevron-right" /></button>
+                  <button disabled={page === pageCount} onClick={() => setPage(pageCount)} className="pg-btn"><i className="mdi mdi-page-last" /></button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
         {!loading && filtered.length > 0 && view === 'tarjetas' && (
           <div className="pac-cards">
-            {sorted.map(p => (
+            {paged.map(p => (
               <article key={p.id} className={`pcard ${p.alerta ? 'has-alert' : ''}`} onClick={() => onOpen(p.id)}>
                 <div className="pcard-top">
                   <Avatar initials={p.initials} sede={p.sede} size={48} />
@@ -246,6 +275,28 @@ export default function ListView({ patients, loading, search, setSearch, onOpen,
                 </div>
               </article>
             ))}
+            {pageCount > 1 && (
+              <div className="pac-pagination" style={{ width: '100%' }}>
+                <span className="pg-info">
+                  Mostrando {(page-1)*perPage + 1}–{Math.min(page*perPage, sorted.length)} de {sorted.length}
+                </span>
+                <div className="pg-controls">
+                  <button disabled={page === 1} onClick={() => setPage(1)} className="pg-btn"><i className="mdi mdi-page-first" /></button>
+                  <button disabled={page === 1} onClick={() => setPage(p => p-1)} className="pg-btn"><i className="mdi mdi-chevron-left" /></button>
+                  {Array.from({length: pageCount}, (_, i) => i+1)
+                    .filter(n => n === 1 || n === pageCount || Math.abs(n - page) <= 2)
+                    .map((n, idx, arr) => (
+                      <React.Fragment key={n}>
+                        {idx > 0 && arr[idx-1] !== n-1 && <span className="pg-ellipsis">…</span>}
+                        <button className={`pg-btn ${n === page ? 'is-active' : ''}`} onClick={() => setPage(n)}>{n}</button>
+                      </React.Fragment>
+                    ))
+                  }
+                  <button disabled={page === pageCount} onClick={() => setPage(p => p+1)} className="pg-btn"><i className="mdi mdi-chevron-right" /></button>
+                  <button disabled={page === pageCount} onClick={() => setPage(pageCount)} className="pg-btn"><i className="mdi mdi-page-last" /></button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
