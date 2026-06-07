@@ -119,6 +119,26 @@ class CrmOpportunityController
         return response()->json(['data' => $opp], 201);
     }
 
+    private static function extractSourceData(CrmOpportunity $opp): ?array
+    {
+        $src = $opp->sourceable;
+        if ($src === null) return null;
+
+        return match ($opp->source_type) {
+            'solicitud_procedimiento' => [
+                'procedimiento' => $src->procedimiento ?? null,
+                'ojo'           => $src->ojo ?? null,
+                'doctor'        => $src->doctor ?? null,
+            ],
+            'consulta_examenes' => [
+                'procedimiento' => $src->examen_nombre ?? null,
+                'ojo'           => $src->lateralidad ?? null,
+                'doctor'        => null,
+            ],
+            default => null,
+        };
+    }
+
     public function update(Request $request, int $id): JsonResponse
     {
         if (!Auth::check()) {
@@ -355,26 +375,6 @@ class CrmOpportunityController
         }
 
         return $effectiveSources[0] ?? 'manual';
-    }
-
-    private static function extractSourceData(CrmOpportunity $opp): ?array
-    {
-        $src = $opp->sourceable;
-        if ($src === null) return null;
-
-        return match ($opp->source_type) {
-            'solicitud_procedimiento' => [
-                'procedimiento' => $src->procedimiento ?? null,
-                'ojo'           => $src->ojo ?? null,
-                'doctor'        => $src->doctor ?? null,
-            ],
-            'consulta_examenes' => [
-                'procedimiento' => $src->examen_nombre ?? null,
-                'ojo'           => $src->lateralidad ?? null,
-                'doctor'        => null,
-            ],
-            default => null,
-        };
     }
 
     private function applyPatientAffiliationFilter(Builder $query, string $afiliacion): void
