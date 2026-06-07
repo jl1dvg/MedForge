@@ -1192,10 +1192,15 @@ class CrmCaseService
             return [];
         }
 
+        $formId = $this->nullableInt($caseRow['form_id'] ?? null);
+        $opportunityId = $this->nullableInt($detailRow['crm_opportunity_id'] ?? null)
+            ?? $this->resolveSolicitudOpportunityId($sourceId);
+        $leadId = $this->nullableInt($detailRow['crm_lead_id'] ?? null);
+
         $query = DB::table('crm_proposals');
         $hasCondition = false;
 
-        $query->where(function ($where) use ($sourceId, $caseRow, $detailRow, &$hasCondition): void {
+        $query->where(function ($where) use ($sourceId, $formId, $opportunityId, $leadId, &$hasCondition): void {
             if ($this->hasColumns('crm_proposals', ['source_type', 'source_id'])) {
                 $hasCondition = true;
                 $where->orWhere(function ($source) use ($sourceId): void {
@@ -1204,19 +1209,19 @@ class CrmCaseService
                 });
             }
 
-            if (Schema::hasColumn('crm_proposals', 'form_id') && isset($caseRow['form_id'])) {
+            if (Schema::hasColumn('crm_proposals', 'form_id') && $formId !== null) {
                 $hasCondition = true;
-                $where->orWhere('form_id', $caseRow['form_id']);
+                $where->orWhere('form_id', $formId);
             }
 
-            if (Schema::hasColumn('crm_proposals', 'crm_opportunity_id') && isset($detailRow['crm_opportunity_id'])) {
+            if (Schema::hasColumn('crm_proposals', 'crm_opportunity_id') && $opportunityId !== null) {
                 $hasCondition = true;
-                $where->orWhere('crm_opportunity_id', $detailRow['crm_opportunity_id']);
+                $where->orWhere('crm_opportunity_id', $opportunityId);
             }
 
-            if (Schema::hasColumn('crm_proposals', 'lead_id') && isset($detailRow['crm_lead_id'])) {
+            if (Schema::hasColumn('crm_proposals', 'lead_id') && $leadId !== null) {
                 $hasCondition = true;
-                $where->orWhere('lead_id', $detailRow['crm_lead_id']);
+                $where->orWhere('lead_id', $leadId);
             }
         });
 
@@ -1242,6 +1247,19 @@ class CrmCaseService
                 }
             })
             ->all();
+    }
+
+    private function resolveSolicitudOpportunityId(int $sourceId): ?int
+    {
+        if (!Schema::hasColumn('solicitud_procedimiento', 'crm_opportunity_id')) {
+            return null;
+        }
+
+        return $this->nullableInt(
+            DB::table('solicitud_procedimiento')
+                ->where('id', $sourceId)
+                ->value('crm_opportunity_id')
+        );
     }
 
     /**

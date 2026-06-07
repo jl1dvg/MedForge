@@ -762,6 +762,13 @@ function TabPropuestas({
         </div>
 
         <div className="prop-draft-list">
+          <div className="prop-draft-row prop-draft-head" aria-hidden="true">
+            <span>Código / descripción</span>
+            <span>Cant.</span>
+            <span>Precio</span>
+            <span>Desc. %</span>
+            <span></span>
+          </div>
           {draftItems.map((item) => (
             <div className="prop-draft-row" key={item.key}>
               <input className="fld" value={item.description} onChange={(e) => updateDraftItem(item.key, { description: e.target.value })} placeholder="Descripción del ítem" />
