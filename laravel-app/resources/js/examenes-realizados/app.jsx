@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { TABS, TIPOS } from './catalog';
-import { inferTipoKey, inferOjo, getBandejaStore, setBandejaStore } from './helpers';
+import { inferTipoKey, inferOjo } from './helpers';
 import { KpiRow, Tabs, TabDescription, DateRangeBanner, Filters, Toast } from './components';
 import { BulkBar, ExamTable } from './table';
 import { InformarModal, VerImagenesModal, MarcarUrgenteModal, HelpModal, TabHelpModal } from './modals';
@@ -60,11 +60,11 @@ function normalizeRow(raw) {
     nas_status: nasHasFiles ? 'con-archivos' : 'sin-archivos',
     nas_files_count: count,
     nas_files: nasFiles,
-    // priority fields – merged from localStorage bandeja store
-    prioridad: null,
-    fecha_limite: null,
-    responsable: null,
-    motivo: null,
+    // priority fields – from server (imagenes_bandeja_prioridad join)
+    prioridad: raw.bandeja_prioridad || null,
+    fecha_limite: raw.bandeja_fecha_limite || null,
+    responsable: raw.bandeja_responsable || null,
+    motivo: raw.bandeja_motivo || null,
     wpp_status: raw.wpp_status || (raw.informado ? 'pendiente' : 'no-aplica'),
   };
 }
@@ -72,14 +72,8 @@ function normalizeRow(raw) {
 export default function App({ config }) {
   const { today, currentUser, doctores, serverFilters = {}, baseUrl = '' } = config;
 
-  // Merge bandeja (client-side priority overrides) on first load
   const initialRows = useMemo(() => {
-    const store = getBandejaStore();
-    return (config.rows || []).map((raw) => {
-      const r = normalizeRow(raw);
-      const saved = store[r.id];
-      return saved ? { ...r, ...saved } : r;
-    });
+    return (config.rows || []).map((raw) => normalizeRow(raw));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [rows, setRows] = useState(initialRows);
@@ -209,29 +203,39 @@ export default function App({ config }) {
   }, [showToast, visibleRows, currentUser, today]);
 
   const confirmUrgente = useCallback((ids, data) => {
-    setRows((rs) => rs.map((r) => {
-      if (!ids.includes(r.id)) return r;
-      const updated = { ...r, ...data };
-      // Persist in localStorage for cross-reload survival
-      const store = getBandejaStore();
-      store[r.id] = { prioridad: data.prioridad, fecha_limite: data.fecha_limite, responsable: data.responsable, motivo: data.motivo };
-      setBandejaStore(store);
-      return updated;
-    }));
+    // Optimistic update
+    setRows((rs) => rs.map((r) => ids.includes(r.id) ? { ...r, ...data } : r));
     setUrgenteRows(null);
     setSelectedIds(new Set());
     showToast(ids.length > 1 ? `${ids.length} exámenes enviados a la bandeja prioritaria` : 'Examen en la bandeja prioritaria', 'mdi-bell-check');
-  }, [showToast]);
+
+    // Persist to DB
+    const procedimientoIds = rows.filter((r) => ids.includes(r.id)).map((r) => r.id);
+    const formIds = rows.filter((r) => ids.includes(r.id)).map((r) => r.form_id || null);
+    fetch('/v2/imagenes/bandeja', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '' },
+      body: JSON.stringify({
+        procedimiento_ids: procedimientoIds,
+        form_ids: formIds,
+        prioridad: data.prioridad,
+        fecha_limite: data.fecha_limite || null,
+        responsable: data.responsable || null,
+        motivo: data.motivo,
+      }),
+    }).catch(() => showToast('Error al guardar en la bandeja', 'mdi-alert', 'warn'));
+  }, [showToast, rows]);
 
   const quitarBandeja = useCallback((row) => {
-    setRows((rs) => rs.map((r) => {
-      if (r.id !== row.id) return r;
-      const store = getBandejaStore();
-      delete store[r.id];
-      setBandejaStore(store);
-      return { ...r, prioridad: null, fecha_limite: null, responsable: null, motivo: null };
-    }));
+    // Optimistic update
+    setRows((rs) => rs.map((r) => r.id === row.id ? { ...r, prioridad: null, fecha_limite: null, responsable: null, motivo: null } : r));
     showToast('Quitado de la bandeja prioritaria', 'mdi-bell-off', 'warn');
+
+    // Remove from DB
+    fetch(`/v2/imagenes/bandeja/${row.id}`, {
+      method: 'DELETE',
+      headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '' },
+    }).catch(() => showToast('Error al quitar de la bandeja', 'mdi-alert', 'warn'));
   }, [showToast]);
 
   const sendSelectedToBandeja = useCallback(() => {

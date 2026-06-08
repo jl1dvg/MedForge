@@ -10,6 +10,7 @@ use App\Modules\Shared\Support\AfiliacionDimensionService;
 use DateTime;
 use DateTimeImmutable;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use PDO;
 
 class ImagenesUiService
@@ -271,6 +272,19 @@ class ImagenesUiService
                NULL AS nas_last_scanned_at";
         $nasJoin = $nasAvailable ? "LEFT JOIN {$nasIndexTable} ini ON TRIM(COALESCE(ini.form_id, '')) = TRIM(COALESCE(pp.form_id, ''))" : '';
 
+        $bandejaJoin = '';
+        $bandejaSelect = "NULL AS bandeja_prioridad,
+               NULL AS bandeja_fecha_limite,
+               NULL AS bandeja_responsable,
+               NULL AS bandeja_motivo";
+        if (Schema::hasTable('imagenes_bandeja_prioridad')) {
+            $bandejaJoin = 'LEFT JOIN imagenes_bandeja_prioridad ibp ON ibp.procedimiento_id = pp.id';
+            $bandejaSelect = "ibp.prioridad AS bandeja_prioridad,
+               ibp.fecha_limite AS bandeja_fecha_limite,
+               ibp.responsable AS bandeja_responsable,
+               ibp.motivo AS bandeja_motivo";
+        }
+
         $facturacionSql = $this->buildImagenesFacturacionSql($includeFacturado);
 
         $sql = "SELECT
@@ -301,11 +315,13 @@ class ImagenesUiService
                 ii.informe_actualizado AS informe_actualizado,
                 COALESCE(ii.informes_total, 0) AS informes_total,
                 {$nasSelect},
+                {$bandejaSelect},
                 {$facturacionSql['select']}
             FROM procedimiento_proyectado pp
             LEFT JOIN patient_data pd ON pd.hc_number = pp.hc_number
             {$imagenInformeJoin}
             {$nasJoin}
+            {$bandejaJoin}
             {$categoriaContext['join']}
             {$facturacionSql['join']}
             WHERE pp.estado_agenda IS NOT NULL
