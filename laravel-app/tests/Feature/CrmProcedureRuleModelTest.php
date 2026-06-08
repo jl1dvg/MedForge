@@ -18,7 +18,7 @@ class CrmProcedureRuleModelTest extends TestCase
             $table->id();
             $table->string('codigo', 50)->unique();
             $table->string('grupo_codigo', 100)->nullable();
-            $table->string('nombre', 200);
+            $table->text('nombre');
             $table->string('tipo', 20)->default('unica');
             $table->unsignedSmallInteger('ventana_dias')->nullable();
             $table->tinyInteger('agrupar_por_ojo')->default(1);
