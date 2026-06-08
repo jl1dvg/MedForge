@@ -48,6 +48,16 @@
             'role' => auth()->user()?->role_name ?? '',
         ],
         'doctores'    => $doctores,
+        // Active server-side filters — React initializes its state from here
+        // and reloads the page when the user changes dates/afiliacion/sede/tipo
+        'serverFilters' => [
+            'from'       => $filters['fecha_inicio'] ?? '',
+            'to'         => $filters['fecha_fin'] ?? '',
+            'afiliacion' => $filters['afiliacion'] ?? '',
+            'sede'       => $filters['sede'] ?? '',
+            'tipo'       => $filters['tipo_examen'] ?? '',
+        ],
+        'baseUrl' => url('/v2/imagenes/examenes-realizados'),
     ];
     ?>
     <div

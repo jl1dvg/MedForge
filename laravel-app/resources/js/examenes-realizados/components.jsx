@@ -119,6 +119,21 @@ export function Tabs({ activeTab, counts, onChange, onTabHelp }) {
   );
 }
 
+// ---- Active date range banner ----------------------------------
+export function DateRangeBanner({ serverFilters }) {
+  const { from, to } = serverFilters || {};
+  if (!from && !to) return null;
+  return (
+    <div className="imr-date-banner">
+      <i className="mdi mdi-calendar-range"></i>
+      Mostrando período: <b>{from || '…'}</b> → <b>{to || '…'}</b>
+      <span style={{ fontSize: 11.5, color: 'var(--fg-mute)', marginLeft: 8 }}>
+        (cambia las fechas y pulsa Buscar para otro rango)
+      </span>
+    </div>
+  );
+}
+
 export function TabDescription({ tab, onMore }) {
   const tones = {
     'no-informados': { bg: 'var(--primary-fade)', c: 'var(--accent)' },
@@ -137,8 +152,14 @@ export function TabDescription({ tab, onMore }) {
 }
 
 // ---- Filters -------------------------------------------------------
-export function Filters({ filters, setFilters, onClear }) {
-  const set = (k, v) => setFilters((f) => ({ ...f, [k]: v }));
+// search → client-side (instant). serverFilters (from/to/afiliacion/sede/tipo)
+// require a page reload via onApply.
+export function Filters({ search, onSearchChange, serverFilters, setServerFilters, onApply, onClear }) {
+  const sf = serverFilters || {};
+  const set = (k, v) => setServerFilters((f) => ({ ...f, [k]: v }));
+
+  const handleKeyDown = (e) => { if (e.key === 'Enter') onApply(); };
+
   return (
     <div className="imr-filters">
       <div className="imr-field imr-field-grow imr-search-field">
@@ -146,27 +167,27 @@ export function Filters({ filters, setFilters, onClear }) {
         <div style={{ position: 'relative' }}>
           <i className="mdi mdi-magnify"></i>
           <input type="text" placeholder="Buscar por nombre, cédula o HC…"
-            value={filters.search} onChange={(e) => set('search', e.target.value)} />
+            value={search} onChange={(e) => onSearchChange(e.target.value)} />
         </div>
       </div>
       <div className="imr-field">
         <label>Desde</label>
-        <input type="date" value={filters.from} onChange={(e) => set('from', e.target.value)} />
+        <input type="date" value={sf.from || ''} onChange={(e) => set('from', e.target.value)} onKeyDown={handleKeyDown} />
       </div>
       <div className="imr-field">
         <label>Hasta</label>
-        <input type="date" value={filters.to} onChange={(e) => set('to', e.target.value)} />
+        <input type="date" value={sf.to || ''} onChange={(e) => set('to', e.target.value)} onKeyDown={handleKeyDown} />
       </div>
       <div className="imr-field">
         <label>Afiliación</label>
-        <select value={filters.afiliacion} onChange={(e) => set('afiliacion', e.target.value)}>
+        <select value={sf.afiliacion || ''} onChange={(e) => set('afiliacion', e.target.value)}>
           <option value="">Todas</option>
           {AFILIACIONES.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
         </select>
       </div>
       <div className="imr-field">
         <label>Sede</label>
-        <select value={filters.sede} onChange={(e) => set('sede', e.target.value)}>
+        <select value={sf.sede || ''} onChange={(e) => set('sede', e.target.value)}>
           <option value="">Todas</option>
           <option value="MATRIZ">MATRIZ</option>
           <option value="CEIBOS">CEIBOS</option>
@@ -174,13 +195,16 @@ export function Filters({ filters, setFilters, onClear }) {
       </div>
       <div className="imr-field">
         <label>Tipo de examen</label>
-        <select value={filters.tipo} onChange={(e) => set('tipo', e.target.value)}>
+        <select value={sf.tipo || ''} onChange={(e) => set('tipo', e.target.value)}>
           <option value="">Todos</option>
           {TIPOS.map((t) => <option key={t.key} value={t.key}>{t.short}</option>)}
         </select>
       </div>
       <div className="imr-filter-actions">
-        <button className="imr-btn imr-btn-ghost imr-btn-sm" onClick={onClear}>
+        <button className="imr-btn imr-btn-primary imr-btn-sm" onClick={onApply}>
+          <i className="mdi mdi-magnify"></i> Buscar
+        </button>
+        <button className="imr-btn imr-btn-ghost imr-btn-sm" onClick={onClear} title="Volver al mes actual">
           <i className="mdi mdi-close-circle-outline"></i> Limpiar
         </button>
       </div>

@@ -1,11 +1,23 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { TABS, TIPOS } from './catalog';
 import { inferTipoKey, inferOjo, getBandejaStore, setBandejaStore } from './helpers';
-import { Topbar, KpiRow, Tabs, TabDescription, Filters, Toast } from './components';
+import { KpiRow, Tabs, TabDescription, DateRangeBanner, Filters, Toast } from './components';
 import { BulkBar, ExamTable } from './table';
 import { InformarModal, VerImagenesModal, MarcarUrgenteModal, HelpModal, TabHelpModal } from './modals';
 
-const EMPTY_FILTERS = { search: '', from: '', to: '', afiliacion: '', sede: '', tipo: '' };
+// Filters that are applied server-side (reload page on change)
+const SERVER_FILTER_KEYS = ['from', 'to', 'afiliacion', 'sede', 'tipo'];
+
+function buildUrl(baseUrl, serverFilters) {
+  const params = new URLSearchParams();
+  if (serverFilters.from)       params.set('fecha_inicio', serverFilters.from);
+  if (serverFilters.to)         params.set('fecha_fin',    serverFilters.to);
+  if (serverFilters.afiliacion) params.set('afiliacion',   serverFilters.afiliacion);
+  if (serverFilters.sede)       params.set('sede',         serverFilters.sede);
+  if (serverFilters.tipo)       params.set('tipo_examen',  serverFilters.tipo);
+  const qs = params.toString();
+  return qs ? `${baseUrl}?${qs}` : baseUrl;
+}
 
 // Transform backend row to the shape the UI expects
 function normalizeRow(raw) {
@@ -58,7 +70,7 @@ function normalizeRow(raw) {
 }
 
 export default function App({ config }) {
-  const { today, currentUser, doctores } = config;
+  const { today, currentUser, doctores, serverFilters = {}, baseUrl = '' } = config;
 
   // Merge bandeja (client-side priority overrides) on first load
   const initialRows = useMemo(() => {
@@ -72,7 +84,9 @@ export default function App({ config }) {
 
   const [rows, setRows] = useState(initialRows);
   const [activeTab, setActiveTab] = useState('no-informados');
-  const [filters, setFilters] = useState(EMPTY_FILTERS);
+  // Initialize client-side search from nothing; server filters already applied
+  const [filters, setFilters] = useState({ search: '', ...serverFilters });
+  const [pendingServerFilters, setPendingServerFilters] = useState({ ...serverFilters });
   const [kpiFilter, setKpiFilter] = useState('');
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [toast, setToast] = useState(null);
@@ -99,16 +113,21 @@ export default function App({ config }) {
   }, []);
 
   // ---- Filters ----
+  // Server already filtered by from/to/afiliacion/sede/tipo — only apply search client-side
   const matchesFilters = useCallback((r) => {
     const q = filters.search.trim().toLowerCase();
     if (q && !(`${r.full_name} ${r.cedula} ${r.hc_number} ${r.tipo_label}`.toLowerCase().includes(q))) return false;
-    if (filters.from && r.fecha_examen < filters.from) return false;
-    if (filters.to && r.fecha_examen > filters.to) return false;
-    if (filters.afiliacion && r.afiliacion !== filters.afiliacion) return false;
-    if (filters.sede && r.sede !== filters.sede) return false;
-    if (filters.tipo && r.tipo_key !== filters.tipo) return false;
     return true;
-  }, [filters]);
+  }, [filters.search]);
+
+  // Reload page with new server-side filters
+  const applyServerFilters = useCallback(() => {
+    window.location.href = buildUrl(baseUrl, pendingServerFilters);
+  }, [baseUrl, pendingServerFilters]);
+
+  const clearAllFilters = useCallback(() => {
+    window.location.href = baseUrl;
+  }, [baseUrl]);
 
   // ---- Tab counts ----
   const counts = useMemo(() => {
@@ -247,13 +266,21 @@ export default function App({ config }) {
 
         <KpiRow metrics={metrics} kpiFilter={kpiFilter} onKpi={onKpi} />
 
+        <DateRangeBanner serverFilters={serverFilters} />
+
         <div className="imr-card">
           <Tabs activeTab={activeTab} counts={counts}
             onChange={(k) => { setActiveTab(k); setKpiFilter(''); }}
             onTabHelp={(k) => setTabHelpKey(k)} />
           <TabDescription tab={activeTabObj} onMore={(k) => setTabHelpKey(k)} />
-          <Filters filters={filters} setFilters={setFilters}
-            onClear={() => { setFilters(EMPTY_FILTERS); setKpiFilter(''); }} />
+          <Filters
+            search={filters.search}
+            onSearchChange={(v) => setFilters((f) => ({ ...f, search: v }))}
+            serverFilters={pendingServerFilters}
+            setServerFilters={setPendingServerFilters}
+            onApply={applyServerFilters}
+            onClear={clearAllFilters}
+          />
           <BulkBar tab={activeTab} count={selectedIds.size}
             onSendBandeja={sendSelectedToBandeja} onPrint={printRows}
             onClear={() => setSelectedIds(new Set())} />
