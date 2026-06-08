@@ -370,6 +370,20 @@ The commercial CRM does not own or replicate any of this operational data. It re
 
 ---
 
+### Official event-emitting modules (Phase 1–4 scope)
+
+The following operational modules are the only authorized sources of events into the commercial CRM in this design:
+
+| Module | Event channel |
+|---|---|
+| **CRM Solicitudes** (`solicitud_procedimiento`) | Stage transitions, scheduling, surgery completion |
+| **CRM Imágenes / Exámenes** (`consulta_examenes`) | Clinical item linkage, pre-op workup signals |
+| **WhatsApp** (`whatsapp_leads`) | Captación, lead lifecycle (nuevo → convertido) |
+
+**Billing integration is explicitly deferred.** When billing events are eventually integrated, they will follow the same event-driven pattern via `crm_stage_mappings`. No billing columns or billing-derived transitions are included in this design.
+
+---
+
 ### What flows from CRM Solicitudes into the commercial opportunity
 
 | Operational event / state | Commercial effect |
@@ -443,6 +457,63 @@ Stage advancement follows the existing `crm_stage_mappings` table (already in pr
 
 ---
 
+### Stage Mapping: Operational Events → Commercial Stages
+
+The `crm_stage_mappings` table makes the commercial CRM configurable without code changes. Every automatic stage transition is driven by a row in this table.
+
+```sql
+crm_stage_mappings
+  id
+  source_module         VARCHAR(50)     -- 'solicitudes' | 'examenes' | 'whatsapp'
+  source_event          VARCHAR(100)    -- event class name (e.g. 'SolicitudCreada')
+  source_state          VARCHAR(100)    -- operational state value (e.g. 'programada')
+  target_stage          VARCHAR(30)     -- target crm_opportunities.stage value (nullable = no stage change)
+  auto_transition       TINYINT(1)      -- 1 = apply automatically; 0 = suggestion only
+  only_forward          TINYINT(1)      -- DEFAULT 1: never regress stage via this mapping
+  requires_agent_review TINYINT(1)      -- DEFAULT 0: if 1, flag opp for coordinator attention
+  active                TINYINT(1)      -- DEFAULT 1
+  created_at, updated_at
+```
+
+#### Solicitudes mappings
+
+| `source_event` / `source_state` | `target_stage` | `auto_transition` | `requires_agent_review` | Notes |
+|---|---|---|---|---|
+| `SolicitudCreada` | `nuevo` | 1 | 0 | Creates opp or links as clinical item |
+| `pendiente_autorizacion` | `en_coordinacion` | 1 | 0 | Authorization required |
+| `pendiente_documentos` | `en_coordinacion` | 1 | 0 | Documents incomplete |
+| `programada` | `comprometido` | 1 | 0 | Surgery scheduled |
+| `confirmada` | `comprometido` | 1 | 0 | `only_forward=1`: no regress if already `comprometido` |
+| `realizada` | `ganado` | 1 | 0 | Surgery completed |
+| `cancelada` (definitive `motivo_baja`) | `perdido` | 1 | 0 | Mapped per `motivo_baja` in a separate config |
+| `cancelada` (recoverable or unknown motivo) | `null` | 0 | 1 | No stage change; flag for agent |
+
+#### Imágenes / Exámenes mappings
+
+| `source_event` / `source_state` | `target_stage` | `auto_transition` | Notes |
+|---|---|---|---|
+| `ExamenSolicitado` | `null` | 0 | Links as clinical item only; no stage change |
+| `ExamenRealizado` | `null` | 0 | Signals pre-op progress; updates score (future) |
+| All required pre-op exams completed | `null` | 0 | Checklist signal; may trigger alert or `escalation_at` |
+
+#### WhatsApp mappings
+
+| `source_event` / `source_state` | `target_stage` | `auto_transition` | Notes |
+|---|---|---|---|
+| Lead created | `nuevo` | 1 | Creates `crm_lead` row (not opp) |
+| Lead contacted (agent action) | `contactado` | 1 | Advances lead estado |
+| `posible_conversion` detected | `null` | 0 | Agent notification only; no auto-advance |
+| Lead converted (manual) | — | — | Lead exits captación pipeline; links to clinical opp |
+
+#### Invariants enforced by `crm_stage_mappings`
+
+- `only_forward = 1` on all rows by default: a stage never regresses automatically
+- Stage regression requires an explicit agent action outside this table
+- `requires_agent_review = 1` queues the opportunity for coordinator attention without changing stage
+- Rows with `target_stage = null` produce no stage change but still fire the signal (score update, alert, clinical item link)
+
+---
+
 ### Traceability: operational event → commercial update
 
 Every state change driven by an operational module is recorded in `crm_activities` with:
@@ -505,12 +576,15 @@ score_reason         JSON NULL               -- breakdown of contributing signal
 
 ### Data sources for score computation
 
-- `crm_leads` — captación and conversion signals
-- `solicitud_procedimiento` — authorization and scheduling states
-- `consulta_examenes` — pre-op workup completeness
-- `crm_activities` — activity recency and frequency
-- Operational checklists (future integration)
-- Billing events (future integration)
+**In scope (Phases 1–4):**
+- `crm_leads` — captación and conversion signals (WhatsApp module)
+- `solicitud_procedimiento` — authorization and scheduling states (Solicitudes module)
+- `consulta_examenes` — pre-op workup completeness (Imágenes/Exámenes module)
+- `crm_activities` — activity recency and frequency (all modules)
+
+**Deferred:**
+- Billing events — explicitly out of scope for this design; will follow same event-driven pattern when integrated
+- Operational checklists — future integration
 
 ### Use cases enabled
 
