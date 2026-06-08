@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 class CrmOpportunity extends Model
 {
@@ -55,6 +56,11 @@ class CrmOpportunity extends Model
     public function contact(): BelongsTo
     {
         return $this->belongsTo(CrmContact::class, 'contact_id');
+    }
+
+    public function sourceable(): MorphTo
+    {
+        return $this->morphTo('source', 'source_type', 'source_id');
     }
 
     public function activities(): HasMany

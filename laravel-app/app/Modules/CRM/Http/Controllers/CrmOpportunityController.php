@@ -5,6 +5,7 @@ namespace App\Modules\CRM\Http\Controllers;
 use App\Models\CrmOpportunity;
 use App\Modules\CRM\Services\CrmActivityService;
 use App\Modules\CRM\Services\CrmOpportunityService;
+use App\Modules\CRM\Services\CrmOpportunityValueResolver;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -26,6 +27,7 @@ class CrmOpportunityController
     public function __construct(
         private readonly CrmOpportunityService $opportunityService,
         private readonly CrmActivityService $activityService,
+        private readonly CrmOpportunityValueResolver $valueResolver,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -34,21 +36,25 @@ class CrmOpportunityController
             return response()->json(['error' => 'Sesión expirada'], 401);
         }
 
-        $limit          = min(max((int) $request->query('limit', 25), 1), 100);
+        $limit          = min(max((int) $request->query('limit', 25), 1), 2000);
         $offset         = max((int) $request->query('offset', 0), 0);
         $stage          = trim((string) $request->query('stage', ''));
         $source         = trim((string) $request->query('source', ''));
         $phase          = trim((string) $request->query('phase', ''));
         $search         = trim((string) $request->query('search', ''));
-        $afiliacion     = trim((string) $request->query('afiliacion', ''));  // particular|privado|fundacional|publico
+        $afiliacion     = trim((string) $request->query('afiliacion', ''));
         $urgent         = filter_var($request->query('urgent', false), FILTER_VALIDATE_BOOLEAN);
+        $includeClosed  = filter_var($request->query('include_closed', false), FILTER_VALIDATE_BOOLEAN);
 
-        $query = CrmOpportunity::query()->with('contact');
+        $query = CrmOpportunity::query();
 
         $this->applyPatientAffiliationFilter($query, $afiliacion);
 
+        // Default: active pipeline only (ganado/perdido are historical)
         if ($stage !== '') {
             $query->where('stage', $stage);
+        } elseif (!$includeClosed) {
+            $query->whereNotIn('stage', ['ganado', 'perdido']);
         }
         if ($source !== '') {
             $this->applyEffectiveSourceFilter($query, $source);
@@ -69,11 +75,30 @@ class CrmOpportunityController
 
         $total = $query->count();
         $rows  = $query->orderByRaw('COALESCE(last_activity_at, created_at) ASC')
-            ->limit($limit)->offset($offset)->get();
+            ->limit($limit)->offset($offset)
+            ->with('contact')
+            ->get();
         $this->appendEffectiveSource($rows, $source);
 
+        $sourceMap = $this->bulkLoadSourceData($rows);
+
+        $data = $rows->map(function (CrmOpportunity $opp) use ($sourceMap): array {
+            $src = $sourceMap[$opp->id] ?? null;
+            return array_merge($opp->toArray(), [
+                // valor_estimado surfaces at the root level for easy frontend consumption.
+                // It is computed dynamically — see CrmOpportunityValueResolver for the logic.
+                'valor_estimado' => $src['valor_estimado'] ?? 0,
+                'source_data'    => $src ? [
+                    'procedimiento' => $src['procedimiento'],
+                    'ojo'           => $src['ojo'],
+                    'doctor'        => $src['doctor'],
+                    'hc_number'     => $src['hc_number'] ?? null,
+                ] : null,
+            ]);
+        });
+
         return response()->json([
-            'data' => $rows,
+            'data' => $data,
             'meta' => ['total' => $total, 'limit' => $limit, 'offset' => $offset],
         ]);
     }
@@ -107,6 +132,73 @@ class CrmOpportunityController
         ]);
         $this->activityService->logSystemEvent($opp->id, 'Oportunidad creada manualmente');
         return response()->json(['data' => $opp], 201);
+    }
+
+    /**
+     * Bulk-loads source data for known source_types.
+     * Delegates valor_estimado calculation to CrmOpportunityValueResolver.
+     * Unknown types (legacy_crm_lead, whatsapp_lead, manual, null) return null — no crash.
+     *
+     * @param  Collection<int, CrmOpportunity>  $rows
+     * @return array<int, array{procedimiento:string|null,ojo:string|null,doctor:string|null,valor_estimado:float}|null>
+     */
+    private function bulkLoadSourceData(Collection $rows): array
+    {
+        $map    = [];
+        $byType = $rows->groupBy('source_type');
+
+        // ── solicitud_procedimiento ──────────────────────────────────────────
+        if ($byType->has('solicitud_procedimiento')) {
+            $idsByOpp  = $byType['solicitud_procedimiento']->pluck('source_id', 'id');
+            $sourceIds = $idsByOpp->values()->filter()->unique()->values();
+
+            $resolved = $this->valueResolver->resolveForSolicitudes($sourceIds);
+
+            // Also fetch hc_number for contacts that lack cedula in crm_contacts.
+            $hcNumbers = $sourceIds->isNotEmpty()
+                ? DB::table('solicitud_procedimiento')
+                    ->whereIn('id', $sourceIds)
+                    ->pluck('hc_number', 'id')
+                    ->all()
+                : [];
+
+            foreach ($idsByOpp as $oppId => $procId) {
+                $r = $procId ? ($resolved[(int) $procId] ?? null) : null;
+                if ($r !== null) {
+                    $r['hc_number'] = $hcNumbers[(int) $procId] ?? null;
+                }
+                $map[(int) $oppId] = $r;
+            }
+        }
+
+        // ── consulta_examenes ─────────────────────────────────────────────────
+        // valor_estimado = 0 until a clear tarifario linkage for exams is defined.
+        if ($byType->has('consulta_examenes')) {
+            $idsByOpp  = $byType['consulta_examenes']->pluck('source_id', 'id');
+            $sourceIds = $idsByOpp->values()->filter()->unique()->values();
+
+            if ($sourceIds->isNotEmpty()) {
+                $exams = DB::table('consulta_examenes')
+                    ->whereIn('id', $sourceIds)
+                    ->select(['id', 'examen_nombre', 'lateralidad'])
+                    ->get()
+                    ->keyBy('id');
+
+                foreach ($idsByOpp as $oppId => $examId) {
+                    $exam = $examId ? ($exams[(int) $examId] ?? null) : null;
+                    $map[(int) $oppId] = $exam ? [
+                        'procedimiento'  => $exam->examen_nombre,
+                        'ojo'            => $exam->lateralidad,
+                        'doctor'         => null,
+                        'valor_estimado' => 0.0,
+                    ] : null;
+                }
+            }
+        }
+
+        // legacy_crm_lead, whatsapp_lead, manual, null → source_data = null (sin crash)
+
+        return $map;
     }
 
     public function update(Request $request, int $id): JsonResponse
@@ -354,11 +446,71 @@ class CrmOpportunityController
             return;
         }
 
-        $query->whereNotExists(fn ($sub) => $this->patientAffiliationSubquery($sub, 'publico'));
+        $this->applyPublicoExclusion($query);
 
         if ($afiliacion !== '') {
             $query->whereExists(fn ($sub) => $this->patientAffiliationSubquery($sub, $afiliacion));
         }
+    }
+
+    /**
+     * Permanently excludes opportunities whose afiliación resolves to categoria = 'publico'
+     * in afiliacion_categoria_map.
+     *
+     * Two layers:
+     *   1. crm_opportunities.afiliacion_tipo already resolved to 'publico'
+     *   2. source_type = solicitud_procedimiento whose afiliacion maps to 'publico' via
+     *      the canonical afiliacion_norm key (same normalization as AfiliacionDimensionService)
+     *      with a raw LOWER/TRIM fallback for robustness.
+     *
+     * Does NOT depend on crm_contacts.cedula → patient_data JOIN (which silently passes
+     * through contacts without a cedula match).
+     * Does NOT exclude if no mapping is found (sin_dato passes through).
+     */
+    private function applyPublicoExclusion(Builder $query): void
+    {
+        // Layer 1: direct field on the opportunity row
+        $query->where(function (Builder $q): void {
+            $q->whereNull('afiliacion_tipo')
+              ->orWhere('afiliacion_tipo', '!=', 'publico');
+        });
+
+        // Layer 2: solicitud_procedimiento source whose afiliación maps to publico
+        $normExpr = $this->normalizeSqlKey('sp.afiliacion');
+        $query->whereNotExists(function ($sub) use ($normExpr): void {
+            $sub->selectRaw('1')
+                ->from('solicitud_procedimiento as sp')
+                ->join('afiliacion_categoria_map as acm', function ($join) use ($normExpr): void {
+                    $join->on(DB::raw('acm.afiliacion_norm'), '=', DB::raw($normExpr))
+                         ->orOn(
+                             DB::raw('LOWER(TRIM(acm.afiliacion_raw))'),
+                             '=',
+                             DB::raw('LOWER(TRIM(sp.afiliacion))')
+                         );
+                })
+                ->whereColumn('sp.id', 'crm_opportunities.source_id')
+                ->whereRaw("crm_opportunities.source_type = 'solicitud_procedimiento'")
+                ->where('acm.categoria', 'publico');
+        });
+    }
+
+    /**
+     * Canonical SQL normalization matching AfiliacionDimensionService::normalizeSqlKey().
+     * Lowercases, strips accents, replaces spaces and dashes with underscores.
+     */
+    private function normalizeSqlKey(string $sqlExpr): string
+    {
+        $accents = [
+            'Á' => 'A', 'É' => 'E', 'Í' => 'I', 'Ó' => 'O', 'Ú' => 'U', 'Ñ' => 'N',
+            'á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u', 'ñ' => 'n',
+        ];
+        $normalized = $sqlExpr;
+        foreach ($accents as $from => $to) {
+            $normalized = "REPLACE({$normalized}, '{$from}', '{$to}')";
+        }
+        $normalized = "LOWER({$normalized})";
+        $normalized = "REPLACE(REPLACE(TRIM({$normalized}), ' ', '_'), '-', '_')";
+        return $normalized;
     }
 
     private function patientAffiliationSubquery($sub, string $tipo): void
