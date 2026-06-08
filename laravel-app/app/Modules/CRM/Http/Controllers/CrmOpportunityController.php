@@ -433,11 +433,71 @@ class CrmOpportunityController
             return;
         }
 
-        $query->whereNotExists(fn ($sub) => $this->patientAffiliationSubquery($sub, 'publico'));
+        $this->applyPublicoExclusion($query);
 
         if ($afiliacion !== '') {
             $query->whereExists(fn ($sub) => $this->patientAffiliationSubquery($sub, $afiliacion));
         }
+    }
+
+    /**
+     * Permanently excludes opportunities whose afiliación resolves to categoria = 'publico'
+     * in afiliacion_categoria_map.
+     *
+     * Two layers:
+     *   1. crm_opportunities.afiliacion_tipo already resolved to 'publico'
+     *   2. source_type = solicitud_procedimiento whose afiliacion maps to 'publico' via
+     *      the canonical afiliacion_norm key (same normalization as AfiliacionDimensionService)
+     *      with a raw LOWER/TRIM fallback for robustness.
+     *
+     * Does NOT depend on crm_contacts.cedula → patient_data JOIN (which silently passes
+     * through contacts without a cedula match).
+     * Does NOT exclude if no mapping is found (sin_dato passes through).
+     */
+    private function applyPublicoExclusion(Builder $query): void
+    {
+        // Layer 1: direct field on the opportunity row
+        $query->where(function (Builder $q): void {
+            $q->whereNull('afiliacion_tipo')
+              ->orWhere('afiliacion_tipo', '!=', 'publico');
+        });
+
+        // Layer 2: solicitud_procedimiento source whose afiliación maps to publico
+        $normExpr = $this->normalizeSqlKey('sp.afiliacion');
+        $query->whereNotExists(function ($sub) use ($normExpr): void {
+            $sub->selectRaw('1')
+                ->from('solicitud_procedimiento as sp')
+                ->join('afiliacion_categoria_map as acm', function ($join) use ($normExpr): void {
+                    $join->on(DB::raw('acm.afiliacion_norm'), '=', DB::raw($normExpr))
+                         ->orOn(
+                             DB::raw('LOWER(TRIM(acm.afiliacion_raw))'),
+                             '=',
+                             DB::raw('LOWER(TRIM(sp.afiliacion))')
+                         );
+                })
+                ->whereColumn('sp.id', 'crm_opportunities.source_id')
+                ->whereRaw("crm_opportunities.source_type = 'solicitud_procedimiento'")
+                ->where('acm.categoria', 'publico');
+        });
+    }
+
+    /**
+     * Canonical SQL normalization matching AfiliacionDimensionService::normalizeSqlKey().
+     * Lowercases, strips accents, replaces spaces and dashes with underscores.
+     */
+    private function normalizeSqlKey(string $sqlExpr): string
+    {
+        $accents = [
+            'Á' => 'A', 'É' => 'E', 'Í' => 'I', 'Ó' => 'O', 'Ú' => 'U', 'Ñ' => 'N',
+            'á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u', 'ñ' => 'n',
+        ];
+        $normalized = $sqlExpr;
+        foreach ($accents as $from => $to) {
+            $normalized = "REPLACE({$normalized}, '{$from}', '{$to}')";
+        }
+        $normalized = "LOWER({$normalized})";
+        $normalized = "REPLACE(REPLACE(TRIM({$normalized}), ' ', '_'), '-', '_')";
+        return $normalized;
     }
 
     private function patientAffiliationSubquery($sub, string $tipo): void
