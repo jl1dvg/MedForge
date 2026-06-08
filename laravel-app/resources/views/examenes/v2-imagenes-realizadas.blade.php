@@ -30,6 +30,10 @@
             'nas_has_files'      => !empty($row['nas_has_files']) ? 1 : 0,
             'nas_files_count'    => (int)($row['nas_files_count'] ?? 0),
             'wpp_status'         => $row['wpp_status'] ?? null,
+            'bandeja_prioridad'  => $row['bandeja_prioridad'] ?? null,
+            'bandeja_fecha_limite'=> $row['bandeja_fecha_limite'] ?? null,
+            'bandeja_responsable'=> $row['bandeja_responsable'] ?? null,
+            'bandeja_motivo'     => $row['bandeja_motivo'] ?? null,
         ];
     }, $imagenesRealizadas ?? []));
 
