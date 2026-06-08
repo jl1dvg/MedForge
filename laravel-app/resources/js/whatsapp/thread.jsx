@@ -58,14 +58,20 @@ function WaBubble({ m, query }) {
           </div>
         )}
         {m.media && m.media.type === 'audio' && (
-          <div className="wa3-media">
-            <i className="mdi mdi-play-circle-outline"></i>
-            <div className="wa3-media__body">
-              <strong>{m.media.name}</strong>
-              <div style={{ height: 4, borderRadius: 999, background: 'rgba(0,0,0,.12)', marginTop: 6 }}>
-                <div style={{ width: '40%', height: '100%', borderRadius: 999, background: 'var(--wa3-accent)' }}></div>
-              </div>
-            </div>
+          <div className="wa3-media wa3-media--audio">
+            <audio
+              controls
+              preload="none"
+              style={{ width: '100%', minWidth: 220, maxWidth: 320 }}
+              src={m.media.downloadUrl}
+            >
+              Tu navegador no soporta reproducción de audio.
+            </audio>
+            {m.media.voice && (
+              <small style={{ display: 'block', marginTop: 2, opacity: 0.6, fontSize: 11 }}>
+                <i className="mdi mdi-microphone" style={{ fontSize: 11 }}></i> Nota de voz
+              </small>
+            )}
           </div>
         )}
         {m.body && <div dangerouslySetInnerHTML={{ __html: highlight(waFormat(m.body)) }} />}
