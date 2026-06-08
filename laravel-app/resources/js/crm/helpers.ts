@@ -71,14 +71,19 @@ export function adaptOpportunity(raw: CrmOpportunity): OpportunityView {
   const full_name = raw.contact?.name || raw.title;
   const inits = initials(full_name);
 
-  const procedimiento_short = (
-    raw.source_data?.procedimiento ||
-    raw.title
-      .replace(/^Solicitud:\s*/i, '')
-      .replace(/^Examen:\s*/i, '')
-      .replace(/^Lead migrado:\s*/i, '')
-      .replace(/^Lead WhatsApp:\s*/i, '')
-  ).trim() || '—';
+  const isLegacy = raw.source_type === 'legacy_crm_lead' ||
+                   (raw.source_data === null && (raw.effective_source === 'legacy' || raw.source === 'manual' && !raw.source_id));
+
+  const procedimiento_short = isLegacy
+    ? 'Pendiente clasificar'
+    : (
+        raw.source_data?.procedimiento ||
+        raw.title
+          .replace(/^Solicitud:\s*/i, '')
+          .replace(/^Examen:\s*/i, '')
+          .replace(/^Lead migrado:\s*/i, '')
+          .replace(/^Lead WhatsApp:\s*/i, '')
+      ).trim() || '—';
 
   const afiliacion = raw.afiliacion_tipo || 'sin_dato';
   const afiliacion_label_map: Record<string, string> = {
@@ -91,18 +96,19 @@ export function adaptOpportunity(raw: CrmOpportunity): OpportunityView {
   const afiliacion_label = afiliacion_label_map[afiliacion] || afiliacion;
   const afiliacion_tone = afiliacion === 'publico' ? 'visita' : afiliacion === 'particular' ? 'neutral' : 'examen';
 
-  const fuente = raw.source;
+  const fuente = raw.effective_source ?? raw.source;
   const fuente_label_map: Record<string, string> = {
-    whatsapp: 'WhatsApp', solicitud: 'Solicitud', examen: 'Examen', manual: 'Manual',
+    whatsapp: 'WhatsApp', solicitud: 'Solicitud', examen: 'Examen', manual: 'Manual', legacy: 'Migrado',
   };
   const fuente_icon_map: Record<string, string> = {
-    whatsapp: 'mdi-whatsapp', solicitud: 'mdi-file-document', examen: 'mdi-microscope', manual: 'mdi-account-plus',
+    whatsapp: 'mdi-whatsapp', solicitud: 'mdi-file-document', examen: 'mdi-microscope',
+    manual: 'mdi-account-plus', legacy: 'mdi-history',
   };
   const fuente_label = fuente_label_map[fuente] || fuente;
   const fuente_icon = fuente_icon_map[fuente] || 'mdi-help-circle-outline';
 
-  const tipo = fuente === 'examen' ? 'examen' : 'quirurgico';
-  const proc_icon = tipo === 'examen' ? 'mdi-microscope' : 'mdi-eye-outline';
+  const tipo = fuente === 'examen' ? 'examen' : isLegacy ? 'lead' : 'quirurgico';
+  const proc_icon = tipo === 'examen' ? 'mdi-microscope' : tipo === 'lead' ? 'mdi-account-clock-outline' : 'mdi-eye-outline';
 
   // temperatura based on last_activity_at
   let temperatura: 'caliente' | 'tibia' | 'fria' = 'fria';

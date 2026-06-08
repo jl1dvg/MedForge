@@ -182,7 +182,7 @@ export interface OpportunityView {
   fuente: string;
   fuente_label: string;
   fuente_icon: string;
-  tipo: 'quirurgico' | 'examen';
+  tipo: 'quirurgico' | 'examen' | 'lead';
   proc_icon: string;
   temperatura: 'caliente' | 'tibia' | 'fria';
   valor: number | null;

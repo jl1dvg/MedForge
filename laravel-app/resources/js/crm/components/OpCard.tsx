@@ -66,7 +66,7 @@ export function OpCard({ op, onOpen, onQuick, dnd }: OpCardProps) {
 
       {!closed && (
         <div className="op-meta">
-          <div className="op-value">{fmtMoney(op.valor)}<span className="cur"> USD</span></div>
+          {op.valor > 0 && <div className="op-value">{fmtMoney(op.valor)}<span className="cur"> USD</span></div>}
           <div className="op-prob" title={`Probabilidad ${op.probabilidad}%`}>
             <ProbBar value={op.probabilidad} />
             {op.probabilidad}%
