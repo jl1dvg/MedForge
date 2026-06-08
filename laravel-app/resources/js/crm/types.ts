@@ -58,11 +58,12 @@ export interface CrmOpportunity {
   updated_at: string;
   contact?: CrmContact;
   activities?: CrmActivity[];
+  /** Estimated opportunity value calculated dynamically from the tarifario. */
+  valor_estimado?: number;
   source_data?: {
     procedimiento: string | null;
     ojo: string | null;
     doctor: string | null;
-    valor: number | null;
   } | null;
 }
 

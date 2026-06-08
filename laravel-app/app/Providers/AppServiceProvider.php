@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Models\ConsultaExamene;
+use App\Models\CrmLead;
 use App\Models\SolicitudProcedimiento;
 use App\Models\WhatsappLead;
 use App\Modules\Shared\Support\LegacyCurrentUser;
@@ -18,6 +19,7 @@ class AppServiceProvider extends ServiceProvider
             'whatsapp_lead'           => WhatsappLead::class,
             'solicitud_procedimiento' => SolicitudProcedimiento::class,
             'consulta_examenes'       => ConsultaExamene::class,
+            'legacy_crm_lead'         => CrmLead::class,
         ]);
 
         View::composer('layouts.partials.header', function (\Illuminate\View\View $view) {

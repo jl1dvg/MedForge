@@ -5,6 +5,7 @@ namespace App\Modules\CRM\Http\Controllers;
 use App\Models\CrmOpportunity;
 use App\Modules\CRM\Services\CrmActivityService;
 use App\Modules\CRM\Services\CrmOpportunityService;
+use App\Modules\CRM\Services\CrmOpportunityValueResolver;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -26,6 +27,7 @@ class CrmOpportunityController
     public function __construct(
         private readonly CrmOpportunityService $opportunityService,
         private readonly CrmActivityService $activityService,
+        private readonly CrmOpportunityValueResolver $valueResolver,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -80,9 +82,19 @@ class CrmOpportunityController
 
         $sourceMap = $this->bulkLoadSourceData($rows);
 
-        $data = $rows->map(fn ($opp) => array_merge($opp->toArray(), [
-            'source_data' => $sourceMap[$opp->id] ?? null,
-        ]));
+        $data = $rows->map(function (CrmOpportunity $opp) use ($sourceMap): array {
+            $src = $sourceMap[$opp->id] ?? null;
+            return array_merge($opp->toArray(), [
+                // valor_estimado surfaces at the root level for easy frontend consumption.
+                // It is computed dynamically — see CrmOpportunityValueResolver for the logic.
+                'valor_estimado' => $src['valor_estimado'] ?? 0,
+                'source_data'    => $src ? [
+                    'procedimiento' => $src['procedimiento'],
+                    'ojo'           => $src['ojo'],
+                    'doctor'        => $src['doctor'],
+                ] : null,
+            ]);
+        });
 
         return response()->json([
             'data' => $data,
@@ -122,15 +134,12 @@ class CrmOpportunityController
     }
 
     /**
-     * Bulk-loads source data for known source_types using at most 2 queries.
-     * Unknown types (e.g. legacy_crm_lead, null, manual) yield null — no crash.
-     *
-     * Also computes valor_oportunidad via JOIN tarifario+prices for solicitud_procedimiento rows:
-     *   COALESCE(prices.price, tarifario_2014.valor_facturar_nivel1, 0)
-     * where prices.level_key is resolved from afiliacion_categoria_map.afiliacion_norm.
+     * Bulk-loads source data for known source_types.
+     * Delegates valor_estimado calculation to CrmOpportunityValueResolver.
+     * Unknown types (legacy_crm_lead, whatsapp_lead, manual, null) return null — no crash.
      *
      * @param  Collection<int, CrmOpportunity>  $rows
-     * @return array<int, array{procedimiento:string|null,ojo:string|null,doctor:string|null,valor:float|null}|null>
+     * @return array<int, array{procedimiento:string|null,ojo:string|null,doctor:string|null,valor_estimado:float}|null>
      */
     private function bulkLoadSourceData(Collection $rows): array
     {
@@ -139,46 +148,20 @@ class CrmOpportunityController
 
         // ── solicitud_procedimiento ──────────────────────────────────────────
         if ($byType->has('solicitud_procedimiento')) {
-            $idsByOpp = $byType['solicitud_procedimiento']->pluck('source_id', 'id');
+            $idsByOpp  = $byType['solicitud_procedimiento']->pluck('source_id', 'id');
             $sourceIds = $idsByOpp->values()->filter()->unique()->values();
 
-            if ($sourceIds->isNotEmpty()) {
-                $procs = DB::table('solicitud_procedimiento as sp')
-                    ->leftJoin('tarifario_2014 as t', 't.codigo', '=', 'sp.derivacion_codigo')
-                    ->leftJoin('afiliacion_categoria_map as acm',
-                        DB::raw('LOWER(TRIM(COALESCE(sp.afiliacion,\'\')))'),
-                        '=',
-                        DB::raw('LOWER(TRIM(COALESCE(acm.afiliacion_raw,\'\')))'))
-                    ->leftJoin('prices as pr', function ($j): void {
-                        $j->on('pr.code_id', '=', 't.id')
-                          ->on('pr.level_key', '=', 'acm.afiliacion_norm');
-                    })
-                    ->whereIn('sp.id', $sourceIds)
-                    ->select([
-                        'sp.id',
-                        'sp.procedimiento',
-                        'sp.ojo',
-                        'sp.doctor',
-                        DB::raw('COALESCE(pr.price, t.valor_facturar_nivel1, 0) AS valor_calculado'),
-                    ])
-                    ->get()
-                    ->keyBy('id');
+            $resolved = $this->valueResolver->resolveForSolicitudes($sourceIds);
 
-                foreach ($idsByOpp as $oppId => $procId) {
-                    $proc = $procId ? ($procs[(int) $procId] ?? null) : null;
-                    $map[(int) $oppId] = $proc ? [
-                        'procedimiento' => $proc->procedimiento,
-                        'ojo'           => $proc->ojo,
-                        'doctor'        => $proc->doctor,
-                        'valor'         => (float) ($proc->valor_calculado ?? 0),
-                    ] : null;
-                }
+            foreach ($idsByOpp as $oppId => $procId) {
+                $map[(int) $oppId] = $procId ? ($resolved[(int) $procId] ?? null) : null;
             }
         }
 
-        // ── consulta_examenes ────────────────────────────────────────────────
+        // ── consulta_examenes ─────────────────────────────────────────────────
+        // valor_estimado = 0 until a clear tarifario linkage for exams is defined.
         if ($byType->has('consulta_examenes')) {
-            $idsByOpp = $byType['consulta_examenes']->pluck('source_id', 'id');
+            $idsByOpp  = $byType['consulta_examenes']->pluck('source_id', 'id');
             $sourceIds = $idsByOpp->values()->filter()->unique()->values();
 
             if ($sourceIds->isNotEmpty()) {
@@ -191,10 +174,10 @@ class CrmOpportunityController
                 foreach ($idsByOpp as $oppId => $examId) {
                     $exam = $examId ? ($exams[(int) $examId] ?? null) : null;
                     $map[(int) $oppId] = $exam ? [
-                        'procedimiento' => $exam->examen_nombre,
-                        'ojo'           => $exam->lateralidad,
-                        'doctor'        => null,
-                        'valor'         => null,
+                        'procedimiento'  => $exam->examen_nombre,
+                        'ojo'            => $exam->lateralidad,
+                        'doctor'         => null,
+                        'valor_estimado' => 0.0,
                     ] : null;
                 }
             }
