@@ -92,6 +92,7 @@ class CrmOpportunityController
                     'procedimiento' => $src['procedimiento'],
                     'ojo'           => $src['ojo'],
                     'doctor'        => $src['doctor'],
+                    'hc_number'     => $src['hc_number'] ?? null,
                 ] : null,
             ]);
         });
@@ -153,8 +154,20 @@ class CrmOpportunityController
 
             $resolved = $this->valueResolver->resolveForSolicitudes($sourceIds);
 
+            // Also fetch hc_number for contacts that lack cedula in crm_contacts.
+            $hcNumbers = $sourceIds->isNotEmpty()
+                ? DB::table('solicitud_procedimiento')
+                    ->whereIn('id', $sourceIds)
+                    ->pluck('hc_number', 'id')
+                    ->all()
+                : [];
+
             foreach ($idsByOpp as $oppId => $procId) {
-                $map[(int) $oppId] = $procId ? ($resolved[(int) $procId] ?? null) : null;
+                $r = $procId ? ($resolved[(int) $procId] ?? null) : null;
+                if ($r !== null) {
+                    $r['hc_number'] = $hcNumbers[(int) $procId] ?? null;
+                }
+                $map[(int) $oppId] = $r;
             }
         }
 

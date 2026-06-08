@@ -64,6 +64,7 @@ export interface CrmOpportunity {
     procedimiento: string | null;
     ojo: string | null;
     doctor: string | null;
+    hc_number?: string | null;
   } | null;
 }
 
@@ -182,7 +183,7 @@ export interface OpportunityView {
   fuente: string;
   fuente_label: string;
   fuente_icon: string;
-  tipo: 'quirurgico' | 'examen' | 'lead';
+  tipo: 'quirurgico' | 'examen' | 'lead' | 'manual';
   proc_icon: string;
   temperatura: 'caliente' | 'tibia' | 'fria';
   valor: number | null;

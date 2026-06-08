@@ -71,8 +71,7 @@ export function adaptOpportunity(raw: CrmOpportunity): OpportunityView {
   const full_name = raw.contact?.name || raw.title;
   const inits = initials(full_name);
 
-  const isLegacy = raw.source_type === 'legacy_crm_lead' ||
-                   (raw.source_data === null && (raw.effective_source === 'legacy' || raw.source === 'manual' && !raw.source_id));
+  const isLegacy = raw.source_type === 'legacy_crm_lead';
 
   const procedimiento_short = isLegacy
     ? 'Pendiente clasificar'
@@ -107,8 +106,16 @@ export function adaptOpportunity(raw: CrmOpportunity): OpportunityView {
   const fuente_label = fuente_label_map[fuente] || fuente;
   const fuente_icon = fuente_icon_map[fuente] || 'mdi-help-circle-outline';
 
-  const tipo = fuente === 'examen' ? 'examen' : isLegacy ? 'lead' : 'quirurgico';
-  const proc_icon = tipo === 'examen' ? 'mdi-microscope' : tipo === 'lead' ? 'mdi-account-clock-outline' : 'mdi-eye-outline';
+  const tipo: OpportunityView['tipo'] =
+    raw.source_type === 'solicitud_procedimiento' ? 'quirurgico'
+    : raw.source_type === 'consulta_examenes'     ? 'examen'
+    : raw.source_type === 'whatsapp_lead'         ? 'lead'
+    : raw.source_type === 'legacy_crm_lead'       ? 'lead'
+    : 'manual';
+  const proc_icon = tipo === 'examen'    ? 'mdi-microscope'
+                  : tipo === 'lead'      ? 'mdi-account-clock-outline'
+                  : tipo === 'manual'    ? 'mdi-account-plus'
+                  : 'mdi-eye-outline'; // quirurgico
 
   // temperatura based on last_activity_at
   let temperatura: 'caliente' | 'tibia' | 'fria' = 'fria';
@@ -169,7 +176,7 @@ export function adaptOpportunity(raw: CrmOpportunity): OpportunityView {
     // derived
     full_name,
     initials: inits,
-    hc_number: raw.contact?.cedula || null,
+    hc_number: raw.contact?.cedula || raw.source_data?.hc_number || null,
     telefono: raw.contact?.phone || '—',
     procedimiento_short,
     afiliacion,
