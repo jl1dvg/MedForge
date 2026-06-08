@@ -61,6 +61,16 @@ The `UNIQUE(contact_id)` constraint is removed. Uniqueness is enforced by the Se
 
 ## New Table: `crm_procedure_rules`
 
+### Design principle
+
+Classification of procedure codes **must not be derived from code format or prefix**. MedForge uses multiple coding systems with no consistent structure:
+
+- `CYP-CCA-001`, `CYP-RVI-009` — internal CIVE codes
+- `66984`, `67028` — numeric CPT codes
+- Internal legacy codes with arbitrary formats
+
+The `crm_procedure_rules` table is the single authoritative source for how each code behaves commercially. No hardcoded prefix or pattern matching.
+
 ```sql
 crm_procedure_rules
   id
@@ -72,8 +82,28 @@ crm_procedure_rules
   agrupar_por_ojo     TINYINT(1)      -- DEFAULT 1: OD and OI are separate opps
   genera_oportunidad  TINYINT(1)      -- DEFAULT 1: auto-creates opp on event
   activo              TINYINT(1)      -- DEFAULT 1
+
+  -- Future extension columns (add in a later phase, not Phase 0)
+  -- categoria         VARCHAR(50)    -- e.g. 'cirugia_refractiva', 'retina', 'oculoplastia'
+  -- subcategoria      VARCHAR(50)
+  -- especialidad      VARCHAR(50)
+  -- tipo_servicio     VARCHAR(50)    -- 'quirurgico' | 'diagnostico' | 'tratamiento' | 'consulta'
+
   created_at, updated_at
 ```
+
+### What each rule answers
+
+For a given procedure code, `crm_procedure_rules` defines:
+
+| Question | Column |
+|---|---|
+| Does this procedure generate a commercial opportunity? | `genera_oportunidad` |
+| Is it a one-time procedure, a recurrent treatment, or a diagnostic exam? | `tipo` |
+| How many days before a new episode is considered independent? | `ventana_dias` |
+| Are the left eye and right eye separate commercial opportunities? | `agrupar_por_ojo` |
+| Do multiple codes collapse into one opportunity (e.g., Avastin + Eylea)? | `grupo_codigo` |
+| What human-readable name appears in the Kanban card? | `nombre` |
 
 ### Tipo behavior
 
@@ -204,6 +234,37 @@ This allows deploying Phase 2 code without activating it, testing in staging wit
 ---
 
 ## Migration Phases (Enfoque C)
+
+### Phase 0 — Rule Governance (prerequisite for all phases)
+
+**Goal:** Populate `crm_procedure_rules` with accurate commercial behavior before any algorithmic change. The entire new model depends on these rules. Without them, the fallback (`tipo='unica'`, `genera_oportunidad=TRUE`) applies to everything, producing incorrect results.
+
+**Deliverables:**
+- Admin UI (or seed script) for creating and editing procedure rules
+- Initial population of the most frequent procedure codes from `solicitud_procedimiento`
+- Validation query: check that all `codigo` values in the last 90 days have a matching rule
+
+**Minimum viable ruleset before Phase 2 activation:**
+
+```
+-- All procedure codes appearing in solicitud_procedimiento in the last 90 days
+-- must have an explicit rule. This query must return 0 rows before Phase 2 go-live.
+
+SELECT DISTINCT sp.procedimiento_codigo
+FROM solicitud_procedimiento sp
+LEFT JOIN crm_procedure_rules cpr ON cpr.codigo = sp.procedimiento_codigo AND cpr.activo = 1
+WHERE sp.created_at >= NOW() - INTERVAL 90 DAY
+  AND cpr.id IS NULL;
+```
+
+**What does NOT block Phase 0:**
+- New columns in `crm_opportunities` (those are Phase 1)
+- The feature flag (Phase 2)
+- Any behavior change in `upsertFromEvent()`
+
+Phase 0 can run in parallel with Phase 1 infrastructure. Both must be complete before Phase 2 activation.
+
+---
 
 ### Phase 1 — Infrastructure (zero behavior change)
 
@@ -409,6 +470,64 @@ Because every transition is event-driven and timestamped, the following conversi
 | Channel ROI | Opps ganadas grouped by `crm_leads.canal` | join crm_leads + opps |
 
 These metrics require no new data — they are derived from timestamps already recorded by the event-driven architecture.
+
+## Future Capability: Opportunity Health Score
+
+**Not implemented in any phase of this spec. Documented here to guide future schema decisions.**
+
+### Concept
+
+`crm_opportunities.opportunity_score` — a dynamic 0–100 integer reflecting the current health and likelihood of conversion of a commercial opportunity. Calculated from events, not entered manually.
+
+```sql
+-- Future columns (do NOT add yet — Phase 4+ decision)
+opportunity_score    TINYINT UNSIGNED NULL   -- 0–100 composite health score
+score_updated_at     TIMESTAMP NULL          -- last recalculation
+score_reason         JSON NULL               -- breakdown of contributing signals
+```
+
+### Signal model (illustrative, not final)
+
+| Signal | Points |
+|---|---|
+| Lead contacted (at least one outbound touchpoint) | +10 |
+| Initial consultation completed | +15 |
+| Surgical solicitud created | +20 |
+| Pre-op exams all completed | +15 |
+| Authorization documents complete | +10 |
+| Insurance/authorization approved | +15 |
+| Procedure scheduled (`programada`) | +25 |
+| Patient confirmed for surgery date | +15 |
+| No activity for > 7 days (open opp) | −10 |
+| No activity for > 14 days | −20 |
+| Solicitud cancelled with recoverable motivo | −15 |
+| Solicitud cancelled with definitive motivo | → opp closed as perdido |
+
+### Data sources for score computation
+
+- `crm_leads` — captación and conversion signals
+- `solicitud_procedimiento` — authorization and scheduling states
+- `consulta_examenes` — pre-op workup completeness
+- `crm_activities` — activity recency and frequency
+- Operational checklists (future integration)
+- Billing events (future integration)
+
+### Use cases enabled
+
+- **Kanban prioritization:** sort cards by score to surface high-risk / high-value opportunities
+- **Stagnation alerts:** score below threshold triggers automated escalation_at
+- **Conversion prediction:** historical score-at-conversion data trains a probability model
+- **Coordinator dashboards:** aggregate score distribution by doctor, sede, or procedure group
+- **AI commercial assistant:** score feeds a recommendation engine for next best action
+
+### Design notes for future implementation
+
+- Score is **computed on write** (event-driven recalculation) not on read — avoids query cost
+- `score_reason` JSON stores the breakdown so the UI can explain why a score changed
+- Score never drives automatic stage changes — it informs agents, not the system
+- The scoring function should be configurable per `opportunity_type` (a lead-only opp has different weights than a surgical opp at `en_coordinacion`)
+
+---
 
 ## What Stays the Same (out of scope for this design)
 
