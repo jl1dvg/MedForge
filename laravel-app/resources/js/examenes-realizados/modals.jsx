@@ -36,23 +36,45 @@ export function ModalShell({ size = 'md', icon, iconTone = 'primary', title, sub
 }
 
 // ---- NAS file viewer -----------------------------------------------
-function NasViewer({ files }) {
+function NasViewer({ row }) {
+  const [files, setFiles] = useState(null); // null = loading, [] = empty
   const [idx, setIdx] = useState(0);
-  useEffect(() => { setIdx(0); }, [files]);
+  const [error, setError] = useState(null);
 
-  if (!files || files.length === 0) {
+  useEffect(() => {
+    setFiles(null);
+    setIdx(0);
+    setError(null);
+    if (!row?.form_id || !row?.hc_number) { setFiles([]); return; }
+    const params = new URLSearchParams({ hc_number: row.hc_number, form_id: row.form_id });
+    fetch(`/v2/imagenes/examenes-realizados/nas/list?${params}`, { credentials: 'same-origin' })
+      .then((r) => r.json())
+      .then((data) => { setFiles(data.files || []); if (!data.success) setError(data.error || null); })
+      .catch(() => { setFiles([]); setError('Error al cargar archivos del NAS.'); });
+  }, [row?.form_id, row?.hc_number]);
+
+  if (files === null) {
+    return (
+      <div className="imr-nas-stage">
+        <div className="imr-nas-empty"><i className="mdi mdi-loading mdi-spin"></i> Cargando archivos…</div>
+      </div>
+    );
+  }
+
+  if (files.length === 0) {
     return (
       <div className="imr-nas-stage">
         <div className="imr-nas-empty">
           <i className="mdi mdi-folder-remove-outline"></i>
-          No se encontraron archivos asociados al examen en el NAS.
+          {error || 'No se encontraron archivos asociados al examen en el NAS.'}
         </div>
       </div>
     );
   }
 
   const cur = files[idx];
-  const isPdf = cur.type === 'pdf';
+  const isPdf = (cur.type || cur.name || '').toLowerCase().includes('pdf');
+  const fileUrl = cur.url || '';
 
   return (
     <div className="imr-nas-panel">
@@ -60,30 +82,43 @@ function NasViewer({ files }) {
         <button className="imr-nas-nav imr-nas-prev" disabled={idx <= 0} onClick={() => setIdx((i) => Math.max(0, i - 1))} aria-label="Anterior">
           <i className="mdi mdi-chevron-left"></i>
         </button>
-        <div className="imr-nas-doc">
-          <span className={`imr-nas-ftag ${isPdf ? 'pdf' : 'img'}`}>{isPdf ? 'PDF' : 'IMAGEN'}</span>
-          <i className={`mdi ${isPdf ? 'mdi-file-pdf-box' : 'mdi-image-outline'}`}></i>
-          <span className="imr-nas-fname">{cur.name}</span>
-        </div>
+        {fileUrl && !isPdf ? (
+          <img src={fileUrl} alt={cur.name} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 6 }} />
+        ) : fileUrl && isPdf ? (
+          <iframe src={fileUrl} title={cur.name} style={{ width: '100%', height: '100%', border: 'none', borderRadius: 6 }} />
+        ) : (
+          <div className="imr-nas-doc">
+            <span className={`imr-nas-ftag ${isPdf ? 'pdf' : 'img'}`}>{isPdf ? 'PDF' : 'IMAGEN'}</span>
+            <i className={`mdi ${isPdf ? 'mdi-file-pdf-box' : 'mdi-image-outline'}`}></i>
+            <span className="imr-nas-fname">{cur.name}</span>
+          </div>
+        )}
         <button className="imr-nas-nav imr-nas-next" disabled={idx >= files.length - 1} onClick={() => setIdx((i) => Math.min(files.length - 1, i + 1))} aria-label="Siguiente">
           <i className="mdi mdi-chevron-right"></i>
         </button>
         <span className="imr-nas-counter">{idx + 1} / {files.length}</span>
       </div>
       <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontSize: 12, color: 'var(--fg-mute)' }}>{cur.size} · {cur.type === 'pdf' ? 'Documento PDF' : 'Imagen DICOM/JPG'}</span>
-        <a className="imr-btn imr-btn-ghost imr-btn-sm" href="#" onClick={(e) => e.preventDefault()}>
-          <i className="mdi mdi-open-in-new"></i> Abrir archivo
-        </a>
+        <span style={{ fontSize: 12, color: 'var(--fg-mute)' }}>{isPdf ? 'Documento PDF' : 'Imagen DICOM/JPG'}</span>
+        {fileUrl && (
+          <a className="imr-btn imr-btn-ghost imr-btn-sm" href={fileUrl} target="_blank" rel="noreferrer">
+            <i className="mdi mdi-open-in-new"></i> Abrir archivo
+          </a>
+        )}
       </div>
       <div className="imr-nas-thumbs">
-        {files.map((f, i) => (
-          <button key={i} className={`imr-nas-thumb ${i === idx ? 'active' : ''}`} onClick={() => setIdx(i)}>
-            <i className={`mdi ${f.type === 'pdf' ? 'mdi-file-pdf-box' : 'mdi-image-outline'} imr-th-ico`}></i>
-            <div className="imr-th-name">{f.name}</div>
-            <div className="imr-th-size">{f.size}</div>
-          </button>
-        ))}
+        {files.map((f, i) => {
+          const fIsPdf = (f.type || f.name || '').toLowerCase().includes('pdf');
+          return (
+            <button key={i} className={`imr-nas-thumb ${i === idx ? 'active' : ''}`} onClick={() => setIdx(i)}>
+              {f.url && !fIsPdf
+                ? <img src={f.url} alt={f.name} style={{ width: '100%', height: 56, objectFit: 'cover', borderRadius: 4 }} />
+                : <i className={`mdi ${fIsPdf ? 'mdi-file-pdf-box' : 'mdi-image-outline'} imr-th-ico`}></i>
+              }
+              <div className="imr-th-name">{f.name}</div>
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -219,7 +254,7 @@ export function InformarModal({ row, readOnly, onClose, onSave, showToast, docto
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div>
             <h4 className="imr-section-title"><i className="mdi mdi-folder-image"></i> Archivos del examen <span className="imr-section-ln"></span></h4>
-            <NasViewer files={row.nas_files || []} />
+            <NasViewer row={row} />
           </div>
           <NotifyBlock row={row} notify={notify} setNotify={setNotify} />
         </div>
@@ -241,7 +276,7 @@ export function VerImagenesModal({ row, onClose }) {
           <button className="imr-btn imr-btn-ghost" onClick={onClose}>Cerrar</button>
         </>
       }>
-      <NasViewer files={row.nas_files || []} />
+      <NasViewer row={row} />
     </ModalShell>
   );
 }
