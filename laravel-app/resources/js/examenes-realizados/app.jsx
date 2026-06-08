@@ -211,7 +211,7 @@ export default function App({ config }) {
 
     // Persist to DB
     const procedimientoIds = rows.filter((r) => ids.includes(r.id)).map((r) => r.id);
-    const formIds = rows.filter((r) => ids.includes(r.id)).map((r) => r.form_id || null);
+    const formIds = rows.filter((r) => ids.includes(r.id)).map((r) => r.form_id ? String(r.form_id) : null);
     fetch('/v2/imagenes/bandeja', {
       method: 'POST',
       credentials: 'same-origin',

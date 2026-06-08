@@ -27,7 +27,7 @@ class ImagenesBandejaController
             'procedimiento_ids'   => ['required', 'array', 'min:1'],
             'procedimiento_ids.*' => ['required', 'integer'],
             'form_ids'            => ['nullable', 'array'],
-            'form_ids.*'          => ['nullable', 'string', 'max:64'],
+            'form_ids.*'          => ['nullable', 'max:64'],
             'prioridad'           => ['required', Rule::in(['urgente', 'pronto'])],
             'fecha_limite'        => ['nullable', 'date_format:Y-m-d'],
             'responsable'         => ['nullable', 'string', 'max:255'],
