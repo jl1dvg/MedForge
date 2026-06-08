@@ -1166,12 +1166,12 @@ class ImagenesReportDataService
             $doctorNombreRef = trim((string) ($consulta['doctor_nombre'] ?? ($consulta['procedimiento_doctor'] ?? '')));
         }
         if ($doctorNombreRef === '') {
-            return $consulta;
+            return $this->applyDefaultFirmanteToConsulta012A($consulta);
         }
 
         $usuario = $this->obtenerUsuarioPorDoctorNombre($doctorNombreRef);
         if (!is_array($usuario) || $usuario === []) {
-            return $consulta;
+            return $this->applyDefaultFirmanteToConsulta012A($consulta);
         }
 
         if (trim((string) ($consulta['doctor_fname'] ?? '')) === '') {
@@ -1197,6 +1197,42 @@ class ImagenesReportDataService
         }
         if ((int) ($consulta['doctor_user_id'] ?? 0) <= 0 && isset($usuario['id'])) {
             $consulta['doctor_user_id'] = (int) $usuario['id'];
+        }
+
+        return $consulta;
+    }
+
+    /**
+     * @param array<string, mixed> $consulta
+     * @return array<string, mixed>
+     */
+    private function applyDefaultFirmanteToConsulta012A(array $consulta): array
+    {
+        $firmante = ImagenesDefaultFirmante::resolve(1);
+        if ($firmante['nombres'] === '' && $firmante['apellido1'] === '') {
+            return $consulta;
+        }
+
+        if (trim((string) ($consulta['doctor_fname'] ?? '')) === '') {
+            $consulta['doctor_fname'] = $firmante['nombres'];
+        }
+        if (trim((string) ($consulta['doctor_mname'] ?? '')) === '') {
+            $consulta['doctor_mname'] = '';
+        }
+        if (trim((string) ($consulta['doctor_lname'] ?? '')) === '') {
+            $consulta['doctor_lname'] = $firmante['apellido1'];
+        }
+        if (trim((string) ($consulta['doctor_lname2'] ?? '')) === '') {
+            $consulta['doctor_lname2'] = $firmante['apellido2'];
+        }
+        if (trim((string) ($consulta['doctor_cedula'] ?? '')) === '') {
+            $consulta['doctor_cedula'] = $firmante['documento'];
+        }
+        if (trim((string) ($consulta['doctor_signature_path'] ?? '')) === '') {
+            $consulta['doctor_signature_path'] = $firmante['signature_path'];
+        }
+        if (trim((string) ($consulta['doctor_firma'] ?? '')) === '') {
+            $consulta['doctor_firma'] = $firmante['firma'];
         }
 
         return $consulta;
