@@ -130,21 +130,61 @@
                     <li class="breadcrumb-item active" aria-current="page">Imágenes</li>
                 </ol>
             </div>
+            <div class="ms-auto d-flex gap-2">
+                <a href="/v2/imagenes/dashboard" class="btn btn-outline-info btn-sm">
+                    <i class="mdi mdi-chart-line"></i> Dashboard
+                </a>
+                <button type="button" class="btn btn-outline-primary btn-sm" id="btnPrintTable">
+                    <i class="mdi mdi-printer"></i> Imprimir lista
+                </button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="btnHelpOpen" title="Cómo funciona esta vista">
+                    <i class="mdi mdi-help-circle-outline"></i> Ayuda
+                </button>
+            </div>
         </div>
+    </div>
+
+    <?php
+    // KPI counts
+    $kpiPorInformar = 0; $kpiSinNas = 0; $kpiInformados = 0;
+    foreach ($imagenesRealizadas as $_r) {
+        $_inf = !empty($_r['informe_id']);
+        $_nasHas = (int)($_r['nas_has_files'] ?? 0) === 1 || (int)($_r['nas_files_count'] ?? 0) > 0;
+        $_nasSt = trim((string)($_r['nas_scan_status'] ?? ''));
+        $_nasStatus = $_nasHas ? 'con-archivos' : (in_array($_nasSt, ['empty', 'missing_dir', 'no_mapping'], true) ? 'sin-archivos' : 'pendiente');
+        if ($_inf) { $kpiInformados++; }
+        elseif ($_nasStatus === 'sin-archivos') { $kpiSinNas++; }
+        else { $kpiPorInformar++; }
+    }
+    ?>
+
+    <div class="er-kpi-row mb-3">
+        <button class="er-kpi er-kpi-c-primary" data-kpi-action="por-informar" type="button">
+            <div class="er-kpi-top"><span class="er-kpi-ico"><i class="mdi mdi-file-document-edit-outline"></i></span></div>
+            <div class="er-kpi-val"><?= (int)$kpiPorInformar ?></div>
+            <div class="er-kpi-lbl">Por informar</div>
+        </button>
+        <button class="er-kpi er-kpi-c-danger" data-kpi-action="bandeja" type="button">
+            <div class="er-kpi-top"><span class="er-kpi-ico"><i class="mdi mdi-bell-alert-outline"></i></span></div>
+            <div class="er-kpi-val" id="kpiBandejaVal">0</div>
+            <div class="er-kpi-lbl">Bandeja prioritaria</div>
+        </button>
+        <button class="er-kpi er-kpi-c-warning" data-kpi-action="sin-nas" type="button">
+            <div class="er-kpi-top"><span class="er-kpi-ico"><i class="mdi mdi-folder-alert-outline"></i></span></div>
+            <div class="er-kpi-val"><?= (int)$kpiSinNas ?></div>
+            <div class="er-kpi-lbl">Sin archivos</div>
+        </button>
+        <button class="er-kpi er-kpi-c-success" data-kpi-action="informados" type="button">
+            <div class="er-kpi-top"><span class="er-kpi-ico"><i class="mdi mdi-file-check-outline"></i></span></div>
+            <div class="er-kpi-val"><?= (int)$kpiInformados ?></div>
+            <div class="er-kpi-lbl">Informados</div>
+        </button>
     </div>
 
     <section class="content">
         <div class="box">
             <div class="box-header with-border d-flex justify-content-between align-items-center">
                 <h4 class="box-title mb-0">Listado por fecha, afiliación y paciente</h4>
-                <div class="d-flex gap-2">
-                    <a href="/v2/imagenes/dashboard" class="btn btn-outline-info btn-sm">
-                        <i class="mdi mdi-chart-line"></i> Dashboard
-                    </a>
-                    <button type="button" class="btn btn-outline-primary btn-sm" id="btnPrintTable">
-                        <i class="mdi mdi-printer"></i> Imprimir lista
-                    </button>
-                </div>
             </div>
             <div class="box-body">
                 <?php
@@ -167,26 +207,49 @@
                     }
                 }
                 ?>
-                <ul class="nav nav-tabs mb-3" id="tabInformes">
+                <ul class="nav nav-tabs mb-0" id="tabInformes">
                     <li class="nav-item">
-                        <button class="nav-link active" type="button" data-tab="no-informados">
-                            No informados
+                        <button class="nav-link active" type="button" data-tab="no-informados" title="Exámenes pendientes de informe con archivos disponibles en el NAS">
+                            <i class="mdi mdi-file-document-edit-outline me-1"></i>Por informar
                             <span class="badge badge-secondary-light ms-1"><?= (int)$totalNoInformados ?></span>
+                            <span class="er-tab-help" data-tab-help="no-informados" title="¿Para qué sirve esta pestaña?"><i class="mdi mdi-information-outline"></i></span>
                         </button>
                     </li>
                     <li class="nav-item">
-                        <button class="nav-link" type="button" data-tab="informados">
-                            Informados
+                        <button class="nav-link er-tab-bandeja" type="button" data-tab="bandeja" title="Exámenes marcados como urgentes o que requieren informe pronto">
+                            <i class="mdi mdi-bell-alert-outline me-1"></i>Bandeja prioritaria
+                            <span class="badge badge-danger-light ms-1" id="tabBandejaCount">0</span>
+                            <span class="er-tab-help" data-tab-help="bandeja" title="¿Para qué sirve esta pestaña?"><i class="mdi mdi-information-outline"></i></span>
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" type="button" data-tab="informados" title="Exámenes que ya tienen informe generado">
+                            <i class="mdi mdi-file-check-outline me-1"></i>Informados
                             <span class="badge badge-success-light ms-1"><?= (int)$totalInformados ?></span>
+                            <span class="er-tab-help" data-tab-help="informados" title="¿Para qué sirve esta pestaña?"><i class="mdi mdi-information-outline"></i></span>
                         </button>
                     </li>
                     <li class="nav-item">
-                        <button class="nav-link" type="button" data-tab="sin-nas">
-                            Sin archivos
+                        <button class="nav-link" type="button" data-tab="sin-nas" title="Procedimientos sin archivos de imágenes en el NAS">
+                            <i class="mdi mdi-folder-alert-outline me-1"></i>Sin archivos
                             <span class="badge badge-warning-light ms-1"><?= (int)$totalSinNas ?></span>
+                            <span class="er-tab-help" data-tab-help="sin-nas" title="¿Para qué sirve esta pestaña?"><i class="mdi mdi-information-outline"></i></span>
                         </button>
                     </li>
                 </ul>
+                <div id="erTabDesc" class="er-tab-desc d-none" aria-live="polite"></div>
+                <div id="erBulkBar" class="er-bulk-bar d-none" role="region" aria-label="Acciones masivas">
+                    <i class="mdi mdi-checkbox-multiple-marked-outline" style="color:var(--primary);font-size:18px"></i>
+                    <span class="er-bulk-count"></span>
+                    <div class="ms-auto d-flex gap-2">
+                        <button type="button" class="btn btn-outline-danger btn-sm er-bulk-bandeja-btn">
+                            <i class="mdi mdi-bell-plus-outline"></i> Enviar a bandeja prioritaria
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm er-bulk-clear-btn">
+                            <i class="mdi mdi-close"></i> Quitar selección
+                        </button>
+                    </div>
+                </div>
                 <form class="row g-2 align-items-end mb-3" method="get" id="filtrosImagenes">
                     <input type="hidden" name="hc_number" value="<?= htmlspecialchars($filters['hc_number'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
                     <input type="hidden" name="form_id" value="<?= htmlspecialchars($filters['form_id'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
@@ -293,7 +356,7 @@
                     <table id="tablaImagenesRealizadas" class="table table-lg invoice-archive">
                         <thead>
                         <tr>
-                            <th class="text-center">
+                            <th class="text-center" style="width:42px">
                                 <input type="checkbox" class="form-check-input" id="selectAllInformados"
                                        aria-label="Seleccionar todos">
                             </th>
@@ -338,7 +401,11 @@
                             data-tipo-raw="<?= htmlspecialchars($tipoExamenRaw, ENT_QUOTES, 'UTF-8') ?>"
                             data-nas-status="<?= htmlspecialchars($nasStatus, ENT_QUOTES, 'UTF-8') ?>"
                             data-pendiente-informar="<?= (!$informado && $nasHasFiles) ? '1' : '0' ?>"
-                            data-informado="<?= $informado ? '1' : '0' ?>">
+                            data-informado="<?= $informado ? '1' : '0' ?>"
+                            data-prioridad=""
+                            data-fecha-limite=""
+                            data-responsable=""
+                            data-motivo="">
                             <td class="text-center select-cell">
                                 <input type="checkbox" class="form-check-input row-select"
                                        value="<?= htmlspecialchars((string)($row['form_id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
@@ -354,8 +421,10 @@
                                     <?= htmlspecialchars($afiliacionText, ENT_QUOTES, 'UTF-8') ?>
                                 </span>
                             </td>
-                            <td><?= htmlspecialchars((string)($row['full_name'] ?? 'Sin nombre'), ENT_QUOTES, 'UTF-8') ?></td>
-                            <td><?= htmlspecialchars((string)($row['cedula'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></td>
+                            <td class="er-cell-paciente">
+                                <span class="er-paciente-nombre"><?= htmlspecialchars((string)($row['full_name'] ?? 'Sin nombre'), ENT_QUOTES, 'UTF-8') ?></span>
+                                <span class="er-paciente-meta">CC <?= htmlspecialchars((string)($row['cedula'] ?? '—'), ENT_QUOTES, 'UTF-8') ?> · HC <?= htmlspecialchars((string)($row['hc_number'] ?? '—'), ENT_QUOTES, 'UTF-8') ?></span>
+                            </td>
                             <td>
                                 <button type="button" class="btn btn-sm btn-outline-info btn-view-nas">
                                     <i class="mdi mdi-folder-image"></i> Ver imágenes
@@ -381,10 +450,19 @@
                             </td>
                             <td><?= htmlspecialchars($ojoExamen !== '' ? $ojoExamen : '—', ENT_QUOTES, 'UTF-8') ?></td>
                             <td>
-                                <button type="button"
-                                        class="btn btn-sm btn-success btn-print-item" <?= $informado ? '' : 'disabled' ?>>
-                                    <i class="mdi mdi-printer"></i>
-                                </button>
+                                <div class="d-flex gap-1 align-items-center">
+                                    <span class="er-prio-pill d-none"></span>
+                                    <button type="button"
+                                            class="btn btn-sm btn-success btn-print-item" <?= $informado ? '' : 'disabled' ?>>
+                                        <i class="mdi mdi-printer"></i>
+                                    </button>
+                                    <?php if (!$informado): ?>
+                                    <button type="button" class="btn btn-sm btn-outline-danger btn-marcar-urgente"
+                                            title="Marcar como urgente / pronto" aria-label="Marcar urgente">
+                                        <i class="mdi mdi-bell-plus-outline"></i>
+                                    </button>
+                                    <?php endif; ?>
+                                </div>
                             </td>
                         </tr>
                         <?php endforeach; ?>
@@ -394,6 +472,107 @@
             </div>
         </div>
         <style>
+            /* ---- KPI row ---- */
+            .er-kpi-row { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
+            .er-kpi {
+                background:#fff; border:1px solid #e9ecef; border-radius:12px;
+                padding:14px 16px; cursor:pointer; text-align:left; position:relative; overflow:hidden;
+                transition:all .15s ease; border-left:4px solid var(--er-kpi-c,#5156be);
+            }
+            .er-kpi:hover { border-color:var(--er-kpi-c,#5156be); box-shadow:0 4px 12px rgba(0,0,0,.08); transform:translateY(-1px); }
+            .er-kpi.active { box-shadow:0 0 0 3px color-mix(in srgb, var(--er-kpi-c,#5156be) 18%, transparent); }
+            .er-kpi-top { display:flex; align-items:center; justify-content:space-between; }
+            .er-kpi-ico { width:30px; height:30px; border-radius:8px; display:grid; place-items:center; font-size:18px; background:color-mix(in srgb,var(--er-kpi-c,#5156be) 14%,#fff); color:var(--er-kpi-c,#5156be); }
+            .er-kpi-val { font-size:28px; font-weight:700; line-height:1; margin-top:8px; letter-spacing:-.02em; }
+            .er-kpi-lbl { font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:#6c757d; font-weight:600; margin-top:4px; }
+            .er-kpi-c-primary { --er-kpi-c:#5156be; }
+            .er-kpi-c-danger  { --er-kpi-c:#e84c5b; }
+            .er-kpi-c-warning { --er-kpi-c:#d59623; }
+            .er-kpi-c-success { --er-kpi-c:#1f9d7a; }
+            @media(max-width:768px){ .er-kpi-row { grid-template-columns:repeat(2,1fr); } }
+
+            /* ---- Tab description strip ---- */
+            .er-tab-desc {
+                display:flex; align-items:center; gap:10px; padding:10px 15px;
+                font-size:13px; color:#495057; border-bottom:1px solid #e9ecef;
+                background:var(--er-desc-bg,#f0f0ff);
+            }
+            .er-tab-desc .mdi { font-size:17px; color:var(--er-desc-c,#5156be); flex:none; }
+            .er-tab-desc b { color:#212529; }
+            .er-tab-desc .er-td-more { margin-left:auto; font-size:12px; font-weight:600; color:var(--er-desc-c,#5156be); background:none; border:0; cursor:pointer; white-space:nowrap; padding:0; }
+            .er-tab-desc .er-td-more:hover { text-decoration:underline; }
+
+            /* ---- Bandeja tab color ---- */
+            .er-tab-bandeja.active { color:#e84c5b; }
+            .er-tab-bandeja.active::after { background:#e84c5b; }
+            #tabInformes .nav-link .er-tab-help {
+                display:inline-flex; align-items:center; margin-left:4px;
+                width:16px; height:16px; border-radius:50%; color:#adb5bd; font-size:14px;
+                vertical-align:middle; cursor:pointer; transition:color .15s;
+            }
+            #tabInformes .nav-link .er-tab-help:hover { color:#5156be; }
+
+            /* ---- Bulk bar ---- */
+            .er-bulk-bar {
+                display:flex; align-items:center; gap:10px; padding:9px 15px;
+                background:#f0f0ff; border-bottom:1px solid #e9ecef; font-size:13px;
+                animation:erSlideDown .15s ease;
+            }
+            .er-bulk-count { font-weight:600; color:#5156be; }
+            @keyframes erSlideDown { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:none} }
+
+            /* ---- Patient cell ---- */
+            .er-cell-paciente { min-width:160px; }
+            .er-paciente-nombre { display:block; font-weight:600; color:#212529; }
+            .er-paciente-meta { display:block; font-size:11.5px; color:#6c757d; font-family:monospace; margin-top:1px; }
+
+            /* ---- Priority pills ---- */
+            .er-prio-pill { display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:999px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; white-space:nowrap; }
+            .er-prio-urgente { background:#e84c5b; color:#fff; }
+            .er-prio-pronto { background:#fff0d1; color:#8a5d0a; border:1px solid #f0cd84; }
+            .er-prio-vencido { background:#4a0d18; color:#ffd9e0; }
+            tr.er-row-urgente { background:linear-gradient(90deg,#fdf1f3,transparent 60%); }
+            tr.er-row-urgente:hover { background:linear-gradient(90deg,#fbe7eb,transparent 60%); }
+
+            /* ---- Marcar urgente modal ---- */
+            #modalMarcarUrgente .er-seg-row { display:flex; gap:8px; margin-top:4px; }
+            #modalMarcarUrgente .er-seg-opt {
+                flex:1; border:1.5px solid #dee2e6; border-radius:10px; padding:12px; cursor:pointer;
+                background:#fff; text-align:left; transition:all .15s; display:flex; gap:10px; align-items:flex-start;
+            }
+            #modalMarcarUrgente .er-seg-opt .mdi { font-size:20px; color:#adb5bd; margin-top:1px; }
+            #modalMarcarUrgente .er-seg-opt b { display:block; font-size:13.5px; }
+            #modalMarcarUrgente .er-seg-opt small { color:#6c757d; font-size:11.5px; }
+            #modalMarcarUrgente .er-seg-opt.sel-urgente { border-color:#e84c5b; background:#fdecef; }
+            #modalMarcarUrgente .er-seg-opt.sel-urgente .mdi { color:#e84c5b; }
+            #modalMarcarUrgente .er-seg-opt.sel-pronto { border-color:#d59623; background:#fff6e3; }
+            #modalMarcarUrgente .er-seg-opt.sel-pronto .mdi { color:#b9760f; }
+            .er-quick-tag { display:inline-flex; align-items:center; padding:3px 9px; border-radius:999px; font-size:11.5px; font-weight:600; background:#fff; border:1px solid #dee2e6; color:#495057; cursor:pointer; transition:all .1s; }
+            .er-quick-tag:hover { border-color:#5156be; color:#5156be; }
+
+            /* ---- Help modal flow cards ---- */
+            .er-flow-card { display:flex; gap:13px; padding:14px; border-radius:12px; border:1px solid #e9ecef; margin-bottom:10px; background:#fff; }
+            .er-flow-ico { width:38px; height:38px; border-radius:10px; display:grid; place-items:center; font-size:20px; flex:none; }
+            .er-flow-ico-primary { background:#f0f0ff; color:#5156be; }
+            .er-flow-ico-danger  { background:#fdecef; color:#e84c5b; }
+            .er-flow-ico-success { background:#e3f5ee; color:#1f9d7a; }
+            .er-flow-ico-warning { background:#fff0d1; color:#8a5d0a; }
+            .er-flow-card h5 { font-size:14px; margin:0 0 3px; font-weight:600; }
+            .er-flow-card p { font-size:12.5px; color:#6c757d; margin:0; line-height:1.5; }
+
+            /* ---- Toast ---- */
+            .er-toast-wrap { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); z-index:2000; pointer-events:none; }
+            .er-toast {
+                display:flex; align-items:center; gap:9px; background:#212529; color:#fff;
+                padding:11px 18px; border-radius:10px; font-size:13.5px; font-weight:500;
+                box-shadow:0 8px 24px rgba(0,0,0,.22); animation:erToastIn .2s ease;
+                white-space:nowrap;
+            }
+            .er-toast .mdi { font-size:18px; }
+            .er-toast.ok .mdi { color:#1f9d7a; }
+            .er-toast.warn .mdi { color:#f0cd84; }
+            @keyframes erToastIn { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:none} }
+
             .table-group-row td {
                 background-color: #f8f9fa;
             }
@@ -587,6 +766,153 @@
             </div>
         </div>
     </div>
+
+    {{-- ====== Modal: Marcar urgente / bandeja prioritaria ====== --}}
+    <div class="modal fade" id="modalMarcarUrgente" tabindex="-1" aria-hidden="true" aria-labelledby="modalMarcarUrgenteLabel">
+        <div class="modal-dialog modal-dialog-centered" style="max-width:520px">
+            <div class="modal-content">
+                <div class="modal-header" style="border-bottom:1px solid #e9ecef">
+                    <div class="d-flex align-items-center gap-2">
+                        <span style="width:38px;height:38px;border-radius:10px;display:grid;place-items:center;font-size:20px;background:#fdecef;color:#e84c5b;flex:none">
+                            <i class="mdi mdi-bell-alert-outline"></i>
+                        </span>
+                        <div>
+                            <h5 class="modal-title mb-0" id="modalMarcarUrgenteLabel">Marcar para informe prioritario</h5>
+                            <div class="text-muted small" id="modalUrgenteSubtitle"></div>
+                        </div>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    {{-- Patient strip --}}
+                    <div id="modalUrgentePtStrip" class="p-3 mb-3 rounded-3" style="background:#f8f9fa;border:1px solid #e9ecef;display:none">
+                        <div class="d-flex flex-wrap gap-3">
+                            <div><div class="text-uppercase" style="font-size:10.5px;font-weight:600;color:#6c757d;letter-spacing:.04em">Paciente</div><div style="font-size:13.5px;font-weight:600" id="urgentePaciente"></div></div>
+                            <div><div class="text-uppercase" style="font-size:10.5px;font-weight:600;color:#6c757d;letter-spacing:.04em">Examen</div><div style="font-size:13.5px;font-weight:600" id="urgenteExamen"></div></div>
+                            <div><div class="text-uppercase" style="font-size:10.5px;font-weight:600;color:#6c757d;letter-spacing:.04em">Ojo</div><div style="font-size:13.5px;font-weight:600" id="urgenteOjo"></div></div>
+                        </div>
+                    </div>
+                    {{-- Priority segmented --}}
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold" style="font-size:12.5px">Prioridad</label>
+                        <div class="er-seg-row">
+                            <button type="button" class="er-seg-opt sel-urgente" id="segUrgente" data-prio="urgente">
+                                <i class="mdi mdi-fire"></i>
+                                <span><b>Urgente</b><small>Informar hoy mismo</small></span>
+                            </button>
+                            <button type="button" class="er-seg-opt" id="segPronto" data-prio="pronto">
+                                <i class="mdi mdi-clock-fast"></i>
+                                <span><b>Pronto</b><small>En los próximos días</small></span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            <label class="form-label fw-semibold" style="font-size:12.5px">Informar antes de</label>
+                            <input type="date" class="form-control" id="urgenteFechaLimite">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label fw-semibold" style="font-size:12.5px">Médico responsable</label>
+                            <input type="text" class="form-control" id="urgenteResponsable" placeholder="Opcional">
+                        </div>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label fw-semibold" style="font-size:12.5px">
+                            Motivo / nota <span class="text-danger">*</span>
+                        </label>
+                        <textarea class="form-control" id="urgenteMotivo" rows="3"
+                                  placeholder="¿Por qué requiere informe prioritario?"></textarea>
+                        <div class="d-flex flex-wrap gap-1 mt-2" id="urgenteQuickTags">
+                            <button type="button" class="er-quick-tag" data-motivo="Cirugía programada en 48 h, falta informe para protocolo">Cirugía en 48 h</button>
+                            <button type="button" class="er-quick-tag" data-motivo="Paciente foráneo, viaja mañana — necesita informe hoy">Paciente foráneo</button>
+                            <button type="button" class="er-quick-tag" data-motivo="Sospecha de glaucoma avanzado, requiere lectura prioritaria">Sospecha glaucoma</button>
+                            <button type="button" class="er-quick-tag" data-motivo="Pre-quirúrgico de catarata, junta médica próximamente">Pre-quirúrgico</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer" style="background:#f8f9fa;border-top:1px solid #e9ecef">
+                    <span class="text-muted small me-auto" id="urgenteFootNote"></span>
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-danger" id="btnConfirmarUrgente">
+                        <i class="mdi mdi-bell-plus-outline me-1"></i>Enviar a bandeja
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- ====== Modal: Ayuda / Cómo funciona ====== --}}
+    <div class="modal fade" id="modalHelp" tabindex="-1" aria-hidden="true" aria-labelledby="modalHelpLabel">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable" style="max-width:640px">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <div class="d-flex align-items-center gap-2">
+                        <span style="width:38px;height:38px;border-radius:10px;display:grid;place-items:center;font-size:20px;background:#f0f0ff;color:#5156be;flex:none">
+                            <i class="mdi mdi-help-circle-outline"></i>
+                        </span>
+                        <div>
+                            <h5 class="modal-title mb-0" id="modalHelpLabel">Cómo funciona Exámenes realizados</h5>
+                            <div class="text-muted small">El recorrido de una imagen, de la captura al informe</div>
+                        </div>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small mb-3">Cada examen de imagen recorre cuatro estados. Las pestañas son esos estados — úsalas como bandejas de trabajo:</p>
+                    <div class="er-flow-card">
+                        <span class="er-flow-ico er-flow-ico-primary"><i class="mdi mdi-file-document-edit-outline"></i></span>
+                        <div><h5>1. Por informar</h5><p>Exámenes con archivos disponibles en el NAS que aún no tienen informe generado. Aquí está el trabajo principal del técnico/médico de imágenes. Abre el modal de «Informar» para cargar la plantilla y guardar el informe.</p></div>
+                    </div>
+                    <div class="er-flow-card">
+                        <span class="er-flow-ico er-flow-ico-danger"><i class="mdi mdi-bell-alert-outline"></i></span>
+                        <div><h5>2. Bandeja prioritaria</h5><p>Exámenes no informados que alguien marcó como <b>Urgente</b> (informar hoy) o <b>Pronto</b> (en los próximos días). Se ordenan por prioridad y fecha límite. Los casos con plazo vencido se resaltan en rojo.</p></div>
+                    </div>
+                    <div class="er-flow-card">
+                        <span class="er-flow-ico er-flow-ico-success"><i class="mdi mdi-file-check-outline"></i></span>
+                        <div><h5>3. Informados</h5><p>Exámenes con informe firmado y guardado. Desde aquí puedes imprimirlos o descargarlos en paquete. El paciente recibe un aviso automático por WhatsApp al guardar.</p></div>
+                    </div>
+                    <div class="er-flow-card">
+                        <span class="er-flow-ico er-flow-ico-warning"><i class="mdi mdi-folder-alert-outline"></i></span>
+                        <div><h5>4. Sin archivos</h5><p>Procedimientos proyectados sin archivos de imágenes en el NAS. Pueden ser exámenes que no se realizaron, o que el equipo aún no los transfirió. Usa «Reclamar» para notificar al área técnica.</p></div>
+                    </div>
+                    <div class="alert alert-warning py-2 px-3 mb-0" style="font-size:12.5px">
+                        <i class="mdi mdi-bell-plus-outline me-1"></i>
+                        <b>Bandeja prioritaria:</b> desde «Por informar», pulsa el botón <i class="mdi mdi-bell-plus-outline"></i> en una fila, o selecciona varias y usa «Enviar a bandeja prioritaria». Puedes definir prioridad, fecha límite, médico responsable y motivo.
+                    </div>
+                </div>
+                <div class="modal-footer" style="background:#f8f9fa">
+                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Entendido</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- ====== Modal: Ayuda de una pestaña ====== --}}
+    <div class="modal fade" id="modalTabHelp" tabindex="-1" aria-hidden="true" aria-labelledby="modalTabHelpLabel">
+        <div class="modal-dialog modal-dialog-centered" style="max-width:480px">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="er-flow-ico" id="tabHelpIco" style="width:38px;height:38px;border-radius:10px;display:grid;place-items:center;font-size:20px;flex:none"></span>
+                        <div>
+                            <h5 class="modal-title mb-0" id="modalTabHelpLabel"></h5>
+                            <div class="text-muted small" id="tabHelpSub"></div>
+                        </div>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <p id="tabHelpBody" style="line-height:1.6;margin:0"></p>
+                </div>
+                <div class="modal-footer" style="background:#f8f9fa">
+                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Entendido</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- ====== Toast container ====== --}}
+    <div class="er-toast-wrap" id="erToastWrap" aria-live="polite" aria-atomic="true"></div>
 
     <script>
         (function () {
@@ -2781,6 +3107,455 @@
                 window.initImagenesRealizadasPage();
             }
         })();
+    </script>
+
+    <script>
+    // =====================================================================
+    // Exámenes realizados — bandeja prioritaria, urgente modal, help, KPIs
+    // =====================================================================
+    (function () {
+        // ---- Storage key ----
+        var STORAGE_KEY = 'er_bandeja_v1';
+        var today = new Date().toISOString().slice(0, 10);
+
+        // ---- State: { rowId: {prioridad, fecha_limite, responsable, motivo} } ----
+        var bandejaState = {};
+        try {
+            var raw = localStorage.getItem(STORAGE_KEY);
+            if (raw) bandejaState = JSON.parse(raw) || {};
+        } catch (e) { bandejaState = {}; }
+
+        function saveBandeja() {
+            try { localStorage.setItem(STORAGE_KEY, JSON.stringify(bandejaState)); } catch(e){}
+        }
+
+        // ---- Toast ----
+        var toastTimer = null;
+        function showToast(msg, icon, tone) {
+            var wrap = document.getElementById('erToastWrap');
+            if (!wrap) return;
+            var el = document.createElement('div');
+            el.className = 'er-toast ' + (tone || 'ok');
+            el.innerHTML = '<i class="mdi ' + (icon || 'mdi-check-circle') + '"></i>' + htmlEsc(msg);
+            wrap.innerHTML = '';
+            wrap.appendChild(el);
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(function(){ wrap.innerHTML = ''; }, 3000);
+        }
+        function htmlEsc(str) {
+            return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        }
+
+        // ---- Apply bandeja state to all rows ----
+        function applyBandejaToRows() {
+            document.querySelectorAll('#tablaImagenesRealizadas tbody tr[data-id]').forEach(function(tr) {
+                var id = tr.getAttribute('data-id') || '';
+                var entry = bandejaState[id];
+                if (entry) {
+                    tr.dataset.prioridad = entry.prioridad || '';
+                    tr.dataset.fechaLimite = entry.fecha_limite || '';
+                    tr.dataset.responsable = entry.responsable || '';
+                    tr.dataset.motivo = entry.motivo || '';
+                    updateRowPrioBadge(tr, entry.prioridad, entry.fecha_limite);
+                    // Update urgente button to reflect "in bandeja"
+                    var btn = tr.querySelector('.btn-marcar-urgente');
+                    if (btn) {
+                        btn.title = 'En bandeja — editar prioridad';
+                        btn.classList.remove('btn-outline-danger');
+                        btn.classList.add('btn-outline-warning');
+                        btn.innerHTML = '<i class="mdi mdi-bell-check-outline"></i>';
+                    }
+                } else {
+                    tr.dataset.prioridad = '';
+                    tr.dataset.fechaLimite = '';
+                    var btn = tr.querySelector('.btn-marcar-urgente');
+                    if (btn) {
+                        btn.title = 'Marcar como urgente / pronto';
+                        btn.classList.remove('btn-outline-warning');
+                        btn.classList.add('btn-outline-danger');
+                        btn.innerHTML = '<i class="mdi mdi-bell-plus-outline"></i>';
+                    }
+                    var pill = tr.querySelector('.er-prio-pill');
+                    if (pill) { pill.className = 'er-prio-pill d-none'; pill.textContent = ''; }
+                }
+            });
+            updateBandejaTabCount();
+            updateKpiBandejaVal();
+        }
+
+        function updateRowPrioBadge(tr, prioridad, fechaLimite) {
+            var pill = tr.querySelector('.er-prio-pill');
+            if (!pill) return;
+            var overdue = fechaLimite && fechaLimite < today;
+            if (overdue) {
+                pill.className = 'er-prio-pill er-prio-vencido';
+                pill.innerHTML = '<i class="mdi mdi-clock-alert"></i> Vencido';
+            } else if (prioridad === 'urgente') {
+                pill.className = 'er-prio-pill er-prio-urgente';
+                pill.innerHTML = '<i class="mdi mdi-fire"></i> Urgente';
+            } else if (prioridad === 'pronto') {
+                pill.className = 'er-prio-pill er-prio-pronto';
+                pill.innerHTML = '<i class="mdi mdi-clock-fast"></i> Pronto';
+            } else {
+                pill.className = 'er-prio-pill d-none';
+                pill.textContent = '';
+                return;
+            }
+            // Highlight row
+            tr.classList.toggle('er-row-urgente', !overdue);
+            tr.classList.toggle('table-danger', !!overdue);
+        }
+
+        function updateBandejaTabCount() {
+            var count = 0;
+            document.querySelectorAll('#tablaImagenesRealizadas tbody tr[data-id]').forEach(function(tr){
+                if ((tr.dataset.prioridad || '') && !(tr.dataset.informado === '1')) count++;
+            });
+            var badge = document.getElementById('tabBandejaCount');
+            if (badge) badge.textContent = count;
+        }
+
+        function updateKpiBandejaVal() {
+            var el = document.getElementById('kpiBandejaVal');
+            if (!el) return;
+            var count = 0;
+            document.querySelectorAll('#tablaImagenesRealizadas tbody tr[data-id]').forEach(function(tr){
+                if ((tr.dataset.prioridad || '') && !(tr.dataset.informado === '1')) count++;
+            });
+            el.textContent = count;
+        }
+
+        // ---- Extend rowInActiveTab to support "bandeja" tab ----
+        document.addEventListener('DOMContentLoaded', function () {
+            // Patch: when activeTab becomes 'bandeja', filter rows that have prioridad
+            // We intercept the tab click to inject the bandeja filter logic
+            var origTabBtns = document.querySelectorAll('#tabInformes [data-tab="bandeja"]');
+            origTabBtns.forEach(function(btn) {
+                btn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    // Deactivate all tabs, activate bandeja
+                    document.querySelectorAll('#tabInformes .nav-link').forEach(function(b){ b.classList.remove('active'); });
+                    btn.classList.add('active');
+                    // Manually filter: show only rows with prioridad and not informado
+                    var dtInstance = window.__erDataTableInstance;
+                    document.querySelectorAll('#tablaImagenesRealizadas tbody tr[data-id]').forEach(function(tr){
+                        var hasPrio = !!(tr.dataset.prioridad || '');
+                        var isInformado = tr.dataset.informado === '1';
+                        tr.style.display = (hasPrio && !isInformado) ? '' : 'none';
+                    });
+                    updateTabDesc('bandeja');
+                    updateBulkBarVisibility();
+                    // Also tell the existing dataTable about the active tab
+                    if (window.__erSetActiveTab) window.__erSetActiveTab('bandeja');
+                });
+            });
+
+            // Hook into existing tab clicks to update tab descriptions
+            document.querySelectorAll('#tabInformes [data-tab]').forEach(function(btn){
+                btn.addEventListener('click', function(){
+                    var tab = btn.getAttribute('data-tab');
+                    if (tab !== 'bandeja') {
+                        setTimeout(function(){ updateTabDesc(tab); }, 50);
+                    }
+                });
+            });
+
+            // Tab help icons
+            document.querySelectorAll('.er-tab-help').forEach(function(span){
+                span.addEventListener('click', function(e){
+                    e.stopPropagation();
+                    var tabKey = span.getAttribute('data-tab-help');
+                    openTabHelp(tabKey);
+                });
+            });
+
+            // Apply bandeja state after DOM ready
+            applyBandejaToRows();
+            updateTabDesc('no-informados');
+        });
+
+        // ---- Tab descriptions ----
+        var TAB_DESCS = {
+            'no-informados': {
+                bg: '#f0f0ff', c: '#5156be',
+                icon: 'mdi-file-document-edit-outline',
+                label: 'Por informar',
+                desc: 'Exámenes con archivos en el NAS listos para informar. Abre el modal de «Informar» para cargar la plantilla.'
+            },
+            'bandeja': {
+                bg: '#fdecef', c: '#e84c5b',
+                icon: 'mdi-bell-alert-outline',
+                label: 'Bandeja prioritaria',
+                desc: 'Exámenes marcados como <b>Urgente</b> o <b>Pronto</b> por el equipo. Ordénate aquí para los casos con plazo vencido.'
+            },
+            'informados': {
+                bg: '#e3f5ee', c: '#1f9d7a',
+                icon: 'mdi-file-check-outline',
+                label: 'Informados',
+                desc: 'Exámenes con informe firmado. Puedes imprimirlos o descargarlos. El paciente recibió aviso por WhatsApp.'
+            },
+            'sin-nas': {
+                bg: '#fff6e3', c: '#b9760f',
+                icon: 'mdi-folder-alert-outline',
+                label: 'Sin archivos',
+                desc: 'Procedimientos proyectados sin archivos en el NAS. Usa «Reclamar» para notificar al área técnica.'
+            }
+        };
+
+        function updateTabDesc(tabKey) {
+            var strip = document.getElementById('erTabDesc');
+            if (!strip) return;
+            var cfg = TAB_DESCS[tabKey];
+            if (!cfg) { strip.classList.add('d-none'); return; }
+            strip.classList.remove('d-none');
+            strip.style.cssText = '--er-desc-bg:' + cfg.bg + ';--er-desc-c:' + cfg.c;
+            strip.innerHTML = '<i class="mdi ' + cfg.icon + '"></i>'
+                + '<span>' + cfg.desc + '</span>'
+                + '<button class="er-td-more" onclick="document.getElementById(\'btnHelpOpen\').click()">Saber más</button>';
+        }
+
+        // ---- Tab help modal ----
+        var TAB_HELP = {
+            'no-informados': {
+                title: 'Pestaña «Por informar»',
+                sub: 'Exámenes pendientes con archivos disponibles',
+                body: 'Esta pestaña muestra los exámenes que ya tienen archivos en el NAS pero aún no tienen informe generado. Es el trabajo principal del técnico o médico de imágenes. Haz clic en «Informar» en cada fila para cargar la plantilla correspondiente al tipo de examen, completarla y guardarla. Al guardar, el paciente recibe un aviso automático por WhatsApp.',
+                ico: 'mdi-file-document-edit-outline', bg: '#f0f0ff', c: '#5156be'
+            },
+            'bandeja': {
+                title: 'Pestaña «Bandeja prioritaria»',
+                sub: 'Casos urgentes o que requieren informe pronto',
+                body: 'Exámenes no informados que alguien del equipo marcó como Urgente (informar hoy mismo) o Pronto (en los próximos días). Se ordenan por prioridad y fecha límite. Los casos con plazo vencido se resaltan en rojo. Para agregar un examen a la bandeja, usa el botón 🔔 en la fila desde «Por informar».',
+                ico: 'mdi-bell-alert-outline', bg: '#fdecef', c: '#e84c5b'
+            },
+            'informados': {
+                title: 'Pestaña «Informados»',
+                sub: 'Exámenes con informe firmado y guardado',
+                body: 'Aquí aparecen los exámenes que ya tienen informe guardado en el sistema. Puedes ver el informe, imprimirlo o descargarlo en paquete. El paciente ya recibió (o recibirá) un aviso por WhatsApp con la disponibilidad del resultado.',
+                ico: 'mdi-file-check-outline', bg: '#e3f5ee', c: '#1f9d7a'
+            },
+            'sin-nas': {
+                title: 'Pestaña «Sin archivos»',
+                sub: 'Procedimientos sin imágenes en el NAS',
+                body: 'Procedimientos proyectados para los cuales el sistema no encontró archivos de imágenes en el NAS. Puede ser que el examen no se realizó, o que el equipo médico aún no los transfirió al servidor. Usa «Reclamar» para registrar el faltante y notificar al área técnica.',
+                ico: 'mdi-folder-alert-outline', bg: '#fff6e3', c: '#b9760f'
+            }
+        };
+
+        function openTabHelp(tabKey) {
+            var cfg = TAB_HELP[tabKey];
+            if (!cfg) return;
+            document.getElementById('modalTabHelpLabel').textContent = cfg.title;
+            document.getElementById('tabHelpSub').textContent = cfg.sub;
+            document.getElementById('tabHelpBody').textContent = cfg.body;
+            var ico = document.getElementById('tabHelpIco');
+            ico.style.background = cfg.bg;
+            ico.style.color = cfg.c;
+            ico.innerHTML = '<i class="mdi ' + cfg.ico + '"></i>';
+            var bsModal = new bootstrap.Modal(document.getElementById('modalTabHelp'));
+            bsModal.show();
+        }
+
+        // ---- Help modal ----
+        document.addEventListener('DOMContentLoaded', function(){
+            var btnHelp = document.getElementById('btnHelpOpen');
+            if (btnHelp) {
+                btnHelp.addEventListener('click', function(){
+                    new bootstrap.Modal(document.getElementById('modalHelp')).show();
+                });
+            }
+        });
+
+        // ---- KPI click shortcuts ----
+        document.addEventListener('DOMContentLoaded', function(){
+            document.querySelectorAll('.er-kpi[data-kpi-action]').forEach(function(kpi){
+                kpi.addEventListener('click', function(){
+                    var action = kpi.getAttribute('data-kpi-action');
+                    var tabMap = {
+                        'por-informar': 'no-informados',
+                        'bandeja': 'bandeja',
+                        'sin-nas': 'sin-nas',
+                        'informados': 'informados'
+                    };
+                    var tabKey = tabMap[action];
+                    if (!tabKey) return;
+                    var btn = document.querySelector('#tabInformes [data-tab="' + tabKey + '"]');
+                    if (btn) btn.click();
+                    // Toggle active style on KPI
+                    document.querySelectorAll('.er-kpi').forEach(function(k){ k.classList.remove('active'); });
+                    kpi.classList.add('active');
+                });
+            });
+        });
+
+        // ---- Marcar urgente modal ----
+        var urgenteTargetRows = [];
+        var urgentePrioridad = 'urgente';
+
+        function openUrgenteModal(rows) {
+            urgenteTargetRows = rows;
+            urgentePrioridad = 'urgente';
+
+            var multi = rows.length > 1;
+            var base = rows[0];
+
+            document.getElementById('modalMarcarUrgenteLabel').textContent =
+                (base && base.dataset.prioridad) ? 'Editar prioridad' : 'Marcar para informe prioritario';
+            document.getElementById('modalUrgenteSubtitle').textContent =
+                multi ? (rows.length + ' exámenes seleccionados') : '';
+
+            var ptStrip = document.getElementById('modalUrgentePtStrip');
+            if (!multi && base) {
+                ptStrip.style.display = '';
+                document.getElementById('urgentePaciente').textContent = base.dataset.paciente || '';
+                document.getElementById('urgenteExamen').textContent = base.dataset.examen || '';
+                document.getElementById('urgenteOjo').textContent = base.dataset.ojo || '—';
+            } else {
+                ptStrip.style.display = 'none';
+            }
+
+            // Restore previous values if editing
+            var existing = base ? bandejaState[base.getAttribute('data-id') || ''] : null;
+            urgentePrioridad = (existing && existing.prioridad) || 'urgente';
+            document.getElementById('urgenteFechaLimite').value = (existing && existing.fecha_limite) || today;
+            document.getElementById('urgenteResponsable').value = (existing && existing.responsable) || '';
+            document.getElementById('urgenteMotivo').value = (existing && existing.motivo) || '';
+            document.getElementById('urgenteFootNote').textContent = '';
+
+            updateSegButtons(urgentePrioridad);
+
+            var btnConfirm = document.getElementById('btnConfirmarUrgente');
+            btnConfirm.textContent = '';
+            btnConfirm.innerHTML = '<i class="mdi mdi-bell-plus-outline me-1"></i>' +
+                (existing && existing.prioridad ? 'Actualizar prioridad' : 'Enviar a bandeja');
+
+            new bootstrap.Modal(document.getElementById('modalMarcarUrgente')).show();
+        }
+
+        function updateSegButtons(prio) {
+            document.getElementById('segUrgente').classList.toggle('sel-urgente', prio === 'urgente');
+            document.getElementById('segPronto').classList.toggle('sel-pronto', prio === 'pronto');
+        }
+
+        document.addEventListener('DOMContentLoaded', function(){
+            document.getElementById('segUrgente').addEventListener('click', function(){
+                urgentePrioridad = 'urgente';
+                updateSegButtons('urgente');
+            });
+            document.getElementById('segPronto').addEventListener('click', function(){
+                urgentePrioridad = 'pronto';
+                updateSegButtons('pronto');
+            });
+
+            // Quick tags
+            document.querySelectorAll('#urgenteQuickTags .er-quick-tag').forEach(function(tag){
+                tag.addEventListener('click', function(){
+                    document.getElementById('urgenteMotivo').value = tag.getAttribute('data-motivo') || '';
+                });
+            });
+
+            // Confirm
+            document.getElementById('btnConfirmarUrgente').addEventListener('click', function(){
+                var motivo = (document.getElementById('urgenteMotivo').value || '').trim();
+                if (!motivo) {
+                    document.getElementById('urgenteMotivo').focus();
+                    document.getElementById('urgenteMotivo').classList.add('is-invalid');
+                    return;
+                }
+                document.getElementById('urgenteMotivo').classList.remove('is-invalid');
+
+                var data = {
+                    prioridad: urgentePrioridad,
+                    fecha_limite: document.getElementById('urgenteFechaLimite').value || today,
+                    responsable: document.getElementById('urgenteResponsable').value.trim(),
+                    motivo: motivo
+                };
+
+                urgenteTargetRows.forEach(function(tr){
+                    var id = tr.getAttribute('data-id') || '';
+                    if (!id) return;
+                    bandejaState[id] = data;
+                    tr.dataset.prioridad = data.prioridad;
+                    tr.dataset.fechaLimite = data.fecha_limite;
+                    tr.dataset.responsable = data.responsable;
+                    tr.dataset.motivo = data.motivo;
+                });
+                saveBandeja();
+                applyBandejaToRows();
+
+                bootstrap.Modal.getInstance(document.getElementById('modalMarcarUrgente')).hide();
+                showToast(
+                    urgenteTargetRows.length > 1
+                        ? (urgenteTargetRows.length + ' exámenes enviados a la bandeja prioritaria')
+                        : 'Examen en la bandeja prioritaria',
+                    'mdi-bell-check'
+                );
+            });
+
+            // Row buttons: marcar urgente
+            document.querySelector('#tablaImagenesRealizadas tbody').addEventListener('click', function(e){
+                var btn = e.target.closest('.btn-marcar-urgente');
+                if (!btn) return;
+                var tr = btn.closest('tr[data-id]');
+                if (!tr) return;
+                openUrgenteModal([tr]);
+            });
+        });
+
+        // ---- Bulk bar ----
+        function updateBulkBarVisibility() {
+            var bar = document.getElementById('erBulkBar');
+            if (!bar) return;
+            var checked = document.querySelectorAll('#tablaImagenesRealizadas tbody .row-select:checked');
+            if (checked.length > 0) {
+                bar.classList.remove('d-none');
+                bar.querySelector('.er-bulk-count').textContent = checked.length + ' seleccionado' + (checked.length !== 1 ? 's' : '');
+            } else {
+                bar.classList.add('d-none');
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', function(){
+            // Track checkbox changes for bulk bar
+            document.querySelector('#tablaImagenesRealizadas tbody').addEventListener('change', function(e){
+                if (e.target && e.target.classList.contains('row-select')) {
+                    updateBulkBarVisibility();
+                }
+            });
+            var selectAll = document.getElementById('selectAllInformados');
+            if (selectAll) {
+                selectAll.addEventListener('change', function(){ setTimeout(updateBulkBarVisibility, 0); });
+            }
+
+            // Bulk: enviar a bandeja
+            var bulkBandejaBtn = document.querySelector('.er-bulk-bandeja-btn');
+            if (bulkBandejaBtn) {
+                bulkBandejaBtn.addEventListener('click', function(){
+                    var selected = Array.from(document.querySelectorAll('#tablaImagenesRealizadas tbody tr[data-id]')).filter(function(tr){
+                        var cb = tr.querySelector('.row-select');
+                        return cb && cb.checked && !cb.disabled;
+                    });
+                    if (!selected.length) return;
+                    openUrgenteModal(selected);
+                });
+            }
+
+            // Bulk: clear
+            var bulkClearBtn = document.querySelector('.er-bulk-clear-btn');
+            if (bulkClearBtn) {
+                bulkClearBtn.addEventListener('click', function(){
+                    document.querySelectorAll('#tablaImagenesRealizadas tbody .row-select:checked').forEach(function(cb){ cb.checked = false; });
+                    var sa = document.getElementById('selectAllInformados');
+                    if (sa) { sa.checked = false; sa.indeterminate = false; }
+                    updateBulkBarVisibility();
+                });
+            }
+
+            // Also restore bandeja state on page load
+            setTimeout(applyBandejaToRows, 200);
+        });
+
+    })();
     </script>
 
 @endsection
