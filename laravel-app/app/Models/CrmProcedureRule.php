@@ -68,6 +68,45 @@ class CrmProcedureRule extends Model
         Cache::forget('crm_procedure_rule:' . $codigo);
     }
 
+    /**
+     * Parses a raw solicitud_procedimiento.procedimiento string into a structured code + name.
+     *
+     * Supported formats:
+     *   "CODE - PROCEDURE NAME"
+     *   "CATEGORY - CODE - PROCEDURE NAME"
+     *
+     * A valid code is either all-digits (66984) or alphanumeric segments joined by hyphens
+     * (CYP-CCA-001). Classification is never derived from the code string itself — this
+     * parser only identifies WHERE the code sits in the raw string.
+     *
+     * Returns null if no valid code segment is found.
+     *
+     * @return array{codigo:string, nombre:string}|null
+     */
+    public static function parseProcedureCode(string $raw): ?array
+    {
+        $raw = trim($raw);
+        if ($raw === '') {
+            return null;
+        }
+
+        $parts = preg_split('/ - /', $raw, 3);
+
+        foreach ($parts as $i => $part) {
+            $candidate = trim($part);
+            // Valid code: all-digits OR alphanumeric segments connected by hyphens (min 2 segments)
+            if (preg_match('/^\d+$|^[A-Z0-9]+(-[A-Z0-9]+)+$/i', $candidate)) {
+                $nombre = isset($parts[$i + 1]) ? trim($parts[$i + 1]) : $candidate;
+                return [
+                    'codigo' => strtoupper($candidate),
+                    'nombre' => $nombre !== '' ? $nombre : $candidate,
+                ];
+            }
+        }
+
+        return null;
+    }
+
     /** Conservative fallback when no rule exists. genera_oportunidad=1, tipo=unica. */
     private static function fallback(): array
     {

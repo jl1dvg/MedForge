@@ -30,69 +30,77 @@ class CrmSeedProcedureRulesCommandTest extends TestCase
 
         Schema::create('solicitud_procedimiento', function (Blueprint $table): void {
             $table->id();
-            $table->string('procedimiento', 100)->nullable();
+            $table->string('procedimiento', 200)->nullable();
             $table->timestamps();
         });
     }
 
-    public function test_creates_stub_rules_for_new_codes(): void
+    public function test_parses_and_creates_rules_from_raw_strings(): void
     {
         \DB::table('solicitud_procedimiento')->insert([
-            ['procedimiento' => 'CYP-CCA-001', 'created_at' => now()],
-            ['procedimiento' => '66984',        'created_at' => now()],
+            ['procedimiento' => 'CIRUGIAS - CYP-CCA-001 - CATARATA CON FACOEMULSIFICACION', 'created_at' => now()],
+            ['procedimiento' => 'CIRUGIAS - 66984 - REMOCION DE CATARATA',                  'created_at' => now()],
         ]);
 
-        $this->artisan('crm:seed-procedure-rules')
-            ->assertExitCode(0);
+        $this->artisan('crm:seed-procedure-rules')->assertExitCode(0);
 
-        $this->assertDatabaseHas('crm_procedure_rules', ['codigo' => 'CYP-CCA-001', 'tipo' => 'unica']);
-        $this->assertDatabaseHas('crm_procedure_rules', ['codigo' => '66984',        'tipo' => 'unica']);
+        $this->assertDatabaseHas('crm_procedure_rules', ['codigo' => 'CYP-CCA-001', 'nombre' => 'CATARATA CON FACOEMULSIFICACION']);
+        $this->assertDatabaseHas('crm_procedure_rules', ['codigo' => '66984',        'nombre' => 'REMOCION DE CATARATA']);
         $this->assertSame(2, CrmProcedureRule::count());
+    }
+
+    public function test_deduplicates_same_code_from_different_raw_strings(): void
+    {
+        // Same code appears in two raw formats; most frequent raw string wins for nombre
+        \DB::table('solicitud_procedimiento')->insert([
+            ['procedimiento' => 'CIRUGIAS - CYP-CCA-001 - CATARATA (nombre A)', 'created_at' => now()],
+            ['procedimiento' => 'CIRUGIAS - CYP-CCA-001 - CATARATA (nombre A)', 'created_at' => now()],
+            ['procedimiento' => 'CYP-CCA-001 - CATARATA (nombre B)',            'created_at' => now()],
+        ]);
+
+        $this->artisan('crm:seed-procedure-rules')->assertExitCode(0);
+
+        $this->assertSame(1, CrmProcedureRule::count());
+        $this->assertSame('CATARATA (nombre A)', CrmProcedureRule::where('codigo', 'CYP-CCA-001')->value('nombre'));
     }
 
     public function test_skips_codes_that_already_have_a_rule(): void
     {
         CrmProcedureRule::create([
-            'codigo' => 'CYP-CCA-001', 'nombre' => 'Facoemulsificación',
+            'codigo' => 'CYP-CCA-001', 'nombre' => 'Facoemulsificación clasificada',
             'tipo'   => 'recurrente',  'activo'  => 1,
         ]);
         \DB::table('solicitud_procedimiento')->insert([
-            ['procedimiento' => 'CYP-CCA-001', 'created_at' => now()],
+            ['procedimiento' => 'CIRUGIAS - CYP-CCA-001 - CATARATA', 'created_at' => now()],
         ]);
 
-        $this->artisan('crm:seed-procedure-rules')
-            ->assertExitCode(0);
+        $this->artisan('crm:seed-procedure-rules')->assertExitCode(0);
 
-        // tipo must not have been overwritten
         $this->assertSame('recurrente', CrmProcedureRule::where('codigo', 'CYP-CCA-001')->value('tipo'));
         $this->assertSame(1, CrmProcedureRule::count());
     }
 
-    public function test_ignores_null_procedure_codes(): void
+    public function test_dry_run_does_not_insert(): void
     {
         \DB::table('solicitud_procedimiento')->insert([
-            ['procedimiento' => null,          'created_at' => now()],
-            ['procedimiento' => 'CYP-RVI-009', 'created_at' => now()],
+            ['procedimiento' => 'CIRUGIAS - CYP-CCA-001 - CATARATA', 'created_at' => now()],
         ]);
 
-        $this->artisan('crm:seed-procedure-rules')
-            ->assertExitCode(0);
+        $this->artisan('crm:seed-procedure-rules', ['--dry-run' => true])->assertExitCode(0);
 
-        $this->assertSame(1, CrmProcedureRule::count());
-        $this->assertDatabaseHas('crm_procedure_rules', ['codigo' => 'CYP-RVI-009']);
+        $this->assertSame(0, CrmProcedureRule::count());
     }
 
-    public function test_ignores_codes_older_than_90_days_when_window_specified(): void
+    public function test_ignores_codes_older_than_days_window(): void
     {
         \DB::table('solicitud_procedimiento')->insert([
-            ['procedimiento' => 'OLD-CODE', 'created_at' => now()->subDays(91)],
-            ['procedimiento' => 'NEW-CODE', 'created_at' => now()],
+            ['procedimiento' => 'CIRUGIAS - OLD-CODE-001 - OLD PROC', 'created_at' => now()->subDays(91)],
+            ['procedimiento' => 'CIRUGIAS - NEW-CODE-001 - NEW PROC', 'created_at' => now()],
         ]);
 
-        $this->artisan('crm:seed-procedure-rules', ['--days' => 90])
-            ->assertExitCode(0);
+        $this->artisan('crm:seed-procedure-rules', ['--days' => 90])->assertExitCode(0);
 
-        $this->assertDatabaseMissing('crm_procedure_rules', ['codigo' => 'OLD-CODE']);
-        $this->assertDatabaseHas('crm_procedure_rules',    ['codigo' => 'NEW-CODE']);
+        $this->assertDatabaseMissing('crm_procedure_rules', ['codigo' => 'OLD-CODE-001']);
+        $this->assertDatabaseHas('crm_procedure_rules',    ['codigo' => 'NEW-CODE-001']);
     }
 }

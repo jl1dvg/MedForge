@@ -88,4 +88,59 @@ class CrmProcedureRuleModelTest extends TestCase
         $rule = CrmProcedureRule::forCodigo('CYP-RVI-009');
         $this->assertSame('recurrente', $rule['tipo']);
     }
+
+    // --- parseProcedureCode ---
+
+    public function test_parse_three_segment_cyp_code(): void
+    {
+        $result = CrmProcedureRule::parseProcedureCode('CIRUGIAS - CYP-CCA-001 - CATARATA CON FACOEMULSIFICACION');
+        $this->assertSame('CYP-CCA-001', $result['codigo']);
+        $this->assertSame('CATARATA CON FACOEMULSIFICACION', $result['nombre']);
+    }
+
+    public function test_parse_two_segment_cyp_code(): void
+    {
+        $result = CrmProcedureRule::parseProcedureCode('CYP-RVI-009 - FOTOCOAGULACIÓN FOCAL');
+        $this->assertSame('CYP-RVI-009', $result['codigo']);
+        $this->assertSame('FOTOCOAGULACIÓN FOCAL', $result['nombre']);
+    }
+
+    public function test_parse_three_segment_numeric_code(): void
+    {
+        $result = CrmProcedureRule::parseProcedureCode('CIRUGIAS - 66984 - REMOCION DE CATARATA');
+        $this->assertSame('66984', $result['codigo']);
+        $this->assertSame('REMOCION DE CATARATA', $result['nombre']);
+    }
+
+    public function test_parse_two_segment_numeric_code(): void
+    {
+        $result = CrmProcedureRule::parseProcedureCode('66984 - REMOCION DE CATARATA');
+        $this->assertSame('66984', $result['codigo']);
+        $this->assertSame('REMOCION DE CATARATA', $result['nombre']);
+    }
+
+    public function test_parse_long_category_name(): void
+    {
+        $result = CrmProcedureRule::parseProcedureCode('DERECHO DE USO DE EQUIPOS ESPECIALES - 800003 - EQUIPO CROSS LINKING');
+        $this->assertSame('800003', $result['codigo']);
+        $this->assertSame('EQUIPO CROSS LINKING', $result['nombre']);
+    }
+
+    public function test_parse_normalizes_codigo_to_uppercase(): void
+    {
+        $result = CrmProcedureRule::parseProcedureCode('cyp-cca-001 - Catarata');
+        $this->assertSame('CYP-CCA-001', $result['codigo']);
+    }
+
+    public function test_parse_returns_null_for_empty_string(): void
+    {
+        $this->assertNull(CrmProcedureRule::parseProcedureCode(''));
+        $this->assertNull(CrmProcedureRule::parseProcedureCode('   '));
+    }
+
+    public function test_parse_returns_null_when_no_valid_code_segment(): void
+    {
+        // All-letters category with no numeric/hyphenated code segment
+        $this->assertNull(CrmProcedureRule::parseProcedureCode('CONSULTA GENERAL'));
+    }
 }
