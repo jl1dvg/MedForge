@@ -1,0 +1,156 @@
+/* MedForge design-system CSS tokens — generated from colors_and_type.css */
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=Rubik:wght@300;400;500;600;700;800;900&family=Poppins:wght@500;600;700&display=swap");
+
+:root {
+  /* ---------- BRAND COLORS ---------- */
+  /* Logo gradient (lightning-bolt circle) */
+  --brand-cyan: #1ECCDD;        /* upper-left of logo circle */
+  --brand-violet: #7C4DFF;      /* lower-right of logo circle */
+  --brand-navy: #060B28;        /* dark navy background behind logo */
+  --brand-navy-2: #0E2053;      /* lighter navy used in auth gradient */
+
+  /* ---------- THEME PRIMARY (purple-blue from color_theme.css) ---------- */
+  --primary:        #5156be;    /* btn-primary, links, active sidebar */
+  --primary-hover:  #3c40a0;    /* btn-primary:hover */
+  --primary-light:  #c8c9ee;    /* btn-primary-light bg */
+  --primary-fade:   #edf2ff;    /* stat-chip bg, very soft surface */
+  --primary-on:     #ffffff;    /* text on primary */
+
+  /* ---------- THEME ACCENT / INFO (companion blue) ---------- */
+  --info:        #3596f7;
+  --info-hover:  #097df0;
+  --info-light:  #97c9fb;
+
+  /* ---------- SEMANTIC STATES ---------- */
+  --success:        #05825f;    /* deep emerald — clinical "ok" */
+  --success-hover:  #03513b;
+  --success-light:  #09e4a7;
+
+  --warning:        #ffa800;    /* amber */
+  --warning-hover:  #cc8600;
+  --warning-light:  #ffcb66;
+
+  --danger:         #ee3158;    /* clinical alert pink-red */
+  --danger-hover:   #da123b;
+  --danger-light:   #f68fa4;
+
+  /* ---------- NEUTRALS / TEXT ---------- */
+  --fg-1: #172b4c;             /* primary body text (deep ink-navy) */
+  --fg-2: #3f4254;             /* secondary text */
+  --fg-3: #5e6278;             /* tertiary */
+  --fg-mute: #7e8299;          /* muted captions */
+  --fg-fade: #b5b5c3;          /* placeholder-like */
+  --fg-on-dark: #ffffff;
+  --fg-on-dark-muted: rgba(255,255,255,0.7);
+
+  --bg: #ffffff;
+  --bg-soft:   #f3f6f9;        /* page background tint, .bg-lightest */
+  --bg-softer: #ebedf3;        /* alt surface, .bg-lighter */
+  --bg-surface:#ffffff;        /* card background */
+  --bg-dark:   #0c1a32;        /* dark-skin body */
+  --bg-dark-2: #15243e;        /* dark-skin content wrapper */
+  --bg-dark-3: #112547;        /* dark-skin elevated surface */
+
+  /* Patient-flow / kanban tints (from pacientes/v2-flujo.blade.php) */
+  --kanban-board: #f3f6fa;
+  --kanban-col:   #eef2f6;
+  --kanban-border:#dfe6ee;
+
+  /* Category accent colors used across the patient flow & badges */
+  --cat-consulta:     #1f9d7a;   --cat-consulta-bg:    #dff5ee;   --cat-consulta-fg:    #17654f;
+  --cat-optometria:   #6f67d8;   --cat-optometria-bg:  #e9e7fb;   --cat-optometria-fg:  #4e48a8;
+  --cat-examen:       #d59623;   --cat-examen-bg:      #fff0d1;   --cat-examen-fg:      #8a5d0a;
+  --cat-cirugia:      #d34b5b;   --cat-cirugia-bg:     #fde2e7;   --cat-cirugia-fg:     #9f2d3e;
+  --cat-visita:       #3d7ac7;   --cat-visita-bg:      #e3edf9;   --cat-visita-fg:      #2e5e99;
+
+  /* Gray ramp (Metronic / KT) — used across borders, dividers, chips. */
+  --gray-100: #f3f6f9;
+  --gray-200: #ebedf3;
+  --gray-300: #e4e6ef;
+  --gray-400: #d1d3e0;
+  --gray-500: #b5b5c3;
+  --gray-600: #7e8299;
+  --gray-700: #5e6278;
+  --gray-800: #3f4254;
+  --gray-900: #181c32;
+
+  /* Borders */
+  --border:        #e4e6ef;
+  --border-strong: #d1d3e0;
+  --border-soft:   #ebedf3;
+
+  /* ---------- GRADIENTS ---------- */
+  --grad-primary:      linear-gradient(45deg, #5156be, #3596f7);          /* app gradient (.bg-gradient-primary) */
+  --grad-primary-dark: linear-gradient(45deg, #2e317b, #0863be);          /* dark-skin variant */
+  --grad-brand-mark:   linear-gradient(135deg, #1ECCDD 0%, #7C4DFF 100%); /* logo circle */
+  --grad-hero-auth:    linear-gradient(135deg, #03386d, #05518e);         /* auth hero card */
+  --grad-hero-body:    linear-gradient(135deg, rgba(6,11,40,0.95), rgba(14,32,83,0.85)); /* auth body */
+  --grad-cta:          linear-gradient(135deg, #ff6b6b, #f43f5e);         /* auth submit btn (legacy) */
+
+  /* ---------- TYPOGRAPHY ---------- */
+  --font-body:    "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Rubik", "IBM Plex Sans", system-ui, sans-serif;     /* h1-h6 in style-v2-base */
+  --font-auth:    "Poppins", "IBM Plex Sans", sans-serif;              /* auth screens */
+  --font-mono:    ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --fs-10: 0.7142rem;   /* 10px @14 base */
+  --fs-12: 0.8571rem;
+  --fs-14: 1rem;
+  --fs-16: 1.1428rem;
+  --fs-18: 1.2857rem;
+  --fs-20: 1.4286rem;
+  --fs-24: 1.7142rem;
+  --fs-30: 2.1428rem;
+  --fs-32: 2.2857rem;
+  --fs-42: 3rem;
+
+  --lh-tight: 1.2;
+  --lh-snug:  1.35;
+  --lh-base:  1.5;
+  --lh-loose: 1.7;
+
+  --fw-light:   300;
+  --fw-regular: 400;
+  --fw-medium:  500;
+  --fw-semi:    600;
+  --fw-bold:    700;
+  --fw-black:   900;
+
+  /* ---------- SPACING (8px grid, with 4px half-steps) ---------- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* ---------- RADII ---------- */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius:    8px;     /* default — cards, inputs, kanban columns */
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --radius-2xl: 28px;   /* auth hero cards */
+  --radius-pill: 999px; /* badges, chips, push-pills */
+
+  /* ---------- ELEVATION / SHADOW ---------- */
+  --shadow-xs:  0 1px 2px rgba(16, 24, 40, 0.06);                 /* kanban cards */
+  --shadow-sm:  0 1px 3px rgba(16, 24, 40, 0.08);
+  --shadow:     0 4px 12px rgba(16, 24, 40, 0.08);                /* default card */
+  --shadow-md:  0 8px 18px rgba(16, 24, 40, 0.10);                /* kanban card hover */
+  --shadow-lg:  0 15px 30px rgba(244, 63, 94, 0.35);              /* auth CTA */
+  --shadow-hero:0 20px 45px rgba(5, 24, 54, 0.25);                /* auth card */
+  --shadow-focus: 0 0 0 3px rgba(81, 86, 190, 0.22);              /* focus ring on primary */
+
+  /* ---------- MOTION ---------- */
+  --ease-out:   cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out:cubic-bezier(0.4, 0, 0.2, 1);
+  --dur-fast:   120ms;
+  --dur-base:   200ms;
+  --dur-slow:   320ms;
+}
