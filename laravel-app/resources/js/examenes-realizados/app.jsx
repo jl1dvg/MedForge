@@ -214,7 +214,8 @@ export default function App({ config }) {
     const formIds = rows.filter((r) => ids.includes(r.id)).map((r) => r.form_id || null);
     fetch('/v2/imagenes/bandeja', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '' },
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '' },
       body: JSON.stringify({
         procedimiento_ids: procedimientoIds,
         form_ids: formIds,
@@ -234,7 +235,8 @@ export default function App({ config }) {
     // Remove from DB
     fetch(`/v2/imagenes/bandeja/${row.id}`, {
       method: 'DELETE',
-      headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '' },
+      credentials: 'same-origin',
+      headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '' },
     }).catch(() => showToast('Error al quitar de la bandeja', 'mdi-alert', 'warn'));
   }, [showToast]);
 
