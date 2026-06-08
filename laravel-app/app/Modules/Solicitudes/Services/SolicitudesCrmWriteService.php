@@ -247,7 +247,7 @@ class SolicitudesCrmWriteService
             $leadId  = $this->nullableInt($detalle['crm_lead_id'] ?? null);
         }
         if ($leadId === null && $opportunityId === null) {
-            throw new RuntimeException('Vincula una oportunidad CRM antes de crear la propuesta');
+            $leadId = $this->autoCrearLeadParaSolicitud($solicitudId, $autorId);
         }
 
         $lead = $leadId !== null ? $this->fetchCrmLead($leadId) : null;
@@ -410,6 +410,54 @@ class SolicitudesCrmWriteService
     }
 
     /** @return array<string, mixed>|null */
+    private function autoCrearLeadParaSolicitud(int $solicitudId, ?int $autorId): int
+    {
+        $sol = $this->fetchSolicitudById($solicitudId);
+        $now = date('Y-m-d H:i:s');
+
+        $hcNumber = $this->nullableString($sol['hc_number'] ?? null);
+
+        $nombre = 'Solicitud #' . $solicitudId;
+        if ($hcNumber !== null) {
+            $pd = DB::table('patient_data')->where('hc_number', $hcNumber)->first();
+            if ($pd !== null) {
+                $nombre = trim(implode(' ', array_filter([
+                    trim((string) ($pd->fname ?? '')),
+                    trim((string) ($pd->mname ?? '')),
+                    trim((string) ($pd->lname ?? '')),
+                    trim((string) ($pd->lname2 ?? '')),
+                ]))) ?: $nombre;
+            }
+        }
+
+        $leadId = (int) DB::table('crm_leads')->insertGetId([
+            'name'       => $nombre ?: ('Solicitud #' . $solicitudId),
+            'hc_number'  => $hcNumber,
+            'status'     => 'activo',
+            'source'     => 'solicitud',
+            'created_by' => $autorId,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        // Vincular el lead recién creado a la solicitud en solicitud_crm_detalles
+        $detalleExistente = $this->fetchCrmDetalleRow($solicitudId);
+        if ($detalleExistente === null) {
+            DB::table('solicitud_crm_detalles')->insert([
+                'solicitud_id' => $solicitudId,
+                'crm_lead_id'  => $leadId,
+                'created_at'   => $now,
+                'updated_at'   => $now,
+            ]);
+        } else {
+            DB::table('solicitud_crm_detalles')
+                ->where('solicitud_id', $solicitudId)
+                ->update(['crm_lead_id' => $leadId, 'updated_at' => $now]);
+        }
+
+        return $leadId;
+    }
+
     private function fetchCrmLead(int $leadId): ?array
     {
         if ($leadId <= 0) {
