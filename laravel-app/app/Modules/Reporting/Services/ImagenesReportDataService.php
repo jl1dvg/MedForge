@@ -1208,7 +1208,7 @@ class ImagenesReportDataService
      */
     private function applyDefaultFirmanteToConsulta012A(array $consulta): array
     {
-        $firmante = ImagenesDefaultFirmante::resolve(null);
+        $firmante = ImagenesDefaultFirmante::resolve(1);
         if ($firmante['nombres'] === '' && $firmante['apellido1'] === '') {
             return $consulta;
         }
