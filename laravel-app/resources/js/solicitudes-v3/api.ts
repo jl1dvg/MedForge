@@ -681,6 +681,7 @@ export async function fetchKanbanData(filters?: Partial<Filters>): Promise<{
   byColumn: Record<KanbanSlug, Solicitud[]>;
   afiliaciones: string[];
   doctores: string[];
+  sedes: string[];
 }> {
   const params = new URLSearchParams();
   if (filters) {
@@ -713,8 +714,9 @@ export async function fetchKanbanData(filters?: Partial<Filters>): Promise<{
   const allSolicitudes = Object.values(byColumn).flat();
   const afiliaciones = [...new Set(allSolicitudes.map((s) => s.empresa_seguro).filter(Boolean))].sort(sortEs);
   const doctores = [...new Set(allSolicitudes.map((s) => s.doctor).filter((d) => d !== '—'))].sort(sortEs);
+  const sedes = [...new Set(allSolicitudes.map((s) => s.sede).filter((v) => v && v !== '—'))].sort(sortEs);
 
-  return { byColumn, afiliaciones, doctores };
+  return { byColumn, afiliaciones, doctores, sedes };
 }
 
 export async function updateEstado(id: number, nuevoEstado: KanbanSlug): Promise<void> {

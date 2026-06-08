@@ -16,12 +16,13 @@ interface ToolbarProps {
   setView: (v: string) => void;
   doctores: string[];
   afiliaciones: string[];
+  sedes: string[];
   onExportExcel: () => void;
   onExportPdf: () => void;
   lastRefreshedLabel: string | null;
 }
 
-export function Toolbar({ filters, setFilters, preset, setPreset, view, setView, doctores, afiliaciones, onExportExcel, onExportPdf, lastRefreshedLabel }: ToolbarProps) {
+export function Toolbar({ filters, setFilters, preset, setPreset, view, setView, doctores, afiliaciones, sedes, onExportExcel, onExportPdf, lastRefreshedLabel }: ToolbarProps) {
   return (
     <div className="toolbar">
       <div className="search-box">
@@ -49,6 +50,15 @@ export function Toolbar({ filters, setFilters, preset, setPreset, view, setView,
       >
         <option value="">Todos los doctores</option>
         {doctores.map((d) => <option key={d} value={d}>{d}</option>)}
+      </select>
+
+      <select
+        className="filter-select"
+        value={filters.sede}
+        onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFilters((f: Filters) => ({ ...f, sede: e.target.value }))}
+      >
+        <option value="">Todas las sedes</option>
+        {sedes.map((s) => <option key={s} value={s}>{s}</option>)}
       </select>
 
       <div className="date-range-filter" aria-label="Rango de fechas">

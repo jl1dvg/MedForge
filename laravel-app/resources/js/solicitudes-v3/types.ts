@@ -298,6 +298,7 @@ export interface Filters {
   search: string;
   afiliacion: string;
   doctor: string;
+  sede: string;
   date_from: string;
   date_to: string;
 }

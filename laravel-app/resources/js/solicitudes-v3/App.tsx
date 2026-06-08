@@ -65,8 +65,9 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [afiliaciones, setAfiliaciones] = useState<string[]>([]);
   const [doctores, setDoctores] = useState<string[]>([]);
+  const [sedes, setSedes] = useState<string[]>([]);
 
-  const [filters, setFilters] = useState<Filters>({ search: '', afiliacion: '', doctor: '', ...DEFAULT_DATE_FILTERS });
+  const [filters, setFilters] = useState<Filters>({ search: '', afiliacion: '', doctor: '', sede: '', ...DEFAULT_DATE_FILTERS });
   const [preset, setPreset] = useState('');
   const [kpiFilter, setKpiFilter] = useState('');
   const [view, setView] = useState('kanban');
@@ -104,6 +105,7 @@ export function App() {
       setSolicitudes(all);
       setAfiliaciones(result.afiliaciones);
       setDoctores(result.doctores);
+      setSedes(result.sedes);
       setLastRefreshed(new Date());
     } catch {
       setError('No se pudo cargar las solicitudes. Intente de nuevo.');
@@ -122,6 +124,7 @@ export function App() {
       setSolicitudes(Object.values(result.byColumn).flat());
       setAfiliaciones(result.afiliaciones);
       setDoctores(result.doctores);
+      setSedes(result.sedes);
       setLastRefreshed(new Date());
     } catch {
       // silent — don't surface transient network errors during polling
@@ -171,6 +174,7 @@ export function App() {
       if (q && !`${s.full_name} ${s.hc_number} ${s.procedimiento} ${s.procedimiento_short} ${s.form_id}`.toLowerCase().includes(q)) return false;
       if (filters.afiliacion && s.empresa_seguro !== filters.afiliacion) return false;
       if (filters.doctor && s.doctor !== filters.doctor) return false;
+      if (filters.sede && s.sede !== filters.sede) return false;
       if (filters.date_from && new Date(s.fecha) < new Date(`${filters.date_from}T00:00:00`)) return false;
       if (filters.date_to && new Date(s.fecha) > new Date(`${filters.date_to}T23:59:59`)) return false;
       if (preset === 'urgentes' && !(s.prioridad === 'urgente' || s.sla_status === 'vencido' || s.sla_status === 'critico')) return false;
@@ -588,6 +592,7 @@ export function App() {
         setView={setView}
         doctores={doctores}
         afiliaciones={afiliaciones}
+        sedes={sedes}
         onExportExcel={() => void doExport('excel')}
         onExportPdf={() => void doExport('pdf')}
         lastRefreshedLabel={lastRefreshedLabel}
