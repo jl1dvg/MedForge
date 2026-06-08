@@ -35,7 +35,11 @@ to a clinical opp        - Pterigion OI
 
 **Key rule:** A lead does not transform into an opportunity. It converts and *links* to a clinical opportunity. The lead remains as a historical captación record.
 
+**Key rule:** A surgical solicitud and the resulting surgery are **the same commercial opportunity**, not separate entities. The solicitud represents the clinical/commercial intention to perform a procedure; the surgery is the expected outcome of that same opportunity. The commercial stage advances as the operational modules report progress.
+
 **Key rule:** `consulta_examenes` does not automatically generate a surgical opportunity. It feeds an existing one. Exception: if the exam is the primary commercial service (private diagnostic exam), it can generate its own `diagnostica`-type opportunity when `crm_procedure_rules.genera_oportunidad = TRUE`.
+
+**Key rule:** The commercial CRM does not duplicate the operational CRMs (Solicitudes, Imágenes). It consumes their events and signals as a higher-level executive/commercial dashboard. The operational modules remain the source of truth for clinical and administrative execution.
 
 ---
 
@@ -280,6 +284,131 @@ Script D — Legacy opps with associated solicitudes
 - Prepare `crm_lead_conversions` schema as a future-ready migration (not yet activated)
 
 ---
+
+## Relationship Between Commercial CRM and Operational CRMs
+
+### Architecture
+
+```
+CRM Comercial  (crm_opportunities — executive/commercial dashboard)
+      ↑
+      │  consumes events and signals
+      │
+  ┌───┴───────────────────────────────────┐
+  │                                       │
+CRM Solicitudes                    CRM Imágenes / Exámenes
+(solicitud_procedimiento)          (consulta_examenes)
+Source of truth for:               Source of truth for:
+- surgical workflow                - exam workflow
+- authorization checklist          - results, lateralidad
+- scheduling & confirmation        - exam-to-procedure linkage
+- surgery execution                - pre-op exam completeness
+```
+
+The commercial CRM does not own or replicate any of this operational data. It reads signals from operational state changes and advances the commercial stage accordingly.
+
+---
+
+### What flows from CRM Solicitudes into the commercial opportunity
+
+| Operational event / state | Commercial effect |
+|---|---|
+| `SolicitudCreada` (nueva solicitud) | Creates or updates commercial opp; `stage → nuevo` or adds as clinical item |
+| Solicitud passes to `pendiente_autorizacion` | Signal: authorization required — can trigger alert or escalation_at |
+| Solicitud passes to `programada` | `stage → comprometido`; `escalation_at` cleared |
+| Solicitud passes to `confirmada` | No stage change; checklist signal: confirmed date available |
+| Solicitud passes to `realizada` (surgery done) | `stage → ganado`; `last_activity_at` updated |
+| Solicitud passes to `cancelada` | Alert: review required. Stage moves to `perdido` only if cancellation is definitive (motivo_baja defines this) |
+| `SolicitudKanbanEstadoCambiado` event | Maps kanban state → commercial stage via `crm_stage_mappings` table |
+
+**What the commercial CRM does NOT store from Solicitudes:**
+- Authorization documents or codes
+- Surgical scheduling details (date, OR, anesthesiologist)
+- Equipment or implant selections (lente, producto)
+- Detailed clinical notes
+- Billing or prefactura data
+
+---
+
+### What flows from CRM Imágenes / Exámenes into the commercial opportunity
+
+| Operational event / state | Commercial effect |
+|---|---|
+| `ExamenSolicitado` (exam ordered) | Links exam as clinical item to matching opp; does not change commercial stage |
+| Exam results available | Signal: pre-op workup progressing — can update a `checklist_score` or signal readiness |
+| All required exams completed for a surgical opp | Signal: pre-op complete — can auto-advance or alert coordinator |
+| `ExamenEstadoCambiado` | Maps exam state → commercial stage via `crm_stage_mappings` if applicable |
+
+**What the commercial CRM does NOT store from Exámenes:**
+- Exam results, measurements, images
+- Lateralidad or biometry values (these stay in `consulta_examenes`)
+- Exam-level billing
+
+---
+
+### Commercial stages and their operational triggers
+
+```
+Lead nuevo          ← WhatsApp / Ads event
+     │
+Contactado          ← Agent action (manual)
+     │
+En evaluación       ← First solicitud or exam linked
+     │
+En coordinación     ← Solicitud reaches 'pendiente_autorizacion' or 'pendiente_documentos'
+     │
+Programado          ← Solicitud reaches 'programada' or 'confirmada'
+     │
+Ganado              ← Solicitud reaches 'realizada' (surgery done)
+     │
+Perdido             ← Solicitud cancelled with definitive motivo_baja
+                      OR agent explicitly closes as lost
+```
+
+Stage advancement follows the existing `crm_stage_mappings` table (already in production). Stages never regress automatically — only advance. Regression requires an explicit agent action.
+
+---
+
+### What the commercial CRM must NOT duplicate
+
+| Already owned by operational module | Commercial CRM behavior |
+|---|---|
+| Surgical scheduling (date, OR, anesthesiologist) | Read-only signal from solicitud |
+| Authorization codes and documents | Checklist signal only (complete/incomplete) |
+| Exam results and measurements | Not stored; linked as clinical items |
+| Billing, prefactura, IVA | Not stored; `valor_estimado` is a display-only estimate |
+| Clinical notes and observations | Operational modules own these |
+| Patient medical history | `patient_data` owns this |
+
+---
+
+### Traceability: operational event → commercial update
+
+Every state change driven by an operational module is recorded in `crm_activities` with:
+- `type`: the operational event type (`cambio_etapa`, `solicitud`, `examen`, etc.)
+- `source_type` + `source_id`: FK back to the originating operational record
+- `description`: human-readable summary
+
+This creates a full audit trail of what moved the commercial opportunity and why, without copying operational data into the CRM.
+
+---
+
+### Funnel metrics enabled by this architecture
+
+Because every transition is event-driven and timestamped, the following conversion metrics become computable without manual data entry:
+
+| Metric | From → To | Source |
+|---|---|---|
+| Lead → solicitud conversion rate | `crm_leads.converted_at` vs `crm_leads.created_at` | crm_leads |
+| Lead → solicitud time (days) | `episode_started_at` − `crm_leads.created_at` | join |
+| Solicitud → programación time | `comprometido` activity timestamp − `nuevo` activity | crm_activities |
+| Programación → surgery time | `ganado` activity − `comprometido` activity | crm_activities |
+| Surgery → billing time | Deferred — requires billing event integration | future |
+| Cancellation rate by motivo | `perdido` opps grouped by `lost_reason` | crm_opportunities |
+| Bottleneck stage | Avg time spent in each stage | crm_activities timestamps |
+| Channel ROI | Opps ganadas grouped by `crm_leads.canal` | join crm_leads + opps |
+
+These metrics require no new data — they are derived from timestamps already recorded by the event-driven architecture.
 
 ## What Stays the Same (out of scope for this design)
 
