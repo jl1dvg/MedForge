@@ -45,7 +45,7 @@
         'today'       => now()->toDateString(),
         'currentUser' => [
             'name' => auth()->user()?->name ?? 'Usuario',
-            'role' => auth()->user()?->getRoleNames()->first() ?? '',
+            'role' => auth()->user()?->role_name ?? '',
         ],
         'doctores'    => $doctores,
     ];
