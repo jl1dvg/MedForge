@@ -47,23 +47,40 @@ class PacientesReadController
             ]);
         }
 
-        $limit = min(max((int) $request->query('limit', 20), 1), 100);
-        $offset = max((int) $request->query('offset', 0), 0);
+        /** @var PDO $pdo */
+        $pdo = DB::connection()->getPdo();
 
-        $rows = DB::select(
-            'SELECT hc_number, fname, lname, lname2, afiliacion, fecha_nacimiento
-             FROM patient_data
-             ORDER BY hc_number DESC
-             LIMIT ? OFFSET ?',
-            [$limit, $offset]
-        );
+        $total = (int) $pdo->query('SELECT COUNT(*) FROM patient_data')->fetchColumn();
+
+        // Simple query: no JOINs — fast even on 10k+ rows.
+        // Richer data (sede, médico, próxima cita) is loaded per-patient via /detalles/section.
+        $sql = <<<'SQL'
+            SELECT
+                p.hc_number,
+                p.fname,
+                p.lname,
+                COALESCE(p.lname2, '')       AS lname2,
+                p.afiliacion,
+                p.fecha_nacimiento,
+                p.sexo,
+                COALESCE(p.celular, '')       AS telefono,
+                COALESCE(p.email, '')         AS email,
+                COALESCE(p.direccion, '')     AS direccion,
+                COALESCE(p.ciudad, 'Guayaquil') AS ciudad,
+                p.created_at
+            FROM patient_data p
+            ORDER BY p.hc_number DESC
+        SQL;
+
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute();
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
         return response()->json([
             'data' => $rows,
             'meta' => [
-                'limit' => $limit,
-                'offset' => $offset,
-                'count' => count($rows),
+                'total'  => $total,
+                'count'  => count($rows),
             ],
         ]);
     }
@@ -158,6 +175,29 @@ class PacientesReadController
         return response()->json([
             'data' => $context,
         ]);
+    }
+
+    public function editar(Request $request): JsonResponse
+    {
+        if (!$this->isLegacyAuthenticated($request)) {
+            return response()->json(['error' => 'Sesión expirada'], 401);
+        }
+
+        $hcNumber = trim((string) $request->input('hc_number', ''));
+        if ($hcNumber === '') {
+            return response()->json(['error' => 'hc_number es requerido'], 422);
+        }
+
+        try {
+            $this->service->actualizarPaciente($hcNumber, $request->all(), $this->legacyUserId($request));
+            return response()->json(['success' => true]);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('Error actualizando paciente', [
+                'hc_number' => $hcNumber,
+                'error' => $e->getMessage(),
+            ]);
+            return response()->json(['error' => 'Error al actualizar el paciente'], 500);
+        }
     }
 
     public function flujo(Request $request): JsonResponse|RedirectResponse|View
