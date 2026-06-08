@@ -1,15 +1,61 @@
 @extends('layouts.medforge')
 
 @push('scripts')
-    @if (\App\Modules\Shared\Support\MedforgeAssets::hasViteBuild())
-        @vite('resources/js/v2/imagenes-realizadas.js')
-    @else
-        <script src="/assets/vendor_components/datatable/datatables.min.js"></script>
-        <script src="/js/pages/shared/datatables-language-es.js"></script>
-    @endif
+    @vite(['resources/js/examenes-realizados/main.jsx'])
 @endpush
 
 @section('content')
+    <?php
+    /** @var array<int, array<string,mixed>> $imagenesRealizadas */
+    $appRows = array_values(array_map(function (array $row): array {
+        return [
+            'id'                 => $row['id'] ?? $row['form_id'] ?? null,
+            'form_id'            => $row['form_id'] ?? null,
+            'hc_number'          => $row['hc_number'] ?? '',
+            'full_name'          => $row['full_name'] ?? '',
+            'cedula'             => $row['cedula'] ?? '',
+            'fecha_examen'       => isset($row['fecha_examen'])
+                ? substr((string)$row['fecha_examen'], 0, 10) : '',
+            'estado_agenda'      => $row['estado_agenda'] ?? '',
+            'afiliacion'         => $row['afiliacion'] ?? '',
+            'afiliacion_cat'     => $row['afiliacion_categoria'] ?? 'otros',
+            'sede'               => $row['sede'] ?? '',
+            'tipo_examen'        => $row['tipo_examen'] ?? '',
+            'ojo'                => '',
+            'informado'          => !empty($row['informado']),
+            'informe_id'         => $row['informe_id'] ?? null,
+            'informe_firmado_por'=> $row['informe_firmado_por'] ?? null,
+            'informe_actualizado'=> isset($row['informe_actualizado'])
+                ? substr((string)$row['informe_actualizado'], 0, 10) : null,
+            'nas_has_files'      => !empty($row['nas_has_files']) ? 1 : 0,
+            'nas_files_count'    => (int)($row['nas_files_count'] ?? 0),
+            'wpp_status'         => $row['wpp_status'] ?? null,
+        ];
+    }, $imagenesRealizadas ?? []));
+
+    $doctores = collect($imagenesRealizadas ?? [])
+        ->pluck('informe_firmado_por')
+        ->filter()
+        ->unique()
+        ->values()
+        ->toArray();
+
+    $appConfig = [
+        'rows'        => $appRows,
+        'today'       => now()->toDateString(),
+        'currentUser' => [
+            'name' => auth()->user()?->name ?? 'Usuario',
+            'role' => auth()->user()?->getRoleNames()->first() ?? '',
+        ],
+        'doctores'    => $doctores,
+    ];
+    ?>
+    <div
+        id="examenes-realizados-root"
+        data-config="{{ json_encode($appConfig, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE) }}"
+    ></div>
+    {{-- Legacy view kept below for reference / rollback --}}
+    @if(false)
     <?php
     /** @var array<int, array<string,mixed>> $imagenesRealizadas */
     /** @var array<string, string> $filters */
@@ -2782,5 +2828,6 @@
             }
         })();
     </script>
+    @endif {{-- end legacy view --}}
 
 @endsection
