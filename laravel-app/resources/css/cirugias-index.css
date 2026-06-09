@@ -11,25 +11,8 @@ body { background: var(--bg-soft); color: var(--fg-1); -webkit-font-smoothing: a
 button { font-family: inherit; }
 .mono { font-family: var(--font-mono); }
 
-/* ---- App chrome ------------------------------------------------ */
-.app-shell { display: flex; flex-direction: column; min-height: 100vh; }
-.app-topbar { display: flex; align-items: center; gap: 14px; padding: 10px 22px; background: var(--bg); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 40; }
-.app-brand { display: flex; align-items: center; gap: 12px; }
-.app-brand-mark { width: 38px; height: 38px; border-radius: 11px; flex: none; display: grid; place-items: center; color: #fff; font-size: 20px; background: linear-gradient(135deg, #5156be 0%, #d34b5b 100%); box-shadow: 0 4px 12px rgba(124,77,255,.28); }
-.app-title h1 { font-size: 17px; font-weight: 600; margin: 0; letter-spacing: -.01em; line-height: 1.15; }
-.app-title .crumb { font-size: 12px; color: var(--fg-mute); font-family: var(--font-mono); }
-.topbar-spacer { flex: 1; }
-.topbar-actions { display: flex; align-items: center; gap: 8px; }
-.icon-btn { width: 38px; height: 38px; border-radius: 9px; border: 1px solid var(--border); background: var(--bg); color: var(--fg-3); cursor: pointer; position: relative; display: grid; place-items: center; font-size: 19px; transition: all .15s ease-out; }
-.icon-btn:hover { border-color: var(--border-strong); color: var(--accent); background: var(--primary-fade); }
-.icon-btn .dot { position: absolute; top: 8px; right: 9px; width: 7px; height: 7px; border-radius: 50%; background: var(--danger); border: 1.5px solid #fff; }
-.help-trigger { display: inline-flex; align-items: center; gap: 7px; padding: 0 14px; height: 38px; border-radius: 9px; border: 1px solid var(--border); background: var(--bg); font-size: 13px; font-weight: 600; color: var(--fg-2); cursor: pointer; transition: all .15s ease-out; }
-.help-trigger:hover { border-color: var(--accent); color: var(--accent); background: var(--primary-fade); }
-.user-chip { display: flex; align-items: center; gap: 9px; padding-left: 6px; margin-left: 4px; }
-.user-chip .av { width: 36px; height: 36px; border-radius: 10px; background: var(--primary-fade); color: var(--accent); font-weight: 700; font-size: 13px; display: grid; place-items: center; }
-.user-chip .meta { display: flex; flex-direction: column; line-height: 1.25; }
-.user-chip .meta b { font-size: 13px; font-weight: 600; }
-.user-chip .meta span { font-size: 11.5px; color: var(--fg-mute); }
+/* ---- App shell ------------------------------------------------- */
+.app-shell { display: block; }
 
 /* ---- Page container -------------------------------------------- */
 .page { max-width: 1340px; margin: 0 auto; padding: 22px 26px 80px; width: 100%; }

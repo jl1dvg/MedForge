@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { TABS, Topbar, KpiRow, Tabs, TabDescription, Filters, Toast, TweakPanel } from './components';
+import { TABS, KpiRow, Tabs, TabDescription, Filters, Toast, TweakPanel } from './components';
 import { BulkBar, CirTable } from './table';
 import { ProtocolModal, CertificadoModal, HelpModal, TabHelpModal } from './modals';
 
@@ -245,7 +245,6 @@ export default function App({ config }) {
 
   return (
     <div className={shellClass}>
-      <Topbar currentUser={currentUser} onHelp={() => setHelpOpen(true)} />
       <div className="page">
         <div className="page-head">
           <div>
@@ -253,6 +252,9 @@ export default function App({ config }) {
             <div className="sub">Listado de cirugías realizadas · revisión y auditoría del protocolo quirúrgico</div>
           </div>
           <div className="head-actions">
+            <button className="btn btn-ghost btn-sm" onClick={() => setHelpOpen(true)}>
+              <i className="mdi mdi-help-circle-outline" /> Cómo funciona
+            </button>
             <button className="btn btn-ghost btn-sm" onClick={printSelected}>
               <i className="mdi mdi-printer" /> Imprimir lista
             </button>
