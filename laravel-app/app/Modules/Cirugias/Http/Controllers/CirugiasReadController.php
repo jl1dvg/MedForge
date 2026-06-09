@@ -199,7 +199,7 @@ class CirugiasReadController
 
     /**
      * @param array<string, mixed> $row
-     * @return array<string, string>
+     * @return array<string, mixed>
      */
     private function buildDatatableRow(array $row): array
     {
@@ -208,7 +208,9 @@ class CirugiasReadController
         $cirugia = new Cirugia($row);
         $estado = $cirugia->getEstado();
         $printed = (int) ($row['printed'] ?? 0);
+        $alertasCount = (int) ($row['alertas_count'] ?? 0);
 
+        // Legacy HTML columns kept for the blade fallback
         $badgeEstado = match ($estado) {
             'revisado' => "<span class='badge bg-success'><i class='fa fa-check'></i></span>",
             'no revisado' => "<span class='badge bg-warning'><i class='fa fa-exclamation-triangle'></i></span>",
@@ -262,9 +264,26 @@ class CirugiasReadController
             $afiliacionHtml .= '<span class="d-block text-muted fs-11">Categoria: ' . $esc(ucfirst($categoria)) . '</span>';
         }
 
+        // Lateralidad normalised
+        $lateralidadRaw = strtoupper(trim((string) ($row['lateralidad'] ?? '')));
+        $lateralidad = match (true) {
+            str_contains($lateralidadRaw, 'AMBOS') || str_contains($lateralidadRaw, 'AO') || str_contains($lateralidadRaw, 'BILATERAL') => 'AO',
+            str_contains($lateralidadRaw, 'IZQUIERDO') || str_contains($lateralidadRaw, 'OI') || str_contains($lateralidadRaw, 'LEFT') => 'OI',
+            str_contains($lateralidadRaw, 'DERECHO') || str_contains($lateralidadRaw, 'OD') || str_contains($lateralidadRaw, 'RIGHT') => 'OD',
+            default => '',
+        };
+
+        // Audit status for React UI
+        $auditStatus = match ($estado) {
+            'revisado' => 'conforme',
+            'no revisado' => 'por_revisar',
+            default => $alertasCount > 0 ? 'alertas' : 'sin_protocolo',
+        };
+
         return [
-            'form_id' => $esc((string) ($row['form_id'] ?? '')),
-            'hc_number' => $esc((string) ($row['hc_number'] ?? '')),
+            // Legacy HTML (used by blade fallback datatable)
+            'form_id' => $esc($formId),
+            'hc_number' => $esc($hcNumber),
             'full_name' => $esc($cirugia->getNombreCompleto()),
             'afiliacion_html' => $afiliacionHtml,
             'fecha_inicio' => $esc($fechaInicio),
@@ -272,6 +291,17 @@ class CirugiasReadController
             'protocolo_html' => $protocoloHtml,
             'descanso_html' => $descansoHtml,
             'imprimir_html' => $imprimirHtml,
+            // Clean fields for React UI
+            'cedula' => $esc((string) ($row['cedula'] ?? '')),
+            'edad' => $row['edad'] !== null ? (int) $row['edad'] : null,
+            'afiliacion_label' => $esc($afiliacion),
+            'afiliacion_categoria' => $esc($categoria),
+            'sede' => $esc((string) ($row['sede'] ?? '')),
+            'lateralidad' => $lateralidad,
+            'estado' => $estado,
+            'printed' => $printed,
+            'alertas_count' => $alertasCount,
+            'audit_status' => $auditStatus,
         ];
     }
 }

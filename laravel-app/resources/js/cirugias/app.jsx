@@ -1,6 +1,14 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Filters, KpiRow, SurgeryTable, Toast } from './components';
-import { ProtocolModal, CertificadoPrompt } from './modals';
+import { Header, KpiCards, Tabs, FiltersBar, SurgeryTable, Pagination, TweaksPanel, Toast } from './components';
+import { ProtocolModal, CertificadoModal } from './modals';
+
+const TABS = [
+  { key: 'all',          label: 'Todos' },
+  { key: 'por_revisar',  label: 'Por revisar' },
+  { key: 'alertas',      label: 'Con alertas' },
+  { key: 'conforme',     label: 'Revisados' },
+  { key: 'sin_protocolo', label: 'Sin protocolo' },
+];
 
 function useDatatable(endpoints, filters, page, pageSize, search, sortCol, sortDir) {
   const [rows, setRows] = useState([]);
@@ -10,7 +18,7 @@ function useDatatable(endpoints, filters, page, pageSize, search, sortCol, sortD
   const [error, setError] = useState(null);
   const drawRef = useRef(0);
 
-  const fetch_ = useCallback(() => {
+  const load = useCallback(() => {
     setLoading(true);
     setError(null);
     drawRef.current += 1;
@@ -30,16 +38,15 @@ function useDatatable(endpoints, filters, page, pageSize, search, sortCol, sortD
       sede: filters.sede || '',
     });
 
-    window
-      .fetch(endpoints.datatable, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'X-CSRF-TOKEN': window.csrfToken || '',
-          'X-Requested-With': 'XMLHttpRequest',
-        },
-        body: body.toString(),
-      })
+    window.fetch(endpoints.datatable, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'X-CSRF-TOKEN': window.csrfToken || '',
+        'X-Requested-With': 'XMLHttpRequest',
+      },
+      body: body.toString(),
+    })
       .then((r) => r.json())
       .then((data) => {
         if (data.draw !== draw) return;
@@ -49,15 +56,12 @@ function useDatatable(endpoints, filters, page, pageSize, search, sortCol, sortD
         setFiltered(data.recordsFiltered || 0);
         setLoading(false);
       })
-      .catch((e) => {
-        setError(e.message);
-        setLoading(false);
-      });
+      .catch((e) => { setError(e.message); setLoading(false); });
   }, [endpoints.datatable, filters, page, pageSize, search, sortCol, sortDir]);
 
-  useEffect(() => { fetch_(); }, [fetch_]);
+  useEffect(() => { load(); }, [load]);
 
-  return { rows, total, filtered, loading, error, reload: fetch_ };
+  return { rows, total, filtered, loading, error, reload: load };
 }
 
 export default function App({ config }) {
@@ -79,10 +83,18 @@ export default function App({ config }) {
   });
   const [pendingFilters, setPendingFilters] = useState(filters);
   const [search, setSearch] = useState('');
+  const [activeTab, setActiveTab] = useState('all');
   const [page, setPage] = useState(0);
   const [pageSize] = useState(25);
   const [sortCol, setSortCol] = useState(4);
   const [sortDir, setSortDir] = useState('desc');
+
+  // Tweaks state
+  const [tweaksOpen, setTweaksOpen] = useState(false);
+  const [density, setDensity] = useState('comodo'); // 'comodo' | 'compacto'
+  const [colorByAfil, setColorByAfil] = useState(true);
+  const [highlightAlerts, setHighlightAlerts] = useState(true);
+  const [accentColor, setAccentColor] = useState('#4361ee');
 
   const [protocolRow, setProtocolRow] = useState(null);
   const [certRow, setCertRow] = useState(null);
@@ -90,19 +102,9 @@ export default function App({ config }) {
 
   const showToast = (msg, type = 'success') => setToast({ msg, type });
 
-  const applyFilters = () => {
-    setFilters(pendingFilters);
-    setPage(0);
-  };
-
+  const applyFilters = () => { setFilters(pendingFilters); setPage(0); };
   const clearFilters = () => {
-    const def = {
-      fecha_inicio: fechaInicioDefault,
-      fecha_fin: fechaFinDefault,
-      afiliacion: '',
-      afiliacion_categoria: '',
-      sede: '',
-    };
+    const def = { fecha_inicio: fechaInicioDefault, fecha_fin: fechaFinDefault, afiliacion: '', afiliacion_categoria: '', sede: '' };
     setPendingFilters(def);
     setFilters(def);
     setSearch('');
@@ -110,14 +112,16 @@ export default function App({ config }) {
   };
 
   const { rows, total, filtered, loading, error, reload } = useDatatable(
-    endpoints,
-    filters,
-    page,
-    pageSize,
-    search,
-    sortCol,
-    sortDir,
+    endpoints, filters, page, pageSize, search, sortCol, sortDir,
   );
+
+  // Tab counts from loaded rows
+  const counts = rows.reduce((acc, r) => {
+    acc[r.audit_status] = (acc[r.audit_status] || 0) + 1;
+    return acc;
+  }, {});
+
+  const visibleRows = activeTab === 'all' ? rows : rows.filter((r) => r.audit_status === activeTab);
 
   const handleSort = (col) => {
     if (sortCol === col) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -125,62 +129,36 @@ export default function App({ config }) {
     setPage(0);
   };
 
-  const handlePrintToggle = (row, isActive) => {
+  const handlePrintToggle = (row) => {
+    const willBePrinted = !row.printed;
+    if (willBePrinted && row.estado !== 'revisado') {
+      window.Swal?.fire({ icon: 'warning', title: 'Pendiente revisión', text: 'Debe revisar el protocolo antes de imprimir.' });
+      return;
+    }
+    if (willBePrinted) {
+      window.open(`/v2/reports/protocolo/pdf?form_id=${encodeURIComponent(row.form_id)}&hc_number=${encodeURIComponent(row.hc_number)}`, '_blank');
+    }
     fetch(endpoints.printed, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'X-CSRF-TOKEN': window.csrfToken || '',
-        'X-Requested-With': 'XMLHttpRequest',
-      },
-      body: new URLSearchParams({
-        form_id: row.form_id,
-        hc_number: row.hc_number,
-        printed: isActive ? 1 : 0,
-      }),
-    })
-      .then((r) => r.json())
-      .then((d) => {
-        if (!d.success) throw new Error('Error al actualizar');
-        if (isActive && !row._wasPrinted) {
-          window.open(
-            `/v2/reports/protocolo/pdf?form_id=${encodeURIComponent(row.form_id)}&hc_number=${encodeURIComponent(row.hc_number)}`,
-            '_blank',
-          );
-        }
-        reload();
-      })
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-TOKEN': window.csrfToken || '', 'X-Requested-With': 'XMLHttpRequest' },
+      body: new URLSearchParams({ form_id: row.form_id, hc_number: row.hc_number, printed: willBePrinted ? 1 : 0 }),
+    }).then((r) => r.json()).then((d) => { if (!d.success) throw new Error(); reload(); })
       .catch(() => showToast('No se pudo actualizar el estado de impresión', 'error'));
   };
 
   const totalPages = Math.ceil(filtered / pageSize);
 
   return (
-    <div className="cir-shell">
+    <div className="cir-shell" style={{ '--cir-accent': accentColor }}>
       <div className="cir-page">
-        <div className="cir-page-head">
-          <div>
-            <h2>Reporte de Cirugías</h2>
-            <div className="cir-page-sub">
-              {filtered !== total
-                ? `${filtered.toLocaleString()} de ${total.toLocaleString()} registros`
-                : `${total.toLocaleString()} registros en total`}
-            </div>
-          </div>
-          <div className="cir-head-actions">
-            <a href="/v2/cirugias/dashboard" className="cir-btn cir-btn-ghost cir-btn-sm">
-              <i className="mdi mdi-chart-line" /> Dashboard
-            </a>
-            <a href="/v2/cirugias/wizard" className="cir-btn cir-btn-primary cir-btn-sm">
-              <i className="mdi mdi-plus" /> Nueva cirugía
-            </a>
-          </div>
-        </div>
+        <Header onTweaks={() => setTweaksOpen((v) => !v)} />
 
-        <KpiRow rows={rows} total={total} />
+        <KpiCards rows={rows} total={total} activeTab={activeTab} onTabChange={(t) => { setActiveTab(t); setPage(0); }} />
 
         <div className="cir-card">
-          <Filters
+          <Tabs tabs={TABS} counts={counts} active={activeTab} onChange={(t) => { setActiveTab(t); setPage(0); }} totalFiltered={filtered} />
+
+          <FiltersBar
             pending={pendingFilters}
             onChange={setPendingFilters}
             onApply={applyFilters}
@@ -193,7 +171,7 @@ export default function App({ config }) {
           />
 
           <SurgeryTable
-            rows={rows}
+            rows={visibleRows}
             loading={loading}
             error={error}
             sortCol={sortCol}
@@ -202,31 +180,27 @@ export default function App({ config }) {
             onViewProtocol={setProtocolRow}
             onCertificado={setCertRow}
             onPrintToggle={handlePrintToggle}
+            onEdit={(row) => { window.location.href = `${endpoints.wizard}?form_id=${encodeURIComponent(row.form_id)}&hc_number=${encodeURIComponent(row.hc_number)}`; }}
+            density={density}
+            colorByAfil={colorByAfil}
+            highlightAlerts={highlightAlerts}
           />
 
           {!loading && totalPages > 1 && (
-            <div className="cir-pagination">
-              <button
-                className="cir-btn cir-btn-ghost cir-btn-sm"
-                disabled={page === 0}
-                onClick={() => setPage((p) => p - 1)}
-              >
-                <i className="mdi mdi-chevron-left" /> Anterior
-              </button>
-              <span className="cir-page-info">
-                Página {page + 1} de {totalPages}
-              </span>
-              <button
-                className="cir-btn cir-btn-ghost cir-btn-sm"
-                disabled={page >= totalPages - 1}
-                onClick={() => setPage((p) => p + 1)}
-              >
-                Siguiente <i className="mdi mdi-chevron-right" />
-              </button>
-            </div>
+            <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
           )}
         </div>
       </div>
+
+      {tweaksOpen && (
+        <TweaksPanel
+          density={density} onDensity={setDensity}
+          colorByAfil={colorByAfil} onColorByAfil={setColorByAfil}
+          highlightAlerts={highlightAlerts} onHighlightAlerts={setHighlightAlerts}
+          accentColor={accentColor} onAccentColor={setAccentColor}
+          onClose={() => setTweaksOpen(false)}
+        />
+      )}
 
       {protocolRow && (
         <ProtocolModal
@@ -234,22 +208,16 @@ export default function App({ config }) {
           endpoints={endpoints}
           onClose={() => setProtocolRow(null)}
           onToast={showToast}
+          onPrintToggle={handlePrintToggle}
         />
       )}
 
       {certRow && (
-        <CertificadoPrompt
-          row={certRow}
-          onClose={() => setCertRow(null)}
-        />
+        <CertificadoModal row={certRow} onClose={() => setCertRow(null)} />
       )}
 
       {toast && (
-        <Toast
-          message={toast.msg}
-          type={toast.type}
-          onClose={() => setToast(null)}
-        />
+        <Toast message={toast.msg} type={toast.type} onClose={() => setToast(null)} />
       )}
     </div>
   );

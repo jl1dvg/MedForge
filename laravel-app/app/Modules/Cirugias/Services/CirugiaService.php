@@ -344,17 +344,25 @@ class CirugiaService
         $sqlData = "SELECT
                 pr.form_id,
                 p.hc_number,
+                COALESCE(NULLIF(TRIM(p.cedula), ''), '') AS cedula,
                 p.fname,
                 p.lname,
                 p.lname2,
+                TIMESTAMPDIFF(YEAR, p.fecha_nacimiento, CURDATE()) AS edad,
                 p.afiliacion,
                 {$afiliacionLabelExpr} AS afiliacion_label,
                 {$categoriaContext['expr']} AS afiliacion_categoria,
                 {$sedeExpr} AS sede,
                 pr.fecha_inicio,
                 pr.membrete,
+                COALESCE(NULLIF(TRIM(pr.lateralidad), ''), '') AS lateralidad,
                 pr.printed,
-                pr.status
+                pr.status,
+                (
+                    CASE WHEN COALESCE(NULLIF(TRIM(pr.cirujano_1), ''), '') = '' THEN 1 ELSE 0 END
+                    + CASE WHEN COALESCE(NULLIF(TRIM(pr.lateralidad), ''), '') = '' THEN 1 ELSE 0 END
+                    + CASE WHEN pp.form_id IS NULL THEN 1 ELSE 0 END
+                ) AS alertas_count
             {$baseFrom}
             {$whereFiltered}
             ORDER BY {$orderExpr} {$orderDir}, pr.id DESC
