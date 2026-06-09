@@ -349,4 +349,75 @@ class CrmIntentSafetyTest extends TestCase
             ->doesntExpectOutputToContain('ABORTADO')
             ->assertExitCode(0);
     }
+
+    // =========================================================================
+    // 6. COALESCE fallback: last_activity_at NULL uses created_at
+    // =========================================================================
+
+    public function test_null_last_activity_uses_created_at_as_fallback_and_is_reused(): void
+    {
+        // Create an opp with last_activity_at=NULL but recently created → should be reused
+        $s1 = $this->insertSolicitud('4000000001', 'CYP-CCA-001');
+        $this->dispatchSolicitud('4000000001', 'CYP-CCA-001', 'OD', $s1);
+
+        // Force last_activity_at to NULL — the episode was just created, so created_at is recent
+        CrmOpportunity::query()->update(['last_activity_at' => null]);
+
+        $s2 = $this->insertSolicitud('4000000001', 'CYP-CCA-001');
+        $this->dispatchSolicitud('4000000001', 'CYP-CCA-001', 'OD', $s2);
+
+        // COALESCE(last_activity_at, created_at) = created_at (recent) → episode reused
+        $this->assertSame(1, CrmOpportunity::count(), 'NULL last_activity_at with recent created_at must be reused');
+    }
+
+    public function test_null_last_activity_with_old_created_at_is_zombie(): void
+    {
+        // Create an opp then backdate both timestamps to simulate an old episode with null last_activity_at
+        $s1 = $this->insertSolicitud('4000000002', 'CYP-CCA-001');
+        $this->dispatchSolicitud('4000000002', 'CYP-CCA-001', 'OD', $s1);
+
+        // Age created_at to 181 days and null out last_activity_at
+        CrmOpportunity::query()->update([
+            'last_activity_at' => null,
+            'created_at'       => now()->subDays(181),
+        ]);
+
+        $s2 = $this->insertSolicitud('4000000002', 'CYP-CCA-001');
+        $this->dispatchSolicitud('4000000002', 'CYP-CCA-001', 'OD', $s2);
+
+        // COALESCE(null, created_at) = created_at (181 days old) → zombie → new episode
+        $this->assertSame(2, CrmOpportunity::count(), 'NULL last_activity_at with old created_at must be treated as zombie');
+    }
+
+    public function test_null_last_activity_recurrente_old_created_at_is_zombie(): void
+    {
+        // 67028: ventana_dias=90; last_activity_at=NULL; created_at=91 days ago → zombie
+        $s1 = $this->insertSolicitud('4000000003', '67028');
+        $this->dispatchSolicitud('4000000003', '67028', 'OD', $s1);
+
+        CrmOpportunity::query()->update([
+            'last_activity_at' => null,
+            'created_at'       => now()->subDays(91),
+        ]);
+
+        $s2 = $this->insertSolicitud('4000000003', '67028');
+        $this->dispatchSolicitud('4000000003', '67028', 'OD', $s2);
+
+        $this->assertSame(2, CrmOpportunity::count(), 'recurrente null last_activity_at with old created_at must be zombie');
+    }
+
+    public function test_null_last_activity_recurrente_recent_created_at_is_reused(): void
+    {
+        // 67028: ventana_dias=90; last_activity_at=NULL; created_at=recent → reuse
+        $s1 = $this->insertSolicitud('4000000004', '67028');
+        $this->dispatchSolicitud('4000000004', '67028', 'OD', $s1);
+
+        CrmOpportunity::query()->update(['last_activity_at' => null]);
+        // created_at remains today — within 90-day window
+
+        $s2 = $this->insertSolicitud('4000000004', '67028');
+        $this->dispatchSolicitud('4000000004', '67028', 'OD', $s2);
+
+        $this->assertSame(1, CrmOpportunity::count(), 'recurrente null last_activity_at with recent created_at must be reused');
+    }
 }

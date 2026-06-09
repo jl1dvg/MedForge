@@ -214,7 +214,13 @@ class CrmIntentMonitor extends Command
 
     private function sectionZombieAlert(): void
     {
-        // Opps that are active but would not pass the zombie cutoff for their type
+        // Opps that are active but would not pass the zombie cutoff for their type.
+        // COALESCE(last_activity_at, created_at) — NULL last_activity_at uses created_at as fallback.
+        $nullActivityCount = CrmOpportunity::query()
+            ->active()
+            ->whereNull('last_activity_at')
+            ->count();
+
         $zombies = CrmOpportunity::query()
             ->active()
             ->whereNotNull('opportunity_type')
@@ -222,32 +228,33 @@ class CrmIntentMonitor extends Command
                 $q->where(function ($q2): void {
                     // unica: idle > 180 days
                     $q2->where('opportunity_type', 'unica')
-                        ->where('last_activity_at', '<', now()->subDays(180));
+                        ->whereRaw('COALESCE(last_activity_at, created_at) < ?', [now()->subDays(180)]);
                 })->orWhere(function ($q2): void {
                     // diagnostico: idle > 30 days
                     $q2->where('opportunity_type', 'diagnostico')
-                        ->where('last_activity_at', '<', now()->subDays(30));
+                        ->whereRaw('COALESCE(last_activity_at, created_at) < ?', [now()->subDays(30)]);
                 })->orWhere(function ($q2): void {
                     // recurrente with ventana_dias=null: idle > 90 days (default fallback)
                     $q2->where('opportunity_type', 'recurrente')
-                        ->whereNull('last_activity_at');
+                        ->whereRaw('COALESCE(last_activity_at, created_at) < ?', [now()->subDays(90)]);
                 });
             })
             ->count();
 
-        // recurrente with ventana_dias: need a join — approximated with 90-day fallback for count
+        // recurrente with ventana_dias: need a join
         $zombiesRecurrente = DB::table('crm_opportunities')
             ->join('crm_procedure_rules', 'crm_opportunities.procedure_group', '=', 'crm_procedure_rules.grupo_codigo')
             ->where('crm_procedure_rules.tipo', 'recurrente')
             ->whereNotNull('crm_procedure_rules.ventana_dias')
             ->whereNotIn('crm_opportunities.stage', [CrmOpportunity::STAGE_GANADO, CrmOpportunity::STAGE_PERDIDO])
-            ->whereRaw('crm_opportunities.last_activity_at < DATE_SUB(NOW(), INTERVAL crm_procedure_rules.ventana_dias DAY)')
+            ->whereRaw('COALESCE(crm_opportunities.last_activity_at, crm_opportunities.created_at) < DATE_SUB(NOW(), INTERVAL crm_procedure_rules.ventana_dias DAY)')
             ->count();
 
         $total = $zombies + $zombiesRecurrente;
 
         $this->line('');
         $this->comment('── Episodios zombie (activos pero caducados) ───');
+        $this->line("  Oportunidades activas con last_activity_at NULL: <fg=yellow>{$nullActivityCount}</> (usan created_at como fallback)");
 
         if ($total === 0) {
             $this->line('  <fg=green>Ninguno ✓</>');

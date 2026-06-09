@@ -269,7 +269,7 @@ class CrmOpportunityService
                 fn ($q) => $q->where('lateralidad', $lateralidad),
                 fn ($q) => $q->whereNull('lateralidad'),
             )
-            ->where('last_activity_at', '>=', $cutoff)
+            ->whereRaw('COALESCE(last_activity_at, created_at) >= ?', [$cutoff])
             ->latest('episode_started_at')
             ->first();
     }
