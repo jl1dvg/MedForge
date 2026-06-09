@@ -200,11 +200,37 @@ export function InformarModal({ row, readOnly, onClose, onSave, showToast, docto
   const [vals, setVals] = useState({});
   const [notify, setNotify] = useState(true);
   const [auto, setAuto] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const isAmbosOjos = /ambos/i.test(row.ojo || '');
   const showBilateral = tpl.bilateral && isAmbosOjos;
   const eyes = showBilateral ? ['od', 'oi'] : [null];
   const eyeLabels = { od: 'OD — Ojo Derecho', oi: 'OI — Ojo Izquierdo' };
+
+  // Load existing informe on open
+  useEffect(() => {
+    if (!row.form_id) return;
+    const params = new URLSearchParams({ form_id: row.form_id, tipo_examen: row.tipo_examen || row.tipo_label || '' });
+    fetch(`/v2/imagenes/informes/datos?${params}`, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+      .then((r) => r.json())
+      .then((data) => { if (data.payload && typeof data.payload === 'object') setVals(data.payload); })
+      .catch(() => {});
+  }, [row.form_id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const normalFill = (prefix) => {
+    setVals((v) => {
+      const next = { ...v };
+      tpl.campos.forEach((c) => {
+        const key = prefix ? `${prefix}_${c.k}` : c.k;
+        if (!next[key]) {
+          if (c.type === 'num') next[key] = c.ph;
+          else if (c.type === 'select') next[key] = c.opts[0];
+          else next[key] = 'Dentro de parámetros normales.';
+        }
+      });
+      return next;
+    });
+  };
 
   const autollenar = () => {
     const demo = {};
@@ -218,6 +244,29 @@ export function InformarModal({ row, readOnly, onClose, onSave, showToast, docto
     });
     setVals(demo);
     showToast('Campos autollenados desde la imagen', 'mdi-auto-fix');
+  };
+
+  const handleSave = () => {
+    setSaving(true);
+    const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
+    fetch('/v2/imagenes/informes/guardar', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrf },
+      body: JSON.stringify({
+        form_id: row.form_id,
+        hc_number: row.hc_number,
+        tipo_examen: row.tipo_examen || row.tipo_label || '',
+        payload: vals,
+      }),
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success === false) throw new Error(data.error || 'Error al guardar');
+        onSave(row, { notify, auto });
+      })
+      .catch((e) => { showToast(e.message || 'Error al guardar informe', 'mdi-alert', 'warn'); })
+      .finally(() => setSaving(false));
   };
 
   const footer = (
@@ -240,8 +289,8 @@ export function InformarModal({ row, readOnly, onClose, onSave, showToast, docto
       )}
       <button className="imr-btn imr-btn-ghost" onClick={onClose}>Cerrar</button>
       {!readOnly && (
-        <button className="imr-btn imr-btn-primary" onClick={() => onSave(row, { notify, auto })}>
-          <i className="mdi mdi-content-save-outline"></i> Guardar informe
+        <button className="imr-btn imr-btn-primary" disabled={saving} onClick={handleSave}>
+          <i className={`mdi ${saving ? 'mdi-loading mdi-spin' : 'mdi-content-save-outline'}`}></i> Guardar informe
         </button>
       )}
     </>
@@ -263,13 +312,29 @@ export function InformarModal({ row, readOnly, onClose, onSave, showToast, docto
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 20px' }}>
               {eyes.map((prefix) => (
                 <div key={prefix}>
-                  <div className="imr-eye-section-label">{eyeLabels[prefix]}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                    <div className="imr-eye-section-label" style={{ margin: 0 }}>{eyeLabels[prefix]}</div>
+                    {!readOnly && (
+                      <button type="button" className="imr-btn imr-btn-ghost imr-btn-sm" style={{ fontSize: 11 }} onClick={() => normalFill(prefix)}>
+                        <i className="mdi mdi-check-all"></i> Normal
+                      </button>
+                    )}
+                  </div>
                   {tpl.campos.map((c) => <CampoField key={c.k} c={c} prefix={prefix} vals={vals} setVals={setVals} readOnly={readOnly} />)}
                 </div>
               ))}
             </div>
           ) : (
-            tpl.campos.map((c) => <CampoField key={c.k} c={c} prefix={null} vals={vals} setVals={setVals} readOnly={readOnly} />)
+            <>
+              {!readOnly && tpl.campos.length > 0 && (
+                <div style={{ marginBottom: 10 }}>
+                  <button type="button" className="imr-btn imr-btn-ghost imr-btn-sm" style={{ fontSize: 11 }} onClick={() => normalFill(null)}>
+                    <i className="mdi mdi-check-all"></i> Normal
+                  </button>
+                </div>
+              )}
+              {tpl.campos.map((c) => <CampoField key={c.k} c={c} prefix={null} vals={vals} setVals={setVals} readOnly={readOnly} />)}
+            </>
           )}
           <div className="imr-form-row" style={{ marginTop: 8 }}>
             <label>Conclusión / impresión diagnóstica</label>

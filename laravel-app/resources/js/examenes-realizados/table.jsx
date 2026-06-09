@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { AFILIACIONES } from './catalog';
 import { fmtDate, deadlineInfo } from './helpers';
 import { Badge, PrioPill, TipoChip, EmptyState } from './components';
@@ -7,9 +7,61 @@ function afilBadgeTone(cat) {
   return { publico: 'info', privado: 'primary', particular: 'soft', fundacional: 'success', otros: 'soft' }[cat] || 'soft';
 }
 
+// ---- Download PDF helper -------------------------------------------
+function downloadPdf(url, payload, btnSetter) {
+  btnSetter(true);
+  const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
+  fetch(url, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json, application/pdf', 'X-CSRF-TOKEN': csrf },
+    body: JSON.stringify(payload),
+  })
+    .then((r) => {
+      if (!r.ok) return r.json().then((d) => { throw new Error(d?.error || 'Error al generar PDF'); });
+      const cd = r.headers.get('Content-Disposition') || '';
+      const m = cd.match(/filename="?([^";]+)"?/i);
+      const filename = m ? m[1] : 'informe.pdf';
+      return r.blob().then((blob) => ({ blob, filename }));
+    })
+    .then(({ blob, filename }) => {
+      const url2 = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url2; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url2);
+    })
+    .catch((e) => alert(e.message || 'No se pudo generar el PDF'))
+    .finally(() => btnSetter(false));
+}
+
 // ---- Bulk action bar -----------------------------------------------
-export function BulkBar({ tab, count, onSendBandeja, onPrint, onClear }) {
+export function BulkBar({ tab, count, selectedRows, onSendBandeja, onPrint, onClear }) {
+  const [loading012B, setLoading012B] = useState(false);
+  const [loading012A, setLoading012A] = useState(false);
+
   if (count === 0) return null;
+
+  const informadosSelected = (selectedRows || []).filter((r) => r.informado);
+
+  const print012B = () => {
+    const items = informadosSelected.map((r) => ({
+      id: r.id, form_id: r.form_id, hc_number: r.hc_number,
+      fecha_examen: r.fecha_examen, tipo_examen: r.tipo_examen || r.tipo_label, estado_agenda: r.estado_agenda,
+    }));
+    if (!items.length) { alert('Selecciona exámenes informados para imprimir 012B.'); return; }
+    downloadPdf('/v2/reports/imagenes/012b/paquete/seleccion', { items }, setLoading012B);
+  };
+
+  const print012A = () => {
+    const items = informadosSelected.map((r) => ({
+      id: r.id, form_id: r.form_id, hc_number: r.hc_number,
+      fecha_examen: r.fecha_examen, tipo_examen: r.tipo_examen || r.tipo_label, estado_agenda: r.estado_agenda,
+    }));
+    if (!items.length) { alert('Selecciona exámenes informados para imprimir 012A.'); return; }
+    downloadPdf('/v2/reports/imagenes/012a/pdf', { items }, setLoading012A);
+  };
+
   return (
     <div className="imr-bulk-bar">
       <i className="mdi mdi-checkbox-multiple-marked-outline" style={{ fontSize: 18, color: 'var(--accent)' }}></i>
@@ -21,8 +73,18 @@ export function BulkBar({ tab, count, onSendBandeja, onPrint, onClear }) {
           {tab === 'bandeja' ? 'Cambiar prioridad' : 'Enviar a bandeja prioritaria'}
         </button>
       )}
+      {tab === 'informados' && informadosSelected.length > 0 && (
+        <>
+          <button className="imr-btn imr-btn-outline-primary imr-btn-sm" onClick={print012B} disabled={loading012B}>
+            <i className={`mdi ${loading012B ? 'mdi-loading mdi-spin' : 'mdi-file-document-outline'}`}></i> 012B
+          </button>
+          <button className="imr-btn imr-btn-ghost imr-btn-sm" onClick={print012A} disabled={loading012A}>
+            <i className={`mdi ${loading012A ? 'mdi-loading mdi-spin' : 'mdi-file-outline'}`}></i> 012A
+          </button>
+        </>
+      )}
       <button className="imr-btn imr-btn-ghost imr-btn-sm" onClick={onPrint}>
-        <i className="mdi mdi-printer"></i> Imprimir / exportar
+        <i className="mdi mdi-printer"></i> Imprimir lista
       </button>
       <button className="imr-btn imr-btn-ghost imr-btn-sm" onClick={onClear}>
         <i className="mdi mdi-close"></i> Quitar selección
@@ -141,8 +203,34 @@ function Row({ row, tab, today, selected, onToggle, onInformar, onVerImagenes, o
 
 // ---- Table ---------------------------------------------------------
 export function ExamTable({ rows, tab, today, selectedIds, onToggleAll, onToggle, onInformar, onVerImagenes, onMarcarUrgente, onQuitarBandeja, onPrint }) {
+  const [sortKey, setSortKey] = useState(null);
+  const [sortDir, setSortDir] = useState('asc');
+
   const lastCol = { 'no-informados': 'Archivos', 'bandeja': 'Prioridad', 'informados': 'Informe', 'sin-nas': 'Archivos' }[tab];
   const allChecked = rows.length > 0 && rows.every((r) => selectedIds.has(r.id));
+
+  const toggleSort = (key) => {
+    if (sortKey === key) setSortDir((d) => d === 'asc' ? 'desc' : 'asc');
+    else { setSortKey(key); setSortDir('asc'); }
+  };
+
+  const sortedRows = sortKey ? [...rows].sort((a, b) => {
+    let va = a[sortKey] || '', vb = b[sortKey] || '';
+    if (typeof va === 'string') va = va.toLowerCase();
+    if (typeof vb === 'string') vb = vb.toLowerCase();
+    return sortDir === 'asc' ? (va < vb ? -1 : va > vb ? 1 : 0) : (va > vb ? -1 : va < vb ? 1 : 0);
+  }) : rows;
+
+  const SortTh = ({ label, skey, style }) => {
+    const active = sortKey === skey;
+    return (
+      <th style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap', ...(style || {}) }} onClick={() => toggleSort(skey)}>
+        {label}
+        <i className={`mdi imr-sort-ico ${active ? (sortDir === 'asc' ? 'mdi-chevron-up' : 'mdi-chevron-down') : 'mdi-chevron-up'}`}
+          style={{ opacity: active ? 1 : 0.25, marginLeft: 3, fontSize: 14 }}></i>
+      </th>
+    );
+  };
 
   if (rows.length === 0) {
     const empties = {
@@ -162,17 +250,17 @@ export function ExamTable({ rows, tab, today, selectedIds, onToggleAll, onToggle
             <th className="imr-col-check">
               <input type="checkbox" className="imr-check" checked={allChecked} onChange={onToggleAll} />
             </th>
-            <th>Fecha</th>
+            <SortTh label="Fecha" skey="fecha_examen" />
             <th>Afiliación</th>
-            <th>Paciente</th>
-            <th>Examen</th>
-            <th>Ojo</th>
+            <SortTh label="Paciente" skey="full_name" />
+            <SortTh label="Examen" skey="tipo_label" />
+            <SortTh label="Ojo" skey="ojo" />
             <th>{lastCol}</th>
             <th style={{ textAlign: 'right' }}>Acciones</th>
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
+          {sortedRows.map((row) => (
             <Row key={row.id} row={row} tab={tab} today={today}
               selected={selectedIds.has(row.id)}
               onToggle={() => onToggle(row.id)}

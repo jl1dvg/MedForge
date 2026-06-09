@@ -288,6 +288,7 @@ export default function App({ config }) {
             onClear={clearAllFilters}
           />
           <BulkBar tab={activeTab} count={selectedIds.size}
+            selectedRows={rows.filter((r) => selectedIds.has(r.id))}
             onSendBandeja={sendSelectedToBandeja} onPrint={printRows}
             onClear={() => setSelectedIds(new Set())} />
           <ExamTable
