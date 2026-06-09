@@ -16,16 +16,23 @@ class CrmOpportunity extends Model
         'afiliacion_tipo',
         'assigned_to', 'lost_reason',
         'last_activity_at', 'escalation_at',
+        // Phase 1 — episode schema
+        'procedure_group', 'lateralidad', 'episode_started_at',
+        'previous_opportunity_id', 'opportunity_type', 'continuity_flag',
     ];
 
     protected $casts = [
-        'contact_id'      => 'integer',
-        'source_id'       => 'integer',
-        'assigned_to'     => 'integer',
-        'last_activity_at'=> 'datetime',
-        'escalation_at'   => 'datetime',
-        'created_at'      => 'datetime',
-        'updated_at'      => 'datetime',
+        'contact_id'             => 'integer',
+        'source_id'              => 'integer',
+        'assigned_to'            => 'integer',
+        'last_activity_at'       => 'datetime',
+        'escalation_at'          => 'datetime',
+        'created_at'             => 'datetime',
+        'updated_at'             => 'datetime',
+        // Phase 1 — episode schema
+        'episode_started_at'     => 'datetime',
+        'previous_opportunity_id'=> 'integer',
+        'continuity_flag'        => 'boolean',
     ];
 
     // Stages — Phase 1: operational
@@ -65,6 +72,11 @@ class CrmOpportunity extends Model
     public function proposals(): HasMany
     {
         return $this->hasMany(CrmProposal::class, 'crm_opportunity_id')->orderBy('created_at', 'desc');
+    }
+
+    public function previousOpportunity(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'previous_opportunity_id');
     }
 
     public function scopeActive($query)
