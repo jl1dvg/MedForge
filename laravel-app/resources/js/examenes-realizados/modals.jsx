@@ -309,6 +309,30 @@ export function InformarModal({ row, readOnly, onClose, onSave, showToast, docto
       .catch(() => {});
   }, [row.form_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Auto-calculate astigmatism = |K2 - K1| for topography
+  useEffect(() => {
+    if (row.tipo_key !== 'TOPOGRAFIA') return;
+    const prefixes = showBilateral ? ['od', 'oi'] : [null];
+    setVals((v) => {
+      const next = { ...v };
+      let changed = false;
+      prefixes.forEach((prefix) => {
+        const k1Key = prefix ? `${prefix}_k1` : 'k1';
+        const k2Key = prefix ? `${prefix}_k2` : 'k2';
+        const astigKey = prefix ? `${prefix}_astig` : 'astig';
+        const k1 = parseFloat(String(v[k1Key] || '').replace(',', '.'));
+        const k2 = parseFloat(String(v[k2Key] || '').replace(',', '.'));
+        if (!isNaN(k1) && !isNaN(k2)) {
+          const calc = Math.abs(k2 - k1).toFixed(2);
+          if (String(v[astigKey]) !== calc) { next[astigKey] = calc; changed = true; }
+        }
+      });
+      return changed ? next : v;
+    });
+  }, [ // eslint-disable-line react-hooks/exhaustive-deps
+    vals.od_k1, vals.od_k2, vals.oi_k1, vals.oi_k2, vals.k1, vals.k2,
+  ]);
+
   const normalFill = (prefix) => {
     setVals((v) => {
       const next = { ...v };
