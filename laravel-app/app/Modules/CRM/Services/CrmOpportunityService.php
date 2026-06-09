@@ -193,7 +193,7 @@ class CrmOpportunityService
             }
 
             // --- Look for an open compatible episode ---
-            $existing = $this->findActiveCompatible($contact->id, $procedureGroup, $lateralidadEfectiva);
+            $existing = $this->findActiveCompatible($contact->id, $procedureGroup, $lateralidadEfectiva, $oppType, $ventanaDias);
 
             if ($existing instanceof CrmOpportunity) {
                 $this->logActivityOnOpportunity($existing, $source, $sourceId, $sourceType, $title);
@@ -241,10 +241,27 @@ class CrmOpportunityService
         return CrmProcedureRule::forCodigo($codigo);
     }
 
-    private function findActiveCompatible(int $contactId, string $procedureGroup, ?string $lateralidad): ?CrmOpportunity
-    {
+    private function findActiveCompatible(
+        int     $contactId,
+        string  $procedureGroup,
+        ?string $lateralidad,
+        string  $oppType,
+        ?int    $ventanaDias,
+    ): ?CrmOpportunity {
+        // Legacy opps (procedure_group=null or opportunity_type=null) are never
+        // candidates for episode reuse — they lack the episode schema.
+        // Zombie cutoff: episodes idle beyond their type's window cannot be reused.
+        $cutoff = match ($oppType) {
+            'unica'      => now()->subDays(180),
+            'recurrente' => now()->subDays($ventanaDias ?? 90),
+            'diagnostico'=> now()->subDays(30),
+            default      => now()->subDays(180),
+        };
+
         return CrmOpportunity::query()
             ->active()
+            ->whereNotNull('procedure_group')
+            ->whereNotNull('opportunity_type')
             ->where('contact_id',      $contactId)
             ->where('procedure_group', $procedureGroup)
             ->when(
@@ -252,6 +269,7 @@ class CrmOpportunityService
                 fn ($q) => $q->where('lateralidad', $lateralidad),
                 fn ($q) => $q->whereNull('lateralidad'),
             )
+            ->where('last_activity_at', '>=', $cutoff)
             ->latest('episode_started_at')
             ->first();
     }

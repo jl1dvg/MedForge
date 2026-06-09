@@ -11,12 +11,21 @@ class CrmConsolidateOpportunities extends Command
 {
     protected $signature = 'crm:consolidate-opportunities
                             {--dry-run : Solo reporta, no escribe}
-                            {--limit=500 : Contactos a procesar}';
+                            {--limit=500 : Contactos a procesar}
+                            {--force-intent : Permite ejecutar aunque CRM_OPPORTUNITY_MODEL=intent esté activo (PELIGROSO)}';
 
     protected $description = 'Consolida múltiples oportunidades por contacto en una sola (una por paciente)';
 
     public function handle(): int
     {
+        if (config('crm.intent_model_enabled') && !$this->option('force-intent')) {
+            $this->error('ABORTADO: CRM_OPPORTUNITY_MODEL=intent está activo.');
+            $this->line('En modo intent, múltiples oportunidades por contacto son episodios clínicos intencionales.');
+            $this->line('Ejecutar este comando destruiría episodios válidos.');
+            $this->line('Si realmente necesitas consolidar, usa el flag: --force-intent');
+            return self::FAILURE;
+        }
+
         $dryRun = (bool) $this->option('dry-run');
         $limit  = (int) $this->option('limit');
 
