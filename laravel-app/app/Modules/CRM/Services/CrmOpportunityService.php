@@ -209,7 +209,8 @@ class CrmOpportunityService
                 $previous = $this->findLastClosed($contact->id, $procedureGroup, $lateralidadEfectiva);
 
                 if ($previous !== null && $ventanaDias !== null) {
-                    $daysSince      = (int) now()->diffInDays($previous->episode_started_at ?? $previous->created_at);
+                    $previousDate   = $previous->episode_started_at ?? $previous->created_at;
+                    $daysSince      = (int) \Carbon\Carbon::parse($previousDate)->diffInDays(now());
                     $continuityFlag = $daysSince <= $ventanaDias;
                 }
             }
