@@ -1,8 +1,56 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
+import { TABS, AuditPanel, afilOf } from './components';
 
-// ── Protocol Modal ────────────────────────────────────────────────────────────
+// ---- Shell genérico --------------------------------------------
+export function ModalShell({ size = 'md', icon, iconTone = 'primary', title, sub, onClose, children, footer }) {
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
 
-export function ProtocolModal({ row, endpoints, onClose, onToast, onPrintToggle }) {
+  const toneBg = {
+    primary: { bg: 'var(--primary-fade)', c: 'var(--accent)' },
+    danger: { bg: '#fde2e7', c: 'var(--danger)' },
+    success: { bg: '#e3f5ee', c: 'var(--success)' },
+    warning: { bg: '#fff0d1', c: '#8a5d0a' },
+    cir: { bg: 'var(--cir-bg)', c: 'var(--cir-fg)' },
+  }[iconTone] || { bg: 'var(--primary-fade)', c: 'var(--accent)' };
+
+  return (
+    <div className="modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className={`modal modal-${size}`} role="dialog" aria-modal="true">
+        <div className="modal-head">
+          {icon && <span className="mh-ico" style={{ background: toneBg.bg, color: toneBg.c }}><i className={`mdi ${icon}`} /></span>}
+          <div>
+            <h3>{title}</h3>
+            {sub && <div className="mh-sub">{sub}</div>}
+          </div>
+          <button className="mh-close" onClick={onClose} aria-label="Cerrar"><i className="mdi mdi-close" /></button>
+        </div>
+        <div className="modal-body">{children}</div>
+        {footer && <div className="modal-foot">{footer}</div>}
+      </div>
+    </div>
+  );
+}
+
+// ---- Protocol Modal --------------------------------------------
+function ProtoBlock({ icon, title, children, full }) {
+  return (
+    <div className={`proto-block ${full ? 'full' : ''}`}>
+      <div className="pb-head"><i className={`mdi ${icon}`} />{title}</div>
+      <div className="pb-body">{children}</div>
+    </div>
+  );
+}
+
+function TextOrEmpty({ value, placeholder }) {
+  if (value && String(value).trim()) return <div className="proto-text">{value}</div>;
+  return <div className="proto-empty">{placeholder || 'Sin registrar'}</div>;
+}
+
+export function ProtocolModal({ row, endpoints, onClose, onRevisar, onPrintToggle }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -21,248 +69,261 @@ export function ProtocolModal({ row, endpoints, onClose, onToast, onPrintToggle 
       .catch((e) => { setError(e.message); setLoading(false); });
   }, [row.form_id, row.hc_number, endpoints.protocolo]);
 
-  useEffect(() => {
-    const h = (e) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', h);
-    return () => document.removeEventListener('keydown', h);
-  }, [onClose]);
-
+  const afil = afilOf(row.afiliacion_label || row.afiliacion);
   const auditStatus = data?.auditoria?.status || 'warning';
-  const auditChecks = data?.auditoria?.checks || [];
-  const auditSummary = data?.auditoria?.summary || {};
+  const iconTone = auditStatus === 'error' ? 'danger' : auditStatus === 'ok' ? 'success' : 'warning';
 
-  const auditCls = { ok: 'cir-audit-panel-ok', warning: 'cir-audit-panel-warn', error: 'cir-audit-panel-err' }[auditStatus] || 'cir-audit-panel-warn';
+  const buildAudit = () => {
+    if (!data?.auditoria) return null;
+    const { status, checks = [], summary = {} } = data.auditoria;
+    return { status, checks, summary };
+  };
 
-  return (
-    <div className="cir-modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="cir-modal">
-        <div className="cir-modal-header">
-          <div>
-            <h3 className="cir-modal-title">Protocolo Quirúrgico</h3>
-            <div className="cir-modal-sub">
-              {row.full_name}
-              {row.cedula && <> · CC {row.cedula}</>}
-              {' '}· HC {row.hc_number}
-              {row.edad != null && <> · {row.edad}a</>}
-              {' '}· {row.fecha_inicio}
-            </div>
-          </div>
-          <button className="cir-modal-close" onClick={onClose}>&times;</button>
-        </div>
+  const staffRoles = data ? [
+    ['Cirujano principal', data.staff?.['Cirujano principal']],
+    ['Cirujano 2', data.staff?.['Cirujano 2']],
+    ['Primer ayudante', data.staff?.['Primer ayudante']],
+    ['Segundo ayudante', data.staff?.['Segundo ayudante']],
+    ['Tercer ayudante', data.staff?.['Tercer ayudante']],
+    ['Anestesiólogo', data.staff?.['Anestesiólogo']],
+    ['Instrumentista', data.staff?.['Instrumentista']],
+    ['Circulante', data.staff?.['Circulante']],
+    ['Ayudante anestesia', data.staff?.['Ayudante anestesia']],
+  ].filter(([, v]) => v && String(v).trim()) : [];
 
-        <div className="cir-modal-body">
-          {loading && <div className="cir-modal-loading"><span className="cir-spinner" /> Cargando protocolo...</div>}
-          {error && <div className="cir-modal-error"><i className="mdi mdi-alert-circle-outline" /> {error}</div>}
-
-          {!loading && !error && data && (
-            <>
-              {auditChecks.length > 0 && (
-                <div className={`cir-audit-panel ${auditCls}`}>
-                  <div className="cir-audit-header">
-                    <div>
-                      <strong>Auditoría automática del protocolo</strong>
-                      <div className="cir-audit-desc">Se validó concordancia con lo proyectado y la plantilla quirúrgica.</div>
-                    </div>
-                    <div className="cir-audit-badges">
-                      <span className="cir-badge cir-badge-success">OK: {auditSummary.ok || 0}</span>
-                      <span className="cir-badge cir-badge-warning">Advertencias: {auditSummary.warning || 0}</span>
-                      <span className="cir-badge cir-badge-danger">Alertas: {auditSummary.error || 0}</span>
-                    </div>
-                  </div>
-                  <div className="cir-audit-checks">
-                    {auditChecks.map((c, i) => <AuditCheck key={i} check={c} />)}
-                  </div>
-                </div>
-              )}
-
-              <div className="cir-section">
-                <div className="cir-section-title"><i className="mdi mdi-clock-outline" /> Tiempos quirúrgicos</div>
-                <div className="cir-timing-grid">
-                  <TimingCell label="Fecha" value={data.fecha_inicio} />
-                  <TimingCell label="Hora inicio" value={data.hora_inicio} />
-                  <TimingCell label="Hora fin" value={data.hora_fin} />
-                  <TimingCell label="Duración" value={data.duracion} />
-                </div>
-              </div>
-
-              {(data.diagnosticos || []).length > 0 && (
-                <div className="cir-section">
-                  <div className="cir-section-title"><i className="mdi mdi-stethoscope" /> Diagnósticos</div>
-                  <table className="cir-inner-table">
-                    <thead><tr><th>CIE-10</th><th>Detalle</th></tr></thead>
-                    <tbody>
-                      {data.diagnosticos.map((d, i) => <tr key={i}><td className="cir-code">{d.cie10}</td><td>{d.detalle}</td></tr>)}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              {(data.procedimientos || []).length > 0 && (
-                <div className="cir-section">
-                  <div className="cir-section-title"><i className="mdi mdi-medical-bag" /> Procedimientos</div>
-                  <table className="cir-inner-table">
-                    <thead><tr><th>Código</th><th>Nombre</th></tr></thead>
-                    <tbody>
-                      {data.procedimientos.map((p, i) => <tr key={i}><td className="cir-code">{p.codigo}</td><td>{p.nombre}</td></tr>)}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              <div className="cir-section">
-                <div className="cir-section-title"><i className="mdi mdi-scalpel" /> Acto operatorio</div>
-                <div className="cir-operatorio-grid">
-                  <OperField label="Diéresis" value={data.dieresis} />
-                  <OperField label="Exposición" value={data.exposicion} />
-                  <OperField label="Hallazgo" value={data.hallazgo} />
-                  <OperField label="Operatorio" value={data.operatorio} />
-                </div>
-              </div>
-
-              {Object.entries(data.staff || {}).some(([, v]) => v?.trim()) && (
-                <div className="cir-section">
-                  <div className="cir-section-title"><i className="mdi mdi-account-group" /> Staff quirúrgico</div>
-                  <div className="cir-staff-grid">
-                    {Object.entries(data.staff).map(([rol, nombre]) =>
-                      nombre?.trim() ? (
-                        <div key={rol} className="cir-staff-item">
-                          <span className="cir-staff-rol">{rol}</span>
-                          <span className="cir-staff-nombre">{nombre}</span>
-                        </div>
-                      ) : null,
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {data.comentario && (
-                <div className="cir-section">
-                  <div className="cir-section-title"><i className="mdi mdi-comment-text-outline" /> Comentario / Complicaciones</div>
-                  <div className="cir-comentario">{data.comentario}</div>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-
-        <div className="cir-modal-footer">
-          <button className="cir-btn cir-btn-ghost" onClick={onClose}>Cerrar</button>
-          <button
-            className={`cir-btn cir-btn-ghost ${row.printed ? 'cir-btn-printed' : ''}`}
-            onClick={() => { onPrintToggle(row); onClose(); }}
-          >
-            <i className={`mdi ${row.printed ? 'mdi-printer-check' : 'mdi-printer'}`} />
-            {row.printed ? 'Impreso' : 'Imprimir protocolo'}
-          </button>
-          <a
-            className="cir-btn cir-btn-primary"
-            href={`${endpoints.wizard}?form_id=${encodeURIComponent(row.form_id)}&hc_number=${encodeURIComponent(row.hc_number)}`}
-          >
-            <i className="mdi mdi-pencil" /> Editar protocolo
-          </a>
-        </div>
-      </div>
-    </div>
+  const footer = (
+    <>
+      <span className="foot-note">
+        {row.status === 1
+          ? <span><i className="mdi mdi-check-circle" style={{ color: 'var(--success)' }} /> Revisado</span>
+          : `Protocolo ${row.form_id} · pendiente de revisión`}
+      </span>
+      <div className="spacer" />
+      {onPrintToggle && (
+        <button className="btn btn-ghost" onClick={() => { onPrintToggle(row); onClose(); }}>
+          <i className={`mdi ${row.printed ? 'mdi-printer-check' : 'mdi-printer'}`} />
+          {row.printed ? 'Impreso' : 'Imprimir'}
+        </button>
+      )}
+      <button className="btn btn-ghost" onClick={onClose}>Cerrar</button>
+      {onRevisar && (
+        <button className="btn btn-primary" onClick={() => { onClose(); onRevisar(row); }}>
+          <i className="mdi mdi-clipboard-edit-outline" /> Revisar en wizard
+        </button>
+      )}
+    </>
   );
-}
 
-function TimingCell({ label, value }) {
   return (
-    <div className="cir-timing-cell">
-      <div className="cir-timing-label">{label}</div>
-      <div className="cir-timing-value">{value || '—'}</div>
-    </div>
-  );
-}
+    <ModalShell size="lg" icon="mdi-shield-search" iconTone={iconTone}
+      title="Revisión de protocolo quirúrgico"
+      sub={`${row.full_name} · ${row.membrete || ''} · ${row.lateralidad || ''}`}
+      onClose={onClose} footer={footer}>
 
-function OperField({ label, value }) {
-  if (!value) return null;
-  return (
-    <div className="cir-oper-field">
-      <div className="cir-oper-label">{label}</div>
-      <div className="cir-oper-value">{value}</div>
-    </div>
-  );
-}
-
-function AuditCheck({ check }) {
-  const cls = { ok: 'cir-badge-success', warning: 'cir-badge-warning', error: 'cir-badge-danger' }[check.status] || 'cir-badge-muted';
-  const label = { ok: 'OK', warning: 'Advertencia', error: 'Alerta' }[check.status] || check.status;
-  const details = check.details || {};
-  const faltantes = Array.isArray(details.faltantes) ? details.faltantes : [];
-  return (
-    <div className="cir-audit-check">
-      <div className="cir-audit-check-head">
-        <div>
-          <div className="cir-audit-check-title">{check.title || 'Validación'}</div>
-          <div className="cir-audit-check-msg">{check.message || ''}</div>
-        </div>
-        <span className={`cir-badge ${cls}`}>{label}</span>
-      </div>
-      {(details.proyectado || details.registrado || details.esperado || faltantes.length > 0) && (
-        <div className="cir-audit-check-detail">
-          {details.proyectado && <div><strong>Proyectado:</strong> {details.proyectado}</div>}
-          {details.registrado && <div><strong>Registrado:</strong> {details.registrado}</div>}
-          {details.esperado && <div><strong>Esperado:</strong> {details.esperado}</div>}
-          {faltantes.length > 0 && <div><strong>Faltantes:</strong> {faltantes.join(', ')}</div>}
+      {loading && (
+        <div className="tbl-loading">
+          <div className="spin" />
+          <div>Cargando protocolo…</div>
         </div>
       )}
-    </div>
+      {error && <div className="tbl-error"><i className="mdi mdi-alert-circle-outline" /> {error}</div>}
+
+      {!loading && !error && data && (
+        <>
+          {/* Auditoría */}
+          {buildAudit() && <AuditPanel audit={buildAudit()} />}
+
+          {/* Tira de paciente */}
+          <div className="pt-strip">
+            <div className="pt-item"><span className="k">Paciente</span><span className="v">{row.full_name}</span></div>
+            <div className="pt-item"><span className="k">Cédula / HC</span><span className="v mono">{row.cedula || row.hc_number} · {row.hc_number}</span></div>
+            {row.edad != null && <div className="pt-item"><span className="k">Edad</span><span className="v">{row.edad} años</span></div>}
+            <div className="pt-item"><span className="k">Afiliación</span><span className="v">{afil ? afil.label : (row.afiliacion_label || row.afiliacion)}</span></div>
+            {row.sede && <div className="pt-item"><span className="k">Sede</span><span className="v">{row.sede}</span></div>}
+            <div className="pt-item"><span className="k">Protocolo</span><span className="v mono">{row.form_id}</span></div>
+          </div>
+
+          <div className="proto-grid">
+            {/* Diagnósticos */}
+            <ProtoBlock icon="mdi-clipboard-pulse-outline" title="Diagnósticos">
+              <table className="mini-table">
+                <thead><tr><th>CIE-10</th><th>Detalle</th></tr></thead>
+                <tbody>
+                  {(!data.diagnosticos || data.diagnosticos.length === 0) && (
+                    <tr><td colSpan={2} className="proto-empty">Sin diagnósticos</td></tr>
+                  )}
+                  {(data.diagnosticos || []).map((d, i) => (
+                    <tr key={i}><td className="mono">{d.cie10}</td><td>{d.detalle}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+            </ProtoBlock>
+
+            {/* Procedimientos */}
+            <ProtoBlock icon="mdi-medical-bag" title="Procedimientos">
+              <table className="mini-table">
+                <thead><tr><th>Código</th><th>Procedimiento</th></tr></thead>
+                <tbody>
+                  {(!data.procedimientos || data.procedimientos.length === 0) && (
+                    <tr><td colSpan={2} className="proto-empty">Sin procedimientos</td></tr>
+                  )}
+                  {(data.procedimientos || []).map((p, i) => (
+                    <tr key={i}><td className="mono">{p.codigo}</td><td>{p.nombre}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+            </ProtoBlock>
+
+            {/* Tiempos */}
+            <ProtoBlock icon="mdi-clock-outline" title="Tiempos quirúrgicos">
+              <dl className="kv-rows">
+                <dt>Fecha</dt><dd>{data.fecha_inicio || '—'}</dd>
+                <dt>Hora inicio</dt><dd>{data.hora_inicio || '—'}</dd>
+                <dt>Hora fin</dt><dd>{data.hora_fin || '—'}</dd>
+                <dt>Duración</dt><dd>{data.duracion || '—'}</dd>
+              </dl>
+            </ProtoBlock>
+
+            {/* Staff */}
+            <ProtoBlock icon="mdi-account-group-outline" title="Equipo quirúrgico">
+              <table className="mini-table">
+                <tbody>
+                  {staffRoles.length === 0 && <tr><td className="proto-empty">Sin equipo registrado</td></tr>}
+                  {staffRoles.map(([rol, nom], i) => (
+                    <tr key={i}>
+                      <td style={{ color: 'var(--fg-mute)' }}>{rol}</td>
+                      <td style={{ fontWeight: 600 }}>{nom}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </ProtoBlock>
+
+            {/* Acto operatorio */}
+            <ProtoBlock icon="mdi-scalpel" title="Acto operatorio" full>
+              <dl className="kv-rows" style={{ marginBottom: 10 }}>
+                <dt>Diéresis</dt><dd style={{ fontWeight: 400 }}>{data.dieresis || '—'}</dd>
+                <dt>Exposición</dt><dd style={{ fontWeight: 400 }}>{data.exposicion || '—'}</dd>
+                <dt>Hallazgo</dt><dd style={{ fontWeight: 400 }}>{data.hallazgo || '—'}</dd>
+              </dl>
+              <div style={{ marginBottom: 8 }}>
+                <div className="section-title" style={{ margin: '0 0 5px' }}>Descripción operatoria <span className="ln" /></div>
+                <TextOrEmpty value={data.operatorio} placeholder="Sin descripción operatoria" />
+              </div>
+              {data.comentario && (
+                <dl className="kv-rows">
+                  <dt>Complicaciones</dt><dd style={{ fontWeight: 400 }}>{data.comentario}</dd>
+                </dl>
+              )}
+            </ProtoBlock>
+          </div>
+        </>
+      )}
+    </ModalShell>
   );
 }
 
-// ── Certificado Modal ─────────────────────────────────────────────────────────
-
-export function CertificadoModal({ row, onClose }) {
+// ---- Certificado de descanso -----------------------------------
+export function CertificadoModal({ row, endpoints, onClose }) {
   const [dias, setDias] = useState('5');
-  const [err, setErr] = useState('');
+  const valido = Number.isFinite(+dias) && +dias > 0;
 
-  useEffect(() => {
-    const h = (e) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', h);
-    return () => document.removeEventListener('keydown', h);
-  }, [onClose]);
+  const hastaDate = (() => {
+    const d = new Date();
+    d.setDate(d.getDate() + (+dias || 0) - 1);
+    return d.toISOString().slice(0, 10);
+  })();
+
+  const fmtDate = (iso) => {
+    if (!iso) return '—';
+    const [y, m, d] = iso.split('-');
+    return `${d}-${m}-${y}`;
+  };
 
   const confirm = () => {
-    const n = parseInt(dias, 10);
-    if (!Number.isFinite(n) || n <= 0) { setErr('Ingrese un número entero mayor a cero.'); return; }
-    const p = new URLSearchParams({ form_id: row.form_id, hc_number: row.hc_number, dias_descanso: String(n) });
+    if (!valido) return;
+    const p = new URLSearchParams({ form_id: row.form_id, hc_number: row.hc_number, dias_descanso: String(+dias) });
     window.open(`/v2/reports/cirugias/descanso/pdf?${p}`, '_blank');
     onClose();
   };
 
+  const today = new Date().toISOString().slice(0, 10);
+
+  const footer = (
+    <>
+      <span className="foot-note">Reposo desde {fmtDate(today)} hasta {fmtDate(hastaDate)}</span>
+      <div className="spacer" />
+      <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
+      <button className="btn btn-primary" disabled={!valido} onClick={confirm}>
+        <i className="mdi mdi-file-certificate-outline" /> Emitir certificado
+      </button>
+    </>
+  );
+
   return (
-    <div className="cir-modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="cir-modal cir-modal-sm">
-        <div className="cir-modal-header">
-          <h3 className="cir-modal-title"><i className="mdi mdi-file-document-outline" /> Certificado de descanso</h3>
-          <button className="cir-modal-close" onClick={onClose}>&times;</button>
-        </div>
-        <div className="cir-modal-body">
-          <p className="cir-cert-patient">
-            <strong>{row.full_name}</strong>
-            {row.cedula && <> · CC {row.cedula}</>}
-            {' '}· HC {row.hc_number}
-          </p>
-          <div className="cir-filter-field">
-            <label className="cir-field-label">Días de reposo</label>
-            <input
-              type="number" min="1" autoFocus
-              className="cir-input"
-              value={dias}
-              onChange={(e) => { setDias(e.target.value); setErr(''); }}
-              onKeyDown={(e) => { if (e.key === 'Enter') confirm(); }}
-            />
-            {err && <div className="cir-field-error">{err}</div>}
-          </div>
-        </div>
-        <div className="cir-modal-footer">
-          <button className="cir-btn cir-btn-ghost" onClick={onClose}>Cancelar</button>
-          <button className="cir-btn cir-btn-primary" onClick={confirm}>
-            <i className="mdi mdi-file-pdf-box" /> Generar PDF
-          </button>
-        </div>
+    <ModalShell size="sm" icon="mdi-file-certificate-outline" iconTone="cir"
+      title="Certificado de descanso médico"
+      sub={`${row.full_name} · ${row.membrete || row.form_id}`}
+      onClose={onClose} footer={footer}>
+      <div className="pt-strip" style={{ marginBottom: 14 }}>
+        <div className="pt-item"><span className="k">Paciente</span><span className="v">{row.full_name}</span></div>
+        <div className="pt-item"><span className="k">HC</span><span className="v mono">{row.hc_number}</span></div>
+        <div className="pt-item"><span className="k">Cirugía</span><span className="v">{row.fecha_inicio || ''}</span></div>
       </div>
-    </div>
+      <div className="form-row" style={{ maxWidth: 220 }}>
+        <label>Días de reposo</label>
+        <input type="number" min="1" max="90" value={dias}
+          onChange={(e) => setDias(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') confirm(); }}
+          autoFocus />
+        <span className="hint">Se emite un PDF con membrete de Consulmed.</span>
+      </div>
+      {!valido && <div className="proto-empty" style={{ color: 'var(--danger)' }}>Ingresa un número de días mayor a cero.</div>}
+    </ModalShell>
+  );
+}
+
+// ---- Cómo funciona ---------------------------------------------
+export function HelpModal({ onClose }) {
+  const toneCls = { primary: 'ft-primary', danger: 'ft-danger', success: 'ft-success', warning: 'ft-warning' };
+  const footer = (
+    <><div className="spacer" /><button className="btn btn-primary" onClick={onClose}>Entendido</button></>
+  );
+  return (
+    <ModalShell size="md" icon="mdi-help-circle-outline" iconTone="primary"
+      title="Cómo funciona Reporte de protocolos"
+      sub="El recorrido de una cirugía, del acto quirúrgico al protocolo firmado"
+      onClose={onClose} footer={footer}>
+      <p className="txt-muted" style={{ marginTop: 0 }}>
+        Cada cirugía realizada debe quedar documentada en un protocolo quirúrgico. Las pestañas son los
+        estados de ese protocolo — úsalas como bandejas de trabajo:
+      </p>
+      <div className="flow-steps">
+        {TABS.map((tb, i) => (
+          <div className="flow-tab-card" key={tb.key}>
+            <span className={`ft-ico ${toneCls[tb.tone]}`}><i className={`mdi ${tb.icon}`} /></span>
+            <div>
+              <h5>{i + 1}. {tb.label}</h5>
+              <p>{tb.help}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </ModalShell>
+  );
+}
+
+// ---- Ayuda de pestaña ------------------------------------------
+export function TabHelpModal({ tabKey, onClose }) {
+  const tb = TABS.find((t) => t.key === tabKey);
+  if (!tb) return null;
+  const footer = (
+    <><div className="spacer" /><button className="btn btn-primary" onClick={onClose}>Entendido</button></>
+  );
+  return (
+    <ModalShell size="sm" icon={tb.icon} iconTone={tb.tone}
+      title={`Pestaña «${tb.label}»`} sub={tb.desc} onClose={onClose} footer={footer}>
+      <p style={{ marginTop: 0, lineHeight: 1.6 }}>{tb.help}</p>
+    </ModalShell>
   );
 }
