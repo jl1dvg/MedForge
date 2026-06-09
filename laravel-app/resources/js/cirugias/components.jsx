@@ -192,7 +192,11 @@ export function Filters({ filters, setFilters, onClear, afiliacionOptions, sedeO
       <div className="field"><label>Sede</label>
         <select value={filters.sede} onChange={(e) => set('sede', e.target.value)}>
           <option value="">Todas</option>
-          {(sedeOptions || []).map((s) => <option key={s} value={s}>{s}</option>)}
+          {(sedeOptions || []).map((s) => {
+          const val = typeof s === 'object' ? s.value : s;
+          const lbl = typeof s === 'object' ? s.label : s;
+          return <option key={val} value={val}>{lbl}</option>;
+        })}
         </select></div>
       <div className="filter-actions">
         <button className="btn btn-ghost btn-sm" onClick={onClear}>
