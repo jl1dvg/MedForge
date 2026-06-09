@@ -66,6 +66,7 @@ export const TABS = [
 export const TEMPLATES = {
   OCT_MACULA: {
     titulo: 'OCT de mácula',
+    bilateral: true,
     campos: [
       { k: 'espesor_central', label: 'Espesor macular central (µm)', type: 'num', ph: 'p. ej. 268' },
       { k: 'volumen',         label: 'Volumen macular (mm³)',         type: 'num', ph: 'p. ej. 8.9' },
@@ -75,6 +76,7 @@ export const TEMPLATES = {
   },
   OCT_NERVIO: {
     titulo: 'OCT de nervio óptico (RNFL)',
+    bilateral: true,
     campos: [
       { k: 'rnfl_promedio', label: 'RNFL promedio (µm)',       type: 'num', ph: 'p. ej. 92' },
       { k: 'simetria',      label: 'Simetría interocular',     type: 'select', opts: ['Simétrico', 'Asimétrico'] },
@@ -84,15 +86,17 @@ export const TEMPLATES = {
   },
   TOPOGRAFIA: {
     titulo: 'Topografía corneal',
+    bilateral: true,
     campos: [
-      { k: 'k1',    label: 'K1 (D)',             type: 'num', ph: '43.2' },
-      { k: 'k2',    label: 'K2 (D)',             type: 'num', ph: '44.1' },
-      { k: 'astig', label: 'Astigmatismo (D)',   type: 'num', ph: '0.9' },
+      { k: 'k1',     label: 'K1 (D)',             type: 'num', ph: '43.2' },
+      { k: 'k2',     label: 'K2 (D)',             type: 'num', ph: '44.1' },
+      { k: 'astig',  label: 'Astigmatismo (D)',   type: 'num', ph: '0.9' },
       { k: 'patron', label: 'Patrón', type: 'select', opts: ['Regular', 'Astigmatismo a favor', 'En contra', 'Queratocono sospecha', 'Irregular'] },
     ],
   },
   PAQUIMETRIA: {
     titulo: 'Paquimetría',
+    bilateral: true,
     campos: [
       { k: 'pcc',       label: 'Punto más delgado (µm)',  type: 'num', ph: '545' },
       { k: 'centro',    label: 'Espesor central (µm)',    type: 'num', ph: '552' },
@@ -101,6 +105,7 @@ export const TEMPLATES = {
   },
   MICROESPECULAR: {
     titulo: 'Microscopía especular',
+    bilateral: true,
     campos: [
       { k: 'celulas',       label: 'Densidad celular (cél/mm²)', type: 'num', ph: '2480' },
       { k: 'cv',            label: 'Coef. variación (%)',        type: 'num', ph: '32' },
@@ -110,6 +115,7 @@ export const TEMPLATES = {
   },
   BIOMETRIA: {
     titulo: 'Biometría / cálculo de LIO',
+    bilateral: true,
     campos: [
       { k: 'al',      label: 'Longitud axial (mm)',           type: 'num', ph: '23.45' },
       { k: 'acd',     label: 'Profundidad cámara ant. (mm)',  type: 'num', ph: '3.1' },
@@ -119,6 +125,7 @@ export const TEMPLATES = {
   },
   CAMPO_VISUAL: {
     titulo: 'Campo visual computarizado',
+    bilateral: true,
     campos: [
       { k: 'md',          label: 'MD (dB)',       type: 'num', ph: '-3.4' },
       { k: 'psd',         label: 'PSD (dB)',      type: 'num', ph: '2.1' },
@@ -128,6 +135,7 @@ export const TEMPLATES = {
   },
   RETINOGRAFIA: {
     titulo: 'Retinografía a color',
+    bilateral: true,
     campos: [
       { k: 'papila',     label: 'Papila',    type: 'select', opts: ['Normal', 'Excavada', 'Edema', 'Palidez'] },
       { k: 'macula',     label: 'Mácula',    type: 'select', opts: ['Sin alteraciones', 'Drusas', 'Cicatriz', 'Edema'] },
@@ -136,6 +144,7 @@ export const TEMPLATES = {
   },
   ANGIOGRAFIA: {
     titulo: 'Angiografía con fluoresceína',
+    bilateral: false,
     campos: [
       { k: 'fases',     label: 'Fases evaluadas',  type: 'select', opts: ['Completas', 'Incompletas'] },
       { k: 'fuga',      label: 'Fuga / escape',    type: 'select', opts: ['Ausente', 'Focal', 'Difusa'] },
@@ -144,6 +153,7 @@ export const TEMPLATES = {
   },
   ECOGRAFIA: {
     titulo: 'Ecografía ocular (modo B)',
+    bilateral: false,
     campos: [
       { k: 'vitreo',    label: 'Vítreo',  type: 'select', opts: ['Anecoico', 'Opacidades', 'Hemorragia'] },
       { k: 'retina',    label: 'Retina',  type: 'select', opts: ['Aplicada', 'Desprendimiento', 'No valorable'] },
@@ -152,6 +162,7 @@ export const TEMPLATES = {
   },
   OTRO: {
     titulo: 'Resultado del examen',
+    bilateral: false,
     campos: [
       { k: 'hallazgos', label: 'Hallazgos y conclusión', type: 'text', ph: 'Describa los hallazgos del estudio…' },
     ],

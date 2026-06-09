@@ -174,19 +174,47 @@ function NotifyBlock({ row, notify, setNotify }) {
   );
 }
 
+// ---- Campo renderer ------------------------------------------------
+function CampoField({ c, prefix, vals, setVals, readOnly }) {
+  const key = prefix ? `${prefix}_${c.k}` : c.k;
+  return (
+    <div className="imr-form-row" key={key}>
+      <label>{c.label}</label>
+      {c.type === 'select' ? (
+        <select disabled={readOnly} value={vals[key] || ''} onChange={(e) => setVals((v) => ({ ...v, [key]: e.target.value }))}>
+          <option value="">Seleccionar…</option>
+          {c.opts.map((o) => <option key={o} value={o}>{o}</option>)}
+        </select>
+      ) : c.type === 'text' ? (
+        <textarea disabled={readOnly} placeholder={c.ph} value={vals[key] || ''} onChange={(e) => setVals((v) => ({ ...v, [key]: e.target.value }))}></textarea>
+      ) : (
+        <input type="text" disabled={readOnly} placeholder={c.ph} value={vals[key] || ''} onChange={(e) => setVals((v) => ({ ...v, [key]: e.target.value }))} />
+      )}
+    </div>
+  );
+}
+
 // ---- Modal: Informar examen ----------------------------------------
 export function InformarModal({ row, readOnly, onClose, onSave, showToast, doctores }) {
-  const tpl = TEMPLATES[row.tipo_key] || { titulo: row.tipo_label, campos: [] };
+  const tpl = TEMPLATES[row.tipo_key] || { titulo: row.tipo_label, campos: [], bilateral: false };
   const [vals, setVals] = useState({});
   const [notify, setNotify] = useState(true);
   const [auto, setAuto] = useState(false);
 
+  const isAmbosOjos = /ambos/i.test(row.ojo || '');
+  const showBilateral = tpl.bilateral && isAmbosOjos;
+  const eyes = showBilateral ? ['od', 'oi'] : [null];
+  const eyeLabels = { od: 'OD — Ojo Derecho', oi: 'OI — Ojo Izquierdo' };
+
   const autollenar = () => {
     const demo = {};
-    tpl.campos.forEach((c) => {
-      if (c.type === 'num') demo[c.k] = c.ph.replace(/[^\d.]/g, '') || '0';
-      else if (c.type === 'select') demo[c.k] = c.opts[0];
-      else demo[c.k] = 'Dentro de parámetros normales para la edad.';
+    eyes.forEach((prefix) => {
+      tpl.campos.forEach((c) => {
+        const key = prefix ? `${prefix}_${c.k}` : c.k;
+        if (c.type === 'num') demo[key] = c.ph.replace(/[^\d.]/g, '') || '0';
+        else if (c.type === 'select') demo[key] = c.opts[0];
+        else demo[key] = 'Dentro de parámetros normales para la edad.';
+      });
     });
     setVals(demo);
     showToast('Campos autollenados desde la imagen', 'mdi-auto-fix');
@@ -231,22 +259,19 @@ export function InformarModal({ row, readOnly, onClose, onSave, showToast, docto
         <div>
           <h4 className="imr-section-title"><i className="mdi mdi-clipboard-text-outline"></i> Informe · {tpl.titulo} <span className="imr-section-ln"></span></h4>
           {tpl.campos.length === 0 && <p style={{ color: 'var(--fg-mute)' }}>Sin plantilla estructurada para este tipo. Usa el campo de conclusión.</p>}
-          {tpl.campos.map((c) => (
-            <div className="imr-form-row" key={c.k}>
-              <label>{c.label}</label>
-              {c.type === 'select' ? (
-                <select disabled={readOnly} value={vals[c.k] || ''} onChange={(e) => setVals((v) => ({ ...v, [c.k]: e.target.value }))}>
-                  <option value="">Seleccionar…</option>
-                  {c.opts.map((o) => <option key={o} value={o}>{o}</option>)}
-                </select>
-              ) : c.type === 'text' ? (
-                <textarea disabled={readOnly} placeholder={c.ph} value={vals[c.k] || ''} onChange={(e) => setVals((v) => ({ ...v, [c.k]: e.target.value }))}></textarea>
-              ) : (
-                <input type="text" disabled={readOnly} placeholder={c.ph} value={vals[c.k] || ''} onChange={(e) => setVals((v) => ({ ...v, [c.k]: e.target.value }))} />
-              )}
+          {showBilateral ? (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 20px' }}>
+              {eyes.map((prefix) => (
+                <div key={prefix}>
+                  <div className="imr-eye-section-label">{eyeLabels[prefix]}</div>
+                  {tpl.campos.map((c) => <CampoField key={c.k} c={c} prefix={prefix} vals={vals} setVals={setVals} readOnly={readOnly} />)}
+                </div>
+              ))}
             </div>
-          ))}
-          <div className="imr-form-row">
+          ) : (
+            tpl.campos.map((c) => <CampoField key={c.k} c={c} prefix={null} vals={vals} setVals={setVals} readOnly={readOnly} />)
+          )}
+          <div className="imr-form-row" style={{ marginTop: 8 }}>
             <label>Conclusión / impresión diagnóstica</label>
             <textarea disabled={readOnly} placeholder="Resumen e indicaciones para el médico tratante…" value={vals._concl || ''} onChange={(e) => setVals((v) => ({ ...v, _concl: e.target.value }))}></textarea>
           </div>
