@@ -122,6 +122,12 @@ table.imr-table tbody tr:hover { background: var(--bg-soft); }
 table.imr-table tbody tr.imr-row-urgent { background: linear-gradient(90deg, #fdf1f3, transparent 60%); }
 table.imr-table tbody tr.imr-row-urgent:hover { background: linear-gradient(90deg, #fbe7eb, transparent 60%); }
 table.imr-table tbody tr.imr-row-overdue { background: linear-gradient(90deg, #fde8ec, transparent 55%); }
+table.imr-table tbody tr.imr-patient-group-row { background: var(--bg-soft); border-top: 2px solid var(--border); }
+table.imr-table tbody tr.imr-patient-group-row:hover { background: var(--bg-soft); }
+.imr-group-head { display: flex; align-items: center; gap: 10px; padding: 4px 0; flex-wrap: wrap; }
+.imr-group-label { font-weight: 700; font-size: 13px; color: var(--fg-1); }
+.imr-group-count { font-size: 12px; color: var(--fg-mute); }
+.imr-group-actions { display: flex; gap: 6px; margin-left: auto; }
 .imr-col-check { width: 42px; text-align: center; }
 .imr-cell-paciente { font-weight: 600; color: var(--fg-1); min-width: 178px; }
 .imr-ced { font-weight: 400; font-size: 12px; color: var(--fg-mute); font-family: var(--font-mono); }
@@ -198,6 +204,11 @@ table.imr-table tbody tr.imr-row-overdue { background: linear-gradient(90deg, #f
 .imr-section-title { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--fg-mute); font-weight: 700; margin: 0 0 12px; display: flex; align-items: center; gap: 8px; }
 .imr-section-ln { flex: 1; height: 1px; background: var(--border); }
 .imr-eye-section-label { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--accent); background: var(--primary-fade); border-radius: 6px; padding: 4px 10px; margin-bottom: 10px; display: inline-block; }
+.imr-checks-grid { display: flex; flex-wrap: wrap; gap: 5px; margin: 8px 0 14px; }
+.imr-check-chip { font-size: 11.5px; padding: 3px 9px; border-radius: 20px; border: 1.5px solid var(--border); background: var(--bg-body); color: var(--fg-2); cursor: pointer; white-space: nowrap; transition: all 120ms; }
+.imr-check-chip:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.imr-check-chip.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.imr-check-chip:disabled { opacity: 0.7; cursor: default; }
 .imr-form-row { display: flex; flex-direction: column; gap: 5px; margin-bottom: 13px; }
 .imr-form-row label { font-size: 12.5px; font-weight: 600; color: var(--fg-2); }
 .imr-form-row input, .imr-form-row select, .imr-form-row textarea { border: 1px solid var(--border); border-radius: 8px; padding: 8px 11px; font-size: 13.5px; font-family: inherit; color: var(--fg-1); background: var(--bg); width: 100%; }

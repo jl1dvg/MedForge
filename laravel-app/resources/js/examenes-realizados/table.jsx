@@ -201,6 +201,82 @@ function Row({ row, tab, today, selected, onToggle, onInformar, onVerImagenes, o
   );
 }
 
+// ---- Patient-grouped rows for Informados tab -----------------------
+function PatientGroupHeader({ label, count, groupRows, selectedIds, onToggle, colSpan }) {
+  const [loadingPdf, setLoadingPdf] = useState(false);
+  const allSelected = groupRows.every((r) => selectedIds.has(r.id));
+
+  const buildItems = (rows) => rows.map((r) => ({
+    id: r.id, form_id: r.form_id, hc_number: r.hc_number,
+    fecha_examen: r.fecha_examen, tipo_examen: r.tipo_examen || r.tipo_label, estado_agenda: r.estado_agenda,
+  }));
+
+  const downloadGroup = (fechaDoc) => {
+    const payload = { items: buildItems(groupRows) };
+    if (fechaDoc) payload.fecha_documento = fechaDoc;
+    downloadPdf('/v2/reports/imagenes/012b/paquete/seleccion', payload, setLoadingPdf);
+  };
+
+  const promptDate = () => {
+    const val = window.prompt('Fecha del documento (YYYY-MM-DD):', new Date().toISOString().slice(0, 10));
+    if (val && val.trim()) downloadGroup(val.trim());
+  };
+
+  return (
+    <tr className="imr-patient-group-row">
+      <td className="imr-col-check">
+        <input type="checkbox" className="imr-check" checked={allSelected}
+          onChange={() => groupRows.forEach((r) => { if (allSelected !== selectedIds.has(r.id)) onToggle(r.id); else if (!selectedIds.has(r.id)) onToggle(r.id); })}
+          onClick={(e) => { e.stopPropagation(); const sel = !allSelected; groupRows.forEach((r) => { if (sel !== selectedIds.has(r.id)) onToggle(r.id); }); }}
+          readOnly
+        />
+      </td>
+      <td colSpan={colSpan - 1}>
+        <div className="imr-group-head">
+          <span className="imr-group-label"><i className="mdi mdi-account-outline"></i> {label}</span>
+          <span className="imr-group-count">{count} examen{count !== 1 ? 'es' : ''}</span>
+          <div className="imr-group-actions">
+            <button className="imr-btn imr-btn-outline-primary imr-btn-sm" disabled={loadingPdf} onClick={() => downloadGroup(null)}>
+              <i className={`mdi ${loadingPdf ? 'mdi-loading mdi-spin' : 'mdi-file-document-multiple-outline'}`}></i> Descargar PDF paciente
+            </button>
+            <button className="imr-btn imr-btn-ghost imr-btn-sm" onClick={promptDate}>
+              <i className="mdi mdi-calendar-edit"></i> Con cambio de fecha
+            </button>
+          </div>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function renderGrouped(rows, selectedIds, onToggle, handlers) {
+  const groups = [];
+  const groupMap = {};
+  rows.forEach((r) => {
+    const key = r.hc_number || r.full_name || 'sin-id';
+    if (!groupMap[key]) { groupMap[key] = []; groups.push(key); }
+    groupMap[key].push(r);
+  });
+  const { today, tab, onInformar, onVerImagenes, onMarcarUrgente, onQuitarBandeja, onPrint } = handlers;
+  const elements = [];
+  groups.forEach((key) => {
+    const groupRows = groupMap[key];
+    const first = groupRows[0];
+    const label = first.full_name ? `${first.full_name} · HC ${first.hc_number}` : `HC ${key}`;
+    elements.push(
+      <PatientGroupHeader key={`grp-${key}`} label={label} count={groupRows.length}
+        groupRows={groupRows} selectedIds={selectedIds} onToggle={onToggle} colSpan={8} />
+    );
+    groupRows.forEach((row) => elements.push(
+      <Row key={row.id} row={row} tab={tab} today={today}
+        selected={selectedIds.has(row.id)} onToggle={() => onToggle(row.id)}
+        onInformar={onInformar} onVerImagenes={onVerImagenes}
+        onMarcarUrgente={onMarcarUrgente} onQuitarBandeja={onQuitarBandeja} onPrint={onPrint} />
+    ));
+  });
+  return elements;
+}
+
 // ---- Table ---------------------------------------------------------
 export function ExamTable({ rows, tab, today, selectedIds, onToggleAll, onToggle, onInformar, onVerImagenes, onMarcarUrgente, onQuitarBandeja, onPrint }) {
   const [sortKey, setSortKey] = useState(null);
@@ -260,17 +336,20 @@ export function ExamTable({ rows, tab, today, selectedIds, onToggleAll, onToggle
           </tr>
         </thead>
         <tbody>
-          {sortedRows.map((row) => (
-            <Row key={row.id} row={row} tab={tab} today={today}
-              selected={selectedIds.has(row.id)}
-              onToggle={() => onToggle(row.id)}
-              onInformar={onInformar}
-              onVerImagenes={onVerImagenes}
-              onMarcarUrgente={onMarcarUrgente}
-              onQuitarBandeja={onQuitarBandeja}
-              onPrint={onPrint}
-            />
-          ))}
+          {tab === 'informados'
+            ? renderGrouped(sortedRows, selectedIds, onToggle, { onInformar, onVerImagenes, onMarcarUrgente, onQuitarBandeja, onPrint, today, tab })
+            : sortedRows.map((row) => (
+                <Row key={row.id} row={row} tab={tab} today={today}
+                  selected={selectedIds.has(row.id)}
+                  onToggle={() => onToggle(row.id)}
+                  onInformar={onInformar}
+                  onVerImagenes={onVerImagenes}
+                  onMarcarUrgente={onMarcarUrgente}
+                  onQuitarBandeja={onQuitarBandeja}
+                  onPrint={onPrint}
+                />
+              ))
+          }
         </tbody>
       </table>
     </div>

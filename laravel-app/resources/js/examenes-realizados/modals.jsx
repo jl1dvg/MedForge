@@ -174,6 +174,36 @@ function NotifyBlock({ row, notify, setNotify }) {
   );
 }
 
+// ---- Findings checkbox grid ----------------------------------------
+function ChecksGrid({ checks, vkey, vals, setVals, readOnly }) {
+  const selected = vals[vkey] || [];
+  const toggle = (item) => {
+    if (readOnly) return;
+    setVals((v) => {
+      const arr = v[vkey] ? [...v[vkey]] : [];
+      const idx = arr.indexOf(item);
+      if (idx >= 0) arr.splice(idx, 1); else arr.push(item);
+      return { ...v, [vkey]: arr };
+    });
+  };
+  return (
+    <div className="imr-checks-grid">
+      {checks.map((item) => {
+        const on = selected.includes(item);
+        return (
+          <button key={item} type="button"
+            className={`imr-check-chip ${on ? 'on' : ''}`}
+            onClick={() => toggle(item)}
+            disabled={readOnly}>
+            {on && <i className="mdi mdi-check" style={{ fontSize: 11, marginRight: 3 }}></i>}
+            {item}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 // ---- Campo renderer ------------------------------------------------
 function CampoField({ c, prefix, vals, setVals, readOnly }) {
   const key = prefix ? `${prefix}_${c.k}` : c.k;
@@ -314,13 +344,14 @@ export function InformarModal({ row, readOnly, onClose, onSave, showToast, docto
                 <div key={prefix}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
                     <div className="imr-eye-section-label" style={{ margin: 0 }}>{eyeLabels[prefix]}</div>
-                    {!readOnly && (
+                    {!readOnly && tpl.campos.length > 0 && (
                       <button type="button" className="imr-btn imr-btn-ghost imr-btn-sm" style={{ fontSize: 11 }} onClick={() => normalFill(prefix)}>
                         <i className="mdi mdi-check-all"></i> Normal
                       </button>
                     )}
                   </div>
                   {tpl.campos.map((c) => <CampoField key={c.k} c={c} prefix={prefix} vals={vals} setVals={setVals} readOnly={readOnly} />)}
+                  {tpl.checks && <ChecksGrid checks={tpl.checks} vkey={`${prefix}_checks`} vals={vals} setVals={setVals} readOnly={readOnly} />}
                 </div>
               ))}
             </div>
@@ -334,6 +365,7 @@ export function InformarModal({ row, readOnly, onClose, onSave, showToast, docto
                 </div>
               )}
               {tpl.campos.map((c) => <CampoField key={c.k} c={c} prefix={null} vals={vals} setVals={setVals} readOnly={readOnly} />)}
+              {tpl.checks && <ChecksGrid checks={tpl.checks} vkey="checks" vals={vals} setVals={setVals} readOnly={readOnly} />}
             </>
           )}
           <div className="imr-form-row" style={{ marginTop: 8 }}>
