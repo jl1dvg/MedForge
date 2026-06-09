@@ -292,7 +292,7 @@ class CirugiasReadController
             'descanso_html' => $descansoHtml,
             'imprimir_html' => $imprimirHtml,
             // Clean fields for React UI
-            'cedula' => $esc((string) ($row['cedula'] ?? '')),
+            'cedula' => $esc((string) ($row['hc_number'] ?? '')),
             'edad' => $row['edad'] !== null ? (int) $row['edad'] : null,
             'afiliacion_label' => $esc($afiliacion),
             'afiliacion_categoria' => $esc($categoria),

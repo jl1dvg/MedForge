@@ -344,7 +344,6 @@ class CirugiaService
         $sqlData = "SELECT
                 pr.form_id,
                 p.hc_number,
-                COALESCE(NULLIF(TRIM(p.cedula), ''), '') AS cedula,
                 p.fname,
                 p.lname,
                 p.lname2,
