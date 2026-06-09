@@ -71,19 +71,30 @@ class CrmOpportunityListener
             source: 'solicitud',
         );
 
+        $episodeAt = isset($data['episode_at'])
+            ? \Carbon\Carbon::parse($data['episode_at'])
+            : null;
+
         $opp = $this->opportunityService->upsertFromEvent(
-            contact: $contact,
-            title: 'Solicitud: ' . (string) ($data['servicio'] ?? 'Servicio médico'),
-            source: 'solicitud',
-            sourceId: $event->solicitudId,
-            sourceType: 'solicitud_procedimiento',
+            contact:         $contact,
+            title:           'Solicitud: ' . (string) ($data['servicio'] ?? 'Servicio médico'),
+            source:          'solicitud',
+            sourceId:        $event->solicitudId,
+            sourceType:      'solicitud_procedimiento',
+            procedureCodigo: $data['procedimiento_codigo'] ?? null,
+            lateralidad:     $data['lateralidad']          ?? null,
+            episodeAt:       $episodeAt,
         );
 
+        if ($opp === null) {
+            return;
+        }
+
         $this->linkOperationalOpportunity(
-            sourceTable: 'solicitud_procedimiento',
-            sourceId: $event->solicitudId,
-            opportunityId: $opp->id,
-            detailsTable: 'solicitud_crm_detalles',
+            sourceTable:         'solicitud_procedimiento',
+            sourceId:            $event->solicitudId,
+            opportunityId:       $opp->id,
+            detailsTable:        'solicitud_crm_detalles',
             detailsSourceColumn: 'solicitud_id',
         );
     }

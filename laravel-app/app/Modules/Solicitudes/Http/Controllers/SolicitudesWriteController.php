@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Solicitudes\Http\Controllers;
 
 use App\Events\Crm\SolicitudCreada;
+use App\Models\CrmProcedureRule;
 use App\Modules\CRM\Services\CrmProposalService;
 use App\Modules\Solicitudes\Services\SolicitudesCreateService;
 use App\Modules\Solicitudes\Services\SolicitudesReadParityService;
@@ -726,25 +727,49 @@ class SolicitudesWriteController
 
         if (($result['success'] ?? false) && !empty($result['ids'])) {
             $solicitudes = $data['solicitudes'] ?? [];
-            try {
-                SolicitudCreada::dispatch(
-                    (int) $result['ids'][0],
-                    [
-                        'paciente_nombre'   => '',
-                        'paciente_cedula'   => (string) ($data['hcNumber'] ?? ''),
-                        'paciente_telefono' => '',
-                        'servicio'          => (string) ($solicitudes[0]['procedimiento'] ?? 'Solicitud médica'),
-                    ],
-                );
-            } catch (Throwable $e) {
-                Log::warning('No fue posible despachar SolicitudCreada desde guardarSolicitud', [
-                    'solicitud_id' => (int) $result['ids'][0],
-                    'message' => $e->getMessage(),
-                ]);
+            foreach ($result['ids'] as $index => $id) {
+                $sol = $solicitudes[$index] ?? null;
+                if (!is_array($sol)) {
+                    continue;
+                }
+                try {
+                    $procedimientoRaw = (string) ($sol['procedimiento'] ?? '');
+                    $parsed           = CrmProcedureRule::parseProcedureCode($procedimientoRaw);
+
+                    SolicitudCreada::dispatch(
+                        (int) $id,
+                        [
+                            'paciente_nombre'      => (string) ($data['paciente_nombre']   ?? ''),
+                            'paciente_cedula'      => (string) ($data['hcNumber']          ?? ''),
+                            'paciente_telefono'    => (string) ($data['paciente_telefono'] ?? ''),
+                            'servicio'             => $procedimientoRaw ?: 'Solicitud médica',
+                            'procedimiento_codigo' => $parsed['codigo'] ?? null,
+                            'lateralidad'          => $this->normalizeOjo($sol['ojo'] ?? null),
+                            'episode_at'           => $sol['fecha']      ?? null,
+                            'afiliacion'           => (string) ($sol['afiliacion'] ?? $data['afiliacion'] ?? ''),
+                        ],
+                    );
+                } catch (Throwable $e) {
+                    Log::warning('No fue posible despachar SolicitudCreada desde guardarSolicitud', [
+                        'solicitud_id' => (int) $id,
+                        'index'        => $index,
+                        'message'      => $e->getMessage(),
+                    ]);
+                }
             }
         }
 
         return new JsonResponse($result, $status);
+    }
+
+    private function normalizeOjo(?string $ojo): ?string
+    {
+        return match (strtoupper(trim((string) $ojo))) {
+            'OD', 'DERECHO', 'D'            => 'OD',
+            'OI', 'OS', 'IZQUIERDO', 'I'   => 'OI',
+            'AO', 'OU', 'AMBOS', 'BILATERAL' => 'AO',
+            default                          => null,
+        };
     }
 
     private function actorId(): ?int
