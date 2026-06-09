@@ -219,7 +219,7 @@ table.imr-table tbody tr.imr-patient-group-row:hover { background: var(--bg-soft
 
 /* ---- NAS viewer --------------------------------------------- */
 .imr-nas-panel { display: flex; flex-direction: column; gap: 10px; }
-.imr-nas-stage { background: #0e1726; border-radius: 12px; height: 360px; display: grid; place-items: center; position: relative; overflow: hidden; border: 1px solid var(--border-strong); }
+.imr-nas-stage { background: #0e1726; border-radius: 12px; min-height: 260px; max-height: 440px; display: grid; place-items: center; position: relative; overflow: auto; border: 1px solid var(--border-strong); }
 .imr-nas-empty { color: rgba(255,255,255,.7); text-align: center; padding: 20px; }
 .imr-nas-empty .mdi { font-size: 48px; opacity: .5; display: block; margin-bottom: 8px; }
 .imr-nas-doc { width: 78%; height: 86%; border-radius: 8px; position: relative; overflow: hidden; background: repeating-linear-gradient(135deg, rgba(255,255,255,.04) 0 12px, rgba(255,255,255,.07) 12px 24px), #16233a; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: rgba(255,255,255,.85); }
