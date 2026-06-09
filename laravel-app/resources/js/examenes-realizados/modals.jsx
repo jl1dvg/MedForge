@@ -280,6 +280,7 @@ export function InformarModal({ row, readOnly, onClose, onSave, showToast, docto
 
   // Load existing informe on open and reverse-map legacy field names → React field names
   useEffect(() => {
+    setVals({});  // always reset first so previous exam data doesn't bleed through
     if (!row.form_id) return;
     const params = new URLSearchParams({ form_id: String(row.form_id), tipo_examen: row.tipo_label || '' });
     fetch(`/v2/imagenes/informes/datos?${params}`, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
