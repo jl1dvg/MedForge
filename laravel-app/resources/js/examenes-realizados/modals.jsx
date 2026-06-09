@@ -499,12 +499,12 @@ export function VerImagenesModal({ row, onClose }) {
 }
 
 // ---- Modal: Marcar urgente / editar prioridad ----------------------
-export function MarcarUrgenteModal({ rows, doctores, today, currentUser, onClose, onConfirm }) {
+export function MarcarUrgenteModal({ rows, doctores, today, currentUser, defaultResponsable = '', onClose, onConfirm }) {
   const multi = rows.length > 1;
   const base = rows[0];
   const [prioridad, setPrioridad] = useState(base.prioridad || 'urgente');
   const [limite, setLimite] = useState(base.fecha_limite || today);
-  const [resp, setResp] = useState(base.responsable || currentUser?.name || '');
+  const [resp, setResp] = useState(base.responsable || defaultResponsable || '');
   const [motivo, setMotivo] = useState(base.motivo || '');
 
   const footer = (
@@ -545,7 +545,7 @@ export function MarcarUrgenteModal({ rows, doctores, today, currentUser, onClose
           <label>Médico responsable</label>
           <select value={resp} onChange={(e) => setResp(e.target.value)}>
             <option value="">Sin asignar</option>
-            {[currentUser?.name, ...(doctores || [])].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).map((d) => <option key={d} value={d}>{d}</option>)}
+            {[defaultResponsable, ...(doctores || [])].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).map((d) => <option key={d} value={d}>{d}</option>)}
           </select>
         </div>
       </div>

@@ -70,7 +70,7 @@ function normalizeRow(raw) {
 }
 
 export default function App({ config }) {
-  const { today, currentUser, doctores, afiliacionesData = [], serverFilters = {}, baseUrl = '' } = config;
+  const { today, currentUser, doctores, afiliacionesData = [], defaultResponsable = '', serverFilters = {}, baseUrl = '' } = config;
 
   const initialRows = useMemo(() => {
     return (config.rows || []).map((raw) => normalizeRow(raw));
@@ -312,7 +312,7 @@ export default function App({ config }) {
       {verImagenesRow && <VerImagenesModal row={verImagenesRow} onClose={() => setVerImagenesRow(null)} />}
       {urgenteRows && (
         <MarcarUrgenteModal rows={urgenteRows} doctores={doctores} today={today}
-          currentUser={currentUser} onClose={() => setUrgenteRows(null)} onConfirm={confirmUrgente} />
+          currentUser={currentUser} defaultResponsable={defaultResponsable} onClose={() => setUrgenteRows(null)} onConfirm={confirmUrgente} />
       )}
       {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
       {tabHelpKey && <TabHelpModal tabKey={tabHelpKey} onClose={() => setTabHelpKey(null)} />}

@@ -53,6 +53,8 @@
         ->values()
         ->toArray();
 
+    $user1 = \App\Models\User::find(1);
+
     $appConfig = [
         'rows'        => $appRows,
         'today'       => now()->toDateString(),
@@ -60,6 +62,7 @@
             'name' => auth()->user()?->name ?? 'Usuario',
             'role' => auth()->user()?->role_name ?? '',
         ],
+        'defaultResponsable' => $user1?->name ?? '',
         'doctores'          => $doctores,
         'afiliacionesData'  => $afiliacionesData,
         // Active server-side filters — React initializes its state from here
