@@ -175,33 +175,74 @@ function NotifyBlock({ row, notify, setNotify }) {
 }
 
 // ---- Findings checkbox grid ----------------------------------------
-function ChecksGrid({ checks, vkey, vals, setVals, readOnly }) {
+// checks: { id, label, text, flag? }[]
+// vkey: checks state key (e.g. 'od_checks'), textKey: hallazgos state key to append text into
+function ChecksGrid({ checks, vkey, textKey, vals, setVals, readOnly }) {
   const selected = vals[vkey] || [];
   const toggle = (item) => {
     if (readOnly) return;
     setVals((v) => {
-      const arr = v[vkey] ? [...v[vkey]] : [];
-      const idx = arr.indexOf(item);
-      if (idx >= 0) arr.splice(idx, 1); else arr.push(item);
+      const arr = [...(v[vkey] || [])];
+      const isOn = arr.includes(item.id);
+      if (isOn) {
+        arr.splice(arr.indexOf(item.id), 1);
+      } else {
+        arr.push(item.id);
+        // Append text to the hallazgos textarea (only for non-flag checks with text)
+        if (!item.flag && item.text && textKey) {
+          const cur = v[textKey] || '';
+          return { ...v, [vkey]: arr, [textKey]: cur ? cur + '\n' + item.text : item.text };
+        }
+      }
       return { ...v, [vkey]: arr };
     });
   };
   return (
     <div className="imr-checks-grid">
       {checks.map((item) => {
-        const on = selected.includes(item);
+        const on = selected.includes(item.id);
         return (
-          <button key={item} type="button"
+          <button key={item.id} type="button"
             className={`imr-check-chip ${on ? 'on' : ''}`}
             onClick={() => toggle(item)}
             disabled={readOnly}>
             {on && <i className="mdi mdi-check" style={{ fontSize: 11, marginRight: 3 }}></i>}
-            {item}
+            {item.label}
           </button>
         );
       })}
     </div>
   );
+}
+
+// Build the legacy payload that the backend construirHallazgosInforme expects.
+// Each template defines legacyMap: { reactKey: legacyKeyBase }
+// For bilateral exams: legacyKeyBase + 'OD' / 'OI'. For single eye: legacyKeyBase + 'OD'.
+function buildLegacyPayload(vals, tpl, tipoKey, eyes, showBilateral) {
+  const p = {};
+  const suf = (prefix) => !showBilateral ? 'OD' : (prefix === 'od' ? 'OD' : 'OI');
+  const legMap = tpl.legacyMap || {};
+
+  eyes.forEach((prefix) => {
+    const s = suf(prefix);
+    Object.entries(legMap).forEach(([reactKey, legacyBase]) => {
+      const valKey = prefix ? `${prefix}_${reactKey}` : reactKey;
+      const v = vals[valKey];
+      if (v !== undefined && v !== null && v !== '') p[legacyBase + s] = v;
+    });
+
+    // Campo Visual: save DLN and Amaurosis as boolean flags
+    if (tipoKey === 'CAMPO_VISUAL') {
+      const checksKey = prefix ? `${prefix}_checks` : 'checks';
+      const selected = vals[checksKey] || [];
+      const s2 = suf(prefix);
+      if (selected.includes('dln'))      p[`checkbox${s2}_dln`]      = 1;
+      if (selected.includes('amaurosis'))p[`checkbox${s2}_amaurosis`] = 1;
+    }
+  });
+
+  if (vals._concl) p.conclusiones = vals._concl;
+  return p;
 }
 
 // ---- Campo renderer ------------------------------------------------
@@ -237,13 +278,33 @@ export function InformarModal({ row, readOnly, onClose, onSave, showToast, docto
   const eyes = showBilateral ? ['od', 'oi'] : [null];
   const eyeLabels = { od: 'OD — Ojo Derecho', oi: 'OI — Ojo Izquierdo' };
 
-  // Load existing informe on open
+  // Load existing informe on open and reverse-map legacy field names → React field names
   useEffect(() => {
     if (!row.form_id) return;
-    const params = new URLSearchParams({ form_id: row.form_id, tipo_examen: row.tipo_examen || row.tipo_label || '' });
+    const params = new URLSearchParams({ form_id: String(row.form_id), tipo_examen: row.tipo_label || '' });
     fetch(`/v2/imagenes/informes/datos?${params}`, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
       .then((r) => r.json())
-      .then((data) => { if (data.payload && typeof data.payload === 'object') setVals(data.payload); })
+      .then((data) => {
+        if (!data.payload || typeof data.payload !== 'object') return;
+        const raw = data.payload;
+        const legMap = tpl.legacyMap || {};
+        // Build reverse map: legacyKeyBase → reactKey
+        const rev = Object.fromEntries(Object.entries(legMap).map(([rk, lb]) => [lb, rk]));
+        const mapped = {};
+        const eyePairs = showBilateral ? [['OD', 'od'], ['OI', 'oi']] : [['OD', null]];
+        eyePairs.forEach(([suf, prefix]) => {
+          Object.entries(rev).forEach(([legBase, reactKey]) => {
+            const legKey = legBase + suf;
+            if (raw[legKey] !== undefined) {
+              mapped[prefix ? `${prefix}_${reactKey}` : reactKey] = raw[legKey];
+            }
+          });
+        });
+        // Preserve non-mapped keys as-is (e.g. conclusiones → _concl)
+        if (raw.conclusiones) mapped._concl = raw.conclusiones;
+        if (raw.conclusion)   mapped._concl = mapped._concl || raw.conclusion;
+        setVals(mapped);
+      })
       .catch(() => {});
   }, [row.form_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -279,15 +340,17 @@ export function InformarModal({ row, readOnly, onClose, onSave, showToast, docto
   const handleSave = () => {
     setSaving(true);
     const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
+    const legacyPayload = buildLegacyPayload(vals, tpl, row.tipo_key, eyes, showBilateral);
+    const tipoExamen = row.tipo_label || '';
     fetch('/v2/imagenes/informes/guardar', {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrf },
       body: JSON.stringify({
-        form_id: row.form_id,
-        hc_number: row.hc_number,
-        tipo_examen: row.tipo_examen || row.tipo_label || '',
-        payload: vals,
+        form_id: String(row.form_id ?? ''),
+        hc_number: row.hc_number || '',
+        tipo_examen: tipoExamen,
+        payload: legacyPayload,
       }),
     })
       .then((r) => r.json())
@@ -351,7 +414,7 @@ export function InformarModal({ row, readOnly, onClose, onSave, showToast, docto
                     )}
                   </div>
                   {tpl.campos.map((c) => <CampoField key={c.k} c={c} prefix={prefix} vals={vals} setVals={setVals} readOnly={readOnly} />)}
-                  {tpl.checks && <ChecksGrid checks={tpl.checks} vkey={`${prefix}_checks`} vals={vals} setVals={setVals} readOnly={readOnly} />}
+                  {tpl.checks && <ChecksGrid checks={tpl.checks} vkey={`${prefix}_checks`} textKey={tpl.checksTextKey ? `${prefix}_${tpl.checksTextKey}` : null} vals={vals} setVals={setVals} readOnly={readOnly} />}
                 </div>
               ))}
             </div>
@@ -365,7 +428,7 @@ export function InformarModal({ row, readOnly, onClose, onSave, showToast, docto
                 </div>
               )}
               {tpl.campos.map((c) => <CampoField key={c.k} c={c} prefix={null} vals={vals} setVals={setVals} readOnly={readOnly} />)}
-              {tpl.checks && <ChecksGrid checks={tpl.checks} vkey="checks" vals={vals} setVals={setVals} readOnly={readOnly} />}
+              {tpl.checks && <ChecksGrid checks={tpl.checks} vkey="checks" textKey={tpl.checksTextKey || null} vals={vals} setVals={setVals} readOnly={readOnly} />}
             </>
           )}
           <div className="imr-form-row" style={{ marginTop: 8 }}>

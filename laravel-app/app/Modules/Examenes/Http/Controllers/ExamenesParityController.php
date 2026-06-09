@@ -2715,6 +2715,10 @@ class ExamenesParityController
         if (str_contains($texto, 'retino') || str_contains($texto, 'retin')) {
             return 'retino';
         }
+        // Catch-all for "otro", generic, or unclassified exams
+        if ($texto !== '') {
+            return 'retino';
+        }
         return null;
     }
 
