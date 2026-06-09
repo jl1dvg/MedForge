@@ -70,7 +70,7 @@ function normalizeRow(raw) {
 }
 
 export default function App({ config }) {
-  const { today, currentUser, doctores, serverFilters = {}, baseUrl = '' } = config;
+  const { today, currentUser, doctores, afiliacionesData = [], serverFilters = {}, baseUrl = '' } = config;
 
   const initialRows = useMemo(() => {
     return (config.rows || []).map((raw) => normalizeRow(raw));
@@ -286,6 +286,7 @@ export default function App({ config }) {
             setServerFilters={setPendingServerFilters}
             onApply={applyServerFilters}
             onClear={clearAllFilters}
+            afiliaciones={afiliacionesData}
           />
           <BulkBar tab={activeTab} count={selectedIds.size}
             selectedRows={rows.filter((r) => selectedIds.has(r.id))}

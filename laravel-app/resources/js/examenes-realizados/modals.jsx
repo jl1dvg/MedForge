@@ -504,7 +504,7 @@ export function MarcarUrgenteModal({ rows, doctores, today, currentUser, onClose
   const base = rows[0];
   const [prioridad, setPrioridad] = useState(base.prioridad || 'urgente');
   const [limite, setLimite] = useState(base.fecha_limite || today);
-  const [resp, setResp] = useState(base.responsable || '');
+  const [resp, setResp] = useState(base.responsable || currentUser?.name || '');
   const [motivo, setMotivo] = useState(base.motivo || '');
 
   const footer = (
@@ -545,7 +545,7 @@ export function MarcarUrgenteModal({ rows, doctores, today, currentUser, onClose
           <label>Médico responsable</label>
           <select value={resp} onChange={(e) => setResp(e.target.value)}>
             <option value="">Sin asignar</option>
-            {(doctores || []).map((d) => <option key={d} value={d}>{d}</option>)}
+            {[currentUser?.name, ...(doctores || [])].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).map((d) => <option key={d} value={d}>{d}</option>)}
           </select>
         </div>
       </div>

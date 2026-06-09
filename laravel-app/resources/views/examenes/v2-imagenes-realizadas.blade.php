@@ -44,6 +44,15 @@
         ->values()
         ->toArray();
 
+    // All unique afiliacion values actually present in the data (for the filter selector)
+    $afiliacionesData = collect($appRows)
+        ->pluck('afiliacion')
+        ->filter()
+        ->unique()
+        ->sort()
+        ->values()
+        ->toArray();
+
     $appConfig = [
         'rows'        => $appRows,
         'today'       => now()->toDateString(),
@@ -51,7 +60,8 @@
             'name' => auth()->user()?->name ?? 'Usuario',
             'role' => auth()->user()?->role_name ?? '',
         ],
-        'doctores'    => $doctores,
+        'doctores'          => $doctores,
+        'afiliacionesData'  => $afiliacionesData,
         // Active server-side filters — React initializes its state from here
         // and reloads the page when the user changes dates/afiliacion/sede/tipo
         'serverFilters' => [

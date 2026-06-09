@@ -274,8 +274,8 @@ export const TEMPLATES = {
 
 export const MOTIVOS_URGENTE = [
   'Cirugía programada en 48 h, falta informe para protocolo',
-  'Paciente foráneo, viaja mañana — necesita informe hoy',
-  'Sospecha de glaucoma avanzado, requiere lectura prioritaria',
+  'Paciente externo — viene de otra institución solo a realizarse exámenes, necesita resultados hoy',
+  'Paciente requiere informe para trámite de carnet de discapacidad',
   'Pre-quirúrgico de catarata, junta médica el viernes',
   'Control post-inyección intravítrea, decisión de retratamiento',
   'Derivación externa con plazo de autorización por vencer',

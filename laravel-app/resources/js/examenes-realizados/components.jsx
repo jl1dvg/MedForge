@@ -154,7 +154,7 @@ export function TabDescription({ tab, onMore }) {
 // ---- Filters -------------------------------------------------------
 // search → client-side (instant). serverFilters (from/to/afiliacion/sede/tipo)
 // require a page reload via onApply.
-export function Filters({ search, onSearchChange, serverFilters, setServerFilters, onApply, onClear }) {
+export function Filters({ search, onSearchChange, serverFilters, setServerFilters, onApply, onClear, afiliaciones = [] }) {
   const sf = serverFilters || {};
   const set = (k, v) => setServerFilters((f) => ({ ...f, [k]: v }));
 
@@ -182,7 +182,9 @@ export function Filters({ search, onSearchChange, serverFilters, setServerFilter
         <label>Afiliación</label>
         <select value={sf.afiliacion || ''} onChange={(e) => set('afiliacion', e.target.value)}>
           <option value="">Todas</option>
-          {AFILIACIONES.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
+          {afiliaciones.length > 0
+            ? afiliaciones.map((a) => <option key={a} value={a}>{a}</option>)
+            : AFILIACIONES.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
         </select>
       </div>
       <div className="imr-field">
