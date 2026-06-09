@@ -78,7 +78,7 @@ function NasViewer({ row }) {
 
   return (
     <div className="imr-nas-panel">
-      <div className="imr-nas-stage">
+      <div className="imr-nas-stage" style={isPdf ? { overflow: 'hidden' } : {}}>
         <button className="imr-nas-nav imr-nas-prev" disabled={idx <= 0} onClick={() => setIdx((i) => Math.max(0, i - 1))} aria-label="Anterior">
           <i className="mdi mdi-chevron-left"></i>
         </button>
