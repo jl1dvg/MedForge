@@ -466,7 +466,14 @@ export function InformarModal({ row, readOnly, onClose, onSave, showToast, docto
             <h4 className="imr-section-title"><i className="mdi mdi-folder-image"></i> Archivos del examen <span className="imr-section-ln"></span></h4>
             <NasViewer row={row} />
           </div>
-          <NotifyBlock row={row} notify={notify} setNotify={setNotify} />
+          <div style={{ position: 'relative', borderRadius: 10, overflow: 'hidden' }}>
+            <NotifyBlock row={row} notify={notify} setNotify={setNotify} />
+            <div style={{ position: 'absolute', inset: 0, background: 'rgba(var(--bg-soft-rgb, 240,242,248), 0.82)', backdropFilter: 'blur(3px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 10 }}>
+              <i className="mdi mdi-clock-outline" style={{ fontSize: 22, color: 'var(--fg-mute)' }}></i>
+              <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--fg-mute)', letterSpacing: '.02em' }}>Próximamente</span>
+              <span style={{ fontSize: 11.5, color: 'var(--fg-3)', textAlign: 'center', maxWidth: 180 }}>El aviso por WhatsApp estará disponible en una próxima versión.</span>
+            </div>
+          </div>
         </div>
       </div>
     </ModalShell>
