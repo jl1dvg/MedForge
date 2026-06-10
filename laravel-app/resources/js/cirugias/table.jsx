@@ -85,35 +85,23 @@ function Row({ row, tab, num, selected, onToggle, onVerProtocolo, onRevisar, onP
 
       <td>
         <div className="row-actions">
-          {row.protocolo_iniciado && (
-            <button className="btn btn-ghost btn-sm" title="Ver protocolo" onClick={() => onVerProtocolo(row)}>
-              <i className="mdi mdi-file-document-outline" />
-            </button>
-          )}
           {tab === 'revisados' ? (
             <>
-              <button className="btn btn-outline-primary btn-sm" title="Reabrir y editar" onClick={() => onRevisar(row)}>
-                <i className="mdi mdi-pencil-outline" /> Reabrir
-              </button>
-              <button className="btn btn-ghost btn-sm" title="Certificado de descanso" onClick={() => onCertificado(row)}>
-                <i className="mdi mdi-file-certificate-outline" />
-              </button>
-              <button className="btn btn-ghost btn-sm" title="Imprimir protocolo" onClick={() => onPrint(row)}>
-                <i className="mdi mdi-printer" />
-              </button>
+              {row.protocolo_iniciado && <button className="btn btn-ghost btn-xs" title="Ver protocolo" onClick={() => onVerProtocolo(row)}><i className="mdi mdi-file-document-outline" /></button>}
+              <button className="btn btn-outline-primary btn-xs" title="Reabrir y editar en wizard" onClick={() => onRevisar(row)}><i className="mdi mdi-pencil-outline" /></button>
+              <button className="btn btn-ghost btn-xs" title="Certificado de descanso" onClick={() => onCertificado(row)}><i className="mdi mdi-file-certificate-outline" /></button>
+              <button className="btn btn-ghost btn-xs" title="Imprimir protocolo" onClick={() => onPrint(row)}><i className="mdi mdi-printer" /></button>
             </>
           ) : tab === 'sin-protocolo' ? (
             <button className="btn btn-primary btn-sm" onClick={() => onRevisar(row)}>
-              <i className="mdi mdi-clipboard-edit-outline" /> Redactar protocolo
+              <i className="mdi mdi-clipboard-edit-outline" /> Redactar
             </button>
           ) : (
             <>
               <button className="btn btn-primary btn-sm" onClick={() => onVerProtocolo(row)}>
                 <i className="mdi mdi-shield-search" /> Revisar
               </button>
-              <button className="btn btn-ghost btn-sm" title="Editar en wizard" onClick={() => onRevisar(row)}>
-                <i className="mdi mdi-pencil-outline" />
-              </button>
+              <button className="btn btn-ghost btn-xs" title="Editar en wizard" onClick={() => onRevisar(row)}><i className="mdi mdi-pencil-outline" /></button>
             </>
           )}
         </div>
