@@ -170,7 +170,7 @@ table.cirtab tbody tr.row-alert:hover { background: linear-gradient(90deg, #fbe7
    Modal scaffolding
    ================================================================ */
 .modal-backdrop { position: fixed; inset: 0; background: rgba(12,20,40,.5); backdrop-filter: blur(2px); z-index: 100; display: flex; align-items: center; justify-content: center; padding: 26px; }
-.modal { background: var(--bg); border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,.2); width: 100%; max-height: calc(100vh - 52px); display: flex; flex-direction: column; overflow: hidden; animation: popIn .2s ease-out; }
+.modal { background: var(--bg); border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,.2); width: 100%; max-height: calc(100vh - 52px); display: flex; flex-direction: column; overflow: hidden; animation: popIn .2s ease-out; position: relative !important; top: auto !important; left: auto !important; }
 @keyframes popIn { from { transform: translateY(10px) scale(.985); } to { transform: none; } }
 .modal-sm { max-width: 540px; }
 .modal-md { max-width: 760px; }
