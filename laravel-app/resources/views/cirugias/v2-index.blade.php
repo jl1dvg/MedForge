@@ -122,17 +122,6 @@
 
 @push('scripts')
     @if (\App\Modules\Shared\Support\MedforgeAssets::hasViteBuild())
-        <script>
-            // Suppress welcome tour on this page — it creates a static backdrop that freezes interactions
-            try { localStorage.setItem('medforge_menu_tour_v2', '1'); } catch(e) {}
-            // Remove any stray Bootstrap modal backdrop immediately
-            document.addEventListener('DOMContentLoaded', function() {
-                document.querySelectorAll('.modal-backdrop').forEach(function(el) { el.remove(); });
-                document.body.classList.remove('modal-open');
-                document.body.style.removeProperty('overflow');
-                document.body.style.removeProperty('padding-right');
-            });
-        </script>
         @vite('resources/js/cirugias/main.jsx')
     @else
         <script>

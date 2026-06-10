@@ -48,7 +48,6 @@
     </div>
 
     {{-- @include('layouts.partials.feedback_widget') --}}
-    @include('layouts.partials.welcome_tour')
 
     <footer class="main-footer">
         <script>document.write(new Date().getFullYear())</script>
@@ -75,7 +74,6 @@
 @endif
 {{-- <script src="/js/pages/feedback-widget.js"></script> --}}
 
-{{-- El tour de bienvenida al nuevo menú se gestiona desde welcome_tour.blade.php via localStorage --}}
 
 @if (!empty($whatsappNotificationPanelEnabled))
     <script>
