@@ -93,14 +93,10 @@ function Row({ row, tab, num, selected, onToggle, onVerProtocolo, onRevisar, onP
               <button className="btn btn-ghost btn-xs" title="Imprimir protocolo" onClick={() => onPrint(row)}><i className="mdi mdi-printer" /></button>
             </>
           ) : tab === 'sin-protocolo' ? (
-            <button className="btn btn-primary btn-sm" onClick={() => onRevisar(row)}>
-              <i className="mdi mdi-clipboard-edit-outline" /> Redactar
-            </button>
+            <button className="btn btn-primary btn-xs" title="Redactar protocolo" onClick={() => onRevisar(row)}><i className="mdi mdi-clipboard-edit-outline" /></button>
           ) : (
             <>
-              <button className="btn btn-primary btn-sm" onClick={() => onVerProtocolo(row)}>
-                <i className="mdi mdi-shield-search" /> Revisar
-              </button>
+              <button className="btn btn-primary btn-xs" title="Revisar protocolo" onClick={() => onVerProtocolo(row)}><i className="mdi mdi-shield-search" /></button>
               <button className="btn btn-ghost btn-xs" title="Editar en wizard" onClick={() => onRevisar(row)}><i className="mdi mdi-pencil-outline" /></button>
             </>
           )}
