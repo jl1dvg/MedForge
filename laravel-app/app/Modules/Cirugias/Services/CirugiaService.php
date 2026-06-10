@@ -1793,12 +1793,7 @@ class CirugiaService
             return $this->tableExistsCache[$table];
         }
 
-        $stmt = $this->db->prepare(
-            "SELECT COUNT(*) FROM information_schema.TABLES
-             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :table"
-        );
-        $stmt->execute([':table' => $table]);
-        $exists = (int)$stmt->fetchColumn() > 0;
+        $exists = \Illuminate\Support\Facades\Schema::hasTable($table);
         $this->tableExistsCache[$table] = $exists;
 
         return $exists;
@@ -1811,18 +1806,7 @@ class CirugiaService
             return $this->columnExistsCache[$cacheKey];
         }
 
-        $stmt = $this->db->prepare(
-            "SELECT COUNT(*)
-             FROM information_schema.COLUMNS
-             WHERE TABLE_SCHEMA = DATABASE()
-               AND TABLE_NAME = :table
-               AND COLUMN_NAME = :column"
-        );
-        $stmt->execute([
-            ':table' => $table,
-            ':column' => $column,
-        ]);
-        $exists = (int)$stmt->fetchColumn() > 0;
+        $exists = \Illuminate\Support\Facades\Schema::hasColumn($table, $column);
         $this->columnExistsCache[$cacheKey] = $exists;
 
         return $exists;
