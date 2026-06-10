@@ -2,6 +2,7 @@ import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { TABS, KpiRow, Tabs, TabDescription, Filters, Toast, TweakPanel } from './components';
 import { BulkBar, CirTable } from './table';
 import { ProtocolModal, CertificadoModal, HelpModal, TabHelpModal } from './modals';
+import { ProtocolWizard, normaliseWizardForm } from './wizard';
 
 const TWEAK_DEFAULTS = { density: 'comodo', accent: '#5156be', afilColor: true, highlightAlerts: true };
 const EMPTY_FILTERS = { search: '', from: '', to: '', afiliacion: '', sede: '' };
@@ -121,6 +122,7 @@ export default function App({ config }) {
   const [helpOpen, setHelpOpen] = useState(false);
   const [tabHelpKey, setTabHelpKey] = useState(null);
   const [tweakOpen, setTweakOpen] = useState(false);
+  const [wizardRow, setWizardRow] = useState(null);
 
   useEffect(() => {
     document.documentElement.style.setProperty('--accent', tweaks.accent || '#5156be');
@@ -210,8 +212,47 @@ export default function App({ config }) {
   }, [visibleRows]);
 
   const openWizard = useCallback((row) => {
-    window.location.href = `${endpoints.wizard}?form_id=${encodeURIComponent(row.form_id)}&hc_number=${encodeURIComponent(row.hc_number)}`;
-  }, [endpoints.wizard]);
+    setProtocolRow(null);
+    const params = new URLSearchParams({ form_id: row.form_id, hc_number: row.hc_number });
+    fetch(`${endpoints.protocolo}?${params}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.error) throw new Error(data.error);
+        setWizardRow(normaliseWizardForm(row, data));
+      })
+      .catch(() => {
+        setWizardRow(normaliseWizardForm(row, {}));
+      });
+  }, [endpoints.protocolo]);
+
+  const saveProtocol = useCallback((form, meta) => {
+    const body = new URLSearchParams({
+      form_id: form.form_id,
+      hc_number: form.hc_number,
+      data: JSON.stringify(form),
+    });
+    const doSave = () => fetch(endpoints.autosave, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-TOKEN': window.csrfToken || '', 'X-Requested-With': 'XMLHttpRequest' },
+      body: body.toString(),
+    });
+
+    doSave().then(() => {
+      if (meta.status === 1 && endpoints.status) {
+        return fetch(endpoints.status, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-TOKEN': window.csrfToken || '', 'X-Requested-With': 'XMLHttpRequest' },
+          body: new URLSearchParams({ form_id: form.form_id, hc_number: form.hc_number, status: '1' }).toString(),
+        });
+      }
+    }).then(() => {
+      setWizardRow(null);
+      reload();
+      showToast(meta.status === 1 ? 'Protocolo guardado y marcado como revisado' : 'Protocolo guardado', 'mdi-check-circle');
+    }).catch(() => {
+      showToast('Error al guardar el protocolo', 'mdi-alert-circle', 'warn');
+    });
+  }, [endpoints.autosave, endpoints.status, reload, showToast]);
 
   const printRow = useCallback((row) => {
     if (row.estado !== 'revisado' && row.status !== 1) {
@@ -315,6 +356,15 @@ export default function App({ config }) {
       <Toast toast={toast} />
 
       {tweakOpen && <TweakPanel tweaks={tweaks} setTweak={setTweak} />}
+
+      {wizardRow && (
+        <ProtocolWizard
+          form={wizardRow}
+          onClose={() => setWizardRow(null)}
+          onSave={saveProtocol}
+          showToast={showToast}
+        />
+      )}
     </div>
   );
 }
