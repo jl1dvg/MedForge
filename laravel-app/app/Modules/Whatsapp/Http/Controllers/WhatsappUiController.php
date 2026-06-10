@@ -363,6 +363,15 @@ class WhatsappUiController
         ]));
     }
 
+    public function flowmakerV3(Request $request): View
+    {
+        return view('whatsapp.v3-flowmaker', [
+            'pageTitle' => 'WhatsApp V3 - Flowmaker',
+        ] + $this->buildWhatsappNotificationViewData($request, [
+            'scope' => 'flowmaker',
+        ]));
+    }
+
     public function knowledgeBase(Request $request): View
     {
         return view('whatsapp.v2-kb', [

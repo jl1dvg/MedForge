@@ -238,6 +238,9 @@ Route::middleware(['app.auth'])->group(function (): void {
     Route::get('/v2/whatsapp/flowmaker', [WhatsappUiController::class, 'flowmaker'])
         ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.autoresponder.manage,settings.manage')
         ->middleware('whatsapp.feature:ui,/whatsapp/flowmaker');
+    Route::get('/v3/whatsapp/flowmaker', [WhatsappUiController::class, 'flowmakerV3'])
+        ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.autoresponder.manage,settings.manage')
+        ->middleware('whatsapp.feature:ui,/whatsapp/flowmaker');
     Route::get('/v2/whatsapp/kb', [WhatsappUiController::class, 'knowledgeBase'])
         ->middleware('app.permission:administrativo,whatsapp.manage,whatsapp.autoresponder.manage,settings.manage')
         ->middleware('whatsapp.feature:ui,/whatsapp/flowmaker');
