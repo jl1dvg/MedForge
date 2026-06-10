@@ -1073,6 +1073,7 @@ class CirugiaService
                     (int)($data['status'] ?? 0),
                     $auditUserId
                 );
+                $this->registrarHuella($protocoloId, $auditUserId, 'guardado');
             }
 
             return ['success' => true, 'message' => 'Datos guardados correctamente', 'protocolo_id' => $protocoloId];
@@ -1094,19 +1095,6 @@ class CirugiaService
                 return;
             }
 
-            // Un registro por (protocolo_id, usuario_id).
-            // Primera vez → INSERT con creado_en = NOW().
-            // Ediciones posteriores del mismo usuario → solo actualiza evento y actualizado_en.
-            $auditStmt = $this->db->prepare(
-                'INSERT INTO protocolo_auditoria
-                    (protocolo_id, form_id, hc_number, evento, status, version, usuario_id, creado_en, actualizado_en)
-                 VALUES
-                    (:protocolo_id, :form_id, :hc_number, :evento, :status, :version, :usuario_id, NOW(), NOW())
-                 ON DUPLICATE KEY UPDATE
-                    evento        = VALUES(evento),
-                    actualizado_en = NOW()'
-            );
-
             $version = 0;
             if ($this->columnExists('protocolo_data', 'version')) {
                 $versionStmt = $this->db->prepare(
@@ -1116,6 +1104,12 @@ class CirugiaService
                 $version = (int)($versionStmt->fetchColumn() ?: 0);
             }
 
+            $auditStmt = $this->db->prepare(
+                'INSERT INTO protocolo_auditoria
+                    (protocolo_id, form_id, hc_number, evento, status, version, usuario_id, creado_en)
+                 VALUES
+                    (:protocolo_id, :form_id, :hc_number, :evento, :status, :version, :usuario_id, NOW())'
+            );
             $auditStmt->execute([
                 ':protocolo_id' => $protocoloId > 0 ? $protocoloId : null,
                 ':form_id'      => $formId,
@@ -1127,6 +1121,32 @@ class CirugiaService
             ]);
         } catch (\Throwable $exception) {
             error_log('No se pudo registrar auditoría de guardado de protocolo: ' . $exception->getMessage());
+        }
+    }
+
+    private function registrarHuella(int $protocoloId, int $userId, string $evento): void
+    {
+        try {
+            if (!$this->tableExists('protocolo_huellas')) {
+                return;
+            }
+
+            $stmt = $this->db->prepare(
+                'INSERT INTO protocolo_huellas
+                    (protocolo_id, usuario_id, evento, creado_en, actualizado_en)
+                 VALUES
+                    (:protocolo_id, :usuario_id, :evento, NOW(), NOW())
+                 ON DUPLICATE KEY UPDATE
+                    evento        = VALUES(evento),
+                    actualizado_en = NOW()'
+            );
+            $stmt->execute([
+                ':protocolo_id' => $protocoloId > 0 ? $protocoloId : null,
+                ':usuario_id'   => $userId,
+                ':evento'       => $evento,
+            ]);
+        } catch (\Throwable $exception) {
+            error_log('No se pudo registrar huella de protocolo: ' . $exception->getMessage());
         }
     }
 
@@ -1214,6 +1234,7 @@ class CirugiaService
                     $userId,
                     $evento
                 );
+                $this->registrarHuella($protocoloId, $userId, $evento);
             }
 
             $this->db->commit();
