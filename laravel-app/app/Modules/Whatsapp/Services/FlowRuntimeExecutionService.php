@@ -2729,6 +2729,7 @@ class FlowRuntimeExecutionService
                 'conversation_id' => $conversation->id,
                 'wa_message_id' => $transportResult['wa_message_id'],
                 'direction' => 'outbound',
+                'sender_type' => 'bot',
                 'message_type' => $type,
                 'body' => $body !== '' ? $body : null,
                 'raw_payload' => $transportResult['raw'],

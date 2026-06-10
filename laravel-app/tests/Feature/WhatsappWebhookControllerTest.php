@@ -74,6 +74,8 @@ class WhatsappWebhookControllerTest extends TestCase
             $table->unsignedBigInteger('conversation_id');
             $table->string('wa_message_id', 191)->nullable();
             $table->string('direction', 16);
+            $table->string('sender_type', 16)->nullable();
+            $table->unsignedBigInteger('sender_id')->nullable();
             $table->string('message_type', 64)->default('text');
             $table->longText('body')->nullable();
             $table->json('raw_payload')->nullable();
@@ -1691,7 +1693,7 @@ class WhatsappWebhookControllerTest extends TestCase
         config()->set('whatsapp.migration.automation.dry_run', true);
 
         Http::fake([
-            'sigcenter.ddns.net:18093/*' => Http::response([
+            'cive.ddns.net:8085/*' => Http::response([
                 'estado' => 200,
                 'msj' => 'OK',
                 'agenda_id' => 'AG-123',
@@ -1878,7 +1880,7 @@ class WhatsappWebhookControllerTest extends TestCase
         config()->set('whatsapp.migration.automation.dry_run', true);
 
         Http::fake([
-            'sigcenter.ddns.net:18093/*' => Http::response([
+            'cive.ddns.net:8085/*' => Http::response([
                 'code' => '200',
                 'msg' => 'CANCELACION CON EXITO',
                 'cancelado' => 'Su cita ha sido cancelada',
@@ -1978,7 +1980,7 @@ class WhatsappWebhookControllerTest extends TestCase
         config()->set('whatsapp.migration.automation.dry_run', true);
 
         Http::fake([
-            'sigcenter.ddns.net:18093/*' => function (\Illuminate\Http\Client\Request $request) {
+            'cive.ddns.net:8085/*' => function (\Illuminate\Http\Client\Request $request) {
                 if ($request->method() === 'POST') {
                     return Http::response([], 405);
                 }
@@ -2068,7 +2070,7 @@ class WhatsappWebhookControllerTest extends TestCase
         ]);
 
         Http::assertSent(function (\Illuminate\Http\Client\Request $request): bool {
-            return $request->url() === 'https://sigcenter.ddns.net:18093/restful/api-agenda/cancelar-cita'
+            return $request->url() === 'https://cive.ddns.net:8085/restful/api-agenda/cancelar-cita'
                 && $request->method() === 'GET'
                 && ($request['agenda_id'] ?? null) === 'AG-1000';
         });
