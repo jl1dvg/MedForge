@@ -175,12 +175,13 @@ export function ProtocolModal({ row, endpoints, onClose, onRevisar, onPrintToggl
             </ProtoBlock>
 
             {/* Tiempos */}
-            <ProtoBlock icon="mdi-clock-outline" title="Tiempos quirúrgicos">
+            <ProtoBlock icon="mdi-clock-outline" title="Tiempos y anestesia">
               <dl className="kv-rows">
                 <dt>Fecha</dt><dd>{data.fecha_inicio || '—'}</dd>
                 <dt>Hora inicio</dt><dd>{data.hora_inicio || '—'}</dd>
                 <dt>Hora fin</dt><dd>{data.hora_fin || '—'}</dd>
                 <dt>Duración</dt><dd>{data.duracion || '—'}</dd>
+                <dt>Anestesia</dt><dd>{data.tipo_anestesia || data.anestesia || '—'}</dd>
               </dl>
             </ProtoBlock>
 
@@ -200,21 +201,50 @@ export function ProtocolModal({ row, endpoints, onClose, onRevisar, onPrintToggl
             </ProtoBlock>
 
             {/* Acto operatorio */}
-            <ProtoBlock icon="mdi-scalpel" title="Acto operatorio" full>
+            <ProtoBlock icon="mdi-scalpel" title="Procedimiento realizado" full>
               <dl className="kv-rows" style={{ marginBottom: 10 }}>
-                <dt>Diéresis</dt><dd style={{ fontWeight: 400 }}>{data.dieresis || '—'}</dd>
-                <dt>Exposición</dt><dd style={{ fontWeight: 400 }}>{data.exposicion || '—'}</dd>
-                <dt>Hallazgo</dt><dd style={{ fontWeight: 400 }}>{data.hallazgo || '—'}</dd>
+                <dt>Proyectado</dt><dd>{data.procedimiento_proyectado || '—'}</dd>
+                <dt>Realizado</dt><dd>{data.membrete || '—'}</dd>
               </dl>
               <div style={{ marginBottom: 8 }}>
                 <div className="section-title" style={{ margin: '0 0 5px' }}>Descripción operatoria <span className="ln" /></div>
                 <TextOrEmpty value={data.operatorio} placeholder="Sin descripción operatoria" />
               </div>
-              {data.comentario && (
-                <dl className="kv-rows">
-                  <dt>Complicaciones</dt><dd style={{ fontWeight: 400 }}>{data.comentario}</dd>
-                </dl>
-              )}
+              <dl className="kv-rows">
+                <dt>Hallazgo</dt><dd style={{ fontWeight: 400 }}>{data.hallazgo || '—'}</dd>
+                <dt>Complicaciones</dt><dd style={{ fontWeight: 400 }}>{data.complicaciones_operatorio || '—'}</dd>
+              </dl>
+            </ProtoBlock>
+
+            {/* Insumos */}
+            {(() => {
+              const insumos = data.insumos
+                ? [...(data.insumos.equipos || []), ...(data.insumos.quirurgicos || []), ...(data.insumos.anestesia || [])]
+                : (Array.isArray(data.insumos_list) ? data.insumos_list : []);
+              return (
+                <ProtoBlock icon="mdi-package-variant-closed" title={`Insumos (${insumos.length})`}>
+                  <table className="mini-table">
+                    <tbody>
+                      {insumos.length === 0 && <tr><td className="proto-empty">Sin insumos registrados</td></tr>}
+                      {insumos.map((it, i) => (
+                        <tr key={i}><td>{it.nombre || it.name}</td><td style={{ textAlign: 'right', color: 'var(--fg-mute)' }}>×{it.cantidad || it.qty || 1}</td></tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </ProtoBlock>
+              );
+            })()}
+
+            {/* Medicamentos */}
+            <ProtoBlock icon="mdi-pill" title={`Medicamentos (${(data.medicamentos || []).length})`}>
+              <table className="mini-table">
+                <tbody>
+                  {(!data.medicamentos || data.medicamentos.length === 0) && <tr><td className="proto-empty">Sin medicamentos</td></tr>}
+                  {(data.medicamentos || []).map((m, i) => (
+                    <tr key={i}><td>{m.nombre || m.name}</td><td style={{ textAlign: 'right', color: 'var(--fg-mute)' }}>{m.via}</td></tr>
+                  ))}
+                </tbody>
+              </table>
             </ProtoBlock>
           </div>
         </>

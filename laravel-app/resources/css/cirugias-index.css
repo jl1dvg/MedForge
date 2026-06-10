@@ -136,7 +136,7 @@ table.cirtab tbody tr.row-alert:hover { background: linear-gradient(90deg, #fbe7
 .badge-line    { background: var(--bg); border: 1px solid var(--border); color: var(--fg-3); }
 .afil-badge { font-weight: 600; }
 
-.proc-chip { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; color: var(--fg-1); white-space: nowrap; max-width: 200px; }
+.proc-chip { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; color: var(--fg-1); }
 .proc-chip .ic { width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center; font-size: 15px; background: var(--cir-bg); color: var(--cir-fg); flex: none; }
 .proc-chip .code { font-family: var(--font-mono); font-size: 11px; color: var(--fg-mute); }
 .lat-tag { display: inline-grid; place-items: center; min-width: 30px; height: 22px; padding: 0 7px; border-radius: 6px; font-size: 11px; font-weight: 700; background: var(--bg-softer); color: var(--fg-2); font-family: var(--font-mono); }
