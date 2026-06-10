@@ -1101,7 +1101,7 @@ class CirugiaService
                 'INSERT INTO protocolo_auditoria
                     (protocolo_id, form_id, hc_number, evento, status, version, usuario_id, creado_en, actualizado_en)
                  VALUES
-                    (:protocolo_id, :form_id, :hc_number, :evento, :status, :version, :usuario_id, NOW(), NULL)
+                    (:protocolo_id, :form_id, :hc_number, :evento, :status, :version, :usuario_id, NOW(), NOW())
                  ON DUPLICATE KEY UPDATE
                     evento        = VALUES(evento),
                     actualizado_en = NOW()'

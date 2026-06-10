@@ -26,6 +26,9 @@ return new class extends Migration
 
             $table->unique(['protocolo_id', 'usuario_id'], 'protocolo_auditoria_protocolo_usuario_unique');
         });
+
+        // Rellenar actualizado_en en registros existentes que quedaron NULL
+        DB::statement('UPDATE protocolo_auditoria SET actualizado_en = creado_en WHERE actualizado_en IS NULL');
     }
 
     public function down(): void
