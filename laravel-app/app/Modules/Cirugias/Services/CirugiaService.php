@@ -1131,20 +1131,23 @@ class CirugiaService
                 return;
             }
 
-            $stmt = $this->db->prepare(
-                'INSERT INTO protocolo_huellas
-                    (protocolo_id, usuario_id, evento, creado_en, actualizado_en)
-                 VALUES
-                    (:protocolo_id, :usuario_id, :evento, NOW(), NOW())
-                 ON DUPLICATE KEY UPDATE
-                    evento        = VALUES(evento),
-                    actualizado_en = NOW()'
-            );
-            $stmt->execute([
-                ':protocolo_id' => $protocoloId > 0 ? $protocoloId : null,
-                ':usuario_id'   => $userId,
-                ':evento'       => $evento,
-            ]);
+            $pid = $protocoloId > 0 ? $protocoloId : null;
+            $now = now();
+
+            $updated = \Illuminate\Support\Facades\DB::table('protocolo_huellas')
+                ->where('protocolo_id', $pid)
+                ->where('usuario_id', $userId)
+                ->update(['evento' => $evento, 'actualizado_en' => $now]);
+
+            if ($updated === 0) {
+                \Illuminate\Support\Facades\DB::table('protocolo_huellas')->insert([
+                    'protocolo_id'   => $pid,
+                    'usuario_id'     => $userId,
+                    'evento'         => $evento,
+                    'creado_en'      => $now,
+                    'actualizado_en' => $now,
+                ]);
+            }
         } catch (\Throwable $exception) {
             error_log('No se pudo registrar huella de protocolo: ' . $exception->getMessage());
         }
