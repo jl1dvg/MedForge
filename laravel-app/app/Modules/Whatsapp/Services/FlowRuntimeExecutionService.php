@@ -6,6 +6,7 @@ use App\Modules\Shared\Support\SettingsOptionResolver;
 use App\Modules\CRM\Services\CrmContactResolverService;
 use App\Modules\CRM\Services\CrmOpportunityService;
 use App\Models\WhatsappAutoresponderSession;
+use App\Models\WhatsappContactConsent;
 use App\Models\WhatsappConversation;
 use App\Models\WhatsappConversationAttribution;
 use App\Models\WhatsappHandoff;
@@ -1009,7 +1010,9 @@ class FlowRuntimeExecutionService
             }
 
             if ($type === 'store_consent') {
-                $context['consent'] = (bool)($action['value'] ?? true);
+                $consentValue = (bool)($action['value'] ?? true);
+                $context['consent'] = $consentValue;
+                $this->persistContactConsent($conversation, $context, $consentValue);
                 continue;
             }
 
@@ -2341,6 +2344,28 @@ class FlowRuntimeExecutionService
         }
 
         return $this->settingsResolver->getOptions($keys);
+    }
+
+    private function persistContactConsent(WhatsappConversation $conversation, array $context, bool $accepted): void
+    {
+        $cedula = trim((string)($context['cedula'] ?? $context['identifier'] ?? ''));
+        if ($cedula === '' || !Schema::hasTable('whatsapp_contact_consent')) {
+            return;
+        }
+
+        $waNumber = (string)$conversation->wa_number;
+        $status = $accepted ? 'accepted' : 'declined';
+
+        WhatsappContactConsent::updateOrCreate(
+            ['wa_number' => $waNumber, 'cedula' => $cedula],
+            [
+                'patient_hc_number'   => $context['patient_hc_number'] ?? $conversation->patient_hc_number ?? null,
+                'patient_full_name'   => $context['patient_full_name'] ?? null,
+                'consent_status'      => $status,
+                'consent_source'      => 'whatsapp',
+                'consent_responded_at' => now(),
+            ]
+        );
     }
 
     /**
