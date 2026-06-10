@@ -197,6 +197,14 @@ class CirugiasReadController
         ]);
     }
 
+    private function buildDoctorName(?string $firstName, ?string $lastName): string
+    {
+        $first = trim((string) ($firstName ?? ''));
+        $last  = trim((string) ($lastName ?? ''));
+        if ($first === '' && $last === '') return '';
+        return 'Dr. ' . implode(' ', array_filter([$first, $last]));
+    }
+
     /**
      * @param array<string, mixed> $row
      * @return array<string, mixed>
@@ -302,6 +310,9 @@ class CirugiasReadController
             'printed' => $printed,
             'alertas_count' => $alertasCount,
             'audit_status' => $auditStatus,
+            'cirujano_display' => $this->buildDoctorName($row['cirujano_first_name'] ?? null, $row['cirujano_last_name'] ?? null),
+            'revisado_por' => $this->buildDoctorName($row['firmado_first_name'] ?? null, $row['firmado_last_name'] ?? null),
+            'revisado_fecha' => $esc((string) ($row['fecha_firma'] ?? '')),
         ];
     }
 }

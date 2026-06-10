@@ -136,11 +136,13 @@ export function ProtocolModal({ row, endpoints, onClose, onRevisar, onPrintToggl
           {/* Tira de paciente */}
           <div className="pt-strip">
             <div className="pt-item"><span className="k">Paciente</span><span className="v">{row.full_name}</span></div>
-            <div className="pt-item"><span className="k">Cédula / HC</span><span className="v mono">{row.cedula || row.hc_number} · {row.hc_number}</span></div>
+            <div className="pt-item"><span className="k">HC</span><span className="v mono">{row.hc_number}</span></div>
             {row.edad != null && <div className="pt-item"><span className="k">Edad</span><span className="v">{row.edad} años</span></div>}
             <div className="pt-item"><span className="k">Afiliación</span><span className="v">{afil ? afil.label : (row.afiliacion_label || row.afiliacion)}</span></div>
             {row.sede && <div className="pt-item"><span className="k">Sede</span><span className="v">{row.sede}</span></div>}
             <div className="pt-item"><span className="k">Protocolo</span><span className="v mono">{row.form_id}</span></div>
+            {row.cirujano_display && <div className="pt-item"><span className="k">Cirujano</span><span className="v">{row.cirujano_display}</span></div>}
+            {row.revisado_por && <div className="pt-item"><span className="k">Revisado por</span><span className="v">{row.revisado_por}{row.revisado_fecha ? <><br /><span style={{fontWeight:400,fontSize:11,color:'var(--fg-mute)'}}>{row.revisado_fecha}</span></> : ''}</span></div>}
           </div>
 
           <div className="proto-grid">

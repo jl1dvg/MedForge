@@ -258,6 +258,10 @@ class CirugiaService
                 ON p.hc_number = pr.hc_number
             LEFT JOIN procedimiento_proyectado pp
                 ON pp.form_id = pr.form_id AND pp.hc_number = pr.hc_number
+            LEFT JOIN users u_cir
+                ON u_cir.nombre_norm = pr.cirujano_1 OR u_cir.nombre_norm_rev = pr.cirujano_1
+            LEFT JOIN users u_firmado
+                ON u_firmado.id = pr.protocolo_firmado_por
             {$categoriaContext['join']}";
 
         $buildWhere = function (bool $includeSearch, array &$params) use (
@@ -357,6 +361,11 @@ class CirugiaService
                 COALESCE(NULLIF(TRIM(pr.lateralidad), ''), '') AS lateralidad,
                 pr.printed,
                 pr.status,
+                u_cir.first_name    AS cirujano_first_name,
+                u_cir.last_name     AS cirujano_last_name,
+                u_firmado.first_name AS firmado_first_name,
+                u_firmado.last_name  AS firmado_last_name,
+                pr.fecha_firma,
                 (
                     CASE WHEN COALESCE(NULLIF(TRIM(pr.cirujano_1), ''), '') = '' THEN 1 ELSE 0 END
                     + CASE WHEN COALESCE(NULLIF(TRIM(pr.lateralidad), ''), '') = '' THEN 1 ELSE 0 END
