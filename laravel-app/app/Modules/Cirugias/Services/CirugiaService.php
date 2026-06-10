@@ -1086,39 +1086,44 @@ class CirugiaService
         string $formId,
         string $hcNumber,
         int $status,
-        int $userId
+        int $userId,
+        string $evento = 'guardado'
     ): void {
         try {
             if (!$this->tableExists('protocolo_auditoria')) {
                 return;
             }
 
+            // Un registro por (protocolo_id, usuario_id).
+            // Primera vez → INSERT con creado_en = NOW().
+            // Ediciones posteriores del mismo usuario → solo actualiza evento y actualizado_en.
+            $auditStmt = $this->db->prepare(
+                'INSERT INTO protocolo_auditoria
+                    (protocolo_id, form_id, hc_number, evento, status, version, usuario_id, creado_en, actualizado_en)
+                 VALUES
+                    (:protocolo_id, :form_id, :hc_number, :evento, :status, :version, :usuario_id, NOW(), NULL)
+                 ON DUPLICATE KEY UPDATE
+                    evento        = VALUES(evento),
+                    actualizado_en = NOW()'
+            );
+
             $version = 0;
             if ($this->columnExists('protocolo_data', 'version')) {
                 $versionStmt = $this->db->prepare(
                     'SELECT version FROM protocolo_data WHERE form_id = :form_id AND hc_number = :hc_number LIMIT 1'
                 );
-                $versionStmt->execute([
-                    ':form_id' => $formId,
-                    ':hc_number' => $hcNumber,
-                ]);
+                $versionStmt->execute([':form_id' => $formId, ':hc_number' => $hcNumber]);
                 $version = (int)($versionStmt->fetchColumn() ?: 0);
             }
 
-            $auditStmt = $this->db->prepare(
-                'INSERT INTO protocolo_auditoria
-                    (protocolo_id, form_id, hc_number, evento, status, version, usuario_id, creado_en)
-                 VALUES
-                    (:protocolo_id, :form_id, :hc_number, :evento, :status, :version, :usuario_id, NOW())'
-            );
             $auditStmt->execute([
                 ':protocolo_id' => $protocoloId > 0 ? $protocoloId : null,
-                ':form_id' => $formId,
-                ':hc_number' => $hcNumber,
-                ':evento' => 'guardado',
-                ':status' => $status,
-                ':version' => $version,
-                ':usuario_id' => $userId,
+                ':form_id'      => $formId,
+                ':hc_number'    => $hcNumber,
+                ':evento'       => $evento,
+                ':status'       => $status,
+                ':version'      => $version,
+                ':usuario_id'   => $userId,
             ]);
         } catch (\Throwable $exception) {
             error_log('No se pudo registrar auditoría de guardado de protocolo: ' . $exception->getMessage());
@@ -1199,23 +1204,16 @@ class CirugiaService
             $updateStmt = $this->db->prepare($updateSql);
             $ok = $updateStmt->execute($updateParams);
 
-            if ($ok) {
+            if ($ok && $userId) {
                 $evento = $status === 1 ? 'revisado' : 'pendiente';
-                $auditStmt = $this->db->prepare(
-                    'INSERT INTO protocolo_auditoria
-                        (protocolo_id, form_id, hc_number, evento, status, version, usuario_id, creado_en)
-                     VALUES
-                        (:protocolo_id, :form_id, :hc_number, :evento, :status, :version, :usuario_id, NOW())'
+                $this->registrarAuditoriaGuardado(
+                    $protocoloId,
+                    $formId,
+                    $hcNumber,
+                    $status,
+                    $userId,
+                    $evento
                 );
-                $auditStmt->execute([
-                    ':protocolo_id' => $protocoloId ?: null,
-                    ':form_id' => $formId,
-                    ':hc_number' => $hcNumber,
-                    ':evento' => $evento,
-                    ':status' => $status,
-                    ':version' => $newVersion,
-                    ':usuario_id' => $userId,
-                ]);
             }
 
             $this->db->commit();

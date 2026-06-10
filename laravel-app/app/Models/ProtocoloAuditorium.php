@@ -21,6 +21,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property int $version
  * @property int|null $usuario_id
  * @property Carbon $creado_en
+ * @property Carbon|null $actualizado_en
  *
  * @package App\Models
  */
@@ -30,11 +31,12 @@ class ProtocoloAuditorium extends Model
 	public $timestamps = false;
 
 	protected $casts = [
-		'protocolo_id' => 'int',
-		'status' => 'int',
-		'version' => 'int',
-		'usuario_id' => 'int',
-		'creado_en' => 'datetime'
+		'protocolo_id'   => 'int',
+		'status'         => 'int',
+		'version'        => 'int',
+		'usuario_id'     => 'int',
+		'creado_en'      => 'datetime',
+		'actualizado_en' => 'datetime',
 	];
 
 	protected $fillable = [
@@ -45,6 +47,7 @@ class ProtocoloAuditorium extends Model
 		'status',
 		'version',
 		'usuario_id',
-		'creado_en'
+		'creado_en',
+		'actualizado_en',
 	];
 }
