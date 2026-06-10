@@ -47,7 +47,7 @@ class AutomatedConversationDispatchService
                 'conversation_id' => $conversation->id,
                 'wa_message_id' => $transportResult['wa_message_id'],
                 'direction' => 'outbound',
-                'sender_type' => 'bot',
+                'sender_type' => 'system',
                 'message_type' => 'text',
                 'body' => $message,
                 'raw_payload' => $transportResult['raw'],
