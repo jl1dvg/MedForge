@@ -15,7 +15,7 @@ button { font-family: inherit; }
 .app-shell { display: block; }
 
 /* ---- Page container -------------------------------------------- */
-.page { max-width: 1340px; margin: 0 auto; padding: 22px 26px 80px; width: 100%; }
+.page { max-width: 1600px; margin: 0 auto; padding: 22px 26px 80px; width: 100%; }
 .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 18px; flex-wrap: wrap; }
 .page-head h2 { font-size: 22px; font-weight: 600; margin: 0 0 3px; letter-spacing: -.01em; }
 .page-head .sub { font-size: 13.5px; color: var(--fg-mute); }

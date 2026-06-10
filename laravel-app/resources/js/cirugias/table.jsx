@@ -56,7 +56,7 @@ function Row({ row, tab, num, selected, onToggle, onVerProtocolo, onRevisar, onP
       <td className="cell-paciente">
         {row.full_name}
         <div className="ced">
-          CC {row.cedula || row.hc_number} · HC {row.hc_number}{row.edad != null ? ` · ${row.edad}a` : ''}
+          HC {row.hc_number}{row.edad != null ? ` · ${row.edad}a` : ''}
         </div>
       </td>
       <td><ProcChip row={row} /></td>
