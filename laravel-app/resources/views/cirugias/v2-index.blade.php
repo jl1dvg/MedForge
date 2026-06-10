@@ -31,22 +31,6 @@
 @endphp
 
 @section('content')
-    <div class="content-header">
-        <div class="d-flex align-items-center">
-            <div class="me-auto">
-                <h3 class="page-title">Reporte de Cirugías</h3>
-                <div class="d-inline-block align-items-center">
-                    <nav>
-                        <ol class="breadcrumb">
-                            <li class="breadcrumb-item"><a href="/v2/dashboard"><i class="mdi mdi-home-outline"></i></a></li>
-                            <li class="breadcrumb-item active" aria-current="page">Reporte de Cirugías</li>
-                        </ol>
-                    </nav>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <section class="content">
         @if (\App\Modules\Shared\Support\MedforgeAssets::hasViteBuild())
             <div
@@ -138,6 +122,17 @@
 
 @push('scripts')
     @if (\App\Modules\Shared\Support\MedforgeAssets::hasViteBuild())
+        <script>
+            // Suppress welcome tour on this page — it creates a static backdrop that freezes interactions
+            try { localStorage.setItem('medforge_menu_tour_v2', '1'); } catch(e) {}
+            // Remove any stray Bootstrap modal backdrop immediately
+            document.addEventListener('DOMContentLoaded', function() {
+                document.querySelectorAll('.modal-backdrop').forEach(function(el) { el.remove(); });
+                document.body.classList.remove('modal-open');
+                document.body.style.removeProperty('overflow');
+                document.body.style.removeProperty('padding-right');
+            });
+        </script>
         @vite('resources/js/cirugias/main.jsx')
     @else
         <script>
