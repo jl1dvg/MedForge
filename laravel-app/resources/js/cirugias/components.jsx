@@ -49,6 +49,7 @@ export function ProcChip({ row }) {
       <span className="ic"><i className="mdi mdi-hospital-box-outline" /></span>
       <span>
         {row.membrete || '—'}
+        <br />
         <span className="code">{row.form_id}{row.cirujano_display ? ` · ${row.cirujano_display}` : ''}</span>
       </span>
     </span>
