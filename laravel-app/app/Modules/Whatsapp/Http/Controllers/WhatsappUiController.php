@@ -241,6 +241,11 @@ class WhatsappUiController
         return $this->dashboard($request, 'whatsapp.v3-dashboard');
     }
 
+    public function reporteEjecutivo(Request $request): View
+    {
+        return view('whatsapp.reporte-ejecutivo');
+    }
+
     public function dashboardV3Live(Request $request): \Illuminate\Http\JsonResponse
     {
         $slaMeta = (int) ($request->query('sla_target_minutes', 15));
