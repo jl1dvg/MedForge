@@ -141,7 +141,7 @@ export function ProtocolModal({ row, endpoints, onClose, onRevisar, onPrintToggl
             <div className="pt-item"><span className="k">Afiliación</span><span className="v">{afil ? afil.label : (row.afiliacion_label || row.afiliacion)}</span></div>
             {row.sede && <div className="pt-item"><span className="k">Sede</span><span className="v">{row.sede}</span></div>}
             <div className="pt-item"><span className="k">Protocolo</span><span className="v mono">{row.form_id}</span></div>
-            {row.cirujano_display && <div className="pt-item"><span className="k">Cirujano</span><span className="v">{row.cirujano_display}</span></div>}
+            {row.huella_display && <div className="pt-item"><span className="k">Últ. edición</span><span className="v">{row.huella_display}{row.huella_evento ? <><br /><span style={{fontWeight:400,fontSize:11,color:'var(--fg-mute)'}}>{row.huella_evento}</span></> : ''}</span></div>}
             {row.revisado_por && <div className="pt-item"><span className="k">Revisado por</span><span className="v">{row.revisado_por}{row.revisado_fecha ? <><br /><span style={{fontWeight:400,fontSize:11,color:'var(--fg-mute)'}}>{row.revisado_fecha}</span></> : ''}</span></div>}
           </div>
 

@@ -313,6 +313,9 @@ class CirugiasReadController
             'cirujano_display' => $this->buildDoctorName($row['cirujano_first_name'] ?? null, $row['cirujano_last_name'] ?? null),
             'revisado_por' => $this->buildDoctorName($row['firmado_first_name'] ?? null, $row['firmado_last_name'] ?? null),
             'revisado_fecha' => $esc((string) ($row['fecha_firma'] ?? '')),
+            'huella_display' => $this->buildDoctorName($row['huella_first_name'] ?? null, $row['huella_last_name'] ?? null),
+            'huella_evento' => $esc((string) ($row['huella_evento'] ?? '')),
+            'huella_fecha' => $esc((string) ($row['huella_fecha'] ?? '')),
         ];
     }
 }

@@ -262,6 +262,15 @@ class CirugiaService
                 ON u_cir.nombre_norm = pr.cirujano_1 OR u_cir.nombre_norm_rev = pr.cirujano_1
             LEFT JOIN users u_firmado
                 ON u_firmado.id = pr.protocolo_firmado_por
+            LEFT JOIN protocolo_huellas ph_last
+                ON ph_last.id = (
+                    SELECT ph2.id FROM protocolo_huellas ph2
+                    WHERE ph2.protocolo_id = pr.id
+                    ORDER BY ph2.actualizado_en DESC, ph2.id DESC
+                    LIMIT 1
+                )
+            LEFT JOIN users u_huella
+                ON u_huella.id = ph_last.usuario_id
             {$categoriaContext['join']}";
 
         $buildWhere = function (bool $includeSearch, array &$params) use (
@@ -366,6 +375,10 @@ class CirugiaService
                 u_firmado.first_name AS firmado_first_name,
                 u_firmado.last_name  AS firmado_last_name,
                 pr.fecha_firma,
+                u_huella.first_name  AS huella_first_name,
+                u_huella.last_name   AS huella_last_name,
+                ph_last.evento       AS huella_evento,
+                ph_last.actualizado_en AS huella_fecha,
                 (
                     CASE WHEN COALESCE(NULLIF(TRIM(pr.cirujano_1), ''), '') = '' THEN 1 ELSE 0 END
                     + CASE WHEN COALESCE(NULLIF(TRIM(pr.lateralidad), ''), '') = '' THEN 1 ELSE 0 END
