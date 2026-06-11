@@ -215,8 +215,9 @@ class MedforgeNavigation
         // ── Consulta ────────────────────────────────────────────────────────────
         $consulta = $group('Consulta', 'mdi mdi-stethoscope', array_filter([
             $canAccessAgenda
-                ? $link('Agenda', '/v2/agenda', 'mdi mdi-calendar-clock-outline', [
-                'prefix' => ['/v2/agenda'],
+                ? $link('Agenda', '/v2/agenda/v3?view=agenda', 'mdi mdi-calendar-month-outline', [
+                'exact' => ['/v2/agenda/v3'],
+                'query' => ['view' => 'agenda'],
             ])
                 : null,
             $canAccessAgenda
@@ -236,8 +237,21 @@ class MedforgeNavigation
             ])
                 : null,
             $canAccessPacientesFlujo
-                ? $link('Flujo de Pacientes', '/v2/pacientes/flujo', 'mdi mdi-transit-connection-variant', [
-                'prefix' => ['/v2/pacientes/flujo'],
+                ? $link('Flujo de Pacientes', '/v2/agenda/v3?view=flowboard', 'mdi mdi-monitor-dashboard', [
+                'exact' => ['/v2/agenda/v3'],
+                'query' => ['view' => 'flowboard'],
+            ])
+                : null,
+            $canAccessAgenda
+                ? $link('Mi agenda (médico)', '/v2/agenda/v3?view=miagenda', 'mdi mdi-calendar-account-outline', [
+                'exact' => ['/v2/agenda/v3'],
+                'query' => ['view' => 'miagenda'],
+            ])
+                : null,
+            $canAccessAgenda
+                ? $link('Configuración base', '/v2/agenda/v3?view=config', 'mdi mdi-cog-outline', [
+                'exact' => ['/v2/agenda/v3'],
+                'query' => ['view' => 'config'],
             ])
                 : null,
             $canAccessPatientVerification
@@ -489,8 +503,8 @@ class MedforgeNavigation
             ] : null,
             $canAccessAgenda ? [
                 'label' => 'Agenda',
-                'href' => '/v2/agenda',
-                'icon' => 'mdi mdi-calendar-clock-outline',
+                'href' => '/v2/agenda/v3?view=agenda',
+                'icon' => 'mdi mdi-calendar-month-outline',
             ] : null,
             $canAccessSolicitudes ? [
                 'label' => 'Solicitudes',

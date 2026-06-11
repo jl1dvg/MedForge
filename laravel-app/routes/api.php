@@ -5,11 +5,31 @@ use App\Modules\Consultas\Http\Controllers\ConsultasWriteController;
 use App\Modules\Cirugias\Http\Controllers\CirugiasWriteController;
 use App\Modules\Pacientes\Services\PacientesFlujoService;
 use App\Modules\Procedimientos\Http\Controllers\ProcedimientosReadController;
+use App\Modules\Agenda\Http\Controllers\AgendaV3Controller;
 use App\Modules\Solicitudes\Http\Controllers\SolicitudesWriteController;
 use App\Modules\Whatsapp\Http\Controllers\WebhookController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
+
+// Agenda V3 — rutas propias fuera del prefix v2
+Route::middleware([
+    'app.auth',
+    'app.permission:administrativo,agenda.view,pacientes.view,solicitudes.view,examenes.view',
+])->group(function (): void {
+    Route::get('/v3/agenda', [AgendaV3Controller::class, 'shell']);
+    Route::get('/v3/api/agenda/config',                [AgendaV3Controller::class, 'config']);
+    Route::get('/v3/api/agenda/citas',                 [AgendaV3Controller::class, 'listCitas']);
+    Route::post('/v3/api/agenda/citas',                [AgendaV3Controller::class, 'createCita']);
+    Route::put('/v3/api/agenda/citas/{id}',            [AgendaV3Controller::class, 'updateCita'])->whereNumber('id');
+    Route::post('/v3/api/agenda/citas/{id}/avanzar',   [AgendaV3Controller::class, 'avanzarCita'])->whereNumber('id');
+    Route::post('/v3/api/agenda/citas/{id}/consulta',  [AgendaV3Controller::class, 'finalizarConsulta'])->whereNumber('id');
+    Route::delete('/v3/api/agenda/citas/{id}',         [AgendaV3Controller::class, 'cancelarCita'])->whereNumber('id');
+    Route::get('/v3/api/agenda/bloqueos',              [AgendaV3Controller::class, 'listBloqueos']);
+    Route::post('/v3/api/agenda/bloqueos',             [AgendaV3Controller::class, 'createBloqueo']);
+    Route::delete('/v3/api/agenda/bloqueos/{id}',      [AgendaV3Controller::class, 'deleteBloqueo'])->whereNumber('id');
+    Route::post('/v3/api/agenda/sync',                 [AgendaV3Controller::class, 'forceSync']);
+});
 
 Route::prefix('v2')->group(function (): void {
     require __DIR__ . '/v2/health.php';
