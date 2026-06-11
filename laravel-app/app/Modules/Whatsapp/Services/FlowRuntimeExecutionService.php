@@ -299,6 +299,17 @@ class FlowRuntimeExecutionService
                 continue;
             }
 
+            $this->auditService->log(
+                eventType: 'bot_scenario_matched',
+                severity: 'info',
+                conversationId: (int) $conversation->id,
+                messageId: (int) $inboundMessage->id,
+                waNumber: (string) $conversation->wa_number,
+                summary: 'Fallback scenario matched: ' . ($scenario['id'] ?? 'unknown'),
+                scenarioId: (string) ($scenario['id'] ?? ''),
+                payload: ['scenario_id' => $scenario['id'] ?? null, 'is_fallback' => true, 'inbound_text' => mb_substr($text, 0, 200)],
+            );
+
             $run = $this->executeActions($scenario['actions'] ?? [], $context, $conversation, $inboundMessage, $text, (string)($scenario['id'] ?? 'fallback'));
             $context = $run['context'];
 
@@ -2177,16 +2188,20 @@ class FlowRuntimeExecutionService
         $waNumber = (string)$conversation->wa_number;
         $status = $accepted ? 'accepted' : 'declined';
 
-        WhatsappContactConsent::updateOrCreate(
-            ['wa_number' => $waNumber, 'cedula' => $cedula],
-            [
-                'patient_hc_number'   => $context['patient_hc_number'] ?? $conversation->patient_hc_number ?? null,
-                'patient_full_name'   => $context['patient_full_name'] ?? null,
-                'consent_status'      => $status,
-                'consent_source'      => 'whatsapp',
-                'consent_responded_at' => now(),
-            ]
-        );
+        try {
+            WhatsappContactConsent::updateOrCreate(
+                ['wa_number' => $waNumber, 'cedula' => $cedula],
+                [
+                    'patient_hc_number'   => $context['patient_hc_number'] ?? $conversation->patient_hc_number ?? null,
+                    'patient_full_name'   => $context['patient_full_name'] ?? null,
+                    'consent_status'      => $status,
+                    'consent_source'      => 'whatsapp',
+                    'consent_responded_at' => now(),
+                ]
+            );
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 
     /**

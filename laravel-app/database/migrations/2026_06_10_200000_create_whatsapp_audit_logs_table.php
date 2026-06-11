@@ -49,6 +49,7 @@ return new class extends Migration
             $table->index(['event_type', 'occurred_at'], 'idx_wa_audit_event_type');
             $table->index(['severity', 'occurred_at'], 'idx_wa_audit_severity');
             $table->index('occurred_at', 'idx_wa_audit_occurred_at');
+            $table->index('wa_number', 'idx_wa_audit_wa_number');
         });
     }
 
