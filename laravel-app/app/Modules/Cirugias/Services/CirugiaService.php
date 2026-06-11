@@ -1089,6 +1089,7 @@ class CirugiaService
                     (int)($data['status'] ?? 0),
                     $auditUserId
                 );
+                $this->registrarHuella($protocoloId, $auditUserId, 'guardado');
             }
 
             return ['success' => true, 'message' => 'Datos guardados correctamente', 'protocolo_id' => $protocoloId];
@@ -1102,7 +1103,8 @@ class CirugiaService
         string $formId,
         string $hcNumber,
         int $status,
-        int $userId
+        int $userId,
+        string $evento = 'guardado'
     ): void {
         try {
             if (!$this->tableExists('protocolo_auditoria')) {
@@ -1114,10 +1116,7 @@ class CirugiaService
                 $versionStmt = $this->db->prepare(
                     'SELECT version FROM protocolo_data WHERE form_id = :form_id AND hc_number = :hc_number LIMIT 1'
                 );
-                $versionStmt->execute([
-                    ':form_id' => $formId,
-                    ':hc_number' => $hcNumber,
-                ]);
+                $versionStmt->execute([':form_id' => $formId, ':hc_number' => $hcNumber]);
                 $version = (int)($versionStmt->fetchColumn() ?: 0);
             }
 
@@ -1129,15 +1128,44 @@ class CirugiaService
             );
             $auditStmt->execute([
                 ':protocolo_id' => $protocoloId > 0 ? $protocoloId : null,
-                ':form_id' => $formId,
-                ':hc_number' => $hcNumber,
-                ':evento' => 'guardado',
-                ':status' => $status,
-                ':version' => $version,
-                ':usuario_id' => $userId,
+                ':form_id'      => $formId,
+                ':hc_number'    => $hcNumber,
+                ':evento'       => $evento,
+                ':status'       => $status,
+                ':version'      => $version,
+                ':usuario_id'   => $userId,
             ]);
         } catch (\Throwable $exception) {
             error_log('No se pudo registrar auditoría de guardado de protocolo: ' . $exception->getMessage());
+        }
+    }
+
+    private function registrarHuella(int $protocoloId, int $userId, string $evento): void
+    {
+        try {
+            if (!$this->tableExists('protocolo_huellas')) {
+                return;
+            }
+
+            $pid = $protocoloId > 0 ? $protocoloId : null;
+            $now = now();
+
+            $updated = \Illuminate\Support\Facades\DB::table('protocolo_huellas')
+                ->where('protocolo_id', $pid)
+                ->where('usuario_id', $userId)
+                ->update(['evento' => $evento, 'actualizado_en' => $now]);
+
+            if ($updated === 0) {
+                \Illuminate\Support\Facades\DB::table('protocolo_huellas')->insert([
+                    'protocolo_id'   => $pid,
+                    'usuario_id'     => $userId,
+                    'evento'         => $evento,
+                    'creado_en'      => $now,
+                    'actualizado_en' => $now,
+                ]);
+            }
+        } catch (\Throwable $exception) {
+            error_log('No se pudo registrar huella de protocolo: ' . $exception->getMessage());
         }
     }
 
@@ -1215,23 +1243,17 @@ class CirugiaService
             $updateStmt = $this->db->prepare($updateSql);
             $ok = $updateStmt->execute($updateParams);
 
-            if ($ok) {
+            if ($ok && $userId) {
                 $evento = $status === 1 ? 'revisado' : 'pendiente';
-                $auditStmt = $this->db->prepare(
-                    'INSERT INTO protocolo_auditoria
-                        (protocolo_id, form_id, hc_number, evento, status, version, usuario_id, creado_en)
-                     VALUES
-                        (:protocolo_id, :form_id, :hc_number, :evento, :status, :version, :usuario_id, NOW())'
+                $this->registrarAuditoriaGuardado(
+                    $protocoloId,
+                    $formId,
+                    $hcNumber,
+                    $status,
+                    $userId,
+                    $evento
                 );
-                $auditStmt->execute([
-                    ':protocolo_id' => $protocoloId ?: null,
-                    ':form_id' => $formId,
-                    ':hc_number' => $hcNumber,
-                    ':evento' => $evento,
-                    ':status' => $status,
-                    ':version' => $newVersion,
-                    ':usuario_id' => $userId,
-                ]);
+                $this->registrarHuella($protocoloId, $userId, $evento);
             }
 
             $this->db->commit();
@@ -1790,12 +1812,7 @@ class CirugiaService
             return $this->tableExistsCache[$table];
         }
 
-        $stmt = $this->db->prepare(
-            "SELECT COUNT(*) FROM information_schema.TABLES
-             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :table"
-        );
-        $stmt->execute([':table' => $table]);
-        $exists = (int)$stmt->fetchColumn() > 0;
+        $exists = \Illuminate\Support\Facades\Schema::hasTable($table);
         $this->tableExistsCache[$table] = $exists;
 
         return $exists;
@@ -1808,18 +1825,7 @@ class CirugiaService
             return $this->columnExistsCache[$cacheKey];
         }
 
-        $stmt = $this->db->prepare(
-            "SELECT COUNT(*)
-             FROM information_schema.COLUMNS
-             WHERE TABLE_SCHEMA = DATABASE()
-               AND TABLE_NAME = :table
-               AND COLUMN_NAME = :column"
-        );
-        $stmt->execute([
-            ':table' => $table,
-            ':column' => $column,
-        ]);
-        $exists = (int)$stmt->fetchColumn() > 0;
+        $exists = \Illuminate\Support\Facades\Schema::hasColumn($table, $column);
         $this->columnExistsCache[$cacheKey] = $exists;
 
         return $exists;
