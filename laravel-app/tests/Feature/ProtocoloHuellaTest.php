@@ -36,7 +36,6 @@ class ProtocoloHuellaTest extends TestCase
             $table->unique(['protocolo_id', 'usuario_id']);
         });
 
-        // protocolo_auditoria es verificada con tableExists() dentro del service
         Schema::create('protocolo_auditoria', function ($table) {
             $table->increments('id');
             $table->unsignedInteger('protocolo_id')->nullable();
@@ -49,6 +48,16 @@ class ProtocoloHuellaTest extends TestCase
             $table->dateTime('creado_en');
         });
 
+        Schema::create('protocolo_data', function ($table) {
+            $table->increments('id');
+            $table->string('form_id');
+            $table->string('hc_number');
+            $table->integer('status')->default(0);
+            $table->integer('version')->default(0);
+            $table->unsignedInteger('protocolo_firmado_por')->nullable();
+            $table->dateTime('fecha_firma')->nullable();
+        });
+
         $this->service = new CirugiaService(DB::connection()->getPdo());
     }
 
@@ -56,6 +65,7 @@ class ProtocoloHuellaTest extends TestCase
     {
         Schema::dropIfExists('protocolo_huellas');
         Schema::dropIfExists('protocolo_auditoria');
+        Schema::dropIfExists('protocolo_data');
         Schema::dropIfExists('users');
 
         parent::tearDown();
@@ -228,5 +238,43 @@ class ProtocoloHuellaTest extends TestCase
             DB::select('SELECT * FROM protocolo_huellas WHERE usuario_id = ?', [(int) $user->id]),
             'No debe registrarse huella con contraseña incorrecta.'
         );
+    }
+
+    // -------------------------------------------------------------------------
+    // Caso 6: actualizarStatus() (flujo administrativo) NO registra huella médica
+    // -------------------------------------------------------------------------
+
+    public function test_actualizar_status_no_registra_huella_medica(): void
+    {
+        $adminUser = $this->crearUsuario('aespinoza');
+
+        // Insertar protocolo en protocolo_data
+        DB::table('protocolo_data')->insert([
+            'form_id'   => 'FORM-ADM',
+            'hc_number' => 'HC-ADM',
+            'status'    => 0,
+            'version'   => 0,
+        ]);
+
+        // Simular que Admisión marca el protocolo como revisado (status=1)
+        $this->service->actualizarStatus('FORM-ADM', 'HC-ADM', 1, (int) $adminUser->id);
+
+        $huellas = DB::select(
+            'SELECT * FROM protocolo_huellas WHERE usuario_id = ?',
+            [(int) $adminUser->id]
+        );
+
+        $this->assertCount(
+            0,
+            $huellas,
+            'actualizarStatus() no debe registrar huella médica: usa usuario web, no credenciales de firma.'
+        );
+
+        // Sí debe registrar en protocolo_auditoria (log histórico)
+        $auditorias = DB::select(
+            'SELECT * FROM protocolo_auditoria WHERE usuario_id = ?',
+            [(int) $adminUser->id]
+        );
+        $this->assertCount(1, $auditorias, 'actualizarStatus() sí debe registrar en protocolo_auditoria.');
     }
 }

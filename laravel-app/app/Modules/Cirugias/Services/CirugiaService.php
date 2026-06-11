@@ -1108,7 +1108,7 @@ class CirugiaService
                 'INSERT INTO protocolo_auditoria
                     (protocolo_id, form_id, hc_number, evento, status, version, usuario_id, creado_en)
                  VALUES
-                    (:protocolo_id, :form_id, :hc_number, :evento, :status, :version, :usuario_id, NOW())'
+                    (:protocolo_id, :form_id, :hc_number, :evento, :status, :version, :usuario_id, :creado_en)'
             );
             $auditStmt->execute([
                 ':protocolo_id' => $protocoloId > 0 ? $protocoloId : null,
@@ -1118,6 +1118,7 @@ class CirugiaService
                 ':status'       => $status,
                 ':version'      => $version,
                 ':usuario_id'   => $userId,
+                ':creado_en'    => now()->toDateTimeString(),
             ]);
         } catch (\Throwable $exception) {
             error_log('No se pudo registrar auditoría de guardado de protocolo: ' . $exception->getMessage());
@@ -1203,15 +1204,16 @@ class CirugiaService
                 $updateSql = 'UPDATE protocolo_data
                     SET status = :status,
                         protocolo_firmado_por = :user_id,
-                        fecha_firma = COALESCE(fecha_firma, NOW()),
+                        fecha_firma = COALESCE(fecha_firma, :fecha_firma),
                         version = :version
                     WHERE form_id = :form_id AND hc_number = :hc_number';
                 $updateParams = [
-                    ':status' => $status,
-                    ':user_id' => $userId,
-                    ':version' => $newVersion,
-                    ':form_id' => $formId,
-                    ':hc_number' => $hcNumber,
+                    ':status'      => $status,
+                    ':user_id'     => $userId,
+                    ':fecha_firma' => now()->toDateTimeString(),
+                    ':version'     => $newVersion,
+                    ':form_id'     => $formId,
+                    ':hc_number'   => $hcNumber,
                 ];
             } else {
                 $updateSql = 'UPDATE protocolo_data
@@ -1237,7 +1239,8 @@ class CirugiaService
                     $userId,
                     $evento
                 );
-                $this->registrarHuella($protocoloId, $userId, $evento);
+                // registrarHuella() NO se llama aquí: actualizarStatus() usa el
+                // usuario web autenticado (Admisión), no credenciales de firma médica.
             }
 
             $this->db->commit();
