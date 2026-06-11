@@ -61,6 +61,9 @@ return [
             'agent_role_id' => (int) env('WHATSAPP_LARAVEL_REMINDER_AGENT_ROLE_ID', 4),
         ],
     ],
+    'audit' => [
+        'enabled' => (bool) env('WHATSAPP_AUDIT_ENABLED', false),
+    ],
     'transport' => [
         'graph_base_url' => env('WHATSAPP_GRAPH_BASE_URL', 'https://graph.facebook.com'),
         'timeout' => (int) env('WHATSAPP_GRAPH_TIMEOUT', 15),
