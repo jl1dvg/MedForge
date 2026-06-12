@@ -503,7 +503,7 @@ function StepProcedimiento({ form, set, setForm, showToast, scraped, setScraped,
   return (
     <div className="wiz-stepframe">
       <h3>Procedimientos, diagnósticos y lateralidad</h3>
-      <div className="step-sub">Define qué se operó y por qué. La auditoría compara estos diagnósticos con los de la derivación.</div>
+      <div className="step-sub">Define qué se operó y los diagnósticos. Pre-operatorios: lo registrado en la derivación. Post-operatorios: lo confirmado en el acto quirúrgico.</div>
 
       <div className="fieldset lat-block">
         <legend>Lateralidad</legend>
@@ -540,7 +540,7 @@ function StepProcedimiento({ form, set, setForm, showToast, scraped, setScraped,
 
       <div className="scrape-block" style={{ marginTop: 18 }}>
         <div className="sb-head">
-          <i className="mdi mdi-radar" /> Diagnósticos de la derivación
+          <i className="mdi mdi-radar" /> Diagnósticos Pre-Operatorios
           {previoCount > 0 && (
             <span className={`badge ${previoOver ? 'badge-danger' : 'badge-line'}`} style={{ marginLeft: 8 }}>
               {previoCount} / 3{previoOver ? ' — excede el máximo' : ''}
@@ -548,7 +548,7 @@ function StepProcedimiento({ form, set, setForm, showToast, scraped, setScraped,
           )}
         </div>
         <div className="hint" style={{ marginBottom: 8 }}>
-          Diagnósticos registrados en la admisión o extraídos del Log. Máximo 3 permitidos.
+          Diagnósticos pre-operatorios registrados en la admisión o extraídos del Log de Admisión. Máximo 3 permitidos.
         </div>
         <button className="btn btn-ghost btn-sm" onClick={doScrape} disabled={scraping}>
           {scraping
@@ -593,7 +593,7 @@ function StepProcedimiento({ form, set, setForm, showToast, scraped, setScraped,
 
       <div className="fieldset" style={{ marginTop: 18 }}>
         <legend>
-          Diagnósticos del protocolo (CIE-10)
+          Diagnósticos Post-Operatorios (CIE-10)
           <span style={{ marginLeft: 8, fontWeight: 400, fontSize: 11, color: 'var(--fg-mute)' }}>
             {(form.diagnosticos || []).length} registrado(s)
           </span>
@@ -603,7 +603,7 @@ function StepProcedimiento({ form, set, setForm, showToast, scraped, setScraped,
         </div>
         {(form.diagnosticos || []).length === 0 && (
           <div className="proto-empty" style={{ marginBottom: 10 }}>
-            Sin diagnósticos. Importa desde la derivación o agrégalos manualmente.
+            Sin diagnósticos post-operatorios. Importa desde los pre-operatorios o agrégalos manualmente.
           </div>
         )}
         {(form.diagnosticos || []).map((d, i) => (
@@ -932,11 +932,11 @@ function StepResumen({ form, audit, marcarRevisado, setMarcarRevisado }) {
           </div>
           <div className="resume-cols">
             <div>
-              <div style={{ marginBottom: 6, fontWeight: 600, fontSize: 13 }}>Diagnósticos del protocolo</div>
+              <div style={{ marginBottom: 6, fontWeight: 600, fontSize: 13 }}>Diagnósticos Post-Operatorios</div>
               <div className="chip-group">{dxReg.length ? dxReg.map((d, i) => <span className="chip" key={i}>{d}</span>) : <span className="proto-empty">—</span>}</div>
             </div>
             <div>
-              <div style={{ marginBottom: 6, fontWeight: 600, fontSize: 13 }}>De la derivación</div>
+              <div style={{ marginBottom: 6, fontWeight: 600, fontSize: 13 }}>Diagnósticos Pre-Operatorios</div>
               <div className="chip-group">{dxPrev.length ? dxPrev.map((d, i) => <span className="chip chip-primary" key={i}>{d}</span>) : <span className="proto-empty">—</span>}</div>
             </div>
           </div>
