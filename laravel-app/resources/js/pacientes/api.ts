@@ -51,7 +51,7 @@ function normalizePatient(raw: any, id: number): Patient {
       : raw.proxima_fecha;
     proximaCita = {
       fecha: fechaStr,
-      medico: raw.proxima_doctor || medicoRaw,
+      medico: raw.proxima_doctor || medico,
       tipo: raw.proxima_tipo || 'consulta',
     };
   }
