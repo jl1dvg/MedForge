@@ -405,20 +405,47 @@ export function ProtocolWizard({ form: initialForm, endpoints = {}, onClose, onS
 }
 
 // ---- Step 1: Paciente -------------------------------------------
-function StepPaciente({ form, set }) {
+function InfoField({ label, value, mono, wide }) {
+  return (
+    <div className="pt-item" style={wide ? { gridColumn: '1 / -1' } : {}}>
+      <span className="k">{label}</span>
+      <span className={`v${mono ? ' mono' : ''}`}>{value || <span style={{ color: 'var(--fg-mute)', fontWeight: 400 }}>—</span>}</span>
+    </div>
+  );
+}
+
+function StepPaciente({ form }) {
+  const nombre = [form.fname, form.mname, form.lname, form.lname2].filter(Boolean).join(' ') || form.full_name || '—';
+  const edad = form.edad ? `${form.edad} años` : '';
+  const fnac = form.fecha_nacimiento
+    ? new Date(form.fecha_nacimiento + 'T00:00:00').toLocaleDateString('es-EC', { day: '2-digit', month: 'long', year: 'numeric' })
+    : '';
+
   return (
     <div className="wiz-stepframe">
       <h3>Datos del paciente</h3>
-      <div className="step-sub">Identidad del paciente intervenido. La afiliación proviene de la admisión y no se edita aquí.</div>
-      <div className="form-grid-2">
-        <div className="form-row"><label>Primer nombre</label><input value={form.fname} onChange={(e) => set('fname', e.target.value)} /></div>
-        <div className="form-row"><label>Segundo nombre</label><input value={form.mname} onChange={(e) => set('mname', e.target.value)} /></div>
-        <div className="form-row"><label>Primer apellido</label><input value={form.lname} onChange={(e) => set('lname', e.target.value)} /></div>
-        <div className="form-row"><label>Segundo apellido</label><input value={form.lname2} onChange={(e) => set('lname2', e.target.value)} /></div>
-        <div className="form-row"><label>Fecha de nacimiento</label><input type="date" value={form.fecha_nacimiento} onChange={(e) => set('fecha_nacimiento', e.target.value)} /></div>
-        <div className="form-row"><label>Afiliación</label><input value={form.afiliacion} readOnly /></div>
-        <div className="form-row"><label>Cédula</label><input value={form.cedula} readOnly /></div>
-        <div className="form-row"><label>Historia clínica</label><input value={form.hc_number} readOnly /></div>
+      <div className="step-sub">Información de identidad del paciente. Para modificar datos demográficos usa el módulo de Pacientes.</div>
+
+      <div className="pac-card">
+        <div className="pac-avatar"><i className="mdi mdi-account-circle" /></div>
+        <div className="pac-name">
+          <span>{nombre}</span>
+          {edad && <span className="pac-age">{edad}</span>}
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px 22px', marginTop: 18 }}>
+        <InfoField label="Cédula / ID" value={form.cedula} mono />
+        <InfoField label="Historia clínica" value={form.hc_number} mono />
+        <InfoField label="Fecha de nacimiento" value={fnac} />
+        <InfoField label="Afiliación" value={form.afiliacion} />
+        <InfoField label="Sede" value={form.sede} />
+        <InfoField label="Quirófano" value={form.quirofano} />
+      </div>
+
+      <div className="pac-notice">
+        <i className="mdi mdi-information-outline" />
+        Los datos demográficos del paciente se administran en el módulo de Pacientes y no se modifican desde el protocolo quirúrgico.
       </div>
     </div>
   );

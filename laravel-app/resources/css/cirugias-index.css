@@ -357,6 +357,15 @@ table.cirtab tbody tr.row-alert:hover { background: linear-gradient(90deg, #fbe7
 .wiz-step .ws-flag.warn { color: #d59623; }
 .wiz-step .ws-flag.err { color: var(--danger); }
 
+/* Step 1 — patient info card */
+.pac-card { display: flex; align-items: center; gap: 14px; padding: 16px 18px; background: var(--primary-fade, #eef0fb); border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent); border-radius: 14px; }
+.pac-card .pac-avatar { font-size: 44px; color: var(--accent); line-height: 1; flex: none; }
+.pac-card .pac-name { display: flex; flex-direction: column; gap: 3px; }
+.pac-card .pac-name > span { font-size: 18px; font-weight: 700; color: var(--fg-1); letter-spacing: -.01em; }
+.pac-card .pac-age { font-size: 13px; font-weight: 500; color: var(--fg-mute); }
+.pac-notice { display: flex; align-items: flex-start; gap: 9px; margin-top: 22px; padding: 11px 14px; background: var(--bg-soft); border: 1px solid var(--border); border-radius: 10px; font-size: 12.5px; color: var(--fg-mute); line-height: 1.5; }
+.pac-notice .mdi { font-size: 16px; flex: none; margin-top: 1px; color: var(--accent); }
+
 .wiz-content { display: flex; flex-direction: column; min-height: 0; position: relative; }
 .wiz-stepframe { flex: 1; overflow-y: auto; padding: 26px 30px 0; }
 .wiz-foot { flex: none; display: flex; align-items: center; gap: 10px; padding: 13px 30px; background: var(--bg, #fff); border-top: 1px solid var(--border); }
