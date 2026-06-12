@@ -285,6 +285,25 @@ class ImagenesUiService
                ibp.motivo AS bandeja_motivo";
         }
 
+        $claimJoin = '';
+        $claimSelect = "NULL AS file_claim_id,
+               NULL AS file_claim_status,
+               NULL AS file_claim_requested_at";
+        if (Schema::hasTable('imagenes_file_claims')) {
+            $claimJoin = "LEFT JOIN (
+                    SELECT MAX(id) AS id, form_id, hc_number
+                    FROM imagenes_file_claims
+                    WHERE status = 'abierto'
+                    GROUP BY form_id, hc_number
+                ) ifcx
+                    ON TRIM(COALESCE(ifcx.form_id, '')) = TRIM(COALESCE(pp.form_id, ''))
+                    AND TRIM(COALESCE(ifcx.hc_number, '')) = TRIM(COALESCE(pp.hc_number, ''))
+                LEFT JOIN imagenes_file_claims ifc ON ifc.id = ifcx.id";
+            $claimSelect = "ifc.id AS file_claim_id,
+               ifc.status AS file_claim_status,
+               ifc.requested_at AS file_claim_requested_at";
+        }
+
         $facturacionSql = $this->buildImagenesFacturacionSql($includeFacturado);
 
         $sql = "SELECT
@@ -316,12 +335,14 @@ class ImagenesUiService
                 COALESCE(ii.informes_total, 0) AS informes_total,
                 {$nasSelect},
                 {$bandejaSelect},
+                {$claimSelect},
                 {$facturacionSql['select']}
             FROM procedimiento_proyectado pp
             LEFT JOIN patient_data pd ON pd.hc_number = pp.hc_number
             {$imagenInformeJoin}
             {$nasJoin}
             {$bandejaJoin}
+            {$claimJoin}
             {$categoriaContext['join']}
             {$facturacionSql['join']}
             WHERE pp.estado_agenda IS NOT NULL

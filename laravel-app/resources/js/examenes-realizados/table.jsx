@@ -94,7 +94,7 @@ export function BulkBar({ tab, count, selectedRows, onSendBandeja, onPrint, onCl
 }
 
 // ---- Table row -----------------------------------------------------
-function Row({ row, tab, today, selected, onToggle, onInformar, onVerImagenes, onMarcarUrgente, onQuitarBandeja, onPrint }) {
+function Row({ row, tab, today, selected, onToggle, onInformar, onVerImagenes, onMarcarUrgente, onQuitarBandeja, onPrint, onRevisarArchivos, isRechecking }) {
   const afil = AFILIACIONES.find((a) => a.value === row.afiliacion);
   const dl = row.fecha_limite ? deadlineInfo(row.fecha_limite, today) : null;
   const overdue = dl && dl.state === 'over';
@@ -167,8 +167,13 @@ function Row({ row, tab, today, selected, onToggle, onInformar, onVerImagenes, o
               </button>
             </>
           ) : tab === 'sin-nas' ? (
-            <button className="imr-btn imr-btn-ghost imr-btn-sm" title="Reclamar archivos al área técnica">
-              <i className="mdi mdi-folder-search-outline"></i> Reclamar
+            <button
+              className="imr-btn imr-btn-ghost imr-btn-sm"
+              title={row.file_claim_id ? `Revisar nuevamente el NAS · Reclamo #${row.file_claim_id} abierto` : 'Revisar nuevamente el NAS y reclamar si sigue vacío'}
+              disabled={isRechecking}
+              onClick={() => onRevisarArchivos(row)}>
+              <i className={`mdi ${isRechecking ? 'mdi-loading mdi-spin' : row.file_claim_id ? 'mdi-folder-alert-outline' : 'mdi-folder-search-outline'}`}></i>
+              {isRechecking ? 'Revisando' : row.file_claim_id ? `Revisar reclamo #${row.file_claim_id}` : 'Revisar / Reclamar'}
             </button>
           ) : tab === 'bandeja' ? (
             <>
@@ -257,7 +262,7 @@ function renderGrouped(rows, selectedIds, onToggle, handlers) {
     if (!groupMap[key]) { groupMap[key] = []; groups.push(key); }
     groupMap[key].push(r);
   });
-  const { today, tab, onInformar, onVerImagenes, onMarcarUrgente, onQuitarBandeja, onPrint } = handlers;
+  const { today, tab, onInformar, onVerImagenes, onMarcarUrgente, onQuitarBandeja, onPrint, onRevisarArchivos, recheckingIds } = handlers;
   const elements = [];
   groups.forEach((key) => {
     const groupRows = groupMap[key];
@@ -271,14 +276,15 @@ function renderGrouped(rows, selectedIds, onToggle, handlers) {
       <Row key={row.id} row={row} tab={tab} today={today}
         selected={selectedIds.has(row.id)} onToggle={() => onToggle(row.id)}
         onInformar={onInformar} onVerImagenes={onVerImagenes}
-        onMarcarUrgente={onMarcarUrgente} onQuitarBandeja={onQuitarBandeja} onPrint={onPrint} />
+        onMarcarUrgente={onMarcarUrgente} onQuitarBandeja={onQuitarBandeja} onPrint={onPrint}
+        onRevisarArchivos={onRevisarArchivos} isRechecking={recheckingIds?.has(row.id)} />
     ));
   });
   return elements;
 }
 
 // ---- Table ---------------------------------------------------------
-export function ExamTable({ rows, tab, today, selectedIds, onToggleAll, onToggle, onInformar, onVerImagenes, onMarcarUrgente, onQuitarBandeja, onPrint }) {
+export function ExamTable({ rows, tab, today, selectedIds, onToggleAll, onToggle, onInformar, onVerImagenes, onMarcarUrgente, onQuitarBandeja, onPrint, onRevisarArchivos, recheckingIds }) {
   const [sortKey, setSortKey] = useState(null);
   const [sortDir, setSortDir] = useState('asc');
 
@@ -337,7 +343,7 @@ export function ExamTable({ rows, tab, today, selectedIds, onToggleAll, onToggle
         </thead>
         <tbody>
           {tab === 'informados'
-            ? renderGrouped(sortedRows, selectedIds, onToggle, { onInformar, onVerImagenes, onMarcarUrgente, onQuitarBandeja, onPrint, today, tab })
+            ? renderGrouped(sortedRows, selectedIds, onToggle, { onInformar, onVerImagenes, onMarcarUrgente, onQuitarBandeja, onPrint, onRevisarArchivos, recheckingIds, today, tab })
             : sortedRows.map((row) => (
                 <Row key={row.id} row={row} tab={tab} today={today}
                   selected={selectedIds.has(row.id)}
@@ -347,6 +353,8 @@ export function ExamTable({ rows, tab, today, selectedIds, onToggleAll, onToggle
                   onMarcarUrgente={onMarcarUrgente}
                   onQuitarBandeja={onQuitarBandeja}
                   onPrint={onPrint}
+                  onRevisarArchivos={onRevisarArchivos}
+                  isRechecking={recheckingIds?.has(row.id)}
                 />
               ))
           }
