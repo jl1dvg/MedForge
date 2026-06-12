@@ -468,13 +468,20 @@ function StepProcedimiento({ form, set, setForm, showToast, scraped, setScraped,
       .then((r) => r.json())
       .then((res) => {
         if (!res.success) throw new Error(res.message || 'El scraper no devolvió datos');
-        const previos = res.data?.diagnosticos_previos || [];
-        setForm((f) => ({ ...f, diagnosticos_previos: previos }));
+        const scraperPrevios = res.data?.diagnosticos_previos || [];
+        setForm((f) => {
+          const existentes = f.diagnosticos_previos || [];
+          const existentesCies = new Set(existentes.map((p) => p.cie10));
+          const nuevos = scraperPrevios
+            .map((p) => ({ ...p, from_scraper: true }))
+            .filter((p) => p.cie10 && !existentesCies.has(p.cie10));
+          return { ...f, diagnosticos_previos: [...existentes, ...nuevos] };
+        });
         setScraped(true);
         showToast(
-          previos.length > 0
-            ? `${previos.length} diagnóstico(s) extraídos del Log de Admisión`
-            : 'Sin diagnósticos en la derivación',
+          scraperPrevios.length > 0
+            ? `Scraper: ${scraperPrevios.length} diagnóstico(s) encontrado(s) en el Log de Admisión`
+            : 'El Log de Admisión no devolvió diagnósticos',
           'mdi-cloud-download-outline',
         );
       })
@@ -548,12 +555,15 @@ function StepProcedimiento({ form, set, setForm, showToast, scraped, setScraped,
           )}
         </div>
         <div className="hint" style={{ marginBottom: 8 }}>
-          Diagnósticos pre-operatorios registrados en la admisión o extraídos del Log de Admisión. Máximo 3 permitidos.
+          {previoCount > 0
+            ? 'Precargados desde la base de datos. Puedes scrapear el Log de Admisión para agregar los que falten.'
+            : 'Sin diagnósticos pre-operatorios en BD. Puedes extraerlos desde el Log de Admisión.'}
+          {' '}Máximo 3 permitidos.
         </div>
         <button className="btn btn-ghost btn-sm" onClick={doScrape} disabled={scraping}>
           {scraping
             ? <><i className="mdi mdi-loading mdi-spin" /> Extrayendo…</>
-            : <><i className="mdi mdi-cloud-search-outline" /> {previoCount > 0 ? 'Re-extraer desde Log de Admisión' : 'Extraer desde Log de Admisión'}</>}
+            : <><i className="mdi mdi-cloud-search-outline" /> Buscar en Log de Admisión</>}
         </button>
 
         {previoOver && (
@@ -566,7 +576,7 @@ function StepProcedimiento({ form, set, setForm, showToast, scraped, setScraped,
         {showPrevios && (
           <div className="diag-prev" style={{ marginTop: 10 }}>
             {previos.length === 0 && scraped && (
-              <div className="proto-empty">No se encontraron diagnósticos en la derivación.</div>
+              <div className="proto-empty">El Log de Admisión no devolvió diagnósticos pre-operatorios.</div>
             )}
             {previos.map((p, i) => {
               const yaEsta = (form.diagnosticos || []).some((d) => d.cie10 === p.cie10);
