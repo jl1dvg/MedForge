@@ -123,6 +123,7 @@ export default function App({ config }) {
   const [tabHelpKey, setTabHelpKey] = useState(null);
   const [tweakOpen, setTweakOpen] = useState(false);
   const [wizardRow, setWizardRow] = useState(null);
+  const [wizardLoading, setWizardLoading] = useState(false);
 
   useEffect(() => {
     document.documentElement.style.setProperty('--accent', tweaks.accent || '#5156be');
@@ -213,6 +214,7 @@ export default function App({ config }) {
 
   const openWizard = useCallback((row) => {
     setProtocolRow(null);
+    setWizardLoading(true);
     const params = new URLSearchParams({ form_id: row.form_id, hc_number: row.hc_number });
     fetch(`${endpoints.protocolo}?${params}`)
       .then((r) => r.json())
@@ -220,39 +222,73 @@ export default function App({ config }) {
         if (data.error) throw new Error(data.error);
         setWizardRow(normaliseWizardForm(row, data));
       })
-      .catch(() => {
-        setWizardRow(normaliseWizardForm(row, {}));
-      });
-  }, [endpoints.protocolo]);
+      .catch((e) => {
+        showToast(e.message || 'No se pudo cargar el protocolo', 'mdi-alert-circle', 'warn');
+      })
+      .finally(() => setWizardLoading(false));
+  }, [endpoints.protocolo, showToast]);
+
+  const postJson = useCallback((url, payload) => {
+    return fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'X-CSRF-TOKEN': window.csrfToken || '',
+        'X-Requested-With': 'XMLHttpRequest',
+      },
+      body: new URLSearchParams(payload).toString(),
+    }).then((r) => r.json());
+  }, []);
 
   const saveProtocol = useCallback((form, meta) => {
-    const body = new URLSearchParams({
-      form_id: form.form_id,
-      hc_number: form.hc_number,
-      data: JSON.stringify(form),
-    });
-    const doSave = () => fetch(endpoints.autosave, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-TOKEN': window.csrfToken || '', 'X-Requested-With': 'XMLHttpRequest' },
-      body: body.toString(),
-    });
+    const staff = form.staff || {};
+    const payload = {
+      form_id:                  form.form_id,
+      hc_number:                form.hc_number,
+      procedimiento_id:         form.proc_codigo || form.procedimiento_id || '',
+      membrete:                 form.membrete || '',
+      dieresis:                 form.dieresis || '',
+      exposicion:               form.exposicion || '',
+      hallazgo:                 form.hallazgo || '',
+      operatorio:               form.operatorio || '',
+      complicaciones_operatorio: form.complicaciones_operatorio || '',
+      lateralidad:              form.lateralidad || '',
+      tipo_anestesia:           form.tipo_anestesia || '',
+      hora_inicio:              form.hora_inicio || '',
+      hora_fin:                 form.hora_fin || '',
+      fecha_inicio:             form.fecha_inicio || '',
+      fecha_fin:                form.fecha_fin || '',
+      cirujano_1:               staff.cirujano_1 || '',
+      cirujano_2:               staff.cirujano_2 || '',
+      primer_ayudante:          staff.primer_ayudante || '',
+      segundo_ayudante:         staff.segundo_ayudante || '',
+      tercer_ayudante:          staff.tercer_ayudante || '',
+      anestesiologo:            staff.anestesiologo || '',
+      ayudante_anestesia:       staff.ayudante_anestesia || '',
+      instrumentista:           staff.instrumentista || '',
+      circulante:               staff.circulante || '',
+      procedimientos:           JSON.stringify(form.procedimientos || []),
+      diagnosticos:             JSON.stringify(form.diagnosticos || []),
+      diagnosticos_previos:     JSON.stringify(form.diagnosticos_previos || []),
+      insumos:                  JSON.stringify(form.insumos || {}),
+      medicamentos:             JSON.stringify(form.medicamentos || []),
+      status:                   String(meta.status ?? 0),
+    };
 
-    doSave().then(() => {
-      if (meta.status === 1 && endpoints.status) {
-        return fetch(endpoints.status, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-TOKEN': window.csrfToken || '', 'X-Requested-With': 'XMLHttpRequest' },
-          body: new URLSearchParams({ form_id: form.form_id, hc_number: form.hc_number, status: '1' }).toString(),
-        });
-      }
-    }).then(() => {
-      setWizardRow(null);
-      reload();
-      showToast(meta.status === 1 ? 'Protocolo guardado y marcado como revisado' : 'Protocolo guardado', 'mdi-check-circle');
-    }).catch(() => {
-      showToast('Error al guardar el protocolo', 'mdi-alert-circle', 'warn');
-    });
-  }, [endpoints.autosave, endpoints.status, reload, showToast]);
+    postJson(endpoints.guardar, payload)
+      .then((res) => {
+        if (!res.success) throw new Error(res.message || 'Error al guardar');
+        setWizardRow(null);
+        reload();
+        showToast(
+          meta.status === 1 ? 'Protocolo guardado y marcado como revisado' : 'Protocolo guardado',
+          'mdi-check-circle',
+        );
+      })
+      .catch((e) => {
+        showToast(e.message || 'Error al guardar el protocolo', 'mdi-alert-circle', 'warn');
+      });
+  }, [endpoints.guardar, postJson, reload, showToast]);
 
   const printRow = useCallback((row) => {
     if (row.estado !== 'revisado' && row.status !== 1) {
@@ -357,9 +393,18 @@ export default function App({ config }) {
 
       {tweakOpen && <TweakPanel tweaks={tweaks} setTweak={setTweak} />}
 
+      {wizardLoading && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9998, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#fff', borderRadius: 12, padding: '28px 36px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
+            <div className="spin" style={{ width: 36, height: 36, borderWidth: 3 }} />
+            <div style={{ fontSize: 14, color: 'var(--fg-2)' }}>Cargando protocolo…</div>
+          </div>
+        </div>
+      )}
       {wizardRow && (
         <ProtocolWizard
           form={wizardRow}
+          endpoints={endpoints}
           onClose={() => setWizardRow(null)}
           onSave={saveProtocol}
           showToast={showToast}

@@ -20,12 +20,14 @@
             'name' => $currentUser->name ?? '',
         ] : null,
         'endpoints' => [
-            'datatable' => '/v2/cirugias/datatable',
-            'protocolo' => '/v2/cirugias/protocolo',
-            'wizard'    => '/v2/cirugias/wizard',
-            'printed'   => '/v2/cirugias/protocolo/printed',
-            'status'    => '/v2/cirugias/protocolo/status',
-            'autosave'  => '/v2/cirugias/wizard/autosave',
+            'datatable'       => '/v2/cirugias/datatable',
+            'protocolo'       => '/v2/cirugias/protocolo',
+            'wizard'          => '/v2/cirugias/wizard',
+            'printed'         => '/v2/cirugias/protocolo/printed',
+            'status'          => '/v2/cirugias/protocolo/status',
+            'autosave'        => '/v2/cirugias/wizard/autosave',
+            'guardar'         => '/v2/cirugias/wizard/guardar',
+            'scrapeDerivacion' => '/v2/cirugias/wizard/scrape-derivacion',
         ],
     ];
 @endphp

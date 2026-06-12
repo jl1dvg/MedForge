@@ -138,31 +138,38 @@ export function normaliseWizardForm(row, data) {
     ? rawInsumos
     : groupInsumos((Array.isArray(rawInsumos) ? rawInsumos : []).map((it) => ({ ...it, cat: it.cat || insumoCat(it.nombre) })));
 
+  // Ensure procedimientos always has at least one editable row
+  const procedimientosRaw = data.procedimientos || [];
+  const procedimientos = Array.isArray(procedimientosRaw) && procedimientosRaw.length > 0
+    ? procedimientosRaw
+    : [{ codigo: data.procedimiento_id || '', nombre: data.membrete || row.membrete || '' }];
+
   return {
     // identity (from row)
     id: row.id,
     form_id: row.form_id,
     hc_number: row.hc_number,
-    cedula: row.cedula || data.cedula || '',
-    full_name: row.full_name || data.full_name || '',
-    fname: data.fname || row.fname || '',
-    mname: data.mname || row.mname || '',
-    lname: data.lname || row.lname || '',
-    lname2: data.lname2 || row.lname2 || '',
+    cedula: row.cedula || data.hc_number || '',
+    full_name: row.full_name || '',
+    fname: data.fname || '',
+    mname: data.mname || '',
+    lname: data.lname || '',
+    lname2: data.lname2 || '',
     fecha_nacimiento: data.fecha_nacimiento || '',
-    edad: row.edad || data.edad || '',
-    afiliacion: row.afiliacion || data.afiliacion || '',
-    sede: row.sede || data.sede || '',
-    quirofano: row.quirofano || data.quirofano || '',
+    edad: row.edad ?? '',
+    afiliacion: row.afiliacion_label || row.afiliacion || '',
+    sede: row.sede || '',
+    quirofano: row.quirofano || '',
     // procedure
-    proc_codigo: data.proc_codigo || row.proc_codigo || '',
-    proc_nombre: data.proc_nombre || row.proc_nombre || row.membrete || '',
-    proc_short: data.proc_short || row.proc_short || '',
+    proc_codigo: data.procedimiento_id || '',
+    procedimiento_id: data.procedimiento_id || '',
+    proc_nombre: data.membrete || row.membrete || '',
+    proc_short: row.proc_short || '',
     lateralidad: data.lateralidad || row.lateralidad || '',
-    procedimiento_proyectado: data.procedimiento_proyectado || row.procedimiento_proyectado || '',
-    procedimientos: data.procedimientos || row.procedimientos || [],
-    diagnosticos: data.diagnosticos || [],
-    diagnosticos_previos: data.diagnosticos_previos || [],
+    procedimiento_proyectado: data.procedimiento_proyectado || '',
+    procedimientos,
+    diagnosticos: Array.isArray(data.diagnosticos) ? data.diagnosticos : [],
+    diagnosticos_previos: Array.isArray(data.diagnosticos_previos) ? data.diagnosticos_previos : [],
     // staff (normalised)
     staff,
     // tiempos
@@ -170,7 +177,7 @@ export function normaliseWizardForm(row, data) {
     hora_inicio: data.hora_inicio || '',
     fecha_fin: data.fecha_fin || '',
     hora_fin: data.hora_fin || '',
-    duracion_proy: data.duracion_proy || row.duracion_proy || 0,
+    duracion_proy: row.duracion_proy || 0,
     tipo_anestesia: data.tipo_anestesia || '',
     // operatorio
     membrete: data.membrete || '',
@@ -182,12 +189,11 @@ export function normaliseWizardForm(row, data) {
     // insumos / meds
     insumos,
     insumos_esperados: data.insumos_esperados || [],
-    medicamentos: data.medicamentos || [],
+    medicamentos: Array.isArray(data.medicamentos) ? data.medicamentos : [],
     medicamentos_esperados: data.medicamentos_esperados || [],
     // meta
-    comentario: data.comentario || '',
     status: row.status,
-    autosave_ts: data.autosave_ts || null,
+    autosave_ts: null,
   };
 }
 
@@ -225,7 +231,7 @@ function AuditPill({ audit }) {
 }
 
 // ---- Main wizard component --------------------------------------
-export function ProtocolWizard({ form: initialForm, onClose, onSave, showToast }) {
+export function ProtocolWizard({ form: initialForm, endpoints = {}, onClose, onSave, showToast }) {
   const [form, setForm] = useState(() => deepCopy(initialForm));
   const [step, setStep] = useState(0);
   const [marcarRevisado, setMarcarRevisado] = useState(initialForm.status === 1);
@@ -252,7 +258,7 @@ export function ProtocolWizard({ form: initialForm, onClose, onSave, showToast }
   const finish = () => onSave(form, { status: marcarRevisado ? 1 : 0 });
 
   const cur = WSTEPS[step].key;
-  const ctx = { form, set, setStaff, setForm, showToast, scraped, setScraped, scraping, setScraping, audit, marcarRevisado, setMarcarRevisado, goStep: (k) => go(WSTEPS.findIndex((s) => s.key === k)) };
+  const ctx = { form, set, setStaff, setForm, showToast, scraped, setScraped, scraping, setScraping, audit, marcarRevisado, setMarcarRevisado, endpoints, goStep: (k) => go(WSTEPS.findIndex((s) => s.key === k)) };
 
   return (
     <div className="wiz-overlay">
@@ -341,18 +347,34 @@ function StepPaciente({ form, set }) {
 }
 
 // ---- Step 2: Procedimientos & Diagnósticos ----------------------
-function StepProcedimiento({ form, set, setForm, showToast, scraped, setScraped, scraping, setScraping }) {
+function StepProcedimiento({ form, set, setForm, showToast, scraped, setScraped, scraping, setScraping, endpoints }) {
   const updArr = (key, i, field, val) => setForm((f) => { const a = f[key].slice(); a[i] = { ...a[i], [field]: val }; return { ...f, [key]: a }; });
   const addRow = (key, blank) => setForm((f) => ({ ...f, [key]: [...f[key], blank] }));
   const rmRow = (key, i) => setForm((f) => ({ ...f, [key]: f[key].filter((_, k) => k !== i) }));
 
   const doScrape = () => {
+    if (!endpoints.scrapeDerivacion) return;
     setScraping(true);
-    setTimeout(() => {
-      setScraped(true);
-      setScraping(false);
-      showToast('Diagnósticos de la derivación extraídos del Log de Admisión', 'mdi-cloud-download-outline');
-    }, 850);
+    fetch(endpoints.scrapeDerivacion, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-TOKEN': window.csrfToken || '', 'X-Requested-With': 'XMLHttpRequest' },
+      body: new URLSearchParams({ form_id: form.form_id, hc_number: form.hc_number }).toString(),
+    })
+      .then((r) => r.json())
+      .then((res) => {
+        if (!res.success) throw new Error(res.message || 'El scraper no devolvió datos');
+        const previos = res.data?.diagnosticos_previos || [];
+        setForm((f) => ({ ...f, diagnosticos_previos: previos }));
+        setScraped(true);
+        showToast(
+          previos.length > 0
+            ? `${previos.length} diagnóstico(s) extraídos del Log de Admisión`
+            : 'Sin diagnósticos en la derivación',
+          'mdi-cloud-download-outline',
+        );
+      })
+      .catch((e) => showToast(e.message || 'Error al extraer diagnósticos', 'mdi-alert-circle', 'warn'))
+      .finally(() => setScraping(false));
   };
 
   const importarPrevio = (p) => {

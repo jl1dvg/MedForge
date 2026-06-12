@@ -180,19 +180,47 @@ class CirugiasReadController
 
         $auditoria = $this->service->obtenerAuditoriaProtocolo($cirugia);
 
+        // Parse insumos/medicamentos for the wizard
+        $insumosRaw = json_decode((string) ($cirugia->insumos ?? '{}'), true);
+        $insumos = is_array($insumosRaw) ? $insumosRaw : [];
+        $medicamentosRaw = json_decode((string) ($cirugia->medicamentos ?? '[]'), true);
+        $medicamentos = is_array($medicamentosRaw) ? $medicamentosRaw : [];
+
         return response()->json([
+            // Patient identity (for wizard step 1)
+            'hc_number'  => $cirugia->hc_number,
+            'fname'      => $cirugia->fname,
+            'mname'      => $cirugia->mname,
+            'lname'      => $cirugia->lname,
+            'lname2'     => $cirugia->lname2,
+            'fecha_nacimiento' => $cirugia->fecha_nacimiento,
+            // Procedure
+            'procedimiento_id'        => $cirugia->procedimiento_id,
+            'procedimiento_proyectado' => $cirugia->procedimiento_proyectado,
+            'membrete'    => $cirugia->membrete,
+            'lateralidad' => $cirugia->lateralidad,
+            // Tiempos
             'fecha_inicio' => $cirugia->fecha_inicio,
-            'hora_inicio' => $cirugia->hora_inicio,
-            'hora_fin' => $cirugia->hora_fin,
-            'duracion' => $duracion,
-            'dieresis' => $cirugia->dieresis,
-            'exposicion' => $cirugia->exposicion,
-            'hallazgo' => $cirugia->hallazgo,
-            'operatorio' => $cirugia->operatorio,
-            'comentario' => $cirugia->complicaciones_operatorio,
-            'diagnosticos' => $diagnosticos,
-            'procedimientos' => $procedimientos,
-            'staff' => $staff,
+            'fecha_fin'    => $cirugia->fecha_fin ?? '',
+            'hora_inicio'  => $cirugia->hora_inicio,
+            'hora_fin'     => $cirugia->hora_fin,
+            'duracion'     => $duracion,
+            'tipo_anestesia' => $cirugia->tipo_anestesia,
+            // Operatorio
+            'dieresis'    => $cirugia->dieresis,
+            'exposicion'  => $cirugia->exposicion,
+            'hallazgo'    => $cirugia->hallazgo,
+            'operatorio'  => $cirugia->operatorio,
+            'complicaciones_operatorio' => $cirugia->complicaciones_operatorio,
+            // Collections
+            'diagnosticos'         => $diagnosticos,
+            'diagnosticos_previos' => json_decode((string) ($cirugia->diagnosticos_previos ?? '[]'), true) ?: [],
+            'procedimientos'       => $procedimientos,
+            'insumos'              => $insumos,
+            'medicamentos'         => $medicamentos,
+            // Staff
+            'staff'     => $staff,
+            // Audit
             'auditoria' => $auditoria,
         ]);
     }
