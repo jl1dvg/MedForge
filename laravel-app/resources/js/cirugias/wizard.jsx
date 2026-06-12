@@ -505,32 +505,37 @@ function StepProcedimiento({ form, set, setForm, showToast, scraped, setScraped,
       <h3>Procedimientos, diagnósticos y lateralidad</h3>
       <div className="step-sub">Define qué se operó y por qué. La auditoría compara estos diagnósticos con los de la derivación.</div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0 20px', alignItems: 'start' }}>
-        <div className="fieldset" style={{ marginBottom: 0 }}>
-          <legend>Procedimientos realizados</legend>
-          {/* NOTE (mejora pendiente): el dato canónico debería ser el código del tarifario_2014.
-              Por ahora se guarda {codigo, nombre} para compatibilidad con el backend actual. */}
-          {(form.procedimientos || []).map((p, i) => (
-            <div className="rep-row proc" key={i}>
-              <input value={p.codigo} placeholder="Código" style={{ maxWidth: 110, fontFamily: 'var(--font-mono)' }}
-                onChange={(e) => updArr('procedimientos', i, 'codigo', e.target.value)} />
-              <input value={p.nombre} placeholder="Descripción del procedimiento"
-                onChange={(e) => updArr('procedimientos', i, 'nombre', e.target.value)} />
-              <button className="icon-mini" title="Quitar" onClick={() => rmRow('procedimientos', i)}
-                disabled={(form.procedimientos || []).length === 1}><i className="mdi mdi-minus" /></button>
-            </div>
+      <div className="fieldset lat-block">
+        <legend>Lateralidad</legend>
+        <div className="lat-options">
+          {LATERALIDAD.map((l) => (
+            <label key={l.value} className={`lat-opt${form.lateralidad === l.value ? ' active' : ''}`}>
+              <input type="radio" name="lateralidad" value={l.value} checked={form.lateralidad === l.value}
+                onChange={() => set('lateralidad', l.value)} />
+              <strong>{l.value}</strong>
+              <span>{l.label.split('·')[1]?.trim()}</span>
+            </label>
           ))}
-          <button className="add-line" onClick={() => addRow('procedimientos', { codigo: '', nombre: '' })}>
-            <i className="mdi mdi-plus-circle-outline" /> Agregar procedimiento
-          </button>
         </div>
+      </div>
 
-        <div className="form-row" style={{ minWidth: 200, marginBottom: 0 }}>
-          <label>Lateralidad</label>
-          <select value={form.lateralidad} onChange={(e) => set('lateralidad', e.target.value)}>
-            {LATERALIDAD.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
-          </select>
-        </div>
+      <div className="fieldset">
+        <legend>Procedimientos realizados</legend>
+        {/* NOTE (mejora pendiente): el dato canónico debería ser el código del tarifario_2014.
+            Por ahora se guarda {codigo, nombre} para compatibilidad con el backend actual. */}
+        {(form.procedimientos || []).map((p, i) => (
+          <div className="rep-row proc" key={i}>
+            <input value={p.codigo} placeholder="Código" style={{ fontFamily: 'var(--font-mono)' }}
+              onChange={(e) => updArr('procedimientos', i, 'codigo', e.target.value)} />
+            <input value={p.nombre} placeholder="Descripción del procedimiento"
+              onChange={(e) => updArr('procedimientos', i, 'nombre', e.target.value)} />
+            <button className="icon-mini" title="Quitar" onClick={() => rmRow('procedimientos', i)}
+              disabled={(form.procedimientos || []).length === 1}><i className="mdi mdi-minus" /></button>
+          </div>
+        ))}
+        <button className="add-line" onClick={() => addRow('procedimientos', { codigo: '', nombre: '' })}>
+          <i className="mdi mdi-plus-circle-outline" /> Agregar procedimiento
+        </button>
       </div>
 
       <div className="scrape-block" style={{ marginTop: 18 }}>
