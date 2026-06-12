@@ -599,7 +599,7 @@ function StepProcedimiento({ form, set, setForm, showToast, scraped, setScraped,
           </span>
         </legend>
         <div className="rep-header dx">
-          <span>Ojo</span><span>Código CIE-10</span><span>Detalle</span><span />
+          <span>Código CIE-10</span><span>Detalle</span><span />
         </div>
         {(form.diagnosticos || []).length === 0 && (
           <div className="proto-empty" style={{ marginBottom: 10 }}>
@@ -608,11 +608,8 @@ function StepProcedimiento({ form, set, setForm, showToast, scraped, setScraped,
         )}
         {(form.diagnosticos || []).map((d, i) => (
           <div className="rep-row dx" key={i}>
-            <input value={d.ojo || ''} placeholder="OD/OI/AO"
-              style={{ maxWidth: 80, fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}
-              onChange={(e) => updArr('diagnosticos', i, 'ojo', e.target.value)} />
             <input value={d.cie10 || ''} placeholder="H25.03"
-              style={{ maxWidth: 120, fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}
+              style={{ fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}
               onChange={(e) => updArr('diagnosticos', i, 'cie10', e.target.value)} />
             <input value={d.detalle || ''} placeholder="Descripción del diagnóstico"
               onChange={(e) => updArr('diagnosticos', i, 'detalle', e.target.value)} />
