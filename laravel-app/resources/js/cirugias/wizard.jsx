@@ -24,22 +24,85 @@ const VIAS = ['INTRAVENOSA', 'INFILTRATIVA', 'SUBCONJUNTIVAL', 'TÓPICA', 'INTRA
 const RESPONSABLES_MED = ['Cirujano Principal', 'Anestesiólogo', 'Asistente', 'Instrumentista'];
 
 // ---- Utilities --------------------------------------------------
-function insumoCat(nombre) {
-  for (const cat of Object.keys(INSUMOS_DISPONIBLES)) {
-    if (INSUMOS_DISPONIBLES[cat].includes(nombre)) return cat;
+function insumoCat(it) {
+  // Prefer explicit category fields from the backend
+  const cat = it.categoria || it.cat || it.category || '';
+  if (cat === 'equipos' || cat === 'quirurgicos' || cat === 'anestesia') return cat;
+  // Fall back to catalogue lookup by name
+  const nombre = it.nombre || it.name || '';
+  for (const c of Object.keys(INSUMOS_DISPONIBLES)) {
+    if (INSUMOS_DISPONIBLES[c].includes(nombre)) return c;
   }
   return 'quirurgicos';
 }
 
+// Resolve display name for an insumo item (handles both 'nombre' and 'name' keys)
+function insumoNombre(it) {
+  return it.nombre || it.name || '';
+}
+
+// Resolve display name for a medicamento item (handles 'medicamento' and 'nombre')
+function medNombre(m) {
+  return m.nombre || m.medicamento || m.name || '';
+}
+
 function flatInsumos(ins) {
   if (!ins) return [];
-  return [...(ins.equipos || []), ...(ins.quirurgicos || []), ...(ins.anestesia || [])];
+  if (Array.isArray(ins)) {
+    // Format 2: plain array — normalise on the fly
+    return ins.map((it) => ({
+      id: it.id ?? it.nombre ?? it.name ?? '',
+      nombre: insumoNombre(it),
+      cantidad: it.cantidad ?? it.quantity ?? 1,
+      cat: insumoCat(it),
+    }));
+  }
+  // Format 1: grouped object { equipos, quirurgicos, anestesia }
+  return [
+    ...(ins.equipos || []).map((it) => ({ ...it, nombre: insumoNombre(it), cat: 'equipos' })),
+    ...(ins.quirurgicos || []).map((it) => ({ ...it, nombre: insumoNombre(it), cat: 'quirurgicos' })),
+    ...(ins.anestesia || []).map((it) => ({ ...it, nombre: insumoNombre(it), cat: 'anestesia' })),
+  ];
 }
 
 function groupInsumos(items) {
   const g = { equipos: [], quirurgicos: [], anestesia: [] };
   items.forEach((it) => { (g[it.cat] || g.quirurgicos).push(it); });
   return g;
+}
+
+// Normalise a raw insumos payload (any format) → grouped object
+function normaliseInsumos(raw) {
+  if (!raw) return { equipos: [], quirurgicos: [], anestesia: [] };
+  if (Array.isArray(raw)) return groupInsumos(flatInsumos(raw));
+  if (typeof raw === 'object') {
+    // Already grouped — normalise names and add cat marker
+    const fix = (arr, cat) => (arr || []).map((it) => ({
+      id: it.id ?? insumoNombre(it),
+      nombre: insumoNombre(it),
+      cantidad: it.cantidad ?? it.quantity ?? 1,
+      cat,
+    }));
+    return {
+      equipos: fix(raw.equipos, 'equipos'),
+      quirurgicos: fix(raw.quirurgicos, 'quirurgicos'),
+      anestesia: fix(raw.anestesia, 'anestesia'),
+    };
+  }
+  return { equipos: [], quirurgicos: [], anestesia: [] };
+}
+
+// Normalise a raw medicamentos array → standard shape
+function normaliseMedicamentos(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((m) => ({
+    id: m.id ?? medNombre(m),
+    nombre: medNombre(m),            // canonical display name
+    dosis: m.dosis || m.dose || '',
+    via: m.via || m.vía || m.route || '',
+    responsable: m.responsable || m.responsible || '',
+    frecuencia: m.frecuencia || m.frequency || 'Dosis única',
+  }));
 }
 
 function durMin(hi, hf) {
@@ -120,6 +183,16 @@ function runAudit(r) {
 
 // ---- normaliseWizardForm: backend → wizard form shape -----------
 export function normaliseWizardForm(row, data) {
+  // Debug: compare raw backend response vs what we normalise
+  console.log('[wizard] raw /protocolo response', {
+    insumos: data.insumos,
+    medicamentos: data.medicamentos,
+    procedimientos: data.procedimientos,
+    diagnosticos: data.diagnosticos,
+    diagnosticos_previos: data.diagnosticos_previos,
+    operatorio: data.operatorio ? data.operatorio.slice(0, 80) + '…' : null,
+  });
+
   const backendStaff = data.staff || {};
   const staff = {
     cirujano_1: backendStaff['Cirujano principal'] || backendStaff['cirujano_1'] || '',
@@ -133,10 +206,7 @@ export function normaliseWizardForm(row, data) {
     circulante: backendStaff['Circulante'] || backendStaff['circulante'] || '',
   };
 
-  const rawInsumos = data.insumos || {};
-  const insumos = (typeof rawInsumos === 'object' && !Array.isArray(rawInsumos) && ('equipos' in rawInsumos || 'quirurgicos' in rawInsumos || 'anestesia' in rawInsumos))
-    ? rawInsumos
-    : groupInsumos((Array.isArray(rawInsumos) ? rawInsumos : []).map((it) => ({ ...it, cat: it.cat || insumoCat(it.nombre) })));
+  const insumos = normaliseInsumos(data.insumos);
 
   // Ensure procedimientos always has at least one editable row
   const procedimientosRaw = data.procedimientos || [];
@@ -144,7 +214,7 @@ export function normaliseWizardForm(row, data) {
     ? procedimientosRaw
     : [{ codigo: data.procedimiento_id || '', nombre: data.membrete || row.membrete || '' }];
 
-  return {
+  const result = {
     // identity (from row)
     id: row.id,
     form_id: row.form_id,
@@ -189,12 +259,20 @@ export function normaliseWizardForm(row, data) {
     // insumos / meds
     insumos,
     insumos_esperados: data.insumos_esperados || [],
-    medicamentos: Array.isArray(data.medicamentos) ? data.medicamentos : [],
+    medicamentos: normaliseMedicamentos(data.medicamentos),
     medicamentos_esperados: data.medicamentos_esperados || [],
     // meta
     status: row.status,
     autosave_ts: null,
   };
+
+  console.log('[wizard] normalised form', {
+    insumos: result.insumos,
+    insumos_flat: flatInsumos(result.insumos),
+    medicamentos: result.medicamentos,
+  });
+
+  return result;
 }
 
 // ---- Wizard steps config ----------------------------------------
@@ -550,17 +628,29 @@ function StepInsumos({ form, setForm, showToast }) {
   const faltantes = (form.insumos_esperados || []).filter((n) => !all.map((x) => x.nombre).includes(n));
 
   const rebuild = (items) => setForm((f) => ({ ...f, insumos: groupInsumos(items) }));
+
   const updItem = (idx, field, val) => {
     const items = all.slice();
-    if (field === 'nombre') items[idx] = { ...items[idx], nombre: val, id: val, cat: insumoCat(val) };
-    else if (field === 'cat') items[idx] = { ...items[idx], cat: val, nombre: INSUMOS_DISPONIBLES[val][0], id: INSUMOS_DISPONIBLES[val][0] };
-    else items[idx] = { ...items[idx], [field]: val };
+    if (field === 'cat') {
+      // Only change category — preserve the existing name
+      items[idx] = { ...items[idx], cat: val };
+    } else if (field === 'nombre') {
+      // Update name; re-derive category from catalogue, keep id stable if it was the old name
+      const newCat = insumoCat({ nombre: val, cat: items[idx].cat });
+      items[idx] = { ...items[idx], nombre: val, id: items[idx].id === items[idx].nombre ? val : items[idx].id, cat: newCat };
+    } else {
+      items[idx] = { ...items[idx], [field]: val };
+    }
     rebuild(items);
   };
+
   const rm = (idx) => rebuild(all.filter((_, i) => i !== idx));
-  const add = () => rebuild([...all, { id: INSUMOS_DISPONIBLES.quirurgicos[0], nombre: INSUMOS_DISPONIBLES.quirurgicos[0], cantidad: 1, cat: 'quirurgicos' }]);
+  const add = () => rebuild([...all, { id: '', nombre: '', cantidad: 1, cat: 'quirurgicos' }]);
   const addFaltantes = () => {
-    const nuevos = faltantes.map((n) => ({ id: n, nombre: n, cantidad: 1, cat: insumoCat(n) }));
+    const existing = new Set(all.map((x) => x.nombre));
+    const nuevos = faltantes
+      .filter((n) => !existing.has(n))
+      .map((n) => ({ id: n, nombre: n, cantidad: 1, cat: insumoCat({ nombre: n }) }));
     rebuild([...all, ...nuevos]);
     showToast(`${nuevos.length} insumo(s) de la plantilla agregados`, 'mdi-package-variant-closed-plus');
   };
@@ -583,25 +673,36 @@ function StepInsumos({ form, setForm, showToast }) {
 
       <div className="etable-wrap">
         <table className="etable">
-          <thead><tr><th style={{ width: 150 }}>Categoría</th><th>Insumo</th><th className="col-qty">Cantidad</th><th className="col-act" /></tr></thead>
+          <thead><tr><th style={{ width: 130 }}>Categoría</th><th>Insumo</th><th className="col-qty">Cant.</th><th className="col-act" /></tr></thead>
           <tbody>
             {all.length === 0 && <tr><td colSpan={4} style={{ padding: 16, color: 'var(--fg-mute)', fontStyle: 'italic' }}>Sin insumos registrados.</td></tr>}
-            {all.map((it, i) => (
-              <tr key={i}>
-                <td>
-                  <select value={it.cat} onChange={(e) => updItem(i, 'cat', e.target.value)}>
-                    {cats.map((c) => <option key={c} value={c}>{CAT_INSUMO_LABEL[c]}</option>)}
-                  </select>
-                </td>
-                <td>
-                  <select value={it.nombre} onChange={(e) => updItem(i, 'nombre', e.target.value)}>
-                    {(INSUMOS_DISPONIBLES[it.cat] || INSUMOS_DISPONIBLES.quirurgicos).map((n) => <option key={n} value={n}>{n}</option>)}
-                  </select>
-                </td>
-                <td><input type="number" min="1" value={it.cantidad} onChange={(e) => updItem(i, 'cantidad', e.target.value)} /></td>
-                <td className="col-act"><button className="icon-mini" onClick={() => rm(i)} title="Quitar"><i className="mdi mdi-minus" /></button></td>
-              </tr>
-            ))}
+            {all.map((it, i) => {
+              const listId = `insumos-cat-${it.cat}-${i}`;
+              return (
+                <tr key={i}>
+                  <td>
+                    <select value={it.cat} onChange={(e) => updItem(i, 'cat', e.target.value)}>
+                      {cats.map((c) => <option key={c} value={c}>{CAT_INSUMO_LABEL[c]}</option>)}
+                    </select>
+                  </td>
+                  <td>
+                    {/* Free-text input with datalist suggestions — never silently replaces the stored name */}
+                    <input
+                      list={listId}
+                      value={it.nombre}
+                      onChange={(e) => updItem(i, 'nombre', e.target.value)}
+                      placeholder="Nombre del insumo"
+                      style={{ width: '100%' }}
+                    />
+                    <datalist id={listId}>
+                      {(INSUMOS_DISPONIBLES[it.cat] || []).map((n) => <option key={n} value={n} />)}
+                    </datalist>
+                  </td>
+                  <td><input type="number" min="1" value={it.cantidad ?? 1} onChange={(e) => updItem(i, 'cantidad', e.target.value)} /></td>
+                  <td className="col-act"><button className="icon-mini" onClick={() => rm(i)} title="Quitar"><i className="mdi mdi-minus" /></button></td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
         <div className="etable-foot">
@@ -618,12 +719,21 @@ function StepInsumos({ form, setForm, showToast }) {
 function StepMedicamentos({ form, setForm, showToast }) {
   const meds = form.medicamentos || [];
   const setMeds = (m) => setForm((f) => ({ ...f, medicamentos: m }));
-  const upd = (i, field, val) => { const m = meds.slice(); m[i] = { ...m[i], [field]: val }; if (field === 'nombre') m[i].id = val; setMeds(m); };
+  const upd = (i, field, val) => {
+    const m = meds.slice();
+    m[i] = { ...m[i], [field]: val };
+    // keep id in sync with nombre if it was previously the same value
+    if (field === 'nombre' && m[i].id === meds[i].nombre) m[i].id = val;
+    setMeds(m);
+  };
   const rm = (i) => setMeds(meds.filter((_, k) => k !== i));
-  const add = () => setMeds([...meds, { id: MEDICAMENTOS[0], nombre: MEDICAMENTOS[0], dosis: '', frecuencia: 'Dosis única', via: VIAS[0], responsable: RESPONSABLES_MED[0] }]);
+  const add = () => setMeds([...meds, { id: '', nombre: '', dosis: '', frecuencia: 'Dosis única', via: '', responsable: '' }]);
   const faltantes = (form.medicamentos_esperados || []).filter((n) => !meds.map((x) => x.nombre).includes(n));
   const addFaltantes = () => {
-    const nuevos = faltantes.map((n) => ({ id: n, nombre: n, dosis: '', frecuencia: 'Dosis única', via: VIAS[3], responsable: RESPONSABLES_MED[0] }));
+    const existing = new Set(meds.map((x) => x.nombre));
+    const nuevos = faltantes
+      .filter((n) => !existing.has(n))
+      .map((n) => ({ id: n, nombre: n, dosis: '', frecuencia: 'Dosis única', via: '', responsable: '' }));
     setMeds([...meds, ...nuevos]);
     showToast(`${nuevos.length} medicamento(s) de la plantilla agregados`, 'mdi-pill');
   };
@@ -646,20 +756,34 @@ function StepMedicamentos({ form, setForm, showToast }) {
 
       <div className="etable-wrap">
         <table className="etable">
-          <thead><tr><th>Medicamento</th><th style={{ width: 100 }}>Dosis</th><th style={{ width: 120 }}>Vía</th><th style={{ width: 150 }}>Responsable</th><th className="col-act" /></tr></thead>
+          <thead><tr><th>Medicamento</th><th style={{ width: 100 }}>Dosis</th><th style={{ width: 130 }}>Vía</th><th style={{ width: 150 }}>Responsable</th><th className="col-act" /></tr></thead>
           <tbody>
             {meds.length === 0 && <tr><td colSpan={5} style={{ padding: 16, color: 'var(--fg-mute)', fontStyle: 'italic' }}>Sin medicamentos registrados.</td></tr>}
             {meds.map((m, i) => (
               <tr key={i}>
-                <td><select value={m.nombre} onChange={(e) => upd(i, 'nombre', e.target.value)}>{MEDICAMENTOS.map((n) => <option key={n} value={n}>{n}</option>)}</select></td>
-                <td><input value={m.dosis} placeholder="—" onChange={(e) => upd(i, 'dosis', e.target.value)} /></td>
-                <td><select value={m.via} onChange={(e) => upd(i, 'via', e.target.value)}>{VIAS.map((v) => <option key={v} value={v}>{v}</option>)}</select></td>
-                <td><select value={m.responsable} onChange={(e) => upd(i, 'responsable', e.target.value)}>{RESPONSABLES_MED.map((r) => <option key={r} value={r}>{r}</option>)}</select></td>
+                <td>
+                  {/* Free-text + datalist — never silently replaces real values from backend */}
+                  <input list="med-nombres" value={m.nombre} placeholder="Medicamento"
+                    onChange={(e) => upd(i, 'nombre', e.target.value)} style={{ width: '100%' }} />
+                </td>
+                <td><input value={m.dosis || ''} placeholder="—" onChange={(e) => upd(i, 'dosis', e.target.value)} /></td>
+                <td>
+                  <input list="med-vias" value={m.via || ''} placeholder="Vía"
+                    onChange={(e) => upd(i, 'via', e.target.value)} style={{ width: '100%' }} />
+                </td>
+                <td>
+                  <input list="med-resp" value={m.responsable || ''} placeholder="Responsable"
+                    onChange={(e) => upd(i, 'responsable', e.target.value)} style={{ width: '100%' }} />
+                </td>
                 <td className="col-act"><button className="icon-mini" onClick={() => rm(i)} title="Quitar"><i className="mdi mdi-minus" /></button></td>
               </tr>
             ))}
           </tbody>
         </table>
+        {/* Shared datalists for suggestions */}
+        <datalist id="med-nombres">{MEDICAMENTOS.map((n) => <option key={n} value={n} />)}</datalist>
+        <datalist id="med-vias">{VIAS.map((v) => <option key={v} value={v} />)}</datalist>
+        <datalist id="med-resp">{RESPONSABLES_MED.map((r) => <option key={r} value={r} />)}</datalist>
         <div className="etable-foot">
           <button className="add-line" onClick={add}><i className="mdi mdi-plus-circle-outline" /> Agregar medicamento</button>
         </div>
